@@ -225,5 +225,73 @@
 		"loading": "Chargement…",
 		"notFound": "Cette page est introuvable.",
 		"openFailed": "Impossible d'ouvrir la page. Fermez cette fenêtre et réessayez."
+	},
+	"helpers": {
+		"network": {
+			"operational": "Opérationnel",
+			"personal": "Personnel",
+			"strategic": "Stratégique"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "E-mail",
+			"other": "Autre"
+		},
+		"validation": {
+			"invalidMember": "Membre non valide",
+			"mustBeList": "Doit être une liste",
+			"chooseSource": "Choisissez une source",
+			"enterIdentifier": "Saisissez un identifiant",
+			"nameTooLong": "Le nom est trop long",
+			"chooseRelationship": "Choisissez un type de relation",
+			"maxChars": "255 caractères maximum",
+			"dateFormat": "Date au format AAAA-MM-JJ",
+			"invalidTask": "Tâche non valide",
+			"invalidValue": "Valeur non valide",
+			"invalidProperties": "Propriétés non valides"
+		},
+		"property": {
+			"member": "Membre",
+			"relationship": "Relation",
+			"company": "Entreprise",
+			"role": "Rôle",
+			"aliases": "Alias",
+			"lastContact": "Dernier contact",
+			"date": "Date",
+			"participants": "Participants",
+			"tasks": "Tâches"
+		},
+		"pageType": {
+			"plain": "Page simple",
+			"context": "Contexte",
+			"person": "Personne",
+			"meeting": "Réunion"
+		},
+		"owner": {
+			"persona": "Persona",
+			"member": "Membre",
+			"system": "Système",
+			"agents": "Agents"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "Le texte sélectionné est introuvable sur la page. Actualisez la page et réessayez.",
+			"pageChanged": "La page a changé. Actualisez-la et réessayez.",
+			"noAccess": "Aucun accès au projet.",
+			"failed": "Échec de la création de la tâche."
+		},
+		"image": {
+			"alignLeft": "Aligner à gauche",
+			"alignCenter": "Centrer",
+			"alignRight": "Aligner à droite",
+			"fullWidth": "Pleine largeur",
+			"download": "Télécharger",
+			"replaceImage": "Remplacer l'image",
+			"deleteImage": "Supprimer l'image",
+			"captionPlaceholder": "Écrivez une légende",
+			"loadFailed": "Échec du chargement de l'image"
+		}
 	}
 }

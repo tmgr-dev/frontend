@@ -72,5 +72,26 @@
 		"unsupported": "La entrada de voz no es compatible aquí",
 		"stopTranscribe": "Detener y transcribir",
 		"dictate": "Dictar"
+	},
+	"helpers": {
+		"voice": {
+			"sessionExpired": "Tu sesión caducó. Inicia sesión de nuevo.",
+			"tooLong": "La grabación es demasiado larga. Prueba con una más corta.",
+			"badFormat": "Este navegador graba en un formato que no es compatible.",
+			"noSpeech": "No se detectó voz. Inténtalo de nuevo.",
+			"tooMany": "Demasiadas solicitudes de voz. Espera un minuto e inténtalo de nuevo.",
+			"unavailable": "La transcripción de voz no está disponible ahora mismo.",
+			"failed": "Falló la transcripción de voz. Inténtalo de nuevo.",
+			"timedOut": "La transcripción agotó el tiempo de espera. Inténtalo de nuevo.",
+			"noServer": "No se pudo contactar con el servidor. Comprueba tu conexión.",
+			"micBlocked": "El acceso al micrófono está bloqueado. Permítelo en los ajustes del navegador o del sistema.",
+			"noMic": "No se encontró ningún micrófono.",
+			"micBusy": "El micrófono está ocupado o no está disponible.",
+			"micStart": "No se pudo iniciar el micrófono.",
+			"tooShort": "La grabación fue demasiado corta.",
+			"nothingRecognized": "No se reconoció nada.",
+			"recordingFailed": "Falló la grabación.",
+			"recordStart": "No se pudo iniciar la grabación."
+		}
 	}
 }

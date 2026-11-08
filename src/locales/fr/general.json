@@ -293,5 +293,77 @@
 		"tracked": "Temps suivi",
 		"running": "En cours",
 		"overTime": "Dépassement"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "Ce lien pointe vers un espace de travail auquel vous n'avez pas accès.",
+			"notFound": "Cette tâche n'existe plus.",
+			"forbidden": "Vous n'avez pas accès à cette tâche.",
+			"error": "Impossible de charger cette tâche. Vérifiez votre connexion et réessayez."
+		},
+		"modules": {
+			"needsColon": "nécessite : {list}",
+			"needs": "nécessite {list}",
+			"showModule": "Afficher ce module",
+			"enableFeature": "Activer cette fonctionnalité",
+			"askOwner": "Demandez au propriétaire de l'activer",
+			"hiddenForYou": "Masqué pour vous",
+			"showForMe": "Afficher pour moi",
+			"hideForMe": "Masquer pour moi",
+			"allModules": "Tous les modules",
+			"coreOnly": "Aucun module, essentiel uniquement",
+			"workflowOffConfirm": "Les tâches ont une case Terminé à la place des statuts ; le tableau est masqué. Les statuts et leurs tâches sont conservés et reviennent quand vous le réactivez.",
+			"workflowOn": "Flux de travail : case Terminé → statuts",
+			"workflowOff": "Flux de travail : statuts → case Terminé",
+			"presetSummary": {
+				"personal": "Juste moi : tâches et temps, avec une case Terminé",
+				"team": "Travaillez ensemble avec des statuts et un tableau",
+				"developer": "Moi et mes agents IA, avec des statuts et un tableau",
+				"everything": "Tous les modules activés",
+				"minimal": "Juste des tâches : Liste, Minuteur et Commentaires"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "Tableau de bord",
+				"projects": "Projets",
+				"list": "Liste",
+				"board": "Tableau",
+				"routines": "Routines",
+				"pages": "Pages",
+				"map": "Carte",
+				"files": "Fichiers",
+				"askAi": "Demander à l'IA",
+				"personas": "Personas"
+			},
+			"task": {
+				"timer": "Minuteur",
+				"pomodoro": "Pomodoro",
+				"assignees": "Assignés",
+				"checkpoints": "Points de contrôle",
+				"attachments": "Pièces jointes",
+				"relations": "Relations",
+				"agentWork": "Exécutions d'agents",
+				"github": "GitHub",
+				"cursorAgents": "Agents Cursor",
+				"comments": "Commentaires",
+				"aiReply": "Réponse de l'IA"
+			}
+		},
+		"navTargets": {
+			"dashboard": "Tableau de bord",
+			"list": "Liste",
+			"board": "Tableau",
+			"localRoutines": "Routines locales",
+			"dailyRoutines": "Routines quotidiennes",
+			"archive": "Archives",
+			"categories": "Projets",
+			"pages": "Pages",
+			"statistics": "Statistiques",
+			"aiUsage": "Utilisation de l'IA",
+			"files": "Fichiers",
+			"map": "Carte",
+			"settings": "Paramètres"
+		}
 	}
 }

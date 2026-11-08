@@ -72,5 +72,26 @@
 		"unsupported": "La saisie vocale n'est pas prise en charge ici",
 		"stopTranscribe": "Arrêter et transcrire",
 		"dictate": "Dicter"
+	},
+	"helpers": {
+		"voice": {
+			"sessionExpired": "Votre session a expiré. Reconnectez-vous.",
+			"tooLong": "L'enregistrement est trop long. Essayez-en un plus court.",
+			"badFormat": "Ce navigateur enregistre dans un format non pris en charge.",
+			"noSpeech": "Aucune parole détectée. Réessayez.",
+			"tooMany": "Trop de requêtes vocales. Patientez une minute et réessayez.",
+			"unavailable": "La transcription vocale est indisponible pour le moment.",
+			"failed": "La transcription vocale a échoué. Réessayez.",
+			"timedOut": "La transcription a expiré. Réessayez.",
+			"noServer": "Impossible de joindre le serveur. Vérifiez votre connexion.",
+			"micBlocked": "L'accès au microphone est bloqué. Autorisez-le dans les paramètres de votre navigateur ou de votre système.",
+			"noMic": "Aucun microphone trouvé.",
+			"micBusy": "Le microphone est occupé ou indisponible.",
+			"micStart": "Impossible de démarrer le microphone.",
+			"tooShort": "L'enregistrement était trop court.",
+			"nothingRecognized": "Rien n'a été reconnu.",
+			"recordingFailed": "Échec de l'enregistrement.",
+			"recordStart": "Impossible de démarrer l'enregistrement."
+		}
 	}
 }

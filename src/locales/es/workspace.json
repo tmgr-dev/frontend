@@ -316,5 +316,44 @@
 		"restoreFailed": "No se pudo restaurar esta entrada",
 		"deleted": "Eliminado",
 		"undo": "Deshacer"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "La cadena de entrada no puede estar vacía",
+			"emptyAt": "Correo vacío en la posición {position}",
+			"invalid": "Formato de correo no válido: {email}"
+		},
+		"notificationTypes": {
+			"fallback": "Notificación",
+			"taskCreated": "Tarea creada",
+			"taskUpdated": "Tarea actualizada",
+			"taskStatusChanged": "Estado de la tarea cambiado",
+			"taskAssigned": "Tarea asignada",
+			"taskDeleted": "Tarea eliminada",
+			"taskRestored": "Tarea restaurada",
+			"taskCompleted": "Tarea completada",
+			"commentCreated": "Comentario nuevo",
+			"commentUpdated": "Comentario actualizado",
+			"commentDeleted": "Comentario eliminado",
+			"categoryCreated": "Categoría creada",
+			"categoryUpdated": "Categoría actualizada",
+			"categoryDeleted": "Categoría eliminada",
+			"categoryRestored": "Categoría restaurada",
+			"fileUploaded": "Archivo subido",
+			"fileDeleted": "Archivo eliminado",
+			"memberJoined": "Miembro incorporado",
+			"memberLeft": "Miembro salió del espacio de trabajo",
+			"memberRemoved": "Miembro eliminado",
+			"taskPersonaAssigned": "Tarea asignada a una persona",
+			"taskPersonaUnassigned": "Tarea quitada de una persona",
+			"commentReactionToggled": "Reacción a un comentario",
+			"agentWorkStarted": "Trabajo del agente iniciado",
+			"agentWorkUpdated": "Trabajo del agente actualizado",
+			"agentWorkFinished": "Trabajo del agente finalizado",
+			"pageCreated": "Página nueva",
+			"pageUpdated": "Página actualizada",
+			"pageMentioned": "Te mencionaron en una página",
+			"memoryAdded": "Añadido a la memoria"
+		}
 	}
 }

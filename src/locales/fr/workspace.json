@@ -316,5 +316,44 @@
 		"restoreFailed": "Impossible de restaurer cette entrée",
 		"deleted": "Supprimé",
 		"undo": "Annuler"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "La chaîne saisie ne peut pas être vide",
+			"emptyAt": "E-mail vide à la position {position}",
+			"invalid": "Format d'e-mail non valide : {email}"
+		},
+		"notificationTypes": {
+			"fallback": "Notification",
+			"taskCreated": "Tâche créée",
+			"taskUpdated": "Tâche mise à jour",
+			"taskStatusChanged": "Statut de la tâche modifié",
+			"taskAssigned": "Tâche assignée",
+			"taskDeleted": "Tâche supprimée",
+			"taskRestored": "Tâche restaurée",
+			"taskCompleted": "Tâche terminée",
+			"commentCreated": "Nouveau commentaire",
+			"commentUpdated": "Commentaire mis à jour",
+			"commentDeleted": "Commentaire supprimé",
+			"categoryCreated": "Projet créé",
+			"categoryUpdated": "Projet mis à jour",
+			"categoryDeleted": "Projet supprimé",
+			"categoryRestored": "Projet restauré",
+			"fileUploaded": "Fichier téléversé",
+			"fileDeleted": "Fichier supprimé",
+			"memberJoined": "Membre arrivé",
+			"memberLeft": "Membre parti de l'espace de travail",
+			"memberRemoved": "Membre retiré",
+			"taskPersonaAssigned": "Tâche assignée à une persona",
+			"taskPersonaUnassigned": "Tâche retirée à une persona",
+			"commentReactionToggled": "Réaction à un commentaire",
+			"agentWorkStarted": "Exécution d'agent démarrée",
+			"agentWorkUpdated": "Exécution d'agent mise à jour",
+			"agentWorkFinished": "Exécution d'agent terminée",
+			"pageCreated": "Nouvelle page",
+			"pageUpdated": "Page mise à jour",
+			"pageMentioned": "Vous avez été mentionné sur une page",
+			"memoryAdded": "Ajouté à la mémoire"
+		}
 	}
 }

@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR lit les journaux de session que vos outils d'IA écrivent sur cet ordinateur et conserve le nombre de tokens, le coût, les noms de modèles, les horodatages, les identifiants de session, les dossiers de projet et les branches git, ainsi que les noms des outils, compétences et commandes utilisés par l'IA, les types de fichiers qu'elle a modifiés et les pull requests qu'elle a ouvertes. Le texte des requêtes et des réponses n'est jamais stocké. Les données restent sur cet appareil, sauf si vous les envoyez avec tmgr usage sync.",
 		"matchFailed": "Impossible d'associer l'utilisation aux tâches : {error}",
 		"documentTitle": "Utilisation de l'IA"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "Activé : TMGR lit ces journaux sur cet appareil pour afficher le coût et les limites, et le runner lit les sessions qu'il démarre.",
+				"denied": "Désactivé : TMGR ne lit pas ces journaux pour l'utilisation de l'IA sur cet appareil, et le runner n'en lit aucun.",
+				"unset": "Pas encore choisi : l'application de bureau et les tâches en arrière-plan ne les lisent pas pour l'utilisation de l'IA, mais les commandes tmgr usage que vous lancez vous-même le font. Le runner n'en lit aucun tant que vous ne l'autorisez pas.",
+				"forgetDone": "Supprimé. La lecture des journaux des outils d'IA est désactivée."
+			},
+			"format": {
+				"now": "maintenant",
+				"justNow": "à l'instant",
+				"ago": "il y a {span}"
+			},
+			"error": {
+				"generic": "Un problème est survenu."
+			}
+		},
+		"toolLabels": {
+			"get_task": "Lecture de la tâche",
+			"list_tasks": "Liste des tâches",
+			"search_tasks": "Recherche de tâches",
+			"list_comments": "Lecture des commentaires",
+			"list_statuses": "Lecture des statuts du tableau",
+			"list_members": "Lecture des membres",
+			"list_routines": "Lecture des routines",
+			"time_summary": "Calcul du temps suivi",
+			"deadline_report": "Vérification des échéances",
+			"routine_agenda": "Lecture de vos routines",
+			"get_routine": "Lecture de la routine",
+			"create_task": "Préparation d'une tâche",
+			"add_comment": "Préparation d'un commentaire",
+			"update_task": "Préparation d'une mise à jour de tâche",
+			"add_checkpoint": "Préparation d'un point de contrôle",
+			"start_timer": "Préparation du démarrage du minuteur",
+			"stop_timer": "Préparation de l'arrêt du minuteur",
+			"link_tasks": "Préparation d'un lien entre tâches",
+			"create_routine": "Préparation d'une routine",
+			"update_routine": "Préparation d'une modification de routine",
+			"set_routine_state": "Préparation du pointage d'une routine",
+			"move_routine_instance": "Préparation du déplacement d'une routine",
+			"convert_routine": "Préparation de la conversion d'une routine en tâche"
+		},
+		"compaction": {
+			"nothing": "Rien à condenser pour le moment.",
+			"rateLimited": "La condensation est limitée en fréquence. Réessayez plus tard.",
+			"failed": "Impossible de condenser l'historique. Veuillez réessayer."
+		},
+		"pins": {
+			"saveFailed": "Impossible d'enregistrer le fait épinglé. Veuillez réessayer.",
+			"invalid": "Le fait épinglé n'est pas valide.",
+			"limit": "Vous pouvez épingler jusqu'à {max} faits. Retirez-en un pour en ajouter un autre.",
+			"charsLeft": "Il ne reste que {left} caractères pour les faits épinglés."
+		},
+		"cursor": {
+			"taskFallback": "Tâche n° {id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "Résumé du matin",
+				"day_results": "Bilan de la journée",
+				"week_results": "Bilan de la semaine",
+				"blockers_stale": "Blocages et tâches en souffrance",
+				"estimate_similar": "Estimation d'après des tâches similaires"
+			},
+			"fill": {
+				"epic": "Découper une épopée en sous-tâches",
+				"meeting": "Passer une réunion en revue"
+			}
+		},
+		"message": {
+			"today": "Aujourd'hui",
+			"yesterday": "Hier",
+			"seconds": "{n} s",
+			"minSec": "{min} min {sec} s",
+			"min": "{min} min",
+			"tokensInOut": "{input} tokens en entrée / {output} en sortie",
+			"tokensIn": "{n} tokens en entrée",
+			"tokensOut": "{n} tokens en sortie"
+		},
+		"quotes": {
+			"limit": "Vous pouvez citer jusqu'à {max} messages.",
+			"unavailable": "Message d'origine indisponible",
+			"you": "Vous",
+			"ai": "IA",
+			"message": "Message"
+		},
+		"confirmation": {
+			"expired": "Expiré — rien n'a été modifié",
+			"lessThanMinute": "Expire dans moins d'une minute",
+			"expiresIn": "Expire dans {n} min",
+			"applying": "Application…",
+			"done": "Terminé",
+			"failedWith": "Échec : {message}",
+			"failed": "Échec",
+			"cancelled": "Annulé",
+			"superseded": "Ignoré — vous avez envoyé un nouveau message",
+			"conflict": "Cette carte a déjà été traitée ou a expiré."
+		},
+		"attachments": {
+			"hint": "PDF, images, fichiers Word, Excel, PowerPoint et texte",
+			"file": "FICHIER",
+			"tooMany": "Vous pouvez joindre jusqu'à {max} fichiers à un message.",
+			"unsupported": "{name} : ce type de fichier n'est pas pris en charge. Types pris en charge : {hint}.",
+			"tooLarge": "{name} dépasse {size}.",
+			"empty": "{name} est vide.",
+			"errors": {
+				"file_not_found": "Un fichier joint est introuvable. Retirez-le et réessayez.",
+				"forbidden": "Vous n'avez pas accès à l'un des fichiers joints.",
+				"file_not_on_task": "Seuls les fichiers joints à cette tâche peuvent être utilisés ici.",
+				"file_too_large": "Un fichier joint dépasse {size}.",
+				"too_many_files": "Vous pouvez joindre jusqu'à {max} fichiers à un message.",
+				"unsupported_file_type": "L'assistant ne peut pas lire l'un des fichiers. Types pris en charge : {hint}.",
+				"too_many_pages": "Un PDF compte trop de pages (la limite est de 40).",
+				"unreadable_file": "L'un des fichiers n'a pas pu être lu.",
+				"documents_too_large": "Les documents joints sont trop volumineux pour être envoyés ensemble. Retirez-en quelques-uns et réessayez.",
+				"invalid_file": "Le nom du fichier n'est pas valide.",
+				"invalid_file_path": "Le téléversement n'a pas pu être joint. Réessayez.",
+				"file_bound_elsewhere": "Le téléversement n'a pas pu être joint. Réessayez."
+			}
+		},
+		"personas": {
+			"nameRequired": "Le nom est obligatoire",
+			"nameTooLong": "Le nom ne doit pas dépasser {max} caractères",
+			"nameAt": "Le nom ne peut pas contenir « {'@'} »",
+			"validationFailed": "La validation a échoué",
+			"reserved": "Cette compétence utilise un nom réservé. Renommez-la avec la CLI tmgr, ou supprimez-la.",
+			"skill": {
+				"bodyBytes": "ne doit pas dépasser {max} octets",
+				"frontMatter": "doit commencer par un bloc d'en-tête « --- » fermé par un second « --- »",
+				"required": "est obligatoire",
+				"slugPattern": "doit contenir des lettres minuscules, des chiffres ou « - », jusqu'à 60 caractères",
+				"slugReserved": "Ce nom est réservé",
+				"slugMatch": "doit correspondre au slug de l'URL",
+				"titleLength": "ne doit pas dépasser {max} caractères",
+				"deleteQuestion": "Supprimer la compétence « {title} » ?",
+				"deleteAttached": "{question}\n\nAssociée à {list}. Elles perdent cette compétence immédiatement ; aucune copie n'est conservée.",
+				"pinned": "{name} (épinglée à la v{version})",
+				"deleted": "Compétence supprimée",
+				"deletedDetached": "Compétence supprimée et dissociée de {n} persona | Compétence supprimée et dissociée de {n} personas"
+			},
+			"labelRequired": "L'étiquette est obligatoire",
+			"labelTooLong": "L'étiquette ne doit pas dépasser {max} caractères",
+			"requestedBy": "demandé par {name}",
+			"personaOf": "persona de {name}",
+			"scopeWorkspace": "Espace de travail",
+			"scopeMe": "Moi uniquement",
+			"converted": "Converti en compétence partagée",
+			"convertedReplaced": "Converti en compétence partagée et remplacé sur {n} persona | Converti en compétence partagée et remplacé sur {n} personas"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "sera téléversé",
+				"binary": "binaire, non importé",
+				"too_large": "trop volumineux, non importé",
+				"secret": "ressemble à un secret, bloque la compétence",
+				"symlink": "lien symbolique, non importé",
+				"unsupported_name": "nom non pris en charge, non importé",
+				"case_conflict": "nom en conflit sans tenir compte de la casse, non importé",
+				"too_deep": "trop profond, non importé",
+				"skipped_hidden": "masqué, non importé",
+				"unreadable": "illisible, non importé"
+			},
+			"warn": {
+				"descriptionCut": "description tronquée à {max} caractères",
+				"pluginRoot": "fait référence à {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}, qui n'existe pas dans la bibliothèque",
+				"relativePaths": "fait référence à des chemins relatifs qui ne seront pas résolus",
+				"noFrontMatter": "pas d'en-tête",
+				"invalidYaml": "l'en-tête n'est pas du YAML valide ; le nom et la description n'ont pas été lus",
+				"filesSkipped": "{n} fichier ne sera pas importé, voir la liste des fichiers | {n} fichiers ne seront pas importés, voir la liste des fichiers"
+			},
+			"blocked": {
+				"secret": "semble contenir un secret",
+				"files": "fichiers : {files}",
+				"size": "{kib} Kio, limite de {limit} Kio",
+				"empty": "fichier vide",
+				"noDescription": "pas de description"
+			},
+			"plan": {
+				"duplicate": "slug en double dans la sélection",
+				"taken": "slug pris dans la bibliothèque depuis l'analyse",
+				"limit": "limite de la bibliothèque atteinte"
+			},
+			"summary": {
+				"imported": "{n} compétence importée | {n} compétences importées",
+				"failed": "{imported}, {failed} en échec"
+			},
+			"flow": {
+				"changedSincePreview": "modifié depuis l'aperçu, relancez l'analyse",
+				"filesChanged": "Les fichiers de la bibliothèque ont changé depuis l'analyse. Relancez l'analyse et réessayez.",
+				"replaced": "La compétence de la bibliothèque a été remplacée depuis le dernier import. Cochez-la à nouveau pour l'écraser.",
+				"requestFailed": "La requête a échoué"
+			}
+		}
 	}
 }

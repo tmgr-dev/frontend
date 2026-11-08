@@ -229,5 +229,51 @@
 		"page": "Página {page} de {last}",
 		"deleteTasksTitle": "Excluir tarefas",
 		"deleteTasksBody": "Tem certeza?"
+	},
+	"helpers": {
+		"doneDisabledTooltip": "Este espaço de trabalho não tem um status Concluída",
+		"state": {
+			"done": "Concluída",
+			"archived": "Arquivada",
+			"open": "Aberta"
+		},
+		"boardDate": {
+			"today": "Hoje",
+			"yesterday": "Ontem"
+		},
+		"backlogTimer": {
+			"title": "Tarefa no backlog",
+			"message": "A tarefa \"{title}\" está no backlog. Mudar para o status \"{status}\"?"
+		},
+		"fileSize": {
+			"b": "{n} B",
+			"kb": "{n} KB",
+			"mb": "{n} MB",
+			"gb": "{n} GB"
+		},
+		"attachmentErrors": {
+			"tooLargeWithLimit": "O arquivo é grande demais. O limite é {limit}.",
+			"tooLarge": "O arquivo é grande demais.",
+			"typeNotAllowed": "Este tipo de arquivo não pode ser anexado.",
+			"notAttachable": "Este arquivo não pode ser anexado.",
+			"noAccess": "Você não tem acesso a este arquivo.",
+			"uploadFailed": "Falha no envio. Tente novamente.",
+			"empty": "O arquivo está vazio."
+		},
+		"priority": {
+			"urgent": "Urgente",
+			"high": "Alta",
+			"medium": "Média",
+			"low": "Baixa"
+		},
+		"timeEntrySource": {
+			"attach": "Sessão de terminal"
+		},
+		"relativeTime": {
+			"justNow": "agora mesmo",
+			"minutesAgo": "há {n}min",
+			"hoursAgo": "há {n}h",
+			"daysAgo": "há {n}d"
+		}
 	}
 }

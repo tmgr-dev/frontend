@@ -969,5 +969,83 @@
 		"copyFailed": "Impossible de copier",
 		"contactFailed": "Impossible de télécharger le contact",
 		"confirmRemove": "Supprimer le téléphone d'alarme ?"
+	},
+	"helpers": {
+		"editorLegacy": "{label} — ancien",
+		"featureToggle": {
+			"groups": {
+				"pages": "Pages",
+				"task": "Tâches",
+				"notifications": "Notifications"
+			},
+			"descriptions": {
+				"categories": "Regroupez vos tâches en projets pour organiser votre espace de travail.",
+				"board": "Passez à une vue en tableau kanban pour suivre le statut des tâches.",
+				"workflow": "Statuts personnalisés, sélecteur de statut et colonnes du tableau.",
+				"pages": "Gardez notes, contexte et documentation dans une arborescence de pages que les personnes et les agents peuvent modifier.",
+				"graph": "Voyez comment les tâches, pages, personnes et exécutions d'agents sont reliées : une section Graphe sur les tâches et les pages, et la Carte de l'espace de travail.",
+				"agentWork": "Permet aux agents IA de rapporter leur travail et leur temps sur les tâches ; désactivé, les exécutions d'agents sont masquées et les agents ne font plus de rapport.",
+				"dashboard": "Consultez un aperçu de l'activité et de l'avancement dans votre espace de travail.",
+				"dailyRoutines": "Suivez des routines récurrentes et des notes séparées de vos tâches.",
+				"taskComments": "Autorisez les commentaires et les discussions sur les tâches.",
+				"taskCountdown": "Suivez le temps passé sur les tâches avec un minuteur démarrer/arrêter.",
+				"taskFiles": "Autorisez l'ajout de fichiers aux tâches.",
+				"taskRelations": "Autorisez le lien entre tâches liées.",
+				"taskCheckpoints": "Découpez les tâches en points de contrôle plus petits.",
+				"taskAssignees": "Assignez des tâches à des membres précis de l'espace de travail.",
+				"exports": "Exportez les données de l'espace de travail.",
+				"defaultLandingPage": "Choisissez la page qui s'ouvre en premier à votre connexion."
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "Voir vos espaces de travail, statuts et projets",
+			"tasksRead": "Lire les tâches et leurs commentaires",
+			"tasksWrite": "Modifier le statut et les champs des tâches",
+			"tasksCreate": "Créer des tâches",
+			"commentsCreate": "Ajouter des commentaires",
+			"timeRead": "Lire les rapports de temps",
+			"timeWrite": "Démarrer et arrêter votre minuteur",
+			"agentWorkWrite": "Enregistrer le travail des agents IA sur les tâches",
+			"agentStatusWrite": "Partager l'état de votre agent IA local (en cours, en attente, terminé) avec votre espace de travail",
+			"pagesRead": "Lire les Pages",
+			"pagesWrite": "Modifier les Pages",
+			"pagesAppend": "Ajouter du contenu aux Pages",
+			"notifySend": "Envoyer des notifications et des alarmes téléphoniques à vos appareils",
+			"agentApprovalsWrite": "Signer les approbations d'exécution d'agent avec la clé de cet ordinateur",
+			"skillsRead": "Lire vos compétences partagées et les personas qui les utilisent",
+			"skillsWrite": "Créer, modifier et supprimer vos compétences partagées et les associer à vos personas (change ce qu'il est demandé à ces agents de faire)"
+		},
+		"workspaceColor": {
+			"red": "Rouge",
+			"orange": "Orange",
+			"yellow": "Jaune",
+			"green": "Vert",
+			"teal": "Turquoise",
+			"blue": "Bleu",
+			"violet": "Violet",
+			"pink": "Rose"
+		},
+		"phones": {
+			"pairStartFailed": "Impossible de démarrer l'association",
+			"enterName": "Saisissez un nom pour ce Mac",
+			"signIn": "Connectez-vous pour associer un téléphone",
+			"genericError": "Un problème est survenu",
+			"never": "jamais",
+			"justNow": "à l'instant",
+			"minutesAgo": "il y a {n} min",
+			"hoursAgo": "il y a {n} h",
+			"daysAgo": "il y a {n} j",
+			"scanCode": "Scannez ce code avec l'application TMGR pour iPhone",
+			"typeCodeOn": "Saisissez le code affiché sur {name}",
+			"typeCodeOnIphone": "Saisissez le code affiché sur votre iPhone",
+			"pairingFailed": "Échec de l'association",
+			"isPaired": "{name} est associé",
+			"phonePaired": "Téléphone associé",
+			"attemptsLeft": "{n} essai restant | {n} essais restants"
+		},
+		"modules": {
+			"footer": "Désactiver un module le masque pour tous les membres de cet espace de travail. Vos données sont conservées. Réactivez-le et tout est là où vous l'aviez laissé.",
+			"coreDescription": "Toujours disponibles. Vous pouvez masquer chacun d'eux pour vous seul."
+		}
 	}
 }

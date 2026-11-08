@@ -236,5 +236,81 @@
 		"pullRequests": "Pull requests ({n})",
 		"by": "par {author}",
 		"loadFailed": "Impossible de charger l'activité git"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "Entrée",
+				"cache_read": "Lecture du cache",
+				"cache_write_5m": "Écriture du cache 5 min",
+				"cache_write_1h": "Écriture du cache 1 h",
+				"output": "Sortie",
+				"reasoning": "Raisonnement"
+			},
+			"timeActive": "actif",
+			"timeWallClock": "temps réel",
+			"summary": {
+				"you": "Vous {time}",
+				"agents": "Agents {time}",
+				"ai": "{cost} d'IA"
+			},
+			"server": {
+				"unsynced": "Cet appareil a {amount} d'utilisation pas encore synchronisée.",
+				"readFailed": "Impossible de lire l'utilisation synchronisée.",
+				"localOnly": "Local uniquement — non synchronisé. L'API de coût des tâches et les autres membres ne voient aucune utilisation de l'IA pour cette tâche. Lancez `tmgr usage sync` pour la téléverser."
+			},
+			"rates": {
+				"input": "entrée",
+				"output": "sortie",
+				"cacheRead": "lecture du cache",
+				"cacheWrite5m": "écriture du cache 5 min",
+				"cacheWrite1h": "écriture du cache 1 h",
+				"line": "{label} {value}",
+				"per1M": "{parts} par million de tokens"
+			},
+			"unpriced": "{count} événement n'a pas de prix ; le coût est sous-estimé. | {count} événements n'ont pas de prix ; le coût est sous-estimé."
+		},
+		"status": {
+			"states": {
+				"working": "En cours",
+				"waiting": "En attente",
+				"blocked": "Bloqué",
+				"idle": "Inactif",
+				"done": "Terminé",
+				"exited": "Arrêté"
+			},
+			"justNow": "à l'instant",
+			"minAgo": "il y a {n} min",
+			"hourAgo": "il y a {n} h",
+			"dayAgo": "il y a {n} j",
+			"agent": "agent",
+			"on": " sur {host}",
+			"line": "{state} : {who}{where}",
+			"since": "depuis {since}",
+			"noRecent": "aucune mise à jour récente"
+		},
+		"work": {
+			"agents": "Agents",
+			"active": "Agents actifs",
+			"wall": "Temps réel",
+			"waiting": "Attente entre les exécutions",
+			"sum": "Temps des agents (somme des exécutions)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "l'application web",
+				"cli": "la CLI",
+				"mcp": "MCP",
+				"persona": "une persona d'agent",
+				"plugin": "un plugin",
+				"legacy": "un ancien token",
+				"other": "une intégration"
+			},
+			"reasonEdited": "texte modifié",
+			"reasonComment": "commentaire ajouté",
+			"reasonChanged": "modifié",
+			"noCategory": "Aucun projet",
+			"category": "Projet n° {id}"
+		}
 	}
 }

@@ -1066,5 +1066,30 @@
 			"command": "Commande exécutée",
 			"agent": "Agent connecté"
 		}
+	},
+	"helpers": {
+		"checklist": {
+			"human": {
+				"createTask": "Créez une tâche",
+				"runTimer": "Lancez un minuteur pendant une minute",
+				"moveCard": "Déplacez une carte sur le tableau",
+				"addRoutine": "Ajoutez une routine quotidienne",
+				"writePage": "Écrivez une page",
+				"connectAgent": "Connectez un agent IA"
+			},
+			"agent": {
+				"connectAgent": "Connectez un agent",
+				"firstAgentRun": "Lancez votre première tâche d'agent",
+				"phoneAlert": "Recevez une alerte sur votre téléphone quand votre agent a besoin de vous",
+				"startTimer": "Démarrez un minuteur sur une tâche",
+				"contextPage": "Écrivez une page de contexte que vos agents lisent",
+				"inviteTeammate": "Invitez un coéquipier"
+			},
+			"verifyEmail": "Vérifiez d'abord votre e-mail"
+		},
+		"aha": {
+			"firstRun": "Première exécution d'agent enregistrée. Voilà ce que fait TMGR.",
+			"timerLogged": "{minutes} min enregistrées sur {title}. Votre temps reste attaché à la tâche."
+		}
 	}
 }

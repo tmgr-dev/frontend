@@ -785,5 +785,84 @@
 		"createTask": "+ Criar tarefa",
 		"archiveDialogTitle": "Arquivar tarefas concluídas",
 		"archiveDialogBody": "Arquivar {n} tarefa concluída? | Arquivar {n} tarefas concluídas?"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · últimos 30 dias",
+		"tracked": {
+			"minutes": "{m}min",
+			"hoursMinutes": "{h}h {m}min"
+		},
+		"heatmap": {
+			"days": "{n} dia | {n} dias",
+			"headlineYear": "{n} contribuição em {year} | {n} contribuições em {year}",
+			"headlineLastYear": "{n} contribuição no último ano | {n} contribuições no último ano",
+			"streakCurrent": "Sequência atual: {current} • Maior: {longest}",
+			"streakYear": "Maior sequência em {year}: {longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "{n} tarefa movida. | {n} tarefas movidas.",
+			"mapping": "{from} → {to} ({tasks})",
+			"noStatus": "sem status",
+			"statuses": "Status: {mappings}.",
+			"assigneesRemoved": "{n} responsável removido (não é membro do espaço de trabalho de destino). | {n} responsáveis removidos (não são membros do espaço de trabalho de destino)."
+		},
+		"activityTitles": {
+			"assignedToPersona": "Atribuiu uma tarefa a {persona}",
+			"unassignedFromPersona": "Removeu uma tarefa de {persona}",
+			"fallback": "Atividade",
+			"taskCreated": "Criou uma tarefa",
+			"taskUpdated": "Atualizou uma tarefa",
+			"taskCompleted": "Concluiu uma tarefa",
+			"taskDeleted": "Excluiu uma tarefa",
+			"taskRestored": "Restaurou uma tarefa",
+			"taskStatusChanged": "Moveu uma tarefa",
+			"taskAssigned": "Atribuiu uma tarefa",
+			"taskPersonaAssigned": "Atribuiu uma tarefa a uma persona",
+			"taskPersonaUnassigned": "Removeu uma tarefa de uma persona",
+			"taskTimerStarted": "Iniciou um cronômetro",
+			"taskTimerStopped": "Parou um cronômetro",
+			"commentCreated": "Escreveu um comentário",
+			"commentUpdated": "Editou um comentário",
+			"commentDeleted": "Excluiu um comentário",
+			"categoryCreated": "Criou um projeto",
+			"categoryUpdated": "Atualizou um projeto",
+			"categoryDeleted": "Excluiu um projeto",
+			"fileUploaded": "Anexou um arquivo",
+			"fileDeleted": "Removeu um arquivo",
+			"memberJoined": "Entrou no espaço de trabalho",
+			"memberLeft": "Saiu do espaço de trabalho",
+			"routineCompleted": "Concluiu uma rotina",
+			"agentWorkStarted": "Iniciou uma execução do agente",
+			"agentWorkUpdated": "Atualizou uma execução do agente",
+			"agentWorkFinished": "Finalizou uma execução do agente"
+		},
+		"graph": {
+			"comment": "Comentário",
+			"thisTask": "esta tarefa",
+			"thisPage": "esta página"
+		},
+		"map": {
+			"pagesTitle": "Páginas e documentos",
+			"noCategory": "Sem projeto",
+			"category": "Projeto",
+			"listAnd": "{head} e {last}",
+			"blocks": "{who} bloqueia {n} tarefa | {who} bloqueia {n} tarefas",
+			"blocksIn": "{who} bloqueia {n} tarefa em {names} | {who} bloqueia {n} tarefas em {names}",
+			"hubs": "{list} conecta o maior número de itens | {list} conectam o maior número de itens",
+			"bridges": "{from} conectam {to}",
+			"orphans": "{n} item — páginas que ninguém vincula, tarefas sem relações | {n} itens — páginas que ninguém vincula, tarefas sem relações",
+			"noOrphans": "Todo item tem pelo menos um vínculo"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "Nenhum repositório do GitHub vinculado",
+				"message": "Este projeto ainda não tem um repositório do GitHub vinculado. Conecte um nas configurações do projeto para acompanhar commits, branches e pull requests das tarefas."
+			},
+			"cursor": {
+				"title": "Nenhum agente do Cursor configurado",
+				"message": "Este projeto ainda não tem um agente do Cursor configurado. Adicione uma chave de API do Cursor nas configurações do projeto para iniciar agentes nas tarefas dele."
+			},
+			"openCategorySettings": "Abrir configurações do projeto"
+		}
 	}
 }

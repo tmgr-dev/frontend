@@ -785,5 +785,84 @@
 		"createTask": "+ Créer une tâche",
 		"archiveDialogTitle": "Archiver les tâches terminées",
 		"archiveDialogBody": "Archiver {n} tâche terminée ? | Archiver {n} tâches terminées ?"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · 30 derniers jours",
+		"tracked": {
+			"minutes": "{m} min",
+			"hoursMinutes": "{h} h {m} min"
+		},
+		"heatmap": {
+			"days": "{n} jour | {n} jours",
+			"headlineYear": "{n} contribution en {year} | {n} contributions en {year}",
+			"headlineLastYear": "{n} contribution au cours de la dernière année | {n} contributions au cours de la dernière année",
+			"streakCurrent": "Série en cours : {current} • Plus longue : {longest}",
+			"streakYear": "Plus longue série en {year} : {longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "{n} tâche déplacée. | {n} tâches déplacées.",
+			"mapping": "{from} → {to} ({tasks})",
+			"noStatus": "aucun statut",
+			"statuses": "Statuts : {mappings}.",
+			"assigneesRemoved": "{n} assigné retiré (pas membre de l'espace de travail cible). | {n} assignés retirés (pas membres de l'espace de travail cible)."
+		},
+		"activityTitles": {
+			"assignedToPersona": "A assigné une tâche à {persona}",
+			"unassignedFromPersona": "A retiré une tâche à {persona}",
+			"fallback": "Activité",
+			"taskCreated": "A créé une tâche",
+			"taskUpdated": "A mis à jour une tâche",
+			"taskCompleted": "A terminé une tâche",
+			"taskDeleted": "A supprimé une tâche",
+			"taskRestored": "A restauré une tâche",
+			"taskStatusChanged": "A déplacé une tâche",
+			"taskAssigned": "A assigné une tâche",
+			"taskPersonaAssigned": "A assigné une tâche à une persona",
+			"taskPersonaUnassigned": "A retiré une tâche à une persona",
+			"taskTimerStarted": "A démarré un minuteur",
+			"taskTimerStopped": "A arrêté un minuteur",
+			"commentCreated": "A écrit un commentaire",
+			"commentUpdated": "A modifié un commentaire",
+			"commentDeleted": "A supprimé un commentaire",
+			"categoryCreated": "A créé un projet",
+			"categoryUpdated": "A mis à jour un projet",
+			"categoryDeleted": "A supprimé un projet",
+			"fileUploaded": "A joint un fichier",
+			"fileDeleted": "A retiré un fichier",
+			"memberJoined": "A rejoint l'espace de travail",
+			"memberLeft": "A quitté l'espace de travail",
+			"routineCompleted": "A terminé une routine",
+			"agentWorkStarted": "A démarré une exécution d'agent",
+			"agentWorkUpdated": "A mis à jour une exécution d'agent",
+			"agentWorkFinished": "A terminé une exécution d'agent"
+		},
+		"graph": {
+			"comment": "Commentaire",
+			"thisTask": "cette tâche",
+			"thisPage": "cette page"
+		},
+		"map": {
+			"pagesTitle": "Pages et documents",
+			"noCategory": "Aucun projet",
+			"category": "Projet",
+			"listAnd": "{head} et {last}",
+			"blocks": "{who} bloque {n} tâche | {who} bloque {n} tâches",
+			"blocksIn": "{who} bloque {n} tâche dans {names} | {who} bloque {n} tâches dans {names}",
+			"hubs": "{list} relie le plus d'éléments | {list} relient le plus d'éléments",
+			"bridges": "{from} relient {to}",
+			"orphans": "{n} élément — pages sans lien entrant, tâches sans relation | {n} éléments — pages sans lien entrant, tâches sans relation",
+			"noOrphans": "Chaque élément a au moins un lien"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "Aucun dépôt GitHub lié",
+				"message": "Aucun dépôt GitHub n'est encore lié à ce projet. Connectez-en un dans les paramètres du projet pour suivre les commits, les branches et les pull requests de ses tâches."
+			},
+			"cursor": {
+				"title": "Aucun agent Cursor configuré",
+				"message": "Aucun agent Cursor n'est encore configuré pour ce projet. Ajoutez une clé d'API Cursor dans les paramètres du projet pour lancer des agents sur ses tâches."
+			},
+			"openCategorySettings": "Ouvrir les paramètres du projet"
+		}
 	}
 }
