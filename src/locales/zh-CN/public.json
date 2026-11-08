@@ -1,0 +1,142 @@
+{
+	"index": {
+		"header": {
+			"eyebrow": "来这里跟踪你的任务吧！",
+			"headline": "轻量的应用，跟踪繁重的任务。",
+			"lead": "有了我们的应用，跟踪任务会更轻松。",
+			"getStarted": "开始使用",
+			"goToSystem": "进入系统",
+			"imageAlt": "TMGR.DEV"
+		},
+		"nav": {
+			"brand": "TASK MANAGER",
+			"menu": "菜单",
+			"login": "登录",
+			"goToSystem": "进入系统",
+			"register": "注册"
+		},
+		"pricing": {
+			"title": "价格",
+			"free": "免费",
+			"manageTasks": "管理你的任务",
+			"createCategories": "创建项目",
+			"runTimer": "运行计时器",
+			"perUser": "/ 每位用户",
+			"signUp": "注册"
+		},
+		"twitter": {
+			"title": "Twitter",
+			"kicker": "xGETTING STARTED",
+			"cardTitle": "Lorem ipsum dolor sit amet.",
+			"cardText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"action": "操作"
+		},
+		"features": {
+			"title": "功能",
+			"itemTitle": "Lorem ipsum dolor sit amet",
+			"travelBooking": "旅行预订",
+			"connectedWorld": "互联世界",
+			"itemText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"imagesFrom": "图片来源："
+		},
+		"footer": {
+			"brand": "TASK MANAGER",
+			"links": "链接",
+			"faq": "常见问题",
+			"help": "帮助",
+			"support": "支持",
+			"legal": "法律信息",
+			"terms": "条款",
+			"privacy": "隐私",
+			"social": "社交媒体",
+			"facebook": "Facebook",
+			"linkedin": "Linkedin",
+			"twitter": "Twitter",
+			"company": "公司",
+			"blog": "官方博客",
+			"about": "关于我们",
+			"contact": "联系我们",
+			"freepik": "背景矢量图由 freepik 制作 - www.freepik.com",
+			"template": "基于 Tailwind Toolbox - Landing Page Template"
+		}
+	},
+	"error404": {
+		"goHome": "返回首页",
+		"documentTitle": "页面未找到"
+	},
+	"voice": {
+		"cancelAria": "取消语音输入",
+		"cancel": "取消",
+		"stopRecordingAria": "停止录音",
+		"startAria": "开始语音输入",
+		"unsupported": "此处不支持语音输入",
+		"stopTranscribe": "停止并转写",
+		"dictate": "语音输入"
+	},
+	"cliGuide": {
+		"title": "tmgr 命令行",
+		"installHeading": "在 macOS 或 Linux 上安装",
+		"installLabel": "tmgr 安装命令",
+		"installNote": "无需 sudo。Windows 请使用 WSL2。",
+		"also": "另外：",
+		"safetyHeading": "为安全而设计",
+		"moreHeading": "更多",
+		"more": {
+			"agents": "{link}：连接 Claude Code、Codex 和 Cursor。",
+			"agentsLink": "AI 智能体指南",
+			"notify": "{link}：为任何 MCP 客户端提供手机推送和闹钟。",
+			"notifyLink": "{'@'}tmgr/notify",
+			"source": "{link}：tmgr 是开源的。",
+			"sourceLink": "源代码"
+		}
+	},
+	"agentsGuide": {
+		"title": "AI 智能体设置",
+		"intro": "将 Claude Code、Codex、Cursor 以及其他支持 MCP 的智能体连接到 TMGR。两个 MCP 服务器各司其职：处理你的任务，以及在智能体需要你关注时联系你。",
+		"personaHint": "想让智能体以指定角色在某个工作区内工作？请在“设置 → 角色 → 连接智能体”中创建角色令牌。",
+		"token": {
+			"heading": "1. 获取令牌",
+			"body": "打开{link}并点击“创建令牌”。令牌以 {prefix} 开头，只显示一次，请立即复制。",
+			"link": "设置 → 智能体提醒"
+		},
+		"connect": {
+			"heading": "2. 连接你的智能体",
+			"body": "在下方选择你的客户端，并把占位符替换为你的令牌。推送和闹钟需要 Node 22+ 和 TMGR 手机应用。"
+		},
+		"taskMcp": {
+			"heading": "任务 MCP（tmgr）",
+			"body": "一个远程 HTTP MCP 服务器，用于处理任务、状态、评论、时间跟踪和例行事项。请在{link}中生成设备令牌，并通过 {header} 请求头发送。",
+			"link": "设置 → 智能设备",
+			"claudeCode": "Claude Code",
+			"claudeLabel": "Claude Code tmgr 命令",
+			"jsonLabel": "tmgr mcp.json",
+			"note": "这不是 OAuth 连接器，因此不支持需要 OAuth 的 claude.ai 自定义连接器。"
+		},
+		"alarms": {
+			"heading": "闹钟",
+			"body": "{tool} 工具会先在 iOS 应用中响铃，如果无人确认，再给你的手机打电话（按 1 确认）。要让它更可靠：",
+			"item1": "在“设置 → 智能体提醒”中设置并验证闹钟手机号。",
+			"item2": "把 TMGR 的来电号码添加到通讯录或个人收藏。",
+			"item3": "在 iOS 设置中开启“重复来电”。",
+			"item4": "允许 TMGR 应用发送闹钟。"
+		},
+		"troubleshooting": {
+			"heading": "故障排查",
+			"noPush": "收不到推送：请检查 {path} 是否存在且可读。钩子始终以 0 退出，并且不输出任何内容。",
+			"mcpList": "运行 {command} 检查服务器是否已连接。",
+			"settingsJson": "MCP 服务器不要写入 {file}，请使用 {command}。",
+			"codex": "Codex 会忽略项目本地 {local} 中的 {key}，请把它放到 {global} 中。",
+			"rateLimit": "每个令牌每分钟最多 20 次请求。"
+		},
+		"links": {
+			"heading": "链接",
+			"npm": "npm 上的 {'@'}tmgr/notify",
+			"github": "GitHub 上的 tmgr-notify"
+		},
+		"plugins": {
+			"heading": "与你的智能体一起开发插件",
+			"body": "让你的智能体制作 TMGR 桌面插件。把 {guide} 或 {llms} 发给它：其中涵盖清单、权限，以及完整的编写、测试和试用流程。",
+			"guide": "插件指南"
+		}
+	}
+}

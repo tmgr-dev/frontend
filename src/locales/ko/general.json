@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "breadcrumb",
+		"categories": "프로젝트",
+		"title": "이동 경로",
+		"currentPage": "현재 페이지"
+	},
+	"buttonWithActions": {
+		"saveAnd": "저장 후 ..."
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "어떤 작업을 했나요?",
+		"editTime": "클릭해서 시간 편집",
+		"deleteEntry": "항목 삭제",
+		"saveEnter": "저장 (Enter)",
+		"cancelEsc": "취소 (Esc)",
+		"invalidTimeFormat": "시간 형식이 올바르지 않아요. HH:MM:SS 형식으로 입력해 주세요 (예: 01:30:00)",
+		"startBeforeEnd": "시작 시간은 종료 시간보다 앞이어야 해요"
+	},
+	"categoryBadge": {
+		"createTask": "이 프로젝트의 작업 만들기"
+	},
+	"assigneeUsers": {
+		"assign": "할당"
+	},
+	"assigneePersonaGroup": {
+		"personas": "페르소나"
+	},
+	"authorBadge": {
+		"permissions": "권한: {list}"
+	},
+	"commandChip": {
+		"copyCommand": "명령어 복사: {command}",
+		"copyFailed": "명령어를 복사하지 못했어요"
+	},
+	"confirm": {
+		"ok": "확인"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "확인하려면 {name}을(를) 입력하세요.",
+		"nameLabel": "워크스페이스 이름"
+	},
+	"commandPalette": {
+		"description": "작업, 페이지, 위치, 워크스페이스 찾기",
+		"placeholder": "무엇이든 묻거나 검색하세요…",
+		"searching": "검색 중…",
+		"failed": "검색에 실패했어요",
+		"empty": "찾은 항목이 없어요",
+		"groups": {
+			"recent": "최근",
+			"tasks": "작업",
+			"pages": "페이지",
+			"navigation": "이동",
+			"workspaces": "워크스페이스"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "적게",
+		"more": "많이",
+		"weekdays": {
+			"mon": "월",
+			"wed": "수",
+			"fri": "금"
+		},
+		"contributionsOn": "{date}에 기여 {n}건",
+		"dayLabel": "{date}의 {activity}"
+	},
+	"countdown": {
+		"editHint": "더블 클릭해서 시간 편집",
+		"timeIsOver": "시간이 끝났어요",
+		"update": "업데이트"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "로컬 워크스페이스에서는 사용할 수 없어요"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "로컬 워크스페이스에서는 사용할 수 없어요",
+		"off": "이 모듈은 꺼져 있어요."
+	},
+	"requiresAccount": {
+		"title": "계정이 필요해요",
+		"cloudOnly": "이 기능은 TMGR 클라우드에서 실행돼요.",
+		"createAccount": "계정 만들기"
+	},
+	"darkMode": {
+		"light": "라이트 모드",
+		"dark": "다크 모드"
+	},
+	"modulePresetOptions": {
+		"custom": "직접 고를게요"
+	},
+	"dropdown": {
+		"openOptions": "옵션 열기"
+	},
+	"emailVerifyBanner": {
+		"confirm": "이메일 주소를 확인해 주세요. {email}(으)로 링크를 보냈어요.",
+		"sent": "새 링크를 보내는 중이에요.",
+		"rateLimited": "요청이 너무 많아요. {wait} 후에 다시 시도하세요.",
+		"error": "링크를 보내지 못했어요. 다시 시도해 주세요.",
+		"resend": "다시 보내기",
+		"dismiss": "닫기"
+	},
+	"globalSearch": {
+		"placeholder": "검색…",
+		"withHint": "검색 ({hint})"
+	},
+	"filtersBoard": {
+		"searchTasks": "작업 검색…",
+		"selectCategory": "프로젝트 선택",
+		"selectUser": "사용자 선택",
+		"selectPersona": "페르소나 선택",
+		"priority": "우선순위",
+		"sortByPriority": "우선순위순 정렬",
+		"clearFilters": "필터 지우기",
+		"reorderStatuses": "상태 순서 변경",
+		"filters": "필터",
+		"allCategories": "모든 프로젝트",
+		"allUsers": "모든 사용자",
+		"allPersonas": "모든 페르소나",
+		"myPersonasQueue": "내 페르소나 대기열",
+		"refresh": "새로 고침"
+	},
+	"textField": {
+		"placeholder": "값 입력"
+	},
+	"select": {
+		"placeholder": "선택"
+	},
+	"navbarMenu": {
+		"categories": "프로젝트"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "페르소나 {name}",
+		"personaOf": "{name}의 페르소나"
+	},
+	"memberAvatarLink": {
+		"open": "{label} 열기",
+		"openMember": "멤버 열기"
+	},
+	"userAvatar": {
+		"alt": "아바타"
+	},
+	"personaAvatar": {
+		"alt": "페르소나 아바타"
+	},
+	"modulePresetPreview": {
+		"menu": "메뉴",
+		"task": "작업",
+		"taskTitle": "작업 제목",
+		"status": "상태",
+		"badges": {
+			"off": "꺼짐",
+			"new": "새로움",
+			"willHide": "숨겨짐"
+		}
+	},
+	"modulesPicker": {
+		"title": "TMGR을 어떤 용도로 쓰고 싶나요?",
+		"description": "설정 → 모듈에서 언제든 바꿀 수 있어요.",
+		"notNow": "나중에",
+		"saveFailed": "선택을 저장하지 못했어요. 다시 시도해 주세요."
+	},
+	"modulesPresetDialog": {
+		"title": "프리셋 적용",
+		"description": "프리셋을 고르면 적용하기 전에 무엇이 바뀌는지 볼 수 있어요.",
+		"nothingChanges": "바뀌는 것이 없어요",
+		"willTurnOn": "켜지는 항목:",
+		"willTurnOff": "꺼지는 항목:",
+		"dataKept": "데이터는 절대 삭제되지 않아요. 모듈을 다시 켜면 모든 것이 돌아와요.",
+		"applying": "적용 중…",
+		"applyFailed": "프리셋을 적용하지 못했어요. 다시 시도해 주세요."
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} - 클릭해서 모든 멤버 보기",
+		"memberLabel": "{name} – 워크스페이스 멤버",
+		"inviteUser": "사용자 초대",
+		"sendInvitations": "초대장 보내기",
+		"emailsPlaceholder": "이메일을 쉼표로 구분해 입력하세요. 예:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "보내는 중...",
+		"send": "보내기",
+		"invitationsSent": "초대장을 보냈어요",
+		"invitationsSentDescription": "초대장을 성공적으로 보냈어요",
+		"errorTitle": "오류",
+		"sendFailed": "초대장을 보내지 못했어요. 다시 시도해 주세요."
+	},
+	"breadcrumbEllipsis": {
+		"more": "더 보기"
+	},
+	"sidebar": {
+		"toggle": "사이드바 전환"
+	},
+	"addTaskModalTrigger": {
+		"open": "작업 추가 창 열기"
+	},
+	"assigneesCombobox": {
+		"search": "담당자 검색...",
+		"empty": "담당자를 찾을 수 없어요.",
+		"trigger": "담당자"
+	},
+	"categoriesCombobox": {
+		"search": "프로젝트 검색...",
+		"empty": "프로젝트를 찾을 수 없어요.",
+		"trigger": "프로젝트"
+	},
+	"combobox": {
+		"search": "항목 검색",
+		"empty": "항목을 찾을 수 없어요."
+	},
+	"blockEditor": {
+		"header": "제목을 입력하세요",
+		"quote": "인용문을 입력하세요",
+		"quoteAuthor": "인용문 작성자",
+		"warningTitle": "제목",
+		"warningMessage": "메시지"
+	},
+	"editor": {
+		"descriptionPlaceholder": "설명 추가..."
+	},
+	"emptyState": {
+		"title": "아직 아무것도 없어요"
+	},
+	"currentWorkspace": {
+		"trigger": "워크스페이스",
+		"searchCategory": "프로젝트 검색...",
+		"noCategory": "프로젝트를 찾을 수 없어요.",
+		"addWorkspace": "새 워크스페이스 추가",
+		"newWorkspaceName": "새 워크스페이스 이름",
+		"sendInvitationToWorkspace": "워크스페이스에 초대장 보내기",
+		"emailAddresses": "이메일 주소",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "여러 이메일은 쉼표로 구분하세요",
+		"creating": "만드는 중...",
+		"sendInvitation": "초대장 보내기",
+		"invitationSent": "초대장을 보냈어요!",
+		"invitationsSentToEmails": "입력한 이메일 주소로 초대장을 보냈어요.",
+		"shareLink": "초대하고 싶은 사람에게 이 링크를 공유하세요:",
+		"copied": "복사됨!",
+		"copyToClipboard": "클립보드에 복사"
+	},
+	"daySummary": {
+		"title": "하루 요약",
+		"collecting": "오늘의 작업을 모으는 중…",
+		"counts": "워크스페이스 {workspaces}개의 작업 {tasks}개",
+		"skipped": "읽지 못함: {names}",
+		"lanNotice": "작업 제목, 상태, 댓글 발췌(클라우드 워크스페이스 포함)가 {origin}(으)로 전송돼요.",
+		"send": "보내기",
+		"aiGenerated": "AI가 생성했으며 부정확할 수 있어요",
+		"noAi": "AI 없음",
+		"setUpAi": "로컬 AI 설정",
+		"summarizing": "요약하는 중…",
+		"summarize": "요약",
+		"regenerate": "다시 생성",
+		"sendsTo": "작업 제목, 상태, 댓글 발췌를 {origin}(으)로 보내요.",
+		"saveAsPage": "페이지로 저장",
+		"copied": "복사했어요.",
+		"savedAsPage": "이 워크스페이스에 페이지로 저장했어요.",
+		"pageTitle": "하루 요약 {date}"
+	},
+	"errorBoundary": {
+		"title": "문제가 발생했어요",
+		"message": "예기치 않은 오류가 발생했어요. 페이지를 새로 고쳐 주세요.",
+		"showDetails": "기술 세부 정보 보기",
+		"retrying": "다시 시도하는 중...",
+		"tryAgain": "다시 시도",
+		"reload": "페이지 새로 고침",
+		"report": "문제 신고",
+		"updateTitle": "업데이트 가능",
+		"updateMessage": "애플리케이션의 새 버전이 있어요. 페이지를 새로 고쳐 최신 업데이트를 받으세요.",
+		"networkTitle": "연결 문제",
+		"networkMessage": "서버에 연결할 수 없어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
+	},
+	"forbiddenAccess": {
+		"title": "접근 거부됨",
+		"message": "죄송해요. 이 콘텐츠를 볼 권한이 없어요.",
+		"goBack": "뒤로 가기"
+	},
+	"settingsComponent": {
+		"description": "여기서 작업 설정을 변경하세요. 끝나면 저장을 누르세요."
+	},
+	"taskTimeInfo": {
+		"title": "작업 시간 정보",
+		"heading": "작업 시간 정보",
+		"lastStart": "마지막 시작 시간:",
+		"approxEnd": "예상 종료 시간:",
+		"timeLeft": "남은 시간:",
+		"hideEdit": "시간 편집 모드 숨기기",
+		"showEdit": "시간 편집 모드",
+		"stopFirst": "시간을 편집할 수 있지만 먼저 타이머를 멈춰야 해요",
+		"editHint": "시간을 편집하고 저장 버튼을 누르세요",
+		"stopTimer": "타이머 멈추기"
+	},
+	"timeCounter": {
+		"tracked": "기록된 시간",
+		"running": "실행 중",
+		"overTime": "초과 시간"
+	}
+}

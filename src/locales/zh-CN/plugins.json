@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "更多操作",
+		"send": "发送",
+		"select": "选择",
+		"toggleDetails": "展开或收起详情",
+		"sparkline": "迷你图",
+		"confirmTitle": "插件 {name}：{text}",
+		"commandFailed": "插件命令执行失败",
+		"showLess": "收起",
+		"more": "另外 {hidden} 项",
+		"controlLabel": "插件：{name}"
+	},
+	"chart": {
+		"summaryBar": "{series} 的柱状图，共 {n} 个数据点",
+		"summaryLine": "{series} 的折线图，共 {n} 个数据点",
+		"keyHint": "使用方向键查看数值。"
+	},
+	"markdown": {
+		"done": "已完成",
+		"notDone": "未完成"
+	},
+	"taskMenu": {
+		"submenu": "插件"
+	},
+	"taskSections": {
+		"unavailable": "不可用：{error}"
+	},
+	"page": {
+		"notInstalled": "此插件尚未安装。",
+		"notRunning": "{name} 未在此工作区中运行。",
+		"notRunningWithError": "{name} 未在此工作区中运行：{error}",
+		"openSettings": "打开插件设置",
+		"ownWindow": "“{title}”是插件自带的页面。它会在单独的窗口中打开，因此不会拖慢或卡住应用。",
+		"openWindow": "打开窗口",
+		"openFailed": "无法打开插件窗口：{error}",
+		"nothingToShow": "插件没有返回任何可显示的内容。",
+		"drawFailed": "插件无法绘制此页面：{error}"
+	}
+}

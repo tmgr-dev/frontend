@@ -1,0 +1,142 @@
+{
+	"index": {
+		"header": {
+			"eyebrow": "여기서 작업을 관리해 보세요!",
+			"headline": "무거운 작업을 가볍게 관리하는 애플리케이션.",
+			"lead": "저희 애플리케이션으로 작업을 더 쉽게 관리할 수 있어요.",
+			"getStarted": "시작하기",
+			"goToSystem": "시스템으로 이동",
+			"imageAlt": "TMGR.DEV"
+		},
+		"nav": {
+			"brand": "TASK MANAGER",
+			"menu": "메뉴",
+			"login": "로그인",
+			"goToSystem": "시스템으로 이동",
+			"register": "가입하기"
+		},
+		"pricing": {
+			"title": "요금제",
+			"free": "무료",
+			"manageTasks": "작업 관리",
+			"createCategories": "프로젝트 만들기",
+			"runTimer": "타이머 실행",
+			"perUser": "/ 사용자당",
+			"signUp": "가입하기"
+		},
+		"twitter": {
+			"title": "Twitter",
+			"kicker": "xGETTING STARTED",
+			"cardTitle": "Lorem ipsum dolor sit amet.",
+			"cardText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"action": "Action"
+		},
+		"features": {
+			"title": "기능",
+			"itemTitle": "Lorem ipsum dolor sit amet",
+			"travelBooking": "여행 예약",
+			"connectedWorld": "연결된 세상",
+			"itemText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"imagesFrom": "이미지 출처:"
+		},
+		"footer": {
+			"brand": "TASK MANAGER",
+			"links": "링크",
+			"faq": "FAQ",
+			"help": "도움말",
+			"support": "지원",
+			"legal": "법적 고지",
+			"terms": "이용약관",
+			"privacy": "개인정보 처리방침",
+			"social": "소셜",
+			"facebook": "Facebook",
+			"linkedin": "Linkedin",
+			"twitter": "Twitter",
+			"company": "회사",
+			"blog": "공식 블로그",
+			"about": "회사 소개",
+			"contact": "문의하기",
+			"freepik": "Background vector created by freepik - www.freepik.com",
+			"template": "Based on Tailwind Toolbox - Landing Page Template"
+		}
+	},
+	"error404": {
+		"goHome": "홈으로 가기",
+		"documentTitle": "페이지를 찾을 수 없어요"
+	},
+	"voice": {
+		"cancelAria": "음성 입력 취소",
+		"cancel": "취소",
+		"stopRecordingAria": "녹음 중지",
+		"startAria": "음성 입력 시작",
+		"unsupported": "여기서는 음성 입력을 지원하지 않아요",
+		"stopTranscribe": "중지하고 텍스트로 변환",
+		"dictate": "음성 입력"
+	},
+	"cliGuide": {
+		"title": "tmgr 명령줄",
+		"installHeading": "macOS 또는 Linux에 설치",
+		"installLabel": "tmgr 설치 명령어",
+		"installNote": "sudo가 필요 없어요. Windows에서는 WSL2를 사용하세요.",
+		"also": "이것도 있어요:",
+		"safetyHeading": "안전하게 설계됐어요",
+		"moreHeading": "더 보기",
+		"more": {
+			"agents": "{link}: Claude Code, Codex, Cursor를 연결해요.",
+			"agentsLink": "AI 에이전트 가이드",
+			"notify": "{link}: 모든 MCP 클라이언트를 위한 휴대폰 푸시와 알람이에요.",
+			"notifyLink": "{'@'}tmgr/notify",
+			"source": "{link}: tmgr은 오픈 소스예요.",
+			"sourceLink": "소스 코드"
+		}
+	},
+	"agentsGuide": {
+		"title": "AI 에이전트 설정",
+		"intro": "Claude Code, Codex, Cursor 등 MCP를 지원하는 에이전트를 TMGR에 연결하세요. MCP 서버 두 개가 각각 작업 관리와, 에이전트가 주의를 요청할 때 나에게 알리는 역할을 맡아요.",
+		"personaHint": "에이전트가 이름 있는 페르소나로 한 워크스페이스 안에서 작업하게 하고 싶나요? 설정 → 페르소나 → 에이전트 연결에서 페르소나 토큰을 만드세요.",
+		"token": {
+			"heading": "1. 토큰 받기",
+			"body": "{link}을(를) 열고 토큰 만들기를 누르세요. 토큰은 {prefix}(으)로 시작하며 한 번만 표시되니 바로 복사하세요.",
+			"link": "설정 → 에이전트 알림"
+		},
+		"connect": {
+			"heading": "2. 에이전트 연결",
+			"body": "아래에서 클라이언트를 고르고, 자리 표시자를 내 토큰으로 바꾸세요. 푸시와 알람에는 Node 22 이상과 TMGR 모바일 앱이 필요해요."
+		},
+		"taskMcp": {
+			"heading": "작업 MCP (tmgr)",
+			"body": "작업, 상태, 댓글, 시간 추적, 루틴을 다루는 원격 HTTP MCP 서버예요. {link}에서 기기 토큰을 만들고 {header} 헤더로 보내세요.",
+			"link": "설정 → 스마트 기기",
+			"claudeCode": "Claude Code",
+			"claudeLabel": "Claude Code tmgr 명령어",
+			"jsonLabel": "tmgr mcp.json",
+			"note": "OAuth 커넥터가 아니므로 OAuth가 필요한 claude.ai 커스텀 커넥터는 지원하지 않아요."
+		},
+		"alarms": {
+			"heading": "알람",
+			"body": "{tool} 도구는 iOS 앱에서 먼저 울리고, 확인하지 않으면 휴대폰으로 전화해요(1을 눌러 확인). 안정적으로 사용하려면:",
+			"item1": "설정 → 에이전트 알림에서 알람용 전화번호를 설정하고 인증하세요.",
+			"item2": "TMGR 발신 번호를 연락처나 즐겨찾기에 추가하세요.",
+			"item3": "iOS 설정에서 반복 통화를 켜세요.",
+			"item4": "TMGR 앱의 알람을 허용하세요."
+		},
+		"troubleshooting": {
+			"heading": "문제 해결",
+			"noPush": "푸시가 오지 않을 때: {path}이(가) 있고 읽을 수 있는지 확인하세요. 훅은 항상 0으로 종료하고 아무것도 출력하지 않아요.",
+			"mcpList": "{command}을(를) 실행해서 서버가 연결됐는지 확인하세요.",
+			"settingsJson": "MCP 서버는 {file}에 넣지 않아요. {command}을(를) 사용하세요.",
+			"codex": "Codex는 프로젝트 로컬 {local}의 {key}를 무시해요. {global}에 넣으세요.",
+			"rateLimit": "요청은 토큰당 분당 20회로 제한돼요."
+		},
+		"links": {
+			"heading": "링크",
+			"npm": "npm의 {'@'}tmgr/notify",
+			"github": "GitHub의 tmgr-notify"
+		},
+		"plugins": {
+			"heading": "에이전트와 함께 플러그인 만들기",
+			"body": "에이전트에게 TMGR 데스크톱 플러그인을 만들어 달라고 해 보세요. {guide} 또는 {llms}을(를) 알려 주세요. 매니페스트, 권한, 작성·테스트·실행 전 과정이 담겨 있어요.",
+			"guide": "플러그인 가이드"
+		}
+	}
+}

@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "더 많은 작업",
+		"send": "보내기",
+		"select": "선택",
+		"toggleDetails": "상세 정보 전환",
+		"sparkline": "스파크라인",
+		"confirmTitle": "플러그인 {name}: {text}",
+		"commandFailed": "플러그인 명령이 실패했어요",
+		"showLess": "간략히 보기",
+		"more": "{hidden}개 더 보기",
+		"controlLabel": "플러그인: {name}"
+	},
+	"chart": {
+		"summaryBar": "{series}의 막대 차트, {n}개 지점",
+		"summaryLine": "{series}의 꺾은선 차트, {n}개 지점",
+		"keyHint": "화살표 키로 값을 읽을 수 있어요."
+	},
+	"markdown": {
+		"done": "완료",
+		"notDone": "미완료"
+	},
+	"taskMenu": {
+		"submenu": "플러그인"
+	},
+	"taskSections": {
+		"unavailable": "사용할 수 없어요: {error}"
+	},
+	"page": {
+		"notInstalled": "이 플러그인은 설치되어 있지 않아요.",
+		"notRunning": "{name}은(는) 이 워크스페이스에서 실행 중이 아니에요.",
+		"notRunningWithError": "{name}은(는) 이 워크스페이스에서 실행 중이 아니에요: {error}",
+		"openSettings": "플러그인 설정 열기",
+		"ownWindow": "“{title}”은(는) 플러그인 자체 페이지예요. 별도 창에서 열리므로 앱이 느려지거나 멈추지 않아요.",
+		"openWindow": "창 열기",
+		"openFailed": "플러그인 창을 열지 못했어요: {error}",
+		"nothingToShow": "플러그인이 표시할 내용을 반환하지 않았어요.",
+		"drawFailed": "플러그인이 이 페이지를 그리지 못했어요: {error}"
+	}
+}

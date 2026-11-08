@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "パンくずリスト",
+		"categories": "プロジェクト",
+		"title": "パンくずリスト",
+		"currentPage": "現在のページ"
+	},
+	"buttonWithActions": {
+		"saveAnd": "保存して…"
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "何に取り組みましたか?",
+		"editTime": "クリックして時間を編集",
+		"deleteEntry": "記録を削除",
+		"saveEnter": "保存(Enter)",
+		"cancelEsc": "キャンセル(Esc)",
+		"invalidTimeFormat": "時間の形式が正しくありません。HH:MM:SS 形式で入力してください(例: 01:30:00)",
+		"startBeforeEnd": "開始時刻は終了時刻より前にしてください"
+	},
+	"categoryBadge": {
+		"createTask": "このプロジェクトのタスクを作成"
+	},
+	"assigneeUsers": {
+		"assign": "割り当てる"
+	},
+	"assigneePersonaGroup": {
+		"personas": "ペルソナ"
+	},
+	"authorBadge": {
+		"permissions": "権限: {list}"
+	},
+	"commandChip": {
+		"copyCommand": "コマンドをコピー: {command}",
+		"copyFailed": "コマンドをコピーできませんでした"
+	},
+	"confirm": {
+		"ok": "OK"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "確認のため {name} を入力してください。",
+		"nameLabel": "ワークスペース名"
+	},
+	"commandPalette": {
+		"description": "タスク、ページ、場所、ワークスペースを検索",
+		"placeholder": "質問または検索…",
+		"searching": "検索中…",
+		"failed": "検索に失敗しました",
+		"empty": "見つかりませんでした",
+		"groups": {
+			"recent": "最近",
+			"tasks": "タスク",
+			"pages": "ページ",
+			"navigation": "移動",
+			"workspaces": "ワークスペース"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "少ない",
+		"more": "多い",
+		"weekdays": {
+			"mon": "月",
+			"wed": "水",
+			"fri": "金"
+		},
+		"contributionsOn": "{date} に {n} 件の貢献",
+		"dayLabel": "{date} の{activity}"
+	},
+	"countdown": {
+		"editHint": "ダブルクリックで時間を編集",
+		"timeIsOver": "時間になりました",
+		"update": "更新"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "ローカルワークスペースでは利用できません"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "ローカルワークスペースでは利用できません",
+		"off": "このモジュールはオフです。"
+	},
+	"requiresAccount": {
+		"title": "アカウントが必要です",
+		"cloudOnly": "この機能は TMGR クラウドで動作します。",
+		"createAccount": "アカウントを作成"
+	},
+	"darkMode": {
+		"light": "ライトモード",
+		"dark": "ダークモード"
+	},
+	"modulePresetOptions": {
+		"custom": "自分で選ぶ"
+	},
+	"dropdown": {
+		"openOptions": "オプションを開く"
+	},
+	"emailVerifyBanner": {
+		"confirm": "メールアドレスを確認してください。{email} にリンクを送信しました。",
+		"sent": "新しいリンクを送信しました。",
+		"rateLimited": "リクエストが多すぎます。{wait} 後にもう一度お試しください。",
+		"error": "リンクを送信できませんでした。もう一度お試しください。",
+		"resend": "再送信",
+		"dismiss": "閉じる"
+	},
+	"globalSearch": {
+		"placeholder": "検索…",
+		"withHint": "検索({hint})"
+	},
+	"filtersBoard": {
+		"searchTasks": "タスクを検索…",
+		"selectCategory": "プロジェクトを選択",
+		"selectUser": "ユーザーを選択",
+		"selectPersona": "ペルソナを選択",
+		"priority": "優先度",
+		"sortByPriority": "優先度で並べ替え",
+		"clearFilters": "フィルターをクリア",
+		"reorderStatuses": "ステータスを並べ替え",
+		"filters": "フィルター",
+		"allCategories": "すべてのプロジェクト",
+		"allUsers": "すべてのユーザー",
+		"allPersonas": "すべてのペルソナ",
+		"myPersonasQueue": "自分のペルソナのキュー",
+		"refresh": "更新"
+	},
+	"textField": {
+		"placeholder": "値を入力"
+	},
+	"select": {
+		"placeholder": "選択"
+	},
+	"navbarMenu": {
+		"categories": "プロジェクト"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "ペルソナ {name}",
+		"personaOf": "{name} のペルソナ"
+	},
+	"memberAvatarLink": {
+		"open": "{label} を開く",
+		"openMember": "メンバーを開く"
+	},
+	"userAvatar": {
+		"alt": "アバター"
+	},
+	"personaAvatar": {
+		"alt": "ペルソナのアバター"
+	},
+	"modulePresetPreview": {
+		"menu": "メニュー",
+		"task": "タスク",
+		"taskTitle": "タスクのタイトル",
+		"status": "ステータス",
+		"badges": {
+			"off": "オフ",
+			"new": "新規",
+			"willHide": "非表示になります"
+		}
+	},
+	"modulesPicker": {
+		"title": "TMGR を何に使いますか?",
+		"description": "設定 → モジュール でいつでも変更できます。",
+		"notNow": "今はしない",
+		"saveFailed": "選択を保存できませんでした。もう一度お試しください。"
+	},
+	"modulesPresetDialog": {
+		"title": "プリセットを適用",
+		"description": "適用する前に、何が変わるかをプリセットごとに確認できます。",
+		"nothingChanges": "変更はありません",
+		"willTurnOn": "オンになるもの:",
+		"willTurnOff": "オフになるもの:",
+		"dataKept": "データが削除されることはありません。モジュールをオンに戻すと、すべて元に戻ります。",
+		"applying": "適用中…",
+		"applyFailed": "プリセットを適用できませんでした。もう一度お試しください。"
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} - クリックしてすべてのメンバーを表示",
+		"memberLabel": "{name} – ワークスペースのメンバー",
+		"inviteUser": "ユーザーを招待",
+		"sendInvitations": "招待を送信",
+		"emailsPlaceholder": "メールアドレスをカンマ区切りで入力してください。例:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "送信中...",
+		"send": "送信",
+		"invitationsSent": "招待を送信しました",
+		"invitationsSentDescription": "招待を送信しました",
+		"errorTitle": "エラー",
+		"sendFailed": "招待を送信できませんでした。もう一度お試しください。"
+	},
+	"breadcrumbEllipsis": {
+		"more": "その他"
+	},
+	"sidebar": {
+		"toggle": "サイドバーを切り替え"
+	},
+	"addTaskModalTrigger": {
+		"open": "タスク追加画面を開く"
+	},
+	"assigneesCombobox": {
+		"search": "担当者を検索...",
+		"empty": "担当者が見つかりません。",
+		"trigger": "担当者"
+	},
+	"categoriesCombobox": {
+		"search": "プロジェクトを検索...",
+		"empty": "プロジェクトが見つかりません。",
+		"trigger": "プロジェクト"
+	},
+	"combobox": {
+		"search": "項目を検索",
+		"empty": "項目が見つかりません。"
+	},
+	"blockEditor": {
+		"header": "見出しを入力",
+		"quote": "引用を入力",
+		"quoteAuthor": "引用元",
+		"warningTitle": "タイトル",
+		"warningMessage": "メッセージ"
+	},
+	"editor": {
+		"descriptionPlaceholder": "説明を追加..."
+	},
+	"emptyState": {
+		"title": "まだ何もありません"
+	},
+	"currentWorkspace": {
+		"trigger": "ワークスペース",
+		"searchCategory": "プロジェクトを検索...",
+		"noCategory": "プロジェクトが見つかりません。",
+		"addWorkspace": "新しいワークスペースを追加",
+		"newWorkspaceName": "新しいワークスペース名",
+		"sendInvitationToWorkspace": "ワークスペースに招待を送信",
+		"emailAddresses": "メールアドレス",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "複数のメールアドレスはカンマで区切ってください",
+		"creating": "作成中...",
+		"sendInvitation": "招待を送信",
+		"invitationSent": "招待を送信しました!",
+		"invitationsSentToEmails": "指定したメールアドレスに招待を送信しました。",
+		"shareLink": "招待したい相手にこのリンクを共有できます:",
+		"copied": "コピーしました!",
+		"copyToClipboard": "クリップボードにコピー"
+	},
+	"daySummary": {
+		"title": "1 日のまとめ",
+		"collecting": "今日のタスクを集めています…",
+		"counts": "{workspaces} 個のワークスペースから {tasks} 件のタスク",
+		"skipped": "読み取れませんでした: {names}",
+		"lanNotice": "タスクのタイトル、ステータス、コメントの抜粋(クラウドのワークスペースのものを含む)が {origin} に送信されます。",
+		"send": "送信",
+		"aiGenerated": "AI が生成した内容のため、不正確な場合があります",
+		"noAi": "AI なし",
+		"setUpAi": "ローカル AI を設定",
+		"summarizing": "要約中…",
+		"summarize": "要約",
+		"regenerate": "再生成",
+		"sendsTo": "タスクのタイトル、ステータス、コメントの抜粋を {origin} に送信します。",
+		"saveAsPage": "ページとして保存",
+		"copied": "コピーしました。",
+		"savedAsPage": "このワークスペースにページとして保存しました。",
+		"pageTitle": "{date} の 1 日のまとめ"
+	},
+	"errorBoundary": {
+		"title": "問題が発生しました",
+		"message": "予期しないエラーが発生しました。ページを再読み込みしてみてください。",
+		"showDetails": "技術的な詳細を表示",
+		"retrying": "再試行中...",
+		"tryAgain": "もう一度試す",
+		"reload": "ページを再読み込み",
+		"report": "問題を報告",
+		"updateTitle": "アップデートがあります",
+		"updateMessage": "アプリの新しいバージョンがあります。ページを再読み込みして最新の状態にしてください。",
+		"networkTitle": "接続の問題",
+		"networkMessage": "サーバーに接続できません。インターネット接続を確認して、もう一度お試しください。"
+	},
+	"forbiddenAccess": {
+		"title": "アクセスが拒否されました",
+		"message": "申し訳ありません。このコンテンツを表示する権限がありません。",
+		"goBack": "戻る"
+	},
+	"settingsComponent": {
+		"description": "ここでタスクの設定を変更できます。完了したら保存をクリックしてください。"
+	},
+	"taskTimeInfo": {
+		"title": "タスクの時間情報",
+		"heading": "タスクの時間情報",
+		"lastStart": "最終開始時刻:",
+		"approxEnd": "終了の目安時刻:",
+		"timeLeft": "残り時間:",
+		"hideEdit": "時間の編集モードを閉じる",
+		"showEdit": "時間の編集モード",
+		"stopFirst": "時間は編集できますが、先にタイマーを停止してください",
+		"editHint": "時間を編集して、保存ボタンを押してください",
+		"stopTimer": "タイマーを停止"
+	},
+	"timeCounter": {
+		"tracked": "記録した時間",
+		"running": "実行中",
+		"overTime": "超過"
+	}
+}

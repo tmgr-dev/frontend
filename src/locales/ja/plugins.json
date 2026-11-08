@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "その他の操作",
+		"send": "送信",
+		"select": "選択",
+		"toggleDetails": "詳細を切り替え",
+		"sparkline": "スパークライン",
+		"confirmTitle": "プラグイン {name}: {text}",
+		"commandFailed": "プラグインのコマンドが失敗しました",
+		"showLess": "表示を減らす",
+		"more": "他 {hidden} 件",
+		"controlLabel": "プラグイン: {name}"
+	},
+	"chart": {
+		"summaryBar": "{series} の棒グラフ({n} 点)",
+		"summaryLine": "{series} の折れ線グラフ({n} 点)",
+		"keyHint": "矢印キーで値を読み取れます。"
+	},
+	"markdown": {
+		"done": "完了",
+		"notDone": "未完了"
+	},
+	"taskMenu": {
+		"submenu": "プラグイン"
+	},
+	"taskSections": {
+		"unavailable": "利用できません: {error}"
+	},
+	"page": {
+		"notInstalled": "このプラグインはインストールされていません。",
+		"notRunning": "{name} はこのワークスペースで実行されていません。",
+		"notRunningWithError": "{name} はこのワークスペースで実行されていません: {error}",
+		"openSettings": "プラグイン設定を開く",
+		"ownWindow": "「{title}」はプラグイン専用のページです。別ウィンドウで開くため、アプリが遅くなったりフリーズしたりしません。",
+		"openWindow": "ウィンドウを開く",
+		"openFailed": "プラグインのウィンドウを開けませんでした: {error}",
+		"nothingToShow": "プラグインから表示する内容が返されませんでした。",
+		"drawFailed": "プラグインがこのページを描画できませんでした: {error}"
+	}
+}

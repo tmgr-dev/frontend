@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "面包屑导航",
+		"categories": "项目",
+		"title": "面包屑导航",
+		"currentPage": "当前页面"
+	},
+	"buttonWithActions": {
+		"saveAnd": "保存并…"
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "你做了什么？",
+		"editTime": "点击编辑时间",
+		"deleteEntry": "删除记录",
+		"saveEnter": "保存（Enter）",
+		"cancelEsc": "取消（Esc）",
+		"invalidTimeFormat": "时间格式无效。请使用 HH:MM:SS 格式（例如 01:30:00）",
+		"startBeforeEnd": "开始时间必须早于结束时间"
+	},
+	"categoryBadge": {
+		"createTask": "在此项目中创建任务"
+	},
+	"assigneeUsers": {
+		"assign": "分配"
+	},
+	"assigneePersonaGroup": {
+		"personas": "角色"
+	},
+	"authorBadge": {
+		"permissions": "权限：{list}"
+	},
+	"commandChip": {
+		"copyCommand": "复制命令：{command}",
+		"copyFailed": "无法复制命令"
+	},
+	"confirm": {
+		"ok": "确定"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "输入 {name} 以确认。",
+		"nameLabel": "工作区名称"
+	},
+	"commandPalette": {
+		"description": "查找任务、页面、位置和工作区",
+		"placeholder": "提问或搜索任何内容…",
+		"searching": "正在搜索…",
+		"failed": "搜索失败",
+		"empty": "未找到任何内容",
+		"groups": {
+			"recent": "最近",
+			"tasks": "任务",
+			"pages": "页面",
+			"navigation": "导航",
+			"workspaces": "工作区"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "少",
+		"more": "多",
+		"weekdays": {
+			"mon": "周一",
+			"wed": "周三",
+			"fri": "周五"
+		},
+		"contributionsOn": "{date} 有 {n} 次贡献",
+		"dayLabel": "{date}：{activity}"
+	},
+	"countdown": {
+		"editHint": "双击编辑时间",
+		"timeIsOver": "时间到",
+		"update": "更新"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "本地工作区中不可用"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "本地工作区中不可用",
+		"off": "此模块已关闭。"
+	},
+	"requiresAccount": {
+		"title": "需要账号",
+		"cloudOnly": "此功能在 TMGR 云端运行。",
+		"createAccount": "创建账号"
+	},
+	"darkMode": {
+		"light": "浅色模式",
+		"dark": "深色模式"
+	},
+	"modulePresetOptions": {
+		"custom": "我自己选"
+	},
+	"dropdown": {
+		"openOptions": "打开选项"
+	},
+	"emailVerifyBanner": {
+		"confirm": "请确认你的邮箱地址，我们已向 {email} 发送了链接。",
+		"sent": "新的链接已发送。",
+		"rateLimited": "请求过于频繁。请在 {wait}后重试。",
+		"error": "无法发送链接。请重试。",
+		"resend": "重新发送",
+		"dismiss": "关闭"
+	},
+	"globalSearch": {
+		"placeholder": "搜索…",
+		"withHint": "搜索（{hint}）"
+	},
+	"filtersBoard": {
+		"searchTasks": "搜索任务…",
+		"selectCategory": "选择项目",
+		"selectUser": "选择用户",
+		"selectPersona": "选择角色",
+		"priority": "优先级",
+		"sortByPriority": "按优先级排序",
+		"clearFilters": "清除筛选",
+		"reorderStatuses": "调整状态顺序",
+		"filters": "筛选",
+		"allCategories": "所有项目",
+		"allUsers": "所有用户",
+		"allPersonas": "所有角色",
+		"myPersonasQueue": "我的角色队列",
+		"refresh": "刷新"
+	},
+	"textField": {
+		"placeholder": "输入值"
+	},
+	"select": {
+		"placeholder": "选择"
+	},
+	"navbarMenu": {
+		"categories": "项目"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "角色 {name}",
+		"personaOf": "{name} 的角色"
+	},
+	"memberAvatarLink": {
+		"open": "打开 {label}",
+		"openMember": "打开成员"
+	},
+	"userAvatar": {
+		"alt": "头像"
+	},
+	"personaAvatar": {
+		"alt": "角色头像"
+	},
+	"modulePresetPreview": {
+		"menu": "菜单",
+		"task": "任务",
+		"taskTitle": "任务标题",
+		"status": "状态",
+		"badges": {
+			"off": "关闭",
+			"new": "新增",
+			"willHide": "将隐藏"
+		}
+	},
+	"modulesPicker": {
+		"title": "你想用 TMGR 做什么？",
+		"description": "你可以随时在“设置 → 模块”中更改。",
+		"notNow": "暂不",
+		"saveFailed": "无法保存你的选择。请重试。"
+	},
+	"modulesPresetDialog": {
+		"title": "应用预设",
+		"description": "选择一个预设，在应用之前先查看会有哪些变化。",
+		"nothingChanges": "没有任何变化",
+		"willTurnOn": "将开启：",
+		"willTurnOff": "将关闭：",
+		"dataKept": "你的数据不会被删除。重新开启模块后，一切都会恢复。",
+		"applying": "正在应用…",
+		"applyFailed": "无法应用预设。请重试。"
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} - 点击查看所有成员",
+		"memberLabel": "{name} – 工作区成员",
+		"inviteUser": "邀请用户",
+		"sendInvitations": "发送邀请",
+		"emailsPlaceholder": "输入邮箱（用逗号分隔），例如：\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "正在发送...",
+		"send": "发送",
+		"invitationsSent": "邀请已发送",
+		"invitationsSentDescription": "邀请已成功发送",
+		"errorTitle": "错误",
+		"sendFailed": "发送邀请失败。请重试。"
+	},
+	"breadcrumbEllipsis": {
+		"more": "更多"
+	},
+	"sidebar": {
+		"toggle": "切换侧边栏"
+	},
+	"addTaskModalTrigger": {
+		"open": "打开添加任务窗口"
+	},
+	"assigneesCombobox": {
+		"search": "搜索负责人...",
+		"empty": "未找到负责人。",
+		"trigger": "负责人"
+	},
+	"categoriesCombobox": {
+		"search": "搜索项目...",
+		"empty": "未找到项目。",
+		"trigger": "项目"
+	},
+	"combobox": {
+		"search": "搜索条目",
+		"empty": "未找到条目。"
+	},
+	"blockEditor": {
+		"header": "输入标题",
+		"quote": "输入引用内容",
+		"quoteAuthor": "引用作者",
+		"warningTitle": "标题",
+		"warningMessage": "消息"
+	},
+	"editor": {
+		"descriptionPlaceholder": "添加描述..."
+	},
+	"emptyState": {
+		"title": "这里还没有内容"
+	},
+	"currentWorkspace": {
+		"trigger": "工作区",
+		"searchCategory": "搜索项目...",
+		"noCategory": "未找到项目。",
+		"addWorkspace": "添加新工作区",
+		"newWorkspaceName": "新工作区名称",
+		"sendInvitationToWorkspace": "邀请加入工作区",
+		"emailAddresses": "邮箱地址",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "多个邮箱请用逗号分隔",
+		"creating": "正在创建...",
+		"sendInvitation": "发送邀请",
+		"invitationSent": "邀请已发送！",
+		"invitationsSentToEmails": "邀请已发送到指定的邮箱地址。",
+		"shareLink": "你可以把此链接分享给想邀请的任何人：",
+		"copied": "已复制！",
+		"copyToClipboard": "复制到剪贴板"
+	},
+	"daySummary": {
+		"title": "每日摘要",
+		"collecting": "正在收集今天的任务…",
+		"counts": "来自 {workspaces} 个工作区的 {tasks} 个任务",
+		"skipped": "无法读取：{names}",
+		"lanNotice": "任务标题、状态和评论摘录（包括云端工作区的）将发送到 {origin}。",
+		"send": "发送",
+		"aiGenerated": "由 AI 生成，可能不准确",
+		"noAi": "无 AI",
+		"setUpAi": "设置本地 AI",
+		"summarizing": "正在总结…",
+		"summarize": "总结",
+		"regenerate": "重新生成",
+		"sendsTo": "会把任务标题、状态和评论摘录发送到 {origin}。",
+		"saveAsPage": "保存为页面",
+		"copied": "已复制。",
+		"savedAsPage": "已在此工作区中保存为页面。",
+		"pageTitle": "{date} 每日摘要"
+	},
+	"errorBoundary": {
+		"title": "出了点问题",
+		"message": "发生了意外错误。请尝试刷新页面。",
+		"showDetails": "显示技术详情",
+		"retrying": "正在重试...",
+		"tryAgain": "重试",
+		"reload": "重新加载页面",
+		"report": "报告问题",
+		"updateTitle": "有可用更新",
+		"updateMessage": "应用有新版本。请刷新页面以获取最新更新。",
+		"networkTitle": "连接问题",
+		"networkMessage": "无法连接到服务器。请检查你的网络连接后重试。"
+	},
+	"forbiddenAccess": {
+		"title": "拒绝访问",
+		"message": "抱歉，你没有查看此内容的权限。",
+		"goBack": "返回"
+	},
+	"settingsComponent": {
+		"description": "在这里修改任务设置。完成后点击保存。"
+	},
+	"taskTimeInfo": {
+		"title": "任务时间信息",
+		"heading": "任务时间信息",
+		"lastStart": "上次开始时间：",
+		"approxEnd": "预计结束时间：",
+		"timeLeft": "剩余时间：",
+		"hideEdit": "退出时间编辑模式",
+		"showEdit": "时间编辑模式",
+		"stopFirst": "你可以编辑时间，但需要先停止计时器",
+		"editHint": "编辑时间后点击保存按钮",
+		"stopTimer": "停止计时器"
+	},
+	"timeCounter": {
+		"tracked": "已记录时间",
+		"running": "运行中",
+		"overTime": "已超时"
+	}
+}
