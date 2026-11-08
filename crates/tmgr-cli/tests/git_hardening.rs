@@ -405,8 +405,9 @@ async fn start_refuses_a_repository_that_configures_a_transfer_program() {
 async fn start_accepts_a_repository_with_advice_and_status_settings() {
     let (env, repo) = start_env().await;
     git(&repo, &["config", "advice.detachedHead", "false"]);
-    git(&repo, &["config", "status.showUntrackedFiles", "all"]);
+    git(&repo, &["config", "status.showUntrackedFiles", "no"]);
     std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+    std::fs::write(repo.join("new.txt"), "x\n").unwrap();
     let out = env
         .tmgr_in(&repo, None)
         .args(["start", "TM-512", "--stash", "--json"])
@@ -417,6 +418,11 @@ async fn start_accepts_a_repository_with_advice_and_status_settings() {
         git(&repo, &["branch", "--show-current"]),
         "tm-512-checkout-apple-pay-button"
     );
+    assert_eq!(
+        git(&repo, &["status", "--porcelain", "--untracked-files=all"]),
+        ""
+    );
+    assert!(git(&repo, &["stash", "list"]).contains("tmgr: before TM-512"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
