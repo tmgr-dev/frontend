@@ -8,10 +8,10 @@ tmgr test
 │  Qu│                                                                                        │e an│
 │  Ru│done   Finish a task: stop the timer, move to review, link the PR                       │and │
 │  Pa│routine done   Mark a routine done (ID as shown by `routine list`)                      │    │
-│  Ti│decisions answers   Answers and dismissals you gave in the Decisions inbox, newest first│art │
-│  Us│                                                                                        │, mo│
-│  Ac└────────────────────────────────────────────────────────────────────────────────────────┘he w│
-│  Other     resume, session, version, ││                                                          │
+│  Ti│decisions pending-delivery   Final answers no agent has picked up yet, oldest first     │art │
+│  Us│decisions answers   Answers and dismissals you gave in the Decisions inbox, newest first│, mo│
+│  Ac│                                                                                        │he w│
+│  Ot└────────────────────────────────────────────────────────────────────────────────────────┘    │
 │                                      ││                                                          │
 │                                      ││                                                          │
 │                                      ││                                                          │
