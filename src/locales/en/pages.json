@@ -1,0 +1,229 @@
+{
+	"actionLines": {
+		"title": "Action items",
+		"toTask": "→ task"
+	},
+	"aliases": {
+		"add": "Add alias",
+		"displayName": "Display name",
+		"identifier": "Identifier",
+		"remove": "Remove alias"
+	},
+	"conflict": {
+		"description": "Version {version} appeared while you were editing. Choose which to keep.",
+		"difference": "Difference",
+		"hint": "Take theirs — load version {version} and discard your draft. Keep mine — save your text over version {version}.",
+		"keepMine": "Keep mine",
+		"showBoth": "Show both",
+		"takeTheirs": "Take theirs",
+		"theirVersion": "Their version",
+		"title": "Page changed elsewhere",
+		"yourDraft": "Your draft"
+	},
+	"descriptionPreview": {
+		"edit": "Edit description",
+		"empty": "No description — click to add"
+	},
+	"diff": {
+		"empty": "Empty"
+	},
+	"editor": {
+		"searching": "Searching..."
+	},
+	"files": {
+		"title": "Files",
+		"upload": "Upload",
+		"uploading": "Uploading..."
+	},
+	"gate": {
+		"description": "Notes, workspace context and documentation in a page tree that people and agents both edit.",
+		"title": "Pages"
+	},
+	"import": {
+		"badgeExists": "exists",
+		"badgeSkipped": "skipped",
+		"choose": "Choose files",
+		"conflictPolicy": "When a title already exists",
+		"created": "Created {n} page. | Created {n} pages.",
+		"drop": "Drop Markdown files, images or a .zip here",
+		"policyImport": "Import anyway",
+		"policyRename": "Rename (adds (2))",
+		"policySkip": "Skip",
+		"reading": "Reading files…",
+		"root": "Pages root",
+		"skippedCount": "Skipped {n}.",
+		"stopped": "Import stopped: {error} — {n} page was created | Import stopped: {error} — {n} pages were created",
+		"submit": "Import {n} page | Import {n} pages",
+		"target": "Import into: {title}",
+		"title": "Import Markdown",
+		"warnings": "{n} warning | {n} warnings",
+		"willCreate": "{n} page will be created | {n} pages will be created",
+		"willCreateConflicts": "{n} page will be created, {conflicts} with a title that already exists | {n} pages will be created, {conflicts} with a title that already exists"
+	},
+	"index": {
+		"allPages": "All pages",
+		"archive": "Archive",
+		"create": "Create page",
+		"emptyHint": "Create your first page for notes and documentation.",
+		"emptyTitle": "No pages yet",
+		"exportAll": "Export all",
+		"failed": "Failed to load pages",
+		"import": "Import",
+		"pinned": "Pinned",
+		"title": "Pages"
+	},
+	"nav": {
+		"dialogs": {
+			"archiveBody": "\"{title}\" and all its subpages will be moved to the {archive}. You can restore them from there.",
+			"archiveConfirm": "Archive",
+			"archiveLink": "archive",
+			"archiveTitle": "Archive page",
+			"renameTitle": "Rename page",
+			"titlePlaceholder": "Title"
+		},
+		"node": {
+			"actions": "Page actions",
+			"addSubpage": "Add subpage",
+			"archive": "Archive",
+			"collapse": "Collapse",
+			"expand": "Expand",
+			"exportSubtree": "Export with subpages",
+			"importHere": "Import Markdown here…",
+			"openInWindow": "Open in window",
+			"pin": "Pin",
+			"rename": "Rename",
+			"unpin": "Unpin"
+		},
+		"sidebar": {
+			"allPages": "All pages",
+			"archive": "Archive",
+			"choosePageType": "Choose page type",
+			"failed": "Failed to load pages",
+			"importMarkdown": "Import Markdown…",
+			"newPage": "New page",
+			"pageType": "Page type",
+			"title": "Pages"
+		}
+	},
+	"previews": {
+		"board": {
+			"archived": "Archived",
+			"done": "Done",
+			"inProgress": "In Progress",
+			"todo": "To Do"
+		},
+		"dashboard": {
+			"completed": "Completed",
+			"inProgress": "In Progress",
+			"timeTracked": "Time Tracked",
+			"totalTasks": "Total Tasks"
+		}
+	},
+	"properties": {
+		"author": "Author",
+		"editedBy": "Edited by",
+		"hintMember": "member",
+		"hintPerson": "person",
+		"member": "Member",
+		"memberName": "Member name",
+		"personOrMember": "Person or member",
+		"searchTasks": "Search tasks",
+		"select": "Select",
+		"task": "Task"
+	},
+	"sidePanel": {
+		"allVersions": "All",
+		"backlinks": "Backlinks",
+		"contents": "Contents",
+		"versions": "Versions"
+	},
+	"taskFromSelection": {
+		"category": "Category",
+		"create": "Create task",
+		"description": "The text on the page will be replaced with a link to the task.",
+		"statusDefault": "Default",
+		"statusOptional": "Status (optional)",
+		"title": "Make a task"
+	},
+	"trash": {
+		"alreadyDeleted": "This page was already deleted",
+		"archivedAt": "Archived {date}",
+		"back": "Pages",
+		"confirmType": "Type {word} to confirm",
+		"countLabel": "The archived page and its subpages | All {n} archived pages and their subpages",
+		"deleteAll": "Delete all",
+		"deleteFailed": "Failed to delete page",
+		"deleteForbidden": "Only the author or the workspace owner can delete this page",
+		"emptied": "Archive emptied",
+		"empty": "Archive is empty.",
+		"emptyBody": "{label} will be deleted forever. This can't be undone.",
+		"emptyFailed": "Failed to empty the archive",
+		"emptyTitle": "Delete all archived pages?",
+		"failed": "Failed to load archive",
+		"noPermissionDelete": "You don't have permission to delete this page",
+		"noPermissionEmpty": "You don't have permission to empty the archive",
+		"notArchived": "This page is no longer archived",
+		"purgeBody": "\"{title}\" and its archived subpages will be deleted forever. This can't be undone.",
+		"purgeConfirm": "Delete permanently",
+		"purgeTitle": "Delete permanently?",
+		"purged": "Page deleted permanently",
+		"restore": "Restore",
+		"restoreFailed": "Failed to restore page",
+		"restoreForbidden": "Only the author or the workspace owner can restore this page",
+		"someKept": "Some pages were kept",
+		"someKeptBody": "{n} archived page you can't delete stayed in the archive. | {n} archived pages you can't delete stayed in the archive.",
+		"title": "Archive"
+	},
+	"versions": {
+		"backToPage": "Back to page",
+		"current": "current",
+		"failed": "Failed to load history",
+		"history": "History: {title}",
+		"loading": "Loading...",
+		"modeCurrent": "Changes since this version",
+		"modePrevious": "What this version changed",
+		"modeSnapshot": "Snapshot",
+		"restore": "Restore",
+		"restoreBody": "A new page version will be created with the content of version {version}. The current text stays in history.",
+		"restoreTitle": "Restore version {version}?",
+		"select": "Select a version"
+	},
+	"view": {
+		"conflictBanner": "Not saved: version conflict",
+		"editorPlaceholder": "Type / for blocks, {'@'} to link, [[ for a page",
+		"exportMarkdown": "Export as Markdown",
+		"exportSubtree": "Export with subpages",
+		"follow": "Follow",
+		"forbidden": "Pages are disabled or you have no access",
+		"history": "History",
+		"importHere": "Import Markdown here…",
+		"loadFailed": "Failed to load page",
+		"loading": "Loading...",
+		"makeTask": "Make a task",
+		"moreActions": "More actions",
+		"notFound": "Page not found",
+		"openFileFailed": "Failed to open {name}",
+		"openInWindow": "Open in window",
+		"openTask": "Open task",
+		"refresh": "Refresh",
+		"resolve": "Resolve",
+		"resolveFirst": "Resolve the version conflict first.",
+		"saveFailed": "Failed to save",
+		"saved": "Saved, version {version}",
+		"saving": "Saving...",
+		"subscriptionFailed": "Failed to change subscription",
+		"taskCreated": "Task created",
+		"unfollow": "Unfollow",
+		"unsaved": "Unsaved changes",
+		"untitled": "Untitled",
+		"updateBanner": "Page changed, version {version}",
+		"uploadFailed": "Failed to upload {name}",
+		"versionConflict": "Version conflict"
+	},
+	"window": {
+		"closeWindow": "Close window",
+		"loading": "Loading...",
+		"notFound": "This page could not be found.",
+		"openFailed": "The page could not be opened. Close this window and try again."
+	}
+}

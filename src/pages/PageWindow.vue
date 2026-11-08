@@ -13,17 +13,17 @@
 				class="mt-3 rounded-md border border-line bg-surface-sunken px-3 py-1.5 text-ink hover:bg-surface-hover"
 				@click="closeWindow"
 			>
-				Close window
+				{{ $t('pages.window.closeWindow') }}
 			</button>
 		</div>
 		<div v-else-if="!ready" class="m-auto text-sm text-ink-subtle">
-			Loading...
+			{{ $t('pages.window.loading') }}
 		</div>
 		<FeatureGate
 			v-else
 			feature-key="pages"
-			title="Pages"
-			description="Notes, workspace context and documentation in a page tree that people and agents both edit."
+			:title="$t('pages.gate.title')"
+			:description="$t('pages.gate.description')"
 			:icon="FileText"
 		>
 			<template #preview>
@@ -43,6 +43,7 @@
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import PagesPreview from '@/components/previews/PagesPreview.vue';
 	import { usePagesRealtime } from '@/composable/usePagesRealtime';
+	import { t } from '@/i18n';
 	import PageView from '@/pages/PageView.vue';
 	import store from '@/store';
 	import { shouldCloseDetachedWindow } from '@/utils/accountModeSwitch';
@@ -101,14 +102,13 @@
 						String(route.params.workspace_code),
 					);
 					if (!workspace) {
-						error.value = 'This page could not be found.';
+						error.value = t('pages.window.notFound');
 						return;
 					}
 					ready.value = true;
 				} catch (e) {
 					console.error('Error opening page window:', e);
-					error.value =
-						'The page could not be opened. Close this window and try again.';
+					error.value = t('pages.window.openFailed');
 				}
 			};
 			void open();

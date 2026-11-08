@@ -2,9 +2,9 @@
 	<Dialog :open="true" @update:open="onOpen">
 		<DialogContent class="max-w-md" data-testid="task-from-selection-dialog">
 			<DialogHeader>
-				<DialogTitle>Make a task</DialogTitle>
+				<DialogTitle>{{ $t('pages.taskFromSelection.title') }}</DialogTitle>
 				<DialogDescription>
-					The text on the page will be replaced with a link to the task.
+					{{ $t('pages.taskFromSelection.description') }}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -16,7 +16,9 @@
 
 			<div class="space-y-3 text-sm">
 				<label class="block">
-					<span class="mb-1 block text-xs text-ink-subtle">Category</span>
+					<span class="mb-1 block text-xs text-ink-subtle">{{
+						$t('pages.taskFromSelection.category')
+					}}</span>
 					<select
 						v-model="categoryId"
 						class="w-full rounded border border-input bg-background px-2 py-1.5 text-ink"
@@ -35,15 +37,17 @@
 					:tooltip="DONE_DISABLED_TOOLTIP"
 				/>
 				<label v-else class="block">
-					<span class="mb-1 block text-xs text-ink-subtle"
-						>Status (optional)</span
-					>
+					<span class="mb-1 block text-xs text-ink-subtle">{{
+						$t('pages.taskFromSelection.statusOptional')
+					}}</span>
 					<select
 						v-model="statusId"
 						class="w-full rounded border border-input bg-background px-2 py-1.5 text-ink"
 						data-testid="selection-status"
 					>
-						<option :value="null">Default</option>
+						<option :value="null">
+							{{ $t('pages.taskFromSelection.statusDefault') }}
+						</option>
 						<option v-for="s in statuses" :key="s.id" :value="s.id">
 							{{ s.name }}
 						</option>
@@ -56,14 +60,14 @@
 
 			<DialogFooter class="gap-2 sm:gap-2">
 				<Button variant="outline" :disabled="busy" @click="$emit('cancel')">
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</Button>
 				<Button
 					:disabled="busy || categoryId === null"
 					data-testid="selection-submit"
 					@click="submit"
 				>
-					Create task
+					{{ $t('pages.taskFromSelection.create') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>

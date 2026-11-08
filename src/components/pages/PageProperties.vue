@@ -11,7 +11,7 @@
 				class="inline-flex items-center gap-1.5 text-ink-subtle"
 				data-testid="page-author"
 			>
-				<span>Author</span>
+				<span>{{ $t('pages.properties.author') }}</span>
 				<AuthorBadge :author="author" :size="18" />
 			</span>
 			<span
@@ -19,7 +19,7 @@
 				class="inline-flex items-center gap-1.5 text-ink-subtle"
 				data-testid="page-updated-by"
 			>
-				<span>Edited by</span>
+				<span>{{ $t('pages.properties.editedBy') }}</span>
 				<AuthorBadge :author="updatedBy" :size="18" />
 				<span>{{ updatedAt }}</span>
 			</span>
@@ -61,8 +61,8 @@
 					<ChipPicker
 						v-else-if="def.kind === 'user'"
 						single
-						add-label="Select"
-						placeholder="Member name"
+						:add-label="$t('pages.properties.select')"
+						:placeholder="$t('pages.properties.memberName')"
 						:chips="userChips"
 						:search="searchMembers"
 						@add="set(def.key, Number($event))"
@@ -71,8 +71,8 @@
 					/>
 					<ChipPicker
 						v-else-if="def.kind === 'participants'"
-						add-label="Member"
-						placeholder="Person or member"
+						:add-label="$t('pages.properties.member')"
+						:placeholder="$t('pages.properties.personOrMember')"
 						:chips="participantChips"
 						:search="searchParticipants"
 						@add="set(def.key, [...(valueOf(def.key) ?? []), $event])"
@@ -86,8 +86,8 @@
 					/>
 					<ChipPicker
 						v-else-if="def.kind === 'tasks'"
-						add-label="Task"
-						placeholder="Search tasks"
+						:add-label="$t('pages.properties.task')"
+						:placeholder="$t('pages.properties.searchTasks')"
 						:chips="taskChips"
 						:search="searchTasks"
 						@add="set(def.key, [...(valueOf(def.key) ?? []), Number($event)])"
@@ -130,6 +130,7 @@
 <script lang="ts">
 	import type { Page } from '@/actions/tmgr/pages';
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
+	import { currentLocale, t } from '@/i18n';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import {
 		blankToNull,
@@ -166,7 +167,7 @@
 			const updatedBy = computed(() => toAuthorRef(props.page.updated_by));
 			const updatedAt = computed(() =>
 				props.page.updated_at
-					? new Date(props.page.updated_at).toLocaleString()
+					? new Date(props.page.updated_at).toLocaleString(currentLocale())
 					: '',
 			);
 			const current = computed(() => props.properties ?? props.page.properties);
@@ -228,7 +229,10 @@
 				(await props.directory.searchPeople(query)).map((item) => ({
 					key: `tmgr://${item.kind}/${item.id}`,
 					label: item.title,
-					hint: item.kind === 'page' ? 'person' : 'member',
+					hint:
+						item.kind === 'page'
+							? t('pages.properties.hintPerson')
+							: t('pages.properties.hintMember'),
 				}));
 			const searchMembers = async (query: string) =>
 				(await props.directory.searchMembers(query)).map((item) => ({

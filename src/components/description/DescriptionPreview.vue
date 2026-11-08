@@ -4,8 +4,8 @@
 			type="button"
 			variant="ghost"
 			size="icon"
-			title="Edit description"
-			aria-label="Edit description"
+			:title="$t('pages.descriptionPreview.edit')"
+			:aria-label="$t('pages.descriptionPreview.edit')"
 			class="absolute top-1.5 right-1.5 z-10 h-7 w-7 text-ink-muted hover:bg-surface-hover hover:text-ink"
 			@click="$emit('edit')"
 		>
@@ -17,7 +17,7 @@
 			class="w-full px-4 py-3 text-left text-sm text-ink-subtle hover:text-ink-muted"
 			@click="$emit('edit')"
 		>
-			No description — click to add
+			{{ $t('pages.descriptionPreview.empty') }}
 		</button>
 		<div v-else-if="editorType === 'block'" class="px-4 py-3 pr-10">
 			<div

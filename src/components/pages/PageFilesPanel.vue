@@ -12,7 +12,7 @@
 	>
 		<div class="mb-2 flex items-center justify-between">
 			<h2 class="text-xs font-semibold tracking-wide text-ink-subtle uppercase">
-				Files
+				{{ $t('pages.files.title') }}
 			</h2>
 			<button
 				type="button"
@@ -21,7 +21,7 @@
 				data-testid="page-files-upload"
 				@click="pick"
 			>
-				{{ uploading ? 'Uploading...' : 'Upload' }}
+				{{ uploading ? $t('pages.files.uploading') : $t('pages.files.upload') }}
 			</button>
 			<input
 				ref="inputRef"
@@ -46,7 +46,7 @@
 				}}</span>
 			</li>
 		</ul>
-		<p v-else class="text-ink-subtle">None</p>
+		<p v-else class="text-ink-subtle">{{ $t('common.states.none') }}</p>
 		<p v-if="error" class="mt-1 text-xs text-status-fix-fg" role="alert">
 			{{ error }}
 		</p>

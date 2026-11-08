@@ -19,7 +19,7 @@
 			<span class="min-w-0">{{ op.text }}</span>
 		</div>
 		<div v-if="!ops.length" class="px-2 py-3 text-center text-ink-subtle">
-			Empty
+			{{ $t('pages.diff.empty') }}
 		</div>
 	</div>
 </template>

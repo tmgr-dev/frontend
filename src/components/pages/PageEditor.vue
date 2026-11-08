@@ -37,7 +37,7 @@
 					v-if="mention.loading && !mention.items.length"
 					class="px-2 py-1.5 text-ink-subtle"
 				>
-					Searching...
+					{{ $t('pages.editor.searching') }}
 				</li>
 			</ul>
 		</Teleport>

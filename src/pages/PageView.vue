@@ -1,7 +1,7 @@
 <template>
 	<PageContainer width="wide">
 		<div v-if="loading && !page" class="py-16 text-center text-ink-subtle">
-			Loading...
+			{{ $t('pages.view.loading') }}
 		</div>
 		<div
 			v-else-if="loadError"
@@ -12,13 +12,15 @@
 			<p class="text-ink">
 				{{
 					loadError === 'not_found'
-						? 'Page not found'
+						? $t('pages.view.notFound')
 						: loadError === 'forbidden'
-							? 'Pages are disabled or you have no access'
-							: 'Failed to load page'
+							? $t('pages.view.forbidden')
+							: $t('pages.view.loadFailed')
 				}}
 			</p>
-			<button class="mt-2 text-brand underline" @click="load">Retry</button>
+			<button class="mt-2 text-brand underline" @click="load">
+				{{ $t('common.actions.retry') }}
+			</button>
 		</div>
 
 		<template v-else-if="page">
@@ -28,13 +30,15 @@
 				role="status"
 				data-testid="page-update-banner"
 			>
-				<span>Page changed, version {{ updateBanner }}</span>
+				<span>{{
+					$t('pages.view.updateBanner', { version: updateBanner })
+				}}</span>
 				<button
 					type="button"
 					class="rounded-md bg-status-progress-fg px-3 py-1 text-surface-base hover:opacity-90"
 					@click="refresh"
 				>
-					Refresh
+					{{ $t('pages.view.refresh') }}
 				</button>
 			</div>
 
@@ -43,13 +47,13 @@
 				class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-status-fix bg-status-fix-bg px-3 py-2 text-sm text-status-fix-fg"
 				role="alert"
 			>
-				<span>Not saved: version conflict</span>
+				<span>{{ $t('pages.view.conflictBanner') }}</span>
 				<button
 					type="button"
 					class="rounded-md bg-destructive px-3 py-1 text-destructive-foreground hover:bg-destructive/90"
 					@click="conflictOpen = true"
 				>
-					Resolve
+					{{ $t('pages.view.resolve') }}
 				</button>
 			</div>
 
@@ -62,7 +66,7 @@
 							v-model="form.title"
 							type="text"
 							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] leading-tight font-bold tracking-tight text-ink placeholder:text-ink-subtle md:text-[2.25rem]"
-							placeholder="Untitled"
+							:placeholder="$t('pages.view.untitled')"
 							:title="form.title"
 							maxlength="255"
 							data-testid="page-title-input"
@@ -86,7 +90,7 @@
 							class="text-xs text-status-fix-fg underline"
 							@click="retrySave"
 						>
-							Retry
+							{{ $t('common.actions.retry') }}
 						</button>
 						<button
 							type="button"
@@ -97,7 +101,9 @@
 							@click="toggleFollow"
 						>
 							<component :is="following ? BellOff : Bell" class="h-4 w-4" />
-							{{ following ? 'Unfollow' : 'Follow' }}
+							{{
+								following ? $t('pages.view.unfollow') : $t('pages.view.follow')
+							}}
 						</button>
 						<button
 							v-if="canOpenInWindow"
@@ -108,7 +114,7 @@
 							@click="openInWindow"
 						>
 							<ExternalLink class="h-4 w-4" />
-							Open in window
+							{{ $t('pages.view.openInWindow') }}
 						</button>
 						<router-link
 							:to="`/${workspaceCode}/pages/${page.slug}/versions`"
@@ -116,14 +122,14 @@
 							class="inline-flex items-center gap-1 rounded-md border border-input px-2.5 py-1 text-sm text-ink hover:bg-surface-hover"
 						>
 							<History class="h-4 w-4" />
-							History
+							{{ $t('pages.view.history') }}
 						</router-link>
 						<DropdownMenu>
 							<DropdownMenuTrigger as-child>
 								<button
 									type="button"
 									class="inline-flex items-center rounded-md border border-input px-2 py-1 text-ink hover:bg-surface-hover"
-									aria-label="More actions"
+									:aria-label="$t('pages.view.moreActions')"
 									data-testid="page-more-menu"
 								>
 									<MoreHorizontal class="h-4 w-4" />
@@ -143,21 +149,21 @@
 									@select="io.exportPage(page.id)"
 								>
 									<Download class="mr-2 h-4 w-4" />
-									<span>Export as Markdown</span>
+									<span>{{ $t('pages.view.exportMarkdown') }}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem
 									data-testid="page-export-subtree"
 									@select="io.exportSubtree(page.id)"
 								>
 									<Download class="mr-2 h-4 w-4" />
-									<span>Export with subpages</span>
+									<span>{{ $t('pages.view.exportSubtree') }}</span>
 								</DropdownMenuItem>
 								<DropdownMenuItem
 									data-testid="page-import-here"
 									@select="io.openImport({ id: page.id, title: page.title })"
 								>
 									<Upload class="mr-2 h-4 w-4" />
-									<span>Import Markdown here…</span>
+									<span>{{ $t('pages.view.importHere') }}</span>
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
@@ -192,7 +198,7 @@
 								:model-value="segment.text"
 								:directory="directory"
 								:upload-file="uploadImage"
-								placeholder="Type / for blocks, @ to link, [[ for a page"
+								:placeholder="$t('pages.view.editorPlaceholder')"
 								@change="
 									(md: string, dirty: boolean) => onFreeChange(index, md, dirty)
 								"
@@ -249,7 +255,7 @@
 					@mousedown.prevent
 					@click="openTaskDialog(selection.text, false)"
 				>
-					Make a task
+					{{ $t('pages.view.makeTask') }}
 				</button>
 			</Teleport>
 
@@ -314,6 +320,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePagesMarkdownIo } from '@/composable/usePagesMarkdownIo';
 	import { openTaskLinkInModal } from '@/composable/useTaskKeyLinks';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import type { RootState } from '@/types/store';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -478,7 +485,7 @@
 				} catch {
 					following.value = !next;
 					toaster.toast({
-						title: 'Failed to change subscription',
+						title: t('pages.view.subscriptionFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -506,7 +513,7 @@
 			};
 
 			const onUploadError = (file: File) => {
-				uploadError.value = `Failed to upload ${file.name}`;
+				uploadError.value = t('pages.view.uploadFailed', { name: file.name });
 			};
 
 			const uploadFiles = async (list: File[]) => {
@@ -528,7 +535,9 @@
 					window.open(url, '_blank', 'noopener');
 					setTimeout(() => URL.revokeObjectURL(url), 60000);
 				} catch {
-					uploadError.value = `Failed to open ${file.name}`;
+					uploadError.value = t('pages.view.openFileFailed', {
+						name: file.name,
+					});
 				}
 			};
 
@@ -610,7 +619,7 @@
 				const dialog = taskDialog.value;
 				if (!dialog || !page.value || taskBusy.value) return;
 				if (conflict.value) {
-					taskError.value = 'Resolve the version conflict first.';
+					taskError.value = t('pages.view.resolveFirst');
 					return;
 				}
 				taskBusy.value = true;
@@ -618,7 +627,7 @@
 				try {
 					await flush();
 					if (!page.value || conflict.value) {
-						taskError.value = 'Resolve the version conflict first.';
+						taskError.value = t('pages.view.resolveFirst');
 						return;
 					}
 					const text = dialog.source
@@ -644,12 +653,12 @@
 					taskDialog.value = null;
 					const label = taskKeyLabel(result.task);
 					toaster.toast({
-						title: 'Task created',
+						title: t('pages.view.taskCreated'),
 						description: `${label} ${result.task.title}`,
 						action: h(
 							ToastAction,
 							{
-								altText: 'Open task',
+								altText: t('pages.view.openTask'),
 								onClick: () =>
 									void router.push(
 										`/${workspaceCode.value}/tasks/${result.task.id}`,
@@ -763,11 +772,13 @@
 				});
 
 			const saveStatus = computed(() => {
-				if (saveError.value) return 'Failed to save';
-				if (conflict.value) return 'Version conflict';
-				if (isSaving.value) return 'Saving...';
-				if (hasPending.value) return 'Unsaved changes';
-				return page.value ? `Saved, version ${page.value.version}` : '';
+				if (saveError.value) return t('pages.view.saveFailed');
+				if (conflict.value) return t('pages.view.versionConflict');
+				if (isSaving.value) return t('pages.view.saving');
+				if (hasPending.value) return t('pages.view.unsaved');
+				return page.value
+					? t('pages.view.saved', { version: page.value.version })
+					: '';
 			});
 
 			const retrySave = () => {

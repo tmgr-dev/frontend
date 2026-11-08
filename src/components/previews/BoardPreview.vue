@@ -22,9 +22,9 @@
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-blue-500"></div>
-						<span class="font-semibold text-gray-700 dark:text-gray-300"
-							>To Do</span
-						>
+						<span class="font-semibold text-gray-700 dark:text-gray-300">{{
+							$t('pages.previews.board.todo')
+						}}</span>
 					</div>
 					<span
 						class="rounded-full bg-gray-200 px-2 py-1 text-xs dark:bg-gray-700"
@@ -78,9 +78,9 @@
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-yellow-500"></div>
-						<span class="font-semibold text-gray-700 dark:text-gray-300"
-							>In Progress</span
-						>
+						<span class="font-semibold text-gray-700 dark:text-gray-300">{{
+							$t('pages.previews.board.inProgress')
+						}}</span>
 					</div>
 					<span
 						class="rounded-full bg-gray-200 px-2 py-1 text-xs dark:bg-gray-700"
@@ -126,9 +126,9 @@
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-green-500"></div>
-						<span class="font-semibold text-gray-700 dark:text-gray-300"
-							>Done</span
-						>
+						<span class="font-semibold text-gray-700 dark:text-gray-300">{{
+							$t('pages.previews.board.done')
+						}}</span>
 					</div>
 					<span
 						class="rounded-full bg-gray-200 px-2 py-1 text-xs dark:bg-gray-700"
@@ -164,9 +164,9 @@
 				<div class="mb-4 flex items-center justify-between">
 					<div class="flex items-center gap-2">
 						<div class="h-3 w-3 rounded-full bg-gray-400"></div>
-						<span class="font-semibold text-gray-700 dark:text-gray-300"
-							>Archived</span
-						>
+						<span class="font-semibold text-gray-700 dark:text-gray-300">{{
+							$t('pages.previews.board.archived')
+						}}</span>
 					</div>
 					<span
 						class="rounded-full bg-gray-200 px-2 py-1 text-xs dark:bg-gray-700"

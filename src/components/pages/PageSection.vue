@@ -32,7 +32,7 @@
 				@click="startEdit"
 			>
 				<Pencil class="h-3.5 w-3.5" />
-				Edit
+				{{ $t('common.actions.edit') }}
 			</button>
 		</header>
 
@@ -50,7 +50,7 @@
 					:disabled="saving"
 					@click="editing = false"
 				>
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</button>
 				<button
 					type="button"
@@ -58,7 +58,7 @@
 					:disabled="saving"
 					@click="save"
 				>
-					Save
+					{{ $t('common.actions.save') }}
 				</button>
 			</div>
 		</div>

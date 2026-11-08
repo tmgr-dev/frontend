@@ -1,18 +1,20 @@
 <template>
 	<PageContainer width="wide">
 		<div v-if="loading" class="py-16 text-center text-ink-subtle">
-			Loading...
+			{{ $t('pages.versions.loading') }}
 		</div>
 		<div v-else-if="loadError" role="alert" class="py-16 text-center">
-			<p class="text-ink">Failed to load history</p>
-			<button class="mt-2 text-brand underline" @click="load">Retry</button>
+			<p class="text-ink">{{ $t('pages.versions.failed') }}</p>
+			<button class="mt-2 text-brand underline" @click="load">
+				{{ $t('common.actions.retry') }}
+			</button>
 		</div>
 
 		<template v-else-if="page">
 			<PageHeader
-				:title="`History: ${page.title}`"
+				:title="$t('pages.versions.history', { title: page.title })"
 				:back="`/${workspaceCode}/pages/${page.slug}`"
-				back-label="Back to page"
+				:back-label="$t('pages.versions.backToPage')"
 			/>
 
 			<div class="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -34,7 +36,7 @@
 								<span
 									v-if="version.version === page.version"
 									class="rounded bg-status-done-bg px-1.5 text-2xs text-status-done-fg"
-									>current</span
+									>{{ $t('pages.versions.current') }}</span
 								>
 							</span>
 							<span class="mt-1 block">
@@ -53,9 +55,11 @@
 				</ul>
 
 				<div class="min-w-0">
-					<div v-if="!selected" class="text-ink-subtle">Select a version</div>
+					<div v-if="!selected" class="text-ink-subtle">
+						{{ $t('pages.versions.select') }}
+					</div>
 					<div v-else-if="snapshotLoading" class="text-ink-subtle">
-						Loading...
+						{{ $t('pages.versions.loading') }}
 					</div>
 					<template v-else-if="snapshot">
 						<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -85,7 +89,7 @@
 								@click="confirmOpen = true"
 							>
 								<RotateCcw class="h-4 w-4" />
-								Restore
+								{{ $t('pages.versions.restore') }}
 							</Button>
 						</div>
 
@@ -112,15 +116,20 @@
 			<AlertDialog v-model:open="confirmOpen">
 				<AlertDialogContent data-testid="restore-confirm">
 					<AlertDialogHeader>
-						<AlertDialogTitle>Restore version {{ selected }}?</AlertDialogTitle>
+						<AlertDialogTitle>{{
+							$t('pages.versions.restoreTitle', { version: selected })
+						}}</AlertDialogTitle>
 						<AlertDialogDescription>
-							A new page version will be created with the content of version
-							{{ selected }}. The current text stays in history.
+							{{ $t('pages.versions.restoreBody', { version: selected }) }}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction @click="restore">Restore</AlertDialogAction>
+						<AlertDialogCancel>{{
+							$t('common.actions.cancel')
+						}}</AlertDialogCancel>
+						<AlertDialogAction @click="restore">{{
+							$t('pages.versions.restore')
+						}}</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
@@ -157,6 +166,7 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { openTaskLinkInModal } from '@/composable/useTaskKeyLinks';
+	import { currentLocale, t } from '@/i18n';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import { diffLines, diffStats } from '@/utils/pages/lineDiff';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
@@ -205,11 +215,11 @@
 			const restoring = ref(false);
 			let snapshotSeq = 0;
 
-			const modes: { value: Mode; label: string }[] = [
-				{ value: 'snapshot', label: 'Snapshot' },
-				{ value: 'current', label: 'Changes since this version' },
-				{ value: 'previous', label: 'What this version changed' },
-			];
+			const modes = computed<{ value: Mode; label: string }[]>(() => [
+				{ value: 'snapshot', label: t('pages.versions.modeSnapshot') },
+				{ value: 'current', label: t('pages.versions.modeCurrent') },
+				{ value: 'previous', label: t('pages.versions.modePrevious') },
+			]);
 
 			const diffBefore = computed(() =>
 				mode.value === 'current'
@@ -226,7 +236,8 @@
 			);
 
 			const authorOf = (author: PageAuthor) => toAuthorRef(author);
-			const formatDate = (value: string) => new Date(value).toLocaleString();
+			const formatDate = (value: string) =>
+				new Date(value).toLocaleString(currentLocale());
 
 			const select = async (version: number) => {
 				selected.value = version;

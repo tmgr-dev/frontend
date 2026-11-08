@@ -5,7 +5,7 @@
 	>
 		<DialogContent class="max-w-sm">
 			<DialogHeader>
-				<DialogTitle>Rename page</DialogTitle>
+				<DialogTitle>{{ $t('pages.nav.dialogs.renameTitle') }}</DialogTitle>
 			</DialogHeader>
 			<form class="flex flex-col gap-3" @submit.prevent="ctx.confirmRename">
 				<input
@@ -13,7 +13,7 @@
 					data-selectable
 					maxlength="255"
 					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden dark:border-input dark:bg-background"
-					placeholder="Title"
+					:placeholder="$t('pages.nav.dialogs.titlePlaceholder')"
 				/>
 				<DialogFooter>
 					<button
@@ -21,7 +21,7 @@
 						class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
 						:disabled="!ctx.renameTitle.value.trim()"
 					>
-						Save
+						{{ $t('common.actions.save') }}
 					</button>
 				</DialogFooter>
 			</form>
@@ -34,21 +34,27 @@
 	>
 		<AlertDialogContent>
 			<AlertDialogHeader>
-				<AlertDialogTitle>Archive page</AlertDialogTitle>
+				<AlertDialogTitle>{{
+					$t('pages.nav.dialogs.archiveTitle')
+				}}</AlertDialogTitle>
 				<AlertDialogDescription class="[overflow-wrap:anywhere]">
-					"{{ deletingTitle }}" and all its subpages will be moved to the
-					<router-link
-						:to="`/${ctx.workspaceCode.value}/pages/_/archive`"
-						class="font-medium text-foreground underline underline-offset-4 hover:text-primary dark:text-foreground dark:hover:text-primary"
-						@click="ctx.deleting.value = null"
-						>archive</router-link
-					>. You can restore them from there.
+					<i18n-t keypath="pages.nav.dialogs.archiveBody" tag="span">
+						<template #title>{{ deletingTitle }}</template>
+						<template #archive>
+							<router-link
+								:to="`/${ctx.workspaceCode.value}/pages/_/archive`"
+								class="font-medium text-foreground underline underline-offset-4 hover:text-primary dark:text-foreground dark:hover:text-primary"
+								@click="ctx.deleting.value = null"
+								>{{ $t('pages.nav.dialogs.archiveLink') }}</router-link
+							>
+						</template>
+					</i18n-t>
 				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
-				<AlertDialogCancel>Cancel</AlertDialogCancel>
+				<AlertDialogCancel>{{ $t('common.actions.cancel') }}</AlertDialogCancel>
 				<Button variant="destructive" @click="ctx.confirmDelete">
-					Archive
+					{{ $t('pages.nav.dialogs.archiveConfirm') }}
 				</Button>
 			</AlertDialogFooter>
 		</AlertDialogContent>

@@ -6,7 +6,7 @@
 			<h2
 				class="mb-2 text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 			>
-				Contents
+				{{ $t('pages.sidePanel.contents') }}
 			</h2>
 			<ul class="space-y-1">
 				<li v-for="entry in toc" :key="`${entry.text}-${entry.occurrence}`">
@@ -25,7 +25,7 @@
 			<h2
 				class="mb-2 text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 			>
-				Backlinks
+				{{ $t('pages.sidePanel.backlinks') }}
 			</h2>
 			<ul v-if="backlinks.length" class="space-y-1">
 				<li v-for="link in backlinks" :key="link.id">
@@ -37,7 +37,7 @@
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-ink-subtle">None</p>
+			<p v-else class="text-ink-subtle">{{ $t('common.states.none') }}</p>
 		</section>
 
 		<section data-testid="page-recent-versions">
@@ -45,13 +45,13 @@
 				<h2
 					class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 				>
-					Versions
+					{{ $t('pages.sidePanel.versions') }}
 				</h2>
 				<router-link
 					:to="`/${workspaceCode}/pages/${slug}/versions`"
 					class="text-xs text-brand hover:underline"
 				>
-					All
+					{{ $t('pages.sidePanel.allVersions') }}
 				</router-link>
 			</div>
 			<ul v-if="versions.length" class="space-y-2">
@@ -79,7 +79,7 @@
 					</router-link>
 				</li>
 			</ul>
-			<p v-else class="text-ink-subtle">None</p>
+			<p v-else class="text-ink-subtle">{{ $t('common.states.none') }}</p>
 		</section>
 
 		<EntityGraphSection
@@ -101,6 +101,7 @@
 		PageVersion,
 	} from '@/actions/tmgr/pages';
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
+	import { currentLocale } from '@/i18n';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import type { TocEntry } from '@/utils/pages/toc';
@@ -129,7 +130,8 @@
 		emits: ['toc'],
 		setup() {
 			const authorOf = (author: PageAuthor) => toAuthorRef(author);
-			const formatDate = (value: string) => new Date(value).toLocaleString();
+			const formatDate = (value: string) =>
+				new Date(value).toLocaleString(currentLocale());
 			const { isFeatureEnabled } = useFeatureToggles();
 			const graphEnabled = computed(() => isFeatureEnabled('graph'));
 			return { authorOf, formatDate, graphEnabled };

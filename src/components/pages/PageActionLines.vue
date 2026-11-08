@@ -3,7 +3,7 @@
 		<h2
 			class="mb-2 text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 		>
-			Action items
+			{{ $t('pages.actionLines.title') }}
 		</h2>
 		<ul class="space-y-1">
 			<li
@@ -18,7 +18,7 @@
 					data-testid="action-to-task"
 					@click="$emit('convert', line.text)"
 				>
-					→ task
+					{{ $t('pages.actionLines.toTask') }}
 				</button>
 			</li>
 		</ul>

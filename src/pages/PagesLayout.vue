@@ -1,8 +1,8 @@
 <template>
 	<FeatureGate
 		feature-key="pages"
-		title="Pages"
-		description="Notes, workspace context and documentation in a page tree that people and agents both edit."
+		:title="$t('pages.gate.title')"
+		:description="$t('pages.gate.description')"
 		:icon="FileText"
 	>
 		<template #preview>

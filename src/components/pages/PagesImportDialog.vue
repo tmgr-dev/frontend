@@ -5,9 +5,13 @@
 			data-testid="pages-import-dialog"
 		>
 			<DialogHeader>
-				<DialogTitle>Import Markdown</DialogTitle>
+				<DialogTitle>{{ $t('pages.import.title') }}</DialogTitle>
 				<DialogDescription data-testid="pages-import-target">
-					Import into: {{ parentTitle || 'Pages root' }}
+					{{
+						$t('pages.import.target', {
+							title: parentTitle || $t('pages.import.root'),
+						})
+					}}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -21,14 +25,14 @@
 					v-on="zone.handlers"
 				>
 					<Upload class="h-6 w-6" />
-					<p>Drop Markdown files, images or a .zip here</p>
+					<p>{{ $t('pages.import.drop') }}</p>
 					<Button
 						variant="outline"
 						type="button"
 						data-testid="pages-import-choose"
 						@click="input?.click()"
 					>
-						Choose files
+						{{ $t('pages.import.choose') }}
 					</Button>
 					<input
 						ref="input"
@@ -56,7 +60,7 @@
 				data-testid="pages-import-reading"
 			>
 				<Loader2 class="h-4 w-4 animate-spin" />
-				Reading files…
+				{{ $t('pages.import.reading') }}
 			</div>
 
 			<div
@@ -65,12 +69,22 @@
 				data-testid="pages-import-preview"
 			>
 				<p class="text-sm text-ink" data-testid="pages-import-counts">
-					{{ flow.importCount.value }}
-					{{ flow.importCount.value === 1 ? 'page' : 'pages' }} will be
-					created<template v-if="flow.conflictCount.value"
-						>, {{ flow.conflictCount.value }} with a title that already
-						exists</template
-					>.
+					{{
+						flow.conflictCount.value
+							? $t(
+									'pages.import.willCreateConflicts',
+									{
+										n: flow.importCount.value,
+										conflicts: flow.conflictCount.value,
+									},
+									flow.importCount.value,
+								)
+							: $t(
+									'pages.import.willCreate',
+									{ n: flow.importCount.value },
+									flow.importCount.value,
+								)
+					}}.
 				</p>
 
 				<ul
@@ -97,7 +111,11 @@
 							v-if="row.page.conflict"
 							class="shrink-0 rounded bg-status-progress-bg px-1.5 py-0.5 text-xs text-status-progress-fg"
 							data-testid="pages-import-conflict-badge"
-							>{{ row.skipped ? 'skipped' : 'exists' }}</span
+							>{{
+								row.skipped
+									? $t('pages.import.badgeSkipped')
+									: $t('pages.import.badgeExists')
+							}}</span
 						>
 					</li>
 				</ul>
@@ -106,15 +124,19 @@
 					v-if="flow.hasConflicts.value"
 					class="flex flex-col gap-1 text-sm text-ink"
 				>
-					When a title already exists
+					{{ $t('pages.import.conflictPolicy') }}
 					<select
 						v-model="flow.policy.value"
 						class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden"
 						data-testid="pages-import-policy"
 					>
-						<option value="rename">Rename (adds (2))</option>
-						<option value="skip">Skip</option>
-						<option value="import">Import anyway</option>
+						<option value="rename">
+							{{ $t('pages.import.policyRename') }}
+						</option>
+						<option value="skip">{{ $t('common.actions.skip') }}</option>
+						<option value="import">
+							{{ $t('pages.import.policyImport') }}
+						</option>
 					</select>
 				</label>
 
@@ -133,8 +155,13 @@
 							class="h-4 w-4 transition-transform"
 							:class="warningsShown ? 'rotate-90' : ''"
 						/>
-						{{ flow.warnings.value.length }}
-						{{ flow.warnings.value.length === 1 ? 'warning' : 'warnings' }}
+						{{
+							$t(
+								'pages.import.warnings',
+								{ n: flow.warnings.value.length },
+								flow.warnings.value.length,
+							)
+						}}
 					</button>
 					<ul
 						v-if="warningsShown"
@@ -175,13 +202,18 @@
 					role="alert"
 					data-testid="pages-import-run-error"
 				>
-					Import stopped: {{ flow.result.value.error }} —
-					{{ created.length }}
-					{{ created.length === 1 ? 'page was' : 'pages were' }} created
+					{{
+						$t(
+							'pages.import.stopped',
+							{ error: flow.result.value.error, n: created.length },
+							created.length,
+						)
+					}}
 				</p>
 				<p v-else class="text-sm text-ink">
-					Created {{ created.length }}
-					{{ created.length === 1 ? 'page' : 'pages' }}.
+					{{
+						$t('pages.import.created', { n: created.length }, created.length)
+					}}
 				</p>
 				<p
 					v-if="flow.incompleteMessage.value"
@@ -192,7 +224,7 @@
 					{{ flow.incompleteMessage.value }}
 				</p>
 				<p v-if="skipped.length" class="text-sm text-ink-subtle">
-					Skipped {{ skipped.length }}.
+					{{ $t('pages.import.skippedCount', { n: skipped.length }) }}
 				</p>
 				<ul
 					v-if="created.length"
@@ -223,7 +255,7 @@
 			<DialogFooter class="gap-2 sm:gap-2">
 				<template v-if="flow.step.value === 'done'">
 					<Button data-testid="pages-import-close" @click="close">
-						Close
+						{{ $t('common.actions.close') }}
 					</Button>
 				</template>
 				<template v-else>
@@ -233,7 +265,7 @@
 						data-testid="pages-import-cancel"
 						@click="close"
 					>
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</Button>
 					<Button
 						v-if="flow.step.value === 'preview'"
@@ -241,8 +273,13 @@
 						:disabled="flow.importCount.value === 0"
 						@click="flow.submit"
 					>
-						Import {{ flow.importCount.value }}
-						{{ flow.importCount.value === 1 ? 'page' : 'pages' }}
+						{{
+							$t(
+								'pages.import.submit',
+								{ n: flow.importCount.value },
+								flow.importCount.value,
+							)
+						}}
 					</Button>
 				</template>
 			</DialogFooter>

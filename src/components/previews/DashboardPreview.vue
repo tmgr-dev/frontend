@@ -12,25 +12,33 @@
 			<div
 				class="rounded-xl bg-linear-to-br/srgb from-blue-500 to-blue-600 p-6 text-white"
 			>
-				<div class="text-sm opacity-80">Total Tasks</div>
+				<div class="text-sm opacity-80">
+					{{ $t('pages.previews.dashboard.totalTasks') }}
+				</div>
 				<div class="mt-2 h-10 w-16 animate-pulse rounded bg-white/20"></div>
 			</div>
 			<div
 				class="rounded-xl bg-linear-to-br/srgb from-green-500 to-green-600 p-6 text-white"
 			>
-				<div class="text-sm opacity-80">Completed</div>
+				<div class="text-sm opacity-80">
+					{{ $t('pages.previews.dashboard.completed') }}
+				</div>
 				<div class="mt-2 h-10 w-20 animate-pulse rounded bg-white/20"></div>
 			</div>
 			<div
 				class="rounded-xl bg-linear-to-br/srgb from-yellow-500 to-orange-500 p-6 text-white"
 			>
-				<div class="text-sm opacity-80">In Progress</div>
+				<div class="text-sm opacity-80">
+					{{ $t('pages.previews.dashboard.inProgress') }}
+				</div>
 				<div class="mt-2 h-10 w-14 animate-pulse rounded bg-white/20"></div>
 			</div>
 			<div
 				class="rounded-xl bg-linear-to-br/srgb from-purple-500 to-purple-600 p-6 text-white"
 			>
-				<div class="text-sm opacity-80">Time Tracked</div>
+				<div class="text-sm opacity-80">
+					{{ $t('pages.previews.dashboard.timeTracked') }}
+				</div>
 				<div class="mt-2 h-10 w-24 animate-pulse rounded bg-white/20"></div>
 			</div>
 		</div>

@@ -16,7 +16,7 @@
 			<button
 				type="button"
 				class="rounded-full p-0.5 hover:text-ink"
-				aria-label="Remove"
+				:aria-label="$t('common.actions.remove')"
 				@click="$emit('remove', chip.key)"
 			>
 				<X class="h-3 w-3" />
@@ -71,6 +71,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { Plus, X } from 'lucide-vue-next';
 	import {
 		computed,
@@ -97,8 +98,8 @@
 				required: true,
 			},
 			single: { type: Boolean, default: false },
-			addLabel: { type: String, default: 'Add' },
-			placeholder: { type: String, default: 'Search' },
+			addLabel: { type: String, default: () => t('common.actions.add') },
+			placeholder: { type: String, default: () => t('common.actions.search') },
 		},
 		emits: ['add', 'remove', 'open'],
 		setup(props, { emit }) {

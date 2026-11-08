@@ -20,7 +20,7 @@
 			<input
 				type="text"
 				:value="alias.native_id"
-				placeholder="Identifier"
+				:placeholder="$t('pages.aliases.identifier')"
 				class="w-36 rounded border bg-background px-2 py-0.5 text-sm text-ink"
 				:class="fieldClass(index, 'native_id')"
 				@change="
@@ -30,7 +30,7 @@
 			<input
 				type="text"
 				:value="alias.display"
-				placeholder="Display name"
+				:placeholder="$t('pages.aliases.displayName')"
 				class="w-36 rounded border bg-background px-2 py-0.5 text-sm text-ink"
 				:class="fieldClass(index, 'display')"
 				@change="
@@ -40,7 +40,7 @@
 			<button
 				type="button"
 				class="rounded p-1 text-ink-subtle hover:bg-surface-hover"
-				aria-label="Remove alias"
+				:aria-label="$t('pages.aliases.remove')"
 				@click="remove(index)"
 			>
 				<X class="h-3.5 w-3.5" />
@@ -53,7 +53,7 @@
 			@click="add"
 		>
 			<Plus class="h-3 w-3" />
-			Add alias
+			{{ $t('pages.aliases.add') }}
 		</button>
 	</div>
 </template>

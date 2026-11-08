@@ -4,14 +4,14 @@
 		data-testid="pages-index"
 		v-on="zone.handlers"
 	>
-		<PageHeader title="Pages">
+		<PageHeader :title="$t('pages.index.title')">
 			<template #actions>
 				<router-link
 					:to="`/${workspaceCode}/pages/_/archive`"
 					class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink"
 				>
 					<Archive class="h-4 w-4" />
-					Archive
+					{{ $t('pages.index.archive') }}
 				</router-link>
 				<button
 					type="button"
@@ -21,7 +21,7 @@
 					@click="io.openImport(null)"
 				>
 					<Upload class="h-4 w-4" />
-					Import
+					{{ $t('pages.index.import') }}
 				</button>
 				<button
 					type="button"
@@ -32,36 +32,44 @@
 					@click="io.exportWorkspace()"
 				>
 					<Download class="h-4 w-4" />
-					Export all
+					{{ $t('pages.index.exportAll') }}
 				</button>
 				<Button data-tour="pages.new" @click="create()">
 					<Plus />
-					Create page
+					{{ $t('pages.index.create') }}
 				</Button>
 			</template>
 		</PageHeader>
 
-		<p v-if="!loaded" class="text-sm text-ink-subtle">Loading…</p>
+		<p v-if="!loaded" class="text-sm text-ink-subtle">
+			{{ $t('common.states.loading') }}
+		</p>
 		<div v-else-if="failed" class="flex items-center gap-3">
-			<p class="text-sm text-destructive">Failed to load pages</p>
-			<Button variant="outline" size="sm" @click="refresh()">Retry</Button>
+			<p class="text-sm text-destructive">{{ $t('pages.index.failed') }}</p>
+			<Button variant="outline" size="sm" @click="refresh()">{{
+				$t('common.actions.retry')
+			}}</Button>
 		</div>
 		<div
 			v-else-if="!pages.length"
 			class="flex flex-col items-center justify-center gap-3 py-16 text-center"
 		>
 			<FileText class="h-12 w-12 text-ink-subtle" />
-			<p class="text-xl font-bold text-ink">No pages yet</p>
+			<p class="text-xl font-bold text-ink">
+				{{ $t('pages.index.emptyTitle') }}
+			</p>
 			<p class="text-sm text-ink-subtle">
-				Create your first page for notes and documentation.
+				{{ $t('pages.index.emptyHint') }}
 			</p>
 			<Button size="lg" class="mt-2 px-6" @click="create()">
-				Create page
+				{{ $t('pages.index.create') }}
 			</Button>
 		</div>
 		<div v-else class="space-y-8">
 			<section v-if="pinned.length">
-				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Pinned</h2>
+				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">
+					{{ $t('pages.index.pinned') }}
+				</h2>
 				<ul
 					class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
 				>
@@ -71,7 +79,9 @@
 				</ul>
 			</section>
 			<section data-testid="pages-index-tree" data-pages-tree="page">
-				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">All pages</h2>
+				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">
+					{{ $t('pages.index.allPages') }}
+				</h2>
 				<div class="rounded-card border border-line bg-surface p-2">
 					<Draggable
 						:model-value="tree"

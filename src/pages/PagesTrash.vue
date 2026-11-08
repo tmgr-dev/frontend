@@ -1,9 +1,9 @@
 <template>
 	<PageContainer>
 		<PageHeader
-			title="Archive"
+			:title="$t('pages.trash.title')"
 			:back="`/${workspaceCode}/pages`"
-			back-label="Pages"
+			:back-label="$t('pages.trash.back')"
 		>
 			<template v-if="loaded && !failed && pages.length" #actions>
 				<button
@@ -13,16 +13,18 @@
 					@click="openEmpty"
 				>
 					<Trash2 class="h-4 w-4" />
-					Delete all
+					{{ $t('pages.trash.deleteAll') }}
 				</button>
 			</template>
 		</PageHeader>
-		<p v-if="!loaded" class="text-sm text-ink-subtle">Loading…</p>
+		<p v-if="!loaded" class="text-sm text-ink-subtle">
+			{{ $t('common.states.loading') }}
+		</p>
 		<p v-else-if="failed" class="text-sm text-destructive">
-			Failed to load archive
+			{{ $t('pages.trash.failed') }}
 		</p>
 		<p v-else-if="!pages.length" class="text-sm text-ink-subtle">
-			Archive is empty.
+			{{ $t('pages.trash.empty') }}
 		</p>
 		<ul
 			v-else
@@ -40,7 +42,11 @@
 					<p
 						class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-ink-subtle"
 					>
-						<span>{{ `Archived ${formatDeleted(page.deleted_at)}` }}</span>
+						<span>{{
+							$t('pages.trash.archivedAt', {
+								date: formatDeleted(page.deleted_at),
+							})
+						}}</span>
 						<template v-if="page.author?.name">
 							<span aria-hidden="true">·</span>
 							<AuthorBadge
@@ -56,7 +62,7 @@
 						class="inline-flex"
 						:title="
 							page.can_restore === false
-								? 'Only the author or the workspace owner can restore this page'
+								? $t('pages.trash.restoreForbidden')
 								: undefined
 						"
 					>
@@ -67,14 +73,14 @@
 							@click="restore(page)"
 						>
 							<Undo2 class="h-4 w-4" />
-							Restore
+							{{ $t('pages.trash.restore') }}
 						</button>
 					</span>
 					<span
 						class="inline-flex"
 						:title="
 							page.can_delete === false
-								? 'Only the author or the workspace owner can delete this page'
+								? $t('pages.trash.deleteForbidden')
 								: undefined
 						"
 					>
@@ -85,7 +91,7 @@
 							@click="purging = page"
 						>
 							<Trash2 class="h-4 w-4" />
-							Delete
+							{{ $t('common.actions.delete') }}
 						</button>
 					</span>
 				</div>
@@ -98,16 +104,19 @@
 		>
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Delete permanently?</AlertDialogTitle>
+					<AlertDialogTitle>{{
+						$t('pages.trash.purgeTitle')
+					}}</AlertDialogTitle>
 					<AlertDialogDescription class="[overflow-wrap:anywhere]">
-						"{{ purging?.title }}" and its archived subpages will be deleted
-						forever. This can't be undone.
+						{{ $t('pages.trash.purgeBody', { title: purging?.title ?? '' }) }}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel :disabled="busy">Cancel</AlertDialogCancel>
+					<AlertDialogCancel :disabled="busy">{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
 					<Button variant="destructive" :disabled="busy" @click="confirmPurge">
-						Delete permanently
+						{{ $t('pages.trash.purgeConfirm') }}
 					</Button>
 				</AlertDialogFooter>
 			</AlertDialogContent>
@@ -120,16 +129,19 @@
 			<AlertDialogContent>
 				<form class="grid gap-4" @submit.prevent="confirmEmpty">
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete all archived pages?</AlertDialogTitle>
+						<AlertDialogTitle>{{
+							$t('pages.trash.emptyTitle')
+						}}</AlertDialogTitle>
 						<AlertDialogDescription>
-							{{ countLabel }} will be deleted forever. This can't be undone.
+							{{ $t('pages.trash.emptyBody', { label: countLabel }) }}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<label class="grid gap-1.5 text-sm text-ink">
-						<span>
-							Type <span class="font-semibold">{{ CONFIRM_WORD }}</span> to
-							confirm
-						</span>
+						<i18n-t keypath="pages.trash.confirmType" tag="span">
+							<template #word>
+								<span class="font-semibold">{{ CONFIRM_WORD }}</span>
+							</template>
+						</i18n-t>
 						<input
 							v-model="confirmWord"
 							data-selectable
@@ -139,14 +151,14 @@
 					</label>
 					<AlertDialogFooter>
 						<AlertDialogCancel type="button" :disabled="busy">
-							Cancel
+							{{ $t('common.actions.cancel') }}
 						</AlertDialogCancel>
 						<Button
 							type="submit"
 							variant="destructive"
 							:disabled="busy || !confirmed"
 						>
-							Delete all
+							{{ $t('pages.trash.deleteAll') }}
 						</Button>
 					</AlertDialogFooter>
 				</form>
@@ -177,6 +189,7 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { useToast } from '@/components/ui/toast';
+	import { currentLocale, t } from '@/i18n';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import { pageUrl } from '@/utils/pagesTree';
 	import { Archive, Trash2, Undo2 } from 'lucide-vue-next';
@@ -185,9 +198,6 @@
 	import { useStore } from 'vuex';
 
 	const CONFIRM_WORD = 'delete';
-
-	const plural = (count: number, word: string) =>
-		`${count} ${word}${count === 1 ? '' : 's'}`;
 
 	export default defineComponent({
 		name: 'PagesTrash',
@@ -243,7 +253,7 @@
 					router.push(pageUrl(workspaceCode.value, restored.slug));
 				} catch {
 					toaster.toast({
-						title: 'Failed to restore page',
+						title: t('pages.trash.restoreFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -260,16 +270,15 @@
 				busy.value = true;
 				try {
 					await permanentlyDeletePage(page.id);
-					toaster.toast({ title: 'Page deleted permanently' });
+					toaster.toast({ title: t('pages.trash.purged') });
 				} catch (error: any) {
 					const status = error?.response?.status;
-					if (status === 403)
-						fail("You don't have permission to delete this page");
+					if (status === 403) fail(t('pages.trash.noPermissionDelete'));
 					else if (status === 404)
-						toaster.toast({ title: 'This page was already deleted' });
+						toaster.toast({ title: t('pages.trash.alreadyDeleted') });
 					else if (status === 422)
-						toaster.toast({ title: 'This page is no longer archived' });
-					else fail('Failed to delete page');
+						toaster.toast({ title: t('pages.trash.notArchived') });
+					else fail(t('pages.trash.deleteFailed'));
 					await load();
 				} finally {
 					busy.value = false;
@@ -293,19 +302,20 @@
 					const { skipped } = await emptyPagesTrash();
 					if (skipped > 0) {
 						toaster.toast({
-							title: 'Some pages were kept',
-							description: `${plural(
+							title: t('pages.trash.someKept'),
+							description: t(
+								'pages.trash.someKeptBody',
+								{ n: skipped },
 								skipped,
-								'archived page',
-							)} you can't delete stayed in the archive.`,
+							),
 						});
 					} else {
-						toaster.toast({ title: 'Archive emptied' });
+						toaster.toast({ title: t('pages.trash.emptied') });
 					}
 				} catch (error: any) {
 					if (error?.response?.status === 403)
-						fail("You don't have permission to empty the archive");
-					else fail('Failed to empty the archive');
+						fail(t('pages.trash.noPermissionEmpty'));
+					else fail(t('pages.trash.emptyFailed'));
 					await load();
 				} finally {
 					busy.value = false;
@@ -314,13 +324,15 @@
 			};
 
 			const countLabel = computed(() =>
-				pages.value.length === 1
-					? 'The archived page and its subpages'
-					: `All ${pages.value.length} archived pages and their subpages`,
+				t(
+					'pages.trash.countLabel',
+					{ n: pages.value.length },
+					pages.value.length,
+				),
 			);
 
 			const formatDeleted = (value?: string | null) =>
-				value ? new Date(value).toLocaleString() : '';
+				value ? new Date(value).toLocaleString(currentLocale()) : '';
 
 			return {
 				CONFIRM_WORD,

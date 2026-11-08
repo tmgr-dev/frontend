@@ -21,7 +21,11 @@
 				v-if="!flat && node.children.length"
 				type="button"
 				class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-ink-subtle hover:text-ink"
-				:aria-label="isExpanded ? 'Collapse' : 'Expand'"
+				:aria-label="
+					isExpanded
+						? $t('pages.nav.node.collapse')
+						: $t('pages.nav.node.expand')
+				"
 				@click.stop="ctx.toggle(node.id)"
 			>
 				<ChevronRight
@@ -44,7 +48,11 @@
 			</router-link>
 			<DropdownMenu>
 				<DropdownMenuTrigger as-child>
-					<button type="button" :class="actionsClass" aria-label="Page actions">
+					<button
+						type="button"
+						:class="actionsClass"
+						:aria-label="$t('pages.nav.node.actions')"
+					>
 						<MoreHorizontal class="h-4 w-4" />
 					</button>
 				</DropdownMenuTrigger>
@@ -52,7 +60,7 @@
 					<DropdownMenuSub>
 						<DropdownMenuSubTrigger>
 							<FilePlus class="mr-2 h-4 w-4" />
-							<span>Add subpage</span>
+							<span>{{ $t('pages.nav.node.addSubpage') }}</span>
 						</DropdownMenuSubTrigger>
 						<DropdownMenuSubContent>
 							<DropdownMenuItem
@@ -66,7 +74,7 @@
 					</DropdownMenuSub>
 					<DropdownMenuItem v-if="isDesktop" @select="openInWindow">
 						<ExternalLink class="mr-2 h-4 w-4" />
-						<span>Open in window</span>
+						<span>{{ $t('pages.nav.node.openInWindow') }}</span>
 					</DropdownMenuItem>
 					<PageShareItems
 						:page="node"
@@ -76,25 +84,29 @@
 					/>
 					<DropdownMenuItem @select="ctx.requestRename(node)">
 						<Pencil class="mr-2 h-4 w-4" />
-						<span>Rename</span>
+						<span>{{ $t('pages.nav.node.rename') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem @select="ctx.togglePin(node)">
 						<component :is="node.pinned ? PinOff : Pin" class="mr-2 h-4 w-4" />
-						<span>{{ node.pinned ? 'Unpin' : 'Pin' }}</span>
+						<span>{{
+							node.pinned
+								? $t('pages.nav.node.unpin')
+								: $t('pages.nav.node.pin')
+						}}</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						data-testid="page-export-subtree"
 						@select="ctx.exportSubtree(node)"
 					>
 						<Download class="mr-2 h-4 w-4" />
-						<span>Export with subpages</span>
+						<span>{{ $t('pages.nav.node.exportSubtree') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						data-testid="page-import-here"
 						@select="ctx.importInto(node)"
 					>
 						<Upload class="mr-2 h-4 w-4" />
-						<span>Import Markdown here…</span>
+						<span>{{ $t('pages.nav.node.importHere') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
@@ -102,7 +114,7 @@
 						@select="ctx.requestDelete(node)"
 					>
 						<Archive class="mr-2 h-4 w-4" />
-						<span>Archive</span>
+						<span>{{ $t('pages.nav.node.archive') }}</span>
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>

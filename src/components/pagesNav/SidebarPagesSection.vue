@@ -7,13 +7,13 @@
 		data-tour="pages.tree"
 		v-on="zone.handlers"
 	>
-		<SidebarGroupLabel>Pages</SidebarGroupLabel>
+		<SidebarGroupLabel>{{ $t('pages.nav.sidebar.title') }}</SidebarGroupLabel>
 		<div class="absolute top-3.5 right-3 flex items-center gap-0.5">
 			<button
 				type="button"
 				class="flex h-5 w-5 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-				title="New page"
-				aria-label="New page"
+				:title="$t('pages.nav.sidebar.newPage')"
+				:aria-label="$t('pages.nav.sidebar.newPage')"
 				@click="createRoot('plain')"
 			>
 				<Plus class="h-4 w-4" />
@@ -23,8 +23,8 @@
 					<button
 						type="button"
 						:class="typePickerClass"
-						title="Page type"
-						aria-label="Choose page type"
+						:title="$t('pages.nav.sidebar.pageType')"
+						:aria-label="$t('pages.nav.sidebar.choosePageType')"
 						data-tour="pages.type-picker"
 					>
 						<ChevronDown class="h-3.5 w-3.5" />
@@ -44,20 +44,20 @@
 						@select="io.openImport(null)"
 					>
 						<Upload class="mr-2 h-4 w-4" />
-						<span>Import Markdown…</span>
+						<span>{{ $t('pages.nav.sidebar.importMarkdown') }}</span>
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</div>
 
 		<div v-if="!loaded" class="px-2 py-1 text-xs text-sidebar-foreground/60">
-			Loading…
+			{{ $t('common.states.loading') }}
 		</div>
 		<div
 			v-else-if="failed && !pages.length"
 			class="px-2 py-1 text-xs text-destructive"
 		>
-			Failed to load pages
+			{{ $t('pages.nav.sidebar.failed') }}
 		</div>
 		<template v-else>
 			<PagesTreeNode
@@ -78,14 +78,14 @@
 			:to="`/${workspaceCode}/pages`"
 			class="mt-1 block rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 		>
-			All pages
+			{{ $t('pages.nav.sidebar.allPages') }}
 		</router-link>
 		<router-link
 			:to="`/${workspaceCode}/pages/_/archive`"
 			class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 		>
 			<Archive class="h-3 w-3" />
-			Archive
+			{{ $t('pages.nav.sidebar.archive') }}
 		</router-link>
 
 		<PagesTreeDialogs />

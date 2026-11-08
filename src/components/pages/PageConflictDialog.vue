@@ -5,36 +5,40 @@
 			data-testid="page-conflict-dialog"
 		>
 			<DialogHeader>
-				<DialogTitle>Page changed elsewhere</DialogTitle>
+				<DialogTitle>{{ $t('pages.conflict.title') }}</DialogTitle>
 				<DialogDescription>
-					Version {{ theirs.version }} appeared while you were editing. Choose
-					which to keep.
+					{{ $t('pages.conflict.description', { version: theirs.version }) }}
 				</DialogDescription>
 			</DialogHeader>
 
 			<div v-if="comparing" class="grid gap-3 md:grid-cols-2">
 				<div>
-					<h3 class="mb-1 text-sm font-semibold">Their version</h3>
+					<h3 class="mb-1 text-sm font-semibold">
+						{{ $t('pages.conflict.theirVersion') }}
+					</h3>
 					<pre
 						class="max-h-72 overflow-auto rounded-md border border-line bg-surface-sunken p-2 text-xs break-words whitespace-pre-wrap"
 						data-testid="conflict-theirs"
 						>{{ theirs.body }}</pre>
 				</div>
 				<div>
-					<h3 class="mb-1 text-sm font-semibold">Your draft</h3>
+					<h3 class="mb-1 text-sm font-semibold">
+						{{ $t('pages.conflict.yourDraft') }}
+					</h3>
 					<pre
 						class="max-h-72 overflow-auto rounded-md border border-line bg-surface-sunken p-2 text-xs break-words whitespace-pre-wrap"
 						data-testid="conflict-mine"
 						>{{ draftBody }}</pre>
 				</div>
 				<div class="md:col-span-2">
-					<h3 class="mb-1 text-sm font-semibold">Difference</h3>
+					<h3 class="mb-1 text-sm font-semibold">
+						{{ $t('pages.conflict.difference') }}
+					</h3>
 					<PageDiff :before="theirs.body" :after="draftBody" />
 				</div>
 			</div>
 			<p v-else class="text-sm text-ink-muted">
-				Take theirs — load version {{ theirs.version }} and discard your draft.
-				Keep mine — save your text over version {{ theirs.version }}.
+				{{ $t('pages.conflict.hint', { version: theirs.version }) }}
 			</p>
 
 			<DialogFooter class="gap-2 sm:gap-2">
@@ -43,20 +47,20 @@
 					data-testid="conflict-both"
 					@click="$emit('choose', 'both')"
 				>
-					Show both
+					{{ $t('pages.conflict.showBoth') }}
 				</Button>
 				<Button
 					variant="outline"
 					data-testid="conflict-theirs-btn"
 					@click="$emit('choose', 'theirs')"
 				>
-					Take theirs
+					{{ $t('pages.conflict.takeTheirs') }}
 				</Button>
 				<Button
 					data-testid="conflict-mine-btn"
 					@click="$emit('choose', 'mine')"
 				>
-					Keep mine
+					{{ $t('pages.conflict.keepMine') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
