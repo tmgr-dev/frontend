@@ -5,6 +5,7 @@ export interface PendingTaskComment {
 	seq: number;
 	task_id: number;
 	origin: string;
+	workspace: string;
 	body: string;
 }
 
@@ -12,6 +13,7 @@ export interface DecisionTaskCommentDeps {
 	invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 	fetchComments: (taskId: number) => Promise<{ message: string }[]>;
 	postComment: (taskId: number, message: string) => Promise<unknown>;
+	taskWorkspaceCode: (taskId: number) => Promise<string | null>;
 	now: () => number;
 	origin: string | null;
 }
@@ -48,6 +50,18 @@ export const createDecisionTaskCommentSync = (
 		if ((backoffUntil.get(key) ?? 0) > deps.now()) return;
 		if (deps.origin === null || item.origin !== deps.origin) return;
 		try {
+			const code = await deps.taskWorkspaceCode(item.task_id);
+			if (code !== item.workspace) {
+				console.warn(
+					`[decisions] answer ${key} not posted: task ${
+						item.task_id
+					} is in workspace ${code ?? 'unknown'}, the card link says ${
+						item.workspace
+					}`,
+				);
+				backoffUntil.set(key, deps.now() + BACKOFF_MS);
+				return;
+			}
 			const comments = await deps.fetchComments(item.task_id);
 			const present = comments.some((c) =>
 				String(c.message ?? '').includes(marker(item)),
@@ -108,11 +122,15 @@ const defaultDeps = async (): Promise<DecisionTaskCommentDeps> => {
 	const [
 		{ invoke },
 		{ getComments, createComment },
+		{ getTask },
+		{ getWorkspaces },
 		{ WEB_ORIGIN },
 		{ default: $axios },
 	] = await Promise.all([
 		import('@tauri-apps/api/core'),
 		import('@/actions/tmgr/comments'),
+		import('@/actions/tmgr/tasks'),
+		import('@/actions/tmgr/workspaces'),
 		import('@/utils/taskLinks'),
 		import('@/plugins/axios'),
 	]);
@@ -120,6 +138,12 @@ const defaultDeps = async (): Promise<DecisionTaskCommentDeps> => {
 		invoke,
 		fetchComments: (taskId) => getComments(taskId, false),
 		postComment: (taskId, message) => createComment(taskId, { message }),
+		taskWorkspaceCode: async (taskId) => {
+			const task = await getTask(taskId, false);
+			if (task.workspace_id === undefined) return null;
+			const workspaces = await getWorkspaces(false);
+			return workspaces.find((w) => w.id === task.workspace_id)?.code ?? null;
+		},
 		now: Date.now,
 		origin:
 			apiOrigin($axios.defaults.baseURL) === PROD_API_ORIGIN

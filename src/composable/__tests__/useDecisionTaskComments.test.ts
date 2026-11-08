@@ -9,6 +9,7 @@ const item = (over: Partial<PendingTaskComment> = {}): PendingTaskComment => ({
 	seq: 1,
 	task_id: 42,
 	origin: 'https://tmgr.dev',
+	workspace: 'ws',
 	body: 'answer [decision c_1#1]',
 	...over,
 });
@@ -30,6 +31,9 @@ const setup = (pending: PendingTaskComment[] = [item()]) => {
 			async (_taskId: number) => [] as { message: string }[],
 		),
 		postComment: jest.fn(async (_taskId: number, _message: string) => ({})),
+		taskWorkspaceCode: jest.fn(
+			async (_taskId: number) => 'ws' as string | null,
+		),
 		now: () => clock,
 		origin: 'https://tmgr.dev',
 	};
@@ -40,6 +44,43 @@ const setup = (pending: PendingTaskComment[] = [item()]) => {
 };
 
 describe('decision task comment sync', () => {
+	it('posts when the task belongs to the workspace of the card link', async () => {
+		const { deps, marked, sync } = setup();
+		await sync.run();
+		expect(deps.taskWorkspaceCode).toHaveBeenCalledWith(42);
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual(['c_1#1']);
+	});
+
+	it('does not post or mark when the task is in another workspace and logs it', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		const { deps, marked, advance, sync } = setup();
+		deps.taskWorkspaceCode.mockResolvedValue('other');
+		await sync.run();
+		expect(deps.postComment).not.toHaveBeenCalled();
+		expect(deps.fetchComments).not.toHaveBeenCalled();
+		expect(marked).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(1);
+		await sync.run();
+		expect(deps.taskWorkspaceCode).toHaveBeenCalledTimes(1);
+		advance(BACKOFF_MS + 1);
+		deps.taskWorkspaceCode.mockResolvedValue('ws');
+		await sync.run();
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual(['c_1#1']);
+		warn.mockRestore();
+	});
+
+	it('does not post when the task workspace cannot be resolved', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		const { deps, marked, sync } = setup();
+		deps.taskWorkspaceCode.mockResolvedValue(null);
+		await sync.run();
+		expect(deps.postComment).not.toHaveBeenCalled();
+		expect(marked).toEqual([]);
+		warn.mockRestore();
+	});
+
 	it('posts exactly once for concurrent triggers and then marks', async () => {
 		const { deps, marked, sync } = setup();
 		await Promise.all([sync.run(), sync.run()]);

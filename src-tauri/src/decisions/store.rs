@@ -159,6 +159,7 @@ pub struct PendingTaskComment {
   pub seq: u64,
   pub task_id: i64,
   pub origin: String,
+  pub workspace: String,
   pub body: String,
 }
 
@@ -492,12 +493,12 @@ fn expects_agent(c: &CardIn) -> bool {
   matches!(c.reply_via.as_str(), "mcp" | "cli") || (c.reply_via == "hook" && c.kind == "stopped")
 }
 
-fn cloud_task(c: &CardIn) -> Option<(String, i64)> {
+fn cloud_task(c: &CardIn) -> Option<(String, String, i64)> {
   let urls = c.links.task.iter().map(String::as_str).chain(c.links.items.iter().filter(|i| i.kind == "task").map(|i| i.url.as_str()));
   urls.filter_map(parse_cloud_task).next()
 }
 
-fn parse_cloud_task(link: &str) -> Option<(String, i64)> {
+fn parse_cloud_task(link: &str) -> Option<(String, String, i64)> {
   let url = url::Url::parse(link.trim()).ok()?;
   if !matches!(url.scheme(), "http" | "https") {
     return None;
@@ -512,7 +513,7 @@ fn parse_cloud_task(link: &str) -> Option<(String, i64)> {
     Some(port) => format!("{}://{host}:{port}", url.scheme()),
     None => format!("{}://{host}", url.scheme()),
   };
-  Some((origin, id.parse().ok()?))
+  Some((origin, ws.to_owned(), id.parse().ok()?))
 }
 
 fn unmarked(s: &str) -> String {
@@ -1255,8 +1256,8 @@ impl Store {
       if a.deferred || (a.dismissed && !text) || !expects_agent(&c) {
         continue;
       }
-      let Some((origin, task_id)) = cloud_task(&c) else { continue };
-      out.push(PendingTaskComment { body: comment_body(&c, &a, &r.id), card_id: r.id, seq: a.seq, task_id, origin });
+      let Some((origin, workspace, task_id)) = cloud_task(&c) else { continue };
+      out.push(PendingTaskComment { body: comment_body(&c, &a, &r.id), card_id: r.id, seq: a.seq, task_id, origin, workspace });
     }
     Ok(out)
   }
@@ -2784,6 +2785,7 @@ mod tests {
     assert_eq!(pending.len(), 1);
     let p = &pending[0];
     assert_eq!((p.card_id.as_str(), p.seq, p.task_id, p.origin.as_str()), (id.as_str(), 1, 211, "https://tmgr.dev"));
+    assert_eq!(p.workspace, "ws");
     assert!(p.body.contains(&format!("[decision {id}#1]")));
     assert!(p.body.contains("Ship?") && p.body.contains("Ship") && p.body.contains(&id));
     s.mark_task_comment(&id, 1).unwrap();
