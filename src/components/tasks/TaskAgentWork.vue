@@ -72,7 +72,11 @@
 						<span
 							v-if="run.status === 'running'"
 							class="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current align-middle"
-						/>{{ $t(`taskAgent.agentWork.status.${run.status}`) }}
+						/>{{
+							$te(`taskAgent.agentWork.status.${run.status}`)
+								? $t(`taskAgent.agentWork.status.${run.status}`)
+								: run.status
+						}}
 					</span>
 					<span class="ml-auto font-mono text-ink-subtle">
 						{{ formatWorkDuration(liveSeconds(run, now, receivedAt[run.id])) }}

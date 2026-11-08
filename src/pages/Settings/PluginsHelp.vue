@@ -407,7 +407,7 @@
 		ShieldCheck,
 		Users,
 	} from 'lucide-vue-next';
-	import { defineComponent, h, type PropType } from 'vue';
+	import { computed, defineComponent, h, type PropType } from 'vue';
 
 	const StepLabel = defineComponent({
 		props: {
@@ -495,7 +495,7 @@
 			setDocumentTitle(t('settingsPages.pluginsHelp.title'));
 			return {
 				trayName: trayName(),
-				glance: [
+				glance: computed(() => [
 					{
 						icon: ShieldCheck,
 						tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
@@ -520,8 +520,8 @@
 						title: t('settingsPages.pluginsHelp.glance.stop.title'),
 						text: t('settingsPages.pluginsHelp.glance.stop.text'),
 					},
-				],
-				abilities: [
+				]),
+				abilities: computed(() => [
 					{
 						icon: ListChecks,
 						title: t('settingsPages.pluginsHelp.abilities.data.title'),
@@ -537,7 +537,7 @@
 						title: t('settingsPages.pluginsHelp.abilities.pages.title'),
 						text: t('settingsPages.pluginsHelp.abilities.pages.text'),
 					},
-				],
+				]),
 			};
 		},
 	});
