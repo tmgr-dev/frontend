@@ -99,14 +99,13 @@ impl Phones {
     if skip {
       return;
     }
-    let Ok(Some(mut current)) = self.pins.get(&pin.mailbox) else {
+    let mut seq = 0;
+    let Ok(Some(current)) = self.pins.update(&pin.mailbox, |p| {
+      seq = (p.last_seq + 1).max(now);
+      p.last_seq = seq;
+    }) else {
       return;
     };
-    let seq = (current.last_seq + 1).max(now);
-    current.last_seq = seq;
-    if self.pins.put(&current).is_err() {
-      return;
-    }
     let Ok(keys) = current.keys() else { return };
     let body = SnapshotBody {
       v: 1,

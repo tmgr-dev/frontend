@@ -407,6 +407,37 @@ fn expired_and_future_issued_at_are_refused() {
 }
 
 #[test]
+fn a_replay_after_the_window_is_expired_not_duplicate() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+  r.clock.fetch_add(25 * HOUR, Ordering::SeqCst);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Expired);
+}
+
+#[test]
+fn only_an_applied_answer_extends_the_pairing() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+  let used = r.phones.pins.get("mb1").unwrap().unwrap().last_used_ms;
+  r.clock.fetch_add(HOUR, Ordering::SeqCst);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Duplicate);
+  let again = r.body(&id, &digest, &session, Action::Answer, Some("b"), None);
+  assert_eq!(r.answer_ack(&p, &again).result, AckResult::Closed);
+  let mut stale = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
+  stale.issued_at = r.now() - 25 * HOUR;
+  assert_eq!(r.answer_ack(&p, &stale).result, AckResult::Expired);
+  assert_eq!(r.phones.pins.get("mb1").unwrap().unwrap().last_used_ms, used);
+}
+
+#[test]
 fn a_revoked_pairing_gets_ack_revoked_and_applies_nothing() {
   let r = rig();
   let p = r.pair("mb1", "Pocket", 10);
@@ -850,4 +881,26 @@ fn pins_use_an_index_and_survive_a_new_pins_handle() {
   assert_eq!(again.list().unwrap().len(), 2);
   again.delete("mb1").unwrap();
   assert_eq!(again.list().unwrap().len(), 1);
+}
+
+#[test]
+fn an_update_after_a_revoke_does_not_resurrect_the_pin() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  let held = r.phones.pins.get("mb1").unwrap().unwrap();
+  r.phones.revoke("mb1").unwrap();
+  let out = r.phones.pins.update("mb1", |p| p.last_seq = held.last_seq + 1).unwrap();
+  assert!(out.is_none());
+  assert!(r.phones.pins.get("mb1").unwrap().is_none());
+  assert!(r.phones.pins.list().unwrap().is_empty());
+}
+
+#[test]
+fn update_changes_a_live_pin_in_place() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  let out = r.phones.pins.update("mb1", |p| p.last_seq = 9).unwrap().unwrap();
+  assert_eq!(out.last_seq, 9);
+  assert_eq!(r.phones.pins.get("mb1").unwrap().unwrap().last_seq, 9);
+  assert_eq!(r.phones.pins.list().unwrap().len(), 1);
 }

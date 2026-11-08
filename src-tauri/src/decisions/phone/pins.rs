@@ -182,6 +182,14 @@ impl Pins {
     Ok(())
   }
 
+  pub fn update(&self, mailbox: &str, f: impl FnOnce(&mut Pin)) -> Result<Option<Pin>, String> {
+    let _g = self.gate.lock().unwrap_or_else(|p| p.into_inner());
+    let Some(mut pin) = self.read(mailbox)? else { return Ok(None) };
+    f(&mut pin);
+    self.store.set(mailbox, &serde_json::to_string(&pin).map_err(|e| e.to_string())?)?;
+    Ok(Some(pin))
+  }
+
   pub fn delete(&self, mailbox: &str) -> Result<(), String> {
     let _g = self.gate.lock().unwrap_or_else(|p| p.into_inner());
     self.store.delete(mailbox)?;
