@@ -1229,7 +1229,7 @@ impl Store {
     for r in rows {
       let (Some(a), Ok(c)) = (parse_answer(&r)?, serde_json::from_str::<CardIn>(&r.card)) else { continue };
       let text = a.free_text.as_deref().is_some_and(|t| !t.trim().is_empty());
-      if a.deferred || (a.dismissed && !text) {
+      if a.deferred || (a.dismissed && !text) || !expects_agent(&c) {
         continue;
       }
       let Some((origin, task_id)) = cloud_task(&c) else { continue };
