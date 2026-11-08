@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "Weitere Aktionen",
+		"send": "Senden",
+		"select": "Auswählen",
+		"toggleDetails": "Details ein-/ausblenden",
+		"sparkline": "Sparkline",
+		"confirmTitle": "Plugin {name}: {text}",
+		"commandFailed": "Der Plugin-Befehl ist fehlgeschlagen",
+		"showLess": "Weniger anzeigen",
+		"more": "{hidden} weitere",
+		"controlLabel": "Plugin: {name}"
+	},
+	"chart": {
+		"summaryBar": "Balkendiagramm von {series} über {n} Punkt | Balkendiagramm von {series} über {n} Punkte",
+		"summaryLine": "Liniendiagramm von {series} über {n} Punkt | Liniendiagramm von {series} über {n} Punkte",
+		"keyHint": "Mit den Pfeiltasten kannst du die Werte lesen."
+	},
+	"markdown": {
+		"done": "Erledigt",
+		"notDone": "Nicht erledigt"
+	},
+	"taskMenu": {
+		"submenu": "Plugins"
+	},
+	"taskSections": {
+		"unavailable": "Nicht verfügbar: {error}"
+	},
+	"page": {
+		"notInstalled": "Dieses Plugin ist nicht installiert.",
+		"notRunning": "{name} läuft in diesem Arbeitsbereich nicht.",
+		"notRunningWithError": "{name} läuft in diesem Arbeitsbereich nicht: {error}",
+		"openSettings": "Plugin-Einstellungen öffnen",
+		"ownWindow": "„{title}“ ist die eigene Seite des Plugins. Sie öffnet sich in einem separaten Fenster und kann die App daher nicht verlangsamen oder einfrieren.",
+		"openWindow": "Fenster öffnen",
+		"openFailed": "Das Plugin-Fenster konnte nicht geöffnet werden: {error}",
+		"nothingToShow": "Das Plugin hat nichts zum Anzeigen geliefert.",
+		"drawFailed": "Das Plugin konnte diese Seite nicht darstellen: {error}"
+	}
+}

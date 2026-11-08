@@ -1,0 +1,1069 @@
+{
+	"tours": {
+		"ui": {
+			"stepOf": "Schritt {position} von {total}",
+			"positionOf": "{position} von {total}",
+			"waiting": "Wir warten auf dich…",
+			"skipThisStep": "Diesen Schritt überspringen",
+			"skipStep": "Schritt überspringen",
+			"skipTour": "Tour überspringen",
+			"skip": "Überspringen",
+			"more": "Mehr",
+			"takeMeThere": "Hinbringen",
+			"done": "Fertig",
+			"next": "Weiter"
+		},
+		"skipMenu": {
+			"skipStep": {
+				"label": "Diesen Schritt überspringen",
+				"hint": "Zum nächsten wechseln"
+			},
+			"pause": {
+				"label": "Tour pausieren",
+				"hint": "Setze sie unter Erste Schritte fort"
+			},
+			"explore": {
+				"label": "Ich schaue selbst",
+				"hint": "Automatische Touren beenden. Erste Schritte bleibt im Menü."
+			},
+			"never": {
+				"label": "Nie Tipps anzeigen",
+				"hint": "In den Einstellungen wieder einschalten"
+			},
+			"skipTour": {
+				"label": "Tour überspringen",
+				"hint": "Diese Tour beenden"
+			}
+		},
+		"tips": {
+			"title": "Tipps und Touren",
+			"description": "Kurze geführte Touren, die beim Arbeiten mit TMGR erscheinen.",
+			"legend": "Wann Tipps angezeigt werden",
+			"saveFailed": "Deine Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut.",
+			"resetAll": "Alle Touren zurücksetzen",
+			"resetPrompt": "Alle Touren von vorn starten?",
+			"options": {
+				"auto": {
+					"label": "Tipps automatisch anzeigen",
+					"description": "Beim ersten Öffnen einer Funktion wird dir eine kurze Tour angeboten."
+				},
+				"hubOnly": {
+					"label": "Nur über Erste Schritte",
+					"description": "Keine automatischen Touren. Starte jede Tour selbst auf der Seite Erste Schritte."
+				},
+				"off": {
+					"label": "Nie Tipps anzeigen",
+					"description": "Die Touren bleiben auf der Seite Erste Schritte, falls du sie nutzen möchtest."
+				}
+			}
+		},
+		"help": {
+			"label": "Hilfe und Touren",
+			"gettingStarted": "Erste Schritte",
+			"watchDemo": "Demo ansehen",
+			"restartPageTour": "Tour dieser Seite neu starten",
+			"tipsSettings": "Tipp-Einstellungen"
+		},
+		"host": {
+			"resume": "Tour fortsetzen",
+			"dismiss": "Schließen",
+			"hints": {
+				"notOpen": "Du bist auf der richtigen Seite, aber dieser Bereich ist noch nicht geöffnet. Öffne ihn oder überspringe den Schritt.",
+				"notFound": "Wir konnten das gerade nicht auf dem Bildschirm finden.",
+				"timerTooShort": "Lass den Timer mindestens eine Minute laufen."
+			}
+		},
+		"keycaps": {
+			"systemTray": "Infobereich",
+			"fallback": "dein Kürzel für {name} (Einstellungen → Desktop)",
+			"shortcuts": {
+				"quickAdd": "Schnell hinzufügen",
+				"timer": "Timer",
+				"screenshot": "Screenshot",
+				"selection": "Textaufnahme"
+			}
+		},
+		"a11y": {
+			"stepAnnouncement": "Schritt {position} von {total}: {title}.",
+			"waitingForYou": "Wir warten auf dich."
+		},
+		"groups": {
+			"start": "Erste Schritte",
+			"tasks": "Aufgaben & Board",
+			"time": "Zeit",
+			"agents": "Agenten & MCP",
+			"personas": "Personas",
+			"pages": "Seiten & Kontext",
+			"graph": "Graph & Karte",
+			"routines": "Routinen",
+			"workspace": "Arbeitsbereiche & Einstellungen",
+			"desktop": "Desktop"
+		},
+		"hub": {
+			"turnOnModule": "{label} unter Einstellungen -> Module einschalten",
+			"askOwnerModule": "Bitte den Eigentümer des Arbeitsbereichs, {label} einzuschalten",
+			"progress": "Schritt {position} von {total}"
+		},
+		"catalog": {
+			"agents": {
+				"workLog": {
+					"title": "Zusehen, wie ein Agent seine Arbeit protokolliert",
+					"steps": {
+						"s1": {
+							"title": "Agent-Läufe",
+							"body": "Hier erscheinen die Läufe deines Agenten: Branch, Commits, Tests und Zeit."
+						},
+						"s2": {
+							"title": "Lauf läuft",
+							"body": "Wir warten, bis der Agent seinen Lauf beendet…"
+						},
+						"s3": {
+							"title": "Agent-Zeit",
+							"body": "Die Zeit des Agenten wird nie zu deiner erfassten Zeit addiert. Du siehst beides."
+						}
+					}
+				},
+				"phoneAlerts": {
+					"title": "Handy-Benachrichtigungen für Agenten",
+					"steps": {
+						"s1": {
+							"title": "Notify-Token erstellen",
+							"body": "Erstelle ein Notify-Token, damit dein Agent dein Handy anpingen kann."
+						},
+						"s2": {
+							"title": "Zu deinem Agenten hinzufügen",
+							"body": "Füge npx -y {'@'}tmgr/notify mcp zu deinem Agenten hinzu und sende dann einen Test."
+						},
+						"s3": {
+							"title": "Test senden",
+							"body": "Das iPhone (TestFlight-Beta) klingelt ab iOS 26 auch im Lautlos-Modus."
+						}
+					}
+				},
+				"mcpToken": {
+					"title": "Persönliches MCP-Token",
+					"steps": {
+						"s1": {
+							"title": "Token erstellen",
+							"body": "Mit diesem Token kann jeder MCP-Client in deinem Namen handeln. Wird nur einmal angezeigt und als Hash gespeichert."
+						}
+					}
+				},
+				"askAi": {
+					"title": "KI zu deinem Arbeitsbereich fragen",
+					"steps": {
+						"s1": {
+							"title": "KI fragen öffnen",
+							"body": "Stelle Fragen zu Aufgaben, Zeit und Fristen.",
+							"mobileBody": "Tippe oben in der Leiste auf KI fragen."
+						},
+						"s2": {
+							"title": "Frage stellen",
+							"body": "Probiere: Woran habe ich diese Woche gearbeitet?"
+						}
+					}
+				},
+				"connectLater": {
+					"title": "Agent verbinden",
+					"steps": {
+						"s1": {
+							"title": "Client auswählen",
+							"body": "Wähle den Client, den du nutzt. Jeder Tab zeigt seinen eigenen Befehl."
+						},
+						"s2": {
+							"title": "Befehl kopieren",
+							"body": "Kopiere diesen Befehl und führe ihn in deinem Terminal aus. Das Token wird nur einmal angezeigt.",
+							"mobileBody": "Öffne diese Seite auf deinem Computer oder kopiere den Befehl, um ihn dorthin zu schicken."
+						},
+						"s3": {
+							"title": "Warten auf deinen Agenten",
+							"body": "Wir warten darauf, dass sich dein Agent verbindet. Die Anzeige aktualisiert sich von selbst."
+						},
+						"s4": {
+							"title": "Prompt ausprobieren",
+							"body": "Füge diesen Prompt in deinen Agenten ein. Er übernimmt die Starter-Aufgabe."
+						}
+					}
+				}
+			},
+			"desktop": {
+				"quickAdd": {
+					"title": "Aufgabe von überall hinzufügen",
+					"steps": {
+						"s1": {
+							"title": "Schnell hinzufügen",
+							"body": "Drücke {'{'}key:quickAdd{'}'} in einer beliebigen App. Ein kleines Erfassungsfenster öffnet sich."
+						},
+						"s2": {
+							"title": "Etwas erfassen",
+							"body": "Gib einen Titel ein und drücke Enter. Der Eintrag landet in deiner Tagesroutine oder wird zur Board-Aufgabe, wenn er einen Screenshot enthält."
+						}
+					}
+				},
+				"capture": {
+					"title": "Screenshot und Auswahl zur Aufgabe",
+					"steps": {
+						"s1": {
+							"title": "Erfassungs-Kürzel",
+							"body": "{'{'}key:screenshot{'}'} macht aus einem Screenshot eine Aufgabe. {'{'}key:selection{'}'} macht aus markiertem Text eine.",
+							"bodyMacos": "{'{'}key:screenshot{'}'} macht aus einem Screenshot eine Aufgabe. {'{'}key:selection{'}'} macht aus markiertem Text eine.",
+							"bodyOther": "{'{'}key:screenshot{'}'} macht aus einem Screenshot eine Aufgabe."
+						},
+						"s2": {
+							"title": "Kürzel ändern",
+							"body": "Ändere hier jedes Kürzel."
+						}
+					}
+				},
+				"menuBarTimer": {
+					"title": "Timer in der Menüleiste oder im Infobereich",
+					"steps": {
+						"s1": {
+							"title": "Dein laufender Timer",
+							"body": "Dein laufender Timer sitzt in der Menüleiste. Stoppe oder wechsle ihn, ohne TMGR zu öffnen.",
+							"bodyMacos": "Dein laufender Timer sitzt in der Menüleiste. Stoppe oder wechsle ihn, ohne TMGR zu öffnen.",
+							"bodyOther": "Dein laufender Timer befindet sich im TMGR-Menü im Infobereich. Stoppe oder wechsle ihn dort."
+						},
+						"s2": {
+							"title": "Fenster schließen",
+							"body": "Wenn du das Fenster schließt, läuft TMGR im {'{'}tray{'}'} weiter."
+						}
+					}
+				},
+				"windows": {
+					"title": "Aufgaben im eigenen Fenster",
+					"steps": {
+						"s1": {
+							"title": "Eigenes Fenster",
+							"body": "Öffne eine Aufgabe oder Seite in einem eigenen Fenster. Sie bleibt synchron."
+						}
+					}
+				},
+				"localWorkspace": {
+					"title": "Dein lokaler Arbeitsbereich",
+					"steps": {
+						"s1": {
+							"title": "Auf diesem Computer gespeichert",
+							"body": "Dieser Arbeitsbereich ist auf diesem Computer gespeichert. Aufgaben und Seiten bleiben hier, bis du sie in die Cloud verschiebst."
+						},
+						"s2": {
+							"title": "Lokal-Badge",
+							"body": "Lokale Arbeitsbereiche zeigen dieses Badge. Cloud-Arbeitsbereiche nicht."
+						},
+						"s3": {
+							"title": "Konto erstellen",
+							"body": "Erstelle später ein Konto, um TMGR auf anderen Geräten zu nutzen.",
+							"mobileBody": "Öffne das Menü, um später ein Konto zu erstellen und TMGR auf anderen Geräten zu nutzen."
+						}
+					}
+				},
+				"backups": {
+					"title": "Backups",
+					"steps": {
+						"s1": {
+							"title": "Automatische Backups",
+							"body": "TMGR sichert lokale Arbeitsbereiche täglich. Es behält 7 tägliche, 4 wöchentliche und 3 monatliche Kopien."
+						},
+						"s2": {
+							"title": "Jetzt sichern",
+							"body": "Sichere jetzt, bevor du große Änderungen machst."
+						}
+					}
+				},
+				"localAgent": {
+					"title": "Lokalen Agenten verbinden",
+					"steps": {
+						"s1": {
+							"title": "Agent verbinden",
+							"body": "Agenten auf diesem Computer können in lokalen Arbeitsbereichen arbeiten. Hake deinen an und klicke auf Installieren. TMGR richtet die Verbindung ein und schaltet ein, was nötig ist."
+						},
+						"s2": {
+							"title": "Agent verbinden",
+							"body": "Wähle deinen Agenten und klicke auf Installieren. Beim ersten Aufruf geht es weiter."
+						}
+					}
+				},
+				"plugins": {
+					"title": "Plugins",
+					"steps": {
+						"s1": {
+							"title": "Plugin installieren",
+							"body": "Installiere ein Plugin über eine GitHub-URL. Plugins laufen in einer Sandbox mit deklarierten Berechtigungen."
+						},
+						"s2": {
+							"title": "Berechtigungen",
+							"body": "Die Hilfe erklärt jede Berechtigung, bevor du sie erteilst."
+						}
+					}
+				},
+				"whatsNew": {
+					"title": "Was ist neu",
+					"steps": {
+						"s1": {
+							"title": "Neu in dieser Version",
+							"body": "Neu in dieser Version. Mach eine einminütige Tour."
+						}
+					}
+				},
+				"moveToCloud": {
+					"title": "Lokalen Arbeitsbereich in dein Konto verschieben",
+					"steps": {
+						"s1": {
+							"title": "In die Cloud verschieben",
+							"body": "Kopiere diesen lokalen Arbeitsbereich in dein Cloud-Konto. Deine lokale Kopie bleibt erhalten."
+						},
+						"s2": {
+							"title": "Wird kopiert",
+							"body": "Dein Arbeitsbereich wird kopiert. Das kann eine Minute dauern."
+						},
+						"s3": {
+							"title": "Verschoben",
+							"body": "Fertig. Öffne den Cloud-Arbeitsbereich."
+						}
+					}
+				},
+				"ghostWatch": {
+					"title": "Einem Agenten bei der Arbeit zusehen",
+					"steps": {
+						"s1": {
+							"title": "Ein Demo-Agent bei der Arbeit",
+							"body": "Wir öffnen einen Demo-Arbeitsbereich, in dem ein simulierter Agent einen Bug behebt. Auf deinem Mac läuft nichts."
+						},
+						"s2": {
+							"title": "Das Board beobachten",
+							"body": "Die Karte bewegt sich, der Timer tickt und der Lauf füllt sich. Drücke Esc, um vorzuspringen."
+						}
+					}
+				}
+			},
+			"graph": {
+				"map": {
+					"title": "Die Karte deines Arbeitsbereichs",
+					"steps": {
+						"s1": {
+							"title": "Die Karte",
+							"body": "Aufgaben, Seiten und Personen als Karte. Linien sind Links, Beziehungen und Erwähnungen."
+						},
+						"s2": {
+							"title": "Filter",
+							"body": "Filtere nach Typ oder Projekt, um einen Ausschnitt des Arbeitsbereichs zu sehen."
+						},
+						"s3": {
+							"title": "Suche",
+							"body": "Suche oder klicke auf einen Knoten, um ihn zu öffnen."
+						}
+					}
+				},
+				"enable": {
+					"title": "Graph einschalten",
+					"steps": {
+						"s1": {
+							"title": "Graph einschalten",
+							"body": "Graph ist in diesem Arbeitsbereich ausgeschaltet. Schalte ihn ein, um die Karte zu sehen."
+						}
+					}
+				}
+			},
+			"pages": {
+				"first": {
+					"title": "Deine erste Seite schreiben",
+					"steps": {
+						"s1": {
+							"title": "Seite erstellen",
+							"body": "Erstelle eine Seite. Markdown, Bilder und Dateien sind willkommen."
+						},
+						"s2": {
+							"title": "Seitenbaum",
+							"body": "Angeheftete und zuletzt genutzte Seiten stehen in deiner Seitenleiste. Alle Seiten zeigt den ganzen Baum: Ziehe Seiten, um sie zu verschachteln."
+						}
+					}
+				},
+				"context": {
+					"title": "Eine Kontextseite, die Agenten lesen",
+					"steps": {
+						"s1": {
+							"title": "Kontextseite erstellen",
+							"body": "Wähle den Seitentyp Kontext. Agenten lesen sie, bevor sie arbeiten."
+						},
+						"s2": {
+							"title": "Kontext schreiben",
+							"body": "Schreibe auf, was jeder Agent wissen sollte: Stack, Konventionen, wo was liegt."
+						}
+					}
+				},
+				"links": {
+					"title": "Seiten und Aufgaben verknüpfen",
+					"steps": {
+						"s1": {
+							"title": "Link hinzufügen",
+							"body": "Tippe {'@'} oder [[, um eine Aufgabe, Seite, ein Projekt oder eine Person zu verknüpfen."
+						},
+						"s2": {
+							"title": "Backlinks",
+							"body": "Backlinks zeigen jede Seite, die diese erwähnt."
+						}
+					}
+				},
+				"versions": {
+					"title": "Versionen und Wiederherstellung",
+					"steps": {
+						"s1": {
+							"title": "Versionen",
+							"body": "Öffne eine Seite und dann Verlauf. Jedes Speichern ist eine Version, die du vergleichen und wiederherstellen kannst."
+						}
+					}
+				},
+				"peopleMeetings": {
+					"title": "Personen- und Meeting-Seiten",
+					"steps": {
+						"s1": {
+							"title": "Seitentypen",
+							"body": "Erstelle eine Personenseite (Rolle, Firma, offene Aufgaben) oder eine Meeting-Seite (Datum, Teilnehmer)."
+						}
+					}
+				},
+				"import": {
+					"title": "Deine Notizen mitbringen",
+					"steps": {
+						"s1": {
+							"title": "Importieren",
+							"body": "Importiere .md-Dateien oder eine .zip: einen Obsidian-Vault oder einen Notion-Export."
+						},
+						"s2": {
+							"title": "Exportieren",
+							"body": "Exportiere eine Seite als .md oder den ganzen Baum als .zip."
+						}
+					}
+				},
+				"taskFromSelection": {
+					"title": "Text in eine Aufgabe verwandeln",
+					"steps": {
+						"s1": {
+							"title": "Aufgabe erstellen",
+							"body": "Markiere Text und wähle Aufgabe erstellen. Die Aufgabe verweist auf diese Seite zurück."
+						}
+					}
+				}
+			},
+			"personas": {
+				"create": {
+					"title": "Gib deinem Agenten eine Identität",
+					"steps": {
+						"s1": {
+							"title": "Persona erstellen",
+							"body": "Erstelle eine Persona: Name, System-Prompt und Skills für einen Agenten."
+						},
+						"s2": {
+							"title": "Zugriff auf Arbeitsbereiche",
+							"body": "Gib ihr Arbeitsbereiche und Berechtigungen: erlaubt, schreibgeschützt oder verboten."
+						}
+					}
+				},
+				"token": {
+					"title": "Persona-Token",
+					"steps": {
+						"s1": {
+							"title": "Token erstellen",
+							"body": "Erstelle ein Token für diese Persona. 1 bis 365 Tage gültig, wird nur einmal angezeigt."
+						}
+					}
+				},
+				"assign": {
+					"title": "Aufgabe einer Persona zuweisen",
+					"steps": {
+						"s1": {
+							"title": "Aufgabe zuweisen",
+							"body": "Weise diese Aufgabe deiner Persona zu. Sie erscheint in der Warteschlange des Agenten."
+						},
+						"s2": {
+							"title": "Der Agent übernimmt sie",
+							"body": "Der Agent liest seine Warteschlange mit list_my_queue und übernimmt die Aufgabe."
+						}
+					}
+				},
+				"skills": {
+					"title": "Persona-Skills",
+					"steps": {
+						"s1": {
+							"title": "Skills",
+							"body": "Skills sind wiederverwendbare Anweisungen, die der Agent bei Bedarf lädt."
+						}
+					}
+				}
+			},
+			"routines": {
+				"first": {
+					"title": "Tagesroutine hinzufügen",
+					"steps": {
+						"s1": {
+							"title": "Routine hinzufügen",
+							"body": "Füge etwas hinzu, das du wiederholst: täglich, wöchentlich, monatlich oder jährlich."
+						},
+						"s2": {
+							"title": "Abhaken",
+							"body": "Hake sie für heute ab."
+						}
+					}
+				},
+				"views": {
+					"title": "Tag, Woche, Monat, Jahr",
+					"steps": {
+						"s1": {
+							"title": "Ansichten",
+							"body": "Wechsle die Ansicht. Die Jahresansicht ist eine Heatmap dessen, was du durchgehalten hast."
+						}
+					}
+				},
+				"reminders": {
+					"title": "Erinnerungen und Umwandlung",
+					"steps": {
+						"s1": {
+							"title": "Routine öffnen",
+							"body": "Öffne eine Routine, um sie zu bearbeiten. Füge zuerst eine hinzu, falls die Liste leer ist."
+						},
+						"s2": {
+							"title": "Erinnerung",
+							"body": "Lege eine Erinnerung fest, bevor eine Routine fällig wird."
+						},
+						"s3": {
+							"title": "In eine Aufgabe umwandeln",
+							"body": "Wandle eine Routine in eine Aufgabe um, wenn sie wächst."
+						}
+					}
+				}
+			},
+			"start": {
+				"nav": {
+					"title": "Orientiere dich",
+					"steps": {
+						"s1": {
+							"title": "Dein Arbeitsbereich",
+							"body": "Das ist dein Arbeitsbereich. Liste, Board, Routinen und Seiten findest du hier.",
+							"mobileBody": "Tippe auf das Menü, um zwischen Liste, Board, Routinen und Seiten zu wechseln."
+						},
+						"s2": {
+							"title": "Arbeitsbereiche",
+							"body": "Wechsle hier den Arbeitsbereich oder erstelle einen neuen.",
+							"mobileBody": "Öffne das Menü, um den Arbeitsbereich zu wechseln oder einen neuen zu erstellen."
+						},
+						"s3": {
+							"title": "Neue Aufgabe",
+							"body": "Erstelle mit dieser Schaltfläche von überall eine Aufgabe."
+						},
+						"s4": {
+							"title": "Dein Menü",
+							"body": "Dein Profil, die Einstellungen und der helle oder dunkle Modus sind in deinem Menü.",
+							"mobileBody": "Öffne das Menü für dein Profil, die Einstellungen und den hellen oder dunklen Modus."
+						},
+						"s5": {
+							"title": "Erste Schritte",
+							"body": "Touren und deine Checkliste warten hier. Komm jederzeit zurück.",
+							"mobileBody": "Touren und deine Checkliste sind im Menü. Komm jederzeit zurück."
+						}
+					}
+				},
+				"firstTask": {
+					"title": "Deine erste Aufgabe erstellen",
+					"steps": {
+						"s1": {
+							"title": "Aufgabe erstellen",
+							"body": "Klicke hier, um eine Aufgabe zu erstellen.",
+							"mobileBody": "Tippe hier, um eine Aufgabe zu erstellen."
+						},
+						"s2": {
+							"title": "Titel vergeben",
+							"body": "Gib einen Titel ein und drücke Erstellen oder Strg+S. Alles andere ist optional.",
+							"mobileBody": "Gib einen Titel ein und tippe auf Erstellen. Alles andere ist optional."
+						},
+						"s3": {
+							"title": "Deine erste Aufgabe",
+							"body": "Fertig. Klicke auf eine Aufgabe, um Details, einen Timer und Kommentare zu öffnen.",
+							"mobileBody": "Fertig. Tippe auf eine Aufgabe, um Details, einen Timer und Kommentare zu öffnen."
+						}
+					}
+				},
+				"hub": {
+					"title": "Deine Seite Erste Schritte",
+					"steps": {
+						"s1": {
+							"title": "Checkliste",
+							"body": "Deine Checkliste hakt sich beim Arbeiten von selbst ab."
+						},
+						"s2": {
+							"title": "Touren",
+							"body": "Kurze Touren zu jeder Funktion. Mach sie in beliebiger Reihenfolge."
+						},
+						"s3": {
+							"title": "Automatische Tipps",
+							"body": "Schalte hier die automatischen Tipps aus. Die Touren bleiben auf dieser Seite verfügbar."
+						}
+					}
+				},
+				"connectAgent": {
+					"title": "Deinen KI-Agenten verbinden",
+					"steps": {
+						"s1": {
+							"title": "Client auswählen",
+							"body": "Wähle den Client, den du nutzt. Jeder Tab zeigt seinen eigenen Befehl."
+						},
+						"s2": {
+							"title": "Befehl kopieren",
+							"body": "Kopiere diesen Befehl und führe ihn in deinem Terminal aus. Das Token wird nur einmal angezeigt.",
+							"mobileBody": "Öffne diese Seite auf deinem Computer oder kopiere den Befehl, um ihn dorthin zu schicken."
+						},
+						"s3": {
+							"title": "Warten auf deinen Agenten",
+							"body": "Wir warten darauf, dass sich dein Agent verbindet. Die Anzeige aktualisiert sich von selbst."
+						},
+						"s4": {
+							"title": "Prompt ausprobieren",
+							"body": "Füge diesen Prompt in deinen Agenten ein. Er übernimmt die Starter-Aufgabe."
+						}
+					}
+				}
+			},
+			"tasks": {
+				"anatomy": {
+					"title": "Im Inneren einer Aufgabe",
+					"steps": {
+						"s1": {
+							"title": "Status",
+							"body": "Der Status bewegt die Aufgabe über dein Board."
+						},
+						"s2": {
+							"title": "Projekt",
+							"body": "Projekte geben Aufgaben Ticket-Codes: ein kurzes Präfix plus eine Nummer."
+						},
+						"s3": {
+							"title": "Zuständige",
+							"body": "Weise Personen oder Personas zu. Personas sind deine KI-Agenten."
+						},
+						"s4": {
+							"title": "Beschreibung",
+							"body": "Schreibe hier Details auf. Agenten lesen sie auch."
+						},
+						"s5": {
+							"title": "Erledigt",
+							"body": "Hake ab, um abzuschließen. Erledigte Aufgaben wandern ins Archiv."
+						}
+					}
+				},
+				"boardMove": {
+					"title": "Eine Karte auf dem Board verschieben",
+					"steps": {
+						"s1": {
+							"title": "Spalten",
+							"body": "Jede Spalte ist ein Status."
+						},
+						"s2": {
+							"title": "Karte verschieben",
+							"body": "Ziehe diese Karte am Griff nach In Bearbeitung. Oder öffne sie und ändere den Status.",
+							"mobileBody": "Öffne eine Karte und ändere ihren Status. Ziehen ist nicht nötig."
+						},
+						"s3": {
+							"title": "Zu einer Spalte hinzufügen",
+							"body": "Füge hier direkt in einer Spalte eine Aufgabe hinzu."
+						}
+					}
+				},
+				"commentsFiles": {
+					"title": "Kommentare und Dateien",
+					"steps": {
+						"s1": {
+							"title": "Kommentare",
+							"body": "Hinterlasse einen Kommentar. Auch Agenten posten hier ihre Notizen."
+						},
+						"s2": {
+							"title": "Dateien",
+							"body": "Hänge Dateien bis 25 MB an oder füge ein Bild ein."
+						}
+					}
+				},
+				"archive": {
+					"title": "Abschließen und archivieren",
+					"steps": {
+						"s1": {
+							"title": "Archiv",
+							"body": "Erledigte Aufgaben werden hier aufbewahrt. Öffne das Archiv, um sie wiederzufinden.",
+							"mobileBody": "Öffne das Menü, um das Archiv zu finden, in dem erledigte Aufgaben aufbewahrt werden."
+						}
+					}
+				},
+				"statuses": {
+					"title": "Deinen Workflow gestalten",
+					"steps": {
+						"s1": {
+							"title": "Status",
+							"body": "Benenne Status um, färbe sie ein und ordne sie neu an. Der Typ entscheidet, was als aktiv oder erledigt gilt."
+						},
+						"s2": {
+							"title": "Status hinzufügen",
+							"body": "Füge einen Status für deine eigene Phase hinzu, zum Beispiel Review."
+						}
+					}
+				},
+				"categories": {
+					"title": "Projekte und Ticket-Codes",
+					"steps": {
+						"s1": {
+							"title": "Projekt erstellen",
+							"body": "Erstelle ein Projekt. Sein Kurzcode wird zum Präfix jeder Aufgabennummer darin.",
+							"mobileBody": "Öffne das Menü und tippe auf + neben Projekte. Der Kurzcode wird zum Präfix jeder Aufgabennummer darin."
+						},
+						"s2": {
+							"title": "Projekt öffnen",
+							"body": "Öffne ein Projekt, um nur seine Aufgaben zu sehen. Projekte können verschachtelt werden.",
+							"mobileBody": "Deine Projekte findest du im Menü. Öffne eines, um nur seine Aufgaben zu sehen."
+						}
+					}
+				},
+				"relations": {
+					"title": "Verwandte Aufgaben verknüpfen",
+					"steps": {
+						"s1": {
+							"title": "Beziehungen",
+							"body": "Markiere, dass diese Aufgabe eine andere blockiert, dupliziert oder mit ihr zusammenhängt."
+						}
+					}
+				},
+				"filesPage": {
+					"title": "Alle Dateien an einem Ort",
+					"steps": {
+						"s1": {
+							"title": "Dateien",
+							"body": "Jede Datei, die an eine Aufgabe oder Seite in diesem Arbeitsbereich angehängt ist."
+						}
+					}
+				},
+				"multiSelect": {
+					"title": "Mehrere Aufgaben bearbeiten",
+					"steps": {
+						"s1": {
+							"title": "Auswahlmodus",
+							"body": "Wähle mehrere Aufgaben aus, um sie gemeinsam zu verschieben, abzuschließen oder zu exportieren."
+						}
+					}
+				}
+			},
+			"time": {
+				"timer": {
+					"title": "Einen Timer starten",
+					"steps": {
+						"s1": {
+							"title": "Timer starten",
+							"body": "Drücke Play. Sobald er läuft, geht es weiter."
+						},
+						"s2": {
+							"title": "Laufende Timer",
+							"body": "Laufende Timer bleiben hier sichtbar, auch wenn die Aufgabe geschlossen ist."
+						},
+						"s3": {
+							"title": "Timer stoppen",
+							"body": "Stoppe ihn, wenn du fertig bist. Die Zeit wird der Aufgabe hinzugefügt."
+						},
+						"s4": {
+							"title": "Schätzungen",
+							"body": "Lege in den Aufgabeneinstellungen eine Schätzung fest, um zu sehen, wann du sie überschreitest."
+						}
+					}
+				},
+				"parallel": {
+					"title": "Mehrere Timer gleichzeitig",
+					"steps": {
+						"s1": {
+							"title": "Mehrere Timer gleichzeitig",
+							"body": "Starte einen Timer für jede Aufgabe, an der du arbeitest. Alle laufenden Timer sammeln sich in einem Badge."
+						},
+						"s2": {
+							"title": "Laufende Timer",
+							"body": "Stoppe oder wechsle deine laufenden Timer hier."
+						}
+					}
+				},
+				"checkpoints": {
+					"title": "Checkpoints",
+					"steps": {
+						"s1": {
+							"title": "Checkpoint erfassen",
+							"body": "Erfasse einen Checkpoint: einen betitelten Zeitabschnitt innerhalb dieser Aufgabe."
+						}
+					}
+				},
+				"pomodoro": {
+					"title": "Pomodoro",
+					"steps": {
+						"s1": {
+							"title": "Pomodoro einschalten",
+							"body": "Schalte Pomodoro für diese Aufgabe ein. Fokus und Pausen werden mit iPhone und Watch synchronisiert."
+						},
+						"s2": {
+							"title": "Pomodoro-Einstellungen",
+							"body": "Ändere Längen, Autostart und ob Pausen die erfasste Zeit anhalten."
+						}
+					}
+				},
+				"export": {
+					"title": "Deine Stunden exportieren",
+					"steps": {
+						"s1": {
+							"title": "Aufgaben auswählen",
+							"body": "Wähle die Aufgaben für den Export aus."
+						},
+						"s2": {
+							"title": "Aktionen öffnen",
+							"body": "Öffne die Aktionen für die ausgewählten Aufgaben."
+						},
+						"s3": {
+							"title": "Export-Einstellungen",
+							"body": "Wähle Rundung, Wochenendtage und Feiertage für den Bericht."
+						},
+						"s4": {
+							"title": "Herunterladen",
+							"body": "Lade XLSX, CSV oder ein Bild (JPEG) herunter."
+						}
+					}
+				}
+			},
+			"ws": {
+				"modules": {
+					"title": "Funktionen ein- und ausschalten",
+					"steps": {
+						"s1": {
+							"title": "Voreinstellungen",
+							"body": "Starte mit einer Voreinstellung: persönlich, Entwickler, Team oder alles."
+						},
+						"s2": {
+							"title": "Module",
+							"body": "Jedes Modul lässt sich ein- oder ausschalten. Touren für neue Module erscheinen unter Erste Schritte."
+						},
+						"s3": {
+							"title": "Für dich selbst ausblenden",
+							"body": "Mitglieder können ein Modul nur für sich selbst ausblenden."
+						}
+					}
+				},
+				"invite": {
+					"title": "Ein Teammitglied einladen",
+					"steps": {
+						"s1": {
+							"title": "Jemanden einladen",
+							"body": "Lade per E-Mail ein oder teile einen Link. Bestätige zuerst deine E-Mail-Adresse."
+						}
+					}
+				},
+				"dashboard": {
+					"title": "Team-Dashboard",
+					"steps": {
+						"s1": {
+							"title": "Team-Aktivität",
+							"body": "Sieh, woran das Team gearbeitet hat und wer online ist."
+						},
+						"s2": {
+							"title": "Teammitglieder",
+							"body": "Öffne ein Mitglied, um seine Aufgaben und Zeit zu sehen."
+						}
+					}
+				},
+				"workspaces": {
+					"title": "Mehrere Arbeitsbereiche",
+					"steps": {
+						"s1": {
+							"title": "Arbeitsbereiche",
+							"body": "Trenne berufliche und private Aufgaben. Jeder Arbeitsbereich hat sein eigenes Board und eigene Module.",
+							"mobileBody": "Öffne das Menü, um berufliche und private Aufgaben in getrennten Arbeitsbereichen zu halten."
+						}
+					}
+				},
+				"appearance": {
+					"title": "Design und Farben",
+					"steps": {
+						"s1": {
+							"title": "Design",
+							"body": "Hell, dunkel oder System, dazu eine Akzentfarbe."
+						}
+					}
+				},
+				"notifications": {
+					"title": "Benachrichtigungen",
+					"steps": {
+						"s1": {
+							"title": "Benachrichtigungen",
+							"body": "Erwähnungen, Zuweisungen und Agent-Updates landen hier.",
+							"mobileBody": "Tippe oben in der Leiste auf die Glocke."
+						}
+					}
+				},
+				"privacy": {
+					"title": "Datenschutz und Tipps",
+					"steps": {
+						"s1": {
+							"title": "Nutzungsdaten",
+							"body": "Teile Nutzungsdaten, die nicht mit deinem Konto verknüpft sind, oder lass es. Du kannst es jederzeit ausschalten."
+						},
+						"s2": {
+							"title": "Tipps",
+							"body": "Schalte automatische Tipps aus oder setze alle Touren zurück."
+						}
+					}
+				},
+				"telegram": {
+					"title": "Telegram-Bot",
+					"steps": {
+						"s1": {
+							"title": "Telegram verknüpfen",
+							"body": "Verknüpfe Telegram. Sende Text oder Sprache, um einen Routine-Entwurf zu erstellen, und erhalte Benachrichtigungen."
+						}
+					}
+				},
+				"defaultLanding": {
+					"title": "Startseite wählen",
+					"steps": {
+						"s1": {
+							"title": "Startseite",
+							"body": "Öffne TMGR mit Liste, Board, Dashboard oder Routinen."
+						}
+					}
+				}
+			}
+		}
+	},
+	"removeSampleTasks": {
+		"button": "Beispielaufgaben entfernen",
+		"none": "Keine Beispielaufgaben zum Entfernen",
+		"removed": "{n} Beispielaufgabe entfernt | {n} Beispielaufgaben entfernt",
+		"failed": "Die Beispielaufgaben konnten nicht entfernt werden"
+	},
+	"starterPrompt": {
+		"ready": "Deine erste Aufgabe ist bereit: {task}",
+		"paste": "Füge das in deinen Agenten ein:",
+		"label": "Starter-Prompt",
+		"runLogged": "Lauf protokolliert. TMGR hat aufgezeichnet, was dein Agent getan hat."
+	},
+	"tryIt": {
+		"region": "Probiere es selbst aus",
+		"title": "Jetzt bist du dran",
+		"items": {
+			"move": "Verschiebe eine Karte in eine andere Spalte",
+			"timer": "Starte einen Timer auf einer Karte",
+			"add": "Füge eine eigene Aufgabe hinzu"
+		},
+		"createWorkspace": "Meinen Arbeitsbereich erstellen",
+		"createAndDelete": "Demo erstellen und löschen",
+		"createFailed": "Der Arbeitsbereich konnte nicht erstellt werden."
+	},
+	"copyCommand": {
+		"copyLabel": "{label} kopieren",
+		"failed": "Kopieren nicht möglich. Markiere den Text und kopiere ihn von Hand.",
+		"defaultLabel": "Befehl"
+	},
+	"stillWaiting": {
+		"title": "Wir warten noch auf deinen Agenten",
+		"intro": "Bei TMGR ist noch kein Aufruf angekommen. Prüfe Folgendes:",
+		"runCommand": "Führe den Befehl in dem Terminal aus, in dem du {client} startest, nicht innerhalb einer Sitzung.",
+		"restart": "Starte den Agenten neu, damit er seine MCP-Konfiguration neu lädt.",
+		"verify": "Führe {command} aus und suche nach tmgr.",
+		"checkAgain": "Erneut prüfen",
+		"differentClient": "Anderen Client verwenden",
+		"guide": "Anleitung zur Fehlerbehebung öffnen",
+		"later": "Später erledigen",
+		"defaultClient": "deinen Agenten"
+	},
+	"connectStatus": {
+		"connected": "Verbunden",
+		"stalled": "Noch nicht verbunden",
+		"waiting": "Wir warten auf deinen Agenten…"
+	},
+	"ahaWatcher": {
+		"fallbackTitle": "deine Aufgabe"
+	},
+	"checklist": {
+		"show": "Checkliste anzeigen",
+		"title": "Erste Schritte",
+		"count": "{done} von {total}",
+		"options": "Checklisten-Optionen",
+		"hide": "Checkliste ausblenden",
+		"optional": "(optional)"
+	},
+	"ghost": {
+		"simulated": "Lokal simuliert. Es läuft kein echter Agent. Drücke Esc zum Beenden.",
+		"demoAgent": "Demo-Agent",
+		"replay": "Wiederholen"
+	},
+	"gettingStarted": {
+		"title": "Erste Schritte",
+		"subtitle": "Kurze geführte Touren. Mach sie in beliebiger Reihenfolge und überspringe, welche du willst.",
+		"showTips": "Tipps automatisch anzeigen",
+		"showInSidebar": "In der Seitenleiste anzeigen",
+		"hidePage": "Diese Seite ausblenden",
+		"progress": "{done} von {total} Touren abgeschlossen",
+		"minutes": "{n} Min.",
+		"updated": "Aktualisiert",
+		"resumeTour": "{title} fortsetzen",
+		"startTour": "{title} starten",
+		"resume": "Fortsetzen",
+		"start": "Starten"
+	},
+	"welcomeSetup": {
+		"title": "Wie möchtest du starten?",
+		"subtitle": "Du kannst später beides tun. Nichts hier ist endgültig.",
+		"group": "Starten mit",
+		"human": {
+			"title": "Nur meine Aufgaben verfolgen",
+			"description": "Aufgaben, ein Board und ein Timer. In einer Minute startklar."
+		},
+		"agent": {
+			"title": "Meinen KI-Agenten verbinden",
+			"description": "Für Claude Code, Codex, Cursor oder jeden MCP-Client."
+		},
+		"empty": "Mit einem leeren Arbeitsbereich starten",
+		"skip": "Überspringen, ich schaue mich um",
+		"saveFailed": "Deine Auswahl konnte nicht gespeichert werden. Versuche es erneut."
+	},
+	"connectAgent": {
+		"title": "Deinen KI-Agenten verbinden",
+		"turnOnMcp": "MCP einschalten",
+		"continueToWorkspace": "Weiter zu meinem Arbeitsbereich",
+		"connected": "{client} ist verbunden",
+		"openWorkspace": "Meinen Arbeitsbereich öffnen",
+		"pick": "Wähle das Tool, das du nutzt. TMGR gibt ihm ein Token und dein Agent beginnt, Aufgaben zu übernehmen.",
+		"mobileHint": "Öffne diese Seite auf deinem Computer oder kopiere den Befehl, um ihn dorthin zu schicken.",
+		"clientTabs": "Client",
+		"otherTab": "Andere (JSON)",
+		"yourAgent": "Dein Agent",
+		"checking": "Dein Konto wird geprüft…",
+		"creating": "Dein Token wird erstellt…",
+		"checkFailed": "Dein Konto konnte nicht geprüft werden.",
+		"reconnect": "Ein Agent war schon einmal mit diesem Konto verbunden, und du hast kein aktives Token.",
+		"generate": "Token erzeugen",
+		"mintFailed": "Das Token konnte nicht erstellt werden.",
+		"haveToken": "Du hast bereits ein Token, und TMGR kann es nicht noch einmal anzeigen. Füge es ein, um den Befehl zu erstellen, oder erzeuge ein neues.",
+		"existingToken": "Vorhandenes Token",
+		"pasteToken": "Füge dein vorhandenes Token ein",
+		"useToken": "Dieses Token verwenden",
+		"generateNew": "Neues Token erzeugen",
+		"replaceWarning": "Ein neues Token ersetzt das alte. Agenten, die das alte Token nutzen, werden getrennt.",
+		"generateNewShort": "Neues Token erzeugen",
+		"labels": {
+			"claude": "Claude-Code-Befehl",
+			"codex": "Codex-Konfiguration",
+			"cursor": "Cursor-Installationslink",
+			"other": "MCP-Client-Konfiguration"
+		},
+		"addToFile": "Zu {path} hinzufügen:",
+		"addToCursor": "Zu Cursor hinzufügen",
+		"cursorHint": "Oder kopiere den Installationslink und öffne ihn auf deinem Computer.",
+		"addToClient": "Zur MCP-Konfiguration deines Clients hinzufügen:",
+		"shownOnce": "Das Token wird nur einmal angezeigt. TMGR speichert nur einen Hash, kopiere den Befehl also jetzt.",
+		"ranIt": "Ich habe ihn ausgeführt",
+		"later": "Später erledigen",
+		"needsCloud": "Zum Verbinden eines KI-Agenten brauchst du ein TMGR-Cloud-Konto.",
+		"mcpOff": "Das MCP-Modul ist für diesen Arbeitsbereich ausgeschaltet, daher können sich Agenten noch nicht verbinden.",
+		"step": "Schritt {n} von {total}",
+		"liveConnected": "Agent verbunden",
+		"done": {
+			"token": "Token erstellt",
+			"command": "Befehl ausgeführt",
+			"agent": "Agent verbunden"
+		}
+	}
+}

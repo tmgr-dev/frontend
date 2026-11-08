@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "ścieżka nawigacji",
+		"categories": "Projekty",
+		"title": "Ścieżka nawigacji",
+		"currentPage": "Bieżąca strona"
+	},
+	"buttonWithActions": {
+		"saveAnd": "Zapisz i ..."
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "Nad czym pracowałeś(-aś)?",
+		"editTime": "Kliknij, aby edytować czas",
+		"deleteEntry": "Usuń wpis",
+		"saveEnter": "Zapisz (Enter)",
+		"cancelEsc": "Anuluj (Esc)",
+		"invalidTimeFormat": "Nieprawidłowy format czasu. Użyj formatu GG:MM:SS (np. 01:30:00)",
+		"startBeforeEnd": "Czas rozpoczęcia musi być wcześniejszy niż czas zakończenia"
+	},
+	"categoryBadge": {
+		"createTask": "Utwórz zadanie w tym projekcie"
+	},
+	"assigneeUsers": {
+		"assign": "Przypisz"
+	},
+	"assigneePersonaGroup": {
+		"personas": "Persony"
+	},
+	"authorBadge": {
+		"permissions": "Uprawnienia: {list}"
+	},
+	"commandChip": {
+		"copyCommand": "Kopiuj polecenie: {command}",
+		"copyFailed": "Nie udało się skopiować polecenia"
+	},
+	"confirm": {
+		"ok": "OK"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "Wpisz {name}, aby potwierdzić.",
+		"nameLabel": "Nazwa przestrzeni roboczej"
+	},
+	"commandPalette": {
+		"description": "Znajdź zadania, strony, miejsca i przestrzenie robocze",
+		"placeholder": "Zapytaj lub wyszukaj cokolwiek…",
+		"searching": "Szukanie…",
+		"failed": "Wyszukiwanie nie powiodło się",
+		"empty": "Nic nie znaleziono",
+		"groups": {
+			"recent": "Ostatnie",
+			"tasks": "Zadania",
+			"pages": "Strony",
+			"navigation": "Nawigacja",
+			"workspaces": "Przestrzenie robocze"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "Mniej",
+		"more": "Więcej",
+		"weekdays": {
+			"mon": "Pon",
+			"wed": "Śr",
+			"fri": "Pt"
+		},
+		"contributionsOn": "{n} wkład w dniu {date} | {n} wkłady w dniu {date} | {n} wkładów w dniu {date}",
+		"dayLabel": "{activity} w dniu {date}"
+	},
+	"countdown": {
+		"editHint": "Kliknij dwukrotnie, aby edytować czas",
+		"timeIsOver": "Czas minął",
+		"update": "Zaktualizuj"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "Niedostępne w lokalnych przestrzeniach roboczych"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "Niedostępne w lokalnych przestrzeniach roboczych",
+		"off": "Ten moduł jest wyłączony."
+	},
+	"requiresAccount": {
+		"title": "Wymaga konta",
+		"cloudOnly": "Ta funkcja działa w chmurze TMGR.",
+		"createAccount": "Utwórz konto"
+	},
+	"darkMode": {
+		"light": "Tryb jasny",
+		"dark": "Tryb ciemny"
+	},
+	"modulePresetOptions": {
+		"custom": "Wybiorę sam(a)"
+	},
+	"dropdown": {
+		"openOptions": "Otwórz opcje"
+	},
+	"emailVerifyBanner": {
+		"confirm": "Potwierdź swój adres e-mail — wysłaliśmy link na {email}.",
+		"sent": "Nowy link jest w drodze.",
+		"rateLimited": "Zbyt wiele żądań. Spróbuj ponownie za {wait}.",
+		"error": "Nie udało się wysłać linku. Spróbuj ponownie.",
+		"resend": "Wyślij ponownie",
+		"dismiss": "Zamknij"
+	},
+	"globalSearch": {
+		"placeholder": "Szukaj…",
+		"withHint": "Szukaj ({hint})"
+	},
+	"filtersBoard": {
+		"searchTasks": "Szukaj zadań…",
+		"selectCategory": "Wybierz projekt",
+		"selectUser": "Wybierz użytkownika",
+		"selectPersona": "Wybierz personę",
+		"priority": "Priorytet",
+		"sortByPriority": "Sortuj według priorytetu",
+		"clearFilters": "Wyczyść filtry",
+		"reorderStatuses": "Zmień kolejność statusów",
+		"filters": "Filtry",
+		"allCategories": "Wszystkie projekty",
+		"allUsers": "Wszyscy użytkownicy",
+		"allPersonas": "Wszystkie persony",
+		"myPersonasQueue": "Kolejka moich person",
+		"refresh": "Odśwież"
+	},
+	"textField": {
+		"placeholder": "Wpisz wartość"
+	},
+	"select": {
+		"placeholder": "Wybierz"
+	},
+	"navbarMenu": {
+		"categories": "Projekty"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "Persona {name}",
+		"personaOf": "persona użytkownika {name}"
+	},
+	"memberAvatarLink": {
+		"open": "Otwórz {label}",
+		"openMember": "Otwórz członka"
+	},
+	"userAvatar": {
+		"alt": "Awatar"
+	},
+	"personaAvatar": {
+		"alt": "Awatar persony"
+	},
+	"modulePresetPreview": {
+		"menu": "Menu",
+		"task": "Zadanie",
+		"taskTitle": "Tytuł zadania",
+		"status": "Status",
+		"badges": {
+			"off": "wył.",
+			"new": "nowe",
+			"willHide": "zostanie ukryte"
+		}
+	},
+	"modulesPicker": {
+		"title": "Do czego chcesz używać TMGR?",
+		"description": "Możesz to zmienić w dowolnej chwili w Ustawienia → Moduły.",
+		"notNow": "Nie teraz",
+		"saveFailed": "Nie udało się zapisać wyboru. Spróbuj ponownie."
+	},
+	"modulesPresetDialog": {
+		"title": "Zastosuj zestaw",
+		"description": "Wybierz zestaw, aby zobaczyć, co się zmieni, zanim cokolwiek zostanie zastosowane.",
+		"nothingChanges": "Nic się nie zmieni",
+		"willTurnOn": "Zostanie włączone:",
+		"willTurnOff": "Zostanie wyłączone:",
+		"dataKept": "Twoje dane nigdy nie są usuwane. Ponowne włączenie modułu przywraca wszystko.",
+		"applying": "Stosowanie…",
+		"applyFailed": "Nie udało się zastosować zestawu. Spróbuj ponownie."
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} - kliknij, aby zobaczyć wszystkich członków",
+		"memberLabel": "{name} – członkowie przestrzeni roboczej",
+		"inviteUser": "Zaproś użytkownika",
+		"sendInvitations": "Wyślij zaproszenia",
+		"emailsPlaceholder": "Wpisz adresy e-mail (oddzielone przecinkami), na przykład:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "Wysyłanie...",
+		"send": "Wyślij",
+		"invitationsSent": "Zaproszenia wysłane",
+		"invitationsSentDescription": "Zaproszenia zostały wysłane",
+		"errorTitle": "Błąd",
+		"sendFailed": "Nie udało się wysłać zaproszeń. Spróbuj ponownie."
+	},
+	"breadcrumbEllipsis": {
+		"more": "Więcej"
+	},
+	"sidebar": {
+		"toggle": "Przełącz pasek boczny"
+	},
+	"addTaskModalTrigger": {
+		"open": "Otwórz okno dodawania zadania"
+	},
+	"assigneesCombobox": {
+		"search": "Szukaj wykonawców...",
+		"empty": "Nie znaleziono wykonawców.",
+		"trigger": "Wykonawca"
+	},
+	"categoriesCombobox": {
+		"search": "Szukaj projektu...",
+		"empty": "Nie znaleziono projektu.",
+		"trigger": "Projekt"
+	},
+	"combobox": {
+		"search": "Szukaj elementów",
+		"empty": "Nie znaleziono elementu."
+	},
+	"blockEditor": {
+		"header": "Wpisz nagłówek",
+		"quote": "Wpisz cytat",
+		"quoteAuthor": "Autor cytatu",
+		"warningTitle": "Tytuł",
+		"warningMessage": "Wiadomość"
+	},
+	"editor": {
+		"descriptionPlaceholder": "Dodaj opis..."
+	},
+	"emptyState": {
+		"title": "Na razie nic tu nie ma"
+	},
+	"currentWorkspace": {
+		"trigger": "Przestrzeń robocza",
+		"searchCategory": "Szukaj projektu...",
+		"noCategory": "Nie znaleziono projektu.",
+		"addWorkspace": "Dodaj nową przestrzeń roboczą",
+		"newWorkspaceName": "Nazwa nowej przestrzeni roboczej",
+		"sendInvitationToWorkspace": "Wyślij zaproszenie do przestrzeni roboczej",
+		"emailAddresses": "Adresy e-mail",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "Oddziel wiele adresów przecinkami",
+		"creating": "Tworzenie...",
+		"sendInvitation": "Wyślij zaproszenie",
+		"invitationSent": "Zaproszenie wysłane!",
+		"invitationsSentToEmails": "Zaproszenia zostały wysłane na podane adresy e-mail.",
+		"shareLink": "Możesz udostępnić ten link każdemu, kogo chcesz zaprosić:",
+		"copied": "Skopiowano!",
+		"copyToClipboard": "Kopiuj do schowka"
+	},
+	"daySummary": {
+		"title": "Podsumowanie dnia",
+		"collecting": "Zbieranie dzisiejszych zadań…",
+		"counts": "Zadania: {tasks}, przestrzenie robocze: {workspaces}",
+		"skipped": "Nie udało się odczytać: {names}",
+		"lanNotice": "Tytuły zadań, statusy i fragmenty komentarzy (także z przestrzeni roboczych w chmurze) zostaną wysłane do {origin}.",
+		"send": "Wyślij",
+		"aiGenerated": "Wygenerowane przez AI, może być niedokładne",
+		"noAi": "Bez AI",
+		"setUpAi": "Skonfiguruj lokalne AI",
+		"summarizing": "Podsumowywanie…",
+		"summarize": "Podsumuj",
+		"regenerate": "Wygeneruj ponownie",
+		"sendsTo": "Wysyła tytuły zadań, statusy i fragmenty komentarzy do {origin}.",
+		"saveAsPage": "Zapisz jako stronę",
+		"copied": "Skopiowano.",
+		"savedAsPage": "Zapisano jako strona w tej przestrzeni roboczej.",
+		"pageTitle": "Podsumowanie dnia {date}"
+	},
+	"errorBoundary": {
+		"title": "Coś poszło nie tak",
+		"message": "Wystąpił nieoczekiwany błąd. Spróbuj odświeżyć stronę.",
+		"showDetails": "Pokaż szczegóły techniczne",
+		"retrying": "Ponawianie...",
+		"tryAgain": "Spróbuj ponownie",
+		"reload": "Załaduj stronę ponownie",
+		"report": "Zgłoś problem",
+		"updateTitle": "Dostępna aktualizacja",
+		"updateMessage": "Dostępna jest nowa wersja aplikacji. Odśwież stronę, aby pobrać najnowsze zmiany.",
+		"networkTitle": "Problem z połączeniem",
+		"networkMessage": "Nie można połączyć się z serwerem. Sprawdź połączenie z internetem i spróbuj ponownie."
+	},
+	"forbiddenAccess": {
+		"title": "Odmowa dostępu",
+		"message": "Przepraszamy, nie masz uprawnień do wyświetlenia tej treści.",
+		"goBack": "Wróć"
+	},
+	"settingsComponent": {
+		"description": "Wprowadź tutaj zmiany w ustawieniach zadania. Gdy skończysz, kliknij Zapisz."
+	},
+	"taskTimeInfo": {
+		"title": "Informacje o czasie zadania",
+		"heading": "Informacje o czasie zadania",
+		"lastStart": "Ostatni czas rozpoczęcia:",
+		"approxEnd": "Przybliżony czas zakończenia:",
+		"timeLeft": "Pozostały czas:",
+		"hideEdit": "Ukryj tryb edycji czasu",
+		"showEdit": "Tryb edycji czasu",
+		"stopFirst": "Możesz edytować czas, ale najpierw zatrzymaj timer",
+		"editHint": "Edytuj czas i naciśnij przycisk zapisu",
+		"stopTimer": "Zatrzymaj timer"
+	},
+	"timeCounter": {
+		"tracked": "Śledzony czas",
+		"running": "W trakcie",
+		"overTime": "Przekroczony czas"
+	}
+}

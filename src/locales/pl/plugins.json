@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "Więcej działań",
+		"send": "Wyślij",
+		"select": "Wybierz",
+		"toggleDetails": "Pokaż lub ukryj szczegóły",
+		"sparkline": "Wykres liniowy w miniaturze",
+		"confirmTitle": "Wtyczka {name}: {text}",
+		"commandFailed": "Polecenie wtyczki nie powiodło się",
+		"showLess": "Pokaż mniej",
+		"more": "Jeszcze {hidden}",
+		"controlLabel": "Wtyczka: {name}"
+	},
+	"chart": {
+		"summaryBar": "Wykres słupkowy: {series}, {n} punkt | Wykres słupkowy: {series}, {n} punkty | Wykres słupkowy: {series}, {n} punktów",
+		"summaryLine": "Wykres liniowy: {series}, {n} punkt | Wykres liniowy: {series}, {n} punkty | Wykres liniowy: {series}, {n} punktów",
+		"keyHint": "Użyj klawiszy strzałek, aby odczytać wartości."
+	},
+	"markdown": {
+		"done": "Ukończone",
+		"notDone": "Nieukończone"
+	},
+	"taskMenu": {
+		"submenu": "Wtyczki"
+	},
+	"taskSections": {
+		"unavailable": "Niedostępne: {error}"
+	},
+	"page": {
+		"notInstalled": "Ta wtyczka nie jest zainstalowana.",
+		"notRunning": "{name} nie działa w tej przestrzeni roboczej.",
+		"notRunningWithError": "{name} nie działa w tej przestrzeni roboczej: {error}",
+		"openSettings": "Otwórz ustawienia wtyczki",
+		"ownWindow": "„{title}” to własna strona wtyczki. Otwiera się w osobnym oknie, więc nie spowolni ani nie zawiesi aplikacji.",
+		"openWindow": "Otwórz okno",
+		"openFailed": "Nie udało się otworzyć okna wtyczki: {error}",
+		"nothingToShow": "Wtyczka nie zwróciła niczego do wyświetlenia.",
+		"drawFailed": "Wtyczka nie mogła narysować tej strony: {error}"
+	}
+}

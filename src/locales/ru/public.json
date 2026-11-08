@@ -1,0 +1,142 @@
+{
+	"index": {
+		"header": {
+			"eyebrow": "Отслеживайте задачи здесь. Почему бы и нет?",
+			"headline": "Лёгкое приложение для учёта ваших тяжёлых задач.",
+			"lead": "С нашим приложением следить за задачами станет проще.",
+			"getStarted": "Начать",
+			"goToSystem": "Перейти в систему",
+			"imageAlt": "TMGR.DEV"
+		},
+		"nav": {
+			"brand": "TASK MANAGER",
+			"menu": "Меню",
+			"login": "Войти",
+			"goToSystem": "Перейти в систему",
+			"register": "Зарегистрироваться"
+		},
+		"pricing": {
+			"title": "Тарифы",
+			"free": "Бесплатно",
+			"manageTasks": "Управляйте задачами",
+			"createCategories": "Создавайте проекты",
+			"runTimer": "Запускайте счётчик времени",
+			"perUser": "/ за пользователя",
+			"signUp": "Зарегистрироваться"
+		},
+		"twitter": {
+			"title": "Twitter",
+			"kicker": "xНАЧАЛО РАБОТЫ",
+			"cardTitle": "Lorem ipsum dolor sit amet.",
+			"cardText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"action": "Действие"
+		},
+		"features": {
+			"title": "Возможности",
+			"itemTitle": "Lorem ipsum dolor sit amet",
+			"travelBooking": "бронирование поездок",
+			"connectedWorld": "связанный мир",
+			"itemText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"imagesFrom": "Изображения:"
+		},
+		"footer": {
+			"brand": "TASK MANAGER",
+			"links": "Ссылки",
+			"faq": "FAQ",
+			"help": "Справка",
+			"support": "Поддержка",
+			"legal": "Правовая информация",
+			"terms": "Условия",
+			"privacy": "Конфиденциальность",
+			"social": "Соцсети",
+			"facebook": "Facebook",
+			"linkedin": "Linkedin",
+			"twitter": "Twitter",
+			"company": "Компания",
+			"blog": "Официальный блог",
+			"about": "О нас",
+			"contact": "Контакты",
+			"freepik": "Фоновый вектор создан freepik - www.freepik.com",
+			"template": "На основе Tailwind Toolbox - шаблон посадочной страницы"
+		}
+	},
+	"error404": {
+		"goHome": "На главную",
+		"documentTitle": "Страница не найдена"
+	},
+	"voice": {
+		"cancelAria": "Отменить голосовой ввод",
+		"cancel": "Отмена",
+		"stopRecordingAria": "Остановить запись",
+		"startAria": "Начать голосовой ввод",
+		"unsupported": "Голосовой ввод здесь не поддерживается",
+		"stopTranscribe": "Остановить и расшифровать",
+		"dictate": "Диктовать"
+	},
+	"cliGuide": {
+		"title": "Командная строка tmgr",
+		"installHeading": "Установка на macOS или Linux",
+		"installLabel": "Команда установки tmgr",
+		"installNote": "sudo не нужен. В Windows используйте WSL2.",
+		"also": "Также:",
+		"safetyHeading": "Безопасность по умолчанию",
+		"moreHeading": "Ещё",
+		"more": {
+			"agents": "{link}: подключите Claude Code, Codex и Cursor.",
+			"agentsLink": "Руководство по ИИ-агентам",
+			"notify": "{link}: пуши и будильники на телефон для любого MCP-клиента.",
+			"notifyLink": "{'@'}tmgr/notify",
+			"source": "{link}: tmgr — проект с открытым исходным кодом.",
+			"sourceLink": "Исходный код"
+		}
+	},
+	"agentsGuide": {
+		"title": "Настройка ИИ-агентов",
+		"intro": "Подключите Claude Code, Codex, Cursor и других агентов с поддержкой MCP к TMGR. Два MCP-сервера решают две задачи: работа с задачами и связь с вами, когда агенту нужно внимание.",
+		"personaHint": "Нужно, чтобы агент действовал в одном рабочем пространстве как именованная персона? Создайте токен персоны в Настройки → Персоны → Подключить агента.",
+		"token": {
+			"heading": "1. Получите токен",
+			"body": "Откройте {link} и нажмите «Создать токен». Токен начинается с {prefix} и показывается только один раз, поэтому сразу скопируйте его.",
+			"link": "Настройки → Оповещения агентов"
+		},
+		"connect": {
+			"heading": "2. Подключите агента",
+			"body": "Выберите свой клиент ниже. Замените заполнитель своим токеном. Для пушей и будильников нужны Node 22+ и мобильное приложение TMGR."
+		},
+		"taskMcp": {
+			"heading": "MCP для задач (tmgr)",
+			"body": "Удалённый HTTP MCP-сервер для работы с задачами, статусами, комментариями, учётом времени и рутинами. Создайте токен устройства в {link} и передавайте его в заголовке {header}.",
+			"link": "Настройки → Умные устройства",
+			"claudeCode": "Claude Code",
+			"claudeLabel": "Команда tmgr для Claude Code",
+			"jsonLabel": "tmgr mcp.json",
+			"note": "Это не OAuth-коннектор, поэтому пользовательские коннекторы claude.ai, которым нужен OAuth, не поддерживаются."
+		},
+		"alarms": {
+			"heading": "Будильники",
+			"body": "Инструмент {tool} сначала звонит в приложении для iOS, а затем звонит на ваш телефон, если вы не подтвердили (нажмите 1 для подтверждения). Чтобы это работало надёжно:",
+			"item1": "Укажите и подтвердите телефон для будильника в Настройки → Оповещения агентов.",
+			"item2": "Добавьте номер, с которого звонит TMGR, в контакты или избранное.",
+			"item3": "Включите «Повторные вызовы» в настройках iOS.",
+			"item4": "Разрешите будильники для приложения TMGR."
+		},
+		"troubleshooting": {
+			"heading": "Если что-то не работает",
+			"noPush": "Пуш не приходит: проверьте, что {path} существует и доступен для чтения. Хуки всегда завершаются с кодом 0 и ничего не выводят.",
+			"mcpList": "Выполните {command}, чтобы проверить, что сервер подключён.",
+			"settingsJson": "MCP-серверы не добавляются в {file}; используйте {command}.",
+			"codex": "Codex игнорирует {key} в локальном для проекта {local}; укажите его в {global}.",
+			"rateLimit": "Запросы ограничены: 20 в минуту на токен."
+		},
+		"links": {
+			"heading": "Ссылки",
+			"npm": "{'@'}tmgr/notify на npm",
+			"github": "tmgr-notify на GitHub"
+		},
+		"plugins": {
+			"heading": "Создайте плагин вместе с агентом",
+			"body": "Попросите агента сделать desktop-плагин для TMGR. Дайте ему {guide} или {llms}: там описаны манифест, разрешения и весь цикл «написать, протестировать, попробовать».",
+			"guide": "руководство по плагинам"
+		}
+	}
+}

@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "навигационная цепочка",
+		"categories": "Проекты",
+		"title": "Навигационная цепочка",
+		"currentPage": "Текущая страница"
+	},
+	"buttonWithActions": {
+		"saveAnd": "Сохранить и ..."
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "Над чем вы работали?",
+		"editTime": "Нажмите, чтобы изменить время",
+		"deleteEntry": "Удалить запись",
+		"saveEnter": "Сохранить (Enter)",
+		"cancelEsc": "Отмена (Esc)",
+		"invalidTimeFormat": "Неверный формат времени. Используйте формат ЧЧ:ММ:СС (например, 01:30:00)",
+		"startBeforeEnd": "Время начала должно быть раньше времени окончания"
+	},
+	"categoryBadge": {
+		"createTask": "Создать задачу в этом проекте"
+	},
+	"assigneeUsers": {
+		"assign": "Назначить"
+	},
+	"assigneePersonaGroup": {
+		"personas": "Персоны"
+	},
+	"authorBadge": {
+		"permissions": "Разрешения: {list}"
+	},
+	"commandChip": {
+		"copyCommand": "Копировать команду: {command}",
+		"copyFailed": "Не удалось скопировать команду"
+	},
+	"confirm": {
+		"ok": "Ок"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "Введите {name} для подтверждения.",
+		"nameLabel": "Название рабочего пространства"
+	},
+	"commandPalette": {
+		"description": "Находите задачи, страницы, разделы и рабочие пространства",
+		"placeholder": "Спросите или найдите что угодно…",
+		"searching": "Поиск…",
+		"failed": "Не удалось выполнить поиск",
+		"empty": "Ничего не найдено",
+		"groups": {
+			"recent": "Недавние",
+			"tasks": "Задачи",
+			"pages": "Страницы",
+			"navigation": "Навигация",
+			"workspaces": "Рабочие пространства"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "Меньше",
+		"more": "Больше",
+		"weekdays": {
+			"mon": "Пн",
+			"wed": "Ср",
+			"fri": "Пт"
+		},
+		"contributionsOn": "{date}: {n} действие | {date}: {n} действия | {date}: {n} действий",
+		"dayLabel": "{date}: {activity}"
+	},
+	"countdown": {
+		"editHint": "Дважды нажмите, чтобы изменить время",
+		"timeIsOver": "Время вышло",
+		"update": "Обновить"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "Недоступно в локальных рабочих пространствах"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "Недоступно в локальных рабочих пространствах",
+		"off": "Этот модуль выключен."
+	},
+	"requiresAccount": {
+		"title": "Нужен аккаунт",
+		"cloudOnly": "Эта функция работает в облаке TMGR.",
+		"createAccount": "Создать аккаунт"
+	},
+	"darkMode": {
+		"light": "Светлая тема",
+		"dark": "Тёмная тема"
+	},
+	"modulePresetOptions": {
+		"custom": "Выберу сам"
+	},
+	"dropdown": {
+		"openOptions": "Открыть варианты"
+	},
+	"emailVerifyBanner": {
+		"confirm": "Подтвердите свой email — мы отправили ссылку на {email}.",
+		"sent": "Новая ссылка уже в пути.",
+		"rateLimited": "Слишком много запросов. Повторите через {wait}.",
+		"error": "Не удалось отправить ссылку. Попробуйте ещё раз.",
+		"resend": "Отправить снова",
+		"dismiss": "Закрыть"
+	},
+	"globalSearch": {
+		"placeholder": "Поиск…",
+		"withHint": "Поиск ({hint})"
+	},
+	"filtersBoard": {
+		"searchTasks": "Поиск задач…",
+		"selectCategory": "Выберите проект",
+		"selectUser": "Выберите пользователя",
+		"selectPersona": "Выберите персону",
+		"priority": "Приоритет",
+		"sortByPriority": "Сортировать по приоритету",
+		"clearFilters": "Сбросить фильтры",
+		"reorderStatuses": "Изменить порядок статусов",
+		"filters": "Фильтры",
+		"allCategories": "Все проекты",
+		"allUsers": "Все пользователи",
+		"allPersonas": "Все персоны",
+		"myPersonasQueue": "Очередь моих персон",
+		"refresh": "Обновить"
+	},
+	"textField": {
+		"placeholder": "Введите значение"
+	},
+	"select": {
+		"placeholder": "Выберите"
+	},
+	"navbarMenu": {
+		"categories": "Проекты"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "Персона {name}",
+		"personaOf": "персона пользователя {name}"
+	},
+	"memberAvatarLink": {
+		"open": "Открыть: {label}",
+		"openMember": "Открыть участника"
+	},
+	"userAvatar": {
+		"alt": "Аватар"
+	},
+	"personaAvatar": {
+		"alt": "Аватар персоны"
+	},
+	"modulePresetPreview": {
+		"menu": "Меню",
+		"task": "Задача",
+		"taskTitle": "Название задачи",
+		"status": "Статус",
+		"badges": {
+			"off": "выкл.",
+			"new": "новое",
+			"willHide": "скроется"
+		}
+	},
+	"modulesPicker": {
+		"title": "Для чего вам нужен TMGR?",
+		"description": "Это можно изменить в любой момент в Настройки → Модули.",
+		"notNow": "Не сейчас",
+		"saveFailed": "Не удалось сохранить выбор. Попробуйте ещё раз."
+	},
+	"modulesPresetDialog": {
+		"title": "Применить пресет",
+		"description": "Выберите пресет, чтобы увидеть, что изменится, прежде чем он будет применён.",
+		"nothingChanges": "Ничего не изменится",
+		"willTurnOn": "Будет включено:",
+		"willTurnOff": "Будет отключено:",
+		"dataKept": "Ваши данные никогда не удаляются. Если снова включить модуль, всё вернётся.",
+		"applying": "Применяем…",
+		"applyFailed": "Не удалось применить пресет. Попробуйте ещё раз."
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} — нажмите, чтобы посмотреть всех участников",
+		"memberLabel": "{name} – участники рабочего пространства",
+		"inviteUser": "Пригласить пользователя",
+		"sendInvitations": "Отправить приглашения",
+		"emailsPlaceholder": "Введите email через запятую, например:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "Отправка...",
+		"send": "Отправить",
+		"invitationsSent": "Приглашения отправлены",
+		"invitationsSentDescription": "Приглашения успешно отправлены",
+		"errorTitle": "Ошибка",
+		"sendFailed": "Не удалось отправить приглашения. Попробуйте ещё раз."
+	},
+	"breadcrumbEllipsis": {
+		"more": "Ещё"
+	},
+	"sidebar": {
+		"toggle": "Показать или скрыть боковую панель"
+	},
+	"addTaskModalTrigger": {
+		"open": "Открыть окно добавления задачи"
+	},
+	"assigneesCombobox": {
+		"search": "Поиск исполнителей...",
+		"empty": "Исполнители не найдены.",
+		"trigger": "Исполнитель"
+	},
+	"categoriesCombobox": {
+		"search": "Поиск проекта...",
+		"empty": "Проект не найден.",
+		"trigger": "Проект"
+	},
+	"combobox": {
+		"search": "Поиск элементов",
+		"empty": "Ничего не найдено."
+	},
+	"blockEditor": {
+		"header": "Введите заголовок",
+		"quote": "Введите цитату",
+		"quoteAuthor": "Автор цитаты",
+		"warningTitle": "Заголовок",
+		"warningMessage": "Сообщение"
+	},
+	"editor": {
+		"descriptionPlaceholder": "Добавьте описание..."
+	},
+	"emptyState": {
+		"title": "Пока здесь пусто"
+	},
+	"currentWorkspace": {
+		"trigger": "Рабочее пространство",
+		"searchCategory": "Поиск проекта...",
+		"noCategory": "Проект не найден.",
+		"addWorkspace": "Добавить рабочее пространство",
+		"newWorkspaceName": "Название нового рабочего пространства",
+		"sendInvitationToWorkspace": "Отправить приглашение в рабочее пространство",
+		"emailAddresses": "Адреса email",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "Разделяйте несколько адресов запятыми",
+		"creating": "Создание...",
+		"sendInvitation": "Отправить приглашение",
+		"invitationSent": "Приглашение отправлено!",
+		"invitationsSentToEmails": "Приглашения отправлены на указанные адреса email.",
+		"shareLink": "Этой ссылкой можно поделиться с теми, кого вы хотите пригласить:",
+		"copied": "Скопировано!",
+		"copyToClipboard": "Копировать в буфер обмена"
+	},
+	"daySummary": {
+		"title": "Итоги дня",
+		"collecting": "Собираем сегодняшние задачи…",
+		"counts": "Задачи: {tasks}, рабочие пространства: {workspaces}",
+		"skipped": "Не удалось прочитать: {names}",
+		"lanNotice": "Названия задач, статусы и фрагменты комментариев (в том числе из облачных рабочих пространств) будут отправлены на {origin}.",
+		"send": "Отправить",
+		"aiGenerated": "Создано ИИ, возможны неточности",
+		"noAi": "Без ИИ",
+		"setUpAi": "Настроить локальный ИИ",
+		"summarizing": "Подводим итоги…",
+		"summarize": "Подвести итоги",
+		"regenerate": "Создать заново",
+		"sendsTo": "Отправляет названия задач, статусы и фрагменты комментариев на {origin}.",
+		"saveAsPage": "Сохранить как страницу",
+		"copied": "Скопировано.",
+		"savedAsPage": "Сохранено как страница в этом рабочем пространстве.",
+		"pageTitle": "Итоги дня {date}"
+	},
+	"errorBoundary": {
+		"title": "Что-то пошло не так",
+		"message": "Произошла непредвиденная ошибка. Попробуйте обновить страницу.",
+		"showDetails": "Показать технические подробности",
+		"retrying": "Повторяем...",
+		"tryAgain": "Повторить",
+		"reload": "Перезагрузить страницу",
+		"report": "Сообщить о проблеме",
+		"updateTitle": "Доступно обновление",
+		"updateMessage": "Доступна новая версия приложения. Обновите страницу, чтобы получить последние изменения.",
+		"networkTitle": "Проблема с подключением",
+		"networkMessage": "Не удаётся подключиться к серверу. Проверьте подключение к интернету и попробуйте ещё раз."
+	},
+	"forbiddenAccess": {
+		"title": "Доступ запрещён",
+		"message": "К сожалению, у вас нет прав для просмотра этого содержимого.",
+		"goBack": "Назад"
+	},
+	"settingsComponent": {
+		"description": "Внесите изменения в настройки задачи здесь. Когда закончите, нажмите «Сохранить»."
+	},
+	"taskTimeInfo": {
+		"title": "Время задачи",
+		"heading": "Информация о времени задачи",
+		"lastStart": "Последний запуск:",
+		"approxEnd": "Примерное окончание:",
+		"timeLeft": "Осталось:",
+		"hideEdit": "Скрыть режим правки времени",
+		"showEdit": "Режим правки времени",
+		"stopFirst": "Время можно изменить, но сначала остановите таймер",
+		"editHint": "Измените время и нажмите кнопку сохранения",
+		"stopTimer": "Остановить таймер"
+	},
+	"timeCounter": {
+		"tracked": "Учтённое время",
+		"running": "Идёт",
+		"overTime": "Сверх времени"
+	}
+}
