@@ -135,6 +135,7 @@
 		closePagesImport,
 		pagesImportRequest,
 	} from '@/composable/usePagesMarkdownIo';
+	import { useDecisionTaskComments } from '@/composable/useDecisionTaskComments';
 	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
 	import {
 		startRoutineScheduler,
@@ -218,6 +219,7 @@
 			if (isDesktopApp() && desktopWindowLabel() === 'main') {
 				installNavHistory(router, store);
 				useNavHistoryInputs();
+				useDecisionTaskComments(() => store.getters.isLoggedIn);
 			}
 			if (!isDetachedWindow && desktopWindowLabel() !== 'quick-add') {
 				const reloadActiveTasks = () =>
