@@ -381,6 +381,26 @@ fn a_changed_patch_makes_the_digest_stale() {
 }
 
 #[test]
+fn an_answer_signed_before_the_session_ended_is_changed() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let card = CardIn {
+    title: "Ship?".into(),
+    kind: "decision".into(),
+    source: Source { agent: "claude".into(), session: Some("s1".into()), pid: Some(4242), ..Default::default() },
+    options: vec![Opt { id: "a".into(), label: "Ship".into(), recommended: true }],
+    ..Default::default()
+  };
+  let id = r.hub.create(card).unwrap().id;
+  let (digest, session) = r.bind(&p, &id);
+  r.hub.check_liveness(|_| false);
+  assert!(r.hub.get(&id).unwrap().session_gone);
+  let body = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
+  assert_eq!(r.state(&id), "open");
+}
+
+#[test]
 fn a_moved_session_target_is_changed_and_nothing_is_typed() {
   let r = rig();
   let p = r.pair("mb1", "Pocket", 10);

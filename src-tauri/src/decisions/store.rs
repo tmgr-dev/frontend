@@ -781,7 +781,7 @@ impl Store {
       .map_err(sql_err)?
       .collect::<Result<Vec<_>, _>>()
       .map_err(sql_err)?;
-    let rev = self.revision(&r.id, &r.card, &messages)?;
+    let rev = self.revision(&r, &messages)?;
     Ok(CardView {
       id: r.id,
       created_ms: r.created_ms,
@@ -811,19 +811,21 @@ impl Store {
     })
   }
 
-  fn revision(&self, id: &str, card_json: &str, messages: &[MessageView]) -> Result<String, String> {
+  fn revision(&self, r: &Row, messages: &[MessageView]) -> Result<String, String> {
     let mut h = Sha256::new();
     let mut put = |s: &str| {
       h.update((s.len() as u64).to_be_bytes());
       h.update(s.as_bytes());
     };
-    put(card_json);
+    put(&r.card);
+    put(&r.state);
+    put(if r.session_gone { "gone" } else { "live" });
     for m in messages {
       put(&m.author);
       put(&m.text);
     }
     put("patches");
-    for p in self.patches(id)? {
+    for p in self.patches(&r.id)? {
       put(&p.label);
       put(&p.text);
     }
