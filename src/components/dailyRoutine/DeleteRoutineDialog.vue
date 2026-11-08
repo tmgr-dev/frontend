@@ -8,19 +8,22 @@
 				class="fixed top-1/2 left-1/2 z-[10003] grid w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg"
 			>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Delete routine?</AlertDialogTitle>
+					<AlertDialogTitle>{{
+						$t('dailyRoutine.deleteDialog.title')
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						"{{ title }}" and all its occurrences will be deleted. This cannot
-						be undone.
+						{{ $t('dailyRoutine.deleteDialog.description', { title }) }}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogCancel>{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
 					<AlertDialogAction
 						class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						@click="$emit('confirm')"
 					>
-						Delete
+						{{ $t('common.actions.delete') }}
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>

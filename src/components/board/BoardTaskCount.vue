@@ -12,6 +12,7 @@
 </template>
 
 <script>
+	import { t } from '@/i18n';
 	import { defineComponent } from 'vue';
 
 	export default defineComponent({
@@ -25,18 +26,21 @@
 		computed: {
 			label() {
 				const total = this.summary?.total ?? 0;
-				return `${total} ${total === 1 ? 'task' : 'tasks'}`;
+				return t('board.taskCount.label', total);
 			},
 			breakdown() {
 				const s = this.summary || {};
 				const parts = [
-					`${s.inProgress ?? 0} in progress`,
-					`${s.done ?? 0} done`,
+					t('board.taskCount.inProgress', { n: s.inProgress ?? 0 }),
+					t('board.taskCount.done', { n: s.done ?? 0 }),
 				];
 				if (s.hidden) {
-					parts.push(`${s.hidden} hidden`);
+					parts.push(t('board.taskCount.hidden', { n: s.hidden }));
 				}
-				return `${parts.join(' · ')} — ${s.percent ?? 0}% complete`;
+				return t('board.taskCount.summary', {
+					parts: parts.join(' · '),
+					percent: s.percent ?? 0,
+				});
 			},
 		},
 	});

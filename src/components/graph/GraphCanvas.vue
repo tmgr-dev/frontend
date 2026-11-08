@@ -8,6 +8,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import type { GraphResult } from '@/types/graph';
 	import {
 		computed,
@@ -44,7 +45,7 @@
 
 			const label = computed(() => {
 				const count = props.result?.nodes.length ?? 0;
-				return `Graph of ${count} connected items`;
+				return t('board.graph.canvas.label', { count });
 			});
 
 			onMounted(() => {

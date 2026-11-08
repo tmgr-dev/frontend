@@ -18,7 +18,7 @@
 					@click="onEdit"
 				>
 					<DRIcon name="pencil" :size="13" stroke="currentColor" />
-					Edit
+					{{ $t('common.actions.edit') }}
 				</button>
 				<button
 					type="button"
@@ -26,7 +26,7 @@
 					@click="onDuplicate"
 				>
 					<Copy :size="13" />
-					Duplicate
+					{{ $t('dailyRoutine.contextMenu.duplicate') }}
 				</button>
 				<button
 					type="button"
@@ -34,7 +34,7 @@
 					@click="onConvert"
 				>
 					<ArrowRightLeft :size="13" />
-					Convert to task
+					{{ $t('dailyRoutine.convert.title') }}
 				</button>
 				<button
 					type="button"
@@ -42,7 +42,7 @@
 					@click="onArchive"
 				>
 					<DRIcon name="archive" :size="13" stroke="currentColor" />
-					Archive
+					{{ $t('dailyRoutine.contextMenu.archive') }}
 				</button>
 				<div class="my-1 h-px bg-line" />
 				<button
@@ -51,7 +51,7 @@
 					@click="onDelete"
 				>
 					<DRIcon name="trash" :size="13" stroke="currentColor" />
-					Delete
+					{{ $t('common.actions.delete') }}
 				</button>
 			</div>
 		</div>

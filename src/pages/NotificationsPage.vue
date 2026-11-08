@@ -1,21 +1,21 @@
 <template>
 	<div>
-		<BaseLayout title="Notifications">
+		<BaseLayout :title="$t('workspace.notificationsPage.title')">
 			<template #header-actions>
 				<Button
 					variant="outline"
-					title="Notification Settings"
+					:title="$t('workspace.notificationsPage.settingsTitle')"
 					@click="handleGoToSettings"
 				>
 					<Settings />
-					<span>Settings</span>
+					<span>{{ $t('workspace.notificationsPage.settings') }}</span>
 				</Button>
 				<Button
 					v-if="unreadCount > 0"
 					:disabled="loading"
 					@click="handleMarkAllAsRead"
 				>
-					Mark all as read
+					{{ $t('workspace.notificationsPage.markAllRead') }}
 				</Button>
 			</template>
 			<template #body>
@@ -26,7 +26,7 @@
 						:has-data="notifications.length > 0"
 						:error="error"
 						:retry="handleRetry"
-						label="Loading notifications"
+						:label="$t('workspace.notificationsPage.loadingLabel')"
 					>
 						<div
 							v-if="notifications.length === 0"
@@ -34,9 +34,11 @@
 						>
 							<Bell :size="64" class="mb-4 text-ink-subtle opacity-40" />
 							<h2 class="mb-2 text-2xl font-semibold text-ink">
-								No notifications
+								{{ $t('workspace.notificationsPage.empty') }}
 							</h2>
-							<p class="text-ink-subtle">You're all caught up!</p>
+							<p class="text-ink-subtle">
+								{{ $t('workspace.notificationsPage.caughtUp') }}
+							</p>
 						</div>
 
 						<div
@@ -58,7 +60,11 @@
 									:disabled="loading"
 									@click="handleLoadMore"
 								>
-									{{ loading ? 'Loading...' : 'Load more' }}
+									{{
+										loading
+											? $t('workspace.notificationsPage.loading')
+											: $t('workspace.notificationsPage.loadMore')
+									}}
 								</Button>
 							</div>
 						</div>
@@ -70,6 +76,7 @@
 </template>
 
 <script>
+	import { t } from '@/i18n';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import NotificationItem from '@/components/notifications/NotificationItem.vue';
@@ -166,7 +173,7 @@
 			};
 
 			onMounted(() => {
-				setDocumentTitle('Notifications');
+				setDocumentTitle(t('workspace.notificationsPage.title'));
 				void readPage(1);
 				void refreshUnreadCount();
 			});

@@ -4,7 +4,9 @@
 			class="max-w-[420px] gap-3 border-line bg-surface p-5 text-ink"
 		>
 			<DialogHeader>
-				<DialogTitle class="text-base text-ink">Convert to task</DialogTitle>
+				<DialogTitle class="text-base text-ink">{{
+					$t('dailyRoutine.convert.title')
+				}}</DialogTitle>
 				<DialogDescription class="truncate text-xs text-ink-subtle">
 					{{ entry.title }}
 				</DialogDescription>

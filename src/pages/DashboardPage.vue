@@ -41,6 +41,7 @@
 	} from '@/composable/useHeatmapRange';
 	import { useNetworkStatus } from '@/composable/useNetworkStatus';
 	import { usePusher } from '@/composable/usePusher';
+	import { t } from '@/i18n';
 
 	// Types
 	import type {
@@ -270,8 +271,10 @@
 
 	const pageTitle = computed(() => {
 		return currentWorkspace.value?.name
-			? `${currentWorkspace.value.name} Dashboard`
-			: 'Dashboard';
+			? t('board.dashboardPage.titleWithWorkspace', {
+					name: currentWorkspace.value.name,
+				})
+			: t('board.dashboardPage.title');
 	});
 
 	const workspaceUsersList = computed(() => {
@@ -299,10 +302,10 @@
 
 	const combinedErrorMessage = computed(() => {
 		if (isOffline.value) {
-			return 'You appear to be offline. Some features may not work properly.';
+			return t('board.dashboardPage.errors.offline');
 		}
 		if (connectionError.value) {
-			return 'Real-time connection failed. Updates may be delayed.';
+			return t('board.dashboardPage.errors.realtime');
 		}
 		if (hasGlobalError.value) {
 			return globalErrorMessage.value;
@@ -310,7 +313,7 @@
 		if (dashboardError.value) {
 			return dashboardError.value.message;
 		}
-		return 'An unexpected error occurred.';
+		return t('board.dashboardPage.errors.unexpected');
 	});
 
 	const isRealTimeActive = computed(() => {
@@ -328,9 +331,9 @@
 	const activityLoading = feedLoading;
 	const activityLoadingMore = feedLoadingMore;
 
-	const periods: { key: DashboardPeriod; label: string }[] = [
-		{ key: '7d', label: 'Last 7 days' },
-		{ key: '30d', label: 'Last 30 days' },
+	const periods: { key: DashboardPeriod; labelKey: string }[] = [
+		{ key: '7d', labelKey: 'board.dashboardPage.periods.week' },
+		{ key: '30d', labelKey: 'board.dashboardPage.periods.month' },
 	];
 	const period = ref<DashboardPeriod>('7d');
 	const periodDays = computed(() => (period.value === '30d' ? 30 : 7));
@@ -380,7 +383,7 @@
 		const cards: KpiCardView[] = [
 			{
 				kpiKey: 'activity',
-				label: 'Activity',
+				label: t('board.dashboardPage.kpi.activity'),
 				icon: ActivityIcon,
 				tone: 'brand',
 				value: activity ? String(activity.total) : null,
@@ -388,12 +391,12 @@
 				error: !activity && heatmapState.status === 'error',
 				series: activity?.values ?? null,
 				delta: activity?.delta ?? null,
-				hint: 'Actions logged in the workspace',
+				hint: t('board.dashboardPage.kpi.activityHint'),
 				retry: () => refreshSection('heatmap'),
 			},
 			{
 				kpiKey: 'members',
-				label: 'Active members',
+				label: t('board.dashboardPage.kpi.members'),
 				icon: Users,
 				tone: 'done',
 				value: members ? String(members.count) : null,
@@ -401,14 +404,16 @@
 				error: trends.teamFailed.value,
 				series: members?.values ?? null,
 				delta: null,
-				hint: members ? `of ${members.total} members` : '',
+				hint: members
+					? t('board.dashboardPage.kpi.membersHint', { total: members.total })
+					: '',
 				retry: retryTeam,
 			},
 		];
 		if (trends.showTracked.value)
 			cards.push({
 				kpiKey: 'tracked',
-				label: 'Tracked hours',
+				label: t('board.dashboardPage.kpi.tracked'),
 				icon: Clock,
 				tone: 'testing',
 				value:
@@ -419,12 +424,12 @@
 				error: trends.trackedFailed.value,
 				series: tracked.perDay?.map(secondsToHours) ?? null,
 				delta: tracked.delta,
-				hint: 'Time on task timers',
+				hint: t('board.dashboardPage.kpi.trackedHint'),
 				retry: () => Promise.all([retryTeam(), trends.loadTime(true)]),
 			});
 		cards.push({
 			kpiKey: 'completed',
-			label: 'Completed',
+			label: t('board.dashboardPage.kpi.completed'),
 			icon: CircleCheck,
 			tone: 'progress',
 			value: completed === null ? null : String(completed),
@@ -432,7 +437,7 @@
 			error: trends.teamFailed.value,
 			series: null,
 			delta: null,
-			hint: 'Tasks moved to done',
+			hint: t('board.dashboardPage.kpi.completedHint'),
 			retry: retryTeam,
 		});
 		return cards;
@@ -445,14 +450,14 @@
 		return [
 			activity && {
 				key: 'activity',
-				label: 'Activity',
+				label: t('board.dashboardPage.kpi.activity'),
 				tone: 'brand' as DashboardTone,
 				values: activity.values,
 				format: (v: number) => String(v),
 			},
 			members && {
 				key: 'members',
-				label: 'Active members',
+				label: t('board.dashboardPage.kpi.members'),
 				tone: 'done' as DashboardTone,
 				values: members.values,
 				format: (v: number) => String(v),
@@ -461,10 +466,11 @@
 			trends.showTracked.value &&
 				tracked.perDay && {
 					key: 'tracked',
-					label: 'Tracked hours',
+					label: t('board.dashboardPage.kpi.tracked'),
 					tone: 'testing' as DashboardTone,
 					values: tracked.perDay.map((s) => s / 3600),
-					format: (v: number) => `${Math.round(v * 10) / 10} h`,
+					format: (v: number) =>
+						t('board.dashboardPage.hours', { n: Math.round(v * 10) / 10 }),
 				},
 		].filter((s): s is Exclude<typeof s, false | null | undefined> => !!s);
 	});
@@ -733,7 +739,7 @@
 	onOffline(() => {
 		console.log('Network connection lost');
 		setGlobalError({
-			message: 'Network connection lost',
+			message: t('board.dashboardPage.errors.connectionLostMessage'),
 			type: 'network',
 			timestamp: new Date().toISOString(),
 			recoverable: true,
@@ -893,11 +899,11 @@
 			setupRealTimeUpdates();
 
 			// Announce initial load completion
-			announceUpdate('Dashboard loaded successfully');
+			announceUpdate(t('board.dashboardPage.a11y.loadedAnnouncement'));
 		} catch (error) {
 			if (disposed) return;
 			handleError(error, 'initialization');
-			announceUpdate('Dashboard failed to load');
+			announceUpdate(t('board.dashboardPage.a11y.failedAnnouncement'));
 		}
 	});
 
@@ -915,8 +921,8 @@
 	<div>
 		<FeatureGate
 			feature-key="dashboard"
-			title="Dashboard"
-			description="Get insights into your productivity with statistics, activity heatmaps, and real-time team updates."
+			:title="$t('board.dashboardPage.title')"
+			:description="$t('board.dashboardPage.gateDescription')"
 			:icon="LayoutDashboard"
 		>
 			<template #preview>
@@ -925,7 +931,7 @@
 
 			<BaseLayout
 				:title="pageTitle"
-				subtitle="Activity, members and tracked time across your workspace."
+				:subtitle="$t('board.dashboardPage.subtitle')"
 			>
 				<template #header-actions>
 					<div
@@ -934,7 +940,7 @@
 						<div
 							class="inline-flex overflow-hidden rounded-md border border-line bg-surface text-xs"
 							role="group"
-							aria-label="Dashboard period"
+							:aria-label="$t('board.dashboardPage.periodLabel')"
 							data-dashboard-period
 						>
 							<button
@@ -950,7 +956,7 @@
 								]"
 								@click="setPeriod(option.key)"
 							>
-								{{ option.label }}
+								{{ $t(option.labelKey) }}
 							</button>
 						</div>
 						<!-- Connection Status Indicator -->
@@ -965,8 +971,8 @@
 							role="status"
 							:aria-label="
 								isRealTimeActive
-									? 'Real-time updates active'
-									: 'Real-time updates inactive'
+									? $t('board.dashboardPage.realtime.active')
+									: $t('board.dashboardPage.realtime.inactive')
 							"
 						>
 							<WifiIcon
@@ -976,12 +982,19 @@
 							/>
 							<SignalSlashIcon v-else class="h-3 w-3" aria-hidden="true" />
 							<span>
-								{{ isRealTimeActive ? 'Live' : 'Offline' }}
+								{{
+									isRealTimeActive
+										? $t('board.dashboardPage.realtime.live')
+										: $t('board.dashboardPage.realtime.offline')
+								}}
 							</span>
 						</div>
 
 						<!-- Dashboard Actions -->
-						<nav class="flex items-center gap-2" aria-label="Dashboard actions">
+						<nav
+							class="flex items-center gap-2"
+							:aria-label="$t('board.dashboardPage.actionsLabel')"
+						>
 							<Button
 								variant="outline"
 								size="sm"
@@ -989,8 +1002,8 @@
 								:disabled="isAnyLoading"
 								:aria-label="
 									isAnyLoading
-										? 'Refreshing dashboard data'
-										: 'Refresh dashboard data'
+										? $t('board.dashboardPage.refresh.ariaBusy')
+										: $t('board.dashboardPage.refresh.ariaIdle')
 								"
 								:aria-describedby="isAnyLoading ? 'refresh-status' : undefined"
 							>
@@ -998,7 +1011,7 @@
 									:class="['mr-2 h-4 w-4', isAnyLoading && 'animate-spin']"
 									aria-hidden="true"
 								/>
-								Refresh
+								{{ $t('board.dashboardPage.refresh.label') }}
 							</Button>
 
 							<!-- Hidden status for screen readers -->
@@ -1008,7 +1021,7 @@
 								class="sr-only"
 								aria-live="polite"
 							>
-								Dashboard is currently refreshing
+								{{ $t('board.dashboardPage.refresh.status') }}
 							</span>
 						</nav>
 					</div>
@@ -1016,8 +1029,8 @@
 				<template #body>
 					<ErrorBoundary
 						ref="errorBoundaryRef"
-						fallback-title="Dashboard Error"
-						fallback-message="The dashboard encountered an unexpected error. Please try refreshing the page."
+						:fallback-title="$t('board.dashboardPage.boundaryTitle')"
+						:fallback-message="$t('board.dashboardPage.errors.boundaryMessage')"
 						:show-details="false"
 						:show-report-button="true"
 						@error="handleErrorBoundaryError"
@@ -1028,12 +1041,11 @@
 							id="main-content"
 							class="dashboard-container"
 							role="main"
-							aria-label="Dashboard"
+							:aria-label="$t('board.dashboardPage.mainLabel')"
 						>
 							<!-- Keyboard shortcuts help -->
 							<div class="sr-only" aria-live="polite">
-								Keyboard shortcuts: Ctrl+R to refresh, Ctrl+1-5 to navigate
-								sections, Escape to clear errors
+								{{ $t('board.dashboardPage.a11y.shortcuts') }}
 							</div>
 
 							<!-- Error State -->
@@ -1063,7 +1075,11 @@
 													: 'text-status-fix-fg',
 											]"
 										>
-											{{ isOffline ? 'Connection Lost' : 'Dashboard Error' }}
+											{{
+												isOffline
+													? $t('board.dashboardPage.errors.connectionLost')
+													: $t('board.dashboardPage.errors.dashboardError')
+											}}
 										</h3>
 										<p
 											:class="[
@@ -1093,7 +1109,11 @@
 														isRetryingGlobal && 'animate-spin',
 													]"
 												/>
-												{{ isRetryingGlobal ? 'Retrying...' : 'Try Again' }}
+												{{
+													isRetryingGlobal
+														? $t('board.dashboardPage.errors.retrying')
+														: $t('board.dashboardPage.errors.tryAgain')
+												}}
 											</Button>
 
 											<Button
@@ -1103,7 +1123,7 @@
 												@click="checkConnection"
 												class="border-status-progress text-status-progress-fg hover:bg-surface-hover hover:text-status-progress-fg"
 											>
-												Check Connection
+												{{ $t('board.dashboardPage.errors.checkConnection') }}
 											</Button>
 										</div>
 									</div>
@@ -1117,7 +1137,7 @@
 								role="region"
 							>
 								<h2 id="kpi-heading" class="sr-only">
-									Key numbers, last {{ periodDays }} days
+									{{ $t('board.dashboardPage.a11y.keyNumbers', periodDays) }}
 								</h2>
 								<div
 									class="grid grid-cols-1 gap-4 sm:grid-cols-2"
@@ -1137,7 +1157,9 @@
 										:error="card.error"
 										:series="card.series"
 										:delta="card.delta"
-										:delta-period="`vs previous ${periodDays} days`"
+										:delta-period="
+											$t('board.dashboardPage.kpi.vsPrevious', periodDays)
+										"
 										:hint="card.hint"
 										@retry="card.retry"
 									/>
@@ -1154,7 +1176,7 @@
 									role="region"
 								>
 									<h3 id="team-activity-heading" class="sr-only">
-										Team Activity
+										{{ $t('board.dashboardPage.teamActivity') }}
 									</h3>
 									<TeamActivityWidget
 										:team-activity="teamActivity"
@@ -1174,8 +1196,7 @@
 
 									<!-- Team activity description -->
 									<div id="team-description" class="sr-only">
-										Team member activity and status. Shows who is online and
-										their current tasks.
+										{{ $t('board.dashboardPage.a11y.teamDescription') }}
 									</div>
 
 									<!-- Loading announcement -->
@@ -1185,14 +1206,16 @@
 										class="sr-only"
 										aria-live="polite"
 									>
-										Loading team activity
+										{{ $t('board.dashboardPage.a11y.teamLoading') }}
 									</div>
 								</section>
 								<ActivityChart
 									class="min-w-0 min-[1400px]:col-span-2"
 									:dates="trends.keys.value"
 									:series="chartSeries"
-									:subtitle="`Per day, last ${periodDays} days`"
+									:subtitle="
+										$t('board.dashboardPage.chartSubtitle', periodDays)
+									"
 									:loading="chartLoading"
 									:error="chartError"
 									@retry="retryTrends"
@@ -1214,14 +1237,13 @@
 											id="heatmap-heading"
 											class="text-lg font-semibold text-ink"
 										>
-											Activity Heatmap
+											{{ $t('board.dashboardPage.heatmap.title') }}
 										</h2>
 										<p
 											class="mt-1 text-sm text-ink-muted"
 											id="heatmap-description"
 										>
-											Activity of everyone in this workspace. Each square is one
-											day (UTC); darker squares mean more activity.
+											{{ $t('board.dashboardPage.heatmap.description') }}
 										</p>
 									</div>
 									<Select
@@ -1232,13 +1254,13 @@
 										<SelectTrigger
 											class="w-40"
 											data-testid="heatmap-range-select"
-											aria-label="Heatmap range"
+											:aria-label="$t('board.dashboardPage.heatmap.rangeLabel')"
 										>
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
 											<SelectItem :value="LAST_12_MONTHS">
-												Last 12 months
+												{{ $t('board.dashboardPage.heatmap.last12Months') }}
 											</SelectItem>
 											<SelectItem
 												v-for="year in heatmapRange.years.value"
@@ -1256,8 +1278,10 @@
 									role="group"
 									:aria-label="
 										heatmapCard.data
-											? `Activity heatmap showing ${heatmapCard.data.total_contributions} total contributions`
-											: 'Activity heatmap loading'
+											? $t('board.dashboardPage.heatmap.groupLabel', {
+													n: heatmapCard.data.total_contributions,
+												})
+											: $t('board.dashboardPage.heatmap.groupLabelLoading')
 									"
 									:aria-describedby="
 										heatmapCard.data ? 'heatmap-summary' : 'heatmap-loading'
@@ -1275,11 +1299,11 @@
 											class="mb-4 h-12 w-12 text-status-fix"
 										/>
 										<p class="mb-4 text-sm text-status-fix-fg">
-											Failed to load heatmap data
+											{{ $t('board.dashboardPage.heatmap.loadFailed') }}
 										</p>
 										<Button @click="retryHeatmap" variant="outline" size="sm">
 											<ArrowPathIcon class="mr-2 h-4 w-4" />
-											Retry
+											{{ $t('board.dashboardPage.heatmap.retry') }}
 										</Button>
 									</div>
 
@@ -1297,7 +1321,7 @@
 										class="flex flex-col items-center justify-center py-20"
 									>
 										<p class="text-sm text-ink-muted">
-											No contribution data available
+											{{ $t('board.dashboardPage.heatmap.noData') }}
 										</p>
 									</div>
 
@@ -1317,7 +1341,7 @@
 										class="sr-only"
 										aria-live="polite"
 									>
-										Loading activity heatmap
+										{{ $t('board.dashboardPage.a11y.heatmapLoading') }}
 									</div>
 								</div>
 							</section>
@@ -1333,7 +1357,7 @@
 									id="statistics-heading"
 									class="mb-4 text-lg font-semibold text-ink"
 								>
-									Workspace Statistics
+									{{ $t('board.dashboardPage.statisticsTitle') }}
 								</h2>
 								<StatisticsGrid
 									:statistics="statistics || {}"
@@ -1353,14 +1377,12 @@
 									class="sr-only"
 									aria-live="polite"
 								>
-									Loading workspace statistics
+									{{ $t('board.dashboardPage.a11y.statisticsLoading') }}
 								</div>
 
 								<!-- Description for screen readers -->
 								<div id="statistics-description" class="sr-only">
-									Grid of workspace statistics including task counts, time
-									tracking, and team metrics. Use arrow keys to navigate between
-									cards.
+									{{ $t('board.dashboardPage.a11y.statisticsDescription') }}
 								</div>
 							</section>
 
@@ -1371,7 +1393,9 @@
 									class="min-w-0 xl:self-start"
 									:items="trends.categories.value ?? []"
 									:loading="trends.timeState.value === 'loading'"
-									:subtitle="`By tracked time · last ${periodDays} days`"
+									:subtitle="
+										$t('board.dashboardPage.categoriesSubtitle', periodDays)
+									"
 								/>
 								<section
 									class="dashboard-main-content"
@@ -1381,7 +1405,7 @@
 									role="region"
 								>
 									<h2 id="activity-heading" class="sr-only">
-										Recent Activity Feed
+										{{ $t('board.dashboardPage.a11y.activityHeading') }}
 									</h2>
 									<ActivityFeed
 										:activities="displayedActivities || []"
@@ -1408,8 +1432,7 @@
 
 									<!-- Activity feed description -->
 									<div id="activity-description" class="sr-only">
-										List of recent workspace activities. Use arrow keys to
-										navigate, Enter to open activity details.
+										{{ $t('board.dashboardPage.a11y.activityDescription') }}
 									</div>
 
 									<!-- Loading announcement -->
@@ -1419,7 +1442,7 @@
 										class="sr-only"
 										aria-live="polite"
 									>
-										Loading recent activities
+										{{ $t('board.dashboardPage.a11y.activityLoading') }}
 									</div>
 								</section>
 							</div>
@@ -1429,16 +1452,18 @@
 								v-if="isInitialLoad && !statistics"
 								class="flex items-center justify-center py-12"
 								aria-live="polite"
-								aria-label="Loading dashboard"
+								:aria-label="$t('board.dashboardPage.loadingState.label')"
 							>
 								<div class="text-center">
 									<ArrowPathIcon
 										class="mx-auto mb-4 h-8 w-8 animate-spin text-ink-subtle"
 									/>
 									<h3 class="mb-2 text-lg font-medium text-ink">
-										Loading Dashboard
+										{{ $t('board.dashboardPage.loadingState.title') }}
 									</h3>
-									<p class="text-ink-muted">Fetching your workspace data...</p>
+									<p class="text-ink-muted">
+										{{ $t('board.dashboardPage.loadingState.body') }}
+									</p>
 								</div>
 							</div>
 
@@ -1481,8 +1506,8 @@
 										>
 											{{
 												isOffline
-													? "You're offline"
-													: 'Real-time updates active'
+													? $t('board.dashboardPage.realtime.youreOffline')
+													: $t('board.dashboardPage.realtime.active')
 											}}
 										</span>
 									</div>

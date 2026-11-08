@@ -10,14 +10,14 @@
 					class="size-4 accent-brand"
 					:checked="allSelected"
 					:disabled="!routines.length"
-					aria-label="Select all local routines"
+					:aria-label="$t('dailyRoutine.moveToCloud.selectAllAria')"
 					@change="toggleAll"
 				/>
-				Select all
+				{{ $t('dailyRoutine.moveToCloud.selectAll') }}
 			</label>
-			<span class="text-ink-subtle"
-				>Pick the local routines to send to a cloud workspace.</span
-			>
+			<span class="text-ink-subtle">{{
+				$t('dailyRoutine.moveToCloud.pickHint')
+			}}</span>
 		</div>
 		<p v-if="error" role="alert" class="px-1 text-sm text-destructive">
 			{{ error }}
@@ -26,7 +26,7 @@
 			v-else-if="loaded && !routines.length"
 			class="px-1 py-6 text-center text-sm text-ink-subtle"
 		>
-			There are no local routines to move.
+			{{ $t('dailyRoutine.moveToCloud.empty') }}
 		</p>
 		<ul class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-2">
 			<li v-for="r in routines" :key="r.id">
@@ -42,7 +42,9 @@
 						type="checkbox"
 						class="size-4 shrink-0 accent-brand"
 						:checked="selected.has(r.id)"
-						:aria-label="`Select ${r.title}`"
+						:aria-label="
+							$t('dailyRoutine.moveToCloud.selectAria', { title: r.title })
+						"
 						@change="toggle(r.id)"
 					/>
 					<span class="min-w-0 flex-1">
@@ -52,7 +54,15 @@
 							class="mt-0.5 flex items-center gap-2 text-2xs text-ink-subtle"
 						>
 							<span v-if="r.pattern" class="capitalize">{{
-								r.pattern.frequency.toLowerCase()
+								$te(
+									'dailyRoutine.editModal.freq.' +
+										r.pattern.frequency.toLowerCase(),
+								)
+									? $t(
+											'dailyRoutine.editModal.freq.' +
+												r.pattern.frequency.toLowerCase(),
+										)
+									: r.pattern.frequency.toLowerCase()
 							}}</span>
 							<span v-if="r.scheduledDate">{{ r.scheduledDate }}</span>
 						</span>
@@ -66,10 +76,10 @@
 			data-testid="move-routines-bar"
 		>
 			<span class="mr-auto text-sm text-ink" aria-live="polite">
-				{{ selected.size }} selected
+				{{ $t('dailyRoutine.moveToCloud.selected', { n: selected.size }) }}
 			</span>
 			<button type="button" :class="ghostButton" @click="$emit('cancel')">
-				Cancel
+				{{ $t('common.actions.cancel') }}
 			</button>
 			<button
 				type="button"
@@ -77,7 +87,7 @@
 				:disabled="!selected.size"
 				@click="open('tasks')"
 			>
-				Convert to cloud tasks
+				{{ $t('dailyRoutine.moveToCloud.titleTasks') }}
 			</button>
 			<button
 				type="button"
@@ -85,7 +95,7 @@
 				:disabled="!selected.size"
 				@click="open('routines')"
 			>
-				Move to cloud routines
+				{{ $t('dailyRoutine.moveToCloud.titleRoutines') }}
 			</button>
 		</div>
 
@@ -101,6 +111,7 @@
 
 <script setup lang="ts">
 	import type { Workspace } from '@/actions/tmgr/workspaces';
+	import { t } from '@/i18n';
 	import { computed, onMounted, ref, type PropType } from 'vue';
 	import type { MoveMode } from './batch';
 	import { readLocalRoutines } from './localRoutines';
@@ -137,7 +148,7 @@
 			routines.value = await readLocalRoutines();
 			error.value = '';
 		} catch (e) {
-			error.value = 'The local routines could not be read.';
+			error.value = t('dailyRoutine.moveToCloud.readError');
 		}
 		const ids = new Set(routines.value.map((r) => r.id));
 		selected.value = new Set([...selected.value].filter((id) => ids.has(id)));

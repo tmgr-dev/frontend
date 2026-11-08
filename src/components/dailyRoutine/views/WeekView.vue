@@ -48,7 +48,7 @@
 				<div
 					class="pt-2 pr-2 text-right text-[10px] font-bold tracking-wider text-ink-subtle"
 				>
-					ALL-DAY
+					{{ $t('dailyRoutine.allDay') }}
 				</div>
 				<div
 					v-for="(d, i) in days"

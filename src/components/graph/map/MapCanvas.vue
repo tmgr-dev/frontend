@@ -21,6 +21,7 @@
 		watch,
 		type PropType,
 	} from 'vue';
+	import { t } from '@/i18n';
 	import { useDocumentTheme } from '../useDocumentTheme';
 	import { MapEngine } from './MapEngine';
 	import type { PreparedMap } from './mapLogic';
@@ -54,15 +55,21 @@
 
 			const label = computed(() => {
 				const p = props.prepared;
-				if (!p) return 'Map of tasks and pages grouped by category';
+				if (!p) return t('board.graphMap.canvas.emptyLabel');
 				const names = p.clusters.map((c) => c.title).join(', ');
 				const bottleneck =
 					p.bottleneck >= 0
-						? ` Bottleneck: ${
-								p.nodes[p.bottleneck].key ?? p.labels[p.bottleneck]
-							} blocks ${p.bottleneckBlocks}.`
+						? ` ${t('board.graphMap.canvas.bottleneck', {
+								name: p.nodes[p.bottleneck].key ?? p.labels[p.bottleneck],
+								count: p.bottleneckBlocks,
+							})}`
 						: '';
-				return `Map of ${p.nodes.length} tasks and pages in ${p.clusters.length} clusters: ${names}.${bottleneck} Use the search box to move around the map by keyboard.`;
+				return t('board.graphMap.canvas.label', {
+					nodes: p.nodes.length,
+					clusters: p.clusters.length,
+					names,
+					bottleneck,
+				});
 			});
 
 			const load = () => {

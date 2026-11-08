@@ -1,0 +1,222 @@
+{
+	"views": {
+		"list": "リスト",
+		"day": "日",
+		"week": "週",
+		"month": "月",
+		"year": "年"
+	},
+	"clusterPopover": {
+		"overlapping": "{n}件が重複"
+	},
+	"markDoneAria": "「{title}」を完了にする",
+	"editAria": "「{title}」を編集",
+	"eventBlock": {
+		"dragStart": "ドラッグして開始時刻を変更",
+		"dragDuration": "ドラッグして長さを変更"
+	},
+	"convert": {
+		"title": "タスクに変換",
+		"workspace": "ワークスペース",
+		"category": "プロジェクト",
+		"noCategory": "プロジェクトなし",
+		"submit": "変換"
+	},
+	"routineRow": {
+		"moreTitle": "その他（右クリックでメニュー）",
+		"more": "その他",
+		"created": "作成：{created}",
+		"createdUpdated": "作成：{created} · 更新：{updated}"
+	},
+	"deleteDialog": {
+		"title": "ルーティンを削除しますか？",
+		"description": "「{title}」とそのすべての回が削除されます。この操作は元に戻せません。"
+	},
+	"clusterBlock": {
+		"events": "{n}件の予定"
+	},
+	"more": "他{n}件",
+	"contextMenu": {
+		"duplicate": "複製",
+		"archive": "アーカイブする"
+	},
+	"unscheduled": "未定",
+	"archiveDone": "完了をアーカイブ（{n}）",
+	"today": "今日",
+	"allDay": "終日",
+	"dow": {
+		"mo": "月",
+		"tu": "火",
+		"we": "水",
+		"th": "木",
+		"fr": "金",
+		"sa": "土",
+		"su": "日"
+	},
+	"dowUpper": {
+		"mon": "月",
+		"tue": "火",
+		"wed": "水",
+		"thu": "木",
+		"fri": "金",
+		"sat": "土",
+		"sun": "日"
+	},
+	"dowLetter": {
+		"mon": "月",
+		"tue": "火",
+		"wed": "水",
+		"thu": "木",
+		"fri": "金",
+		"sat": "土",
+		"sun": "日"
+	},
+	"yearView": {
+		"less": "少",
+		"more": "多"
+	},
+	"editModal": {
+		"headerNew": "新規ルーティン",
+		"headerEdit": "ルーティンを編集",
+		"untitled": "（無題）",
+		"fields": {
+			"title": "タイトル",
+			"titlePlaceholder": "どんなルーティンですか？",
+			"description": "説明",
+			"chars": "{n}文字",
+			"optional": "任意",
+			"descriptionPlaceholder": "メモ、背景、リンク、チェックリスト…",
+			"category": "カテゴリ",
+			"schedule": "スケジュール",
+			"unscheduled": "未定（日時の指定なし）",
+			"date": "日付",
+			"time": "時刻",
+			"start": "開始",
+			"end": "終了",
+			"repeats": "繰り返し",
+			"onDay": "日付",
+			"ofEveryMonth": "日（毎月）",
+			"reminder": "リマインダー",
+			"reminderOnlyRepeating": "繰り返しのルーティンのみ",
+			"moveToWorkspace": "通常のタスクとしてワークスペースに移動…"
+		},
+		"created": "作成：{when}",
+		"updated": "更新：{when}",
+		"deleteRoutine": "ルーティンを削除",
+		"createRoutine": "ルーティンを作成",
+		"saveChanges": "変更を保存",
+		"duration": {
+			"hm": "{h}時間{m}分",
+			"h": "{h}時間",
+			"m": "{m}分"
+		},
+		"freq": {
+			"once": "1回のみ",
+			"daily": "毎日",
+			"weekly": "毎週",
+			"monthly": "毎月",
+			"yearly": "毎年"
+		},
+		"reminder": {
+			"off": "オフ",
+			"atTime": "開始時刻",
+			"min5": "5分前",
+			"min15": "15分前",
+			"min30": "30分前",
+			"hour1": "1時間前"
+		},
+		"summary": {
+			"daily": "毎日",
+			"pickDay": "曜日を1つ以上選択してください",
+			"everyDayOfWeek": "毎日（全曜日）",
+			"weekdays": "平日（月〜金）",
+			"weekends": "毎週末",
+			"onDays": "{days}",
+			"monthly": "毎月{day}日",
+			"yearly": "毎年"
+		}
+	},
+	"moveToCloud": {
+		"cloudWorkspace": "クラウドのワークスペース",
+		"ticketKey": "チケットキーはサーバーが割り当てます。",
+		"statement": "{n}件のルーティンをTMGRサーバーに送信し、このデバイスから離れます。ローカルのコピーは、サーバーが受信を確認した後に1件ずつ削除されます。",
+		"destination": "移動先：",
+		"pastCompletions": "過去の完了記録は移動されません。クラウド側は新しく始まります。",
+		"keptRoutines": "タイトル、説明、スケジュール、繰り返しパターンは引き継がれます。プロジェクトと優先度は引き継がれません。",
+		"keptTasks": "タスクに引き継がれるのはタイトルと説明のみです。スケジュール、繰り返しパターン、長さは引き継がれません。",
+		"sendAndRemove": "TMGRに送信してここから削除",
+		"sending": "{name}に送信中…",
+		"summary": "{total}件中{moved}件を{name}に移動しました。",
+		"removeLocalCopy": "ローカルのコピーを削除",
+		"retryFailed": "失敗した{n}件を再試行",
+		"open": "{name}を開く",
+		"status": {
+			"moved": "移動済み",
+			"failed": "失敗",
+			"inCloud": "クラウドにあり、ローカルのコピーは未削除",
+			"notSent": "未送信"
+		},
+		"titleRoutines": "クラウドのルーティンに移動",
+		"titleTasks": "クラウドのタスクに変換",
+		"subtitleSetup": "選択したローカルのルーティンの移動先を選んでください。",
+		"selected": "{n}件を選択中",
+		"categoriesError": "プロジェクトを読み込めませんでした：{message}",
+		"localWorkspaceChanged": "開いているローカルのワークスペースが変わったため、ローカルのコピーは削除されませんでした。",
+		"selectAllAria": "ローカルのルーティンをすべて選択",
+		"selectAll": "すべて選択",
+		"pickHint": "クラウドのワークスペースに送信するローカルのルーティンを選んでください。",
+		"empty": "移動できるローカルのルーティンはありません。",
+		"selectAria": "{title}を選択",
+		"readError": "ローカルのルーティンを読み取れませんでした。"
+	},
+	"page": {
+		"gate": {
+			"title": "デイリールーティン",
+			"description": "繰り返しのタスクを作成して、毎日の習慣を記録できます。ルーティンを続けて、進捗を確認しましょう。"
+		},
+		"localRoutines": "ローカルのルーティン",
+		"dailyRoutines": "デイリールーティン",
+		"localBadge": "ローカル",
+		"storedLocally": "このデバイスにのみ保存されます。クラウドとは同期されません。",
+		"select": "選択",
+		"quickAddAria": "ルーティンをすばやく追加",
+		"quickAddMobile": "すばやく追加…",
+		"quickAddPlaceholder": "すばやく追加 → 未定",
+		"quickAddHint": "{unscheduled}に追加されます。あとでリストからスケジュールできます",
+		"countRoutines": "ルーティン",
+		"countDone": "完了",
+		"countArchived": "アーカイブ済み",
+		"chipRoutines": "ルーティン",
+		"chipDone": "完了",
+		"chipArchived": "アーカイブ済み",
+		"importCalendar": ".icsカレンダーをインポート",
+		"import": "インポート",
+		"exportCalendar": ".icsカレンダーをエクスポート",
+		"export": "エクスポート",
+		"importIcs": ".icsをインポート",
+		"exportIcs": ".icsをエクスポート",
+		"prevPeriod": "前の期間",
+		"nextPeriod": "次の期間",
+		"loading": "ルーティンを読み込み中",
+		"converted": {
+			"title": "ルーティンをタスクに変換しました",
+			"description": "今すぐタスクを開きますか？"
+		},
+		"newRoutineTitle": "新規ルーティン（N）",
+		"newRoutine": "新規ルーティン",
+		"weekRange": "{year}年{month}{start}日〜{end}日",
+		"weekRangeCross": "{year}年{startMonth}{start}日〜{endMonth}{end}日",
+		"monthLabel": "{year}年{month}",
+		"noCloudWorkspace": "ルーティンの移動先になるクラウドのワークスペースがありません。",
+		"signInToMove": "ルーティンをクラウドに移動するにはログインしてください。",
+		"loadError": "ルーティンを読み込めませんでした。",
+		"tryAgain": "もう一度お試しください。",
+		"openError": "ルーティンを開けませんでした",
+		"deleteError": "ルーティンを削除できませんでした",
+		"duplicateError": "ルーティンを複製できませんでした",
+		"convertError": "ルーティンを変換できませんでした",
+		"copyTitle": "{title}（コピー）",
+		"importErrors": "\nエラー：\n- {list}",
+		"importSummary": "インポート {created}件、スキップ {skipped}件、置き換え {replaced}件。{errors}"
+	}
+}

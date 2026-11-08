@@ -39,14 +39,14 @@
 		<div
 			class="flex items-center justify-end gap-2 px-5 pb-4 text-xs text-ink-subtle"
 		>
-			<span>Less</span>
+			<span>{{ $t('dailyRoutine.yearView.less') }}</span>
 			<span
 				v-for="v in [0, 0.25, 0.5, 0.75, 1]"
 				:key="v"
 				class="h-3 w-3 rounded-sm"
 				:style="{ background: heatColor(v) }"
 			/>
-			<span>More</span>
+			<span>{{ $t('dailyRoutine.yearView.more') }}</span>
 		</div>
 	</div>
 </template>
@@ -60,6 +60,7 @@
 		startOfMonth,
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
+	import { t } from '@/i18n';
 	import { currentTimeZone, todayDateIn } from '@/utils/timezone';
 	import { computed } from 'vue';
 
@@ -87,7 +88,11 @@
 		Array.from({ length: 12 }, (_, i) => new Date(props.year, i, 1)),
 	);
 
-	const dowLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+	const dowLabels = computed(() =>
+		['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((key) =>
+			t(`dailyRoutine.dowLetter.${key}`),
+		),
+	);
 
 	function monthDays(m: Date): (Date | null)[] {
 		const first = startOfMonth(m);
@@ -134,7 +139,7 @@
 			[0.85, 'rgba(232,133,125,0.78)'],
 			[1.0, 'rgba(232,133,125,1.00)'],
 		];
-		for (const [t, c] of stops) if (v <= t) return c;
+		for (const [limit, c] of stops) if (v <= limit) return c;
 		return stops[stops.length - 1][1];
 	}
 </script>

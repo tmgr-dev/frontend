@@ -2,7 +2,9 @@
 	<!-- CHANGES: Added min-h-96 to prevent CLS -->
 	<div class="activity-feed min-h-96">
 		<div class="activity-header mb-4 flex items-center justify-between">
-			<h2 class="text-lg font-semibold text-ink">Recent Activity</h2>
+			<h2 class="text-lg font-semibold text-ink">
+				{{ $t('board.dashboard.activityFeed.title') }}
+			</h2>
 			<div class="space-x-2 flex items-center">
 				<ActivityFilters
 					v-model="filters"
@@ -15,7 +17,7 @@
 					@click="refreshActivities"
 					:disabled="loading"
 					class="p-2"
-					aria-label="Refresh activities"
+					:aria-label="$t('board.dashboard.activityFeed.refreshAria')"
 				>
 					<ArrowPathIcon :class="['h-4 w-4', loading && 'animate-spin']" />
 				</Button>
@@ -31,7 +33,7 @@
 				variant="ghost"
 				size="sm"
 				class="h-6 w-6 p-0"
-				aria-label="Clear day filter"
+				:aria-label="$t('board.dashboard.activityFeed.clearDayAria')"
 				@click="emit('clear-date')"
 			>
 				<XMarkIcon class="h-4 w-4" />
@@ -66,7 +68,7 @@
 				role="alert"
 				class="py-4 text-center text-sm text-status-fix-fg"
 			>
-				{{ error.message || "Couldn't load activities for this day" }}
+				{{ error.message || $t('board.dashboard.activityFeed.dayLoadError') }}
 			</p>
 
 			<!-- Activities -->
@@ -88,9 +90,11 @@
 					>
 						<template v-if="loadingMore">
 							<ArrowPathIcon class="mr-2 h-4 w-4 animate-spin" />
-							Loading...
+							{{ $t('board.dashboard.activityFeed.loadingMore') }}
 						</template>
-						<template v-else> Load More Activities </template>
+						<template v-else>
+							{{ $t('board.dashboard.activityFeed.loadMore') }}
+						</template>
 					</Button>
 				</div>
 			</template>
@@ -98,7 +102,7 @@
 			<!-- Filtered to nothing -->
 			<template v-else-if="activities.length > 0">
 				<p class="py-4 text-center text-sm text-ink-subtle">
-					No activities match this filter
+					{{ $t('board.dashboard.activityFeed.noMatch') }}
 				</p>
 			</template>
 
@@ -106,8 +110,8 @@
 			<template v-else>
 				<EmptyState
 					icon="activity"
-					title="No activities yet"
-					description="Activities will appear here as team members work on tasks."
+					:title="$t('board.dashboard.activityFeed.emptyTitle')"
+					:description="$t('board.dashboard.activityFeed.emptyDescription')"
 				/>
 			</template>
 		</div>
@@ -118,12 +122,13 @@
 			class="mt-4 flex items-center justify-center text-xs text-status-done-fg"
 		>
 			<div class="mr-2 h-2 w-2 animate-pulse rounded-full bg-status-done"></div>
-			Live updates enabled
+			{{ $t('board.dashboard.activityFeed.live') }}
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import EmptyState from '@/components/EmptyState.vue';
 	import Button from '@/components/ui/button/Button.vue';
 	import type {
@@ -131,10 +136,7 @@
 		Activity,
 		ActivityFilters as ActivityFiltersType,
 	} from '@/types/dashboard';
-	import {
-		activityCountLabel,
-		formatDayLabel,
-	} from '@/utils/dashboard/activityDayFilter';
+	import { formatDayLabel } from '@/utils/dashboard/activityDayFilter';
 	import { type AuthorFilter, matchesAuthorFilter } from '@/utils/personas';
 	import { ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 	import { computed, ref } from 'vue';
@@ -176,8 +178,14 @@
 		if (!props.selectedDate) return '';
 		const day = formatDayLabel(props.selectedDate);
 		return props.loading || (props.error && props.activities.length === 0)
-			? `Activities on ${day}`
-			: `${activityCountLabel(props.totalItems)} on ${day}`;
+			? t('board.dashboard.activityFeed.dayFilterLoading', { day })
+			: t('board.dashboard.activityFeed.dayFilterCount', {
+					count: t(
+						'board.dashboard.activityFeed.activityCount',
+						props.totalItems,
+					),
+					day,
+				});
 	});
 
 	const filters = ref<ActivityFiltersType>({
@@ -189,12 +197,20 @@
 	const isRealTimeConnected = computed(() => props.connected ?? false);
 
 	const authorFilter = ref<AuthorFilter>('all');
-	const authorFilterOptions: { value: AuthorFilter; label: string }[] = [
-		{ value: 'all', label: 'All' },
-		{ value: 'people', label: 'People' },
-		{ value: 'personas', label: 'Personas' },
-		{ value: 'plugins', label: 'Plugins' },
-	];
+	const authorFilterOptions = computed<
+		{ value: AuthorFilter; label: string }[]
+	>(() => [
+		{ value: 'all', label: t('board.dashboard.activityFeed.authorAll') },
+		{ value: 'people', label: t('board.dashboard.activityFeed.authorPeople') },
+		{
+			value: 'personas',
+			label: t('board.dashboard.activityFeed.authorPersonas'),
+		},
+		{
+			value: 'plugins',
+			label: t('board.dashboard.activityFeed.authorPlugins'),
+		},
+	]);
 	const hasNonUserActors = computed(() =>
 		props.activities.some((a) => a.actor && a.actor.kind !== 'user'),
 	);

@@ -17,11 +17,17 @@
 			class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-status-progress-bg px-3 py-2.5 text-xs leading-relaxed text-ink lg:flex-nowrap dark:bg-[oklch(0.3_0.05_75/0.35)]"
 		>
 			<span class="min-w-0 flex-1">
-				<b class="font-semibold text-status-progress">No placeholders.</b>
-				Every new task will literally start with “<span
-					class="font-mono break-all"
-					>{{ modelValue }}</span
-				>”.
+				<b class="font-semibold text-status-progress">{{
+					$t('board.categories.titlePattern.noPlaceholders')
+				}}</b>
+				<i18n-t
+					keypath="board.categories.titlePattern.literalNotice"
+					tag="span"
+				>
+					<template #pattern>
+						<span class="font-mono break-all">{{ modelValue }}</span>
+					</template>
+				</i18n-t>
 			</span>
 			<Button
 				type="button"
@@ -30,11 +36,17 @@
 				class="h-7 max-w-full shrink-0 border-line-strong bg-surface text-xs text-ink"
 				@click="$emit('update:modelValue', fix)"
 			>
-				Use <span class="truncate font-mono text-[11px]">{{ fix }}</span>
+				<i18n-t keypath="board.categories.titlePattern.use" tag="span">
+					<template #fix>
+						<span class="truncate font-mono text-[11px]">{{ fix }}</span>
+					</template>
+				</i18n-t>
 			</Button>
 		</div>
 		<div class="flex min-w-0 items-baseline gap-2 text-xs text-ink-subtle">
-			<span class="shrink-0">Preview</span>
+			<span class="shrink-0">{{
+				$t('board.categories.titlePattern.preview')
+			}}</span>
 			<span class="truncate font-mono text-ink">{{ preview }}</span>
 		</div>
 		<div class="flex flex-wrap gap-1.5 max-lg:hidden">
@@ -46,7 +58,7 @@
 				@mousedown.prevent
 				@click="insert(chip.token)"
 			>
-				+ {{ chip.label }}
+				+ {{ $t(chip.labelKey) }}
 			</button>
 		</div>
 	</div>
@@ -54,6 +66,7 @@
 
 <script>
 	import { Button } from '@/components/ui/button';
+	import { t } from '@/i18n';
 	import {
 		composeTitle,
 		insertAt,
@@ -64,10 +77,22 @@
 	import { computed, defineComponent, nextTick, ref } from 'vue';
 
 	const CHIPS = [
-		{ label: 'category number', token: '{index#category}' },
-		{ label: 'workspace number', token: '{index#workspace}' },
-		{ label: 'date', token: '{dts#dd.mm.yyyy#dte}' },
-		{ label: 'weekday', token: '{dts#ddd#dte}' },
+		{
+			labelKey: 'board.categories.titlePattern.chips.categoryNumber',
+			token: '{index#category}',
+		},
+		{
+			labelKey: 'board.categories.titlePattern.chips.workspaceNumber',
+			token: '{index#workspace}',
+		},
+		{
+			labelKey: 'board.categories.titlePattern.chips.date',
+			token: '{dts#dd.mm.yyyy#dte}',
+		},
+		{
+			labelKey: 'board.categories.titlePattern.chips.weekday',
+			token: '{dts#ddd#dte}',
+		},
 	];
 
 	export default defineComponent({
@@ -75,7 +100,10 @@
 		components: { Button },
 		props: {
 			modelValue: { type: [String, Number], default: '' },
-			label: { type: String, default: 'Task title pattern' },
+			label: {
+				type: String,
+				default: () => t('board.categories.titlePattern.defaultLabel'),
+			},
 		},
 		emits: ['update:modelValue'],
 		setup(props, { emit }) {
@@ -84,7 +112,10 @@
 			const literal = computed(() => isLiteralPattern(value.value));
 			const fix = computed(() => literalPatternFix(value.value));
 			const preview = computed(() =>
-				composeTitle(renderTitlePrefix(value.value), 'Task title'),
+				composeTitle(
+					renderTitlePrefix(value.value),
+					t('board.categories.titlePattern.sampleTitle'),
+				),
 			);
 
 			const insert = async (token) => {

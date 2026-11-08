@@ -5,7 +5,7 @@
 				<button
 					class="relative rounded-md p-2 transition-colors hover:bg-surface-hover"
 					:class="{ 'has-new-notification': hasNewNotification }"
-					aria-label="Notifications"
+					:aria-label="$t('workspace.notificationBell.label')"
 				>
 					<Bell :size="20" :class="{ 'animate-bell': hasNewNotification }" />
 					<span
@@ -26,11 +26,13 @@
 				class="notification-dropdown flex max-h-[600px] w-[380px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0"
 				align="end"
 				:side-offset="8"
-				aria-label="Notifications"
+				:aria-label="$t('workspace.notificationBell.label')"
 				@open-auto-focus="handleOpenAutoFocus"
 			>
 				<div class="flex items-center justify-between gap-2 px-4 py-3">
-					<h3 class="m-0 text-base font-semibold text-ink">Notifications</h3>
+					<h3 class="m-0 text-base font-semibold text-ink">
+						{{ $t('workspace.notificationBell.label') }}
+					</h3>
 					<Button
 						v-if="unreadCount > 0"
 						variant="ghost"
@@ -38,7 +40,7 @@
 						:disabled="loading"
 						@click="handleMarkAllAsRead"
 					>
-						Mark all as read
+						{{ $t('workspace.notificationBell.markAllRead') }}
 					</Button>
 				</div>
 
@@ -51,7 +53,7 @@
 					<div
 						class="h-8 w-8 animate-spin rounded-pill border-[3px] border-line border-t-ink-muted"
 					></div>
-					<p class="text-sm">Loading...</p>
+					<p class="text-sm">{{ $t('workspace.notificationBell.loading') }}</p>
 				</div>
 
 				<div
@@ -59,7 +61,7 @@
 					class="flex flex-col items-center justify-center gap-4 p-8 text-ink-subtle"
 				>
 					<Bell :size="48" class="opacity-40" />
-					<p class="text-sm">No notifications</p>
+					<p class="text-sm">{{ $t('workspace.notificationBell.empty') }}</p>
 				</div>
 
 				<div v-else class="max-h-[480px] overflow-y-auto">
@@ -80,7 +82,7 @@
 
 				<div v-if="notifications.length > 0" class="p-1.5">
 					<Button variant="ghost" class="w-full" @click="handleViewAll">
-						View all
+						{{ $t('workspace.notificationBell.viewAll') }}
 					</Button>
 				</div>
 			</PopoverContent>

@@ -1,0 +1,222 @@
+{
+	"views": {
+		"list": "List",
+		"day": "Day",
+		"week": "Week",
+		"month": "Month",
+		"year": "Year"
+	},
+	"clusterPopover": {
+		"overlapping": "{n} overlapping"
+	},
+	"markDoneAria": "Mark \"{title}\" done",
+	"editAria": "Edit \"{title}\"",
+	"eventBlock": {
+		"dragStart": "Drag to change start time",
+		"dragDuration": "Drag to change duration"
+	},
+	"convert": {
+		"title": "Convert to task",
+		"workspace": "Workspace",
+		"category": "Category",
+		"noCategory": "No category",
+		"submit": "Convert"
+	},
+	"routineRow": {
+		"moreTitle": "More (right-click for menu)",
+		"more": "More",
+		"created": "created {created}",
+		"createdUpdated": "created {created} · updated {updated}"
+	},
+	"deleteDialog": {
+		"title": "Delete routine?",
+		"description": "\"{title}\" and all its occurrences will be deleted. This cannot be undone."
+	},
+	"clusterBlock": {
+		"events": "{n} events"
+	},
+	"more": "+ {n} more",
+	"contextMenu": {
+		"duplicate": "Duplicate",
+		"archive": "Archive"
+	},
+	"unscheduled": "Unscheduled",
+	"archiveDone": "Archive done ({n})",
+	"today": "Today",
+	"allDay": "ALL-DAY",
+	"dow": {
+		"mo": "Mo",
+		"tu": "Tu",
+		"we": "We",
+		"th": "Th",
+		"fr": "Fr",
+		"sa": "Sa",
+		"su": "Su"
+	},
+	"dowUpper": {
+		"mon": "MON",
+		"tue": "TUE",
+		"wed": "WED",
+		"thu": "THU",
+		"fri": "FRI",
+		"sat": "SAT",
+		"sun": "SUN"
+	},
+	"dowLetter": {
+		"mon": "M",
+		"tue": "T",
+		"wed": "W",
+		"thu": "T",
+		"fri": "F",
+		"sat": "S",
+		"sun": "S"
+	},
+	"yearView": {
+		"less": "Less",
+		"more": "More"
+	},
+	"editModal": {
+		"headerNew": "New routine",
+		"headerEdit": "Edit routine",
+		"untitled": "(untitled)",
+		"fields": {
+			"title": "Title",
+			"titlePlaceholder": "What's the routine?",
+			"description": "Description",
+			"chars": "{n} chars",
+			"optional": "Optional",
+			"descriptionPlaceholder": "Notes, context, links, checklist…",
+			"category": "Category",
+			"schedule": "Schedule",
+			"unscheduled": "Unscheduled (no specific date/time)",
+			"date": "Date",
+			"time": "Time",
+			"start": "Start",
+			"end": "End",
+			"repeats": "Repeats",
+			"onDay": "On day",
+			"ofEveryMonth": "of every month",
+			"reminder": "Reminder",
+			"reminderOnlyRepeating": "Only for repeating routines",
+			"moveToWorkspace": "Move to a workspace as a regular task…"
+		},
+		"created": "Created {when}",
+		"updated": "Updated {when}",
+		"deleteRoutine": "Delete routine",
+		"createRoutine": "Create routine",
+		"saveChanges": "Save changes",
+		"duration": {
+			"hm": "{h}h {m}m",
+			"h": "{h}h",
+			"m": "{m}m"
+		},
+		"freq": {
+			"once": "Once",
+			"daily": "Daily",
+			"weekly": "Weekly",
+			"monthly": "Monthly",
+			"yearly": "Yearly"
+		},
+		"reminder": {
+			"off": "Off",
+			"atTime": "At time",
+			"min5": "5m",
+			"min15": "15m",
+			"min30": "30m",
+			"hour1": "1h"
+		},
+		"summary": {
+			"daily": "Every day",
+			"pickDay": "Pick at least one day",
+			"everyDayOfWeek": "Every day of the week",
+			"weekdays": "Every weekday (Mon–Fri)",
+			"weekends": "Every weekend",
+			"onDays": "On {days}",
+			"monthly": "On day {day} of every month",
+			"yearly": "Annually"
+		}
+	},
+	"moveToCloud": {
+		"cloudWorkspace": "Cloud workspace",
+		"ticketKey": "The server assigns the ticket key.",
+		"statement": "{n} routine will be sent to the TMGR server and will leave this device. Each local copy is removed after the server confirms it. | {n} routines will be sent to the TMGR server and will leave this device. Each local copy is removed after the server confirms it.",
+		"destination": "Destination:",
+		"pastCompletions": "Past completions are not moved; the cloud copy starts fresh.",
+		"keptRoutines": "Title, description, schedule and repeat pattern are kept. Category and priority are not.",
+		"keptTasks": "The tasks keep the title and description only. Schedule, repeat pattern and duration are not kept.",
+		"sendAndRemove": "Send to TMGR and remove here",
+		"sending": "Sending to {name}…",
+		"summary": "{moved} of {total} moved to {name}.",
+		"removeLocalCopy": "Remove local copy",
+		"retryFailed": "Retry {n} failed",
+		"open": "Open {name}",
+		"status": {
+			"moved": "Moved",
+			"failed": "Failed",
+			"inCloud": "In the cloud, local copy not removed",
+			"notSent": "Not sent"
+		},
+		"titleRoutines": "Move to cloud routines",
+		"titleTasks": "Convert to cloud tasks",
+		"subtitleSetup": "Choose where the selected local routines go.",
+		"selected": "{n} selected",
+		"categoriesError": "Categories could not be loaded: {message}",
+		"localWorkspaceChanged": "The open local workspace changed, so the local copy was not removed.",
+		"selectAllAria": "Select all local routines",
+		"selectAll": "Select all",
+		"pickHint": "Pick the local routines to send to a cloud workspace.",
+		"empty": "There are no local routines to move.",
+		"selectAria": "Select {title}",
+		"readError": "The local routines could not be read."
+	},
+	"page": {
+		"gate": {
+			"title": "Daily Routines",
+			"description": "Create recurring tasks and track your daily habits. Build consistent routines and monitor your progress over time."
+		},
+		"localRoutines": "Local routines",
+		"dailyRoutines": "Daily routines",
+		"localBadge": "Local",
+		"storedLocally": "Stored only on this device — not synced to the cloud.",
+		"select": "Select",
+		"quickAddAria": "Quick add routine",
+		"quickAddMobile": "Quick add…",
+		"quickAddPlaceholder": "Quick add → Unscheduled",
+		"quickAddHint": "Adds to {unscheduled} — schedule later from list",
+		"countRoutines": "Routines",
+		"countDone": "Done",
+		"countArchived": "Archived",
+		"chipRoutines": "ROUTINES",
+		"chipDone": "DONE",
+		"chipArchived": "ARCHIVED",
+		"importCalendar": "Import .ics calendar",
+		"import": "Import",
+		"exportCalendar": "Export .ics calendar",
+		"export": "Export",
+		"importIcs": "Import .ics",
+		"exportIcs": "Export .ics",
+		"prevPeriod": "Previous period",
+		"nextPeriod": "Next period",
+		"loading": "Loading routines",
+		"converted": {
+			"title": "Routine converted to a task",
+			"description": "Open the task now?"
+		},
+		"newRoutineTitle": "New routine (N)",
+		"newRoutine": "New routine",
+		"weekRange": "{month} {start} – {end}, {year}",
+		"weekRangeCross": "{startMonth} {start} – {endMonth} {end}, {year}",
+		"monthLabel": "{month} {year}",
+		"noCloudWorkspace": "No cloud workspace to move routines to.",
+		"signInToMove": "Sign in to move routines to the cloud.",
+		"loadError": "Could not load routines.",
+		"tryAgain": "Please try again.",
+		"openError": "Could not open the routine",
+		"deleteError": "Could not delete the routine",
+		"duplicateError": "Could not duplicate the routine",
+		"convertError": "Could not convert the routine",
+		"copyTitle": "{title} (copy)",
+		"importErrors": "\nErrors:\n- {list}",
+		"importSummary": "Imported {created}, skipped {skipped}, replaced {replaced}.{errors}"
+	}
+}

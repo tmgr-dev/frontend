@@ -1,0 +1,789 @@
+{
+	"taskCount": {
+		"label": "{n}件のタスク",
+		"inProgress": "進行中 {n}件",
+		"done": "完了 {n}件",
+		"hidden": "非表示 {n}件",
+		"summary": "{parts} — {percent}% 完了"
+	},
+	"graph": {
+		"section": {
+			"title": "グラフ"
+		},
+		"canvas": {
+			"label": "つながっている{count}件のアイテムのグラフ"
+		},
+		"neighborhood": {
+			"expand": "展開",
+			"zoomIn": "拡大",
+			"zoomOut": "縮小",
+			"fitToView": "全体を表示",
+			"rings": "内側の輪：直接のリンク · 外側の輪：2ステップ先（薄く表示） · 破線：弱いリンク",
+			"truncatedWithHidden": "近い順に{closest}件を表示中 — 他に{hidden}件が非表示",
+			"truncated": "近い順に{closest}件を表示中",
+			"empty": "リンクはまだありません — タスクの関連付け、ページのリンク、担当者の割り当てを行うとグラフが表示されます",
+			"loadFailed": "グラフを読み込めませんでした",
+			"retry": "再試行",
+			"loading": "グラフを読み込み中…"
+		},
+		"types": {
+			"task": "タスク",
+			"page": "ページ",
+			"user": "ユーザー",
+			"persona": "ペルソナ",
+			"agentRun": "エージェントの実行"
+		},
+		"groups": {
+			"tasks": "タスク",
+			"pages": "ページ",
+			"people": "ユーザーとペルソナ",
+			"agentRuns": "エージェントの実行"
+		},
+		"overlay": {
+			"dialogLabel": "グラフ",
+			"title": "グラフ",
+			"task": "タスク",
+			"page": "ページ",
+			"back": "戻る",
+			"closeLabel": "グラフを閉じる",
+			"selected": "選択中",
+			"whyConnected": "つながっている理由",
+			"more": "他{n}件",
+			"centre": "ここがグラフの中心です。",
+			"openTask": "タスクを開く",
+			"openPage": "ページを開く",
+			"centerHere": "ここを中心にする",
+			"loading": "読み込み中…",
+			"depth": "深さ",
+			"depthLabel": "深さ",
+			"steps": "{n}ステップ",
+			"show": "表示",
+			"similarLater": "意味が近いもの（今後対応）"
+		}
+	},
+	"dashboard": {
+		"activityChart": {
+			"title": "アクティビティの推移",
+			"loadError": "グラフのデータを読み込めませんでした",
+			"empty": "この期間のアクティビティはありません",
+			"scaleNote": "各線はそれぞれのピークに合わせて表示しています",
+			"dateColumn": "日付",
+			"summaryIntro": "アクティビティの推移（過去{n}日間）。",
+			"summaryTotal": "{label}：合計 {total}。",
+			"summaryTotalPeak": "{label}：合計 {total}、{day}にピーク {peak}。",
+			"summaryPeakOnly": "{label}：{day}にピーク {peak}。",
+			"summaryNone": "{label}：なし。"
+		},
+		"activityFeed": {
+			"title": "最近のアクティビティ",
+			"refreshAria": "アクティビティを更新",
+			"clearDayAria": "日付フィルターを解除",
+			"dayFilterLoading": "{day}のアクティビティ",
+			"dayFilterCount": "{day}：{count}件",
+			"activityCount": "{n}件のアクティビティ",
+			"dayLoadError": "この日のアクティビティを読み込めませんでした",
+			"loadingMore": "読み込み中…",
+			"loadMore": "さらに読み込む",
+			"noMatch": "このフィルターに一致するアクティビティはありません",
+			"emptyTitle": "アクティビティはまだありません",
+			"emptyDescription": "メンバーがタスクに取り組むと、ここに表示されます。",
+			"live": "ライブ更新が有効です",
+			"authorAll": "すべて",
+			"authorPeople": "ユーザー",
+			"authorPersonas": "ペルソナ",
+			"authorPlugins": "プラグイン"
+		},
+		"activityItem": {
+			"by": "{name}による"
+		},
+		"activityFilters": {
+			"types": {
+				"allTypes": "すべての種類",
+				"taskCreated": "タスクを作成",
+				"taskUpdated": "タスクを更新",
+				"taskCompleted": "タスクを完了",
+				"taskDeleted": "タスクを削除",
+				"statusChanged": "ステータスを変更",
+				"taskAssigned": "タスクを割り当て",
+				"personaAssigned": "ペルソナを割り当て",
+				"timerStarted": "タイマーを開始",
+				"timerStopped": "タイマーを停止",
+				"commentAdded": "コメントを追加",
+				"commentUpdated": "コメントを更新",
+				"commentDeleted": "コメントを削除",
+				"categoryCreated": "プロジェクトを作成",
+				"categoryUpdated": "プロジェクトを更新",
+				"categoryDeleted": "プロジェクトを削除",
+				"fileUploaded": "ファイルをアップロード",
+				"fileDeleted": "ファイルを削除",
+				"memberJoined": "メンバーが参加",
+				"memberLeft": "メンバーが退出",
+				"routineCompleted": "ルーティンを完了"
+			},
+			"ranges": {
+				"allTime": "全期間",
+				"today": "今日",
+				"yesterday": "昨日",
+				"thisWeek": "今週",
+				"lastWeek": "先週",
+				"thisMonth": "今月",
+				"lastMonth": "先月"
+			},
+			"allUsers": "すべてのユーザー",
+			"clearAria": "フィルターを解除"
+		},
+		"kpiCard": {
+			"unavailable": "利用できません"
+		},
+		"recentTaskItem": {
+			"overdue": "期限超過",
+			"assignees": "担当者：",
+			"moreAssignees": "他{n}人",
+			"stopTimer": "タイマーを停止",
+			"startTimer": "タイマーを開始",
+			"noStatus": "ステータスなし",
+			"ariaTask": "タスク：{title}",
+			"ariaStatus": "ステータス：{status}",
+			"ariaAssignedTo": "担当：{name}",
+			"ariaUpdated": "更新：{when}",
+			"timerRunning": "タイマー実行中"
+		},
+		"recentTasksList": {
+			"title": "最近のタスク",
+			"refreshAria": "最近のタスクを更新",
+			"viewAll": "すべて表示",
+			"emptyTitle": "最近のタスクはありません",
+			"emptyDescription": "タスクが更新されると、ここに表示されます。",
+			"createTask": "タスクを作成"
+		},
+		"statisticsGrid": {
+			"totalTasks": {
+				"title": "タスク合計",
+				"description": "ワークスペース内のすべてのタスク"
+			},
+			"activeTasks": {
+				"title": "アクティブなタスク",
+				"description": "現在進行中"
+			},
+			"completedToday": {
+				"title": "今日の完了",
+				"description": "今日完了したタスク"
+			},
+			"completedWeek": {
+				"title": "今週の完了",
+				"description": "今週完了したタスク"
+			},
+			"timeToday": {
+				"title": "今日の時間",
+				"description": "今日記録した時間"
+			},
+			"timeWeek": {
+				"title": "今週の時間",
+				"description": "今週記録した時間"
+			},
+			"teamMembers": {
+				"title": "チームメンバー",
+				"description": "ワークスペースのアクティブなメンバー"
+			},
+			"overdueTasks": {
+				"title": "期限超過のタスク",
+				"description": "期限を過ぎたタスク"
+			},
+			"dailyRoutine": {
+				"title": "デイリールーティン",
+				"description": "達成率"
+			}
+		},
+		"teamActivityWidget": {
+			"title": "アクティブなメンバー",
+			"windowAria": "アクティビティの期間",
+			"windows": {
+				"today": "今日",
+				"d7": "7日",
+				"d30": "30日",
+				"all": "全期間"
+			},
+			"subtitles": {
+				"today": "今日のメンバーのアクティビティ",
+				"all": "メンバーのアクティビティ（全期間）",
+				"d30": "メンバーのアクティビティ（過去30日間）",
+				"d7": "メンバーのアクティビティ（過去7日間）"
+			},
+			"activeNow": "現在{n}人がアクティブ",
+			"refreshAria": "チームのアクティビティを更新",
+			"colMember": "メンバー",
+			"colActivity": "アクティビティ",
+			"colDone": "完了",
+			"colTracked": "記録時間",
+			"colActive": "アクティブ",
+			"colLastActive": "最終アクティブ",
+			"totalMembers": "メンバー合計",
+			"activeToday": "今日アクティブ",
+			"activeTimers": "実行中のタイマー",
+			"trackedWindow": "記録時間 · {window}",
+			"doneWindow": "完了 · {window}",
+			"emptyTitle": "チームメンバーがいません",
+			"emptyDescription": "メンバーを招待すると、ここにアクティビティが表示されます。",
+			"invite": "メンバーを招待"
+		},
+		"topCategoriesCard": {
+			"title": "上位のプロジェクト",
+			"empty": "この期間に記録された時間はありません"
+		},
+		"teamMemberItem": {
+			"activeRecently": "過去5分以内にアクティブ",
+			"inactive": "非アクティブ",
+			"lastTouched": "最終操作",
+			"noRecentActivity": "最近のアクティビティはありません",
+			"summaryLine": "完了 {done} · {tracked} · アクティブ {active} · {last}",
+			"activityTitle": "アクティビティ（過去{n}日間）",
+			"dtDone": "完了",
+			"dtTracked": "記録時間",
+			"dtActiveTasks": "アクティブなタスク",
+			"dtLastActive": "最終アクティブ",
+			"justNow": "たった今",
+			"minutesAgo": "{n}分前",
+			"hoursAgo": "{n}時間前",
+			"daysAgo": "{n}日前",
+			"commentsCount": "コメント{n}件",
+			"streak": "連続{n}日",
+			"ariaMember": "チームメンバー：{name}",
+			"online": "オンライン",
+			"offline": "オフライン",
+			"workingOn": "作業中：{title}",
+			"timerRunning": "タイマー実行中",
+			"lastActive": "最終アクティブ：{when}",
+			"ariaStats": "記録時間 {tracked}、完了 {done}、アクティブ {active}、コメント {comments}、連続 {streak}"
+		}
+	},
+	"graphMap": {
+		"canvas": {
+			"emptyLabel": "プロジェクトごとにまとめたタスクとページのマップ",
+			"bottleneck": "ボトルネック：{name}が{count}件をブロックしています。",
+			"label": "{clusters}個のクラスターにある{nodes}件のタスクとページのマップ：{names}。{bottleneck}検索ボックスを使うと、キーボードでマップ内を移動できます。"
+		},
+		"timeline": {
+			"pause": "タイムラインを一時停止",
+			"play": "タイムラインを再生",
+			"label": "タイムライン"
+		},
+		"insights": {
+			"whatMapShows": "マップの見方",
+			"bottleneck": "ボトルネック",
+			"hubs": "ハブ",
+			"bridges": "ブリッジ",
+			"noLinks": "リンクなし",
+			"empty": "マップにデータがあるとインサイトが表示されます。",
+			"hideOrphans": "リンクのないアイテムを隠す",
+			"showOrphans": "リンクのないアイテムを表示",
+			"howToUse": "使い方",
+			"howToUseText": "クラスターをクリックすると拡大します。点をクリックすると周辺を開きます。期間をドラッグすると、マップが週ごとに広がる様子を確認できます。",
+			"legend": "クラスター = プロジェクト · 明るい曲線 = 領域間のリンク · 破線の輪 = リンクのないアイテム · オレンジ = ボトルネック"
+		}
+	},
+	"categoryPage": {
+		"gate": {
+			"title": "プロジェクト",
+			"description": "タスクをプロジェクトとサブプロジェクトに整理できます。階層構造を作って、プロジェクト管理をしやすくしましょう。"
+		},
+		"loadingLabel": "プロジェクトを読み込み中",
+		"empty": {
+			"title": "プロジェクトはまだありません",
+			"body": "プロジェクトはタスクをまとめ、新しいタスクの初期値（{pattern}のようなタイトルパターン、時間単価、見積もり）を設定します。",
+			"create": "新規プロジェクト"
+		},
+		"missing": {
+			"title": "プロジェクトが見つかりません",
+			"body": "削除されたか、別のワークスペースに移動された可能性があります。",
+			"open": "プロジェクトを開く"
+		},
+		"subcategory": "サブプロジェクト",
+		"createTask": "タスクを作成",
+		"createTaskTitle": "このプロジェクトにタスクを作成",
+		"navLabel": "プロジェクト",
+		"tabs": {
+			"tasks": "タスク",
+			"subcategories": "サブプロジェクト",
+			"settings": "設定"
+		},
+		"discard": {
+			"title": "未保存の変更を破棄しますか？",
+			"description": "このプロジェクトへの編集内容は失われます。",
+			"keep": "編集を続ける",
+			"confirm": "破棄"
+		},
+		"workspaceFallback": "ワークスペース",
+		"topLevel": "最上位",
+		"newCategory": "新規プロジェクト",
+		"documentTitle": {
+			"categories": "プロジェクト"
+		}
+	},
+	"workspaceMap": {
+		"workspace": "ワークスペース",
+		"title": "マップ — すべてのつながり",
+		"searchPlaceholder": "タスク、ページ、ユーザー",
+		"searchLabel": "マップを検索",
+		"searchResults": "検索結果",
+		"timeRange": "期間",
+		"ranges": {
+			"d7": "過去7日間",
+			"d30": "過去30日間",
+			"d90": "過去90日間",
+			"all": "全期間"
+		},
+		"groupByCategory": "プロジェクトでグループ化",
+		"truncated": "{total}件中{shown}件を表示中 — 期間を絞り込んでください",
+		"loading": "ワークスペースをマッピング中…",
+		"loadFailed": "マップを読み込めませんでした。",
+		"retry": "再試行",
+		"emptyTitle": "この期間にマッピングするものはありません",
+		"emptyText": "選択した期間にタスクやページが作成または更新されると、ここに表示されます。",
+		"showAllTime": "全期間を表示",
+		"legend": "クラスター = プロジェクト · 明るい曲線 = 領域間のリンク · 破線の輪 = リンクのないアイテム · オレンジ = ボトルネック",
+		"whatMapShows": "マップの見方",
+		"zoomIn": "拡大",
+		"zoomOut": "縮小",
+		"fitToScreen": "画面に合わせる"
+	},
+	"categories": {
+		"agentRepositories": {
+			"title": "エージェント実行用リポジトリ",
+			"description": "このプロジェクトのタスクでエージェントが作業できるリポジトリです。空欄の場合は、連携済みのGitHubリポジトリを使います。",
+			"saveFailed": "リポジトリを保存できませんでした。"
+		},
+		"titlePattern": {
+			"defaultLabel": "タスクのタイトルパターン",
+			"noPlaceholders": "プレースホルダーなし。",
+			"literalNotice": "新しいタスクはすべて、文字どおり「{pattern}」で始まります。",
+			"use": "{fix}を使う",
+			"preview": "プレビュー",
+			"sampleTitle": "タスクのタイトル",
+			"chips": {
+				"categoryNumber": "プロジェクト番号",
+				"workspaceNumber": "ワークスペース番号",
+				"date": "日付",
+				"weekday": "曜日"
+			}
+		},
+		"cursor": {
+			"title": "Cursor AI 連携",
+			"configureTitle": "Cursor AIエージェントを設定",
+			"configureDescription": "Cursor APIキーを追加すると、このプロジェクトでAIによるコード生成を利用できます",
+			"apiKeyLabel": "Cursor APIキー",
+			"apiKeyHelp": "APIキーは{link}で取得できます",
+			"dashboard": "Cursorダッシュボード",
+			"validating": "検証中…",
+			"saveKey": "APIキーを保存",
+			"configured": "Cursor AIエージェントを設定済み",
+			"ready": "このプロジェクトのコード生成を支援できます",
+			"updateKey": "キーを更新",
+			"removeKey": "キーを削除",
+			"removing": "削除中…",
+			"newApiKeyLabel": "新しいCursor APIキー",
+			"saveFailed": "APIキーを保存できませんでした",
+			"removeFailed": "APIキーを削除できませんでした",
+			"removeConfirm": "このプロジェクトからCursor APIキーを削除しますか？"
+		},
+		"github": {
+			"title": "GitHub連携",
+			"connectTitle": "GitHubリポジトリを接続",
+			"connectDescription": "GitHubリポジトリをリンクすると、コミット、ブランチ、プルリクエストを自動で追跡します",
+			"installing": "インストール中…",
+			"installApp": "GitHub Appをインストール",
+			"installed": "✓ GitHub Appがインストールされています。接続するリポジトリを選択してください：",
+			"noRepositories": "利用できるリポジトリがありません。GitHub Appにリポジトリへのアクセス権があるか確認してください。",
+			"selectRepository": "リポジトリを選択",
+			"selectPlaceholder": "— リポジトリを選択 —",
+			"connecting": "接続中…",
+			"connectRepository": "リポジトリを接続",
+			"connectedTo": "接続先",
+			"lastSynced": "最終同期：{date}",
+			"syncing": "同期中…",
+			"syncNow": "今すぐ同期",
+			"relinking": "再リンク中…",
+			"relinkTasks": "タスクを再リンク",
+			"relinkTitle": "既存のコミットとブランチをタスクに再リンクします",
+			"disconnecting": "切断中…",
+			"disconnect": "切断",
+			"loadFailed": "GitHub連携の状態を読み込めませんでした",
+			"installFailed": "GitHub Appのインストールを開始できませんでした",
+			"connectFailed": "リポジトリを接続できませんでした",
+			"disconnectConfirm": "このリポジトリを切断しますか？",
+			"disconnectFailed": "リポジトリを切断できませんでした",
+			"syncFailed": "リポジトリを同期できませんでした",
+			"relinkFailed": "タスクの参照を再リンクできませんでした",
+			"justNow": "たった今",
+			"minutesAgo": "{n}分前",
+			"hoursAgo": "{n}時間前",
+			"daysAgo": "{n}日前"
+		},
+		"pane": {
+			"fixAll": "{count}件すべて修正",
+			"saveFirst": "先に変更を保存または破棄してください",
+			"issues": "{n}件のプロジェクトで、新しいタスクのタイトルが固定文字になっています",
+			"sections": {
+				"general": "全般",
+				"newTasks": "新しいタスク",
+				"newTasksHint": "このプロジェクトで作成するタスクの初期値",
+				"integrations": "連携",
+				"dangerZone": "危険な操作"
+			},
+			"fields": {
+				"name": "名前",
+				"code": "コード",
+				"codeHint": "英数字",
+				"codePlaceholder": "例：PROJ、FEAT、BUG",
+				"parent": "親",
+				"noParent": "親なし",
+				"copyFrom": "設定のコピー元",
+				"copyFromHint": "下の項目に入力されます。あとから変更もできます",
+				"dontCopy": "コピーしない"
+			},
+			"createNote": "連携と危険な操作は、プロジェクトの作成後に表示されます。",
+			"integrations": {
+				"cursorLabel": "Cursor AIエージェント",
+				"cursorHint": "このプロジェクトのタスクをCursorエージェントに送ります",
+				"connected": "接続済み",
+				"notConnected": "未接続",
+				"unavailable": "利用できません",
+				"manage": "管理",
+				"connect": "接続",
+				"githubLabel": "GitHub",
+				"githubHint": "タスクをリポジトリにリンクします",
+				"installApp": "GitHub Appをインストール",
+				"reposLabel": "エージェント用リポジトリ",
+				"reposHint": "エージェントが作業できる場所（owner/name形式）",
+				"addRepository": "リポジトリを追加",
+				"repositoriesCount": "{n}件のリポジトリ"
+			},
+			"danger": {
+				"moveLabel": "別のワークスペースに移動",
+				"moveHint": "サブプロジェクトとタスクも一緒に移動します",
+				"move": "移動…",
+				"deleteLabel": "プロジェクトを削除",
+				"deleteHint": "プロジェクトは一覧から削除されます",
+				"delete": "削除…"
+			},
+			"bar": {
+				"discard": "破棄",
+				"newSubcategory": "{title}の新規サブプロジェクト",
+				"newTopLevel": "新規の最上位プロジェクト",
+				"changes": "未保存の変更が{n}件あります"
+			},
+			"deleteDialog": {
+				"title": "「{title}」を削除しますか？",
+				"description": "プロジェクトは一覧から削除されます。"
+			},
+			"transfer": {
+				"title": "プロジェクトを別のワークスペースに移動",
+				"description": "「{title}」を、すべてのサブプロジェクトとタスクと一緒に移動します。タスクのステータスは、移動先のワークスペースの名前、次に種類で対応付けられます。移動先のワークスペースのメンバーでない担当者は外されます。",
+				"placeholder": "ワークスペースを選択",
+				"noOther": "ほかのワークスペースのメンバーではありません。",
+				"moving": "移動中…",
+				"move": "移動"
+			},
+			"settings": {
+				"titlePatternLabel": "タスクのタイトルパターン",
+				"titlePatternHint": "新しいタスクのタイトルすべての先頭に付きます",
+				"rateLabel": "1時間あたりの単価",
+				"estimateLabel": "デフォルトの見積もり",
+				"reminderLabel": "タイマーのリマインダー間隔",
+				"reminderHint": "実行中のタイマーが経過するたびに音が鳴ります",
+				"durationError": "45m、2h、1h 30mのように入力してください",
+				"durationHint": "45m、2h、1h 30mのように入力します",
+				"durationPlaceholder": "例：45m",
+				"rateUnit": "/ 時間",
+				"select": "選択",
+				"customValue": "カスタム値"
+			},
+			"toasts": {
+				"success": "成功",
+				"tryAgain": "もう一度お試しください。",
+				"cursorConfigured": "Cursor APIキーを設定しました",
+				"cursorRemoved": "Cursor APIキーを削除しました",
+				"githubConnected": "{name}に接続しました",
+				"githubDisconnected": "リポジトリを切断しました",
+				"githubSynced": "リポジトリを同期しました",
+				"relinked": "{total}件を再リンクしました：コミット{commits}件、ブランチ{branches}件、PR{pullRequests}件",
+				"saveFailed": "プロジェクトを保存できませんでした",
+				"defaultsNotSaved": "新しいタスクの初期値は保存されませんでした",
+				"kept": {
+					"code": "サーバーは以前のコードを保持しました",
+					"parent": "サーバーは以前の親を保持しました",
+					"codeAndParent": "サーバーは以前のコードと親を保持しました"
+				},
+				"otherSaved": "ほかの変更は保存されました。",
+				"saved": "保存しました",
+				"categorySaved": "プロジェクトを保存しました",
+				"createFailed": "プロジェクトを作成できませんでした",
+				"created": "プロジェクトを作成しました",
+				"createdDefaultsFailed": "新しいタスクの初期値は保存されませんでした。もう一度設定して保存してください。",
+				"fixedPatterns": "{n}件のタイトルパターンを修正しました",
+				"fixedPartial": "{total}件中{fixed}件のタイトルパターンを修正しました",
+				"fixedPartialRest": "{rest}件は保存できませんでした。もう一度お試しください。",
+				"deleteFailed": "プロジェクトを削除できませんでした",
+				"deleted": "プロジェクトを削除しました",
+				"workspacesFailed": "ワークスペースを読み込めませんでした",
+				"moved": "「{title}」を{workspace}に移動しました",
+				"anotherWorkspace": "別のワークスペース",
+				"transferFailed": "移動に失敗しました",
+				"moveFailed": "プロジェクトを移動できませんでした。もう一度お試しください。"
+			}
+		}
+	},
+	"boardPage": {
+		"featureGate": {
+			"title": "カンバンボード",
+			"description": "タスクをカンバン形式のボードで可視化します。列の間でタスクをドラッグ＆ドロップして、ステータスを更新できます。"
+		},
+		"refresh": "更新",
+		"filters": "フィルター",
+		"addStatus": "ステータスを追加",
+		"editStatus": "ステータスを編集",
+		"createStatus": "ステータスを作成",
+		"refreshingTasks": "タスクを更新中…",
+		"dragToReorderColumns": "ドラッグして列を並べ替え",
+		"overtime": "超過時間",
+		"createTask": "タスクを作成",
+		"createATask": "タスクを作成",
+		"moveAllTasksTo": "すべてのタスクを移動…",
+		"archiveAll": "すべてアーカイブ",
+		"addTask": "タスクを追加",
+		"taskTitlePlaceholder": "タスクのタイトルを入力…",
+		"statusForm": {
+			"namePlaceholder": "名前",
+			"typePlaceholder": "種類を選択",
+			"nameLabel": "ステータス名：",
+			"typeLabel": "ステータスの種類：",
+			"colorLabel": "ステータスの色："
+		},
+		"moveModal": {
+			"title": "すべてのタスクの移動先",
+			"description": "「{title}」の{count}件のタスクを次に移動します："
+		},
+		"reorderModal": {
+			"title": "ステータスの並べ替え",
+			"hint": "6つの点のアイコンを長押ししてドラッグすると並べ替えられます",
+			"save": "並び順を保存"
+		},
+		"allCategories": "すべてのプロジェクト",
+		"allUsers": "すべてのユーザー",
+		"errors": {
+			"loadMoreTasks": "タスクをさらに読み込めませんでした。",
+			"refreshColumn": "列を更新できませんでした。",
+			"saveOrder": "タスクの並び順を保存できませんでした。更新するとサーバー上の並び順に戻ります。",
+			"moveRefreshed": "タスクを移動できませんでした。列を更新しました。",
+			"moveRestore": "タスクを移動できませんでした。更新するとサーバー上の並び順に戻ります。",
+			"refreshBoard": "ボードを更新できませんでした。",
+			"loadBoard": "ボードを読み込めませんでした。",
+			"refreshTasks": "タスクを更新できませんでした。"
+		},
+		"toasts": {
+			"loadAllFailed": {
+				"title": "すべてのタスクを読み込めませんでした",
+				"description": "もう一度お試しください。"
+			},
+			"noTasksToArchive": "この列にアーカイブするタスクはありません",
+			"archiveStatusMissing": {
+				"title": "アーカイブのステータスが見つかりません",
+				"description": "先にアーカイブのステータスを作成してください。"
+			},
+			"archiveFailed": {
+				"title": "タスクをアーカイブできませんでした",
+				"description": "もう一度お試しください。"
+			}
+		},
+		"confirms": {
+			"deleteStatus": {
+				"title": "ステータスを削除",
+				"body": "よろしいですか？"
+			},
+			"archive": {
+				"title": "{n}件のタスクをアーカイブしますか？",
+				"body": "「{name}」のすべてのタスクがアーカイブに移動されます。"
+			},
+			"move": {
+				"title": "すべてのタスクを移動",
+				"body": "「{source}」の{count}件のタスクを「{target}」に移動しますか？"
+			}
+		},
+		"userSaved": {
+			"title": "保存しました",
+			"body": "ユーザーデータを保存しました"
+		}
+	},
+	"dashboardPage": {
+		"title": "ダッシュボード",
+		"titleWithWorkspace": "{name}のダッシュボード",
+		"subtitle": "ワークスペース全体のアクティビティ、メンバー、記録時間。",
+		"gateDescription": "統計、アクティビティのヒートマップ、チームのリアルタイム更新で、生産性を把握できます。",
+		"errors": {
+			"offline": "オフラインの可能性があります。一部の機能が正常に動作しない場合があります。",
+			"realtime": "リアルタイム接続に失敗しました。更新が遅れる場合があります。",
+			"unexpected": "予期しないエラーが発生しました。",
+			"connectionLostMessage": "ネットワーク接続が切断されました",
+			"connectionLost": "接続が切断されました",
+			"dashboardError": "ダッシュボードのエラー",
+			"retrying": "再試行中…",
+			"tryAgain": "再試行",
+			"checkConnection": "接続を確認",
+			"boundaryMessage": "ダッシュボードで予期しないエラーが発生しました。ページを更新してください。"
+		},
+		"periods": {
+			"week": "過去7日間",
+			"month": "過去30日間"
+		},
+		"periodLabel": "ダッシュボードの期間",
+		"realtime": {
+			"active": "リアルタイム更新は有効です",
+			"inactive": "リアルタイム更新は無効です",
+			"live": "ライブ",
+			"offline": "オフライン",
+			"youreOffline": "オフラインです"
+		},
+		"refresh": {
+			"label": "更新",
+			"ariaBusy": "ダッシュボードのデータを更新中",
+			"ariaIdle": "ダッシュボードのデータを更新",
+			"status": "ダッシュボードを更新中です"
+		},
+		"actionsLabel": "ダッシュボードの操作",
+		"a11y": {
+			"shortcuts": "キーボードショートカット：Ctrl+Rで更新、Ctrl+1〜5でセクション移動、Escapeでエラーを解除",
+			"keyNumbers": "主要な数値（過去{n}日間）",
+			"loadedAnnouncement": "ダッシュボードを読み込みました",
+			"failedAnnouncement": "ダッシュボードを読み込めませんでした",
+			"teamDescription": "チームメンバーのアクティビティと状況です。オンラインの人と現在のタスクを表示します。",
+			"teamLoading": "チームのアクティビティを読み込み中",
+			"heatmapLoading": "アクティビティのヒートマップを読み込み中",
+			"statisticsLoading": "ワークスペースの統計を読み込み中",
+			"statisticsDescription": "タスク数、時間記録、チームの指標を含むワークスペース統計のグリッドです。矢印キーでカード間を移動できます。",
+			"activityHeading": "最近のアクティビティフィード",
+			"activityDescription": "ワークスペースの最近のアクティビティ一覧です。矢印キーで移動し、Enterで詳細を開きます。",
+			"activityLoading": "最近のアクティビティを読み込み中"
+		},
+		"kpi": {
+			"activity": "アクティビティ",
+			"members": "アクティブなメンバー",
+			"tracked": "記録時間",
+			"completed": "完了",
+			"activityHint": "ワークスペースで記録された操作",
+			"membersHint": "全{total}人中",
+			"trackedHint": "タスクのタイマーで記録した時間",
+			"completedHint": "完了に移動したタスク",
+			"vsPrevious": "前の{n}日間との比較"
+		},
+		"hours": "{n}時間",
+		"teamActivity": "チームのアクティビティ",
+		"chartSubtitle": "1日ごと（過去{n}日間）",
+		"categoriesSubtitle": "記録時間順 · 過去{n}日間",
+		"heatmap": {
+			"title": "アクティビティのヒートマップ",
+			"description": "このワークスペースの全員のアクティビティです。1マスが1日（UTC）で、色が濃いほどアクティビティが多いことを示します。",
+			"rangeLabel": "ヒートマップの期間",
+			"last12Months": "過去12か月",
+			"groupLabel": "アクティビティのヒートマップ（合計{n}件）",
+			"groupLabelLoading": "アクティビティのヒートマップを読み込み中",
+			"loadFailed": "ヒートマップのデータを読み込めませんでした",
+			"retry": "再試行",
+			"noData": "表示できるデータがありません"
+		},
+		"statisticsTitle": "ワークスペースの統計",
+		"loadingState": {
+			"label": "ダッシュボードを読み込み中",
+			"title": "ダッシュボードを読み込み中",
+			"body": "ワークスペースのデータを取得中…"
+		},
+		"boundaryTitle": "ダッシュボードのエラー",
+		"mainLabel": "ダッシュボード"
+	},
+	"projectCategoryList": {
+		"perPage": "1ページ{n}件",
+		"documentTitle": "プロジェクト",
+		"loadTasksFailed": "プロジェクトのタスクを読み込めませんでした。",
+		"loadCategoriesFailed": "プロジェクトを読み込めませんでした。",
+		"anotherWorkspace": "別のワークスペース",
+		"movedTitle": "「{title}」を{workspace}に移動しました",
+		"transferFailed": "移動に失敗しました",
+		"transferFailedText": "プロジェクトを移動できませんでした。もう一度お試しください。",
+		"loadingCategories": "プロジェクトを読み込み中",
+		"loadingTasks": "プロジェクトのタスクを読み込み中",
+		"noSubcategories": "サブプロジェクトはまだありません。",
+		"deletedHint": "（削除済み・復元可能）",
+		"subcategories": "サブプロジェクト",
+		"tasks": "タスク",
+		"author": "作成者",
+		"moveToWorkspace": "ワークスペースに移動",
+		"restore": "復元",
+		"transferTitle": "プロジェクトを別のワークスペースに移動",
+		"transferDescription": "「{title}」を、すべてのサブプロジェクトとタスクと一緒に移動します。タスクのステータスは、移動先のワークスペースの名前、次に種類で対応付けられます。移動先のワークスペースのメンバーでない担当者は外されます。",
+		"selectWorkspace": "ワークスペースを選択",
+		"noOtherWorkspaces": "ほかのワークスペースのメンバーではありません。",
+		"moving": "移動中…",
+		"move": "移動",
+		"showing": "{total}件中{from}〜{to}件を表示",
+		"previous": "前へ",
+		"page": "{current} / {last}ページ",
+		"createFirstTask": "このプロジェクトに最初のタスクを作成しましょう",
+		"createTask": "+ タスクを作成"
+	},
+	"tasksList": {
+		"titles": {
+			"current": "現在のタスク",
+			"hidden": "非表示のタスク",
+			"archive": "アーカイブ",
+			"tasks": "タスク",
+			"fallback": "タスク一覧"
+		},
+		"workspaceTasksTitle": "{name}のタスク",
+		"stateFilters": {
+			"open": "未完了",
+			"done": "完了",
+			"all": "すべて"
+		},
+		"sortFields": {
+			"updatedAt": "更新日",
+			"createdAt": "作成日",
+			"expiredAt": "期限",
+			"scheduledDate": "予定日"
+		},
+		"noDoneToArchive": "アーカイブする完了済みタスクはありません",
+		"loadDoneFailed": "完了済みタスクを読み込めませんでした",
+		"archivedCount": "完了済みタスクを{n}件アーカイブしました",
+		"archiveFailed": "タスクをアーカイブできませんでした",
+		"daySummary": "1日のまとめ",
+		"totalTime": "合計時間",
+		"workingDays": "稼働日数",
+		"perDay": "（1日8時間）",
+		"workingMonths": "稼働月数",
+		"perMonth": "（1か月160時間）",
+		"workingYears": "稼働年数",
+		"perYear": "（1年2000時間）",
+		"overtime": "超過時間",
+		"totalOvertime": "超過時間の合計",
+		"showTasks": "タスクを表示",
+		"archiveDone": "完了をアーカイブ",
+		"searchPlaceholder": "タスクを検索",
+		"searchLabel": "タスクを検索",
+		"sortByDate": "日付で並べ替え",
+		"newestFirst": "新しい順",
+		"oldestFirst": "古い順",
+		"filtersTitle": "フィルター",
+		"filtersDialogTitle": "フィルター",
+		"status": "ステータス",
+		"priority": "優先度",
+		"sortByPriority": "優先度で並べ替え",
+		"reset": "リセット",
+		"selectionMode": "タスクの選択モード",
+		"updating": "タスクを更新中…",
+		"loadFailed": "タスクを読み込めませんでした。もう一度お試しください。",
+		"retry": "再試行",
+		"noMatches": "フィルターに一致するタスクはありません",
+		"clearFilters": "フィルターを解除",
+		"createFirst": "最初のタスクを作成しましょう",
+		"createTask": "+ タスクを作成",
+		"archiveDialogTitle": "完了済みタスクをアーカイブ",
+		"archiveDialogBody": "完了済みタスク{n}件をアーカイブしますか？"
+	}
+}

@@ -78,7 +78,7 @@
 					v-if="byDay[i].length > maxChips"
 					class="px-1.5 text-[10px] text-ink-subtle"
 				>
-					+ {{ byDay[i].length - maxChips }} more
+					{{ $t('dailyRoutine.more', { n: byDay[i].length - maxChips }) }}
 				</div>
 			</div>
 		</div>
@@ -96,6 +96,7 @@
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
 	import { indexEntriesByDate } from '@/utils/dailyRoutines/entryIndex';
+	import { t } from '@/i18n';
 	import { currentTimeZone, todayDateIn } from '@/utils/timezone';
 	import { computed } from 'vue';
 
@@ -158,10 +159,15 @@
 		}),
 	);
 
+	const DOW_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 	const dowLabels = computed(() =>
-		props.isMobile
-			? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-			: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'],
+		DOW_KEYS.map((key) =>
+			t(
+				props.isMobile
+					? `dailyRoutine.dowLetter.${key}`
+					: `dailyRoutine.dowUpper.${key}`,
+			),
+		),
 	);
 
 	const maxChips = computed(() => (props.isMobile ? 1 : 3));

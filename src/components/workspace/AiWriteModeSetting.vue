@@ -1,9 +1,9 @@
 <template>
-	<SettingsSection title="AI assistant">
+	<SettingsSection :title="$t('workspace.aiWriteModeSetting.title')">
 		<SettingsRow
 			v-slot="{ labelId }"
-			label="Write mode"
-			description="When enabled, the AI assistant can propose changes (create tasks, add comments). Nothing changes until you confirm."
+			:label="$t('workspace.aiWriteModeSetting.label')"
+			:description="$t('workspace.aiWriteModeSetting.description')"
 		>
 			<Select
 				:model-value="mode"
@@ -18,9 +18,11 @@
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					<SelectItem value="read_only">Read only (default)</SelectItem>
+					<SelectItem value="read_only">{{
+						$t('workspace.aiWriteModeSetting.readOnly')
+					}}</SelectItem>
 					<SelectItem value="write_with_confirmation">
-						Write with confirmation
+						{{ $t('workspace.aiWriteModeSetting.writeWithConfirmation') }}
 					</SelectItem>
 				</SelectContent>
 			</Select>
@@ -32,6 +34,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import {
 		getWorkspaceSettings,
 		setWorkspaceSetting,
@@ -81,7 +84,7 @@
 						readSettingValue(settings, AI_WRITE_MODE_KEY),
 					);
 				} catch {
-					error.value = 'Failed to load the setting';
+					error.value = t('workspace.aiWriteModeSetting.loadFailed');
 				} finally {
 					loading.value = false;
 				}
@@ -97,7 +100,7 @@
 					await setWorkspaceSetting(props.workspaceId, AI_WRITE_MODE_KEY, next);
 				} catch {
 					mode.value = previous;
-					error.value = 'Failed to save the setting';
+					error.value = t('workspace.aiWriteModeSetting.saveFailed');
 				} finally {
 					saving.value = false;
 				}

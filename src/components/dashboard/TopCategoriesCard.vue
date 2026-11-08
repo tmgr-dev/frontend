@@ -3,7 +3,9 @@
 		class="rounded-card border border-line bg-surface p-4 shadow-tmgr-xs sm:p-6"
 		data-top-categories
 	>
-		<h3 class="text-base font-semibold text-ink">Top categories</h3>
+		<h3 class="text-base font-semibold text-ink">
+			{{ $t('board.dashboard.topCategoriesCard.title') }}
+		</h3>
 		<p v-if="subtitle" class="text-xs text-ink-muted">{{ subtitle }}</p>
 
 		<ul v-if="loading" class="space-y-4 mt-4">
@@ -17,7 +19,7 @@
 			class="py-8 text-center text-sm text-ink-muted"
 			data-categories-empty
 		>
-			No tracked time in this period
+			{{ $t('board.dashboard.topCategoriesCard.empty') }}
 		</p>
 		<ul v-else class="space-y-4 mt-4">
 			<li v-for="(item, i) in visible" :key="item.key" class="min-w-0">

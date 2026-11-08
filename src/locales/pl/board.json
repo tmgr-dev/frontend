@@ -1,0 +1,789 @@
+{
+	"taskCount": {
+		"label": "{n} zadanie | {n} zadania | {n} zadań",
+		"inProgress": "w toku: {n}",
+		"done": "ukończone: {n}",
+		"hidden": "ukryte: {n}",
+		"summary": "{parts} — ukończono {percent}%"
+	},
+	"graph": {
+		"section": {
+			"title": "Graf"
+		},
+		"canvas": {
+			"label": "Graf połączonych elementów: {count}"
+		},
+		"neighborhood": {
+			"expand": "Rozwiń",
+			"zoomIn": "Powiększ",
+			"zoomOut": "Pomniejsz",
+			"fitToView": "Dopasuj do widoku",
+			"rings": "Wewnętrzny pierścień: bezpośrednie powiązania · Zewnętrzny: 2 kroki dalej, przyciemnione · Linia przerywana: słabe powiązanie",
+			"truncatedWithHidden": "Pokazano najbliższe: {closest} — ukryto jeszcze {hidden}",
+			"truncated": "Pokazano najbliższe: {closest}",
+			"empty": "Brak powiązań — powiąż zadania, połącz strony lub przypisz osoby, aby zobaczyć graf",
+			"loadFailed": "Nie udało się wczytać grafu",
+			"retry": "Ponów",
+			"loading": "Ładowanie grafu…"
+		},
+		"types": {
+			"task": "Zadanie",
+			"page": "Strona",
+			"user": "Osoba",
+			"persona": "Persona",
+			"agentRun": "Uruchomienie agenta"
+		},
+		"groups": {
+			"tasks": "Zadania",
+			"pages": "Strony",
+			"people": "Osoby i persony",
+			"agentRuns": "Uruchomienia agentów"
+		},
+		"overlay": {
+			"dialogLabel": "Graf",
+			"title": "Graf",
+			"task": "Zadanie",
+			"page": "Strona",
+			"back": "Wstecz",
+			"closeLabel": "Zamknij graf",
+			"selected": "WYBRANO",
+			"whyConnected": "DLACZEGO JEST POWIĄZANE",
+			"more": "+ jeszcze {n}",
+			"centre": "To jest środek grafu.",
+			"openTask": "Otwórz zadanie",
+			"openPage": "Otwórz stronę",
+			"centerHere": "Wyśrodkuj tutaj",
+			"loading": "Ładowanie…",
+			"depth": "GŁĘBOKOŚĆ",
+			"depthLabel": "Głębokość",
+			"steps": "{n} krok | {n} kroki | {n} kroków",
+			"show": "POKAŻ",
+			"similarLater": "Podobne znaczeniowo (wkrótce)"
+		}
+	},
+	"dashboard": {
+		"activityChart": {
+			"title": "Aktywność w czasie",
+			"loadError": "Nie udało się wczytać danych wykresu",
+			"empty": "Brak aktywności w tym okresie",
+			"scaleNote": "Każda linia jest skalowana do własnego szczytu",
+			"dateColumn": "Data",
+			"summaryIntro": "Aktywność w czasie, ostatnie dni: {n}.",
+			"summaryTotal": "{label}: łącznie {total}.",
+			"summaryTotalPeak": "{label}: łącznie {total}, szczyt {peak} w dniu {day}.",
+			"summaryPeakOnly": "{label}: szczyt {peak} w dniu {day}.",
+			"summaryNone": "{label}: brak."
+		},
+		"activityFeed": {
+			"title": "Ostatnia aktywność",
+			"refreshAria": "Odśwież aktywności",
+			"clearDayAria": "Wyczyść filtr dnia",
+			"dayFilterLoading": "Aktywności z dnia {day}",
+			"dayFilterCount": "{count}, dzień {day}",
+			"activityCount": "{n} aktywność | {n} aktywności | {n} aktywności",
+			"dayLoadError": "Nie udało się wczytać aktywności z tego dnia",
+			"loadingMore": "Ładowanie...",
+			"loadMore": "Wczytaj więcej aktywności",
+			"noMatch": "Żadna aktywność nie pasuje do tego filtra",
+			"emptyTitle": "Brak aktywności",
+			"emptyDescription": "Aktywności pojawią się tutaj, gdy członkowie zespołu zaczną pracować nad zadaniami.",
+			"live": "Aktualizacje na żywo włączone",
+			"authorAll": "Wszyscy",
+			"authorPeople": "Osoby",
+			"authorPersonas": "Persony",
+			"authorPlugins": "Wtyczki"
+		},
+		"activityItem": {
+			"by": "przez {name}"
+		},
+		"activityFilters": {
+			"types": {
+				"allTypes": "Wszystkie typy",
+				"taskCreated": "Zadanie utworzone",
+				"taskUpdated": "Zadanie zaktualizowane",
+				"taskCompleted": "Zadanie ukończone",
+				"taskDeleted": "Zadanie usunięte",
+				"statusChanged": "Status zmieniony",
+				"taskAssigned": "Zadanie przypisane",
+				"personaAssigned": "Persona przypisana",
+				"timerStarted": "Timer uruchomiony",
+				"timerStopped": "Timer zatrzymany",
+				"commentAdded": "Komentarz dodany",
+				"commentUpdated": "Komentarz zaktualizowany",
+				"commentDeleted": "Komentarz usunięty",
+				"categoryCreated": "Projekt utworzony",
+				"categoryUpdated": "Projekt zaktualizowany",
+				"categoryDeleted": "Projekt usunięty",
+				"fileUploaded": "Plik przesłany",
+				"fileDeleted": "Plik usunięty",
+				"memberJoined": "Członek dołączył",
+				"memberLeft": "Członek odszedł",
+				"routineCompleted": "Rutyna ukończona"
+			},
+			"ranges": {
+				"allTime": "Cały czas",
+				"today": "Dziś",
+				"yesterday": "Wczoraj",
+				"thisWeek": "Ten tydzień",
+				"lastWeek": "Zeszły tydzień",
+				"thisMonth": "Ten miesiąc",
+				"lastMonth": "Zeszły miesiąc"
+			},
+			"allUsers": "Wszyscy użytkownicy",
+			"clearAria": "Wyczyść filtry"
+		},
+		"kpiCard": {
+			"unavailable": "Niedostępne"
+		},
+		"recentTaskItem": {
+			"overdue": "Po terminie",
+			"assignees": "Wykonawcy:",
+			"moreAssignees": "+ jeszcze {n}",
+			"stopTimer": "Zatrzymaj timer",
+			"startTimer": "Uruchom timer",
+			"noStatus": "Brak statusu",
+			"ariaTask": "Zadanie: {title}",
+			"ariaStatus": "Status: {status}",
+			"ariaAssignedTo": "Przypisano do: {name}",
+			"ariaUpdated": "Zaktualizowano: {when}",
+			"timerRunning": "Timer działa"
+		},
+		"recentTasksList": {
+			"title": "Ostatnie zadania",
+			"refreshAria": "Odśwież ostatnie zadania",
+			"viewAll": "Zobacz wszystkie",
+			"emptyTitle": "Brak ostatnich zadań",
+			"emptyDescription": "Ostatnie aktualizacje zadań pojawią się tutaj.",
+			"createTask": "Utwórz zadanie"
+		},
+		"statisticsGrid": {
+			"totalTasks": {
+				"title": "Wszystkie zadania",
+				"description": "Wszystkie zadania w przestrzeni roboczej"
+			},
+			"activeTasks": {
+				"title": "Aktywne zadania",
+				"description": "Obecnie w toku"
+			},
+			"completedToday": {
+				"title": "Ukończone dziś",
+				"description": "Zadania zakończone dzisiaj"
+			},
+			"completedWeek": {
+				"title": "Ukończone w tym tygodniu",
+				"description": "Zadania zakończone w tym tygodniu"
+			},
+			"timeToday": {
+				"title": "Czas dziś",
+				"description": "Czas śledzony dzisiaj"
+			},
+			"timeWeek": {
+				"title": "Czas w tym tygodniu",
+				"description": "Czas śledzony w tym tygodniu"
+			},
+			"teamMembers": {
+				"title": "Członkowie zespołu",
+				"description": "Aktywni członkowie przestrzeni roboczej"
+			},
+			"overdueTasks": {
+				"title": "Zadania po terminie",
+				"description": "Zadania po terminie wykonania"
+			},
+			"dailyRoutine": {
+				"title": "Codzienna rutyna",
+				"description": "Wskaźnik ukończenia"
+			}
+		},
+		"teamActivityWidget": {
+			"title": "Aktywni członkowie",
+			"windowAria": "Przedział aktywności",
+			"windows": {
+				"today": "Dziś",
+				"d7": "7 dni",
+				"d30": "30 dni",
+				"all": "Cały czas"
+			},
+			"subtitles": {
+				"today": "Dzisiejsza aktywność członków",
+				"all": "Aktywność członków z całego czasu",
+				"d30": "Aktywność członków w ostatnich 30 dniach",
+				"d7": "Aktywność członków w ostatnich 7 dniach"
+			},
+			"activeNow": "Aktywni teraz: {n}",
+			"refreshAria": "Odśwież aktywność zespołu",
+			"colMember": "Członek",
+			"colActivity": "Aktywność",
+			"colDone": "Ukończone",
+			"colTracked": "Śledzony czas",
+			"colActive": "Aktywne",
+			"colLastActive": "Ostatnia aktywność",
+			"totalMembers": "Wszyscy członkowie",
+			"activeToday": "Aktywni dziś",
+			"activeTimers": "Aktywne timery",
+			"trackedWindow": "Śledzony czas · {window}",
+			"doneWindow": "Ukończone · {window}",
+			"emptyTitle": "Brak członków zespołu",
+			"emptyDescription": "Zaproś członków zespołu, aby zobaczyć tutaj ich aktywność.",
+			"invite": "Zaproś członków"
+		},
+		"topCategoriesCard": {
+			"title": "Najczęstsze projekty",
+			"empty": "Brak śledzonego czasu w tym okresie"
+		},
+		"teamMemberItem": {
+			"activeRecently": "Aktywny w ciągu ostatnich 5 minut",
+			"inactive": "Nieaktywny",
+			"lastTouched": "Ostatnia zmiana",
+			"noRecentActivity": "Brak ostatniej aktywności",
+			"summaryLine": "ukończone: {done} · {tracked} · aktywne: {active} · {last}",
+			"activityTitle": "Aktywność, ostatnie dni: {n}",
+			"dtDone": "Ukończone",
+			"dtTracked": "Śledzony czas",
+			"dtActiveTasks": "Aktywne zadania",
+			"dtLastActive": "Ostatnia aktywność",
+			"justNow": "przed chwilą",
+			"minutesAgo": "{n} min temu",
+			"hoursAgo": "{n} godz. temu",
+			"daysAgo": "{n} d temu",
+			"commentsCount": "Komentarze: {n}",
+			"streak": "seria: {n}",
+			"ariaMember": "Członek zespołu: {name}",
+			"online": "Online",
+			"offline": "Offline",
+			"workingOn": "Pracuje nad: {title}",
+			"timerRunning": "Timer działa",
+			"lastActive": "Ostatnia aktywność: {when}",
+			"ariaStats": "śledzony czas: {tracked}, ukończone: {done}, aktywne: {active}, komentarze: {comments}, seria: {streak}"
+		}
+	},
+	"graphMap": {
+		"canvas": {
+			"emptyLabel": "Mapa zadań i stron pogrupowanych według projektów",
+			"bottleneck": "Wąskie gardło: {name} blokuje: {count}.",
+			"label": "Mapa: zadania i strony ({nodes}) w grupach ({clusters}): {names}.{bottleneck} Użyj pola wyszukiwania, aby poruszać się po mapie klawiaturą."
+		},
+		"timeline": {
+			"pause": "Wstrzymaj oś czasu",
+			"play": "Odtwórz oś czasu",
+			"label": "Oś czasu"
+		},
+		"insights": {
+			"whatMapShows": "CO POKAZUJE MAPA",
+			"bottleneck": "Wąskie gardło",
+			"hubs": "Węzły",
+			"bridges": "Mosty",
+			"noLinks": "Brak powiązań",
+			"empty": "Wnioski pojawią się, gdy mapa będzie zawierać dane.",
+			"hideOrphans": "Ukryj elementy bez powiązań",
+			"showOrphans": "Pokaż elementy bez powiązań",
+			"howToUse": "JAK UŻYWAĆ",
+			"howToUseText": "Kliknij grupę, aby przybliżyć. Kliknij kropkę, aby otworzyć jej otoczenie. Przeciągnij zakres czasu, aby zobaczyć, jak mapa rośnie tydzień po tygodniu.",
+			"legend": "Grupy = projekty · Jasne krzywe = powiązania między obszarami · Przerywane kółka = elementy bez powiązań · Pomarańczowy = wąskie gardło"
+		}
+	},
+	"categoryPage": {
+		"gate": {
+			"title": "Projekty",
+			"description": "Porządkuj zadania w projektach i podprojektach. Twórz hierarchiczną strukturę, aby lepiej zarządzać pracą."
+		},
+		"loadingLabel": "Ładowanie projektów",
+		"empty": {
+			"title": "Brak projektów",
+			"body": "Projekt grupuje zadania i ustawia wartości domyślne dla nowych: wzorzec tytułu, np. {pattern}, stawkę godzinową, szacunek.",
+			"create": "Nowy projekt"
+		},
+		"missing": {
+			"title": "Nie znaleziono projektu",
+			"body": "Mógł zostać usunięty lub przeniesiony do innej przestrzeni roboczej.",
+			"open": "Otwórz projekty"
+		},
+		"subcategory": "Podprojekt",
+		"createTask": "Utwórz zadanie",
+		"createTaskTitle": "Utwórz zadanie w tym projekcie",
+		"navLabel": "Projekt",
+		"tabs": {
+			"tasks": "Zadania",
+			"subcategories": "Podprojekty",
+			"settings": "Ustawienia"
+		},
+		"discard": {
+			"title": "Odrzucić niezapisane zmiany?",
+			"description": "Twoje zmiany w tym projekcie zostaną utracone.",
+			"keep": "Kontynuuj edycję",
+			"confirm": "Odrzuć"
+		},
+		"workspaceFallback": "Przestrzeń robocza",
+		"topLevel": "Najwyższy poziom",
+		"newCategory": "Nowy projekt",
+		"documentTitle": {
+			"categories": "Projekty"
+		}
+	},
+	"workspaceMap": {
+		"workspace": "Przestrzeń robocza",
+		"title": "Mapa — jak wszystko się łączy",
+		"searchPlaceholder": "zadanie, strona, osoba",
+		"searchLabel": "Szukaj na mapie",
+		"searchResults": "Wyniki wyszukiwania",
+		"timeRange": "Zakres czasu",
+		"ranges": {
+			"d7": "Ostatnie 7 dni",
+			"d30": "Ostatnie 30 dni",
+			"d90": "Ostatnie 90 dni",
+			"all": "Cały czas"
+		},
+		"groupByCategory": "Grupuj według projektu",
+		"truncated": "Pokazano {shown} z {total} — zawęź zakres czasu",
+		"loading": "Mapowanie przestrzeni roboczej…",
+		"loadFailed": "Nie udało się wczytać mapy.",
+		"retry": "Spróbuj ponownie",
+		"emptyTitle": "Brak danych do mapy w tym okresie",
+		"emptyText": "Zadania i strony pojawią się tutaj, gdy zostaną utworzone lub zaktualizowane w wybranym zakresie czasu.",
+		"showAllTime": "Pokaż cały czas",
+		"legend": "Grupy = projekty · Jasne krzywe = powiązania między obszarami · Przerywane kółka = elementy bez powiązań · Pomarańczowy = wąskie gardło",
+		"whatMapShows": "Co pokazuje mapa",
+		"zoomIn": "Powiększ",
+		"zoomOut": "Pomniejsz",
+		"fitToScreen": "Dopasuj do ekranu"
+	},
+	"categories": {
+		"agentRepositories": {
+			"title": "Repozytoria uruchomień agentów",
+			"description": "Repozytoria, w których agenci mogą pracować nad zadaniami tego projektu. Zostaw puste, aby użyć powiązanego repozytorium GitHub.",
+			"saveFailed": "Nie udało się zapisać repozytoriów."
+		},
+		"titlePattern": {
+			"defaultLabel": "Wzorzec tytułu zadania",
+			"noPlaceholders": "Brak symboli zastępczych.",
+			"literalNotice": "Każde nowe zadanie będzie dosłownie zaczynać się od „{pattern}”.",
+			"use": "Użyj {fix}",
+			"preview": "Podgląd",
+			"sampleTitle": "Tytuł zadania",
+			"chips": {
+				"categoryNumber": "numer projektu",
+				"workspaceNumber": "numer przestrzeni roboczej",
+				"date": "data",
+				"weekday": "dzień tygodnia"
+			}
+		},
+		"cursor": {
+			"title": "Integracja z Cursor AI",
+			"configureTitle": "Skonfiguruj agenta Cursor AI",
+			"configureDescription": "Dodaj klucz API Cursor, aby włączyć generowanie kodu z AI dla tego projektu",
+			"apiKeyLabel": "Klucz API Cursor",
+			"apiKeyHelp": "Klucz API pobierzesz z: {link}",
+			"dashboard": "Panel Cursor",
+			"validating": "Sprawdzanie…",
+			"saveKey": "Zapisz klucz API",
+			"configured": "Agent Cursor AI skonfigurowany",
+			"ready": "Gotowy do pomocy w generowaniu kodu dla tego projektu",
+			"updateKey": "Zmień klucz",
+			"removeKey": "Usuń klucz",
+			"removing": "Usuwanie…",
+			"newApiKeyLabel": "Nowy klucz API Cursor",
+			"saveFailed": "Nie udało się zapisać klucza API",
+			"removeFailed": "Nie udało się usunąć klucza API",
+			"removeConfirm": "Czy na pewno chcesz usunąć klucz API Cursor z tego projektu?"
+		},
+		"github": {
+			"title": "Integracja z GitHub",
+			"connectTitle": "Połącz repozytorium GitHub",
+			"connectDescription": "Połącz repozytorium GitHub, aby automatycznie śledzić commity, gałęzie i pull requesty",
+			"installing": "Instalowanie…",
+			"installApp": "Zainstaluj aplikację GitHub",
+			"installed": "✓ Aplikacja GitHub jest zainstalowana. Wybierz repozytorium do połączenia:",
+			"noRepositories": "Brak dostępnych repozytoriów. Upewnij się, że aplikacja GitHub ma dostęp do Twoich repozytoriów.",
+			"selectRepository": "Wybierz repozytorium",
+			"selectPlaceholder": "— Wybierz repozytorium —",
+			"connecting": "Łączenie…",
+			"connectRepository": "Połącz repozytorium",
+			"connectedTo": "Połączono z",
+			"lastSynced": "Ostatnia synchronizacja: {date}",
+			"syncing": "Synchronizowanie…",
+			"syncNow": "Synchronizuj teraz",
+			"relinking": "Ponowne łączenie…",
+			"relinkTasks": "Połącz zadania ponownie",
+			"relinkTitle": "Połącz istniejące commity i gałęzie z zadaniami ponownie",
+			"disconnecting": "Rozłączanie…",
+			"disconnect": "Rozłącz",
+			"loadFailed": "Nie udało się wczytać stanu integracji z GitHub",
+			"installFailed": "Nie udało się rozpocząć instalacji aplikacji GitHub",
+			"connectFailed": "Nie udało się połączyć repozytorium",
+			"disconnectConfirm": "Czy na pewno chcesz rozłączyć to repozytorium?",
+			"disconnectFailed": "Nie udało się rozłączyć repozytorium",
+			"syncFailed": "Nie udało się zsynchronizować repozytorium",
+			"relinkFailed": "Nie udało się ponownie połączyć odwołań do zadań",
+			"justNow": "przed chwilą",
+			"minutesAgo": "{n} minutę temu | {n} minuty temu | {n} minut temu",
+			"hoursAgo": "{n} godzinę temu | {n} godziny temu | {n} godzin temu",
+			"daysAgo": "{n} dzień temu | {n} dni temu | {n} dni temu"
+		},
+		"pane": {
+			"fixAll": "Napraw wszystkie: {count}",
+			"saveFirst": "Najpierw zapisz lub odrzuć zmiany",
+			"issues": "{n} projekt nadaje nowym zadaniom dosłowny tytuł | {n} projekty nadają nowym zadaniom dosłowny tytuł | {n} projektów nadaje nowym zadaniom dosłowny tytuł",
+			"sections": {
+				"general": "Ogólne",
+				"newTasks": "Nowe zadania",
+				"newTasksHint": "Wartości domyślne dla zadań tworzonych w tym projekcie",
+				"integrations": "Integracje",
+				"dangerZone": "Strefa zagrożenia"
+			},
+			"fields": {
+				"name": "Nazwa",
+				"code": "Kod",
+				"codeHint": "Litery i cyfry",
+				"codePlaceholder": "np. PROJ, FEAT, BUG",
+				"parent": "Nadrzędny",
+				"noParent": "Brak nadrzędnego",
+				"copyFrom": "Kopiuj ustawienia z",
+				"copyFromHint": "Wypełnia poniższe pola, nadal możesz je zmienić",
+				"dontCopy": "Nie kopiuj"
+			},
+			"createNote": "Integracje i strefa zagrożenia pojawią się po utworzeniu projektu.",
+			"integrations": {
+				"cursorLabel": "Agent Cursor AI",
+				"cursorHint": "Wysyłaj zadania z tego projektu do agentów Cursor",
+				"connected": "Połączono",
+				"notConnected": "Nie połączono",
+				"unavailable": "Niedostępne",
+				"manage": "Zarządzaj",
+				"connect": "Połącz",
+				"githubLabel": "GitHub",
+				"githubHint": "Powiąż zadania z repozytorium",
+				"installApp": "Zainstaluj aplikację GitHub",
+				"reposLabel": "Repozytoria agentów",
+				"reposHint": "Gdzie mogą pracować uruchomienia agentów, w formacie owner/name",
+				"addRepository": "Dodaj repozytorium",
+				"repositoriesCount": "{n} repozytorium | {n} repozytoria | {n} repozytoriów"
+			},
+			"danger": {
+				"moveLabel": "Przenieś do innej przestrzeni roboczej",
+				"moveHint": "Razem z podprojektami i zadaniami",
+				"move": "Przenieś…",
+				"deleteLabel": "Usuń projekt",
+				"deleteHint": "Projekt zostanie usunięty z listy",
+				"delete": "Usuń…"
+			},
+			"bar": {
+				"discard": "Odrzuć",
+				"newSubcategory": "Nowy podprojekt projektu {title}",
+				"newTopLevel": "Nowy projekt najwyższego poziomu",
+				"changes": "{n} niezapisana zmiana | {n} niezapisane zmiany | {n} niezapisanych zmian"
+			},
+			"deleteDialog": {
+				"title": "Usunąć „{title}”?",
+				"description": "Projekt zostanie usunięty z listy."
+			},
+			"transfer": {
+				"title": "Przenieś projekt do innej przestrzeni roboczej",
+				"description": "Projekt „{title}” zostanie przeniesiony razem ze wszystkimi podprojektami i zadaniami. Statusy zadań są dopasowywane do przestrzeni docelowej według nazwy, a potem według typu; wykonawcy, którzy nie są członkami przestrzeni docelowej, zostaną usunięci.",
+				"placeholder": "Wybierz przestrzeń roboczą",
+				"noOther": "Nie jesteś członkiem żadnej innej przestrzeni roboczej.",
+				"moving": "Przenoszenie...",
+				"move": "Przenieś"
+			},
+			"settings": {
+				"titlePatternLabel": "Wzorzec tytułu zadania",
+				"titlePatternHint": "Prefiks każdego nowego tytułu zadania",
+				"rateLabel": "Stawka za godzinę",
+				"estimateLabel": "Domyślny szacunek",
+				"reminderLabel": "Przypomnienie timera co",
+				"reminderHint": "Dźwięk za każdym razem, gdy działający timer przekroczy ten czas",
+				"durationError": "Użyj czasu trwania, np. 45m, 2h lub 1h 30m",
+				"durationHint": "Np. 45m, 2h lub 1h 30m",
+				"durationPlaceholder": "np. 45m",
+				"rateUnit": "/ godz.",
+				"select": "Wybierz",
+				"customValue": "Wartość własna"
+			},
+			"toasts": {
+				"success": "Sukces",
+				"tryAgain": "Spróbuj ponownie.",
+				"cursorConfigured": "Klucz API Cursor został skonfigurowany",
+				"cursorRemoved": "Klucz API Cursor usunięty",
+				"githubConnected": "Połączono z {name}",
+				"githubDisconnected": "Repozytorium rozłączone",
+				"githubSynced": "Repozytorium zsynchronizowane",
+				"relinked": "Połączono ponownie elementy: {total} — commity: {commits}, gałęzie: {branches}, PR-y: {pullRequests}",
+				"saveFailed": "Nie udało się zapisać projektu",
+				"defaultsNotSaved": "Wartości domyślne dla nowych zadań nie zostały zapisane",
+				"kept": {
+					"code": "Serwer zachował stary kod",
+					"parent": "Serwer zachował starego nadrzędnego",
+					"codeAndParent": "Serwer zachował stary kod i starego nadrzędnego"
+				},
+				"otherSaved": "Pozostałe zmiany zostały zapisane.",
+				"saved": "Zapisano",
+				"categorySaved": "Projekt został zapisany",
+				"createFailed": "Nie udało się utworzyć projektu",
+				"created": "Projekt utworzony",
+				"createdDefaultsFailed": "Jego wartości domyślne dla nowych zadań nie zostały zapisane. Ustaw je ponownie i zapisz.",
+				"fixedPatterns": "Naprawiono {n} wzorzec tytułu | Naprawiono {n} wzorce tytułu | Naprawiono {n} wzorców tytułu",
+				"fixedPartial": "Naprawiono {fixed} z {total} wzorców tytułu",
+				"fixedPartialRest": "Nie udało się zapisać pozostałych: {rest}. Spróbuj ponownie dla reszty.",
+				"deleteFailed": "Nie udało się usunąć projektu",
+				"deleted": "Projekt usunięty",
+				"workspacesFailed": "Nie udało się wczytać przestrzeni roboczych",
+				"moved": "Projekt „{title}” przeniesiono do: {workspace}",
+				"anotherWorkspace": "innej przestrzeni roboczej",
+				"transferFailed": "Przeniesienie nie powiodło się",
+				"moveFailed": "Nie udało się przenieść projektu. Spróbuj ponownie."
+			}
+		}
+	},
+	"boardPage": {
+		"featureGate": {
+			"title": "Tablica Kanban",
+			"description": "Wizualizuj zadania na tablicy w stylu Kanban. Przeciągaj zadania między kolumnami, aby zmieniać ich status."
+		},
+		"refresh": "Odśwież",
+		"filters": "Filtry",
+		"addStatus": "Dodaj status",
+		"editStatus": "Edytuj status",
+		"createStatus": "Utwórz status",
+		"refreshingTasks": "Odświeżanie zadań…",
+		"dragToReorderColumns": "Przeciągnij, aby zmienić kolejność kolumn",
+		"overtime": "Nadgodziny",
+		"createTask": "Utwórz zadanie",
+		"createATask": "Utwórz zadanie",
+		"moveAllTasksTo": "Przenieś wszystkie zadania do…",
+		"archiveAll": "Archiwizuj wszystkie",
+		"addTask": "Dodaj zadanie",
+		"taskTitlePlaceholder": "Wpisz tytuł zadania...",
+		"statusForm": {
+			"namePlaceholder": "Nazwa",
+			"typePlaceholder": "Wybierz typ",
+			"nameLabel": "Nazwa statusu:",
+			"typeLabel": "Typ statusu:",
+			"colorLabel": "Kolor statusu:"
+		},
+		"moveModal": {
+			"title": "Przenieś wszystkie zadania do",
+			"description": "Przenieś zadania ({count}) z „{title}” do:"
+		},
+		"reorderModal": {
+			"title": "Zmień kolejność statusów",
+			"hint": "Przytrzymaj i przeciągnij ikonę sześciu kropek, aby zmienić kolejność",
+			"save": "Zapisz kolejność"
+		},
+		"allCategories": "Wszystkie projekty",
+		"allUsers": "Wszyscy użytkownicy",
+		"errors": {
+			"loadMoreTasks": "Nie udało się wczytać więcej zadań.",
+			"refreshColumn": "Nie udało się odświeżyć kolumny.",
+			"saveOrder": "Nie udało się zapisać kolejności zadań. Odśwież, aby przywrócić kolejność z serwera.",
+			"moveRefreshed": "Nie udało się przenieść zadania. Kolumna została odświeżona.",
+			"moveRestore": "Nie udało się przenieść zadania. Odśwież, aby przywrócić kolejność z serwera.",
+			"refreshBoard": "Nie udało się odświeżyć tablicy.",
+			"loadBoard": "Nie udało się wczytać tablicy.",
+			"refreshTasks": "Nie udało się odświeżyć zadań."
+		},
+		"toasts": {
+			"loadAllFailed": {
+				"title": "Nie udało się wczytać wszystkich zadań",
+				"description": "Spróbuj ponownie."
+			},
+			"noTasksToArchive": "Brak zadań do archiwizacji w tej kolumnie",
+			"archiveStatusMissing": {
+				"title": "Nie znaleziono statusu archiwum",
+				"description": "Najpierw utwórz status archiwum."
+			},
+			"archiveFailed": {
+				"title": "Nie udało się zarchiwizować zadań",
+				"description": "Spróbuj ponownie."
+			}
+		},
+		"confirms": {
+			"deleteStatus": {
+				"title": "Usuń status",
+				"body": "Czy na pewno?"
+			},
+			"archive": {
+				"title": "Zarchiwizować {n} zadanie? | Zarchiwizować {n} zadania? | Zarchiwizować {n} zadań?",
+				"body": "Wszystkie zadania w „{name}” zostaną przeniesione do archiwum."
+			},
+			"move": {
+				"title": "Przenieś wszystkie zadania",
+				"body": "Przenieść zadania ({count}) z „{source}” do „{target}”?"
+			}
+		},
+		"userSaved": {
+			"title": "Zapisano",
+			"body": "Dane użytkownika zapisane"
+		}
+	},
+	"dashboardPage": {
+		"title": "Pulpit",
+		"titleWithWorkspace": "Pulpit: {name}",
+		"subtitle": "Aktywność, członkowie i śledzony czas w całej przestrzeni roboczej.",
+		"gateDescription": "Poznaj swoją produktywność dzięki statystykom, mapom cieplnym aktywności i aktualizacjom zespołu na żywo.",
+		"errors": {
+			"offline": "Wygląda na to, że jesteś offline. Niektóre funkcje mogą nie działać prawidłowo.",
+			"realtime": "Połączenie w czasie rzeczywistym nie powiodło się. Aktualizacje mogą być opóźnione.",
+			"unexpected": "Wystąpił nieoczekiwany błąd.",
+			"connectionLostMessage": "Utracono połączenie z siecią",
+			"connectionLost": "Utracono połączenie",
+			"dashboardError": "Błąd pulpitu",
+			"retrying": "Ponawianie...",
+			"tryAgain": "Spróbuj ponownie",
+			"checkConnection": "Sprawdź połączenie",
+			"boundaryMessage": "Na pulpicie wystąpił nieoczekiwany błąd. Spróbuj odświeżyć stronę."
+		},
+		"periods": {
+			"week": "Ostatnie 7 dni",
+			"month": "Ostatnie 30 dni"
+		},
+		"periodLabel": "Okres pulpitu",
+		"realtime": {
+			"active": "Aktualizacje w czasie rzeczywistym aktywne",
+			"inactive": "Aktualizacje w czasie rzeczywistym nieaktywne",
+			"live": "Na żywo",
+			"offline": "Offline",
+			"youreOffline": "Jesteś offline"
+		},
+		"refresh": {
+			"label": "Odśwież",
+			"ariaBusy": "Odświeżanie danych pulpitu",
+			"ariaIdle": "Odśwież dane pulpitu",
+			"status": "Pulpit jest właśnie odświeżany"
+		},
+		"actionsLabel": "Akcje pulpitu",
+		"a11y": {
+			"shortcuts": "Skróty klawiszowe: Ctrl+R odświeża, Ctrl+1-5 przechodzi między sekcjami, Escape czyści błędy",
+			"keyNumbers": "Kluczowe liczby, ostatni {n} dzień | Kluczowe liczby, ostatnie {n} dni | Kluczowe liczby, ostatnie {n} dni",
+			"loadedAnnouncement": "Pulpit wczytany pomyślnie",
+			"failedAnnouncement": "Nie udało się wczytać pulpitu",
+			"teamDescription": "Aktywność i status członków zespołu. Pokazuje, kto jest online i nad czym pracuje.",
+			"teamLoading": "Ładowanie aktywności zespołu",
+			"heatmapLoading": "Ładowanie mapy cieplnej aktywności",
+			"statisticsLoading": "Ładowanie statystyk przestrzeni roboczej",
+			"statisticsDescription": "Siatka statystyk przestrzeni roboczej, w tym liczby zadań, śledzenie czasu i metryki zespołu. Używaj klawiszy strzałek, aby przechodzić między kartami.",
+			"activityHeading": "Kanał ostatniej aktywności",
+			"activityDescription": "Lista ostatnich aktywności w przestrzeni roboczej. Używaj klawiszy strzałek do nawigacji, Enter otwiera szczegóły aktywności.",
+			"activityLoading": "Ładowanie ostatnich aktywności"
+		},
+		"kpi": {
+			"activity": "Aktywność",
+			"members": "Aktywni członkowie",
+			"tracked": "Śledzone godziny",
+			"completed": "Ukończone",
+			"activityHint": "Akcje zapisane w przestrzeni roboczej",
+			"membersHint": "z {total} członków",
+			"trackedHint": "Czas na timerach zadań",
+			"completedHint": "Zadania przeniesione do ukończonych",
+			"vsPrevious": "względem poprzedniego {n} dnia | względem poprzednich {n} dni | względem poprzednich {n} dni"
+		},
+		"hours": "{n} godz.",
+		"teamActivity": "Aktywność zespołu",
+		"chartSubtitle": "Na dzień, ostatni {n} dzień | Na dzień, ostatnie {n} dni | Na dzień, ostatnie {n} dni",
+		"categoriesSubtitle": "Według śledzonego czasu · ostatni {n} dzień | Według śledzonego czasu · ostatnie {n} dni | Według śledzonego czasu · ostatnie {n} dni",
+		"heatmap": {
+			"title": "Mapa cieplna aktywności",
+			"description": "Aktywność wszystkich w tej przestrzeni roboczej. Każdy kwadrat to jeden dzień (UTC); ciemniejsze kwadraty oznaczają większą aktywność.",
+			"rangeLabel": "Zakres mapy cieplnej",
+			"last12Months": "Ostatnie 12 miesięcy",
+			"groupLabel": "Mapa cieplna aktywności, łącznie wkładów: {n}",
+			"groupLabelLoading": "Ładowanie mapy cieplnej aktywności",
+			"loadFailed": "Nie udało się wczytać danych mapy cieplnej",
+			"retry": "Ponów",
+			"noData": "Brak danych o wkładzie"
+		},
+		"statisticsTitle": "Statystyki przestrzeni roboczej",
+		"loadingState": {
+			"label": "Ładowanie pulpitu",
+			"title": "Ładowanie pulpitu",
+			"body": "Pobieranie danych przestrzeni roboczej..."
+		},
+		"boundaryTitle": "Błąd pulpitu",
+		"mainLabel": "Pulpit"
+	},
+	"projectCategoryList": {
+		"perPage": "{n} na stronę",
+		"documentTitle": "Projekty",
+		"loadTasksFailed": "Nie udało się wczytać zadań projektu.",
+		"loadCategoriesFailed": "Nie udało się wczytać projektów.",
+		"anotherWorkspace": "innej przestrzeni roboczej",
+		"movedTitle": "Projekt „{title}” przeniesiono do: {workspace}",
+		"transferFailed": "Przeniesienie nie powiodło się",
+		"transferFailedText": "Nie udało się przenieść projektu. Spróbuj ponownie.",
+		"loadingCategories": "Ładowanie projektów",
+		"loadingTasks": "Ładowanie zadań projektu",
+		"noSubcategories": "Brak podprojektów.",
+		"deletedHint": "(usunięty, ale można go przywrócić)",
+		"subcategories": "podprojekty",
+		"tasks": "zadania",
+		"author": "autor",
+		"moveToWorkspace": "Przenieś do przestrzeni roboczej",
+		"restore": "Przywróć",
+		"transferTitle": "Przenieś projekt do innej przestrzeni roboczej",
+		"transferDescription": "Projekt „{title}” zostanie przeniesiony razem ze wszystkimi podprojektami i zadaniami. Statusy zadań są dopasowywane do przestrzeni docelowej według nazwy, a potem według typu; wykonawcy, którzy nie są członkami przestrzeni docelowej, zostaną usunięci.",
+		"selectWorkspace": "Wybierz przestrzeń roboczą",
+		"noOtherWorkspaces": "Nie jesteś członkiem żadnej innej przestrzeni roboczej.",
+		"moving": "Przenoszenie...",
+		"move": "Przenieś",
+		"showing": "Pokazano {from}–{to} z {total} projektów",
+		"previous": "Poprzednia",
+		"page": "Strona {current} z {last}",
+		"createFirstTask": "Utwórz pierwsze zadanie w tym projekcie",
+		"createTask": "+ Utwórz zadanie"
+	},
+	"tasksList": {
+		"titles": {
+			"current": "Bieżące zadania",
+			"hidden": "Ukryte zadania",
+			"archive": "Archiwum",
+			"tasks": "Zadania",
+			"fallback": "Lista zadań"
+		},
+		"workspaceTasksTitle": "Zadania: {name}",
+		"stateFilters": {
+			"open": "Otwarte",
+			"done": "Ukończone",
+			"all": "Wszystkie"
+		},
+		"sortFields": {
+			"updatedAt": "Zaktualizowano",
+			"createdAt": "Utworzono",
+			"expiredAt": "Termin",
+			"scheduledDate": "Zaplanowano"
+		},
+		"noDoneToArchive": "Brak ukończonych zadań do archiwizacji",
+		"loadDoneFailed": "Nie udało się wczytać ukończonych zadań",
+		"archivedCount": "Zarchiwizowano ukończone zadania: {n}",
+		"archiveFailed": "Nie udało się zarchiwizować zadań",
+		"daySummary": "Podsumowanie dnia",
+		"totalTime": "Łączny czas",
+		"workingDays": "Dni robocze",
+		"perDay": "(8 godz./dzień)",
+		"workingMonths": "Miesiące robocze",
+		"perMonth": "(160 godz./miesiąc)",
+		"workingYears": "Lata robocze",
+		"perYear": "(2000 godz./rok)",
+		"overtime": "Nadgodziny",
+		"totalOvertime": "Łączne nadgodziny",
+		"showTasks": "Pokaż zadania",
+		"archiveDone": "Archiwizuj ukończone",
+		"searchPlaceholder": "szukaj zadania",
+		"searchLabel": "Szukaj zadań",
+		"sortByDate": "Sortuj według daty",
+		"newestFirst": "Najpierw najnowsze",
+		"oldestFirst": "Najpierw najstarsze",
+		"filtersTitle": "filtry",
+		"filtersDialogTitle": "Filtry",
+		"status": "Status",
+		"priority": "Priorytet",
+		"sortByPriority": "Sortuj według priorytetu",
+		"reset": "resetuj",
+		"selectionMode": "Tryb zaznaczania zadań",
+		"updating": "Aktualizowanie zadań…",
+		"loadFailed": "Nie udało się wczytać zadań. Spróbuj ponownie.",
+		"retry": "Ponów",
+		"noMatches": "Żadne zadania nie pasują do filtrów",
+		"clearFilters": "Wyczyść filtry",
+		"createFirst": "Utwórz pierwsze zadanie, aby zacząć",
+		"createTask": "+ Utwórz zadanie",
+		"archiveDialogTitle": "Archiwizuj ukończone zadania",
+		"archiveDialogBody": "Zarchiwizować {n} ukończone zadanie? | Zarchiwizować {n} ukończone zadania? | Zarchiwizować {n} ukończonych zadań?"
+	}
+}

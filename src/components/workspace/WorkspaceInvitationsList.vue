@@ -13,25 +13,33 @@
 						: 'text-ink-subtle hover:text-ink',
 				]"
 			>
-				{{ filter.label }} ({{ getFilteredCount(filter.value) }})
+				{{ $t(filter.labelKey) }} ({{ getFilteredCount(filter.value) }})
 			</button>
 		</div>
 
 		<div v-if="loading" class="py-4 text-center">
 			<div class="spinner"></div>
-			<p class="mt-2 text-ink-subtle">Loading invitations...</p>
+			<p class="mt-2 text-ink-subtle">
+				{{ $t('workspace.workspaceInvitationsList.loading') }}
+			</p>
 		</div>
 
 		<div v-else-if="error" class="py-4 text-center text-destructive">
-			<p>Error: {{ error }}</p>
-			<Button @click="loadInvitations" class="mt-2">Try again</Button>
+			<p>
+				{{
+					$t('workspace.workspaceInvitationsList.errorLine', { message: error })
+				}}
+			</p>
+			<Button @click="loadInvitations" class="mt-2">{{
+				$t('workspace.workspaceInvitationsList.tryAgain')
+			}}</Button>
 		</div>
 
 		<div
 			v-else-if="filteredInvitations.length === 0"
 			class="py-8 text-center text-sm text-ink-subtle"
 		>
-			<p>No {{ currentFilter !== 'all' ? currentFilter : '' }} invitations</p>
+			<p>{{ $t(EMPTY_KEYS[currentFilter]) }}</p>
 		</div>
 
 		<div v-else class="space-y-3">
@@ -47,41 +55,57 @@
 				<div class="flex-1">
 					<div class="mb-1 flex items-center gap-2">
 						<p class="font-medium text-ink">
-							{{ invitation.email || 'General invitation' }}
+							{{
+								invitation.email ||
+								$t('workspace.workspaceInvitationsList.general')
+							}}
 						</p>
 						<span
 							v-if="invitation.is_accepted"
 							class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
 						>
-							✓ Accepted
+							{{ $t('workspace.workspaceInvitationsList.accepted') }}
 						</span>
 						<span
 							v-else-if="isExpired(invitation)"
 							class="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
 						>
-							✗ Expired
+							{{ $t('workspace.workspaceInvitationsList.expired') }}
 						</span>
 						<span
 							v-else
 							class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
 						>
-							⏳ Pending
+							{{ $t('workspace.workspaceInvitationsList.pending') }}
 						</span>
 					</div>
 					<p class="mb-1 text-sm text-ink-subtle">
-						<span class="font-medium">Invited by:</span>
-						{{ invitation.user?.name || 'Unknown' }}
+						<span class="font-medium">{{
+							$t('workspace.workspaceInvitationsList.invitedBy')
+						}}</span>
+						{{
+							invitation.user?.name ||
+							$t('workspace.workspaceInvitationsList.unknown')
+						}}
 					</p>
 					<p class="text-xs text-ink-subtle">
-						Token: {{ invitation.token.substring(0, 8) }}...
+						{{
+							$t('workspace.workspaceInvitationsList.token', {
+								token: invitation.token.substring(0, 8),
+							})
+						}}
 					</p>
 					<p class="text-xs text-ink-subtle">
 						<span v-if="invitation.expired_at">
-							Expires: {{ formatDate(invitation.expired_at) }}
+							{{
+								$t('workspace.workspaceInvitationsList.expires', {
+									date: formatDate(invitation.expired_at),
+								})
+							}}
 						</span>
-						<span v-else class="text-emerald-600 dark:text-emerald-400"
-							>No expiration</span
-						>
+						<span v-else class="text-emerald-600 dark:text-emerald-400">{{
+							$t('workspace.workspaceInvitationsList.noExpiration')
+						}}</span>
 					</p>
 				</div>
 
@@ -96,9 +120,13 @@
 						size="sm"
 						@click="handleResend(invitation.id)"
 						:disabled="resending === invitation.id"
-						title="Resend invitation email"
+						:title="$t('workspace.workspaceInvitationsList.resendTitle')"
 					>
-						{{ resending === invitation.id ? 'Sending...' : 'Resend' }}
+						{{
+							resending === invitation.id
+								? $t('workspace.workspaceInvitationsList.sending')
+								: $t('workspace.workspaceInvitationsList.resend')
+						}}
 					</Button>
 					<Button
 						variant="destructive"
@@ -111,13 +139,19 @@
 						"
 						:title="
 							isExpired(invitation)
-								? 'Cannot revoke expired invitation'
+								? $t('workspace.workspaceInvitationsList.cannotRevokeExpired')
 								: invitation.is_accepted
-									? 'Cannot revoke accepted invitation'
-									: 'Revoke invitation'
+									? $t(
+											'workspace.workspaceInvitationsList.cannotRevokeAccepted',
+										)
+									: $t('workspace.workspaceInvitationsList.revokeTitle')
 						"
 					>
-						{{ revoking === invitation.id ? 'Revoking...' : 'Revoke' }}
+						{{
+							revoking === invitation.id
+								? $t('workspace.workspaceInvitationsList.revoking')
+								: $t('workspace.workspaceInvitationsList.revoke')
+						}}
 					</Button>
 				</div>
 			</div>
@@ -127,14 +161,15 @@
 	<!-- Revoke Confirm Dialog -->
 	<Confirm
 		v-if="showRevokeConfirm"
-		title="Revoke invitation"
-		body="Are you sure you want to revoke this invitation?"
+		:title="$t('workspace.workspaceInvitationsList.revokeTitle')"
+		:body="$t('workspace.workspaceInvitationsList.confirmBody')"
 		@on-ok="confirmRevoke"
 		@on-cancel="cancelRevoke"
 	/>
 </template>
 
 <script setup lang="ts">
+	import { currentLocale, t } from '@/i18n';
 	import {
 		getWorkspaceInvitations,
 		resendInvitation,
@@ -159,11 +194,30 @@
 	const invitationToRevoke = ref<number | null>(null);
 
 	const filters = [
-		{ label: 'All', value: 'all' as const },
-		{ label: 'Active', value: 'active' as const },
-		{ label: 'Expired', value: 'expired' as const },
-		{ label: 'Accepted', value: 'accepted' as const },
+		{
+			labelKey: 'workspace.workspaceInvitationsList.filterAll',
+			value: 'all' as const,
+		},
+		{
+			labelKey: 'workspace.workspaceInvitationsList.filterActive',
+			value: 'active' as const,
+		},
+		{
+			labelKey: 'workspace.workspaceInvitationsList.filterExpired',
+			value: 'expired' as const,
+		},
+		{
+			labelKey: 'workspace.workspaceInvitationsList.filterAccepted',
+			value: 'accepted' as const,
+		},
 	];
+
+	const EMPTY_KEYS = {
+		all: 'workspace.workspaceInvitationsList.emptyAll',
+		active: 'workspace.workspaceInvitationsList.emptyActive',
+		expired: 'workspace.workspaceInvitationsList.emptyExpired',
+		accepted: 'workspace.workspaceInvitationsList.emptyAccepted',
+	};
 
 	const currentWorkspaceId = computed(() => {
 		const currentWorkspaceSetting = store.state.user?.settings?.find(
@@ -222,7 +276,9 @@
 				Number(currentWorkspaceId.value),
 			);
 		} catch (err: any) {
-			error.value = err.response?.data?.message || 'Failed to load invitations';
+			error.value =
+				err.response?.data?.message ||
+				t('workspace.workspaceInvitationsList.loadFailed');
 			console.error('Error loading invitations:', err);
 		} finally {
 			loading.value = false;
@@ -250,16 +306,17 @@
 			);
 
 			toaster.toast({
-				title: 'Invitation revoked',
+				title: t('workspace.workspaceInvitationsList.revoked'),
 				action: CircleCheckBigIcon,
 				class: 'bg-green-500 border-0 text-white',
 			});
 		} catch (err: any) {
 			const errorMessage =
-				err.response?.data?.message || 'Failed to revoke invitation';
+				err.response?.data?.message ||
+				t('workspace.workspaceInvitationsList.revokeFailed');
 			error.value = errorMessage;
 			toaster.toast({
-				title: 'Error',
+				title: t('workspace.workspaceInvitationsList.errorTitle'),
 				description: errorMessage,
 				variant: 'destructive',
 			});
@@ -285,17 +342,18 @@
 			await resendInvitation(Number(currentWorkspaceId.value), invitationId);
 
 			toaster.toast({
-				title: 'Invitation resent',
-				description: 'Email has been sent successfully',
+				title: t('workspace.workspaceInvitationsList.resent'),
+				description: t('workspace.workspaceInvitationsList.resentDescription'),
 				action: CircleCheckBigIcon,
 				class: 'bg-green-500 border-0 text-white',
 			});
 		} catch (err: any) {
 			const errorMessage =
-				err.response?.data?.message || 'Failed to resend invitation';
+				err.response?.data?.message ||
+				t('workspace.workspaceInvitationsList.resendFailed');
 			error.value = errorMessage;
 			toaster.toast({
-				title: 'Error',
+				title: t('workspace.workspaceInvitationsList.errorTitle'),
 				description: errorMessage,
 				variant: 'destructive',
 			});
@@ -306,9 +364,9 @@
 	};
 
 	const formatDate = (dateString: string | null) => {
-		if (!dateString) return 'Never';
+		if (!dateString) return t('workspace.workspaceInvitationsList.never');
 		const date = new Date(dateString);
-		return date.toLocaleDateString('en-US', {
+		return date.toLocaleDateString(currentLocale(), {
 			year: 'numeric',
 			month: 'short',
 			day: 'numeric',

@@ -16,7 +16,7 @@
 				<div
 					class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 				>
-					Unscheduled
+					{{ $t('dailyRoutine.unscheduled') }}
 					<span class="text-ink-subtle">{{ unscheduled.length }}</span>
 				</div>
 				<button
@@ -25,7 +25,7 @@
 					class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold tracking-wider text-ink-subtle uppercase hover:border-brand hover:text-brand"
 					@click="$emit('archive-done-unscheduled')"
 				>
-					Archive done ({{ unscheduledDoneCount }})
+					{{ $t('dailyRoutine.archiveDone', { n: unscheduledDoneCount }) }}
 				</button>
 			</header>
 			<div class="flex flex-col gap-1.5">
@@ -54,7 +54,8 @@
 			<header
 				class="px-1 pb-2 text-[10px] font-bold tracking-wider text-brand uppercase"
 			>
-				Today <span class="text-ink-subtle">{{ scheduled.length }}</span>
+				{{ $t('dailyRoutine.today') }}
+				<span class="text-ink-subtle">{{ scheduled.length }}</span>
 			</header>
 			<div class="flex flex-col gap-1.5">
 				<RoutineRow

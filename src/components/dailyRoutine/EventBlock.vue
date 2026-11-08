@@ -43,8 +43,8 @@
 			v-if="!isShort"
 			type="button"
 			class="dr-edit-btn absolute top-1 right-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-black/35"
-			title="Edit"
-			:aria-label="`Edit &quot;${entry.title}&quot;`"
+			:title="$t('common.actions.edit')"
+			:aria-label="$t('dailyRoutine.editAria', { title: entry.title })"
 			@click.stop="$emit('edit', entry)"
 		>
 			<DRIcon name="pencil" :size="9" stroke="rgba(255,255,255,.85)" />
@@ -54,14 +54,14 @@
 		<div
 			v-if="canResize"
 			class="dr-resize-handle absolute inset-x-0 top-0 h-2 cursor-ns-resize opacity-0 transition-opacity group-hover:opacity-100 after:absolute after:inset-x-3 after:top-[2px] after:h-[2px] after:rounded-full after:bg-current after:opacity-40 after:content-[''] [@media(hover:none)]:opacity-100"
-			title="Drag to change start time"
+			:title="$t('dailyRoutine.eventBlock.dragStart')"
 			@pointerdown.stop.prevent="onResizeStart($event, 'top')"
 			@click.stop
 		/>
 		<div
 			v-if="canResize"
 			class="dr-resize-handle absolute inset-x-0 bottom-0 h-2 cursor-ns-resize opacity-0 transition-opacity group-hover:opacity-100 after:absolute after:inset-x-3 after:bottom-[2px] after:h-[2px] after:rounded-full after:bg-current after:opacity-40 after:content-[''] [@media(hover:none)]:opacity-100"
-			title="Drag to change duration"
+			:title="$t('dailyRoutine.eventBlock.dragDuration')"
 			@pointerdown.stop.prevent="onResizeStart($event, 'bottom')"
 			@click.stop
 		/>

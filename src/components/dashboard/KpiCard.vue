@@ -27,7 +27,9 @@
 					<Skeleton class="mt-2 h-3 w-28" />
 				</template>
 				<template v-else-if="error">
-					<p class="text-sm text-ink-muted">Unavailable</p>
+					<p class="text-sm text-ink-muted">
+						{{ $t('board.dashboard.kpiCard.unavailable') }}
+					</p>
 					<Button
 						type="button"
 						variant="outline"
@@ -35,7 +37,7 @@
 						class="mt-2"
 						@click="$emit('retry')"
 					>
-						Retry
+						{{ $t('common.actions.retry') }}
 					</Button>
 				</template>
 				<template v-else>

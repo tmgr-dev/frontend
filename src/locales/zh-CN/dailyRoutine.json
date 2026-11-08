@@ -1,0 +1,222 @@
+{
+	"views": {
+		"list": "列表",
+		"day": "日",
+		"week": "周",
+		"month": "月",
+		"year": "年"
+	},
+	"clusterPopover": {
+		"overlapping": "{n} 个重叠"
+	},
+	"markDoneAria": "将“{title}”标记为完成",
+	"editAria": "编辑“{title}”",
+	"eventBlock": {
+		"dragStart": "拖动以更改开始时间",
+		"dragDuration": "拖动以更改时长"
+	},
+	"convert": {
+		"title": "转换为任务",
+		"workspace": "工作区",
+		"category": "项目",
+		"noCategory": "无项目",
+		"submit": "转换"
+	},
+	"routineRow": {
+		"moreTitle": "更多（右键打开菜单）",
+		"more": "更多",
+		"created": "创建于 {created}",
+		"createdUpdated": "创建于 {created} · 更新于 {updated}"
+	},
+	"deleteDialog": {
+		"title": "删除例行事项？",
+		"description": "“{title}”及其所有重复项都将被删除。此操作无法撤销。"
+	},
+	"clusterBlock": {
+		"events": "{n} 个事件"
+	},
+	"more": "还有 {n} 项",
+	"contextMenu": {
+		"duplicate": "创建副本",
+		"archive": "归档"
+	},
+	"unscheduled": "未安排",
+	"archiveDone": "归档已完成（{n}）",
+	"today": "今天",
+	"allDay": "全天",
+	"dow": {
+		"mo": "一",
+		"tu": "二",
+		"we": "三",
+		"th": "四",
+		"fr": "五",
+		"sa": "六",
+		"su": "日"
+	},
+	"dowUpper": {
+		"mon": "周一",
+		"tue": "周二",
+		"wed": "周三",
+		"thu": "周四",
+		"fri": "周五",
+		"sat": "周六",
+		"sun": "周日"
+	},
+	"dowLetter": {
+		"mon": "一",
+		"tue": "二",
+		"wed": "三",
+		"thu": "四",
+		"fri": "五",
+		"sat": "六",
+		"sun": "日"
+	},
+	"yearView": {
+		"less": "少",
+		"more": "多"
+	},
+	"editModal": {
+		"headerNew": "新建例行事项",
+		"headerEdit": "编辑例行事项",
+		"untitled": "（无标题）",
+		"fields": {
+			"title": "标题",
+			"titlePlaceholder": "这是什么例行事项？",
+			"description": "描述",
+			"chars": "{n} 个字符",
+			"optional": "可选",
+			"descriptionPlaceholder": "备注、背景、链接、清单…",
+			"category": "分类",
+			"schedule": "安排",
+			"unscheduled": "未安排（无具体日期/时间）",
+			"date": "日期",
+			"time": "时间",
+			"start": "开始",
+			"end": "结束",
+			"repeats": "重复",
+			"onDay": "日期",
+			"ofEveryMonth": "（每月）",
+			"reminder": "提醒",
+			"reminderOnlyRepeating": "仅适用于重复的例行事项",
+			"moveToWorkspace": "作为普通任务移到工作区…"
+		},
+		"created": "创建于 {when}",
+		"updated": "更新于 {when}",
+		"deleteRoutine": "删除例行事项",
+		"createRoutine": "创建例行事项",
+		"saveChanges": "保存更改",
+		"duration": {
+			"hm": "{h} 小时 {m} 分钟",
+			"h": "{h} 小时",
+			"m": "{m} 分钟"
+		},
+		"freq": {
+			"once": "一次",
+			"daily": "每天",
+			"weekly": "每周",
+			"monthly": "每月",
+			"yearly": "每年"
+		},
+		"reminder": {
+			"off": "关闭",
+			"atTime": "准时",
+			"min5": "5 分钟",
+			"min15": "15 分钟",
+			"min30": "30 分钟",
+			"hour1": "1 小时"
+		},
+		"summary": {
+			"daily": "每天",
+			"pickDay": "请至少选择一天",
+			"everyDayOfWeek": "每周每一天",
+			"weekdays": "每个工作日（周一至周五）",
+			"weekends": "每个周末",
+			"onDays": "{days}",
+			"monthly": "每月 {day} 日",
+			"yearly": "每年"
+		}
+	},
+	"moveToCloud": {
+		"cloudWorkspace": "云端工作区",
+		"ticketKey": "工单编号由服务器分配。",
+		"statement": "{n} 个例行事项将发送到 TMGR 服务器并离开此设备。服务器确认后，每个本地副本都会被移除。",
+		"destination": "目标：",
+		"pastCompletions": "过往的完成记录不会移动；云端副本从头开始。",
+		"keptRoutines": "标题、描述、安排和重复规则会保留，项目和优先级不会。",
+		"keptTasks": "任务仅保留标题和描述，安排、重复规则和时长不会保留。",
+		"sendAndRemove": "发送到 TMGR 并从此处移除",
+		"sending": "正在发送到 {name}…",
+		"summary": "已有 {moved} 项（共 {total} 项）移到 {name}。",
+		"removeLocalCopy": "移除本地副本",
+		"retryFailed": "重试失败的 {n} 项",
+		"open": "打开 {name}",
+		"status": {
+			"moved": "已移动",
+			"failed": "失败",
+			"inCloud": "已在云端，本地副本未移除",
+			"notSent": "未发送"
+		},
+		"titleRoutines": "移到云端例行事项",
+		"titleTasks": "转换为云端任务",
+		"subtitleSetup": "选择所选本地例行事项的去向。",
+		"selected": "已选 {n} 项",
+		"categoriesError": "无法加载项目：{message}",
+		"localWorkspaceChanged": "已打开的本地工作区发生变化，因此未移除本地副本。",
+		"selectAllAria": "选择所有本地例行事项",
+		"selectAll": "全选",
+		"pickHint": "选择要发送到云端工作区的本地例行事项。",
+		"empty": "没有可移动的本地例行事项。",
+		"selectAria": "选择 {title}",
+		"readError": "无法读取本地例行事项。"
+	},
+	"page": {
+		"gate": {
+			"title": "日常事项",
+			"description": "创建重复任务并追踪你的日常习惯。养成稳定的例行事项，并随时间监测进展。"
+		},
+		"localRoutines": "本地例行事项",
+		"dailyRoutines": "日常事项",
+		"localBadge": "本地",
+		"storedLocally": "仅存储在此设备上，不会同步到云端。",
+		"select": "选择",
+		"quickAddAria": "快速添加例行事项",
+		"quickAddMobile": "快速添加…",
+		"quickAddPlaceholder": "快速添加 → 未安排",
+		"quickAddHint": "添加到{unscheduled}，之后可在列表中安排",
+		"countRoutines": "例行事项",
+		"countDone": "已完成",
+		"countArchived": "已归档",
+		"chipRoutines": "例行事项",
+		"chipDone": "已完成",
+		"chipArchived": "已归档",
+		"importCalendar": "导入 .ics 日历",
+		"import": "导入",
+		"exportCalendar": "导出 .ics 日历",
+		"export": "导出",
+		"importIcs": "导入 .ics",
+		"exportIcs": "导出 .ics",
+		"prevPeriod": "上一个周期",
+		"nextPeriod": "下一个周期",
+		"loading": "正在加载例行事项",
+		"converted": {
+			"title": "例行事项已转换为任务",
+			"description": "现在打开该任务吗？"
+		},
+		"newRoutineTitle": "新建例行事项（N）",
+		"newRoutine": "新建例行事项",
+		"weekRange": "{year} 年 {month} {start} 日 – {end} 日",
+		"weekRangeCross": "{year} 年 {startMonth} {start} 日 – {endMonth} {end} 日",
+		"monthLabel": "{year} 年 {month}",
+		"noCloudWorkspace": "没有可移入例行事项的云端工作区。",
+		"signInToMove": "登录后才能将例行事项移到云端。",
+		"loadError": "无法加载例行事项。",
+		"tryAgain": "请重试。",
+		"openError": "无法打开例行事项",
+		"deleteError": "无法删除例行事项",
+		"duplicateError": "无法创建例行事项副本",
+		"convertError": "无法转换例行事项",
+		"copyTitle": "{title}（副本）",
+		"importErrors": "\n错误：\n- {list}",
+		"importSummary": "已导入 {created} 项，跳过 {skipped} 项，替换 {replaced} 项。{errors}"
+	}
+}

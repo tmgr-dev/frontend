@@ -5,14 +5,16 @@
 			class="team-activity-header mb-4 flex flex-wrap items-center justify-between gap-2"
 		>
 			<div class="min-w-0">
-				<h3 class="text-base font-semibold text-ink">Active members</h3>
+				<h3 class="text-base font-semibold text-ink">
+					{{ $t('board.dashboard.teamActivityWidget.title') }}
+				</h3>
 				<p class="text-xs text-ink-muted">{{ subtitle }}</p>
 			</div>
 			<div class="flex flex-wrap items-center gap-2 sm:gap-3">
 				<div
 					class="inline-flex overflow-hidden rounded-md border border-line text-xs"
 					role="tablist"
-					aria-label="Activity window"
+					:aria-label="$t('board.dashboard.teamActivityWidget.windowAria')"
 				>
 					<button
 						v-for="w in windows"
@@ -36,7 +38,11 @@
 						class="h-2 w-2 rounded-full bg-status-done"
 						:class="onlineCount > 0 && 'animate-pulse'"
 					></div>
-					<span>{{ onlineCount }} active now</span>
+					<span>{{
+						$t('board.dashboard.teamActivityWidget.activeNow', {
+							n: onlineCount,
+						})
+					}}</span>
 				</div>
 				<Button
 					variant="ghost"
@@ -44,7 +50,7 @@
 					@click="refreshTeamActivity"
 					:disabled="loading"
 					class="p-2"
-					aria-label="Refresh team activity"
+					:aria-label="$t('board.dashboard.teamActivityWidget.refreshAria')"
 				>
 					<ArrowPathIcon :class="['h-4 w-4', loading && 'animate-spin']" />
 				</Button>
@@ -78,12 +84,22 @@
 					class="sticky top-0 z-10 hidden bg-surface px-2 pb-2 text-2xs tracking-wide text-ink-subtle uppercase sm:grid sm:grid-cols-[minmax(0,1fr)_3rem_4.5rem_3rem_5.5rem] sm:gap-x-3 md:grid-cols-[minmax(0,1fr)_4rem_3rem_4.5rem_3rem_5.5rem]"
 					aria-hidden="true"
 				>
-					<span>Member</span>
-					<span class="hidden md:block">Activity</span>
-					<span class="text-right">Done</span>
-					<span class="text-right">Tracked</span>
-					<span class="text-right">Active</span>
-					<span class="text-right">Last active</span>
+					<span>{{ $t('board.dashboard.teamActivityWidget.colMember') }}</span>
+					<span class="hidden md:block">{{
+						$t('board.dashboard.teamActivityWidget.colActivity')
+					}}</span>
+					<span class="text-right">{{
+						$t('board.dashboard.teamActivityWidget.colDone')
+					}}</span>
+					<span class="text-right">{{
+						$t('board.dashboard.teamActivityWidget.colTracked')
+					}}</span>
+					<span class="text-right">{{
+						$t('board.dashboard.teamActivityWidget.colActive')
+					}}</span>
+					<span class="text-right">{{
+						$t('board.dashboard.teamActivityWidget.colLastActive')
+					}}</span>
 				</div>
 				<div class="divide-y divide-line">
 					<TeamMemberItem
@@ -106,7 +122,7 @@
 								{{ teamActivity.total_members }}
 							</div>
 							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
-								Total members
+								{{ $t('board.dashboard.teamActivityWidget.totalMembers') }}
 							</div>
 						</div>
 						<div>
@@ -116,7 +132,7 @@
 								{{ teamActivity.active_today }}
 							</div>
 							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
-								Active today
+								{{ $t('board.dashboard.teamActivityWidget.activeToday') }}
 							</div>
 						</div>
 						<div>
@@ -126,7 +142,7 @@
 								{{ teamActivity.active_timers }}
 							</div>
 							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
-								Active timers
+								{{ $t('board.dashboard.teamActivityWidget.activeTimers') }}
 							</div>
 						</div>
 						<div>
@@ -134,7 +150,11 @@
 								{{ formatTrackedSeconds(teamActivity.tracked_seconds) }}
 							</div>
 							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
-								Tracked · {{ windowLabel }}
+								{{
+									$t('board.dashboard.teamActivityWidget.trackedWindow', {
+										window: windowLabel,
+									})
+								}}
 							</div>
 						</div>
 						<div>
@@ -142,7 +162,11 @@
 								{{ teamActivity.done_count }}
 							</div>
 							<div class="text-2xs tracking-wide text-ink-subtle uppercase">
-								Done · {{ windowLabel }}
+								{{
+									$t('board.dashboard.teamActivityWidget.doneWindow', {
+										window: windowLabel,
+									})
+								}}
 							</div>
 						</div>
 					</div>
@@ -153,10 +177,12 @@
 			<template v-else>
 				<EmptyState
 					icon="users"
-					title="No team members"
-					description="Invite team members to see their activity here."
+					:title="$t('board.dashboard.teamActivityWidget.emptyTitle')"
+					:description="
+						$t('board.dashboard.teamActivityWidget.emptyDescription')
+					"
 					:action="{
-						label: 'Invite Members',
+						label: $t('board.dashboard.teamActivityWidget.invite'),
 						onClick: inviteMembers,
 					}"
 				/>
@@ -166,6 +192,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import EmptyState from '@/components/EmptyState.vue';
 	import Button from '@/components/ui/button/Button.vue';
 	import type {
@@ -176,8 +203,6 @@
 	import {
 		TEAM_ACTIVITY_WINDOWS,
 		formatTrackedSeconds,
-		teamActivitySubtitle,
-		teamActivityWindowLabel,
 	} from '@/utils/dashboard/teamActivityFormat';
 	import { ArrowPathIcon } from '@heroicons/vue/24/outline';
 	import { computed } from 'vue';
@@ -200,13 +225,38 @@
 		'window-change': [w: TeamActivityWindow];
 	}>();
 
-	const windows = TEAM_ACTIVITY_WINDOWS;
+	const windowKeys: Record<TeamActivityWindow, string> = {
+		today: 'today',
+		'7d': 'd7',
+		'30d': 'd30',
+		all: 'all',
+	};
+
+	const windows = computed(() =>
+		TEAM_ACTIVITY_WINDOWS.map((w) => ({
+			key: w.key,
+			label: t(
+				'board.dashboard.teamActivityWidget.windows.' + windowKeys[w.key],
+			),
+		})),
+	);
+
+	const currentWindow = computed(
+		() => props.teamActivity?.window ?? props.window,
+	);
+
 	const windowLabel = computed(() =>
-		teamActivityWindowLabel(props.teamActivity?.window ?? props.window),
+		t(
+			'board.dashboard.teamActivityWidget.windows.' +
+				(windowKeys[currentWindow.value] ?? 'd7'),
+		),
 	);
 
 	const subtitle = computed(() =>
-		teamActivitySubtitle(props.teamActivity?.window ?? props.window),
+		t(
+			'board.dashboard.teamActivityWidget.subtitles.' +
+				(windowKeys[currentWindow.value] ?? 'd7'),
+		),
 	);
 
 	const onlineCount = computed(() => {

@@ -5,11 +5,10 @@
 		data-testid="category-agent-repositories"
 	>
 		<h3 class="mb-1 text-base font-semibold text-ink">
-			Agent run repositories
+			{{ $t('board.categories.agentRepositories.title') }}
 		</h3>
 		<p class="mb-4 text-sm text-ink-muted">
-			Repositories agents may work on for tasks of this category. Leave empty to
-			use the linked GitHub repository.
+			{{ $t('board.categories.agentRepositories.description') }}
 		</p>
 		<textarea
 			v-model="text"
@@ -27,8 +26,8 @@
 			data-testid="agent-repositories-save"
 			@click="save"
 		>
-			<span v-if="saving">Saving…</span>
-			<span v-else>Save</span>
+			<span v-if="saving">{{ $t('common.actions.saving') }}</span>
+			<span v-else>{{ $t('common.actions.save') }}</span>
 		</button>
 		<div
 			v-if="error"
@@ -50,6 +49,7 @@
 		getCategoryAgentRepositories,
 		setCategoryAgentRepositories,
 	} from '@/actions/tmgr/agentRuns';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { apiErrorText } from '@/utils/apiErrorText';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
@@ -107,7 +107,7 @@
 				} catch (failure) {
 					error.value = apiErrorText(
 						failure,
-						'Could not save the repositories.',
+						t('board.categories.agentRepositories.saveFailed'),
 					);
 				} finally {
 					saving.value = false;

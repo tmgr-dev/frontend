@@ -22,7 +22,9 @@
 				<div
 					:class="statusIndicatorClasses"
 					:title="
-						member.is_online ? 'Active in the last 5 minutes' : 'Inactive'
+						member.is_online
+							? $t('board.dashboard.teamMemberItem.activeRecently')
+							: $t('board.dashboard.teamMemberItem.inactive')
 					"
 				></div>
 			</div>
@@ -57,7 +59,9 @@
 					</template>
 					<template v-else-if="member.last_task">
 						<ClockIcon class="h-3 w-3 shrink-0" />
-						<span class="shrink-0">Last touched</span>
+						<span class="shrink-0">{{
+							$t('board.dashboard.teamMemberItem.lastTouched')
+						}}</span>
 						<button
 							@click.stop="handleTaskClick(member.last_task.id)"
 							class="min-w-0 truncate hover:text-brand"
@@ -67,7 +71,9 @@
 						</button>
 					</template>
 					<template v-else-if="!member.last_activity_at"
-						><span>No recent activity</span></template
+						><span>{{
+							$t('board.dashboard.teamMemberItem.noRecentActivity')
+						}}</span></template
 					>
 				</div>
 			</div>
@@ -77,13 +83,23 @@
 			class="mt-2 truncate text-xs text-ink-subtle tabular-nums sm:hidden"
 			aria-hidden="true"
 		>
-			{{ member.done_count }} done · {{ tracked }} ·
-			{{ member.active_tasks }} active · {{ lastActivityHuman || '—' }}
+			{{
+				$t('board.dashboard.teamMemberItem.summaryLine', {
+					done: member.done_count,
+					tracked,
+					active: member.active_tasks,
+					last: lastActivityHuman || '—',
+				})
+			}}
 		</p>
 
 		<div
 			class="hidden h-6 w-16 items-end justify-end gap-px md:flex"
-			:title="`Activity, last ${dailyActivityPoints.length} day(s)`"
+			:title="
+				$t('board.dashboard.teamMemberItem.activityTitle', {
+					n: dailyActivityPoints.length,
+				})
+			"
 			aria-hidden="true"
 		>
 			<span
@@ -97,19 +113,27 @@
 
 		<dl class="hidden text-sm sm:contents">
 			<div class="text-right text-ink tabular-nums">
-				<dt class="sr-only">Done</dt>
+				<dt class="sr-only">
+					{{ $t('board.dashboard.teamMemberItem.dtDone') }}
+				</dt>
 				<dd>{{ member.done_count }}</dd>
 			</div>
 			<div class="text-right text-ink tabular-nums">
-				<dt class="sr-only">Tracked</dt>
+				<dt class="sr-only">
+					{{ $t('board.dashboard.teamMemberItem.dtTracked') }}
+				</dt>
 				<dd>{{ tracked }}</dd>
 			</div>
 			<div class="text-right text-ink tabular-nums">
-				<dt class="sr-only">Active tasks</dt>
+				<dt class="sr-only">
+					{{ $t('board.dashboard.teamMemberItem.dtActiveTasks') }}
+				</dt>
 				<dd>{{ member.active_tasks }}</dd>
 			</div>
 			<div class="flex min-w-0 items-center justify-end gap-1.5 text-xs">
-				<dt class="sr-only">Last active</dt>
+				<dt class="sr-only">
+					{{ $t('board.dashboard.teamMemberItem.dtLastActive') }}
+				</dt>
 				<dd class="flex min-w-0 items-center gap-1.5 text-ink-muted">
 					<time
 						v-if="member.last_activity_at"
@@ -133,6 +157,7 @@
 	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { currentLocale, t } from '@/i18n';
 	import type { TeamMemberStatus } from '@/types/dashboard';
 	import { cn } from '@/utils';
 	import {
@@ -159,7 +184,9 @@
 
 	const formattedLastActivity = computed(() => {
 		if (!props.member.last_activity_at) return '';
-		return new Date(props.member.last_activity_at).toLocaleString();
+		return new Date(props.member.last_activity_at).toLocaleString(
+			currentLocale(),
+		);
 	});
 
 	const lastActivityHuman = computed(() => {
@@ -171,14 +198,18 @@
 			(now.getTime() - lastActivity.getTime()) / (1000 * 60),
 		);
 
-		if (diffInMinutes < 1) return 'just now';
-		if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+		if (diffInMinutes < 1) return t('board.dashboard.teamMemberItem.justNow');
+		if (diffInMinutes < 60)
+			return t('board.dashboard.teamMemberItem.minutesAgo', {
+				n: diffInMinutes,
+			});
 
 		const diffInHours = Math.floor(diffInMinutes / 60);
-		if (diffInHours < 24) return `${diffInHours}h ago`;
+		if (diffInHours < 24)
+			return t('board.dashboard.teamMemberItem.hoursAgo', { n: diffInHours });
 
 		const diffInDays = Math.floor(diffInHours / 24);
-		return `${diffInDays}d ago`;
+		return t('board.dashboard.teamMemberItem.daysAgo', { n: diffInDays });
 	});
 
 	const statusIndicatorClasses = computed(() => {
@@ -207,29 +238,53 @@
 	const rowTitle = computed(() => {
 		const parts: string[] = [];
 		if (showSurface('comments.count')) {
-			parts.push(`${props.member.comments_count} comments`);
+			parts.push(
+				t('board.dashboard.teamMemberItem.commentsCount', {
+					n: props.member.comments_count,
+				}),
+			);
 		}
-		parts.push(`streak ${props.member.streak}`);
+		parts.push(
+			t('board.dashboard.teamMemberItem.streak', { n: props.member.streak }),
+		);
 		return parts.join(' · ');
 	});
 
 	const accessibilityLabel = computed(() => {
 		const parts = [
-			`Team member: ${props.member.name}`,
-			props.member.is_online ? 'Online' : 'Offline',
+			t('board.dashboard.teamMemberItem.ariaMember', {
+				name: props.member.name,
+			}),
+			props.member.is_online
+				? t('board.dashboard.teamMemberItem.online')
+				: t('board.dashboard.teamMemberItem.offline'),
 		];
 
 		if (props.member.current_task) {
-			parts.push(`Working on: ${props.member.current_task.title}`);
+			parts.push(
+				t('board.dashboard.teamMemberItem.workingOn', {
+					title: props.member.current_task.title,
+				}),
+			);
 			if (props.member.current_task.timer_running) {
-				parts.push('Timer running');
+				parts.push(t('board.dashboard.teamMemberItem.timerRunning'));
 			}
 		} else if (props.member.last_activity_at) {
-			parts.push(`Last active: ${lastActivityHuman.value}`);
+			parts.push(
+				t('board.dashboard.teamMemberItem.lastActive', {
+					when: lastActivityHuman.value,
+				}),
+			);
 		}
 
 		parts.push(
-			`${tracked.value} tracked, ${props.member.done_count} done, ${props.member.active_tasks} active, ${props.member.comments_count} comments, streak ${props.member.streak}`,
+			t('board.dashboard.teamMemberItem.ariaStats', {
+				tracked: tracked.value,
+				done: props.member.done_count,
+				active: props.member.active_tasks,
+				comments: props.member.comments_count,
+				streak: props.member.streak,
+			}),
 		);
 
 		return parts.join(', ');

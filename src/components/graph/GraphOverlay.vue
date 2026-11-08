@@ -5,7 +5,7 @@
 			class="fixed inset-0 z-[100] flex flex-col bg-surface-base text-ink outline-hidden sm:p-4"
 			role="dialog"
 			aria-modal="true"
-			aria-label="Graph"
+			:aria-label="$t('board.graph.overlay.dialogLabel')"
 			tabindex="-1"
 			data-testid="graph-overlay"
 			@keydown="trapTab"
@@ -22,7 +22,7 @@
 							@click="back"
 						>
 							<ArrowLeft class="h-3.5 w-3.5" />
-							Back
+							{{ $t('board.graph.overlay.back') }}
 						</button>
 						<div class="truncate text-xs text-ink-muted">
 							{{ crumb }}
@@ -34,7 +34,7 @@
 					<button
 						type="button"
 						class="rounded-lg border border-line bg-surface p-2 text-ink-muted hover:bg-surface-hover"
-						aria-label="Close graph"
+						:aria-label="$t('board.graph.overlay.closeLabel')"
 						data-testid="graph-close"
 						@click="$emit('close')"
 					>
@@ -61,7 +61,9 @@
 						data-testid="graph-panel"
 					>
 						<template v-if="selected">
-							<div class="text-xs tracking-wide text-ink-muted">SELECTED</div>
+							<div class="text-xs tracking-wide text-ink-muted">
+								{{ $t('board.graph.overlay.selected') }}
+							</div>
 							<div class="text-base font-semibold" data-testid="graph-selected">
 								{{ selectedTitle }}
 							</div>
@@ -81,7 +83,7 @@
 								>
 							</div>
 							<div class="mt-1 text-xs tracking-wide text-ink-muted">
-								WHY IT'S CONNECTED
+								{{ $t('board.graph.overlay.whyConnected') }}
 							</div>
 							<ul
 								v-if="why.length"
@@ -92,11 +94,11 @@
 									{{ line }}
 								</li>
 								<li v-if="why.length > 8" class="text-ink-muted">
-									+{{ why.length - 8 }} more
+									{{ $t('board.graph.overlay.more', { n: why.length - 8 }) }}
 								</li>
 							</ul>
 							<p v-else class="text-sm text-ink-muted">
-								This is the centre of the graph.
+								{{ $t('board.graph.overlay.centre') }}
 							</p>
 							<div class="mt-1 flex gap-2">
 								<button
@@ -115,18 +117,22 @@
 									data-testid="graph-center-here"
 									@click="centerOn(selected.id)"
 								>
-									Center here
+									{{ $t('board.graph.overlay.centerHere') }}
 								</button>
 							</div>
 						</template>
-						<p v-else class="text-sm text-ink-muted">Loading…</p>
+						<p v-else class="text-sm text-ink-muted">
+							{{ $t('board.graph.overlay.loading') }}
+						</p>
 
 						<div class="border-t border-line pt-3">
-							<div class="mb-2 text-xs tracking-wide text-ink-muted">DEPTH</div>
+							<div class="mb-2 text-xs tracking-wide text-ink-muted">
+								{{ $t('board.graph.overlay.depth') }}
+							</div>
 							<div
 								class="flex gap-1 rounded-lg bg-surface-sunken p-1"
 								role="group"
-								aria-label="Depth"
+								:aria-label="$t('board.graph.overlay.depthLabel')"
 							>
 								<button
 									v-for="step in [1, 2]"
@@ -141,11 +147,11 @@
 									:aria-pressed="depth === step"
 									@click="depth = step as 1 | 2"
 								>
-									{{ step === 1 ? '1 step' : '2 steps' }}
+									{{ $t('board.graph.overlay.steps', step) }}
 								</button>
 							</div>
 							<div class="mt-3 mb-2 text-xs tracking-wide text-ink-muted">
-								SHOW
+								{{ $t('board.graph.overlay.show') }}
 							</div>
 							<div class="flex flex-col gap-2 text-sm">
 								<label
@@ -158,11 +164,11 @@
 										:checked="groups.includes(group.key)"
 										@change="toggle(group.key)"
 									/>
-									{{ group.label }}
+									{{ $t(groupKeys[group.key]) }}
 								</label>
 								<label class="flex items-center gap-2.5 text-ink-muted">
 									<input type="checkbox" disabled />
-									Similar by meaning (later)
+									{{ $t('board.graph.overlay.similarLater') }}
 								</label>
 							</div>
 						</div>
@@ -174,6 +180,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import store from '@/store';
 	import type { GraphNode, GraphResult } from '@/types/graph';
@@ -197,6 +204,13 @@
 		whyFor,
 		type GraphGroupKey,
 	} from './graphLogic';
+
+	const groupKeys: Record<GraphGroupKey, string> = {
+		tasks: 'board.graph.groups.tasks',
+		pages: 'board.graph.groups.pages',
+		people: 'board.graph.groups.people',
+		agent_runs: 'board.graph.groups.agentRuns',
+	};
 
 	const FOCUSABLE =
 		'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
@@ -231,15 +245,23 @@
 				() => nodeById(selectedId.value) ?? center.value,
 			);
 			const centerTitle = computed(
-				() => center.value?.title ?? center.value?.key ?? 'Graph',
+				() =>
+					center.value?.title ??
+					center.value?.key ??
+					t('board.graph.overlay.title'),
 			);
 			const crumb = computed(() => {
 				const c = center.value;
-				if (!c) return 'Graph';
+				if (!c) return t('board.graph.overlay.title');
 				if (c.type === 'task') {
-					return [c.category, c.key].filter(Boolean).join(' · ') || 'Task';
+					return (
+						[c.category, c.key].filter(Boolean).join(' · ') ||
+						t('board.graph.overlay.task')
+					);
 				}
-				return c.type === 'page' ? 'Page' : 'Graph';
+				return c.type === 'page'
+					? t('board.graph.overlay.page')
+					: t('board.graph.overlay.title');
 			});
 			const selectedTitle = computed(() => {
 				const s = selected.value;
@@ -254,9 +276,9 @@
 			const openLabel = computed(() => {
 				const type = selected.value?.type;
 				return type === 'task'
-					? 'Open task'
+					? t('board.graph.overlay.openTask')
 					: type === 'page'
-						? 'Open page'
+						? t('board.graph.overlay.openPage')
 						: '';
 			});
 			const canCenter = computed(() => {
@@ -343,6 +365,7 @@
 				depth,
 				groups,
 				allGroups: GRAPH_GROUPS,
+				groupKeys,
 				selectedId,
 				selected,
 				selectedTitle,

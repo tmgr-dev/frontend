@@ -14,7 +14,8 @@
 				<div
 					class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 				>
-					Unscheduled <span>{{ unscheduled.length }}</span>
+					{{ $t('dailyRoutine.unscheduled') }}
+					<span>{{ unscheduled.length }}</span>
 				</div>
 				<button
 					v-if="unscheduledDoneCount > 0"
@@ -22,7 +23,7 @@
 					class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold tracking-wider text-ink-subtle uppercase hover:border-brand hover:text-brand"
 					@click="$emit('archive-done-unscheduled')"
 				>
-					Archive done ({{ unscheduledDoneCount }})
+					{{ $t('dailyRoutine.archiveDone', { n: unscheduledDoneCount }) }}
 				</button>
 			</div>
 			<RoutineRow

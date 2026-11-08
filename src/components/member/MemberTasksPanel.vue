@@ -5,7 +5,7 @@
 		<div
 			class="mb-4 flex flex-wrap gap-1"
 			role="tablist"
-			aria-label="Member tasks"
+			:aria-label="$t('workspace.memberTasksPanel.label')"
 		>
 			<button
 				v-for="option in tabs"
@@ -21,7 +21,7 @@
 				"
 				@click="emit('tab-change', option.key)"
 			>
-				{{ option.label }}
+				{{ $t(option.labelKey) }}
 				<span v-if="option.key === tab && !(loading && !tasks.length)">
 					· {{ total }}</span
 				>
@@ -32,13 +32,13 @@
 			v-if="loading && !tasks.length"
 			class="py-6 text-center text-sm text-ink-subtle"
 		>
-			Loading…
+			{{ $t('workspace.memberTasksPanel.loading') }}
 		</p>
 		<p
 			v-else-if="!tasks.length"
 			class="py-6 text-center text-sm text-ink-subtle"
 		>
-			Nothing here for this window.
+			{{ $t('workspace.memberTasksPanel.empty') }}
 		</p>
 
 		<ul v-else class="divide-y divide-line">
@@ -62,9 +62,14 @@
 							<span v-if="task.category && showSurface('categories.badge')"
 								>{{ task.category.code }} ·
 							</span>
-							<span>{{ task.status?.name ?? 'No status' }}</span>
+							<span>{{
+								task.status?.name ?? $t('workspace.memberTasksPanel.noStatus')
+							}}</span>
 							<span v-if="task.my_comments && showSurface('comments.count')">
-								· {{ task.my_comments }} comments</span
+								·
+								{{
+									$t('workspace.memberTasksPanel.comments', task.my_comments)
+								}}</span
 							>
 						</span>
 					</span>
@@ -83,7 +88,11 @@
 			:disabled="loading"
 			@click="emit('load-more')"
 		>
-			{{ loading ? 'Loading…' : 'Show more' }}
+			{{
+				loading
+					? $t('workspace.memberTasksPanel.loading')
+					: $t('workspace.memberTasksPanel.showMore')
+			}}
 		</button>
 	</section>
 </template>
@@ -108,11 +117,11 @@
 		'load-more': [];
 	}>();
 
-	const tabs: Array<{ key: MemberTasksTab; label: string }> = [
-		{ key: 'touched', label: 'Recently touched' },
-		{ key: 'assigned', label: 'Assigned' },
-		{ key: 'created', label: 'Created' },
-		{ key: 'done', label: 'Done' },
+	const tabs: Array<{ key: MemberTasksTab; labelKey: string }> = [
+		{ key: 'touched', labelKey: 'workspace.memberTasksPanel.tabTouched' },
+		{ key: 'assigned', labelKey: 'workspace.memberTasksPanel.tabAssigned' },
+		{ key: 'created', labelKey: 'workspace.memberTasksPanel.tabCreated' },
+		{ key: 'done', labelKey: 'workspace.memberTasksPanel.tabDone' },
 	];
 
 	const { showSurface } = useFeatureToggles();

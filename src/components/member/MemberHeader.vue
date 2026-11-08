@@ -14,7 +14,7 @@
 					<span
 						v-if="member?.is_online"
 						class="absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-surface bg-green-500"
-						aria-label="Active now"
+						:aria-label="$t('workspace.memberHeader.activeNow')"
 					/>
 				</div>
 				<div>
@@ -30,12 +30,21 @@
 					</p>
 					<p class="mt-1 text-xs text-ink-subtle">
 						{{ member?.email }}
-						<span v-if="memberSince"> · member since {{ memberSince }}</span>
+						<span v-if="memberSince">
+							·
+							{{
+								$t('workspace.memberHeader.memberSince', { date: memberSince })
+							}}</span
+						>
 					</p>
 				</div>
 			</div>
 
-			<div class="flex gap-1" role="group" aria-label="Time window">
+			<div
+				class="flex gap-1"
+				role="group"
+				:aria-label="$t('workspace.memberHeader.timeWindow')"
+			>
 				<button
 					v-for="option in windows"
 					:key="option.key"
@@ -48,7 +57,7 @@
 					"
 					@click="emit('window-change', option.key)"
 				>
-					{{ option.label }}
+					{{ $t(option.labelKey) }}
 				</button>
 			</div>
 		</div>
@@ -68,7 +77,9 @@
 		</dl>
 
 		<div v-if="bars.length" class="mt-5">
-			<p class="mb-1 text-xs text-ink-subtle">Last {{ bars.length }} days</p>
+			<p class="mb-1 text-xs text-ink-subtle">
+				{{ $t('workspace.memberHeader.lastDays', bars.length) }}
+			</p>
 			<div class="flex h-6 items-end gap-0.5">
 				<span
 					v-for="(height, index) in bars"
@@ -86,15 +97,20 @@
 			class="mt-5 flex w-full items-center justify-between rounded-card border border-line px-3 py-2 text-left hover:bg-surface-sunken"
 			@click="emit('task-click', member.current_task.id)"
 		>
-			<span class="text-sm text-ink"
-				>Working on: {{ member.current_task.title }}</span
-			>
-			<span class="text-xs text-ink-subtle">timer running</span>
+			<span class="text-sm text-ink">{{
+				$t('workspace.memberHeader.workingOn', {
+					title: member.current_task.title,
+				})
+			}}</span>
+			<span class="text-xs text-ink-subtle">{{
+				$t('workspace.memberHeader.timerRunning')
+			}}</span>
 		</button>
 	</section>
 </template>
 
 <script setup lang="ts">
+	import { currentLocale, t } from '@/i18n';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import type { MemberStats, TeamActivityWindow } from '@/types/dashboard';
@@ -121,24 +137,26 @@
 		'task-click': [taskId: number];
 	}>();
 
-	const windows: Array<{ key: TeamActivityWindow; label: string }> = [
-		{ key: 'today', label: 'Today' },
-		{ key: '7d', label: '7 days' },
-		{ key: '30d', label: '30 days' },
-		{ key: 'all', label: 'All time' },
+	const windows: Array<{ key: TeamActivityWindow; labelKey: string }> = [
+		{ key: 'today', labelKey: 'workspace.memberHeader.windowToday' },
+		{ key: '7d', labelKey: 'workspace.memberHeader.window7d' },
+		{ key: '30d', labelKey: 'workspace.memberHeader.window30d' },
+		{ key: 'all', labelKey: 'workspace.memberHeader.windowAll' },
 	];
 
 	const presence = computed(() => {
-		if (props.member?.is_online) return 'Active now';
+		if (props.member?.is_online) return t('workspace.memberHeader.activeNow');
 		const ago = relativeAge(props.member?.last_activity_at);
 
-		return ago ? `Last active ${ago}` : 'No activity yet';
+		return ago
+			? t('workspace.memberHeader.lastActive', { ago })
+			: t('workspace.memberHeader.noActivity');
 	});
 
 	const memberSince = computed(() => {
 		const since = props.member?.member_since;
 
-		return since ? new Date(since).toLocaleDateString() : null;
+		return since ? new Date(since).toLocaleDateString(currentLocale()) : null;
 	});
 
 	const bars = computed(() =>
@@ -163,38 +181,52 @@
 
 		return [
 			{
-				label: 'Tracked',
+				label: t('workspace.memberHeader.tracked'),
 				value: formatTrackedSeconds(m.tracked_seconds),
-				hint: share ? `${share} of team` : null,
+				hint: share ? t('workspace.memberHeader.shareOfTeam', { share }) : null,
 			},
 			{
-				label: 'Done',
+				label: t('workspace.memberHeader.done'),
 				value: m.done_count,
-				hint: `team ${m.team?.done_count ?? 0}`,
+				hint: t('workspace.memberHeader.teamDone', {
+					n: m.team?.done_count ?? 0,
+				}),
 			},
 			{
-				label: 'Active tasks',
+				label: t('workspace.memberHeader.activeTasks'),
 				value: m.active_tasks,
-				hint: `${m.assigned_count} assigned · ${m.created_count} created`,
+				hint: t('workspace.memberHeader.assignedCreated', {
+					assigned: m.assigned_count,
+					created: m.created_count,
+				}),
 			},
 			...(showSurface('comments.count')
 				? [
 						{
-							label: 'Comments',
+							label: t('workspace.memberHeader.comments'),
 							value: m.comments_count,
-							hint: `on ${m.commented_tasks_count} tasks`,
+							hint: t(
+								'workspace.memberHeader.onTasks',
+								m.commented_tasks_count,
+							),
 						},
 					]
 				: []),
 			{
-				label: 'Streak',
-				value: `${m.streak}d`,
-				hint: thirtyDayHint(props.window, `longest ${m.longest_streak}d`),
+				label: t('workspace.memberHeader.streak'),
+				value: t('workspace.memberHeader.streakValue', { n: m.streak }),
+				hint: thirtyDayHint(
+					props.window,
+					t('workspace.memberHeader.longest', { n: m.longest_streak }),
+				),
 			},
 			{
-				label: 'Activity',
+				label: t('workspace.memberHeader.activity'),
 				value: m.activity_count,
-				hint: thirtyDayHint(props.window, `${m.active_days} active days`),
+				hint: thirtyDayHint(
+					props.window,
+					t('workspace.memberHeader.activeDays', m.active_days),
+				),
 			},
 		];
 	});

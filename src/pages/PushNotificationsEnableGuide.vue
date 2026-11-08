@@ -2,128 +2,188 @@
 	<div>
 		<BaseLayout
 			width="narrow"
-			title="How to enable or disable Push Notifications on Chrome, Firefox & Safari Browser?"
+			:title="$t('workspace.pushNotificationsEnableGuide.title')"
 		>
 			<template #body>
 				<div class="space-y-4 text-ink">
 					<p>
-						<strong
-							>Do not want to receive a push notification from a website you
-							subscribed earlier?
-						</strong>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.intro')
+						}}</strong>
 					</p>
 					<p>
-						Here is a quick guide to Disable Web Push Notifications on desktop
-						and mobile. Follow these simple steps to disable notification from
-						an&nbsp;unwanted website.
+						{{ $t('workspace.pushNotificationsEnableGuide.introBody') }}
 					</p>
 					<h2>
-						<strong>How to Enable/ Disable Web Push Service </strong
-						><strong>on Desktop</strong>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.desktopHeading')
+						}}</strong>
 					</h2>
-					<h3><strong>Chrome Browser</strong></h3>
+					<h3>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.chromeHeading')
+						}}</strong>
+					</h3>
 					<h4>
-						<strong
-							>See how you can enable or disable web push notification in
-							Chrome</strong
-						>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.chromeSubheading')
+						}}</strong>
 					</h4>
-					<p><strong>Step 1-</strong></p>
-					<p>Open Chrome browser and follow the given path or simply type-</p>
 					<p>
-						<a href="chrome://settings/content">chrome://settings/content</a> in
-						a new tab.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 1 })
+						}}</strong>
 					</p>
-					<p><strong>Step 2-</strong></p>
-					<p>A pop-up window with content setting will be displayed.</p>
+					<p>{{ $t('workspace.pushNotificationsEnableGuide.chromeStep1a') }}</p>
+					<p>
+						<i18n-t
+							keypath="workspace.pushNotificationsEnableGuide.chromeStep1c"
+							tag="span"
+						>
+							<template #link>
+								<a href="chrome://settings/content"
+									>chrome://settings/content</a
+								>
+							</template>
+						</i18n-t>
+					</p>
+					<p>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 2 })
+						}}</strong>
+					</p>
+					<p>{{ $t('workspace.pushNotificationsEnableGuide.chromeStep2a') }}</p>
 					<ul>
-						<li>Scroll down to Notifications</li>
-						<li>Go to Manage Exceptions</li>
+						<li>
+							{{ $t('workspace.pushNotificationsEnableGuide.chromeStep2b') }}
+						</li>
+						<li>
+							{{ $t('workspace.pushNotificationsEnableGuide.chromeStep2c') }}
+						</li>
 					</ul>
-					<p><strong>Step 3-</strong></p>
 					<p>
-						In this section a list of website URL, you have subscribed for will
-						appear. Select the website URL you want to unsubscribe. Here you can
-						allow, deny or completely delete a website URL.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 3 })
+						}}</strong>
 					</p>
-					<h3><strong>Firefox Browser</strong></h3>
+					<p>
+						{{ $t('workspace.pushNotificationsEnableGuide.chromeStep3') }}
+					</p>
+					<h3>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.firefoxHeading')
+						}}</strong>
+					</h3>
 					<h4>
-						<strong
-							>Check how you can enable or disable web push notification in
-							Firefox</strong
-						>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.firefoxSubheading')
+						}}</strong>
 					</h4>
-					<p><strong>Step 1- </strong></p>
 					<p>
-						Open Mozilla Firefox browser, then go to Firefox menu and select
-						options.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 1 })
+						}}</strong>
 					</p>
-					<p><strong>Step 2- </strong></p>
 					<p>
-						Select the content segment and tap on the choose button under
-						Notifications.
+						{{ $t('workspace.pushNotificationsEnableGuide.firefoxStep1') }}
 					</p>
-					<p><strong>Step 3- </strong></p>
 					<p>
-						A Notification Permissions window will pop-up. In this section,
-						select the site URL’s you wish to unsubscribe. Then click on Remove
-						Site.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 2 })
+						}}</strong>
+					</p>
+					<p>
+						{{ $t('workspace.pushNotificationsEnableGuide.firefoxStep2') }}
+					</p>
+					<p>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 3 })
+						}}</strong>
+					</p>
+					<p>
+						{{ $t('workspace.pushNotificationsEnableGuide.firefoxStep3') }}
 					</p>
 					<ul>
 						<li>
-							To stop all sites from sending push messages, click Remove All
-							Sites.
+							{{ $t('workspace.pushNotificationsEnableGuide.firefoxNote1') }}
 						</li>
 						<li>
-							Websites will need to ask your permission to send messages in the
-							future.
+							{{ $t('workspace.pushNotificationsEnableGuide.firefoxNote2') }}
 						</li>
 					</ul>
-					<h3><strong>Safari Browser</strong></h3>
+					<h3>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.safariHeading')
+						}}</strong>
+					</h3>
 					<h4>
-						<strong
-							>Check out how to enable or disable web push from a particular
-							website on Safari Browser</strong
-						>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.safariSubheading')
+						}}</strong>
 					</h4>
-					<p><strong>Step 1- </strong></p>
 					<p>
-						Open your Safari browser and click on Safari. Under Safari panel
-						click on Preferences.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 1 })
+						}}</strong>
 					</p>
-					<p><strong>Step 2-&nbsp; </strong></p>
 					<p>
-						Select the website you wish to remove from notification section.
-						Click on Allow or Deny as per your preference.
+						{{ $t('workspace.pushNotificationsEnableGuide.safariStep1') }}
+					</p>
+					<p>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 2 })
+						}}</strong>
+					</p>
+					<p>
+						{{ $t('workspace.pushNotificationsEnableGuide.safariStep2') }}
 					</p>
 					<h2>
-						<strong
-							>How to Enable/ Disable Web Push Service in Mobile Devices</strong
-						>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.mobileHeading')
+						}}</strong>
 					</h2>
-					<h3><strong>Disable Notifications on Android Devices</strong></h3>
-					<p><strong>Step 1- </strong></p>
+					<h3>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.androidHeading')
+						}}</strong>
+					</h3>
 					<p>
-						Open Chrome browser and Click on Menu, under this section tap
-						Settings.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 1 })
+						}}</strong>
 					</p>
-					<p><strong>Step 2- </strong></p>
-					<p>Scroll Down and click on Site Settings</p>
-					<p><strong>Step 3- </strong></p>
 					<p>
-						In Site settings, again continue to scroll down and choose
-						Notifications.
+						{{ $t('workspace.pushNotificationsEnableGuide.androidStep1') }}
 					</p>
-					<p><strong>Step 4- </strong></p>
 					<p>
-						In Notifications section, select the site you want to allow or deny
-						web push services.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 2 })
+						}}</strong>
 					</p>
-					<p><strong>Step 5- </strong></p>
+					<p>{{ $t('workspace.pushNotificationsEnableGuide.androidStep2') }}</p>
 					<p>
-						On the next screen, tap on clear &amp; reset, a pop-up will appear
-						asking for your permission to allow or Block notifications from the
-						selected website. Choose the option as per your preference.
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 3 })
+						}}</strong>
+					</p>
+					<p>
+						{{ $t('workspace.pushNotificationsEnableGuide.androidStep3') }}
+					</p>
+					<p>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 4 })
+						}}</strong>
+					</p>
+					<p>
+						{{ $t('workspace.pushNotificationsEnableGuide.androidStep4') }}
+					</p>
+					<p>
+						<strong>{{
+							$t('workspace.pushNotificationsEnableGuide.step', { n: 5 })
+						}}</strong>
+					</p>
+					<p>
+						{{ $t('workspace.pushNotificationsEnableGuide.androidStep5') }}
 					</p>
 				</div>
 
@@ -134,6 +194,7 @@
 </template>
 
 <script>
+	import { t } from '@/i18n';
 	import Alert from '@/components/general/Alert.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 
@@ -141,7 +202,7 @@
 		name: 'PushNotificationsEnableGuide',
 		components: { Alert },
 		mounted() {
-			setDocumentTitle('Push Notifications Guide');
+			setDocumentTitle(t('workspace.pushNotificationsEnableGuide.docTitle'));
 		},
 	};
 </script>

@@ -7,7 +7,7 @@
 					:ref="(el) => bindPreview(file, el)"
 					type="button"
 					class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md border border-line bg-surface-sunken text-ink-subtle transition hover:border-line-strong"
-					:title="`Open ${file.name}`"
+					:title="$t('workspace.attachedFileList.open', { name: file.name })"
 					data-testid="attached-file"
 					@click="openViewer(file)"
 				>
@@ -29,7 +29,7 @@
 					v-else
 					type="button"
 					class="flex max-w-[14rem] items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2 py-1 text-xs text-ink transition hover:bg-surface-hover"
-					:title="`Open ${file.name}`"
+					:title="$t('workspace.attachedFileList.open', { name: file.name })"
 					data-testid="attached-file"
 					@click="openViewer(file)"
 				>

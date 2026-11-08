@@ -5,7 +5,7 @@
 		class="min-w-0 rounded-card border border-line bg-surface p-4 shadow-tmgr-xs"
 	>
 		<h3 :id="titleId" class="text-base font-semibold text-ink">
-			Activity over time
+			{{ $t('board.dashboard.activityChart.title') }}
 		</h3>
 		<p v-if="subtitle" class="mt-0.5 text-xs text-ink-muted">
 			{{ subtitle }}
@@ -17,14 +17,16 @@
 				v-else-if="error"
 				class="flex h-40 flex-col items-center justify-center gap-2 text-center sm:h-[200px]"
 			>
-				<p class="text-sm text-ink-muted">Couldn't load chart data</p>
+				<p class="text-sm text-ink-muted">
+					{{ $t('board.dashboard.activityChart.loadError') }}
+				</p>
 				<Button
 					type="button"
 					variant="outline"
 					size="sm"
 					@click="$emit('retry')"
 				>
-					Retry
+					{{ $t('common.actions.retry') }}
 				</Button>
 			</div>
 			<div
@@ -32,7 +34,7 @@
 				data-chart-empty
 				class="flex h-40 items-center justify-center text-center text-sm text-ink-muted sm:h-[200px]"
 			>
-				No activity in this period
+				{{ $t('board.dashboard.activityChart.empty') }}
 			</div>
 			<template v-else>
 				<div role="img" :aria-label="summary">
@@ -98,17 +100,21 @@
 						</li>
 					</ul>
 					<p class="text-2xs text-ink-muted">
-						Each line is scaled to its own peak
+						{{ $t('board.dashboard.activityChart.scaleNote') }}
 					</p>
 				</div>
 
 				<table class="sr-only">
 					<caption>
-						Activity over time
+						{{
+							$t('board.dashboard.activityChart.title')
+						}}
 					</caption>
 					<thead>
 						<tr>
-							<th scope="col">Date</th>
+							<th scope="col">
+								{{ $t('board.dashboard.activityChart.dateColumn') }}
+							</th>
 							<th v-for="item in series" :key="item.key" scope="col">
 								{{ item.label }}
 							</th>
@@ -129,6 +135,7 @@
 </template>
 
 <script lang="ts">
+	import { currentLocale, t } from '@/i18n';
 	import Button from '@/components/ui/button/Button.vue';
 	import Skeleton from '@/components/ui/skeleton/Skeleton.vue';
 	import type { DashboardTone } from '@/types/dashboard';
@@ -156,7 +163,7 @@
 	let instanceCounter = 0;
 
 	function formatDay(date: string): string {
-		return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+		return new Date(`${date}T00:00:00Z`).toLocaleDateString(currentLocale(), {
 			month: 'short',
 			day: 'numeric',
 			timeZone: 'UTC',
@@ -228,18 +235,30 @@
 					const values = valuesOf(s);
 					const total = values.reduce((sum, v) => sum + v, 0);
 					const max = Math.max(0, ...values);
-					const peak =
-						max > 0
-							? `, peak ${s.format(max)} on ${formatDay(
-									props.dates[values.indexOf(max)],
-								)}`
-							: '';
-					if (s.showTotal === false)
-						return `${s.label}: ${peak ? peak.slice(2) : 'none'}.`;
-					return `${s.label}: total ${s.format(total)}${peak}.`;
+					const peak = max > 0 ? s.format(max) : '';
+					const day =
+						max > 0 ? formatDay(props.dates[values.indexOf(max)]) : '';
+					const key = [
+						'board.dashboard.activityChart.summary',
+						s.showTotal === false
+							? peak
+								? 'PeakOnly'
+								: 'None'
+							: peak
+								? 'TotalPeak'
+								: 'Total',
+					].join('');
+					return t(key, {
+						label: s.label,
+						total: s.format(total),
+						peak,
+						day,
+					});
 				});
 				return [
-					`Activity over time, last ${props.dates.length} days.`,
+					t('board.dashboard.activityChart.summaryIntro', {
+						n: props.dates.length,
+					}),
 					...parts,
 				].join(' ');
 			});
