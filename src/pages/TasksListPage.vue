@@ -1153,7 +1153,7 @@
 											:aria-pressed="activePriorities.includes(option.value)"
 											@click="togglePriority(option.value)"
 										>
-											{{ option.label }}
+											{{ $t(option.labelKey) }}
 										</button>
 									</div>
 									<label

@@ -1,4 +1,5 @@
 import type { PageAuthor } from '@/actions/tmgr/pages';
+import { t } from '@/i18n';
 import type { AuthorRef } from '@/types/author';
 import { parseOwner } from './sections';
 
@@ -27,7 +28,7 @@ export const ownerAuthorRef = (
 		return {
 			kind: 'persona',
 			id: parsed.ref,
-			name: nameFor('persona', parsed.ref) ?? 'Persona',
+			name: nameFor('persona', parsed.ref) ?? t('pages.helpers.owner.persona'),
 		};
 	}
 	if (parsed.kind === 'plugin' && parsed.ref) {
@@ -37,7 +38,7 @@ export const ownerAuthorRef = (
 		return {
 			kind: 'user',
 			id: parsed.ref,
-			name: nameFor('user', parsed.ref) ?? 'Member',
+			name: nameFor('user', parsed.ref) ?? t('pages.helpers.owner.member'),
 		};
 	}
 	return null;
@@ -45,7 +46,7 @@ export const ownerAuthorRef = (
 
 export const ownerLabel = (owner: string): string => {
 	const { kind } = parseOwner(owner);
-	if (kind === 'system') return 'System';
-	if (kind === 'agents') return 'Agents';
+	if (kind === 'system') return t('pages.helpers.owner.system');
+	if (kind === 'agents') return t('pages.helpers.owner.agents');
 	return owner;
 };

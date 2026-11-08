@@ -9,30 +9,45 @@ import type {
 export type GraphShape = 'circle' | 'square' | 'ring' | 'diamond' | 'dot';
 
 export interface GraphTypeStyle {
-	label: string;
+	labelKey: string;
 	shape: GraphShape;
 	dark: string;
 	light: string;
 }
 
 export const TYPE_STYLES: Record<GraphNodeType, GraphTypeStyle> = {
-	task: { label: 'Task', shape: 'circle', dark: '#5b8cff', light: '#3768e6' },
-	page: { label: 'Page', shape: 'square', dark: '#f0a646', light: '#d2831a' },
-	user: { label: 'Person', shape: 'ring', dark: '#3ccfb6', light: '#12a38c' },
+	task: {
+		labelKey: 'board.graph.types.task',
+		shape: 'circle',
+		dark: '#5b8cff',
+		light: '#3768e6',
+	},
+	page: {
+		labelKey: 'board.graph.types.page',
+		shape: 'square',
+		dark: '#f0a646',
+		light: '#d2831a',
+	},
+	user: {
+		labelKey: 'board.graph.types.user',
+		shape: 'ring',
+		dark: '#3ccfb6',
+		light: '#12a38c',
+	},
 	persona: {
-		label: 'Persona',
+		labelKey: 'board.graph.types.persona',
 		shape: 'diamond',
 		dark: '#b493ff',
 		light: '#8559e8',
 	},
 	agent_run: {
-		label: 'Agent run',
+		labelKey: 'board.graph.types.agentRun',
 		shape: 'diamond',
 		dark: '#f472b6',
 		light: '#dc3f93',
 	},
 	comment: {
-		label: 'Comment',
+		labelKey: 'board.helpers.graph.comment',
 		shape: 'dot',
 		dark: '#8b8b94',
 		light: '#71717a',
@@ -54,23 +69,33 @@ export type GraphGroupKey = 'tasks' | 'pages' | 'people' | 'agent_runs';
 
 export interface GraphGroup {
 	key: GraphGroupKey;
-	label: string;
+	labelKey: string;
 	types: GraphNodeType[];
 	include: GraphInclude[];
 }
 
 export const GRAPH_GROUPS: GraphGroup[] = [
-	{ key: 'tasks', label: 'Tasks', types: ['task'], include: ['tasks'] },
-	{ key: 'pages', label: 'Pages', types: ['page'], include: ['pages'] },
+	{
+		key: 'tasks',
+		labelKey: 'board.graph.groups.tasks',
+		types: ['task'],
+		include: ['tasks'],
+	},
+	{
+		key: 'pages',
+		labelKey: 'board.graph.groups.pages',
+		types: ['page'],
+		include: ['pages'],
+	},
 	{
 		key: 'people',
-		label: 'People & personas',
+		labelKey: 'board.graph.groups.people',
 		types: ['user', 'persona'],
 		include: ['people', 'personas'],
 	},
 	{
 		key: 'agent_runs',
-		label: 'Agent runs',
+		labelKey: 'board.graph.groups.agentRuns',
 		types: ['agent_run'],
 		include: ['agent_runs'],
 	},

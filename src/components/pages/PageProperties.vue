@@ -31,7 +31,7 @@
 			data-testid="page-property-fields"
 		>
 			<template v-for="def in defs" :key="def.key">
-				<dt class="pt-0.5 text-xs text-ink-subtle">{{ def.label }}</dt>
+				<dt class="pt-0.5 text-xs text-ink-subtle">{{ $t(def.labelKey) }}</dt>
 				<dd class="min-w-0" :data-property="def.key">
 					<select
 						v-if="def.kind === 'enum'"
@@ -43,7 +43,7 @@
 					>
 						<option value=""></option>
 						<option v-for="o in def.options" :key="o.value" :value="o.value">
-							{{ o.label }}
+							{{ $t(o.labelKey) }}
 						</option>
 					</select>
 					<span
@@ -142,7 +142,8 @@
 	import { computed, defineComponent, type PropType, watch } from 'vue';
 	import AliasesEditor from './AliasesEditor.vue';
 	import ChipPicker, { type ChipOption } from './ChipPicker.vue';
-	import { propertyDefsFor, TYPE_LABELS } from './propertyDefs';
+	import { pageTypeLabel } from '@/utils/pagesSearch';
+	import { propertyDefsFor } from './propertyDefs';
 	import type { TmgrDirectory } from './useTmgrDirectory';
 
 	export default defineComponent({
@@ -160,9 +161,7 @@
 		emits: ['update', 'navigate'],
 		setup(props, { emit }) {
 			const defs = computed(() => propertyDefsFor(props.page.type));
-			const typeLabel = computed(
-				() => TYPE_LABELS[props.page.type] ?? props.page.type,
-			);
+			const typeLabel = computed(() => pageTypeLabel(props.page.type));
 			const author = computed(() => toAuthorRef(props.page.author));
 			const updatedBy = computed(() => toAuthorRef(props.page.updated_by));
 			const updatedAt = computed(() =>

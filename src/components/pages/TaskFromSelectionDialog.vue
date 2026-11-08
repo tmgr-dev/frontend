@@ -34,7 +34,7 @@
 					v-model="markDone"
 					class="text-sm"
 					:disabled="doneStatusId === null"
-					:tooltip="DONE_DISABLED_TOOLTIP"
+					:tooltip="doneDisabledTooltip()"
 				/>
 				<label v-else class="block">
 					<span class="mb-1 block text-xs text-ink-subtle">{{
@@ -92,7 +92,7 @@
 		pickDefaultCategory,
 		readLastCategory,
 	} from '@/utils/pages/taskFromSelection';
-	import { DONE_DISABLED_TOOLTIP, doneTarget } from '@/utils/simpleStatus';
+	import { doneDisabledTooltip, doneTarget } from '@/utils/simpleStatus';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 
 	interface StatusOption {
@@ -167,7 +167,7 @@
 				markDone,
 				simpleMode,
 				doneStatusId,
-				DONE_DISABLED_TOOLTIP,
+				doneDisabledTooltip,
 				submit,
 				onOpen,
 			};

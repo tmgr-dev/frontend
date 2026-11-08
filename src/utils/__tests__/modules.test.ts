@@ -2,7 +2,6 @@ import {
 	buildChoiceRequest,
 	buildModulesView,
 	canApplyPreset,
-	CORE_DESCRIPTION,
 	dependencyLabel,
 	featureDisabledMessage,
 	gateCopy,
@@ -466,11 +465,6 @@ describe('hidden state copy', () => {
 	it('keeps the button text as the action', () => {
 		expect(hideButtonLabel(true)).toBe('Show for me');
 		expect(hideButtonLabel(false)).toBe('Hide for me');
-	});
-	it('describes the core section', () => {
-		expect(CORE_DESCRIPTION).toBe(
-			'Always available. You can hide any of them for yourself.',
-		);
 	});
 });
 

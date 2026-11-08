@@ -1,20 +1,13 @@
+import { currentLocale, t } from '@/i18n';
 import type { HeatmapData, StreakInfo } from '@/types/dashboard';
 
-const MONTHS = [
-	'Jan',
-	'Feb',
-	'Mar',
-	'Apr',
-	'May',
-	'Jun',
-	'Jul',
-	'Aug',
-	'Sep',
-	'Oct',
-	'Nov',
-	'Dec',
-];
 const DAY_MS = 86_400_000;
+
+const monthName = (month: number) =>
+	new Date(Date.UTC(2000, month - 1, 1)).toLocaleDateString(currentLocale(), {
+		month: 'short',
+		timeZone: 'UTC',
+	});
 
 export interface HeatmapRange {
 	from: string;
@@ -89,7 +82,7 @@ export const heatmapMonthLabels = (
 		const first = week.find((cell) => cell.date)?.date;
 		const key = first?.slice(0, 7);
 		if (key && key !== labels[labels.length - 1]?.key) {
-			labels.push({ key, label: MONTHS[Number(key.slice(5)) - 1], column });
+			labels.push({ key, label: monthName(Number(key.slice(5))), column });
 		}
 	});
 	return labels.filter(
@@ -97,10 +90,12 @@ export const heatmapMonthLabels = (
 	);
 };
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const days = (n: number) => t('board.helpers.heatmap.days', n);
 
 export const heatmapHeadline = (total: number, year: number | null) =>
-	`${plural(total, 'contribution')} in ${year ?? 'the last year'}`;
+	year === null
+		? t('board.helpers.heatmap.headlineLastYear', total)
+		: t('board.helpers.heatmap.headlineYear', { n: total, year }, total);
 
 export const heatmapStreakText = (
 	streak: StreakInfo,
@@ -108,8 +103,11 @@ export const heatmapStreakText = (
 	today: string,
 ) =>
 	year === null || year === Number(today.slice(0, 4))
-		? `Current streak: ${plural(streak.current, 'day')} • Longest: ${plural(
-				streak.longest,
-				'day',
-			)}`
-		: `Longest streak in ${year}: ${plural(streak.longest, 'day')}`;
+		? t('board.helpers.heatmap.streakCurrent', {
+				current: days(streak.current),
+				longest: days(streak.longest),
+			})
+		: t('board.helpers.heatmap.streakYear', {
+				year,
+				longest: days(streak.longest),
+			});

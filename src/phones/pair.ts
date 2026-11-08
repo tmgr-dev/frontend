@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { BeginPairingArgs, Mailbox } from './types';
 
 export interface PairDeps {
@@ -13,7 +14,7 @@ const messageOf = (error: unknown): string => {
 	if (typeof server === 'string' && server) return server;
 	if (typeof error === 'string' && error) return error;
 	if (typeof e?.message === 'string' && e.message) return e.message;
-	return 'Could not start pairing';
+	return t('settingsPages.helpers.phones.pairStartFailed');
 };
 
 export const pairIphone = async (
@@ -21,8 +22,10 @@ export const pairIphone = async (
 	desktopName: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> => {
 	const name = desktopName.trim();
-	if (!name) return { ok: false, error: 'Enter a name for this Mac' };
-	if (!deps.userId) return { ok: false, error: 'Sign in to pair a phone' };
+	if (!name)
+		return { ok: false, error: t('settingsPages.helpers.phones.enterName') };
+	if (!deps.userId)
+		return { ok: false, error: t('settingsPages.helpers.phones.signIn') };
 	try {
 		const mailbox = await deps.createMailbox();
 		await deps.begin({

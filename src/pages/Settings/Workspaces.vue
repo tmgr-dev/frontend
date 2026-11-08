@@ -936,8 +936,8 @@
 									:key="swatch.value"
 									type="button"
 									role="radio"
-									:aria-label="swatch.name"
-									:title="swatch.name"
+									:aria-label="$t(swatch.nameKey)"
+									:title="$t(swatch.nameKey)"
 									:aria-checked="workspaceColor === swatch.value"
 									:data-testid="`workspace-color-${swatch.value.slice(1)}`"
 									:class="[

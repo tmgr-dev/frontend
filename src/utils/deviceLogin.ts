@@ -1,26 +1,27 @@
-export const SCOPE_DESCRIPTIONS: Record<string, string> = {
-	'workspaces:read': 'See your workspaces, statuses and projects',
-	'tasks:read': 'Read tasks and their comments',
-	'tasks:write': 'Change task status and fields',
-	'tasks:create': 'Create tasks',
-	'comments:create': 'Add comments',
-	'time:read': 'Read time reports',
-	'time:write': 'Start and stop your timer',
-	'agent-work:write': 'Record AI agent work on tasks',
-	'agent-status:write':
-		'Share your local AI agent status (working, waiting, done) with your workspace',
-	'pages:read': 'Read Pages',
-	'pages:write': 'Edit Pages',
-	'pages:append': 'Append to Pages',
-	'notify:send': 'Send notifications and phone alarms to your devices',
-	'agent-approvals:write': "Sign agent-run approvals with this computer's key",
-	'skills:read': 'Read your shared skills and which personas use them',
-	'skills:write':
-		'Create, change and delete your shared skills and attach them to your personas (changes what those agents are told to do)',
+import { t } from '@/i18n';
+
+export const SCOPE_KEYS: Record<string, string> = {
+	'workspaces:read': 'settingsPages.helpers.deviceScope.workspacesRead',
+	'tasks:read': 'settingsPages.helpers.deviceScope.tasksRead',
+	'tasks:write': 'settingsPages.helpers.deviceScope.tasksWrite',
+	'tasks:create': 'settingsPages.helpers.deviceScope.tasksCreate',
+	'comments:create': 'settingsPages.helpers.deviceScope.commentsCreate',
+	'time:read': 'settingsPages.helpers.deviceScope.timeRead',
+	'time:write': 'settingsPages.helpers.deviceScope.timeWrite',
+	'agent-work:write': 'settingsPages.helpers.deviceScope.agentWorkWrite',
+	'agent-status:write': 'settingsPages.helpers.deviceScope.agentStatusWrite',
+	'pages:read': 'settingsPages.helpers.deviceScope.pagesRead',
+	'pages:write': 'settingsPages.helpers.deviceScope.pagesWrite',
+	'pages:append': 'settingsPages.helpers.deviceScope.pagesAppend',
+	'notify:send': 'settingsPages.helpers.deviceScope.notifySend',
+	'agent-approvals:write':
+		'settingsPages.helpers.deviceScope.agentApprovalsWrite',
+	'skills:read': 'settingsPages.helpers.deviceScope.skillsRead',
+	'skills:write': 'settingsPages.helpers.deviceScope.skillsWrite',
 };
 
 export const describeScope = (scope: string): string =>
-	SCOPE_DESCRIPTIONS[scope] ?? scope;
+	scope in SCOPE_KEYS ? t(SCOPE_KEYS[scope]) : scope;
 
 const CODE_LENGTH = 8;
 

@@ -1,8 +1,13 @@
+import { t } from '@/i18n';
+
 export const formatFileSize = (bytes: number | null | undefined): string => {
 	if (bytes === null || bytes === undefined || bytes < 0) return '';
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	if (bytes < 1024) return t('tasks.helpers.fileSize.b', { n: bytes });
+	if (bytes < 1024 * 1024)
+		return t('tasks.helpers.fileSize.kb', { n: Math.round(bytes / 1024) });
+	return t('tasks.helpers.fileSize.mb', {
+		n: (bytes / (1024 * 1024)).toFixed(1),
+	});
 };
 
 export const imageFilesOf = (

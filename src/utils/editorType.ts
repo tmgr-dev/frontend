@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { EditorType } from '@/types';
 import { normalizeBlocks, type ListItem } from '@/utils/editor';
 
@@ -24,7 +25,7 @@ export const editorOptionLabel = (value: unknown): string => {
 	const type = normalizeEditorType(value);
 	if (!type) return String(value ?? '');
 	return type === 'block'
-		? `${EDITOR_LABELS[type]} — legacy`
+		? t('settingsPages.helpers.editorLegacy', { label: EDITOR_LABELS[type] })
 		: EDITOR_LABELS[type];
 };
 

@@ -293,5 +293,77 @@
 		"tracked": "Time tracked",
 		"running": "Running",
 		"overTime": "Over time"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "This link points to a workspace you don't have access to.",
+			"notFound": "This task no longer exists.",
+			"forbidden": "You don't have access to this task.",
+			"error": "Couldn't load this task. Check your connection and try again."
+		},
+		"modules": {
+			"needsColon": "needs: {list}",
+			"needs": "needs {list}",
+			"showModule": "Show this module",
+			"enableFeature": "Enable this feature",
+			"askOwner": "Ask the owner to turn this on",
+			"hiddenForYou": "Hidden for you",
+			"showForMe": "Show for me",
+			"hideForMe": "Hide for me",
+			"allModules": "All modules",
+			"coreOnly": "No modules, core only",
+			"workflowOffConfirm": "Tasks get a Done checkbox instead of statuses; the Board is hidden. Statuses and their tasks stay and come back when you turn it on.",
+			"workflowOn": "Workflow: Done checkbox → statuses",
+			"workflowOff": "Workflow: statuses → Done checkbox",
+			"presetSummary": {
+				"personal": "Just me: tasks and time, with a Done checkbox",
+				"team": "Work together with statuses and a board",
+				"developer": "Me and my AI agents, with statuses and a board",
+				"everything": "Every module turned on",
+				"minimal": "Just tasks: List, Timer and Comments"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "Dashboard",
+				"projects": "Projects",
+				"list": "List",
+				"board": "Board",
+				"routines": "Routines",
+				"pages": "Pages",
+				"map": "Map",
+				"files": "Files",
+				"askAi": "Ask AI",
+				"personas": "Personas"
+			},
+			"task": {
+				"timer": "Timer",
+				"pomodoro": "Pomodoro",
+				"assignees": "Assignees",
+				"checkpoints": "Checkpoints",
+				"attachments": "Attachments",
+				"relations": "Relations",
+				"agentWork": "Agent work",
+				"github": "GitHub",
+				"cursorAgents": "Cursor agents",
+				"comments": "Comments",
+				"aiReply": "AI reply"
+			}
+		},
+		"navTargets": {
+			"dashboard": "Dashboard",
+			"list": "List",
+			"board": "Board",
+			"localRoutines": "Local routines",
+			"dailyRoutines": "Daily Routines",
+			"archive": "Archive",
+			"categories": "Categories",
+			"pages": "Pages",
+			"statistics": "Statistics",
+			"aiUsage": "AI usage",
+			"files": "Files",
+			"map": "Map",
+			"settings": "Settings"
+		}
 	}
 }

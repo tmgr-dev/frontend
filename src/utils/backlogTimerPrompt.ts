@@ -3,6 +3,8 @@
  * almost always a mistake, so every start entry point (task form, list, board card)
  * offers to move it to the first active status. This is the shared decision + copy.
  */
+import { t } from '@/i18n';
+
 export interface PromptStatus {
 	id: number;
 	name: string;
@@ -26,9 +28,10 @@ export function backlogTimerPrompt<S extends PromptStatus>(
 	if (!targetStatus) return null;
 	return {
 		targetStatus,
-		title: 'Task in Backlog',
-		message: `Task "${task.title ?? ''}" is in backlog. Switch to "${
-			targetStatus.name
-		}" status?`,
+		title: t('tasks.helpers.backlogTimer.title'),
+		message: t('tasks.helpers.backlogTimer.message', {
+			title: task.title ?? '',
+			status: targetStatus.name,
+		}),
 	};
 }

@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export interface ValidationResult {
 	isValid: boolean;
 	errors?: string[];
@@ -7,7 +9,7 @@ export const validateEmailString = (input: string): ValidationResult => {
 	if (!input.trim()) {
 		return {
 			isValid: false,
-			errors: ['Input string cannot be empty'],
+			errors: [t('workspace.helpers.emails.empty')],
 		};
 	}
 
@@ -19,9 +21,11 @@ export const validateEmailString = (input: string): ValidationResult => {
 
 	emails.forEach((email, index) => {
 		if (!email) {
-			errors.push(`Empty email at position ${index + 1}`);
+			errors.push(
+				t('workspace.helpers.emails.emptyAt', { position: index + 1 }),
+			);
 		} else if (!emailPattern.test(email)) {
-			errors.push(`Invalid email format: ${email}`);
+			errors.push(t('workspace.helpers.emails.invalid', { email }));
 		}
 	});
 

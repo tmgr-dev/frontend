@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { titleKey } from '@/utils/taskKeys';
 
 export const LAST_CATEGORY_KEY = 'tmgr.pages.taskFromSelection.category';
@@ -41,11 +42,12 @@ export const taskFromSelectionError = (error: any): string => {
 		error?.response?.status === 422 &&
 		data?.error === 'selection_not_found'
 	) {
-		return 'The selected text was not found on the page. Refresh the page and try again.';
+		return t('pages.helpers.taskFromSelection.selectionNotFound');
 	}
 	if (error?.name === 'PageConflictError') {
-		return 'The page has changed. Refresh it and try again.';
+		return t('pages.helpers.taskFromSelection.pageChanged');
 	}
-	if (error?.response?.status === 403) return 'No access to the category.';
-	return 'Failed to create task.';
+	if (error?.response?.status === 403)
+		return t('pages.helpers.taskFromSelection.noAccess');
+	return t('pages.helpers.taskFromSelection.failed');
 };

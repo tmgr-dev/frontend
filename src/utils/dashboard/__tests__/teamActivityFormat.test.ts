@@ -2,32 +2,16 @@ import {
 	TEAM_ACTIVITY_WINDOWS,
 	formatTrackedSeconds,
 	sparklineBars,
-	teamActivitySubtitle,
-	teamActivityWindowLabel,
 } from '../teamActivityFormat';
 
-describe('team activity window labels', () => {
+describe('team activity windows', () => {
 	it('lists the four windows in order', () => {
-		expect(TEAM_ACTIVITY_WINDOWS.map((w) => w.label)).toEqual([
-			'Today',
+		expect(TEAM_ACTIVITY_WINDOWS.map((w) => w.key)).toEqual([
+			'today',
 			'7d',
 			'30d',
-			'All time',
+			'all',
 		]);
-	});
-	it('labels each window for the summary', () => {
-		expect(teamActivityWindowLabel('all')).toBe('All time');
-		expect(teamActivityWindowLabel('7d')).toBe('7d');
-	});
-	it('words the subtitle per window', () => {
-		expect(teamActivitySubtitle('today')).toBe('Members’ activity today');
-		expect(teamActivitySubtitle('7d')).toBe(
-			'Members’ activity in the last 7 days',
-		);
-		expect(teamActivitySubtitle('30d')).toBe(
-			'Members’ activity in the last 30 days',
-		);
-		expect(teamActivitySubtitle('all')).toBe('Members’ activity, all time');
 	});
 });
 

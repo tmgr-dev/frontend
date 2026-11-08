@@ -159,7 +159,7 @@
 	import { isSaveHotkey } from '@/utils/saveHotkey';
 	import {
 		archiveTarget,
-		DONE_DISABLED_TOOLTIP,
+		doneDisabledTooltip,
 		doneTarget,
 		isTaskArchived,
 		isTaskDone,
@@ -2580,7 +2580,7 @@
 							v-model="doneChecked"
 							class="h-7 rounded-pill bg-surface-sunken px-2.5 text-2xs font-bold tracking-wide uppercase hover:bg-surface-hover"
 							:disabled="!canMarkDone"
-							:tooltip="DONE_DISABLED_TOOLTIP"
+							:tooltip="doneDisabledTooltip()"
 						/>
 						<Select v-else v-model="statusIdStr">
 							<SelectTrigger
@@ -2902,7 +2902,7 @@
 												:class="option.colorClass"
 												aria-hidden="true"
 											/>
-											{{ option.label }}
+											{{ $t(option.labelKey) }}
 										</span>
 									</SelectItem>
 								</SelectContent>

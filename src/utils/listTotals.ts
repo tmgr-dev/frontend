@@ -1,8 +1,3 @@
-export const formatTaskCount = (count: number | null | undefined): string => {
-	const total = Number(count) || 0;
-	return `${total} task${total === 1 ? '' : 's'}`;
-};
-
 export const sumTaskSeconds = (
 	tasks: { common_time?: number | null }[],
 ): number =>

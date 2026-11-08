@@ -14,7 +14,7 @@
 				"
 			>
 				<option v-for="s in sources" :key="s.value" :value="s.value">
-					{{ s.label }}
+					{{ $t(s.labelKey) }}
 				</option>
 			</select>
 			<input

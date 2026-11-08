@@ -86,7 +86,7 @@
 						:aria-pressed="selectedPriorities.includes(option.value)"
 						@click="togglePriority(option.value)"
 					>
-						{{ option.label }}
+						{{ $t(option.labelKey) }}
 					</button>
 				</div>
 				<label class="flex cursor-pointer items-center gap-2 text-sm text-ink">
@@ -272,7 +272,7 @@
 							:aria-pressed="selectedPriorities.includes(option.value)"
 							@click="togglePriority(option.value)"
 						>
-							{{ option.label }}
+							{{ $t(option.labelKey) }}
 						</button>
 					</div>
 					<label

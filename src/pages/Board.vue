@@ -964,9 +964,9 @@
 			userData: {},
 			workspacesData: [],
 			workspaceId: 0,
-			workspaceUsers: [],
+			memberList: null,
 			assignablePersonas: [],
-			categories: [],
+			categoryList: null,
 			chosenUser: null,
 			chosenCategory: null,
 			errors: {},
@@ -1143,8 +1143,21 @@
 					this.activeBoardFilters.length > 0
 				);
 			},
+			workspaceUsers() {
+				return this.memberList
+					? [{ id: 0, name: t('board.boardPage.allUsers') }, ...this.memberList]
+					: [];
+			},
+			categories() {
+				return this.categoryList
+					? [
+							{ id: 0, title: t('board.boardPage.allCategories') },
+							...this.categoryList,
+						]
+					: [];
+			},
 			workspaceUsersWithoutAll() {
-				return this.workspaceUsers.filter((user) => user.id !== 0);
+				return (this.memberList ?? []).filter((user) => user.id !== 0);
 			},
 			availableColumnsForMove() {
 				if (!this.sourceColumnForMove) {
@@ -2142,18 +2155,12 @@
 					}
 					this.userData = user;
 					this.workspacesData = workspaces;
-					this.categories = [
-						{ id: 0, title: t('board.boardPage.allCategories') },
-						...categories,
-					];
+					this.categoryList = categories;
 					if (this.workspaceId) {
 						if (users === null)
 							users = await getWorkspaceMembers(this.workspaceId);
 						if (this.boardDisposed) return;
-						this.workspaceUsers = [
-							{ id: 0, name: t('board.boardPage.allUsers') },
-							...users,
-						];
+						this.memberList = users;
 						this.assignablePersonas =
 							personas ?? (await fetchPersonas(this.workspaceId)) ?? [];
 						if (this.boardDisposed) return;

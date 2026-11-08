@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { PairingView } from './types';
 
 export const DEFAULT_DESKTOP_NAME = 'This Mac';
@@ -21,33 +22,39 @@ export const isExpired = (expiresMs: number, now: number): boolean =>
 	now >= expiresMs;
 
 export const sinceLabel = (ms: number, now: number): string => {
-	if (!ms) return 'never';
+	if (!ms) return t('settingsPages.helpers.phones.never');
 	const diff = Math.max(0, now - ms);
 	const minutes = Math.floor(diff / 60_000);
-	if (minutes < 1) return 'just now';
-	if (minutes < 60) return `${minutes} min ago`;
+	if (minutes < 1) return t('settingsPages.helpers.phones.justNow');
+	if (minutes < 60)
+		return t('settingsPages.helpers.phones.minutesAgo', { n: minutes });
 	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours} h ago`;
+	if (hours < 24)
+		return t('settingsPages.helpers.phones.hoursAgo', { n: hours });
 	const days = Math.floor(hours / 24);
-	return `${days} d ago`;
+	return t('settingsPages.helpers.phones.daysAgo', { n: days });
 };
 
 export const pairingHeadline = (pairing: PairingView): string => {
 	switch (pairing.state) {
 		case 'waiting':
-			return 'Scan this code with the TMGR iPhone app';
+			return t('settingsPages.helpers.phones.scanCode');
 		case 'confirm':
 			return pairing.phone_name
-				? `Type the code shown on ${pairing.phone_name}`
-				: 'Type the code shown on your iPhone';
+				? t('settingsPages.helpers.phones.typeCodeOn', {
+						name: pairing.phone_name,
+					})
+				: t('settingsPages.helpers.phones.typeCodeOnIphone');
 		case 'failed':
-			return pairing.error || 'Pairing failed';
+			return pairing.error || t('settingsPages.helpers.phones.pairingFailed');
 		case 'done':
 			return pairing.phone_name
-				? `${pairing.phone_name} is paired`
-				: 'Phone paired';
+				? t('settingsPages.helpers.phones.isPaired', {
+						name: pairing.phone_name,
+					})
+				: t('settingsPages.helpers.phones.phonePaired');
 	}
 };
 
 export const attemptsLabel = (left: number): string =>
-	`${left} ${left === 1 ? 'attempt' : 'attempts'} left`;
+	t('settingsPages.helpers.phones.attemptsLeft', left);

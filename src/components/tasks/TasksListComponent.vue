@@ -399,7 +399,7 @@
 								:class="personaAssigneesOf(task).length ? '' : 'ml-auto'"
 								:model-value="isDoneTask(task)"
 								:disabled="doneStatusId === null"
-								:tooltip="DONE_DISABLED_TOOLTIP"
+								:tooltip="doneDisabledTooltip()"
 								@update:model-value="toggleDone(task, $event)"
 							/>
 							<span
@@ -609,7 +609,7 @@
 	} from '@/utils/personas';
 	import {
 		archiveTarget,
-		DONE_DISABLED_TOOLTIP,
+		doneDisabledTooltip,
 		doneTarget,
 		isTaskArchived,
 		isTaskDone,
@@ -792,7 +792,7 @@
 			return {
 				isFeatureEnabled,
 				showSurface,
-				DONE_DISABLED_TOOLTIP,
+				doneDisabledTooltip,
 				// One shared clock for every running timer in the list (TM-148).
 				nowSeconds: Math.floor(Date.now() / 1000),
 				clockInterval: null as ReturnType<typeof setInterval> | null,

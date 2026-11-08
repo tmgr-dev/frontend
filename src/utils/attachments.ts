@@ -1,6 +1,8 @@
+import { t } from '@/i18n';
+
 /** Formatting and error wording shared by the attachment UI. */
 
-const UNITS = ['B', 'KB', 'MB', 'GB'];
+const UNITS = ['b', 'kb', 'mb', 'gb'];
 
 /** Types the API is willing to serve inline, so the only ones worth previewing. */
 const PREVIEWABLE = [
@@ -16,7 +18,7 @@ export const formatFileSize = (bytes?: number | null): string => {
 		return '';
 	}
 	if (bytes < 1024) {
-		return `${bytes} B`;
+		return t('tasks.helpers.fileSize.b', { n: bytes });
 	}
 	let value = bytes;
 	let unit = 0;
@@ -24,7 +26,9 @@ export const formatFileSize = (bytes?: number | null): string => {
 		value /= 1024;
 		unit += 1;
 	}
-	return `${Math.round(value * 10) / 10} ${UNITS[unit]}`;
+	return t(`tasks.helpers.fileSize.${UNITS[unit]}`, {
+		n: Math.round(value * 10) / 10,
+	});
 };
 
 export const isImageMime = (mime?: string | null): boolean =>
@@ -54,16 +58,22 @@ export const attachmentErrorMessage = (
 	switch (statusOf(error)) {
 		case 413:
 			return maxBytes
-				? `File is too large. The limit is ${formatFileSize(maxBytes)}.`
-				: 'File is too large.';
+				? t('tasks.helpers.attachmentErrors.tooLargeWithLimit', {
+						limit: formatFileSize(maxBytes),
+					})
+				: t('tasks.helpers.attachmentErrors.tooLarge');
 		case 415:
-			return 'This file type cannot be attached.';
+			return t('tasks.helpers.attachmentErrors.typeNotAllowed');
 		case 400:
-			return messageOf(error) ?? 'This file cannot be attached.';
+			return (
+				messageOf(error) ?? t('tasks.helpers.attachmentErrors.notAttachable')
+			);
 		case 403:
-			return 'You do not have access to this file.';
+			return t('tasks.helpers.attachmentErrors.noAccess');
 		default:
-			return messageOf(error) ?? 'Upload failed. Please try again.';
+			return (
+				messageOf(error) ?? t('tasks.helpers.attachmentErrors.uploadFailed')
+			);
 	}
 };
 
@@ -77,10 +87,10 @@ export const preflightError = (
 	{ anyType = false }: { anyType?: boolean } = {},
 ): string | null => {
 	if (!file.size) {
-		return 'File is empty.';
+		return t('tasks.helpers.attachmentErrors.empty');
 	}
 	if (!file.type && !anyType) {
-		return 'This file type cannot be attached.';
+		return t('tasks.helpers.attachmentErrors.typeNotAllowed');
 	}
 	return null;
 };

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { TaskLinkRef } from './taskLinks';
 
 interface WorkspaceRef {
@@ -20,15 +21,15 @@ export type TaskLinkFailure = 'workspace' | 'not_found' | 'forbidden' | 'error';
 export type OpenTaskLinkResult =
 	{ ok: true } | { ok: false; reason: TaskLinkFailure };
 
-const MESSAGES: Record<TaskLinkFailure, string> = {
-	workspace: "This link points to a workspace you don't have access to.",
-	not_found: 'This task no longer exists.',
-	forbidden: "You don't have access to this task.",
-	error: "Couldn't load this task. Check your connection and try again.",
+const MESSAGE_KEYS: Record<TaskLinkFailure, string> = {
+	workspace: 'general.helpers.openTaskLink.workspace',
+	not_found: 'general.helpers.openTaskLink.notFound',
+	forbidden: 'general.helpers.openTaskLink.forbidden',
+	error: 'general.helpers.openTaskLink.error',
 };
 
 export const taskLinkFailureMessage = (reason: TaskLinkFailure): string =>
-	MESSAGES[reason];
+	t(MESSAGE_KEYS[reason]);
 
 const failureOf = (error: unknown): TaskLinkFailure => {
 	const status = (error as { response?: { status?: number } })?.response

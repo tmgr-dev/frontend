@@ -3,26 +3,29 @@ import type {
 	PageType,
 	PersonaNetwork,
 } from '@/actions/tmgr/pages';
+import { t } from '@/i18n';
 
 export type PropertyErrors = Record<string, string>;
 
-export const NETWORK_OPTIONS: { value: PersonaNetwork; label: string }[] = [
-	{ value: 'operational', label: 'Operational' },
-	{ value: 'personal', label: 'Personal' },
-	{ value: 'strategic', label: 'Strategic' },
+export const NETWORK_OPTIONS: { value: PersonaNetwork; labelKey: string }[] = [
+	{ value: 'operational', labelKey: 'pages.helpers.network.operational' },
+	{ value: 'personal', labelKey: 'pages.helpers.network.personal' },
+	{ value: 'strategic', labelKey: 'pages.helpers.network.strategic' },
 ];
 
-export const ALIAS_SOURCES: { value: AliasSource; label: string }[] = [
-	{ value: 'telegram', label: 'Telegram' },
-	{ value: 'rocketchat', label: 'Rocket.Chat' },
-	{ value: 'slack', label: 'Slack' },
-	{ value: 'github', label: 'GitHub' },
-	{ value: 'email', label: 'Email' },
-	{ value: 'other', label: 'Other' },
+export const ALIAS_SOURCES: { value: AliasSource; labelKey: string }[] = [
+	{ value: 'telegram', labelKey: 'pages.helpers.aliasSource.telegram' },
+	{ value: 'rocketchat', labelKey: 'pages.helpers.aliasSource.rocketchat' },
+	{ value: 'slack', labelKey: 'pages.helpers.aliasSource.slack' },
+	{ value: 'github', labelKey: 'pages.helpers.aliasSource.github' },
+	{ value: 'email', labelKey: 'pages.helpers.aliasSource.email' },
+	{ value: 'other', labelKey: 'pages.helpers.aliasSource.other' },
 ];
 
-export const networkLabel = (value: string | null | undefined): string =>
-	NETWORK_OPTIONS.find((option) => option.value === value)?.label ?? '';
+export const networkLabel = (value: string | null | undefined): string => {
+	const option = NETWORK_OPTIONS.find((item) => item.value === value);
+	return option ? t(option.labelKey) : '';
+};
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PARTICIPANT = /^tmgr:\/\/(page|user)\/(\d+)$/;
@@ -52,29 +55,35 @@ const validatePerson = (props: Record<string, any>): PropertyErrors => {
 	const errors: PropertyErrors = {};
 	const { user_id: userId, aliases, network, company, role } = props;
 	if (userId !== null && userId !== undefined && !isUserId(userId)) {
-		errors.user_id = 'Invalid member';
+		errors.user_id = t('pages.helpers.validation.invalidMember');
 	}
 	if (aliases !== undefined && aliases !== null) {
 		if (!Array.isArray(aliases)) {
-			errors.aliases = 'Must be a list';
+			errors.aliases = t('pages.helpers.validation.mustBeList');
 		} else {
 			const sources = ALIAS_SOURCES.map((option) => option.value);
 			aliases.forEach((alias, index) => {
 				if (!sources.includes(alias?.source)) {
-					errors[`aliases.${index}.source`] = 'Choose a source';
+					errors[`aliases.${index}.source`] = t(
+						'pages.helpers.validation.chooseSource',
+					);
 				}
 				if (
 					typeof alias?.native_id !== 'string' ||
 					!alias.native_id.trim() ||
 					alias.native_id.length > MAX_TEXT
 				) {
-					errors[`aliases.${index}.native_id`] = 'Enter an identifier';
+					errors[`aliases.${index}.native_id`] = t(
+						'pages.helpers.validation.enterIdentifier',
+					);
 				}
 				if (
 					typeof alias?.display !== 'string' ||
 					alias.display.length > MAX_TEXT
 				) {
-					errors[`aliases.${index}.display`] = 'Name is too long';
+					errors[`aliases.${index}.display`] = t(
+						'pages.helpers.validation.nameTooLong',
+					);
 				}
 			});
 		}
@@ -84,10 +93,12 @@ const validatePerson = (props: Record<string, any>): PropertyErrors => {
 		network !== undefined &&
 		!NETWORK_OPTIONS.some((option) => option.value === network)
 	) {
-		errors.network = 'Choose a relationship type';
+		errors.network = t('pages.helpers.validation.chooseRelationship');
 	}
-	if (!isNullableText(company)) errors.company = 'At most 255 characters';
-	if (!isNullableText(role)) errors.role = 'At most 255 characters';
+	if (!isNullableText(company))
+		errors.company = t('pages.helpers.validation.maxChars');
+	if (!isNullableText(role))
+		errors.role = t('pages.helpers.validation.maxChars');
 	return errors;
 };
 
@@ -95,18 +106,18 @@ const validateMeeting = (props: Record<string, any>): PropertyErrors => {
 	const errors: PropertyErrors = {};
 	const { date, participants, related_tasks: relatedTasks } = props;
 	if (date !== null && date !== undefined && !isDate(date)) {
-		errors.date = 'Date in YYYY-MM-DD format';
+		errors.date = t('pages.helpers.validation.dateFormat');
 	}
 	if (participants !== undefined && participants !== null) {
 		if (!Array.isArray(participants)) {
-			errors.participants = 'Must be a list';
+			errors.participants = t('pages.helpers.validation.mustBeList');
 		} else if (!participants.every((item) => PARTICIPANT.test(item))) {
-			errors.participants = 'Invalid member';
+			errors.participants = t('pages.helpers.validation.invalidMember');
 		}
 	}
 	if (relatedTasks !== undefined && relatedTasks !== null) {
 		if (!Array.isArray(relatedTasks) || !relatedTasks.every(isId)) {
-			errors.related_tasks = 'Invalid task';
+			errors.related_tasks = t('pages.helpers.validation.invalidTask');
 		}
 	}
 	return errors;
@@ -152,15 +163,19 @@ export const parsePropertyErrors = (error: any): PropertyErrors | null => {
 		for (const item of source) {
 			const field = normalizeField(String(item?.field ?? item?.path ?? ''));
 			const message = messageOf(item);
-			if (field) result[field] = message || 'Invalid value';
+			if (field)
+				result[field] = message || t('pages.helpers.validation.invalidValue');
 		}
 	} else if (source && typeof source === 'object') {
 		for (const [field, value] of Object.entries(source)) {
-			result[normalizeField(field)] = messageOf(value) || 'Invalid value';
+			result[normalizeField(field)] =
+				messageOf(value) || t('pages.helpers.validation.invalidValue');
 		}
 	}
 	if (!Object.keys(result).length) {
-		result._ = messageOf(data.message) || 'Invalid properties';
+		result._ =
+			messageOf(data.message) ||
+			t('pages.helpers.validation.invalidProperties');
 	}
 	return result;
 };

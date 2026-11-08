@@ -2,7 +2,7 @@
 	<span
 		v-if="visible"
 		class="inline-flex shrink-0 items-center"
-		:title="$t('tasks.priorityBadge.title', { label: option.label })"
+		:title="$t('tasks.priorityBadge.title', { label: $t(option.labelKey) })"
 		data-testid="task-priority-badge"
 		:data-priority="option.value"
 	>
@@ -13,7 +13,7 @@
 			aria-hidden="true"
 		/>
 		<span class="sr-only">{{
-			$t('tasks.priorityBadge.title', { label: option.label })
+			$t('tasks.priorityBadge.title', { label: $t(option.labelKey) })
 		}}</span>
 	</span>
 </template>

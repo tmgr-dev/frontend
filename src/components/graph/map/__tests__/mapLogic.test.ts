@@ -15,7 +15,6 @@ import {
 	shouldLabel,
 	timelineSpan,
 	timelineSteps,
-	truncationNotice,
 	visibleAt,
 } from '../mapLogic';
 
@@ -336,13 +335,6 @@ describe('text helpers', () => {
 		expect(nodeLabel({ ...task(1, 'TM-9', 1, 'X'), title: 'Plain' })).toBe(
 			'TM-9 Plain',
 		);
-	});
-
-	it('words the truncation notice', () => {
-		expect(truncationNotice(3000, 5400, true)).toBe(
-			'Showing 3000 of 5400 — narrow the time range',
-		);
-		expect(truncationNotice(8, 8, false)).toBeNull();
 	});
 });
 

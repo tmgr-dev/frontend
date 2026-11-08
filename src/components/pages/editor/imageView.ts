@@ -3,6 +3,7 @@ import {
 	fileDisplayUrl,
 	releaseFileDisplayUrl,
 } from '@/actions/tmgr/files';
+import { t } from '@/i18n';
 import {
 	formatImageTitle,
 	type ImageTitle,
@@ -50,15 +51,15 @@ const LAYOUT_ACTIONS = {
 	'full-width': 'full-width',
 } as const;
 const TOOLS = [
-	['align-left', 'Align left', icons.alignLeft],
-	['align-center', 'Align center', icons.alignCenter],
-	['align-right', 'Align right', icons.alignRight],
-	['full-width', 'Full width', icons.fullWidth],
+	['align-left', 'pages.helpers.image.alignLeft', icons.alignLeft],
+	['align-center', 'pages.helpers.image.alignCenter', icons.alignCenter],
+	['align-right', 'pages.helpers.image.alignRight', icons.alignRight],
+	['full-width', 'pages.helpers.image.fullWidth', icons.fullWidth],
 	null,
-	['download', 'Download', icons.download],
-	['replace', 'Replace image', icons.replace],
+	['download', 'pages.helpers.image.download', icons.download],
+	['replace', 'pages.helpers.image.replaceImage', icons.replace],
 	null,
-	['delete', 'Delete image', icons.trash],
+	['delete', 'pages.helpers.image.deleteImage', icons.trash],
 ] as const;
 const OWN_UI = '.pe-image-caption, .pe-image-toolbar, .pe-image-handle';
 
@@ -172,7 +173,7 @@ const imageView = (options: ImageViewOptions) =>
 		img.draggable = false;
 		const failure = document.createElement('span');
 		failure.className = 'pe-image-error';
-		failure.innerHTML = `${icons.close}<span>Image failed to load</span>`;
+		failure.innerHTML = `${icons.close}<span>${t('pages.helpers.image.loadFailed')}</span>`;
 		const handles = SIDES.map((side) => {
 			const handle = document.createElement('span');
 			handle.className = 'pe-image-handle';
@@ -190,7 +191,8 @@ const imageView = (options: ImageViewOptions) =>
 				);
 				continue;
 			}
-			const [action, label, icon] = tool;
+			const [action, labelKey, icon] = tool;
+			const label = t(labelKey);
 			if (action === 'replace' && !options.replaceImage) continue;
 			const button = document.createElement('button');
 			button.type = 'button';
@@ -203,7 +205,7 @@ const imageView = (options: ImageViewOptions) =>
 		const caption = document.createElement('span');
 		caption.className = 'pe-image-caption';
 		caption.contentEditable = 'true';
-		caption.dataset.placeholder = 'Write a caption';
+		caption.dataset.placeholder = t('pages.helpers.image.captionPlaceholder');
 		frame.append(img, failure, ...handles, toolbar);
 		dom.append(frame, caption);
 

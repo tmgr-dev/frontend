@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type {
 	GraphEdge,
 	GraphNode,
@@ -751,11 +752,13 @@ export class GraphEngine {
 
 	private nodeLines(n: SimNode): { title: string; sub: string | null } {
 		const d = n.data;
-		const type = TYPE_STYLES[d.type].label.toLowerCase();
+		const type = t(TYPE_STYLES[d.type].labelKey).toLowerCase();
 		if (n.data.hop === 0) {
 			return {
 				title: truncateLabel(d.key || d.title, 22),
-				sub: d.key ? 'this task' : 'this page',
+				sub: d.key
+					? t('board.helpers.graph.thisTask')
+					: t('board.helpers.graph.thisPage'),
 			};
 		}
 		if (d.key) return { title: d.key, sub: truncateLabel(d.title, 26) };

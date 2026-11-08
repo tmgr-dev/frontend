@@ -1,6 +1,6 @@
 import {
 	archiveTarget,
-	DONE_DISABLED_TOOLTIP,
+	doneDisabledTooltip,
 	doneTarget,
 	isBoardVisible,
 	isSimpleMode,
@@ -34,7 +34,7 @@ export function useWorkflowMode() {
 	);
 	const canMarkDone = computed(() => doneStatusId.value !== null);
 	const doneTooltip = computed(() =>
-		canMarkDone.value ? '' : DONE_DISABLED_TOOLTIP,
+		canMarkDone.value ? '' : doneDisabledTooltip(),
 	);
 
 	const isDoneTask = (task: TaskLike | null | undefined): boolean =>

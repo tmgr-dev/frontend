@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export interface StatusLike {
 	id: number | string;
 	name?: string | null;
@@ -16,10 +18,12 @@ export const isDone = (status?: Pick<StatusLike, 'type'> | null): boolean =>
 export const isArchived = (status?: Pick<StatusLike, 'type'> | null): boolean =>
 	status?.type === 'archived';
 
-export const stateLabel = (
-	status?: Pick<StatusLike, 'type'> | null,
-): 'Done' | 'Archived' | 'Open' =>
-	isDone(status) ? 'Done' : isArchived(status) ? 'Archived' : 'Open';
+export const stateLabel = (status?: Pick<StatusLike, 'type'> | null): string =>
+	isDone(status)
+		? t('tasks.helpers.state.done')
+		: isArchived(status)
+			? t('tasks.helpers.state.archived')
+			: t('tasks.helpers.state.open');
 
 const firstId = (
 	statuses: StatusLike[] | null | undefined,
@@ -67,7 +71,8 @@ export const toggleDoneTarget = (
 ): number | null =>
 	isTaskDone(task, statuses) ? openTarget(statuses) : doneTarget(statuses);
 
-export const DONE_DISABLED_TOOLTIP = 'This workspace has no Done status';
+export const doneDisabledTooltip = (): string =>
+	t('tasks.helpers.doneDisabledTooltip');
 
 type IsOn = (key: string) => boolean;
 

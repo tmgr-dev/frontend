@@ -3,7 +3,7 @@ import { NETWORK_OPTIONS } from '@/utils/pages/properties';
 
 export interface PropertyDef {
 	key: string;
-	label: string;
+	labelKey: string;
 	kind:
 		| 'string'
 		| 'date'
@@ -13,39 +13,48 @@ export interface PropertyDef {
 		| 'aliases'
 		| 'participants'
 		| 'tasks';
-	options?: { value: string; label: string }[];
+	options?: { value: string; labelKey: string }[];
 }
 
 export const PROPERTY_DEFS: Partial<Record<PageType, PropertyDef[]>> = {
 	person: [
-		{ key: 'user_id', label: 'Member', kind: 'user' },
+		{ key: 'user_id', labelKey: 'pages.helpers.property.member', kind: 'user' },
 		{
 			key: 'network',
-			label: 'Relationship',
+			labelKey: 'pages.helpers.property.relationship',
 			kind: 'enum',
 			options: NETWORK_OPTIONS,
 		},
-		{ key: 'company', label: 'Company', kind: 'string' },
-		{ key: 'role', label: 'Role', kind: 'string' },
-		{ key: 'aliases', label: 'Aliases', kind: 'aliases' },
+		{
+			key: 'company',
+			labelKey: 'pages.helpers.property.company',
+			kind: 'string',
+		},
+		{ key: 'role', labelKey: 'pages.helpers.property.role', kind: 'string' },
+		{
+			key: 'aliases',
+			labelKey: 'pages.helpers.property.aliases',
+			kind: 'aliases',
+		},
 		{
 			key: 'last_contact_at',
-			label: 'Last contact',
+			labelKey: 'pages.helpers.property.lastContact',
 			kind: 'readonlyDate',
 		},
 	],
 	meeting: [
-		{ key: 'date', label: 'Date', kind: 'date' },
-		{ key: 'participants', label: 'Participants', kind: 'participants' },
-		{ key: 'related_tasks', label: 'Tasks', kind: 'tasks' },
+		{ key: 'date', labelKey: 'pages.helpers.property.date', kind: 'date' },
+		{
+			key: 'participants',
+			labelKey: 'pages.helpers.property.participants',
+			kind: 'participants',
+		},
+		{
+			key: 'related_tasks',
+			labelKey: 'pages.helpers.property.tasks',
+			kind: 'tasks',
+		},
 	],
-};
-
-export const TYPE_LABELS: Record<PageType, string> = {
-	plain: 'Plain page',
-	context: 'Context',
-	person: 'Person',
-	meeting: 'Meeting',
 };
 
 export const propertyDefsFor = (type: PageType): PropertyDef[] =>
