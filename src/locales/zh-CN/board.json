@@ -111,9 +111,9 @@
 				"commentAdded": "评论已添加",
 				"commentUpdated": "评论已更新",
 				"commentDeleted": "评论已删除",
-				"categoryCreated": "分类已创建",
-				"categoryUpdated": "分类已更新",
-				"categoryDeleted": "分类已删除",
+				"categoryCreated": "项目已创建",
+				"categoryUpdated": "项目已更新",
+				"categoryDeleted": "项目已删除",
 				"fileUploaded": "文件已上传",
 				"fileDeleted": "文件已删除",
 				"memberJoined": "成员已加入",
@@ -227,7 +227,7 @@
 			"invite": "邀请成员"
 		},
 		"topCategoriesCard": {
-			"title": "热门分类",
+			"title": "热门项目",
 			"empty": "此期间没有跟踪的时间"
 		},
 		"teamMemberItem": {
@@ -258,7 +258,7 @@
 	},
 	"graphMap": {
 		"canvas": {
-			"emptyLabel": "按分类分组的任务和页面地图",
+			"emptyLabel": "按项目分组的任务和页面地图",
 			"bottleneck": "瓶颈：{name} 阻塞了 {count} 项。",
 			"label": "包含 {clusters} 个集群、共 {nodes} 个任务和页面的地图：{names}。{bottleneck}使用搜索框可通过键盘在地图中移动。"
 		},
@@ -278,45 +278,45 @@
 			"showOrphans": "显示无关联的项目",
 			"howToUse": "使用方法",
 			"howToUseText": "点击集群可放大，点击圆点可打开其周边。拖动时间范围，可逐周观察地图的增长。",
-			"legend": "集群 = 分类 · 亮色曲线 = 领域之间的关联 · 虚线圆环 = 无关联的项目 · 橙色 = 瓶颈"
+			"legend": "集群 = 项目 · 亮色曲线 = 领域之间的关联 · 虚线圆环 = 无关联的项目 · 橙色 = 瓶颈"
 		}
 	},
 	"categoryPage": {
 		"gate": {
-			"title": "项目分类",
-			"description": "将任务整理到分类和子分类中。建立层级结构，让项目管理更有条理。"
+			"title": "项目",
+			"description": "将任务整理到项目和子项目中。建立层级结构，让项目管理更有条理。"
 		},
-		"loadingLabel": "正在加载分类",
+		"loadingLabel": "正在加载项目",
 		"empty": {
-			"title": "还没有分类",
-			"body": "分类用于对任务分组，并为新任务设置默认值：标题模式（如 {pattern}）、每小时费率、预估时间。",
-			"create": "新建分类"
+			"title": "还没有项目",
+			"body": "项目用于对任务分组，并为新任务设置默认值：标题模式（如 {pattern}）、每小时费率、预估时间。",
+			"create": "新建项目"
 		},
 		"missing": {
-			"title": "未找到分类",
+			"title": "未找到项目",
 			"body": "它可能已被删除或移到其他工作区。",
-			"open": "打开分类"
+			"open": "打开项目"
 		},
-		"subcategory": "子分类",
+		"subcategory": "子项目",
 		"createTask": "创建任务",
-		"createTaskTitle": "在此分类中创建任务",
-		"navLabel": "分类",
+		"createTaskTitle": "在此项目中创建任务",
+		"navLabel": "项目",
 		"tabs": {
 			"tasks": "任务",
-			"subcategories": "子分类",
+			"subcategories": "子项目",
 			"settings": "设置"
 		},
 		"discard": {
 			"title": "放弃未保存的更改？",
-			"description": "你对此分类的修改将会丢失。",
+			"description": "你对此项目的修改将会丢失。",
 			"keep": "继续编辑",
 			"confirm": "放弃"
 		},
 		"workspaceFallback": "工作区",
 		"topLevel": "顶层",
-		"newCategory": "新建分类",
+		"newCategory": "新建项目",
 		"documentTitle": {
-			"categories": "分类"
+			"categories": "项目"
 		}
 	},
 	"workspaceMap": {
@@ -332,7 +332,7 @@
 			"d90": "最近 90 天",
 			"all": "全部时间"
 		},
-		"groupByCategory": "按分类分组",
+		"groupByCategory": "按项目分组",
 		"truncated": "显示 {shown} / {total} — 请缩小时间范围",
 		"loading": "正在绘制你的工作区…",
 		"loadFailed": "无法加载地图。",
@@ -340,7 +340,7 @@
 		"emptyTitle": "此期间没有可绘制的内容",
 		"emptyText": "任务和页面在所选时间范围内创建或更新后会显示在这里。",
 		"showAllTime": "显示全部时间",
-		"legend": "集群 = 分类 · 亮色曲线 = 领域之间的关联 · 虚线圆环 = 无关联的项目 · 橙色 = 瓶颈",
+		"legend": "集群 = 项目 · 亮色曲线 = 领域之间的关联 · 虚线圆环 = 无关联的项目 · 橙色 = 瓶颈",
 		"whatMapShows": "地图显示的内容",
 		"zoomIn": "放大",
 		"zoomOut": "缩小",
@@ -349,7 +349,7 @@
 	"categories": {
 		"agentRepositories": {
 			"title": "智能体运行仓库",
-			"description": "智能体在处理此分类的任务时可使用的仓库。留空则使用已关联的 GitHub 仓库。",
+			"description": "智能体在处理此项目的任务时可使用的仓库。留空则使用已关联的 GitHub 仓库。",
 			"saveFailed": "无法保存仓库。"
 		},
 		"titlePattern": {
@@ -360,7 +360,7 @@
 			"preview": "预览",
 			"sampleTitle": "任务标题",
 			"chips": {
-				"categoryNumber": "分类编号",
+				"categoryNumber": "项目编号",
 				"workspaceNumber": "工作区编号",
 				"date": "日期",
 				"weekday": "星期"
@@ -369,21 +369,21 @@
 		"cursor": {
 			"title": "Cursor AI 集成",
 			"configureTitle": "配置 Cursor AI 智能体",
-			"configureDescription": "添加你的 Cursor API 密钥，即可为此分类启用 AI 代码生成",
+			"configureDescription": "添加你的 Cursor API 密钥，即可为此项目启用 AI 代码生成",
 			"apiKeyLabel": "Cursor API 密钥",
 			"apiKeyHelp": "从 {link} 获取你的 API 密钥",
 			"dashboard": "Cursor 控制台",
 			"validating": "正在验证…",
 			"saveKey": "保存 API 密钥",
 			"configured": "Cursor AI 智能体已配置",
-			"ready": "可协助为此分类生成代码",
+			"ready": "可协助为此项目生成代码",
 			"updateKey": "更新密钥",
 			"removeKey": "移除密钥",
 			"removing": "正在移除…",
 			"newApiKeyLabel": "新的 Cursor API 密钥",
 			"saveFailed": "无法保存 API 密钥",
 			"removeFailed": "无法移除 API 密钥",
-			"removeConfirm": "确定要从此分类中移除 Cursor API 密钥吗？"
+			"removeConfirm": "确定要从此项目中移除 Cursor API 密钥吗？"
 		},
 		"github": {
 			"title": "GitHub 集成",
@@ -421,11 +421,11 @@
 		"pane": {
 			"fixAll": "全部修复（{count}）",
 			"saveFirst": "请先保存或放弃你的更改",
-			"issues": "{n} 个分类会让新任务按原样命名",
+			"issues": "{n} 个项目会让新任务按原样命名",
 			"sections": {
 				"general": "常规",
 				"newTasks": "新任务",
-				"newTasksHint": "在此分类中创建任务时的默认值",
+				"newTasksHint": "在此项目中创建任务时的默认值",
 				"integrations": "集成",
 				"dangerZone": "危险区域"
 			},
@@ -440,10 +440,10 @@
 				"copyFromHint": "会填充下方字段，之后仍可修改",
 				"dontCopy": "不复制"
 			},
-			"createNote": "分类创建后才会显示集成和危险区域。",
+			"createNote": "项目创建后才会显示集成和危险区域。",
 			"integrations": {
 				"cursorLabel": "Cursor AI 智能体",
-				"cursorHint": "将此分类的任务发送给 Cursor 智能体",
+				"cursorHint": "将此项目的任务发送给 Cursor 智能体",
 				"connected": "已连接",
 				"notConnected": "未连接",
 				"unavailable": "不可用",
@@ -459,25 +459,25 @@
 			},
 			"danger": {
 				"moveLabel": "移到其他工作区",
-				"moveHint": "包括其子分类和任务",
+				"moveHint": "包括其子项目和任务",
 				"move": "移动…",
-				"deleteLabel": "删除分类",
-				"deleteHint": "该分类将从列表中移除",
+				"deleteLabel": "删除项目",
+				"deleteHint": "该项目将从列表中移除",
 				"delete": "删除…"
 			},
 			"bar": {
 				"discard": "放弃",
-				"newSubcategory": "{title} 的新子分类",
-				"newTopLevel": "新建顶层分类",
+				"newSubcategory": "{title} 的新子项目",
+				"newTopLevel": "新建顶层项目",
 				"changes": "{n} 项未保存的更改"
 			},
 			"deleteDialog": {
 				"title": "删除“{title}”？",
-				"description": "该分类将从列表中移除。"
+				"description": "该项目将从列表中移除。"
 			},
 			"transfer": {
-				"title": "将分类移到其他工作区",
-				"description": "“{title}”将连同其所有子分类和任务一起移动。任务状态会先按名称、再按类型匹配到目标工作区；不是目标工作区成员的负责人会被移除。",
+				"title": "将项目移到其他工作区",
+				"description": "“{title}”将连同其所有子项目和任务一起移动。任务状态会先按名称、再按类型匹配到目标工作区；不是目标工作区成员的负责人会被移除。",
 				"placeholder": "选择工作区",
 				"noOther": "你不是任何其他工作区的成员。",
 				"moving": "正在移动...",
@@ -506,7 +506,7 @@
 				"githubDisconnected": "仓库已断开连接",
 				"githubSynced": "仓库同步成功",
 				"relinked": "已重新关联 {total} 项：{commits} 个提交，{branches} 个分支，{pullRequests} 个 PR",
-				"saveFailed": "无法保存分类",
+				"saveFailed": "无法保存项目",
 				"defaultsNotSaved": "新任务的默认值未保存",
 				"kept": {
 					"code": "服务器保留了旧代码",
@@ -515,20 +515,20 @@
 				},
 				"otherSaved": "其他更改已保存。",
 				"saved": "已保存",
-				"categorySaved": "分类已保存",
-				"createFailed": "无法创建分类",
-				"created": "分类已创建",
+				"categorySaved": "项目已保存",
+				"createFailed": "无法创建项目",
+				"created": "项目已创建",
 				"createdDefaultsFailed": "其新任务的默认值未保存。请重新设置并保存。",
 				"fixedPatterns": "已修复 {n} 个标题模式",
 				"fixedPartial": "已修复 {total} 个标题模式中的 {fixed} 个",
 				"fixedPartialRest": "{rest} 个无法保存。请重试以处理其余部分。",
-				"deleteFailed": "无法删除分类",
-				"deleted": "分类已删除",
+				"deleteFailed": "无法删除项目",
+				"deleted": "项目已删除",
 				"workspacesFailed": "无法加载工作区",
 				"moved": "“{title}”已移到 {workspace}",
 				"anotherWorkspace": "其他工作区",
 				"transferFailed": "转移失败",
-				"moveFailed": "无法移动分类，请重试。"
+				"moveFailed": "无法移动项目，请重试。"
 			}
 		}
 	},
@@ -567,7 +567,7 @@
 			"hint": "按住六点图标并拖动即可调整顺序",
 			"save": "保存顺序"
 		},
-		"allCategories": "所有分类",
+		"allCategories": "所有项目",
 		"allUsers": "所有用户",
 		"errors": {
 			"loadMoreTasks": "无法加载更多任务。",
@@ -700,32 +700,32 @@
 	},
 	"projectCategoryList": {
 		"perPage": "每页 {n} 条",
-		"documentTitle": "分类",
-		"loadTasksFailed": "无法加载分类任务。",
-		"loadCategoriesFailed": "无法加载分类。",
+		"documentTitle": "项目",
+		"loadTasksFailed": "无法加载项目任务。",
+		"loadCategoriesFailed": "无法加载项目。",
 		"anotherWorkspace": "其他工作区",
 		"movedTitle": "“{title}”已移到 {workspace}",
 		"transferFailed": "转移失败",
-		"transferFailedText": "无法移动分类，请重试。",
-		"loadingCategories": "正在加载分类",
-		"loadingTasks": "正在加载分类任务",
-		"noSubcategories": "还没有子分类。",
+		"transferFailedText": "无法移动项目，请重试。",
+		"loadingCategories": "正在加载项目",
+		"loadingTasks": "正在加载项目任务",
+		"noSubcategories": "还没有子项目。",
 		"deletedHint": "（已删除，但可以恢复）",
-		"subcategories": "子分类",
+		"subcategories": "子项目",
 		"tasks": "任务",
 		"author": "创建者",
 		"moveToWorkspace": "移到工作区",
 		"restore": "恢复",
-		"transferTitle": "将分类移到其他工作区",
-		"transferDescription": "“{title}”将连同其所有子分类和任务一起移动。任务状态会先按名称、再按类型匹配到目标工作区；不是目标工作区成员的负责人会被移除。",
+		"transferTitle": "将项目移到其他工作区",
+		"transferDescription": "“{title}”将连同其所有子项目和任务一起移动。任务状态会先按名称、再按类型匹配到目标工作区；不是目标工作区成员的负责人会被移除。",
 		"selectWorkspace": "选择工作区",
 		"noOtherWorkspaces": "你不是任何其他工作区的成员。",
 		"moving": "正在移动...",
 		"move": "移动",
-		"showing": "显示第 {from} 至 {to} 条，共 {total} 个分类",
+		"showing": "显示第 {from} 至 {to} 条，共 {total} 个项目",
 		"previous": "上一页",
 		"page": "第 {current} 页，共 {last} 页",
-		"createFirstTask": "在此分类中创建你的第一个任务",
+		"createFirstTask": "在此项目中创建你的第一个任务",
 		"createTask": "+ 创建任务"
 	},
 	"tasksList": {

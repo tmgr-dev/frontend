@@ -86,7 +86,7 @@
 			"chars": "{n}文字",
 			"optional": "任意",
 			"descriptionPlaceholder": "メモ、背景、リンク、チェックリスト…",
-			"category": "プロジェクト",
+			"category": "カテゴリ",
 			"schedule": "スケジュール",
 			"unscheduled": "未定（日時の指定なし）",
 			"date": "日付",

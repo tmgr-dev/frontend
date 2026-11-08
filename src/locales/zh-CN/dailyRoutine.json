@@ -18,8 +18,8 @@
 	"convert": {
 		"title": "转换为任务",
 		"workspace": "工作区",
-		"category": "分类",
-		"noCategory": "无分类",
+		"category": "项目",
+		"noCategory": "无项目",
 		"submit": "转换"
 	},
 	"routineRow": {
@@ -142,7 +142,7 @@
 		"statement": "{n} 个例行事项将发送到 TMGR 服务器并离开此设备。服务器确认后，每个本地副本都会被移除。",
 		"destination": "目标：",
 		"pastCompletions": "过往的完成记录不会移动；云端副本从头开始。",
-		"keptRoutines": "标题、描述、安排和重复规则会保留，分类和优先级不会。",
+		"keptRoutines": "标题、描述、安排和重复规则会保留，项目和优先级不会。",
 		"keptTasks": "任务仅保留标题和描述，安排、重复规则和时长不会保留。",
 		"sendAndRemove": "发送到 TMGR 并从此处移除",
 		"sending": "正在发送到 {name}…",
@@ -160,7 +160,7 @@
 		"titleTasks": "转换为云端任务",
 		"subtitleSetup": "选择所选本地例行事项的去向。",
 		"selected": "已选 {n} 项",
-		"categoriesError": "无法加载分类：{message}",
+		"categoriesError": "无法加载项目：{message}",
 		"localWorkspaceChanged": "已打开的本地工作区发生变化，因此未移除本地副本。",
 		"selectAllAria": "选择所有本地例行事项",
 		"selectAll": "全选",

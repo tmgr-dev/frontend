@@ -86,7 +86,7 @@
 			"chars": "{n} car.",
 			"optional": "Facultatif",
 			"descriptionPlaceholder": "Notes, contexte, liens, liste de contrôle…",
-			"category": "Projet",
+			"category": "Catégorie",
 			"schedule": "Planification",
 			"unscheduled": "Non planifiée (sans date ni heure précise)",
 			"date": "Date",

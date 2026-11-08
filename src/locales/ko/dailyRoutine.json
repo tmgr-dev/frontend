@@ -86,7 +86,7 @@
 			"chars": "{n}자",
 			"optional": "선택 사항",
 			"descriptionPlaceholder": "메모, 맥락, 링크, 체크리스트…",
-			"category": "프로젝트",
+			"category": "카테고리",
 			"schedule": "일정",
 			"unscheduled": "일정 미정 (특정 날짜/시간 없음)",
 			"date": "날짜",
