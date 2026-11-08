@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.114
+
+- Agent clones are handled more strictly. Starting a run now fails, and the new clone is removed, when the runner cannot record the clone.
+
 ## 1.0.113
 
 - Sandboxed agent sessions started in a git repository now run in their own session clone by default, so two agents never write the same files. Use `--no-worktree`, or set `attach.worktree = false` in the config, to start in place. The new command `tmgr runner import <name>` brings a session's branch back into the repository.
