@@ -39,8 +39,22 @@ server {
         try_files $uri =404;
     }
 
-    # public/docs/ holds static files; the docs page itself is the SPA.
-    location ~ ^/docs/?$ { rewrite ^ /index.html last; }
+    # Docs pages are prerendered to docs/**/index.html; a file check (not $uri/) avoids slash redirects.
+    location = /docs {
+        add_header Cache-Control "no-cache";
+        try_files /docs/index.html /index.html;
+    }
+    location /docs/ {
+        add_header Cache-Control "no-cache";
+        try_files $uri $uri/index.html /index.html;
+    }
+
+    location = /sitemap.xml {
+        types { }
+        default_type application/xml;
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
 
     location / {
         try_files $uri $uri/ /index.html;
