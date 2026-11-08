@@ -100,8 +100,13 @@ describe('docs prerender over the real docs', () => {
 		const html = byFile.get('docs/agents/index.html')!;
 		expect(html).toContain('<h2 id="get-a-token" tabindex="-1">');
 		expect(html).toContain('<a href="#task-mcp" class="block py-0.5');
-		expect(html).toContain('<pre class=');
-		expect(html).toContain('<code class="docs-code-text language-sh">');
+		expect(html).toContain('<div class="md-editor-code-head">');
+		expect(html).toContain('<code class="language-sh" language="sh">');
+		expect(html).toContain('<span rn-wrapper aria-hidden="true"><span></span>');
+		expect(html).toContain(
+			'<button type="button" class="md-editor-copy-button" data-docs-copy>',
+		);
+		expect(html).toMatch(/<span class="hljs-/);
 		expect(html).toContain('https://api.example.com/mcp');
 		expect(html).toContain('tmgr-notify');
 		expect(html).toContain('TMGR_URL=https://api.example.com');

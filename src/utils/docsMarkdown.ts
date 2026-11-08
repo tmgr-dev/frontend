@@ -1,3 +1,7 @@
+import hljs from 'highlight.js/lib/core';
+import bash from 'highlight.js/lib/languages/bash';
+import json from 'highlight.js/lib/languages/json';
+import yaml from 'highlight.js/lib/languages/yaml';
 import { Marked, type Tokens } from 'marked';
 import {
 	COMPONENT_MARKER,
@@ -42,11 +46,29 @@ export const safeUrl = (href: string | null | undefined): string | null => {
 const hasFileExtension = (href: string): boolean =>
 	/\.[A-Za-z0-9]+$/.test(href.split(/[?#]/)[0]);
 
-export const DOCS_CODE_PRE_CLASS =
-	'min-w-0 flex-1 overflow-x-auto whitespace-pre rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink';
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('yaml', yaml);
+hljs.registerAliases(['shell'], { languageName: 'bash' });
 
-export const DOCS_COPY_BUTTON_CLASS =
-	'inline-flex h-11 min-w-24 shrink-0 items-center justify-center self-end rounded-md border border-input bg-background px-2 text-xs font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground sm:h-7 sm:self-start';
+// The markup of md-editor-v3's code block, so the library's own CSS styles it.
+const codeBlockHtml = (
+	text: string,
+	language: string,
+	copyLabel: string,
+): string => {
+	const highlighted =
+		language && hljs.getLanguage(language)
+			? hljs.highlight(text, { language, ignoreIllegals: true }).value
+			: escapeHtml(text);
+	const lines = '<span></span>'.repeat(text.split('\n').length);
+	const lang = escapeHtml(language);
+	return `<div class="docs-code"><div class="md-editor-code"><div class="md-editor-code-head"><div class="md-editor-code-flag"><span></span><span></span><span></span></div><div class="md-editor-code-action"><span class="md-editor-code-lang">${lang}</span><button type="button" class="md-editor-copy-button" data-docs-copy>${escapeHtml(
+		copyLabel,
+	)}</button></div></div><pre><code${
+		language ? ` class="language-${lang}" language="${lang}"` : ''
+	}><span class="md-editor-code-block">${highlighted}</span><span rn-wrapper aria-hidden="true">${lines}</span></code></pre></div></div>\n`;
+};
 
 const createMarked = (copyLabel: string) => {
 	const marked = new Marked({ gfm: true, breaks: false, async: false });
@@ -81,12 +103,7 @@ const createMarked = (copyLabel: string) => {
 			},
 			code({ text, lang }) {
 				const language = (lang || '').match(/^[\w-]+/)?.[0] ?? '';
-				const langClass = language ? ` language-${escapeHtml(language)}` : '';
-				return `<div class="docs-code flex flex-col gap-2 sm:flex-row sm:items-start"><pre class="${DOCS_CODE_PRE_CLASS}"><code class="docs-code-text${langClass}">${escapeHtml(
-					text,
-				)}</code></pre><button type="button" class="${DOCS_COPY_BUTTON_CLASS}" data-docs-copy data-label="${escapeHtml(
-					copyLabel,
-				)}">${escapeHtml(copyLabel)}</button></div>\n`;
+				return codeBlockHtml(text, language, copyLabel);
 			},
 			html({ text, block }) {
 				return block ? `<p>${escapeHtml(text)}</p>\n` : escapeHtml(text);

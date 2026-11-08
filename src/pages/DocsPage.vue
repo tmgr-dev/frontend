@@ -461,7 +461,9 @@
 			const copyTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
 			const copy = async (button: HTMLElement) => {
 				const code =
-					button.parentElement?.querySelector('code')?.textContent ?? '';
+					button
+						.closest('.md-editor-code')
+						?.querySelector('.md-editor-code-block')?.textContent ?? '';
 				const labels = DOCS_UI[shownLang.value];
 				try {
 					await navigator.clipboard.writeText(code);

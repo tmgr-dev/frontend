@@ -295,6 +295,7 @@ export default defineConfig({
 							30,
 						),
 						vendorGroup('vendor-markdown', ['md-editor-v3'], 20),
+						vendorGroup('vendor-highlight', ['highlight.js'], 20),
 						vendorGroup(
 							'vendor-graph',
 							['d3-force', 'd3-quadtree', 'd3-dispatch', 'd3-timer'],

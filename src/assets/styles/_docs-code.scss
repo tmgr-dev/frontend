@@ -1,0 +1,42 @@
+@use 'sass:meta';
+@use '@vavt/markdown-theme/css/default.css';
+
+// Docs code blocks use md-editor-v3's own code block CSS (the task form's look).
+// The library hangs it on `.md-editor-preview` and its colour variables on
+// `.md-editor` / `.md-editor-dark`; extend those onto docs classes so that no
+// library box styles (`.md-editor { min-height }`) reach the docs.
+.docs-code {
+	@extend .md-editor-preview;
+	@extend .md-editor-scrn;
+}
+
+.docs-prose {
+	@extend .md-editor;
+}
+
+html.dark .docs-prose {
+	@extend .md-editor-dark;
+}
+
+// The task form loads the atom theme matching the colour scheme; here both
+// come from the package and are scoped to the scheme.
+html:not(.dark) .docs-code {
+	@include meta.load-css('highlight.js/styles/atom-one-light.css');
+}
+
+html.dark .docs-code {
+	@include meta.load-css('highlight.js/styles/atom-one-dark.css');
+}
+
+// The library's sticky header uses z-index 10000, above the docs dialogs.
+.docs-code .md-editor-code-head {
+	z-index: 1;
+}
+
+.docs-code .md-editor-copy-button {
+	border: 0;
+	background: none;
+	padding: 0;
+	font: inherit;
+	color: inherit;
+}
