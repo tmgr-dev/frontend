@@ -31,7 +31,7 @@ tmgr skills put release-notes --file skills/release-notes.md
 tmgr skills attach <persona-id> release-notes
 ```
 
-Теперь `tmgr skills list` показывает, у каких персон он есть.
+Теперь список показывает, у каких персон он есть.
 
 ```sh
 tmgr skills list
@@ -41,7 +41,7 @@ tmgr skills list
 
 ### Просмотр {#t-show}
 
-`tmgr skills show` показывает скилл целиком, вместе с версией и персонами.
+Это показывает скилл целиком, вместе с версией и персонами.
 
 ```sh
 tmgr skills show release-notes

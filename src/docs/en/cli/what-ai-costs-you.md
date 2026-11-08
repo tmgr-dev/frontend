@@ -50,7 +50,7 @@ Task attribution appears when agents work through `run` or `agent start`.
 
 ### Limits {#t-limits}
 
-`tmgr usage limits` shows your rate-limit windows, the percentage used, and the time until reset.
+This shows your rate-limit windows, the percentage used, and the time until reset.
 
 ```sh
 tmgr usage limits

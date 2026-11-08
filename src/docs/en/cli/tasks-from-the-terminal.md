@@ -112,7 +112,7 @@ tmgr task show TM-123
 
 ### Board {#t-board}
 
-This is `tmgr board`: a kanban board, right in your terminal. Arrow keys move between columns and cards, Enter opens the details, and Shift+L moves a card to the next status. You can also start a timer or leave a comment from here.
+This is the board: a kanban board, right in your terminal. Arrow keys move between columns and cards, Enter opens the details, and Shift+L moves a card to the next status. You can also start a timer or leave a comment from here.
 
 ```sh
 tmgr board

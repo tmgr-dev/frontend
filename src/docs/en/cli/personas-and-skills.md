@@ -31,7 +31,7 @@ tmgr skills put release-notes --file skills/release-notes.md
 tmgr skills attach <persona-id> release-notes
 ```
 
-Now `tmgr skills list` shows which personas have it.
+Now the list shows which personas have it.
 
 ```sh
 tmgr skills list
@@ -41,7 +41,7 @@ An agent working as that persona gets its instructions and all of its skills.
 
 ### Show {#t-show}
 
-`tmgr skills show` prints the whole skill, with its version and personas.
+This prints the whole skill, with its version and personas.
 
 ```sh
 tmgr skills show release-notes

@@ -18,7 +18,7 @@ It all starts on the web, shown here in the web UI. In the workspace modules, tu
 
 ### Trust this machine {#t-allow}
 
-On your machine, allow the workspace with `tmgr runner allow`.
+On your machine, allow the workspace:
 
 ```sh
 tmgr runner allow <workspace>
@@ -49,19 +49,19 @@ Adding the rule asks you to type `I AGREE`.
 
 ### Queue {#t-queue}
 
-`tmgr queue enable` turns the queue on in the background; it also asks for `I AGREE`.
+This turns the queue on in the background; it also asks for `I AGREE`.
 
 ```sh
 tmgr queue enable
 ```
 
-The queue finds the approved task, makes a separate copy of the project for it, and starts the agent in a sandbox. In the video, `tmgr queue run-once` runs one pass right away.
+The queue finds the approved task, makes a separate copy of the project for it, and starts the agent in a sandbox. In the video, this runs one pass right away.
 
 ```sh
 tmgr queue run-once
 ```
 
-`tmgr agents` shows the session: the agent has already finished.
+This shows the session: the agent has already finished.
 
 ```sh
 tmgr agents
@@ -69,13 +69,13 @@ tmgr agents
 
 ### Result {#t-result}
 
-`tmgr peek` shows what the agent did. It takes a session id or name.
+This shows what the agent did. It takes a session id or name.
 
 ```sh
 tmgr peek <session>
 ```
 
-When the agent finishes, the queue pushes the branch and opens a pull request that waits for your review. `tmgr queue disable` turns the queue off.
+When the agent finishes, the queue pushes the branch and opens a pull request that waits for your review. This turns the queue off.
 
 ```sh
 tmgr queue disable

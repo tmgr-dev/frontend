@@ -60,7 +60,7 @@ tmgr ws use <workspace>
 
 To run a single command in another workspace without switching, add `--ws <workspace>` to it.
 
-`tmgr status` shows the active task and the time you tracked today:
+This shows the active task and the time you tracked today:
 
 ```sh
 tmgr status
@@ -95,7 +95,7 @@ curl -fsSL https://tmgr.dev/install.sh | sh
 
 ### Sign in {#t-login}
 
-Now sign in. You never type a password into the terminal: `tmgr login` opens your browser with a one-time code. Check the code, approve, and the terminal gets access.
+Now sign in. You never type a password into the terminal: the login command opens your browser with a one-time code. Check the code, approve, and the terminal gets access.
 
 ```sh
 tmgr login
@@ -103,7 +103,7 @@ tmgr login
 
 ### Who am I {#t-whoami}
 
-`tmgr whoami` shows who is signed in, which server you're on, and where the token is stored: in the system keychain, or in a private file.
+This shows who is signed in, which server you're on, and where the token is stored: in the system keychain, or in a private file.
 
 ```sh
 tmgr whoami
@@ -121,7 +121,7 @@ tmgr status
 
 ### Menu {#t-menu}
 
-Don't want to memorize commands? Just type `tmgr` with no arguments. A menu opens: find a command (press `/` and type part of its name, for example `add`), fill in the fields, and the finished command line appears at the bottom, so the menu teaches you the syntax as well.
+Don't want to memorize commands? Just run the CLI with no arguments. A menu opens: find a command (press `/` and type part of its name, for example `add`), fill in the fields, and the finished command line appears at the bottom, so the menu teaches you the syntax as well.
 
 ```sh
 tmgr

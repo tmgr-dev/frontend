@@ -13,7 +13,7 @@ This lesson shows how agents report their work on tasks and how you read those r
 Lesson nine: agent work reports. You see which agent worked on a task, for how long, and with which commits and tests.
 ### Hooks {#t-hooks}
 
-`tmgr hook install claude` adds the TMGR hooks to your Claude Code settings: notifications when an agent is waiting for you, and linking commits to its run.
+This command adds the TMGR hooks to your Claude Code settings: notifications when an agent is waiting for you, and linking commits to its run.
 
 ```sh
 tmgr hook install claude
