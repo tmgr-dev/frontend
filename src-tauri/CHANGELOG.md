@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.128 — 2026-11-08
+
+- Settings → About now has a "Command line (tmgr)" link that opens tmgr.dev/cli in your browser. The page explains what the tmgr command is for, with an example for each use and the install command.
+
 ## 0.9.126 — 2026-11-08
 
 - When you answer a Decisions card or write in its chat, the agent that asked gets it right away, even if it is idle. A Claude Code session wakes up and picks up your answer. A session in the tmgr runner gets it typed in, but only at its prompt: while the agent is busy or a dialog is open, the message waits and is sent once the prompt is back. The card shows whether the answer was sent, delivered, is waiting for the agent's prompt, or could not be delivered because the session closed. You can now also answer an agent's "stopped" card when its session can receive it. Needs tmgr 1.0.109 for the agent side.
