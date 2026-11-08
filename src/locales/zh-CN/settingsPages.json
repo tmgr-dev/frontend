@@ -616,6 +616,7 @@
 	},
 	"privacyLinks": {
 		"privacy": "隐私",
+		"docs": "文档",
 		"commandLine": "命令行",
 		"cookieSettings": "Cookie 设置"
 	},

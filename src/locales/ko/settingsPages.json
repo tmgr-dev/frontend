@@ -616,6 +616,7 @@
 	},
 	"privacyLinks": {
 		"privacy": "개인정보",
+		"docs": "문서",
 		"commandLine": "명령줄",
 		"cookieSettings": "쿠키 설정"
 	},

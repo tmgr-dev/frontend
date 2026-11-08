@@ -616,6 +616,7 @@
 	},
 	"privacyLinks": {
 		"privacy": "Prywatność",
+		"docs": "Dokumentacja",
 		"commandLine": "Wiersz poleceń",
 		"cookieSettings": "Ustawienia cookie"
 	},

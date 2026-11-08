@@ -616,6 +616,7 @@
 	},
 	"privacyLinks": {
 		"privacy": "プライバシー",
+		"docs": "ドキュメント",
 		"commandLine": "コマンドライン",
 		"cookieSettings": "Cookie 設定"
 	},

@@ -616,6 +616,7 @@
 	},
 	"privacyLinks": {
 		"privacy": "Privacidade",
+		"docs": "Documentação",
 		"commandLine": "Linha de comando",
 		"cookieSettings": "Configurações de cookies"
 	},
