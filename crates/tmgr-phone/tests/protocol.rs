@@ -864,3 +864,89 @@ fn chat_action_round_trips_in_a_sealed_answer() {
         )
     );
 }
+
+const LIVE_FIXTURE_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/fixtures/v1-live-snapshot.json"
+);
+const V2_PROJECTION: &str = "{\"p\":2,\"kind\":\"question\",\"title\":\"Ship it?\",\"chat\":true,\"task\":false,\"messages\":[{\"seq\":3,\"author\":\"owner\",\"text\":\"hi\",\"created_ms\":1}],\"rev\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+
+fn live_snapshot_body() -> SnapshotBody {
+    let mut body = snapshot_body();
+    body.cards[0].projection = V2_PROJECTION.into();
+    body.cards[0].digest = digest(V2_PROJECTION);
+    body.cards[0].live = Some(live_card());
+    body
+}
+
+fn live_fixture_text() -> String {
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let body = live_snapshot_body();
+    let text = serde_json::to_string(&body).unwrap();
+    let sealed =
+        seal_snapshot_with(&p.kex_pub, &pr, &unhex(&d.sign_secret), &body, &ent(7)).unwrap();
+    let mut t = serde_json::to_string_pretty(&json!({
+        "mailbox": MAILBOX,
+        "desktop": {"sign_pub": b64(&d.sign_pub), "fp": d.fp},
+        "phone": {"kex_secret_hex": p.kex_secret, "fp": p.fp},
+        "body": text,
+        "signed": snapshot_signed(&pr, body.seq, body.generated_at, &text),
+        "sealed": sealed,
+    }))
+    .unwrap();
+    t.push('\n');
+    t
+}
+
+#[test]
+fn live_snapshot_fixture_is_current() {
+    let on_disk = std::fs::read_to_string(LIVE_FIXTURE_PATH).expect("run write_live_fixture");
+    assert_eq!(on_disk, live_fixture_text());
+}
+
+#[test]
+#[ignore]
+fn write_live_fixture() {
+    std::fs::write(LIVE_FIXTURE_PATH, live_fixture_text()).unwrap();
+}
+
+#[test]
+fn an_old_phone_verifies_a_snapshot_that_carries_live() {
+    #[derive(serde::Deserialize)]
+    struct OldCard {
+        id: String,
+        digest: String,
+        state: String,
+        session_gone: bool,
+        projection: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct OldSnapshot {
+        v: u32,
+        seq: i64,
+        generated_at: i64,
+        desktop_name: String,
+        cards: Vec<OldCard>,
+        more: u32,
+    }
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let body = live_snapshot_body();
+    let sealed = seal_snapshot(&p.kex_pub, &pr, &unhex(&d.sign_secret), &body).unwrap();
+    let opened = open_snapshot(&unhex(&p.kex_secret), &pr, &d.sign_pub, &sealed).unwrap();
+    assert_eq!(opened, body);
+    let text = serde_json::to_string(&opened).unwrap();
+    assert!(text.contains("\"live\""));
+    let old: OldSnapshot = serde_json::from_str(&text).unwrap();
+    assert_eq!((old.v, old.seq, old.more), (1, body.seq, 0));
+    assert_eq!(old.generated_at, NOW);
+    assert_eq!(old.desktop_name, "Studio Mac");
+    let c = &old.cards[0];
+    assert_eq!(
+        (c.id.as_str(), c.state.as_str(), c.session_gone),
+        ("card-7", "open", false)
+    );
+    assert_eq!(c.projection, V2_PROJECTION);
+    assert_eq!(c.digest, digest(&c.projection));
+}

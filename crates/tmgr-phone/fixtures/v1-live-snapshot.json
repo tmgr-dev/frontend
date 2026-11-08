@@ -1,0 +1,14 @@
+{
+  "mailbox": "0b9f6c1e-3d52-4c47-9a6e-5f1d2a7c8e90",
+  "desktop": {
+    "sign_pub": "BAIX5hfwtkQ5KCePlpmeaaI6TywVK99tbN9m5bgCgtTtGUp968uXcS0t2jyoWqh2Wlb0X8dYWZZS8ol8ZTBuV5Q=",
+    "fp": "effcef1050d5e05f4c43506fd1e5ee3d1a2aaeb24ab2e0d28131871b8e28bfa0"
+  },
+  "phone": {
+    "kex_secret_hex": "4444444444444444444444444444444444444444444444444444444444444444",
+    "fp": "011e9a5356edebaf8a02cf1a45f61c3ba1815a7f3b1c3f8d229eaa427332524c"
+  },
+  "body": "{\"v\":1,\"seq\":1790000000001,\"generated_at\":1790000000000,\"desktop_name\":\"Studio Mac\",\"cards\":[{\"id\":\"card-7\",\"digest\":\"0f1d225a94f2b816085614eb992281f9d313342f0c12f91b731e2aac15b843df\",\"state\":\"open\",\"session_gone\":false,\"projection\":\"{\\\"p\\\":2,\\\"kind\\\":\\\"question\\\",\\\"title\\\":\\\"Ship it?\\\",\\\"chat\\\":true,\\\"task\\\":false,\\\"messages\\\":[{\\\"seq\\\":3,\\\"author\\\":\\\"owner\\\",\\\"text\\\":\\\"hi\\\",\\\"created_ms\\\":1}],\\\"rev\\\":\\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\"}\",\"live\":{\"listening\":true,\"messages\":[{\"seq\":3,\"delivered_ms\":1789999999995},{\"seq\":5,\"saved_ms\":1789999999999},{\"seq\":6}]}}],\"more\":0}",
+  "signed": "tmgr-phone-snapshot:v1:0b9f6c1e-3d52-4c47-9a6e-5f1d2a7c8e90:effcef1050d5e05f4c43506fd1e5ee3d1a2aaeb24ab2e0d28131871b8e28bfa0:011e9a5356edebaf8a02cf1a45f61c3ba1815a7f3b1c3f8d229eaa427332524c:1790000000001:1790000000000:6fc5e84b2bb08386ba47262ca9476c76270734990ca80427de56879eba0c1186",
+  "sealed": "{\"v\":1,\"kind\":\"snapshot\",\"id\":\"1790000000001\",\"eph\":\"BB4YUy/UdUwC8wQdnHXOszuD/9gax85P6ILMscmLxYlupGwxHE4v9A3ZajZT5uRURdMt/khuztdcepDGoYiBwKM=\",\"nonce\":\"BwcHBwcHBwcHBwcH\",\"ct\":\"bAsL3h8F5PAkc2vgk+I+V2VTAX59JhkRKnGF/tWde5wgrxtp8uBeMH8fp3xn+sRUhFPCMT6tyI8ZzBt7wWp+vVqvl0Tz/XLv8bUfBM0CzsHE+/oRBSmHdNavwJeDyYBOksnjJOjUTxGFPI2cXnhL4yxlcLPIYacA+/1/2hG/jpsNpWqU6aXA8VSOezdEJd/BAeYiaCA4Ntw0BJzsNcziH75TfbLLQEvHdUYNdiGjpULSlsPIwHd5cnyOxVqjFfhCMZj9/KV84ptVmB1/bqPYrCZYXuEiplcjw4O2TK3YN2NRN7fMnBJMh+c19ixZEz4iDNurqZLVABl77nz4jF0zAqtr4fp3zp9emwv/JSwyX7N+8ajoSZSmcIi0T7tXCT5OCEChxSg5PLjcnYYm5Hz2z2id2t1ar6nObBEW1zejHzABDKmfGfMpQ4u3cAksDiLIi/LKZENqnt6SWLrlbsY1sJtKzCwLUUqWQN1Di9YShztNiDdrbSJSF8s1cFzNY9C5ztoBc9qjRGC57nh/1Xi4Gkm1HitJGCzWiSSjpfse3GKZQ0fduxgIgY/CTOxCdGHfbmeXmFQgjOX66pS2N4oQR0O9xPz8nwBGhXSXDbJ6rmoLb2zPlR3o1lZmLk1i8oq4wji76KBYQXivxO7WaNXqkACNNiqjQZLqAxkE4ozAsGH/mVc7n0qLBW8HOXtky7EcmpZm7u5t9nOiEn1p9t5VFEkd/PIQZ3dYlzVgU1agjP0JLNL+j8n6ILFsUBKx1gcBkJhOdAqAoeUtqEwhoqOZrHI7uNXdMP/NGfbCNG/UiMt2Py6GdIazQddwWPfYS/ED2zrB2qiyhiiDNWBaiPaW4YcQx64niAK72UclgLlfuLPBiaG8LSgab2z6fWQYxPeHzrhN8r3f75do8cryi3cImJg8gfM/3TpG5tydriAb7WO18i4fkNi66+8dttE2ulY8Zpxco3jlPyWHP0/Qgry07dMaB6fmdSALFrs24kEKuPQ5Rch5UWJsXTPceUpKSymDx844BUPWS6hkfXDlDBkPc5iyoVmE3dkRn8VyVP+lX8yqGTfv8yvcHlmrpHDyBmd3oaU/Vgrpj6MFeadMD2MjMUVGBs90sFIPeeT6p9LAwPK+HhOi+ZXD\"}"
+}
