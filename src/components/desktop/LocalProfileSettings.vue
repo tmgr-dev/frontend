@@ -1,10 +1,12 @@
 <template>
 	<SettingsSection
-		title="Profile"
-		description="This name is shown in your local workspaces."
+		:title="$t('desktop.localProfile.title')"
+		:description="$t('desktop.localProfile.description')"
 	>
 		<form class="flex max-w-xl flex-col gap-1.5" @submit.prevent="save">
-			<Label for="local-profile-name">Name</Label>
+			<Label for="local-profile-name">{{
+				$t('desktop.localProfile.name')
+			}}</Label>
 			<div class="flex flex-wrap items-center gap-2">
 				<Input
 					id="local-profile-name"
@@ -14,14 +16,14 @@
 					:disabled="saving"
 				/>
 				<Button type="submit" :disabled="saving || !changed">
-					{{ saving ? 'Saving…' : 'Save' }}
+					{{ saving ? $t('common.actions.saving') : $t('common.actions.save') }}
 				</Button>
 			</div>
 			<p v-if="error" role="alert" class="text-sm text-destructive">
 				{{ error }}
 			</p>
 			<p v-else-if="saved" role="status" class="text-sm text-ink-subtle">
-				Saved.
+				{{ $t('desktop.localProfile.saved') }}
 			</p>
 		</form>
 		<div
@@ -31,8 +33,8 @@
 			<p class="flex-1 text-sm text-ink-subtle">
 				{{
 					linkedToCurrent
-						? 'Local data is linked to your account.'
-						: 'Local data is linked to another account.'
+						? $t('desktop.localProfile.linkedToYou')
+						: $t('desktop.localProfile.linkedToOther')
 				}}
 			</p>
 			<Button
@@ -41,7 +43,11 @@
 				:disabled="unlinking"
 				@click="unlink"
 			>
-				{{ unlinking ? 'Unlinking…' : 'Unlink' }}
+				{{
+					unlinking
+						? $t('desktop.localProfile.unlinking')
+						: $t('desktop.localProfile.unlink')
+				}}
 			</Button>
 			<p
 				v-if="unlinkError"
@@ -59,6 +65,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
+	import { t } from '@/i18n';
 	import { unlinkLocalProfile, updateLocalProfile } from '@/utils/localProfile';
 	import { computed, defineComponent, ref, watch } from 'vue';
 	import { useStore } from 'vuex';
@@ -92,7 +99,8 @@
 					await store.dispatch('refreshLocalProfile');
 					saved.value = true;
 				} catch (e: any) {
-					error.value = e?.message || String(e) || 'Could not save the name.';
+					error.value =
+						e?.message || String(e) || t('desktop.localProfile.saveFailed');
 				} finally {
 					saving.value = false;
 				}
@@ -116,7 +124,7 @@
 					await store.dispatch('refreshLocalProfile');
 				} catch (e: any) {
 					unlinkError.value =
-						e?.message || String(e) || 'Could not unlink the profile.';
+						e?.message || String(e) || t('desktop.localProfile.unlinkFailed');
 				} finally {
 					unlinking.value = false;
 				}

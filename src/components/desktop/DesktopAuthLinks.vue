@@ -8,6 +8,7 @@
 		desktopAuthStatus,
 		failDesktopSocialLogin,
 	} from '@/composable/useDesktopSocialLogin';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
 		hasPendingDesktopAuth,
@@ -50,7 +51,7 @@
 					failDesktopSocialLogin(
 						provider
 							? linkConfirmationNotice(provider)
-							: 'Sign-in was not completed. Please try again.',
+							: t('desktop.authLinks.notCompleted'),
 					);
 					return;
 				}
@@ -63,9 +64,7 @@
 					response = await acceptDesktopLogin(link.code, pending.verifier);
 				} catch {
 					if (isLatestDesktopAuth(pending.state) && !store.getters.isLoggedIn) {
-						failDesktopSocialLogin(
-							'Sign-in link expired or was already used. Please try again.',
-						);
+						failDesktopSocialLogin(t('desktop.authLinks.linkExpired'));
 					}
 					return;
 				}

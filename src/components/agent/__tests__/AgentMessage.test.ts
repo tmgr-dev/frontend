@@ -4,6 +4,8 @@ import { join } from 'path';
 import ts from 'typescript';
 import { proxyRefs, shallowReactive, type VNode } from 'vue';
 
+import { t } from '@/i18n';
+
 const mockWriteClipboard = jest.fn();
 
 jest.mock('@/utils/share', () => ({
@@ -85,7 +87,7 @@ const mount = (message: Message, extra: Record<string, unknown> = {}) => {
 			slots: {},
 		}),
 	);
-	const tree = () => render({}, [], props, bindings, {}, {});
+	const tree = () => render({ $t: t }, [], props, bindings, {}, {});
 	return { tree, emitted, bindings };
 };
 

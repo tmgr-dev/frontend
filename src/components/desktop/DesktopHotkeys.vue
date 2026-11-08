@@ -7,9 +7,12 @@
 		<AlertDialogContent>
 			<AlertDialogHeader>
 				<AlertDialogTitle>
-					Let {{ pendingConfirm?.pluginName }} run "{{
-						pendingConfirm?.commandTitle
-					}}" from a link?
+					{{
+						$t('desktop.hotkeys.confirmTitle', {
+							pluginName: pendingConfirm?.pluginName,
+							commandTitle: pendingConfirm?.commandTitle,
+						})
+					}}
 				</AlertDialogTitle>
 				<AlertDialogDescription v-if="pendingConfirmParams.length">
 					<span
@@ -22,11 +25,15 @@
 				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
-				<AlertDialogCancel @click="cancelConfirm">Cancel</AlertDialogCancel>
-				<Button variant="outline" size="sm" @click="confirmOnce"
-					>Allow once</Button
-				>
-				<AlertDialogAction @click="confirmAlways">Always</AlertDialogAction>
+				<AlertDialogCancel @click="cancelConfirm">{{
+					$t('common.actions.cancel')
+				}}</AlertDialogCancel>
+				<Button variant="outline" size="sm" @click="confirmOnce">{{
+					$t('desktop.hotkeys.allowOnce')
+				}}</Button>
+				<AlertDialogAction @click="confirmAlways">{{
+					$t('desktop.hotkeys.always')
+				}}</AlertDialogAction>
 			</AlertDialogFooter>
 		</AlertDialogContent>
 	</AlertDialog>
@@ -51,6 +58,7 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import $axios from '@/plugins/axios';
 	import { pluginsReady } from '@/pluginSystem/app';
 	import { storageIdOf } from '@/pluginSystem/host';
@@ -97,7 +105,7 @@
 	};
 
 	const cantOpenLink = () =>
-		toast({ title: "Can't open this link", variant: 'destructive' });
+		toast({ title: t('desktop.hotkeys.cantOpenLink'), variant: 'destructive' });
 
 	/** Module-scoped: a remount of this component must not run the cold-start link a second time. */
 	let coldStartHandled = false;

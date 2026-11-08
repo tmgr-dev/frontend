@@ -2,20 +2,22 @@
 	<div class="flex min-h-0 flex-1 flex-col">
 		<div class="space-y-2 shrink-0 border-b border-line px-4 py-3">
 			<div class="flex items-center justify-between">
-				<h2 class="text-sm font-semibold text-ink">Chats</h2>
+				<h2 class="text-sm font-semibold text-ink">
+					{{ $t('agents.chatList.title') }}
+				</h2>
 				<button
 					class="rounded-pill px-2 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					@click="$emit('new-chat')"
 				>
-					New chat
+					{{ $t('agents.chatList.newChat') }}
 				</button>
 			</div>
 			<input
 				v-model="text"
 				type="search"
 				maxlength="100"
-				aria-label="Search chats"
-				placeholder="Search chats…"
+				:aria-label="$t('agents.chatList.search')"
+				:placeholder="$t('agents.chatList.searchPlaceholder')"
 				class="w-full rounded-pill border border-line bg-surface-sunken px-4 py-1.5 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-focus"
 			/>
 			<label class="flex items-center gap-2 text-xs text-ink-subtle">
@@ -29,7 +31,7 @@
 						)
 					"
 				/>
-				Show archived
+				{{ $t('agents.chatList.showArchived') }}
 			</label>
 		</div>
 		<ul class="flex-1 overflow-y-auto px-2 py-2">
@@ -38,7 +40,11 @@
 				v-else-if="!items.length && !loading"
 				class="px-2 py-2 text-sm text-ink-subtle"
 			>
-				{{ effectiveQuery ? 'No chats found' : 'No chats yet' }}
+				{{
+					effectiveQuery
+						? $t('agents.chatList.noneFound')
+						: $t('agents.chatList.noneYet')
+				}}
 			</li>
 			<li
 				v-for="item in items"
@@ -54,7 +60,8 @@
 					v-if="renamingId === item.id"
 					v-model="renameDraft"
 					class="min-w-0 flex-1 rounded border border-line bg-surface-sunken px-2 py-1 text-sm text-ink outline-hidden focus:border-line-focus"
-					aria-label="Chat title"
+					:aria-label="$t('agents.chatList.chatTitle')"
+					data-chat-title-input
 					maxlength="255"
 					@keydown.enter.prevent="saveRename(item)"
 					@keydown.esc.stop.prevent="renamingId = null"
@@ -73,19 +80,21 @@
 					</span>
 				</button>
 				<template v-if="confirmingId === item.id">
-					<span class="shrink-0 text-xs text-ink-subtle">Delete?</span>
+					<span class="shrink-0 text-xs text-ink-subtle">{{
+						$t('agents.chatList.deleteQuestion')
+					}}</span>
 					<button
 						class="shrink-0 rounded-pill px-2 py-0.5 text-xs text-red-500 hover:bg-surface-hover disabled:opacity-40"
 						:disabled="acting"
 						@click="remove(item)"
 					>
-						Yes
+						{{ $t('common.states.yes') }}
 					</button>
 					<button
 						class="shrink-0 rounded-pill px-2 py-0.5 text-xs text-ink-subtle hover:bg-surface-hover"
 						@click="confirmingId = null"
 					>
-						No
+						{{ $t('common.states.no') }}
 					</button>
 				</template>
 				<div
@@ -94,14 +103,18 @@
 				>
 					<button
 						class="rounded-pill p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
-						aria-label="Rename chat"
+						:aria-label="$t('agents.chatList.rename')"
 						@click="startRename(item)"
 					>
 						<Pencil class="h-3.5 w-3.5" />
 					</button>
 					<button
 						class="rounded-pill p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
-						:aria-label="item.archived ? 'Unarchive chat' : 'Archive chat'"
+						:aria-label="
+							item.archived
+								? $t('agents.chatList.unarchive')
+								: $t('agents.chatList.archive')
+						"
 						:disabled="acting"
 						@click="toggleArchive(item)"
 					>
@@ -110,7 +123,7 @@
 					</button>
 					<button
 						class="rounded-pill p-1 text-ink-subtle hover:bg-surface-hover hover:text-red-500"
-						aria-label="Delete chat"
+						:aria-label="$t('agents.chatList.delete')"
 						@click="confirmingId = item.id"
 					>
 						<Trash2 class="h-3.5 w-3.5" />
@@ -128,6 +141,7 @@
 		listConversations,
 		renameConversation,
 	} from '@/actions/tmgr/agent';
+	import { t } from '@/i18n';
 	import type { AgentConversationItem } from '@/types/agent';
 	import {
 		chatTitle,
@@ -189,7 +203,8 @@
 					});
 					if (requests.isCurrent(token)) items.value = result;
 				} catch {
-					if (requests.isCurrent(token)) error.value = 'Could not load chats.';
+					if (requests.isCurrent(token))
+						error.value = t('agents.chatList.loadFailed');
 				} finally {
 					if (requests.isCurrent(token)) loading.value = false;
 				}
@@ -223,7 +238,7 @@
 				renamingId.value = item.id;
 				nextTick(() => {
 					const field = document.querySelector<HTMLInputElement>(
-						'input[aria-label="Chat title"]',
+						'input[data-chat-title-input]',
 					);
 					field?.focus();
 					field?.select();
@@ -241,7 +256,7 @@
 						i.id === item.id ? { ...i, title: updated.title ?? null } : i,
 					);
 				} catch {
-					error.value = 'Could not rename the chat.';
+					error.value = t('agents.chatList.renameFailed');
 				}
 			};
 
@@ -268,7 +283,7 @@
 					await archiveConversation(item.id, !item.archived);
 					dropItem(item.id, item.archived ? 'unarchive' : 'archive');
 				} catch {
-					error.value = 'Could not update the chat.';
+					error.value = t('agents.chatList.updateFailed');
 				} finally {
 					acting.value = false;
 				}
@@ -283,7 +298,7 @@
 					await deleteConversation(item.id);
 					dropItem(item.id, 'delete');
 				} catch {
-					error.value = 'Could not delete the chat.';
+					error.value = t('agents.chatList.deleteFailed');
 				} finally {
 					acting.value = false;
 				}

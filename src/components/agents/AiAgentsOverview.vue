@@ -1,5 +1,5 @@
 <template>
-	<SettingsSection title="AI agents">
+	<SettingsSection :title="$t('agents.overview.title')">
 		<div class="grid gap-3 sm:grid-cols-2">
 			<div
 				v-for="server in servers"
@@ -10,7 +10,9 @@
 					{{ server.name }}
 				</code>
 				<p class="text-ink">{{ server.purpose }}</p>
-				<p class="text-ink-subtle">Token: {{ server.token }}</p>
+				<p class="text-ink-subtle">
+					{{ $t('agents.overview.token', { token: server.token }) }}
+				</p>
 				<router-link
 					v-if="showSetupLinks"
 					:to="server.to"
@@ -25,6 +27,8 @@
 
 <script setup lang="ts">
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import { t } from '@/i18n';
+	import { computed } from 'vue';
 
 	withDefaults(
 		defineProps<{
@@ -33,20 +37,20 @@
 		{ showSetupLinks: true },
 	);
 
-	const servers = [
+	const servers = computed(() => [
 		{
 			name: 'tmgr',
-			purpose: 'Work with tasks and time',
-			token: 'device token',
+			purpose: t('agents.overview.tmgrPurpose'),
+			token: t('agents.overview.tmgrToken'),
 			to: '/settings?tab=device',
-			linkLabel: 'Set up in Smart devices',
+			linkLabel: t('agents.overview.tmgrLink'),
 		},
 		{
 			name: 'tmgr-notify',
-			purpose: 'Notifications and alarms on your phone',
-			token: 'notify token (tmgrn_…)',
+			purpose: t('agents.overview.notifyPurpose'),
+			token: t('agents.overview.notifyToken'),
 			to: '/settings/agent-notifications',
-			linkLabel: 'Set up in Agent alerts',
+			linkLabel: t('agents.overview.notifyLink'),
 		},
-	];
+	]);
 </script>

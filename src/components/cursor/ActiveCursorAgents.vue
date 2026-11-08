@@ -4,7 +4,9 @@
 			<DropdownMenuTrigger as-child>
 				<button
 					class="relative rounded-md p-2 text-current transition-colors hover:bg-surface-hover"
-					:aria-label="`Active agents: ${activeAgents.length}`"
+					:aria-label="
+						$t('agents.cursor.activeCount', { n: activeAgents.length })
+					"
 				>
 					<Bot :size="20" />
 					<span
@@ -22,11 +24,13 @@
 				:side-offset="8"
 			>
 				<div class="flex items-center justify-between px-4 py-3.5">
-					<h3 class="m-0 text-base font-semibold text-ink">Active agents</h3>
+					<h3 class="m-0 text-base font-semibold text-ink">
+						{{ $t('agents.cursor.title') }}
+					</h3>
 					<button
 						class="inline-flex items-center justify-center rounded p-1 text-current opacity-70 transition-opacity enabled:hover:opacity-100 disabled:cursor-not-allowed"
 						:disabled="loading"
-						aria-label="Refresh"
+						:aria-label="$t('agents.cursor.refresh')"
 						@click.stop="loadAgents"
 					>
 						<LoaderCircle :size="14" :class="{ 'animate-spin': loading }" />
@@ -40,7 +44,7 @@
 					class="flex flex-col items-center justify-center gap-3 p-8 text-sm text-ink-muted"
 				>
 					<LoaderCircle :size="28" class="animate-spin opacity-50" />
-					<p>Loading…</p>
+					<p>{{ $t('common.states.loading') }}</p>
 				</div>
 
 				<div
@@ -48,7 +52,7 @@
 					class="flex flex-col items-center justify-center gap-3 p-8 text-sm text-ink-muted"
 				>
 					<Bot :size="40" class="opacity-30" />
-					<p>No active agents</p>
+					<p>{{ $t('agents.cursor.none') }}</p>
 				</div>
 
 				<div v-else class="max-h-[420px] overflow-y-auto p-1">
@@ -73,7 +77,12 @@
 								labelFor(agent)
 							}}</span>
 							<span class="text-xs text-ink-subtle">
-								Task #{{ agent.task_id }} · {{ statusLabel(agent.status) }}
+								{{
+									$t('agents.cursor.taskLine', {
+										id: agent.task_id,
+										status: statusLabel(agent.status),
+									})
+								}}
 							</span>
 						</span>
 						<ArrowUpRight
@@ -90,6 +99,7 @@
 
 <script>
 	import { getActiveCursorAgents } from '@/actions/tmgr/cursor';
+	import { t } from '@/i18n';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -167,7 +177,9 @@
 			});
 
 			const statusLabel = (status) =>
-				status === 'RUNNING' ? 'Running' : 'Starting';
+				status === 'RUNNING'
+					? t('agents.cursor.running')
+					: t('agents.cursor.starting');
 
 			return {
 				agents,

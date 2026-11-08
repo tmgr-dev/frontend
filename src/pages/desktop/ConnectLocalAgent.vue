@@ -4,25 +4,27 @@
 			class="mx-auto max-w-2xl rounded-card border border-line bg-surface p-5 sm:p-8"
 			data-testid="connect-local-agent"
 		>
-			<h1 class="text-xl font-semibold text-ink">Connect your agent</h1>
+			<h1 class="text-xl font-semibold text-ink">
+				{{ $t('desktop.connectAgent.title') }}
+			</h1>
 
 			<p v-if="view === 'loading'" class="mt-3 text-sm text-ink-subtle">
-				Looking for your agents…
+				{{ $t('desktop.connectAgent.looking') }}
 			</p>
 			<p
 				v-else-if="view === 'unavailable'"
 				class="mt-3 text-sm text-ink-subtle"
 				data-tour="connect-local.agents"
 			>
-				Switch to a local workspace in the desktop app to connect your agent.
+				{{ $t('desktop.connectAgent.unavailable') }}
 			</p>
 			<p v-else-if="view === 'demo'" class="mt-3 text-sm text-ink-subtle">
-				Create your own workspace first, then connect your agent.
+				{{ $t('desktop.connectAgent.demo') }}
 			</p>
 
 			<template v-else>
 				<p class="mt-2 text-sm text-ink-subtle">
-					Pick an agent on this computer. TMGR sets up the connection for you.
+					{{ $t('desktop.connectAgent.pick') }}
 				</p>
 
 				<p
@@ -36,7 +38,7 @@
 				<ul
 					class="mt-5 flex flex-col gap-3"
 					data-tour="connect-local.agents"
-					aria-label="Agents"
+					:aria-label="$t('desktop.connectAgent.agents')"
 				>
 					<li
 						v-for="row in connect.rows.value"
@@ -67,7 +69,11 @@
 											: 'bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground'
 									"
 								>
-									{{ row.found ? 'Found' : 'Not found' }}
+									{{
+										row.found
+											? $t('desktop.connectAgent.found')
+											: $t('desktop.connectAgent.notFound')
+									}}
 								</span>
 							</label>
 							<div class="flex gap-2">
@@ -80,8 +86,8 @@
 								>
 									{{
 										connect.copied.value === row.info.id
-											? 'Copied'
-											: 'Copy config'
+											? $t('common.actions.copied')
+											: $t('desktop.connectAgent.copyConfig')
 									}}
 								</Button>
 								<Button
@@ -99,16 +105,18 @@
 									"
 									@click="askRemove(row.info.id)"
 								>
-									Remove
+									{{ $t('common.actions.remove') }}
 								</Button>
 							</div>
 						</div>
-						<p
+						<i18n-t
 							v-if="row.info.id === 'cursor'"
+							keypath="desktop.connectAgent.cursorHint"
+							tag="p"
 							class="mt-1 text-xs text-ink-subtle"
 						>
-							Copy the config and paste it into <code>~/.cursor/mcp.json</code>.
-						</p>
+							<template #path><code>~/.cursor/mcp.json</code></template>
+						</i18n-t>
 
 						<div v-if="connect.results[row.info.id]" class="mt-3 text-sm">
 							<p
@@ -167,7 +175,9 @@ $ {{ step.command }}</pre>
 					data-testid="preview"
 				>
 					<div v-for="line in connect.previewLines.value" :key="line.agent">
-						<p class="text-sm font-medium">{{ line.title }} will run</p>
+						<p class="text-sm font-medium">
+							{{ $t('desktop.connectAgent.willRun', { title: line.title }) }}
+						</p>
 						<pre
 							class="mt-1 overflow-x-auto rounded bg-muted p-2 font-mono text-xs whitespace-pre-wrap"
 							>{{ line.commands.join('\n') }}</pre>
@@ -187,14 +197,18 @@ $ {{ step.command }}</pre>
 						:disabled="!connect.canPreview.value || connect.running.value"
 						@click="connect.preview()"
 					>
-						Preview
+						{{ $t('desktop.connectAgent.preview') }}
 					</Button>
 					<Button
 						data-tour="connect-local.install"
 						:disabled="!connect.canInstall.value"
 						@click="connect.install()"
 					>
-						{{ connect.running.value ? 'Installing…' : 'Install' }}
+						{{
+							connect.running.value
+								? $t('desktop.connectAgent.installing')
+								: $t('desktop.connectAgent.install')
+						}}
 					</Button>
 				</div>
 			</template>
@@ -206,17 +220,20 @@ $ {{ step.command }}</pre>
 		>
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle
-						>Remove TMGR from {{ removingTitle }}?</AlertDialogTitle
-					>
+					<AlertDialogTitle>{{
+						$t('desktop.connectAgent.removeTitle', { agent: removingTitle })
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						The agent loses access to this computer's TMGR workspaces, and the
-						tokens made on this screen are revoked.
+						{{ $t('desktop.connectAgent.removeDescription') }}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction @click="confirmRemove">Remove</AlertDialogAction>
+					<AlertDialogCancel>{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
+					<AlertDialogAction @click="confirmRemove">{{
+						$t('common.actions.remove')
+					}}</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>

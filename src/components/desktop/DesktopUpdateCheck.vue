@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { ToastAction, useToast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { updateCheckToast } from '@/utils/desktopUpdateCheck';
 	import {
 		checkForUpdateManually,
@@ -36,10 +37,10 @@
 						? h(
 								ToastAction,
 								{
-									altText: 'Install and restart',
+									altText: t('desktop.updateCheck.installAndRestart'),
 									onClick: () => installUpdate(),
 								},
-								() => 'Install and restart',
+								() => t('desktop.updateCheck.installAndRestart'),
 							)
 						: undefined,
 				});

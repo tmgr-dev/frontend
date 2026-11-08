@@ -5,17 +5,16 @@
 	>
 		<header class="flex flex-col gap-1">
 			<h4 class="text-sm font-semibold">
-				Skills on this device (local workspaces only)
+				{{ $t('desktop.skillsLibrary.title') }}
 			</h4>
 			<p class="text-xs text-muted-foreground">
-				This library is stored on this machine and used by local personas
-				through the local MCP. It is not synced to your account.
+				{{ $t('desktop.skillsLibrary.description') }}
 			</p>
 		</header>
 
 		<div class="flex flex-wrap gap-2">
 			<Button size="sm" :disabled="!ready" @click="startCreate">
-				New skill
+				{{ $t('desktop.skillsLibrary.newSkill') }}
 			</Button>
 			<Button
 				size="sm"
@@ -23,7 +22,7 @@
 				:disabled="!ready"
 				@click="showImport = true"
 			>
-				Import from local agents
+				{{ $t('desktop.skillsLibrary.importFromAgents') }}
 			</Button>
 			<Button
 				size="sm"
@@ -31,7 +30,11 @@
 				:disabled="!ready || checking || !hasLinks"
 				@click="checkUpdates"
 			>
-				{{ checking ? 'Checking…' : 'Check for updates' }}
+				{{
+					checking
+						? $t('desktop.skillsLibrary.checking')
+						: $t('desktop.skillsLibrary.checkForUpdates')
+				}}
 			</Button>
 			<Button
 				size="sm"
@@ -39,10 +42,10 @@
 				:disabled="!ready || !skills.length"
 				@click="doExport"
 			>
-				Export
+				{{ $t('desktop.skillsLibrary.export') }}
 			</Button>
 			<Button size="sm" variant="outline" :disabled="!ready" @click="doImport">
-				Import
+				{{ $t('desktop.skillsLibrary.import') }}
 			</Button>
 		</div>
 
@@ -80,16 +83,20 @@
 					size="sm"
 					:disabled="saving || feedback.length > 0"
 				>
-					{{ saving ? 'Saving…' : 'Save skill' }}
+					{{
+						saving
+							? $t('common.actions.saving')
+							: $t('desktop.skillsLibrary.saveSkill')
+					}}
 				</Button>
 				<Button type="button" size="sm" variant="outline" @click="cancelEdit">
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</Button>
 			</div>
 		</form>
 
 		<p v-if="ready && !skills.length" class="text-sm text-muted-foreground">
-			No skills yet.
+			{{ $t('desktop.skillsLibrary.empty') }}
 		</p>
 		<div
 			v-for="skill in skills"
@@ -104,34 +111,38 @@
 						v-if="statuses[skill.slug] === 'update-available'"
 						class="rounded bg-blue-100 px-1.5 py-0.5 text-2xs text-blue-900 dark:bg-blue-900/30 dark:text-blue-200"
 					>
-						Update available
+						{{ $t('desktop.skillsLibrary.updateAvailable') }}
 					</span>
 					<span
 						v-else-if="statuses[skill.slug] === 'edited-and-changed'"
 						class="rounded bg-amber-100 px-1.5 py-0.5 text-2xs text-amber-900 dark:bg-amber-900/30 dark:text-amber-200"
 					>
-						Edited here and changed at source
+						{{ $t('desktop.skillsLibrary.editedAndChanged') }}
 					</span>
 					<span
 						v-else-if="statuses[skill.slug] === 'not-scanned'"
 						class="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
 					>
-						Source not scanned
+						{{ $t('desktop.skillsLibrary.notScanned') }}
 					</span>
 				</p>
 				<p class="text-xs text-muted-foreground">
 					{{ skill.slug }} · v{{ skill.version }}
 				</p>
 				<p class="text-xs text-muted-foreground">
-					Attached to: {{ attachedNames(skill.slug) }}
+					{{
+						$t('desktop.skillsLibrary.attachedTo', {
+							names: attachedNames(skill.slug),
+						})
+					}}
 				</p>
 			</div>
 			<div class="flex shrink-0 gap-2">
 				<Button size="sm" variant="outline" @click="startEdit(skill)">
-					Edit
+					{{ $t('common.actions.edit') }}
 				</Button>
 				<Button size="sm" variant="outline" @click="remove(skill)">
-					Delete
+					{{ $t('common.actions.delete') }}
 				</Button>
 			</div>
 		</div>
@@ -148,6 +159,7 @@
 <script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { LOCAL_OWNER_ID } from '@/local/personaGate';
 	import { listLocalPersonas } from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
@@ -233,9 +245,12 @@
 					const report = await readSkillLibraryReport(userId());
 					library.value = report.library;
 					skippedNote.value = report.skipped.length
-						? `Skipped ${report.skipped.length} unreadable skill(s): ${report.skipped
-								.map((s) => s.slug || 'entry')
-								.join(', ')}`
+						? t('desktop.skillsLibrary.skipped', {
+								n: report.skipped.length,
+								slugs: report.skipped
+									.map((s) => s.slug || t('desktop.skillsLibrary.entry'))
+									.join(', '),
+							})
 						: null;
 					statuses.value = {};
 					loadError.value = null;
@@ -276,9 +291,13 @@
 				const names = (library.value?.attachments ?? [])
 					.filter((a) => a.slug === slug)
 					.map(
-						(a) => personaNames.value[a.persona_uuid] ?? 'another workspace',
+						(a) =>
+							personaNames.value[a.persona_uuid] ??
+							t('desktop.skillsLibrary.anotherWorkspace'),
 					);
-				return names.length ? names.join(', ') : 'no persona';
+				return names.length
+					? names.join(', ')
+					: t('desktop.skillsLibrary.noPersona');
 			};
 
 			const startCreate = () => {
@@ -306,7 +325,9 @@
 				try {
 					await updateSkillLibrary(userId(), (lib) => {
 						if (!editingSlug.value && lib.skills.some((s) => s.slug === slug)) {
-							throw new SkillLibraryError(`skill ${slug} already exists`);
+							throw new SkillLibraryError(
+								t('desktop.skillsLibrary.alreadyExists', { slug }),
+							);
 						}
 						return {
 							library: putSkill(
@@ -332,10 +353,13 @@
 				const attached = (library.value?.attachments ?? []).filter(
 					(a) => a.slug === skill.slug,
 				).length;
-				const note = attached
-					? ` It will be detached from ${attached} persona(s).`
-					: '';
-				if (!window.confirm(`Delete skill "${skill.title}"?${note}`)) return;
+				const question = attached
+					? t('desktop.skillsLibrary.confirmDeleteAttached', {
+							title: skill.title,
+							n: attached,
+						})
+					: t('desktop.skillsLibrary.confirmDelete', { title: skill.title });
+				if (!window.confirm(question)) return;
 				try {
 					await updateSkillLibrary(userId(), (lib) => ({
 						library: deleteSkill(lib, skill.slug),
@@ -344,7 +368,7 @@
 					await reload();
 				} catch (error) {
 					toast({
-						title: 'Could not delete the skill',
+						title: t('desktop.skillsLibrary.deleteFailed'),
 						description: error instanceof Error ? error.message : String(error),
 						variant: 'destructive',
 					});
@@ -354,10 +378,14 @@
 			const doExport = async () => {
 				try {
 					const saved = await exportSkillLibrary(userId());
-					toast({ title: saved ? 'Skills exported' : 'Export cancelled' });
+					toast({
+						title: saved
+							? t('desktop.skillsLibrary.exported')
+							: t('desktop.skillsLibrary.exportCancelled'),
+					});
 				} catch (error) {
 					toast({
-						title: 'Could not export the skills',
+						title: t('desktop.skillsLibrary.exportFailed'),
 						description: error instanceof Error ? error.message : String(error),
 						variant: 'destructive',
 					});
@@ -368,7 +396,7 @@
 				try {
 					const incoming = await pickSkillLibraryImport();
 					if (!incoming) {
-						toast({ title: 'Import cancelled' });
+						toast({ title: t('desktop.skillsLibrary.importCancelled') });
 						return;
 					}
 					const outcome = await updateSkillLibrary(userId(), (lib) => {
@@ -380,17 +408,23 @@
 						return { library: result.library, result };
 					});
 					const reasons = outcome.skipped
-						.map((s) => `${s.slug || 'entry'}: ${s.reason}`)
+						.map(
+							(s) =>
+								`${s.slug || t('desktop.skillsLibrary.entry')}: ${s.reason}`,
+						)
 						.join('; ');
 					toast({
-						title: `Imported ${outcome.imported.length}, skipped ${outcome.skipped.length}`,
+						title: t('desktop.skillsLibrary.imported', {
+							imported: outcome.imported.length,
+							skipped: outcome.skipped.length,
+						}),
 						description: reasons || undefined,
 						variant: outcome.skipped.length ? 'destructive' : undefined,
 					});
 					await reload();
 				} catch (error) {
 					toast({
-						title: 'Could not import the skills',
+						title: t('desktop.skillsLibrary.importFailed'),
 						description: error instanceof Error ? error.message : String(error),
 						variant: 'destructive',
 					});
@@ -407,11 +441,11 @@
 					});
 					statuses.value = linkedUpdateStatuses(library.value, scan);
 					if (!Object.keys(statuses.value).length) {
-						toast({ title: 'All linked skills are up to date' });
+						toast({ title: t('desktop.skillsLibrary.upToDate') });
 					}
 				} catch {
 					toast({
-						title: 'Could not scan this computer',
+						title: t('desktop.skillsLibrary.scanFailed'),
 						variant: 'destructive',
 					});
 				} finally {

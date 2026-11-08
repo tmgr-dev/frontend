@@ -1,8 +1,8 @@
 <template>
 	<AuthLayout>
-		<template #title>Welcome to TMGR</template>
+		<template #title>{{ $t('desktop.welcome.title') }}</template>
 		<template #subtitle>
-			Tasks, boards and a timer on every task. Start right away or sign in.
+			{{ $t('desktop.welcome.subtitle') }}
 		</template>
 
 		<p
@@ -11,7 +11,7 @@
 			class="text-center text-sm text-muted-foreground"
 			data-testid="welcome-starting"
 		>
-			Setting things up…
+			{{ $t('desktop.welcome.settingUp') }}
 		</p>
 
 		<div v-if="!deciding" class="grid grid-cols-2 gap-2">
@@ -22,7 +22,7 @@
 				data-testid="start-local"
 				@click="startOpen = true"
 			>
-				Start without an account
+				{{ $t('desktop.welcome.startLocal') }}
 			</Button>
 			<Button
 				variant="outline"
@@ -31,7 +31,7 @@
 				data-testid="sign-in"
 				@click="signIn"
 			>
-				Sign in
+				{{ $t('desktop.welcome.signIn') }}
 			</Button>
 		</div>
 
@@ -46,12 +46,14 @@
 			@submit.prevent="start"
 		>
 			<div class="space-y-2">
-				<Label for="local-name" class="text-foreground">Your name</Label>
+				<Label for="local-name" class="text-foreground">{{
+					$t('desktop.welcome.yourName')
+				}}</Label>
 				<Input
 					id="local-name"
 					v-model="name"
 					type="text"
-					placeholder="Optional"
+					:placeholder="$t('desktop.welcome.optional')"
 					autocomplete="name"
 					class="h-10"
 					:disabled="busy"
@@ -67,7 +69,9 @@
 				:aria-busy="busy"
 			>
 				<Loader2 v-if="busy" class="animate-spin" />
-				{{ busy ? 'Starting…' : 'Continue' }}
+				{{
+					busy ? $t('desktop.welcome.starting') : $t('common.actions.continue')
+				}}
 			</Button>
 		</form>
 	</AuthLayout>
@@ -79,6 +83,7 @@
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { desktopPlatform, desktopWindowLabel } from '@/utils/desktop';
 	import { welcomeNote } from '@/utils/localOnly';
 	import { Loader2 } from 'lucide-vue-next';
@@ -102,7 +107,7 @@
 			const deciding = ref(false);
 
 			onMounted(async () => {
-				setDocumentTitle('Welcome');
+				setDocumentTitle(t('desktop.welcome.documentTitle'));
 				if (freshEntryTried || desktopWindowLabel() !== 'main') return;
 				freshEntryTried = true;
 				deciding.value = true;
@@ -126,7 +131,7 @@
 					error.value =
 						e?.response?.data?.message ||
 						e?.message ||
-						'Could not start. Try again.';
+						t('desktop.welcome.startFailed');
 				} finally {
 					busy.value = false;
 				}

@@ -9,7 +9,7 @@
 		<button
 			type="button"
 			class="rounded-md px-2 py-1 hover:bg-emerald-200 dark:hover:bg-emerald-500/20"
-			aria-label="Dismiss"
+			:aria-label="$t('desktop.localMoveBanner.dismiss')"
 			@click="dismiss"
 		>
 			<X class="h-4 w-4" />

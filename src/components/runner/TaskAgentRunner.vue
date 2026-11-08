@@ -5,8 +5,9 @@
 		data-testid="task-agent-runner"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-				>Agent runner</span
+			<span
+				class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
+				>{{ $t('desktop.runner.settings.title') }}</span
 			>
 			<span class="flex-1" />
 			<RunWithAgentButton :workspace-id="workspaceId" :task-id="taskId" />

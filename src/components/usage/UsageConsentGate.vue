@@ -1,13 +1,12 @@
 <template>
 	<SettingsSection
 		v-if="gate === 'ask'"
-		title="Read AI tool logs?"
+		:title="$t('agents.usage.consent.title')"
 		data-testid="usage-consent"
 	>
 		<div class="flex flex-col gap-4 text-sm">
 			<p class="text-ink-subtle">
-				To show cost and limits, TMGR reads the session logs Claude Code and
-				Codex write on this computer. Pick which ones:
+				{{ $t('agents.usage.consent.intro') }}
 			</p>
 			<div class="flex flex-col gap-3">
 				<label
@@ -32,45 +31,43 @@
 						<span
 							v-if="!foldersOf(tool).length"
 							class="block text-xs text-ink-subtle"
-							>No logs found on this computer</span
+							>{{ $t('agents.usage.noLogs') }}</span
 						>
 					</span>
 				</label>
 			</div>
 			<p class="text-ink-subtle">
-				<span class="font-medium text-ink">Kept on this device:</span> token
-				counts, cost, model names, timestamps, session ids, project folders and
-				git branches, and the names of tools, skills and commands the AI used,
-				file types it edited and pull requests it opened. What you or the AI
-				wrote is never stored.
+				<span class="font-medium text-ink">{{
+					$t('agents.usage.consent.keptLabel')
+				}}</span>
+				{{ $t('agents.usage.consent.keptBody') }}
 			</p>
-			<p class="text-ink-subtle">
-				Nothing leaves this device unless you set up uploads with
-				<CommandChip command="tmgr usage sync" />.
-			</p>
+			<i18n-t
+				keypath="agents.usage.consent.uploads"
+				tag="p"
+				class="text-ink-subtle"
+			>
+				<template #command>
+					<CommandChip command="tmgr usage sync" />
+				</template>
+			</i18n-t>
 			<p class="text-ink-subtle" data-testid="usage-consent-scope">
-				Your choice covers AI usage in this app, background jobs, agent
-				notifications, the tmgr CLI and the TMGR runner on this device. With
-				reading on, the runner reads the logs of sessions it starts for titles,
-				questions and status, saves detected questions with your prompt and the
-				reply on this device, and may send reply text to Claude (Haiku) to spot
-				questions. Without Allow the runner reads none of it, even when you ask
-				by hand (export, summary, fork): sessions show the plain agent name and
-				no questions are detected, while running, waiting and exited keep
-				working. Turning reading off stops the next read. Questions already
-				saved stay until Forget scanned data, which deletes them too; if you
-				allow reading again, questions from sessions whose logs are still there
-				can be detected again.
+				{{ $t('agents.usage.consent.scope') }}
 			</p>
-			<p v-if="current.has_data" class="text-ink-subtle">
-				Numbers TMGR read earlier stay on this device. To delete them, use
-				Forget scanned data in
-				<router-link
-					to="/settings?tab=privacy&section=ai-usage"
-					class="text-primary hover:underline"
-					>Settings → Privacy</router-link
-				>.
-			</p>
+			<i18n-t
+				v-if="current.has_data"
+				keypath="agents.usage.consent.hasData"
+				tag="p"
+				class="text-ink-subtle"
+			>
+				<template #link>
+					<router-link
+						to="/settings?tab=privacy&section=ai-usage"
+						class="text-primary hover:underline"
+						>{{ $t('agents.usage.consent.settingsPrivacy') }}</router-link
+					>
+				</template>
+			</i18n-t>
 			<p v-if="error" role="alert" class="text-status-fix-fg">{{ error }}</p>
 			<div class="grid grid-cols-2 gap-3 sm:max-w-sm">
 				<Button
@@ -78,14 +75,14 @@
 					:disabled="busy"
 					@click="choose({ state: 'denied' })"
 				>
-					Not now
+					{{ $t('agents.usage.consent.notNow') }}
 				</Button>
 				<Button
 					variant="outline"
 					:disabled="busy || (!picked.claude && !picked.codex)"
 					@click="choose({ state: 'granted', ...picked })"
 				>
-					Allow
+					{{ $t('agents.usage.consent.allow') }}
 				</Button>
 			</div>
 		</div>
@@ -97,16 +94,22 @@
 		class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
 	>
 		<div class="min-w-0 text-sm">
-			<p class="font-medium text-ink">Reading AI tool logs is off</p>
-			<p class="mt-0.5 text-ink-subtle">
-				TMGR doesn't read your Claude Code or Codex logs for AI usage on this
-				device. Change it here or in
-				<router-link
-					to="/settings?tab=privacy&section=ai-usage"
-					class="text-primary hover:underline"
-					>Settings → Privacy</router-link
-				>.
+			<p class="font-medium text-ink">
+				{{ $t('agents.usage.consent.offTitle') }}
 			</p>
+			<i18n-t
+				keypath="agents.usage.consent.offBody"
+				tag="p"
+				class="mt-0.5 text-ink-subtle"
+			>
+				<template #link>
+					<router-link
+						to="/settings?tab=privacy&section=ai-usage"
+						class="text-primary hover:underline"
+						>{{ $t('agents.usage.consent.settingsPrivacy') }}</router-link
+					>
+				</template>
+			</i18n-t>
 			<p v-if="error" role="alert" class="mt-1 text-status-fix-fg">
 				{{ error }}
 			</p>
@@ -117,7 +120,7 @@
 			:disabled="busy"
 			@click="choose({ state: 'granted' })"
 		>
-			Allow
+			{{ $t('agents.usage.consent.allow') }}
 		</Button>
 	</div>
 </template>

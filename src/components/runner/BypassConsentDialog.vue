@@ -6,20 +6,18 @@
 	>
 		<DialogContent data-testid="bypass-consent">
 			<DialogHeader>
-				<DialogTitle>Run agents without permission prompts</DialogTitle>
+				<DialogTitle>{{ $t('desktop.runner.bypass.title') }}</DialogTitle>
 				<DialogDescription>
-					In bypass mode an agent can change files, run commands and use the
-					network on this computer without asking you first. A mistake or a
-					malicious instruction in a task cannot be stopped by a prompt.
+					{{ $t('desktop.runner.bypass.description') }}
 				</DialogDescription>
 			</DialogHeader>
 			<label class="flex flex-col gap-1.5 text-sm">
-				Type {{ BYPASS_PHRASE }} to continue
+				{{ $t('desktop.runner.bypass.type', { phrase: BYPASS_PHRASE }) }}
 				<Input v-model="typed" data-testid="bypass-phrase" autocomplete="off" />
 			</label>
 			<DialogFooter>
 				<Button variant="outline" @click="$emit('update:open', false)">
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</Button>
 				<Button
 					variant="destructive"
@@ -27,7 +25,7 @@
 					data-testid="bypass-confirm"
 					@click="$emit('confirm')"
 				>
-					Enable bypass mode
+					{{ $t('desktop.runner.bypass.enable') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>

@@ -2,7 +2,7 @@
 	<div class="flex flex-col gap-4">
 		<div
 			role="tablist"
-			aria-label="Connect an agent"
+			:aria-label="$t('agents.connectTabs.title')"
 			class="inline-flex max-w-full flex-wrap gap-1 self-start rounded-md border border-border bg-muted p-1"
 		>
 			<button
@@ -21,7 +21,7 @@
 				"
 				@click="active = tab.id"
 			>
-				{{ tab.label }}
+				{{ $t(tab.labelKey) }}
 			</button>
 		</div>
 
@@ -32,59 +32,95 @@
 			class="flex flex-col gap-3 text-sm text-ink"
 		>
 			<template v-if="active === 'claude'">
-				<p>Register the MCP server for every project with one command.</p>
-				<CodeSnippet :code="snippets.claudeCode" label="Claude Code command" />
-				<p class="text-ink-subtle">
-					Then run <CommandChip command="claude mcp list" /> to check it's
-					connected.
-				</p>
+				<p>{{ $t('agents.connectTabs.claudeIntro') }}</p>
+				<CodeSnippet
+					:code="snippets.claudeCode"
+					:label="$t('agents.connectTabs.claudeCommand')"
+				/>
+				<i18n-t
+					keypath="agents.connectTabs.claudeVerify"
+					tag="p"
+					class="text-ink-subtle"
+				>
+					<template #command>
+						<CommandChip command="claude mcp list" />
+					</template>
+				</i18n-t>
 			</template>
 
 			<template v-else-if="active === 'codex'">
-				<p>Add to <code class="font-mono">~/.codex/config.toml</code>:</p>
-				<CodeSnippet :code="snippets.codex" label="Codex config" />
-				<p class="text-ink-subtle">
-					<code class="font-mono">tool_timeout_sec</code> keeps alarm waits (up
-					to 10 min) from being cut off at Codex's 60 s default.
-				</p>
+				<i18n-t keypath="agents.connectTabs.codexIntro" tag="p">
+					<template #path>
+						<code class="font-mono">~/.codex/config.toml</code>
+					</template>
+				</i18n-t>
+				<CodeSnippet
+					:code="snippets.codex"
+					:label="$t('agents.connectTabs.codexConfig')"
+				/>
+				<i18n-t
+					keypath="agents.connectTabs.codexTimeout"
+					tag="p"
+					class="text-ink-subtle"
+				>
+					<template #setting>
+						<code class="font-mono">tool_timeout_sec</code>
+					</template>
+				</i18n-t>
 			</template>
 
 			<template v-else-if="active === 'others'">
-				<p>
-					Add to your client's MCP config (Cursor:
-					<code class="font-mono">~/.cursor/mcp.json</code>, also Windsurf,
-					Claude Desktop, and other stdio MCP clients):
-				</p>
-				<CodeSnippet :code="snippets.mcpJson" label="MCP client config" />
+				<i18n-t keypath="agents.connectTabs.othersIntro" tag="p">
+					<template #path>
+						<code class="font-mono">~/.cursor/mcp.json</code>
+					</template>
+				</i18n-t>
+				<CodeSnippet
+					:code="snippets.mcpJson"
+					:label="$t('agents.connectTabs.mcpClientConfig')"
+				/>
 			</template>
 
 			<template v-else>
-				<p>
-					Get a push when Claude Code needs you or finishes a long turn (5
-					min+), and when a Codex turn completes.
-				</p>
-				<p class="font-medium">Step 1. Install and save the token</p>
-				<CodeSnippet :code="snippets.hooksEnvFile" label="Hooks install" />
-				<p class="font-medium">
-					Step 2. Merge into
-					<code class="font-mono">~/.claude/settings.json</code>:
-				</p>
-				<CodeSnippet :code="snippets.hooksClaude" label="Claude Code hooks" />
-				<p class="font-medium">
-					Step 3. Codex — put at the top of
-					<code class="font-mono">~/.codex/config.toml</code>, above any
-					[section] (replace an existing notify line):
-				</p>
-				<CodeSnippet :code="snippets.hooksCodex" label="Codex notify" />
+				<p>{{ $t('agents.connectTabs.hooksIntro') }}</p>
+				<p class="font-medium">{{ $t('agents.connectTabs.step1') }}</p>
+				<CodeSnippet
+					:code="snippets.hooksEnvFile"
+					:label="$t('agents.connectTabs.hooksInstall')"
+				/>
+				<i18n-t keypath="agents.connectTabs.step2" tag="p" class="font-medium">
+					<template #path>
+						<code class="font-mono">~/.claude/settings.json</code>
+					</template>
+				</i18n-t>
+				<CodeSnippet
+					:code="snippets.hooksClaude"
+					:label="$t('agents.connectTabs.claudeHooks')"
+				/>
+				<i18n-t keypath="agents.connectTabs.step3" tag="p" class="font-medium">
+					<template #path>
+						<code class="font-mono">~/.codex/config.toml</code>
+					</template>
+				</i18n-t>
+				<CodeSnippet
+					:code="snippets.hooksCodex"
+					:label="$t('agents.connectTabs.codexNotify')"
+				/>
 			</template>
 		</div>
 
-		<p v-if="!onAgentsGuide" class="text-xs text-ink-subtle">
-			Needs Node 22+. Full guide:
-			<router-link to="/docs/agents" class="text-primary hover:underline">
-				Agent setup guide
-			</router-link>
-		</p>
+		<i18n-t
+			v-if="!onAgentsGuide"
+			keypath="agents.connectTabs.needsNode"
+			tag="p"
+			class="text-xs text-ink-subtle"
+		>
+			<template #link>
+				<router-link to="/docs/agents" class="text-primary hover:underline">
+					{{ $t('agents.connectTabs.setupGuide') }}
+				</router-link>
+			</template>
+		</i18n-t>
 	</div>
 </template>
 
@@ -103,10 +139,10 @@
 	}>();
 
 	const tabs = [
-		{ id: 'claude', label: 'Claude Code' },
-		{ id: 'codex', label: 'Codex' },
-		{ id: 'others', label: 'Cursor & others' },
-		{ id: 'hooks', label: 'Hooks (optional)' },
+		{ id: 'claude', labelKey: 'agents.connectTabs.tabs.claude' },
+		{ id: 'codex', labelKey: 'agents.connectTabs.tabs.codex' },
+		{ id: 'others', labelKey: 'agents.connectTabs.tabs.others' },
+		{ id: 'hooks', labelKey: 'agents.connectTabs.tabs.hooks' },
 	] as const;
 
 	const route = useRoute();

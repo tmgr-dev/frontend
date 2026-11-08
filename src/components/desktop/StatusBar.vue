@@ -7,7 +7,7 @@
 				v-if="workspace?.is_local"
 				class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 				:title="workspace.path"
-				>Local</span
+				>{{ $t('desktop.statusBar.local') }}</span
 			>
 			<router-link
 				v-if="workspace"
@@ -46,9 +46,14 @@
 			v-for="item in pluginItems"
 			:key="`${item.pluginId}:${item.itemId}`"
 			:type="item.command ? 'button' : undefined"
-			:title="`${item.pluginName} (plugin)${
-				item.tooltip ? `: ${item.tooltip}` : ''
-			}`"
+			:title="
+				item.tooltip
+					? $t('desktop.statusBar.pluginTooltip', {
+							name: item.pluginName,
+							tooltip: item.tooltip,
+						})
+					: $t('desktop.statusBar.plugin', { name: item.pluginName })
+			"
 			:class="[
 				'flex h-full items-center px-3',
 				item.command && 'hover:bg-muted hover:text-foreground',
@@ -64,7 +69,11 @@
 					type="button"
 					class="flex h-full items-center px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
 					:class="dndActive && 'text-amber-600 dark:text-amber-400'"
-					:title="dndActive ? 'Do not disturb is on' : 'Do not disturb'"
+					:title="
+						dndActive
+							? $t('desktop.statusBar.dndOn')
+							: $t('desktop.statusBar.dnd')
+					"
 				>
 					<BellOff v-if="dndActive" class="h-3.5 w-3.5" />
 					<Bell v-else class="h-3.5 w-3.5" />
@@ -80,7 +89,7 @@
 						class="mr-2 h-3.5 w-3.5"
 						:class="dndOption === option.value ? 'opacity-100' : 'opacity-0'"
 					/>
-					{{ option.label }}
+					{{ $t(option.labelKey) }}
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -88,7 +97,7 @@
 		<div
 			v-if="!localOnly"
 			class="flex h-full items-center gap-1.5 px-3"
-			:title="`Realtime: ${connectionState}`"
+			:title="$t('desktop.statusBar.realtime', { state: connectionState })"
 		>
 			<span :class="['h-1.5 w-1.5 rounded-full', liveDotClass]" />
 			{{ liveLabel }}
@@ -99,24 +108,18 @@
 			type="button"
 			class="flex h-full items-center gap-1.5 px-3 font-medium text-primary hover:bg-muted"
 			:disabled="update.status === 'installing' || update.status === 'checking'"
-			title="Restart to install the update"
+			:title="$t('desktop.statusBar.restartToInstall')"
 			@click="installUpdate"
 		>
 			<Download class="h-3.5 w-3.5" />
-			{{
-				update.status === 'installing'
-					? 'Updating…'
-					: update.status === 'checking'
-						? 'Checking for updates…'
-						: `Update to v${update.version}`
-			}}
+			{{ updateLabel }}
 		</button>
 
 		<button
 			v-if="version"
 			type="button"
 			class="flex h-full items-center px-3 hover:bg-muted hover:text-foreground"
-			title="What's new"
+			:title="$t('desktop.statusBar.whatsNew')"
 			@click="openWhatsNew"
 		>
 			v{{ version }}
@@ -126,7 +129,7 @@
 			<button
 				v-if="aiEnabled"
 				type="button"
-				title="Ask AI"
+				:title="$t('desktop.statusBar.askAi')"
 				:class="[
 					'flex h-6 w-7 items-center justify-center rounded-md hover:bg-muted hover:text-foreground',
 					aiPanelOpen && 'bg-muted text-foreground',
@@ -149,6 +152,7 @@
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { usePusher } from '@/composable/usePusher';
+	import { t } from '@/i18n';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
 	import store from '@/store';
@@ -180,10 +184,13 @@
 	};
 
 	const DND_OPTIONS = [
-		{ value: 'off', label: 'Off' },
-		{ value: '1h', label: 'For 1 hour' },
-		{ value: '3h', label: 'For 3 hours' },
-		{ value: 'tomorrow', label: 'Until tomorrow' },
+		{ value: 'off', labelKey: 'desktop.statusBar.dndOptions.off' },
+		{ value: '1h', labelKey: 'desktop.statusBar.dndOptions.oneHour' },
+		{ value: '3h', labelKey: 'desktop.statusBar.dndOptions.threeHours' },
+		{
+			value: 'tomorrow',
+			labelKey: 'desktop.statusBar.dndOptions.tomorrow',
+		},
 	];
 
 	export default defineComponent({
@@ -234,11 +241,20 @@
 			const liveLabel = computed(
 				() =>
 					({
-						connected: 'Live',
-						connecting: 'Connecting…',
-						reconnecting: 'Reconnecting…',
-						error: 'Offline',
-					})[connectionState.value] || 'Offline',
+						connected: t('desktop.statusBar.live'),
+						connecting: t('desktop.statusBar.connecting'),
+						reconnecting: t('desktop.statusBar.reconnecting'),
+						error: t('desktop.statusBar.offline'),
+					})[connectionState.value] || t('desktop.statusBar.offline'),
+			);
+			const updateLabel = computed(() =>
+				updateState.value.status === 'installing'
+					? t('desktop.statusBar.updating')
+					: updateState.value.status === 'checking'
+						? t('desktop.statusBar.checkingForUpdates')
+						: t('desktop.statusBar.updateTo', {
+								version: updateState.value.version,
+							}),
 			);
 			const liveDotClass = computed(() =>
 				connectionState.value === 'connected'
@@ -270,6 +286,7 @@
 				runningElapsed,
 				connectionState,
 				liveLabel,
+				updateLabel,
 				liveDotClass,
 				version,
 				update: updateState,

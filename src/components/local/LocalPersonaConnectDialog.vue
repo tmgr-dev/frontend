@@ -4,22 +4,26 @@
 			:class="issuedToken ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'"
 		>
 			<DialogHeader>
-				<DialogTitle>Connect an agent</DialogTitle>
+				<DialogTitle>{{ $t('desktop.personaConnect.title') }}</DialogTitle>
 			</DialogHeader>
 
 			<template v-if="!issuedToken">
 				<form class="flex flex-col gap-3" @submit.prevent="submit">
 					<label class="flex flex-col gap-1">
-						<span class="text-sm font-medium">Workspace</span>
+						<span class="text-sm font-medium">{{
+							$t('desktop.personaConnect.workspace')
+						}}</span>
 						<p class="text-sm text-muted-foreground">{{ workspace.name }}</p>
 					</label>
 
 					<label class="flex flex-col gap-1">
-						<span class="text-sm font-medium">Label</span>
+						<span class="text-sm font-medium">{{
+							$t('desktop.personaConnect.label')
+						}}</span>
 						<Input
 							:model-value="form.label"
 							maxlength="60"
-							placeholder="Claude Code on my laptop"
+							:placeholder="$t('desktop.personaConnect.labelPlaceholder')"
 							@update:model-value="(v) => (form.label = String(v))"
 						/>
 						<span
@@ -31,24 +35,30 @@
 					</label>
 
 					<label class="flex flex-col gap-1">
-						<span class="text-sm font-medium">Expires</span>
+						<span class="text-sm font-medium">{{
+							$t('desktop.personaConnect.expires')
+						}}</span>
 						<select
 							v-model.number="form.expiresInDays"
 							class="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
 						>
 							<option v-for="days in EXPIRY_OPTIONS" :key="days" :value="days">
-								{{ days }} days
+								{{ $t('desktop.personaConnect.days', { days }) }}
 							</option>
 						</select>
 					</label>
 
 					<p class="text-xs text-muted-foreground">
-						{{ BOUNDARY_LINE }}
+						{{ boundaryLine() }}
 					</p>
 
 					<DialogFooter>
 						<Button type="submit" :disabled="issuing">
-							{{ issuing ? 'Issuing…' : 'Issue token' }}
+							{{
+								issuing
+									? $t('desktop.personaConnect.issuing')
+									: $t('desktop.personaConnect.issueToken')
+							}}
 						</Button>
 					</DialogFooter>
 				</form>
@@ -56,14 +66,20 @@
 
 			<template v-else>
 				<p class="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-					Token issued.
+					{{ $t('desktop.personaConnect.tokenIssued') }}
 				</p>
-				<p class="text-sm">
-					<code class="rounded bg-muted px-2 py-1 font-mono text-xs"
-						>{{ issuedToken.prefix }}…</code
-					>
-					expires {{ formatDate(issuedToken.expiresAt) }}
-				</p>
+				<i18n-t
+					keypath="desktop.personaConnect.expiresOn"
+					tag="p"
+					class="text-sm"
+				>
+					<template #prefix>
+						<code class="rounded bg-muted px-2 py-1 font-mono text-xs"
+							>{{ issuedToken.prefix }}…</code
+						>
+					</template>
+					<template #date>{{ formatDate(issuedToken.expiresAt) }}</template>
+				</i18n-t>
 
 				<Button
 					type="button"
@@ -72,11 +88,17 @@
 					class="self-start"
 					@click="copyToken"
 				>
-					{{ copiedToken ? 'Copied' : 'Copy token' }}
+					{{
+						copiedToken
+							? $t('common.actions.copied')
+							: $t('desktop.personaConnect.copyToken')
+					}}
 				</Button>
 
 				<div class="flex min-w-0 flex-col gap-2">
-					<p class="text-sm font-medium">MCP config</p>
+					<p class="text-sm font-medium">
+						{{ $t('desktop.personaConnect.mcpConfig') }}
+					</p>
 
 					<p class="text-xs text-muted-foreground">
 						Codex (<code>~/.codex/config.toml</code>)
@@ -86,18 +108,24 @@
 						>{{ codexSnippet }}</pre>
 
 					<p class="text-xs text-muted-foreground">
-						Claude Code: run this once in your terminal, then restart Claude
-						Code. TMGR must be running.
+						{{ $t('desktop.personaConnect.claudeHint') }}
 					</p>
 					<pre
 						class="overflow-x-auto rounded bg-muted p-3 font-mono text-xs whitespace-pre"
 						>{{ claudeSnippet }}</pre>
 
-					<p class="text-xs break-words text-muted-foreground">
-						Other companions: read the token id from
-						<code>--token-id {{ issuedToken.id }}</code
-						>, or point <code>TMGR_LOCAL_TOKEN</code> at the secret.
-					</p>
+					<i18n-t
+						keypath="desktop.personaConnect.otherCompanions"
+						tag="p"
+						class="text-xs break-words text-muted-foreground"
+					>
+						<template #tokenId>
+							<code>--token-id {{ issuedToken.id }}</code>
+						</template>
+						<template #env>
+							<code>TMGR_LOCAL_TOKEN</code>
+						</template>
+					</i18n-t>
 
 					<Button
 						type="button"
@@ -106,12 +134,18 @@
 						class="self-start"
 						@click="copyConfig"
 					>
-						{{ copiedConfig ? 'Copied' : 'Copy MCP config' }}
+						{{
+							copiedConfig
+								? $t('common.actions.copied')
+								: $t('desktop.personaConnect.copyConfig')
+						}}
 					</Button>
 				</div>
 
 				<DialogFooter>
-					<Button type="button" @click="close">Done</Button>
+					<Button type="button" @click="close">{{
+						$t('common.actions.done')
+					}}</Button>
 				</DialogFooter>
 			</template>
 		</DialogContent>
@@ -129,6 +163,7 @@
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
+	import { currentLocale, t } from '@/i18n';
 	import { configSnippet } from '@/local/connectAgent';
 	import {
 		copyLocalToken,
@@ -154,7 +189,8 @@
 		type PropType,
 	} from 'vue';
 
-	const BOUNDARY_LINE = `The token keeps an agent inside this persona's permissions and signs everything it writes. It is not a lock against other programs on ${thisComputerName()}: anything running as you can read this workspace's file directly.`;
+	const boundaryLine = () =>
+		t('desktop.personaConnect.boundary', { computer: thisComputerName() });
 
 	export default defineComponent({
 		name: 'LocalPersonaConnectDialog',
@@ -242,7 +278,10 @@
 					if (errors) {
 						fieldErrors.value = errors.errors;
 					} else {
-						toast({ title: 'Could not issue token', variant: 'destructive' });
+						toast({
+							title: t('desktop.personaConnect.issueFailed'),
+							variant: 'destructive',
+						});
 					}
 				} finally {
 					issuing.value = false;
@@ -284,10 +323,13 @@
 				try {
 					await copyLocalToken(issuedToken.value.id);
 					copiedToken.value = true;
-					toast({ title: 'Copied to clipboard' });
+					toast({ title: t('desktop.personaConnect.copiedToClipboard') });
 					setTimeout(() => (copiedToken.value = false), 2000);
 				} catch {
-					toast({ title: 'Could not copy token', variant: 'destructive' });
+					toast({
+						title: t('desktop.personaConnect.copyTokenFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
@@ -295,17 +337,18 @@
 				try {
 					await navigator.clipboard.writeText(mcpConfigText.value);
 					copiedConfig.value = true;
-					toast({ title: 'Copied to clipboard' });
+					toast({ title: t('desktop.personaConnect.copiedToClipboard') });
 					setTimeout(() => (copiedConfig.value = false), 2000);
 				} catch {
 					toast({
-						title: 'Could not copy to clipboard',
+						title: t('desktop.personaConnect.copyFailed'),
 						variant: 'destructive',
 					});
 				}
 			};
 
-			const formatDate = (date: string) => new Date(date).toLocaleDateString();
+			const formatDate = (date: string) =>
+				new Date(date).toLocaleDateString(currentLocale());
 
 			return {
 				form,
@@ -323,7 +366,7 @@
 				copyConfig,
 				formatDate,
 				EXPIRY_OPTIONS,
-				BOUNDARY_LINE,
+				boundaryLine,
 			};
 		},
 	});

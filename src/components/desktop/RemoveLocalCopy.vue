@@ -1,11 +1,15 @@
 <template>
 	<div class="flex flex-col gap-3" data-testid="remove-local-copy">
-		<p class="text-sm text-ink-subtle">
-			Copied to your cloud workspace <strong>{{ published.name }}</strong> on
-			{{ movedOn }}. Removing the local copy deletes it from this computer. A
-			fresh archive of the current data is created first and stays in the
-			backups folder.
-		</p>
+		<i18n-t
+			keypath="desktop.removeLocalCopy.intro"
+			tag="p"
+			class="text-sm text-ink-subtle"
+		>
+			<template #name>
+				<strong>{{ published.name }}</strong>
+			</template>
+			<template #date>{{ movedOn }}</template>
+		</i18n-t>
 
 		<ul class="flex flex-col gap-1.5 text-sm">
 			<li v-for="guard in guards" :key="guard.id" class="flex gap-2">
@@ -37,7 +41,11 @@
 					:disabled="busy"
 					@click="exportFile(file)"
 				>
-					{{ file.resolution === 'exported' ? 'Exported' : 'Export' }}
+					{{
+						file.resolution === 'exported'
+							? $t('desktop.removeLocalCopy.exported')
+							: $t('desktop.removeLocalCopy.export')
+					}}
 				</Button>
 				<label class="flex items-center gap-1.5 text-xs">
 					<input
@@ -47,7 +55,7 @@
 							acceptLost(file, ($event.target as HTMLInputElement).checked)
 						"
 					/>
-					Accept as lost
+					{{ $t('desktop.removeLocalCopy.acceptLost') }}
 				</label>
 			</li>
 		</ul>
@@ -59,7 +67,11 @@
 				:disabled="busy"
 				@click="createArchive"
 			>
-				{{ published.archive ? 'Create a new archive' : 'Create archive' }}
+				{{
+					published.archive
+						? $t('desktop.removeLocalCopy.createNewArchive')
+						: $t('desktop.removeLocalCopy.createArchive')
+				}}
 			</Button>
 			<Button
 				size="sm"
@@ -67,7 +79,7 @@
 				:disabled="!allowed || busy"
 				@click="confirmOpen = true"
 			>
-				Remove local copy…
+				{{ $t('desktop.removeLocalCopy.removeButton') }}
 			</Button>
 		</div>
 		<p v-if="otherAccount" role="alert" class="text-sm text-destructive">
@@ -79,10 +91,14 @@
 
 		<ConfirmByNameDialog
 			v-model:open="confirmOpen"
-			title="Remove local copy"
-			:description="`This deletes the local workspace ${workspace.name} and its files from this computer. The cloud copy and the archive in the backups folder stay. This cannot be undone.`"
+			:title="$t('desktop.removeLocalCopy.confirmTitle')"
+			:description="
+				$t('desktop.removeLocalCopy.confirmDescription', {
+					name: workspace.name,
+				})
+			"
 			:expected-name="workspace.name"
-			confirm-label="Remove local copy"
+			:confirm-label="$t('desktop.removeLocalCopy.confirmLabel')"
 			:busy="busy"
 			@confirm="remove"
 		/>
@@ -93,6 +109,7 @@
 	import ConfirmByNameDialog from '@/components/general/ConfirmByNameDialog.vue';
 	import { Button } from '@/components/ui/button';
 	import { useToast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { formatMoveDate } from '@/local/moveToCloud/banner';
 	import {
 		exportExcludedFile,
@@ -136,7 +153,7 @@
 	import { useStore } from 'vuex';
 
 	const message = (e: unknown) =>
-		(e as any)?.message || String(e) || 'Something went wrong.';
+		(e as any)?.message || String(e) || t('desktop.removeLocalCopy.generic');
 
 	export default defineComponent({
 		name: 'RemoveLocalCopy',

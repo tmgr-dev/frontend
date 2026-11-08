@@ -2,11 +2,9 @@
 	<Dialog :open="open" @update:open="(value: boolean) => !value && decline()">
 		<DialogContent class="max-w-md" data-testid="demo-offer">
 			<DialogHeader>
-				<DialogTitle>Want a quick tour with sample data?</DialogTitle>
+				<DialogTitle>{{ $t('desktop.demoOffer.title') }}</DialogTitle>
 				<DialogDescription>
-					The demo is a separate workspace with a ready board and a sample agent
-					run. It stays on this Mac, never mixes with your own tasks, and you
-					can delete it any time.
+					{{ $t('desktop.demoOffer.description') }}
 				</DialogDescription>
 			</DialogHeader>
 			<p v-if="error" class="text-sm text-destructive">{{ error }}</p>
@@ -16,10 +14,13 @@
 					data-testid="demo-offer-decline"
 					:disabled="busy"
 					@click="decline"
-					>No thanks</Button
+					>{{ $t('desktop.demoOffer.decline') }}</Button
 				>
-				<Button data-testid="demo-offer-accept" :disabled="busy" @click="accept"
-					>Watch the demo</Button
+				<Button
+					data-testid="demo-offer-accept"
+					:disabled="busy"
+					@click="accept"
+					>{{ $t('desktop.demoOffer.accept') }}</Button
 				>
 			</DialogFooter>
 		</DialogContent>

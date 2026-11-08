@@ -10,7 +10,7 @@
 			:description="sectionDescription(row)"
 		>
 			<div class="divide-y divide-border">
-				<SettingsRow label="Data folder">
+				<SettingsRow :label="$t('desktop.localData.dataFolder')">
 					<template #description>
 						<span class="font-mono text-xs break-all">{{
 							row.workspace.path
@@ -20,7 +20,10 @@
 						{{ revealLabel }}
 					</Button>
 				</SettingsRow>
-				<SettingsRow label="Backups folder" data-tour="settings.data-backups">
+				<SettingsRow
+					:label="$t('desktop.localData.backupsFolder')"
+					data-tour="settings.data-backups"
+				>
 					<template #description>
 						<span class="font-mono text-xs break-all">{{
 							row.status?.backups_dir ?? ''
@@ -32,13 +35,17 @@
 						:disabled="!row.status"
 						@click="openBackups(row)"
 					>
-						Open folder
+						{{ $t('desktop.localData.openFolder') }}
 					</Button>
 				</SettingsRow>
 				<SettingsRow :label="lastBackup(row)">
 					<template v-if="row.status?.last_error" #description>
 						<span class="text-destructive">
-							Last backup failed: {{ row.status.last_error }}
+							{{
+								$t('desktop.localData.lastBackupFailed', {
+									error: row.status.last_error,
+								})
+							}}
 						</span>
 					</template>
 					<Button
@@ -48,24 +55,27 @@
 						:aria-busy="row.busy"
 						@click="backup(row)"
 					>
-						{{ row.busy ? 'Backing up…' : 'Back up now' }}
+						{{
+							row.busy
+								? $t('desktop.localData.backingUp')
+								: $t('desktop.localData.backUpNow')
+						}}
 					</Button>
 				</SettingsRow>
 				<SettingsRow
 					v-if="!row.workspace.demo"
-					label="Move to cloud"
+					:label="$t('desktop.localData.moveToCloud')"
 					data-tour="settings.data-move"
 				>
 					<template #description>
 						<template v-if="!signedIn">
-							Sign in to move this workspace to your account.
+							{{ $t('desktop.localData.moveSignIn') }}
 						</template>
 						<template v-else-if="moveState(row).job">
-							A move is in progress.
+							{{ $t('desktop.localData.moveInProgress') }}
 						</template>
 						<template v-else>
-							Copies this workspace into a new workspace in your TMGR account.
-							The local copy stays.
+							{{ $t('desktop.localData.moveDescription') }}
 						</template>
 					</template>
 					<Button
@@ -74,7 +84,7 @@
 						size="sm"
 						@click="openProgress(row.workspace.code)"
 					>
-						View progress
+						{{ $t('desktop.localData.viewProgress') }}
 					</Button>
 					<Button
 						v-else
@@ -83,7 +93,7 @@
 						:disabled="!signedIn"
 						@click="openDialog(row.workspace.code)"
 					>
-						Move to cloud…
+						{{ $t('desktop.localData.moveToCloudButton') }}
 					</Button>
 				</SettingsRow>
 			</div>
@@ -91,7 +101,9 @@
 				v-if="signedIn && moveState(row).published"
 				class="mt-4 border-t border-border pt-4"
 			>
-				<h3 class="mb-2 text-sm font-semibold">Remove local copy</h3>
+				<h3 class="mb-2 text-sm font-semibold">
+					{{ $t('desktop.localData.removeLocalCopy') }}
+				</h3>
 				<RemoveLocalCopy
 					:key="moveState(row).published!.jobId + moveState(row).published!.at"
 					:workspace="row.workspace"
@@ -103,7 +115,7 @@
 			</p>
 		</SettingsSection>
 		<p v-if="loaded && !rows.length" class="text-sm text-ink-subtle">
-			There are no local workspaces on this computer yet.
+			{{ $t('desktop.localData.empty') }}
 		</p>
 	</div>
 </template>
@@ -113,6 +125,7 @@
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
+	import { t } from '@/i18n';
 	import {
 		backupNow,
 		backupStatus,
@@ -145,7 +158,7 @@
 	}
 
 	const message = (e: unknown) =>
-		(e as any)?.message || String(e) || 'Something went wrong.';
+		(e as any)?.message || String(e) || t('desktop.localData.generic');
 
 	export default defineComponent({
 		name: 'LocalDataSettings',
@@ -214,12 +227,11 @@
 			const sectionDescription = (row: Row) => {
 				const published = moveState(row).published;
 				return published
-					? `Copied to your cloud workspace ${
-							published.name
-						} on ${formatMoveDate(
-							published.at,
-						)}. Backups stay on this computer.`
-					: 'No cloud copy. Backups stay on this computer.';
+					? t('desktop.localData.copiedDescription', {
+							name: published.name,
+							date: formatMoveDate(published.at),
+						})
+					: t('desktop.localData.noCloudCopy');
 			};
 
 			return {

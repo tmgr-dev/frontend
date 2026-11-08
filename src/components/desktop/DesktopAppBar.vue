@@ -5,17 +5,17 @@
 		data-testid="desktop-app-bar"
 		class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-sky-300 bg-sky-100 px-4 py-1.5 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
 	>
-		<span>You use TMGR Desktop.</span>
+		<span>{{ $t('desktop.appBar.using') }}</span>
 		<a
 			:href="openHref"
 			class="rounded-md border border-sky-400 bg-white px-2 py-0.5 font-medium hover:bg-sky-200 dark:border-sky-500/50 dark:bg-transparent dark:hover:bg-sky-500/20"
 		>
-			Open in TMGR Desktop
+			{{ $t('desktop.appBar.open') }}
 		</a>
 		<button
 			type="button"
 			class="rounded-md px-2 py-1 hover:bg-sky-200 dark:hover:bg-sky-500/20"
-			aria-label="Hide this bar until next sign-in"
+			:aria-label="$t('desktop.appBar.hide')"
 			@click="dismiss"
 		>
 			<X class="h-4 w-4" />

@@ -1,8 +1,8 @@
 <template>
 	<div>
 		<BaseLayout
-			title="AI usage"
-			subtitle="Cost is API-equivalent (list prices), not your subscription bill."
+			:title="$t('agents.aiUsage.title')"
+			:subtitle="$t('agents.aiUsage.subtitle')"
 		>
 			<template #body>
 				<div class="flex flex-col gap-6">
@@ -13,7 +13,9 @@
 						class="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
 					>
 						<p class="text-sm text-destructive">{{ error }}</p>
-						<Button variant="outline" size="sm" @click="load">Retry</Button>
+						<Button variant="outline" size="sm" @click="load">{{
+							$t('common.actions.retry')
+						}}</Button>
 					</div>
 
 					<div
@@ -21,7 +23,7 @@
 						role="status"
 						class="rounded-lg border border-border bg-card p-3 text-sm text-ink-subtle"
 					>
-						Reading AI tool logs, the first time can take a few minutes
+						{{ $t('agents.aiUsage.scanning') }}
 					</div>
 
 					<div
@@ -30,9 +32,11 @@
 						class="flex flex-col gap-3 rounded-lg border border-amber-500/40 bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
 					>
 						<p class="text-sm text-amber-700 dark:text-amber-400">
-							Some log files could not be read; numbers may be incomplete
+							{{ $t('agents.aiUsage.scanIncomplete') }}
 						</p>
-						<Button variant="outline" size="sm" @click="load">Retry</Button>
+						<Button variant="outline" size="sm" @click="load">{{
+							$t('common.actions.retry')
+						}}</Button>
 					</div>
 
 					<UsageConsentGate
@@ -45,29 +49,26 @@
 						v-if="!overview && !error && !gated"
 						class="rounded-lg border border-border bg-card p-6 text-sm text-ink-subtle"
 					>
-						Loading usage
+						{{ $t('agents.aiUsage.loading') }}
 					</div>
 
 					<SettingsSection
 						v-else-if="overview && !overview.supported"
-						title="Not available"
+						:title="$t('agents.aiUsage.notAvailable')"
 					>
 						<p class="text-sm text-ink-subtle">
 							{{
-								overview.unsupported_reason ||
-								'AI usage is not available on this computer.'
+								overview.unsupported_reason || $t('agents.aiUsage.unsupported')
 							}}
 						</p>
 					</SettingsSection>
 
 					<SettingsSection
 						v-else-if="overview && !overview.has_data && !scanning"
-						title="No usage yet"
+						:title="$t('agents.aiUsage.noUsageYet')"
 					>
 						<p class="text-sm text-ink-subtle">
-							TMGR looked for Claude Code and Codex logs on this computer and
-							found no usage yet. Use one of them and come back, the numbers
-							appear here automatically.
+							{{ $t('agents.aiUsage.noUsageBody') }}
 						</p>
 					</SettingsSection>
 
@@ -87,22 +88,32 @@
 									{{ money(w.totals.cost_usd) }}
 								</p>
 								<p class="text-xs text-ink-subtle">
-									{{ count(w.totals.tokens_total) }} tokens ·
-									{{ count(w.totals.events) }} events
+									{{
+										$t('agents.aiUsage.tokens', {
+											n: count(w.totals.tokens_total),
+										})
+									}}
+									·
+									{{
+										$t('agents.aiUsage.events', { n: count(w.totals.events) })
+									}}
 								</p>
 								<p
 									v-if="w.totals.unpriced_events > 0"
 									class="mt-1 text-xs text-amber-700 dark:text-amber-400"
 								>
-									{{ count(w.totals.unpriced_events) }} events have no known
-									price and are not counted in the cost.
+									{{
+										$t('agents.aiUsage.unpriced', {
+											n: count(w.totals.unpriced_events),
+										})
+									}}
 								</p>
 							</div>
 						</div>
 
 						<UsageWeekStrip :days="overview.days" />
 
-						<SettingsSection title="Limits">
+						<SettingsSection :title="$t('agents.aiUsage.limits')">
 							<div v-if="overview.limits.length" class="flex flex-col gap-4">
 								<div v-for="l in overview.limits" :key="limitKey(l)">
 									<div
@@ -118,7 +129,11 @@
 											</span>
 										</span>
 										<span class="text-sm text-ink tabular-nums">
-											{{ percent(l.used_pct) }}% used
+											{{
+												$t('agents.aiUsage.usedPct', {
+													pct: percent(l.used_pct),
+												})
+											}}
 										</span>
 									</div>
 									<div
@@ -135,37 +150,44 @@
 										/>
 									</div>
 									<p class="mt-1 text-xs text-ink-subtle">
-										Resets in {{ span(l.resets_in_s) }}
+										{{
+											$t('agents.aiUsage.resetsIn', {
+												span: span(l.resets_in_s),
+											})
+										}}
 										<template v-if="l.plan"> · {{ l.plan }}</template>
-										· {{ l.source }} · updated {{ ago(l.age_s) }}
+										· {{ l.source }} ·
+										{{ $t('agents.aiUsage.updated', { ago: ago(l.age_s) }) }}
 									</p>
 									<LimitForecast :limit="l" />
 								</div>
 							</div>
-							<p
+							<i18n-t
 								v-if="hasAccount('claude') && !hasLimit('claude')"
+								keypath="agents.aiUsage.noClaudeLimits"
+								tag="p"
 								class="mt-3 text-sm text-ink-subtle"
 							>
-								No Claude Code limits yet. Run
-								<CommandChip command="tmgr usage statusline install" />
-								in a terminal to start collecting them.
-							</p>
+								<template #command>
+									<CommandChip command="tmgr usage statusline install" />
+								</template>
+							</i18n-t>
 							<p
 								v-if="hasAccount('codex') && !hasLimit('codex')"
 								class="mt-3 text-sm text-ink-subtle"
 							>
-								No Codex limits yet. They appear after your next Codex session.
+								{{ $t('agents.aiUsage.noCodexLimits') }}
 							</p>
 						</SettingsSection>
 
 						<UsageDailyChart :days="overview.days" />
 
-						<SettingsSection title="By tool and model">
+						<SettingsSection :title="$t('agents.aiUsage.byToolModel')">
 							<template #actions>
 								<div
 									class="inline-flex rounded-md border border-border p-0.5"
 									role="group"
-									aria-label="Period"
+									:aria-label="$t('agents.aiUsage.period')"
 								>
 									<button
 										v-for="w in overview.windows"
@@ -189,11 +211,21 @@
 									class="hidden text-left text-xs text-ink-subtle sm:table-header-group"
 								>
 									<tr>
-										<th class="py-2 pr-3 font-medium">Tool</th>
-										<th class="py-2 pr-3 font-medium">Model</th>
-										<th class="py-2 pr-3 text-right font-medium">Cost</th>
-										<th class="py-2 pr-3 text-right font-medium">Tokens</th>
-										<th class="py-2 text-right font-medium">Events</th>
+										<th class="py-2 pr-3 font-medium">
+											{{ $t('agents.aiUsage.tool') }}
+										</th>
+										<th class="py-2 pr-3 font-medium">
+											{{ $t('agents.aiUsage.model') }}
+										</th>
+										<th class="py-2 pr-3 text-right font-medium">
+											{{ $t('agents.aiUsage.cost') }}
+										</th>
+										<th class="py-2 pr-3 text-right font-medium">
+											{{ $t('agents.aiUsage.tokensHeader') }}
+										</th>
+										<th class="py-2 text-right font-medium">
+											{{ $t('agents.aiUsage.eventsHeader') }}
+										</th>
 									</tr>
 								</thead>
 								<tbody class="max-sm:block">
@@ -202,34 +234,43 @@
 										:key="r.tool + r.model"
 										class="block border-t border-border py-2 sm:table-row sm:py-0"
 									>
-										<td :class="cell" data-label="Tool">
+										<td :class="cell" :data-label="$t('agents.aiUsage.tool')">
 											{{ toolName(r.tool) }}
 										</td>
-										<td :class="cell" data-label="Model">
+										<td :class="cell" :data-label="$t('agents.aiUsage.model')">
 											<span class="break-all">{{ r.model }}</span>
 										</td>
-										<td :class="cellNum" data-label="Cost">
+										<td
+											:class="cellNum"
+											:data-label="$t('agents.aiUsage.cost')"
+										>
 											<span
 												>{{ money(r.cost_usd) }}
 												<span
 													v-if="r.unpriced_events > 0"
 													class="text-amber-700 dark:text-amber-400"
-													title="Some events have no known price"
+													:title="$t('agents.aiUsage.unpricedTitle')"
 													>*</span
 												></span
 											>
 										</td>
-										<td :class="cellNum" data-label="Tokens">
+										<td
+											:class="cellNum"
+											:data-label="$t('agents.aiUsage.tokensHeader')"
+										>
 											{{ count(r.tokens_total) }}
 										</td>
-										<td :class="cellNum" data-label="Events">
+										<td
+											:class="cellNum"
+											:data-label="$t('agents.aiUsage.eventsHeader')"
+										>
 											{{ count(r.events) }}
 										</td>
 									</tr>
 								</tbody>
 							</table>
 							<p v-else class="text-sm text-ink-subtle">
-								No usage in this period.
+								{{ $t('agents.usage.noUsage') }}
 							</p>
 						</SettingsSection>
 
@@ -246,14 +287,14 @@
 						/>
 
 						<SettingsSection
-							title="Tasks"
-							description="Attribution is estimated from agent run windows and git branches."
+							:title="$t('agents.aiUsage.tasks')"
+							:description="$t('agents.aiUsage.tasksDescription')"
 						>
 							<p v-if="tasksError" class="text-sm text-ink-subtle">
 								{{ tasksError }}
 							</p>
 							<p v-else-if="tasksPending" class="text-sm text-ink-subtle">
-								Matching usage to tasks
+								{{ $t('agents.aiUsage.matching') }}
 							</p>
 							<template v-else-if="tasks">
 								<table
@@ -264,9 +305,15 @@
 										class="hidden text-left text-xs text-ink-subtle sm:table-header-group"
 									>
 										<tr>
-											<th class="py-2 pr-3 font-medium">Task</th>
-											<th class="py-2 pr-3 text-right font-medium">Cost</th>
-											<th class="py-2 text-right font-medium">Tokens</th>
+											<th class="py-2 pr-3 font-medium">
+												{{ $t('agents.aiUsage.task') }}
+											</th>
+											<th class="py-2 pr-3 text-right font-medium">
+												{{ $t('agents.aiUsage.cost') }}
+											</th>
+											<th class="py-2 text-right font-medium">
+												{{ $t('agents.aiUsage.tokensHeader') }}
+											</th>
 										</tr>
 									</thead>
 									<tbody class="max-sm:block">
@@ -275,7 +322,7 @@
 											:key="t.task_ref"
 											class="block border-t border-border py-2 sm:table-row sm:py-0"
 										>
-											<td :class="cell" data-label="Task">
+											<td :class="cell" :data-label="$t('agents.aiUsage.task')">
 												<span class="min-w-0">
 													<router-link
 														:to="t.path"
@@ -293,53 +340,65 @@
 													}}</span>
 												</span>
 											</td>
-											<td :class="cellNum" data-label="Cost">
+											<td
+												:class="cellNum"
+												:data-label="$t('agents.aiUsage.cost')"
+											>
 												<span
 													>{{ money(t.cost_usd) }}
 													<span
 														v-if="t.unpriced_events > 0"
 														class="text-amber-700 dark:text-amber-400"
-														title="Some events have no known price"
+														:title="$t('agents.aiUsage.unpricedTitle')"
 														>*</span
 													></span
 												>
 											</td>
-											<td :class="cellNum" data-label="Tokens">
+											<td
+												:class="cellNum"
+												:data-label="$t('agents.aiUsage.tokensHeader')"
+											>
 												{{ count(t.tokens_total) }}
 											</td>
 										</tr>
 									</tbody>
 								</table>
 								<p v-else class="text-sm text-ink-subtle">
-									No usage could be matched to a task yet.
+									{{ $t('agents.aiUsage.noMatch') }}
 								</p>
 								<p
 									v-if="failedWorkspaces > 0"
 									class="mt-3 text-xs text-ink-subtle"
 								>
-									Runs from {{ failedWorkspaces }}
-									{{ failedWorkspaces === 1 ? 'workspace' : 'workspaces' }}
-									could not be loaded
+									{{ $t('agents.aiUsage.failedWorkspaces', failedWorkspaces) }}
 								</p>
 								<p v-if="runsTruncated" class="mt-3 text-xs text-ink-subtle">
-									Only the most recent 5000 runs were used
+									{{ $t('agents.aiUsage.runsTruncated') }}
 								</p>
 								<p
 									v-if="pagesTruncated > 0"
 									class="mt-3 text-xs text-ink-subtle"
 								>
-									Only the most recent runs were read
+									{{ $t('agents.aiUsage.pagesTruncated') }}
 								</p>
 								<p class="mt-3 text-xs text-ink-subtle">
-									Ambiguous: {{ money(tasks.ambiguous.cost_usd) }} ·
-									Unattributed:
-									{{ money(tasks.unattributed.cost_usd) }}
+									{{
+										$t('agents.aiUsage.ambiguous', {
+											cost: money(tasks.ambiguous.cost_usd),
+										})
+									}}
+									·
+									{{
+										$t('agents.aiUsage.unattributed', {
+											cost: money(tasks.unattributed.cost_usd),
+										})
+									}}
 								</p>
 							</template>
 						</SettingsSection>
 
 						<p v-if="overview.history_floor" class="text-xs text-ink-subtle">
-							Only the last 90 days are kept.
+							{{ $t('agents.aiUsage.historyFloor') }}
 						</p>
 					</template>
 
@@ -347,12 +406,7 @@
 						v-if="consent?.state === 'granted'"
 						class="text-xs text-ink-subtle"
 					>
-						TMGR reads the session logs your AI tools write on this computer and
-						keeps token counts, cost, model names, timestamps, session ids,
-						project folders and git branches, and the names of tools, skills and
-						commands the AI used, file types it edited and pull requests it
-						opened. Prompt and reply text is never stored. Data stays on this
-						device unless you upload it with tmgr usage sync.
+						{{ $t('agents.aiUsage.privacyNote') }}
 					</p>
 				</div>
 			</template>
@@ -373,6 +427,7 @@
 	import UsageConsentGate from '@/components/usage/UsageConsentGate.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { isRunnerSupported } from '@/runner/api';
 	import { useRunner } from '@/runner/store';
 	import store from '@/store';
@@ -475,7 +530,9 @@
 					tasks.value = result;
 				} catch (e) {
 					if (disposed || run !== generation) return;
-					tasksError.value = `Could not match usage to tasks: ${errorText(e)}`;
+					tasksError.value = t('agents.aiUsage.matchFailed', {
+						error: errorText(e),
+					});
 				} finally {
 					if (!disposed && run === generation) tasksPending.value = false;
 				}
@@ -529,7 +586,7 @@
 			};
 
 			onMounted(() => {
-				setDocumentTitle('AI usage');
+				setDocumentTitle(t('agents.aiUsage.documentTitle'));
 				void load();
 			});
 			onBeforeUnmount(() => {

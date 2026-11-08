@@ -1,8 +1,7 @@
 <template>
 	<div class="flex flex-col gap-1" data-tour="settings.desktop-shortcuts">
 		<p class="mb-3 text-sm text-muted-foreground">
-			Global shortcuts work from any app, even when TMGR is hidden. Click a
-			shortcut and press a new combination; Esc cancels.
+			{{ $t('desktop.shortcuts.intro') }}
 		</p>
 		<div
 			v-for="action in actions"
@@ -10,8 +9,10 @@
 			class="flex flex-wrap items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 dark:hover:bg-muted/30"
 		>
 			<div class="min-w-[200px] flex-1">
-				<div class="text-sm font-medium">{{ action.label }}</div>
-				<div class="text-xs text-muted-foreground">{{ action.hint }}</div>
+				<div class="text-sm font-medium">{{ $t(action.labelKey) }}</div>
+				<div class="text-xs text-muted-foreground">
+					{{ $t(action.hintKey) }}
+				</div>
 			</div>
 			<Button
 				variant="outline"
@@ -27,14 +28,14 @@
 			>
 				{{
 					recording === action.id
-						? 'Press keys…'
+						? $t('desktop.shortcuts.pressKeys')
 						: describe(config[action.id].accelerator)
 				}}
 			</Button>
 			<Button
 				variant="ghost"
 				size="sm"
-				title="Reset to default"
+				:title="$t('desktop.shortcuts.resetToDefault')"
 				@click="reset(action.id)"
 			>
 				<RotateCcw class="h-4 w-4" />
@@ -51,7 +52,7 @@
 					v-else-if="status[action.id] === 'taken'"
 					class="text-destructive"
 				>
-					Taken by another app — choose a different shortcut
+					{{ $t('desktop.shortcuts.taken') }}
 				</span>
 			</div>
 		</div>
@@ -61,6 +62,7 @@
 <script>
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
+	import { t } from '@/i18n';
 	import { desktopPlatform, isMacLike } from '@/utils/desktop';
 	import {
 		DEFAULT_SHORTCUTS,
@@ -80,29 +82,29 @@
 	const ACTIONS = [
 		{
 			id: 'quickAdd',
-			label: 'Quick add',
-			hint: 'Opens a small window to add a Daily Routine',
+			labelKey: 'desktop.shortcuts.actions.quickAdd.label',
+			hintKey: 'desktop.shortcuts.actions.quickAdd.hint',
 		},
 		{
 			id: 'timer',
-			label: 'Start / stop timer',
-			hint: 'Stops running timers, or restarts the last task',
+			labelKey: 'desktop.shortcuts.actions.timer.label',
+			hintKey: 'desktop.shortcuts.actions.timer.hint',
 		},
 		{
 			id: 'screenshot',
-			label: 'Screenshot to task',
-			hint: isMacLike(desktopPlatform())
-				? 'Select an area; creates a backlog task with the image (needs Screen Recording)'
-				: 'Select an area; creates a backlog task with the image',
+			labelKey: 'desktop.shortcuts.actions.screenshot.label',
+			hintKey: isMacLike(desktopPlatform())
+				? 'desktop.shortcuts.actions.screenshot.hintMac'
+				: 'desktop.shortcuts.actions.screenshot.hint',
 		},
 		{
 			id: 'selection',
-			label: 'Selected text to task',
-			hint: 'Copies the selection from any app; needs Accessibility permission',
+			labelKey: 'desktop.shortcuts.actions.selection.label',
+			hintKey: 'desktop.shortcuts.actions.selection.hint',
 		},
 	];
 
-	const LABELS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.label]));
+	const LABELS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.labelKey]));
 
 	export default defineComponent({
 		name: 'DesktopShortcutsSettings',
@@ -133,7 +135,7 @@
 				if (invalid) {
 					errors[action] =
 						invalid === 'reserved'
-							? 'This is a system shortcut'
+							? t('desktop.shortcuts.systemShortcut')
 							: primaryModifiersHint();
 					return;
 				}
@@ -143,7 +145,9 @@
 					accelerator,
 				);
 				if (conflict) {
-					errors[action] = `Already used for “${LABELS[conflict]}”`;
+					errors[action] = t('desktop.shortcuts.alreadyUsed', {
+						label: t(LABELS[conflict]),
+					});
 					return;
 				}
 				errors[action] = '';

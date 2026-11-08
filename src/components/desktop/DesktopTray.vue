@@ -2,15 +2,23 @@
 	<AlertDialog :open="!!away" @update:open="(open) => !open && (away = null)">
 		<AlertDialogContent>
 			<AlertDialogHeader>
-				<AlertDialogTitle> You were away for {{ awayLabel }} </AlertDialogTitle>
+				<AlertDialogTitle>{{
+					$t('desktop.tray.awayTitle', { duration: awayLabel })
+				}}</AlertDialogTitle>
 				<AlertDialogDescription>
-					Since {{ awaySinceLabel }} the timer kept running on
-					{{ runningLabel }}.
+					{{
+						$t('desktop.tray.awayDescription', {
+							since: awaySinceLabel,
+							tasks: runningLabel,
+						})
+					}}
 				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
-				<AlertDialogCancel>Keep the time</AlertDialogCancel>
-				<AlertDialogAction @click="stopAll">Stop the timer</AlertDialogAction>
+				<AlertDialogCancel>{{ $t('desktop.tray.keepTime') }}</AlertDialogCancel>
+				<AlertDialogAction @click="stopAll">{{
+					$t('desktop.tray.stopTimer')
+				}}</AlertDialogAction>
 			</AlertDialogFooter>
 		</AlertDialogContent>
 	</AlertDialog>
@@ -32,6 +40,7 @@
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
 	import { ToastAction, useToast } from '@/components/ui/toast';
+	import { currentLocale, t } from '@/i18n';
 	import { resolveTaskByKey } from '@/composable/useTaskKeyLinks';
 	import { usePusher } from '@/composable/usePusher';
 	import { pluginState } from '@/pluginSystem/state';
@@ -190,28 +199,27 @@
 				if (decision === 'switch') {
 					await switchTo(target);
 					await tasksRefreshed();
-					toast({ description: `Timer switched to ${key}` });
+					toast({
+						description: t('desktop.tray.timerSwitched', { key }),
+					});
 					return;
 				}
 				const message = props.tasks.length
-					? `Switch timer to ${key}?`
-					: `Start timer on ${key}?`;
+					? t('desktop.tray.switchTimerTo', { key })
+					: t('desktop.tray.startTimerOn', { key });
 				toast({
 					title: message,
 					duration: 30000,
 					action: h(
 						ToastAction,
 						{
-							altText: 'Start timer',
+							altText: t('desktop.tray.startTimer'),
 							onClick: () => switchTo(target).catch(() => reloadActiveTasks()),
 						},
-						() => 'Start timer',
+						() => t('desktop.tray.startTimer'),
 					),
 				});
-				notify(
-					message,
-					'A branch change matches a task. Open TMGR to start its timer.',
-				);
+				notify(message, t('desktop.tray.branchMatchBody'));
 			};
 
 			let gitQueue = Promise.resolve();
@@ -287,8 +295,10 @@
 						if (!props.tasks.length) return;
 						away.value = event.payload;
 						notify(
-							`Away for ${formatAway(event.payload.awaySeconds)}`,
-							'The timer kept running. Open TMGR to keep or stop it.',
+							t('desktop.tray.awayNotifyTitle', {
+								duration: formatAway(event.payload.awaySeconds),
+							}),
+							t('desktop.tray.awayNotifyBody'),
 						);
 						await showWindow();
 					}),
@@ -321,10 +331,13 @@
 				),
 				awaySinceLabel: computed(() =>
 					away.value
-						? new Date(away.value.awaySince * 1000).toLocaleTimeString([], {
-								hour: '2-digit',
-								minute: '2-digit',
-							})
+						? new Date(away.value.awaySince * 1000).toLocaleTimeString(
+								currentLocale(),
+								{
+									hour: '2-digit',
+									minute: '2-digit',
+								},
+							)
 						: '',
 				),
 				runningLabel,

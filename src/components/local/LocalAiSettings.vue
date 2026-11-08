@@ -1,8 +1,8 @@
 <template>
 	<section class="flex flex-col gap-3 rounded-md border border-border p-4">
-		<h5 class="text-sm font-semibold">Local LLM</h5>
+		<h5 class="text-sm font-semibold">{{ $t('desktop.localAi.title') }}</h5>
 		<label class="flex flex-col gap-1 text-sm">
-			Base URL
+			{{ $t('desktop.localAi.baseUrl') }}
 			<Input v-model="llmForm.baseUrl" placeholder="http://localhost:11434" />
 		</label>
 		<div class="flex gap-2">
@@ -12,11 +12,11 @@
 				:disabled="savingLlm"
 				@click="detectLocal"
 			>
-				Detect
+				{{ $t('desktop.localAi.detect') }}
 			</Button>
 		</div>
 		<label class="flex flex-col gap-1 text-sm">
-			Model
+			{{ $t('desktop.localAi.model') }}
 			<Input
 				v-model="llmForm.model"
 				list="local-llm-models"
@@ -27,12 +27,12 @@
 			<option v-for="model in models" :key="model" :value="model" />
 		</datalist>
 		<label class="flex flex-col gap-1 text-sm">
-			API key
+			{{ $t('desktop.localAi.apiKey') }}
 			<span class="text-xs text-muted-foreground">
 				{{
 					llmStatus.hasApiKey && !llmStatus.keyNeedsReentry
-						? 'A key is already saved; leave blank to keep it.'
-						: 'Optional.'
+						? $t('desktop.localAi.keySaved')
+						: $t('desktop.localAi.keyOptional')
 				}}
 			</span>
 			<Input v-model="llmForm.apiKey" type="password" placeholder="sk-…" />
@@ -41,19 +41,19 @@
 			v-if="llmStatus.keyNeedsReentry"
 			class="text-sm text-amber-600 dark:text-amber-400"
 		>
-			Enter your API key again to use it with this server. Keys are now tied to
-			the server they were saved for.
+			{{ $t('desktop.localAi.reenterKey') }}
 		</p>
 		<p
 			v-if="llmForm.baseUrl && !isTypedUrlLocal"
 			class="text-sm text-amber-600 dark:text-amber-400"
 		>
-			This URL is not on localhost or your LAN — the persona's traffic (and any
-			key you set) will leave this machine.
+			{{ $t('desktop.localAi.remoteWarning') }}
 		</p>
 		<div class="flex gap-2">
 			<Button size="sm" :disabled="savingLlm" @click="saveLlmConfig">
-				{{ savingLlm ? 'Saving…' : 'Save' }}
+				{{
+					savingLlm ? $t('common.actions.saving') : $t('common.actions.save')
+				}}
 			</Button>
 			<Button
 				v-if="llmStatus.hasApiKey"
@@ -62,21 +62,20 @@
 				:disabled="savingLlm"
 				@click="removeApiKey"
 			>
-				Remove key
+				{{ $t('desktop.localAi.removeKey') }}
 			</Button>
 		</div>
 		<p
 			v-if="llmStatus.slotState === 'not_ready'"
 			class="text-sm text-amber-600 dark:text-amber-400"
 		>
-			Your account is not available to the desktop app yet. Reload the app or
-			sign in again to manage the API key.
+			{{ $t('desktop.localAi.accountNotReady') }}
 		</p>
 		<p
 			v-else-if="llmStatus.slotState === 'other_account'"
 			class="text-sm text-amber-600 dark:text-amber-400"
 		>
-			These AI provider settings belong to another account.
+			{{ $t('desktop.localAi.otherAccount') }}
 		</p>
 		<div class="flex flex-wrap gap-2">
 			<Button
@@ -85,7 +84,7 @@
 				:disabled="llmDirty"
 				@click="refreshModels"
 			>
-				Refresh models
+				{{ $t('desktop.localAi.refreshModels') }}
 			</Button>
 			<Button
 				size="sm"
@@ -93,7 +92,7 @@
 				:disabled="llmDirty"
 				@click="testConnection"
 			>
-				Test connection
+				{{ $t('desktop.localAi.testConnection') }}
 			</Button>
 			<Button
 				v-if="forgetVisible"
@@ -101,11 +100,11 @@
 				variant="outline"
 				@click="forgetLan"
 			>
-				Forget confirmation
+				{{ $t('desktop.localAi.forgetConfirmation') }}
 			</Button>
 		</div>
 		<p v-if="llmDirty" class="text-sm text-muted-foreground">
-			Save first - these use the saved settings.
+			{{ $t('desktop.localAi.saveFirst') }}
 		</p>
 		<p v-if="llmNotice" class="text-sm text-muted-foreground">
 			{{ llmNotice }}
@@ -115,18 +114,19 @@
 			class="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
 		>
 			<p class="text-amber-800 dark:text-amber-200">
-				This server is on your local network. Task titles, statuses and comment
-				excerpts (also from cloud workspaces) will be sent to
-				{{ lanPrompt.origin }}.
+				{{ $t('desktop.localAi.lanWarning', { origin: lanPrompt.origin }) }}
 			</p>
 			<div class="flex gap-2">
-				<Button size="sm" @click="allowLan">Allow</Button>
-				<Button size="sm" variant="outline" @click="cancelLan">Cancel</Button>
+				<Button size="sm" @click="allowLan">{{
+					$t('desktop.localAi.allow')
+				}}</Button>
+				<Button size="sm" variant="outline" @click="cancelLan">{{
+					$t('common.actions.cancel')
+				}}</Button>
 			</div>
 		</div>
 		<p class="text-xs text-muted-foreground">
-			Ollama picks its context size at startup (often 4096). Raise it with
-			OLLAMA_CONTEXT_LENGTH for long summaries.
+			{{ $t('desktop.localAi.ollamaHint') }}
 		</p>
 		<p v-if="llmError" class="text-sm text-red-600 dark:text-red-400">
 			{{ llmError }}
@@ -137,6 +137,7 @@
 <script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
+	import { t } from '@/i18n';
 	import {
 		llmDetect,
 		llmLanConfirm,
@@ -352,12 +353,14 @@
 				runLocal(async () => {
 					const found = await llmDetect();
 					if (!found.length) {
-						llmNotice.value =
-							'No local server found on the default Ollama / LM Studio ports.';
+						llmNotice.value = t('desktop.localAi.noServer');
 						return;
 					}
 					llmForm.baseUrl = found[0].base_url;
-					llmNotice.value = `Found ${found[0].models} models at ${found[0].base_url}. Save to use it.`;
+					llmNotice.value = t('desktop.localAi.found', {
+						n: found[0].models,
+						url: found[0].base_url,
+					});
 				});
 
 			const refreshModels = () =>

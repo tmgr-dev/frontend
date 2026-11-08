@@ -11,12 +11,8 @@ describe('ConnectLocalAgent.vue', () => {
 	it('keeps the tour anchors and the screen texts', () => {
 		expect(src).toContain('data-tour="connect-local.agents"');
 		expect(src).toContain('data-tour="connect-local.install"');
-		expect(src).toContain(
-			'Switch to a local workspace in the desktop app to connect your agent.',
-		);
-		expect(src).toContain(
-			'Create your own workspace first, then connect your agent.',
-		);
+		expect(src).toContain("$t('desktop.connectAgent.unavailable')");
+		expect(src).toContain("$t('desktop.connectAgent.demo')");
 	});
 
 	it('anchors the tour in the unavailable view too', () => {

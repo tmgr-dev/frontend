@@ -1,7 +1,7 @@
 <template>
 	<SettingsSection
-		title="Autopilot"
-		description="Live status of the local autopilot, read from your runner."
+		:title="$t('desktop.runner.autopilot.title')"
+		:description="$t('desktop.runner.autopilot.description')"
 	>
 		<div class="flex flex-col gap-4" data-testid="autopilot-panel">
 			<p
@@ -17,8 +17,12 @@
 				class="rounded-md border border-dashed border-line-strong px-3 py-3 text-sm text-ink-subtle"
 				data-testid="autopilot-empty"
 			>
-				{{ view.emptyText }} Start it with
-				<CommandChip :command="view.emptyCommand" />
+				<i18n-t keypath="desktop.runner.autopilot.empty" tag="span">
+					<template #text>{{ view.emptyText }}</template>
+					<template #command>
+						<CommandChip :command="view.emptyCommand" />
+					</template>
+				</i18n-t>
 			</div>
 			<template v-else-if="view && view.header">
 				<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -31,23 +35,46 @@
 						>{{ view.header.word }}</span
 					>
 					<span class="text-xs text-ink-subtle">
-						<template v-if="view.header.startedAt"
-							>started {{ view.header.startedAt }}</template
-						>
+						<template v-if="view.header.startedAt">{{
+							$t('desktop.runner.autopilot.started', {
+								value: view.header.startedAt,
+							})
+						}}</template>
 						<template v-if="view.header.runningFor">
-							· running for {{ view.header.runningFor }}</template
+							·
+							{{
+								$t('desktop.runner.autopilot.runningFor', {
+									value: view.header.runningFor,
+								})
+							}}</template
 						>
 						<template v-if="view.header.rule">
-							· rule {{ view.header.rule }}</template
+							·
+							{{
+								$t('desktop.runner.autopilot.rule', { value: view.header.rule })
+							}}</template
 						>
 						<template v-if="view.header.mode">
-							· mode {{ view.header.mode }}</template
+							·
+							{{
+								$t('desktop.runner.autopilot.mode', { value: view.header.mode })
+							}}</template
 						>
 						<template v-if="view.header.teams">
-							· teams {{ view.header.teams }}</template
+							·
+							{{
+								$t('desktop.runner.autopilot.teams', {
+									value: view.header.teams,
+								})
+							}}</template
 						>
 						<template v-if="view.header.agents">
-							· agents {{ view.header.agents }}</template
+							·
+							{{
+								$t('desktop.runner.autopilot.agents', {
+									value: view.header.agents,
+								})
+							}}</template
 						>
 					</span>
 					<span class="flex-1" />
@@ -58,7 +85,7 @@
 						:disabled="busy"
 						data-testid="autopilot-pause"
 						@click="control('pause')"
-						>Pause</Button
+						>{{ $t('desktop.runner.autopilot.pause') }}</Button
 					>
 					<Button
 						v-if="view.buttons.resume"
@@ -67,7 +94,7 @@
 						:disabled="busy"
 						data-testid="autopilot-resume"
 						@click="control('resume')"
-						>Resume</Button
+						>{{ $t('desktop.runner.autopilot.resume') }}</Button
 					>
 					<Button
 						v-if="view.buttons.stop"
@@ -77,26 +104,30 @@
 						:disabled="busy"
 						data-testid="autopilot-stop"
 						@click="control('stop')"
-						>Stop</Button
+						>{{ $t('desktop.runner.autopilot.stop') }}</Button
 					>
 				</div>
 				<p v-if="view.header.note" class="text-xs text-ink-subtle">
 					{{ view.header.note }}
 				</p>
 				<p v-if="view.header.stopReason" class="text-xs text-ink-subtle">
-					stopped: {{ view.header.stopReason }}
+					{{
+						$t('desktop.runner.autopilot.stopped', {
+							reason: view.header.stopReason,
+						})
+					}}
 				</p>
 				<p
 					v-if="view.header.stale"
 					class="text-xs text-amber-700 dark:text-amber-400"
 				>
-					No update from the autopilot for a while.
+					{{ $t('desktop.runner.autopilot.stale') }}
 				</p>
 				<p
 					v-if="view.header.needsUpdate"
 					class="text-xs text-amber-700 dark:text-amber-400"
 				>
-					This status comes from a newer autopilot. Update the app.
+					{{ $t('desktop.runner.autopilot.needsUpdate') }}
 				</p>
 				<p v-if="actionError" class="text-xs text-destructive" role="alert">
 					{{ actionError }}
@@ -128,7 +159,7 @@
 						v-if="!openCounter.items.length"
 						class="px-3 py-2 text-ink-subtle"
 					>
-						Nothing in this list yet.
+						{{ $t('desktop.runner.autopilot.nothingYet') }}
 					</li>
 					<li
 						v-for="item in openCounter.items"
@@ -144,7 +175,7 @@
 							variant="outline"
 							size="sm"
 							@click="openUrl(item.url)"
-							>Open PR</Button
+							>{{ $t('desktop.runner.autopilot.openPr') }}</Button
 						>
 					</li>
 				</ul>
@@ -153,7 +184,7 @@
 					<h3
 						class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
-						Active runs
+						{{ $t('desktop.runner.autopilot.activeRuns') }}
 					</h3>
 					<ul
 						class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
@@ -186,31 +217,29 @@
 								:title="
 									r.workspaceCode
 										? ''
-										: 'Workspace of this task is not reported'
+										: $t('desktop.runner.autopilot.workspaceNotReported')
 								"
 								data-testid="autopilot-open-task"
 								@click="openTask(r)"
-								>Open task</Button
+								>{{ $t('desktop.runner.autopilot.openTask') }}</Button
 							>
 							<Button
 								variant="outline"
 								size="sm"
 								:disabled="!sessionFor(r)"
 								:title="
-									sessionFor(r)
-										? ''
-										: 'No live agent session found for this task'
+									sessionFor(r) ? '' : $t('desktop.runner.autopilot.noSession')
 								"
 								data-testid="autopilot-open-session"
 								@click="openSession(r)"
-								>Open session</Button
+								>{{ $t('desktop.runner.autopilot.openSession') }}</Button
 							>
 							<Button
 								v-if="r.prUrl"
 								variant="outline"
 								size="sm"
 								@click="openUrl(r.prUrl)"
-								>Open PR</Button
+								>{{ $t('desktop.runner.autopilot.openPr') }}</Button
 							>
 						</li>
 					</ul>
@@ -223,7 +252,7 @@
 					<h3
 						class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
-						Limits
+						{{ $t('desktop.runner.autopilot.limits') }}
 					</h3>
 					<p v-if="view.limitsNote" class="text-sm text-ink-subtle">
 						{{ view.limitsNote }}
@@ -273,23 +302,37 @@
 					class="text-sm text-ink"
 					data-testid="autopilot-cost"
 				>
-					Cost: subscription {{ view.cost.subscription }}
+					{{
+						$t('desktop.runner.autopilot.costSubscription', {
+							value: view.cost.subscription,
+						})
+					}}
 					<template v-if="view.cost.basis">({{ view.cost.basis }})</template>
-					· {{ view.cost.tokens.toLocaleString('en-US') }} tokens · API
-					{{ view.cost.api }}
+					·
+					{{
+						$t('desktop.runner.autopilot.costTokens', {
+							n: view.cost.tokens.toLocaleString(currentLocale()),
+						})
+					}}
+					·
+					{{ $t('desktop.runner.autopilot.costApi', { value: view.cost.api }) }}
 				</p>
 				<p
 					v-if="view.unconfirmedNew"
 					class="text-sm text-amber-700 dark:text-amber-400"
 				>
-					{{ view.unconfirmedNew }} new tasks need your confirmation
+					{{
+						$t('desktop.runner.autopilot.unconfirmedNew', {
+							n: view.unconfirmedNew,
+						})
+					}}
 				</p>
 
 				<div v-if="view.events.length" class="flex flex-col gap-1">
 					<h3
 						class="text-xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
-						Events
+						{{ $t('desktop.runner.autopilot.events') }}
 					</h3>
 					<ul
 						class="divide-y divide-line max-h-64 overflow-auto rounded-card border border-line bg-surface text-sm"
@@ -336,6 +379,7 @@
 		runnerOpenTerminal,
 		type RunnerAutopilotCommand,
 	} from '@/runner/api';
+	import { currentLocale, t } from '@/i18n';
 	import { describeRunnerError } from '@/runner/errors';
 	import { useRunner } from '@/runner/store';
 	import {
@@ -374,14 +418,13 @@
 			const poll = async () => {
 				let delay = POLL_MS;
 				if (runner.status.value && runner.status.value.state !== 'ready') {
-					problem.value =
-						'The TMGR runner is not running. Start it to see autopilot here.';
+					problem.value = t('desktop.runner.autopilot.runnerNotRunning');
 					delay = SLOW_MS;
 				} else if (
 					runner.status.value &&
 					!runner.status.value.caps.includes('autopilot.v1')
 				) {
-					problem.value = 'Update the TMGR runner to see autopilot here.';
+					problem.value = t('desktop.runner.autopilot.updateRunner');
 					delay = SLOW_MS;
 				} else if (!document.hidden) {
 					try {
@@ -505,6 +548,7 @@
 				eventTarget,
 				followEvent,
 				barClass,
+				currentLocale,
 			};
 		},
 	});

@@ -8,6 +8,7 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
+	import { t } from '@/i18n';
 	import { LEGACY_MOVE_MESSAGE, type MoveView } from '@/local/moveToCloud/flow';
 	import { stepIndex } from '@/local/moveToCloud/model';
 	import { summarize } from '@/local/moveToCloud/progress';
@@ -27,7 +28,7 @@
 	import { useStore } from 'vuex';
 
 	const serverError = (view: MoveView): string =>
-		serverErrorLines(view.status)[0] ?? 'The move failed on the server.';
+		serverErrorLines(view.status)[0] ?? t('desktop.moveProgress.serverFailed');
 
 	export default defineComponent({
 		name: 'MoveToCloudProgress',
@@ -102,8 +103,8 @@
 			);
 			const title = computed(() =>
 				done.value
-					? `Moved ${props.name} to the cloud`
-					: `Moving ${props.name} to the cloud`,
+					? t('desktop.moveProgress.titleDone', { name: props.name })
+					: t('desktop.moveProgress.titleMoving', { name: props.name }),
 			);
 			const stopped = computed(() => view.value.job?.stoppedTimers ?? 0);
 
@@ -152,18 +153,18 @@
 		<DialogContent class="max-w-xl" data-testid="move-to-cloud-progress">
 			<DialogHeader>
 				<DialogTitle>{{ title }}</DialogTitle>
-				<DialogDescription class="sr-only"
-					>Progress of the move to your cloud account.</DialogDescription
-				>
+				<DialogDescription class="sr-only">{{
+					$t('desktop.moveProgress.description')
+				}}</DialogDescription>
 			</DialogHeader>
 
 			<div v-if="done" class="flex flex-col items-start gap-3">
-				<p class="text-sm">Done. Open the cloud workspace.</p>
+				<p class="text-sm">{{ $t('desktop.moveProgress.done') }}</p>
 				<p
 					v-if="skills?.state === 'pending' && view.busy"
 					class="text-sm text-ink-subtle"
 				>
-					Copying skills...
+					{{ $t('desktop.moveProgress.copyingSkills') }}
 				</p>
 				<p
 					v-else-if="
@@ -171,16 +172,16 @@
 					"
 					class="text-sm text-ink-subtle"
 				>
-					Sign in as the account that made the move to copy skills
+					{{ $t('desktop.moveProgress.signInForSkills') }}
 				</p>
 				<div
 					v-else-if="skills?.state === 'pending'"
 					class="flex flex-col items-start gap-2 text-sm"
 				>
-					<p>Skills have not been copied yet.</p>
-					<Button size="sm" variant="outline" @click="retrySkills"
-						>Retry skills</Button
-					>
+					<p>{{ $t('desktop.moveProgress.skillsPending') }}</p>
+					<Button size="sm" variant="outline" @click="retrySkills">{{
+						$t('desktop.moveProgress.retrySkills')
+					}}</Button>
 				</div>
 				<ul v-else-if="skillLines.length" class="flex flex-col gap-1 text-sm">
 					<li v-for="line in skillLines" :key="line" class="break-words">
@@ -192,18 +193,22 @@
 					role="alert"
 					class="flex flex-col items-start gap-2 text-sm text-destructive"
 				>
-					<p class="break-words">Skills were not copied: {{ skills.error }}</p>
+					<p class="break-words">
+						{{
+							$t('desktop.moveProgress.skillsFailed', { error: skills.error })
+						}}
+					</p>
 					<Button
 						size="sm"
 						variant="outline"
 						:disabled="view.busy"
 						@click="retrySkills"
-						>Retry skills</Button
+						>{{ $t('desktop.moveProgress.retrySkills') }}</Button
 					>
 				</div>
-				<Button :disabled="opening" @click="openWorkspace"
-					>Open the cloud workspace</Button
-				>
+				<Button :disabled="opening" @click="openWorkspace">{{
+					$t('desktop.moveProgress.openCloud')
+				}}</Button>
 				<p v-if="openError" role="alert" class="text-sm text-destructive">
 					{{ openError }}
 				</p>
@@ -212,8 +217,13 @@
 			<template v-else>
 				<div>
 					<p class="mb-2 text-center text-sm">
-						{{ summary.percent }}% - Step {{ summary.step }} of
-						{{ summary.steps }}
+						{{
+							$t('desktop.moveProgress.progress', {
+								percent: summary.percent,
+								step: summary.step,
+								steps: summary.steps,
+							})
+						}}
 					</p>
 					<div
 						class="h-2 w-full overflow-hidden rounded-full bg-muted"
@@ -280,7 +290,7 @@
 							size="sm"
 							:disabled="view.busy"
 							@click="retry"
-							>Retry</Button
+							>{{ $t('common.actions.retry') }}</Button
 						>
 						<Button
 							v-if="view.canPublishAnyway"
@@ -289,28 +299,26 @@
 							:disabled="view.busy"
 							@click="publishAnyway"
 						>
-							Publish anyway
+							{{ $t('desktop.moveProgress.publishAnyway') }}
 						</Button>
 						<Button
 							size="sm"
 							variant="outline"
 							:disabled="view.busy"
 							@click="discard"
-							>Discard</Button
+							>{{ $t('desktop.moveProgress.discard') }}</Button
 						>
 					</div>
 				</div>
 
 				<p v-if="stopped > 0" class="text-xs text-ink-subtle">
-					{{ stopped }} running
-					{{ stopped === 1 ? 'timer was' : 'timers were' }} stopped.
+					{{ $t('desktop.moveProgress.stoppedTimers', stopped) }}
 				</p>
 				<div class="border-t pt-3 text-xs text-ink-subtle">
 					<p>
-						You can close this window. The move continues and resumes if it
-						stops.
+						{{ $t('desktop.moveProgress.closeHint') }}
 					</p>
-					<p>The workspace appears in your account when it is complete.</p>
+					<p>{{ $t('desktop.moveProgress.completeHint') }}</p>
 				</div>
 			</template>
 
@@ -319,12 +327,14 @@
 					v-if="cancellable && !failure"
 					variant="ghost"
 					@click="cancelMove"
-					>Cancel move</Button
+					>{{ $t('desktop.moveProgress.cancelMove') }}</Button
 				>
-				<Button v-if="!done" variant="outline" @click="close"
-					>Run in background</Button
-				>
-				<Button variant="destructive" @click="close">Close</Button>
+				<Button v-if="!done" variant="outline" @click="close">{{
+					$t('desktop.moveProgress.runInBackground')
+				}}</Button>
+				<Button variant="destructive" @click="close">{{
+					$t('common.actions.close')
+				}}</Button>
 			</DialogFooter>
 		</DialogContent>
 	</Dialog>

@@ -3,8 +3,8 @@
 		<button
 			type="button"
 			class="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:opacity-40"
-			aria-label="Attach files"
-			:title="`Attach files (${hint})`"
+			:aria-label="$t('agents.attachments.attach')"
+			:title="$t('agents.attachments.attachHint', { hint })"
 			:disabled="disabled"
 			data-testid="attach-button"
 			@click="pick"
@@ -35,6 +35,7 @@
 		putToStorageWithProgress,
 	} from '@/actions/tmgr/files';
 	import AttachmentChips from '@/components/attachments/AttachmentChips.vue';
+	import { t } from '@/i18n';
 	import { useAttachmentQueue } from '@/composable/useAttachmentQueue';
 	import {
 		ATTACHMENT_ACCEPT,
@@ -64,7 +65,8 @@
 
 			const queue = useAttachmentQueue(async (file, onProgress) => {
 				const conversationId = await props.ensureConversation();
-				if (!conversationId) throw new Error('No active conversation');
+				if (!conversationId)
+					throw new Error(t('agents.attachments.noConversation'));
 				const target = await presignUpload(
 					file,
 					props.workspaceId ?? undefined,

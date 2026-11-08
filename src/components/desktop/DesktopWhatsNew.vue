@@ -9,7 +9,7 @@
 				<DialogHeader class="border-b border-border px-6 py-4 pr-12">
 					<DialogTitle class="text-base">{{ title }}</DialogTitle>
 					<DialogDescription class="sr-only">
-						Release notes for this version.
+						{{ $t('desktop.whatsNew.description') }}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -35,7 +35,7 @@
 								data-tour="whats-new.item-tour"
 								@click="takeTour(item.id)"
 							>
-								Take the tour: {{ item.title }}
+								{{ $t('desktop.whatsNew.takeTour', { title: item.title }) }}
 							</Button>
 						</div>
 					</section>
@@ -43,19 +43,21 @@
 						v-if="view.sections.length === 0"
 						class="text-sm text-muted-foreground"
 					>
-						No release notes for this version.
+						{{ $t('desktop.whatsNew.empty') }}
 					</p>
 					<PromotionsList
 						v-if="promotionsEnabled"
 						placement="release_notes"
-						heading="By the way, we made…"
+						:heading="$t('desktop.whatsNew.promotionsHeading')"
 						compact
 						class="border-t border-border pt-4"
 					/>
 				</div>
 
 				<DialogFooter class="border-t border-border px-6 py-3">
-					<Button type="button" @click="close">Got it</Button>
+					<Button type="button" @click="close">{{
+						$t('desktop.whatsNew.gotIt')
+					}}</Button>
 				</DialogFooter>
 			</div>
 		</DialogContent>
@@ -75,6 +77,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { t } from '@/i18n';
 	import router from '@/router';
 	import store from '@/store';
 	import { useTours } from '@/tours/useTours';
@@ -192,8 +195,10 @@
 				close: closeWhatsNew,
 				title: computed(() =>
 					view.value.version
-						? `What's new in ${view.value.version}`
-						: `What's new`,
+						? t('desktop.whatsNew.titleVersion', {
+								version: view.value.version,
+							})
+						: t('desktop.whatsNew.title'),
 				),
 			};
 		},

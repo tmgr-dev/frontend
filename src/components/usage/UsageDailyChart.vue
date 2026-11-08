@@ -1,10 +1,10 @@
 <template>
-	<SettingsSection title="Last 30 days">
+	<SettingsSection :title="$t('agents.usage.dailyChart.title')">
 		<template v-if="!chart.empty" #actions>
 			<div
 				class="inline-flex rounded-md border border-border p-0.5"
 				role="group"
-				aria-label="Group by"
+				:aria-label="$t('agents.usage.dailyChart.groupBy')"
 			>
 				<button
 					v-for="m in modes"
@@ -25,7 +25,7 @@
 		</template>
 
 		<p v-if="chart.empty" class="text-sm text-ink-subtle">
-			No usage in the last 30 days.
+			{{ $t('agents.usage.dailyChart.empty') }}
 		</p>
 		<template v-else>
 			<div class="flex gap-2">
@@ -46,7 +46,7 @@
 					<div
 						class="relative mt-2 h-48 border-b border-border"
 						role="group"
-						aria-label="Cost per day, last 30 days"
+						:aria-label="$t('agents.usage.dailyChart.costPerDay')"
 						data-testid="usage-chart"
 						@mouseleave="active = null"
 					>
@@ -95,8 +95,17 @@
 							<p class="font-medium text-ink">{{ longDay(activeDay.day) }}</p>
 							<p class="text-ink-subtle tabular-nums">
 								{{ money(activeDay.cost) }} ·
-								{{ count(activeDay.tokens) }} tokens ·
-								{{ count(activeDay.events) }} events
+								{{
+									$t('agents.usage.dailyChart.tokens', {
+										n: count(activeDay.tokens),
+									})
+								}}
+								·
+								{{
+									$t('agents.usage.dailyChart.events', {
+										n: count(activeDay.events),
+									})
+								}}
 							</p>
 							<ul v-if="activeParts.length" class="mt-2 flex flex-col gap-1">
 								<li
@@ -135,7 +144,7 @@
 			</div>
 			<ul
 				class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-subtle"
-				aria-label="Legend"
+				:aria-label="$t('agents.usage.dailyChart.legend')"
 			>
 				<li
 					v-for="s in chart.series"
@@ -154,6 +163,7 @@
 
 <script lang="ts">
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import { t } from '@/i18n';
 	import type { UsageDay } from '@/usage/api';
 	import { axisMoney, count, longDay, money, shortDay } from '@/usage/format';
 	import {
@@ -228,10 +238,13 @@
 				activeParts: computed(() =>
 					activeDay.value ? sortedParts(activeDay.value) : [],
 				),
-				modes: [
-					{ key: 'tool' as const, label: 'By tool' },
-					{ key: 'model' as const, label: 'By model' },
-				],
+				modes: computed(() => [
+					{ key: 'tool' as const, label: t('agents.usage.dailyChart.byTool') },
+					{
+						key: 'model' as const,
+						label: t('agents.usage.dailyChart.byModel'),
+					},
+				]),
 				setMode: (next: ChartMode) => {
 					mode.value = next;
 					active.value = null;
@@ -242,7 +255,7 @@
 					const parts = sortedParts(d)
 						.map((p) => `${labels.value[p.key]} ${money(p.cost)}`)
 						.join(', ');
-					return `${longDay(d.day)}: ${money(d.cost)}, ${count(d.tokens)} tokens, ${count(d.events)} events${parts ? `. ${parts}` : ''}`;
+					return `${longDay(d.day)}: ${money(d.cost)}, ${t('agents.usage.dailyChart.tokens', { n: count(d.tokens) })}, ${t('agents.usage.dailyChart.events', { n: count(d.events) })}${parts ? `. ${parts}` : ''}`;
 				},
 				axisMoney,
 				count,

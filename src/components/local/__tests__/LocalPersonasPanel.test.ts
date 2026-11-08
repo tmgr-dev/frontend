@@ -5,6 +5,8 @@ import { join } from 'path';
 import ts from 'typescript';
 import { createSSRApp, reactive } from 'vue';
 
+import { i18n } from '@/i18n';
+
 const mockInvoke = jest.fn();
 const mockStore = reactive({ state: { user: { id: 7 } as any }, getters: {} });
 const mockResync = jest.fn();
@@ -111,7 +113,9 @@ const mountLive = () => {
 	const component = loadComponent();
 	const state = component.setup({}, {});
 	const render = () =>
-		renderToString(createSSRApp({ ...component, setup: () => state }));
+		renderToString(
+			createSSRApp({ ...component, setup: () => state }).use(i18n),
+		);
 	return { state, render };
 };
 
@@ -141,7 +145,7 @@ const renderPanel = async (props: Record<string, unknown> = {}) => {
 	const component = loadComponent();
 	const state = component.setup(props, {});
 	return await renderToString(
-		createSSRApp({ ...component, setup: () => state }, props),
+		createSSRApp({ ...component, setup: () => state }, props).use(i18n),
 	);
 };
 

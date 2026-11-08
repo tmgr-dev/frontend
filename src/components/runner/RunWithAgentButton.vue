@@ -8,7 +8,7 @@
 			@click="openTerminal"
 		>
 			<SquareTerminal />
-			Open terminal
+			{{ $t('desktop.runner.openTerminal') }}
 		</Button>
 
 		<Button
@@ -22,14 +22,14 @@
 			data-testid="agent-run-button"
 		>
 			<Bot />
-			Run with agent
+			{{ $t('desktop.runner.run.runWithAgent') }}
 		</Button>
 
 		<Popover v-else v-model:open="open">
 			<PopoverTrigger as-child>
 				<Button variant="outline" size="sm" data-testid="agent-run-button">
 					<Bot />
-					Run with agent
+					{{ $t('desktop.runner.run.runWithAgent') }}
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent
@@ -39,7 +39,7 @@
 			>
 				<form class="flex flex-col gap-3" @submit.prevent="run">
 					<label class="flex flex-col gap-1 text-xs font-medium text-ink">
-						Agent profile
+						{{ $t('desktop.runner.run.profile') }}
 						<select
 							v-model="profile"
 							class="h-9 rounded-md border border-input bg-background px-2 text-sm"
@@ -51,7 +51,9 @@
 						</select>
 					</label>
 					<div class="flex flex-col gap-1 text-xs">
-						<span class="font-medium text-ink">Project folder</span>
+						<span class="font-medium text-ink">{{
+							$t('desktop.runner.run.projectFolder')
+						}}</span>
 						<span
 							class="folder-path block overflow-hidden text-ellipsis whitespace-nowrap"
 							:class="folder.chosen ? 'text-ink' : 'text-ink-subtle'"
@@ -69,20 +71,24 @@
 							data-testid="agent-change-folder"
 							@click="changeFolder"
 						>
-							Change folder
+							{{ $t('desktop.runner.run.changeFolder') }}
 						</Button>
 					</div>
 					<p
 						class="text-xs text-ink-subtle"
 						data-testid="agent-permission-note"
 					>
-						Permission prompts: on
+						{{ $t('desktop.runner.run.permissionNote') }}
 					</p>
 					<p v-if="error" class="text-xs text-destructive" role="alert">
 						<CommandText :text="error" />
 					</p>
 					<Button type="submit" size="sm" :disabled="starting || !profile">
-						{{ starting ? 'Starting…' : 'Run' }}
+						{{
+							starting
+								? $t('desktop.runner.run.starting')
+								: $t('desktop.runner.run.run')
+						}}
 					</Button>
 				</form>
 			</PopoverContent>

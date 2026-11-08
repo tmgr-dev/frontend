@@ -14,13 +14,17 @@
 			size="sm"
 			:class="[SNIPPET_BUTTON_CLASS, 'h-11 px-2 text-xs sm:h-7']"
 			data-testid="snippet-copy"
-			:aria-label="`Copy ${label ?? 'code'}`"
+			:aria-label="
+				$t('agents.codeSnippet.copy', {
+					label: label ?? $t('agents.codeSnippet.code'),
+				})
+			"
 			@click="copy"
 		>
-			{{ copied ? 'Copied' : 'Copy' }}
+			{{ copied ? $t('common.actions.copied') : $t('common.actions.copy') }}
 		</Button>
 		<span class="sr-only" role="status" aria-live="polite">{{
-			copied ? 'Copied' : ''
+			copied ? $t('common.actions.copied') : ''
 		}}</span>
 	</div>
 </template>
@@ -28,6 +32,7 @@
 <script setup lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import {
 		SNIPPET_BUTTON_CLASS,
 		SNIPPET_ROW_CLASS,
@@ -50,7 +55,10 @@
 			if (timer) clearTimeout(timer);
 			timer = setTimeout(() => (copied.value = false), 2000);
 		} catch (error) {
-			toast({ title: 'Could not copy to clipboard', variant: 'destructive' });
+			toast({
+				title: t('agents.codeSnippet.copyFailed'),
+				variant: 'destructive',
+			});
 		}
 	}
 

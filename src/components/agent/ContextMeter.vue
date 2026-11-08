@@ -3,7 +3,7 @@
 		v-show="context"
 		class="text-xs"
 		:class="levelClass"
-		title="Context window usage"
+		:title="$t('agents.contextMeter.title')"
 	>
 		{{ label }}
 	</p>

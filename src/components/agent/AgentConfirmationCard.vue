@@ -96,9 +96,11 @@
 		data-testid="agent-confirmation-card"
 	>
 		<div>
-			<div class="text-sm font-medium text-ink">Confirm changes</div>
+			<div class="text-sm font-medium text-ink">
+				{{ $t('agents.confirmation.title') }}
+			</div>
 			<div class="text-xs text-ink-subtle">
-				TMGR AI wants to make these changes
+				{{ $t('agents.confirmation.subtitle') }}
 			</div>
 		</div>
 		<div
@@ -114,7 +116,7 @@
 					v-if="action.risk === 'high'"
 					class="rounded-pill bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 uppercase dark:bg-red-900/30 dark:text-red-300"
 				>
-					High risk
+					{{ $t('agents.confirmation.highRisk') }}
 				</span>
 			</div>
 			<dl v-if="action.preview.fields.length" class="space-y-0.5 text-xs">
@@ -143,7 +145,11 @@
 					class="mt-0.5 text-ink-subtle underline hover:text-ink"
 					@click="toggle(action.id)"
 				>
-					{{ expanded.has(action.id) ? 'Show less' : 'Show all' }}
+					{{
+						expanded.has(action.id)
+							? $t('agents.confirmation.showLess')
+							: $t('agents.confirmation.showAll')
+					}}
 				</button>
 			</div>
 			<template v-for="outcome in [actionOutcome(action, now)]" :key="0">
@@ -160,7 +166,7 @@
 						rel="noopener noreferrer"
 						class="ml-1 underline"
 					>
-						Open
+						{{ $t('common.actions.open') }}
 					</a>
 				</div>
 			</template>
@@ -172,7 +178,7 @@
 				:disabled="inFlight || !isOpen"
 				@click="onDecide('confirm')"
 			>
-				Confirm
+				{{ $t('common.actions.confirm') }}
 			</button>
 			<button
 				type="button"
@@ -180,7 +186,7 @@
 				:disabled="inFlight || !isOpen"
 				@click="onDecide('cancel')"
 			>
-				Cancel
+				{{ $t('common.actions.cancel') }}
 			</button>
 			<span v-if="hint" class="text-xs text-ink-subtle">{{ hint }}</span>
 		</div>

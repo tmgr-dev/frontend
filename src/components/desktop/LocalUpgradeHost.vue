@@ -2,16 +2,17 @@
 	<Dialog :open="open" @update:open="(value: boolean) => !value && close()">
 		<DialogContent class="max-w-md">
 			<DialogHeader>
-				<DialogTitle>Your account is ready</DialogTitle>
+				<DialogTitle>{{ $t('desktop.localUpgrade.title') }}</DialogTitle>
 				<DialogDescription>
-					Your local workspaces stay on this device. Your cloud workspace is
-					next to them.
+					{{ $t('desktop.localUpgrade.description') }}
 				</DialogDescription>
 			</DialogHeader>
 
 			<div class="grid gap-3 text-sm sm:grid-cols-2">
 				<div>
-					<h3 class="mb-1 font-semibold">On this device</h3>
+					<h3 class="mb-1 font-semibold">
+						{{ $t('desktop.localUpgrade.onDevice') }}
+					</h3>
 					<ul class="flex flex-col gap-1" data-testid="local-upgrade-local">
 						<li v-for="workspace in localWorkspaces" :key="workspace.code">
 							{{ workspace.name }}
@@ -19,7 +20,9 @@
 					</ul>
 				</div>
 				<div>
-					<h3 class="mb-1 font-semibold">In the cloud</h3>
+					<h3 class="mb-1 font-semibold">
+						{{ $t('desktop.localUpgrade.inCloud') }}
+					</h3>
 					<p data-testid="local-upgrade-cloud">{{ cloudWorkspace?.name }}</p>
 				</div>
 			</div>
@@ -35,14 +38,16 @@
 			>
 				<TriangleAlert class="mt-0.5 size-4 shrink-0" />
 				<span class="min-w-0 flex-1">{{ failureSentence }}</span>
-				<Button size="sm" variant="outline" @click="retry">Retry</Button>
+				<Button size="sm" variant="outline" @click="retry">{{
+					$t('common.actions.retry')
+				}}</Button>
 				<Button
 					v-if="canSkip"
 					size="sm"
 					variant="ghost"
 					data-testid="local-upgrade-skip"
 					@click="skip"
-					>Skip</Button
+					>{{ $t('common.actions.skip') }}</Button
 				>
 			</div>
 
@@ -51,11 +56,11 @@
 					variant="outline"
 					data-testid="local-upgrade-open-cloud"
 					@click="openCloud"
-					>Open the cloud workspace</Button
+					>{{ $t('desktop.localUpgrade.openCloud') }}</Button
 				>
-				<Button data-testid="local-upgrade-stay" @click="close"
-					>Stay in the local workspace</Button
-				>
+				<Button data-testid="local-upgrade-stay" @click="close">{{
+					$t('desktop.localUpgrade.stayLocal')
+				}}</Button>
 			</DialogFooter>
 		</DialogContent>
 	</Dialog>
@@ -71,6 +76,7 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
+	import { t } from '@/i18n';
 	import { listLocalWorkspaces } from '@/local/runtime';
 	import type { LocalWorkspace } from '@/local/types';
 	import {
@@ -144,9 +150,9 @@
 			const keySentence = computed(() => {
 				if (upgradeState.phase !== 'done') return '';
 				if (upgradeState.key === 'moved' || upgradeState.key === 'already')
-					return 'Your AI provider key moved to this account.';
+					return t('desktop.localUpgrade.keyMoved');
 				if (upgradeState.key === 'conflict')
-					return 'This account already has an AI provider key, so it was kept. Your local key is still saved for local mode.';
+					return t('desktop.localUpgrade.keyConflict');
 				return '';
 			});
 

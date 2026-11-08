@@ -81,7 +81,7 @@
 	>
 		<div class="max-w-[90%] rounded-lg bg-brand/10 px-3 py-2 text-sm text-ink">
 			<div class="mb-0.5 flex items-center gap-1.5 text-[11px] text-ink-subtle">
-				<span>You</span>
+				<span>{{ $t('agents.message.you') }}</span>
 				<time v-if="timeLabel()" :title="timeTitle()">{{ timeLabel() }}</time>
 			</div>
 			<ul v-if="props.message.quotes?.length" class="space-y-1 mb-1.5">
@@ -119,25 +119,29 @@
 			>
 				<button
 					class="flex items-center gap-1 hover:text-ink"
-					:aria-label="copied ? 'Copied' : 'Copy message'"
+					:aria-label="
+						copied
+							? $t('common.actions.copied')
+							: $t('agents.message.copyMessage')
+					"
 					@click="copy"
 				>
 					<Check v-if="copied" class="h-3 w-3" />
 					<Copy v-else class="h-3 w-3" />
-					{{ copied ? 'Copied' : 'Copy' }}
+					{{ copied ? $t('common.actions.copied') : $t('common.actions.copy') }}
 				</button>
 				<button
 					class="flex items-center gap-1 hover:text-ink"
-					aria-label="Reply to message"
+					:aria-label="$t('agents.message.replyToMessage')"
 					@click="emit('reply', props.message)"
 				>
-					<Reply class="h-3 w-3" /> Reply
+					<Reply class="h-3 w-3" /> {{ $t('agents.message.reply') }}
 				</button>
 				<button
 					class="flex items-center gap-1 hover:text-ink"
 					@click="emit('pin', props.message)"
 				>
-					<Pin class="h-3 w-3" /> Pin
+					<Pin class="h-3 w-3" /> {{ $t('agents.message.pin') }}
 				</button>
 			</div>
 		</div>
@@ -153,7 +157,7 @@
 		>
 			<div class="flex items-center gap-2">
 				<Loader2 class="h-3.5 w-3.5 animate-spin text-ink-subtle" />
-				<span>Thinking…</span>
+				<span>{{ $t('agents.message.thinking') }}</span>
 			</div>
 			<ul v-if="props.message.steps.length" class="space-y-0.5 mt-1">
 				<li
@@ -184,7 +188,7 @@
 			class="max-w-[90%] rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink"
 		>
 			<div class="mb-0.5 flex items-center gap-1.5 text-[11px] text-ink-subtle">
-				<span>AI</span>
+				<span>{{ $t('agents.message.ai') }}</span>
 				<time v-if="timeLabel()" :title="timeTitle()">{{ timeLabel() }}</time>
 			</div>
 			<MarkdownText
@@ -203,7 +207,7 @@
 				class="mt-1 text-xs text-ink-subtle"
 			>
 				<summary class="cursor-pointer select-none">
-					{{ props.message.steps.length }} steps
+					{{ $t('agents.message.steps', { n: props.message.steps.length }) }}
 				</summary>
 				<ul class="space-y-0.5 mt-1">
 					<li v-for="step in props.message.steps" :key="step.seq">
@@ -220,25 +224,29 @@
 			>
 				<button
 					class="flex items-center gap-1 hover:text-ink"
-					:aria-label="copied ? 'Copied' : 'Copy message'"
+					:aria-label="
+						copied
+							? $t('common.actions.copied')
+							: $t('agents.message.copyMessage')
+					"
 					@click="copy"
 				>
 					<Check v-if="copied" class="h-3 w-3" />
 					<Copy v-else class="h-3 w-3" />
-					{{ copied ? 'Copied' : 'Copy' }}
+					{{ copied ? $t('common.actions.copied') : $t('common.actions.copy') }}
 				</button>
 				<button
 					class="flex items-center gap-1 hover:text-ink"
-					aria-label="Reply to message"
+					:aria-label="$t('agents.message.replyToMessage')"
 					@click="emit('reply', props.message)"
 				>
-					<Reply class="h-3 w-3" /> Reply
+					<Reply class="h-3 w-3" /> {{ $t('agents.message.reply') }}
 				</button>
 				<button
 					class="flex items-center gap-1 hover:text-ink"
 					@click="emit('pin', props.message)"
 				>
-					<Pin class="h-3 w-3" /> Pin
+					<Pin class="h-3 w-3" /> {{ $t('agents.message.pin') }}
 				</button>
 			</div>
 		</div>

@@ -1,11 +1,11 @@
 <template>
 	<div class="flex flex-col gap-6">
-		<SettingsSection title="Agent runner">
+		<SettingsSection :title="$t('desktop.runner.settings.title')">
 			<div class="flex flex-col gap-1">
 				<SettingsRow
 					v-slot="{ labelId, descriptionId }"
-					label="Agent runner"
-					description="Run AI agents on local-workspace tasks through the TMGR runner on this computer. Experimental."
+					:label="$t('desktop.runner.settings.title')"
+					:description="$t('desktop.runner.settings.description')"
 				>
 					<Switch
 						:checked="runner.enabled.value"
@@ -17,7 +17,7 @@
 					/>
 				</SettingsRow>
 				<template v-if="runner.enabled.value">
-					<SettingsRow label="Runner status">
+					<SettingsRow :label="$t('desktop.runner.settings.statusLabel')">
 						<template v-if="detail" #description>
 							<CommandText :text="detail" />
 						</template>
@@ -25,19 +25,25 @@
 							statusLine(runner.status.value)
 						}}</span>
 					</SettingsRow>
-					<SettingsRow label="Permission prompts">
+					<SettingsRow :label="$t('desktop.runner.settings.permissionPrompts')">
 						<template #description>
-							Bypass mode can be enabled only from the terminal with
-							<CommandChip command="tmgr config allow-bypass" />.
+							<i18n-t
+								keypath="desktop.runner.settings.bypassTerminalOnly"
+								tag="span"
+							>
+								<template #command>
+									<CommandChip command="tmgr config allow-bypass" />
+								</template>
+							</i18n-t>
 						</template>
-						<span class="text-sm text-ink" data-testid="runner-permissions"
-							>on</span
-						>
+						<span class="text-sm text-ink" data-testid="runner-permissions">{{
+							$t('common.states.on')
+						}}</span>
 					</SettingsRow>
 					<SettingsRow
 						v-if="bypassOffered"
-						label="Bypass mode"
-						description="Lets agents run without permission prompts."
+						:label="$t('desktop.runner.settings.bypassMode')"
+						:description="$t('desktop.runner.settings.bypassDescription')"
 					>
 						<Button
 							variant="outline"
@@ -45,7 +51,7 @@
 							data-testid="bypass-open"
 							@click="bypassOpen = true"
 						>
-							Review and enable
+							{{ $t('desktop.runner.settings.reviewAndEnable') }}
 						</Button>
 					</SettingsRow>
 				</template>
@@ -55,7 +61,10 @@
 			</div>
 		</SettingsSection>
 
-		<SettingsSection v-if="runner.enabled.value" title="Agent sessions">
+		<SettingsSection
+			v-if="runner.enabled.value"
+			:title="$t('desktop.runner.settings.sessionsTitle')"
+		>
 			<AgentSessionsPanel />
 		</SettingsSection>
 

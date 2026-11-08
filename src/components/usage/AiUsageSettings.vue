@@ -5,14 +5,14 @@
 		data-testid="ai-usage-settings"
 	>
 		<SettingsSection
-			title="AI usage"
-			description="Lets the AI Usage page, background jobs, agent notifications, the tmgr CLI and the TMGR runner read the session logs Claude Code and Codex write on this computer. AI usage never stores prompt or reply text. The runner reads the sessions it starts for titles, questions and status, saves detected questions with your prompt and the reply on this device, and may send reply text to Claude (Haiku) to spot questions. Turning reading off stops this; saved questions stay until you use Forget scanned data."
+			:title="$t('agents.usage.settings.title')"
+			:description="$t('agents.usage.settings.description')"
 		>
 			<div class="flex flex-col gap-2">
 				<template v-if="consent">
 					<SettingsRow
 						v-slot="{ labelId, descriptionId }"
-						label="Read AI tool logs"
+						:label="$t('agents.usage.settings.readLogs')"
 						:description="readingNote(consent.state)"
 					>
 						<Switch
@@ -38,9 +38,9 @@
 								class="block font-mono text-xs break-all"
 								>{{ f.path }}</span
 							>
-							<span v-if="!foldersOf(tool).length"
-								>No logs found on this computer</span
-							>
+							<span v-if="!foldersOf(tool).length">{{
+								$t('agents.usage.noLogs')
+							}}</span>
 						</template>
 						<template #default="{ labelId, descriptionId }">
 							<Switch
@@ -54,8 +54,8 @@
 						</template>
 					</SettingsRow>
 					<SettingsRow
-						label="Scanned data"
-						description="Usage numbers and runner questions TMGR keeps on this device."
+						:label="$t('agents.usage.settings.scannedData')"
+						:description="$t('agents.usage.settings.scannedDescription')"
 					>
 						<Button
 							variant="outline"
@@ -65,7 +65,7 @@
 							data-testid="usage-forget"
 							@click="confirmForget = true"
 						>
-							Forget scanned data
+							{{ $t('agents.usage.settings.forgetButton') }}
 						</Button>
 					</SettingsRow>
 				</template>
@@ -87,7 +87,7 @@
 				</p>
 				<div v-if="!consent">
 					<Button variant="outline" size="sm" :disabled="busy" @click="load">
-						Retry
+						{{ $t('common.actions.retry') }}
 					</Button>
 				</div>
 			</div>
@@ -96,24 +96,28 @@
 		<AlertDialog v-model:open="confirmForget">
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Forget scanned data?</AlertDialogTitle>
+					<AlertDialogTitle>{{
+						$t('agents.usage.settings.forgetTitle')
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						This deletes the usage numbers TMGR keeps on this device and turns
-						reading off. Questions the runner saved here, with your prompt and
-						the reply, are deleted too. Uploads set up with
-						<code class="font-mono">tmgr usage sync</code> are turned off too;
-						what was already uploaded is not deleted. Your AI tools' own logs
-						are not touched. If the Claude Code status line hook is installed,
-						it keeps saving limit snapshots here; they aren't read while reading
-						is off.
+						<i18n-t
+							keypath="agents.usage.settings.forgetDescription"
+							tag="span"
+						>
+							<template #command>
+								<code class="font-mono">tmgr usage sync</code>
+							</template>
+						</i18n-t>
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogCancel>{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
 					<AlertDialogAction
 						class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						@click="forget"
-						>Forget</AlertDialogAction
+						>{{ $t('agents.usage.settings.forget') }}</AlertDialogAction
 					>
 				</AlertDialogFooter>
 			</AlertDialogContent>

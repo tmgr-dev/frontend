@@ -6,9 +6,9 @@
 			data-testid="demo-banner"
 			class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-violet-300 bg-violet-100 px-4 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200"
 		>
-			<span class="min-w-0 flex-1"
-				>This is a demo. Nothing leaves your Mac.</span
-			>
+			<span class="min-w-0 flex-1">{{
+				$t('desktop.localOnlyBanner.demo')
+			}}</span>
 			<span v-if="deleteError" role="alert" class="text-destructive">
 				{{ deleteError }}
 			</span>
@@ -19,10 +19,10 @@
 				class="rounded-md px-2 py-1 font-medium underline underline-offset-4 hover:bg-violet-200 dark:hover:bg-violet-500/20"
 				@click="$router.push({ name: 'Login' })"
 			>
-				Sign in
+				{{ $t('desktop.localOnlyBanner.signIn') }}
 			</button>
 			<template v-if="confirmingDelete">
-				<span>Delete demo?</span>
+				<span>{{ $t('desktop.localOnlyBanner.deleteDemoQuestion') }}</span>
 				<button
 					type="button"
 					data-testid="demo-delete-confirm"
@@ -30,7 +30,11 @@
 					:disabled="deleting"
 					@click="confirmDelete"
 				>
-					{{ deleting ? 'Deleting…' : 'Yes' }}
+					{{
+						deleting
+							? $t('desktop.localOnlyBanner.deleting')
+							: $t('common.states.yes')
+					}}
 				</button>
 				<button
 					type="button"
@@ -39,7 +43,7 @@
 					:disabled="deleting"
 					@click="confirmingDelete = false"
 				>
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</button>
 			</template>
 			<button
@@ -50,7 +54,7 @@
 				:disabled="deleting"
 				@click="confirmingDelete = true"
 			>
-				Delete demo
+				{{ $t('desktop.localOnlyBanner.deleteDemo') }}
 			</button>
 		</div>
 		<div
@@ -60,32 +64,35 @@
 			data-tour="local.banner"
 			class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sky-300 bg-sky-100 px-4 py-2 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
 		>
-			<span class="min-w-0 flex-1">
-				Local only — there is no cloud copy. TMGR backs up your workspace every
-				day to
-				<strong class="[overflow-wrap:anywhere]" :title="backupsDir">{{
-					backupsLabel
-				}}</strong
-				>.
-			</span>
+			<i18n-t
+				keypath="desktop.localOnlyBanner.firstRun"
+				tag="span"
+				class="min-w-0 flex-1"
+			>
+				<template #path>
+					<strong class="[overflow-wrap:anywhere]" :title="backupsDir">{{
+						backupsLabel
+					}}</strong>
+				</template>
+			</i18n-t>
 			<button
 				type="button"
 				class="rounded-md px-2 py-1 font-medium underline underline-offset-4 hover:bg-sky-200 dark:hover:bg-sky-500/20"
 				@click="openBackups"
 			>
-				Open backups folder
+				{{ $t('desktop.localOnlyBanner.openBackups') }}
 			</button>
 			<button
 				type="button"
 				class="rounded-md px-2 py-1 font-medium underline underline-offset-4 hover:bg-sky-200 dark:hover:bg-sky-500/20"
 				@click="createAccount"
 			>
-				Create account
+				{{ $t('desktop.localOnlyBanner.createAccount') }}
 			</button>
 			<button
 				type="button"
 				class="rounded-md px-2 py-1 hover:bg-sky-200 dark:hover:bg-sky-500/20"
-				aria-label="Dismiss"
+				:aria-label="$t('desktop.localOnlyBanner.dismiss')"
 				@click="dismissFirstRun"
 			>
 				<X class="h-4 w-4" />
@@ -104,12 +111,16 @@
 				:disabled="backingUp"
 				@click="backupNowClick"
 			>
-				{{ backingUp ? 'Backing up…' : 'Back up now' }}
+				{{
+					backingUp
+						? $t('desktop.localOnlyBanner.backingUp')
+						: $t('desktop.localOnlyBanner.backUpNow')
+				}}
 			</button>
 			<button
 				type="button"
 				class="rounded-md px-2 py-1 hover:bg-amber-200 dark:hover:bg-amber-500/20"
-				aria-label="Hide for now"
+				:aria-label="$t('desktop.localOnlyBanner.hideForNow')"
 				@click="hiddenForSession = true"
 			>
 				<X class="h-4 w-4" />
@@ -120,6 +131,7 @@
 
 <script lang="ts">
 	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
+	import { t } from '@/i18n';
 	import {
 		backupNow,
 		backupStatus,
@@ -186,7 +198,9 @@
 			);
 			const backupsDir = computed(() => status.value?.backups_dir ?? '');
 			const backupsLabel = computed(
-				() => tildePath(backupsDir.value) || 'the backups folder',
+				() =>
+					tildePath(backupsDir.value) ||
+					t('desktop.localOnlyBanner.backupsFolder'),
 			);
 
 			const refresh = async () => {

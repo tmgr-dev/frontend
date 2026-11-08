@@ -1,11 +1,15 @@
 <template>
-	<SettingsSection title="Account">
+	<SettingsSection :title="$t('desktop.localAccount.title')">
 		<p class="text-sm text-ink-subtle">
-			You are not signed in. Your workspaces live only on this computer.
+			{{ $t('desktop.localAccount.notSignedIn') }}
 		</p>
 		<template #footer>
-			<Button @click="goRegister">Create account</Button>
-			<Button variant="outline" @click="goLogin">Sign in</Button>
+			<Button @click="goRegister">{{
+				$t('desktop.localAccount.createAccount')
+			}}</Button>
+			<Button variant="outline" @click="goLogin">{{
+				$t('desktop.localAccount.signIn')
+			}}</Button>
 		</template>
 	</SettingsSection>
 </template>

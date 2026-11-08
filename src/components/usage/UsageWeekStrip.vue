@@ -1,5 +1,5 @@
 <template>
-	<SettingsSection title="Compared with last week">
+	<SettingsSection :title="$t('agents.usage.weekStrip.title')">
 		<div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
 			<div v-for="t in tiles" :key="t.label" :data-testid="t.testid">
 				<p class="text-xs font-medium tracking-wide text-ink-subtle uppercase">
@@ -16,6 +16,7 @@
 
 <script lang="ts">
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import { t } from '@/i18n';
 	import type { UsageDay } from '@/usage/api';
 	import { count, money, signedPercent } from '@/usage/format';
 	import { averageCostPerDay, weekComparison, type Delta } from '@/usage/stats';
@@ -23,8 +24,8 @@
 
 	const note = (d: Delta) =>
 		d.pct === null
-			? 'no data for the previous 7 days'
-			: `${signedPercent(d.pct)} vs previous 7 days`;
+			? t('agents.usage.weekStrip.noPrevious')
+			: t('agents.usage.weekStrip.vsPrevious', { pct: signedPercent(d.pct) });
 
 	export default defineComponent({
 		name: 'UsageWeekStrip',
@@ -40,30 +41,30 @@
 				return [
 					{
 						testid: 'week-cost',
-						label: 'Cost, last 7 days',
+						label: t('agents.usage.weekStrip.cost'),
 						value: money(week.cost.current),
 						note: note(week.cost),
 					},
 					{
 						testid: 'week-tokens',
-						label: 'Tokens, last 7 days',
+						label: t('agents.usage.weekStrip.tokens'),
 						value: count(week.tokens.current),
 						note: note(week.tokens),
 					},
 					{
 						testid: 'week-events',
-						label: 'Events, last 7 days',
+						label: t('agents.usage.weekStrip.events'),
 						value: count(week.events.current),
 						note: note(week.events),
 					},
 					{
 						testid: 'week-average',
-						label: 'Average per day',
+						label: t('agents.usage.weekStrip.average'),
 						value: money(avg.perDay),
 						note:
 							avg.spanDays >= 30
-								? 'over the last 30 days'
-								: `over ${avg.spanDays} ${avg.spanDays === 1 ? 'day' : 'days'} since first usage`,
+								? t('agents.usage.weekStrip.last30')
+								: t('agents.usage.weekStrip.sinceFirst', avg.spanDays),
 					},
 				];
 			});

@@ -4,7 +4,7 @@
 			v-for="control in controls"
 			:key="control.action"
 			type="button"
-			:title="control.title"
+			:title="$t(control.titleKey)"
 			:class="[
 				'flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink',
 				control.action === 'close' &&
@@ -26,9 +26,17 @@
 		name: 'WindowControls',
 		setup() {
 			const controls = [
-				{ action: 'close', title: 'Close', icon: X },
-				{ action: 'minimize', title: 'Minimize', icon: Minus },
-				{ action: 'toggleMaximize', title: 'Maximize', icon: Maximize2 },
+				{ action: 'close', titleKey: 'desktop.windowControls.close', icon: X },
+				{
+					action: 'minimize',
+					titleKey: 'desktop.windowControls.minimize',
+					icon: Minus,
+				},
+				{
+					action: 'toggleMaximize',
+					titleKey: 'desktop.windowControls.maximize',
+					icon: Maximize2,
+				},
 			];
 
 			const run = async (action) => {

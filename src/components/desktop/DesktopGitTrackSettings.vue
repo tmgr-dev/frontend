@@ -1,13 +1,18 @@
 <template>
 	<div class="flex flex-col gap-4">
-		<p class="text-sm text-muted-foreground">
-			When you switch branches in a watched folder, TMGR can start or switch the
-			timer of the task named in the branch, like
-			<span class="font-mono">feature/TM-157-login</span>. Only tasks of the
-			current workspace are matched, and only the branch name is read.
-		</p>
+		<i18n-t
+			keypath="desktop.gitTrack.intro"
+			tag="p"
+			class="text-sm text-muted-foreground"
+		>
+			<template #example>
+				<span class="font-mono">feature/TM-157-login</span>
+			</template>
+		</i18n-t>
 		<fieldset class="flex flex-col gap-1">
-			<legend class="mb-2 text-sm font-medium">Mode</legend>
+			<legend class="mb-2 text-sm font-medium">
+				{{ $t('desktop.gitTrack.mode') }}
+			</legend>
 			<label
 				v-for="option in modes"
 				:key="option.value"
@@ -22,14 +27,18 @@
 					@change="setMode(option.value)"
 				/>
 				<span class="flex flex-col">
-					<span class="text-sm font-medium">{{ option.label }}</span>
-					<span class="text-xs text-muted-foreground">{{ option.hint }}</span>
+					<span class="text-sm font-medium">{{ $t(option.labelKey) }}</span>
+					<span class="text-xs text-muted-foreground">{{
+						$t(option.hintKey)
+					}}</span>
 				</span>
 			</label>
 		</fieldset>
 		<div class="flex flex-col gap-2">
 			<div class="flex items-center justify-between gap-3">
-				<span class="text-sm font-medium">Watched folders</span>
+				<span class="text-sm font-medium">{{
+					$t('desktop.gitTrack.watchedFolders')
+				}}</span>
 				<Button
 					variant="outline"
 					size="sm"
@@ -37,11 +46,11 @@
 					@click="addFolder"
 				>
 					<Plus class="mr-1 h-4 w-4" />
-					Add folder
+					{{ $t('desktop.gitTrack.addFolder') }}
 				</Button>
 			</div>
 			<p v-if="!folders.length" class="text-xs text-muted-foreground">
-				No folders yet. Add a Git repository to watch its branch.
+				{{ $t('desktop.gitTrack.noFolders') }}
 			</p>
 			<ul v-else class="flex flex-col gap-1">
 				<li
@@ -55,7 +64,7 @@
 					<Button
 						variant="ghost"
 						size="sm"
-						:title="`Remove ${folder}`"
+						:title="$t('desktop.gitTrack.removeFolder', { folder })"
 						@click="removeFolder(folder)"
 					>
 						<X class="h-4 w-4" />
@@ -83,18 +92,18 @@
 	const MODES = [
 		{
 			value: 'ask',
-			label: 'Ask (default)',
-			hint: 'Ask before starting or switching the timer.',
+			labelKey: 'desktop.gitTrack.modes.ask.label',
+			hintKey: 'desktop.gitTrack.modes.ask.hint',
 		},
 		{
 			value: 'auto',
-			label: 'Auto',
-			hint: 'Switch the timer to the task as soon as the branch changes.',
+			labelKey: 'desktop.gitTrack.modes.auto.label',
+			hintKey: 'desktop.gitTrack.modes.auto.hint',
 		},
 		{
 			value: 'off',
-			label: 'Off',
-			hint: 'Ignore branch changes.',
+			labelKey: 'desktop.gitTrack.modes.off.label',
+			hintKey: 'desktop.gitTrack.modes.off.hint',
 		},
 	];
 

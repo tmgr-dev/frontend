@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import { ToastAction, useToast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { revealInFileManagerLabel } from '@/utils/desktop';
 	import {
 		downloadToast,
@@ -25,7 +26,7 @@
 					await invoke('reveal_download', { path });
 				} catch (error) {
 					toast({
-						title: 'Could not show the file',
+						title: t('desktop.downloads.revealFailed'),
 						description: String(error),
 						variant: 'destructive',
 					});

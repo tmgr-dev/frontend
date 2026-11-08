@@ -448,19 +448,19 @@
 		v-show="open"
 		class="fixed top-[var(--titlebar-h,0px)] right-0 bottom-[var(--statusbar-h,0px)] z-40 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-xl"
 		role="complementary"
-		aria-label="AI assistant"
+		:aria-label="$t('agents.assistant.title')"
 	>
 		<header
 			class="flex h-12 shrink-0 items-center justify-between border-b border-line px-4"
 		>
 			<div class="flex items-center gap-2 text-sm font-semibold text-ink">
-				<Sparkles class="h-4 w-4" /> Ask AI
+				<Sparkles class="h-4 w-4" /> {{ $t('agents.assistant.askAi') }}
 			</div>
 			<div class="flex items-center gap-1">
 				<button
 					class="rounded-pill p-1 hover:bg-surface-hover hover:text-ink"
 					:class="view === 'list' ? 'text-ink' : 'text-ink-subtle'"
-					aria-label="Chat history"
+					:aria-label="$t('agents.assistant.history')"
 					:aria-pressed="view === 'list'"
 					@click="toggleHistory"
 				>
@@ -469,9 +469,9 @@
 				<button
 					class="relative rounded-pill p-1 hover:bg-surface-hover hover:text-ink"
 					:class="pinsOpen ? 'text-ink' : 'text-ink-subtle'"
-					:aria-label="`Pinned facts (${pins.length})`"
+					:aria-label="$t('agents.assistant.pinnedCount', { n: pins.length })"
 					:aria-pressed="pinsOpen"
-					:title="`Pinned facts (${pins.length})`"
+					:title="$t('agents.assistant.pinnedCount', { n: pins.length })"
 					@click="togglePins"
 				>
 					<Pin class="h-4 w-4" />
@@ -485,21 +485,27 @@
 					class="rounded-pill px-2 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					@click="newFromList"
 				>
-					New chat
+					{{ $t('agents.assistant.newChat') }}
 				</button>
 				<button
 					class="rounded-pill px-2 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
 					:disabled="!canCompact"
 					:title="
-						canCompact || compacting ? undefined : 'Available between answers'
+						canCompact || compacting
+							? undefined
+							: $t('agents.assistant.compactUnavailable')
 					"
 					@click="compact"
 				>
-					{{ compacting ? 'Compacting…' : 'Compact history' }}
+					{{
+						compacting
+							? $t('agents.assistant.compacting')
+							: $t('agents.assistant.compact')
+					}}
 				</button>
 				<button
 					class="rounded-pill p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
-					aria-label="Close"
+					:aria-label="$t('common.actions.close')"
 					@click="close"
 				>
 					<X class="h-4 w-4" />
@@ -509,17 +515,16 @@
 		<section
 			v-if="pinsOpen && view === 'chat'"
 			class="space-y-3 max-h-80 shrink-0 overflow-y-auto border-b border-line bg-surface px-4 py-3"
-			aria-label="Pinned facts"
+			:aria-label="$t('agents.assistant.pinned')"
 		>
 			<p class="text-xs text-ink-subtle">
-				Pinned facts are sent to the assistant with every message and are kept
-				when the history is compacted.
+				{{ $t('agents.assistant.pinnedHint') }}
 			</p>
 			<p v-if="pinsLoading && !pins.length" class="text-sm text-ink-subtle">
-				Loading…
+				{{ $t('common.states.loading') }}
 			</p>
 			<p v-else-if="!pins.length" class="text-sm text-ink-subtle">
-				No pinned facts yet.
+				{{ $t('agents.assistant.noPins') }}
 			</p>
 			<ul v-else class="space-y-2">
 				<li
@@ -532,7 +537,7 @@
 							v-model="editDraft"
 							rows="3"
 							:maxlength="pinLimits.max_chars"
-							aria-label="Edit pinned fact"
+							:aria-label="$t('agents.assistant.editPin')"
 							class="w-full resize-none rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink outline-hidden focus:border-line-focus"
 						></textarea>
 						<div class="mt-1 flex items-center justify-between gap-2 text-xs">
@@ -545,7 +550,7 @@
 									:disabled="pinSaving"
 									@click="editingPinId = null"
 								>
-									Cancel
+									{{ $t('common.actions.cancel') }}
 								</button>
 								<button
 									class="rounded-pill bg-brand px-3 py-1 text-on-accent disabled:opacity-40"
@@ -554,7 +559,7 @@
 									"
 									@click="saveEditedPin"
 								>
-									Save
+									{{ $t('common.actions.save') }}
 								</button>
 							</div>
 						</div>
@@ -570,14 +575,14 @@
 								:disabled="pinSaving"
 								@click="beginEditPin(pin)"
 							>
-								Edit
+								{{ $t('common.actions.edit') }}
 							</button>
 							<button
 								class="rounded-pill px-2 py-1 text-ink-subtle hover:bg-surface-hover hover:text-red-500"
 								:disabled="pinSaving"
 								@click="deletePin(pin)"
 							>
-								Remove
+								{{ $t('common.actions.remove') }}
 							</button>
 						</div>
 					</template>
@@ -590,8 +595,8 @@
 					rows="2"
 					:maxlength="pinLimits.max_chars"
 					:disabled="pinSaving"
-					placeholder="Add a fact…"
-					aria-label="New pinned fact"
+					:placeholder="$t('agents.assistant.addFactPlaceholder')"
+					:aria-label="$t('agents.assistant.newPin')"
 					class="w-full resize-none rounded-lg border border-line bg-surface-sunken px-2 py-1.5 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-focus disabled:opacity-60"
 				></textarea>
 				<div class="mt-1 flex items-center justify-between gap-2 text-xs">
@@ -603,7 +608,7 @@
 						:disabled="pinSaving || !canSubmitPin"
 						@click="submitPin"
 					>
-						Add
+						{{ $t('common.actions.add') }}
 					</button>
 				</div>
 				<p v-if="pinHint" class="mt-1 text-xs text-ink-subtle">{{ pinHint }}</p>
@@ -632,8 +637,7 @@
 				v-if="!state.messages.length && !loading"
 				class="text-sm text-ink-subtle"
 			>
-				Ask about this workspace: what is overdue, how much time went into a
-				category this week, what a task is about.
+				{{ $t('agents.assistant.emptyHint') }}
 			</p>
 			<template v-for="m in state.messages" :key="m.id">
 				<div
@@ -658,11 +662,11 @@
 					class="flex items-center gap-2 text-xs text-ink-subtle"
 				>
 					<span class="h-px flex-1 bg-line"></span>
-					<span
-						>History compacted{{
-							c.trigger === 'auto' ? ' (automatic)' : ''
-						}}</span
-					>
+					<span>{{
+						c.trigger === 'auto'
+							? $t('agents.assistant.compactedAuto')
+							: $t('agents.assistant.compacted')
+					}}</span>
 					<span class="h-px flex-1 bg-line"></span>
 				</div>
 			</template>
@@ -706,7 +710,7 @@
 			<ul
 				v-if="quoteChips.length"
 				class="mb-2 flex flex-wrap gap-1.5"
-				aria-label="Quoted messages"
+				:aria-label="$t('agents.assistant.quoted')"
 			>
 				<li
 					v-for="(chip, i) in quoteChips"
@@ -721,7 +725,7 @@
 					</span>
 					<button
 						class="shrink-0 rounded-pill p-0.5 hover:bg-surface-hover hover:text-ink"
-						aria-label="Remove quote"
+						:aria-label="$t('agents.assistant.removeQuote')"
 						@click="removeQuoteDraft(i)"
 					>
 						<X class="h-3 w-3" />
@@ -742,7 +746,7 @@
 					rows="1"
 					data-tour="ai.input"
 					class="max-h-40 min-w-0 flex-1 resize-none bg-transparent py-1 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle"
-					placeholder="Ask about this workspace…"
+					:placeholder="$t('agents.assistant.inputPlaceholder')"
 					:disabled="busy || loading"
 					@keydown.enter="onEnter"
 					@paste="onPaste"
@@ -756,15 +760,15 @@
 				<button
 					class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-on-accent disabled:opacity-40"
 					:disabled="!draft.trim() || busy || loading || !attachments?.canSend"
-					aria-label="Send"
-					title="Send (Enter)"
+					:aria-label="$t('agents.assistant.send')"
+					:title="$t('agents.assistant.sendTitle')"
 					@click="submit"
 				>
 					<Send class="h-3.5 w-3.5" />
 				</button>
 			</div>
 			<p v-if="hasOpenCard" class="mt-1 text-xs text-ink-subtle">
-				Sending a new message will cancel the pending changes.
+				{{ $t('agents.assistant.cancelPending') }}
 			</p>
 			<p v-if="error" class="mt-1 text-xs text-red-500">{{ error }}</p>
 			<ContextMeter
@@ -781,7 +785,7 @@
 			@mousedown.prevent
 			@click="quoteSelection"
 		>
-			<Quote class="h-3 w-3" /> Quote
+			<Quote class="h-3 w-3" /> {{ $t('agents.assistant.quote') }}
 		</button>
 	</aside>
 </template>

@@ -6,7 +6,9 @@
 			role="status"
 			data-testid="agent-sessions-error"
 		>
-			<span class="font-semibold text-destructive">error:</span>
+			<span class="font-semibold text-destructive">{{
+				$t('desktop.runner.sessions.error')
+			}}</span>
 			<CommandText :text="unavailable" />
 		</p>
 		<p
@@ -14,7 +16,7 @@
 			class="rounded-md border border-dashed border-line-strong px-3 py-3 text-sm text-ink-subtle"
 			data-testid="agent-sessions-empty"
 		>
-			No agents running. Start one with Run with agent on a task.
+			{{ $t('desktop.runner.sessions.empty') }}
 		</p>
 		<ul
 			v-else
@@ -54,7 +56,7 @@
 					data-testid="agent-open-terminal"
 					@click="openTerminal(session.id)"
 				>
-					Open terminal
+					{{ $t('desktop.runner.openTerminal') }}
 				</Button>
 				<Button
 					v-if="session.state.kind !== 'exited'"
@@ -64,7 +66,7 @@
 					data-testid="agent-stop"
 					@click="stop(session.id)"
 				>
-					Stop
+					{{ $t('desktop.runner.sessions.stop') }}
 				</Button>
 			</li>
 		</ul>

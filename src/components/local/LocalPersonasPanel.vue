@@ -6,21 +6,20 @@
 	>
 		<header class="flex flex-col gap-1">
 			<h4 class="text-sm font-semibold">
-				{{ localOnly ? 'Agents on this device' : 'On this device' }}
+				{{
+					localOnly
+						? $t('desktop.personasPanel.titleLocal')
+						: $t('desktop.personasPanel.titleCloud')
+				}}
 			</h4>
 			<p v-if="localOnly" class="text-sm text-muted-foreground">
-				Connect Claude Code or any MCP client to this workspace without an
-				account. Each agent is a local persona: press “Connect an agent”, copy
-				the command into your terminal, and the agent works through its own
-				permissions.
+				{{ $t('desktop.personasPanel.descriptionLocal') }}
 			</p>
 			<p v-else class="text-sm text-muted-foreground">
-				Personas from your account, snapshotted into this local workspace. Their
-				prompt and skills stay in this app's data folder, never in the workspace
-				file, so the folder stays safe to copy or move.
+				{{ $t('desktop.personasPanel.descriptionCloud') }}
 			</p>
 			<p v-if="!workspace" class="text-sm text-amber-600 dark:text-amber-400">
-				Open a local workspace to manage personas here.
+				{{ $t('desktop.personasPanel.openWorkspace') }}
 			</p>
 		</header>
 
@@ -28,14 +27,18 @@
 			v-if="pendingConnect"
 			class="flex items-start justify-between gap-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
 		>
-			<p class="text-amber-800 dark:text-amber-200">
-				The plugin <strong>{{ pendingConnect.pluginName }}</strong> asks to
-				connect its companion. Choose a persona below and press “Connect an
-				agent”.
-			</p>
-			<Button size="sm" variant="outline" @click="cancelPendingConnect"
-				>Decline</Button
+			<i18n-t
+				keypath="desktop.personasPanel.pendingConnect"
+				tag="p"
+				class="text-amber-800 dark:text-amber-200"
 			>
+				<template #plugin>
+					<strong>{{ pendingConnect.pluginName }}</strong>
+				</template>
+			</i18n-t>
+			<Button size="sm" variant="outline" @click="cancelPendingConnect">{{
+				$t('desktop.personasPanel.decline')
+			}}</Button>
 		</div>
 
 		<LocalAiSettings v-if="workspace && showLlmSettings" />
@@ -45,7 +48,9 @@
 			class="flex flex-col gap-3 rounded-md border border-border p-4"
 		>
 			<div class="flex items-center justify-between">
-				<h5 class="text-sm font-semibold">Personas in this workspace</h5>
+				<h5 class="text-sm font-semibold">
+					{{ $t('desktop.personasPanel.personasTitle') }}
+				</h5>
 				<Button
 					v-if="!localOnly"
 					size="sm"
@@ -53,7 +58,11 @@
 					:disabled="syncing"
 					@click="sync"
 				>
-					{{ syncing ? 'Syncing…' : 'Sync now' }}
+					{{
+						syncing
+							? $t('desktop.personasPanel.syncing')
+							: $t('desktop.personasPanel.syncNow')
+					}}
 				</Button>
 				<Button
 					v-else
@@ -62,7 +71,7 @@
 					:data-tour="personas.length ? undefined : 'local-personas.connect'"
 					@click="showAddForm = !showAddForm"
 				>
-					Add local agent
+					{{ $t('desktop.personasPanel.addLocalAgent') }}
 				</Button>
 			</div>
 			<form
@@ -71,7 +80,7 @@
 				@submit.prevent="addLocalAgent"
 			>
 				<label class="flex flex-col gap-1 text-sm">
-					Name
+					{{ $t('desktop.personasPanel.name') }}
 					<Input
 						v-model="addForm.name"
 						maxlength="60"
@@ -79,10 +88,10 @@
 					/>
 				</label>
 				<label class="flex flex-col gap-1 text-sm">
-					Description (optional)
+					{{ $t('desktop.personasPanel.description') }}
 					<Input
 						v-model="addForm.description"
-						placeholder="What this agent is for"
+						:placeholder="$t('desktop.personasPanel.descriptionPlaceholder')"
 					/>
 				</label>
 				<p v-if="addError" class="text-sm text-red-600 dark:text-red-400">
@@ -94,7 +103,11 @@
 						size="sm"
 						:disabled="adding || !addForm.name.trim()"
 					>
-						{{ adding ? 'Adding…' : 'Add agent' }}
+						{{
+							adding
+								? $t('desktop.personasPanel.adding')
+								: $t('desktop.personasPanel.addAgent')
+						}}
 					</Button>
 					<Button
 						type="button"
@@ -102,7 +115,7 @@
 						variant="outline"
 						@click="showAddForm = false"
 					>
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</Button>
 				</div>
 			</form>
@@ -110,7 +123,11 @@
 				{{ syncError }}
 			</p>
 			<p v-if="!personas.length" class="text-sm text-muted-foreground">
-				{{ localOnly ? 'No local agents yet.' : 'No personas synced yet.' }}
+				{{
+					localOnly
+						? $t('desktop.personasPanel.noLocalAgents')
+						: $t('desktop.personasPanel.noPersonas')
+				}}
 			</p>
 			<div
 				v-for="persona in personas"
@@ -125,7 +142,7 @@
 								v-if="persona.archived_at && !localOnly"
 								class="ml-2 text-xs text-muted-foreground"
 							>
-								(archived in the cloud)
+								{{ $t('desktop.personasPanel.archivedInCloud') }}
 							</span>
 						</div>
 						<div class="text-xs text-muted-foreground">
@@ -163,7 +180,9 @@
 					"
 					class="flex flex-col gap-2 border-t border-border pt-2"
 				>
-					<p class="text-xs font-medium">Library skills</p>
+					<p class="text-xs font-medium">
+						{{ $t('desktop.personasPanel.librarySkills') }}
+					</p>
 					<div
 						v-for="skill in attachedSkills(persona)"
 						:key="skill.slug"
@@ -175,7 +194,7 @@
 							variant="outline"
 							@click="detachSkill(persona, skill.slug)"
 						>
-							Detach
+							{{ $t('desktop.personasPanel.detach') }}
 						</Button>
 					</div>
 					<p v-if="skillError" class="text-xs text-red-600 dark:text-red-400">
@@ -195,8 +214,10 @@
 						<option value="">
 							{{
 								attachedSkills(persona).length >= attachedLimit
-									? `Limit of ${attachedLimit} skills reached`
-									: 'Attach a library skill…'
+									? $t('desktop.personasPanel.limitReached', {
+											limit: attachedLimit,
+										})
+									: $t('desktop.personasPanel.attachSkill')
 							}}
 						</option>
 						<option
@@ -221,10 +242,10 @@
 							data-tour="local-personas.connect"
 							@click="openConnect(persona)"
 						>
-							Connect an agent
+							{{ $t('desktop.personasPanel.connectAgent') }}
 						</Button>
 						<span v-else class="text-xs text-ink-subtle">
-							Not available in the demo
+							{{ $t('desktop.personasPanel.notInDemo') }}
 						</span>
 						<Button
 							v-if="tokensFor(persona).some((t) => !t.revokedAt)"
@@ -232,14 +253,14 @@
 							variant="outline"
 							@click="revokeAllForPersona(persona)"
 						>
-							Revoke all
+							{{ $t('desktop.personasPanel.revokeAll') }}
 						</Button>
 					</div>
 					<p
 						v-if="!tokensFor(persona).length"
 						class="text-xs text-muted-foreground"
 					>
-						No agent connections yet.
+						{{ $t('desktop.personasPanel.noConnections') }}
 					</p>
 					<div
 						v-for="token in tokensFor(persona)"
@@ -257,17 +278,31 @@
 											: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
 									]"
 								>
-									{{ token.revokedAt ? 'revoked' : 'active' }}
+									{{
+										token.revokedAt
+											? $t('desktop.personasPanel.revoked')
+											: $t('desktop.personasPanel.active')
+									}}
 								</span>
 								<span v-if="token.pluginId" class="text-muted-foreground">
-									via plugin {{ token.pluginId }}
+									{{
+										$t('desktop.personasPanel.viaPlugin', {
+											id: token.pluginId,
+										})
+									}}
 								</span>
 							</p>
 							<p class="truncate text-2xs text-muted-foreground">
-								{{ token.prefix }}… · created
-								{{ formatDate(token.createdAt) }} · expires
-								{{ formatDate(token.expiresAt) }} · last used
-								{{ token.lastUsedAt ? formatDate(token.lastUsedAt) : 'never' }}
+								{{
+									$t('desktop.personasPanel.tokenMeta', {
+										prefix: token.prefix,
+										created: formatDate(token.createdAt),
+										expires: formatDate(token.expiresAt),
+										lastUsed: token.lastUsedAt
+											? formatDate(token.lastUsedAt)
+											: $t('desktop.personasPanel.never'),
+									})
+								}}
 							</p>
 						</div>
 						<Button
@@ -277,7 +312,7 @@
 							class="shrink-0"
 							@click="revokeToken(token)"
 						>
-							Revoke
+							{{ $t('desktop.personasPanel.revoke') }}
 						</Button>
 					</div>
 				</div>
@@ -289,7 +324,9 @@
 			class="flex flex-col gap-3 rounded-md border border-border p-4"
 		>
 			<div class="flex items-center justify-between">
-				<h5 class="text-sm font-semibold">Local agent access</h5>
+				<h5 class="text-sm font-semibold">
+					{{ $t('desktop.personasPanel.accessTitle') }}
+				</h5>
 				<Switch
 					v-if="localAccessAvailable"
 					data-tour="local-personas.access"
@@ -302,7 +339,7 @@
 				{{
 					localAccessAvailable
 						? accessStatusLine
-						: 'Local access is not available on Windows yet.'
+						: $t('desktop.personasPanel.accessUnavailable')
 				}}
 			</p>
 			<RouterLink
@@ -313,7 +350,7 @@
 					params: { workspace_code: workspace.code },
 				}"
 			>
-				Connect your agent
+				{{ $t('desktop.personasPanel.connectYourAgent') }}
 			</RouterLink>
 		</section>
 
@@ -342,6 +379,7 @@
 	import { Input } from '@/components/ui/input';
 	import { Switch } from '@/components/ui/switch';
 	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
+	import { currentLocale, t } from '@/i18n';
 	import {
 		getLocalAccessStatus,
 		listLocalTokens,
@@ -450,7 +488,7 @@
 						};
 
 			const ctxFor = async () => {
-				if (!workspace) throw new Error('No local workspace is open');
+				if (!workspace) throw new Error(t('desktop.personasPanel.noWorkspace'));
 				return localContext(workspace, currentUser());
 			};
 
@@ -599,17 +637,23 @@
 				await refreshTokens();
 			};
 
-			const formatDate = (date: string) => new Date(date).toLocaleDateString();
+			const formatDate = (date: string) =>
+				new Date(date).toLocaleDateString(currentLocale());
 
 			const revokeToken = async (token: TokenInfo) => {
-				if (!window.confirm(`Revoke the "${token.label}" connection?`)) return;
+				if (
+					!window.confirm(
+						t('desktop.personasPanel.confirmRevoke', { label: token.label }),
+					)
+				)
+					return;
 				await revokeLocalToken(token.id);
 				await refreshTokens();
 			};
 
 			const revokeAllForPersona = async (persona: WorkspacePersonaRow) => {
 				if (!workspace) return;
-				if (!window.confirm('Revoke every agent connection for this persona?'))
+				if (!window.confirm(t('desktop.personasPanel.confirmRevokeAll')))
 					return;
 				await revokeAllLocalTokens({
 					personaUuid: persona.uuid,
@@ -619,11 +663,13 @@
 			};
 
 			const accessStatusLine = computed(() => {
-				if (accessStatus.safeMode) return 'safe mode — closed';
-				if (!accessStatus.enabled) return 'off';
+				if (accessStatus.safeMode) return t('desktop.personasPanel.safeMode');
+				if (!accessStatus.enabled) return t('desktop.personasPanel.accessOff');
 				if (accessStatus.listening && accessStatus.socketPath)
-					return `listening at ${accessStatus.socketPath}`;
-				return 'off';
+					return t('desktop.personasPanel.listening', {
+						path: accessStatus.socketPath,
+					});
+				return t('desktop.personasPanel.accessOff');
 			});
 
 			const toggleAccess = async (value: boolean) => {

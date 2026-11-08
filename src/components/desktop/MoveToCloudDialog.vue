@@ -9,6 +9,7 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
+	import { t } from '@/i18n';
 	import { apiErrorMessage } from '@/local/moveToCloud/api';
 	import { formatBytes, previousMoveWarning } from '@/local/moveToCloud/banner';
 	import { dryRunSkillsLine } from '@/local/moveToCloud/skills';
@@ -111,9 +112,11 @@
 				const reasons = [
 					...new Set(excluded.map((f) => reasonLabel(f.reason))),
 				];
-				return `${excluded.length} ${
-					excluded.length === 1 ? 'file' : 'files'
-				} that can't be uploaded (${reasons.join(', ')})`;
+				return t(
+					'desktop.moveDialog.excluded',
+					{ n: excluded.length, reasons: reasons.join(', ') },
+					excluded.length,
+				);
 			});
 			const previousWarning = computed(() =>
 				dry.value?.previousMove
@@ -164,15 +167,18 @@
 	<Dialog :open="open" @update:open="$emit('update:open', $event)">
 		<DialogContent class="max-w-2xl" data-testid="move-to-cloud-dialog">
 			<DialogHeader>
-				<DialogTitle>Move to your cloud account</DialogTitle>
+				<DialogTitle>{{ $t('desktop.moveDialog.title') }}</DialogTitle>
 				<DialogDescription>
-					Copies the local workspace <strong>{{ name }}</strong> into a new
-					workspace in your TMGR account.
+					<i18n-t keypath="desktop.moveDialog.description" tag="span">
+						<template #name>
+							<strong>{{ name }}</strong>
+						</template>
+					</i18n-t>
 				</DialogDescription>
 			</DialogHeader>
 
 			<p v-if="loading" class="text-sm text-ink-subtle">
-				Checking this workspace…
+				{{ $t('desktop.moveDialog.checking') }}
 			</p>
 			<p v-if="error" role="alert" class="text-sm text-destructive">
 				{{ error }}
@@ -183,7 +189,7 @@
 				class="flex max-h-[60vh] flex-col gap-4 overflow-y-auto pr-1"
 			>
 				<label class="flex items-center gap-3 text-sm">
-					<span class="shrink-0">Cloud workspace name:</span>
+					<span class="shrink-0">{{ $t('desktop.moveDialog.cloudName') }}</span>
 					<input
 						v-model="cloudName"
 						data-selectable
@@ -194,50 +200,62 @@
 
 				<div class="grid gap-4 sm:grid-cols-2">
 					<div>
-						<h3 class="mb-2 text-sm font-semibold">Moves</h3>
+						<h3 class="mb-2 text-sm font-semibold">
+							{{ $t('desktop.moveDialog.moves') }}
+						</h3>
 						<ul class="flex flex-col gap-1.5 text-sm">
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
-								<span
-									><strong>{{ counts?.tasks }}</strong> tasks with time and
-									checkpoints</span
-								>
+								<i18n-t keypath="desktop.moveDialog.tasks" tag="span">
+									<template #n
+										><strong>{{ counts?.tasks }}</strong></template
+									>
+								</i18n-t>
 							</li>
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
-								<span
-									><strong>{{ counts?.comments }}</strong> comments</span
-								>
+								<i18n-t keypath="desktop.moveDialog.comments" tag="span">
+									<template #n
+										><strong>{{ counts?.comments }}</strong></template
+									>
+								</i18n-t>
 							</li>
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
-								<span
-									><strong>{{ dry.movedFiles }}</strong> files ({{
-										sizeLabel
-									}})</span
-								>
+								<i18n-t keypath="desktop.moveDialog.files" tag="span">
+									<template #n
+										><strong>{{ dry.movedFiles }}</strong></template
+									>
+									<template #size>{{ sizeLabel }}</template>
+								</i18n-t>
 							</li>
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
-								<span
-									><strong>{{ counts?.pages }}</strong> pages with history</span
-								>
+								<i18n-t keypath="desktop.moveDialog.pages" tag="span">
+									<template #n
+										><strong>{{ counts?.pages }}</strong></template
+									>
+								</i18n-t>
 							</li>
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
-								<span
-									><strong>{{ counts?.routines }}</strong> routines</span
-								>
+								<i18n-t keypath="desktop.moveDialog.routines" tag="span">
+									<template #n
+										><strong>{{ counts?.routines }}</strong></template
+									>
+								</i18n-t>
 							</li>
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
-								<span
-									><strong>{{ counts?.agentRuns }}</strong> agent runs</span
-								>
+								<i18n-t keypath="desktop.moveDialog.agentRuns" tag="span">
+									<template #n
+										><strong>{{ counts?.agentRuns }}</strong></template
+									>
+								</i18n-t>
 							</li>
 							<li class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
-								<span>Statuses, categories, relations</span>
+								<span>{{ $t('desktop.moveDialog.structure') }}</span>
 							</li>
 							<li v-if="dry.skills > 0" class="flex gap-2">
 								<Check class="mt-0.5 size-4 shrink-0 text-emerald-500" />
@@ -246,15 +264,17 @@
 						</ul>
 					</div>
 					<div>
-						<h3 class="mb-2 text-sm font-semibold">Stays on this computer</h3>
+						<h3 class="mb-2 text-sm font-semibold">
+							{{ $t('desktop.moveDialog.stays') }}
+						</h3>
 						<ul class="flex flex-col gap-1.5 text-sm">
 							<li class="flex gap-2">
 								<Minus class="mt-0.5 size-4 shrink-0 text-ink-subtle" />
-								<span>Persona tokens</span>
+								<span>{{ $t('desktop.moveDialog.personaTokens') }}</span>
 							</li>
 							<li class="flex gap-2">
 								<Minus class="mt-0.5 size-4 shrink-0 text-ink-subtle" />
-								<span>Plugin data</span>
+								<span>{{ $t('desktop.moveDialog.pluginData') }}</span>
 							</li>
 							<li v-if="dry.excluded.length" class="flex gap-2">
 								<Minus class="mt-0.5 size-4 shrink-0 text-ink-subtle" />
@@ -266,7 +286,11 @@
 										:aria-expanded="showExcluded"
 										@click="showExcluded = !showExcluded"
 									>
-										{{ showExcluded ? 'Hide' : 'Show' }}
+										{{
+											showExcluded
+												? $t('desktop.moveDialog.hide')
+												: $t('desktop.moveDialog.show')
+										}}
 									</button>
 									<ul
 										v-if="showExcluded"
@@ -287,7 +311,9 @@
 				</div>
 
 				<div v-if="choices.length" class="border-t pt-3">
-					<h3 class="mb-2 text-sm font-semibold">Personas</h3>
+					<h3 class="mb-2 text-sm font-semibold">
+						{{ $t('desktop.moveDialog.personas') }}
+					</h3>
 					<ul class="flex flex-col gap-2 text-sm">
 						<li
 							v-for="choice in localChoices"
@@ -297,22 +323,30 @@
 							<span class="min-w-0 flex-1 truncate">{{ choice.name }}</span>
 							<select
 								:value="choice.action"
-								:aria-label="`What to do with ${choice.name}`"
+								:aria-label="
+									$t('desktop.moveDialog.actionLabel', { name: choice.name })
+								"
 								class="h-9 rounded-md border border-input bg-background px-2 text-sm"
 								@change="
 									setAction(choice, ($event.target as HTMLSelectElement).value)
 								"
 							>
-								<option value="create">Create in my account</option>
-								<option value="map" :disabled="!cloudPersonas.length">
-									Use my existing persona …
+								<option value="create">
+									{{ $t('desktop.moveDialog.actionCreate') }}
 								</option>
-								<option value="me">Attribute to me</option>
+								<option value="map" :disabled="!cloudPersonas.length">
+									{{ $t('desktop.moveDialog.actionMap') }}
+								</option>
+								<option value="me">
+									{{ $t('desktop.moveDialog.actionMe') }}
+								</option>
 							</select>
 							<select
 								v-if="choice.action === 'map'"
 								v-model="choice.cloudUuid"
-								:aria-label="`Existing persona for ${choice.name}`"
+								:aria-label="
+									$t('desktop.moveDialog.existingLabel', { name: choice.name })
+								"
 								class="h-9 rounded-md border border-input bg-background px-2 text-sm"
 							>
 								<option
@@ -330,14 +364,14 @@
 							class="flex gap-2 text-ink-subtle"
 						>
 							<span class="min-w-0 flex-1 truncate">{{ choice.name }}</span>
-							<span>Uses the same persona in your account</span>
+							<span>{{ $t('desktop.moveDialog.samePersona') }}</span>
 						</li>
 					</ul>
 				</div>
 
 				<label class="flex items-center gap-2 border-t pt-3 text-sm">
 					<input type="checkbox" checked disabled />
-					Keep the local copy
+					{{ $t('desktop.moveDialog.keepLocal') }}
 				</label>
 
 				<p
@@ -352,20 +386,21 @@
 					<TriangleAlert class="mt-0.5 size-4 shrink-0" />
 					<div>
 						<p>
-							Tasks, pages, comments and files from this workspace will be
-							uploaded to your TMGR account.
+							{{ $t('desktop.moveDialog.uploadWarning') }}
 						</p>
 						<p v-if="dry.runningTimers > 0">
-							A timer is running and will be stopped first.
+							{{ $t('desktop.moveDialog.timerWarning') }}
 						</p>
 					</div>
 				</div>
 			</div>
 
 			<DialogFooter>
-				<Button variant="outline" @click="cancel">Cancel</Button>
+				<Button variant="outline" @click="cancel">{{
+					$t('common.actions.cancel')
+				}}</Button>
 				<Button variant="destructive" :disabled="!valid" @click="start">
-					Move to cloud
+					{{ $t('desktop.moveDialog.move') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
