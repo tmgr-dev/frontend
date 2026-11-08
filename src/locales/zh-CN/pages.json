@@ -1,0 +1,229 @@
+{
+	"actionLines": {
+		"title": "待办事项",
+		"toTask": "→ 任务"
+	},
+	"aliases": {
+		"add": "添加别名",
+		"displayName": "显示名称",
+		"identifier": "标识符",
+		"remove": "移除别名"
+	},
+	"conflict": {
+		"description": "你编辑时出现了版本 {version}。请选择保留哪一个。",
+		"difference": "差异",
+		"hint": "采用对方的版本：加载版本 {version} 并丢弃你的草稿。保留我的版本：用你的文本覆盖版本 {version}。",
+		"keepMine": "保留我的",
+		"showBoth": "显示两者",
+		"takeTheirs": "采用对方的",
+		"theirVersion": "对方的版本",
+		"title": "页面已在别处更改",
+		"yourDraft": "你的草稿"
+	},
+	"descriptionPreview": {
+		"edit": "编辑描述",
+		"empty": "暂无描述，点击添加"
+	},
+	"diff": {
+		"empty": "空"
+	},
+	"editor": {
+		"searching": "搜索中…"
+	},
+	"files": {
+		"title": "文件",
+		"upload": "上传",
+		"uploading": "上传中…"
+	},
+	"gate": {
+		"description": "笔记、工作区背景和文档，放在人和智能体都能编辑的页面树中。",
+		"title": "页面"
+	},
+	"import": {
+		"badgeExists": "已存在",
+		"badgeSkipped": "已跳过",
+		"choose": "选择文件",
+		"conflictPolicy": "标题已存在时",
+		"created": "已创建 {n} 个页面。",
+		"drop": "将 Markdown 文件、图片或 .zip 拖到此处",
+		"policyImport": "仍然导入",
+		"policyRename": "重命名（添加 (2)）",
+		"policySkip": "跳过",
+		"reading": "正在读取文件…",
+		"root": "页面根目录",
+		"skippedCount": "已跳过 {n} 个。",
+		"stopped": "导入已停止：{error}，已创建 {n} 个页面",
+		"submit": "导入 {n} 个页面",
+		"target": "导入到：{title}",
+		"title": "导入 Markdown",
+		"warnings": "{n} 条警告",
+		"willCreate": "将创建 {n} 个页面",
+		"willCreateConflicts": "将创建 {n} 个页面，其中 {conflicts} 个标题已存在"
+	},
+	"index": {
+		"allPages": "所有页面",
+		"archive": "归档",
+		"create": "创建页面",
+		"emptyHint": "创建你的第一个页面，用于笔记和文档。",
+		"emptyTitle": "还没有页面",
+		"exportAll": "全部导出",
+		"failed": "无法加载页面",
+		"import": "导入",
+		"pinned": "已置顶",
+		"title": "页面"
+	},
+	"nav": {
+		"dialogs": {
+			"archiveBody": "“{title}”及其所有子页面将移到{archive}，你可以从那里恢复。",
+			"archiveConfirm": "归档",
+			"archiveLink": "归档",
+			"archiveTitle": "归档页面",
+			"renameTitle": "重命名页面",
+			"titlePlaceholder": "标题"
+		},
+		"node": {
+			"actions": "页面操作",
+			"addSubpage": "添加子页面",
+			"archive": "归档",
+			"collapse": "折叠",
+			"expand": "展开",
+			"exportSubtree": "连同子页面导出",
+			"importHere": "在此导入 Markdown…",
+			"openInWindow": "在窗口中打开",
+			"pin": "置顶",
+			"rename": "重命名",
+			"unpin": "取消置顶"
+		},
+		"sidebar": {
+			"allPages": "所有页面",
+			"archive": "归档",
+			"choosePageType": "选择页面类型",
+			"failed": "无法加载页面",
+			"importMarkdown": "导入 Markdown…",
+			"newPage": "新页面",
+			"pageType": "页面类型",
+			"title": "页面"
+		}
+	},
+	"previews": {
+		"board": {
+			"archived": "已归档",
+			"done": "已完成",
+			"inProgress": "进行中",
+			"todo": "待办"
+		},
+		"dashboard": {
+			"completed": "已完成",
+			"inProgress": "进行中",
+			"timeTracked": "已记录工时",
+			"totalTasks": "任务总数"
+		}
+	},
+	"properties": {
+		"author": "作者",
+		"editedBy": "编辑者",
+		"hintMember": "成员",
+		"hintPerson": "人员",
+		"member": "成员",
+		"memberName": "成员名称",
+		"personOrMember": "人员或成员",
+		"searchTasks": "搜索任务",
+		"select": "选择",
+		"task": "任务"
+	},
+	"sidePanel": {
+		"allVersions": "全部",
+		"backlinks": "反向链接",
+		"contents": "目录",
+		"versions": "版本"
+	},
+	"taskFromSelection": {
+		"category": "项目",
+		"create": "创建任务",
+		"description": "页面上的文本将被替换为该任务的链接。",
+		"statusDefault": "默认",
+		"statusOptional": "状态（可选）",
+		"title": "创建任务"
+	},
+	"trash": {
+		"alreadyDeleted": "此页面已被删除",
+		"archivedAt": "归档于 {date}",
+		"back": "页面",
+		"confirmType": "输入 {word} 以确认",
+		"countLabel": "全部 {n} 个已归档页面及其子页面",
+		"deleteAll": "全部删除",
+		"deleteFailed": "无法删除页面",
+		"deleteForbidden": "只有作者或工作区所有者可以删除此页面",
+		"emptied": "归档已清空",
+		"empty": "归档为空。",
+		"emptyBody": "{label}将被永久删除，此操作无法撤销。",
+		"emptyFailed": "无法清空归档",
+		"emptyTitle": "删除所有已归档页面？",
+		"failed": "无法加载归档",
+		"noPermissionDelete": "你没有删除此页面的权限",
+		"noPermissionEmpty": "你没有清空归档的权限",
+		"notArchived": "此页面已不在归档中",
+		"purgeBody": "“{title}”及其已归档的子页面将被永久删除，此操作无法撤销。",
+		"purgeConfirm": "永久删除",
+		"purgeTitle": "永久删除？",
+		"purged": "页面已永久删除",
+		"restore": "恢复",
+		"restoreFailed": "无法恢复页面",
+		"restoreForbidden": "只有作者或工作区所有者可以恢复此页面",
+		"someKept": "部分页面已保留",
+		"someKeptBody": "有 {n} 个你无权删除的已归档页面留在了归档中。",
+		"title": "归档"
+	},
+	"versions": {
+		"backToPage": "返回页面",
+		"current": "当前",
+		"failed": "无法加载历史记录",
+		"history": "历史记录：{title}",
+		"loading": "加载中…",
+		"modeCurrent": "自此版本以来的更改",
+		"modePrevious": "此版本的更改",
+		"modeSnapshot": "快照",
+		"restore": "恢复",
+		"restoreBody": "将用版本 {version} 的内容创建一个新的页面版本。当前文本会保留在历史记录中。",
+		"restoreTitle": "恢复版本 {version}？",
+		"select": "选择一个版本"
+	},
+	"view": {
+		"conflictBanner": "未保存：版本冲突",
+		"editorPlaceholder": "输入 / 插入块，输入 {'@'} 添加链接，输入 [[ 链接页面",
+		"exportMarkdown": "导出为 Markdown",
+		"exportSubtree": "连同子页面导出",
+		"follow": "关注",
+		"forbidden": "页面功能已停用，或你没有访问权限",
+		"history": "历史记录",
+		"importHere": "在此导入 Markdown…",
+		"loadFailed": "无法加载页面",
+		"loading": "加载中…",
+		"makeTask": "创建任务",
+		"moreActions": "更多操作",
+		"notFound": "未找到页面",
+		"openFileFailed": "无法打开 {name}",
+		"openInWindow": "在窗口中打开",
+		"openTask": "打开任务",
+		"refresh": "刷新",
+		"resolve": "解决",
+		"resolveFirst": "请先解决版本冲突。",
+		"saveFailed": "无法保存",
+		"saved": "已保存，版本 {version}",
+		"saving": "保存中…",
+		"subscriptionFailed": "无法更改关注状态",
+		"taskCreated": "任务已创建",
+		"unfollow": "取消关注",
+		"unsaved": "有未保存的更改",
+		"untitled": "无标题",
+		"updateBanner": "页面已更改，版本 {version}",
+		"uploadFailed": "无法上传 {name}",
+		"versionConflict": "版本冲突"
+	},
+	"window": {
+		"closeWindow": "关闭窗口",
+		"loading": "加载中…",
+		"notFound": "找不到此页面。",
+		"openFailed": "无法打开此页面。请关闭此窗口后重试。"
+	}
+}

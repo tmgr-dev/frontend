@@ -1,0 +1,229 @@
+{
+	"actionLines": {
+		"title": "액션 아이템",
+		"toTask": "→ 작업"
+	},
+	"aliases": {
+		"add": "별칭 추가",
+		"displayName": "표시 이름",
+		"identifier": "식별자",
+		"remove": "별칭 제거"
+	},
+	"conflict": {
+		"description": "편집하는 동안 버전 {version}이(가) 생겼어요. 유지할 쪽을 선택하세요.",
+		"difference": "차이",
+		"hint": "상대 버전 사용 — 버전 {version}을(를) 불러오고 내 초안은 버려요. 내 버전 유지 — 내 텍스트를 버전 {version} 위에 저장해요.",
+		"keepMine": "내 버전 유지",
+		"showBoth": "둘 다 보기",
+		"takeTheirs": "상대 버전 사용",
+		"theirVersion": "상대 버전",
+		"title": "다른 곳에서 페이지가 변경됐어요",
+		"yourDraft": "내 초안"
+	},
+	"descriptionPreview": {
+		"edit": "설명 편집",
+		"empty": "설명 없음 — 클릭해서 추가"
+	},
+	"diff": {
+		"empty": "비어 있음"
+	},
+	"editor": {
+		"searching": "검색 중…"
+	},
+	"files": {
+		"title": "파일",
+		"upload": "업로드",
+		"uploading": "업로드 중…"
+	},
+	"gate": {
+		"description": "사람과 에이전트가 함께 편집하는 페이지 트리에서 메모, 워크스페이스 컨텍스트, 문서를 관리해요.",
+		"title": "페이지"
+	},
+	"import": {
+		"badgeExists": "이미 있음",
+		"badgeSkipped": "건너뜀",
+		"choose": "파일 선택",
+		"conflictPolicy": "같은 제목이 이미 있을 때",
+		"created": "페이지 {n}개를 만들었어요.",
+		"drop": "Markdown 파일, 이미지 또는 .zip을 여기에 놓으세요",
+		"policyImport": "그래도 가져오기",
+		"policyRename": "이름 변경 (뒤에 (2) 추가)",
+		"policySkip": "건너뛰기",
+		"reading": "파일을 읽는 중…",
+		"root": "페이지 루트",
+		"skippedCount": "{n}개를 건너뛰었어요.",
+		"stopped": "가져오기가 중단됐어요: {error} — 페이지 {n}개를 만들었어요",
+		"submit": "페이지 {n}개 가져오기",
+		"target": "가져올 위치: {title}",
+		"title": "Markdown 가져오기",
+		"warnings": "경고 {n}개",
+		"willCreate": "페이지 {n}개가 만들어져요",
+		"willCreateConflicts": "페이지 {n}개가 만들어져요. 그중 {conflicts}개는 같은 제목이 이미 있어요"
+	},
+	"index": {
+		"allPages": "모든 페이지",
+		"archive": "보관함",
+		"create": "페이지 만들기",
+		"emptyHint": "메모와 문서를 위한 첫 페이지를 만들어 보세요.",
+		"emptyTitle": "아직 페이지가 없어요",
+		"exportAll": "모두 내보내기",
+		"failed": "페이지를 불러오지 못했어요",
+		"import": "가져오기",
+		"pinned": "고정됨",
+		"title": "페이지"
+	},
+	"nav": {
+		"dialogs": {
+			"archiveBody": "\"{title}\"과(와) 모든 하위 페이지가 {archive}(으)로 이동해요. 거기서 복원할 수 있어요.",
+			"archiveConfirm": "보관",
+			"archiveLink": "보관함",
+			"archiveTitle": "페이지 보관",
+			"renameTitle": "페이지 이름 변경",
+			"titlePlaceholder": "제목"
+		},
+		"node": {
+			"actions": "페이지 동작",
+			"addSubpage": "하위 페이지 추가",
+			"archive": "보관",
+			"collapse": "접기",
+			"expand": "펼치기",
+			"exportSubtree": "하위 페이지와 함께 내보내기",
+			"importHere": "여기로 Markdown 가져오기…",
+			"openInWindow": "새 창에서 열기",
+			"pin": "고정",
+			"rename": "이름 변경",
+			"unpin": "고정 해제"
+		},
+		"sidebar": {
+			"allPages": "모든 페이지",
+			"archive": "보관함",
+			"choosePageType": "페이지 유형 선택",
+			"failed": "페이지를 불러오지 못했어요",
+			"importMarkdown": "Markdown 가져오기…",
+			"newPage": "새 페이지",
+			"pageType": "페이지 유형",
+			"title": "페이지"
+		}
+	},
+	"previews": {
+		"board": {
+			"archived": "보관됨",
+			"done": "완료",
+			"inProgress": "진행 중",
+			"todo": "할 일"
+		},
+		"dashboard": {
+			"completed": "완료",
+			"inProgress": "진행 중",
+			"timeTracked": "기록된 시간",
+			"totalTasks": "전체 작업"
+		}
+	},
+	"properties": {
+		"author": "작성자",
+		"editedBy": "편집한 사람",
+		"hintMember": "멤버",
+		"hintPerson": "사람",
+		"member": "멤버",
+		"memberName": "멤버 이름",
+		"personOrMember": "사람 또는 멤버",
+		"searchTasks": "작업 검색",
+		"select": "선택",
+		"task": "작업"
+	},
+	"sidePanel": {
+		"allVersions": "전체",
+		"backlinks": "백링크",
+		"contents": "목차",
+		"versions": "버전"
+	},
+	"taskFromSelection": {
+		"category": "프로젝트",
+		"create": "작업 만들기",
+		"description": "페이지의 텍스트가 작업 링크로 바뀌어요.",
+		"statusDefault": "기본값",
+		"statusOptional": "상태 (선택 사항)",
+		"title": "작업으로 만들기"
+	},
+	"trash": {
+		"alreadyDeleted": "이 페이지는 이미 삭제됐어요",
+		"archivedAt": "{date}에 보관됨",
+		"back": "페이지",
+		"confirmType": "확인하려면 {word}을(를) 입력하세요",
+		"countLabel": "보관된 페이지 {n}개와 그 하위 페이지 전체",
+		"deleteAll": "모두 삭제",
+		"deleteFailed": "페이지를 삭제하지 못했어요",
+		"deleteForbidden": "작성자나 워크스페이스 소유자만 이 페이지를 삭제할 수 있어요",
+		"emptied": "보관함을 비웠어요",
+		"empty": "보관함이 비어 있어요.",
+		"emptyBody": "{label}이(가) 영구적으로 삭제돼요. 되돌릴 수 없어요.",
+		"emptyFailed": "보관함을 비우지 못했어요",
+		"emptyTitle": "보관된 페이지를 모두 삭제할까요?",
+		"failed": "보관함을 불러오지 못했어요",
+		"noPermissionDelete": "이 페이지를 삭제할 권한이 없어요",
+		"noPermissionEmpty": "보관함을 비울 권한이 없어요",
+		"notArchived": "이 페이지는 더 이상 보관 상태가 아니에요",
+		"purgeBody": "\"{title}\"과(와) 보관된 하위 페이지가 영구적으로 삭제돼요. 되돌릴 수 없어요.",
+		"purgeConfirm": "영구 삭제",
+		"purgeTitle": "영구적으로 삭제할까요?",
+		"purged": "페이지를 영구 삭제했어요",
+		"restore": "복원",
+		"restoreFailed": "페이지를 복원하지 못했어요",
+		"restoreForbidden": "작성자나 워크스페이스 소유자만 이 페이지를 복원할 수 있어요",
+		"someKept": "일부 페이지는 남겨 뒀어요",
+		"someKeptBody": "삭제할 수 없는 보관 페이지 {n}개는 보관함에 남아 있어요.",
+		"title": "보관함"
+	},
+	"versions": {
+		"backToPage": "페이지로 돌아가기",
+		"current": "현재",
+		"failed": "기록을 불러오지 못했어요",
+		"history": "기록: {title}",
+		"loading": "불러오는 중…",
+		"modeCurrent": "이 버전 이후의 변경 사항",
+		"modePrevious": "이 버전에서 바뀐 내용",
+		"modeSnapshot": "스냅샷",
+		"restore": "복원",
+		"restoreBody": "버전 {version}의 내용으로 새 페이지 버전이 만들어져요. 현재 텍스트는 기록에 남아요.",
+		"restoreTitle": "버전 {version}을(를) 복원할까요?",
+		"select": "버전 선택"
+	},
+	"view": {
+		"conflictBanner": "저장되지 않음: 버전 충돌",
+		"editorPlaceholder": "/ 로 블록 추가, {'@'} 로 링크, [[ 로 페이지 연결",
+		"exportMarkdown": "Markdown으로 내보내기",
+		"exportSubtree": "하위 페이지와 함께 내보내기",
+		"follow": "팔로우",
+		"forbidden": "페이지 기능이 꺼져 있거나 접근 권한이 없어요",
+		"history": "기록",
+		"importHere": "여기로 Markdown 가져오기…",
+		"loadFailed": "페이지를 불러오지 못했어요",
+		"loading": "불러오는 중…",
+		"makeTask": "작업으로 만들기",
+		"moreActions": "더 보기",
+		"notFound": "페이지를 찾을 수 없어요",
+		"openFileFailed": "{name}을(를) 열지 못했어요",
+		"openInWindow": "새 창에서 열기",
+		"openTask": "작업 열기",
+		"refresh": "새로 고침",
+		"resolve": "해결",
+		"resolveFirst": "먼저 버전 충돌을 해결하세요.",
+		"saveFailed": "저장하지 못했어요",
+		"saved": "저장됨, 버전 {version}",
+		"saving": "저장 중…",
+		"subscriptionFailed": "구독을 변경하지 못했어요",
+		"taskCreated": "작업을 만들었어요",
+		"unfollow": "팔로우 해제",
+		"unsaved": "저장되지 않은 변경 사항",
+		"untitled": "제목 없음",
+		"updateBanner": "페이지가 변경됐어요, 버전 {version}",
+		"uploadFailed": "{name}을(를) 업로드하지 못했어요",
+		"versionConflict": "버전 충돌"
+	},
+	"window": {
+		"closeWindow": "창 닫기",
+		"loading": "불러오는 중…",
+		"notFound": "이 페이지를 찾을 수 없어요.",
+		"openFailed": "페이지를 열 수 없어요. 이 창을 닫고 다시 시도해 주세요."
+	}
+}

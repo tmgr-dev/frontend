@@ -1,0 +1,229 @@
+{
+	"actionLines": {
+		"title": "アクション項目",
+		"toTask": "→ タスク"
+	},
+	"aliases": {
+		"add": "エイリアスを追加",
+		"displayName": "表示名",
+		"identifier": "識別子",
+		"remove": "エイリアスを削除"
+	},
+	"conflict": {
+		"description": "編集中にバージョン {version} が作成されました。どちらを残すか選んでください。",
+		"difference": "差分",
+		"hint": "相手の版を使う: バージョン {version} を読み込み、下書きを破棄します。自分の版を残す: バージョン {version} をあなたのテキストで上書き保存します。",
+		"keepMine": "自分の版を残す",
+		"showBoth": "両方を表示",
+		"takeTheirs": "相手の版を使う",
+		"theirVersion": "相手の版",
+		"title": "ページが別の場所で変更されました",
+		"yourDraft": "あなたの下書き"
+	},
+	"descriptionPreview": {
+		"edit": "説明を編集",
+		"empty": "説明なし — クリックして追加"
+	},
+	"diff": {
+		"empty": "空"
+	},
+	"editor": {
+		"searching": "検索中…"
+	},
+	"files": {
+		"title": "ファイル",
+		"upload": "アップロード",
+		"uploading": "アップロード中…"
+	},
+	"gate": {
+		"description": "ノート、ワークスペースのコンテキスト、ドキュメントを、メンバーもエージェントも編集できるページツリーにまとめます。",
+		"title": "ページ"
+	},
+	"import": {
+		"badgeExists": "既存",
+		"badgeSkipped": "スキップ済み",
+		"choose": "ファイルを選択",
+		"conflictPolicy": "同じタイトルが既にある場合",
+		"created": "{n} ページを作成しました。",
+		"drop": "Markdown ファイル、画像、.zip をここにドロップ",
+		"policyImport": "そのままインポート",
+		"policyRename": "名前を変更 ((2) を付加)",
+		"policySkip": "スキップ",
+		"reading": "ファイルを読み込み中…",
+		"root": "ページのルート",
+		"skippedCount": "{n} 件をスキップしました。",
+		"stopped": "インポートを中止しました: {error} — {n} ページを作成済み",
+		"submit": "{n} ページをインポート",
+		"target": "インポート先: {title}",
+		"title": "Markdown をインポート",
+		"warnings": "警告 {n} 件",
+		"willCreate": "{n} ページを作成します",
+		"willCreateConflicts": "{n} ページを作成します（うち {conflicts} ページは同じタイトルが既にあります）"
+	},
+	"index": {
+		"allPages": "すべてのページ",
+		"archive": "アーカイブ",
+		"create": "ページを作成",
+		"emptyHint": "ノートやドキュメント用の最初のページを作成しましょう。",
+		"emptyTitle": "ページはまだありません",
+		"exportAll": "すべてエクスポート",
+		"failed": "ページを読み込めませんでした",
+		"import": "インポート",
+		"pinned": "ピン留め",
+		"title": "ページ"
+	},
+	"nav": {
+		"dialogs": {
+			"archiveBody": "「{title}」とそのすべてのサブページを{archive}に移動します。そこから復元できます。",
+			"archiveConfirm": "アーカイブする",
+			"archiveLink": "アーカイブ",
+			"archiveTitle": "ページをアーカイブ",
+			"renameTitle": "ページ名を変更",
+			"titlePlaceholder": "タイトル"
+		},
+		"node": {
+			"actions": "ページの操作",
+			"addSubpage": "サブページを追加",
+			"archive": "アーカイブする",
+			"collapse": "折りたたむ",
+			"expand": "展開",
+			"exportSubtree": "サブページ込みでエクスポート",
+			"importHere": "ここに Markdown をインポート…",
+			"openInWindow": "ウィンドウで開く",
+			"pin": "ピン留め",
+			"rename": "名前を変更",
+			"unpin": "ピン留めを解除"
+		},
+		"sidebar": {
+			"allPages": "すべてのページ",
+			"archive": "アーカイブ",
+			"choosePageType": "ページの種類を選択",
+			"failed": "ページを読み込めませんでした",
+			"importMarkdown": "Markdown をインポート…",
+			"newPage": "新規ページ",
+			"pageType": "ページの種類",
+			"title": "ページ"
+		}
+	},
+	"previews": {
+		"board": {
+			"archived": "アーカイブ済み",
+			"done": "完了",
+			"inProgress": "進行中",
+			"todo": "未着手"
+		},
+		"dashboard": {
+			"completed": "完了",
+			"inProgress": "進行中",
+			"timeTracked": "記録した時間",
+			"totalTasks": "タスク合計"
+		}
+	},
+	"properties": {
+		"author": "作成者",
+		"editedBy": "編集者",
+		"hintMember": "メンバー",
+		"hintPerson": "人物",
+		"member": "メンバー",
+		"memberName": "メンバー名",
+		"personOrMember": "人物またはメンバー",
+		"searchTasks": "タスクを検索",
+		"select": "選択",
+		"task": "タスク"
+	},
+	"sidePanel": {
+		"allVersions": "すべて",
+		"backlinks": "バックリンク",
+		"contents": "目次",
+		"versions": "バージョン"
+	},
+	"taskFromSelection": {
+		"category": "プロジェクト",
+		"create": "タスクを作成",
+		"description": "ページ上のテキストは、タスクへのリンクに置き換えられます。",
+		"statusDefault": "デフォルト",
+		"statusOptional": "ステータス（任意）",
+		"title": "タスクにする"
+	},
+	"trash": {
+		"alreadyDeleted": "このページは既に削除されています",
+		"archivedAt": "{date} にアーカイブ",
+		"back": "ページ",
+		"confirmType": "確認のため {word} と入力してください",
+		"countLabel": "アーカイブ済みの {n} ページとそのサブページすべて",
+		"deleteAll": "すべて削除",
+		"deleteFailed": "ページを削除できませんでした",
+		"deleteForbidden": "このページを削除できるのは作成者かワークスペースのオーナーだけです",
+		"emptied": "アーカイブを空にしました",
+		"empty": "アーカイブは空です。",
+		"emptyBody": "{label}は完全に削除されます。この操作は元に戻せません。",
+		"emptyFailed": "アーカイブを空にできませんでした",
+		"emptyTitle": "アーカイブ済みのページをすべて削除しますか？",
+		"failed": "アーカイブを読み込めませんでした",
+		"noPermissionDelete": "このページを削除する権限がありません",
+		"noPermissionEmpty": "アーカイブを空にする権限がありません",
+		"notArchived": "このページはアーカイブされていません",
+		"purgeBody": "「{title}」とアーカイブ済みのサブページは完全に削除されます。この操作は元に戻せません。",
+		"purgeConfirm": "完全に削除",
+		"purgeTitle": "完全に削除しますか？",
+		"purged": "ページを完全に削除しました",
+		"restore": "復元",
+		"restoreFailed": "ページを復元できませんでした",
+		"restoreForbidden": "このページを復元できるのは作成者かワークスペースのオーナーだけです",
+		"someKept": "一部のページは残されました",
+		"someKeptBody": "削除できないアーカイブ済みページ {n} 件は、アーカイブに残りました。",
+		"title": "アーカイブ"
+	},
+	"versions": {
+		"backToPage": "ページに戻る",
+		"current": "現在",
+		"failed": "履歴を読み込めませんでした",
+		"history": "履歴: {title}",
+		"loading": "読み込み中…",
+		"modeCurrent": "このバージョン以降の変更",
+		"modePrevious": "このバージョンでの変更",
+		"modeSnapshot": "スナップショット",
+		"restore": "復元",
+		"restoreBody": "バージョン {version} の内容で新しいページバージョンを作成します。現在のテキストは履歴に残ります。",
+		"restoreTitle": "バージョン {version} を復元しますか？",
+		"select": "バージョンを選択"
+	},
+	"view": {
+		"conflictBanner": "未保存: バージョンが競合しています",
+		"editorPlaceholder": "/ でブロック、{'@'} でリンク、[[ でページを挿入",
+		"exportMarkdown": "Markdown でエクスポート",
+		"exportSubtree": "サブページ込みでエクスポート",
+		"follow": "フォロー",
+		"forbidden": "ページが無効になっているか、アクセス権がありません",
+		"history": "履歴",
+		"importHere": "ここに Markdown をインポート…",
+		"loadFailed": "ページを読み込めませんでした",
+		"loading": "読み込み中…",
+		"makeTask": "タスクにする",
+		"moreActions": "その他の操作",
+		"notFound": "ページが見つかりません",
+		"openFileFailed": "{name} を開けませんでした",
+		"openInWindow": "ウィンドウで開く",
+		"openTask": "タスクを開く",
+		"refresh": "更新",
+		"resolve": "解決",
+		"resolveFirst": "先にバージョンの競合を解決してください。",
+		"saveFailed": "保存できませんでした",
+		"saved": "保存しました（バージョン {version}）",
+		"saving": "保存中…",
+		"subscriptionFailed": "フォローの設定を変更できませんでした",
+		"taskCreated": "タスクを作成しました",
+		"unfollow": "フォロー解除",
+		"unsaved": "未保存の変更",
+		"untitled": "無題",
+		"updateBanner": "ページが変更されました（バージョン {version}）",
+		"uploadFailed": "{name} をアップロードできませんでした",
+		"versionConflict": "バージョンの競合"
+	},
+	"window": {
+		"closeWindow": "ウィンドウを閉じる",
+		"loading": "読み込み中…",
+		"notFound": "このページは見つかりませんでした。",
+		"openFailed": "ページを開けませんでした。このウィンドウを閉じて、もう一度お試しください。"
+	}
+}
