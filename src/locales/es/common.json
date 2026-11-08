@@ -1,0 +1,42 @@
+{
+	"actions": {
+		"save": "Guardar",
+		"saving": "Guardando…",
+		"cancel": "Cancelar",
+		"delete": "Eliminar",
+		"remove": "Quitar",
+		"close": "Cerrar",
+		"edit": "Editar",
+		"create": "Crear",
+		"add": "Añadir",
+		"apply": "Aplicar",
+		"reset": "Restablecer",
+		"back": "Atrás",
+		"next": "Siguiente",
+		"done": "Listo",
+		"confirm": "Confirmar",
+		"retry": "Reintentar",
+		"search": "Buscar",
+		"copy": "Copiar",
+		"copied": "Copiado",
+		"open": "Abrir",
+		"learnMore": "Más información",
+		"continue": "Continuar",
+		"skip": "Omitir",
+		"enable": "Activar",
+		"disable": "Desactivar"
+	},
+	"states": {
+		"loading": "Cargando…",
+		"yes": "Sí",
+		"no": "No",
+		"on": "Activado",
+		"off": "Desactivado",
+		"none": "Ninguno",
+		"unknown": "Desconocido"
+	},
+	"errors": {
+		"generic": "Algo salió mal. Inténtalo de nuevo.",
+		"network": "Error de red. Comprueba tu conexión e inténtalo de nuevo."
+	}
+}
