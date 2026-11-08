@@ -5,7 +5,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 ## 0.9.126 — 2026-11-08
 
-- When you answer a Decisions card or write in its chat, the agent that asked gets it right away, even if it is idle. A Claude Code session wakes up and picks up your answer. A session in the tmgr runner gets it typed in, but only at its prompt: while the agent is busy or a dialog is open, the message waits and is sent once the prompt is back. The card shows whether the answer was sent, delivered, is waiting for the agent's prompt, or could not be delivered because the session closed. You can now also answer an agent's "stopped" card when its session can receive it. Needs tmgr 1.0.108 for the agent side.
+- When you answer a Decisions card or write in its chat, the agent that asked gets it right away, even if it is idle. A Claude Code session wakes up and picks up your answer. A session in the tmgr runner gets it typed in, but only at its prompt: while the agent is busy or a dialog is open, the message waits and is sent once the prompt is back. The card shows whether the answer was sent, delivered, is waiting for the agent's prompt, or could not be delivered because the session closed. You can now also answer an agent's "stopped" card when its session can receive it. Needs tmgr 1.0.109 for the agent side.
 
 ## 0.9.125 — 2026-11-08
 
