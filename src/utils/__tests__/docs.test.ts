@@ -314,9 +314,9 @@ describe('docs video resolver', () => {
 			kind: 'file',
 			src: 'https://tmgr.dev/l/video/en/tmgr-cli-01-install.mp4',
 		});
-		expect(docsVideo(' HTTPS://TMGR.DEV:443/l/video/ru/a b.mp4 ')).toEqual({
+		expect(docsVideo(' HTTPS://TMGR.DEV:443/l/video/ru/a.mp4 ')).toEqual({
 			kind: 'file',
-			src: 'https://tmgr.dev/l/video/ru/a%20b.mp4',
+			src: 'https://tmgr.dev/l/video/ru/a.mp4',
 		});
 	});
 
@@ -329,6 +329,9 @@ describe('docs video resolver', () => {
 		'https://user:pw@tmgr.dev/l/video/en/a.mp4',
 		'//tmgr.dev/l/video/en/a.mp4',
 		'https://tmgr.dev/l/video/../x.mp4',
+		'https://tmgr.dev/l/video/..%2f..%2fa.mp4',
+		'https://tmgr.dev/l/video/en%2Fa.mp4',
+		'https://tmgr.dev/l/video/en/a b.mp4',
 		'https://tmgr.dev/other/a.mp4',
 		'https://tmgr.dev/l/video/en/a.webm',
 		'https://tmgr.dev.evil.com/l/video/en/a.mp4',

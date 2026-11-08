@@ -262,8 +262,7 @@ export function docsVideo(value?: string | null): DocsVideo | null {
 		url.origin === 'https://tmgr.dev' &&
 		url.username === '' &&
 		url.password === '' &&
-		url.pathname.startsWith('/l/video/') &&
-		url.pathname.endsWith('.mp4')
+		/^\/l\/video\/(?:[\w-]+\/)*[\w.-]+\.mp4$/.test(url.pathname)
 		? { kind: 'file', src: url.href }
 		: null;
 }
