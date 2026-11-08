@@ -16,6 +16,7 @@ const PAIR_MS: i64 = 3_000;
 const DEBOUNCE_MS: i64 = 1_000;
 const REFRESH_MS: i64 = 60_000;
 const WAKE_JUMP_MS: i64 = 30_000;
+const PENDING_MAX: usize = 999;
 
 impl Phones {
   pub fn start(self: &Arc<Self>) {
@@ -101,12 +102,14 @@ impl Phones {
         .collect::<Vec<_>>()
         .join("|"),
     ) + &more.to_string();
+    let pending = live.iter().filter(|v| v.state == "open").count().min(PENDING_MAX) as u32;
     for pin in pins {
-      self.upload_snapshot(&pin, &cards, more, &sig, force, now);
+      self.upload_snapshot(&pin, &cards, more, pending, &sig, force, now);
     }
   }
 
-  fn upload_snapshot(&self, pin: &Pin, cards: &[SnapshotCard], more: u32, sig: &str, force: bool, now: i64) {
+  #[allow(clippy::too_many_arguments)]
+  fn upload_snapshot(&self, pin: &Pin, cards: &[SnapshotCard], more: u32, pending: u32, sig: &str, force: bool, now: i64) {
     let (nudge, skip) = {
       let g = self.synced.lock().unwrap_or_else(|p| p.into_inner());
       match g.get(&pin.mailbox) {
@@ -114,7 +117,7 @@ impl Phones {
           let fresh = s.ids.as_ref().is_some_and(|ids| cards.iter().any(|c| c.state == "open" && !ids.contains(&c.id)));
           (fresh, !force && s.sig == sig && now - s.at < IDLE_MS)
         }
-        None => (false, false),
+        None => (cards.iter().any(|c| c.state == "open"), false),
       }
     };
     if skip {
@@ -140,7 +143,7 @@ impl Phones {
     let Ok(sealed) = tmgr_phone::seal_snapshot(&keys.phone_kex_pub, &pairing, &keys.sign_secret, &body) else {
       return;
     };
-    match self.relay.put_snapshot(&current.conn(), &sealed, nudge) {
+    match self.relay.put_snapshot(&current.conn(), &sealed, nudge, pending) {
       Ok(()) => {
         let ids: HashSet<String> = cards.iter().map(|c| c.id.clone()).collect();
         self

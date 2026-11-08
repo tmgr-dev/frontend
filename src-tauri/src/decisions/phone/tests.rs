@@ -780,7 +780,56 @@ fn nudge_only_when_a_new_open_card_appears() {
   r.hub.reply(&id, Some("note".into()), vec![]).unwrap();
   r.phones.refresh_snapshots(false);
   let nudges: Vec<bool> = r.relay.0.lock().unwrap().snapshots.iter().map(|s| s.1).collect();
-  assert_eq!(nudges, [false, true, false]);
+  assert_eq!(nudges, [true, true, false]);
+}
+
+fn pendings(r: &Rig) -> Vec<u32> {
+  r.relay.0.lock().unwrap().pendings.clone()
+}
+
+fn nudges(r: &Rig) -> Vec<bool> {
+  r.relay.0.lock().unwrap().snapshots.iter().map(|s| s.1).collect()
+}
+
+#[test]
+fn first_upload_nudges_only_with_an_open_card() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  r.phones.refresh_snapshots(true);
+  let id = r.card("One");
+  r.hub.answer(&id, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+  r.phones.synced.lock().unwrap().clear();
+  r.phones.refresh_snapshots(true);
+  assert_eq!(nudges(&r), [false, false]);
+  r.card("Two");
+  r.phones.synced.lock().unwrap().clear();
+  r.phones.refresh_snapshots(true);
+  assert_eq!(nudges(&r), [false, false, true]);
+}
+
+#[test]
+fn pending_counts_open_cards_beyond_the_cap_and_not_deferred() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  r.phones.refresh_snapshots(true);
+  for i in 0..32 {
+    r.card(&format!("Card {i}"));
+  }
+  let kept = r.card("Kept");
+  r.hub.answer(&kept, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+  r.phones.refresh_snapshots(true);
+  assert_eq!(pendings(&r), [0, 32]);
+}
+
+#[test]
+fn pending_is_clamped_to_999() {
+  let r = rig();
+  r.pair("mb1", "Pocket", 10);
+  for i in 0..1005 {
+    r.card(&format!("Card {i}"));
+  }
+  r.phones.refresh_snapshots(true);
+  assert_eq!(pendings(&r), [999]);
 }
 
 #[test]

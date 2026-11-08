@@ -79,7 +79,7 @@ pub fn usable(msgs: Vec<RelayMsg>) -> impl Iterator<Item = RelayMsg> {
 }
 
 pub trait Relay: Send + Sync {
-  fn put_snapshot(&self, c: &Conn, body: &str, nudge: bool) -> RelayResult<()>;
+  fn put_snapshot(&self, c: &Conn, body: &str, nudge: bool, pending: u32) -> RelayResult<()>;
   fn put_phone_token(&self, c: &Conn, token: &str) -> RelayResult<()>;
   fn list_messages(&self, c: &Conn) -> RelayResult<Vec<RelayMsg>>;
   fn post_message(&self, c: &Conn, kind: &str, reference: &str, body: &str) -> RelayResult<()>;
@@ -139,8 +139,8 @@ impl HttpRelay {
 }
 
 impl Relay for HttpRelay {
-  fn put_snapshot(&self, c: &Conn, body: &str, nudge: bool) -> RelayResult<()> {
-    Self::call(c, Method::PUT, "/snapshot", Some(json!({ "body": body, "nudge": nudge }))).map(|_| ())
+  fn put_snapshot(&self, c: &Conn, body: &str, nudge: bool, pending: u32) -> RelayResult<()> {
+    Self::call(c, Method::PUT, "/snapshot", Some(json!({ "body": body, "nudge": nudge, "pending": pending }))).map(|_| ())
   }
 
   fn put_phone_token(&self, c: &Conn, token: &str) -> RelayResult<()> {
@@ -215,6 +215,7 @@ pub mod fake {
   #[derive(Default)]
   pub struct State {
     pub snapshots: Vec<(String, bool)>,
+    pub pendings: Vec<u32>,
     pub inbox: Vec<RelayMsg>,
     pub posted: Vec<(String, String, String)>,
     pub deleted: Vec<String>,
@@ -246,12 +247,13 @@ pub mod fake {
   }
 
   impl Relay for FakeRelay {
-    fn put_snapshot(&self, _: &Conn, body: &str, nudge: bool) -> RelayResult<()> {
+    fn put_snapshot(&self, _: &Conn, body: &str, nudge: bool, pending: u32) -> RelayResult<()> {
       let mut s = self.0.lock().unwrap();
       if s.fail_snapshot {
         return Err(RelayError::Status(503));
       }
       s.snapshots.push((body.into(), nudge));
+      s.pendings.push(pending);
       Ok(())
     }
 
