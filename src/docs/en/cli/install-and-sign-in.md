@@ -80,3 +80,53 @@ The menu needs a terminal. It does not open inside an agent session.
 ## Next {#next}
 
 `tmgr` is installed and connected to your account. In the next lesson you work with tasks right from the terminal: [2. Tasks from the terminal](/docs/cli/tasks-from-the-terminal).
+
+## Video transcript {#transcript}
+
+This is `tmgr` in your terminal: tasks, time tracking and AI agents, without a browser. Lesson one: install and sign in.
+
+### Install {#t-install}
+
+It installs with one command. The script downloads a signed release for your system, macOS or Linux, verifies the signature, and puts the program in your home folder. No sudo needed.
+
+```sh
+curl -fsSL https://tmgr.dev/install.sh | sh
+```
+
+### Sign in {#t-login}
+
+Now sign in. You never type a password into the terminal: `tmgr login` opens your browser with a one-time code. Check the code, approve, and the terminal gets access.
+
+```sh
+tmgr login
+```
+
+### Who am I {#t-whoami}
+
+`tmgr whoami` shows who is signed in, which server you're on, and where the token is stored: in the system keychain, or in a private file.
+
+```sh
+tmgr whoami
+```
+
+### Workspaces {#t-ws}
+
+Tasks live in workspaces. `tmgr ws list` shows them, and the star marks the current one. `tmgr ws use` switches workspaces. And `tmgr status` shows your active task and today's tracked time.
+
+```sh
+tmgr ws list
+tmgr ws use <workspace>
+tmgr status
+```
+
+### Menu {#t-menu}
+
+Don't want to memorize commands? Just type `tmgr` with no arguments. A menu opens: find a command (press `/` and type part of its name, for example `add`), fill in the fields, and the finished command line appears at the bottom, so the menu teaches you the syntax as well.
+
+```sh
+tmgr
+```
+
+### Next {#t-next}
+
+Done: `tmgr` is installed and connected to your account. In the next lesson, we'll work with tasks right from the terminal: [2. Tasks from the terminal](/docs/cli/tasks-from-the-terminal).

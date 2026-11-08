@@ -28,8 +28,24 @@ User docs as plain HTML pages. Every page exists in English and Russian.
 - [Command line (tmgr)](https://tmgr.dev/docs/cli): work with tasks from the terminal and run AI agents under supervision
 - [1. Install and sign in](https://tmgr.dev/docs/cli/install-and-sign-in): install tmgr, sign in with a device code, pick a workspace and open the menu
 - [2. Tasks from the terminal](https://tmgr.dev/docs/cli/tasks-from-the-terminal): create, list and open tasks, move them on the board and script tmgr with JSON
+- [3. The start → done cycle](https://tmgr.dev/docs/cli/the-start-done-cycle): start a task, track time, link commits and finish with one command
+- [4. AI agents under supervision](https://tmgr.dev/docs/cli/ai-agents-under-supervision): run an agent in a sandbox, watch it and roll back its changes
+- [5. The Decisions inbox](https://tmgr.dev/docs/cli/the-decisions-inbox): agents ask questions, you answer in one place, past answers stay searchable
+- [6. Your task in the shell prompt](https://tmgr.dev/docs/cli/your-task-in-the-shell-prompt): show the active task and timer in the prompt, tmux and the Claude Code status line
+- [7. What AI costs you](https://tmgr.dev/docs/cli/what-ai-costs-you): tokens, cost and rate limits of your Claude Code and Codex usage
+- [8. Personas and skills](https://tmgr.dev/docs/cli/personas-and-skills): a shared skills library for your AI personas
+- [9. Agent work reports](https://tmgr.dev/docs/cli/agent-work-reports): which agent worked on a task, for how long, with which commits and tests
+- [10. The agent queue](https://tmgr.dev/docs/cli/the-agent-queue): approved tasks start on your machine by themselves and arrive as pull requests
 - [Обзор](https://tmgr.dev/docs/ru): о чём эта документация TMGR и с чего начать
 - [AI-агенты](https://tmgr.dev/docs/ru/agents): как подключить к TMGR Claude Code, Codex, Cursor и других MCP-агентов
 - [Командная строка (tmgr)](https://tmgr.dev/docs/ru/cli): задачи из терминала и AI-агенты под присмотром
 - [1. Установка и вход](https://tmgr.dev/docs/ru/cli/install-and-sign-in): установка tmgr, вход по коду устройства, выбор воркспейса и интерактивное меню
 - [2. Задачи из терминала](https://tmgr.dev/docs/ru/cli/tasks-from-the-terminal): создаём и смотрим задачи, двигаем их по доске и используем JSON в скриптах
+- [3. Рабочий цикл start → done](https://tmgr.dev/docs/ru/cli/the-start-done-cycle): старт задачи, таймер, связь коммитов с задачей и завершение одной командой
+- [4. ИИ-агенты под присмотром](https://tmgr.dev/docs/ru/cli/ai-agents-under-supervision): запуск агента в песочнице, наблюдение за ним и откат его изменений
+- [5. Входящие решения](https://tmgr.dev/docs/ru/cli/the-decisions-inbox): агенты задают вопросы, вы отвечаете в одном месте, прошлые ответы можно найти
+- [6. Задача в приглашении шелла](https://tmgr.dev/docs/ru/cli/your-task-in-the-shell-prompt): активная задача и таймер в приглашении, tmux и статус-строке Claude Code
+- [7. Сколько стоит ИИ](https://tmgr.dev/docs/ru/cli/what-ai-costs-you): токены, стоимость и лимиты ваших Claude Code и Codex
+- [8. Персоны и скиллы](https://tmgr.dev/docs/ru/cli/personas-and-skills): общая библиотека скиллов для ИИ-персон
+- [9. Отчёты агентов о работе](https://tmgr.dev/docs/ru/cli/agent-work-reports): какой агент работал над задачей, сколько, с какими коммитами и тестами
+- [10. Очередь агентов](https://tmgr.dev/docs/ru/cli/the-agent-queue): одобренные задачи сами стартуют на вашей машине и приходят пулл-реквестом
