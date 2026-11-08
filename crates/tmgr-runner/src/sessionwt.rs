@@ -52,8 +52,41 @@ fn quote(p: &Path) -> String {
     }
 }
 
-pub fn import_hint(repo: &Path, path: &Path, name: &str) -> String {
-    format!("git -C {} fetch {} {name}:{name}", quote(repo), quote(path))
+pub fn in_repo(cwd: &Path) -> bool {
+    let Ok(cwd) = fs::canonicalize(cwd) else {
+        return true;
+    };
+    !matches!(
+        HostView::discover(&cwd, Access::Read),
+        Err(e) if e.starts_with("not a git repository")
+    )
+}
+
+pub fn import_hint(path: &Path) -> String {
+    format!("tmgr runner import {}", quote(path))
+}
+
+/// Resolves a session clone from its name (looked up beside the repository `cwd` is in) or its path.
+pub fn find(target: &str, cwd: &Path) -> Result<(PathBuf, PathBuf, String), String> {
+    let path = if target.contains('/') {
+        let abs = std::path::absolute(cwd.join(target)).map_err(|e| format!("{target}: {e}"))?;
+        let name = abs
+            .file_name()
+            .ok_or_else(|| format!("{target} is not a session clone"))?
+            .to_owned();
+        let parent = abs.parent().unwrap_or(Path::new("/"));
+        fs::canonicalize(parent)
+            .map_err(|e| format!("{}: {e}", parent.display()))?
+            .join(name)
+    } else {
+        check_name(target)?;
+        let (repo, _) = locate(cwd)?;
+        worktree::worktrees_root(&repo)?.join(target)
+    };
+    let repo = repo_of(&path)
+        .ok_or_else(|| format!("{} is not a session clone made by tmgr", path.display()))?;
+    let name = session_dir(&repo, &path)?;
+    Ok((repo, path, name))
 }
 
 pub fn check_name(name: &str) -> Result<(), String> {
@@ -430,7 +463,7 @@ fn inspect(
                 .unwrap_or_default();
             return Ok(Err(format!(
                 "branch {name} has {n} commit(s) that are not merged into the current branch; bring them over with: {}",
-                import_hint(repo, shown, &name)
+                import_hint(shown)
             )));
         }
     }
@@ -828,7 +861,7 @@ mod tests {
         commit(&s.path, "new.txt");
         let w = kept(remove(&fx.repo, &s.path).unwrap());
         assert!(w.contains("1 commit"), "{w}");
-        assert!(w.contains("fetch"), "{w}");
+        assert!(w.contains("tmgr runner import"), "{w}");
         assert!(s.path.exists());
     }
 
@@ -965,8 +998,8 @@ mod tests {
 
     #[test]
     fn the_import_hint_quotes_paths_and_odd_profiles_still_get_names() {
-        let hint = import_hint(Path::new("/a b/p"), Path::new("/a b/p-worktrees/n"), "n");
-        assert_eq!(hint, "git -C '/a b/p' fetch '/a b/p-worktrees/n' n:n");
+        let hint = import_hint(Path::new("/a b/p-worktrees/n"));
+        assert_eq!(hint, "tmgr runner import '/a b/p-worktrees/n'");
         let fx = fixture();
         let s = create(&fx.repo, None, "-weird", &[]).unwrap();
         assert_eq!(s.name, "weird-1");

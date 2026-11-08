@@ -15,8 +15,26 @@ pub(super) fn config_on() -> bool {
         .is_some_and(|c| c.attach_worktree())
 }
 
-pub(super) fn wanted(flag: bool, off: bool, trust: bool) -> bool {
-    flag || (!off && !trust && config_on())
+fn decide(
+    flag: bool,
+    off: bool,
+    trust: bool,
+    no_sandbox: bool,
+    cfg_on: bool,
+    in_repo: bool,
+) -> bool {
+    flag || (!off && !trust && !no_sandbox && cfg_on && in_repo)
+}
+
+pub(super) fn wanted(flag: bool, off: bool, trust: bool, no_sandbox: bool, cwd: &Path) -> bool {
+    decide(
+        flag,
+        off,
+        trust,
+        no_sandbox,
+        config_on(),
+        sessionwt::in_repo(cwd),
+    )
 }
 
 fn trust_via_repo(caps: &[String]) -> bool {
@@ -46,13 +64,64 @@ pub(super) fn start(
     Ok(sc)
 }
 
-pub(super) fn started_note(sc: &sessionwt::SessionClone) -> String {
+pub(super) fn started_note(sc: &sessionwt::SessionClone, from: &Path) -> String {
+    let below = std::fs::canonicalize(from)
+        .ok()
+        .and_then(|c| c.strip_prefix(&sc.repo).ok().map(Path::to_path_buf))
+        .filter(|r| !r.as_os_str().is_empty());
+    let root = below.map_or_else(String::new, |r| {
+        format!(
+            " (it starts at the root of the clone, not in {})",
+            clean(&r.display().to_string())
+        )
+    });
     format!(
-        "worktree {} on branch {}; the branch stays in that folder until you bring it over: {}",
+        "worktree {} on branch {}{root}; the branch stays in that folder until you bring it over: {}",
         clean(&sc.path.display().to_string()),
         clean(&sc.name),
-        clean(&sessionwt::import_hint(&sc.repo, &sc.path, &sc.name))
+        clean(&sessionwt::import_hint(&sc.path))
     )
+}
+
+#[derive(Debug)]
+pub(super) struct Imported {
+    pub repo: PathBuf,
+    pub branch: String,
+    pub sha: String,
+}
+
+pub(super) fn import_session(target: &str, cwd: &Path) -> tmgr_core::error::Result<Imported> {
+    use tmgr_core::error::Error;
+    let (repo, path, branch) = sessionwt::find(target, cwd).map_err(Error::usage)?;
+    let repo_str = repo
+        .to_str()
+        .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))?;
+    let sha = tmgr_queue::workdir::import_branch(repo_str, &path, &branch)?;
+    Ok(Imported { repo, branch, sha })
+}
+
+pub(super) fn import(o: &super::Opts, target: &str) -> tmgr_core::error::Result<i32> {
+    let in_agent = tmgr_link::privileged::RUN_ENV
+        .iter()
+        .any(|k| std::env::var_os(k).is_some());
+    tmgr_link::privileged::check(in_agent, true)?;
+    let cwd = std::env::current_dir().map_err(|e| tmgr_core::error::Error::usage(e.to_string()))?;
+    let done = import_session(target, &cwd)?;
+    let human = format!(
+        "branch {} is now in {} at {}",
+        clean(&done.branch),
+        clean(&done.repo.display().to_string()),
+        clean(done.sha.get(..12).unwrap_or(&done.sha))
+    );
+    Ok(super::emit(
+        o,
+        serde_json::json!({
+            "repo": done.repo,
+            "branch": done.branch,
+            "commit": done.sha,
+        }),
+        human,
+    ))
 }
 
 fn probe_use(path: &Path) -> Option<String> {
@@ -218,6 +287,177 @@ mod tests {
         git(&repo, &["commit", "-m", "a"]);
         let sc = sessionwt::create(&repo, Some("s1"), "claude", &[]).unwrap();
         (tmp, sc)
+    }
+
+    #[test]
+    fn sandboxed_sessions_in_a_repository_use_a_clone_unless_opted_out() {
+        let on = true;
+        assert!(decide(false, false, false, false, on, true));
+        assert!(!decide(false, true, false, false, on, true));
+        assert!(!decide(false, false, true, false, on, true));
+        assert!(!decide(false, false, false, true, on, true));
+        assert!(!decide(false, false, false, false, false, true));
+        assert!(!decide(false, false, false, false, on, false));
+        assert!(decide(true, false, false, false, false, false));
+    }
+
+    #[test]
+    fn the_note_says_when_a_subfolder_start_lands_at_the_clone_root() {
+        let (_t, sc) = setup();
+        fs::create_dir(sc.repo.join("sub")).unwrap();
+        assert!(!started_note(&sc, &sc.repo).contains("starts at the root"));
+        let note = started_note(&sc, &sc.repo.join("sub"));
+        assert!(note.contains("not in sub"), "{note}");
+        assert!(note.contains("tmgr runner import"), "{note}");
+    }
+
+    #[test]
+    fn the_default_config_turns_the_clone_on() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(Config::load(tmp.path()).unwrap().attach_worktree());
+    }
+
+    #[test]
+    fn a_folder_outside_any_repository_has_nothing_to_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!sessionwt::in_repo(tmp.path()));
+        let (_t, sc) = setup();
+        assert!(sessionwt::in_repo(&sc.repo));
+        assert!(sessionwt::in_repo(&sc.path));
+    }
+
+    fn commit_in(dir: &Path, name: &str) -> String {
+        fs::write(dir.join(name), name).unwrap();
+        git(dir, &["add", "--", name]);
+        git(dir, &["commit", "-m", name]);
+        git(dir, &["rev-parse", "HEAD"])
+    }
+
+    fn arm_hostile_clone(clone: &Path, marker: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let touch = format!("touch {}", marker.display());
+        let script = format!("#!/bin/sh\n{touch}\n");
+        let hooks = clone.join("evil-hooks");
+        fs::create_dir_all(&hooks).unwrap();
+        for dir in [hooks.clone(), clone.join(".git/hooks")] {
+            fs::create_dir_all(&dir).unwrap();
+            for h in [
+                "pre-commit",
+                "post-commit",
+                "post-checkout",
+                "post-merge",
+                "pre-push",
+                "pre-auto-gc",
+                "reference-transaction",
+                "fsmonitor-watchman",
+                "pre-rebase",
+                "update",
+                "post-update",
+                "pre-receive",
+                "post-receive",
+            ] {
+                let f = dir.join(h);
+                fs::write(&f, &script).unwrap();
+                fs::set_permissions(&f, fs::Permissions::from_mode(0o755)).unwrap();
+            }
+        }
+        let extra = clone.join("extra.cfg");
+        fs::write(&extra, format!("[core]\n\tfsmonitor = {touch}\n")).unwrap();
+        fs::write(clone.join(".gitattributes"), "* filter=x\n").unwrap();
+        let mut cfg = fs::read_to_string(clone.join(".git/config")).unwrap();
+        cfg.push_str(&format!(
+            "[core]\n\tfsmonitor = {touch}\n\thooksPath = {hp}\n\tsshCommand = {touch}\n\tpager = {touch}\n\teditor = {touch}\n\tgitProxy = {touch}\n[filter \"x\"]\n\tclean = {touch}\n\tsmudge = {touch}\n\tprocess = {touch}\n\trequired = true\n[include]\n\tpath = {extra}\n[uploadpack]\n\tpackObjectsHook = {touch}\n[alias]\n\tlog = !{touch}\n\tstatus = !{touch}\n\tfetch = !{touch}\n[gc]\n\tauto = 1\n[credential]\n\thelper = {touch}\n[diff]\n\texternal = {touch}\n[remote \"origin\"]\n\tuploadpack = {touch}\n",
+            hp = hooks.display(),
+            extra = extra.display()
+        ));
+        fs::write(clone.join(".git/config"), cfg).unwrap();
+    }
+
+    #[test]
+    fn importing_a_hostile_clone_runs_nothing_and_lands_the_branch() {
+        let (t, sc) = setup();
+        let tip = commit_in(&sc.path, "n.txt");
+        let marker = fs::canonicalize(t.path()).unwrap().join("ran");
+        arm_hostile_clone(&sc.path, &marker);
+        let _ = std::process::Command::new("git")
+            .args(["-C", &sc.path.display().to_string(), "status"])
+            .output();
+        assert!(marker.exists(), "the clone is not hostile enough");
+        fs::remove_file(&marker).unwrap();
+        let source_config = fs::read(sc.repo.join(".git/config")).unwrap();
+        let done = import_session(&sc.path.display().to_string(), t.path()).unwrap();
+        assert_eq!(
+            (done.branch.as_str(), done.sha.as_str()),
+            ("s1", tip.as_str())
+        );
+        assert_eq!(done.repo, sc.repo);
+        assert_eq!(git(&sc.repo, &["rev-parse", "refs/heads/s1"]), tip);
+        assert_eq!(
+            fs::read(sc.repo.join(".git/config")).unwrap(),
+            source_config
+        );
+        let _ = sessionwt::assess(&sc.repo, &sc.path);
+        let _ = sessionwt::remove(&sc.repo, &sc.path);
+        assert!(!marker.exists(), "a program of the clone ran");
+        assert_eq!(git(&sc.repo, &["rev-parse", "refs/heads/s1"]), tip);
+    }
+
+    #[test]
+    fn a_session_writing_its_own_git_folder_leaves_the_repository_untouched() {
+        let (_t, sc) = setup();
+        let snapshot = |dir: &Path| -> Vec<(String, Vec<u8>)> {
+            let mut all = vec![("config".to_string(), fs::read(dir.join("config")).unwrap())];
+            let mut hooks: Vec<_> = fs::read_dir(dir.join("hooks")).unwrap().flatten().collect();
+            hooks.sort_by_key(|e| e.file_name());
+            for e in hooks {
+                all.push((
+                    e.file_name().to_string_lossy().into_owned(),
+                    fs::read(e.path()).unwrap(),
+                ));
+            }
+            all
+        };
+        let before = snapshot(&sc.repo.join(".git"));
+        let mut cfg = fs::read_to_string(sc.path.join(".git/config")).unwrap();
+        cfg.push_str("[core]\n\thooksPath = /tmp\n");
+        fs::write(sc.path.join(".git/config"), cfg).unwrap();
+        fs::write(sc.path.join(".git/hooks/pre-commit"), "#!/bin/sh\n").unwrap();
+        fs::write(sc.path.join(".git/hooks/post-merge"), "#!/bin/sh\n").unwrap();
+        assert_eq!(snapshot(&sc.repo.join(".git")), before);
+    }
+
+    #[test]
+    fn import_resolves_a_session_name_from_inside_the_repository() {
+        let (_t, sc) = setup();
+        let tip = commit_in(&sc.path, "n.txt");
+        let done = import_session("s1", &sc.repo).unwrap();
+        assert_eq!(done.sha, tip);
+        let again = import_session("s1", &sc.repo.join(".")).unwrap();
+        assert_eq!(again.sha, tip);
+        assert!(import_session("nope", &sc.repo).is_err());
+        assert!(import_session("../proj", &sc.repo).is_err());
+    }
+
+    #[test]
+    fn import_refuses_a_checked_out_or_diverged_branch_and_foreign_folders() {
+        let (t, sc) = setup();
+        commit_in(&sc.path, "n.txt");
+        git(&sc.repo, &["checkout", "-q", "-b", "s1"]);
+        let err = import_session("s1", &sc.repo).unwrap_err();
+        assert!(err.message.contains("checked out"), "{}", err.message);
+        git(&sc.repo, &["checkout", "-q", "main"]);
+        git(&sc.repo, &["branch", "-q", "-D", "s1"]);
+        git(&sc.repo, &["checkout", "-q", "-b", "s1"]);
+        commit_in(&sc.repo, "other.txt");
+        git(&sc.repo, &["checkout", "-q", "main"]);
+        let before = git(&sc.repo, &["rev-parse", "refs/heads/s1"]);
+        let err = import_session("s1", &sc.repo).unwrap_err();
+        assert!(err.message.contains("not an ancestor"), "{}", err.message);
+        assert_eq!(git(&sc.repo, &["rev-parse", "refs/heads/s1"]), before);
+        let plain = t.path().join("plain");
+        fs::create_dir(&plain).unwrap();
+        assert!(import_session(&plain.display().to_string(), t.path()).is_err());
+        assert!(import_session(&sc.repo.display().to_string(), t.path()).is_err());
     }
 
     fn free(_: &Path) -> Option<String> {

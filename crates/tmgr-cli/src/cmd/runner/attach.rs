@@ -4521,7 +4521,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .map(|c| c.attach)
         .unwrap_or_default();
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
-    view.worktree_default = attach_cfg.worktree.unwrap_or(false);
+    view.worktree_default = attach_cfg.worktree.unwrap_or(true);
     view.permission_cards_default = attach_cfg.permission_cards.unwrap_or(false);
     view.priv_gate = Some(super::attach_new::privileged_ask);
     view.privileged_lock = super::attach_new::in_agent().then(|| "agent session".to_string());
@@ -4551,7 +4551,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             notice_set = view.notice.is_some();
         }
     }
-    if view.worktree_default && view.notice.is_none() {
+    if attach_cfg.worktree == Some(true) && view.notice.is_none() {
         view.notice =
             Some("worktrees on: new agent sessions get their own checkout (tmgr config set attach.worktree false)".into());
         notice_set = true;

@@ -47,6 +47,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Bind(a) => super::bind::bind(o, &a.target, &a.path),
             RunnerCmd::Unbind(a) => super::bind::unbind(o, &a.target),
             RunnerCmd::List => super::bind::list(o),
+            RunnerCmd::Import(a) => super::session_wt::import(o, &a.target),
             RunnerCmd::Gc(a) => super::gc::run(o, a.dry_run),
             RunnerCmd::Serve => serve(),
             RunnerCmd::Watch(a) => super::watch::run(&a.dir, &a.cmd),
@@ -359,7 +360,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
                 a.trust,
             );
             let mut made = None;
-            if super::session_wt::wanted(a.worktree, a.no_worktree, a.trust) {
+            if super::session_wt::wanted(a.worktree, a.no_worktree, a.trust, a.no_sandbox, &cwd) {
                 let taken: Vec<String> = client
                     .list()
                     .map_err(rerr)?
@@ -374,7 +375,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
                     ))
                 })?;
                 if !o.json && !o.quiet {
-                    eprintln!("{}", super::session_wt::started_note(&sc));
+                    eprintln!("{}", super::session_wt::started_note(&sc, &cwd));
                 }
                 made = Some(sc);
             }

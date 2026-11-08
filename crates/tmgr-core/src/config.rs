@@ -425,7 +425,7 @@ impl Config {
     }
 
     pub fn attach_worktree(&self) -> bool {
-        self.attach.worktree.unwrap_or(false)
+        self.attach.worktree.unwrap_or(true)
     }
 
     pub fn attach_permission_cards(&self) -> bool {
@@ -709,16 +709,19 @@ mod tests {
     }
 
     #[test]
-    fn attach_worktree_is_off_by_default_and_parses_booleans() {
+    fn attach_worktree_is_on_by_default_and_parses_booleans() {
         let tmp = tempfile::tempdir().unwrap();
         let mut c = Config::load(tmp.path()).unwrap();
+        assert!(c.attach_worktree());
+        assert_eq!(c.get("attach.worktree").unwrap().as_deref(), Some("true"));
+        assert_eq!(c.set("attach.worktree", "Off").unwrap(), "false");
         assert!(!c.attach_worktree());
-        assert_eq!(c.get("attach.worktree").unwrap().as_deref(), Some("false"));
         assert_eq!(c.set("attach.worktree", "On").unwrap(), "true");
         assert!(c.attach_worktree());
         assert!(c.set("attach.worktree", "maybe").is_err());
+        c.set("attach.worktree", "false").unwrap();
         c.save(tmp.path()).unwrap();
-        assert!(Config::load(tmp.path()).unwrap().attach_worktree());
+        assert!(!Config::load(tmp.path()).unwrap().attach_worktree());
     }
 
     #[test]
