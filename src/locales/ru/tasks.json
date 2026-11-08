@@ -16,7 +16,7 @@
 		"share": "Поделиться"
 	},
 	"timeEntries": {
-		"title": "Терминальные сессии",
+		"title": "Сессии терминала",
 		"partial": "частично покрыто другим учтённым временем"
 	},
 	"timeInfo": {
@@ -55,7 +55,7 @@
 		}
 	},
 	"multipleActions": {
-		"title": "Пакетные действия",
+		"title": "Массовые действия",
 		"updateTasks": "Обновить задачи",
 		"markDone": "Отметить выполненными",
 		"markDoneNoStatus": "Отметить выполненными (нет статуса «Выполнено»)",
@@ -109,9 +109,9 @@
 		},
 		"skipPhase": "Пропустить этап",
 		"reset": "Сбросить",
-		"distractedHint": "Я отвлёкся",
-		"distracted": "ОТВЛЁК(СЯ)",
-		"distractedCount": "ОТВЛЁК(СЯ) · {n}",
+		"distractedHint": "Отвлекаюсь",
+		"distracted": "ОТВЛЕЧЕНИЕ",
+		"distractedCount": "ОТВЛЕЧЕНИЙ · {n}",
 		"settings": "Настройки Pomodoro",
 		"disable": "Отключить Pomodoro для этой задачи",
 		"summary": "ПОМОДОРО: {n} · {focus}/{short}/{long}"
@@ -137,8 +137,8 @@
 		"zoomIn": "Увеличить",
 		"fitTitle": "По размеру окна (0)",
 		"fit": "По размеру окна",
-		"actualSizeTitle": "Реальный размер (100%)",
-		"actualSize": "Реальный размер",
+		"actualSizeTitle": "Исходный размер (100%)",
+		"actualSize": "Исходный размер",
 		"previous": "Назад",
 		"previousFile": "Предыдущий файл",
 		"next": "Далее",
@@ -157,7 +157,7 @@
 			"plugins": "Плагины"
 		},
 		"empty": "Комментариев пока нет",
-		"noMatch": "Нет комментариев, подходящих под фильтр",
+		"noMatch": "Нет комментариев по этому фильтру",
 		"aiAssistant": "ИИ-ассистент",
 		"deleteComment": "Удалить комментарий",
 		"confirmDelete": "Удалить этот комментарий?",
@@ -173,7 +173,7 @@
 		"searching": "Поиск…",
 		"type": "Тип",
 		"select": "Выберите…",
-		"linking": "Связываю…",
+		"linking": "Связывание…",
 		"removeTitle": "Удалить связь",
 		"removeBody": "Удалить связь «{type}» с задачей #{id}?",
 		"errors": {
