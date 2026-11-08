@@ -1,0 +1,200 @@
+{
+	"window": {
+		"title": "Decisiones · Doom Solving",
+		"titlebar": "tmgr · Decisiones · Doom Solving"
+	},
+	"kind": {
+		"decision": "Decisión",
+		"review": "Revisión",
+		"release": "Lanzamiento",
+		"check": "Verificación",
+		"question": "Pregunta",
+		"permission": "Permiso",
+		"stopped": "Finalizada"
+	},
+	"link": {
+		"pr": "PR #{n}",
+		"sections": {
+			"pr": "PRs",
+			"commit": "Commits",
+			"tag": "Etiquetas",
+			"task": "Tarea",
+			"url": "Otros"
+		}
+	},
+	"subtitle": {
+		"default": "doom solving",
+		"rare": {
+			"scrollingUseful": "doom scrolling, pero útil",
+			"oneMoreCard": "una tarjeta más y a la cama",
+			"optionalDoom": "el doom es opcional, las decisiones no",
+			"solvingNotScrolling": "resolver, no scrollear",
+			"touchGrass": "sal a tocar césped después de esta",
+			"notProcrastination": "no es procrastinar si los agentes esperan",
+			"hello": "hola, doom"
+		}
+	},
+	"doom": {
+		"awaits": "Tu doom te espera",
+		"streak": "Racha de Doom Solving: {n}",
+		"lifetime": "{n} decisiones resueltas",
+		"speedrun": "Speedrun any%",
+		"nightOwl": "Búho nocturno: sigues resolviendo",
+		"inboxZero": "Bandeja a cero. Doom resuelto por hoy.",
+		"mode": "Modo DOOM: activado"
+	},
+	"answer": {
+		"dismissed": "descartada",
+		"deferred": "aplazada",
+		"answered": "respondida",
+		"withNote": "{text} + nota",
+		"sessionGone": "guardada, pero la sesión ya terminó",
+		"toast": "{title}: {summary}"
+	},
+	"delivery": {
+		"sent": "Enviada a la sesión (sin confirmar)",
+		"deliveredRunner": "Entregada mediante el runner",
+		"delivered": "Entregada",
+		"queued": "Esperando el prompt del agente",
+		"undelivered": "No entregada: {reason}",
+		"sessionClosed": "sesión cerrada"
+	},
+	"unpicked": "Ningún agente la ha recogido",
+	"wait": {
+		"sessionGone": "La sesión terminó, así que ningún agente verá esto.",
+		"notListening": "Ningún agente está escuchando ahora; lo verá cuando vuelva.",
+		"waiting": "esperando al agente…",
+		"noReplyDelivered": "El agente aún no ha respondido.",
+		"noReplyPending": "El agente aún no ha respondido; lo verá la próxima vez que revise."
+	},
+	"toast": {
+		"loadFailed": "No se pudieron cargar las decisiones: {error}",
+		"answerFailed": "No se pudo enviar la respuesta: {error}",
+		"messageFailed": "No se pudo enviar el mensaje: {error}"
+	},
+	"tabs": {
+		"changes": "Cambios",
+		"checks": "Verificaciones",
+		"chat": "Chat",
+		"refresh": "Actualizar",
+		"partial": "parcial",
+		"totalExact": "Total de líneas modificadas en esta tarjeta",
+		"totalPartial": "No se pudieron contar algunos archivos, así que el total es parcial"
+	},
+	"empty": {
+		"done": "Doom solving completado. Ve a tocar césped.",
+		"doneHint": "Nada espera tu decisión.",
+		"loadFailed": "No se pudieron cargar las decisiones",
+		"noMatches": "Sin resultados",
+		"noMatchesHint": "Borra la búsqueda para ver la cola.",
+		"loading": "Cargando…"
+	},
+	"statusbar": {
+		"accept": "aceptar",
+		"pick": "elegir",
+		"note": "+ nota",
+		"freeText": "texto libre",
+		"defer": "aplazar",
+		"dismiss": "descartar",
+		"cards": "tarjetas",
+		"waiting": "{n} en espera"
+	},
+	"queue": {
+		"title": "Cola",
+		"count": "{pending} de {total}",
+		"search": "Buscar en la cola",
+		"complete": "Doom solving completado. Ve a tocar césped.",
+		"noMatches": "Sin resultados",
+		"empty": "No hay nada en la cola.",
+		"deferred": "aplazada",
+		"updated": "actualizada",
+		"agentWaiting": "Un agente está esperando",
+		"closeCard": "Cerrar tarjeta"
+	},
+	"card": {
+		"sessionEnded": "Sesión finalizada",
+		"agentWaiting": "El agente está esperando",
+		"updatedAt": "actualizada {time}",
+		"position": "· {position} de {total}",
+		"dismissed": "Descartada",
+		"closed": "Cerrada",
+		"deferred": "Aplazada",
+		"answered": "Respondida",
+		"dismissOnly": "Esta tarjeta viene de una sesión de terminal sin vía de retorno. Responde en la sesión del agente o descártala aquí.",
+		"dismiss": "Descartar",
+		"recommended": "★ recomendada",
+		"addNote": "✎ + nota",
+		"addNoteTitle": "Elegir y añadir una nota",
+		"notePlaceholder": "Nota para «{label}»… se envía con tu elección",
+		"noteSend": "Enter — enviar · Shift+Enter — nueva línea",
+		"noteCancel": "Esc — sin nota",
+		"viaRunner": "Tu respuesta se escribe en la sesión del agente.",
+		"freeWithOptions": "Tu propia respuesta… (T) — se envía al agente como comentario",
+		"freeOnly": "Tu respuesta… (T) — Enter para enviar",
+		"hints": {
+			"accept": "aceptar ★",
+			"pick": "elegir",
+			"pickNote": "elegir + nota",
+			"defer": "aplazar",
+			"dismiss": "descartar",
+			"chat": "chat",
+			"cards": "tarjetas"
+		}
+	},
+	"chat": {
+		"empty": "Aún no hay mensajes en esta tarjeta.",
+		"you": "Tú",
+		"agent": "Agente",
+		"placeholder": "Pregunta al agente sobre esta tarjeta… Enter",
+		"unavailable": "El chat no está disponible",
+		"answerInSession": "Responde en la sesión del agente."
+	},
+	"checks": {
+		"empty": "No hay verificaciones."
+	},
+	"diff": {
+		"noneAttached": "No hay cambios adjuntos a esta tarjeta.",
+		"loading": "Cargando cambios…",
+		"loadFailed": "No se pudieron cargar los cambios: {error}",
+		"none": "Sin cambios.",
+		"truncated": "El diff es demasiado grande y se truncó.",
+		"commentOnLine": "Comentar esta línea",
+		"you": "Tú",
+		"agent": "Agente",
+		"draftLabel": "Tú · se enviará con tu respuesta",
+		"remove": "Quitar",
+		"fix": "Corregir",
+		"fixClarify": "Corregir + aclarar…",
+		"keep": "Mantener",
+		"reply": "Responder",
+		"send": "Enviar",
+		"addToAnswer": "Añadir a la respuesta",
+		"close": "Cerrar",
+		"keptAsIs": "Se mantiene tal cual",
+		"sentFix": "Enviado al agente: corregir",
+		"fixPlaceholder": "Cómo corregirlo exactamente… (vacío — solo «Corregir»)",
+		"commentPlaceholder": "Comentar esta línea…",
+		"hintSend": "Enter — enviar al agente · Shift+Enter — nueva línea",
+		"hintDraft": "Enter — añadir a tu respuesta · Shift+Enter — nueva línea",
+		"groupKind": {
+			"repo": "repo",
+			"patch": "parche"
+		}
+	},
+	"phones": {
+		"title": "tmgr · Teléfonos",
+		"qrAlt": "Código QR de emparejamiento",
+		"expiresIn": "Caduca en",
+		"typeCode": "Escribe el código que aparece en tu iPhone",
+		"confirm": "Confirmar",
+		"done": "Ya puedes responder tarjetas de Decisiones desde el teléfono.",
+		"cancel": "Cancelar",
+		"close": "Cerrar",
+		"pairedPhones": "Teléfonos emparejados",
+		"none": "Aún no hay teléfonos emparejados.",
+		"pairedInfo": "Emparejado {date} · último uso {since}",
+		"revokeQuestion": "¿Revocar {name}?",
+		"revoke": "Revocar",
+		"keep": "Mantener"
+	}
+}

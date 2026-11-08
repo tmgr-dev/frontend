@@ -1,0 +1,9 @@
+{
+	"title": "Terminal de l'agent",
+	"agentSession": "Session de l'agent",
+	"connecting": "Connexion",
+	"detach": "Détacher",
+	"reattach": "Rattacher",
+	"sessionEnded": "Session terminée : {reason}",
+	"scrolledBack": "Défilement arrière de {n} ligne — appuyez sur Fin pour revenir | Défilement arrière de {n} lignes — appuyez sur Fin pour revenir"
+}
