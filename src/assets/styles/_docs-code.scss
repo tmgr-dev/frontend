@@ -29,7 +29,7 @@ html.dark .docs-code {
 }
 
 // The library's sticky header uses z-index 10000, above the docs dialogs.
-.docs-code .md-editor-code-head {
+.docs-code .md-editor-code .md-editor-code-head {
 	z-index: 1;
 }
 
