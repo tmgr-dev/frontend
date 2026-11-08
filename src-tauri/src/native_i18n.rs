@@ -82,7 +82,9 @@ pub enum Key {
   PairedPhones,
   AgentTerminal,
   UnlinkProfile,
+  #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
   Back,
+  #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
   Forward,
 }
 

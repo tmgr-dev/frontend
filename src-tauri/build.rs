@@ -70,6 +70,7 @@ const APP_COMMANDS: &[&str] = &[
   "take_quick_add",
   "tray_update",
   "dnd_update",
+  "native_locale_set",
   "mark_update_relaunch",
   "relaunch_after_update",
   "plugin_page_put",
