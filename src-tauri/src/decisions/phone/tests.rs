@@ -382,6 +382,8 @@ fn a_new_agent_message_makes_the_digest_stale() {
   let body = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
   assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
   assert_eq!(r.state(&id), "open");
+  assert_eq!(r.typed(), 0);
+  assert_eq!(r.stored_ack(&body.answer_id), "changed");
 }
 
 #[test]
@@ -473,6 +475,35 @@ fn a_target_change_between_the_check_and_delivery_types_nothing_and_acks_changed
   let d = r.hub.get(&id).unwrap().delivery.unwrap();
   assert_eq!((d.state.as_str(), d.detail.as_str()), ("undelivered", CHANGED));
   assert_eq!(r.stored_ack(&body.answer_id), "changed");
+}
+
+#[test]
+fn a_replay_after_a_route_time_target_change_returns_the_changed_ack() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let card = CardIn {
+    title: "Agent stopped".into(),
+    kind: "stopped".into(),
+    reply_via: "hook".into(),
+    source: Source { agent: "claude".into(), session: Some("s2".into()), ..Default::default() },
+    ..Default::default()
+  };
+  let endpoint = "/tmp/cc-socks/77.sock";
+  let inbox = Inbox {
+    kind: "claude".into(),
+    endpoint: endpoint.into(),
+    token: Some(Secret::new("tok")),
+    session: Some("sess-1".into()),
+  };
+  let id = r.hub.create_with(card, Some(inbox)).unwrap().id;
+  let (digest, session) = r.bind(&p, &id);
+  let hub = r.hub.clone();
+  let moved = id.clone();
+  *r.host.before_route.lock().unwrap() = Some(Box::new(move || hub.drop_target(&moved, endpoint)));
+  let body = r.body(&id, &digest, &session, Action::Answer, None, Some("go on"));
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Changed);
+  assert_eq!(r.typed(), 1);
 }
 
 #[test]

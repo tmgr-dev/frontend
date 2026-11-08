@@ -229,6 +229,8 @@ struct StoredAck {
   result: String,
   winner: Option<String>,
   label: Option<String>,
+  #[serde(default)]
+  routed: bool,
 }
 
 fn event_label(e: &Event) -> String {
@@ -510,7 +512,7 @@ pub fn delivery_target(conn: &Connection, card_id: &str) -> Option<String> {
     .query_row("SELECT json_extract(card,'$.source.runner_session') FROM cards WHERE id=?1", [card_id], |r| r.get(0))
     .ok()
     .flatten();
-  parts.extend(runner.filter(|r| !r.is_empty()).map(|r| format!("runner:{r}")));
+  parts.extend(runner.and_then(|r| plain(r, 64)).map(|r| format!("runner:{r}")));
   parts.sort();
   parts.dedup();
   (!parts.is_empty()).then(|| parts.join("|"))
@@ -1158,7 +1160,7 @@ impl Store {
   }
 
   pub fn set_phone_ack_result(&self, answer_id: &str, result: AckResult) -> Result<(), String> {
-    let ack = StoredAck { result: result.as_str().to_owned(), winner: None, label: None };
+    let ack = StoredAck { result: result.as_str().to_owned(), winner: None, label: None, routed: true };
     self
       .conn
       .execute(
@@ -1201,6 +1203,7 @@ impl Store {
         result: out.result.as_str().to_owned(),
         winner: out.winner.clone(),
         label: out.label.clone(),
+        routed: false,
       })
       .map_err(json_err)?;
       this
@@ -1221,7 +1224,8 @@ impl Store {
     }
     if let Some(stored) = seen {
       let first: StoredAck = serde_json::from_str(&stored).map_err(json_err)?;
-      return Ok(PhoneOutcome::rejected(AckResult::Duplicate, first.winner, first.label));
+      let result = if first.routed && first.result == AckResult::Changed.as_str() { AckResult::Changed } else { AckResult::Duplicate };
+      return Ok(PhoneOutcome::rejected(result, first.winner, first.label));
     }
     if self.resolve(&r.card_id)?.as_deref() != Some(r.card_id.as_str()) {
       return reject(self, AckResult::Closed);

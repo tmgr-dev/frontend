@@ -180,15 +180,15 @@ pub fn route_with(
   bound_target: Option<&str>,
 ) -> RouteOutcome {
   let Ok(Some(r)) = hub.routing(card_id) else { return RouteOutcome::Skipped };
-  if bound_target.is_some() && bound_target != r.target.as_deref() {
-    hub.record_delivery(&r.id, event.seq, "undelivered", "", CHANGED);
-    return RouteOutcome::TargetChanged;
-  }
   let card = &r.card;
   if !(card.reply_via == "mcp" || (card.reply_via == "hook" && card.kind == "stopped")) {
     return RouteOutcome::Skipped;
   }
   let Some(text) = text_for(&card.reply_via, &r.id, event) else { return RouteOutcome::Skipped };
+  if bound_target.is_some() && bound_target != r.target.as_deref() {
+    hub.record_delivery(&r.id, event.seq, "undelivered", "", CHANGED);
+    return RouteOutcome::TargetChanged;
+  }
   if hub.listening(&r.id) {
     return RouteOutcome::Listening;
   }
@@ -596,6 +596,18 @@ mod tests {
   }
 
   #[test]
+  fn a_changed_target_is_not_recorded_for_events_that_are_never_delivered() {
+    let hub = hub();
+    let card = CardIn { kind: "stopped".into(), reply_via: "hook".into(), ..mcp("Q") };
+    let id = hub.create_with(card, Some(inbox(SOCK))).unwrap().id;
+    let (e, _) = hub.answer(&id, AnswerIn { deferred: true, ..Default::default() }).unwrap();
+    let s = FakeSocket::default();
+    assert_eq!(route_with(&hub, &Queue::default(), &s, &id, &e, Some("claude:other")), RouteOutcome::Skipped);
+    assert!(s.calls().is_empty());
+    assert_eq!(state(&hub, &id), None);
+  }
+
+  #[test]
   fn a_target_re_registered_under_the_same_session_label_is_not_the_bound_target() {
     let hub = hub();
     let id = hub.create_with(mcp("Q"), Some(inbox(SOCK))).unwrap().id;
@@ -608,6 +620,14 @@ mod tests {
     assert_eq!(route_with(&hub, &Queue::default(), &s, &id, &e, Some(&bound)), RouteOutcome::TargetChanged);
     assert!(s.calls().is_empty());
     assert_eq!(state(&hub, &id), Some(("undelivered".into(), String::new(), CHANGED.into())));
+  }
+
+  #[test]
+  fn a_pipe_in_the_runner_session_cannot_add_a_delivery_target_part() {
+    let hub = hub();
+    let card = CardIn { source: Source { runner_session: Some("r9|claude:evil".into()), ..mcp("Q").source }, ..mcp("Q") };
+    let id = hub.create_with(card, Some(Inbox { session: None, ..inbox("/tmp/cc-socks/77.sock") })).unwrap().id;
+    assert_eq!(hub.routing(&id).unwrap().unwrap().target.unwrap(), "claude:77");
   }
 
   #[test]
