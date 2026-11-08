@@ -46,14 +46,18 @@
 			}));
 
 			const onChange = async (event: Event) => {
-				const value = (event.target as HTMLSelectElement).value;
-				if (value === current.value) return;
+				const select = event.target as HTMLSelectElement;
+				const value = select.value;
+				const previous = current.value;
+				if (value === previous) return;
 				saving.value = true;
 				error.value = '';
 				try {
 					const locale = await setLocale(value);
 					await saveUserLanguage(locale);
 				} catch {
+					await setLocale(previous).catch(() => undefined);
+					select.value = previous;
 					error.value = t('settings.language.saveFailed');
 				} finally {
 					saving.value = false;
