@@ -10,7 +10,7 @@
 				class="mb-2 inline-flex items-center gap-1 text-sm text-ink-subtle hover:text-ink"
 			>
 				<ChevronLeft class="h-4 w-4" />
-				{{ backLabel }}
+				{{ backLabel || $t('nav.layout.back') }}
 			</router-link>
 			<h1 class="text-xl font-semibold break-words text-ink md:text-2xl">
 				<slot name="title">{{ title }}</slot>
@@ -42,7 +42,7 @@
 			title: { type: String, default: '' },
 			subtitle: { type: String, default: '' },
 			back: { type: [String, Object], default: null },
-			backLabel: { type: String, default: 'Back' },
+			backLabel: { type: String, default: '' },
 		},
 	});
 </script>

@@ -6,8 +6,8 @@
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import {
 		hasNativeTitleBar,
+		desktopPlatform,
 		isDesktopApp,
-		revealInFileManagerLabel,
 	} from '@/utils/desktop';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
@@ -86,6 +86,7 @@
 	import { useNavHistory } from '@/composable/useNavHistory';
 	import { openMoveDialog } from '@/local/moveToCloud/ui';
 	import { pluginState } from '@/pluginSystem/state';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import HelpMenu from '@/tours/ui/HelpMenu.vue';
 	import { useTours } from '@/tours/useTours';
@@ -164,7 +165,12 @@
 	const NAV_ACTIVE =
 		'[&.router-link-active]:bg-sidebar-primary/10 [&.router-link-active]:font-medium dark:[&.router-link-active]:bg-sidebar-primary/15 [&.router-link-active>svg]:text-sidebar-primary';
 	const showWindowControls = isDesktop && !hasNativeTitleBar();
-	const revealLabel = revealInFileManagerLabel();
+	const revealLabel = computed(() => {
+		const platform = desktopPlatform();
+		if (platform === 'windows') return t('nav.sidebar.revealWindows');
+		if (platform === 'linux') return t('nav.sidebar.revealLinux');
+		return t('nav.sidebar.revealMac');
+	});
 	const pagesEnabled = computed(() =>
 		pagesAvailable(activeWorkspace.value, isFeatureEnabled('pages')),
 	);
@@ -299,7 +305,7 @@
 			(w) => w.id == id,
 		) as Workspace;
 		if (results.some((result) => result.status === 'rejected'))
-			sidebarError.value = 'Some navigation data could not be loaded.';
+			sidebarError.value = t('nav.sidebar.loadFailed');
 		try {
 			if (activeWorkspace.value?.id) {
 				await store.dispatch(
@@ -308,7 +314,7 @@
 				);
 			}
 		} catch {
-			if (current()) sidebarError.value = 'Could not load workspace features.';
+			if (current()) sidebarError.value = t('nav.sidebar.featuresFailed');
 		} finally {
 			if (current()) sidebarPending.value = false;
 		}
@@ -485,9 +491,7 @@
 			window.location.reload();
 		} catch (error) {
 			console.error('Failed to exit workspace:', error);
-			alert(
-				serverMessageFrom(error, 'Failed to exit workspace. Please try again.'),
-			);
+			alert(serverMessageFrom(error, t('nav.sidebar.exitFailed')));
 		} finally {
 			showExitConfirm.value = false;
 			workspaceToExit.value = null;
@@ -596,26 +600,26 @@
 														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 														data-testid="local-workspace-badge"
 														data-tour="local.badge"
-														>Local</span
+														>{{ $t('nav.sidebar.local') }}</span
 													>
 													<span
 														v-if="isDemo"
 														class="shrink-0 rounded bg-violet-500/15 px-1.5 py-0.5 text-2xs font-semibold text-violet-600 uppercase dark:text-violet-400"
 														data-testid="demo-badge"
 														data-tour="ghost.badge"
-														>DEMO</span
+														>{{ $t('nav.sidebar.demo') }}</span
 													>
 												</span>
 												<span class="truncate text-xs">{{
 													activeWorkspace?.is_local
-														? 'stored on this computer'
-														: 'current workspace'
+														? $t('nav.sidebar.storedOnComputer')
+														: $t('nav.sidebar.currentWorkspace')
 												}}</span>
 											</div>
 										</div>
 										<span
 											class="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-sidebar-border"
-											title="Switch workspace"
+											:title="$t('nav.sidebar.switchWorkspace')"
 										>
 											<ChevronsUpDown class="size-4" />
 										</span>
@@ -629,7 +633,7 @@
 									:side-offset="4"
 								>
 									<DropdownMenuLabel class="text-xs text-muted-foreground">
-										Workspaces
+										{{ $t('nav.sidebar.workspaces') }}
 									</DropdownMenuLabel>
 
 									<DropdownMenuItem
@@ -657,14 +661,14 @@
 											v-if="workspace.is_local"
 											class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground dark:bg-muted"
 											:title="workspace.path"
-											>Local</span
+											>{{ $t('nav.sidebar.local') }}</span
 										>
 
 										<button
 											v-if="canLeaveWorkspace(workspace)"
 											@click.stop="handleExitWorkspace(workspace, $event)"
 											class="ml-auto flex size-6 items-center justify-center rounded transition-colors hover:bg-destructive/10 hover:text-destructive"
-											title="Leave workspace"
+											:title="$t('nav.sidebar.leaveWorkspace')"
 										>
 											<LogOut class="size-4" />
 										</button>
@@ -682,7 +686,7 @@
 											<Plus class="size-4" />
 										</div>
 										<div class="font-medium text-muted-foreground">
-											Add workspace
+											{{ $t('nav.sidebar.addWorkspace') }}
 										</div>
 									</DropdownMenuItem>
 
@@ -710,7 +714,7 @@
 												<FileDown class="size-4" />
 											</div>
 											<div class="font-medium text-muted-foreground">
-												Export to Markdown
+												{{ $t('nav.sidebar.exportMarkdown') }}
 											</div>
 										</DropdownMenuItem>
 										<DropdownMenuItem
@@ -725,7 +729,7 @@
 												<CloudUpload class="size-4" />
 											</div>
 											<div class="font-medium text-muted-foreground">
-												Move to cloud…
+												{{ $t('nav.sidebar.moveToCloud') }}
 											</div>
 										</DropdownMenuItem>
 									</template>
@@ -741,7 +745,7 @@
 											<HardDrive class="size-4" />
 										</div>
 										<div class="font-medium text-muted-foreground">
-											New local workspace
+											{{ $t('nav.sidebar.newLocalWorkspace') }}
 										</div>
 									</DropdownMenuItem>
 
@@ -755,7 +759,7 @@
 											<UserPlus class="size-4" />
 										</div>
 										<div class="font-medium text-muted-foreground">
-											Invite members
+											{{ $t('nav.sidebar.inviteMembers') }}
 										</div>
 									</DropdownMenuItem>
 								</DropdownMenuContent>
@@ -771,7 +775,7 @@
 
 				<SidebarContent>
 					<SidebarGroup>
-						<SidebarGroupLabel>Main</SidebarGroupLabel>
+						<SidebarGroupLabel>{{ $t('nav.sidebar.main') }}</SidebarGroupLabel>
 
 						<SidebarMenu>
 							<SidebarMenuItem v-if="isFeatureEnabled('dashboard')">
@@ -785,7 +789,7 @@
 										"
 									>
 										<LayoutDashboard />
-										<span>Dashboard</span>
+										<span>{{ $t('nav.sidebar.dashboard') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -801,7 +805,7 @@
 										"
 									>
 										<ClipboardListIcon />
-										<span>List</span>
+										<span>{{ $t('nav.sidebar.list') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -817,7 +821,7 @@
 										"
 									>
 										<SquareKanban />
-										<span>Board</span>
+										<span>{{ $t('nav.sidebar.board') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -827,7 +831,7 @@
 									as-child
 									:tooltip="
 										activeWorkspace?.is_local
-											? 'Stored only on this device — not synced'
+											? $t('nav.sidebar.localRoutinesTooltip')
 											: undefined
 									"
 								>
@@ -836,7 +840,7 @@
 										:class="NAV_ACTIVE"
 										:title="
 											activeWorkspace?.is_local
-												? 'Stored only on this device — not synced'
+												? $t('nav.sidebar.localRoutinesTooltip')
 												: undefined
 										"
 									>
@@ -844,14 +848,14 @@
 										<span class="flex min-w-0 items-center gap-1.5">
 											<span class="truncate">{{
 												activeWorkspace?.is_local
-													? 'Local routines'
-													: 'Daily Routines'
+													? $t('nav.sidebar.localRoutines')
+													: $t('nav.sidebar.dailyRoutines')
 											}}</span>
 											<span
 												v-if="activeWorkspace?.is_local"
 												class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
 												data-testid="local-routines-menu-badge"
-												>Local</span
+												>{{ $t('nav.sidebar.local') }}</span
 											>
 										</span>
 									</router-link>
@@ -870,7 +874,7 @@
 										"
 									>
 										<ArchiveIcon />
-										<span>Archive</span>
+										<span>{{ $t('nav.sidebar.archive') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -889,14 +893,14 @@
 					/>
 
 					<SidebarGroup>
-						<SidebarGroupLabel>Tools</SidebarGroupLabel>
+						<SidebarGroupLabel>{{ $t('nav.sidebar.tools') }}</SidebarGroupLabel>
 
 						<SidebarMenu>
 							<SidebarMenuItem>
 								<SidebarMenuButton as-child>
 									<router-link to="/stats" :class="NAV_ACTIVE">
 										<BarChart3 />
-										<span>Statistics</span>
+										<span>{{ $t('nav.sidebar.statistics') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -904,7 +908,7 @@
 								<SidebarMenuButton as-child>
 									<router-link to="/ai-usage" :class="NAV_ACTIVE">
 										<Gauge />
-										<span>AI usage</span>
+										<span>{{ $t('nav.sidebar.aiUsage') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -917,7 +921,7 @@
 										:class="NAV_ACTIVE"
 									>
 										<PaperclipIcon />
-										<span>Files</span>
+										<span>{{ $t('nav.sidebar.files') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -930,7 +934,7 @@
 										:class="NAV_ACTIVE"
 									>
 										<Brain />
-										<span>Memory</span>
+										<span>{{ $t('nav.sidebar.memory') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -943,7 +947,7 @@
 										:class="NAV_ACTIVE"
 									>
 										<Waypoints />
-										<span>Map</span>
+										<span>{{ $t('nav.sidebar.map') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -996,7 +1000,7 @@
 										:class="NAV_ACTIVE"
 									>
 										<LifeBuoy />
-										<span>Getting started</span>
+										<span>{{ $t('nav.sidebar.gettingStarted') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
@@ -1017,7 +1021,7 @@
 								data-tour="nav.create-account"
 								@click="$router.push({ name: 'Register' })"
 							>
-								Create account
+								{{ $t('nav.sidebar.createAccount') }}
 							</Button>
 						</SidebarMenuItem>
 						<SidebarMenuItem>
@@ -1043,7 +1047,7 @@
 													v-if="isLocalOnly"
 													data-testid="local-badge"
 													class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground"
-													>Local</span
+													>{{ $t('nav.sidebar.local') }}</span
 												>
 											</span>
 											<span v-if="!isLocalOnly" class="truncate text-xs">{{
@@ -1088,15 +1092,13 @@
 											@click="$router.push('/settings?tab=profile')"
 											class="cursor-pointer"
 										>
-											<BadgeCheck />
-											Profile
+											<BadgeCheck /> {{ $t('nav.sidebar.profile') }}
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											@click="$router.push('/settings/sections')"
 											class="cursor-pointer"
 										>
-											<Settings2 />
-											Settings
+											<Settings2 /> {{ $t('nav.sidebar.settings') }}
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											v-if="activeWorkspace?.code && hubHidden"
@@ -1106,8 +1108,7 @@
 											"
 											class="cursor-pointer"
 										>
-											<LifeBuoy />
-											Getting started
+											<LifeBuoy /> {{ $t('nav.sidebar.gettingStarted') }}
 										</DropdownMenuItem>
 										<DropdownMenuItem>
 											<DarkMode />
@@ -1118,8 +1119,7 @@
 										<DropdownMenuSeparator />
 
 										<DropdownMenuItem class="cursor-pointer" @click="logout">
-											<LogOut />
-											Log out
+											<LogOut /> {{ $t('nav.sidebar.logout') }}
 										</DropdownMenuItem>
 									</template>
 								</DropdownMenuContent>
@@ -1163,8 +1163,8 @@
 							<button
 								type="button"
 								class="flex h-8 w-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-								aria-label="Back"
-								title="Back"
+								:aria-label="$t('nav.sidebar.back')"
+								:title="$t('nav.sidebar.back')"
 								:disabled="!canBack"
 								@click="navHistory.back()"
 							>
@@ -1173,8 +1173,8 @@
 							<button
 								type="button"
 								class="flex h-8 w-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-								aria-label="Forward"
-								title="Forward"
+								:aria-label="$t('nav.sidebar.forward')"
+								:title="$t('nav.sidebar.forward')"
 								:disabled="!canForward"
 								@click="navHistory.forward()"
 							>
@@ -1183,8 +1183,8 @@
 						</div>
 						<AddTaskModalTrigger
 							class="-ml-1"
-							aria-label="New task"
-							title="New task"
+							:aria-label="$t('nav.sidebar.newTask')"
+							:title="$t('nav.sidebar.newTask')"
 							data-tour="nav.create-task"
 						/>
 						<GlobalSearch v-if="isMobile" />
@@ -1238,8 +1238,8 @@
 								:class="{
 									'bg-surface-hover text-ink': store.state.aiPanelOpen,
 								}"
-								aria-label="Ask AI"
-								title="Ask AI"
+								:aria-label="$t('nav.sidebar.askAi')"
+								:title="$t('nav.sidebar.askAi')"
 								data-tour="nav.ask-ai"
 								@click="store.commit('toggleAiPanel')"
 							>
@@ -1275,10 +1275,9 @@
 	<Dialog v-if="isDesktop" v-model:open="showLocalDialog">
 		<DialogContent class="max-w-md">
 			<DialogHeader>
-				<DialogTitle>New local workspace</DialogTitle>
+				<DialogTitle>{{ $t('nav.sidebar.newLocalWorkspace') }}</DialogTitle>
 				<DialogDescription>
-					Stored only on this Mac in ~/.tmgr.dev/workspaces — it never reaches
-					the server. Back it up by copying the folder.
+					{{ $t('nav.sidebar.localDialogDescription') }}
 				</DialogDescription>
 			</DialogHeader>
 			<form
@@ -1290,7 +1289,7 @@
 					data-selectable
 					autofocus
 					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-hidden dark:border-input dark:bg-background"
-					placeholder="Personal, Client under NDA…"
+					:placeholder="$t('nav.sidebar.localNamePlaceholder')"
 				/>
 				<p v-if="localError" class="text-xs text-destructive">
 					{{ localError }}
@@ -1301,7 +1300,11 @@
 						class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
 						:disabled="!localName.trim() || creatingLocal"
 					>
-						{{ creatingLocal ? 'Creating…' : 'Create' }}
+						{{
+							creatingLocal
+								? $t('nav.sidebar.creating')
+								: $t('common.actions.create')
+						}}
 					</button>
 				</DialogFooter>
 			</form>
@@ -1313,8 +1316,8 @@
 
 	<Confirm
 		v-if="showExitConfirm"
-		title="Leave workspace"
-		:body="`Are you sure you want to leave '${workspaceToExit?.name}' workspace?`"
+		:title="$t('nav.sidebar.leaveWorkspace')"
+		:body="$t('nav.sidebar.leaveConfirm', { name: workspaceToExit?.name })"
 		@on-ok="confirmExitWorkspace"
 		@on-cancel="cancelExitWorkspace"
 	/>

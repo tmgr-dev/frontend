@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { ViewBadgeEntry } from '@/pluginSystem/host';
 
 type BadgeShape = Pick<ViewBadgeEntry, 'count' | 'text' | 'tone'>;
@@ -31,6 +32,7 @@ export const viewBadgeAriaLabel = (
 	badge: BadgeShape | null | undefined,
 ): string | undefined => {
 	if (!badge) return undefined;
-	if (badge.count !== null) return `${title}, ${badge.count} pending`;
+	if (badge.count !== null)
+		return t('nav.sidebar.badgePending', { title, count: badge.count });
 	return badge.text ? `${title}, ${badge.text}` : undefined;
 };

@@ -33,9 +33,9 @@
 					</li>
 
 					<li class="py-1 hover:opacity-75 md:p-2 lg:px-4">
-						<a class="block text-ink" href="#" @click.prevent="logout"
-							>Logout</a
-						>
+						<a class="block text-ink" href="#" @click.prevent="logout">{{
+							$t('nav.account.logout')
+						}}</a>
 					</li>
 				</ul>
 
@@ -48,7 +48,9 @@
 						@change="onSelectChange"
 					/>
 
-					<div class="mt-2 text-ink-subtle">workspace users:</div>
+					<div class="mt-2 text-ink-subtle">
+						{{ $t('nav.account.workspaceUsers') }}
+					</div>
 
 					<ul class="h-24 overflow-y-auto">
 						<li
@@ -75,6 +77,7 @@
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import Select from '@/components/general/Select.vue';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { UserIcon } from 'lucide-vue-next';
 	import { onBeforeMount, onMounted, onUnmounted, Ref, ref } from 'vue';
@@ -84,12 +87,16 @@
 	const links = [
 		{
 			id: 1,
-			name: 'Settings',
+			get name() {
+				return t('nav.account.settings');
+			},
 			to: '/settings',
 		},
 		{
 			id: 2,
-			name: 'Archive',
+			get name() {
+				return t('nav.account.archive');
+			},
 			get to() {
 				const workspace = workspaces.value.find(
 					(w) => w.id === workspaceId.value,
