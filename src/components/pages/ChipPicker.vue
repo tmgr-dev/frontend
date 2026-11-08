@@ -31,7 +31,7 @@
 				@click="show"
 			>
 				<Plus class="h-3 w-3" />
-				{{ addLabel }}
+				{{ addLabel || $t('common.actions.add') }}
 			</button>
 			<div v-else class="relative">
 				<input
@@ -39,7 +39,7 @@
 					v-model="query"
 					type="text"
 					class="w-48 rounded border border-input bg-background px-2 py-0.5 text-sm text-ink"
-					:placeholder="placeholder"
+					:placeholder="placeholder || $t('common.actions.search')"
 					data-testid="chip-picker-input"
 					@input="runSearch"
 					@blur="close"
@@ -71,7 +71,6 @@
 </template>
 
 <script lang="ts">
-	import { t } from '@/i18n';
 	import { Plus, X } from 'lucide-vue-next';
 	import {
 		computed,
@@ -98,8 +97,8 @@
 				required: true,
 			},
 			single: { type: Boolean, default: false },
-			addLabel: { type: String, default: () => t('common.actions.add') },
-			placeholder: { type: String, default: () => t('common.actions.search') },
+			addLabel: { type: String, default: '' },
+			placeholder: { type: String, default: '' },
 		},
 		emits: ['add', 'remove', 'open'],
 		setup(props, { emit }) {
