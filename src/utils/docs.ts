@@ -247,6 +247,26 @@ export function youtubeEmbedUrl(id?: string | null): string | null {
 		: null;
 }
 
+export type DocsVideo = { kind: 'youtube' | 'file'; src: string };
+
+export function docsVideo(value?: string | null): DocsVideo | null {
+	const youtube = youtubeEmbedUrl(value);
+	if (youtube) return { kind: 'youtube', src: youtube };
+	let url: URL;
+	try {
+		url = new URL((value ?? '').trim());
+	} catch {
+		return null;
+	}
+	return url.protocol === 'https:' &&
+		url.origin === 'https://tmgr.dev' &&
+		url.username === '' &&
+		url.password === '' &&
+		/^\/l\/video\/(?:[\w-]+\/)*[\w.-]+\.mp4$/.test(url.pathname)
+		? { kind: 'file', src: url.href }
+		: null;
+}
+
 export const COMPONENT_MARKER = /^<!--\s*component:([A-Za-z0-9]+)\s*-->$/;
 
 const HEADING_ID = /\s*\{#([A-Za-z0-9][\w-]*)\}\s*$/;

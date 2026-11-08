@@ -7,6 +7,7 @@ import {
 	docPath,
 	DOCS_COMPONENTS,
 	DOCS_UI,
+	docsVideo,
 	loadDocs,
 	parseDocsPath,
 	parseFrontMatter,
@@ -285,6 +286,72 @@ describe('docs rendering', () => {
 	});
 });
 
+const LESSON_VIDEOS: Record<string, string> = {
+	'install-and-sign-in': '01-install',
+	'tasks-from-the-terminal': '02-tasks',
+	'the-start-done-cycle': '03-workflow',
+	'ai-agents-under-supervision': '04-agents',
+	'the-decisions-inbox': '05-decisions',
+	'your-task-in-the-shell-prompt': '06-prompt',
+	'what-ai-costs-you': '07-usage',
+	'personas-and-skills': '08-skills',
+	'agent-work-reports': '09-agent-reports',
+	'the-agent-queue': '10-queue',
+};
+
+describe('docs video resolver', () => {
+	it('keeps resolving a youtube id', () => {
+		expect(docsVideo('dQw4w9WgXcQ')).toEqual({
+			kind: 'youtube',
+			src: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+		});
+	});
+
+	it('accepts only an https mp4 under tmgr.dev/l/video and returns the normalized href', () => {
+		expect(
+			docsVideo('https://tmgr.dev/l/video/en/tmgr-cli-01-install.mp4'),
+		).toEqual({
+			kind: 'file',
+			src: 'https://tmgr.dev/l/video/en/tmgr-cli-01-install.mp4',
+		});
+		expect(docsVideo(' HTTPS://TMGR.DEV:443/l/video/ru/a.mp4 ')).toEqual({
+			kind: 'file',
+			src: 'https://tmgr.dev/l/video/ru/a.mp4',
+		});
+	});
+
+	it.each([
+		'http://tmgr.dev/l/video/en/a.mp4',
+		'javascript:alert(1)',
+		'data:video/mp4;base64,AA',
+		'https://evil.com/l/video/en/a.mp4',
+		'https://tmgr.dev@evil.com/l/video/en/a.mp4',
+		'https://user:pw@tmgr.dev/l/video/en/a.mp4',
+		'//tmgr.dev/l/video/en/a.mp4',
+		'https://tmgr.dev/l/video/../x.mp4',
+		'https://tmgr.dev/l/video/..%2f..%2fa.mp4',
+		'https://tmgr.dev/l/video/en%2Fa.mp4',
+		'https://tmgr.dev/l/video/en/a b.mp4',
+		'https://tmgr.dev/other/a.mp4',
+		'https://tmgr.dev/l/video/en/a.webm',
+		'https://tmgr.dev.evil.com/l/video/en/a.mp4',
+		'',
+		undefined,
+		null,
+	])('rejects %s', (value) => {
+		expect(docsVideo(value)).toBeNull();
+	});
+
+	it('keeps the url in a front-matter video line', () => {
+		const url = 'https://tmgr.dev/l/video/en/x.mp4';
+		const { data } = parseFrontMatter(
+			`---\ntitle: A\nvideo: ${url}\n---\nBody\n`,
+		);
+		expect(data.video).toBe(url);
+		expect(docsVideo(data.video)).toEqual({ kind: 'file', src: url });
+	});
+});
+
 describe('youtube player', () => {
 	it('embeds only a valid 11-character id', () => {
 		expect(youtubeEmbedUrl('dQw4w9WgXcQ')).toBe(
@@ -394,9 +461,16 @@ describe('docs content', () => {
 		for (const name of names) expect(DOCS_COMPONENTS).toContain(name);
 	});
 
-	it('leaves the tutorial video empty or valid', () => {
-		for (const p of realPages.filter((p) => p.slug.startsWith('cli/'))) {
-			expect(p.video === '' || youtubeEmbedUrl(p.video) !== null).toBe(true);
+	it('points every cli lesson at its own self-hosted video', () => {
+		const lessons = realPages.filter(
+			(p) => p.slug.startsWith('cli/') && p.slug !== 'cli',
+		);
+		expect(lessons).toHaveLength(20);
+		for (const p of lessons) {
+			const slug = p.slug.replace('cli/', '');
+			const url = `https://tmgr.dev/l/video/${p.lang}/tmgr-cli-${LESSON_VIDEOS[slug]}.mp4`;
+			expect([p.lang, slug, p.video]).toEqual([p.lang, slug, url]);
+			expect(docsVideo(p.video)).toEqual({ kind: 'file', src: url });
 		}
 	});
 
@@ -498,7 +572,6 @@ describe('docs content', () => {
 			]);
 			expect(chapters.every((h) => h.id.startsWith('t-'))).toBe(true);
 			expect(chapters[chapters.length - 1].id).toBe('t-next');
-			expect(p.video).toBe('');
 			const text = p.body;
 			for (const token of LEFTOVERS)
 				expect([slug, lang, token, text.includes(token)]).toEqual([

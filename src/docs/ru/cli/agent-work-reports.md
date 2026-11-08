@@ -3,7 +3,7 @@ title: 9. Отчёты агентов о работе
 section: Уроки по CLI
 order: 38
 description: Установите хуки агентов, отчитайтесь о запуске через agent start, update и finish и прочитайте журнал.
-video:
+video: https://tmgr.dev/l/video/ru/tmgr-cli-09-agent-reports.mp4
 ---
 
 В этом уроке: как агенты отчитываются о работе над задачами и как вы читаете эти отчёты.

@@ -3,7 +3,7 @@ title: 3. The start → done cycle
 section: CLI tutorials
 order: 32
 description: Start a task, see its timer, link commits to it and finish it with one command.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-03-workflow.mp4
 ---
 
 In this lesson you work through a task from start to finish: one command when you start, one when you finish, and the branch, the status and the timer take care of themselves.

@@ -3,7 +3,7 @@ title: 1. Install and sign in
 section: CLI tutorials
 order: 30
 description: Install tmgr, sign in with a device code, pick a workspace and open the menu.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-01-install.mp4
 ---
 
 `tmgr` is the command line for the TMGR task manager. In this lesson you install it, sign in, choose a workspace and look around.

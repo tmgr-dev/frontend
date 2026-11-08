@@ -3,7 +3,7 @@ title: 7. What AI costs you
 section: CLI tutorials
 order: 36
 description: Allow tmgr to read agent logs, then see tokens, cost and rate limits by day, branch or task.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-07-usage.mp4
 ---
 
 This lesson shows how much your AI agents cost: tokens, cost and rate limits, counted from the local logs of Claude Code and Codex.

@@ -11,10 +11,10 @@ import {
 	DOCS_ORIGIN,
 	DOCS_UI,
 	docsHead,
+	docsVideo,
 	loadDocs,
 	prevNext,
 	resolveDoc,
-	youtubeEmbedUrl,
 	type DocPage,
 	type DocsHead,
 	type DocsLang,
@@ -118,7 +118,8 @@ const pageHtml = (
 		})
 		.join('');
 	const toc = rendered.headings.filter((h) => h.depth === 2 || h.depth === 3);
-	const video = youtubeEmbedUrl(page.video);
+	const video = docsVideo(page.video);
+	const videoLabel = e(`${ui.video}: ${page.title}`);
 	const pagerLink = (target: DocPage, next: boolean) =>
 		`<a href="${e(docPath(lang, target.slug))}" class="rounded-md border border-border px-4 py-3 hover:bg-muted${
 			next ? ' text-right sm:col-start-2' : ''
@@ -160,9 +161,15 @@ ${
 	}</header>
 ${
 	video
-		? `<div class="mb-8 aspect-video overflow-hidden rounded-lg border border-border bg-muted" data-testid="docs-video"><iframe src="${e(
-				video,
-			)}" title="${e(`${ui.video}: ${page.title}`)}" class="h-full w-full" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen></iframe></div>\n`
+		? `<div class="mb-8 aspect-video overflow-hidden rounded-lg border border-border bg-muted" data-testid="docs-video">${
+				video.kind === 'youtube'
+					? `<iframe src="${e(
+							video.src,
+						)}" title="${videoLabel}" class="h-full w-full" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen></iframe>`
+					: `<video src="${e(
+							video.src,
+						)}" controls preload="metadata" playsinline aria-label="${videoLabel}" class="h-full w-full"></video>`
+			}</div>\n`
 		: ''
 }<div data-testid="docs-content">${content}</div>
 ${

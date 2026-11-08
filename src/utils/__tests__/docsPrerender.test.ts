@@ -126,6 +126,38 @@ describe('docs prerender over the real docs', () => {
 	});
 });
 
+describe('lesson video', () => {
+	it('prerenders the self-hosted player without autoplay', () => {
+		const html = byFile.get(fileFor('ru', 'cli/what-ai-costs-you'))!;
+		const wrapper = html.match(
+			/<div class="mb-8 aspect-video[^"]*" data-testid="docs-video">(.*?)<\/div>/,
+		)![1];
+		expect(wrapper).toBe(
+			'<video src="https://tmgr.dev/l/video/ru/tmgr-cli-07-usage.mp4" controls preload="metadata" playsinline aria-label="Видео: 7. Сколько стоит ИИ" class="h-full w-full"></video>',
+		);
+		expect(html).not.toContain('autoplay');
+		expect(html).not.toContain('<iframe');
+	});
+
+	it('renders no player for a value that is not allowlisted', () => {
+		const out = prerenderDocs({
+			files: {
+				'./en/a.md':
+					'---\ntitle: A\nvideo: https://evil.com/l/video/en/a.mp4\n---\nText.',
+				'./en/b.md': '---\ntitle: B\nvideo: dQw4w9WgXcQ\n---\nText.',
+			},
+			template,
+		});
+		const html = (name: string) =>
+			out.pages.find((p) => p.fileName === `docs/${name}/index.html`)!.html;
+		expect(html('a')).not.toContain('docs-video');
+		expect(html('a')).not.toContain('<video');
+		expect(html('b')).toContain(
+			'<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"',
+		);
+	});
+});
+
 describe('sitemap', () => {
 	const xml = result.sitemap;
 

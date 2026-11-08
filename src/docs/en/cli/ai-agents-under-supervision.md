@@ -3,7 +3,7 @@ title: 4. AI agents under supervision
 section: CLI tutorials
 order: 33
 description: Run an AI agent in a sandbox, watch its sessions and roll back its changes.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-04-agents.mp4
 ---
 
 In this lesson you run an agent in a sandbox, watch what it does and roll back its changes.

@@ -3,7 +3,7 @@ title: 6. Your task in the shell prompt
 section: CLI tutorials
 order: 35
 description: Show the current task and timer in your shell prompt, tmux and the Claude Code status line.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-06-prompt.mp4
 ---
 
 In this lesson you put the current task and its timer into your shell prompt, tmux and the Claude Code status line.

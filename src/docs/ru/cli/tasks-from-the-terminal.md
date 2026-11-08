@@ -3,7 +3,7 @@ title: 2. Задачи из терминала
 section: Уроки по CLI
 order: 31
 description: Создаём и смотрим задачи, двигаем их по доске и используем JSON в скриптах.
-video:
+video: https://tmgr.dev/l/video/ru/tmgr-cli-02-tasks.mp4
 ---
 
 В этом уроке создаём задачи, смотрим их и двигаем по доске, не открывая браузер. Нужен `tmgr`, в который вы уже вошли: см. [1. Установка и вход](/docs/ru/cli/install-and-sign-in).

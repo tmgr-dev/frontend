@@ -3,7 +3,7 @@ title: 8. Personas and skills
 section: CLI tutorials
 order: 37
 description: Upload a skill to the shared library, give it to a persona and manage its versions.
-video:
+video: https://tmgr.dev/l/video/en/tmgr-cli-08-skills.mp4
 ---
 
 This lesson covers personas and skills: how to put a skill into the shared library and give it to a persona.
