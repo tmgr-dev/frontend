@@ -1,0 +1,229 @@
+{
+	"actionLines": {
+		"title": "Zadania do wykonania",
+		"toTask": "→ zadanie"
+	},
+	"aliases": {
+		"add": "Dodaj alias",
+		"displayName": "Nazwa wyświetlana",
+		"identifier": "Identyfikator",
+		"remove": "Usuń alias"
+	},
+	"conflict": {
+		"description": "Podczas edycji pojawiła się wersja {version}. Wybierz, którą zachować.",
+		"difference": "Różnica",
+		"hint": "Weź ich — wczytaj wersję {version} i odrzuć swój szkic. Zachowaj moją — zapisz swój tekst nad wersją {version}.",
+		"keepMine": "Zachowaj moją",
+		"showBoth": "Pokaż obie",
+		"takeTheirs": "Weź ich",
+		"theirVersion": "Ich wersja",
+		"title": "Strona zmieniona gdzie indziej",
+		"yourDraft": "Twój szkic"
+	},
+	"descriptionPreview": {
+		"edit": "Edytuj opis",
+		"empty": "Brak opisu — kliknij, aby dodać"
+	},
+	"diff": {
+		"empty": "Pusto"
+	},
+	"editor": {
+		"searching": "Szukanie..."
+	},
+	"files": {
+		"title": "Pliki",
+		"upload": "Prześlij",
+		"uploading": "Przesyłanie..."
+	},
+	"gate": {
+		"description": "Notatki, kontekst przestrzeni roboczej i dokumentacja w drzewie stron, które edytują zarówno ludzie, jak i agenci.",
+		"title": "Strony"
+	},
+	"import": {
+		"badgeExists": "istnieje",
+		"badgeSkipped": "pominięto",
+		"choose": "Wybierz pliki",
+		"conflictPolicy": "Gdy tytuł już istnieje",
+		"created": "Utworzono {n} stronę. | Utworzono {n} strony. | Utworzono {n} stron.",
+		"drop": "Upuść tutaj pliki Markdown, obrazy lub plik .zip",
+		"policyImport": "Importuj mimo to",
+		"policyRename": "Zmień nazwę (dodaje (2))",
+		"policySkip": "Pomiń",
+		"reading": "Odczytywanie plików…",
+		"root": "Katalog główny stron",
+		"skippedCount": "Pominięto: {n}.",
+		"stopped": "Import przerwany: {error} — utworzono {n} stronę | Import przerwany: {error} — utworzono {n} strony | Import przerwany: {error} — utworzono {n} stron",
+		"submit": "Importuj {n} stronę | Importuj {n} strony | Importuj {n} stron",
+		"target": "Importuj do: {title}",
+		"title": "Import Markdown",
+		"warnings": "{n} ostrzeżenie | {n} ostrzeżenia | {n} ostrzeżeń",
+		"willCreate": "Zostanie utworzona {n} strona | Zostaną utworzone {n} strony | Zostanie utworzonych {n} stron",
+		"willCreateConflicts": "Zostanie utworzona {n} strona, w tym {conflicts} z już istniejącym tytułem | Zostaną utworzone {n} strony, w tym {conflicts} z już istniejącym tytułem | Zostanie utworzonych {n} stron, w tym {conflicts} z już istniejącym tytułem"
+	},
+	"index": {
+		"allPages": "Wszystkie strony",
+		"archive": "Archiwum",
+		"create": "Utwórz stronę",
+		"emptyHint": "Utwórz pierwszą stronę z notatkami i dokumentacją.",
+		"emptyTitle": "Brak stron",
+		"exportAll": "Eksportuj wszystko",
+		"failed": "Nie udało się wczytać stron",
+		"import": "Importuj",
+		"pinned": "Przypięte",
+		"title": "Strony"
+	},
+	"nav": {
+		"dialogs": {
+			"archiveBody": "„{title}” i wszystkie jej podstrony zostaną przeniesione do: {archive}. Możesz je stamtąd przywrócić.",
+			"archiveConfirm": "Archiwizuj",
+			"archiveLink": "archiwum",
+			"archiveTitle": "Archiwizuj stronę",
+			"renameTitle": "Zmień nazwę strony",
+			"titlePlaceholder": "Tytuł"
+		},
+		"node": {
+			"actions": "Akcje strony",
+			"addSubpage": "Dodaj podstronę",
+			"archive": "Archiwizuj",
+			"collapse": "Zwiń",
+			"expand": "Rozwiń",
+			"exportSubtree": "Eksportuj z podstronami",
+			"importHere": "Importuj Markdown tutaj…",
+			"openInWindow": "Otwórz w oknie",
+			"pin": "Przypnij",
+			"rename": "Zmień nazwę",
+			"unpin": "Odepnij"
+		},
+		"sidebar": {
+			"allPages": "Wszystkie strony",
+			"archive": "Archiwum",
+			"choosePageType": "Wybierz typ strony",
+			"failed": "Nie udało się wczytać stron",
+			"importMarkdown": "Importuj Markdown…",
+			"newPage": "Nowa strona",
+			"pageType": "Typ strony",
+			"title": "Strony"
+		}
+	},
+	"previews": {
+		"board": {
+			"archived": "Zarchiwizowane",
+			"done": "Ukończone",
+			"inProgress": "W toku",
+			"todo": "Do zrobienia"
+		},
+		"dashboard": {
+			"completed": "Ukończone",
+			"inProgress": "W toku",
+			"timeTracked": "Śledzony czas",
+			"totalTasks": "Wszystkie zadania"
+		}
+	},
+	"properties": {
+		"author": "Autor",
+		"editedBy": "Edytowane przez",
+		"hintMember": "członek",
+		"hintPerson": "osoba",
+		"member": "Członek",
+		"memberName": "Nazwa członka",
+		"personOrMember": "Osoba lub członek",
+		"searchTasks": "Szukaj zadań",
+		"select": "Wybierz",
+		"task": "Zadanie"
+	},
+	"sidePanel": {
+		"allVersions": "Wszystkie",
+		"backlinks": "Linki zwrotne",
+		"contents": "Spis treści",
+		"versions": "Wersje"
+	},
+	"taskFromSelection": {
+		"category": "Projekt",
+		"create": "Utwórz zadanie",
+		"description": "Tekst na stronie zostanie zastąpiony linkiem do zadania.",
+		"statusDefault": "Domyślny",
+		"statusOptional": "Status (opcjonalnie)",
+		"title": "Utwórz zadanie"
+	},
+	"trash": {
+		"alreadyDeleted": "Ta strona została już usunięta",
+		"archivedAt": "Zarchiwizowano {date}",
+		"back": "Strony",
+		"confirmType": "Wpisz {word}, aby potwierdzić",
+		"countLabel": "Zarchiwizowana strona i jej podstrony | Wszystkie {n} zarchiwizowane strony i ich podstrony | Wszystkie {n} zarchiwizowanych stron i ich podstrony",
+		"deleteAll": "Usuń wszystko",
+		"deleteFailed": "Nie udało się usunąć strony",
+		"deleteForbidden": "Tylko autor lub właściciel przestrzeni roboczej może usunąć tę stronę",
+		"emptied": "Archiwum opróżnione",
+		"empty": "Archiwum jest puste.",
+		"emptyBody": "{label} zostanie usunięte na zawsze. Tej operacji nie można cofnąć.",
+		"emptyFailed": "Nie udało się opróżnić archiwum",
+		"emptyTitle": "Usunąć wszystkie zarchiwizowane strony?",
+		"failed": "Nie udało się wczytać archiwum",
+		"noPermissionDelete": "Nie masz uprawnień do usunięcia tej strony",
+		"noPermissionEmpty": "Nie masz uprawnień do opróżnienia archiwum",
+		"notArchived": "Ta strona nie jest już zarchiwizowana",
+		"purgeBody": "„{title}” i jej zarchiwizowane podstrony zostaną usunięte na zawsze. Tej operacji nie można cofnąć.",
+		"purgeConfirm": "Usuń trwale",
+		"purgeTitle": "Usunąć trwale?",
+		"purged": "Strona usunięta trwale",
+		"restore": "Przywróć",
+		"restoreFailed": "Nie udało się przywrócić strony",
+		"restoreForbidden": "Tylko autor lub właściciel przestrzeni roboczej może przywrócić tę stronę",
+		"someKept": "Niektóre strony zostały zachowane",
+		"someKeptBody": "{n} zarchiwizowana strona, której nie możesz usunąć, została w archiwum. | {n} zarchiwizowane strony, których nie możesz usunąć, zostały w archiwum. | {n} zarchiwizowanych stron, których nie możesz usunąć, zostało w archiwum.",
+		"title": "Archiwum"
+	},
+	"versions": {
+		"backToPage": "Wróć do strony",
+		"current": "bieżąca",
+		"failed": "Nie udało się wczytać historii",
+		"history": "Historia: {title}",
+		"loading": "Ładowanie...",
+		"modeCurrent": "Zmiany od tej wersji",
+		"modePrevious": "Co zmieniła ta wersja",
+		"modeSnapshot": "Migawka",
+		"restore": "Przywróć",
+		"restoreBody": "Zostanie utworzona nowa wersja strony z treścią wersji {version}. Bieżący tekst zostanie w historii.",
+		"restoreTitle": "Przywrócić wersję {version}?",
+		"select": "Wybierz wersję"
+	},
+	"view": {
+		"conflictBanner": "Nie zapisano: konflikt wersji",
+		"editorPlaceholder": "Wpisz / dla bloków, {'@'} dla linku, [[ dla strony",
+		"exportMarkdown": "Eksportuj jako Markdown",
+		"exportSubtree": "Eksportuj z podstronami",
+		"follow": "Obserwuj",
+		"forbidden": "Strony są wyłączone lub nie masz dostępu",
+		"history": "Historia",
+		"importHere": "Importuj Markdown tutaj…",
+		"loadFailed": "Nie udało się wczytać strony",
+		"loading": "Ładowanie...",
+		"makeTask": "Utwórz zadanie",
+		"moreActions": "Więcej akcji",
+		"notFound": "Nie znaleziono strony",
+		"openFileFailed": "Nie udało się otworzyć: {name}",
+		"openInWindow": "Otwórz w oknie",
+		"openTask": "Otwórz zadanie",
+		"refresh": "Odśwież",
+		"resolve": "Rozwiąż",
+		"resolveFirst": "Najpierw rozwiąż konflikt wersji.",
+		"saveFailed": "Nie udało się zapisać",
+		"saved": "Zapisano, wersja {version}",
+		"saving": "Zapisywanie...",
+		"subscriptionFailed": "Nie udało się zmienić subskrypcji",
+		"taskCreated": "Zadanie utworzone",
+		"unfollow": "Przestań obserwować",
+		"unsaved": "Niezapisane zmiany",
+		"untitled": "Bez tytułu",
+		"updateBanner": "Strona zmieniona, wersja {version}",
+		"uploadFailed": "Nie udało się przesłać: {name}",
+		"versionConflict": "Konflikt wersji"
+	},
+	"window": {
+		"closeWindow": "Zamknij okno",
+		"loading": "Ładowanie...",
+		"notFound": "Nie znaleziono tej strony.",
+		"openFailed": "Nie udało się otworzyć strony. Zamknij to okno i spróbuj ponownie."
+	}
+}

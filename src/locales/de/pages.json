@@ -1,0 +1,229 @@
+{
+	"actionLines": {
+		"title": "Aufgabenpunkte",
+		"toTask": "→ Aufgabe"
+	},
+	"aliases": {
+		"add": "Alias hinzufügen",
+		"displayName": "Anzeigename",
+		"identifier": "Kennung",
+		"remove": "Alias entfernen"
+	},
+	"conflict": {
+		"description": "Während du bearbeitet hast, ist Version {version} erschienen. Wähle, welche du behalten willst.",
+		"difference": "Unterschied",
+		"hint": "Ihre übernehmen – Version {version} laden und deinen Entwurf verwerfen. Meine behalten – deinen Text über Version {version} speichern.",
+		"keepMine": "Meine behalten",
+		"showBoth": "Beide anzeigen",
+		"takeTheirs": "Ihre übernehmen",
+		"theirVersion": "Ihre Version",
+		"title": "Seite wurde anderswo geändert",
+		"yourDraft": "Dein Entwurf"
+	},
+	"descriptionPreview": {
+		"edit": "Beschreibung bearbeiten",
+		"empty": "Keine Beschreibung – zum Hinzufügen klicken"
+	},
+	"diff": {
+		"empty": "Leer"
+	},
+	"editor": {
+		"searching": "Suche..."
+	},
+	"files": {
+		"title": "Dateien",
+		"upload": "Hochladen",
+		"uploading": "Wird hochgeladen..."
+	},
+	"gate": {
+		"description": "Notizen, Arbeitsbereich-Kontext und Dokumentation in einem Seitenbaum, den Menschen und Agenten gemeinsam bearbeiten.",
+		"title": "Seiten"
+	},
+	"import": {
+		"badgeExists": "vorhanden",
+		"badgeSkipped": "übersprungen",
+		"choose": "Dateien auswählen",
+		"conflictPolicy": "Wenn der Titel schon existiert",
+		"created": "{n} Seite erstellt. | {n} Seiten erstellt.",
+		"drop": "Markdown-Dateien, Bilder oder eine .zip-Datei hierher ziehen",
+		"policyImport": "Trotzdem importieren",
+		"policyRename": "Umbenennen (ergänzt (2))",
+		"policySkip": "Überspringen",
+		"reading": "Dateien werden gelesen…",
+		"root": "Wurzel der Seiten",
+		"skippedCount": "{n} übersprungen.",
+		"stopped": "Import gestoppt: {error} – {n} Seite wurde erstellt | Import gestoppt: {error} – {n} Seiten wurden erstellt",
+		"submit": "{n} Seite importieren | {n} Seiten importieren",
+		"target": "Importieren in: {title}",
+		"title": "Markdown importieren",
+		"warnings": "{n} Warnung | {n} Warnungen",
+		"willCreate": "{n} Seite wird erstellt | {n} Seiten werden erstellt",
+		"willCreateConflicts": "{n} Seite wird erstellt, {conflicts} mit bereits vorhandenem Titel | {n} Seiten werden erstellt, {conflicts} mit bereits vorhandenem Titel"
+	},
+	"index": {
+		"allPages": "Alle Seiten",
+		"archive": "Archiv",
+		"create": "Seite erstellen",
+		"emptyHint": "Erstelle deine erste Seite für Notizen und Dokumentation.",
+		"emptyTitle": "Noch keine Seiten",
+		"exportAll": "Alle exportieren",
+		"failed": "Seiten konnten nicht geladen werden",
+		"import": "Importieren",
+		"pinned": "Angeheftet",
+		"title": "Seiten"
+	},
+	"nav": {
+		"dialogs": {
+			"archiveBody": "„{title}“ und alle Unterseiten werden ins {archive} verschoben. Du kannst sie dort wiederherstellen.",
+			"archiveConfirm": "Archivieren",
+			"archiveLink": "Archiv",
+			"archiveTitle": "Seite archivieren",
+			"renameTitle": "Seite umbenennen",
+			"titlePlaceholder": "Titel"
+		},
+		"node": {
+			"actions": "Seitenaktionen",
+			"addSubpage": "Unterseite hinzufügen",
+			"archive": "Archivieren",
+			"collapse": "Einklappen",
+			"expand": "Ausklappen",
+			"exportSubtree": "Mit Unterseiten exportieren",
+			"importHere": "Markdown hier importieren…",
+			"openInWindow": "In Fenster öffnen",
+			"pin": "Anheften",
+			"rename": "Umbenennen",
+			"unpin": "Lösen"
+		},
+		"sidebar": {
+			"allPages": "Alle Seiten",
+			"archive": "Archiv",
+			"choosePageType": "Seitentyp wählen",
+			"failed": "Seiten konnten nicht geladen werden",
+			"importMarkdown": "Markdown importieren…",
+			"newPage": "Neue Seite",
+			"pageType": "Seitentyp",
+			"title": "Seiten"
+		}
+	},
+	"previews": {
+		"board": {
+			"archived": "Archiviert",
+			"done": "Erledigt",
+			"inProgress": "In Bearbeitung",
+			"todo": "Zu erledigen"
+		},
+		"dashboard": {
+			"completed": "Erledigt",
+			"inProgress": "In Bearbeitung",
+			"timeTracked": "Erfasste Zeit",
+			"totalTasks": "Aufgaben gesamt"
+		}
+	},
+	"properties": {
+		"author": "Autor",
+		"editedBy": "Bearbeitet von",
+		"hintMember": "Mitglied",
+		"hintPerson": "Person",
+		"member": "Mitglied",
+		"memberName": "Name des Mitglieds",
+		"personOrMember": "Person oder Mitglied",
+		"searchTasks": "Aufgaben suchen",
+		"select": "Auswählen",
+		"task": "Aufgabe"
+	},
+	"sidePanel": {
+		"allVersions": "Alle",
+		"backlinks": "Rückverweise",
+		"contents": "Inhalt",
+		"versions": "Versionen"
+	},
+	"taskFromSelection": {
+		"category": "Projekt",
+		"create": "Aufgabe erstellen",
+		"description": "Der Text auf der Seite wird durch einen Link zur Aufgabe ersetzt.",
+		"statusDefault": "Standard",
+		"statusOptional": "Status (optional)",
+		"title": "Aufgabe erstellen"
+	},
+	"trash": {
+		"alreadyDeleted": "Diese Seite wurde bereits gelöscht",
+		"archivedAt": "Archiviert am {date}",
+		"back": "Seiten",
+		"confirmType": "Gib {word} zur Bestätigung ein",
+		"countLabel": "Die archivierte Seite und ihre Unterseiten | Alle {n} archivierten Seiten und ihre Unterseiten",
+		"deleteAll": "Alle löschen",
+		"deleteFailed": "Seite konnte nicht gelöscht werden",
+		"deleteForbidden": "Nur der Autor oder der Besitzer des Arbeitsbereichs kann diese Seite löschen",
+		"emptied": "Archiv geleert",
+		"empty": "Das Archiv ist leer.",
+		"emptyBody": "{label} wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+		"emptyFailed": "Archiv konnte nicht geleert werden",
+		"emptyTitle": "Alle archivierten Seiten löschen?",
+		"failed": "Archiv konnte nicht geladen werden",
+		"noPermissionDelete": "Du darfst diese Seite nicht löschen",
+		"noPermissionEmpty": "Du darfst das Archiv nicht leeren",
+		"notArchived": "Diese Seite ist nicht mehr archiviert",
+		"purgeBody": "„{title}“ und ihre archivierten Unterseiten werden endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+		"purgeConfirm": "Endgültig löschen",
+		"purgeTitle": "Endgültig löschen?",
+		"purged": "Seite endgültig gelöscht",
+		"restore": "Wiederherstellen",
+		"restoreFailed": "Seite konnte nicht wiederhergestellt werden",
+		"restoreForbidden": "Nur der Autor oder der Besitzer des Arbeitsbereichs kann diese Seite wiederherstellen",
+		"someKept": "Einige Seiten wurden behalten",
+		"someKeptBody": "{n} archivierte Seite, die du nicht löschen darfst, ist im Archiv geblieben. | {n} archivierte Seiten, die du nicht löschen darfst, sind im Archiv geblieben.",
+		"title": "Archiv"
+	},
+	"versions": {
+		"backToPage": "Zurück zur Seite",
+		"current": "aktuell",
+		"failed": "Verlauf konnte nicht geladen werden",
+		"history": "Verlauf: {title}",
+		"loading": "Wird geladen...",
+		"modeCurrent": "Änderungen seit dieser Version",
+		"modePrevious": "Was diese Version geändert hat",
+		"modeSnapshot": "Schnappschuss",
+		"restore": "Wiederherstellen",
+		"restoreBody": "Es wird eine neue Seitenversion mit dem Inhalt von Version {version} erstellt. Der aktuelle Text bleibt im Verlauf.",
+		"restoreTitle": "Version {version} wiederherstellen?",
+		"select": "Version auswählen"
+	},
+	"view": {
+		"conflictBanner": "Nicht gespeichert: Versionskonflikt",
+		"editorPlaceholder": "Tippe / für Blöcke, {'@'} für einen Link, [[ für eine Seite",
+		"exportMarkdown": "Als Markdown exportieren",
+		"exportSubtree": "Mit Unterseiten exportieren",
+		"follow": "Folgen",
+		"forbidden": "Seiten sind deaktiviert oder du hast keinen Zugriff",
+		"history": "Verlauf",
+		"importHere": "Markdown hier importieren…",
+		"loadFailed": "Seite konnte nicht geladen werden",
+		"loading": "Wird geladen...",
+		"makeTask": "Aufgabe erstellen",
+		"moreActions": "Weitere Aktionen",
+		"notFound": "Seite nicht gefunden",
+		"openFileFailed": "{name} konnte nicht geöffnet werden",
+		"openInWindow": "In Fenster öffnen",
+		"openTask": "Aufgabe öffnen",
+		"refresh": "Aktualisieren",
+		"resolve": "Lösen",
+		"resolveFirst": "Löse zuerst den Versionskonflikt.",
+		"saveFailed": "Speichern fehlgeschlagen",
+		"saved": "Gespeichert, Version {version}",
+		"saving": "Wird gespeichert...",
+		"subscriptionFailed": "Abonnement konnte nicht geändert werden",
+		"taskCreated": "Aufgabe erstellt",
+		"unfollow": "Nicht mehr folgen",
+		"unsaved": "Ungespeicherte Änderungen",
+		"untitled": "Ohne Titel",
+		"updateBanner": "Seite geändert, Version {version}",
+		"uploadFailed": "{name} konnte nicht hochgeladen werden",
+		"versionConflict": "Versionskonflikt"
+	},
+	"window": {
+		"closeWindow": "Fenster schließen",
+		"loading": "Wird geladen...",
+		"notFound": "Diese Seite wurde nicht gefunden.",
+		"openFailed": "Die Seite konnte nicht geöffnet werden. Schließe dieses Fenster und versuche es erneut."
+	}
+}
