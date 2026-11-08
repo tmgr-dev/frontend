@@ -35,7 +35,7 @@ fn walk(root: &Path, rel: &Path, out: &mut impl Write) -> io::Result<()> {
         ));
     }
     out.write_all(&[kind])?;
-    write!(out, "{:o}\t{}\t", m.mode() & 0o7777, m.ino())?;
+    write!(out, "{:o}\t{}\t{}\t", m.mode() & 0o7777, m.dev(), m.ino())?;
     out.write_all(rel_bytes)?;
     out.write_all(b"\n")?;
     if kind == b'd' {
@@ -74,6 +74,7 @@ pub fn save(sdir: &Path, roots: &[PathBuf]) -> io::Result<()> {
 
 struct Restorer {
     root: PathBuf,
+    gone: Vec<PathBuf>,
     restored: usize,
     failed: usize,
     lines: Vec<String>,
@@ -84,36 +85,64 @@ impl Restorer {
         let Some((head, rest)) = line.split_first() else {
             return;
         };
-        let mut parts = rest.splitn(3, |b| *b == b'\t');
-        let (Some(mode), Some(ino), Some(rel)) = (parts.next(), parts.next(), parts.next()) else {
+        let mut parts = rest.splitn(4, |b| *b == b'\t');
+        let (Some(mode), Some(dev), Some(ino), Some(rel)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
             return;
+        };
+        let num = |b: &[u8]| {
+            std::str::from_utf8(b)
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
         };
         let parsed = (
             std::str::from_utf8(mode)
                 .ok()
                 .and_then(|s| u32::from_str_radix(s, 8).ok()),
-            std::str::from_utf8(ino)
-                .ok()
-                .and_then(|s| s.parse::<u64>().ok()),
+            num(dev),
+            num(ino),
         );
-        let (Some(mode), Some(ino)) = parsed else {
+        let (Some(mode), Some(dev), Some(ino)) = parsed else {
             return;
         };
-        let path = self.root.join(OsStr::from_bytes(rel));
-        let Ok(m) = fs::symlink_metadata(&path) else {
-            return;
-        };
-        if kind_of(&m) != Some(*head) || m.ino() != ino || m.mode() & 0o7777 == mode {
+        let rel = Path::new(OsStr::from_bytes(rel));
+        if self.gone.iter().any(|g| rel.starts_with(g)) {
             return;
         }
-        match fs::set_permissions(&path, fs::Permissions::from_mode(mode)) {
+        let path = self.root.join(rel);
+        let leaf = match Leaf::open(&path) {
+            Ok(l) => l,
+            Err(e) if replaced(&e) => {
+                self.gone.push(rel.to_path_buf());
+                return;
+            }
+            Err(e) => {
+                self.failed += 1;
+                self.lines.push(format!(
+                    "could not check the mode of {}: {e}",
+                    path.display()
+                ));
+                return;
+            }
+        };
+        let m = &leaf.meta;
+        if kind_of(m) != Some(*head) || m.dev() != dev || m.ino() != ino {
+            self.gone.push(rel.to_path_buf());
+            return;
+        }
+        if m.mode() & 0o7777 == mode {
+            return;
+        }
+        let was = m.mode() & 0o7777;
+        match leaf.chmod(mode) {
             Ok(()) => {
                 self.restored += 1;
                 if self.restored <= LOGGED_CHANGES {
                     self.lines.push(format!(
                         "restored the mode of {} from {:o} to {:o}",
                         path.display(),
-                        m.mode() & 0o7777,
+                        was,
                         mode
                     ));
                 }
@@ -138,6 +167,57 @@ impl Restorer {
         }
         out.append(&mut self.lines);
         self.failed == 0
+    }
+}
+
+fn replaced(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::NotFound
+        || matches!(e.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR))
+}
+
+#[cfg(target_os = "linux")]
+struct Leaf {
+    fd: File,
+    meta: fs::Metadata,
+}
+
+#[cfg(target_os = "linux")]
+impl Leaf {
+    fn open(path: &Path) -> io::Result<Self> {
+        let fd = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(path)?;
+        let meta = fd.metadata()?;
+        Ok(Self { fd, meta })
+    }
+
+    fn chmod(&self, mode: u32) -> io::Result<()> {
+        use std::os::fd::AsRawFd;
+        fs::set_permissions(
+            format!("/proc/self/fd/{}", self.fd.as_raw_fd()),
+            fs::Permissions::from_mode(mode),
+        )
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+struct Leaf {
+    path: PathBuf,
+    meta: fs::Metadata,
+}
+
+#[cfg(not(target_os = "linux"))]
+impl Leaf {
+    fn open(path: &Path) -> io::Result<Self> {
+        Ok(Self {
+            path: path.to_path_buf(),
+            meta: fs::symlink_metadata(path)?,
+        })
+    }
+
+    fn chmod(&self, mode: u32) -> io::Result<()> {
+        fs::set_permissions(&self.path, fs::Permissions::from_mode(mode))
     }
 }
 
@@ -184,6 +264,7 @@ pub fn finish(sdir: &Path) -> Vec<String> {
             }
             current = Some(Restorer {
                 root: PathBuf::from(OsStr::from_bytes(root)),
+                gone: Vec::new(),
                 restored: 0,
                 failed: 0,
                 lines: Vec::new(),
@@ -309,6 +390,26 @@ mod tests {
         assert_eq!(mode(&f.root.join("ab/new")), 0o600);
         assert_eq!(mode(&f.root.join("fresh")), 0o700);
         assert_eq!(mode(&f.root.join("ab/cdef")), 0o444);
+    }
+
+    #[test]
+    fn an_unreachable_store_is_retried_on_the_next_finish() {
+        let f = fx();
+        let parent = f.root.with_file_name("wrap");
+        fs::create_dir(&parent).unwrap();
+        let root = parent.join("objects");
+        fs::rename(&f.root, &root).unwrap();
+        save(&f.sdir, std::slice::from_ref(&root)).unwrap();
+        chmod(&root.join("ab/cdef"), 0o600);
+        let before = mode(&parent);
+        chmod(&parent, 0o600);
+        let lines = finish(&f.sdir);
+        chmod(&parent, before);
+        assert!(!f.sdir.join(DONE).exists(), "{lines:?}");
+        assert!(lines.iter().any(|l| l.contains("could not")), "{lines:?}");
+        finish(&f.sdir);
+        assert_eq!(mode(&root.join("ab/cdef")), 0o444);
+        assert!(f.sdir.join(DONE).exists());
     }
 
     #[test]
