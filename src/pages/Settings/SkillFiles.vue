@@ -3,8 +3,12 @@
 		class="flex flex-col gap-2 border-t border-border pt-3"
 		data-testid="skill-files"
 	>
-		<h5 class="text-xs font-semibold">Files · {{ slug }}</h5>
-		<p v-if="loading" class="text-xs text-muted-foreground">Loading files…</p>
+		<h5 class="text-xs font-semibold">
+			{{ $t('settingsPages.skillFiles.title', { slug }) }}
+		</h5>
+		<p v-if="loading" class="text-xs text-muted-foreground">
+			{{ $t('settingsPages.skillFiles.loading') }}
+		</p>
 		<ul v-else class="flex flex-col gap-1">
 			<li
 				v-for="file in files"
@@ -27,11 +31,13 @@
 					<Button
 						variant="outline"
 						size="sm"
-						:aria-label="`Delete ${file.path}`"
+						:aria-label="
+							$t('settingsPages.skillFiles.deleteFile', { path: file.path })
+						"
 						data-testid="skill-file-delete"
 						@click="remove(file.path)"
 					>
-						Delete
+						{{ $t('common.actions.delete') }}
 					</Button>
 				</span>
 			</li>
@@ -41,7 +47,7 @@
 			<pre
 				class="max-h-96 overflow-auto rounded border border-border bg-muted p-2 text-xs whitespace-pre-wrap"
 				data-testid="skill-file-content"
-				>{{ contentLoading ? 'Loading…' : content }}</pre>
+				>{{ contentLoading ? $t('common.states.loading') : content }}</pre>
 		</div>
 	</div>
 </template>

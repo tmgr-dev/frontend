@@ -4,9 +4,11 @@
 			class="rounded-card border border-line bg-surface text-ink sm:max-w-[360px]"
 		>
 			<DialogHeader>
-				<DialogTitle class="text-ink">Crop avatar</DialogTitle>
+				<DialogTitle class="text-ink">{{
+					$t('settingsPages.avatarCropModal.title')
+				}}</DialogTitle>
 				<DialogDescription class="text-ink-muted">
-					Drag to move, scroll or use the slider to zoom.
+					{{ $t('settingsPages.avatarCropModal.description') }}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -35,7 +37,7 @@
 
 			<div class="flex items-center gap-3">
 				<label for="avatar-crop-zoom" class="text-sm text-ink-muted">
-					Zoom
+					{{ $t('settingsPages.avatarCropModal.zoom') }}
 				</label>
 				<input
 					id="avatar-crop-zoom"
@@ -52,7 +54,7 @@
 
 			<DialogFooter class="gap-2 sm:gap-2">
 				<Button type="button" variant="outline" @click="$emit('cancel')">
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</Button>
 				<Button
 					type="button"
@@ -60,7 +62,7 @@
 					data-testid="avatar-crop-confirm"
 					@click="confirm"
 				>
-					Confirm
+					{{ $t('common.actions.confirm') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>

@@ -1,13 +1,16 @@
 <template>
 	<PageContainer width="narrow">
 		<PageHeader
-			title="How plugins work"
-			subtitle="Plugins add badges, pages, task sections and commands to the TMGR desktop app."
+			:title="$t('settingsPages.pluginsHelp.title')"
+			:subtitle="$t('settingsPages.pluginsHelp.subtitle')"
 			back="/settings/plugins"
-			back-label="Back to plugins"
+			:back-label="$t('settingsPages.pluginsHelp.backLabel')"
 		/>
 
-		<section class="mb-8" aria-label="At a glance">
+		<section
+			class="mb-8"
+			:aria-label="$t('settingsPages.pluginsHelp.glanceLabel')"
+		>
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<div
 					v-for="card in glance"
@@ -34,10 +37,10 @@
 			<section class="flex flex-col gap-3">
 				<h4 class="flex items-center gap-2 text-base font-semibold">
 					<ShieldCheck class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-					What a plugin can do
+					{{ $t('settingsPages.pluginsHelp.can.title') }}
 				</h4>
 				<p class="text-muted-foreground">
-					Only what its card says. Everything else is closed.
+					{{ $t('settingsPages.pluginsHelp.can.intro') }}
 				</p>
 				<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
 					<div
@@ -55,11 +58,14 @@
 			<section class="flex flex-col gap-3">
 				<h4 class="flex items-center gap-2 text-base font-semibold">
 					<Github class="h-5 w-5" />
-					Installing from GitHub
+					{{ $t('settingsPages.pluginsHelp.github.title') }}
 				</h4>
 				<ol class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 					<li class="flex flex-col gap-2">
-						<StepLabel :n="1" text="Paste the link" />
+						<StepLabel
+							:n="1"
+							:text="$t('settingsPages.pluginsHelp.github.step1')"
+						/>
 						<div
 							class="flex items-center gap-2 rounded-lg border border-border p-2"
 						>
@@ -69,30 +75,42 @@
 							>
 							<span
 								class="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground"
-								>Check</span
+								>{{ $t('settingsPages.pluginsHelp.github.check') }}</span
 							>
 						</div>
 					</li>
 					<li class="flex flex-col gap-2">
-						<StepLabel :n="2" text="See what it may do" />
+						<StepLabel
+							:n="2"
+							:text="$t('settingsPages.pluginsHelp.github.step2')"
+						/>
 						<div
 							class="flex flex-col gap-1 rounded-lg border border-border p-2 text-xs"
 						>
-							<span class="font-semibold">Install Timer 1.0.0?</span>
-							<span class="text-muted-foreground">It can: read tasks</span>
-							<Pill tone="verified">Verified publisher</Pill>
+							<span class="font-semibold">{{
+								$t('settingsPages.pluginsHelp.github.installPrompt')
+							}}</span>
+							<span class="text-muted-foreground">{{
+								$t('settingsPages.pluginsHelp.github.itCan')
+							}}</span>
+							<Pill tone="verified">{{
+								$t('settingsPages.pluginsHelp.github.verified')
+							}}</Pill>
 						</div>
 					</li>
 					<li class="flex flex-col gap-2">
-						<StepLabel :n="3" text="Turn it on" />
+						<StepLabel
+							:n="3"
+							:text="$t('settingsPages.pluginsHelp.github.step3')"
+						/>
 						<div
 							class="flex items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs"
 						>
 							<span class="flex flex-col">
 								<span class="font-semibold">Timer</span>
-								<span class="text-emerald-600 dark:text-emerald-400"
-									>Running</span
-								>
+								<span class="text-emerald-600 dark:text-emerald-400">{{
+									$t('settingsPages.pluginsHelp.github.running')
+								}}</span>
 							</span>
 							<MiniSwitch :on="true" />
 						</div>
@@ -101,35 +119,35 @@
 
 				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 					<div class="flex flex-col gap-1 rounded-lg bg-muted p-3">
-						<Pill tone="verified">Verified publisher</Pill>
-						<span class="text-xs text-muted-foreground"
-							>TMGR knows this author's signing key.</span
-						>
+						<Pill tone="verified">{{
+							$t('settingsPages.pluginsHelp.github.verified')
+						}}</Pill>
+						<span class="text-xs text-muted-foreground">{{
+							$t('settingsPages.pluginsHelp.github.verifiedText')
+						}}</span>
 					</div>
 					<div class="flex flex-col gap-1 rounded-lg bg-muted p-3">
-						<Pill tone="unverified">Unverified publisher</Pill>
-						<span class="text-xs text-muted-foreground"
-							>Signed, but not reviewed by TMGR. Install only if you trust the
-							author.</span
-						>
+						<Pill tone="unverified">{{
+							$t('settingsPages.pluginsHelp.github.unverified')
+						}}</Pill>
+						<span class="text-xs text-muted-foreground">{{
+							$t('settingsPages.pluginsHelp.github.unverifiedText')
+						}}</span>
 					</div>
 				</div>
 				<p class="flex items-start gap-2 text-muted-foreground">
 					<KeyRound class="mt-0.5 h-4 w-4 shrink-0" />
-					<span
-						>Every release must be signed. The app remembers the author's key,
-						so an update signed by someone else is refused.</span
-					>
+					<span>{{ $t('settingsPages.pluginsHelp.github.signed') }}</span>
 				</p>
 			</section>
 
 			<section class="flex flex-col gap-3">
 				<h4 class="flex items-center gap-2 text-base font-semibold">
 					<Folder class="h-5 w-5 text-amber-600 dark:text-amber-400" />
-					Plugins without a signature
+					{{ $t('settingsPages.pluginsHelp.unsigned.title') }}
 				</h4>
 				<p class="text-muted-foreground">
-					For a plugin you write yourself, or one that is not published.
+					{{ $t('settingsPages.pluginsHelp.unsigned.intro') }}
 				</p>
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 					<pre
@@ -141,23 +159,35 @@
    ├─ main.js
    └─ ui/page.html</pre>
 					<ol class="flex flex-col gap-2">
-						<li><StepLabel :n="1" text="Put the folder there" /></li>
 						<li>
-							<StepLabel :n="2" text="Turn on Developer mode" />
+							<StepLabel
+								:n="1"
+								:text="$t('settingsPages.pluginsHelp.unsigned.step1')"
+							/>
 						</li>
-						<li><StepLabel :n="3" text="Press Reload plugins" /></li>
+						<li>
+							<StepLabel
+								:n="2"
+								:text="$t('settingsPages.pluginsHelp.unsigned.step2')"
+							/>
+						</li>
+						<li>
+							<StepLabel
+								:n="3"
+								:text="$t('settingsPages.pluginsHelp.unsigned.step3')"
+							/>
+						</li>
 					</ol>
 				</div>
 				<p class="text-muted-foreground">
-					Same sandbox, same permissions, but nobody checked the author. Folder
-					plugins cannot be shared with a workspace.
+					{{ $t('settingsPages.pluginsHelp.unsigned.note') }}
 				</p>
 			</section>
 
 			<section class="flex flex-col gap-3">
 				<h4 class="flex items-center gap-2 text-base font-semibold">
 					<Users class="h-5 w-5 text-sky-600 dark:text-sky-400" />
-					Shared workspaces
+					{{ $t('settingsPages.pluginsHelp.shared.title') }}
 				</h4>
 				<div
 					class="flex flex-col items-center gap-3 rounded-xl border border-border p-4 sm:flex-row sm:justify-center"
@@ -168,10 +198,12 @@
 						>
 							<CircleUser class="h-6 w-6" />
 						</span>
-						<span class="text-xs font-medium">Creator</span>
-						<span class="text-xs text-muted-foreground"
-							>turns on Timer 1.2</span
-						>
+						<span class="text-xs font-medium">{{
+							$t('settingsPages.pluginsHelp.shared.creator')
+						}}</span>
+						<span class="text-xs text-muted-foreground">{{
+							$t('settingsPages.pluginsHelp.shared.turnsOn')
+						}}</span>
 					</span>
 					<ArrowRight
 						class="h-5 w-5 rotate-90 text-muted-foreground sm:rotate-0"
@@ -194,32 +226,25 @@
 				<ul class="flex flex-col gap-2">
 					<li class="flex items-start gap-2">
 						<Check class="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-						<span
-							>Only the creator turns plugins on. Everyone gets the same
-							version.</span
-						>
+						<span>{{ $t('settingsPages.pluginsHelp.shared.point1') }}</span>
 					</li>
 					<li class="flex items-start gap-2">
 						<Check class="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-						<span
-							>The plugin uses its own short-lived key: this workspace only, its
-							permissions only.</span
-						>
+						<span>{{ $t('settingsPages.pluginsHelp.shared.point2') }}</span>
 					</li>
 					<li class="flex flex-wrap items-center gap-2">
 						<Check class="h-4 w-4 shrink-0 text-emerald-600" />
-						<span
-							>Network, files, the {{ trayName }}, tmgr:// links and web links
-							on your computer wait for</span
-						>
+						<span>{{
+							$t('settingsPages.pluginsHelp.shared.point3', { tray: trayName })
+						}}</span>
 						<span
 							class="rounded-md border border-border px-2 py-0.5 text-xs font-medium"
-							>Allow on this computer</span
+							>{{ $t('settingsPages.pluginsHelp.shared.allow') }}</span
 						>
 					</li>
 					<li class="flex items-start gap-2">
 						<Check class="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-						<span>What the plugin saves is shared by all members.</span>
+						<span>{{ $t('settingsPages.pluginsHelp.shared.point4') }}</span>
 					</li>
 				</ul>
 			</section>
@@ -227,46 +252,63 @@
 			<section class="flex flex-col gap-3">
 				<h4 class="flex items-center gap-2 text-base font-semibold">
 					<LifeBuoy class="h-5 w-5 text-destructive" />
-					When a plugin gets in the way
+					{{ $t('settingsPages.pluginsHelp.trouble.title') }}
 				</h4>
 				<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
 					<div class="flex flex-col gap-2 rounded-lg bg-muted p-3">
 						<MiniSwitch :on="false" />
-						<span class="font-medium">Switch it off</span>
-						<span class="text-xs text-muted-foreground"
-							>On its card, or remove it.</span
-						>
+						<span class="font-medium">{{
+							$t('settingsPages.pluginsHelp.trouble.switchOff')
+						}}</span>
+						<span class="text-xs text-muted-foreground">{{
+							$t('settingsPages.pluginsHelp.trouble.switchOffText')
+						}}</span>
 					</div>
 					<div class="flex flex-col gap-2 rounded-lg bg-muted p-3">
 						<span class="flex items-center gap-2 text-xs font-medium"
-							>Safe mode <MiniSwitch :on="true"
+							>{{ $t('settingsPages.pluginsHelp.trouble.safeMode') }}
+							<MiniSwitch :on="true"
 						/></span>
-						<span class="font-medium">Everything off</span>
+						<span class="font-medium">{{
+							$t('settingsPages.pluginsHelp.trouble.everythingOff')
+						}}</span>
 						<span class="text-xs text-muted-foreground"
-							>Or start the app with <code>--safe-mode</code>.</span
+							><i18n-t
+								keypath="settingsPages.pluginsHelp.trouble.everythingOffText"
+								tag="span"
+							>
+								<template #flag><code>--safe-mode</code></template>
+							</i18n-t></span
 						>
 					</div>
 					<div class="flex flex-col gap-2 rounded-lg bg-muted p-3">
-						<Pill tone="blocked">Blocked by TMGR</Pill>
-						<span class="font-medium">We stop bad ones</span>
-						<span class="text-xs text-muted-foreground"
-							>A signed blocklist turns a harmful plugin off everywhere.</span
-						>
+						<Pill tone="blocked">{{
+							$t('settingsPages.pluginsHelp.trouble.blocked')
+						}}</Pill>
+						<span class="font-medium">{{
+							$t('settingsPages.pluginsHelp.trouble.weStop')
+						}}</span>
+						<span class="text-xs text-muted-foreground">{{
+							$t('settingsPages.pluginsHelp.trouble.weStopText')
+						}}</span>
 					</div>
 				</div>
 				<p class="text-muted-foreground">
-					A plugin that fails three times in five minutes turns itself off.
+					{{ $t('settingsPages.pluginsHelp.trouble.note') }}
 				</p>
 			</section>
 
 			<section class="flex flex-col gap-3">
 				<h4 class="flex items-center gap-2 text-base font-semibold">
 					<FileCode class="h-5 w-5" />
-					For plugin authors
+					{{ $t('settingsPages.pluginsHelp.authors.title') }}
 				</h4>
 				<ol class="flex flex-col gap-3">
 					<li class="flex flex-col gap-1">
-						<StepLabel :n="1" text="Start from the template" />
+						<StepLabel
+							:n="1"
+							:text="$t('settingsPages.pluginsHelp.authors.step1')"
+						/>
 						<a
 							href="https://github.com/tmgr-dev/tmgr-plugin-template"
 							target="_blank"
@@ -276,56 +318,67 @@
 						>
 					</li>
 					<li class="flex flex-col gap-1">
-						<StepLabel :n="2" text="Sign and publish" />
+						<StepLabel
+							:n="2"
+							:text="$t('settingsPages.pluginsHelp.authors.step2')"
+						/>
 						<span class="pl-8 text-muted-foreground"
-							><code>node sign.mjs keygen</code>, save the key as the
-							<code>TMGR_PLUGIN_SIGNING_KEY</code> secret, push a tag like
-							<code>v1.0.0</code>.</span
+							><i18n-t
+								keypath="settingsPages.pluginsHelp.authors.step2Text"
+								tag="span"
+							>
+								<template #keygen><code>node sign.mjs keygen</code></template>
+								<template #secret
+									><code>TMGR_PLUGIN_SIGNING_KEY</code></template
+								>
+								<template #tag><code>v1.0.0</code></template>
+							</i18n-t></span
 						>
 					</li>
 					<li class="flex flex-col gap-1">
-						<StepLabel :n="3" text="Get verified (optional)" />
+						<StepLabel
+							:n="3"
+							:text="$t('settingsPages.pluginsHelp.authors.step3')"
+						/>
 						<span class="pl-8 text-muted-foreground"
-							>Pull request with your id, repository and public key to
-							<a
-								href="https://github.com/tmgr-dev/tmgr-plugins"
-								target="_blank"
-								rel="noopener noreferrer"
-								class="text-primary hover:underline"
-								>github.com/tmgr-dev/tmgr-plugins</a
-							>. Report harmful plugins there too.</span
+							><i18n-t
+								keypath="settingsPages.pluginsHelp.authors.step3Text"
+								tag="span"
+							>
+								<template #link>
+									<a
+										href="https://github.com/tmgr-dev/tmgr-plugins"
+										target="_blank"
+										rel="noopener noreferrer"
+										class="text-primary hover:underline"
+										>github.com/tmgr-dev/tmgr-plugins</a
+									>
+								</template>
+							</i18n-t></span
 						>
 					</li>
 				</ol>
 				<p class="text-muted-foreground">
-					API 1.1: every new ability is its own permission (alarms,
-					{{ trayName }}, tmgr:// links, web links, statuses, relations, agent
-					work), shown when you install or update. Try them all with
-					<code>plugin-sdk/examples/kitchen-sink</code> in developer mode; the
-					plugin log shows why a call was refused.
+					<i18n-t keypath="settingsPages.pluginsHelp.authors.api11" tag="span">
+						<template #tray>{{ trayName }}</template>
+						<template #example
+							><code>plugin-sdk/examples/kitchen-sink</code></template
+						>
+					</i18n-t>
 				</p>
 				<p class="text-muted-foreground">
-					API 1.2: plugins can read and write Daily Routines (notes and
-					routines), on this device only — not yet in shared workspaces.
+					{{ $t('settingsPages.pluginsHelp.authors.api12') }}
 				</p>
 				<p class="text-muted-foreground">
-					API 1.4: a plugin can show a counter on its own sidebar item. It needs
-					the views:badge permission, shown when you install or update, and no
-					extra consent. Long {{ trayName }} titles are shortened with "…"
-					instead of being refused.
+					{{
+						$t('settingsPages.pluginsHelp.authors.api14', { tray: trayName })
+					}}
 				</p>
 				<p class="text-muted-foreground">
-					API 1.5: plugins can work with pages. pages:read reads and searches
-					them, pages:write creates, edits and appends, and pages:sections lets
-					a plugin write only into its own managed sections. Each is shown when
-					you install or update. Plugins cannot add page types.
+					{{ $t('settingsPages.pluginsHelp.authors.api15') }}
 				</p>
 				<p class="text-muted-foreground">
-					API 1.6: a plugin can add up to 3 items to the task … menu, on board
-					cards, in the task list and on the task page. It needs menus:task,
-					which is shown when you install or update. The items appear in their
-					own group while the plugin is running; with more than 4 plugin items
-					in total they move into one Plugins submenu.
+					{{ $t('settingsPages.pluginsHelp.authors.api16') }}
 				</p>
 			</section>
 		</div>
@@ -336,6 +389,7 @@
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { trayName } from '@/utils/desktop';
 	import {
 		ArrowRight,
@@ -438,50 +492,50 @@
 			Users,
 		},
 		setup() {
-			setDocumentTitle('How plugins work');
+			setDocumentTitle(t('settingsPages.pluginsHelp.title'));
 			return {
 				trayName: trayName(),
 				glance: [
 					{
 						icon: ShieldCheck,
 						tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-						title: 'Sandboxed',
-						text: 'Only the permissions on its card.',
+						title: t('settingsPages.pluginsHelp.glance.sandboxed.title'),
+						text: t('settingsPages.pluginsHelp.glance.sandboxed.text'),
 					},
 					{
 						icon: BadgeCheck,
 						tone: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
-						title: 'Signed',
-						text: 'GitHub plugins must be signed by their author.',
+						title: t('settingsPages.pluginsHelp.glance.signed.title'),
+						text: t('settingsPages.pluginsHelp.glance.signed.text'),
 					},
 					{
 						icon: Users,
 						tone: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
-						title: 'Shared by the creator',
-						text: 'In a shared workspace only its creator turns plugins on.',
+						title: t('settingsPages.pluginsHelp.glance.shared.title'),
+						text: t('settingsPages.pluginsHelp.glance.shared.text'),
 					},
 					{
 						icon: LifeBuoy,
 						tone: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-						title: 'Easy to stop',
-						text: 'Safe mode turns every plugin off at once.',
+						title: t('settingsPages.pluginsHelp.glance.stop.title'),
+						text: t('settingsPages.pluginsHelp.glance.stop.text'),
 					},
 				],
 				abilities: [
 					{
 						icon: ListChecks,
-						title: 'Your data',
-						text: 'Only what it asked for, like "read tasks".',
+						title: t('settingsPages.pluginsHelp.abilities.data.title'),
+						text: t('settingsPages.pluginsHelp.abilities.data.text'),
 					},
 					{
 						icon: Globe,
-						title: 'Network',
-						text: 'Only localhost addresses it declares, shown in red.',
+						title: t('settingsPages.pluginsHelp.abilities.network.title'),
+						text: t('settingsPages.pluginsHelp.abilities.network.text'),
 					},
 					{
 						icon: PanelsTopLeft,
-						title: 'Its own pages',
-						text: 'In a separate window that reaches nothing else.',
+						title: t('settingsPages.pluginsHelp.abilities.pages.title'),
+						text: t('settingsPages.pluginsHelp.abilities.pages.text'),
 					},
 				],
 			};

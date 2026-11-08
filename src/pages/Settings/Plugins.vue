@@ -1,15 +1,13 @@
 <template>
 	<PageContainer width="narrow">
-		<PageHeader title="Plugins">
+		<PageHeader :title="$t('settingsPages.plugins.title')">
 			<template #subtitle>
-				Plugins run in local workspaces, and in a shared workspace once its
-				creator turns them on for everyone. Each runs in its own sandbox with
-				only the permissions listed on its card.
+				{{ $t('settingsPages.plugins.subtitle') }}
 				<router-link
 					to="/settings/plugins/help"
 					data-tour="plugins.help"
 					class="text-primary hover:underline"
-					>How plugins work</router-link
+					>{{ $t('settingsPages.plugins.howItWorks') }}</router-link
 				>
 			</template>
 		</PageHeader>
@@ -17,51 +15,65 @@
 			v-if="!workspace"
 			class="mb-6 text-sm text-amber-600 dark:text-amber-400"
 		>
-			Open a workspace to turn plugins on or off for it.
+			{{ $t('settingsPages.plugins.openWorkspace') }}
 		</p>
 		<p
 			v-else-if="workspace.kind === 'cloud'"
 			class="mb-6 text-sm text-muted-foreground"
 		>
-			Shared workspace:
-			<span class="text-foreground">{{ workspace.name }}</span
-			>.
-			{{
-				isCreator
-					? 'You created it: a plugin you turn on here runs for every member.'
-					: 'Only its creator turns plugins on here; they run for every member.'
-			}}
+			<i18n-t
+				:keypath="
+					isCreator
+						? 'settingsPages.plugins.sharedCreator'
+						: 'settingsPages.plugins.sharedMember'
+				"
+				tag="span"
+			>
+				<template #name>
+					<span class="text-foreground">{{ workspace.name }}</span>
+				</template>
+			</i18n-t>
 		</p>
 		<p v-else class="mb-6 text-sm text-muted-foreground">
-			Current workspace:
-			<span class="text-foreground">{{ workspace.name }}</span>
+			<i18n-t keypath="settingsPages.plugins.currentWorkspace" tag="span">
+				<template #name>
+					<span class="text-foreground">{{ workspace.name }}</span>
+				</template>
+			</i18n-t>
 		</p>
 
 		<SettingsSection class="mb-6 flex flex-col gap-3">
 			<label class="flex items-center justify-between gap-4">
 				<span>
-					<span class="block text-sm font-medium">Safe mode</span>
+					<span class="block text-sm font-medium">{{
+						$t('settingsPages.plugins.safeMode.title')
+					}}</span>
 					<span class="block text-xs text-muted-foreground">
-						Turn every plugin off. Starting the app with --safe-mode does the
-						same.
+						{{ $t('settingsPages.plugins.safeMode.description') }}
 					</span>
 				</span>
 				<Switch :checked="safeMode" @update:checked="setSafeMode" />
 			</label>
 			<label class="flex items-center justify-between gap-4">
 				<span>
-					<span class="block text-sm font-medium">Developer mode</span>
+					<span class="block text-sm font-medium">{{
+						$t('settingsPages.plugins.devMode.title')
+					}}</span>
 					<span class="block text-xs text-muted-foreground">
-						Load plugins from ~/.tmgr.dev/plugins. They start switched off.
+						{{ $t('settingsPages.plugins.devMode.description') }}
 					</span>
 				</span>
 				<Switch :checked="devMode" @update:checked="setDevMode" />
 			</label>
 			<label class="flex items-center justify-between gap-4">
 				<span>
-					<span class="block text-sm font-medium">{{ trayLabel }} text</span>
+					<span class="block text-sm font-medium">{{
+						$t('settingsPages.plugins.tray.title', { tray: trayLabel })
+					}}</span>
 					<span class="block text-xs text-muted-foreground">
-						Let one plugin show text next to the timer in the {{ trayName }}.
+						{{
+							$t('settingsPages.plugins.tray.description', { tray: trayName })
+						}}
 					</span>
 				</span>
 				<Select
@@ -69,10 +81,10 @@
 					@update:model-value="setTrayTitlePlugin"
 				>
 					<SelectTrigger class="w-48">
-						<SelectValue placeholder="None" />
+						<SelectValue :placeholder="$t('common.states.none')" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="none">None</SelectItem>
+						<SelectItem value="none">{{ $t('common.states.none') }}</SelectItem>
 						<SelectItem
 							v-for="plugin in trayTitleCandidates"
 							:key="storageIdOf(plugin)"
@@ -84,16 +96,16 @@
 				</Select>
 			</label>
 			<div v-if="devMode" class="flex flex-wrap gap-2">
-				<Button variant="outline" size="sm" @click="revealFolder"
-					>Show folder</Button
-				>
+				<Button variant="outline" size="sm" @click="revealFolder">{{
+					$t('settingsPages.plugins.dev.showFolder')
+				}}</Button>
 				<Button
 					variant="outline"
 					size="sm"
 					:disabled="reloading"
 					@click="reload"
 				>
-					Reload plugins
+					{{ $t('settingsPages.plugins.dev.reload') }}
 				</Button>
 			</div>
 			<ul
@@ -114,24 +126,29 @@
 			class="mb-6 flex flex-col gap-2"
 			data-tour="plugins.install"
 		>
-			<span class="text-sm font-medium">Install from GitHub</span>
+			<span class="text-sm font-medium">{{
+				$t('settingsPages.plugins.install.title')
+			}}</span>
 			<span class="text-xs text-muted-foreground">
-				Paste a plugin repository. The app reads its latest release and shows
-				what it may do before anything is installed.
+				{{ $t('settingsPages.plugins.install.description') }}
 			</span>
 			<form class="flex flex-wrap gap-2" @submit.prevent="checkRepo">
 				<Input
 					v-model="repoInput"
 					placeholder="github.com/owner/plugin"
 					class="max-w-sm"
-					aria-label="Plugin repository"
+					:aria-label="$t('settingsPages.plugins.install.repoLabel')"
 				/>
 				<Button
 					type="submit"
 					size="sm"
 					:disabled="!repoInput.trim() || checking"
 				>
-					{{ checking ? 'Checking…' : 'Check' }}
+					{{
+						checking
+							? $t('settingsPages.plugins.install.checking')
+							: $t('settingsPages.plugins.install.check')
+					}}
 				</Button>
 			</form>
 			<p v-if="installError" class="text-xs text-destructive">
@@ -155,25 +172,38 @@
 			<DialogContent v-if="offer" class="sm:max-w-[480px]">
 				<DialogHeader>
 					<DialogTitle>
-						{{ offer.update ? 'Update' : 'Install' }}
-						{{ offer.pkg.manifest.name }} {{ offer.pkg.manifest.version }}?
+						{{
+							$t(
+								offer.update
+									? 'settingsPages.plugins.offer.updateTitle'
+									: 'settingsPages.plugins.offer.installTitle',
+								{
+									name: offer.pkg.manifest.name,
+									version: offer.pkg.manifest.version,
+								},
+							)
+						}}
 					</DialogTitle>
 					<DialogDescription>
-						From github.com/{{ offer.release.repo }} ({{ offer.release.tag }}),
-						by {{ offer.pkg.manifest.publisher }}.
+						{{
+							$t('settingsPages.plugins.offer.from', {
+								repo: offer.release.repo,
+								tag: offer.release.tag,
+								publisher: offer.pkg.manifest.publisher,
+							})
+						}}
 					</DialogDescription>
 					<p
 						v-if="offer.release.verified"
 						class="text-xs font-medium text-emerald-600 dark:text-emerald-400"
 					>
-						Verified publisher: signed with the key listed in the TMGR catalog.
+						{{ $t('settingsPages.plugins.offer.verified') }}
 					</p>
 					<p
 						v-else
 						class="text-xs font-medium text-amber-600 dark:text-amber-400"
 					>
-						Unverified publisher: signed, but not listed in the TMGR catalog.
-						Its key is remembered, and updates must be signed with the same key.
+						{{ $t('settingsPages.plugins.offer.unverified') }}
 					</p>
 				</DialogHeader>
 				<div class="flex flex-col gap-2 text-sm">
@@ -184,52 +214,63 @@
 						{{ offer.pkg.manifest.description }}
 					</p>
 					<p>
-						<span class="font-medium">It can:</span>
+						<span class="font-medium">{{
+							$t('settingsPages.plugins.offer.itCan')
+						}}</span>
 						{{ permissionText(offer.pkg.manifest.permissions) }}
 					</p>
 					<p
 						v-if="offer.pkg.manifest.network.allowedOrigins.length"
 						class="font-medium text-destructive"
 					>
-						It can connect to:
-						{{ offer.pkg.manifest.network.allowedOrigins.join(', ') }}
-						(this computer only)
+						{{
+							$t('settingsPages.plugins.offer.connectTo', {
+								origins: offer.pkg.manifest.network.allowedOrigins.join(', '),
+							})
+						}}
 					</p>
 					<p
 						v-if="offer.pkg.manifest.links.allowedDomains.length"
 						class="font-medium text-destructive"
 					>
-						It can open links to:
-						{{ offer.pkg.manifest.links.allowedDomains.join(', ') }}
+						{{
+							$t('settingsPages.plugins.offer.openLinks', {
+								domains: offer.pkg.manifest.links.allowedDomains.join(', '),
+							})
+						}}
 					</p>
 					<p
 						v-if="offer.pkg.manifest.links.schemes.includes('tg')"
 						class="font-medium text-destructive"
 					>
-						It can open Telegram links (tg://).
+						{{ $t('settingsPages.plugins.offer.telegram') }}
 					</p>
 					<p
 						v-if="offer.pkg.manifest.images.allowedDomains.length"
 						class="font-medium text-destructive"
 					>
-						Loads pictures from:
-						{{ offer.pkg.manifest.images.allowedDomains.join(', ') }}. Those
-						sites get a request each time the plugin shows a picture.
+						{{
+							$t('settingsPages.plugins.offer.pictures', {
+								domains: offer.pkg.manifest.images.allowedDomains.join(', '),
+							})
+						}}
 					</p>
 					<p
 						v-if="offer.pkg.manifest.companion"
 						class="font-medium text-amber-600 dark:text-amber-400"
 					>
-						Works with an external program you install yourself ({{
-							offer.pkg.manifest.companion.description
-						}}). It will write as a persona you choose.
+						{{
+							$t('settingsPages.plugins.offer.companion', {
+								description: offer.pkg.manifest.companion.description,
+							})
+						}}
 						<a
 							v-if="offer.pkg.manifest.companion.homepage"
 							:href="offer.pkg.manifest.companion.homepage"
 							target="_blank"
 							rel="noopener noreferrer"
 							class="underline"
-							>Learn more</a
+							>{{ $t('common.actions.learnMore') }}</a
 						>
 					</p>
 					<p
@@ -243,7 +284,7 @@
 						"
 						class="font-medium text-destructive"
 					>
-						New in this version:
+						{{ $t('settingsPages.plugins.offer.newInVersion') }}
 						{{
 							[
 								...(offer.changes.permissions.length
@@ -251,19 +292,29 @@
 									: []),
 								...offer.changes.origins,
 								...offer.changes.domains,
-								...offer.changes.schemes.map((s) => `${s}:// links`),
-								...offer.changes.imageDomains.map((d) => `images from ${d}`),
+								...offer.changes.schemes.map((scheme) =>
+									$t('settingsPages.plugins.offer.schemeLinks', { scheme }),
+								),
+								...offer.changes.imageDomains.map((domain) =>
+									$t('settingsPages.plugins.offer.imagesFrom', { domain }),
+								),
 							].join('; ')
 						}}
 					</p>
 					<p class="text-xs text-muted-foreground">
-						Installed plugins start switched off; turn them on per workspace.
+						{{ $t('settingsPages.plugins.offer.startOff') }}
 					</p>
 				</div>
 				<DialogFooter>
-					<Button variant="outline" @click="offer = null">Cancel</Button>
+					<Button variant="outline" @click="offer = null">{{
+						$t('common.actions.cancel')
+					}}</Button>
 					<Button :disabled="installing" @click="confirmInstall">
-						{{ offer.update ? 'Update' : 'Install' }}
+						{{
+							offer.update
+								? $t('settingsPages.plugins.offer.update')
+								: $t('settingsPages.plugins.offer.install')
+						}}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -275,15 +326,22 @@
 		>
 			<DialogContent v-if="removing" class="sm:max-w-[420px]">
 				<DialogHeader>
-					<DialogTitle>Remove {{ removing.manifest.name }}?</DialogTitle>
+					<DialogTitle>{{
+						$t('settingsPages.plugins.remove.title', {
+							name: removing.manifest.name,
+						})
+					}}</DialogTitle>
 					<DialogDescription>
-						The plugin is deleted from this computer. Its data in workspaces
-						stays until you install it again or clear the workspace.
+						{{ $t('settingsPages.plugins.remove.description') }}
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
-					<Button variant="outline" @click="removing = null">Cancel</Button>
-					<Button variant="destructive" @click="confirmRemove">Remove</Button>
+					<Button variant="outline" @click="removing = null">{{
+						$t('common.actions.cancel')
+					}}</Button>
+					<Button variant="destructive" @click="confirmRemove">{{
+						$t('common.actions.remove')
+					}}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -321,12 +379,13 @@
 							v-if="plugin.origin"
 							class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
 						>
-							From github.com/{{ plugin.origin.repo }} · {{ plugin.origin.tag }}
-							·
 							{{
-								plugin.origin.verified
-									? 'verified publisher'
-									: 'unverified publisher'
+								$t(
+									plugin.origin.verified
+										? 'settingsPages.plugins.card.originVerified'
+										: 'settingsPages.plugins.card.originUnverified',
+									{ repo: plugin.origin.repo, tag: plugin.origin.tag },
+								)
 							}}
 							<button
 								type="button"
@@ -334,14 +393,14 @@
 								:disabled="checking"
 								@click="checkUpdate(plugin)"
 							>
-								Check for update
+								{{ $t('settingsPages.plugins.card.checkUpdate') }}
 							</button>
 							<button
 								type="button"
 								class="text-destructive hover:underline"
 								@click="removing = plugin"
 							>
-								Remove
+								{{ $t('common.actions.remove') }}
 							</button>
 						</p>
 						<p v-if="plugin.error" class="text-xs text-destructive">
@@ -351,7 +410,11 @@
 					<Switch
 						:disabled="!canToggle(plugin)"
 						:checked="isEnabled(plugin.manifest.id)"
-						:aria-label="`Turn ${plugin.manifest.name} on`"
+						:aria-label="
+							$t('settingsPages.plugins.card.turnOn', {
+								name: plugin.manifest.name,
+							})
+						"
 						@update:checked="(value) => setEnabled(plugin.manifest.id, value)"
 					/>
 				</header>
@@ -367,8 +430,8 @@
 					<span class="font-medium text-amber-600 dark:text-amber-400">
 						{{
 							consented(plugin.manifest.id)
-								? 'Allowed to use the network and files on this computer.'
-								: 'Its network and file access stay off on this computer until you allow them.'
+								? $t('settingsPages.plugins.card.allowed')
+								: $t('settingsPages.plugins.card.notAllowed')
 						}}
 					</span>
 					<Button
@@ -380,8 +443,8 @@
 					>
 						{{
 							consented(plugin.manifest.id)
-								? 'Stop allowing'
-								: 'Allow on this computer'
+								? $t('settingsPages.plugins.card.stopAllowing')
+								: $t('settingsPages.plugins.card.allow')
 						}}
 					</Button>
 				</div>
@@ -390,33 +453,43 @@
 					v-if="plugin.manifest.network.allowedOrigins.length"
 					class="text-xs font-medium text-destructive"
 				>
-					Can connect to:
-					{{ plugin.manifest.network.allowedOrigins.join(', ') }} (this computer
-					only)
+					{{
+						$t('settingsPages.plugins.card.connectTo', {
+							origins: plugin.manifest.network.allowedOrigins.join(', '),
+						})
+					}}
 				</div>
 				<div
 					v-if="plugin.manifest.links.allowedDomains.length"
 					class="text-xs font-medium text-destructive"
 				>
-					Can open links to:
-					{{ plugin.manifest.links.allowedDomains.join(', ') }}
+					{{
+						$t('settingsPages.plugins.card.openLinks', {
+							domains: plugin.manifest.links.allowedDomains.join(', '),
+						})
+					}}
 				</div>
 				<div
 					v-if="plugin.manifest.links.schemes.includes('tg')"
 					class="text-xs font-medium text-destructive"
 				>
-					Can open Telegram links (tg://)
+					{{ $t('settingsPages.plugins.card.telegram') }}
 				</div>
 				<div
 					v-if="plugin.manifest.images.allowedDomains.length"
 					class="text-xs font-medium text-destructive"
 				>
-					Loads pictures from:
-					{{ plugin.manifest.images.allowedDomains.join(', ') }}. Those sites
-					get a request each time the plugin shows a picture.
+					{{
+						$t('settingsPages.plugins.card.pictures', {
+							domains: plugin.manifest.images.allowedDomains.join(', '),
+						})
+					}}
 				</div>
 				<div class="text-xs">
-					<span class="font-medium">Can:</span>{{ ' ' }}
+					<span class="font-medium">{{
+						$t('settingsPages.plugins.card.can')
+					}}</span
+					>{{ ' ' }}
 					<span class="text-muted-foreground">
 						{{ permissionText(plugin.manifest.permissions) }}
 					</span>
@@ -436,7 +509,9 @@
 						:to="`/${workspace?.code}/plugins/${plugin.manifest.id}/${view.id}`"
 						class="text-sm text-primary hover:underline"
 					>
-						Open “{{ view.title }}”
+						{{
+							$t('settingsPages.plugins.card.openView', { title: view.title })
+						}}
 					</router-link>
 					<Button
 						v-for="command in plugin.manifest.contributes.commands"
@@ -482,20 +557,24 @@
 							class="max-w-xs"
 						/>
 					</label>
-					<Button type="submit" size="sm" class="w-fit">Save settings</Button>
+					<Button type="submit" size="sm" class="w-fit">{{
+						$t('settingsPages.plugins.card.saveSettings')
+					}}</Button>
 				</form>
 
 				<details v-if="plugin.log.length" class="text-xs">
 					<summary
 						class="flex cursor-pointer items-center justify-between gap-2 text-muted-foreground"
 					>
-						<span>Log ({{ plugin.log.length }})</span>
+						<span>{{
+							$t('settingsPages.plugins.card.log', { count: plugin.log.length })
+						}}</span>
 						<button
 							type="button"
 							class="text-primary hover:underline"
 							@click.prevent="copyDiagnostics(plugin)"
 						>
-							Copy diagnostics
+							{{ $t('settingsPages.plugins.card.copyDiagnostics') }}
 						</button>
 					</summary>
 					<ol
@@ -506,7 +585,7 @@
 							:key="index"
 							:class="logLineClass(line.level)"
 						>
-							{{ new Date(line.at).toLocaleTimeString() }} {{ line.message }}
+							{{ timeLabel(line.at) }} {{ line.message }}
 						</li>
 					</ol>
 				</details>
@@ -539,6 +618,7 @@
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
+	import { currentLocale, t } from '@/i18n';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { hasMachineConsent, reachesThisComputer } from '@/pluginSystem/cloud';
 	import {
@@ -577,38 +657,44 @@
 	} from 'vue';
 	import { useStore } from 'vuex';
 
-	const PERMISSION_TEXT: Record<Permission, string> = {
-		'tasks:read': 'read tasks',
-		'tasks:write': 'create and change tasks',
-		'statuses:read': 'read statuses',
-		'categories:read': 'read categories',
-		'time:read': 'read tracked time',
-		'time:write': 'start and stop timers',
-		'comments:read': 'read comments',
-		'comments:write': 'add comments',
-		notifications: 'show notifications',
-		'files:export': "save files to this workspace's exports folder",
-		'files:attachments': 'read task attachments',
-		'files:pick': 'read a file you choose',
-		'statuses:write': 'create and change statuses',
-		'categories:write': 'create and change categories',
-		'relations:read': 'read links between tasks',
-		'relations:write': 'link and unlink tasks',
-		'agent_work:read': 'read AI agent work on tasks',
-		'agent_work:write': 'record AI agent work on tasks',
-		alarms: 'wake up on a schedule in the background',
-		tray: `add items and text to the ${trayName()} icon`,
-		deeplinks: 'be opened from tmgr:// links in other apps',
-		'links:open': 'open web links in your browser',
-		'images:remote': 'load pictures from the sites it declares',
-		'routines:read': 'read your notes and routines (local workspaces only)',
-		'routines:write':
-			'add, rename, complete and convert your notes and routines (local workspaces only)',
-		'views:badge': 'show counters on its sidebar items',
-		'pages:read': 'read your pages and their per-page data',
-		'pages:write': 'create pages, change their text and save per-page data',
-		'pages:sections': 'write into its own managed sections of pages',
-		'menus:task': 'add items to the task … menu',
+	const PERMISSION_TEXT: Record<Permission, () => string> = {
+		'tasks:read': () => t('settingsPages.plugins.permission.tasksRead'),
+		'tasks:write': () => t('settingsPages.plugins.permission.tasksWrite'),
+		'statuses:read': () => t('settingsPages.plugins.permission.statusesRead'),
+		'categories:read': () =>
+			t('settingsPages.plugins.permission.categoriesRead'),
+		'time:read': () => t('settingsPages.plugins.permission.timeRead'),
+		'time:write': () => t('settingsPages.plugins.permission.timeWrite'),
+		'comments:read': () => t('settingsPages.plugins.permission.commentsRead'),
+		'comments:write': () => t('settingsPages.plugins.permission.commentsWrite'),
+		notifications: () => t('settingsPages.plugins.permission.notifications'),
+		'files:export': () => t('settingsPages.plugins.permission.filesExport'),
+		'files:attachments': () =>
+			t('settingsPages.plugins.permission.filesAttachments'),
+		'files:pick': () => t('settingsPages.plugins.permission.filesPick'),
+		'statuses:write': () => t('settingsPages.plugins.permission.statusesWrite'),
+		'categories:write': () =>
+			t('settingsPages.plugins.permission.categoriesWrite'),
+		'relations:read': () => t('settingsPages.plugins.permission.relationsRead'),
+		'relations:write': () =>
+			t('settingsPages.plugins.permission.relationsWrite'),
+		'agent_work:read': () =>
+			t('settingsPages.plugins.permission.agentWorkRead'),
+		'agent_work:write': () =>
+			t('settingsPages.plugins.permission.agentWorkWrite'),
+		alarms: () => t('settingsPages.plugins.permission.alarms'),
+		tray: () =>
+			t('settingsPages.plugins.permission.tray', { tray: trayName() }),
+		deeplinks: () => t('settingsPages.plugins.permission.deeplinks'),
+		'links:open': () => t('settingsPages.plugins.permission.linksOpen'),
+		'images:remote': () => t('settingsPages.plugins.permission.imagesRemote'),
+		'routines:read': () => t('settingsPages.plugins.permission.routinesRead'),
+		'routines:write': () => t('settingsPages.plugins.permission.routinesWrite'),
+		'views:badge': () => t('settingsPages.plugins.permission.viewsBadge'),
+		'pages:read': () => t('settingsPages.plugins.permission.pagesRead'),
+		'pages:write': () => t('settingsPages.plugins.permission.pagesWrite'),
+		'pages:sections': () => t('settingsPages.plugins.permission.pagesSections'),
+		'menus:task': () => t('settingsPages.plugins.permission.menusTask'),
 	};
 
 	export default defineComponent({
@@ -633,7 +719,7 @@
 			Switch,
 		},
 		setup() {
-			setDocumentTitle('Plugins');
+			setDocumentTitle(t('settingsPages.plugins.title'));
 			const store = useStore();
 			const [copyToClipboard] = useCopyToClipboard();
 			const devMode = ref(devModeStored());
@@ -701,7 +787,11 @@
 					const { fetchRelease } = await import('@/pluginSystem/app');
 					const { release, pkg } = await fetchRelease(repo);
 					if (current && current.origin?.sha256 === release.sha256) {
-						toast({ title: `${current.manifest.name} is up to date` });
+						toast({
+							title: t('settingsPages.plugins.toast.upToDate', {
+								name: current.manifest.name,
+							}),
+						});
 						return;
 					}
 					const { installConflict } = await import('@/pluginSystem/app');
@@ -732,10 +822,26 @@
 				}
 			};
 
+			const groupLabel = (group: string) =>
+				({
+					'Reads your data': t('settingsPages.plugins.permission.groupReads'),
+					'Changes your data': t(
+						'settingsPages.plugins.permission.groupChanges',
+					),
+					'Changes the interface': t(
+						'settingsPages.plugins.permission.groupInterface',
+					),
+					'Reaches outside the app': t(
+						'settingsPages.plugins.permission.groupOutside',
+					),
+				})[group] ?? group.toLowerCase();
+
 			const trayLabel = trayName().replace(/^./, (c) => c.toUpperCase());
 
 			return {
 				trayLabel,
+				timeLabel: (at: number | string | Date) =>
+					new Date(at).toLocaleTimeString(currentLocale()),
 				trayName: trayName(),
 				repoInput,
 				checking,
@@ -753,9 +859,12 @@
 						const { installRelease } = await import('@/pluginSystem/app');
 						await installRelease(offer.value.release, offer.value.expectedId);
 						toast({
-							title: `${offer.value.pkg.manifest.name} ${
-								offer.value.update ? 'updated' : 'installed'
-							}`,
+							title: t(
+								offer.value.update
+									? 'settingsPages.plugins.toast.updated'
+									: 'settingsPages.plugins.toast.installed',
+								{ name: offer.value.pkg.manifest.name },
+							),
 						});
 						offer.value = null;
 						repoInput.value = '';
@@ -771,13 +880,19 @@
 					if (!removing.value) return;
 					const { uninstallPlugin } = await import('@/pluginSystem/app');
 					await uninstallPlugin(removing.value.manifest.id);
-					toast({ title: `${removing.value.manifest.name} removed` });
+					toast({
+						title: t('settingsPages.plugins.toast.removed', {
+							name: removing.value.manifest.name,
+						}),
+					});
 					removing.value = null;
 				},
 				sourceLabel: (source: PluginSource) =>
-					({ builtin: 'Built-in', folder: 'Folder', installed: 'Installed' })[
-						source
-					],
+					({
+						builtin: t('settingsPages.plugins.source.builtin'),
+						folder: t('settingsPages.plugins.source.folder'),
+						installed: t('settingsPages.plugins.source.installed'),
+					})[source],
 				plugins,
 				drafts,
 				devMode,
@@ -817,7 +932,7 @@
 						await setWorkspacePlugin(pluginId, value);
 					} catch (error) {
 						toast({
-							title: 'Could not change the plugin for this workspace',
+							title: t('settingsPages.plugins.toast.changeFailed'),
 							description:
 								error instanceof Error ? error.message : String(error),
 							variant: 'destructive',
@@ -858,7 +973,7 @@
 						// The host already told the user when it turned the plugin off.
 						if (pluginState.plugins[pluginId]?.status === 'crashed') return;
 						toast({
-							title: 'The plugin command failed',
+							title: t('settingsPages.plugins.toast.commandFailed'),
 							description:
 								error instanceof Error ? error.message : String(error),
 							variant: 'destructive',
@@ -880,7 +995,7 @@
 									: String(raw ?? '');
 					}
 					await pluginHost()?.saveSettings(pluginId, values);
-					toast({ title: 'Plugin settings saved' });
+					toast({ title: t('settingsPages.plugins.toast.settingsSaved') });
 				},
 				permissionText: (permissions: Permission[]) =>
 					permissions.length
@@ -888,20 +1003,20 @@
 								.map(([group, members]) => {
 									const used = members.filter((p) => permissions.includes(p));
 									return used.length
-										? `${group.toLowerCase()}: ${used.map((p) => PERMISSION_TEXT[p]).join(', ')}`
+										? `${groupLabel(group)}: ${used.map((p) => PERMISSION_TEXT[p]()).join(', ')}`
 										: '';
 								})
 								.filter(Boolean)
 								.join('; ')
-						: 'nothing beyond its own storage',
+						: t('settingsPages.plugins.permission.none'),
 				statusLabel: (status: PluginStatus) =>
 					({
-						running: 'Running',
-						starting: 'Starting…',
-						stopped: 'Off',
-						failed: 'Failed to start',
-						crashed: 'Turned off after errors',
-						blocked: 'Blocked by TMGR',
+						running: t('settingsPages.plugins.status.running'),
+						starting: t('settingsPages.plugins.status.starting'),
+						stopped: t('settingsPages.plugins.status.stopped'),
+						failed: t('settingsPages.plugins.status.failed'),
+						crashed: t('settingsPages.plugins.status.crashed'),
+						blocked: t('settingsPages.plugins.status.blocked'),
 					})[status],
 				statusClass: (status: PluginStatus) =>
 					status === 'running'
@@ -939,8 +1054,11 @@
 					);
 					toast(
 						ok
-							? { title: 'Diagnostics copied' }
-							: { title: 'Could not copy diagnostics', variant: 'destructive' },
+							? { title: t('settingsPages.plugins.toast.diagnosticsCopied') }
+							: {
+									title: t('settingsPages.plugins.toast.diagnosticsFailed'),
+									variant: 'destructive',
+								},
 					);
 				},
 			};

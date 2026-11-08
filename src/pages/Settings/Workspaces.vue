@@ -55,6 +55,7 @@
 	import { useToast } from '@/components/ui/toast';
 	import WorkspaceInvitationsList from '@/components/workspace/WorkspaceInvitationsList.vue';
 	import { dialogState } from '@/composable/dialog.ts';
+	import { t } from '@/i18n';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import { validateEmailString, ValidationResult } from '@/utils/emails.ts';
@@ -227,7 +228,7 @@
 		isLoading.value = true;
 		initialError.value = null;
 		try {
-			setDocumentTitle('Workspace Settings');
+			setDocumentTitle(t('settingsPages.workspaces.documentTitle'));
 			const [loadedWorkspaces, loadedSettings] = await Promise.all([
 				getWorkspaces(),
 				getUserSettingsV2(),
@@ -262,7 +263,8 @@
 			);
 			initialLoaded.value = true;
 		} catch {
-			if (!disposed) initialError.value = 'Could not load workspace settings.';
+			if (!disposed)
+				initialError.value = t('settingsPages.workspaces.loadFailed');
 		} finally {
 			if (!disposed) isLoading.value = false;
 		}
@@ -332,7 +334,7 @@
 				) {
 					toaster.toast({
 						variant: 'default',
-						title: 'Editor updated. Reloading page...',
+						title: t('settingsPages.workspaces.toast.editorUpdated'),
 						action: CircleCheckBigIcon,
 						class: 'bg-green-500 border-0 text-white',
 					});
@@ -354,14 +356,14 @@
 
 			toaster.toast({
 				variant: 'default',
-				title: 'Successfully saved!',
+				title: t('settingsPages.workspaces.toast.saved'),
 				action: CircleCheckBigIcon,
 				class: 'bg-green-500 border-0 text-white',
 			});
 		} catch (e) {
 			console.error(e);
 			toaster.toast({
-				title: 'Could not save workspace settings',
+				title: t('settingsPages.workspaces.toast.saveSettingsFailed'),
 				variant: 'destructive',
 			});
 		} finally {
@@ -392,15 +394,18 @@
 				);
 			toaster.toast({
 				variant: 'default',
-				title: 'Workspace saved',
+				title: t('settingsPages.workspaces.toast.workspaceSaved'),
 				action: CircleCheckBigIcon,
 				class: 'bg-green-500 border-0 text-white',
 			});
 		} catch (e) {
 			console.error(e);
 			toaster.toast({
-				title: 'Error',
-				description: serverMessageFrom(e, 'Failed to save workspace'),
+				title: t('settingsPages.workspaces.toast.error'),
+				description: serverMessageFrom(
+					e,
+					t('settingsPages.workspaces.toast.saveWorkspaceFailed'),
+				),
 				variant: 'destructive',
 			});
 		} finally {
@@ -427,14 +432,14 @@
 			store.commit('setUser', updatedUser);
 			toaster.toast({
 				variant: 'default',
-				title: 'Default workspace saved',
+				title: t('settingsPages.workspaces.toast.defaultSaved'),
 				action: CircleCheckBigIcon,
 				class: 'bg-green-500 border-0 text-white',
 			});
 		} catch (e) {
 			console.error(e);
 			toaster.toast({
-				title: 'Could not save the default workspace',
+				title: t('settingsPages.workspaces.toast.defaultSaveFailed'),
 				variant: 'destructive',
 			});
 		} finally {
@@ -450,7 +455,7 @@
 			newWorkspace.value.name = '';
 			closeDialog();
 			toaster.toast({
-				title: 'Successfully created!',
+				title: t('settingsPages.workspaces.toast.created'),
 				action: CircleCheckBigIcon,
 				class: 'bg-green-500 border-0 text-white',
 			});
@@ -501,10 +506,10 @@
 			);
 		} catch (error) {
 			toaster.toast({
-				title: 'Error',
+				title: t('settingsPages.workspaces.toast.error'),
 				description: errorMessageFrom(
 					error,
-					'Failed to send invitations. Please try again.',
+					t('settingsPages.workspaces.toast.inviteFailed'),
 				),
 				variant: 'destructive',
 			});
@@ -540,13 +545,13 @@
 				);
 			}
 			toaster.toast({
-				title: 'Error',
+				title: t('settingsPages.workspaces.toast.error'),
 				description:
 					status === 422 && message
 						? message
 						: errorMessageFrom(
 								error,
-								'Failed to delete the workspace. Please try again.',
+								t('settingsPages.workspaces.toast.deleteFailed'),
 							),
 				variant: 'destructive',
 			});
@@ -567,10 +572,10 @@
 		} catch (e) {
 			console.error(e);
 			toaster.toast({
-				title: 'Error',
+				title: t('settingsPages.workspaces.toast.error'),
 				description: serverMessageFrom(
 					e,
-					'Failed to leave the workspace. Please try again.',
+					t('settingsPages.workspaces.toast.leaveFailed'),
 				),
 				variant: 'destructive',
 			});
@@ -597,7 +602,8 @@
 				membersLoaded.value = true;
 			}
 		} catch {
-			if (current()) membersError.value = 'Could not load workspace members.';
+			if (current())
+				membersError.value = t('settingsPages.workspaces.membersLoadFailed');
 		} finally {
 			if (current()) loadingMembers.value = false;
 		}
@@ -644,16 +650,23 @@
 			);
 
 			toaster.toast({
-				title: 'Member removed',
-				description: `${memberToRemove.value.name} has been removed from the workspace`,
+				title: t('settingsPages.workspaces.toast.memberRemoved'),
+				description: t(
+					'settingsPages.workspaces.toast.memberRemovedDescription',
+					{
+						name: memberToRemove.value.name,
+					},
+				),
 			});
 
 			await loadMembers();
 		} catch (e: any) {
 			console.error('Error removing member:', e);
 			toaster.toast({
-				title: 'Error',
-				description: e.response?.data?.message || 'Failed to remove member',
+				title: t('settingsPages.workspaces.toast.error'),
+				description:
+					e.response?.data?.message ||
+					t('settingsPages.workspaces.toast.removeMemberFailed'),
 				variant: 'destructive',
 			});
 		} finally {
@@ -677,28 +690,32 @@
 
 <template>
 	<PageContainer width="narrow">
-		<PageHeader title="Workspace settings">
+		<PageHeader :title="$t('settingsPages.workspaces.title')">
 			<template #actions>
 				<div class="flex flex-wrap items-center gap-2">
 					<Dialog v-model:open="isOpen">
 						<DialogTrigger as-child>
 							<Button variant="default">
 								<FolderKanbanIcon />
-								New workspace
+								{{ $t('settingsPages.workspaces.newWorkspace') }}
 							</Button>
 						</DialogTrigger>
 
 						<DialogContent class="sm:max-w-[425px]">
 							<DialogHeader>
-								<DialogTitle>Creating new workspace</DialogTitle>
-								<DialogDescription class="sr-only"
-									>Enter a name for your new workspace</DialogDescription
-								>
+								<DialogTitle>{{
+									$t('settingsPages.workspaces.create.title')
+								}}</DialogTitle>
+								<DialogDescription class="sr-only">{{
+									$t('settingsPages.workspaces.create.description')
+								}}</DialogDescription>
 							</DialogHeader>
 
 							<Input
 								v-model="newWorkspace.name"
-								placeholder="New workspace name"
+								:placeholder="
+									$t('settingsPages.workspaces.create.namePlaceholder')
+								"
 							/>
 
 							<DialogFooter>
@@ -708,7 +725,7 @@
 									:disabled="newWorkspace.name.trim() === ''"
 									@click="createWorkspace"
 								>
-									Create
+									{{ $t('common.actions.create') }}
 								</Button>
 							</DialogFooter>
 						</DialogContent>
@@ -720,27 +737,32 @@
 						<DialogTrigger as-child>
 							<Button
 								variant="outline"
-								aria-label="Invite"
+								:aria-label="$t('settingsPages.workspaces.invite.label')"
 								data-tour="workspace.members"
 							>
 								<UserPlus />
-								<span class="hidden lg:inline">Invite</span>
+								<span class="hidden lg:inline">{{
+									$t('settingsPages.workspaces.invite.label')
+								}}</span>
 							</Button>
 						</DialogTrigger>
 
 						<DialogContent class="sm:max-w-[425px]">
 							<DialogHeader>
-								<DialogTitle>Send invitation(s)</DialogTitle>
-								<DialogDescription class="sr-only"
-									>Enter email addresses to invite members to this
-									workspace</DialogDescription
-								>
+								<DialogTitle>{{
+									$t('settingsPages.workspaces.invite.title')
+								}}</DialogTitle>
+								<DialogDescription class="sr-only">{{
+									$t('settingsPages.workspaces.invite.description')
+								}}</DialogDescription>
 							</DialogHeader>
 
 							<Textarea
 								v-model="invitationEmails"
 								rows="5"
-								:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
+								:placeholder="
+									$t('settingsPages.workspaces.invite.emailsPlaceholder')
+								"
 							/>
 							<span
 								class="text-xs whitespace-pre text-destructive"
@@ -761,7 +783,7 @@
 									"
 									@click="sendInvitations"
 								>
-									Send
+									{{ $t('settingsPages.workspaces.invite.send') }}
 								</Button>
 							</DialogFooter>
 						</DialogContent>
@@ -776,19 +798,25 @@
 					>
 						<Button
 							variant="outline"
-							aria-label="Delete workspace"
+							:aria-label="$t('settingsPages.workspaces.delete.label')"
 							class="text-destructive hover:text-destructive"
 							@click="isDeleteDialogOpen = true"
 						>
 							<Trash2Icon />
-							<span class="hidden lg:inline">Delete workspace</span>
+							<span class="hidden lg:inline">{{
+								$t('settingsPages.workspaces.delete.label')
+							}}</span>
 						</Button>
 						<ConfirmByNameDialog
 							v-model:open="isDeleteDialogOpen"
-							title="Delete workspace"
-							:description="`This permanently deletes the workspace ${activeWorkspaceName} with its tasks, pages and files for every member. This cannot be undone.`"
+							:title="$t('settingsPages.workspaces.delete.label')"
+							:description="
+								$t('settingsPages.workspaces.delete.description', {
+									name: activeWorkspaceName,
+								})
+							"
 							:expected-name="activeWorkspaceName"
-							confirm-label="Delete workspace"
+							:confirm-label="$t('settingsPages.workspaces.delete.label')"
 							:busy="isDeleting"
 							@confirm="deleteWorkspace"
 						/>
@@ -804,25 +832,29 @@
 								class="text-destructive hover:text-destructive"
 							>
 								<LogOutIcon />
-								<span class="hidden lg:inline">Exit from workspace</span>
+								<span class="hidden lg:inline">{{
+									$t('settingsPages.workspaces.exit.label')
+								}}</span>
 							</Button>
 						</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
-								<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+								<AlertDialogTitle>{{
+									$t('settingsPages.workspaces.exit.confirmTitle')
+								}}</AlertDialogTitle>
 								<AlertDialogDescription>
-									This action cannot be undone by yourself. If you wanna come
-									back to this workspace ask a member of this workspace to send
-									you an invitation again.
+									{{ $t('settingsPages.workspaces.exit.confirmDescription') }}
 								</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
-								<AlertDialogCancel>Cancel</AlertDialogCancel>
+								<AlertDialogCancel>{{
+									$t('common.actions.cancel')
+								}}</AlertDialogCancel>
 								<AlertDialogAction
 									@click="exitWorkspace"
 									class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 								>
-									Exit from workspace
+									{{ $t('settingsPages.workspaces.exit.label') }}
 								</AlertDialogAction>
 							</AlertDialogFooter>
 						</AlertDialogContent>
@@ -835,12 +867,12 @@
 			:loaded="initialLoaded"
 			:error="initialError"
 			:retry="loadWorkspaceSettings"
-			label="Loading workspace settings"
+			:label="$t('settingsPages.workspaces.loading')"
 		>
 			<div class="flex flex-col gap-6">
 				<SettingsSection
 					v-if="!isLocalActiveWorkspace && activeWorkspaceItem"
-					title="Workspace"
+					:title="$t('settingsPages.workspaces.general.title')"
 					data-testid="workspace-general"
 				>
 					<form
@@ -850,7 +882,9 @@
 						@submit.prevent="saveWorkspace"
 					>
 						<div class="flex flex-col gap-1.5">
-							<Label for="workspace-name">Name</Label>
+							<Label for="workspace-name">{{
+								$t('settingsPages.workspaces.general.name')
+							}}</Label>
 							<Input
 								id="workspace-name"
 								v-model="workspaceName"
@@ -866,13 +900,13 @@
 								class="text-xs text-status-fix-fg"
 								data-testid="workspace-name-hint"
 							>
-								Name can't be empty
+								{{ $t('settingsPages.workspaces.general.nameEmpty') }}
 							</p>
 						</div>
 
 						<div class="flex flex-col gap-1.5">
 							<span id="workspace-color-label" class="text-sm font-medium">
-								Colour
+								{{ $t('settingsPages.workspaces.general.colour') }}
 							</span>
 							<div
 								role="radiogroup"
@@ -882,8 +916,10 @@
 								<button
 									type="button"
 									role="radio"
-									aria-label="Default"
-									title="Default"
+									:aria-label="
+										$t('settingsPages.workspaces.general.defaultColour')
+									"
+									:title="$t('settingsPages.workspaces.general.defaultColour')"
 									:aria-checked="workspaceColor === ''"
 									data-testid="workspace-color-default"
 									:class="[
@@ -920,7 +956,10 @@
 							</div>
 						</div>
 					</form>
-					<SettingsRow v-else label="Name">
+					<SettingsRow
+						v-else
+						:label="$t('settingsPages.workspaces.general.name')"
+					>
 						<span
 							class="text-sm text-ink"
 							data-testid="workspace-name-readonly"
@@ -942,12 +981,14 @@
 							"
 							:aria-busy="savingWorkspace"
 						>
-							<SaveIcon /> Save
+							<SaveIcon /> {{ $t('common.actions.save') }}
 						</Button>
 					</template>
 				</SettingsSection>
 
-				<SettingsSection title="Preferences">
+				<SettingsSection
+					:title="$t('settingsPages.workspaces.preferences.title')"
+				>
 					<div class="flex flex-col gap-4">
 						<div
 							v-for="(setting, index) in settings"
@@ -995,7 +1036,7 @@
 									setting.default_values.length > 0
 								"
 								v-slot="{ labelId }"
-								label="Set custom value"
+								:label="$t('settingsPages.workspaces.preferences.customValue')"
 							>
 								<Switch
 									:checked="setting.show_custom_value_input"
@@ -1013,20 +1054,22 @@
 							:disabled="savingSettings"
 							:aria-busy="savingSettings"
 						>
-							<SaveIcon /> Save
+							<SaveIcon /> {{ $t('common.actions.save') }}
 						</Button>
 					</template>
 				</SettingsSection>
 
-				<SettingsSection title="Default workspace">
+				<SettingsSection :title="$t('settingsPages.workspaces.default.title')">
 					<SettingsRow
-						label="Default workspace"
-						description="Used by Telegram, MCP, smart devices, and when you open TMGR on a new device."
+						:label="$t('settingsPages.workspaces.default.title')"
+						:description="$t('settingsPages.workspaces.default.description')"
 					>
 						<Combobox
 							:entities="cloudWorkspaceOptions"
 							v-model="defaultWorkspaceSelection"
-							selected-placeholder="Choose a workspace"
+							:selected-placeholder="
+								$t('settingsPages.workspaces.default.choose')
+							"
 							value-key="id"
 							label-key="name"
 						/>
@@ -1041,21 +1084,25 @@
 							"
 							:aria-busy="savingDefaultWorkspace"
 						>
-							<SaveIcon /> Set as default
+							<SaveIcon />
+							{{ $t('settingsPages.workspaces.default.setAsDefault') }}
 						</Button>
 					</template>
 				</SettingsSection>
 
-				<SettingsSection v-if="!isLocalActiveWorkspace" title="Members">
+				<SettingsSection
+					v-if="!isLocalActiveWorkspace"
+					:title="$t('settingsPages.workspaces.members.title')"
+				>
 					<AsyncContent
 						:pending="loadingMembers"
 						:loaded="membersLoaded"
 						:error="membersError"
 						:retry="loadMembers"
-						label="Loading members"
+						:label="$t('settingsPages.workspaces.members.loading')"
 					>
 						<p v-if="members.length === 0" class="text-sm text-ink-subtle">
-							No members found
+							{{ $t('settingsPages.workspaces.members.none') }}
 						</p>
 
 						<div v-else class="space-y-3">
@@ -1082,7 +1129,7 @@
 												"
 												class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 											>
-												Owner
+												{{ $t('settingsPages.workspaces.members.owner') }}
 											</span>
 										</div>
 									</div>
@@ -1100,14 +1147,17 @@
 										is-mini
 										class="mr-2"
 									/>
-									Remove
+									{{ $t('common.actions.remove') }}
 								</Button>
 							</div>
 						</div>
 					</AsyncContent>
 				</SettingsSection>
 
-				<SettingsSection v-if="!isLocalActiveWorkspace" title="Invitations">
+				<SettingsSection
+					v-if="!isLocalActiveWorkspace"
+					:title="$t('settingsPages.workspaces.invitations.title')"
+				>
 					<WorkspaceInvitationsList />
 				</SettingsSection>
 			</div>
@@ -1115,22 +1165,29 @@
 			<AlertDialog v-model:open="showRemoveMemberDialog">
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Remove Member</AlertDialogTitle>
+						<AlertDialogTitle>{{
+							$t('settingsPages.workspaces.members.removeTitle')
+						}}</AlertDialogTitle>
 						<AlertDialogDescription>
-							Are you sure you want to remove
-							<strong>{{ memberToRemove?.name }}</strong> from this workspace?
-							This action cannot be undone.
+							<i18n-t
+								keypath="settingsPages.workspaces.members.removeConfirm"
+								tag="span"
+							>
+								<template #name>
+									<strong>{{ memberToRemove?.name }}</strong>
+								</template>
+							</i18n-t>
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel @click="showRemoveMemberDialog = false"
-							>Cancel</AlertDialogCancel
-						>
+						<AlertDialogCancel @click="showRemoveMemberDialog = false">{{
+							$t('common.actions.cancel')
+						}}</AlertDialogCancel>
 						<AlertDialogAction
 							@click="confirmRemoveMember"
 							class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 						>
-							Remove
+							{{ $t('common.actions.remove') }}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

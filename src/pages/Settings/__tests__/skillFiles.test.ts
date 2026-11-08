@@ -19,6 +19,7 @@ jest.mock('@/components/ui/toast', () => ({
 }));
 
 import { STALE_FILES_MESSAGE, useSkillFiles } from '@/composable/skillFiles';
+import { i18n } from '@/i18n';
 
 const index = (paths: string[], sha = 'sha-1') => ({
 	files: paths.map((path) => ({
@@ -241,7 +242,7 @@ const renderFiles = async (state: Record<string, unknown>) => {
 		setup: () => state,
 		render,
 	});
-	return renderToString(createSSRApp(Comp));
+	return renderToString(createSSRApp(Comp).use(i18n));
 };
 
 describe('SkillFiles template', () => {

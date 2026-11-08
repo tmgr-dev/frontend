@@ -4,16 +4,18 @@
 		data-testid="shared-skill-history"
 	>
 		<div class="flex items-center justify-between gap-2">
-			<h5 class="truncate text-xs font-semibold">History: {{ title }}</h5>
+			<h5 class="truncate text-xs font-semibold">
+				{{ $t('settingsPages.sharedSkillHistory.title', { title }) }}
+			</h5>
 			<Button variant="outline" size="sm" @click="$emit('close')">
-				Close
+				{{ $t('common.actions.close') }}
 			</Button>
 		</div>
 		<p
 			v-if="loading && versions.length === 0"
 			class="text-xs text-muted-foreground"
 		>
-			Loading history…
+			{{ $t('settingsPages.sharedSkillHistory.loading') }}
 		</p>
 		<div v-else class="flex flex-col gap-3 md:flex-row">
 			<ul class="flex shrink-0 flex-col gap-1 md:w-72">
@@ -36,17 +38,26 @@
 							v-if="v.current"
 							class="ml-1 rounded bg-green-100 px-1.5 py-0.5 text-2xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300"
 						>
-							Current
+							{{ $t('settingsPages.sharedSkillHistory.current') }}
 						</span>
 						<span class="block text-muted-foreground">
-							{{ v.author ? v.author.name : 'Deleted user' }} ·
+							{{
+								v.author
+									? v.author.name
+									: $t('settingsPages.sharedSkillHistory.deletedUser')
+							}}
+							·
 							{{ relative(v.created_at) }}
 						</span>
 						<span
 							v-if="v.pinned_personas && v.pinned_personas.length"
 							class="block text-muted-foreground"
 						>
-							Pinned by: {{ v.pinned_personas.map((p) => p.name).join(', ') }}
+							{{
+								$t('settingsPages.sharedSkillHistory.pinnedBy', {
+									names: v.pinned_personas.map((p) => p.name).join(', '),
+								})
+							}}
 						</span>
 					</button>
 				</li>
@@ -59,7 +70,7 @@
 							:checked="compareWithCurrent"
 							@change="onCompareChange"
 						/>
-						Compare with current
+						{{ $t('settingsPages.sharedSkillHistory.compare') }}
 					</label>
 					<Button
 						v-if="selected !== currentVersion"
@@ -67,7 +78,7 @@
 						:disabled="restoring"
 						@click="confirmRestore"
 					>
-						Restore this version
+						{{ $t('settingsPages.sharedSkillHistory.restoreVersion') }}
 					</Button>
 				</div>
 				<ul
@@ -83,7 +94,7 @@
 					data-testid="history-error"
 					role="alert"
 				>
-					Couldn't load this version. Try again.
+					{{ $t('settingsPages.sharedSkillHistory.previewFailed') }}
 				</p>
 				<pre
 					v-else
@@ -109,15 +120,16 @@
 	import type { SharedSkillVersionRow } from '@/actions/tmgr/personas';
 	import { Button } from '@/components/ui/button';
 	import { useSharedSkillHistory } from '@/composable/sharedSkillVersions';
+	import { t } from '@/i18n';
 	import { formatRelativeTime } from '@/utils/dailyRoutines/relativeTime';
 	import { computed, defineComponent, onMounted } from 'vue';
 
-	const KIND_LABELS: Record<string, string> = {
-		baseline: 'Baseline',
-		create: 'Created',
-		edit: 'Edited',
-		restore: 'Restored',
-		convert: 'Converted',
+	const KIND_KEYS: Record<string, string> = {
+		baseline: 'settingsPages.sharedSkillHistory.kind.baseline',
+		create: 'settingsPages.sharedSkillHistory.kind.create',
+		edit: 'settingsPages.sharedSkillHistory.kind.edit',
+		restore: 'settingsPages.sharedSkillHistory.kind.restore',
+		convert: 'settingsPages.sharedSkillHistory.kind.convert',
 	};
 
 	export default defineComponent({
@@ -137,8 +149,12 @@
 
 			const kindLabel = (v: SharedSkillVersionRow) =>
 				v.kind === 'restore' && v.restored_from
-					? `Restored from v${v.restored_from}`
-					: (KIND_LABELS[v.kind] ?? v.kind);
+					? t('settingsPages.sharedSkillHistory.restoredFrom', {
+							version: v.restored_from,
+						})
+					: KIND_KEYS[v.kind]
+						? t(KIND_KEYS[v.kind])
+						: v.kind;
 
 			const confirmRestore = () => {
 				const version = history.selected.value;
@@ -146,7 +162,10 @@
 				if (version === null || current === null) return;
 				if (
 					!window.confirm(
-						`Restore version ${version}? This creates version ${current + 1} with its content.`,
+						t('settingsPages.sharedSkillHistory.confirmRestore', {
+							version,
+							next: current + 1,
+						}),
 					)
 				)
 					return;

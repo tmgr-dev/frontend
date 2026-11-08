@@ -1,11 +1,13 @@
 <template>
 	<PageContainer width="narrow">
 		<PageHeader
-			title="Modules"
+			:title="$t('settingsPages.modules.title')"
 			:subtitle="
 				currentWorkspace
-					? `Workspace “${currentWorkspace.name}”: choose what is available in TMGR`
-					: 'Choose what is available in TMGR'
+					? $t('settingsPages.modules.subtitleWorkspace', {
+							name: currentWorkspace.name,
+						})
+					: $t('settingsPages.modules.subtitle')
 			"
 		/>
 
@@ -14,15 +16,14 @@
 			:loaded="loaded"
 			:error="loadError"
 			:retry="load"
-			label="Loading modules"
+			:label="$t('settingsPages.modules.loading')"
 		>
 			<div v-if="view" class="flex flex-col gap-6">
 				<div
 					v-if="!isOwner && currentWorkspace"
 					class="rounded-md border border-border bg-muted/50 p-4 text-sm text-ink-subtle"
 				>
-					Only the workspace owner can turn modules on or off. You can hide a
-					module for yourself.
+					{{ $t('settingsPages.modules.ownerOnlyNotice') }}
 				</div>
 
 				<div
@@ -37,13 +38,13 @@
 						data-testid="apply-preset"
 						@click="presetOpen = true"
 					>
-						Apply a preset
+						{{ $t('settingsPages.modules.applyPreset') }}
 					</Button>
 					<span
 						v-if="!canApplyPreset(isOwner)"
 						class="text-sm text-ink-subtle"
 						data-testid="apply-preset-hint"
-						>Only the owner can change modules</span
+						>{{ $t('settingsPages.modules.ownerOnlyHint') }}</span
 					>
 				</div>
 				<ModulesPresetDialog
@@ -55,7 +56,10 @@
 					@applied="commit"
 				/>
 
-				<SettingsSection title="Core" :description="CORE_DESCRIPTION">
+				<SettingsSection
+					:title="$t('settingsPages.modules.core')"
+					:description="CORE_DESCRIPTION"
+				>
 					<p class="text-sm text-ink" data-testid="core-line">
 						<template v-for="(item, index) in view.coreItems" :key="item.name">
 							<span v-if="index" class="text-ink-subtle"> · </span>
@@ -76,7 +80,7 @@
 						class="mt-3 text-sm"
 					>
 						<summary class="cursor-pointer text-ink-subtle">
-							Hide core sections for me
+							{{ $t('settingsPages.modules.hideCore') }}
 						</summary>
 						<div class="divide-y divide-border mt-2">
 							<SettingsRow
@@ -110,7 +114,12 @@
 					:key="pack.key"
 					data-tour="modules.list"
 					:title="pack.name"
-					:description="`${pack.enabledCount} of ${pack.total} on`"
+					:description="
+						$t('settingsPages.modules.packCount', {
+							enabled: pack.enabledCount,
+							total: pack.total,
+						})
+					"
 				>
 					<div class="divide-y divide-border">
 						<SettingsRow
@@ -132,7 +141,7 @@
 									{{ [row.clients, row.needs].filter(Boolean).join(' · ') }}
 								</span>
 								<span v-if="row.askOwner" class="mt-0.5 block text-xs">
-									Ask the owner to turn this on
+									{{ $t('settingsPages.modules.askOwner') }}
 								</span>
 							</template>
 							<template v-if="localOnly && row.needsAccount" #default>
@@ -164,8 +173,8 @@
 
 				<SettingsSection
 					v-if="view.account.length"
-					title="This account"
-					description="Applies to you in every workspace"
+					:title="$t('settingsPages.modules.account')"
+					:description="$t('settingsPages.modules.accountDescription')"
 				>
 					<div class="divide-y divide-border">
 						<SettingsRow
@@ -189,17 +198,19 @@
 				<AlertDialog v-model:open="confirmOpen">
 					<AlertDialogContent>
 						<AlertDialogHeader>
-							<AlertDialogTitle>Turn off Workflow?</AlertDialogTitle>
+							<AlertDialogTitle>{{
+								$t('settingsPages.modules.turnOffTitle')
+							}}</AlertDialogTitle>
 							<AlertDialogDescription data-testid="workflow-off-confirm">
 								{{ confirmMessage }}
 							</AlertDialogDescription>
 						</AlertDialogHeader>
 						<AlertDialogFooter>
-							<AlertDialogCancel @click="pendingRow = null"
-								>Cancel</AlertDialogCancel
-							>
+							<AlertDialogCancel @click="pendingRow = null">{{
+								$t('common.actions.cancel')
+							}}</AlertDialogCancel>
 							<AlertDialogAction @click="confirmToggle">
-								Turn off
+								{{ $t('settingsPages.modules.turnOff') }}
 							</AlertDialogAction>
 						</AlertDialogFooter>
 					</AlertDialogContent>
@@ -211,8 +222,8 @@
 
 				<SettingsSection
 					v-if="personalFeatures.length"
-					title="Personal preferences"
-					description="These settings only affect your account"
+					:title="$t('settingsPages.modules.personal')"
+					:description="$t('settingsPages.modules.personalDescription')"
 				>
 					<div class="divide-y divide-border">
 						<SettingsRow
@@ -328,6 +339,7 @@
 	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { t } from '@/i18n';
 	import { featureDescription, humanizeKey } from '@/utils/featureToggleCopy';
 	import { visiblePresets } from '@/utils/localOnly';
 	import { allowedLandings } from '@/utils/moduleSurfaces';
@@ -443,7 +455,11 @@
 	};
 
 	const notifyError = (description: string, error: unknown) => {
-		toaster.toast({ title: 'Error', description, variant: 'destructive' });
+		toaster.toast({
+			title: t('settingsPages.modules.errorTitle'),
+			description,
+			variant: 'destructive',
+		});
 		console.error(error);
 	};
 
@@ -488,12 +504,12 @@
 					payloadNotices(next).forEach((title) => toaster.toast({ title }));
 				} else await refresh();
 				toaster.toast({
-					title: 'Module updated',
+					title: t('settingsPages.modules.updated'),
 					action: CircleCheckBigIcon,
 					class: 'bg-green-500 border-0 text-white',
 				});
 			} catch (error) {
-				notifyError('Failed to update the module', error);
+				notifyError(t('settingsPages.modules.updateFailed'), error);
 				await refresh().catch(() => undefined);
 			}
 		});
@@ -505,7 +521,7 @@
 					await hideModuleForMe(currentWorkspaceId.value, row.key, !row.hidden),
 				);
 			} catch (error) {
-				notifyError('Failed to update the module', error);
+				notifyError(t('settingsPages.modules.updateFailed'), error);
 			}
 		});
 
@@ -516,12 +532,12 @@
 					[key]: value,
 				});
 				toaster.toast({
-					title: 'Personal preference updated',
+					title: t('settingsPages.modules.personalUpdated'),
 					action: CircleCheckBigIcon,
 					class: 'bg-green-500 border-0 text-white',
 				});
 			} catch (error) {
-				notifyError('Failed to update preference', error);
+				notifyError(t('settingsPages.modules.preferenceFailed'), error);
 			}
 		});
 
@@ -535,7 +551,7 @@
 		pending.value = true;
 		loadError.value = null;
 		try {
-			setDocumentTitle('Modules');
+			setDocumentTitle(t('settingsPages.modules.title'));
 			if (!store.state.workspaces || store.state.workspaces.length === 0) {
 				const { getWorkspaces } = await import('@/actions/tmgr/workspaces');
 				store.commit('setWorkspaces', await getWorkspaces());
@@ -550,7 +566,8 @@
 			store.commit('featureToggles/setUserToggles', personal);
 			loaded.value = true;
 		} catch {
-			if (version === loadVersion) loadError.value = 'Could not load modules.';
+			if (version === loadVersion)
+				loadError.value = t('settingsPages.modules.loadFailed');
 		} finally {
 			if (version === loadVersion) pending.value = false;
 		}

@@ -1,10 +1,12 @@
 <template>
 	<div class="flex flex-col gap-3">
-		<p v-if="loading" class="text-xs text-muted-foreground">Loading skills…</p>
+		<p v-if="loading" class="text-xs text-muted-foreground">
+			{{ $t('settingsPages.personaSkills.loading') }}
+		</p>
 
 		<div v-else class="flex flex-col gap-2">
 			<p v-if="skills.length === 0" class="text-xs text-muted-foreground">
-				No skills yet.
+				{{ $t('settingsPages.personaSkills.empty') }}
 			</p>
 			<div
 				v-for="skill in skills"
@@ -25,25 +27,34 @@
 						:data-testid="`convert-skill-${skill.slug}`"
 						@click="convertSlug = skill.slug"
 					>
-						Convert to shared
+						{{ $t('settingsPages.personaSkills.convert') }}
 					</Button>
 					<Button variant="outline" size="sm" @click="startEdit(skill)">
-						Edit
+						{{ $t('common.actions.edit') }}
 					</Button>
 					<Button variant="outline" size="sm" @click="remove(skill)">
-						Delete
+						{{ $t('common.actions.delete') }}
 					</Button>
 				</div>
 			</div>
 		</div>
 
 		<p class="text-2xs text-muted-foreground">
-			{{ skills.length }}/{{ SKILL_LIMIT }} used
+			{{
+				$t('settingsPages.personaSkills.usedCount', {
+					count: skills.length,
+					limit: SKILL_LIMIT,
+				})
+			}}
 		</p>
 
 		<div class="flex flex-col gap-2 border-t border-border pt-3">
 			<h5 class="text-xs font-semibold">
-				{{ editingSlug ? `Edit ${editingSlug}` : 'New skill' }}
+				{{
+					editingSlug
+						? $t('settingsPages.personaSkills.editing', { slug: editingSlug })
+						: $t('settingsPages.personaSkills.newSkill')
+				}}
 			</h5>
 			<Textarea
 				v-model="draft"
@@ -59,7 +70,12 @@
 						: 'text-muted-foreground',
 				]"
 			>
-				{{ draftBytes }} / {{ SKILL_BODY_MAX_BYTES }} bytes
+				{{
+					$t('settingsPages.personaSkills.bytes', {
+						used: draftBytes,
+						max: SKILL_BODY_MAX_BYTES,
+					})
+				}}
 			</span>
 			<ul v-if="draftErrors" class="text-xs text-destructive">
 				<li v-for="(messages, field) in draftErrors" :key="field">
@@ -68,7 +84,11 @@
 			</ul>
 			<div class="flex gap-2">
 				<Button size="sm" :disabled="saving" @click="submit">
-					{{ editingSlug ? 'Save changes' : 'Create skill' }}
+					{{
+						editingSlug
+							? $t('settingsPages.personaSkills.saveChanges')
+							: $t('settingsPages.personaSkills.createSkill')
+					}}
 				</Button>
 				<Button
 					v-if="editingSlug"
@@ -77,7 +97,7 @@
 					size="sm"
 					@click="cancelEdit"
 				>
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</Button>
 			</div>
 		</div>
@@ -106,6 +126,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
@@ -147,7 +168,10 @@
 				try {
 					skills.value = await listPersonaSkills(props.persona.id);
 				} catch {
-					toast({ title: 'Could not load skills', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.personaSkills.loadFailed'),
+						variant: 'destructive',
+					});
 				} finally {
 					loading.value = false;
 				}
@@ -167,7 +191,10 @@
 					draft.value = full.body;
 					serverErrors.value = null;
 				} catch {
-					toast({ title: 'Could not load this skill', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.personaSkills.loadOneFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
@@ -190,7 +217,9 @@
 				}
 				if (!editingSlug.value && skills.value.length >= SKILL_LIMIT) {
 					toast({
-						title: `You already have ${SKILL_LIMIT} skills`,
+						title: t('settingsPages.personaSkills.limitReached', {
+							limit: SKILL_LIMIT,
+						}),
 						variant: 'destructive',
 					});
 					return;
@@ -199,7 +228,7 @@
 				serverErrors.value = null;
 				try {
 					await putPersonaSkill(props.persona.id, targetSlug, draft.value);
-					toast({ title: 'Skill saved' });
+					toast({ title: t('settingsPages.personaSkills.saved') });
 					cancelEdit();
 					await load();
 					emit('changed');
@@ -208,7 +237,10 @@
 					if (fieldErrors) {
 						serverErrors.value = fieldErrors.errors;
 					} else {
-						toast({ title: 'Could not save skill', variant: 'destructive' });
+						toast({
+							title: t('settingsPages.personaSkills.saveFailed'),
+							variant: 'destructive',
+						});
 					}
 				} finally {
 					saving.value = false;
@@ -216,14 +248,24 @@
 			};
 
 			const remove = async (skill: PersonaSkillSummary) => {
-				if (!window.confirm(`Delete skill "${skill.title}"?`)) return;
+				if (
+					!window.confirm(
+						t('settingsPages.personaSkills.confirmDelete', {
+							title: skill.title,
+						}),
+					)
+				)
+					return;
 				try {
 					await deletePersonaSkill(props.persona.id, skill.slug);
 					if (editingSlug.value === skill.slug) cancelEdit();
 					await load();
 					emit('changed');
 				} catch {
-					toast({ title: 'Could not delete skill', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.personaSkills.deleteFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 

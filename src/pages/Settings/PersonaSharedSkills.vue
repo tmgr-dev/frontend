@@ -1,14 +1,15 @@
 <template>
 	<div class="flex flex-col gap-3" data-testid="persona-shared-skills">
-		<h5 class="text-xs font-semibold">From library</h5>
+		<h5 class="text-xs font-semibold">
+			{{ $t('settingsPages.personaSharedSkills.fromLibrary') }}
+		</h5>
 		<p v-if="loading" class="text-xs text-muted-foreground">
-			Loading library skills…
+			{{ $t('settingsPages.personaSharedSkills.loading') }}
 		</p>
 
 		<div v-else class="flex flex-col gap-2">
 			<p v-if="attached.length === 0" class="text-xs text-muted-foreground">
-				No library skills attached. Create one in the Skills library below the
-				personas, then attach it here.
+				{{ $t('settingsPages.personaSharedSkills.empty') }}
 			</p>
 			<div
 				v-for="skill in attached"
@@ -25,8 +26,11 @@
 						data-testid="shared-skill-pinned"
 						class="mt-1 mr-1 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-2xs font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
 					>
-						Pinned to v{{ skill.pinned_version }} · latest v{{
-							skill.latest_version
+						{{
+							$t('settingsPages.personaSharedSkills.pinned', {
+								pinned: skill.pinned_version,
+								latest: skill.latest_version,
+							})
 						}}
 					</span>
 					<span
@@ -41,7 +45,7 @@
 						data-testid="shared-skill-overridden"
 						class="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
 					>
-						Overridden by this persona's own skill
+						{{ $t('settingsPages.personaSharedSkills.overridden') }}
 					</span>
 				</div>
 				<div class="flex shrink-0 items-center gap-2">
@@ -55,13 +59,21 @@
 					>
 						<SelectTrigger
 							class="h-8 w-40 text-xs"
-							:aria-label="`Version for ${skill.slug}`"
+							:aria-label="
+								$t('settingsPages.personaSharedSkills.versionFor', {
+									slug: skill.slug,
+								})
+							"
 						>
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="latest">
-								Latest (v{{ skill.latest_version }})
+								{{
+									$t('settingsPages.personaSharedSkills.latest', {
+										version: skill.latest_version,
+									})
+								}}
 							</SelectItem>
 							<SelectItem
 								v-for="v in versionsFor(skill)"
@@ -73,20 +85,29 @@
 						</SelectContent>
 					</Select>
 					<Button variant="outline" size="sm" @click="detach(skill)">
-						Detach
+						{{ $t('settingsPages.personaSharedSkills.detach') }}
 					</Button>
 				</div>
 			</div>
 		</div>
 
 		<p class="text-2xs text-muted-foreground">
-			{{ attached.length }}/{{ ATTACHED_SKILL_LIMIT }} attached
+			{{
+				$t('settingsPages.personaSharedSkills.attachedCount', {
+					count: attached.length,
+					limit: ATTACHED_SKILL_LIMIT,
+				})
+			}}
 		</p>
 
 		<div v-if="!loading && attachable.length > 0">
 			<Select :model-value="''" @update:model-value="(v) => attach(String(v))">
-				<SelectTrigger aria-label="Attach a library skill">
-					<SelectValue placeholder="Attach a library skill" />
+				<SelectTrigger
+					:aria-label="$t('settingsPages.personaSharedSkills.attach')"
+				>
+					<SelectValue
+						:placeholder="$t('settingsPages.personaSharedSkills.attach')"
+					/>
 				</SelectTrigger>
 				<SelectContent>
 					<SelectItem
@@ -123,6 +144,7 @@
 	} from '@/components/ui/select';
 	import { changePin } from '@/composable/sharedSkillVersions';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import {
 		ATTACHED_SKILL_LIMIT,
 		attachableSharedSkills,
@@ -178,7 +200,7 @@
 				} catch {
 					if (versionRequests.get(skill.slug) !== requestId) return;
 					toast({
-						title: 'Could not load the versions',
+						title: t('settingsPages.personaSharedSkills.versionsFailed'),
 						variant: 'destructive',
 					});
 				}
@@ -200,7 +222,7 @@
 					]);
 				} catch {
 					toast({
-						title: 'Could not load library skills',
+						title: t('settingsPages.personaSharedSkills.loadFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -231,7 +253,7 @@
 					await load();
 					emit('changed');
 				} catch (error) {
-					fail(error, 'Could not attach skill');
+					fail(error, t('settingsPages.personaSharedSkills.attachFailed'));
 				}
 			};
 
@@ -241,7 +263,7 @@
 					await load();
 					emit('changed');
 				} catch (error) {
-					fail(error, 'Could not detach skill');
+					fail(error, t('settingsPages.personaSharedSkills.detachFailed'));
 				}
 			};
 
@@ -256,7 +278,7 @@
 					await load();
 					emit('changed');
 				} catch (error) {
-					fail(error, 'Could not change the skill version');
+					fail(error, t('settingsPages.personaSharedSkills.versionFailed'));
 				} finally {
 					staleSlugs.add(skill.slug);
 					const next = new Set(pendingSlugs.value);

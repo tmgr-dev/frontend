@@ -1,19 +1,22 @@
 <template>
 	<PageContainer v-if="isLocalOnly" width="narrow">
-		<PageHeader title="Agents">
+		<PageHeader :title="$t('settingsPages.personas.agentsTitle')">
 			<template #subtitle>
-				Connect Claude Code and other MCP clients to your local workspace.
+				{{ $t('settingsPages.personas.agentsSubtitle') }}
 			</template>
 		</PageHeader>
 		<LocalPersonasPanel />
 		<LocalSkillsLibrary class="mt-6" />
 	</PageContainer>
 	<PageContainer v-else width="narrow">
-		<PageHeader title="Personas">
+		<PageHeader :title="$t('settingsPages.personas.title')">
 			<template #subtitle>
-				A persona is an identity your AI agents act under: its own name, avatar
-				and system prompt, with its own permissions per workspace.
-				{{ activePersonas.length }}/{{ PERSONA_LIMIT }} used.
+				{{
+					$t('settingsPages.personas.subtitle', {
+						count: activePersonas.length,
+						limit: PERSONA_LIMIT,
+					})
+				}}
 			</template>
 			<template #actions>
 				<label class="flex w-fit items-center gap-2 text-sm">
@@ -21,18 +24,26 @@
 						:checked="showArchived"
 						@update:checked="toggleShowArchived"
 					/>
-					Show archived
+					{{ $t('settingsPages.personas.showArchived') }}
 				</label>
 			</template>
 		</PageHeader>
 
-		<SettingsSection v-if="isDesktop" title="Local AI" class="mb-6">
+		<SettingsSection
+			v-if="isDesktop"
+			:title="$t('settingsPages.personas.localAi')"
+			class="mb-6"
+		>
 			<LocalAiSettings />
 		</SettingsSection>
 
 		<SettingsSection
 			data-tour="personas.create"
-			:title="editingId ? 'Edit persona' : 'New persona'"
+			:title="
+				editingId
+					? $t('settingsPages.personas.editPersona')
+					: $t('settingsPages.personas.newPersona')
+			"
 			class="mb-6"
 		>
 			<PersonaForm
@@ -41,7 +52,11 @@
 				:saving="saving"
 				:show-scope="!editingId && !!currentWorkspace"
 				:workspace-name="currentWorkspace?.name ?? ''"
-				:submit-label="editingId ? 'Save changes' : 'Create persona'"
+				:submit-label="
+					editingId
+						? $t('settingsPages.personas.saveChanges')
+						: $t('settingsPages.personas.createPersona')
+				"
 				@update:model-value="(v) => (form = v)"
 				@submit="submitForm"
 				@cancel="editingId ? cancelEdit() : null"
@@ -72,7 +87,7 @@
 								v-if="canEdit(persona)"
 								class="cursor-pointer text-2xs text-primary hover:underline"
 							>
-								Change
+								{{ $t('settingsPages.personas.change') }}
 								<input
 									type="file"
 									accept="image/png,image/jpeg,image/webp,image/gif"
@@ -88,7 +103,7 @@
 									v-if="persona.archived_at"
 									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 								>
-									Archived
+									{{ $t('settingsPages.personas.archived') }}
 								</span>
 								<span
 									data-testid="persona-scope-badge"
@@ -102,7 +117,11 @@
 									{{ scopeLabel(persona) }}
 								</span>
 								<span class="text-2xs text-muted-foreground">
-									prompt v{{ persona.prompt_version ?? 1 }}
+									{{
+										$t('settingsPages.personas.promptVersion', {
+											version: persona.prompt_version ?? 1,
+										})
+									}}
 								</span>
 							</div>
 							<p
@@ -120,7 +139,7 @@
 							size="sm"
 							@click="startEdit(persona)"
 						>
-							Edit
+							{{ $t('common.actions.edit') }}
 						</Button>
 						<Button
 							v-if="!persona.archived_at"
@@ -128,9 +147,11 @@
 							size="sm"
 							@click="archive(persona)"
 						>
-							Archive
+							{{ $t('settingsPages.personas.archive') }}
 						</Button>
-						<Button v-else size="sm" @click="restore(persona)">Restore</Button>
+						<Button v-else size="sm" @click="restore(persona)">{{
+							$t('settingsPages.personas.restore')
+						}}</Button>
 					</div>
 				</header>
 
@@ -139,7 +160,7 @@
 						data-tour="personas.grants"
 						class="cursor-pointer text-sm font-medium"
 					>
-						Workspaces
+						{{ $t('settingsPages.personas.workspaces') }}
 					</summary>
 					<PersonaWorkspaceGrants :persona="persona" class="mt-3" />
 				</details>
@@ -149,7 +170,7 @@
 						data-tour="personas.skills"
 						class="cursor-pointer text-sm font-medium"
 					>
-						Skills
+						{{ $t('settingsPages.personas.skills') }}
 					</summary>
 					<PersonaSkills
 						:persona="persona"
@@ -169,7 +190,7 @@
 						data-tour="personas.tokens"
 						class="cursor-pointer text-sm font-medium"
 					>
-						Agent connections
+						{{ $t('settingsPages.personas.agentConnections') }}
 					</summary>
 					<PersonaTokens :persona="persona" class="mt-3" />
 				</details>
@@ -179,13 +200,13 @@
 				v-if="!loading && visiblePersonas.length === 0"
 				class="text-sm text-muted-foreground"
 			>
-				No personas yet.
+				{{ $t('settingsPages.personas.empty') }}
 			</p>
 		</div>
 
 		<SettingsSection
-			title="Skills library"
-			description="Skills you write once and attach to any of your personas. Editing one updates every persona it is attached to."
+			:title="$t('settingsPages.personas.skillsLibrary')"
+			:description="$t('settingsPages.personas.skillsLibraryDescription')"
 			class="mt-6"
 		>
 			<SkillsLibrary :revision="skillsRevision" @changed="skillsRevision++" />
@@ -193,8 +214,12 @@
 
 		<SettingsSection
 			v-if="currentWorkspace && sharedPersonas.length"
-			title="Workspace personas"
-			:description="`Personas other members of ${currentWorkspace.name} created for the whole workspace. Anyone can assign tasks to them; only their owner edits them.`"
+			:title="$t('settingsPages.personas.workspacePersonas')"
+			:description="
+				$t('settingsPages.personas.workspacePersonasDescription', {
+					name: currentWorkspace.name,
+				})
+			"
 			class="mt-6"
 		>
 			<div class="flex flex-col gap-2" data-testid="workspace-personas">
@@ -213,7 +238,11 @@
 						<p class="text-sm font-medium">
 							{{ grant.persona.name }}
 							<span class="text-xs font-normal text-muted-foreground">
-								persona of {{ grant.persona.owner.name }}
+								{{
+									$t('settingsPages.personas.personaOf', {
+										name: grant.persona.owner.name,
+									})
+								}}
 							</span>
 						</p>
 						<p
@@ -260,6 +289,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -305,7 +335,7 @@
 			LocalSkillsLibrary,
 		},
 		setup() {
-			setDocumentTitle('Personas');
+			setDocumentTitle(t('settingsPages.personas.title'));
 
 			const personas = ref<Persona[]>([]);
 			const loading = ref(true);
@@ -336,11 +366,13 @@
 				persona.can_edit ?? persona.owner.id === store.state.user?.id;
 			const scopeLabel = (persona: Persona) =>
 				persona.workspace_id
-					? `Workspace: ${
-							(store.state.workspaces as { id: number; name: string }[])?.find(
-								(w) => w.id === persona.workspace_id,
-							)?.name ?? 'this workspace'
-						}`
+					? t('settingsPages.personas.workspaceScope', {
+							name:
+								(
+									store.state.workspaces as { id: number; name: string }[]
+								)?.find((w) => w.id === persona.workspace_id)?.name ??
+								t('settingsPages.personas.thisWorkspace'),
+						})
 					: personaScopeLabel(null);
 
 			const activePersonas = computed(() =>
@@ -362,7 +394,7 @@
 						? await listWorkspacePersonas(workspaceId).catch(() => [])
 						: [];
 				} catch {
-					loadError.value = 'Could not load personas.';
+					loadError.value = t('settingsPages.personas.loadFailed');
 				} finally {
 					loading.value = false;
 				}
@@ -410,10 +442,10 @@
 				try {
 					if (editingId.value) {
 						await updatePersona(editingId.value, payload);
-						toast({ title: 'Persona updated' });
+						toast({ title: t('settingsPages.personas.updated') });
 					} else {
 						await createPersona(payload);
-						toast({ title: 'Persona created' });
+						toast({ title: t('settingsPages.personas.created') });
 					}
 					cancelEdit();
 					await load();
@@ -423,7 +455,7 @@
 						formErrors.value = fieldErrors.errors;
 					} else {
 						toast({
-							title: 'Could not save persona',
+							title: t('settingsPages.personas.saveFailed'),
 							variant: 'destructive',
 						});
 					}
@@ -437,7 +469,10 @@
 					await archivePersonaAction(persona.id);
 					await load();
 				} catch {
-					toast({ title: 'Could not archive persona', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.personas.archiveFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
@@ -447,7 +482,9 @@
 					await load();
 				} catch {
 					toast({
-						title: `Could not restore persona (limit is ${PERSONA_LIMIT})`,
+						title: t('settingsPages.personas.restoreFailed', {
+							limit: PERSONA_LIMIT,
+						}),
 						variant: 'destructive',
 					});
 				}
@@ -461,7 +498,10 @@
 					forgetPersonaAvatar(persona.id);
 					await load();
 				} catch {
-					toast({ title: 'Could not upload avatar', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.personas.avatarFailed'),
+						variant: 'destructive',
+					});
 				} finally {
 					(event.target as HTMLInputElement).value = '';
 				}

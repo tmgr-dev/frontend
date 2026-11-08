@@ -1,0 +1,968 @@
+{
+	"workspaces": {
+		"documentTitle": "Workspace Settings",
+		"loadFailed": "Could not load workspace settings.",
+		"toast": {
+			"editorUpdated": "Editor updated. Reloading page...",
+			"saved": "Successfully saved!",
+			"saveSettingsFailed": "Could not save workspace settings",
+			"workspaceSaved": "Workspace saved",
+			"error": "Error",
+			"saveWorkspaceFailed": "Failed to save workspace",
+			"defaultSaved": "Default workspace saved",
+			"defaultSaveFailed": "Could not save the default workspace",
+			"created": "Successfully created!",
+			"inviteFailed": "Failed to send invitations. Please try again.",
+			"deleteFailed": "Failed to delete the workspace. Please try again.",
+			"leaveFailed": "Failed to leave the workspace. Please try again.",
+			"memberRemoved": "Member removed",
+			"memberRemovedDescription": "{name} has been removed from the workspace",
+			"removeMemberFailed": "Failed to remove member"
+		},
+		"membersLoadFailed": "Could not load workspace members.",
+		"title": "Workspace settings",
+		"newWorkspace": "New workspace",
+		"create": {
+			"title": "Creating new workspace",
+			"description": "Enter a name for your new workspace",
+			"namePlaceholder": "New workspace name"
+		},
+		"invite": {
+			"label": "Invite",
+			"title": "Send invitation(s)",
+			"description": "Enter email addresses to invite members to this workspace",
+			"emailsPlaceholder": "Enter emails (comma separated), for example:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+			"send": "Send"
+		},
+		"delete": {
+			"label": "Delete workspace",
+			"description": "This permanently deletes the workspace {name} with its tasks, pages and files for every member. This cannot be undone."
+		},
+		"exit": {
+			"label": "Exit from workspace",
+			"confirmTitle": "Are you absolutely sure?",
+			"confirmDescription": "This action cannot be undone by yourself. If you wanna come back to this workspace ask a member of this workspace to send you an invitation again."
+		},
+		"loading": "Loading workspace settings",
+		"general": {
+			"title": "Workspace",
+			"name": "Name",
+			"nameEmpty": "Name can't be empty",
+			"colour": "Colour",
+			"defaultColour": "Default"
+		},
+		"preferences": {
+			"title": "Preferences",
+			"customValue": "Set custom value"
+		},
+		"default": {
+			"title": "Default workspace",
+			"description": "Used by Telegram, MCP, smart devices, and when you open TMGR on a new device.",
+			"choose": "Choose a workspace",
+			"setAsDefault": "Set as default"
+		},
+		"members": {
+			"title": "Members",
+			"loading": "Loading members",
+			"none": "No members found",
+			"owner": "Owner",
+			"removeTitle": "Remove Member",
+			"removeConfirm": "Are you sure you want to remove {name} from this workspace? This action cannot be undone."
+		},
+		"invitations": {
+			"title": "Invitations"
+		}
+	},
+	"plugins": {
+		"title": "Plugins",
+		"subtitle": "Plugins run in local workspaces, and in a shared workspace once its creator turns them on for everyone. Each runs in its own sandbox with only the permissions listed on its card.",
+		"howItWorks": "How plugins work",
+		"openWorkspace": "Open a workspace to turn plugins on or off for it.",
+		"sharedCreator": "Shared workspace: {name}. You created it: a plugin you turn on here runs for every member.",
+		"sharedMember": "Shared workspace: {name}. Only its creator turns plugins on here; they run for every member.",
+		"currentWorkspace": "Current workspace: {name}",
+		"safeMode": {
+			"title": "Safe mode",
+			"description": "Turn every plugin off. Starting the app with --safe-mode does the same."
+		},
+		"devMode": {
+			"title": "Developer mode",
+			"description": "Load plugins from ~/.tmgr.dev/plugins. They start switched off."
+		},
+		"tray": {
+			"title": "{tray} text",
+			"description": "Let one plugin show text next to the timer in the {tray}."
+		},
+		"dev": {
+			"showFolder": "Show folder",
+			"reload": "Reload plugins"
+		},
+		"install": {
+			"title": "Install from GitHub",
+			"description": "Paste a plugin repository. The app reads its latest release and shows what it may do before anything is installed.",
+			"repoLabel": "Plugin repository",
+			"checking": "Checking…",
+			"check": "Check"
+		},
+		"offer": {
+			"updateTitle": "Update {name} {version}?",
+			"installTitle": "Install {name} {version}?",
+			"from": "From github.com/{repo} ({tag}), by {publisher}.",
+			"verified": "Verified publisher: signed with the key listed in the TMGR catalog.",
+			"unverified": "Unverified publisher: signed, but not listed in the TMGR catalog. Its key is remembered, and updates must be signed with the same key.",
+			"itCan": "It can:",
+			"connectTo": "It can connect to: {origins} (this computer only)",
+			"openLinks": "It can open links to: {domains}",
+			"telegram": "It can open Telegram links (tg://).",
+			"pictures": "Loads pictures from: {domains}. Those sites get a request each time the plugin shows a picture.",
+			"companion": "Works with an external program you install yourself ({description}). It will write as a persona you choose.",
+			"newInVersion": "New in this version:",
+			"schemeLinks": "{scheme}:// links",
+			"imagesFrom": "images from {domain}",
+			"startOff": "Installed plugins start switched off; turn them on per workspace.",
+			"update": "Update",
+			"install": "Install"
+		},
+		"remove": {
+			"title": "Remove {name}?",
+			"description": "The plugin is deleted from this computer. Its data in workspaces stays until you install it again or clear the workspace."
+		},
+		"card": {
+			"originVerified": "From github.com/{repo} · {tag} · verified publisher",
+			"originUnverified": "From github.com/{repo} · {tag} · unverified publisher",
+			"checkUpdate": "Check for update",
+			"turnOn": "Turn {name} on",
+			"allowed": "Allowed to use the network and files on this computer.",
+			"notAllowed": "Its network and file access stay off on this computer until you allow them.",
+			"stopAllowing": "Stop allowing",
+			"allow": "Allow on this computer",
+			"connectTo": "Can connect to: {origins} (this computer only)",
+			"openLinks": "Can open links to: {domains}",
+			"telegram": "Can open Telegram links (tg://)",
+			"pictures": "Loads pictures from: {domains}. Those sites get a request each time the plugin shows a picture.",
+			"can": "Can:",
+			"openView": "Open “{title}”",
+			"saveSettings": "Save settings",
+			"log": "Log ({count})",
+			"copyDiagnostics": "Copy diagnostics"
+		},
+		"permission": {
+			"tasksRead": "read tasks",
+			"tasksWrite": "create and change tasks",
+			"statusesRead": "read statuses",
+			"categoriesRead": "read categories",
+			"timeRead": "read tracked time",
+			"timeWrite": "start and stop timers",
+			"commentsRead": "read comments",
+			"commentsWrite": "add comments",
+			"notifications": "show notifications",
+			"filesExport": "save files to this workspace's exports folder",
+			"filesAttachments": "read task attachments",
+			"filesPick": "read a file you choose",
+			"statusesWrite": "create and change statuses",
+			"categoriesWrite": "create and change categories",
+			"relationsRead": "read links between tasks",
+			"relationsWrite": "link and unlink tasks",
+			"agentWorkRead": "read AI agent work on tasks",
+			"agentWorkWrite": "record AI agent work on tasks",
+			"alarms": "wake up on a schedule in the background",
+			"tray": "add items and text to the {tray} icon",
+			"deeplinks": "be opened from tmgr:// links in other apps",
+			"linksOpen": "open web links in your browser",
+			"imagesRemote": "load pictures from the sites it declares",
+			"routinesRead": "read your notes and routines (local workspaces only)",
+			"routinesWrite": "add, rename, complete and convert your notes and routines (local workspaces only)",
+			"viewsBadge": "show counters on its sidebar items",
+			"pagesRead": "read your pages and their per-page data",
+			"pagesWrite": "create pages, change their text and save per-page data",
+			"pagesSections": "write into its own managed sections of pages",
+			"menusTask": "add items to the task … menu",
+			"none": "nothing beyond its own storage",
+			"groupReads": "reads your data",
+			"groupChanges": "changes your data",
+			"groupInterface": "changes the interface",
+			"groupOutside": "reaches outside the app"
+		},
+		"toast": {
+			"upToDate": "{name} is up to date",
+			"updated": "{name} updated",
+			"installed": "{name} installed",
+			"removed": "{name} removed",
+			"changeFailed": "Could not change the plugin for this workspace",
+			"commandFailed": "The plugin command failed",
+			"settingsSaved": "Plugin settings saved",
+			"diagnosticsCopied": "Diagnostics copied",
+			"diagnosticsFailed": "Could not copy diagnostics"
+		},
+		"source": {
+			"builtin": "Built-in",
+			"folder": "Folder",
+			"installed": "Installed"
+		},
+		"status": {
+			"running": "Running",
+			"starting": "Starting…",
+			"stopped": "Off",
+			"failed": "Failed to start",
+			"crashed": "Turned off after errors",
+			"blocked": "Blocked by TMGR"
+		}
+	},
+	"skillFiles": {
+		"title": "Files · {slug}",
+		"loading": "Loading files…",
+		"deleteFile": "Delete {path}"
+	},
+	"deletedSkills": {
+		"recentlyDeleted": "Recently deleted",
+		"loadFailed": "Could not load recently deleted skills.",
+		"filesCount": "{n} file | {n} files",
+		"hideVersions": "Hide versions",
+		"versions": "Versions",
+		"deletedUser": "Deleted user",
+		"previewFailed": "Couldn't load this version. Try again.",
+		"restore": "Restore",
+		"restoredFrom": "Restored from v{version}",
+		"kind": {
+			"baseline": "Baseline",
+			"create": "Created",
+			"edit": "Edited",
+			"restore": "Restored",
+			"convert": "Converted"
+		}
+	},
+	"sharedSkillHistory": {
+		"deletedUser": "Deleted user",
+		"previewFailed": "Couldn't load this version. Try again.",
+		"restoredFrom": "Restored from v{version}",
+		"kind": {
+			"baseline": "Baseline",
+			"create": "Created",
+			"edit": "Edited",
+			"restore": "Restored",
+			"convert": "Converted"
+		},
+		"title": "History: {title}",
+		"loading": "Loading history…",
+		"current": "Current",
+		"pinnedBy": "Pinned by: {names}",
+		"compare": "Compare with current",
+		"restoreVersion": "Restore this version",
+		"confirmRestore": "Restore version {version}? This creates version {next} with its content."
+	},
+	"skillsLibrary": {
+		"importFromAgents": "Import from local agents",
+		"loading": "Loading library…",
+		"empty": "No shared skills yet.",
+		"notAttached": "Not attached",
+		"overriddenTitle": "Overridden by this persona's own skill",
+		"overridden": "(overridden)",
+		"historyOf": "History of {title}",
+		"filesOf": "Files of {title}",
+		"history": "History",
+		"filesButton": "Files ({count})",
+		"used": "{count}/{limit} used",
+		"editing": "Edit {slug}",
+		"newSkill": "New shared skill",
+		"bytes": "{count} / {max} bytes",
+		"saveChanges": "Save changes",
+		"createSkill": "Create skill",
+		"loadFailed": "Could not load the skills library",
+		"loadSkillFailed": "Could not load this skill",
+		"limitReached": "Your library already has {limit} skills",
+		"saved": "Skill saved",
+		"saveFailed": "Could not save skill",
+		"deleteFailed": "Could not delete skill"
+	},
+	"modules": {
+		"title": "Modules",
+		"subtitleWorkspace": "Workspace “{name}”: choose what is available in TMGR",
+		"subtitle": "Choose what is available in TMGR",
+		"loading": "Loading modules",
+		"ownerOnlyNotice": "Only the workspace owner can turn modules on or off. You can hide a module for yourself.",
+		"applyPreset": "Apply a preset",
+		"ownerOnlyHint": "Only the owner can change modules",
+		"core": "Core",
+		"hideCore": "Hide core sections for me",
+		"packCount": "{enabled} of {total} on",
+		"askOwner": "Ask the owner to turn this on",
+		"account": "This account",
+		"accountDescription": "Applies to you in every workspace",
+		"turnOffTitle": "Turn off Workflow?",
+		"turnOff": "Turn off",
+		"personal": "Personal preferences",
+		"personalDescription": "These settings only affect your account",
+		"errorTitle": "Error",
+		"updated": "Module updated",
+		"personalUpdated": "Personal preference updated",
+		"updateFailed": "Failed to update the module",
+		"preferenceFailed": "Failed to update preference",
+		"loadFailed": "Could not load modules."
+	},
+	"skillImportDialog": {
+		"title": "Import skills from local agents",
+		"introDevice": "Read-only scan of skill folders on this computer. Nothing is executed; only the skills you tick are saved to the skills library on this device.",
+		"introCloud": "Read-only scan of skill folders on this computer. Nothing is executed; only the skills you tick are sent to your skills library.",
+		"scanning": "Scanning…",
+		"scanFailed": "Could not scan this computer.",
+		"empty": "No skills found. Use “Add folder…” to scan a project.",
+		"cannotImport": "Cannot import: {reason}",
+		"slugLabel": "Library slug",
+		"useInstead": "Use {slug} instead",
+		"droppedFields": "Not carried over: {fields}",
+		"filesSummary": "Files: {count} of {total} will be uploaded ({bytes})",
+		"fileSize": "{size} B",
+		"truncated": "The list is cut; this skill has too many files to import.",
+		"uploadNoteDevice": "Only files marked “will be uploaded” are sent to the library on this device, as text. The secret check is best effort: read the list above.",
+		"uploadNoteCloud": "Only files marked “will be uploaded” are sent to the cloud, as text. The secret check is best effort: read the list above.",
+		"selectPrompt": "Select a skill to preview it.",
+		"addFolder": "Add folder…",
+		"selectedCount": "{count} selected",
+		"importSelected": "Import selected",
+		"bytes": "{count} B",
+		"kib": "{count} KiB",
+		"imported": "Imported",
+		"importedSkipped": "Imported, {n} file not imported | Imported, {n} files not imported",
+		"folderFailed": "Could not open the folder",
+		"indexFailed": "Could not remember what was imported",
+		"indexFailedDescription": "The next import will treat these skills as already in the library.",
+		"refreshFailed": "Could not refresh the library",
+		"importFailed": "Could not import the skills",
+		"status": {
+			"new": "New",
+			"upToDate": "Up to date",
+			"changed": "Changed since last import — will update",
+			"editedInLibrary": "Edited in library since import — will overwrite",
+			"slugTaken": "Slug taken in library — tick to overwrite",
+			"previouslyImportedDeleted": "Imported before, deleted from library",
+			"blocked": "Cannot import"
+		}
+	},
+	"pluginsHelp": {
+		"title": "How plugins work",
+		"subtitle": "Plugins add badges, pages, task sections and commands to the TMGR desktop app.",
+		"backLabel": "Back to plugins",
+		"glanceLabel": "At a glance",
+		"glance": {
+			"sandboxed": {
+				"title": "Sandboxed",
+				"text": "Only the permissions on its card."
+			},
+			"signed": {
+				"title": "Signed",
+				"text": "GitHub plugins must be signed by their author."
+			},
+			"shared": {
+				"title": "Shared by the creator",
+				"text": "In a shared workspace only its creator turns plugins on."
+			},
+			"stop": {
+				"title": "Easy to stop",
+				"text": "Safe mode turns every plugin off at once."
+			}
+		},
+		"abilities": {
+			"data": {
+				"title": "Your data",
+				"text": "Only what it asked for, like \"read tasks\"."
+			},
+			"network": {
+				"title": "Network",
+				"text": "Only localhost addresses it declares, shown in red."
+			},
+			"pages": {
+				"title": "Its own pages",
+				"text": "In a separate window that reaches nothing else."
+			}
+		},
+		"can": {
+			"title": "What a plugin can do",
+			"intro": "Only what its card says. Everything else is closed."
+		},
+		"github": {
+			"title": "Installing from GitHub",
+			"step1": "Paste the link",
+			"check": "Check",
+			"step2": "See what it may do",
+			"installPrompt": "Install Timer 1.0.0?",
+			"itCan": "It can: read tasks",
+			"verified": "Verified publisher",
+			"step3": "Turn it on",
+			"running": "Running",
+			"verifiedText": "TMGR knows this author's signing key.",
+			"unverified": "Unverified publisher",
+			"unverifiedText": "Signed, but not reviewed by TMGR. Install only if you trust the author.",
+			"signed": "Every release must be signed. The app remembers the author's key, so an update signed by someone else is refused."
+		},
+		"unsigned": {
+			"title": "Plugins without a signature",
+			"intro": "For a plugin you write yourself, or one that is not published.",
+			"step1": "Put the folder there",
+			"step2": "Turn on Developer mode",
+			"step3": "Press Reload plugins",
+			"note": "Same sandbox, same permissions, but nobody checked the author. Folder plugins cannot be shared with a workspace."
+		},
+		"shared": {
+			"title": "Shared workspaces",
+			"creator": "Creator",
+			"turnsOn": "turns on Timer 1.2",
+			"point1": "Only the creator turns plugins on. Everyone gets the same version.",
+			"point2": "The plugin uses its own short-lived key: this workspace only, its permissions only.",
+			"point3": "Network, files, the {tray}, tmgr:// links and web links on your computer wait for",
+			"allow": "Allow on this computer",
+			"point4": "What the plugin saves is shared by all members."
+		},
+		"trouble": {
+			"title": "When a plugin gets in the way",
+			"switchOff": "Switch it off",
+			"switchOffText": "On its card, or remove it.",
+			"safeMode": "Safe mode",
+			"everythingOff": "Everything off",
+			"everythingOffText": "Or start the app with {flag}.",
+			"blocked": "Blocked by TMGR",
+			"weStop": "We stop bad ones",
+			"weStopText": "A signed blocklist turns a harmful plugin off everywhere.",
+			"note": "A plugin that fails three times in five minutes turns itself off."
+		},
+		"authors": {
+			"title": "For plugin authors",
+			"step1": "Start from the template",
+			"step2": "Sign and publish",
+			"step2Text": "{keygen}, save the key as the {secret} secret, push a tag like {tag}.",
+			"step3": "Get verified (optional)",
+			"step3Text": "Pull request with your id, repository and public key to {link}. Report harmful plugins there too.",
+			"api11": "API 1.1: every new ability is its own permission (alarms, {tray}, tmgr:// links, web links, statuses, relations, agent work), shown when you install or update. Try them all with {example} in developer mode; the plugin log shows why a call was refused.",
+			"api12": "API 1.2: plugins can read and write Daily Routines (notes and routines), on this device only — not yet in shared workspaces.",
+			"api14": "API 1.4: a plugin can show a counter on its own sidebar item. It needs the views:badge permission, shown when you install or update, and no extra consent. Long {tray} titles are shortened with \"…\" instead of being refused.",
+			"api15": "API 1.5: plugins can work with pages. pages:read reads and searches them, pages:write creates, edits and appends, and pages:sections lets a plugin write only into its own managed sections. Each is shown when you install or update. Plugins cannot add page types.",
+			"api16": "API 1.6: a plugin can add up to 3 items to the task … menu, on board cards, in the task list and on the task page. It needs menus:task, which is shown when you install or update. The items appear in their own group while the plugin is running; with more than 4 plugin items in total they move into one Plugins submenu."
+		}
+	},
+	"personaForm": {
+		"whoCanAssign": "Who can assign it",
+		"onlyMe": "Only me",
+		"onlyMeHint": "assignable in workspaces you grant it to",
+		"thisWorkspace": "This workspace",
+		"thisWorkspaceHint": "every member can assign tasks to it; only you edit it",
+		"name": "Name",
+		"namePlaceholder": "Reviewer",
+		"description": "Description",
+		"descriptionPlaceholder": "What this persona is for",
+		"systemPrompt": "System prompt (Markdown)",
+		"systemPromptPlaceholder": "You are...",
+		"bytes": "{used} / {max} bytes",
+		"notify": "Notify me about this persona's activity",
+		"notifyAll": "All",
+		"notifyMentions": "Only when it asks for me",
+		"notifyNone": "Never"
+	},
+	"personaTokens": {
+		"loading": "Loading agent connections…",
+		"empty": "No agent connections yet.",
+		"details": "{prefix}… · {workspace} · expires {expires} · last used {lastUsed}",
+		"never": "never",
+		"revoke": "Revoke",
+		"connect": "Connect an agent",
+		"revokeAll": "Revoke all",
+		"loadFailed": "Could not load agent connections",
+		"revoked": "Revoked",
+		"expired": "Expired",
+		"active": "Active",
+		"confirmRevoke": "Revoke the \"{label}\" connection?",
+		"revokeFailed": "Could not revoke token",
+		"confirmRevokeAll": "Revoke every agent connection for this persona?",
+		"revokeAllFailed": "Could not revoke tokens"
+	},
+	"personaConnectDialog": {
+		"title": "Connect an agent",
+		"loadingWorkspaces": "Loading workspaces…",
+		"noGrant": "This persona has no active workspace grant yet. Grant it access under Workspaces above, then come back here.",
+		"workspace": "Workspace",
+		"label": "Label",
+		"labelPlaceholder": "Claude Code on my laptop",
+		"expires": "Expires",
+		"days": "{n} day | {n} days",
+		"tokenNote": "Unlike your device token, this token works in one workspace only, is limited to this persona's grant there, and everything it writes is signed as this persona.",
+		"issuing": "Issuing…",
+		"issue": "Issue token",
+		"copyNow": "Copy this token now — you won't see it again.",
+		"addToConfig": "Add it to your agent's {file}:",
+		"mcpConfig": "MCP config",
+		"secretNote": "Put the token itself in an environment variable or a gitignored secret file — never commit it.",
+		"issueFailed": "Could not issue token",
+		"copyFailed": "Could not copy to clipboard"
+	},
+	"personaConvertSkillDialog": {
+		"title": "Convert to shared",
+		"loadFailed": "Could not load the conversion details.",
+		"clash": "Your skills library already has a skill with the slug “{slug}”. Delete or rename one of them first.",
+		"intro": "Moves this skill to your skills library and attaches it to {name}. Agents keep the same instructions.",
+		"replaceCopy": "Also replace the copy on {name}",
+		"archived": "(archived)",
+		"sameText": "Same text",
+		"differentText": "Different text — will be replaced",
+		"convert": "Convert",
+		"convertFailed": "Could not convert this skill"
+	},
+	"personaSharedSkills": {
+		"fromLibrary": "From library",
+		"loading": "Loading library skills…",
+		"empty": "No library skills attached. Create one in the Skills library below the personas, then attach it here.",
+		"pinned": "Pinned to v{pinned} · latest v{latest}",
+		"overridden": "Overridden by this persona's own skill",
+		"versionFor": "Version for {slug}",
+		"latest": "Latest (v{version})",
+		"detach": "Detach",
+		"attachedCount": "{count}/{limit} attached",
+		"attach": "Attach a library skill",
+		"versionsFailed": "Could not load the versions",
+		"loadFailed": "Could not load library skills",
+		"attachFailed": "Could not attach skill",
+		"detachFailed": "Could not detach skill",
+		"versionFailed": "Could not change the skill version"
+	},
+	"personaSkills": {
+		"loading": "Loading skills…",
+		"empty": "No skills yet.",
+		"convert": "Convert to shared",
+		"usedCount": "{count}/{limit} used",
+		"editing": "Edit {slug}",
+		"newSkill": "New skill",
+		"bytes": "{used} / {max} bytes",
+		"saveChanges": "Save changes",
+		"createSkill": "Create skill",
+		"loadFailed": "Could not load skills",
+		"loadOneFailed": "Could not load this skill",
+		"limitReached": "You already have {limit} skills",
+		"saved": "Skill saved",
+		"saveFailed": "Could not save skill",
+		"confirmDelete": "Delete skill \"{title}\"?",
+		"deleteFailed": "Could not delete skill"
+	},
+	"personaWorkspaceGrants": {
+		"localNote": "Local workspaces aren't listed here. Open the local workspace, then grant this persona in its own Personas → \"On this device\" panel.",
+		"onThisDevice": "On this device",
+		"loading": "Loading workspaces…",
+		"empty": "No shared workspaces.",
+		"home": "Home workspace · archive the persona to remove access",
+		"blocked": "Blocked by workspace creator",
+		"effective": "Effective here: {permissions}",
+		"changeFailed": "Could not change this workspace",
+		"blockedByCreator": "Blocked by the workspace creator",
+		"permissionsFailed": "Could not update permissions"
+	},
+	"personas": {
+		"agentsTitle": "Agents",
+		"agentsSubtitle": "Connect Claude Code and other MCP clients to your local workspace.",
+		"title": "Personas",
+		"subtitle": "A persona is an identity your AI agents act under: its own name, avatar and system prompt, with its own permissions per workspace. {count}/{limit} used.",
+		"showArchived": "Show archived",
+		"localAi": "Local AI",
+		"editPersona": "Edit persona",
+		"newPersona": "New persona",
+		"saveChanges": "Save changes",
+		"createPersona": "Create persona",
+		"change": "Change",
+		"archived": "Archived",
+		"promptVersion": "prompt v{version}",
+		"archive": "Archive",
+		"restore": "Restore",
+		"workspaces": "Workspaces",
+		"skills": "Skills",
+		"agentConnections": "Agent connections",
+		"empty": "No personas yet.",
+		"skillsLibrary": "Skills library",
+		"skillsLibraryDescription": "Skills you write once and attach to any of your personas. Editing one updates every persona it is attached to.",
+		"workspacePersonas": "Workspace personas",
+		"workspacePersonasDescription": "Personas other members of {name} created for the whole workspace. Anyone can assign tasks to them; only their owner edits them.",
+		"personaOf": "persona of {name}",
+		"workspaceScope": "Workspace: {name}",
+		"thisWorkspace": "this workspace",
+		"loadFailed": "Could not load personas.",
+		"updated": "Persona updated",
+		"created": "Persona created",
+		"saveFailed": "Could not save persona",
+		"archiveFailed": "Could not archive persona",
+		"restoreFailed": "Could not restore persona (limit is {limit})",
+		"avatarFailed": "Could not upload avatar"
+	},
+	"consentPanel": {
+		"ariaLabel": "Privacy choices",
+		"saveFailed": "Couldn't save your choice in this browser. Sharing is stopped in this window.",
+		"usage": {
+			"title": "Help improve TMGR?",
+			"intro": "Usage events that are not linked to your account. Off by default.",
+			"whatWeSend": "What we send",
+			"whatWeCollect": "What we collect",
+			"details": "If you agree, TMGR sends usage events that are not linked to your account: which screens and tours you open, which steps you finish, app version and platform.",
+			"weSend": "We send:",
+			"weSendText": "event names like tour_step_completed · a random install ID · app version, OS, screen size class",
+			"weNeverSend": "We never send:",
+			"weNeverSendText": "task, page or comment text · names, emails, file names · your account ID. Your IP address is not stored with events.",
+			"changeAnytime": "Change it any time in Settings → Privacy. Turning it off stops sending at once; you can also delete what was already sent.",
+			"decline": "No, thanks",
+			"accept": "Share usage data"
+		},
+		"analytics": {
+			"title": "Cookies and analytics",
+			"text": "We'd like to use Google Analytics to understand how people find and use TMGR. It sets cookies and sends data to Google. It stays off unless you allow it. You can change this any time.",
+			"privacyPolicy": "Privacy policy",
+			"decline": "Decline",
+			"accept": "Allow analytics"
+		}
+	},
+	"privacyLinks": {
+		"privacy": "Privacy",
+		"commandLine": "Command line",
+		"cookieSettings": "Cookie settings"
+	},
+	"privacySettings": {
+		"cookiesTitle": "Cookies and analytics",
+		"googleAnalytics": "Google Analytics",
+		"googleAnalyticsDescription": "Helps us understand how TMGR is used. Sets cookies and sends data to Google. Off unless you allow it.",
+		"privacyPolicy": "Privacy policy"
+	},
+	"usageDataControls": {
+		"title": "Usage data",
+		"saveFailed": "Couldn't save your choice in this browser. Sharing is stopped in this window.",
+		"receiptError": "Couldn't keep a deletion key for this install. Use \"Delete data already sent\" to remove its data.",
+		"shareLabel": "Share usage data",
+		"shareDescription": "Not linked to your account: event names, a random install ID, app version and platform. Never task content, names or emails.",
+		"installId": "Install ID:",
+		"resetId": "Reset ID",
+		"pending": "Events waiting to be sent:",
+		"view": "View",
+		"dataSent": "Data already sent",
+		"deleteSent": "Delete data already sent",
+		"coverage": "This switch covers events from this device. Aggregated onboarding statistics from account data are described in the privacy policy.",
+		"readMore": "Read more",
+		"footer": "Turning sharing off stops it at once. Raw events are kept for 30 days.",
+		"queueTitle": "Events waiting to be sent",
+		"deleteFailed": "Could not delete everything. Sharing is off. Try again later.",
+		"deleted": "Deleted. Sharing is off.",
+		"nothingToDelete": "Nothing to delete. Sharing is off."
+	},
+	"signedInDevices": {
+		"title": "Signed-in devices",
+		"description": "Command-line sessions signed in with tmgr login.",
+		"loadFailed": "Could not load devices.",
+		"tryAgain": "Try again",
+		"empty": "No CLI devices yet. Run {command} in your terminal.",
+		"onHost": "on {host}",
+		"lastUsed": "Signed in {signedIn} · Last used {lastUsed}",
+		"never": "never",
+		"editScopes": "Edit scopes",
+		"revoke": "Revoke",
+		"savedTitle": "Saved",
+		"savedDescription": "Device scopes updated",
+		"errorTitle": "Error",
+		"updateFailed": "Could not update device scopes",
+		"confirmRevoke": "Revoke {client} on {host}? It will be signed out.",
+		"doneTitle": "Done",
+		"revoked": "Device revoked",
+		"revokeFailed": "Could not revoke the device"
+	},
+	"phonesSection": {
+		"title": "Phones",
+		"intro": "Answer Decisions cards from the TMGR iPhone app. Pairing needs this Mac to be on.",
+		"macName": "Name of this Mac",
+		"manage": "Manage phones",
+		"openFailed": "Could not open the window"
+	},
+	"profile": {
+		"title": "Profile",
+		"pictureTitle": "Profile picture",
+		"uploading": "Uploading…",
+		"changePicture": "Change picture",
+		"acceptedFormats": "Accepted formats: PNG, JPEG, WebP, GIF.",
+		"accountTitle": "Account",
+		"name": "Name",
+		"email": "Email",
+		"emailReadonly": "Email can't be changed here",
+		"changePassword": "Change password",
+		"leaveBlank": "Leave blank to keep your current password.",
+		"currentPassword": "Current password",
+		"newPassword": "New password",
+		"confirmPassword": "Confirm password",
+		"socialHint": "Signed up with Google, GitHub or Apple and never set a password? Use Forgot password on the sign-in page to set one.",
+		"signOutOthers": "Sign out of other devices",
+		"signOutOthersHint": "Recommended if you think someone else had access to your account. This device stays signed in.",
+		"agentTitle": "Agent connections",
+		"agentDescription": "Revoke every persona token, across all your personas and workspaces.",
+		"revoking": "Revoking…",
+		"revokeAll": "Revoke all persona tokens",
+		"tokensRevokedNotice": "Device, agent and notification tokens were revoked — generate new ones.",
+		"pickImage": "Pick an image file",
+		"readFailed": "Could not read that image",
+		"uploadFailed": "Could not upload that picture",
+		"removeFailed": "Could not remove the picture",
+		"passwordChanged": "Password changed",
+		"savedTitle": "Saved",
+		"savedDescription": "User data saved",
+		"confirmRevokeAll": "Revoke every persona token across all your personas?",
+		"doneTitle": "Done",
+		"allRevoked": "All persona tokens revoked",
+		"errorTitle": "Error",
+		"revokeFailed": "Could not revoke persona tokens"
+	},
+	"avatarCropModal": {
+		"title": "Crop avatar",
+		"description": "Drag to move, scroll or use the slider to zoom.",
+		"zoom": "Zoom"
+	},
+	"privacy": {
+		"title": "Privacy policy",
+		"lastUpdated": "Last updated: 13 October 2026",
+		"summary": {
+			"store": "We store what you put into TMGR (your account, tasks, pages, files, time logs) so the service works. We don't sell it and we don't show ads.",
+			"local": "Local workspaces in the desktop app stay on your device.",
+			"consent": "Google Analytics is off until you allow it. Usage data is off until you allow it too. You can change both at any time.",
+			"thirdParties": "Some features send data to other companies, for example OpenAI for AI features or Twilio for alarm calls. They are listed below.",
+			"title": "Summary"
+		},
+		"controller": {
+			"todoName": "[Controller name and address — to be confirmed]",
+			"text": "The controller of your personal data is {controller}. Contact: {contact}.",
+			"title": "Who is responsible"
+		},
+		"todoEmail": "[contact email — to be confirmed]",
+		"accountData": {
+			"accountLabel": "Account:",
+			"account": "{label} name, email address, password hash, the ids of sign-in providers you use (GitHub, Google, Apple, Telegram), your avatar and your settings.",
+			"contentLabel": "Your content:",
+			"content": "{label} workspaces, tasks, comments, pages, uploaded files, time logs, routines, AI assistant conversations and the work logs of AI agents you connect.",
+			"devicesLabel": "Devices and notifications:",
+			"devices": "{label} sign-in sessions, device keys for Face ID sign-in, push tokens of the iOS app, your private notification topic and the access tokens you create for agents and devices.",
+			"alarmLabel": "Alarm phone number:",
+			"alarm": "{label} only if you set up alarm calls. It is stored encrypted.",
+			"integrationsLabel": "Integrations you connect:",
+			"integrations": "{label} your Telegram id and username, data from GitHub repositories you link (including commit author names and emails), and your Cursor API key.",
+			"usage": "We use this data to run TMGR for you. We don't store your IP address in the database. Our servers keep client IP addresses in memory for up to an hour to limit abuse such as password guessing.",
+			"title": "Data we store for your account"
+		},
+		"desktopLocal": {
+			"intro": "A local workspace in the desktop app is a database file on your computer, and its backups are saved in a folder on your computer. Its content is not sent to us.",
+			"connects": "The desktop app still connects to the internet for a few things:",
+			"updates": "It checks GitHub for app updates. GitHub sees your IP address.",
+			"plugins": "It refreshes the plugin catalog from GitHub when it starts and every six hours.",
+			"ai": "It talks to the AI endpoint you configure yourself, if you set one up.",
+			"usage": "It sends usage data only if you turn usage data on (see below).",
+			"noAnalytics": "The desktop app never loads Google Analytics or Plausible.",
+			"title": "Desktop app without an account"
+		},
+		"usageData": {
+			"intro": "If you agree, the app sends usage events that are not linked to your account. They show us which screens and guided tours people open and which steps they finish, so we can improve TMGR.",
+			"sentLabel": "What is sent:",
+			"sent": "{label} event names such as {code} with fixed values (for example which tour and which step), a random install id created on your device, a random id for each app start, the app version (major and minor), the platform, whether you use a cloud account or a local workspace, a screen size class (small, medium or large) and the hour of the event.",
+			"neverSentLabel": "What is never sent:",
+			"neverSent": "{label} task, page or comment text, names, emails, file names, workspace names, links, your account id, your sign-in token or cookies.",
+			"ipLabel": "Your IP address",
+			"ip": "{label} is not stored with events. It is held in memory for up to an hour to limit abuse.",
+			"retentionLabel": "Retention:",
+			"retention": "{label} raw events are deleted after 30 days. Daily totals (counts per event, without install ids) are kept for 13 months.",
+			"offLabel": "Turning it off:",
+			"off": "{label} switch off \"Share usage data\" in Settings → Privacy or below on this page. Sending stops at once in every tab and window, and events waiting on your device are deleted.",
+			"deleteLabel": "Deleting what was sent:",
+			"delete": "{label} your device keeps a deletion key for each install id. \"Delete data already sent\" in Settings → Privacy or below on this page uses it to delete those events from our servers, also after you turned sharing off.",
+			"pseudonymous": "Because the install id stays the same over time, we treat usage data as pseudonymous personal data. The legal basis is your consent, which you can withdraw at any time.",
+			"title": "Usage data (optional)"
+		},
+		"analytics": {
+			"title": "Google Analytics and page view counts (web)",
+			"gaLabel": "Google Analytics",
+			"googlePolicy": "Google's privacy policy",
+			"google": "{ga} is loaded on the web app only after you allow it. It sets cookies ({cookie}) and sends your IP address, device and browser details and the pages you visit to Google. If you decline, it never loads. You can change your choice at any time with \"Cookie settings\" below or at the bottom of the sign-in page, or in Settings. The legal basis is your consent. See {policy}.",
+			"choice": "Your current choice: {status}",
+			"cookieSettings": "Cookie settings",
+			"plausibleLabel": "Plausible:",
+			"plausible": "{label} the web app counts page views with a Plausible instance that we host ourselves. It sets no cookies and stores no IP addresses or personal identifiers. The desktop app doesn't load it. The legal basis is our legitimate interest in knowing how many people use the site.",
+			"yandex": "Yandex Metrica is no longer used."
+		},
+		"onboardingAggregates": {
+			"counts": "To see whether onboarding works, we count, across all accounts, how many people signed up, verified their email, created a first task, started a timer, connected an AI agent or finished a guided tour. These numbers come from data TMGR stores anyway. They are only shown as totals, and groups of fewer than 10 people are hidden.",
+			"basis": "This happens whether or not you share usage data, because it uses account data, not device events. The legal basis is our legitimate interest in improving onboarding. You can object by writing to us (see Contact).",
+			"title": "Onboarding statistics from account data"
+		},
+		"thirdParties": {
+			"title": "Services we use",
+			"service": "Service",
+			"whatFor": "What for",
+			"receive": "What they receive",
+			"rows": {
+				"hetzner": {
+					"use": "Servers that run TMGR",
+					"receive": "All data stored in TMGR"
+				},
+				"bunny": {
+					"use": "Content delivery for the web app and the website",
+					"receive": "Your IP address and browser details when you load pages"
+				},
+				"storage": {
+					"todo": "[name — to be confirmed]",
+					"name": "Object storage provider {todo}",
+					"use": "Uploaded files, avatars and exports",
+					"receive": "The files you upload"
+				},
+				"email": {
+					"todo": "[name — to be confirmed]",
+					"name": "Email provider {todo}",
+					"use": "Verification, password reset and notification emails",
+					"receive": "Your email address and the email content"
+				},
+				"openai": {
+					"use": "AI features: the AI assistant, \"Optimize description\" and transcription of Telegram voice messages",
+					"receive": "The text, task data and voice messages these features work on, only when you use them"
+				},
+				"twilio": {
+					"use": "Alarm calls and SMS codes to verify your phone",
+					"receive": "Your phone number and the alarm title and message read out in the call"
+				},
+				"expo": {
+					"use": "Push notifications, Live Activities and updates of the iOS app",
+					"receive": "Push tokens and the notification content",
+					"name": "Expo and Apple"
+				},
+				"signin": {
+					"use": "Sign-in, if you choose that provider",
+					"receive": "What the sign-in needs; we receive your name and email"
+				},
+				"github": {
+					"use": "The GitHub integration, if you install it, and desktop app updates",
+					"receive": "Repository data you link; your IP address when the desktop app checks for updates"
+				},
+				"telegram": {
+					"use": "The Telegram bot, if you connect it",
+					"receive": "Your chat id and the messages the bot sends and receives"
+				},
+				"cursor": {
+					"use": "Starting Cursor agents, if you add your Cursor API key",
+					"receive": "The task prompt and repository details you send"
+				},
+				"jsdelivr": {
+					"use": "Stylesheet for code highlighting",
+					"receive": "Your IP address and browser details when it loads"
+				},
+				"ga": {
+					"use": "Web analytics, only if you allow it",
+					"receive": "See above"
+				}
+			},
+			"selfHosted": "Real-time updates, browser notifications (ntfy), page view counting (Plausible) and secret storage run on our own servers."
+		},
+		"retention": {
+			"account": "Account data and your content: as long as your account exists.",
+			"sessions": "Sign-in sessions: access tokens expire after 1 hour, refresh tokens after 30 days at most.",
+			"usage": "Usage data: raw events 30 days, daily totals 13 months.",
+			"logsTodo": "[retention — to be confirmed]",
+			"logs": "Server and CDN access logs: {todo}.",
+			"title": "How long we keep data"
+		},
+		"yourRights": {
+			"intro": "You can ask for a copy of your data, correct it, delete it, object to processing based on legitimate interest, and withdraw any consent. You can also complain to a data protection authority.",
+			"export": "In the app you can export tasks (CSV, XLSX), routines (iCal) and local workspaces (Markdown), delete workspaces and change your profile.",
+			"delete": "To delete your whole account or get a full copy of your data, write to us (see Contact). The app has no self-service account deletion yet.",
+			"children": "TMGR is not meant for children under 16.",
+			"title": "Your rights"
+		},
+		"changes": {
+			"text": "When this policy changes we update the date at the top. For important changes we tell you in the app before they apply.",
+			"title": "Changes"
+		},
+		"contact": {
+			"text": "Questions or requests about your data: {todo}.",
+			"title": "Contact"
+		},
+		"status": {
+			"granted": "Allowed",
+			"denied": "Declined",
+			"unset": "Not chosen yet"
+		}
+	},
+	"agentNotifications": {
+		"title": "Agent alerts",
+		"subtitle": "Get a push notification on your phone when Claude Code, Codex or another AI agent needs you — the recipient is always you, the token owner, and a token works across every workspace you're in. Create a token, then connect Claude Code, Codex or Cursor in one step.",
+		"newToken": "New token",
+		"labelOptional": "Label (optional)",
+		"labelPlaceholder": "Claude Code on my laptop",
+		"creating": "Creating…",
+		"createToken": "Create token",
+		"copyNow": "Copy this token now — you won't see it again.",
+		"showSetup": "Show setup",
+		"tokens": "Tokens",
+		"loadingTokens": "Loading tokens…",
+		"noTokens": "No agent notification tokens yet.",
+		"untitled": "Untitled token",
+		"never": "never",
+		"meta": "{prefix}… · created {created} · last used {lastUsed}",
+		"revoke": "Revoke",
+		"howToConnect": "How to connect",
+		"haveToken": "Already have a token? Use these snippets and replace {placeholder} with it.",
+		"yourToken": "<your token>",
+		"hideSnippets": "Hide snippets",
+		"showSnippets": "Show snippets",
+		"fullGuide": "Full setup guide",
+		"connectTitle": "Connect your agent",
+		"notifyTokenLabel": "Notify token",
+		"sending": "Sending…",
+		"sendTest": "Send test notification",
+		"phoneCall": "Want a phone call for incidents? {link} below.",
+		"setupAlarm": "Set up an alarm phone",
+		"loadFailed": "Could not load tokens.",
+		"createFailed": "Could not create token",
+		"test": {
+			"sent": "Sent — check your phone. (via {channels})",
+			"noChannels": "Nothing was delivered: install the TMGR mobile app and allow notifications, or link Telegram in Profile.",
+			"deduplicated": "Already sent a moment ago.",
+			"rateLimitedIn": "Too many notifications — try again in {seconds} s.",
+			"rateLimited": "Too many notifications — try again shortly.",
+			"unauthorized": "This token was rejected. Create a new one.",
+			"unreachable": "Could not reach TMGR."
+		},
+		"copyFailed": "Could not copy to clipboard",
+		"confirmRevoke": "Revoke the \"{label}\" token?",
+		"revokeFailed": "Could not revoke token"
+	},
+	"alarmPhoneSection": {
+		"title": "Alarm phone",
+		"loading": "Loading alarm phone…",
+		"unconfigured": "Alarm phone is not configured on this server.",
+		"unreadable": "The stored number can't be read. Remove it and enter it again.",
+		"intro": "Used only for critical alarms when push is not acknowledged. Stored encrypted. We'll text you a code to verify it.",
+		"verified": "Verified",
+		"notVerified": "Not verified",
+		"testCall": "Test call",
+		"change": "Change",
+		"callsFrom": "Alarms call you from {number}",
+		"addContact": "Add to contacts",
+		"tipFavorites": "Add it to Favorites.",
+		"tipIphone": "iPhone: in Focus → Do Not Disturb and Sleep, allow calls from Favorites and turn on Repeated Calls.",
+		"tipAndroid": "Android: star the contact and allow starred contacts in Do Not Disturb.",
+		"verificationCode": "Verification code",
+		"verify": "Verify",
+		"resendIn": "Resend in {seconds}s",
+		"resend": "Resend code",
+		"tryAgainIn": "Try again in {time}",
+		"phoneLabel": "Phone number (E.164)",
+		"invalidFormat": "Use international format, e.g. +15550100123.",
+		"errors": {
+			"callFailed": "Could not place the call",
+			"unconfigured": "Alarm phone is not configured on this server",
+			"invalidPhone": "Invalid phone number",
+			"tryAgainIn": "Try again in {time}",
+			"tooMany": "Too many attempts, try again later",
+			"reset": "Too many wrong codes. Enter the number again.",
+			"conflict": "Nothing to do for this number right now",
+			"generic": "Something went wrong"
+		},
+		"loadFailed": "Could not load alarm phone.",
+		"numberChanged": "This number changed, please re-check",
+		"wrongCode": "Wrong code.",
+		"wrongCodeLeft": "Wrong code. Attempts left: {count}.",
+		"calling": "Calling now.",
+		"callsUnconfigured": "Calls are not configured on this server",
+		"verifyFirst": "Verify the number first",
+		"copyFailed": "Could not copy",
+		"contactFailed": "Could not download the contact",
+		"confirmRemove": "Remove the alarm phone?"
+	}
+}

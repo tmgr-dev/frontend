@@ -2,7 +2,7 @@
 	<section
 		v-if="inline || visible || saveFailed"
 		role="region"
-		aria-label="Privacy choices"
+		:aria-label="$t('settingsPages.consentPanel.ariaLabel')"
 		data-consent-panel
 		:class="
 			inline
@@ -12,13 +12,14 @@
 		"
 	>
 		<p v-if="saveFailed" role="alert" class="mb-3 text-sm text-destructive">
-			Couldn't save your choice in this browser. Sharing is stopped in this
-			window.
+			{{ $t('settingsPages.consentPanel.saveFailed') }}
 		</p>
 		<div v-if="showUsage" data-consent-block="usage">
-			<h2 class="text-base font-semibold">Help improve TMGR?</h2>
+			<h2 class="text-base font-semibold">
+				{{ $t('settingsPages.consentPanel.usage.title') }}
+			</h2>
 			<p class="mt-2 text-sm text-muted-foreground">
-				Usage events that are not linked to your account. Off by default.
+				{{ $t('settingsPages.consentPanel.usage.intro') }}
 			</p>
 			<p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
 				<button
@@ -29,40 +30,39 @@
 					data-consent="usage-details"
 					@click="detailsOpen = !detailsOpen"
 				>
-					What we send
+					{{ $t('settingsPages.consentPanel.usage.whatWeSend') }}
 				</button>
 				<router-link
 					to="/privacy#usage-data"
 					class="text-primary underline-offset-4 hover:underline"
 				>
-					What we collect
+					{{ $t('settingsPages.consentPanel.usage.whatWeCollect') }}
 				</router-link>
 			</p>
 			<div v-if="detailsOpen" id="usage-consent-details" class="mt-2">
 				<p class="text-sm text-muted-foreground">
-					If you agree, TMGR sends usage events that are not linked to your
-					account: which screens and tours you open, which steps you finish, app
-					version and platform.
+					{{ $t('settingsPages.consentPanel.usage.details') }}
 				</p>
 				<dl class="space-y-1 mt-2 text-sm">
 					<div>
-						<dt class="inline font-medium">We send:</dt>
+						<dt class="inline font-medium">
+							{{ $t('settingsPages.consentPanel.usage.weSend') }}
+						</dt>
 						<dd class="inline text-muted-foreground">
-							event names like tour_step_completed · a random install ID · app
-							version, OS, screen size class
+							{{ $t('settingsPages.consentPanel.usage.weSendText') }}
 						</dd>
 					</div>
 					<div>
-						<dt class="inline font-medium">We never send:</dt>
+						<dt class="inline font-medium">
+							{{ $t('settingsPages.consentPanel.usage.weNeverSend') }}
+						</dt>
 						<dd class="inline text-muted-foreground">
-							task, page or comment text · names, emails, file names · your
-							account ID. Your IP address is not stored with events.
+							{{ $t('settingsPages.consentPanel.usage.weNeverSendText') }}
 						</dd>
 					</div>
 				</dl>
 				<p class="mt-2 text-sm text-muted-foreground">
-					Change it any time in Settings → Privacy. Turning it off stops sending
-					at once; you can also delete what was already sent.
+					{{ $t('settingsPages.consentPanel.usage.changeAnytime') }}
 				</p>
 			</div>
 			<div class="mt-4 grid grid-cols-2 gap-3">
@@ -71,14 +71,14 @@
 					data-consent="usage-decline"
 					@click="setUsage('denied')"
 				>
-					No, thanks
+					{{ $t('settingsPages.consentPanel.usage.decline') }}
 				</Button>
 				<Button
 					:variant="CONSENT_PANEL_BUTTON_VARIANT"
 					data-consent="usage-accept"
 					@click="setUsage('granted')"
 				>
-					Share usage data
+					{{ $t('settingsPages.consentPanel.usage.accept') }}
 				</Button>
 			</div>
 		</div>
@@ -87,18 +87,18 @@
 			data-consent-block="analytics"
 			:class="showUsage && 'mt-4 border-t border-border pt-4'"
 		>
-			<h2 class="text-base font-semibold">Cookies and analytics</h2>
+			<h2 class="text-base font-semibold">
+				{{ $t('settingsPages.consentPanel.analytics.title') }}
+			</h2>
 			<p class="mt-2 text-sm text-muted-foreground">
-				We'd like to use Google Analytics to understand how people find and use
-				TMGR. It sets cookies and sends data to Google. It stays off unless you
-				allow it. You can change this any time.
+				{{ $t('settingsPages.consentPanel.analytics.text') }}
 			</p>
 			<p class="mt-2 text-sm">
 				<router-link
 					to="/privacy#analytics"
 					class="text-primary underline-offset-4 hover:underline"
 				>
-					Privacy policy
+					{{ $t('settingsPages.consentPanel.analytics.privacyPolicy') }}
 				</router-link>
 			</p>
 			<div class="mt-4 grid grid-cols-2 gap-3">
@@ -107,14 +107,14 @@
 					data-consent="decline"
 					@click="setAnalytics('denied')"
 				>
-					Decline
+					{{ $t('settingsPages.consentPanel.analytics.decline') }}
 				</Button>
 				<Button
 					:variant="CONSENT_PANEL_BUTTON_VARIANT"
 					data-consent="accept"
 					@click="setAnalytics('granted')"
 				>
-					Allow analytics
+					{{ $t('settingsPages.consentPanel.analytics.accept') }}
 				</Button>
 			</div>
 		</div>

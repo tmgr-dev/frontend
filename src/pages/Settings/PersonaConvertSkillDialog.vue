@@ -2,25 +2,31 @@
 	<Dialog :open="open" @update:open="onOpenChange">
 		<DialogContent class="sm:max-w-[480px]">
 			<DialogHeader>
-				<DialogTitle>Convert to shared</DialogTitle>
+				<DialogTitle>{{
+					$t('settingsPages.personaConvertSkillDialog.title')
+				}}</DialogTitle>
 			</DialogHeader>
 
-			<p v-if="loading" class="text-sm text-muted-foreground">Loading…</p>
+			<p v-if="loading" class="text-sm text-muted-foreground">
+				{{ $t('common.states.loading') }}
+			</p>
 			<p v-else-if="loadFailed" class="text-sm text-destructive">
-				Could not load the conversion details.
+				{{ $t('settingsPages.personaConvertSkillDialog.loadFailed') }}
 			</p>
 			<p
 				v-else-if="preview?.library_clash"
 				class="text-sm"
 				data-testid="convert-clash"
 			>
-				Your skills library already has a skill with the slug “{{ slug }}”.
-				Delete or rename one of them first.
+				{{ $t('settingsPages.personaConvertSkillDialog.clash', { slug }) }}
 			</p>
 			<template v-else-if="preview">
 				<p class="text-sm">
-					Moves this skill to your skills library and attaches it to
-					{{ personaName }}. Agents keep the same instructions.
+					{{
+						$t('settingsPages.personaConvertSkillDialog.intro', {
+							name: personaName,
+						})
+					}}
 				</p>
 				<div
 					v-if="preview.other_personas.length"
@@ -44,9 +50,13 @@
 						/>
 						<span class="flex flex-col gap-1">
 							<span>
-								Also replace the copy on {{ other.name }}
+								{{
+									$t('settingsPages.personaConvertSkillDialog.replaceCopy', {
+										name: other.name,
+									})
+								}}
 								<span v-if="other.archived" class="text-muted-foreground">
-									(archived)
+									{{ $t('settingsPages.personaConvertSkillDialog.archived') }}
 								</span>
 							</span>
 							<span
@@ -59,8 +69,10 @@
 							>
 								{{
 									other.same_body
-										? 'Same text'
-										: 'Different text — will be replaced'
+										? $t('settingsPages.personaConvertSkillDialog.sameText')
+										: $t(
+												'settingsPages.personaConvertSkillDialog.differentText',
+											)
 								}}
 							</span>
 						</span>
@@ -75,7 +87,11 @@
 					:disabled="busy"
 					@click="close"
 				>
-					{{ preview?.library_clash ? 'Close' : 'Cancel' }}
+					{{
+						preview?.library_clash
+							? $t('common.actions.close')
+							: $t('common.actions.cancel')
+					}}
 				</Button>
 				<Button
 					v-if="preview && !preview.library_clash"
@@ -83,7 +99,7 @@
 					:disabled="busy"
 					@click="confirm"
 				>
-					Convert
+					{{ $t('settingsPages.personaConvertSkillDialog.convert') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
@@ -105,6 +121,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { buildReplacePersonas, convertSuccessTitle } from '@/utils/personas';
 	import { defineComponent, ref, watch } from 'vue';
 
@@ -186,7 +203,7 @@
 					emit('converted', props.slug);
 				} catch (error: any) {
 					toast({
-						title: 'Could not convert this skill',
+						title: t('settingsPages.personaConvertSkillDialog.convertFailed'),
 						description: error?.response?.data?.message,
 						variant: 'destructive',
 					});

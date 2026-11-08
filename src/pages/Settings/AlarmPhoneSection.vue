@@ -1,31 +1,30 @@
 <template>
-	<SettingsSection title="Alarm phone">
+	<SettingsSection :title="$t('settingsPages.alarmPhoneSection.title')">
 		<p v-if="loading" class="text-sm text-muted-foreground">
-			Loading alarm phone…
+			{{ $t('settingsPages.alarmPhoneSection.loading') }}
 		</p>
 		<p
 			v-else-if="state.kind === 'unconfigured'"
 			class="text-sm text-muted-foreground"
 		>
-			Alarm phone is not configured on this server.
+			{{ $t('settingsPages.alarmPhoneSection.unconfigured') }}
 		</p>
 		<p v-else-if="loadError" class="text-sm text-destructive">
 			{{ loadError }}
 		</p>
 		<div v-else-if="state.kind === 'unreadable'" class="flex flex-col gap-3">
 			<p class="text-sm text-destructive">
-				The stored number can't be read. Remove it and enter it again.
+				{{ $t('settingsPages.alarmPhoneSection.unreadable') }}
 			</p>
 			<div>
 				<Button variant="outline" size="sm" :disabled="busy" @click="remove">
-					Remove
+					{{ $t('common.actions.remove') }}
 				</Button>
 			</div>
 		</div>
 		<div v-else class="flex flex-col gap-3">
 			<p class="text-sm text-muted-foreground">
-				Used only for critical alarms when push is not acknowledged. Stored
-				encrypted. We'll text you a code to verify it.
+				{{ $t('settingsPages.alarmPhoneSection.intro') }}
 			</p>
 
 			<div
@@ -44,7 +43,11 @@
 								: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
 						]"
 					>
-						{{ state.phone.verified ? 'Verified' : 'Not verified' }}
+						{{
+							state.phone.verified
+								? $t('settingsPages.alarmPhoneSection.verified')
+								: $t('settingsPages.alarmPhoneSection.notVerified')
+						}}
 					</span>
 				</div>
 				<div class="flex flex-wrap gap-2">
@@ -55,7 +58,7 @@
 						:disabled="busy"
 						@click="testCall"
 					>
-						Test call
+						{{ $t('settingsPages.alarmPhoneSection.testCall') }}
 					</Button>
 					<Button
 						variant="outline"
@@ -63,10 +66,10 @@
 						:disabled="busy"
 						@click="startEdit"
 					>
-						Change
+						{{ $t('settingsPages.alarmPhoneSection.change') }}
 					</Button>
 					<Button variant="outline" size="sm" :disabled="busy" @click="remove">
-						Remove
+						{{ $t('common.actions.remove') }}
 					</Button>
 				</div>
 			</div>
@@ -76,29 +79,35 @@
 				class="flex flex-col gap-2 rounded border border-border bg-muted/40 p-3"
 			>
 				<p class="text-sm">
-					Alarms call you from
-					<span class="font-mono font-medium">{{ callerNumber }}</span>
+					<i18n-t
+						keypath="settingsPages.alarmPhoneSection.callsFrom"
+						tag="span"
+					>
+						<template #number>
+							<span class="font-mono font-medium">{{ callerNumber }}</span>
+						</template>
+					</i18n-t>
 				</p>
 				<div class="flex flex-wrap gap-2">
-					<Button variant="outline" size="sm" @click="copyCaller">Copy</Button>
+					<Button variant="outline" size="sm" @click="copyCaller">{{
+						$t('common.actions.copy')
+					}}</Button>
 					<Button
 						variant="outline"
 						size="sm"
 						:disabled="busy"
 						@click="addContact"
 					>
-						Add to contacts
+						{{ $t('settingsPages.alarmPhoneSection.addContact') }}
 					</Button>
 				</div>
 				<ul class="list-disc pl-5 text-xs text-muted-foreground">
-					<li>Add it to Favorites.</li>
+					<li>{{ $t('settingsPages.alarmPhoneSection.tipFavorites') }}</li>
 					<li>
-						iPhone: in Focus → Do Not Disturb and Sleep, allow calls from
-						Favorites and turn on Repeated Calls.
+						{{ $t('settingsPages.alarmPhoneSection.tipIphone') }}
 					</li>
 					<li>
-						Android: star the contact and allow starred contacts in Do Not
-						Disturb.
+						{{ $t('settingsPages.alarmPhoneSection.tipAndroid') }}
 					</li>
 				</ul>
 			</div>
@@ -109,7 +118,9 @@
 				@submit.prevent="verify"
 			>
 				<label class="flex flex-col gap-1">
-					<span class="text-sm font-medium">Verification code</span>
+					<span class="text-sm font-medium">{{
+						$t('settingsPages.alarmPhoneSection.verificationCode')
+					}}</span>
 					<Input
 						:model-value="code"
 						inputmode="numeric"
@@ -123,18 +134,28 @@
 					{{ codeError }}
 				</p>
 				<div class="flex gap-2">
-					<Button type="submit" :disabled="busy || !codeValid">Verify</Button>
+					<Button type="submit" :disabled="busy || !codeValid">{{
+						$t('settingsPages.alarmPhoneSection.verify')
+					}}</Button>
 					<Button
 						type="button"
 						variant="outline"
 						:disabled="busy || cooldown > 0 || !!lockout"
 						@click="resend"
 					>
-						{{ cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code' }}
+						{{
+							cooldown > 0
+								? $t('settingsPages.alarmPhoneSection.resendIn', {
+										seconds: cooldown,
+									})
+								: $t('settingsPages.alarmPhoneSection.resend')
+						}}
 					</Button>
 				</div>
 				<p v-if="lockout" class="text-xs text-muted-foreground">
-					Try again in {{ lockout }}
+					{{
+						$t('settingsPages.alarmPhoneSection.tryAgainIn', { time: lockout })
+					}}
 				</p>
 			</form>
 
@@ -144,7 +165,9 @@
 				@submit.prevent="submit"
 			>
 				<label class="flex flex-col gap-1">
-					<span class="text-sm font-medium">Phone number (E.164)</span>
+					<span class="text-sm font-medium">{{
+						$t('settingsPages.alarmPhoneSection.phoneLabel')
+					}}</span>
 					<Input
 						:model-value="phone"
 						type="tel"
@@ -154,10 +177,12 @@
 					/>
 				</label>
 				<p v-if="phone && !valid" class="text-xs text-destructive">
-					Use international format, e.g. +15550100123.
+					{{ $t('settingsPages.alarmPhoneSection.invalidFormat') }}
 				</p>
 				<div class="flex gap-2">
-					<Button type="submit" :disabled="busy || !valid">Save</Button>
+					<Button type="submit" :disabled="busy || !valid">{{
+						$t('common.actions.save')
+					}}</Button>
 					<Button
 						v-if="state.kind === 'set'"
 						type="button"
@@ -165,7 +190,7 @@
 						:disabled="busy"
 						@click="cancelEdit"
 					>
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</Button>
 				</div>
 			</form>
@@ -194,6 +219,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import {
 		computed,
 		defineComponent,
@@ -203,26 +229,30 @@
 	} from 'vue';
 
 	const COOLDOWN_SECONDS = 60;
-	const RESET_MESSAGE = 'Too many wrong codes. Enter the number again.';
 
 	const messageFor = (error: AlarmPhoneError): string => {
 		switch (error.kind) {
 			case 'call_failed':
-				return 'Could not place the call';
+				return t('settingsPages.alarmPhoneSection.errors.callFailed');
 			case 'unconfigured':
-				return 'Alarm phone is not configured on this server';
+				return t('settingsPages.alarmPhoneSection.errors.unconfigured');
 			case 'invalid':
-				return error.message ?? 'Invalid phone number';
+				return (
+					error.message ??
+					t('settingsPages.alarmPhoneSection.errors.invalidPhone')
+				);
 			case 'rate_limited':
 				return error.retryAfter && error.retryAfter > COOLDOWN_SECONDS
-					? `Try again in ${formatRetryAfter(error.retryAfter)}`
-					: 'Too many attempts, try again later';
+					? t('settingsPages.alarmPhoneSection.errors.tryAgainIn', {
+							time: formatRetryAfter(error.retryAfter),
+						})
+					: t('settingsPages.alarmPhoneSection.errors.tooMany');
 			case 'reset':
-				return RESET_MESSAGE;
+				return t('settingsPages.alarmPhoneSection.errors.reset');
 			case 'conflict':
-				return 'Nothing to do for this number right now';
+				return t('settingsPages.alarmPhoneSection.errors.conflict');
 			default:
-				return 'Something went wrong';
+				return t('settingsPages.alarmPhoneSection.errors.generic');
 		}
 	};
 
@@ -312,7 +342,7 @@
 				try {
 					state.value = await fetchAlarmPhone();
 				} catch {
-					loadError.value = 'Could not load alarm phone.';
+					loadError.value = t('settingsPages.alarmPhoneSection.loadFailed');
 				} finally {
 					loading.value = false;
 					busy.value = false;
@@ -370,14 +400,16 @@
 					if (detail.kind === 'conflict') {
 						await reload();
 						toast({
-							title: 'This number changed, please re-check',
+							title: t('settingsPages.alarmPhoneSection.numberChanged'),
 							variant: 'destructive',
 						});
 					} else if (detail.kind === 'wrong_code') {
 						codeError.value =
 							detail.attemptsLeft === undefined
-								? 'Wrong code.'
-								: `Wrong code. Attempts left: ${detail.attemptsLeft}.`;
+								? t('settingsPages.alarmPhoneSection.wrongCode')
+								: t('settingsPages.alarmPhoneSection.wrongCodeLeft', {
+										count: detail.attemptsLeft,
+									});
 					} else {
 						fail(error);
 					}
@@ -403,16 +435,19 @@
 				busy.value = true;
 				try {
 					await startAlarmTestCall();
-					toast({ title: 'Calling now.' });
+					toast({ title: t('settingsPages.alarmPhoneSection.calling') });
 				} catch (error) {
 					const detail = alarmPhoneError(error);
 					if (detail.kind === 'unconfigured') {
 						toast({
-							title: 'Calls are not configured on this server',
+							title: t('settingsPages.alarmPhoneSection.callsUnconfigured'),
 							variant: 'destructive',
 						});
 					} else if (detail.kind === 'conflict') {
-						toast({ title: 'Verify the number first', variant: 'destructive' });
+						toast({
+							title: t('settingsPages.alarmPhoneSection.verifyFirst'),
+							variant: 'destructive',
+						});
 					} else {
 						fail(error);
 					}
@@ -425,9 +460,12 @@
 				if (!callerNumber.value) return;
 				try {
 					await navigator.clipboard.writeText(callerNumber.value);
-					toast({ title: 'Copied' });
+					toast({ title: t('common.actions.copied') });
 				} catch {
-					toast({ title: 'Could not copy', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.alarmPhoneSection.copyFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
@@ -437,7 +475,7 @@
 					await downloadAlarmContact();
 				} catch {
 					toast({
-						title: 'Could not download the contact',
+						title: t('settingsPages.alarmPhoneSection.contactFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -446,7 +484,8 @@
 			};
 
 			const remove = async () => {
-				if (!window.confirm('Remove the alarm phone?')) return;
+				if (!window.confirm(t('settingsPages.alarmPhoneSection.confirmRemove')))
+					return;
 				busy.value = true;
 				try {
 					await removeAlarmPhone();

@@ -4,11 +4,16 @@
 
 		<AiUsageSettings v-if="desktop" />
 
-		<SettingsSection v-if="!desktop" title="Cookies and analytics">
+		<SettingsSection
+			v-if="!desktop"
+			:title="$t('settingsPages.privacySettings.cookiesTitle')"
+		>
 			<SettingsRow
 				v-slot="{ labelId, descriptionId }"
-				label="Google Analytics"
-				description="Helps us understand how TMGR is used. Sets cookies and sends data to Google. Off unless you allow it."
+				:label="$t('settingsPages.privacySettings.googleAnalytics')"
+				:description="
+					$t('settingsPages.privacySettings.googleAnalyticsDescription')
+				"
 			>
 				<Switch
 					data-testid="analytics-switch"
@@ -23,7 +28,7 @@
 		</SettingsSection>
 
 		<router-link to="/privacy" class="text-sm text-primary hover:underline">
-			Privacy policy
+			{{ $t('settingsPages.privacySettings.privacyPolicy') }}
 		</router-link>
 	</div>
 </template>

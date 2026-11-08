@@ -1,12 +1,12 @@
 <template>
 	<div class="flex flex-col gap-3">
 		<p v-if="loading" class="text-xs text-muted-foreground">
-			Loading agent connections…
+			{{ $t('settingsPages.personaTokens.loading') }}
 		</p>
 
 		<div v-else class="flex flex-col gap-2">
 			<p v-if="tokens.length === 0" class="text-xs text-muted-foreground">
-				No agent connections yet.
+				{{ $t('settingsPages.personaTokens.empty') }}
 			</p>
 			<div
 				v-for="token in tokens"
@@ -26,9 +26,16 @@
 						</span>
 					</p>
 					<p class="truncate text-xs text-muted-foreground">
-						{{ token.prefix }}… · {{ token.workspace_name }} · expires
-						{{ formatDate(token.expires_at) }} · last used
-						{{ token.last_used_at ? formatDate(token.last_used_at) : 'never' }}
+						{{
+							$t('settingsPages.personaTokens.details', {
+								prefix: token.prefix,
+								workspace: token.workspace_name,
+								expires: formatDate(token.expires_at),
+								lastUsed: token.last_used_at
+									? formatDate(token.last_used_at)
+									: $t('settingsPages.personaTokens.never'),
+							})
+						}}
 					</p>
 				</div>
 				<Button
@@ -38,20 +45,22 @@
 					class="shrink-0"
 					@click="revoke(token)"
 				>
-					Revoke
+					{{ $t('settingsPages.personaTokens.revoke') }}
 				</Button>
 			</div>
 		</div>
 
 		<div class="flex gap-2 border-t border-border pt-3">
-			<Button size="sm" @click="showConnect = true">Connect an agent</Button>
+			<Button size="sm" @click="showConnect = true">{{
+				$t('settingsPages.personaTokens.connect')
+			}}</Button>
 			<Button
 				v-if="activeTokens.length > 0"
 				variant="outline"
 				size="sm"
 				@click="revokeAll"
 			>
-				Revoke all
+				{{ $t('settingsPages.personaTokens.revokeAll') }}
 			</Button>
 		</div>
 
@@ -73,6 +82,7 @@
 	} from '@/actions/tmgr/personas';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import { currentLocale, t } from '@/i18n';
 	import {
 		computed,
 		defineComponent,
@@ -94,7 +104,7 @@
 			const showConnect = ref(false);
 
 			const activeTokens = computed(() =>
-				tokens.value.filter((t) => !t.revoked_at),
+				tokens.value.filter((token) => !token.revoked_at),
 			);
 
 			const load = async () => {
@@ -103,7 +113,7 @@
 					tokens.value = await listPersonaTokens(props.persona.id, false);
 				} catch {
 					toast({
-						title: 'Could not load agent connections',
+						title: t('settingsPages.personaTokens.loadFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -115,33 +125,51 @@
 				new Date(token.expires_at).getTime() < Date.now();
 
 			const statusLabel = (token: PersonaToken) =>
-				token.revoked_at ? 'Revoked' : isExpired(token) ? 'Expired' : 'Active';
+				token.revoked_at
+					? t('settingsPages.personaTokens.revoked')
+					: isExpired(token)
+						? t('settingsPages.personaTokens.expired')
+						: t('settingsPages.personaTokens.active');
 
 			const statusTone = (token: PersonaToken) =>
 				token.revoked_at || isExpired(token)
 					? 'bg-muted text-muted-foreground'
 					: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300';
 
-			const formatDate = (date: string) => new Date(date).toLocaleDateString();
+			const formatDate = (date: string) =>
+				new Date(date).toLocaleDateString(currentLocale());
 
 			const revoke = async (token: PersonaToken) => {
-				if (!window.confirm(`Revoke the "${token.label}" connection?`)) return;
+				if (
+					!window.confirm(
+						t('settingsPages.personaTokens.confirmRevoke', {
+							label: token.label,
+						}),
+					)
+				)
+					return;
 				try {
 					await revokePersonaToken(token.id, props.persona.id);
 					await load();
 				} catch {
-					toast({ title: 'Could not revoke token', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.personaTokens.revokeFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
 			const revokeAll = async () => {
-				if (!window.confirm('Revoke every agent connection for this persona?'))
+				if (!window.confirm(t('settingsPages.personaTokens.confirmRevokeAll')))
 					return;
 				try {
 					await revokeAllPersonaTokens(props.persona.id);
 					await load();
 				} catch {
-					toast({ title: 'Could not revoke tokens', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.personaTokens.revokeAllFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 

@@ -7,14 +7,16 @@
 				data-testid="skill-import-open"
 				@click="importOpen = true"
 			>
-				Import from local agents
+				{{ $t('settingsPages.skillsLibrary.importFromAgents') }}
 			</Button>
 		</div>
-		<p v-if="loading" class="text-xs text-muted-foreground">Loading library…</p>
+		<p v-if="loading" class="text-xs text-muted-foreground">
+			{{ $t('settingsPages.skillsLibrary.loading') }}
+		</p>
 
 		<div v-else class="flex flex-col gap-2">
 			<p v-if="skills.length === 0" class="text-xs text-muted-foreground">
-				No shared skills yet.
+				{{ $t('settingsPages.skillsLibrary.empty') }}
 			</p>
 			<div
 				v-for="skill in skills"
@@ -26,7 +28,7 @@
 					<p class="truncate text-xs text-muted-foreground">
 						{{ skill.slug }} · v{{ skill.version }} ·
 						<template v-if="skill.attached_personas.length === 0">
-							Not attached
+							{{ $t('settingsPages.skillsLibrary.notAttached') }}
 						</template>
 						<template v-else>
 							<span
@@ -34,12 +36,14 @@
 								:key="p.id"
 								:title="
 									p.overridden
-										? 'Overridden by this persona\'s own skill'
+										? $t('settingsPages.skillsLibrary.overriddenTitle')
 										: undefined
 								"
 							>
 								{{ p.name
-								}}<template v-if="p.overridden"> (overridden)</template
+								}}<template v-if="p.overridden">{{
+									' ' + $t('settingsPages.skillsLibrary.overridden')
+								}}</template
 								><template v-if="i < skill.attached_personas.length - 1"
 									>,
 								</template>
@@ -51,26 +55,36 @@
 					<Button
 						variant="outline"
 						size="sm"
-						:aria-label="`History of ${skill.title}`"
+						:aria-label="
+							$t('settingsPages.skillsLibrary.historyOf', {
+								title: skill.title,
+							})
+						"
 						@click="openHistory(skill)"
 					>
-						History
+						{{ $t('settingsPages.skillsLibrary.history') }}
 					</Button>
 					<Button
 						v-if="skill.files_count"
 						variant="outline"
 						size="sm"
-						:aria-label="`Files of ${skill.title}`"
+						:aria-label="
+							$t('settingsPages.skillsLibrary.filesOf', { title: skill.title })
+						"
 						data-testid="skill-files-open"
 						@click="filesSlug = filesSlug === skill.slug ? null : skill.slug"
 					>
-						Files ({{ skill.files_count }})
+						{{
+							$t('settingsPages.skillsLibrary.filesButton', {
+								count: skill.files_count,
+							})
+						}}
 					</Button>
 					<Button variant="outline" size="sm" @click="startEdit(skill)">
-						Edit
+						{{ $t('common.actions.edit') }}
 					</Button>
 					<Button variant="outline" size="sm" @click="remove(skill)">
-						Delete
+						{{ $t('common.actions.delete') }}
 					</Button>
 				</div>
 			</div>
@@ -95,12 +109,21 @@
 		<DeletedSkills :reload-token="deletedToken" @changed="onRestored" />
 
 		<p class="text-2xs text-muted-foreground">
-			{{ skills.length }}/{{ SHARED_SKILL_LIMIT }} used
+			{{
+				$t('settingsPages.skillsLibrary.used', {
+					count: skills.length,
+					limit: SHARED_SKILL_LIMIT,
+				})
+			}}
 		</p>
 
 		<div class="flex flex-col gap-2 border-t border-border pt-3">
 			<h5 class="text-xs font-semibold">
-				{{ editingSlug ? `Edit ${editingSlug}` : 'New shared skill' }}
+				{{
+					editingSlug
+						? $t('settingsPages.skillsLibrary.editing', { slug: editingSlug })
+						: $t('settingsPages.skillsLibrary.newSkill')
+				}}
 			</h5>
 			<Textarea
 				v-model="draft"
@@ -116,7 +139,12 @@
 						: 'text-muted-foreground',
 				]"
 			>
-				{{ draftBytes }} / {{ SKILL_BODY_MAX_BYTES }} bytes
+				{{
+					$t('settingsPages.skillsLibrary.bytes', {
+						count: draftBytes,
+						max: SKILL_BODY_MAX_BYTES,
+					})
+				}}
 			</span>
 			<ul v-if="draftErrors" class="text-xs text-destructive">
 				<li v-for="(messages, field) in draftErrors" :key="field">
@@ -125,7 +153,11 @@
 			</ul>
 			<div class="flex gap-2">
 				<Button size="sm" :disabled="saving" @click="submit">
-					{{ editingSlug ? 'Save changes' : 'Create skill' }}
+					{{
+						editingSlug
+							? $t('settingsPages.skillsLibrary.saveChanges')
+							: $t('settingsPages.skillsLibrary.createSkill')
+					}}
 				</Button>
 				<Button
 					v-if="editingSlug"
@@ -134,7 +166,7 @@
 					size="sm"
 					@click="cancelEdit"
 				>
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</Button>
 			</div>
 		</div>
@@ -162,6 +194,7 @@
 	import { Textarea } from '@/components/ui/textarea';
 	import { toast } from '@/components/ui/toast';
 	import store from '@/store';
+	import { t } from '@/i18n';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		byteLength,
@@ -211,7 +244,7 @@
 					skills.value = await listSharedSkills();
 				} catch {
 					toast({
-						title: 'Could not load the skills library',
+						title: t('settingsPages.skillsLibrary.loadFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -262,7 +295,10 @@
 					draft.value = full.body;
 					serverErrors.value = null;
 				} catch {
-					toast({ title: 'Could not load this skill', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.skillsLibrary.loadSkillFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
@@ -289,7 +325,9 @@
 				}
 				if (!editingSlug.value && skills.value.length >= SHARED_SKILL_LIMIT) {
 					toast({
-						title: `Your library already has ${SHARED_SKILL_LIMIT} skills`,
+						title: t('settingsPages.skillsLibrary.limitReached', {
+							limit: SHARED_SKILL_LIMIT,
+						}),
 						variant: 'destructive',
 					});
 					return;
@@ -298,7 +336,7 @@
 				serverErrors.value = null;
 				try {
 					await putSharedSkill(targetSlug, draft.value);
-					toast({ title: 'Skill saved' });
+					toast({ title: t('settingsPages.skillsLibrary.saved') });
 					cancelEdit();
 					await load();
 					emit('changed');
@@ -308,7 +346,10 @@
 						serverErrors.value = fieldErrors.errors;
 						toast({ title: fieldErrors.message, variant: 'destructive' });
 					} else {
-						toast({ title: 'Could not save skill', variant: 'destructive' });
+						toast({
+							title: t('settingsPages.skillsLibrary.saveFailed'),
+							variant: 'destructive',
+						});
 					}
 				} finally {
 					saving.value = false;
@@ -330,7 +371,10 @@
 					await load();
 					emit('changed');
 				} catch {
-					toast({ title: 'Could not delete skill', variant: 'destructive' });
+					toast({
+						title: t('settingsPages.skillsLibrary.deleteFailed'),
+						variant: 'destructive',
+					});
 				}
 			};
 
