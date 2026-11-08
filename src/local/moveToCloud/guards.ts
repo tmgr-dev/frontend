@@ -10,9 +10,10 @@ import {
 
 export const removeAccountMessage = (): string =>
 	t('desktop.helpers.move.guards.removeAccount');
-export const SIGN_IN_MESSAGE = 'Sign in to remove the local copy.';
-export const OLD_RECORD_MESSAGE =
-	'This move was recorded by an older version, so the local copy cannot be removed automatically.';
+export const signInMessage = (): string =>
+	t('desktop.helpers.move.guards.signIn');
+export const oldRecordMessage = (): string =>
+	t('desktop.helpers.move.guards.oldRecord');
 
 export interface Guard {
 	id: 'published' | 'unchanged' | 'files' | 'skills';
@@ -116,7 +117,7 @@ export interface DecisionDeps {
 
 const movedDir = (storage: MoveStorage, code: string): string => {
 	const dir = loadPersisted(storage, code).published?.dir;
-	if (!dir) throw new Error(OLD_RECORD_MESSAGE);
+	if (!dir) throw new Error(oldRecordMessage());
 	return dir;
 };
 
@@ -191,8 +192,8 @@ export const removeLocalCopy = async (
 	if (removalAccountMismatch(published, session.userId)) {
 		throw new Error(removeAccountMessage());
 	}
-	if (!session.token) throw new Error(SIGN_IN_MESSAGE);
-	if (!published.dir) throw new Error(OLD_RECORD_MESSAGE);
+	if (!session.token) throw new Error(signInMessage());
+	if (!published.dir) throw new Error(oldRecordMessage());
 	const liveRevision = await deps.sourceRevision(code);
 	const failed = removeLocalCopyGuards({ published, liveRevision }).find(
 		(g) => !g.ok,

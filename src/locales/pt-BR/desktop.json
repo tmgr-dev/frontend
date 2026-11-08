@@ -627,9 +627,20 @@
 				"files": "Todo arquivo que não pôde ser enviado foi exportado ou aceito como perdido",
 				"skills": "As habilidades deste dispositivo foram copiadas para a sua biblioteca na nuvem",
 				"removeAccount": "Esta mudança foi publicada por outra conta. Entre com essa conta para remover a cópia local.",
-				"cannotRemove": "Ainda não é possível remover: {reason}."
+				"cannotRemove": "Ainda não é possível remover: {reason}.",
+				"signIn": "Entre para remover a cópia local.",
+				"oldRecord": "Esta migração foi registrada por uma versão mais antiga, então a cópia local não pode ser removida automaticamente."
 			},
-			"legacy": "Esta mudança foi iniciada por uma versão antiga. Descarte-a e comece de novo."
+			"legacy": "Esta mudança foi iniciada por uma versão antiga. Descarte-a e comece de novo.",
+			"accountMismatch": "Esta migração foi iniciada por outra conta. Entre com essa conta para continuar ou descarte-a.",
+			"signInToMove": "Entre para mover este espaço de trabalho para a nuvem.",
+			"demo": "O espaço de trabalho de demonstração fica neste Mac e não pode ser movido para a nuvem",
+			"cancelled": "Migração cancelada",
+			"unsupportedSchema": "Atualize o TMGR para mover este espaço de trabalho.",
+			"quota": "Você pode iniciar até 3 migrações por dia. Tente novamente amanhã.",
+			"running": "Outra migração ainda está em andamento.",
+			"tooLarge": "Este espaço de trabalho é grande demais para ser movido de uma vez.",
+			"genericError": "Algo deu errado."
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "na fila"
 			},
 			"limit": {
-				"unknown": "{label}: desconhecido{age}",
-				"pct": "{label}: {pct}% {source}{age}",
-				"age": " há {age}",
-				"marks": " (parar novas em {soft}%, pausar em {hard}%)",
-				"resets": " · reinicia {time}"
+				"unknown": {
+					"base": "{label}: desconhecido",
+					"age": "{label}: desconhecido há {age}"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · reinicia {time}",
+					"marks": "{label}: {pct}% {source} (parar novas em {soft}%, pausar em {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (parar novas em {soft}%, pausar em {hard}%) · reinicia {time}",
+					"age": "{label}: {pct}% {source} há {age}",
+					"ageResets": "{label}: {pct}% {source} há {age} · reinicia {time}",
+					"ageMarks": "{label}: {pct}% {source} há {age} (parar novas em {soft}%, pausar em {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} há {age} (parar novas em {soft}%, pausar em {hard}%) · reinicia {time}"
+				}
 			},
 			"cost": {
 				"ofCap": "{used} de {cap} de limite",

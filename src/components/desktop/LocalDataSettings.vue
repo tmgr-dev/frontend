@@ -244,7 +244,7 @@
 				rows,
 				loaded,
 				loadError,
-				revealLabel: revealInFileManagerLabel(),
+				revealLabel: computed(() => revealInFileManagerLabel()),
 				lastBackup: (row: Row) => lastBackupLabel(row.status?.last_backup_at),
 				openData: (row: Row) =>
 					run(row, () => revealWorkspaceFolder(row.workspace.code)),

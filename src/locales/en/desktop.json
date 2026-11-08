@@ -627,9 +627,20 @@
 				"files": "Every file that could not be uploaded is exported or accepted as lost",
 				"skills": "Skills from this device are copied to your cloud library",
 				"removeAccount": "This move was published by another account. Sign in as that account to remove the local copy.",
-				"cannotRemove": "Cannot remove yet: {reason}."
+				"cannotRemove": "Cannot remove yet: {reason}.",
+				"signIn": "Sign in to remove the local copy.",
+				"oldRecord": "This move was recorded by an older version, so the local copy cannot be removed automatically."
 			},
-			"legacy": "This move was started by an older version. Discard it and start again."
+			"legacy": "This move was started by an older version. Discard it and start again.",
+			"accountMismatch": "This move was started by another account. Sign in as that account to continue, or discard it.",
+			"signInToMove": "Sign in to move this workspace to the cloud.",
+			"demo": "The demo workspace stays on this Mac and cannot be moved to the cloud",
+			"cancelled": "Move cancelled",
+			"unsupportedSchema": "Update TMGR to move this workspace.",
+			"quota": "You can start up to 3 moves a day. Try again tomorrow.",
+			"running": "Another move is still running.",
+			"tooLarge": "This workspace is too large to move in one go.",
+			"genericError": "Something went wrong."
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "queued"
 			},
 			"limit": {
-				"unknown": "{label}: unknown{age}",
-				"pct": "{label}: {pct}% {source}{age}",
-				"age": " {age} ago",
-				"marks": " (stop new at {soft}%, pause at {hard}%)",
-				"resets": " · resets {time}"
+				"unknown": {
+					"base": "{label}: unknown",
+					"age": "{label}: unknown {age} ago"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · resets {time}",
+					"marks": "{label}: {pct}% {source} (stop new at {soft}%, pause at {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (stop new at {soft}%, pause at {hard}%) · resets {time}",
+					"age": "{label}: {pct}% {source} {age} ago",
+					"ageResets": "{label}: {pct}% {source} {age} ago · resets {time}",
+					"ageMarks": "{label}: {pct}% {source} {age} ago (stop new at {soft}%, pause at {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} {age} ago (stop new at {soft}%, pause at {hard}%) · resets {time}"
+				}
 			},
 			"cost": {
 				"ofCap": "{used} of {cap} cap",

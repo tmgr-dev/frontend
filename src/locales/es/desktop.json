@@ -627,9 +627,20 @@
 				"files": "Todos los archivos que no se pudieron subir están exportados o aceptados como perdidos",
 				"skills": "Las habilidades de este dispositivo están copiadas en tu biblioteca en la nube",
 				"removeAccount": "Este traslado lo publicó otra cuenta. Inicia sesión con esa cuenta para eliminar la copia local.",
-				"cannotRemove": "Aún no se puede eliminar: {reason}."
+				"cannotRemove": "Aún no se puede eliminar: {reason}.",
+				"signIn": "Inicia sesión para eliminar la copia local.",
+				"oldRecord": "Este traslado lo registró una versión anterior, por lo que la copia local no se puede eliminar automáticamente."
 			},
-			"legacy": "Este traslado lo inició una versión anterior. Descártalo y empieza de nuevo."
+			"legacy": "Este traslado lo inició una versión anterior. Descártalo y empieza de nuevo.",
+			"accountMismatch": "Este traslado lo inició otra cuenta. Inicia sesión con esa cuenta para continuar, o descártalo.",
+			"signInToMove": "Inicia sesión para trasladar este espacio de trabajo a la nube.",
+			"demo": "El espacio de trabajo de demostración se queda en este Mac y no se puede trasladar a la nube",
+			"cancelled": "Traslado cancelado",
+			"unsupportedSchema": "Actualiza TMGR para trasladar este espacio de trabajo.",
+			"quota": "Puedes iniciar hasta 3 traslados al día. Inténtalo de nuevo mañana.",
+			"running": "Otro traslado sigue en curso.",
+			"tooLarge": "Este espacio de trabajo es demasiado grande para trasladarlo de una vez.",
+			"genericError": "Algo salió mal."
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "en cola"
 			},
 			"limit": {
-				"unknown": "{label}: desconocido{age}",
-				"pct": "{label}: {pct}% {source}{age}",
-				"age": " hace {age}",
-				"marks": " (no iniciar nuevas al {soft}%, pausar al {hard}%)",
-				"resets": " · se restablece {time}"
+				"unknown": {
+					"base": "{label}: desconocido",
+					"age": "{label}: desconocido hace {age}"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · se restablece {time}",
+					"marks": "{label}: {pct}% {source} (no iniciar nuevas al {soft}%, pausar al {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (no iniciar nuevas al {soft}%, pausar al {hard}%) · se restablece {time}",
+					"age": "{label}: {pct}% {source} hace {age}",
+					"ageResets": "{label}: {pct}% {source} hace {age} · se restablece {time}",
+					"ageMarks": "{label}: {pct}% {source} hace {age} (no iniciar nuevas al {soft}%, pausar al {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} hace {age} (no iniciar nuevas al {soft}%, pausar al {hard}%) · se restablece {time}"
+				}
 			},
 			"cost": {
 				"ofCap": "{used} de un tope de {cap}",

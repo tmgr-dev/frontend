@@ -174,12 +174,15 @@ const statusHeader = (
 			);
 	}
 
+	const stateWord = KNOWN_STATES.includes(state)
+		? t(`desktop.helpers.autopilot.words.${state}`)
+		: state;
 	const lastState =
 		!needsUpdate && !running && !stopped
 			? updatedMs === null
-				? t('desktop.helpers.autopilot.lastState', { state })
+				? t('desktop.helpers.autopilot.lastState', { state: stateWord })
 				: t('desktop.helpers.autopilot.lastStateUpdated', {
-						state,
+						state: stateWord,
 						age: span((nowMs - updatedMs) / 1000),
 					})
 			: null;
@@ -233,8 +236,6 @@ const limitView = (
 	)}`;
 	const source = text(raw.source, 32);
 	const age = ageSpan(nowMs, raw.observed_at);
-	const ageSuffix =
-		age === null ? '' : t('desktop.helpers.autopilot.limit.age', { age });
 	const pct = num(raw.used_pct);
 	const soft = num(raw.stop_new_at);
 	const hard = num(raw.pause_at);
@@ -243,24 +244,28 @@ const limitView = (
 	const resets =
 		resetsMs === null ? null : clock(raw.resets_at as string, tzMinutes);
 
-	let body = t('desktop.helpers.autopilot.limit.unknown', {
-		label,
-		age: ageSuffix,
-	});
-	if (pct !== null) {
-		body = t('desktop.helpers.autopilot.limit.pct', {
+	const base = 'desktop.helpers.autopilot.limit';
+	const aged = age !== null;
+	let body: string;
+	if (pct === null) {
+		body = t(`${base}.unknown.${aged ? 'age' : 'base'}`, { label, age });
+	} else {
+		const variant =
+			(aged ? 'age' : '') +
+			(marks ? 'Marks' : '') +
+			(resets !== null ? 'Resets' : '');
+		const key = variant
+			? variant.charAt(0).toLowerCase() + variant.slice(1)
+			: 'base';
+		body = t(`${base}.pct.${key}`, {
 			label,
 			pct: Math.round(pct),
 			source,
-			age: ageSuffix,
+			age,
+			soft: marks?.soft,
+			hard: marks?.hard,
+			time: resets,
 		});
-		if (marks)
-			body += t('desktop.helpers.autopilot.limit.marks', {
-				soft: marks.soft,
-				hard: marks.hard,
-			});
-		if (resets !== null)
-			body += t('desktop.helpers.autopilot.limit.resets', { time: resets });
 	}
 
 	return {

@@ -2,7 +2,7 @@ import { memoryDb, nodeSqliteAvailable } from '../../__tests__/nodeDb';
 import { seedDemo } from '../../demoSeed';
 import { migrate } from '../../schema';
 import type { LocalContext } from '../../types';
-import { createMover, DEMO_MOVE_MESSAGE } from '../flow';
+import { createMover, demoMoveMessage } from '../flow';
 import { readInventory } from '../inventory';
 import { harness, INVENTORY } from './helpers';
 
@@ -28,13 +28,13 @@ describeDb('demo workspace and cloud move', () => {
 		const h = harness({ inventory: { ...INVENTORY, demo: true } });
 		const mover = createMover(h.deps);
 		const dry = await mover.dryRun('demo', 'Demo: Launch week');
-		expect(dry.blocker).toBe(DEMO_MOVE_MESSAGE);
+		expect(dry.blocker).toBe(demoMoveMessage());
 		await expect(
 			mover.start('demo', 'Demo: Launch week', dry, {
 				cloudName: 'Cloud copy',
 				personas: [],
 			}),
-		).rejects.toThrow(DEMO_MOVE_MESSAGE);
+		).rejects.toThrow(demoMoveMessage());
 		expect(h.native.moveFreeze).not.toHaveBeenCalled();
 		expect(h.api.createJob).not.toHaveBeenCalled();
 	});

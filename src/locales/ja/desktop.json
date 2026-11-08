@@ -627,9 +627,20 @@
 				"files": "アップロードできなかったファイルはすべて、エクスポート済みか、失われたものとして承認済みです",
 				"skills": "このデバイスのスキルがクラウドライブラリにコピーされています",
 				"removeAccount": "この移動は別のアカウントで公開されました。ローカルコピーを削除するには、そのアカウントでログインしてください。",
-				"cannotRemove": "まだ削除できません: {reason}。"
+				"cannotRemove": "まだ削除できません: {reason}。",
+				"signIn": "ローカルコピーを削除するにはサインインしてください。",
+				"oldRecord": "この移行は古いバージョンで記録されたため、ローカルコピーを自動で削除できません。"
 			},
-			"legacy": "この移動は古いバージョンで開始されました。破棄して、最初からやり直してください。"
+			"legacy": "この移動は古いバージョンで開始されました。破棄して、最初からやり直してください。",
+			"accountMismatch": "この移行は別のアカウントで開始されました。続けるにはそのアカウントでサインインするか、移行を破棄してください。",
+			"signInToMove": "このワークスペースをクラウドに移行するにはサインインしてください。",
+			"demo": "デモワークスペースはこの Mac に残り、クラウドへは移行できません",
+			"cancelled": "移行をキャンセルしました",
+			"unsupportedSchema": "このワークスペースを移行するには TMGR を更新してください。",
+			"quota": "移行は 1 日に最大 3 回まで開始できます。明日もう一度お試しください。",
+			"running": "別の移行がまだ実行中です。",
+			"tooLarge": "このワークスペースは大きすぎて、一度に移行できません。",
+			"genericError": "問題が発生しました。"
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "待機中"
 			},
 			"limit": {
-				"unknown": "{label}: 不明{age}",
-				"pct": "{label}: {pct}% {source}{age}",
-				"age": " {age}前",
-				"marks": " (新規停止 {soft}%、一時停止 {hard}%)",
-				"resets": " · {time} にリセット"
+				"unknown": {
+					"base": "{label}: 不明",
+					"age": "{label}: 不明 {age}前"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · {time} にリセット",
+					"marks": "{label}: {pct}% {source} (新規停止 {soft}%、一時停止 {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (新規停止 {soft}%、一時停止 {hard}%) · {time} にリセット",
+					"age": "{label}: {pct}% {source} {age}前",
+					"ageResets": "{label}: {pct}% {source} {age}前 · {time} にリセット",
+					"ageMarks": "{label}: {pct}% {source} {age}前 (新規停止 {soft}%、一時停止 {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} {age}前 (新規停止 {soft}%、一時停止 {hard}%) · {time} にリセット"
+				}
 			},
 			"cost": {
 				"ofCap": "上限 {cap} のうち {used}",

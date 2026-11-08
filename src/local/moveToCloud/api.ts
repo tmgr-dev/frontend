@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export interface ImportCapabilities {
 	bundle_schemas: number[];
 	local_schemas: number[];
@@ -115,12 +117,11 @@ export interface Http {
 	delete<T = any>(url: string): Promise<{ data: T }>;
 }
 
-export const UNSUPPORTED_SCHEMA_MESSAGE = 'Update TMGR to move this workspace.';
-export const QUOTA_MESSAGE =
-	'You can start up to 3 moves a day. Try again tomorrow.';
-export const RUNNING_MESSAGE = 'Another move is still running.';
-export const TOO_LARGE_MESSAGE =
-	'This workspace is too large to move in one go.';
+export const unsupportedSchemaMessage = (): string =>
+	t('desktop.helpers.move.unsupportedSchema');
+export const quotaMessage = (): string => t('desktop.helpers.move.quota');
+export const runningMessage = (): string => t('desktop.helpers.move.running');
+export const tooLargeMessage = (): string => t('desktop.helpers.move.tooLarge');
 
 export interface ImportApi {
 	capabilities(): Promise<ImportCapabilities>;
@@ -193,17 +194,17 @@ export const isFileNotAllowed = (error: unknown): boolean =>
 	errorCode(error) === 'file_not_allowed';
 
 export const apiErrorMessage = (error: unknown): string => {
-	if (isUnsupportedSchema(error)) return UNSUPPORTED_SCHEMA_MESSAGE;
+	if (isUnsupportedSchema(error)) return unsupportedSchemaMessage();
 	const code = errorCode(error);
-	if (code === 'import_quota') return QUOTA_MESSAGE;
-	if (code === 'import_running') return RUNNING_MESSAGE;
-	if ((error as any)?.response?.status === 413) return TOO_LARGE_MESSAGE;
+	if (code === 'import_quota') return quotaMessage();
+	if (code === 'import_running') return runningMessage();
+	if ((error as any)?.response?.status === 413) return tooLargeMessage();
 	const data = (error as any)?.response?.data;
 	return (
 		data?.message ||
 		(error as any)?.message ||
 		String(error) ||
-		'Something went wrong.'
+		t('desktop.helpers.move.genericError')
 	);
 };
 

@@ -5,7 +5,7 @@ import {
 	apiErrorMessage,
 	isFileNotAllowed,
 	isUnsupportedSchema,
-	UNSUPPORTED_SCHEMA_MESSAGE,
+	unsupportedSchemaMessage,
 	type CreateJobRequest,
 	type ImportApi,
 	type ImportCapabilities,
@@ -39,14 +39,14 @@ import {
 	buildSkillsPayloadWithSlugs,
 } from './skills';
 
-export const ACCOUNT_MISMATCH_MESSAGE =
-	'This move was started by another account. Sign in as that account to continue, or discard it.';
+export const accountMismatchMessage = (): string =>
+	t('desktop.helpers.move.accountMismatch');
 export const legacyMoveMessage = (): string => t('desktop.helpers.move.legacy');
-export const SIGN_IN_TO_MOVE_MESSAGE =
-	'Sign in to move this workspace to the cloud.';
-export const DEMO_MOVE_MESSAGE =
-	'The demo workspace stays on this Mac and cannot be moved to the cloud';
-export const CANCELLED_MESSAGE = 'Move cancelled';
+export const signInToMoveMessage = (): string =>
+	t('desktop.helpers.move.signInToMove');
+export const demoMoveMessage = (): string => t('desktop.helpers.move.demo');
+export const cancelledMessage = (): string =>
+	t('desktop.helpers.move.cancelled');
 
 export interface MoveNative {
 	moveFreeze(code: string): Promise<MoveFrozen>;
@@ -171,10 +171,10 @@ export const createMover = (deps: MoveDeps) => {
 		!!job && job.userId != null && deps.userId() !== job.userId;
 	const assertAccount = (job: MoveJob | null) => {
 		if (legacy(job)) throw new Error(legacyMoveMessage());
-		if (accountMismatch(job)) throw new Error(ACCOUNT_MISMATCH_MESSAGE);
+		if (accountMismatch(job)) throw new Error(accountMismatchMessage());
 	};
 	const ensureActive = (code: string) => {
-		if (cancelled.has(code)) throw new Error(CANCELLED_MESSAGE);
+		if (cancelled.has(code)) throw new Error(cancelledMessage());
 		assertAccount(load(code).job);
 	};
 
@@ -233,10 +233,10 @@ export const createMover = (deps: MoveDeps) => {
 			bundle_schema: BUNDLE_SCHEMA,
 		};
 		const blocker = inventory.demo
-			? DEMO_MOVE_MESSAGE
+			? demoMoveMessage()
 			: !capabilities.bundle_schemas.includes(BUNDLE_SCHEMA) ||
 				  !capabilities.local_schemas.includes(inventory.schemaVersion)
-				? UNSUPPORTED_SCHEMA_MESSAGE
+				? unsupportedSchemaMessage()
 				: null;
 		const names = new Map<number, string>(
 			inventory.files.map((f) => [f.id, f.name]),
@@ -653,7 +653,7 @@ export const createMover = (deps: MoveDeps) => {
 	) => {
 		if (dry.blocker) throw new Error(dry.blocker);
 		const userId = deps.userId();
-		if (userId == null) throw new Error(SIGN_IN_TO_MOVE_MESSAGE);
+		if (userId == null) throw new Error(signInToMoveMessage());
 		const state = load(code);
 		if (state.job)
 			throw new Error('A move of this workspace is already in progress');

@@ -627,9 +627,20 @@
 				"files": "업로드하지 못한 파일은 모두 내보내거나 손실로 인정했어요",
 				"skills": "이 기기의 스킬이 클라우드 라이브러리로 복사되었어요",
 				"removeAccount": "이 이동은 다른 계정에서 게시했어요. 해당 계정으로 로그인해야 로컬 사본을 제거할 수 있어요.",
-				"cannotRemove": "아직 제거할 수 없어요: {reason}."
+				"cannotRemove": "아직 제거할 수 없어요: {reason}.",
+				"signIn": "로컬 사본을 삭제하려면 로그인하세요.",
+				"oldRecord": "이 이전은 이전 버전에서 기록되어 로컬 사본을 자동으로 삭제할 수 없습니다."
 			},
-			"legacy": "이전 버전에서 시작한 이동이에요. 취소하고 처음부터 다시 시작해 주세요."
+			"legacy": "이전 버전에서 시작한 이동이에요. 취소하고 처음부터 다시 시작해 주세요.",
+			"accountMismatch": "이 이전은 다른 계정에서 시작되었습니다. 계속하려면 해당 계정으로 로그인하거나 이전을 취소하세요.",
+			"signInToMove": "이 워크스페이스를 클라우드로 이전하려면 로그인하세요.",
+			"demo": "데모 워크스페이스는 이 Mac에 남으며 클라우드로 이전할 수 없습니다",
+			"cancelled": "이전이 취소되었습니다",
+			"unsupportedSchema": "이 워크스페이스를 이전하려면 TMGR를 업데이트하세요.",
+			"quota": "이전은 하루에 최대 3번 시작할 수 있습니다. 내일 다시 시도하세요.",
+			"running": "다른 이전이 아직 진행 중입니다.",
+			"tooLarge": "이 워크스페이스는 너무 커서 한 번에 이전할 수 없습니다.",
+			"genericError": "문제가 발생했습니다."
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "대기열"
 			},
 			"limit": {
-				"unknown": "{label}: 알 수 없음{age}",
-				"pct": "{label}: {pct}% {source}{age}",
-				"age": " {age} 전",
-				"marks": " (새 작업 중단 {soft}%, 일시 중지 {hard}%)",
-				"resets": " · {time}에 초기화"
+				"unknown": {
+					"base": "{label}: 알 수 없음",
+					"age": "{label}: 알 수 없음 {age} 전"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · {time}에 초기화",
+					"marks": "{label}: {pct}% {source} (새 작업 중단 {soft}%, 일시 중지 {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (새 작업 중단 {soft}%, 일시 중지 {hard}%) · {time}에 초기화",
+					"age": "{label}: {pct}% {source} {age} 전",
+					"ageResets": "{label}: {pct}% {source} {age} 전 · {time}에 초기화",
+					"ageMarks": "{label}: {pct}% {source} {age} 전 (새 작업 중단 {soft}%, 일시 중지 {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} {age} 전 (새 작업 중단 {soft}%, 일시 중지 {hard}%) · {time}에 초기화"
+				}
 			},
 			"cost": {
 				"ofCap": "한도 {cap} 중 {used}",

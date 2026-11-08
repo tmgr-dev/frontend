@@ -842,7 +842,7 @@
 			return {
 				timeLabel: (at: number | string | Date) =>
 					new Date(at).toLocaleTimeString(currentLocale()),
-				trayName: trayName(),
+				trayName: computed(() => trayName()),
 				repoInput,
 				checking,
 				installing,

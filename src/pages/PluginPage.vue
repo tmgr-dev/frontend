@@ -182,7 +182,7 @@
 				openWindow,
 				windowsSupported,
 				windowError,
-				unavailableText: pluginWindowsUnavailable(),
+				unavailableText: computed(() => pluginWindowsUnavailable()),
 			};
 		},
 	});

@@ -627,9 +627,20 @@
 				"files": "Jede Datei, die nicht hochgeladen werden konnte, ist exportiert oder als verloren akzeptiert",
 				"skills": "Skills von diesem Gerät sind in deine Cloud-Bibliothek kopiert",
 				"removeAccount": "Dieses Verschieben wurde von einem anderen Konto veröffentlicht. Melde dich mit diesem Konto an, um die lokale Kopie zu entfernen.",
-				"cannotRemove": "Entfernen noch nicht möglich: {reason}."
+				"cannotRemove": "Entfernen noch nicht möglich: {reason}.",
+				"signIn": "Melde dich an, um die lokale Kopie zu entfernen.",
+				"oldRecord": "Dieser Umzug wurde von einer älteren Version aufgezeichnet, daher kann die lokale Kopie nicht automatisch entfernt werden."
 			},
-			"legacy": "Dieses Verschieben wurde von einer älteren Version gestartet. Verwirf es und starte neu."
+			"legacy": "Dieses Verschieben wurde von einer älteren Version gestartet. Verwirf es und starte neu.",
+			"accountMismatch": "Dieser Umzug wurde von einem anderen Konto gestartet. Melde dich mit diesem Konto an, um fortzufahren, oder verwirf ihn.",
+			"signInToMove": "Melde dich an, um diesen Arbeitsbereich in die Cloud zu verschieben.",
+			"demo": "Der Demo-Arbeitsbereich bleibt auf diesem Mac und kann nicht in die Cloud verschoben werden",
+			"cancelled": "Umzug abgebrochen",
+			"unsupportedSchema": "Aktualisiere TMGR, um diesen Arbeitsbereich zu verschieben.",
+			"quota": "Du kannst bis zu 3 Umzüge pro Tag starten. Versuche es morgen erneut.",
+			"running": "Ein anderer Umzug läuft noch.",
+			"tooLarge": "Dieser Arbeitsbereich ist zu groß, um ihn in einem Schritt zu verschieben.",
+			"genericError": "Etwas ist schiefgelaufen."
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "in der Warteschlange"
 			},
 			"limit": {
-				"unknown": "{label}: unbekannt{age}",
-				"pct": "{label}: {pct} % {source}{age}",
-				"age": " vor {age}",
-				"marks": " (keine neuen ab {soft} %, Pause ab {hard} %)",
-				"resets": " · wird zurückgesetzt {time}"
+				"unknown": {
+					"base": "{label}: unbekannt",
+					"age": "{label}: unbekannt vor {age}"
+				},
+				"pct": {
+					"base": "{label}: {pct} % {source}",
+					"resets": "{label}: {pct} % {source} · wird zurückgesetzt {time}",
+					"marks": "{label}: {pct} % {source} (keine neuen ab {soft} %, Pause ab {hard} %)",
+					"marksResets": "{label}: {pct} % {source} (keine neuen ab {soft} %, Pause ab {hard} %) · wird zurückgesetzt {time}",
+					"age": "{label}: {pct} % {source} vor {age}",
+					"ageResets": "{label}: {pct} % {source} vor {age} · wird zurückgesetzt {time}",
+					"ageMarks": "{label}: {pct} % {source} vor {age} (keine neuen ab {soft} %, Pause ab {hard} %)",
+					"ageMarksResets": "{label}: {pct} % {source} vor {age} (keine neuen ab {soft} %, Pause ab {hard} %) · wird zurückgesetzt {time}"
+				}
 			},
 			"cost": {
 				"ofCap": "{used} von {cap} Limit",

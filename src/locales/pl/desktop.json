@@ -627,9 +627,20 @@
 				"files": "Każdy plik, którego nie udało się przesłać, został wyeksportowany lub zaakceptowany jako utracony",
 				"skills": "Skille z tego urządzenia są kopiowane do Twojej biblioteki w chmurze",
 				"removeAccount": "To przenoszenie opublikowało inne konto. Zaloguj się na to konto, aby usunąć lokalną kopię.",
-				"cannotRemove": "Nie można jeszcze usunąć: {reason}."
+				"cannotRemove": "Nie można jeszcze usunąć: {reason}.",
+				"signIn": "Zaloguj się, aby usunąć lokalną kopię.",
+				"oldRecord": "To przenoszenie zapisała starsza wersja, więc lokalnej kopii nie można usunąć automatycznie."
 			},
-			"legacy": "To przenoszenie rozpoczęła starsza wersja. Odrzuć je i zacznij od nowa."
+			"legacy": "To przenoszenie rozpoczęła starsza wersja. Odrzuć je i zacznij od nowa.",
+			"accountMismatch": "Tę migrację rozpoczęło inne konto. Zaloguj się na to konto, aby kontynuować, lub odrzuć migrację.",
+			"signInToMove": "Zaloguj się, aby przenieść tę przestrzeń roboczą do chmury.",
+			"demo": "Przestrzeń demo zostaje na tym Macu i nie można jej przenieść do chmury",
+			"cancelled": "Przenoszenie anulowane",
+			"unsupportedSchema": "Zaktualizuj TMGR, aby przenieść tę przestrzeń roboczą.",
+			"quota": "Możesz rozpocząć do 3 przenosin dziennie. Spróbuj jutro.",
+			"running": "Inne przenoszenie nadal trwa.",
+			"tooLarge": "Ta przestrzeń robocza jest zbyt duża, aby przenieść ją za jednym razem.",
+			"genericError": "Coś poszło nie tak."
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "w kolejce"
 			},
 			"limit": {
-				"unknown": "{label}: nieznane{age}",
-				"pct": "{label}: {pct}% {source}{age}",
-				"age": " {age} temu",
-				"marks": " (zatrzymanie nowych przy {soft}%, wstrzymanie przy {hard}%)",
-				"resets": " · reset {time}"
+				"unknown": {
+					"base": "{label}: nieznane",
+					"age": "{label}: nieznane {age} temu"
+				},
+				"pct": {
+					"base": "{label}: {pct}% {source}",
+					"resets": "{label}: {pct}% {source} · reset {time}",
+					"marks": "{label}: {pct}% {source} (zatrzymanie nowych przy {soft}%, wstrzymanie przy {hard}%)",
+					"marksResets": "{label}: {pct}% {source} (zatrzymanie nowych przy {soft}%, wstrzymanie przy {hard}%) · reset {time}",
+					"age": "{label}: {pct}% {source} {age} temu",
+					"ageResets": "{label}: {pct}% {source} {age} temu · reset {time}",
+					"ageMarks": "{label}: {pct}% {source} {age} temu (zatrzymanie nowych przy {soft}%, wstrzymanie przy {hard}%)",
+					"ageMarksResets": "{label}: {pct}% {source} {age} temu (zatrzymanie nowych przy {soft}%, wstrzymanie przy {hard}%) · reset {time}"
+				}
 			},
 			"cost": {
 				"ofCap": "{used} z limitu {cap}",

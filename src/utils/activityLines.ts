@@ -5,8 +5,7 @@
  * add rather than leaving an empty element behind.
  */
 
-import { t } from '@/i18n';
-import { formatDistance } from 'date-fns';
+import { currentLocale, t } from '@/i18n';
 
 export interface ActivityLike {
 	type?: string | null;
@@ -115,7 +114,18 @@ export function activityTime(
 	const created = text(activity.created_at);
 	const at = created ? Date.parse(created) : NaN;
 	if (Number.isNaN(at)) return '';
-	return formatDistance(at, now, { addSuffix: true })
-		.replace('less than a minute ago', t('tasks.helpers.relativeTime.justNow'))
-		.replace(/^about /, '');
+	const seconds = Math.round((at - now) / 1000);
+	const abs = Math.abs(seconds);
+	if (abs < 60) return t('tasks.helpers.relativeTime.justNow');
+	const units: [Intl.RelativeTimeFormatUnit, number][] = [
+		['year', 31536000],
+		['month', 2592000],
+		['day', 86400],
+		['hour', 3600],
+		['minute', 60],
+	];
+	const [unit, size] = units.find(([, s]) => abs >= s)!;
+	return new Intl.RelativeTimeFormat(currentLocale(), {
+		numeric: 'auto',
+	}).format(Math.trunc(seconds / size), unit);
 }

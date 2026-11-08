@@ -1,7 +1,7 @@
 import { tourBus } from '@/tours/events';
-import { UNSUPPORTED_SCHEMA_MESSAGE } from '../api';
+import { unsupportedSchemaMessage } from '../api';
 import {
-	ACCOUNT_MISMATCH_MESSAGE,
+	accountMismatchMessage,
 	createMover,
 	legacyMoveMessage,
 	toMappingPayload,
@@ -52,7 +52,7 @@ describe('dry run', () => {
 	it('blocks when the local schema is unknown to the server', async () => {
 		const h = harness({ inventory: { ...INVENTORY, schemaVersion: 13 } });
 		const dry = await createMover(h.deps).dryRun(CODE, 'Local');
-		expect(dry.blocker).toBe(UNSUPPORTED_SCHEMA_MESSAGE);
+		expect(dry.blocker).toBe(unsupportedSchemaMessage());
 	});
 
 	it('warns about a previous published move', async () => {
@@ -656,7 +656,7 @@ describe('account checks before every request', () => {
 			};
 		});
 		const { view } = await begin(h);
-		expect(view.job?.error).toBe(ACCOUNT_MISMATCH_MESSAGE);
+		expect(view.job?.error).toBe(accountMismatchMessage());
 		expect(h.api.confirmFile).not.toHaveBeenCalled();
 		expect(h.api.presignFile).toHaveBeenCalledTimes(1);
 		expect(h.api.commit).not.toHaveBeenCalled();
@@ -674,7 +674,7 @@ describe('account checks before every request', () => {
 			h.user.id = 8;
 		};
 		const { view } = await begin(h);
-		expect(view.job?.error).toBe(ACCOUNT_MISMATCH_MESSAGE);
+		expect(view.job?.error).toBe(accountMismatchMessage());
 		expect(h.api.status).toHaveBeenCalledTimes(1);
 		expect(h.api.publish).not.toHaveBeenCalled();
 	});
@@ -688,7 +688,7 @@ describe('account checks before every request', () => {
 		const statusCallsBefore = () => h.api.status.mock.calls.length;
 		const { view } = await begin(h);
 		expect(view.published).toBeNull();
-		expect(view.job?.error).toBe(ACCOUNT_MISMATCH_MESSAGE);
+		expect(view.job?.error).toBe(accountMismatchMessage());
 		expect(statusCallsBefore()).toBe(1);
 	});
 });

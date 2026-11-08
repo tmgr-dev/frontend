@@ -627,9 +627,20 @@
 				"files": "所有无法上传的文件都已导出，或已确认视为丢失",
 				"skills": "此设备上的技能已复制到你的云端技能库",
 				"removeAccount": "此次移动由另一个账号发布。请登录该账号后再移除本地副本。",
-				"cannotRemove": "暂时无法移除：{reason}。"
+				"cannotRemove": "暂时无法移除：{reason}。",
+				"signIn": "请登录后删除本地副本。",
+				"oldRecord": "此次迁移由旧版本记录，因此无法自动删除本地副本。"
 			},
-			"legacy": "此次移动由旧版本发起。请放弃并重新开始。"
+			"legacy": "此次移动由旧版本发起。请放弃并重新开始。",
+			"accountMismatch": "此次迁移由另一个账号发起。请登录该账号继续，或放弃迁移。",
+			"signInToMove": "请登录后将此工作区迁移到云端。",
+			"demo": "演示工作区会保留在这台 Mac 上，无法迁移到云端",
+			"cancelled": "迁移已取消",
+			"unsupportedSchema": "请更新 TMGR 以迁移此工作区。",
+			"quota": "每天最多可发起 3 次迁移，请明天再试。",
+			"running": "另一项迁移仍在进行中。",
+			"tooLarge": "此工作区过大，无法一次性迁移。",
+			"genericError": "出了点问题。"
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "排队中"
 			},
 			"limit": {
-				"unknown": "{label}：未知{age}",
-				"pct": "{label}：{pct}% {source}{age}",
-				"age": " {age}前",
-				"marks": " （达 {soft}% 停止新增，达 {hard}% 暂停）",
-				"resets": " · {time} 重置"
+				"unknown": {
+					"base": "{label}：未知",
+					"age": "{label}：未知 {age}前"
+				},
+				"pct": {
+					"base": "{label}：{pct}% {source}",
+					"resets": "{label}：{pct}% {source} · {time} 重置",
+					"marks": "{label}：{pct}% {source} （达 {soft}% 停止新增，达 {hard}% 暂停）",
+					"marksResets": "{label}：{pct}% {source} （达 {soft}% 停止新增，达 {hard}% 暂停） · {time} 重置",
+					"age": "{label}：{pct}% {source} {age}前",
+					"ageResets": "{label}：{pct}% {source} {age}前 · {time} 重置",
+					"ageMarks": "{label}：{pct}% {source} {age}前 （达 {soft}% 停止新增，达 {hard}% 暂停）",
+					"ageMarksResets": "{label}：{pct}% {source} {age}前 （达 {soft}% 停止新增，达 {hard}% 暂停） · {time} 重置"
+				}
 			},
 			"cost": {
 				"ofCap": "{used} / 上限 {cap}",

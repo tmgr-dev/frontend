@@ -627,9 +627,20 @@
 				"files": "Chaque fichier qui n'a pas pu être téléversé est exporté ou accepté comme perdu",
 				"skills": "Les compétences de cet appareil sont copiées dans votre bibliothèque cloud",
 				"removeAccount": "Ce déplacement a été publié par un autre compte. Connectez-vous avec ce compte pour supprimer la copie locale.",
-				"cannotRemove": "Suppression impossible pour le moment : {reason}."
+				"cannotRemove": "Suppression impossible pour le moment : {reason}.",
+				"signIn": "Connectez-vous pour supprimer la copie locale.",
+				"oldRecord": "Ce transfert a été enregistré par une version plus ancienne ; la copie locale ne peut donc pas être supprimée automatiquement."
 			},
-			"legacy": "Ce déplacement a été lancé par une version plus ancienne. Abandonnez-le et recommencez."
+			"legacy": "Ce déplacement a été lancé par une version plus ancienne. Abandonnez-le et recommencez.",
+			"accountMismatch": "Ce transfert a été lancé par un autre compte. Connectez-vous avec ce compte pour continuer, ou abandonnez-le.",
+			"signInToMove": "Connectez-vous pour transférer cet espace de travail vers le cloud.",
+			"demo": "L'espace de travail de démonstration reste sur ce Mac et ne peut pas être transféré vers le cloud",
+			"cancelled": "Transfert annulé",
+			"unsupportedSchema": "Mettez à jour TMGR pour transférer cet espace de travail.",
+			"quota": "Vous pouvez lancer jusqu'à 3 transferts par jour. Réessayez demain.",
+			"running": "Un autre transfert est toujours en cours.",
+			"tooLarge": "Cet espace de travail est trop volumineux pour être transféré en une seule fois.",
+			"genericError": "Une erreur s'est produite."
 		},
 		"runner": {
 			"states": {
@@ -701,11 +712,20 @@
 				"queued": "en file d'attente"
 			},
 			"limit": {
-				"unknown": "{label} : inconnu{age}",
-				"pct": "{label} : {pct} % {source}{age}",
-				"age": " il y a {age}",
-				"marks": " (arrêt des nouvelles à {soft} %, pause à {hard} %)",
-				"resets": " · réinitialisation {time}"
+				"unknown": {
+					"base": "{label} : inconnu",
+					"age": "{label} : inconnu il y a {age}"
+				},
+				"pct": {
+					"base": "{label} : {pct} % {source}",
+					"resets": "{label} : {pct} % {source} · réinitialisation {time}",
+					"marks": "{label} : {pct} % {source} (arrêt des nouvelles à {soft} %, pause à {hard} %)",
+					"marksResets": "{label} : {pct} % {source} (arrêt des nouvelles à {soft} %, pause à {hard} %) · réinitialisation {time}",
+					"age": "{label} : {pct} % {source} il y a {age}",
+					"ageResets": "{label} : {pct} % {source} il y a {age} · réinitialisation {time}",
+					"ageMarks": "{label} : {pct} % {source} il y a {age} (arrêt des nouvelles à {soft} %, pause à {hard} %)",
+					"ageMarksResets": "{label} : {pct} % {source} il y a {age} (arrêt des nouvelles à {soft} %, pause à {hard} %) · réinitialisation {time}"
+				}
 			},
 			"cost": {
 				"ofCap": "{used} sur un plafond de {cap}",
