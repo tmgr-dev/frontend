@@ -1,0 +1,222 @@
+{
+	"views": {
+		"list": "Liste",
+		"day": "Tag",
+		"week": "Woche",
+		"month": "Monat",
+		"year": "Jahr"
+	},
+	"clusterPopover": {
+		"overlapping": "{n} überlappend"
+	},
+	"markDoneAria": "„{title}“ als erledigt markieren",
+	"editAria": "„{title}“ bearbeiten",
+	"eventBlock": {
+		"dragStart": "Ziehen, um die Startzeit zu ändern",
+		"dragDuration": "Ziehen, um die Dauer zu ändern"
+	},
+	"convert": {
+		"title": "In Aufgabe umwandeln",
+		"workspace": "Arbeitsbereich",
+		"category": "Projekt",
+		"noCategory": "Kein Projekt",
+		"submit": "Umwandeln"
+	},
+	"routineRow": {
+		"moreTitle": "Mehr (Rechtsklick für Menü)",
+		"more": "Mehr",
+		"created": "erstellt {created}",
+		"createdUpdated": "erstellt {created} · aktualisiert {updated}"
+	},
+	"deleteDialog": {
+		"title": "Routine löschen?",
+		"description": "„{title}“ und alle Vorkommen werden gelöscht. Das lässt sich nicht rückgängig machen."
+	},
+	"clusterBlock": {
+		"events": "{n} Termine"
+	},
+	"more": "+ {n} weitere",
+	"contextMenu": {
+		"duplicate": "Duplizieren",
+		"archive": "Archivieren"
+	},
+	"unscheduled": "Ohne Termin",
+	"archiveDone": "Erledigte archivieren ({n})",
+	"today": "Heute",
+	"allDay": "GANZTÄGIG",
+	"dow": {
+		"mo": "Mo",
+		"tu": "Di",
+		"we": "Mi",
+		"th": "Do",
+		"fr": "Fr",
+		"sa": "Sa",
+		"su": "So"
+	},
+	"dowUpper": {
+		"mon": "MO",
+		"tue": "DI",
+		"wed": "MI",
+		"thu": "DO",
+		"fri": "FR",
+		"sat": "SA",
+		"sun": "SO"
+	},
+	"dowLetter": {
+		"mon": "M",
+		"tue": "D",
+		"wed": "M",
+		"thu": "D",
+		"fri": "F",
+		"sat": "S",
+		"sun": "S"
+	},
+	"yearView": {
+		"less": "Weniger",
+		"more": "Mehr"
+	},
+	"editModal": {
+		"headerNew": "Neue Routine",
+		"headerEdit": "Routine bearbeiten",
+		"untitled": "(ohne Titel)",
+		"fields": {
+			"title": "Titel",
+			"titlePlaceholder": "Was ist die Routine?",
+			"description": "Beschreibung",
+			"chars": "{n} Zeichen",
+			"optional": "Optional",
+			"descriptionPlaceholder": "Notizen, Kontext, Links, Checkliste…",
+			"category": "Projekt",
+			"schedule": "Zeitplan",
+			"unscheduled": "Ohne Termin (kein festes Datum/keine feste Uhrzeit)",
+			"date": "Datum",
+			"time": "Uhrzeit",
+			"start": "Beginn",
+			"end": "Ende",
+			"repeats": "Wiederholung",
+			"onDay": "Am Tag",
+			"ofEveryMonth": "jedes Monats",
+			"reminder": "Erinnerung",
+			"reminderOnlyRepeating": "Nur für wiederkehrende Routinen",
+			"moveToWorkspace": "Als normale Aufgabe in einen Arbeitsbereich verschieben…"
+		},
+		"created": "Erstellt {when}",
+		"updated": "Aktualisiert {when}",
+		"deleteRoutine": "Routine löschen",
+		"createRoutine": "Routine erstellen",
+		"saveChanges": "Änderungen speichern",
+		"duration": {
+			"hm": "{h} Std. {m} Min.",
+			"h": "{h} Std.",
+			"m": "{m} Min."
+		},
+		"freq": {
+			"once": "Einmalig",
+			"daily": "Täglich",
+			"weekly": "Wöchentlich",
+			"monthly": "Monatlich",
+			"yearly": "Jährlich"
+		},
+		"reminder": {
+			"off": "Aus",
+			"atTime": "Zur Uhrzeit",
+			"min5": "5 Min.",
+			"min15": "15 Min.",
+			"min30": "30 Min.",
+			"hour1": "1 Std."
+		},
+		"summary": {
+			"daily": "Jeden Tag",
+			"pickDay": "Wähle mindestens einen Tag",
+			"everyDayOfWeek": "Jeden Wochentag",
+			"weekdays": "Jeden Werktag (Mo–Fr)",
+			"weekends": "Jedes Wochenende",
+			"onDays": "Am {days}",
+			"monthly": "Am {day}. Tag jedes Monats",
+			"yearly": "Jährlich"
+		}
+	},
+	"moveToCloud": {
+		"cloudWorkspace": "Cloud-Arbeitsbereich",
+		"ticketKey": "Der Server vergibt den Ticket-Schlüssel.",
+		"statement": "{n} Routine wird an den TMGR-Server gesendet und verlässt dieses Gerät. Jede lokale Kopie wird entfernt, sobald der Server den Empfang bestätigt. | {n} Routinen werden an den TMGR-Server gesendet und verlassen dieses Gerät. Jede lokale Kopie wird entfernt, sobald der Server den Empfang bestätigt.",
+		"destination": "Ziel:",
+		"pastCompletions": "Frühere Erledigungen werden nicht verschoben; die Cloud-Kopie beginnt neu.",
+		"keptRoutines": "Titel, Beschreibung, Zeitplan und Wiederholungsmuster bleiben erhalten. Projekt und Priorität nicht.",
+		"keptTasks": "Die Aufgaben behalten nur Titel und Beschreibung. Zeitplan, Wiederholungsmuster und Dauer gehen verloren.",
+		"sendAndRemove": "An TMGR senden und hier entfernen",
+		"sending": "Senden an {name}…",
+		"summary": "{moved} von {total} nach {name} verschoben.",
+		"removeLocalCopy": "Lokale Kopie entfernen",
+		"retryFailed": "{n} fehlgeschlagene erneut versuchen",
+		"open": "{name} öffnen",
+		"status": {
+			"moved": "Verschoben",
+			"failed": "Fehlgeschlagen",
+			"inCloud": "In der Cloud, lokale Kopie nicht entfernt",
+			"notSent": "Nicht gesendet"
+		},
+		"titleRoutines": "In Cloud-Routinen verschieben",
+		"titleTasks": "In Cloud-Aufgaben umwandeln",
+		"subtitleSetup": "Wähle, wohin die ausgewählten lokalen Routinen gehen.",
+		"selected": "{n} ausgewählt",
+		"categoriesError": "Projekte konnten nicht geladen werden: {message}",
+		"localWorkspaceChanged": "Der geöffnete lokale Arbeitsbereich hat sich geändert, deshalb wurde die lokale Kopie nicht entfernt.",
+		"selectAllAria": "Alle lokalen Routinen auswählen",
+		"selectAll": "Alle auswählen",
+		"pickHint": "Wähle die lokalen Routinen aus, die an einen Cloud-Arbeitsbereich gesendet werden sollen.",
+		"empty": "Es gibt keine lokalen Routinen zum Verschieben.",
+		"selectAria": "{title} auswählen",
+		"readError": "Die lokalen Routinen konnten nicht gelesen werden."
+	},
+	"page": {
+		"gate": {
+			"title": "Tagesroutinen",
+			"description": "Erstelle wiederkehrende Aufgaben und verfolge deine täglichen Gewohnheiten. Baue feste Routinen auf und behalte deinen Fortschritt im Blick."
+		},
+		"localRoutines": "Lokale Routinen",
+		"dailyRoutines": "Tagesroutinen",
+		"localBadge": "Lokal",
+		"storedLocally": "Nur auf diesem Gerät gespeichert – nicht mit der Cloud synchronisiert.",
+		"select": "Auswählen",
+		"quickAddAria": "Routine schnell hinzufügen",
+		"quickAddMobile": "Schnell hinzufügen…",
+		"quickAddPlaceholder": "Schnell hinzufügen → Ohne Termin",
+		"quickAddHint": "Wird zu {unscheduled} hinzugefügt – später in der Liste einplanen",
+		"countRoutines": "Routinen",
+		"countDone": "Erledigt",
+		"countArchived": "Archiviert",
+		"chipRoutines": "ROUTINEN",
+		"chipDone": "ERLEDIGT",
+		"chipArchived": "ARCHIVIERT",
+		"importCalendar": ".ics-Kalender importieren",
+		"import": "Importieren",
+		"exportCalendar": ".ics-Kalender exportieren",
+		"export": "Exportieren",
+		"importIcs": ".ics importieren",
+		"exportIcs": ".ics exportieren",
+		"prevPeriod": "Voriger Zeitraum",
+		"nextPeriod": "Nächster Zeitraum",
+		"loading": "Routinen werden geladen",
+		"converted": {
+			"title": "Routine in Aufgabe umgewandelt",
+			"description": "Aufgabe jetzt öffnen?"
+		},
+		"newRoutineTitle": "Neue Routine (N)",
+		"newRoutine": "Neue Routine",
+		"weekRange": "{start}. – {end}. {month} {year}",
+		"weekRangeCross": "{start}. {startMonth} – {end}. {endMonth} {year}",
+		"monthLabel": "{month} {year}",
+		"noCloudWorkspace": "Kein Cloud-Arbeitsbereich, in den Routinen verschoben werden können.",
+		"signInToMove": "Melde dich an, um Routinen in die Cloud zu verschieben.",
+		"loadError": "Routinen konnten nicht geladen werden.",
+		"tryAgain": "Versuche es erneut.",
+		"openError": "Routine konnte nicht geöffnet werden",
+		"deleteError": "Routine konnte nicht gelöscht werden",
+		"duplicateError": "Routine konnte nicht dupliziert werden",
+		"convertError": "Routine konnte nicht umgewandelt werden",
+		"copyTitle": "{title} (Kopie)",
+		"importErrors": "\nFehler:\n- {list}",
+		"importSummary": "Importiert: {created}, übersprungen: {skipped}, ersetzt: {replaced}.{errors}"
+	}
+}

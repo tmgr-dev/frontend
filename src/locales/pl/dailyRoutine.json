@@ -1,0 +1,222 @@
+{
+	"views": {
+		"list": "Lista",
+		"day": "Dzień",
+		"week": "Tydzień",
+		"month": "Miesiąc",
+		"year": "Rok"
+	},
+	"clusterPopover": {
+		"overlapping": "Nakładające się: {n}"
+	},
+	"markDoneAria": "Oznacz „{title}” jako ukończone",
+	"editAria": "Edytuj „{title}”",
+	"eventBlock": {
+		"dragStart": "Przeciągnij, aby zmienić godzinę rozpoczęcia",
+		"dragDuration": "Przeciągnij, aby zmienić czas trwania"
+	},
+	"convert": {
+		"title": "Zamień na zadanie",
+		"workspace": "Przestrzeń robocza",
+		"category": "Projekt",
+		"noCategory": "Bez projektu",
+		"submit": "Zamień"
+	},
+	"routineRow": {
+		"moreTitle": "Więcej (menu pod prawym przyciskiem)",
+		"more": "Więcej",
+		"created": "utworzono {created}",
+		"createdUpdated": "utworzono {created} · zaktualizowano {updated}"
+	},
+	"deleteDialog": {
+		"title": "Usunąć rutynę?",
+		"description": "„{title}” i wszystkie jej wystąpienia zostaną usunięte. Tej operacji nie można cofnąć."
+	},
+	"clusterBlock": {
+		"events": "Wydarzeń: {n}"
+	},
+	"more": "+ jeszcze {n}",
+	"contextMenu": {
+		"duplicate": "Duplikuj",
+		"archive": "Archiwizuj"
+	},
+	"unscheduled": "Bez terminu",
+	"archiveDone": "Archiwizuj ukończone ({n})",
+	"today": "Dziś",
+	"allDay": "CAŁY DZIEŃ",
+	"dow": {
+		"mo": "Pn",
+		"tu": "Wt",
+		"we": "Śr",
+		"th": "Cz",
+		"fr": "Pt",
+		"sa": "Sb",
+		"su": "Nd"
+	},
+	"dowUpper": {
+		"mon": "PN",
+		"tue": "WT",
+		"wed": "ŚR",
+		"thu": "CZ",
+		"fri": "PT",
+		"sat": "SB",
+		"sun": "ND"
+	},
+	"dowLetter": {
+		"mon": "P",
+		"tue": "W",
+		"wed": "Ś",
+		"thu": "C",
+		"fri": "P",
+		"sat": "S",
+		"sun": "N"
+	},
+	"yearView": {
+		"less": "Mniej",
+		"more": "Więcej"
+	},
+	"editModal": {
+		"headerNew": "Nowa rutyna",
+		"headerEdit": "Edycja rutyny",
+		"untitled": "(bez tytułu)",
+		"fields": {
+			"title": "Tytuł",
+			"titlePlaceholder": "Jaka to rutyna?",
+			"description": "Opis",
+			"chars": "Znaków: {n}",
+			"optional": "Opcjonalnie",
+			"descriptionPlaceholder": "Notatki, kontekst, linki, lista kontrolna…",
+			"category": "Projekt",
+			"schedule": "Harmonogram",
+			"unscheduled": "Bez terminu (bez konkretnej daty i godziny)",
+			"date": "Data",
+			"time": "Godzina",
+			"start": "Początek",
+			"end": "Koniec",
+			"repeats": "Powtarzanie",
+			"onDay": "W dniu",
+			"ofEveryMonth": "każdego miesiąca",
+			"reminder": "Przypomnienie",
+			"reminderOnlyRepeating": "Tylko dla powtarzających się rutyn",
+			"moveToWorkspace": "Przenieś do przestrzeni roboczej jako zwykłe zadanie…"
+		},
+		"created": "Utworzono {when}",
+		"updated": "Zaktualizowano {when}",
+		"deleteRoutine": "Usuń rutynę",
+		"createRoutine": "Utwórz rutynę",
+		"saveChanges": "Zapisz zmiany",
+		"duration": {
+			"hm": "{h} h {m} min",
+			"h": "{h} h",
+			"m": "{m} min"
+		},
+		"freq": {
+			"once": "Jednorazowo",
+			"daily": "Codziennie",
+			"weekly": "Co tydzień",
+			"monthly": "Co miesiąc",
+			"yearly": "Co rok"
+		},
+		"reminder": {
+			"off": "Wyłączone",
+			"atTime": "O czasie",
+			"min5": "5 min",
+			"min15": "15 min",
+			"min30": "30 min",
+			"hour1": "1 h"
+		},
+		"summary": {
+			"daily": "Codziennie",
+			"pickDay": "Wybierz co najmniej jeden dzień",
+			"everyDayOfWeek": "Każdego dnia tygodnia",
+			"weekdays": "W dni robocze (pon.–pt.)",
+			"weekends": "W weekendy",
+			"onDays": "W dni: {days}",
+			"monthly": "{day}. dnia każdego miesiąca",
+			"yearly": "Co rok"
+		}
+	},
+	"moveToCloud": {
+		"cloudWorkspace": "Przestrzeń robocza w chmurze",
+		"ticketKey": "Klucz zgłoszenia nadaje serwer.",
+		"statement": "{n} rutyna zostanie wysłana na serwer TMGR i opuści to urządzenie. Każda lokalna kopia zostanie usunięta po potwierdzeniu przez serwer. | {n} rutyny zostaną wysłane na serwer TMGR i opuszczą to urządzenie. Każda lokalna kopia zostanie usunięta po potwierdzeniu przez serwer. | {n} rutyn zostanie wysłanych na serwer TMGR i opuści to urządzenie. Każda lokalna kopia zostanie usunięta po potwierdzeniu przez serwer.",
+		"destination": "Miejsce docelowe:",
+		"pastCompletions": "Poprzednie wykonania nie są przenoszone; kopia w chmurze zaczyna od zera.",
+		"keptRoutines": "Tytuł, opis, harmonogram i wzorzec powtarzania zostają zachowane. Projekt i priorytet nie.",
+		"keptTasks": "Zadania zachowują tylko tytuł i opis. Harmonogram, wzorzec powtarzania i czas trwania nie zostają zachowane.",
+		"sendAndRemove": "Wyślij do TMGR i usuń stąd",
+		"sending": "Wysyłanie do {name}…",
+		"summary": "Przeniesiono {moved} z {total} do {name}.",
+		"removeLocalCopy": "Usuń lokalną kopię",
+		"retryFailed": "Ponów nieudane: {n}",
+		"open": "Otwórz {name}",
+		"status": {
+			"moved": "Przeniesiono",
+			"failed": "Niepowodzenie",
+			"inCloud": "W chmurze, lokalna kopia nie została usunięta",
+			"notSent": "Nie wysłano"
+		},
+		"titleRoutines": "Przenieś do rutyn w chmurze",
+		"titleTasks": "Zamień na zadania w chmurze",
+		"subtitleSetup": "Wybierz, dokąd trafią zaznaczone lokalne rutyny.",
+		"selected": "Zaznaczono: {n}",
+		"categoriesError": "Nie udało się wczytać projektów: {message}",
+		"localWorkspaceChanged": "Otwarta lokalna przestrzeń robocza się zmieniła, więc lokalna kopia nie została usunięta.",
+		"selectAllAria": "Zaznacz wszystkie lokalne rutyny",
+		"selectAll": "Zaznacz wszystkie",
+		"pickHint": "Wybierz lokalne rutyny do wysłania do przestrzeni roboczej w chmurze.",
+		"empty": "Brak lokalnych rutyn do przeniesienia.",
+		"selectAria": "Zaznacz {title}",
+		"readError": "Nie udało się odczytać lokalnych rutyn."
+	},
+	"page": {
+		"gate": {
+			"title": "Codzienne rutyny",
+			"description": "Twórz zadania cykliczne i śledź codzienne nawyki. Buduj regularne rutyny i obserwuj postępy w czasie."
+		},
+		"localRoutines": "Lokalne rutyny",
+		"dailyRoutines": "Codzienne rutyny",
+		"localBadge": "Lokalne",
+		"storedLocally": "Przechowywane tylko na tym urządzeniu, bez synchronizacji z chmurą.",
+		"select": "Zaznacz",
+		"quickAddAria": "Szybkie dodawanie rutyny",
+		"quickAddMobile": "Szybkie dodawanie…",
+		"quickAddPlaceholder": "Szybkie dodawanie → Bez terminu",
+		"quickAddHint": "Dodaje do sekcji {unscheduled}, termin ustawisz później na liście",
+		"countRoutines": "Rutyny",
+		"countDone": "Ukończone",
+		"countArchived": "Zarchiwizowane",
+		"chipRoutines": "RUTYNY",
+		"chipDone": "UKOŃCZONE",
+		"chipArchived": "ZARCHIWIZOWANE",
+		"importCalendar": "Importuj kalendarz .ics",
+		"import": "Importuj",
+		"exportCalendar": "Eksportuj kalendarz .ics",
+		"export": "Eksportuj",
+		"importIcs": "Importuj .ics",
+		"exportIcs": "Eksportuj .ics",
+		"prevPeriod": "Poprzedni okres",
+		"nextPeriod": "Następny okres",
+		"loading": "Ładowanie rutyn",
+		"converted": {
+			"title": "Rutyna zamieniona na zadanie",
+			"description": "Otworzyć zadanie teraz?"
+		},
+		"newRoutineTitle": "Nowa rutyna (N)",
+		"newRoutine": "Nowa rutyna",
+		"weekRange": "{start} – {end} {month} {year}",
+		"weekRangeCross": "{start} {startMonth} – {end} {endMonth} {year}",
+		"monthLabel": "{month} {year}",
+		"noCloudWorkspace": "Brak przestrzeni roboczej w chmurze, do której można przenieść rutyny.",
+		"signInToMove": "Zaloguj się, aby przenieść rutyny do chmury.",
+		"loadError": "Nie udało się wczytać rutyn.",
+		"tryAgain": "Spróbuj ponownie.",
+		"openError": "Nie udało się otworzyć rutyny",
+		"deleteError": "Nie udało się usunąć rutyny",
+		"duplicateError": "Nie udało się zduplikować rutyny",
+		"convertError": "Nie udało się zamienić rutyny",
+		"copyTitle": "{title} (kopia)",
+		"importErrors": "\nBłędy:\n- {list}",
+		"importSummary": "Zaimportowano: {created}, pominięto: {skipped}, zastąpiono: {replaced}.{errors}"
+	}
+}
