@@ -105,9 +105,16 @@ const HOME_DENY: &[&str] = &[
     ".kube",
     "Library/Keychains",
     "Library/Application Support/dev.tmgr.cli",
-    "Library/Application Support/dev.tmgr.desktop",
-    ".config/dev.tmgr.desktop",
-    ".local/share/dev.tmgr.desktop",
+    "Library/Application Support/dev.tmgr.desktop/decisions/decisions.db",
+    "Library/Application Support/dev.tmgr.desktop/decisions/decisions.db-wal",
+    "Library/Application Support/dev.tmgr.desktop/decisions/decisions.db-shm",
+    "Library/Application Support/dev.tmgr.desktop/decisions/decisions.db-journal",
+    "Library/Application Support/dev.tmgr.desktop/decisions/phone-audit.jsonl",
+    ".local/share/dev.tmgr.desktop/decisions/decisions.db",
+    ".local/share/dev.tmgr.desktop/decisions/decisions.db-wal",
+    ".local/share/dev.tmgr.desktop/decisions/decisions.db-shm",
+    ".local/share/dev.tmgr.desktop/decisions/decisions.db-journal",
+    ".local/share/dev.tmgr.desktop/decisions/phone-audit.jsonl",
     "Library/Application Support/Google/Chrome",
     "Library/Application Support/Firefox",
     "Library/Safari",
@@ -1865,15 +1872,23 @@ mod tests {
     fn home_deny_list_covers_the_desktop_app_data() {
         let f = fx();
         let deny = home_deny_paths(&f.spec.real_home);
-        for rel in [
-            "Library/Application Support/dev.tmgr.desktop",
-            ".config/dev.tmgr.desktop",
-            ".local/share/dev.tmgr.desktop",
-        ] {
-            assert!(
-                deny.contains(&canon_lossy(&f.spec.real_home).join(rel)),
-                "{rel}"
-            );
+        let home = canon_lossy(&f.spec.real_home);
+        for base in ["Library/Application Support", ".local/share"] {
+            let dir = home.join(base).join("dev.tmgr.desktop/decisions");
+            for file in [
+                "decisions.db",
+                "decisions.db-wal",
+                "decisions.db-shm",
+                "phone-audit.jsonl",
+            ] {
+                assert!(deny.contains(&dir.join(file)), "{base} {file}");
+            }
+            for file in ["decisions.sock", "decisions.token", "inbox"] {
+                assert!(
+                    !deny.iter().any(|d| dir.join(file).starts_with(d)),
+                    "{base} {file}"
+                );
+            }
         }
     }
 
