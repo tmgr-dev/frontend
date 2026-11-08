@@ -89,6 +89,18 @@
 									>
 										tmgr.dev
 									</a>
+									<a
+										href="https://tmgr.dev/cli"
+										target="_blank"
+										rel="noopener noreferrer"
+										class="text-primary hover:underline"
+										data-testid="settings-cli-link"
+									>
+										Command line (tmgr)
+									</a>
+									<p v-if="isDesktop" class="text-muted-foreground">
+										The desktop app already installs the tmgr command.
+									</p>
 								</div>
 							</SettingsSection>
 							<TipsSettings />
