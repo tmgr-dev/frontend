@@ -14,7 +14,7 @@
 			alt=""
 		/>
 		<p class="mt-4 text-xl font-bold text-ink">
-			{{ title || 'Nothing here yet' }}
+			{{ title || $t('general.emptyState.title') }}
 		</p>
 		<p v-if="description" class="mt-2 text-sm text-ink-muted">
 			{{ description }}

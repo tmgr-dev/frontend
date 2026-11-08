@@ -44,7 +44,7 @@
 							v-else-if="mode === 'not-in-local-workspace'"
 							class="text-sm text-ink-muted"
 						>
-							Not available in local workspaces
+							{{ $t('general.featureGate.notInLocalWorkspace') }}
 						</p>
 						<template v-else>
 							<!-- Description -->

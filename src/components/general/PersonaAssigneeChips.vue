@@ -12,7 +12,11 @@
 					class="flex shrink-0 rounded-full ring-2 ring-surface"
 					:class="{ '-ml-1.5': i > 0 }"
 					:title="persona.name"
-					:aria-label="`Persona ${persona.name}`"
+					:aria-label="
+						$t('general.personaAssigneeChips.personaLabel', {
+							name: persona.name,
+						})
+					"
 					data-testid="persona-chip"
 					@click.stop
 				>
@@ -56,10 +60,15 @@
 						:has-avatar="ownerHasAvatar(persona)"
 						:size="24"
 					/>
-					<span class="min-w-0 truncate">
-						persona of
-						<span class="font-medium text-ink">{{ persona.owner.name }}</span>
-					</span>
+					<i18n-t
+						keypath="general.personaAssigneeChips.personaOf"
+						tag="span"
+						class="min-w-0 truncate"
+					>
+						<template #name>
+							<span class="font-medium text-ink">{{ persona.owner.name }}</span>
+						</template>
+					</i18n-t>
 				</div>
 			</PopoverContent>
 		</Popover>

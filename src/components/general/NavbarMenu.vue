@@ -28,13 +28,14 @@
 		class="flex appearance-none items-center rounded border border-line bg-surface px-2 text-ink transition-colors duration-300"
 		@click="showCreatingTaskModal"
 	>
-		<span class="mr-2">Create</span>
+		<span class="mr-2">{{ $t('common.actions.create') }}</span>
 
 		<span class="material-icons">add</span>
 	</button>
 </template>
 
 <script lang="ts" setup>
+	import { t } from '@/i18n';
 	import { getUser, User } from '@/actions/tmgr/user';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
 	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
@@ -83,33 +84,33 @@
 		[
 			{
 				id: 1,
-				name: 'Dashboard',
+				name: t('nav.sidebar.dashboard'),
 				path: generateWorkspaceUrl('dashboard', currentWorkspace.value),
 				show: showSurface('dashboard.nav'),
 			},
 			{
 				id: 2,
-				name: 'List',
+				name: t('nav.sidebar.list'),
 				path: generateWorkspaceUrl('list', currentWorkspace.value),
 				show: true,
 			},
 			{
 				id: 3,
-				name: 'Board',
+				name: t('nav.sidebar.board'),
 				path: generateWorkspaceUrl('board', currentWorkspace.value),
 				show: showSurface('board.nav'),
 			},
 			{
 				id: 4,
-				name: 'Categories',
+				name: t('general.navbarMenu.categories'),
 				path: generateWorkspaceUrl('categories', currentWorkspace.value),
 				show: showSurface('categories.nav'),
 			},
 			{
 				id: 5,
 				name: currentWorkspace.value?.is_local
-					? 'Local routines'
-					: 'Daily Routines',
+					? t('nav.sidebar.localRoutines')
+					: t('nav.sidebar.dailyRoutines'),
 				path: '/routines',
 				show: showSurface('routines.nav'),
 			},

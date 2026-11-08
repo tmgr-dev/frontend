@@ -1,5 +1,8 @@
 <template>
-	<CommandGroup v-if="personas.length" heading="Personas">
+	<CommandGroup
+		v-if="personas.length"
+		:heading="$t('general.assigneePersonaGroup.personas')"
+	>
 		<CommandItem
 			v-for="persona in personas"
 			:key="persona.id"

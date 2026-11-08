@@ -24,9 +24,11 @@
 			<slot name="footer">
 				<div class="mt-6 flex justify-end gap-3">
 					<Button type="button" variant="outline" @click="$emit('onCancel')">
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</Button>
-					<Button type="button" @click="$emit('onOk')"> Ok </Button>
+					<Button type="button" @click="$emit('onOk')">
+						{{ $t('general.confirm.ok') }}
+					</Button>
 				</div>
 			</slot>
 		</template>

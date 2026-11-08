@@ -26,6 +26,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { computed } from 'vue';
 
 	const tooltipClasses = [
@@ -48,7 +49,7 @@
 	const props = withDefaults(defineProps<Props>(), {
 		type: 'text',
 		name: 'text',
-		placeholder: 'Enter value',
+		placeholder: () => t('general.textField.placeholder'),
 		showErrorInTooltip: true,
 		inputClass: '',
 	});

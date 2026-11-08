@@ -45,7 +45,9 @@
 				:value="CUSTOM_CHOICE"
 				@change="$emit('update:modelValue', CUSTOM_CHOICE)"
 			/>
-			<span class="block text-sm font-medium text-ink">Let me pick</span>
+			<span class="block text-sm font-medium text-ink">{{
+				$t('general.modulePresetOptions.custom')
+			}}</span>
 		</label>
 	</div>
 </template>

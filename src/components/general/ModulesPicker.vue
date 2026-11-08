@@ -2,9 +2,9 @@
 	<Dialog :open="open" @update:open="onOpenChange">
 		<DialogContent class="max-h-[85vh] max-w-lg overflow-y-auto">
 			<DialogHeader>
-				<DialogTitle>What do you want TMGR for?</DialogTitle>
+				<DialogTitle>{{ $t('general.modulesPicker.title') }}</DialogTitle>
 				<DialogDescription>
-					You can change this any time in Settings → Modules.
+					{{ $t('general.modulesPicker.description') }}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -53,10 +53,12 @@
 
 			<DialogFooter>
 				<Button variant="ghost" :disabled="saving" @click="dismiss">
-					Not now
+					{{ $t('general.modulesPicker.notNow') }}
 				</Button>
 				<Button :disabled="saving || !choice" @click="save">
-					{{ saving ? 'Saving…' : 'Continue' }}
+					{{
+						saving ? $t('common.actions.saving') : $t('common.actions.continue')
+					}}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
@@ -64,6 +66,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { saveModulesChoice } from '@/actions/tmgr/modules';
 	import ModulePresetOptions from '@/components/general/ModulePresetOptions.vue';
 	import ModulePresetPreview from '@/components/general/ModulePresetPreview.vue';
@@ -187,7 +190,7 @@
 			payloadNotices(payload).forEach((title) => toaster.toast({ title }));
 			open.value = false;
 		} catch {
-			error.value = 'Could not save your choice. Try again.';
+			error.value = t('general.modulesPicker.saveFailed');
 		} finally {
 			saving.value = false;
 		}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '@/i18n';
 	import {
 		AlertDialog,
 		AlertDialogCancel,
@@ -31,7 +32,10 @@
 			title: { type: String, required: true },
 			description: { type: String, default: '' },
 			expectedName: { type: String, required: true },
-			confirmLabel: { type: String, default: 'Confirm' },
+			confirmLabel: {
+				type: String,
+				default: () => t('common.actions.confirm'),
+			},
 			busy: { type: Boolean, default: false },
 		},
 		emits: ['update:open', 'confirm'],
@@ -65,18 +69,26 @@
 				<AlertDialogTitle>{{ title }}</AlertDialogTitle>
 				<AlertDialogDescription>{{ description }}</AlertDialogDescription>
 			</AlertDialogHeader>
-			<p class="text-sm">
-				Type <strong>{{ expectedName }}</strong> to confirm.
-			</p>
+			<i18n-t
+				keypath="general.confirmByNameDialog.typeToConfirm"
+				tag="p"
+				class="text-sm"
+			>
+				<template #name>
+					<strong>{{ expectedName }}</strong>
+				</template>
+			</i18n-t>
 			<Input
 				v-model="typed"
 				autocomplete="off"
 				spellcheck="false"
-				aria-label="Workspace name"
+				:aria-label="$t('general.confirmByNameDialog.nameLabel')"
 				@keydown.enter.prevent="confirm"
 			/>
 			<AlertDialogFooter>
-				<AlertDialogCancel :disabled="busy">Cancel</AlertDialogCancel>
+				<AlertDialogCancel :disabled="busy">{{
+					$t('common.actions.cancel')
+				}}</AlertDialogCancel>
 				<Button variant="destructive" :disabled="!canConfirm" @click="confirm">
 					{{ confirmLabel }}
 				</Button>

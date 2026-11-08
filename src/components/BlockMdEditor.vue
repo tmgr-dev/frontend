@@ -3,6 +3,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { Crepe } from '@milkdown/crepe';
 	import '@milkdown/crepe/theme/common/style.css';
 	import darkTheme from '@milkdown/crepe/theme/frame-dark.css?inline';
@@ -102,7 +103,7 @@
 					},
 				},
 				[Crepe.Feature.Placeholder]: {
-					text: props.placeholder ?? 'Add description...',
+					text: props.placeholder ?? t('general.editor.descriptionPlaceholder'),
 					mode: 'block',
 				},
 			},

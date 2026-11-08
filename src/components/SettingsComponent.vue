@@ -6,7 +6,7 @@
 		<DialogTrigger v-if="!hideTrigger" as-child>
 			<button
 				type="button"
-				title="Settings"
+				:title="$t('nav.sidebar.settings')"
 				data-tour="task-form.estimate"
 				class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 			>
@@ -18,9 +18,11 @@
 			class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
 		>
 			<DialogHeader>
-				<DialogTitle class="text-ink">Settings</DialogTitle>
+				<DialogTitle class="text-ink">{{
+					$t('nav.sidebar.settings')
+				}}</DialogTitle>
 				<DialogDescription class="text-ink-muted">
-					Make changes to the task settings here. Click save when you're done.
+					{{ $t('general.settingsComponent.description') }}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -72,7 +74,7 @@
 						class="w-full rounded-md bg-brand px-3 py-2 text-sm font-semibold text-on-accent hover:bg-brand-hover"
 						@click="handleSave"
 					>
-						Save
+						{{ $t('common.actions.save') }}
 					</button>
 				</DialogClose>
 			</DialogFooter>

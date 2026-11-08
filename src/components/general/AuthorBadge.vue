@@ -42,6 +42,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import type { AuthorRef } from '@/types/author';
 	import { avatarInitials } from '@/utils/avatarInitials';
 	import { resolveAuthor } from '@/utils/personas';
@@ -95,7 +96,11 @@
 			const tooltip = computed(() => {
 				const parts = [resolved.value.subtitle].filter(Boolean) as string[];
 				if (props.permissions?.length) {
-					parts.push(`Permissions: ${props.permissions.join(', ')}`);
+					parts.push(
+						t('general.authorBadge.permissions', {
+							list: props.permissions.join(', '),
+						}),
+					);
 				}
 				return parts.join(' — ') || undefined;
 			});

@@ -57,7 +57,7 @@
 								? props.categories.find(
 										(category) => category.id === categoryId,
 									)?.title
-								: 'Category'
+								: $t('general.categoriesCombobox.trigger')
 						}}
 					</span>
 					<ChevronsUpDown class="ml-1 h-4 w-4 shrink-0 opacity-50" />
@@ -68,10 +68,12 @@
 				<Command>
 					<CommandInput
 						class="h-9"
-						placeholder="Search category..."
+						:placeholder="$t('general.categoriesCombobox.search')"
 						@input="(e) => (searchValue = e.target.value)"
 					/>
-					<CommandEmpty class="text-ink-muted">No category found.</CommandEmpty>
+					<CommandEmpty class="text-ink-muted">{{
+						$t('general.categoriesCombobox.empty')
+					}}</CommandEmpty>
 					<CommandList class="w-80">
 						<CommandGroup>
 							<CommandItem

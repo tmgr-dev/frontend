@@ -5,7 +5,7 @@
 				<MenuButton
 					class="flex items-center text-ink-subtle transition-colors hover:text-ink"
 				>
-					<span class="sr-only">Open options</span>
+					<span class="sr-only">{{ $t('general.dropdown.openOptions') }}</span>
 					<EllipsisVerticalIcon class="h-5 w-5" aria-hidden="true" />
 				</MenuButton>
 			</slot>

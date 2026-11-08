@@ -14,7 +14,7 @@
 		>
 			{{ actions[defaultActionIndex].label }}
 		</button>
-		<AppTooltip content="Save & ..." side="right">
+		<AppTooltip :content="$t('general.buttonWithActions.saveAnd')" side="right">
 			<button
 				:class="`h-full opacity-50 hover:opacity-100`"
 				type="button"

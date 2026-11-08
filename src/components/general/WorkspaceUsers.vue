@@ -4,12 +4,16 @@
 			<AppTooltip
 				v-for="user in users"
 				:key="user.id"
-				:content="`${user.name} - Click to view all members`"
+				:content="
+					$t('general.workspaceUsers.viewAllMembers', { name: user.name })
+				"
 				side="bottom"
 			>
 				<button
 					type="button"
-					:aria-label="`${user.name} – workspace members`"
+					:aria-label="
+						$t('general.workspaceUsers.memberLabel', { name: user.name })
+					"
 					:class="[
 						'relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-surface shadow-tmgr-xs transition-all hover:z-20 hover:scale-110',
 						avatarColor(user.id),
@@ -27,10 +31,13 @@
 			</AppTooltip>
 
 			<Dialog v-if="!isLocalWorkspace" v-model:open="isInviteDialogOpen">
-				<AppTooltip content="Invite user" side="bottom">
+				<AppTooltip
+					:content="$t('general.workspaceUsers.inviteUser')"
+					side="bottom"
+				>
 					<DialogTrigger as-child>
 						<button
-							aria-label="Invite user"
+							:aria-label="$t('general.workspaceUsers.inviteUser')"
 							class="relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-surface bg-surface-sunken text-ink-subtle shadow-tmgr-xs transition-all hover:z-20 hover:scale-110 hover:text-ink"
 						>
 							<span class="material-icons text-sm">add</span>
@@ -40,13 +47,15 @@
 
 				<DialogContent class="!rounded-[8px] sm:max-w-[425px]">
 					<DialogHeader>
-						<DialogTitle>Send invitation(s)</DialogTitle>
+						<DialogTitle>{{
+							$t('general.workspaceUsers.sendInvitations')
+						}}</DialogTitle>
 					</DialogHeader>
 
 					<Textarea
 						v-model="invitationEmails"
 						rows="5"
-						:placeholder="`Enter emails (comma separated), for example:\nuser1@example.com,\nuser2@example.com,\n...\nuserN@example.com`"
+						:placeholder="$t('general.workspaceUsers.emailsPlaceholder')"
 					/>
 					<span
 						class="whitespace-pre text-status-fix-fg"
@@ -68,7 +77,11 @@
 							"
 							@click="sendInvitations"
 						>
-							{{ isSending ? 'Sending...' : 'Send' }}
+							{{
+								isSending
+									? $t('general.workspaceUsers.sending')
+									: $t('general.workspaceUsers.send')
+							}}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -84,6 +97,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { createWorkspaceInvitation } from '@/actions/tmgr/workspaces';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
@@ -146,18 +160,18 @@
 			isSending.value = true;
 			await createWorkspaceInvitation(props.workspaceId, { emails });
 			toaster.toast({
-				title: 'Invitations sent',
-				description: 'Invitations have been sent successfully',
+				title: t('general.workspaceUsers.invitationsSent'),
+				description: t('general.workspaceUsers.invitationsSentDescription'),
 			});
 			isInviteDialogOpen.value = false;
 			invitationEmails.value = '';
 		} catch (error) {
 			console.error('Failed to send invitations:', error);
 			toaster.toast({
-				title: 'Error',
+				title: t('general.workspaceUsers.errorTitle'),
 				description: errorMessageFrom(
 					error,
-					'Failed to send invitations. Please try again.',
+					t('general.workspaceUsers.sendFailed'),
 				),
 				variant: 'destructive',
 			});

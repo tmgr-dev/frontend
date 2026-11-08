@@ -3,7 +3,11 @@
 		role="link"
 		tabindex="0"
 		draggable="false"
-		:aria-label="label ? `Open ${label}` : 'Open member'"
+		:aria-label="
+			label
+				? $t('general.memberAvatarLink.open', { label })
+				: $t('general.memberAvatarLink.openMember')
+		"
 		class="inline-flex cursor-pointer rounded-full outline-hidden transition-shadow hover:ring-2 hover:ring-brand/40 dark:hover:ring-brand/60"
 		@click.stop.prevent="open"
 		@keydown.enter.stop.prevent="open"

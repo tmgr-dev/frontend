@@ -5,6 +5,7 @@
 </template>
 
 <script setup>
+	import { t } from '@/i18n';
 	import { normalizeBlocks, sameBlocks } from '@/utils/editor';
 	import {
 		createEditorOperationQueue,
@@ -224,7 +225,7 @@
 				header: {
 					class: Header,
 					config: {
-						placeholder: 'Enter a header',
+						placeholder: t('general.blockEditor.header'),
 						levels: [1, 2, 3],
 						defaultLevel: 1,
 					},
@@ -241,8 +242,8 @@
 					inlineToolbar: true,
 					shortcut: 'CMD+SHIFT+O',
 					config: {
-						quotePlaceholder: 'Enter a quote',
-						captionPlaceholder: "Quote's author",
+						quotePlaceholder: t('general.blockEditor.quote'),
+						captionPlaceholder: t('general.blockEditor.quoteAuthor'),
 					},
 				},
 				warning: {
@@ -250,8 +251,8 @@
 					inlineToolbar: true,
 					shortcut: 'CMD+SHIFT+W',
 					config: {
-						titlePlaceholder: 'Title',
-						messagePlaceholder: 'Message',
+						titlePlaceholder: t('general.blockEditor.warningTitle'),
+						messagePlaceholder: t('general.blockEditor.warningMessage'),
 					},
 				},
 				marker: {

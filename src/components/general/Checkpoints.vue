@@ -19,7 +19,7 @@
 			<textarea
 				v-model="checkpoint.description"
 				rows="1"
-				placeholder="What did you work on?"
+				:placeholder="$t('general.checkpoints.descriptionPlaceholder')"
 				class="checkpoint-description min-h-6 min-w-0 flex-1 resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-sm leading-5 text-ink outline-hidden placeholder:text-ink-subtle focus:bg-surface-sunken"
 				@input="autoResize($event.target as HTMLTextAreaElement)"
 			/>
@@ -30,7 +30,7 @@
 					type="button"
 					class="shrink-0 font-mono text-2xs leading-6 text-ink-subtle tabular-nums transition-colors hover:text-brand"
 					@click="startEditingTime(v as number)"
-					title="Click to edit time"
+					:title="$t('general.checkpoints.editTime')"
 				>
 					{{ secondsToStringTime(checkpoint.start) }}–{{
 						secondsToStringTime(checkpoint.end)
@@ -40,8 +40,8 @@
 					type="button"
 					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-subtle opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 					@click="deleteCheckpoint(v as number)"
-					title="Delete entry"
-					aria-label="Delete entry"
+					:title="$t('general.checkpoints.deleteEntry')"
+					:aria-label="$t('general.checkpoints.deleteEntry')"
 				>
 					<span class="material-icons" style="font-size: 14px">delete</span>
 				</button>
@@ -70,7 +70,7 @@
 					type="button"
 					class="flex size-6 shrink-0 items-center justify-center rounded-pill bg-brand text-on-accent transition hover:bg-brand-hover"
 					@click="saveTimeEdit(v as number)"
-					title="Save (Enter)"
+					:title="$t('general.checkpoints.saveEnter')"
 				>
 					<span class="material-icons" style="font-size: 14px">check</span>
 				</button>
@@ -78,7 +78,7 @@
 					type="button"
 					class="flex size-6 shrink-0 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 					@click="cancelTimeEdit(v as number)"
-					title="Cancel (Esc)"
+					:title="$t('general.checkpoints.cancelEsc')"
 				>
 					<span class="material-icons" style="font-size: 14px">close</span>
 				</button>
@@ -88,6 +88,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { nextTick, onMounted, reactive, ref, watch } from 'vue';
 
 	interface Checkpoints {
@@ -219,12 +220,12 @@
 		const endSeconds = stringTimeToSeconds(buffer.end);
 
 		if (startSeconds === null || endSeconds === null) {
-			alert('Invalid time format. Please use HH:MM:SS format (e.g., 01:30:00)');
+			alert(t('general.checkpoints.invalidTimeFormat'));
 			return;
 		}
 
 		if (startSeconds >= endSeconds) {
-			alert('Start time must be before end time');
+			alert(t('general.checkpoints.startBeforeEnd'));
 			return;
 		}
 

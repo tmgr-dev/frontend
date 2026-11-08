@@ -52,7 +52,7 @@
 				class="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
 			>
 				<X class="h-4 w-4" />
-				<span class="sr-only">Close</span>
+				<span class="sr-only">{{ $t('common.actions.close') }}</span>
 			</DialogClose>
 		</DialogContent>
 	</DialogPortal>

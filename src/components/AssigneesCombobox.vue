@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { WorkspaceMember } from '@/actions/tmgr/workspaces';
 	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
@@ -57,7 +58,9 @@
 			...selectedMembers.value.map((assignee) => assignee.name),
 			...props.selectedPersonas.map((persona) => persona.name),
 		];
-		return names.length > 0 ? names.join(', ') : 'Assignee';
+		return names.length > 0
+			? names.join(', ')
+			: t('general.assigneesCombobox.trigger');
 	});
 	const openCombobox = ref(false);
 	const searchValue = ref('');
@@ -115,12 +118,12 @@
 				<Command>
 					<CommandInput
 						class="h-9"
-						placeholder="Search assignees..."
+						:placeholder="$t('general.assigneesCombobox.search')"
 						@input="(e) => (searchValue = e.target.value)"
 					/>
-					<CommandEmpty class="text-ink-muted"
-						>No assignees found.</CommandEmpty
-					>
+					<CommandEmpty class="text-ink-muted">{{
+						$t('general.assigneesCombobox.empty')
+					}}</CommandEmpty>
 					<CommandList>
 						<CommandGroup>
 							<CommandItem

@@ -69,7 +69,7 @@
 			<button
 				type="button"
 				class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-				title="Task time info"
+				:title="$t('general.taskTimeInfo.title')"
 			>
 				<InformationCircleIcon class="size-4" />
 			</button>
@@ -79,7 +79,9 @@
 			class="rounded-card border border-line bg-surface text-ink sm:max-w-[425px]"
 		>
 			<DialogHeader>
-				<DialogTitle class="text-ink">Task time information</DialogTitle>
+				<DialogTitle class="text-ink">{{
+					$t('general.taskTimeInfo.heading')
+				}}</DialogTitle>
 			</DialogHeader>
 
 			<div class="space-y-2">
@@ -87,7 +89,9 @@
 					v-if="lastStartTime.hours || lastStartTime.minutes"
 					class="flex items-center justify-between"
 				>
-					<span class="text-ink-subtle">Last start time:</span>
+					<span class="text-ink-subtle">{{
+						$t('general.taskTimeInfo.lastStart')
+					}}</span>
 
 					<span class="font-mono text-lg tabular-nums">
 						{{ lastStartTime.hours }} : {{ lastStartTime.minutes }}
@@ -98,7 +102,9 @@
 					v-if="approximatelyEndTime.hours || approximatelyEndTime.minutes"
 					class="flex items-center justify-between"
 				>
-					<span class="text-ink-subtle">Approximately end time:</span>
+					<span class="text-ink-subtle">{{
+						$t('general.taskTimeInfo.approxEnd')
+					}}</span>
 
 					<div>
 						<div class="text-right font-mono text-lg tabular-nums">
@@ -112,7 +118,9 @@
 					v-if="approximatelyEndTime.timeLeft"
 					class="flex items-center justify-between"
 				>
-					<span class="text-ink-subtle">Time left:</span>
+					<span class="text-ink-subtle">{{
+						$t('general.taskTimeInfo.timeLeft')
+					}}</span>
 					<span class="font-mono text-lg tabular-nums">{{
 						approximatelyEndTime.timeLeft
 					}}</span>
@@ -125,15 +133,19 @@
 					@click="isEditMode = !isEditMode"
 				>
 					<PencilIcon class="size-4" />
-					{{ isEditMode ? 'Hide edit time mode' : 'Edit time mode' }}
+					{{
+						isEditMode
+							? $t('general.taskTimeInfo.hideEdit')
+							: $t('general.taskTimeInfo.showEdit')
+					}}
 				</button>
 
 				<div v-if="isEditMode" class="text-center">
 					<p v-if="isTimerActive" class="text-sm text-ink-muted">
-						You can edit time, but first you need to stop the timer
+						{{ $t('general.taskTimeInfo.stopFirst') }}
 					</p>
 					<p v-else class="text-sm text-ink-muted">
-						Edit the time and press the save button
+						{{ $t('general.taskTimeInfo.editHint') }}
 					</p>
 
 					<div class="mt-2 flex justify-center gap-1 font-mono tabular-nums">
@@ -166,7 +178,7 @@
 							class="rounded-md bg-status-fix px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
 							@click="emit('stopTimer')"
 						>
-							Stop the timer
+							{{ $t('general.taskTimeInfo.stopTimer') }}
 						</button>
 
 						<button
@@ -175,7 +187,7 @@
 							class="rounded-md bg-status-done px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
 							@click="updateTimer"
 						>
-							Save
+							{{ $t('common.actions.save') }}
 						</button>
 					</div>
 				</div>

@@ -21,11 +21,11 @@
 	<a v-if="isDefaultTheme" href="#" @click="switchOn = !switchOn">
 		<div v-if="switchOn" class="flex">
 			<Sun class="size-4" />
-			<span class="ml-2">Light mode</span>
+			<span class="ml-2">{{ $t('general.darkMode.light') }}</span>
 		</div>
 		<div v-else class="flex">
 			<Moon class="size-4" />
-			<span class="ml-2">Dark mode</span>
+			<span class="ml-2">{{ $t('general.darkMode.dark') }}</span>
 		</div>
 	</a>
 </template>

@@ -4,9 +4,11 @@
 			class="max-w-xl gap-0 overflow-hidden p-0 [&>button.absolute]:hidden"
 			@close-auto-focus="restoreFocus"
 		>
-			<DialogTitle class="sr-only">Search</DialogTitle>
+			<DialogTitle class="sr-only">{{
+				$t('common.actions.search')
+			}}</DialogTitle>
 			<DialogDescription class="sr-only">
-				Find tasks, pages, places and workspaces
+				{{ $t('general.commandPalette.description') }}
 			</DialogDescription>
 			<Command
 				v-model:search-term="query"
@@ -19,7 +21,7 @@
 			>
 				<CommandInput
 					data-testid="command-palette-input"
-					placeholder="Ask or search anything…"
+					:placeholder="$t('general.commandPalette.placeholder')"
 					class="h-12 text-base sm:text-sm"
 				/>
 				<CommandList class="h-[min(60vh,420px)] max-h-none p-1">
@@ -28,21 +30,21 @@
 						data-testid="command-palette-status"
 						class="px-3 py-2 text-sm text-muted-foreground dark:text-muted-foreground"
 					>
-						Searching…
+						{{ $t('general.commandPalette.searching') }}
 					</p>
 					<p
 						v-else-if="error"
 						data-testid="command-palette-status"
 						class="px-3 py-2 text-sm text-destructive dark:text-destructive"
 					>
-						Search failed
+						{{ $t('general.commandPalette.failed') }}
 					</p>
 					<p
 						v-else-if="nothingFound"
 						data-testid="command-palette-empty"
 						class="px-3 py-6 text-center text-sm text-muted-foreground dark:text-muted-foreground"
 					>
-						Nothing found
+						{{ $t('general.commandPalette.empty') }}
 					</p>
 					<CommandGroup
 						v-for="group in groups"
@@ -86,6 +88,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { searchPages, type PageSearchHit } from '@/actions/tmgr/pages';
 	import { getTasks, type Task } from '@/actions/tmgr/tasks';
 	import {
@@ -252,7 +255,7 @@
 					kind: 'workspace' as const,
 					label: w.name,
 					detail: w.code,
-					badge: w.is_local ? 'Local' : undefined,
+					badge: w.is_local ? t('nav.sidebar.local') : undefined,
 					icon: Briefcase,
 					workspace: w,
 				}));
@@ -271,7 +274,7 @@
 				if (!trimmed.value) {
 					list.push({
 						key: 'recent',
-						heading: 'Recent',
+						heading: t('general.commandPalette.groups.recent'),
 						items: recent.value.map((entry) => ({
 							value: `recent:${entry.kind}:${entry.id}`,
 							kind: entry.kind,
@@ -283,7 +286,7 @@
 				} else {
 					list.push({
 						key: 'tasks',
-						heading: 'Tasks',
+						heading: t('general.commandPalette.groups.tasks'),
 						items: taskHits.value.map((task) => ({
 							value: `task:${task.id}`,
 							kind: 'task' as const,
@@ -300,7 +303,7 @@
 					if (pagesEnabled.value) {
 						list.push({
 							key: 'pages',
-							heading: 'Pages',
+							heading: t('general.commandPalette.groups.pages'),
 							items: pageHits.value.map((hit) => ({
 								value: `page:${hit.id}`,
 								kind: 'page' as const,
@@ -321,12 +324,12 @@
 				}
 				list.push({
 					key: 'navigation',
-					heading: 'Navigation',
+					heading: t('general.commandPalette.groups.navigation'),
 					items: navItems.value,
 				});
 				list.push({
 					key: 'workspaces',
-					heading: 'Workspaces',
+					heading: t('general.commandPalette.groups.workspaces'),
 					items: workspaceItems.value,
 				});
 				return list.filter((group) => group.items.length);

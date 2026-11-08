@@ -1,7 +1,11 @@
 <template>
 	<div class="relative" :class="[isModal ? 'ml-5' : 'md:ml-auto']">
 		<div class="flex flex-row-reverse">
-			<AppTooltip v-if="showAssigneeControls" content="Assign" side="right">
+			<AppTooltip
+				v-if="showAssigneeControls"
+				:content="$t('general.assigneeUsers.assign')"
+				side="right"
+			>
 				<div
 					class="group flex h-8 w-8 cursor-default cursor-pointer rounded-full border-2 border-dashed border-ink-subtle hover:border-ink-muted"
 					:class="{ '-ml-2': assignees?.length }"

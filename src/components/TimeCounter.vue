@@ -120,7 +120,7 @@
 				<span
 					class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 				>
-					Time tracked
+					{{ $t('general.timeCounter.tracked') }}
 				</span>
 				<span
 					v-if="isTimerActive && !isTimeOver"
@@ -129,13 +129,13 @@
 					<span
 						class="h-1.5 w-1.5 animate-tmgr-pulse rounded-full bg-status-done"
 					></span>
-					Running
+					{{ $t('general.timeCounter.running') }}
 				</span>
 				<span
 					v-else-if="isTimeOver && isTimerActive"
 					class="text-2xs font-bold tracking-wide text-status-fix-fg uppercase"
 				>
-					Over time
+					{{ $t('general.timeCounter.overTime') }}
 				</span>
 			</div>
 

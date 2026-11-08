@@ -17,6 +17,6 @@
 		<slot>
 			<MoreHorizontal class="h-4 w-4" />
 		</slot>
-		<span class="sr-only">More</span>
+		<span class="sr-only">{{ $t('general.breadcrumbEllipsis.more') }}</span>
 	</span>
 </template>

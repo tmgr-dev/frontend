@@ -79,14 +79,14 @@
 			<Command>
 				<CommandInput
 					class="h-9"
-					:placeholder="inputPlaceholder || 'Search entities'"
+					:placeholder="inputPlaceholder || $t('general.combobox.search')"
 					@input="
 						(e: InputEvent) =>
 							(searchValue = (e.target as HTMLInputElement).value)
 					"
 				/>
 				<CommandEmpty class="text-ink-muted">{{
-					notFoundMessage || 'No entity found.'
+					notFoundMessage || $t('general.combobox.empty')
 				}}</CommandEmpty>
 				<CommandList class="w-80">
 					<CommandGroup>

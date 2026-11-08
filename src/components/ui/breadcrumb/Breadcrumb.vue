@@ -7,7 +7,7 @@
 </script>
 
 <template>
-	<nav aria-label="breadcrumb" :class="props.class">
+	<nav :aria-label="$t('general.breadcrumbs.label')" :class="props.class">
 		<slot />
 	</nav>
 </template>

@@ -1,0 +1,297 @@
+{
+	"breadcrumbs": {
+		"label": "breadcrumb",
+		"categories": "Categories",
+		"title": "Breadcrumbs",
+		"currentPage": "Current page"
+	},
+	"buttonWithActions": {
+		"saveAnd": "Save & ..."
+	},
+	"checkpoints": {
+		"descriptionPlaceholder": "What did you work on?",
+		"editTime": "Click to edit time",
+		"deleteEntry": "Delete entry",
+		"saveEnter": "Save (Enter)",
+		"cancelEsc": "Cancel (Esc)",
+		"invalidTimeFormat": "Invalid time format. Please use HH:MM:SS format (e.g., 01:30:00)",
+		"startBeforeEnd": "Start time must be before end time"
+	},
+	"categoryBadge": {
+		"createTask": "Create a task of this category"
+	},
+	"assigneeUsers": {
+		"assign": "Assign"
+	},
+	"assigneePersonaGroup": {
+		"personas": "Personas"
+	},
+	"authorBadge": {
+		"permissions": "Permissions: {list}"
+	},
+	"commandChip": {
+		"copyCommand": "Copy command: {command}",
+		"copyFailed": "Couldn't copy the command"
+	},
+	"confirm": {
+		"ok": "Ok"
+	},
+	"confirmByNameDialog": {
+		"typeToConfirm": "Type {name} to confirm.",
+		"nameLabel": "Workspace name"
+	},
+	"commandPalette": {
+		"description": "Find tasks, pages, places and workspaces",
+		"placeholder": "Ask or search anything…",
+		"searching": "Searching…",
+		"failed": "Search failed",
+		"empty": "Nothing found",
+		"groups": {
+			"recent": "Recent",
+			"tasks": "Tasks",
+			"pages": "Pages",
+			"navigation": "Navigation",
+			"workspaces": "Workspaces"
+		}
+	},
+	"heatmapCalendar": {
+		"less": "Less",
+		"more": "More",
+		"weekdays": {
+			"mon": "Mon",
+			"wed": "Wed",
+			"fri": "Fri"
+		},
+		"contributionsOn": "{n} contribution on {date} | {n} contributions on {date}",
+		"dayLabel": "{activity} on {date}"
+	},
+	"countdown": {
+		"editHint": "Double click to edit the time",
+		"timeIsOver": "Time is over",
+		"update": "Update"
+	},
+	"featureGate": {
+		"notInLocalWorkspace": "Not available in local workspaces"
+	},
+	"moduleOffNotice": {
+		"notInLocalWorkspace": "Not available in local workspaces",
+		"off": "This module is off."
+	},
+	"requiresAccount": {
+		"title": "Requires an account",
+		"cloudOnly": "This feature runs in the TMGR cloud.",
+		"createAccount": "Create account"
+	},
+	"darkMode": {
+		"light": "Light mode",
+		"dark": "Dark mode"
+	},
+	"modulePresetOptions": {
+		"custom": "Let me pick"
+	},
+	"dropdown": {
+		"openOptions": "Open options"
+	},
+	"emailVerifyBanner": {
+		"confirm": "Please confirm your email address — we sent a link to {email}.",
+		"sent": "A new link is on its way.",
+		"rateLimited": "Too many requests. Try again in {wait}.",
+		"error": "Could not send the link. Please try again.",
+		"resend": "Resend",
+		"dismiss": "Dismiss"
+	},
+	"globalSearch": {
+		"placeholder": "Search…",
+		"withHint": "Search ({hint})"
+	},
+	"filtersBoard": {
+		"searchTasks": "Search tasks…",
+		"selectCategory": "Select category",
+		"selectUser": "Select user",
+		"selectPersona": "Select persona",
+		"priority": "Priority",
+		"sortByPriority": "Sort by priority",
+		"clearFilters": "Clear filters",
+		"reorderStatuses": "Reorder statuses",
+		"filters": "Filters",
+		"allCategories": "All categories",
+		"allUsers": "All users",
+		"allPersonas": "All personas",
+		"myPersonasQueue": "My personas' queue",
+		"refresh": "Refresh"
+	},
+	"textField": {
+		"placeholder": "Enter value"
+	},
+	"select": {
+		"placeholder": "Select"
+	},
+	"navbarMenu": {
+		"categories": "Categories"
+	},
+	"personaAssigneeChips": {
+		"personaLabel": "Persona {name}",
+		"personaOf": "persona of {name}"
+	},
+	"memberAvatarLink": {
+		"open": "Open {label}",
+		"openMember": "Open member"
+	},
+	"userAvatar": {
+		"alt": "Avatar"
+	},
+	"personaAvatar": {
+		"alt": "Persona avatar"
+	},
+	"modulePresetPreview": {
+		"menu": "Menu",
+		"task": "Task",
+		"taskTitle": "Task title",
+		"status": "Status",
+		"badges": {
+			"off": "off",
+			"new": "new",
+			"willHide": "will hide"
+		}
+	},
+	"modulesPicker": {
+		"title": "What do you want TMGR for?",
+		"description": "You can change this any time in Settings → Modules.",
+		"notNow": "Not now",
+		"saveFailed": "Could not save your choice. Try again."
+	},
+	"modulesPresetDialog": {
+		"title": "Apply a preset",
+		"description": "Pick a preset to see what changes before anything is applied.",
+		"nothingChanges": "Nothing changes",
+		"willTurnOn": "Will turn on:",
+		"willTurnOff": "Will turn off:",
+		"dataKept": "Your data is never deleted. Turning a module back on brings everything back.",
+		"applying": "Applying…",
+		"applyFailed": "Could not apply the preset. Try again."
+	},
+	"workspaceUsers": {
+		"viewAllMembers": "{name} - Click to view all members",
+		"memberLabel": "{name} – workspace members",
+		"inviteUser": "Invite user",
+		"sendInvitations": "Send invitation(s)",
+		"emailsPlaceholder": "Enter emails (comma separated), for example:\nuser1{'@'}example.com,\nuser2{'@'}example.com,\n...\nuserN{'@'}example.com",
+		"sending": "Sending...",
+		"send": "Send",
+		"invitationsSent": "Invitations sent",
+		"invitationsSentDescription": "Invitations have been sent successfully",
+		"errorTitle": "Error",
+		"sendFailed": "Failed to send invitations. Please try again."
+	},
+	"breadcrumbEllipsis": {
+		"more": "More"
+	},
+	"sidebar": {
+		"toggle": "Toggle Sidebar"
+	},
+	"addTaskModalTrigger": {
+		"open": "Open Add Task Modal"
+	},
+	"assigneesCombobox": {
+		"search": "Search assignees...",
+		"empty": "No assignees found.",
+		"trigger": "Assignee"
+	},
+	"categoriesCombobox": {
+		"search": "Search category...",
+		"empty": "No category found.",
+		"trigger": "Category"
+	},
+	"combobox": {
+		"search": "Search entities",
+		"empty": "No entity found."
+	},
+	"blockEditor": {
+		"header": "Enter a header",
+		"quote": "Enter a quote",
+		"quoteAuthor": "Quote's author",
+		"warningTitle": "Title",
+		"warningMessage": "Message"
+	},
+	"editor": {
+		"descriptionPlaceholder": "Add description..."
+	},
+	"emptyState": {
+		"title": "Nothing here yet"
+	},
+	"currentWorkspace": {
+		"trigger": "Workspace",
+		"searchCategory": "Search category...",
+		"noCategory": "No category found.",
+		"addWorkspace": "Add new workspace",
+		"newWorkspaceName": "New workspace name",
+		"sendInvitationToWorkspace": "Send invitation to workspace",
+		"emailAddresses": "Email Addresses",
+		"emailsPlaceholder": "email1{'@'}example.com, email2{'@'}example.com",
+		"separateEmails": "Separate multiple emails with commas",
+		"creating": "Creating...",
+		"sendInvitation": "Send Invitation",
+		"invitationSent": "Invitation sent!",
+		"invitationsSentToEmails": "Invitations have been sent to the specified email addresses.",
+		"shareLink": "You can share this link with anyone you want to invite:",
+		"copied": "Copied!",
+		"copyToClipboard": "Copy to clipboard"
+	},
+	"daySummary": {
+		"title": "Day summary",
+		"collecting": "Collecting today's tasks…",
+		"counts": "{tasks} tasks from {workspaces} workspaces",
+		"skipped": "Could not read: {names}",
+		"lanNotice": "Task titles, statuses and comment excerpts (also from cloud workspaces) will be sent to {origin}.",
+		"send": "Send",
+		"aiGenerated": "AI-generated, may be inaccurate",
+		"noAi": "No AI",
+		"setUpAi": "Set up local AI",
+		"summarizing": "Summarizing…",
+		"summarize": "Summarize",
+		"regenerate": "Regenerate",
+		"sendsTo": "Sends task titles, statuses and comment excerpts to {origin}.",
+		"saveAsPage": "Save as page",
+		"copied": "Copied.",
+		"savedAsPage": "Saved as a page in this workspace.",
+		"pageTitle": "Day summary {date}"
+	},
+	"errorBoundary": {
+		"title": "Something went wrong",
+		"message": "An unexpected error occurred. Please try refreshing the page.",
+		"showDetails": "Show technical details",
+		"retrying": "Retrying...",
+		"tryAgain": "Try Again",
+		"reload": "Reload Page",
+		"report": "Report Issue",
+		"updateTitle": "Update Available",
+		"updateMessage": "A new version of the application is available. Please refresh the page to get the latest updates.",
+		"networkTitle": "Connection Problem",
+		"networkMessage": "Unable to connect to the server. Please check your internet connection and try again."
+	},
+	"forbiddenAccess": {
+		"title": "Access Denied",
+		"message": "Sorry, you don't have the necessary permissions to view this content.",
+		"goBack": "Go Back"
+	},
+	"settingsComponent": {
+		"description": "Make changes to the task settings here. Click save when you're done."
+	},
+	"taskTimeInfo": {
+		"title": "Task time info",
+		"heading": "Task time information",
+		"lastStart": "Last start time:",
+		"approxEnd": "Approximately end time:",
+		"timeLeft": "Time left:",
+		"hideEdit": "Hide edit time mode",
+		"showEdit": "Edit time mode",
+		"stopFirst": "You can edit time, but first you need to stop the timer",
+		"editHint": "Edit the time and press the save button",
+		"stopTimer": "Stop the timer"
+	},
+	"timeCounter": {
+		"tracked": "Time tracked",
+		"running": "Running",
+		"overTime": "Over time"
+	}
+}

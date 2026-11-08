@@ -2,15 +2,15 @@
 	<SidebarMenuButton
 		v-if="variant === 'sidebar'"
 		variant="outline"
-		:tooltip="`Search (${hint})`"
-		aria-label="Search"
+		:tooltip="$t('general.globalSearch.withHint', { hint })"
+		:aria-label="$t('common.actions.search')"
 		:aria-keyshortcuts="shortcut"
 		data-testid="command-palette-trigger"
 		class="text-ink-subtle dark:text-ink-subtle"
 		@click="openCommandPalette"
 	>
 		<Search />
-		<span>Search…</span>
+		<span>{{ $t('general.globalSearch.placeholder') }}</span>
 		<span
 			class="ml-auto text-xs tracking-widest text-muted-foreground group-data-[collapsible=icon]:hidden dark:text-muted-foreground"
 			aria-hidden="true"
@@ -21,9 +21,9 @@
 		v-else
 		type="button"
 		class="-ml-1 flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle hover:bg-accent hover:text-accent-foreground dark:text-ink-subtle dark:hover:bg-accent"
-		aria-label="Search"
+		:aria-label="$t('common.actions.search')"
 		:aria-keyshortcuts="shortcut"
-		:title="`Search (${hint})`"
+		:title="$t('general.globalSearch.withHint', { hint })"
 		data-testid="command-palette-trigger"
 		@click="openCommandPalette"
 	>

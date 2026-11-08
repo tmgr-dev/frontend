@@ -7,8 +7,8 @@
 		<button
 			type="button"
 			class="inline-flex size-5 shrink-0 items-center justify-center rounded text-ink-muted hover:bg-surface-sunken hover:text-ink"
-			:aria-label="`Copy command: ${command}`"
-			title="Copy"
+			:aria-label="$t('general.commandChip.copyCommand', { command })"
+			:title="$t('common.actions.copy')"
 			data-testid="command-chip-copy"
 			@click="copyCommand"
 		>
@@ -18,6 +18,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { toast } from '@/components/ui/toast';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
 	import { Copy } from 'lucide-vue-next';
@@ -36,8 +37,11 @@
 				const ok = await copy(props.command);
 				toast(
 					ok
-						? { title: 'Copied', description: props.command }
-						: { title: "Couldn't copy the command", variant: 'destructive' },
+						? { title: t('common.actions.copied'), description: props.command }
+						: {
+								title: t('general.commandChip.copyFailed'),
+								variant: 'destructive',
+							},
 				);
 			};
 

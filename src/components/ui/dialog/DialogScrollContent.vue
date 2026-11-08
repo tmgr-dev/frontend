@@ -64,7 +64,7 @@
 					class="absolute top-3 right-3 rounded-md p-0.5 transition-colors hover:bg-secondary"
 				>
 					<X class="h-4 w-4" />
-					<span class="sr-only">Close</span>
+					<span class="sr-only">{{ $t('common.actions.close') }}</span>
 				</DialogClose>
 			</DialogContent>
 		</DialogOverlay>

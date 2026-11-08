@@ -4,7 +4,7 @@
 		<div class="flex flex-col gap-3 rounded">
 			<TextField
 				v-if="isUserFeatureEnabled('board.search_input')"
-				placeholder="Search"
+				:placeholder="$t('common.actions.search')"
 				v-model="searchText"
 				input-class="py-1 w-full"
 			/>
@@ -18,7 +18,7 @@
 				class="w-full"
 			>
 				<Select
-					placeholder="Select category"
+					:placeholder="$t('general.filtersBoard.selectCategory')"
 					:options="categories"
 					v-model="selectedCategory"
 					label-key="title"
@@ -29,7 +29,9 @@
 			<div v-if="showUserFilter" class="w-full">
 				<UiSelect v-model="selectedUserValue">
 					<UiSelectTrigger class="w-full">
-						<UiSelectValue placeholder="Select user" />
+						<UiSelectValue
+							:placeholder="$t('general.filtersBoard.selectUser')"
+						/>
 					</UiSelectTrigger>
 					<UiSelectContent>
 						<UiSelectItem
@@ -54,7 +56,7 @@
 
 			<div v-if="showPersonaFilter" class="w-full">
 				<Select
-					placeholder="Select persona"
+					:placeholder="$t('general.filtersBoard.selectPersona')"
 					:options="mobilePersonaOptions"
 					v-model="selectedPersona"
 					label-key="name"
@@ -63,8 +65,14 @@
 			</div>
 
 			<div class="flex flex-col gap-2">
-				<span class="text-sm font-medium text-ink">Priority</span>
-				<div class="flex flex-wrap gap-2" role="group" aria-label="Priority">
+				<span class="text-sm font-medium text-ink">{{
+					$t('general.filtersBoard.priority')
+				}}</span>
+				<div
+					class="flex flex-wrap gap-2"
+					role="group"
+					:aria-label="$t('general.filtersBoard.priority')"
+				>
 					<button
 						v-for="option in PRIORITIES"
 						:key="option.value"
@@ -87,7 +95,7 @@
 						type="checkbox"
 						class="h-4 w-4 cursor-pointer rounded"
 					/>
-					Sort by priority
+					{{ $t('general.filtersBoard.sortByPriority') }}
 				</label>
 			</div>
 
@@ -98,7 +106,7 @@
 				class="flex w-full items-center justify-center gap-2 rounded-md border border-line bg-surface px-4 py-2 text-sm text-ink transition-colors hover:bg-surface-hover"
 			>
 				<span class="material-icons text-base">clear</span>
-				<span>Clear filters</span>
+				<span>{{ $t('general.filtersBoard.clearFilters') }}</span>
 			</button>
 
 			<div class="mt-3 flex flex-col gap-3 border-t border-line pt-3">
@@ -107,7 +115,7 @@
 					@click="handleMobileReorderClick"
 					class="w-full rounded-md border border-line bg-surface px-4 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover"
 				>
-					Reorder statuses
+					{{ $t('general.filtersBoard.reorderStatuses') }}
 				</button>
 				<slot name="actions-start"></slot>
 			</div>
@@ -126,14 +134,14 @@
 				ref="searchInput"
 				type="text"
 				v-model="searchText"
-				placeholder="Search tasks…"
+				:placeholder="$t('general.filtersBoard.searchTasks')"
 				class="h-9 w-44 rounded-pill border border-line bg-surface pr-3 pl-9 text-sm text-ink outline-hidden placeholder:text-ink-subtle focus:border-line-strong lg:w-56"
 				@blur="searchOpen = false"
 				@keydown.esc="closeSearch"
 			/>
 			<button
 				type="button"
-				title="Search"
+				:title="$t('common.actions.search')"
 				:class="[
 					'flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink',
 					(searchOpen || searchText) &&
@@ -154,7 +162,7 @@
 				"
 			>
 				<FunnelIcon class="h-4 w-4 text-ink-subtle" />
-				Filters
+				{{ $t('general.filtersBoard.filters') }}
 				<span
 					v-if="activeSelectCount"
 					class="rounded-full bg-brand px-1.5 text-xs leading-5 font-semibold text-on-accent"
@@ -171,7 +179,9 @@
 						v-model.number="selectedCategory"
 						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pr-9 pl-3 text-sm text-ink outline-hidden"
 					>
-						<option :value="0">All categories</option>
+						<option :value="0">
+							{{ $t('general.filtersBoard.allCategories') }}
+						</option>
 						<option
 							v-for="cat in categoryOptions"
 							:key="cat.id"
@@ -191,10 +201,14 @@
 						<UiSelectTrigger
 							class="h-9 rounded-pill border-line bg-surface px-3 text-ink"
 						>
-							<UiSelectValue placeholder="All users" />
+							<UiSelectValue
+								:placeholder="$t('general.filtersBoard.allUsers')"
+							/>
 						</UiSelectTrigger>
 						<UiSelectContent>
-							<UiSelectItem value="0">All users</UiSelectItem>
+							<UiSelectItem value="0">{{
+								$t('general.filtersBoard.allUsers')
+							}}</UiSelectItem>
 							<UiSelectItem
 								v-for="u in userOptions"
 								:key="u.id"
@@ -221,7 +235,9 @@
 						data-testid="persona-filter"
 						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pr-9 pl-3 text-sm text-ink outline-hidden"
 					>
-						<option value="">All personas</option>
+						<option value="">
+							{{ $t('general.filtersBoard.allPersonas') }}
+						</option>
 						<option
 							v-for="option in personaFilterOptions"
 							:key="option.id"
@@ -235,8 +251,14 @@
 					/>
 				</div>
 				<div class="flex flex-col gap-2">
-					<span class="text-sm font-medium text-ink">Priority</span>
-					<div class="flex flex-wrap gap-2" role="group" aria-label="Priority">
+					<span class="text-sm font-medium text-ink">{{
+						$t('general.filtersBoard.priority')
+					}}</span>
+					<div
+						class="flex flex-wrap gap-2"
+						role="group"
+						:aria-label="$t('general.filtersBoard.priority')"
+					>
 						<button
 							v-for="option in PRIORITIES"
 							:key="option.value"
@@ -261,7 +283,7 @@
 							type="checkbox"
 							class="h-4 w-4 cursor-pointer rounded"
 						/>
-						Sort by priority
+						{{ $t('general.filtersBoard.sortByPriority') }}
 					</label>
 				</div>
 			</PopoverPanel>
@@ -275,7 +297,7 @@
 			type="button"
 			@click="loadTasks"
 			class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-			title="Refresh"
+			:title="$t('general.filtersBoard.refresh')"
 		>
 			<ArrowPathIcon class="h-4 w-4" />
 		</button>
@@ -286,7 +308,7 @@
 			type="button"
 			@click="clearFilters"
 			class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-ink-subtle hover:bg-status-fix-bg hover:text-status-fix-fg"
-			title="Clear filters"
+			:title="$t('general.filtersBoard.clearFilters')"
 		>
 			<XMarkIcon class="h-4 w-4" />
 		</button>
@@ -310,9 +332,9 @@
 						"
 						:checked="activeDraggable"
 					/>
-					<label class="ml-2 cursor-pointer text-sm" for="checkbox"
-						>Reorder statuses</label
-					>
+					<label class="ml-2 cursor-pointer text-sm" for="checkbox">{{
+						$t('general.filtersBoard.reorderStatuses')
+					}}</label>
 				</div>
 			</MenuItem>
 			<MenuItem v-slot="{ active }">
@@ -323,6 +345,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import Dropdown from '@/components/general/Dropdown.vue';
 	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
@@ -524,11 +547,11 @@
 			props.personaOptions.length > 0,
 	);
 	const personaFilterOptions = computed(() => [
-		{ id: MY_PERSONAS_FILTER, name: "My personas' queue" },
+		{ id: MY_PERSONAS_FILTER, name: t('general.filtersBoard.myPersonasQueue') },
 		...props.personaOptions,
 	]);
 	const mobilePersonaOptions = computed(() => [
-		{ id: '', name: 'All personas' },
+		{ id: '', name: t('general.filtersBoard.allPersonas') },
 		...personaFilterOptions.value,
 	]);
 	const activeSelectCount = computed(

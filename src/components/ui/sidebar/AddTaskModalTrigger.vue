@@ -18,6 +18,6 @@
 		@click="$store.commit('setShowCreatingTaskModal')"
 	>
 		<FilePlus />
-		<span class="sr-only">Open Add Task Modal</span>
+		<span class="sr-only">{{ $t('general.addTaskModalTrigger.open') }}</span>
 	</Button>
 </template>

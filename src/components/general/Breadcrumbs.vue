@@ -1,7 +1,7 @@
 <template>
 	<div class="card flex flex-col transition duration-300 ease-in-out">
 		<div class="card-body">
-			<nav aria-label="breadcrumb" class="text-left">
+			<nav :aria-label="$t('general.breadcrumbs.label')" class="text-left">
 				<ol v-if="current" class="breadcrumb md:flex">
 					<li
 						v-for="(item, i) in items"
@@ -25,7 +25,9 @@
 				</ol>
 
 				<ol v-else class="breadcrumb flex pl-0">
-					<li aria-current="page" class="breadcrumb-item">Categories</li>
+					<li aria-current="page" class="breadcrumb-item">
+						{{ $t('general.breadcrumbs.categories') }}
+					</li>
 				</ol>
 			</nav>
 		</div>
@@ -33,6 +35,8 @@
 </template>
 
 <script>
+	import { t } from '@/i18n';
+
 	export default {
 		name: 'Breadcrumbs',
 		props: {
@@ -43,12 +47,12 @@
 			title: {
 				required: false,
 				type: String,
-				default: 'Breadcrumbs',
+				default: () => t('general.breadcrumbs.title'),
 			},
 			current: {
 				required: false,
 				type: String,
-				default: 'Current page',
+				default: () => t('general.breadcrumbs.currentPage'),
 			},
 			drop: {
 				type: Function,

@@ -21,6 +21,6 @@
 		@click="toggleSidebar"
 	>
 		<PanelLeft />
-		<span class="sr-only">Toggle Sidebar</span>
+		<span class="sr-only">{{ $t('general.sidebar.toggle') }}</span>
 	</Button>
 </template>

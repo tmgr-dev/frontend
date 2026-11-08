@@ -19,7 +19,7 @@
 						<summary
 							class="cursor-pointer text-sm text-ink-muted hover:text-ink"
 						>
-							Show technical details
+							{{ $t('general.errorBoundary.showDetails') }}
 						</summary>
 						<pre
 							class="mt-2 max-h-40 overflow-auto rounded bg-surface-sunken p-3 text-xs text-ink"
@@ -32,12 +32,16 @@
 						<ArrowPathIcon
 							:class="['mr-2 h-4 w-4', retrying && 'animate-spin']"
 						/>
-						{{ retrying ? 'Retrying...' : 'Try Again' }}
+						{{
+							retrying
+								? $t('general.errorBoundary.retrying')
+								: $t('general.errorBoundary.tryAgain')
+						}}
 					</Button>
 
 					<Button variant="outline" @click="handleReload">
 						<ArrowPathIcon class="mr-2 h-4 w-4" />
-						Reload Page
+						{{ $t('general.errorBoundary.reload') }}
 					</Button>
 
 					<Button
@@ -47,7 +51,7 @@
 						class="ml-3"
 					>
 						<ExclamationTriangleIcon class="mr-2 h-4 w-4" />
-						Report Issue
+						{{ $t('general.errorBoundary.report') }}
 					</Button>
 				</div>
 			</div>
@@ -58,6 +62,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import Button from '@/components/ui/button/Button.vue';
 	import {
 		ArrowPathIcon,
@@ -75,9 +80,8 @@
 	}
 
 	const props = withDefaults(defineProps<Props>(), {
-		fallbackTitle: 'Something went wrong',
-		fallbackMessage:
-			'An unexpected error occurred. Please try refreshing the page.',
+		fallbackTitle: () => t('general.errorBoundary.title'),
+		fallbackMessage: () => t('general.errorBoundary.message'),
 		showDetails: false,
 		showReportButton: true,
 	});
@@ -97,20 +101,20 @@
 	// Computed properties
 	const errorTitle = computed(() => {
 		if (error.value?.name === 'ChunkLoadError') {
-			return 'Update Available';
+			return t('general.errorBoundary.updateTitle');
 		}
 		if (error.value?.name === 'NetworkError') {
-			return 'Connection Problem';
+			return t('general.errorBoundary.networkTitle');
 		}
 		return props.fallbackTitle;
 	});
 
 	const errorMessage = computed(() => {
 		if (error.value?.name === 'ChunkLoadError') {
-			return 'A new version of the application is available. Please refresh the page to get the latest updates.';
+			return t('general.errorBoundary.updateMessage');
 		}
 		if (error.value?.name === 'NetworkError') {
-			return 'Unable to connect to the server. Please check your internet connection and try again.';
+			return t('general.errorBoundary.networkMessage');
 		}
 		if (error.value?.message) {
 			return error.value.message;

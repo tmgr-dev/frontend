@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import VueSelect from '@/plugins/VueSelect';
 	import { computed } from 'vue';
 
@@ -52,7 +53,7 @@
 	const props = withDefaults(defineProps<Props>(), {
 		labelKey: 'label',
 		valueKey: 'value',
-		placeholder: 'Select',
+		placeholder: () => t('general.select.placeholder'),
 		showErrorInTooltip: true,
 		selectClass: '',
 	});

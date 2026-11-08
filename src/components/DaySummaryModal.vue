@@ -4,16 +4,23 @@
 			class="rounded-card border border-line bg-surface text-ink sm:max-w-[560px]"
 		>
 			<DialogHeader>
-				<DialogTitle>Day summary</DialogTitle>
+				<DialogTitle>{{ $t('general.daySummary.title') }}</DialogTitle>
 			</DialogHeader>
 
 			<p v-if="loading" class="text-sm text-ink-subtle">
-				Collecting today's tasks…
+				{{ $t('general.daySummary.collecting') }}
 			</p>
 			<div v-else class="flex flex-col gap-1 text-sm">
-				<p>{{ tasks.length }} tasks from {{ workspaceCount }} workspaces</p>
+				<p>
+					{{
+						$t('general.daySummary.counts', {
+							tasks: tasks.length,
+							workspaces: workspaceCount,
+						})
+					}}
+				</p>
 				<p v-if="skipped.length" class="text-amber-600 dark:text-amber-400">
-					Could not read: {{ skipped.join(', ') }}
+					{{ $t('general.daySummary.skipped', { names: skipped.join(', ') }) }}
 				</p>
 			</div>
 
@@ -22,12 +29,15 @@
 				class="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
 			>
 				<p class="text-amber-800 dark:text-amber-200">
-					Task titles, statuses and comment excerpts (also from cloud
-					workspaces) will be sent to {{ lanOrigin }}.
+					{{ $t('general.daySummary.lanNotice', { origin: lanOrigin }) }}
 				</p>
 				<div class="flex gap-2">
-					<Button size="sm" @click="sendToLan">Send</Button>
-					<Button size="sm" variant="outline" @click="cancelLan">Cancel</Button>
+					<Button size="sm" @click="sendToLan">{{
+						$t('general.daySummary.send')
+					}}</Button>
+					<Button size="sm" variant="outline" @click="cancelLan">{{
+						$t('common.actions.cancel')
+					}}</Button>
 				</div>
 			</div>
 
@@ -35,7 +45,11 @@
 				<span
 					class="w-fit rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 				>
-					{{ aiGenerated ? 'AI-generated, may be inaccurate' : 'No AI' }}
+					{{
+						aiGenerated
+							? $t('general.daySummary.aiGenerated')
+							: $t('general.daySummary.noAi')
+					}}
 				</span>
 				<p class="text-sm whitespace-pre-line">{{ summary }}</p>
 				<RouterLink
@@ -43,7 +57,7 @@
 					:to="{ name: 'PersonaSettings' }"
 					class="w-fit text-sm text-primary hover:underline"
 				>
-					Set up local AI
+					{{ $t('general.daySummary.setUpAi') }}
 				</RouterLink>
 			</div>
 
@@ -58,7 +72,11 @@
 					:disabled="loading || summarizing"
 					@click="summarize"
 				>
-					{{ summarizing ? 'Summarizing…' : 'Summarize' }}
+					{{
+						summarizing
+							? $t('general.daySummary.summarizing')
+							: $t('general.daySummary.summarize')
+					}}
 				</Button>
 				<Button
 					v-else
@@ -66,24 +84,24 @@
 					:disabled="summarizing || !!lanOrigin"
 					@click="summarize"
 				>
-					Regenerate
+					{{ $t('general.daySummary.regenerate') }}
 				</Button>
 				<p v-if="aiOrigin" class="basis-full text-xs text-ink-subtle">
-					Sends task titles, statuses and comment excerpts to {{ aiOrigin }}.
+					{{ $t('general.daySummary.sendsTo', { origin: aiOrigin }) }}
 				</p>
 				<Button
 					variant="outline"
 					:disabled="summary === null"
 					@click="copySummary"
 				>
-					Copy
+					{{ $t('common.actions.copy') }}
 				</Button>
 				<Button
 					v-if="localWorkspace && summary !== null"
 					variant="outline"
 					@click="savePage"
 				>
-					Save as page
+					{{ $t('general.daySummary.saveAsPage') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
@@ -91,6 +109,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import { Button } from '@/components/ui/button';
 	import {
@@ -284,7 +303,7 @@
 				if (summary.value === null) return;
 				try {
 					await navigator.clipboard.writeText(summary.value);
-					notice.value = 'Copied.';
+					notice.value = t('general.daySummary.copied');
 				} catch (caught) {
 					error.value = messageOf(caught);
 				}
@@ -294,10 +313,12 @@
 				if (!localWorkspace || summary.value === null) return;
 				try {
 					await createPage(await localContext(localWorkspace, localUser()), {
-						title: `Day summary ${new Date().toLocaleDateString('en-CA')}`,
+						title: t('general.daySummary.pageTitle', {
+							date: new Date().toLocaleDateString('en-CA'),
+						}),
 						body: summary.value,
 					});
-					notice.value = 'Saved as a page in this workspace.';
+					notice.value = t('general.daySummary.savedAsPage');
 				} catch (caught) {
 					error.value = messageOf(caught);
 				}

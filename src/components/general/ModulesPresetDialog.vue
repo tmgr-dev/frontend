@@ -2,9 +2,9 @@
 	<Dialog :open="open" @update:open="(value) => !value && close()">
 		<DialogContent class="max-h-[85vh] max-w-2xl overflow-y-auto">
 			<DialogHeader>
-				<DialogTitle>Apply a preset</DialogTitle>
+				<DialogTitle>{{ $t('general.modulesPresetDialog.title') }}</DialogTitle>
 				<DialogDescription>
-					Pick a preset to see what changes before anything is applied.
+					{{ $t('general.modulesPresetDialog.description') }}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -19,14 +19,20 @@
 			</div>
 
 			<div v-if="selected" class="flex flex-col gap-2 text-sm">
-				<p v-if="isEmpty" data-testid="preset-diff-empty">Nothing changes</p>
+				<p v-if="isEmpty" data-testid="preset-diff-empty">
+					{{ $t('general.modulesPresetDialog.nothingChanges') }}
+				</p>
 				<template v-else>
 					<p v-if="diff.on.length" data-testid="preset-diff-on">
-						<span class="font-medium">Will turn on:</span>
+						<span class="font-medium">{{
+							$t('general.modulesPresetDialog.willTurnOn')
+						}}</span>
 						{{ diff.on.join(', ') }}
 					</p>
 					<p v-if="diff.off.length" data-testid="preset-diff-off">
-						<span class="font-medium">Will turn off:</span>
+						<span class="font-medium">{{
+							$t('general.modulesPresetDialog.willTurnOff')
+						}}</span>
 						{{ diff.off.join(', ') }}
 					</p>
 					<p v-for="note in notes" :key="note" data-testid="preset-diff-note">
@@ -34,8 +40,7 @@
 					</p>
 				</template>
 				<p class="text-xs text-ink-subtle">
-					Your data is never deleted. Turning a module back on brings everything
-					back.
+					{{ $t('general.modulesPresetDialog.dataKept') }}
 				</p>
 			</div>
 
@@ -48,14 +53,18 @@
 					data-testid="preset-cancel"
 					@click="close"
 				>
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</Button>
 				<Button
 					:disabled="saving || !selected || isEmpty"
 					data-testid="preset-confirm"
 					@click="apply"
 				>
-					{{ saving ? 'Applying…' : 'Confirm' }}
+					{{
+						saving
+							? $t('general.modulesPresetDialog.applying')
+							: $t('common.actions.confirm')
+					}}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
@@ -63,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { saveModulesChoice } from '@/actions/tmgr/modules';
 	import ModulePresetOptions from '@/components/general/ModulePresetOptions.vue';
 	import ModulePresetPreview from '@/components/general/ModulePresetPreview.vue';
@@ -160,7 +170,7 @@
 			emit('applied', payload);
 			close();
 		} catch {
-			error.value = 'Could not apply the preset. Try again.';
+			error.value = t('general.modulesPresetDialog.applyFailed');
 		} finally {
 			saving.value = false;
 		}

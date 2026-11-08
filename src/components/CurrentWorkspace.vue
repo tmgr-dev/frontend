@@ -18,7 +18,7 @@
 					{{
 						modelValue
 							? workspaces.find((workspace) => workspace.id == modelValue)?.name
-							: 'Workspace'
+							: $t('general.currentWorkspace.trigger')
 					}}
 				</span>
 				<ChevronsUpDown class="ml-1 h-4 w-4 shrink-0 opacity-50" />
@@ -30,10 +30,12 @@
 				<CommandInput
 					class="h-9"
 					wrapper-class="border-line"
-					placeholder="Search category..."
+					:placeholder="$t('general.currentWorkspace.searchCategory')"
 					@input="(e) => (searchValue = e.target.value)"
 				/>
-				<CommandEmpty>No category found.</CommandEmpty>
+				<CommandEmpty>{{
+					$t('general.currentWorkspace.noCategory')
+				}}</CommandEmpty>
 				<CommandList class="w-80">
 					<CommandGroup>
 						<CommandItem
@@ -72,7 +74,7 @@
 		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg">add_circle_outline</span>
-		Add new workspace
+		{{ $t('general.currentWorkspace.addWorkspace') }}
 	</button>
 
 	<Transition name="bounce-right-fade">
@@ -85,7 +87,7 @@
 				<TextField
 					v-model="newWorkspace.name"
 					:errors="errors.name"
-					placeholder="New workspace name"
+					:placeholder="$t('general.currentWorkspace.newWorkspaceName')"
 				/>
 				<div class="flex">
 					<button
@@ -95,7 +97,7 @@
 						class="mt-3 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent outline-hidden transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
-						Create
+						{{ $t('common.actions.create') }}
 					</button>
 				</div>
 			</template>
@@ -107,7 +109,7 @@
 		class="relative flex items-end gap-2 py-2"
 	>
 		<span class="material-icons text-lg">add_circle_outline</span>
-		Send invitation to workspace
+		{{ $t('general.currentWorkspace.sendInvitationToWorkspace') }}
 	</button>
 
 	<Transition name="bounce-right-fade">
@@ -120,15 +122,15 @@
 				<div v-if="!invitationToken">
 					<!-- Email Invitations -->
 					<label class="mb-4 flex flex-col gap-2">
-						Email Addresses
+						{{ $t('general.currentWorkspace.emailAddresses') }}
 						<textarea
 							v-model="newWorkspaceInvitation.emails"
 							rows="3"
 							class="w-full rounded border border-input bg-background px-3 py-2 text-ink"
-							placeholder="email1@example.com, email2@example.com"
+							:placeholder="$t('general.currentWorkspace.emailsPlaceholder')"
 						></textarea>
 						<span class="text-sm text-ink-subtle">
-							Separate multiple emails with commas
+							{{ $t('general.currentWorkspace.separateEmails') }}
 						</span>
 					</label>
 
@@ -139,22 +141,28 @@
 						class="mt-5 mr-5 w-full rounded bg-brand px-4 py-2 font-bold text-on-accent transition hover:bg-brand-hover sm:mb-0"
 						type="button"
 					>
-						{{ flags.isLoading ? 'Creating...' : 'Send Invitation' }}
+						{{
+							flags.isLoading
+								? $t('general.currentWorkspace.creating')
+								: $t('general.currentWorkspace.sendInvitation')
+						}}
 					</button>
 				</div>
 
 				<!-- Success State - Show Link -->
 				<div v-else>
 					<div class="mb-4">
-						<h3 class="mb-2 text-lg font-bold">Invitation sent!</h3>
+						<h3 class="mb-2 text-lg font-bold">
+							{{ $t('general.currentWorkspace.invitationSent') }}
+						</h3>
 						<p
 							v-if="newWorkspaceInvitation.emails"
 							class="mb-4 text-sm text-ink-muted"
 						>
-							Invitations have been sent to the specified email addresses.
+							{{ $t('general.currentWorkspace.invitationsSentToEmails') }}
 						</p>
 						<p v-else class="mb-4 text-sm text-ink-muted">
-							You can share this link with anyone you want to invite:
+							{{ $t('general.currentWorkspace.shareLink') }}
 						</p>
 					</div>
 
@@ -169,7 +177,11 @@
 						<button
 							@click="copyToClipboard(invitationLink)"
 							class="shrink-0"
-							:title="flags.isCopied ? 'Copied!' : 'Copy to clipboard'"
+							:title="
+								flags.isCopied
+									? $t('general.currentWorkspace.copied')
+									: $t('general.currentWorkspace.copyToClipboard')
+							"
 						>
 							<span
 								class="material-icons transition-colors"

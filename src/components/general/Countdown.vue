@@ -21,7 +21,7 @@
 				<span class="countdown-item">{{ lastStartTime.minutes }}</span>
 			</div>
 
-			<AppTooltip content="Double click to edit the time" side="top">
+			<AppTooltip :content="$t('general.countdown.editHint')" side="top">
 				<div
 					:class="`countdown-wrapper select-none`"
 					@dblclick="isShowModalTimer = true"
@@ -45,7 +45,7 @@
 			</div>
 
 			<div v-if="timeIsOver">
-				<p class="text-red">Time is over</p>
+				<p class="text-red">{{ $t('general.countdown.timeIsOver') }}</p>
 			</div>
 
 			<div class="flex justify-center" :class="{ 'mt-2': task.start_time }">
@@ -110,7 +110,7 @@
 							type="button"
 							@click="isShowModalTimer = false"
 						>
-							Cancel
+							{{ $t('common.actions.cancel') }}
 						</button>
 
 						<button
@@ -118,7 +118,7 @@
 							type="button"
 							@click="updateTimer"
 						>
-							Update
+							{{ $t('general.countdown.update') }}
 						</button>
 					</div>
 				</template>

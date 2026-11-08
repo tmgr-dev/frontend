@@ -9,8 +9,8 @@
 			<p class="text-sm text-ink-subtle">
 				{{
 					mode === 'not-in-local-workspace'
-						? 'Not available in local workspaces'
-						: 'This module is off.'
+						? $t('general.moduleOffNotice.notInLocalWorkspace')
+						: $t('general.moduleOffNotice.off')
 				}}
 			</p>
 			<router-link

@@ -9,22 +9,28 @@
 	>
 		<template v-if="compact">
 			<span class="flex flex-wrap items-center gap-2 sm:justify-end">
-				<span class="font-medium text-ink">Requires an account</span>
+				<span class="font-medium text-ink">{{
+					$t('general.requiresAccount.title')
+				}}</span>
 				<Button variant="outline" size="sm" @click="createAccount">
-					Create account
+					{{ $t('general.requiresAccount.createAccount') }}
 				</Button>
 			</span>
-			<span>This feature runs in the TMGR cloud.</span>
+			<span>{{ $t('general.requiresAccount.cloudOnly') }}</span>
 		</template>
 		<template v-else>
 			<h1 v-if="module" class="text-lg font-semibold text-ink">
 				{{ module }}
 			</h1>
-			<p class="text-sm font-medium text-ink">Requires an account</p>
-			<p class="text-sm text-ink-subtle">
-				This feature runs in the TMGR cloud.
+			<p class="text-sm font-medium text-ink">
+				{{ $t('general.requiresAccount.title') }}
 			</p>
-			<Button @click="createAccount">Create account</Button>
+			<p class="text-sm text-ink-subtle">
+				{{ $t('general.requiresAccount.cloudOnly') }}
+			</p>
+			<Button @click="createAccount">{{
+				$t('general.requiresAccount.createAccount')
+			}}</Button>
 		</template>
 	</div>
 </template>

@@ -11,7 +11,7 @@
 		<img
 			v-if="url"
 			:src="url"
-			:alt="name || 'Avatar'"
+			:alt="name || $t('general.userAvatar.alt')"
 			class="h-full w-full object-cover"
 			@error="url = null"
 		/>

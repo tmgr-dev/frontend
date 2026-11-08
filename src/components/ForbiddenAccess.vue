@@ -807,15 +807,17 @@
 				></line>
 			</g>
 		</svg>
-		<h2 class="mb-2 text-2xl font-semibold text-ink">Access Denied</h2>
+		<h2 class="mb-2 text-2xl font-semibold text-ink">
+			{{ $t('general.forbiddenAccess.title') }}
+		</h2>
 		<p class="text-ink-muted">
-			Sorry, you don't have the necessary permissions to view this content.
+			{{ $t('general.forbiddenAccess.message') }}
 		</p>
 		<p v-if="message" class="mt-2 text-sm text-ink-subtle">
 			{{ message }}
 		</p>
 		<Button v-if="showBackButton" @click="goBack" class="mt-6">
-			Go Back
+			{{ $t('general.forbiddenAccess.goBack') }}
 		</Button>
 	</div>
 </template>

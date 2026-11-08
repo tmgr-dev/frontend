@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc';
 import { renderToString } from '@vue/server-renderer';
 import { readFileSync } from 'fs';
@@ -132,7 +133,9 @@ const mountModal = async () => {
 	const state = component.setup({}, {});
 	await mockMounted!();
 	const render = () =>
-		renderToString(createSSRApp({ ...component, setup: () => state }));
+		renderToString(
+			createSSRApp({ ...component, setup: () => state }).use(i18n),
+		);
 	return { state, render };
 };
 

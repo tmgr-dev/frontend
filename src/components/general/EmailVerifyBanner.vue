@@ -6,18 +6,24 @@
 		class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-300 bg-amber-100 px-4 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
 	>
 		<span class="min-w-0 flex-1">
-			Please confirm your email address — we sent a link to
-			<strong>{{ user.email }}</strong
-			>.
+			<i18n-t keypath="general.emailVerifyBanner.confirm" tag="span">
+				<template #email>
+					<strong>{{ user.email }}</strong>
+				</template>
+			</i18n-t>
+			{{ ' ' }}
 			<span v-if="resend.state.value === 'sent'" class="font-medium">
-				A new link is on its way.
+				{{ $t('general.emailVerifyBanner.sent') }}
 			</span>
 			<span v-else-if="resend.state.value === 'rate_limited'">
-				Too many requests. Try again in
-				{{ retryAfterLabel(resend.retryAfter.value) }}.
+				{{
+					$t('general.emailVerifyBanner.rateLimited', {
+						wait: retryAfterLabel(resend.retryAfter.value),
+					})
+				}}
 			</span>
 			<span v-else-if="resend.state.value === 'error'">
-				Could not send the link. Please try again.
+				{{ $t('general.emailVerifyBanner.error') }}
 			</span>
 		</span>
 		<button
@@ -26,12 +32,12 @@
 			:disabled="resend.state.value === 'sending'"
 			@click="resend.send"
 		>
-			Resend
+			{{ $t('general.emailVerifyBanner.resend') }}
 		</button>
 		<button
 			type="button"
 			class="rounded-md px-2 py-1 hover:bg-amber-200 dark:hover:bg-amber-500/20"
-			aria-label="Dismiss"
+			:aria-label="$t('general.emailVerifyBanner.dismiss')"
 			@click="dismiss"
 		>
 			<X class="h-4 w-4" />

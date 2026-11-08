@@ -37,7 +37,7 @@
 							:class="['self-center text-[9px] leading-none', textColorClass]"
 							:style="{ gridRowStart: label.row }"
 						>
-							{{ label.text }}
+							{{ $t(label.textKey) }}
 						</div>
 					</div>
 					<div class="grid gap-[2px] px-[2px]" :style="weekGridStyle">
@@ -81,7 +81,9 @@
 					</div>
 					<div />
 					<div class="mt-3 flex items-center justify-end gap-2">
-						<span :class="['text-[9px]', textColorClass]">Less</span>
+						<span :class="['text-[9px]', textColorClass]">{{
+							$t('general.heatmapCalendar.less')
+						}}</span>
 						<div class="flex gap-[3px]">
 							<div
 								:class="['h-[11px] w-[11px] rounded-[2px]', emptySquareClass]"
@@ -91,7 +93,9 @@
 							<div :class="['h-[11px] w-[11px] rounded-[2px]', level3Class]" />
 							<div :class="['h-[11px] w-[11px] rounded-[2px]', level4Class]" />
 						</div>
-						<span :class="['text-[9px]', textColorClass]">More</span>
+						<span :class="['text-[9px]', textColorClass]">{{
+							$t('general.heatmapCalendar.more')
+						}}</span>
 					</div>
 				</div>
 			</div>
@@ -102,14 +106,19 @@
 			class="pointer-events-none absolute z-50 rounded border bg-popover px-2 py-1 text-xs whitespace-nowrap text-popover-foreground shadow-md"
 			:style="tooltipStyle"
 		>
-			{{ hoveredDate.count }}
-			{{ hoveredDate.count === 1 ? 'contribution' : 'contributions' }} on
-			{{ formatDate(hoveredDate.date) }}
+			{{
+				$t(
+					'general.heatmapCalendar.contributionsOn',
+					{ date: formatDate(hoveredDate.date) },
+					hoveredDate.count,
+				)
+			}}
 		</div>
 	</div>
 </template>
 
 <script>
+	import { t } from '@/i18n';
 	import {
 		activityCountLabel,
 		formatDayLabel,
@@ -125,9 +134,9 @@
 	import { defineComponent } from 'vue';
 
 	const WEEKDAY_LABELS = [
-		{ row: 1, text: 'Mon' },
-		{ row: 3, text: 'Wed' },
-		{ row: 5, text: 'Fri' },
+		{ row: 1, textKey: 'general.heatmapCalendar.weekdays.mon' },
+		{ row: 3, textKey: 'general.heatmapCalendar.weekdays.wed' },
+		{ row: 5, textKey: 'general.heatmapCalendar.weekdays.fri' },
 	];
 	const ARROW_STEPS = {
 		ArrowUp: -1,
@@ -381,16 +390,19 @@
 			},
 
 			getDayLabel(day) {
-				return `${activityCountLabel(day.count)} on ${formatDayLabel(
-					day.date,
-				)}`;
+				return t('general.heatmapCalendar.dayLabel', {
+					activity: activityCountLabel(day.count),
+					date: formatDayLabel(day.date),
+				});
 			},
 
 			getTooltipText(day) {
 				if (!day.date) return '';
-				return `${day.count} ${
-					day.count === 1 ? 'contribution' : 'contributions'
-				} on ${this.formatDate(day.date)}`;
+				return t(
+					'general.heatmapCalendar.contributionsOn',
+					{ date: this.formatDate(day.date) },
+					day.count,
+				);
 			},
 
 			formatDate(dateStr) {

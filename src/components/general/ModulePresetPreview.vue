@@ -5,7 +5,7 @@
 	>
 		<section>
 			<h4 class="mb-1 font-medium tracking-wide text-ink-subtle uppercase">
-				Menu
+				{{ $t('general.modulePresetPreview.menu') }}
 			</h4>
 			<ul class="flex flex-col gap-1">
 				<li
@@ -24,14 +24,16 @@
 		</section>
 		<section>
 			<h4 class="mb-1 font-medium tracking-wide text-ink-subtle uppercase">
-				Task
+				{{ $t('general.modulePresetPreview.task') }}
 			</h4>
 			<div
 				class="mb-1 flex items-center gap-2 rounded border border-border bg-surface px-2 py-1 text-ink"
 				data-testid="preview-card"
 				:data-mode="card"
 			>
-				<span class="min-w-0 flex-1 truncate">Task title</span>
+				<span class="min-w-0 flex-1 truncate">{{
+					$t('general.modulePresetPreview.taskTitle')
+				}}</span>
 				<span
 					v-if="card === 'done'"
 					class="flex shrink-0 items-center gap-1"
@@ -40,13 +42,13 @@
 					<span
 						class="inline-block h-3 w-3 rounded-sm border border-ink-subtle"
 					/>
-					Done
+					{{ $t('common.actions.done') }}
 				</span>
 				<span
 					v-else
 					class="shrink-0 rounded bg-muted px-1.5 text-2xs text-ink-subtle"
 					data-testid="preview-card-status"
-					>Status</span
+					>{{ $t('general.modulePresetPreview.status') }}</span
 				>
 			</div>
 			<ul class="flex flex-col gap-1">
@@ -68,6 +70,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import type { PreviewItem, PreviewState } from '@/utils/previewSurfaces';
 
 	defineProps<{
@@ -83,7 +86,12 @@
 			: 'bg-surface',
 	];
 	const badge = (state: PreviewState) =>
-		({ off: 'off', new: 'new', 'will-hide': 'will hide', on: '' })[state];
+		({
+			off: t('general.modulePresetPreview.badges.off'),
+			new: t('general.modulePresetPreview.badges.new'),
+			'will-hide': t('general.modulePresetPreview.badges.willHide'),
+			on: '',
+		})[state];
 	const badgeClass = (state: PreviewState) => [
 		'shrink-0 rounded px-1.5 text-2xs no-underline',
 		state === 'new'

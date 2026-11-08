@@ -49,7 +49,7 @@
 		no-mermaid
 		no-echarts
 		language="en-US"
-		placeholder="Add description..."
+		:placeholder="$t('general.editor.descriptionPlaceholder')"
 		:theme="store.getters.isDarkTheme ? 'dark' : 'light'"
 		:toolbars-exclude="[
 			'sub',
