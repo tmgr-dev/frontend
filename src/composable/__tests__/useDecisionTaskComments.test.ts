@@ -20,7 +20,13 @@ const setup = (pending: PendingTaskComment[] = [item()]) => {
 	let clock = 1_000_000;
 	const marked: string[] = [];
 	const skipped: string[] = [];
+	const postedKeys = new Set<string>();
 	const deps = {
+		posted: {
+			has: (k: string) => postedKeys.has(k),
+			add: (k: string) => void postedKeys.add(k),
+			remove: (k: string) => void postedKeys.delete(k),
+		},
 		invoke: jest.fn(async (cmd: string, args?: any) => {
 			if (cmd === 'decisions_pending_task_comments') {
 				return pending.filter((p) => {
@@ -228,5 +234,40 @@ describe('decision task comment sync', () => {
 		} finally {
 			jest.useRealTimers();
 		}
+	});
+
+	it('does not post twice when marking failed and the remote list lags', async () => {
+		const { deps, marked, advance, sync } = setup();
+		const realInvoke = deps.invoke.getMockImplementation()!;
+		let failMark = true;
+		deps.invoke.mockImplementation(async (cmd: string, args?: any) => {
+			if (cmd === 'decisions_mark_task_comment' && failMark) {
+				failMark = false;
+				throw new Error('db locked');
+			}
+			return realInvoke(cmd, args);
+		});
+		await sync.run();
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual([]);
+		advance(BACKOFF_MS + 1);
+		await sync.run();
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual(['c_1#1']);
+	});
+
+	it('does not post twice after a restart between post and mark', async () => {
+		const { deps, marked, sync } = setup();
+		const realInvoke = deps.invoke.getMockImplementation()!;
+		deps.invoke.mockImplementation(async (cmd: string, args?: any) => {
+			if (cmd === 'decisions_mark_task_comment') throw new Error('crash');
+			return realInvoke(cmd, args);
+		});
+		await sync.run();
+		deps.invoke.mockImplementation(realInvoke);
+		const second = createDecisionTaskCommentSync(deps);
+		await second.run();
+		expect(deps.postComment).toHaveBeenCalledTimes(1);
+		expect(marked).toEqual(['c_1#1']);
 	});
 });

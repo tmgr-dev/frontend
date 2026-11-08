@@ -9,12 +9,19 @@ export interface PendingTaskComment {
 	body: string;
 }
 
+export interface PostedStore {
+	has: (key: string) => boolean;
+	add: (key: string) => void;
+	remove: (key: string) => void;
+}
+
 export interface DecisionTaskCommentDeps {
 	invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 	fetchComments: (taskId: number) => Promise<{ message: string }[]>;
 	postComment: (taskId: number, message: string) => Promise<unknown>;
 	skip: (cardId: string, seq: number, reason: string) => Promise<unknown>;
 	taskWorkspaceCode: (taskId: number) => Promise<string | null>;
+	posted: PostedStore;
 	now: () => number;
 	origin: string | null;
 }
@@ -66,15 +73,19 @@ export const createDecisionTaskCommentSync = (
 				await deps.skip(item.card_id, item.seq, 'workspace mismatch');
 				return;
 			}
-			const comments = await deps.fetchComments(item.task_id);
-			const present = comments.some((c) =>
-				String(c.message ?? '').includes(marker(item)),
-			);
-			if (!present) await deps.postComment(item.task_id, item.body);
+			if (!deps.posted.has(key)) {
+				const comments = await deps.fetchComments(item.task_id);
+				const present = comments.some((c) =>
+					String(c.message ?? '').includes(marker(item)),
+				);
+				if (!present) await deps.postComment(item.task_id, item.body);
+				deps.posted.add(key);
+			}
 			await deps.invoke('decisions_mark_task_comment', {
 				cardId: item.card_id,
 				seq: item.seq,
 			});
+			deps.posted.remove(key);
 			backoffUntil.delete(key);
 		} catch (error) {
 			const status = httpStatus(error);
@@ -122,6 +133,31 @@ export const createDecisionTaskCommentSync = (
 	return { run, trigger, stop };
 };
 
+const POSTED_STORAGE_KEY = 'decisions.taskCommentsPosted';
+
+const localStoragePostedStore = (): PostedStore => {
+	const read = (): string[] => {
+		try {
+			const parsed = JSON.parse(
+				localStorage.getItem(POSTED_STORAGE_KEY) ?? '[]',
+			);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch {
+			return [];
+		}
+	};
+	const write = (keys: string[]) => {
+		try {
+			localStorage.setItem(POSTED_STORAGE_KEY, JSON.stringify(keys));
+		} catch {}
+	};
+	return {
+		has: (key) => read().includes(key),
+		add: (key) => write([...new Set([...read(), key])]),
+		remove: (key) => write(read().filter((k) => k !== key)),
+	};
+};
+
 const defaultDeps = async (): Promise<DecisionTaskCommentDeps> => {
 	const [
 		{ invoke },
@@ -150,6 +186,7 @@ const defaultDeps = async (): Promise<DecisionTaskCommentDeps> => {
 			const workspaces = await getWorkspaces(false);
 			return workspaces.find((w) => w.id === task.workspace_id)?.code ?? null;
 		},
+		posted: localStoragePostedStore(),
 		now: Date.now,
 		origin:
 			apiOrigin($axios.defaults.baseURL) === PROD_API_ORIGIN
