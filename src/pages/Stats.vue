@@ -1,8 +1,8 @@
 <template>
 	<div>
 		<BaseLayout
-			title="Statistics"
-			subtitle="Platform-wide numbers, refreshed every 30 seconds"
+			:title="$t('workspace.stats.title')"
+			:subtitle="$t('workspace.stats.subtitle')"
 		>
 			<template #body>
 				<AsyncContent
@@ -10,7 +10,7 @@
 					:loaded="!!stats"
 					:error="error"
 					:retry="loadStats"
-					label="Loading statistics"
+					:label="$t('workspace.stats.loading')"
 				>
 					<div class="flex flex-col gap-6">
 						<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -18,7 +18,7 @@
 								<p
 									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
-									Users
+									{{ $t('workspace.stats.users') }}
 								</p>
 								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatCount(stats?.users) }}
@@ -28,7 +28,7 @@
 								<p
 									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
-									Tasks
+									{{ $t('workspace.stats.tasks') }}
 								</p>
 								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatCount(stats?.tasks) }}
@@ -38,21 +38,25 @@
 								<p
 									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
-									Tracked hours
+									{{ $t('workspace.stats.trackedHours') }}
 								</p>
 								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatHours(stats?.hours) }}
 								</p>
 								<p class="text-xs text-ink-subtle">
-									≈ {{ hoursToDays(stats?.hours) }} days ·
-									{{ hoursToYears(stats?.hours) }} years
+									{{
+										$t('workspace.stats.approx', {
+											days: hoursToDays(stats?.hours),
+											years: hoursToYears(stats?.hours),
+										})
+									}}
 								</p>
 							</div>
 							<div class="rounded-lg border border-border bg-card p-4">
 								<p
 									class="text-xs font-medium tracking-wide text-ink-subtle uppercase"
 								>
-									Active today
+									{{ $t('workspace.stats.activeToday') }}
 								</p>
 								<p class="text-2xl font-semibold text-ink tabular-nums">
 									{{ formatCount(stats?.active_in_1_day) }}
@@ -60,28 +64,36 @@
 							</div>
 						</div>
 
-						<SettingsSection title="Active users">
+						<SettingsSection :title="$t('workspace.stats.activeUsers')">
 							<div class="divide-y divide-border">
 								<div class="flex items-center justify-between py-3 first:pt-0">
-									<span class="text-sm text-ink-subtle">Last 24 hours</span>
+									<span class="text-sm text-ink-subtle">{{
+										$t('workspace.stats.last24h')
+									}}</span>
 									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_day) }}
 									</span>
 								</div>
 								<div class="flex items-center justify-between py-3">
-									<span class="text-sm text-ink-subtle">Last 7 days</span>
+									<span class="text-sm text-ink-subtle">{{
+										$t('workspace.stats.last7d')
+									}}</span>
 									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_week) }}
 									</span>
 								</div>
 								<div class="flex items-center justify-between py-3">
-									<span class="text-sm text-ink-subtle">Last 30 days</span>
+									<span class="text-sm text-ink-subtle">{{
+										$t('workspace.stats.last30d')
+									}}</span>
 									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_month) }}
 									</span>
 								</div>
 								<div class="flex items-center justify-between py-3 last:pb-0">
-									<span class="text-sm text-ink-subtle">Last 12 months</span>
+									<span class="text-sm text-ink-subtle">{{
+										$t('workspace.stats.last12m')
+									}}</span>
 									<span class="text-sm font-medium text-ink tabular-nums">
 										{{ formatCount(stats?.active_in_1_year) }}
 									</span>
@@ -96,6 +108,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { getStats } from '@/actions/tmgr/stats';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
@@ -126,13 +139,13 @@
 					const result = await getStats();
 					if (!disposed) stats.value = result;
 				} catch {
-					if (!disposed) error.value = 'Could not load statistics.';
+					if (!disposed) error.value = t('workspace.stats.loadFailed');
 				} finally {
 					if (!disposed) pending.value = false;
 				}
 			}
 			onMounted(() => {
-				setDocumentTitle('Statistics');
+				setDocumentTitle(t('workspace.stats.title'));
 				void loadStats();
 			});
 

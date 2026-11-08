@@ -1,9 +1,9 @@
 <template>
-	<SettingsSection title="Agent runs">
+	<SettingsSection :title="$t('workspace.agentRunsSetting.title')">
 		<SettingsRow
 			v-slot="{ labelId, descriptionId }"
-			label="Let my agents run my tasks"
-			:description="DESCRIPTION"
+			:label="$t('workspace.agentRunsSetting.label')"
+			:description="$t('workspace.agentRunsSetting.description')"
 		>
 			<Switch
 				:checked="enabled"
@@ -21,6 +21,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import {
 		agentRunErrorCode,
 		getAgentRunsSetting,
@@ -31,9 +32,6 @@
 	import { Switch } from '@/components/ui/switch';
 	import { rememberAgentRunsSetting } from '@/utils/agentApprovalClient';
 	import { defineComponent, onMounted, ref } from 'vue';
-
-	const DESCRIPTION =
-		'Only tasks you wrote, or tasks you confirmed for agent runs, can be started by your agents on your own machine. An approval is cancelled automatically when someone else or an agent changes the task. To start runs you also allow this workspace on your machine with `tmgr runner allow <code>`.';
 
 	export default defineComponent({
 		name: 'AgentRunsSetting',
@@ -49,7 +47,7 @@
 				try {
 					enabled.value = await getAgentRunsSetting(props.workspaceId);
 				} catch {
-					error.value = 'Could not load this setting.';
+					error.value = t('workspace.agentRunsSetting.loadFailed');
 				} finally {
 					loading.value = false;
 				}
@@ -64,14 +62,14 @@
 				} catch (failure) {
 					error.value =
 						agentRunErrorCode(failure) === 'ui_session_required'
-							? 'Change this from the web or desktop app.'
-							: 'Could not save this setting.';
+							? t('workspace.agentRunsSetting.uiSessionRequired')
+							: t('workspace.agentRunsSetting.saveFailed');
 				} finally {
 					saving.value = false;
 				}
 			};
 
-			return { enabled, loading, saving, error, toggle, DESCRIPTION };
+			return { enabled, loading, saving, error, toggle };
 		},
 	});
 </script>

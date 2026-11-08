@@ -1,8 +1,8 @@
 <template>
 	<FeatureGate
 		feature-key="daily_routines"
-		title="Daily Routines"
-		description="Create recurring tasks and track your daily habits. Build consistent routines and monitor your progress over time."
+		:title="$t('dailyRoutine.page.gate.title')"
+		:description="$t('dailyRoutine.page.gate.description')"
 		:icon="CalendarCheck"
 	>
 		<template #preview>
@@ -19,16 +19,18 @@
 						v-if="isLocalWorkspace"
 						class="flex flex-wrap items-center gap-2 border-b border-line pt-3 pb-2 md:pt-4"
 					>
-						<span class="text-sm font-semibold text-ink">Local routines</span>
+						<span class="text-sm font-semibold text-ink">{{
+							$t('dailyRoutine.page.localRoutines')
+						}}</span>
 						<span
 							class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold text-amber-600 uppercase dark:text-amber-400"
-							>Local</span
+							>{{ $t('dailyRoutine.page.localBadge') }}</span
 						>
 						<span
 							data-testid="local-routines-label"
 							class="w-full text-xs text-ink-subtle md:w-auto"
 						>
-							Stored only on this device — not synced to the cloud.
+							{{ $t('dailyRoutine.page.storedLocally') }}
 						</span>
 						<button
 							v-if="cloudTargets.length"
@@ -43,7 +45,7 @@
 							data-testid="local-routines-select"
 							@click="selectMode = !selectMode"
 						>
-							Select
+							{{ $t('dailyRoutine.page.select') }}
 						</button>
 						<span
 							v-else
@@ -73,9 +75,11 @@
 									<input
 										ref="quickInputRef"
 										v-model="quickTitle"
-										aria-label="Quick add routine"
+										:aria-label="$t('dailyRoutine.page.quickAddAria')"
 										:placeholder="
-											isMobile ? 'Quick add…' : 'Quick add → Unscheduled'
+											isMobile
+												? $t('dailyRoutine.page.quickAddMobile')
+												: $t('dailyRoutine.page.quickAddPlaceholder')
 										"
 										class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-hidden placeholder:text-ink-subtle"
 										data-tour="routines.quick-add"
@@ -95,7 +99,7 @@
 										:disabled="!quickTitle.trim()"
 										@click="onQuickAdd"
 									>
-										<span>Add</span>
+										<span>{{ $t('common.actions.add') }}</span>
 										<kbd
 											class="rounded border border-white/30 px-1 font-mono text-[10px] leading-none"
 											>↵</kbd
@@ -108,9 +112,13 @@
 									:class="quickFocused ? 'opacity-100' : 'opacity-0'"
 									aria-hidden="true"
 								>
-									Adds to
-									<span class="font-semibold text-ink">Unscheduled</span> —
-									schedule later from list
+									<i18n-t keypath="dailyRoutine.page.quickAddHint" tag="span">
+										<template #unscheduled>
+											<span class="font-semibold text-ink">{{
+												$t('dailyRoutine.unscheduled')
+											}}</span>
+										</template>
+									</i18n-t>
 								</div>
 							</div>
 							<input
@@ -136,7 +144,7 @@
 								}}</span>
 								<span
 									class="text-[10px] font-semibold tracking-wider text-ink-subtle uppercase"
-									>Routines</span
+									>{{ $t('dailyRoutine.page.countRoutines') }}</span
 								>
 							</div>
 							<div
@@ -149,7 +157,7 @@
 								>
 								<span
 									class="text-[10px] font-semibold tracking-wider text-ink-subtle uppercase"
-									>Done</span
+									>{{ $t('dailyRoutine.page.countDone') }}</span
 								>
 							</div>
 							<div
@@ -160,7 +168,7 @@
 								}}</span>
 								<span
 									class="text-[10px] font-semibold tracking-wider text-ink-subtle uppercase"
-									>Archived</span
+									>{{ $t('dailyRoutine.page.countArchived') }}</span
 								>
 							</div>
 						</div>
@@ -173,33 +181,39 @@
 							<template v-if="!isMobile">
 								<div class="flex-1" />
 								<div class="flex shrink-0 gap-1.5">
-									<CountChip :n="counts.routines" label="ROUTINES" />
+									<CountChip
+										:n="counts.routines"
+										:label="$t('dailyRoutine.page.chipRoutines')"
+									/>
 									<CountChip
 										:n="counts.completed"
-										label="DONE"
+										:label="$t('dailyRoutine.page.chipDone')"
 										:color="'#22c55e'"
 									/>
-									<CountChip :n="counts.archived" label="ARCHIVED" />
+									<CountChip
+										:n="counts.archived"
+										:label="$t('dailyRoutine.page.chipArchived')"
+									/>
 								</div>
 								<template v-if="!isLocalWorkspace">
 									<button
 										v-if="isFeatureEnabled('import')"
 										type="button"
 										class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
-										title="Import .ics calendar"
+										:title="$t('dailyRoutine.page.importCalendar')"
 										@click="triggerImport"
 									>
 										<Upload :size="14" stroke-width="2" />
-										<span>Import</span>
+										<span>{{ $t('dailyRoutine.page.import') }}</span>
 									</button>
 									<button
 										type="button"
 										class="flex h-8 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-2xs font-medium text-ink-subtle transition-colors hover:border-brand hover:text-brand"
-										title="Export .ics calendar"
+										:title="$t('dailyRoutine.page.exportCalendar')"
 										@click="onExport"
 									>
 										<Download :size="14" stroke-width="2" />
-										<span>Export</span>
+										<span>{{ $t('dailyRoutine.page.export') }}</span>
 									</button>
 								</template>
 							</template>
@@ -208,7 +222,7 @@
 									v-if="isFeatureEnabled('import')"
 									type="button"
 									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
-									title="Import .ics"
+									:title="$t('dailyRoutine.page.importIcs')"
 									@click="triggerImport"
 								>
 									<Upload :size="14" stroke-width="2" />
@@ -216,7 +230,7 @@
 								<button
 									type="button"
 									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill border border-line bg-surface text-ink-subtle hover:text-brand"
-									title="Export .ics"
+									:title="$t('dailyRoutine.page.exportIcs')"
 									@click="onExport"
 								>
 									<Download :size="14" stroke-width="2" />
@@ -228,12 +242,12 @@
 									class="shrink-0 rounded-card border border-line bg-transparent px-3 py-1.5 text-2xs font-medium text-ink hover:bg-surface-hover"
 									@click="goToday"
 								>
-									Today
+									{{ $t('dailyRoutine.today') }}
 								</button>
 								<div class="flex shrink-0 gap-0.5">
 									<button
 										type="button"
-										aria-label="Previous period"
+										:aria-label="$t('dailyRoutine.page.prevPeriod')"
 										class="flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-hover hover:text-ink"
 										@click="step(-1)"
 									>
@@ -241,7 +255,7 @@
 									</button>
 									<button
 										type="button"
-										aria-label="Next period"
+										:aria-label="$t('dailyRoutine.page.nextPeriod')"
 										class="flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-hover hover:text-ink"
 										@click="step(1)"
 									>
@@ -271,7 +285,7 @@
 							:loaded="viewLoaded"
 							:error="viewError"
 							:retry="reload"
-							label="Loading routines"
+							:label="$t('dailyRoutine.page.loading')"
 						>
 							<template #skeleton
 								><RoutineViewSkeleton :view="view"
@@ -297,7 +311,8 @@
 									<div
 										class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 									>
-										Unscheduled <span>{{ unscheduledEntries.length }}</span>
+										{{ $t('dailyRoutine.unscheduled') }}
+										<span>{{ unscheduledEntries.length }}</span>
 									</div>
 									<button
 										v-if="unscheduledDoneCount > 0"
@@ -305,7 +320,11 @@
 										class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold tracking-wider text-ink-subtle uppercase hover:border-brand hover:text-brand"
 										@click="onArchiveDoneUnscheduled"
 									>
-										Archive done ({{ unscheduledDoneCount }})
+										{{
+											$t('dailyRoutine.archiveDone', {
+												n: unscheduledDoneCount,
+											})
+										}}
 									</button>
 								</div>
 								<RoutineRow
@@ -403,15 +422,19 @@
 					>
 						<AlertDialogContent>
 							<AlertDialogHeader>
-								<AlertDialogTitle>Routine converted to a task</AlertDialogTitle>
+								<AlertDialogTitle>{{
+									$t('dailyRoutine.page.converted.title')
+								}}</AlertDialogTitle>
 								<AlertDialogDescription>
-									Open the task now?
+									{{ $t('dailyRoutine.page.converted.description') }}
 								</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
-								<AlertDialogCancel>No</AlertDialogCancel>
+								<AlertDialogCancel>{{
+									$t('common.states.no')
+								}}</AlertDialogCancel>
 								<AlertDialogAction @click="openConvertedTask">
-									Yes
+									{{ $t('common.states.yes') }}
 								</AlertDialogAction>
 							</AlertDialogFooter>
 						</AlertDialogContent>
@@ -442,8 +465,8 @@
 						v-if="!selectMode"
 						type="button"
 						class="fixed right-4 bottom-20 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-on-accent shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:right-6 md:bottom-6 md:h-14 md:w-14"
-						title="New routine (N)"
-						aria-label="New routine"
+						:title="$t('dailyRoutine.page.newRoutineTitle')"
+						:aria-label="$t('dailyRoutine.page.newRoutine')"
 						data-tour="routines.add"
 						@click="onNewRoutine"
 					>
@@ -506,10 +529,10 @@
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import type { RoutineEntry, ViewId } from '@/types/dailyRoutine';
+	import { currentLocale, t } from '@/i18n';
 	import {
 		addDays,
 		fmtDate,
-		monthShort,
 		startOfMonth,
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
@@ -640,7 +663,7 @@
 	const dateLabel = computed(() => {
 		const c = cursor.value;
 		if (view.value === 'day') {
-			return c.toLocaleDateString('en-US', {
+			return c.toLocaleDateString(currentLocale(), {
 				weekday: 'short',
 				month: 'long',
 				day: 'numeric',
@@ -651,18 +674,28 @@
 			const ws = startOfWeek(c);
 			const we = addDays(ws, 6);
 			const sameMonth = ws.getMonth() === we.getMonth();
+			const shortMonth = (d: Date) =>
+				d.toLocaleDateString(currentLocale(), { month: 'short' });
 			return sameMonth
-				? `${monthShort(
-						ws,
-					)} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`
-				: `${monthShort(ws)} ${ws.getDate()} – ${monthShort(
-						we,
-					)} ${we.getDate()}, ${ws.getFullYear()}`;
+				? t('dailyRoutine.page.weekRange', {
+						month: shortMonth(ws),
+						start: ws.getDate(),
+						end: we.getDate(),
+						year: ws.getFullYear(),
+					})
+				: t('dailyRoutine.page.weekRangeCross', {
+						startMonth: shortMonth(ws),
+						start: ws.getDate(),
+						endMonth: shortMonth(we),
+						end: we.getDate(),
+						year: ws.getFullYear(),
+					});
 		}
 		if (view.value === 'month') {
-			return `${c.toLocaleDateString('en-US', {
-				month: 'long',
-			})} ${c.getFullYear()}`;
+			return t('dailyRoutine.page.monthLabel', {
+				month: c.toLocaleDateString(currentLocale(), { month: 'long' }),
+				year: c.getFullYear(),
+			});
 		}
 		if (view.value === 'year') return String(c.getFullYear());
 		return '';
@@ -773,12 +806,14 @@
 	const cloudTargets = ref<Workspace[]>([]);
 	const moveNote = computed(() =>
 		store.getters.isLoggedIn
-			? 'No cloud workspace to move routines to.'
-			: 'Sign in to move routines to the cloud.',
+			? t('dailyRoutine.page.noCloudWorkspace')
+			: t('dailyRoutine.page.signInToMove'),
 	);
 	const { isFeatureEnabled } = useFeatureToggles();
 	const pageTitle = computed(() =>
-		isLocalWorkspace.value ? 'Local routines' : 'Daily routines',
+		isLocalWorkspace.value
+			? t('dailyRoutine.page.localRoutines')
+			: t('dailyRoutine.page.dailyRoutines'),
 	);
 	watch(
 		workspaceIdentity,
@@ -796,7 +831,9 @@
 		{ immediate: true },
 	);
 	watch(isLocalWorkspace, (local) => {
-		const title = local ? 'Local routines' : 'Daily routines';
+		const title = local
+			? t('dailyRoutine.page.localRoutines')
+			: t('dailyRoutine.page.dailyRoutines');
 		store.commit('setMetaTitle', title);
 		setDocumentTitle(title);
 	});
@@ -828,7 +865,9 @@
 		} catch (error) {
 			if (request === viewRequest)
 				viewError.value =
-					error instanceof Error ? error.message : 'Could not load routines.';
+					error instanceof Error
+						? error.message
+						: t('dailyRoutine.page.loadError');
 		} finally {
 			if (request === viewRequest) viewPending.value = false;
 		}
@@ -844,7 +883,7 @@
 	});
 
 	onMounted(() => {
-		setDocumentTitle('Daily Routines');
+		setDocumentTitle(t('dailyRoutine.page.gate.title'));
 		bind(rootRef.value);
 		reload();
 		window.addEventListener('keydown', onShortcutKey);
@@ -928,7 +967,9 @@
 	}
 
 	function errorText(error: unknown): string {
-		return (error as any)?.response?.data?.message || 'Please try again.';
+		return (
+			(error as any)?.response?.data?.message || t('dailyRoutine.page.tryAgain')
+		);
 	}
 
 	async function onEdit(entry: RoutineEntry) {
@@ -936,7 +977,7 @@
 			editingRoutine.value = await loadRoutineForEdit(entry);
 		} catch (error) {
 			toast({
-				title: 'Could not open the routine',
+				title: t('dailyRoutine.page.openError'),
 				description: errorText(error),
 				variant: 'destructive',
 			});
@@ -968,7 +1009,7 @@
 				editorError.value = errorText(error);
 			} else {
 				toast({
-					title: 'Could not delete the routine',
+					title: t('dailyRoutine.page.deleteError'),
 					description: errorText(error),
 					variant: 'destructive',
 				});
@@ -1075,10 +1116,14 @@
 				await loadRoutineForEdit(entry),
 				todayIso.value,
 			);
-			await saveRoutine({ ...draft, id: null, title: `${draft.title} (copy)` });
+			await saveRoutine({
+				...draft,
+				id: null,
+				title: t('dailyRoutine.page.copyTitle', { title: draft.title }),
+			});
 		} catch (error) {
 			toast({
-				title: 'Could not duplicate the routine',
+				title: t('dailyRoutine.page.duplicateError'),
 				description: errorText(error),
 				variant: 'destructive',
 			});
@@ -1161,7 +1206,7 @@
 			await onConvertRoutine(payload);
 		} catch (error) {
 			toast({
-				title: 'Could not convert the routine',
+				title: t('dailyRoutine.page.convertError'),
 				description: errorText(error),
 				variant: 'destructive',
 			});
@@ -1194,11 +1239,18 @@
 		input.value = '';
 		const errs =
 			Array.isArray(result.errors) && result.errors.length
-				? `\nErrors:\n- ${result.errors.slice(0, 5).join('\n- ')}`
+				? t('dailyRoutine.page.importErrors', {
+						list: result.errors.slice(0, 5).join('\n- '),
+					})
 				: '';
 		// eslint-disable-next-line no-alert
 		alert(
-			`Imported ${result.created}, skipped ${result.skipped}, replaced ${result.replaced}.${errs}`,
+			t('dailyRoutine.page.importSummary', {
+				created: result.created,
+				skipped: result.skipped,
+				replaced: result.replaced,
+				errors: errs,
+			}),
 		);
 		await reload();
 	}

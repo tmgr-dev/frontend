@@ -11,8 +11,8 @@
 		<button
 			type="button"
 			class="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
-			aria-label="Attach files"
-			title="Attach files"
+			:aria-label="$t('workspace.commentAttachments.attach')"
+			:title="$t('workspace.commentAttachments.attach')"
 			data-testid="comment-attach"
 			@click="openPicker"
 		>

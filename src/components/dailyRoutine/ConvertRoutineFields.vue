@@ -2,7 +2,7 @@
 	<div class="flex flex-col gap-2">
 		<select
 			v-model.number="workspaceId"
-			aria-label="Workspace"
+			:aria-label="$t('dailyRoutine.convert.workspace')"
 			class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink"
 			@change="loadCategories"
 		>
@@ -12,10 +12,10 @@
 		</select>
 		<select
 			v-model="categoryId"
-			aria-label="Category"
+			:aria-label="$t('dailyRoutine.convert.category')"
 			class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink"
 		>
-			<option :value="null">No category</option>
+			<option :value="null">{{ $t('dailyRoutine.convert.noCategory') }}</option>
 			<option v-for="c in categories" :key="c.id" :value="c.id">
 				{{ c.title }}
 			</option>
@@ -26,7 +26,7 @@
 			:disabled="!workspaceId || busy"
 			@click="onConvert"
 		>
-			Convert
+			{{ $t('dailyRoutine.convert.submit') }}
 		</button>
 	</div>
 </template>

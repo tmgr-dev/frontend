@@ -20,7 +20,9 @@
 			<div
 				class="flex items-center justify-between text-[10px] tracking-wider text-ink-subtle uppercase dark:text-white/70"
 			>
-				<span>{{ events.length }} events</span>
+				<span>{{
+					$t('dailyRoutine.clusterBlock.events', { n: events.length })
+				}}</span>
 				<span>{{ rangeLabel }}</span>
 			</div>
 			<div class="flex flex-col gap-0.5 overflow-hidden">
@@ -48,7 +50,7 @@
 					v-if="hidden > 0"
 					class="text-[10px] text-ink-subtle dark:text-white/55"
 				>
-					+ {{ hidden }} more
+					{{ $t('dailyRoutine.more', { n: hidden }) }}
 				</div>
 			</div>
 		</div>

@@ -1,38 +1,42 @@
 <template>
 	<PageContainer width="narrow" data-testid="workspace-memory">
 		<PageHeader
-			title="Workspace memory"
-			subtitle="Facts the AI assistant remembers about this workspace. Every member can read them."
+			:title="$t('workspace.workspaceMemory.title')"
+			:subtitle="$t('workspace.workspaceMemory.subtitle')"
 		/>
 
 		<div
 			v-if="isLocalOnly"
 			class="rounded-lg border border-line bg-surface-sunken p-4 text-sm text-ink-subtle"
 		>
-			Memory is available only in cloud workspaces.
+			{{ $t('workspace.workspaceMemory.localOnly') }}
 		</div>
 		<p v-else-if="!loaded && !failed" class="text-sm text-ink-subtle">
-			Loading…
+			{{ $t('workspace.workspaceMemory.loading') }}
 		</p>
 		<div v-else-if="failed" class="flex items-center gap-3">
-			<p class="text-sm text-destructive">Failed to load memory</p>
-			<Button variant="outline" size="sm" @click="refreshAll">Retry</Button>
+			<p class="text-sm text-destructive">
+				{{ $t('workspace.workspaceMemory.loadFailed') }}
+			</p>
+			<Button variant="outline" size="sm" @click="refreshAll">{{
+				$t('workspace.workspaceMemory.retry')
+			}}</Button>
 		</div>
 		<div
 			v-else-if="!memory.pages_enabled"
 			class="rounded-lg border border-line bg-surface-sunken p-4 text-sm text-ink-subtle"
 			data-testid="memory-pages-off"
 		>
-			Memory is kept in Pages. Turn on Pages for this workspace to use it.
+			{{ $t('workspace.workspaceMemory.pagesOff') }}
 			<router-link to="/settings/modules" class="ml-1 underline">
-				Open modules
+				{{ $t('workspace.workspaceMemory.openModules') }}
 			</router-link>
 		</div>
 
 		<template v-else>
 			<section v-if="cards.length" class="mb-8" data-testid="memory-proposals">
 				<h2 class="mb-3 text-base font-semibold text-ink">
-					Waiting to be added
+					{{ $t('workspace.workspaceMemory.waiting') }}
 				</h2>
 				<ul class="space-y-3">
 					<li
@@ -49,7 +53,7 @@
 								v-model="editText"
 								:maxlength="MAX_FACT_LENGTH"
 								rows="3"
-								aria-label="Edit fact"
+								:aria-label="$t('workspace.workspaceMemory.editFact')"
 							/>
 							<div class="mt-2 flex gap-2">
 								<Button
@@ -57,10 +61,10 @@
 									:disabled="busy || !editText.trim()"
 									@click="saveEdit(card)"
 								>
-									Save
+									{{ $t('workspace.workspaceMemory.save') }}
 								</Button>
 								<Button variant="outline" size="sm" @click="editingId = null">
-									Cancel
+									{{ $t('workspace.workspaceMemory.cancel') }}
 								</Button>
 							</div>
 						</template>
@@ -71,23 +75,38 @@
 							<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
 								<span class="text-xs text-ink-subtle">
 									<template v-if="card.task_id">
-										Source:
-										<router-link
-											:to="`/${workspaceCode}/tasks/${card.task_id}`"
-											class="underline"
+										<i18n-t
+											keypath="workspace.workspaceMemory.source"
+											tag="span"
 										>
-											{{ card.source || `Task #${card.task_id}` }}
-										</router-link>
+											<template #source>
+												<router-link
+													:to="`/${workspaceCode}/tasks/${card.task_id}`"
+													class="underline"
+												>
+													{{
+														card.source ||
+														$t('workspace.workspaceMemory.taskRef', {
+															id: card.task_id,
+														})
+													}}
+												</router-link>
+											</template>
+										</i18n-t>
 									</template>
 									<template v-else-if="card.source">
-										Source: {{ card.source }}
+										{{
+											$t('workspace.workspaceMemory.source', {
+												source: card.source,
+											})
+										}}
 									</template>
 								</span>
 								<span
 									v-if="alreadyAdded[card.id]"
 									class="text-xs font-medium text-ink"
 								>
-									Already added
+									{{ $t('workspace.workspaceMemory.alreadyAdded') }}
 								</span>
 								<span
 									v-else-if="card.auto_add_at"
@@ -97,7 +116,7 @@
 									{{ countdownLabel(card) }}
 								</span>
 								<span v-else class="text-xs font-medium text-ink">
-									Needs your approval
+									{{ $t('workspace.workspaceMemory.needsApproval') }}
 								</span>
 							</div>
 							<div class="mt-3 flex flex-wrap gap-2">
@@ -108,7 +127,7 @@
 									:disabled="busy"
 									@click="deleteAdded(card)"
 								>
-									Delete
+									{{ $t('workspace.workspaceMemory.delete') }}
 								</Button>
 								<template v-else>
 									<Button
@@ -117,7 +136,7 @@
 										:disabled="busy"
 										@click="reject(card)"
 									>
-										Reject
+										{{ $t('workspace.workspaceMemory.reject') }}
 									</Button>
 									<Button
 										variant="outline"
@@ -125,10 +144,10 @@
 										:disabled="busy"
 										@click="startEdit(card)"
 									>
-										Edit
+										{{ $t('workspace.workspaceMemory.edit') }}
 									</Button>
 									<Button size="sm" :disabled="busy" @click="acceptNow(card)">
-										Add now
+										{{ $t('workspace.workspaceMemory.addNow') }}
 									</Button>
 								</template>
 							</div>
@@ -144,7 +163,10 @@
 				@submit.prevent="addEntry"
 			>
 				<Select v-model="newTopic">
-					<SelectTrigger class="sm:w-56" aria-label="Topic">
+					<SelectTrigger
+						class="sm:w-56"
+						:aria-label="$t('workspace.workspaceMemory.topic')"
+					>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
@@ -160,10 +182,12 @@
 				<Input
 					v-model="newFact"
 					:maxlength="MAX_FACT_LENGTH"
-					placeholder="Add a fact"
-					aria-label="Fact"
+					:placeholder="$t('workspace.workspaceMemory.addPlaceholder')"
+					:aria-label="$t('workspace.workspaceMemory.fact')"
 				/>
-				<Button type="submit" :disabled="busy || !newFact.trim()">Add</Button>
+				<Button type="submit" :disabled="busy || !newFact.trim()">{{
+					$t('workspace.workspaceMemory.add')
+				}}</Button>
 			</form>
 
 			<section
@@ -175,7 +199,7 @@
 				<h2 class="text-base font-semibold text-ink">{{ topic.title }}</h2>
 				<p class="mb-3 text-sm text-ink-subtle">{{ topic.description }}</p>
 				<p v-if="!topic.entries.length" class="text-sm text-ink-subtle">
-					Nothing saved yet.
+					{{ $t('workspace.workspaceMemory.nothingSaved') }}
 				</p>
 				<ul v-else class="divide-y divide-line rounded-lg border border-line">
 					<li
@@ -191,7 +215,7 @@
 									v-if="entry.stale"
 									class="ml-1 rounded-pill bg-surface-sunken px-2 py-0.5 text-xs text-ink-subtle"
 								>
-									stale
+									{{ $t('workspace.workspaceMemory.stale') }}
 								</span>
 							</p>
 							<p class="mt-1 text-xs text-ink-subtle">
@@ -206,7 +230,7 @@
 							:disabled="busy"
 							@click="removeEntry(entry)"
 						>
-							Delete
+							{{ $t('workspace.workspaceMemory.delete') }}
 						</Button>
 					</li>
 				</ul>
@@ -216,6 +240,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import {
 		acceptMemoryProposal,
 		addMemoryEntry,
@@ -324,7 +349,11 @@
 			const countdownLabel = (card: MemoryProposal) => {
 				const left = secondsLeft(card.auto_add_at, now.value);
 				if (left === null) return '';
-				return left > 0 ? `Added in ${formatCountdown(left)}` : 'Adding…';
+				return left > 0
+					? t('workspace.workspaceMemory.addedIn', {
+							time: formatCountdown(left),
+						})
+					: t('workspace.workspaceMemory.adding');
 			};
 
 			const notify = (title: string, destructive = false) =>
@@ -377,7 +406,7 @@
 					try {
 						await acceptMemoryProposal(workspaceId.value, card.id);
 					} catch (error) {
-						fail(error, 'Could not add this fact');
+						fail(error, t('workspace.workspaceMemory.addFailed'));
 					}
 					await refreshAll();
 				});
@@ -394,7 +423,7 @@
 							addedCards.value = [...addedCards.value, card];
 						}
 					} catch (error) {
-						fail(error, 'Could not reject this fact');
+						fail(error, t('workspace.workspaceMemory.rejectFailed'));
 					}
 					await refreshAll();
 				});
@@ -405,9 +434,9 @@
 						await deleteMemoryEntry(workspaceId.value, alreadyAdded[card.id]);
 					} catch (error: any) {
 						if (error?.response?.status === 404) {
-							notify('Already removed');
+							notify(t('workspace.workspaceMemory.alreadyRemoved'));
 						} else {
-							fail(error, 'Could not delete this entry');
+							fail(error, t('workspace.workspaceMemory.deleteFailed'));
 							return;
 						}
 					}
@@ -430,7 +459,7 @@
 						expired.delete(card.id);
 						editingId.value = null;
 					} catch (error) {
-						fail(error, 'Could not save the change');
+						fail(error, t('workspace.workspaceMemory.saveFailed'));
 					}
 					await refreshProposals();
 				});
@@ -446,9 +475,11 @@
 						newFact.value = '';
 					} catch (error: any) {
 						const status = error?.response?.status;
-						if (status === 409) notify('Already in memory', true);
-						else if (status === 422) fail(error, 'This fact cannot be added');
-						else fail(error, 'Could not add this fact');
+						if (status === 409)
+							notify(t('workspace.workspaceMemory.alreadyInMemory'), true);
+						else if (status === 422)
+							fail(error, t('workspace.workspaceMemory.cannotAdd'));
+						else fail(error, t('workspace.workspaceMemory.addFailed'));
 					}
 					await refreshMemory();
 				});
@@ -457,7 +488,7 @@
 				try {
 					await restoreMemoryEntry(workspaceId.value, entry.id);
 				} catch (error) {
-					fail(error, 'Could not restore this entry');
+					fail(error, t('workspace.workspaceMemory.restoreFailed'));
 				}
 				await refreshMemory();
 			};
@@ -467,17 +498,21 @@
 					try {
 						await deleteMemoryEntry(workspaceId.value, entry.id);
 						toast({
-							title: 'Deleted',
+							title: t('workspace.workspaceMemory.deleted'),
 							duration: UNDO_WINDOW_MS,
 							action: h(
 								ToastAction,
-								{ altText: 'Undo', onClick: () => undoDelete(entry) },
-								() => 'Undo',
+								{
+									altText: t('workspace.workspaceMemory.undo'),
+									onClick: () => undoDelete(entry),
+								},
+								() => t('workspace.workspaceMemory.undo'),
 							),
 						});
 					} catch (error: any) {
-						if (error?.response?.status === 404) notify('Already removed');
-						else fail(error, 'Could not delete this entry');
+						if (error?.response?.status === 404)
+							notify(t('workspace.workspaceMemory.alreadyRemoved'));
+						else fail(error, t('workspace.workspaceMemory.deleteFailed'));
 					}
 					await refreshMemory();
 				});
@@ -505,7 +540,7 @@
 			};
 
 			onMounted(() => {
-				setDocumentTitle('Workspace memory');
+				setDocumentTitle(t('workspace.workspaceMemory.title'));
 				if (isLocalOnly.value) return;
 				void refreshAll();
 				clock = setInterval(tick, 1000);

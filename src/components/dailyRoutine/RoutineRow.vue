@@ -21,7 +21,7 @@
 		<button
 			type="button"
 			data-tour="routines.instance"
-			:aria-label="`Mark &quot;${entry.title}&quot; done`"
+			:aria-label="$t('dailyRoutine.markDoneAria', { title: entry.title })"
 			:aria-pressed="!!entry.completed"
 			class="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill border transition-colors"
 			:class="
@@ -90,8 +90,8 @@
 			type="button"
 			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill transition-colors hover:bg-surface-hover hover:text-brand"
 			:class="selected ? 'text-brand' : 'text-ink-muted'"
-			title="More (right-click for menu)"
-			aria-label="More"
+			:title="$t('dailyRoutine.routineRow.moreTitle')"
+			:aria-label="$t('dailyRoutine.routineRow.more')"
 			@click.stop="
 				$emit('context', { entry, x: $event.clientX, y: $event.clientY })
 			"
@@ -110,6 +110,7 @@
 		formatRelativeTime,
 		isSameTimestamp,
 	} from '@/utils/dailyRoutines/relativeTime';
+	import { t } from '@/i18n';
 	import { computed } from 'vue';
 	import DRIcon from './DRIcon.vue';
 
@@ -123,12 +124,12 @@
 		const created = formatRelativeTime(props.entry.created_at, nowMs.value);
 		if (!created) return '';
 		if (isSameTimestamp(props.entry.created_at, props.entry.updated_at)) {
-			return `created ${created}`;
+			return t('dailyRoutine.routineRow.created', { created });
 		}
 		const updated = formatRelativeTime(props.entry.updated_at, nowMs.value);
 		return updated
-			? `created ${created} · updated ${updated}`
-			: `created ${created}`;
+			? t('dailyRoutine.routineRow.createdUpdated', { created, updated })
+			: t('dailyRoutine.routineRow.created', { created });
 	});
 
 	const emit = defineEmits<{

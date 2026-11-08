@@ -2,10 +2,11 @@
 	<Dialog :open="modelValue" @update:open="$emit('update:modelValue', $event)">
 		<DialogContent class="max-h-[80vh] max-w-2xl overflow-y-auto">
 			<DialogHeader>
-				<DialogTitle>Workspace Members</DialogTitle>
+				<DialogTitle>{{
+					$t('workspace.workspaceMembersModal.title')
+				}}</DialogTitle>
 				<DialogDescription>
-					Manage members of this workspace. Only the workspace owner can remove
-					members.
+					{{ $t('workspace.workspaceMembersModal.description') }}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -15,7 +16,9 @@
 
 			<div v-else-if="error" class="py-8 text-center">
 				<p class="mb-4 text-destructive">{{ error }}</p>
-				<Button @click="loadMembers" variant="outline">Retry</Button>
+				<Button @click="loadMembers" variant="outline">{{
+					$t('workspace.workspaceMembersModal.retry')
+				}}</Button>
 			</div>
 
 			<div v-else class="space-y-3">
@@ -27,7 +30,11 @@
 				>
 					<button
 						type="button"
-						:aria-label="`Open ${member.name}`"
+						:aria-label="
+							$t('workspace.workspaceMembersModal.openMember', {
+								name: member.name,
+							})
+						"
 						class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg p-3 text-left outline-hidden"
 						@click.stop="openMember(member)"
 					>
@@ -45,7 +52,7 @@
 									v-if="member.id === ownerId"
 									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground uppercase"
 								>
-									Owner
+									{{ $t('workspace.workspaceMembersModal.owner') }}
 								</span>
 							</span>
 							<span v-if="member.email" class="block text-sm text-ink-subtle">
@@ -66,7 +73,7 @@
 								is-mini
 								class="mr-2"
 							/>
-							Remove
+							{{ $t('workspace.workspaceMembersModal.remove') }}
 						</Button>
 					</div>
 				</div>
@@ -75,16 +82,16 @@
 					v-if="members.length === 0"
 					class="py-8 text-center text-sm text-ink-subtle"
 				>
-					<p>No members found</p>
+					<p>{{ $t('workspace.workspaceMembersModal.empty') }}</p>
 				</div>
 			</div>
 
 			<DialogFooter class="mt-6">
 				<Button @click="openWorkspaceSettings" variant="outline">
-					Workspace Settings
+					{{ $t('workspace.workspaceMembersModal.workspaceSettings') }}
 				</Button>
 				<Button @click="$emit('update:modelValue', false)" variant="default">
-					Close
+					{{ $t('workspace.workspaceMembersModal.close') }}
 				</Button>
 			</DialogFooter>
 		</DialogContent>
@@ -93,22 +100,29 @@
 	<AlertDialog v-model:open="showConfirmDialog">
 		<AlertDialogContent>
 			<AlertDialogHeader>
-				<AlertDialogTitle>Remove Member</AlertDialogTitle>
+				<AlertDialogTitle>{{
+					$t('workspace.workspaceMembersModal.removeTitle')
+				}}</AlertDialogTitle>
 				<AlertDialogDescription>
-					Are you sure you want to remove
-					<strong>{{ memberToRemove?.name }}</strong> from this workspace? This
-					action cannot be undone.
+					<i18n-t
+						keypath="workspace.workspaceMembersModal.removeConfirm"
+						tag="span"
+					>
+						<template #name>
+							<strong>{{ memberToRemove?.name }}</strong>
+						</template>
+					</i18n-t>
 				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
-				<AlertDialogCancel @click="showConfirmDialog = false"
-					>Cancel</AlertDialogCancel
-				>
+				<AlertDialogCancel @click="showConfirmDialog = false">{{
+					$t('workspace.workspaceMembersModal.cancel')
+				}}</AlertDialogCancel>
 				<AlertDialogAction
 					@click="confirmRemove"
 					class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
 				>
-					Remove
+					{{ $t('workspace.workspaceMembersModal.remove') }}
 				</AlertDialogAction>
 			</AlertDialogFooter>
 		</AlertDialogContent>
@@ -116,6 +130,7 @@
 </template>
 
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import {
 		getWorkspaceMembers,
 		removeMemberFromWorkspace,
@@ -197,9 +212,10 @@
 		} catch (e: any) {
 			console.error('Error loading workspace members:', e);
 			error.value =
-				e.response?.data?.message || 'Failed to load workspace members';
+				e.response?.data?.message ||
+				t('workspace.workspaceMembersModal.loadFailed');
 			toast({
-				title: 'Error',
+				title: t('workspace.workspaceMembersModal.errorTitle'),
 				description: error.value ?? undefined,
 				variant: 'destructive',
 			});
@@ -227,8 +243,10 @@
 			);
 
 			toast({
-				title: 'Member removed',
-				description: `${memberToRemove.value.name} has been removed from the workspace`,
+				title: t('workspace.workspaceMembersModal.removed'),
+				description: t('workspace.workspaceMembersModal.removedDescription', {
+					name: memberToRemove.value.name,
+				}),
 			});
 
 			emit('memberRemoved', memberToRemove.value.id);
@@ -237,9 +255,10 @@
 		} catch (e: any) {
 			console.error('Error removing member:', e);
 			const errorMessage =
-				e.response?.data?.message || 'Failed to remove member';
+				e.response?.data?.message ||
+				t('workspace.workspaceMembersModal.removeFailed');
 			toast({
-				title: 'Error',
+				title: t('workspace.workspaceMembersModal.errorTitle'),
 				description: errorMessage,
 				variant: 'destructive',
 			});

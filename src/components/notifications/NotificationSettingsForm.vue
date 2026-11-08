@@ -1,18 +1,20 @@
 <template>
 	<div class="flex flex-col gap-6">
-		<div v-if="loading" class="text-sm text-ink-subtle">Loading settings…</div>
+		<div v-if="loading" class="text-sm text-ink-subtle">
+			{{ $t('workspace.notificationSettingsForm.loading') }}
+		</div>
 
 		<div v-else-if="error" class="flex flex-col items-start gap-2">
 			<p class="text-sm text-destructive">{{ error }}</p>
 			<Button variant="outline" size="sm" @click="loadSettings">
-				Try again
+				{{ $t('workspace.notificationSettingsForm.tryAgain') }}
 			</Button>
 		</div>
 
 		<form v-else class="flex flex-col gap-6" @submit.prevent="handleSubmit">
 			<SettingsSection
-				title="Web notifications"
-				description="Receive browser notifications for workspace changes"
+				:title="$t('workspace.notificationSettingsForm.webTitle')"
+				:description="$t('workspace.notificationSettingsForm.webDescription')"
 			>
 				<template #actions>
 					<Switch
@@ -42,14 +44,15 @@
 
 			<SettingsSection
 				v-if="isFeatureEnabled('telegram')"
-				title="Telegram notifications"
+				:title="$t('workspace.notificationSettingsForm.telegramTitle')"
 			>
 				<template #description>
 					<span v-if="!hasTelegram">
-						Connect your Telegram account in profile settings to receive
-						notifications
+						{{ $t('workspace.notificationSettingsForm.telegramConnect') }}
 					</span>
-					<span v-else>Send notifications to Telegram bot</span>
+					<span v-else>{{
+						$t('workspace.notificationSettingsForm.telegramSend')
+					}}</span>
 				</template>
 				<template #actions>
 					<Switch
@@ -79,8 +82,8 @@
 			</SettingsSection>
 
 			<SettingsSection
-				title="Email notifications"
-				description="Receive email notifications for important changes"
+				:title="$t('workspace.notificationSettingsForm.emailTitle')"
+				:description="$t('workspace.notificationSettingsForm.emailDescription')"
 			>
 				<template #actions>
 					<Switch
@@ -110,8 +113,10 @@
 
 			<SettingsSection
 				v-if="isFeatureEnabled('alerts')"
-				title="Agents"
-				description="Notifications Claude Code, Codex or other AI agents send you with a notify token"
+				:title="$t('workspace.notificationSettingsForm.agentsTitle')"
+				:description="
+					$t('workspace.notificationSettingsForm.agentsDescription')
+				"
 			>
 				<div
 					class="divide-y divide-border flex flex-col rounded-md border border-border"
@@ -119,7 +124,7 @@
 					<div
 						class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink"
 					>
-						Push to the mobile app
+						{{ $t('workspace.notificationSettingsForm.agentPush') }}
 						<Switch
 							:checked="formData.agent_push_enabled"
 							@update:checked="(v) => (formData.agent_push_enabled = v)"
@@ -128,7 +133,7 @@
 					<div
 						class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink"
 					>
-						Telegram
+						{{ $t('workspace.notificationSettingsForm.agentTelegram') }}
 						<Switch
 							:checked="formData.agent_telegram_enabled"
 							@update:checked="(v) => (formData.agent_telegram_enabled = v)"
@@ -138,14 +143,19 @@
 			</SettingsSection>
 
 			<div class="flex justify-end">
-				<span v-if="saving" class="text-xs text-ink-subtle">Saving…</span>
-				<span v-else class="text-xs text-status-done">Saved</span>
+				<span v-if="saving" class="text-xs text-ink-subtle">{{
+					$t('workspace.notificationSettingsForm.saving')
+				}}</span>
+				<span v-else class="text-xs text-status-done">{{
+					$t('workspace.notificationSettingsForm.saved')
+				}}</span>
 			</div>
 		</form>
 	</div>
 </template>
 
 <script>
+	import { t } from '@/i18n';
 	import {
 		getNotificationSettings,
 		updateNotificationSettings,
@@ -218,7 +228,8 @@
 				} catch (err) {
 					console.error('Error loading notification settings:', err);
 					error.value =
-						err.response?.data?.message || 'Failed to load settings';
+						err.response?.data?.message ||
+						t('workspace.notificationSettingsForm.loadFailed');
 				} finally {
 					loading.value = false;
 				}
@@ -299,7 +310,8 @@
 				} catch (err) {
 					console.error('Error saving notification settings:', err);
 					error.value =
-						err.response?.data?.message || 'Failed to save settings';
+						err.response?.data?.message ||
+						t('workspace.notificationSettingsForm.saveFailed');
 				} finally {
 					saving.value = false;
 				}

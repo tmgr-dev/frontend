@@ -1,16 +1,16 @@
 <template>
 	<PageContainer width="wide">
 		<PageHeader
-			:title="stats?.name ?? 'Member'"
+			:title="stats?.name ?? $t('workspace.memberPage.member')"
 			:back="dashboardLink"
-			back-label="Dashboard"
+			:back-label="$t('workspace.memberPage.dashboard')"
 		/>
 
 		<p
 			v-if="notFound"
 			class="rounded-card border border-line bg-surface p-6 text-sm text-ink-subtle"
 		>
-			This user is not a member of this workspace.
+			{{ $t('workspace.memberPage.notMember') }}
 		</p>
 
 		<div v-else class="space-y-4">
@@ -19,7 +19,7 @@
 				:has-data="!!stats"
 				:error="statsError"
 				:retry="loadStats"
-				label="Loading member"
+				:label="$t('workspace.memberPage.loadingMember')"
 			>
 				<MemberHeader
 					:member="stats"
@@ -33,7 +33,7 @@
 				:loaded="tasksLoaded"
 				:error="tasksError"
 				:retry="retryTasks"
-				label="Loading member tasks"
+				:label="$t('workspace.memberPage.loadingTasks')"
 			>
 				<MemberTasksPanel
 					:tasks="tasks"
@@ -51,7 +51,7 @@
 				:loaded="activitiesLoaded"
 				:error="activitiesError"
 				:retry="retryActivities"
-				label="Loading activity"
+				:label="$t('workspace.memberPage.loadingActivity')"
 			>
 				<ActivityFeed
 					v-if="workspaceId"
@@ -69,6 +69,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { getActivityFeed } from '@/actions/tmgr/dashboard';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
@@ -186,10 +187,11 @@
 						activitiesPage.value = nextPage;
 					} else {
 						activitiesError.value =
-							result.error?.message || 'Could not load activity.';
+							result.error?.message || t('workspace.memberPage.activityFailed');
 					}
 				} catch {
-					if (current()) activitiesError.value = 'Could not load activity.';
+					if (current())
+						activitiesError.value = t('workspace.memberPage.activityFailed');
 				} finally {
 					if (current()) activitiesLoading.value = false;
 				}

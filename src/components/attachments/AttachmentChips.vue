@@ -29,7 +29,9 @@
 				<button
 					type="button"
 					class="shrink-0 rounded p-0.5 text-ink-subtle hover:bg-surface-hover hover:text-ink"
-					:aria-label="`Remove ${item.name}`"
+					:aria-label="
+						$t('workspace.attachmentChips.remove', { name: item.name })
+					"
 					@click="$emit('remove', item.key)"
 				>
 					<X class="h-3 w-3" />

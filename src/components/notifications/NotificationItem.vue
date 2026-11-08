@@ -48,14 +48,14 @@
 				data-testid="memory-undo"
 				@click.stop="undoMemory"
 			>
-				Undo
+				{{ $t('workspace.notificationItem.undo') }}
 			</button>
 		</div>
 
 		<button
 			class="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition-colors group-hover:opacity-100 hover:bg-surface-hover hover:text-status-fix-fg focus-visible:opacity-100"
 			@click.stop="$emit('delete')"
-			aria-label="Delete notification"
+			:aria-label="$t('workspace.notificationItem.delete')"
 		>
 			<X :size="16" />
 		</button>
@@ -63,6 +63,7 @@
 </template>
 
 <script>
+	import { t } from '@/i18n';
 	import { undoAddedToMemory } from '@/actions/tmgr/memory';
 	import { useToast } from '@/components/ui/toast';
 	import {
@@ -177,7 +178,7 @@
 					toast({ title });
 				} catch {
 					toast({
-						title: 'Could not undo. Try again.',
+						title: t('workspace.notificationItem.undoFailed'),
 						variant: 'destructive',
 					});
 				} finally {

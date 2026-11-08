@@ -1,10 +1,12 @@
 <template>
 	<SettingsSection
-		title="Personas"
-		description="AI personas with access to this workspace."
+		:title="$t('workspace.workspacePersonasSection.title')"
+		:description="$t('workspace.workspacePersonasSection.description')"
 	>
 		<div v-if="isCreator" class="mb-4 flex flex-col gap-1.5">
-			<Label for="persona-policy">Policy</Label>
+			<Label for="persona-policy">{{
+				$t('workspace.workspacePersonasSection.policy')
+			}}</Label>
 			<Select
 				:model-value="policyDraft"
 				:disabled="savingPolicy"
@@ -14,21 +16,31 @@
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					<SelectItem value="allowed">Allowed</SelectItem>
-					<SelectItem value="read_only">Read only</SelectItem>
-					<SelectItem value="forbidden">Forbidden</SelectItem>
+					<SelectItem value="allowed">{{
+						$t('workspace.workspacePersonasSection.policyAllowed')
+					}}</SelectItem>
+					<SelectItem value="read_only">{{
+						$t('workspace.workspacePersonasSection.policyReadOnly')
+					}}</SelectItem>
+					<SelectItem value="forbidden">{{
+						$t('workspace.workspacePersonasSection.policyForbidden')
+					}}</SelectItem>
 				</SelectContent>
 			</Select>
 		</div>
 		<p v-else-if="policy" class="mb-4 text-sm text-ink-subtle">
-			Policy: {{ policyLabel }}
+			{{
+				$t('workspace.workspacePersonasSection.policyLine', {
+					label: policyLabel,
+				})
+			}}
 		</p>
 
 		<div v-if="loading" class="text-sm text-muted-foreground">
-			Loading personas…
+			{{ $t('workspace.workspacePersonasSection.loading') }}
 		</div>
 		<div v-else-if="grants.length === 0" class="text-sm text-muted-foreground">
-			No personas have access to this workspace yet.
+			{{ $t('workspace.workspacePersonasSection.empty') }}
 		</div>
 		<div v-else class="flex flex-col gap-2">
 			<div
@@ -47,30 +59,46 @@
 						<p class="text-sm font-medium">
 							{{ grant.persona.name }}
 							<span class="text-xs font-normal text-muted-foreground">
-								persona of {{ grant.persona.owner.name }}
+								{{
+									$t('workspace.workspacePersonasSection.personaOf', {
+										name: grant.persona.owner.name,
+									})
+								}}
 							</span>
 							<span
 								v-if="grant.persona.workspace_id"
 								class="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-2xs font-semibold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
 							>
-								Workspace persona
+								{{ $t('workspace.workspacePersonasSection.workspacePersona') }}
 							</span>
 						</p>
 						<p class="text-xs text-muted-foreground">
-							Permissions: {{ grant.permissions.join(', ') || 'none' }} ·
-							Effective: {{ grant.effective_permissions.join(', ') || 'none' }}
+							{{
+								$t('workspace.workspacePersonasSection.permissions', {
+									list:
+										grant.permissions.join(', ') ||
+										$t('workspace.workspacePersonasSection.none'),
+									effective:
+										grant.effective_permissions.join(', ') ||
+										$t('workspace.workspacePersonasSection.none'),
+								})
+							}}
 						</p>
 						<p
 							v-if="grant.blocked"
 							class="text-xs font-medium text-destructive"
 						>
-							Blocked
+							{{ $t('workspace.workspacePersonasSection.blocked') }}
 						</p>
 						<p
 							v-if="grant.persona.skills?.length"
 							class="text-xs text-muted-foreground"
 						>
-							Skills: {{ grant.persona.skills.map((s) => s.title).join(', ') }}
+							{{
+								$t('workspace.workspacePersonasSection.skills', {
+									list: grant.persona.skills.map((s) => s.title).join(', '),
+								})
+							}}
 						</p>
 					</div>
 				</div>
@@ -82,7 +110,11 @@
 					:disabled="!!blocking[grant.persona.id]"
 					@click="toggleBlock(grant)"
 				>
-					{{ grant.blocked ? 'Unblock' : 'Block' }}
+					{{
+						grant.blocked
+							? $t('workspace.workspacePersonasSection.unblock')
+							: $t('workspace.workspacePersonasSection.block')
+					}}
 				</Button>
 			</div>
 		</div>
@@ -90,6 +122,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import {
 		blockWorkspacePersona,
 		getPersonaPolicy,
@@ -121,10 +154,10 @@
 		watch,
 	} from 'vue';
 
-	const POLICY_LABELS: Record<PersonaPolicy, string> = {
-		allowed: 'Allowed',
-		read_only: 'Read only',
-		forbidden: 'Forbidden',
+	const POLICY_LABEL_KEYS: Record<PersonaPolicy, string> = {
+		allowed: 'workspace.workspacePersonasSection.policyAllowed',
+		read_only: 'workspace.workspacePersonasSection.policyReadOnly',
+		forbidden: 'workspace.workspacePersonasSection.policyForbidden',
 	};
 
 	export default defineComponent({
@@ -179,9 +212,14 @@
 						props.workspaceId,
 						policyDraft.value,
 					);
-					toast({ title: 'Persona policy updated' });
+					toast({
+						title: t('workspace.workspacePersonasSection.policyUpdated'),
+					});
 				} catch {
-					toast({ title: 'Could not update policy', variant: 'destructive' });
+					toast({
+						title: t('workspace.workspacePersonasSection.policyUpdateFailed'),
+						variant: 'destructive',
+					});
 					if (policy.value?.policy) policyDraft.value = policy.value.policy;
 				} finally {
 					savingPolicy.value = false;
@@ -200,7 +238,7 @@
 					if (index !== -1) grants.value[index] = updated;
 				} catch {
 					toast({
-						title: 'Could not change block state',
+						title: t('workspace.workspacePersonasSection.blockFailed'),
 						variant: 'destructive',
 					});
 				} finally {
@@ -216,7 +254,7 @@
 				policy,
 				policyDraft,
 				policyLabel: computed(() =>
-					policy.value ? POLICY_LABELS[policy.value.policy] : '',
+					policy.value ? t(POLICY_LABEL_KEYS[policy.value.policy]) : '',
 				),
 				loading,
 				savingPolicy,

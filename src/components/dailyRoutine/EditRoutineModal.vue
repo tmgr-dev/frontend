@@ -21,15 +21,19 @@
 						<div
 							class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
 						>
-							{{ isNew ? 'New routine' : 'Edit routine' }}
+							{{
+								isNew
+									? $t('dailyRoutine.editModal.headerNew')
+									: $t('dailyRoutine.editModal.headerEdit')
+							}}
 						</div>
 						<div class="truncate text-sm font-semibold text-ink">
-							{{ draft.title || '(untitled)' }}
+							{{ draft.title || $t('dailyRoutine.editModal.untitled') }}
 						</div>
 					</div>
 					<button
 						type="button"
-						aria-label="Close"
+						:aria-label="$t('common.actions.close')"
 						class="flex h-7 w-7 items-center justify-center rounded-md bg-surface-sunken hover:bg-surface-hover"
 						@click="requestClose"
 					>
@@ -41,37 +45,46 @@
 				<div class="flex-1 overflow-auto p-4">
 					<div class="flex flex-col gap-3.5">
 						<!-- Title -->
-						<ERSection label="Title">
+						<ERSection :label="$t('dailyRoutine.editModal.fields.title')">
 							<input
 								ref="titleRef"
 								v-model="draft.title"
 								type="text"
-								aria-label="Title"
-								placeholder="What's the routine?"
+								:aria-label="$t('dailyRoutine.editModal.fields.title')"
+								:placeholder="
+									$t('dailyRoutine.editModal.fields.titlePlaceholder')
+								"
 								class="w-full rounded-card border border-line bg-surface-sunken px-3.5 py-3 text-sm text-ink outline-hidden focus:border-line-strong"
 							/>
 						</ERSection>
 
 						<!-- Description -->
 						<ERSection
-							label="Description"
+							:label="$t('dailyRoutine.editModal.fields.description')"
 							:hint="
 								draft.description
-									? `${draft.description.length} chars`
-									: 'Optional'
+									? $t('dailyRoutine.editModal.fields.chars', {
+											n: draft.description.length,
+										})
+									: $t('dailyRoutine.editModal.fields.optional')
 							"
 						>
 							<textarea
 								v-model="draft.description"
 								rows="3"
-								aria-label="Description"
-								placeholder="Notes, context, links, checklist…"
+								:aria-label="$t('dailyRoutine.editModal.fields.description')"
+								:placeholder="
+									$t('dailyRoutine.editModal.fields.descriptionPlaceholder')
+								"
 								class="max-h-[220px] min-h-[64px] w-full resize-y rounded-card border border-line bg-surface-sunken px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-hidden focus:border-line-strong"
 							/>
 						</ERSection>
 
 						<!-- Category -->
-						<ERSection label="Category" :hint="catName">
+						<ERSection
+							:label="$t('dailyRoutine.editModal.fields.category')"
+							:hint="catName"
+						>
 							<div class="flex flex-wrap gap-1.5">
 								<button
 									v-for="c in categories"
@@ -99,7 +112,10 @@
 						</ERSection>
 
 						<!-- Schedule mode (only for non-recurring) -->
-						<ERSection v-if="draft.frequency === 'NONE'" label="Schedule">
+						<ERSection
+							v-if="draft.frequency === 'NONE'"
+							:label="$t('dailyRoutine.editModal.fields.schedule')"
+						>
 							<label
 								class="flex cursor-pointer items-center gap-2 rounded-card border border-line bg-surface-sunken px-3 py-2.5 text-sm text-ink"
 							>
@@ -108,14 +124,16 @@
 									type="checkbox"
 									class="h-4 w-4 accent-brand"
 								/>
-								<span class="flex-1">Unscheduled (no specific date/time)</span>
+								<span class="flex-1">{{
+									$t('dailyRoutine.editModal.fields.unscheduled')
+								}}</span>
 							</label>
 						</ERSection>
 
 						<!-- Date (non-recurring + scheduled) -->
 						<ERSection
 							v-if="draft.frequency === 'NONE' && !draft.unscheduled"
-							label="Date"
+							:label="$t('dailyRoutine.editModal.fields.date')"
 						>
 							<input
 								v-model="draft.scheduledDate"
@@ -127,14 +145,14 @@
 						<!-- Time range: start → end, with the span shown -->
 						<ERSection
 							v-if="!(draft.frequency === 'NONE' && draft.unscheduled)"
-							label="Time"
+							:label="$t('dailyRoutine.editModal.fields.time')"
 						>
 							<div class="flex flex-col gap-2.5">
 								<div class="flex items-end gap-2">
 									<label class="flex flex-1 flex-col gap-1">
 										<span
 											class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
-											>Start</span
+											>{{ $t('dailyRoutine.editModal.fields.start') }}</span
 										>
 										<div
 											class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5"
@@ -152,7 +170,7 @@
 									<label class="flex flex-1 flex-col gap-1">
 										<span
 											class="text-[10px] font-bold tracking-wider text-ink-subtle uppercase"
-											>End</span
+											>{{ $t('dailyRoutine.editModal.fields.end') }}</span
 										>
 										<div
 											class="flex items-center gap-1.5 rounded-card border border-line bg-surface-sunken px-3 py-2.5"
@@ -184,7 +202,7 @@
 						</ERSection>
 
 						<!-- Recurrence -->
-						<ERSection label="Repeats">
+						<ERSection :label="$t('dailyRoutine.editModal.fields.repeats')">
 							<div
 								class="flex gap-1 rounded-card border border-line bg-surface-sunken p-1"
 							>
@@ -200,7 +218,7 @@
 									"
 									@click="draft.frequency = f.id"
 								>
-									{{ f.label }}
+									{{ $t(f.labelKey) }}
 								</button>
 							</div>
 
@@ -233,7 +251,7 @@
 								v-if="draft.frequency === 'MONTHLY'"
 								class="mt-2.5 flex items-center gap-2.5 text-xs text-ink-subtle"
 							>
-								<span>On day</span>
+								<span>{{ $t('dailyRoutine.editModal.fields.onDay') }}</span>
 								<div
 									class="inline-flex items-center rounded-md border border-line bg-surface-sunken p-0.5"
 								>
@@ -261,7 +279,9 @@
 										+
 									</button>
 								</div>
-								<span>of every month</span>
+								<span>{{
+									$t('dailyRoutine.editModal.fields.ofEveryMonth')
+								}}</span>
 							</div>
 
 							<div
@@ -274,11 +294,11 @@
 
 						<!-- Reminder -->
 						<ERSection
-							label="Reminder"
+							:label="$t('dailyRoutine.editModal.fields.reminder')"
 							data-tour="routine.reminder"
 							:hint="
 								draft.frequency === 'NONE'
-									? 'Only for repeating routines'
+									? $t('dailyRoutine.editModal.fields.reminderOnlyRepeating')
 									: undefined
 							"
 						>
@@ -296,7 +316,7 @@
 									"
 									@click="draft.reminderMin = p.min"
 								>
-									{{ p.label }}
+									{{ $t(p.labelKey) }}
 								</button>
 							</div>
 						</ERSection>
@@ -304,7 +324,7 @@
 						<!-- Convert to task -->
 						<ERSection
 							v-if="!isNew"
-							label="Convert to task"
+							:label="$t('dailyRoutine.convert.title')"
 							data-tour="routine.to-task"
 						>
 							<button
@@ -313,7 +333,7 @@
 								class="rounded-md border border-line bg-surface-sunken px-3 py-1.5 text-xs font-medium text-ink-subtle transition-colors hover:text-ink"
 								@click="openConvert"
 							>
-								Move to a workspace as a regular task…
+								{{ $t('dailyRoutine.editModal.fields.moveToWorkspace') }}
 							</button>
 							<ConvertRoutineFields v-else @convert="onConvert" />
 						</ERSection>
@@ -325,10 +345,12 @@
 					v-if="!isNew && (createdAtLabel || updatedAtLabel)"
 					class="flex items-center gap-3 px-3.5 pb-2 text-2xs text-ink-subtle"
 				>
-					<span v-if="createdAtLabel">Created {{ createdAtLabel }}</span>
-					<span v-if="updatedAtLabel && !updatedSameAsCreated"
-						>Updated {{ updatedAtLabel }}</span
-					>
+					<span v-if="createdAtLabel">{{
+						$t('dailyRoutine.editModal.created', { when: createdAtLabel })
+					}}</span>
+					<span v-if="updatedAtLabel && !updatedSameAsCreated">{{
+						$t('dailyRoutine.editModal.updated', { when: updatedAtLabel })
+					}}</span>
 				</div>
 
 				<div
@@ -344,7 +366,7 @@
 					<button
 						v-if="!isNew"
 						type="button"
-						aria-label="Delete routine"
+						:aria-label="$t('dailyRoutine.editModal.deleteRoutine')"
 						:disabled="busy"
 						class="flex h-9 w-9 items-center justify-center rounded-card border border-status-fix-bg bg-status-fix-bg/40 text-status-fix-fg hover:bg-status-fix-bg/70 disabled:cursor-not-allowed disabled:opacity-50"
 						@click="onDelete"
@@ -356,7 +378,7 @@
 						class="rounded-card border border-line bg-transparent px-4 py-2 text-sm text-ink-subtle hover:bg-surface-hover hover:text-ink"
 						@click="requestClose"
 					>
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</button>
 					<button
 						type="button"
@@ -364,7 +386,11 @@
 						:disabled="!draft.title.trim() || busy"
 						@click="onSave"
 					>
-						{{ isNew ? 'Create routine' : 'Save changes' }}
+						{{
+							isNew
+								? $t('dailyRoutine.editModal.createRoutine')
+								: $t('dailyRoutine.editModal.saveChanges')
+						}}
 					</button>
 				</div>
 			</div>
@@ -373,6 +399,7 @@
 </template>
 
 <script setup lang="ts">
+	import { currentLocale, t } from '@/i18n';
 	import { emitRoutineEditorOpened } from '@/tours/pageRoutineEvents';
 	import type { RoutineFrequency } from '@/types/dailyRoutine';
 	import {
@@ -472,31 +499,48 @@
 		const total = Math.max(MIN_DURATION, endMinRef.value - startMin());
 		const h = Math.floor(total / 60);
 		const m = total % 60;
-		if (h && m) return `${h}h ${m}m`;
-		if (h) return `${h}h`;
-		return `${m}m`;
+		if (h && m) return t('dailyRoutine.editModal.duration.hm', { h, m });
+		if (h) return t('dailyRoutine.editModal.duration.h', { h });
+		return t('dailyRoutine.editModal.duration.m', { m });
 	});
 
 	const categories = ROUTINE_CATEGORY_LIST;
 	const catColor = computed(() => resolveCategory(draft.cat).color);
 	const catName = computed(() => resolveCategory(draft.cat).name);
-	const dowLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+	const DOW_LABEL_KEYS = [
+		'dailyRoutine.dow.mo',
+		'dailyRoutine.dow.tu',
+		'dailyRoutine.dow.we',
+		'dailyRoutine.dow.th',
+		'dailyRoutine.dow.fr',
+		'dailyRoutine.dow.sa',
+		'dailyRoutine.dow.su',
+	];
+	const dowLabels = computed(() => DOW_LABEL_KEYS.map((key) => t(key)));
 
-	const freqOptions: { id: RoutineFrequency; label: string }[] = [
-		{ id: 'NONE', label: 'Once' },
-		{ id: 'DAILY', label: 'Daily' },
-		{ id: 'WEEKLY', label: 'Weekly' },
-		{ id: 'MONTHLY', label: 'Monthly' },
-		{ id: 'YEARLY', label: 'Yearly' },
+	const freqOptions: { id: RoutineFrequency; labelKey: string }[] = [
+		{ id: 'NONE', labelKey: 'dailyRoutine.editModal.freq.once' },
+		{ id: 'DAILY', labelKey: 'dailyRoutine.editModal.freq.daily' },
+		{ id: 'WEEKLY', labelKey: 'dailyRoutine.editModal.freq.weekly' },
+		{ id: 'MONTHLY', labelKey: 'dailyRoutine.editModal.freq.monthly' },
+		{ id: 'YEARLY', labelKey: 'dailyRoutine.editModal.freq.yearly' },
 	];
 
 	const reminderPresets = [
-		{ id: 'off', label: 'Off', min: null as number | null },
-		{ id: 'at', label: 'At time', min: 0 as number | null },
-		{ id: '5', label: '5m', min: 5 },
-		{ id: '15', label: '15m', min: 15 },
-		{ id: '30', label: '30m', min: 30 },
-		{ id: '60', label: '1h', min: 60 },
+		{
+			id: 'off',
+			labelKey: 'dailyRoutine.editModal.reminder.off',
+			min: null as number | null,
+		},
+		{
+			id: 'at',
+			labelKey: 'dailyRoutine.editModal.reminder.atTime',
+			min: 0 as number | null,
+		},
+		{ id: '5', labelKey: 'dailyRoutine.editModal.reminder.min5', min: 5 },
+		{ id: '15', labelKey: 'dailyRoutine.editModal.reminder.min15', min: 15 },
+		{ id: '30', labelKey: 'dailyRoutine.editModal.reminder.min30', min: 30 },
+		{ id: '60', labelKey: 'dailyRoutine.editModal.reminder.hour1', min: 60 },
 	];
 
 	function toggleDow(i: number) {
@@ -509,18 +553,25 @@
 
 	const summary = computed(() => {
 		const d = draft;
-		if (d.frequency === 'DAILY') return 'Every day';
+		if (d.frequency === 'DAILY')
+			return t('dailyRoutine.editModal.summary.daily');
 		if (d.frequency === 'WEEKLY') {
-			if (d.daysOfWeek.length === 0) return 'Pick at least one day';
-			if (d.daysOfWeek.length === 7) return 'Every day of the week';
+			if (d.daysOfWeek.length === 0)
+				return t('dailyRoutine.editModal.summary.pickDay');
+			if (d.daysOfWeek.length === 7)
+				return t('dailyRoutine.editModal.summary.everyDayOfWeek');
 			if (d.daysOfWeek.join(',') === '0,1,2,3,4')
-				return 'Every weekday (Mon–Fri)';
-			if (d.daysOfWeek.join(',') === '5,6') return 'Every weekend';
-			return 'On ' + d.daysOfWeek.map((i) => dowLabels[i]).join(', ');
+				return t('dailyRoutine.editModal.summary.weekdays');
+			if (d.daysOfWeek.join(',') === '5,6')
+				return t('dailyRoutine.editModal.summary.weekends');
+			return t('dailyRoutine.editModal.summary.onDays', {
+				days: d.daysOfWeek.map((i) => dowLabels.value[i]).join(', '),
+			});
 		}
 		if (d.frequency === 'MONTHLY')
-			return `On day ${d.dayOfMonth} of every month`;
-		if (d.frequency === 'YEARLY') return 'Annually';
+			return t('dailyRoutine.editModal.summary.monthly', { day: d.dayOfMonth });
+		if (d.frequency === 'YEARLY')
+			return t('dailyRoutine.editModal.summary.yearly');
 		return '';
 	});
 
@@ -537,7 +588,7 @@
 		if (!value) return '';
 		const d = new Date(value);
 		if (isNaN(d.getTime())) return '';
-		return d.toLocaleString(undefined, {
+		return d.toLocaleString(currentLocale(), {
 			month: 'short',
 			day: 'numeric',
 			year: 'numeric',

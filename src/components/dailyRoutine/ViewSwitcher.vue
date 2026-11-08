@@ -7,7 +7,7 @@
 			v-for="v in views"
 			:key="v.id"
 			type="button"
-			:title="v.label"
+			:title="$t(v.labelKey)"
 			:class="[
 				'inline-flex flex-1 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)-2px)] px-2.5 py-1.5 text-xs font-medium transition-colors sm:flex-none',
 				model === v.id
@@ -17,7 +17,7 @@
 			@click="model = v.id"
 		>
 			<DRIcon :name="v.icon" :size="13" stroke="currentColor" />
-			<span v-if="!compact">{{ v.label }}</span>
+			<span v-if="!compact">{{ $t(v.labelKey) }}</span>
 		</button>
 	</div>
 </template>
@@ -28,16 +28,16 @@
 
 	interface View {
 		id: ViewId;
-		label: string;
+		labelKey: string;
 		icon: string;
 	}
 
 	const views: View[] = [
-		{ id: 'list', label: 'List', icon: 'list' },
-		{ id: 'day', label: 'Day', icon: 'day' },
-		{ id: 'week', label: 'Week', icon: 'week' },
-		{ id: 'month', label: 'Month', icon: 'month' },
-		{ id: 'year', label: 'Year', icon: 'year' },
+		{ id: 'list', labelKey: 'dailyRoutine.views.list', icon: 'list' },
+		{ id: 'day', labelKey: 'dailyRoutine.views.day', icon: 'day' },
+		{ id: 'week', labelKey: 'dailyRoutine.views.week', icon: 'week' },
+		{ id: 'month', labelKey: 'dailyRoutine.views.month', icon: 'month' },
+		{ id: 'year', labelKey: 'dailyRoutine.views.year', icon: 'year' },
 	];
 
 	defineProps<{ compact?: boolean }>();

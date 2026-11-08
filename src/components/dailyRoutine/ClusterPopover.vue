@@ -16,11 +16,15 @@
 					<div
 						class="text-2xs font-semibold tracking-wide text-ink-subtle uppercase"
 					>
-						{{ events.length }} overlapping
+						{{
+							$t('dailyRoutine.clusterPopover.overlapping', {
+								n: events.length,
+							})
+						}}
 					</div>
 					<button
 						type="button"
-						aria-label="Close"
+						:aria-label="$t('common.actions.close')"
 						class="flex h-6 w-6 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
 						@click="$emit('close')"
 					>
@@ -35,7 +39,7 @@
 					>
 						<button
 							type="button"
-							:aria-label="`Mark &quot;${ev.title}&quot; done`"
+							:aria-label="$t('dailyRoutine.markDoneAria', { title: ev.title })"
 							:aria-pressed="!!ev.completed"
 							class="flex h-5 w-5 shrink-0 items-center justify-center rounded-pill border transition-colors"
 							:class="
@@ -70,7 +74,7 @@
 						}}</span>
 						<button
 							type="button"
-							:aria-label="`Edit &quot;${ev.title}&quot;`"
+							:aria-label="$t('dailyRoutine.editAria', { title: ev.title })"
 							class="flex h-6 w-6 items-center justify-center rounded-pill text-ink opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-surface-hover hover:text-brand focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 							@click="$emit('edit', ev)"
 						>

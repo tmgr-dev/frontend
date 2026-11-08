@@ -1,12 +1,12 @@
 <template>
 	<SettingsSection
-		title="Pages"
-		description="The analyst persona maintains the managed 'Insights' section on person pages."
+		:title="$t('workspace.pagesAnalystSetting.title')"
+		:description="$t('workspace.pagesAnalystSetting.description')"
 	>
 		<SettingsRow
 			v-slot="{ labelId }"
-			label="Analyst persona for pages"
-			description="Does not change pages that already exist."
+			:label="$t('workspace.pagesAnalystSetting.label')"
+			:description="$t('workspace.pagesAnalystSetting.rowDescription')"
 		>
 			<Select
 				:model-value="selected ?? NONE"
@@ -21,7 +21,9 @@
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					<SelectItem :value="NONE">Not selected</SelectItem>
+					<SelectItem :value="NONE">{{
+						$t('workspace.pagesAnalystSetting.notSelected')
+					}}</SelectItem>
 					<SelectItem
 						v-for="option in options"
 						:key="option.value"
@@ -39,6 +41,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { listWorkspacePersonas } from '@/actions/tmgr/personas';
 	import {
 		getWorkspaceSettings,
@@ -114,7 +117,7 @@
 					);
 				} catch {
 					selected.value = previous;
-					error.value = 'Failed to save the setting';
+					error.value = t('workspace.pagesAnalystSetting.saveFailed');
 				} finally {
 					saving.value = false;
 				}

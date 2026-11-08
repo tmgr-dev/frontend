@@ -2,14 +2,16 @@
 	<div>
 		<BaseLayout
 			width="narrow"
-			title="Workspace Invitation"
+			:title="$t('workspace.workspaceInvitation.title')"
 			:subtitle="invitationSubtitle"
 		>
 			<template #body>
 				<div>
 					<!-- Loading State -->
 					<div v-if="loading">
-						<p class="text-ink-muted">Loading invitation details...</p>
+						<p class="text-ink-muted">
+							{{ $t('workspace.workspaceInvitation.loading') }}
+						</p>
 					</div>
 
 					<!-- Error State -->
@@ -21,7 +23,7 @@
 							v-if="!user || errorCode === 403"
 							class="text-brand hover:underline"
 						>
-							Login with correct email
+							{{ $t('workspace.workspaceInvitation.loginCorrect') }}
 						</a>
 					</div>
 
@@ -31,7 +33,7 @@
 							class="mb-4 rounded-lg bg-status-done-bg p-4 text-status-done-fg"
 						>
 							<p class="font-semibold">
-								You have successfully joined the workspace!
+								{{ $t('workspace.workspaceInvitation.joined') }}
 							</p>
 						</div>
 						<a
@@ -39,14 +41,14 @@
 							@click="goToWorkspace()"
 							class="text-brand hover:underline"
 						>
-							Go to workspace
+							{{ $t('workspace.workspaceInvitation.goTo') }}
 						</a>
 					</div>
 
 					<!-- Accept State -->
 					<div v-else>
 						<Button @click="accept" type="button" :disabled="loading">
-							Accept Invitation
+							{{ $t('workspace.workspaceInvitation.accept') }}
 						</Button>
 					</div>
 				</div>
@@ -56,6 +58,7 @@
 </template>
 
 <script>
+	import { t } from '@/i18n';
 	import { getUser } from '@/actions/tmgr/user';
 	import {
 		acceptWorkspaceInvitation,
@@ -88,13 +91,15 @@
 			},
 			invitationSubtitle() {
 				return this.workspaceName
-					? `You have been invited to join: "${this.workspaceName}"`
+					? t('workspace.workspaceInvitation.invitedTo', {
+							name: this.workspaceName,
+						})
 					: '';
 			},
 		},
 
 		async mounted() {
-			setDocumentTitle('Workspace Invitation');
+			setDocumentTitle(t('workspace.workspaceInvitation.title'));
 			try {
 				this.user = await getUser();
 				const data = await workspaceInvitationInfo(
@@ -106,7 +111,8 @@
 			} catch (e) {
 				console.log(e);
 				this.error =
-					e.response?.data?.message || 'Failed to load invitation details';
+					e.response?.data?.message ||
+					t('workspace.workspaceInvitation.loadFailed');
 				this.errorCode = e.response?.status;
 				this.loading = false;
 			}
@@ -140,7 +146,8 @@
 					localStorage.removeItem('workspace.invitation');
 				} catch (e) {
 					this.error =
-						e.response?.data?.message || 'Failed to accept invitation';
+						e.response?.data?.message ||
+						t('workspace.workspaceInvitation.acceptFailed');
 				} finally {
 					this.loading = false;
 				}

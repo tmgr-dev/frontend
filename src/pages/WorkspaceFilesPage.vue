@@ -2,7 +2,7 @@
 	<PageContainer width="wide" class="workspace-files" data-tour="files.list">
 		<PageHeader>
 			<template #title>
-				Files
+				{{ $t('workspace.workspaceFilesPage.title') }}
 				<span v-if="total" class="font-normal text-ink-subtle"
 					>({{ total }})</span
 				>
@@ -21,15 +21,17 @@
 						"
 						@click="setFilter(option.value)"
 					>
-						{{ option.label }}
+						{{ $t(option.labelKey) }}
 					</button>
 				</div>
 			</template>
 		</PageHeader>
 
 		<div v-if="loadError" role="alert" class="py-3">
-			Could not load files.
-			<button class="underline" @click="load">Retry</button>
+			{{ $t('workspace.workspaceFilesPage.loadFailed') }}
+			<button class="underline" @click="load">
+				{{ $t('workspace.workspaceFilesPage.retry') }}
+			</button>
 		</div>
 		<div v-if="loading && !files.length" class="py-16 text-center">
 			<AttachmentsSkeleton />
@@ -43,8 +45,8 @@
 			<p class="text-sm text-ink-subtle">
 				{{
 					imagesOnly
-						? 'No images attached anywhere in this workspace yet'
-						: 'Nothing attached anywhere in this workspace yet'
+						? $t('workspace.workspaceFilesPage.emptyImages')
+						: $t('workspace.workspaceFilesPage.empty')
 				}}
 			</p>
 		</div>
@@ -61,7 +63,9 @@
 						v-if="previews[file.id]"
 						type="button"
 						class="block cursor-zoom-in rounded"
-						:title="`Open ${file.name}`"
+						:title="
+							$t('workspace.workspaceFilesPage.open', { name: file.name })
+						"
 						@click="galleryStartId = file.id"
 					>
 						<img
@@ -98,7 +102,7 @@
 				<button
 					type="button"
 					class="shrink-0 rounded p-1.5 text-ink-subtle transition-colors hover:bg-surface-active hover:text-ink"
-					title="Download"
+					:title="$t('workspace.workspaceFilesPage.download')"
 					@click="download(file)"
 				>
 					<Download :size="16" />
@@ -116,7 +120,7 @@
 				:disabled="page <= 1 || loading"
 				@click="goTo(page - 1)"
 			>
-				Previous
+				{{ $t('workspace.workspaceFilesPage.previous') }}
 			</button>
 			<span class="text-sm text-ink-subtle"> {{ page }} / {{ lastPage }} </span>
 			<button
@@ -125,7 +129,7 @@
 				:disabled="page >= lastPage || loading"
 				@click="goTo(page + 1)"
 			>
-				Next
+				{{ $t('workspace.workspaceFilesPage.next') }}
 			</button>
 		</div>
 
@@ -184,8 +188,11 @@
 				loading: false,
 				galleryStartId: null as number | null,
 				filters: [
-					{ value: false, label: 'All files' },
-					{ value: true, label: 'Images' },
+					{ value: false, labelKey: 'workspace.workspaceFilesPage.filterAll' },
+					{
+						value: true,
+						labelKey: 'workspace.workspaceFilesPage.filterImages',
+					},
 				],
 			};
 		},

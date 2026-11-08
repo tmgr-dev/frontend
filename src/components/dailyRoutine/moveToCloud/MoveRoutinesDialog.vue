@@ -14,7 +14,7 @@
 
 			<template v-if="step === 'setup'">
 				<label class="flex flex-col gap-1 text-xs font-medium text-ink-subtle">
-					Cloud workspace
+					{{ $t('dailyRoutine.moveToCloud.cloudWorkspace') }}
 					<select
 						v-model.number="workspaceId"
 						class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink"
@@ -29,12 +29,14 @@
 					v-if="mode === 'tasks'"
 					class="flex flex-col gap-1 text-xs font-medium text-ink-subtle"
 				>
-					Category
+					{{ $t('dailyRoutine.editModal.fields.category') }}
 					<select
 						v-model="categoryId"
 						class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink"
 					>
-						<option :value="null">No category</option>
+						<option :value="null">
+							{{ $t('dailyRoutine.convert.noCategory') }}
+						</option>
 						<option v-for="c in categories" :key="c.id" :value="c.id">
 							{{ c.title }}
 						</option>
@@ -44,11 +46,11 @@
 					</span>
 				</label>
 				<p v-if="mode === 'tasks'" class="text-xs text-ink-subtle">
-					The server assigns the ticket key.
+					{{ $t('dailyRoutine.moveToCloud.ticketKey') }}
 				</p>
 				<div class="flex justify-end gap-2 pt-1">
 					<button type="button" :class="ghostButton" @click="onClose">
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</button>
 					<button
 						type="button"
@@ -56,17 +58,14 @@
 						:disabled="!workspaceId"
 						@click="step = 'confirm'"
 					>
-						Continue
+						{{ $t('common.actions.continue') }}
 					</button>
 				</div>
 			</template>
 
 			<template v-else-if="step === 'confirm'">
 				<p class="text-sm text-ink" data-testid="move-routines-statement">
-					{{ routines.length }}
-					{{ routines.length === 1 ? 'routine' : 'routines' }} will be sent to
-					the TMGR server and will leave this device. Each local copy is removed
-					after the server confirms it.
+					{{ $t('dailyRoutine.moveToCloud.statement', routines.length) }}
 				</p>
 				<ul
 					class="divide-y divide-line max-h-40 overflow-y-auto rounded-md border border-line bg-surface-sunken text-sm"
@@ -80,25 +79,24 @@
 						<span
 							v-if="r.pattern"
 							class="shrink-0 text-2xs tracking-wide text-ink-subtle uppercase"
-							>Repeats</span
+							>{{ $t('dailyRoutine.editModal.fields.repeats') }}</span
 						>
 					</li>
 				</ul>
 				<p class="text-xs text-ink-subtle">
-					Destination: <strong class="text-ink">{{ targetName }}</strong
+					{{ $t('dailyRoutine.moveToCloud.destination') }}
+					<strong class="text-ink">{{ targetName }}</strong
 					>{{ mode === 'tasks' ? ` · ${categoryName}` : '' }}
 				</p>
 				<ul class="flex list-disc flex-col gap-1 pl-4 text-xs text-ink-subtle">
 					<li v-if="hasHistory">
-						Past completions are not moved; the cloud copy starts fresh.
+						{{ $t('dailyRoutine.moveToCloud.pastCompletions') }}
 					</li>
 					<li v-if="mode === 'routines'">
-						Title, description, schedule and repeat pattern are kept. Category
-						and priority are not.
+						{{ $t('dailyRoutine.moveToCloud.keptRoutines') }}
 					</li>
 					<li v-else>
-						The tasks keep the title and description only. Schedule, repeat
-						pattern and duration are not kept.
+						{{ $t('dailyRoutine.moveToCloud.keptTasks') }}
 					</li>
 				</ul>
 				<p v-if="error" role="alert" class="text-xs text-destructive">
@@ -106,7 +104,7 @@
 				</p>
 				<div class="flex justify-end gap-2 pt-1">
 					<button type="button" :class="ghostButton" @click="step = 'setup'">
-						Back
+						{{ $t('common.actions.back') }}
 					</button>
 					<button
 						type="button"
@@ -114,7 +112,7 @@
 						data-testid="move-routines-confirm"
 						@click="start"
 					>
-						Send to TMGR and remove here
+						{{ $t('dailyRoutine.moveToCloud.sendAndRemove') }}
 					</button>
 				</div>
 			</template>
@@ -124,7 +122,7 @@
 				class="py-6 text-center text-sm text-ink-subtle"
 				role="status"
 			>
-				Sending to {{ targetName }}…
+				{{ $t('dailyRoutine.moveToCloud.sending', { name: targetName }) }}
 			</p>
 
 			<template v-else>
@@ -136,7 +134,13 @@
 					{{ stopMessage }}
 				</p>
 				<p class="text-sm text-ink" data-testid="move-routines-summary">
-					{{ movedCount }} of {{ results.length }} moved to {{ targetName }}.
+					{{
+						$t('dailyRoutine.moveToCloud.summary', {
+							moved: movedCount,
+							total: results.length,
+							name: targetName,
+						})
+					}}
 				</p>
 				<ul
 					class="divide-y divide-line max-h-56 overflow-y-auto rounded-md border border-line bg-surface-sunken text-sm"
@@ -156,7 +160,7 @@
 										? 'text-status-done'
 										: 'text-destructive'
 								"
-								>{{ statusLabel[item.status] }}</span
+								>{{ $t(statusLabelKey[item.status]) }}</span
 							>
 						</div>
 						<p
@@ -172,7 +176,7 @@
 							:disabled="busy"
 							@click="retry([item.id])"
 						>
-							Remove local copy
+							{{ $t('dailyRoutine.moveToCloud.removeLocalCopy') }}
 						</button>
 					</li>
 				</ul>
@@ -185,7 +189,11 @@
 						data-testid="move-routines-retry"
 						@click="retry(retryable)"
 					>
-						Retry {{ retryable.length }} failed
+						{{
+							$t('dailyRoutine.moveToCloud.retryFailed', {
+								n: retryable.length,
+							})
+						}}
 					</button>
 					<button
 						v-if="movedCount"
@@ -194,7 +202,7 @@
 						:disabled="busy"
 						@click="openTarget"
 					>
-						Open {{ targetName }}
+						{{ $t('dailyRoutine.moveToCloud.open', { name: targetName }) }}
 					</button>
 					<button
 						type="button"
@@ -203,7 +211,7 @@
 						data-testid="move-routines-done"
 						@click="onClose"
 					>
-						Done
+						{{ $t('common.actions.done') }}
 					</button>
 				</div>
 			</template>
@@ -221,6 +229,7 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
+	import { t } from '@/i18n';
 	import { activeLocalWorkspaceCode } from '@/local/runtime';
 	import { openCloudWorkspace } from '@/utils/openCloudWorkspace';
 	import { computed, ref, type PropType } from 'vue';
@@ -271,22 +280,22 @@
 	let api: CloudApi | null = null;
 	let target: MoveTarget | null = null;
 
-	const statusLabel: Record<ItemStatus, string> = {
-		moved: 'Moved',
-		failed: 'Failed',
-		in_cloud: 'In the cloud, local copy not removed',
-		not_sent: 'Not sent',
+	const statusLabelKey: Record<ItemStatus, string> = {
+		moved: 'dailyRoutine.moveToCloud.status.moved',
+		failed: 'dailyRoutine.moveToCloud.status.failed',
+		in_cloud: 'dailyRoutine.moveToCloud.status.inCloud',
+		not_sent: 'dailyRoutine.moveToCloud.status.notSent',
 	};
 
 	const title = computed(() =>
 		props.mode === 'routines'
-			? 'Move to cloud routines'
-			: 'Convert to cloud tasks',
+			? t('dailyRoutine.moveToCloud.titleRoutines')
+			: t('dailyRoutine.moveToCloud.titleTasks'),
 	);
 	const subtitle = computed(() =>
 		step.value === 'setup'
-			? 'Choose where the selected local routines go.'
-			: `${props.routines.length} selected`,
+			? t('dailyRoutine.moveToCloud.subtitleSetup')
+			: t('dailyRoutine.moveToCloud.selected', { n: props.routines.length }),
 	);
 	const targetName = computed(
 		() => props.targets.find((w) => w.id === workspaceId.value)?.name ?? '',
@@ -294,7 +303,7 @@
 	const categoryName = computed(
 		() =>
 			categories.value.find((c) => c.id === categoryId.value)?.title ??
-			'No category',
+			t('dailyRoutine.convert.noCategory'),
 	);
 	const hasHistory = computed(() =>
 		props.routines.some((r) => r.pattern || r.hasHistory),
@@ -323,16 +332,16 @@
 			const list = await (await getApi()).categories(requested);
 			if (requested === workspaceId.value) categories.value = list;
 		} catch (e) {
-			categoriesError.value = `Categories could not be loaded: ${toMessage(e)}`;
+			categoriesError.value = t('dailyRoutine.moveToCloud.categoriesError', {
+				message: toMessage(e),
+			});
 		}
 	};
 	void loadCategories();
 
 	const removeLocal = async (id: number) => {
 		if (activeLocalWorkspaceCode() !== localCode)
-			throw new Error(
-				'The open local workspace changed, so the local copy was not removed.',
-			);
+			throw new Error(t('dailyRoutine.moveToCloud.localWorkspaceChanged'));
 		try {
 			await deleteDailyTask(id);
 		} catch (e) {
