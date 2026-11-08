@@ -59,6 +59,10 @@
 		"undelivered": "Nicht zugestellt: {reason}",
 		"sessionClosed": "Sitzung geschlossen"
 	},
+	"listen": {
+		"on": "Agent hört zu",
+		"off": "Agent offline"
+	},
 	"unpicked": "Von keinem Agent übernommen",
 	"wait": {
 		"sessionGone": "Die Sitzung ist beendet, daher sieht kein Agent das.",

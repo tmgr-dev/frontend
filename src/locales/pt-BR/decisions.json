@@ -59,6 +59,10 @@
 		"undelivered": "Não entregue: {reason}",
 		"sessionClosed": "sessão encerrada"
 	},
+	"listen": {
+		"on": "O agente está ouvindo",
+		"off": "Agente offline"
+	},
 	"unpicked": "Nenhum agente pegou isto",
 	"wait": {
 		"sessionGone": "A sessão terminou, então nenhum agente verá isto.",

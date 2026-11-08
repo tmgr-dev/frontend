@@ -13,6 +13,13 @@
 				class="tag blocking"
 				>{{ $t('decisions.card.agentWaiting') }}</span
 			>
+			<span
+				v-if="listen"
+				class="tag listen"
+				:class="{ on: card.listening }"
+				data-listen
+				>{{ listen }}</span
+			>
 			<span v-if="card.updated_ms" class="upd">{{
 				$t('decisions.card.updatedAt', { time: updatedLabel(card.updated_ms) })
 			}}</span>
@@ -177,27 +184,28 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
+	import { autosizeTextarea } from '@/utils/commentComposer';
 	import { defineComponent, type PropType } from 'vue';
 	import {
 		cardMode,
 		deliveryLabel,
+		listenLabel,
 		unpickedLabel,
 		type CardMode,
 	} from '../answer';
-	import { t } from '@/i18n';
 	import {
-		kindLabel,
 		isHttpUrl,
+		kindLabel,
 		linkLabel,
 		linkSections,
 		recommendedOption,
 		sourceLabel,
 		updatedLabel,
 	} from '../format';
-	import { autosizeTextarea } from '@/utils/commentComposer';
 	import { isSubmitKey } from '../keys';
-	import type { CardView } from '../types';
 	import { clickedHttpLink, renderMarkdown } from '../markdown';
+	import type { CardView } from '../types';
 
 	const PICK_DELAY_MS = 180;
 	const FREE_MAX_HEIGHT = 240;
@@ -230,6 +238,9 @@
 			},
 			delivery(): string | null {
 				return deliveryLabel(this.card.delivery);
+			},
+			listen(): string | null {
+				return listenLabel(this.card);
 			},
 			unpicked(): string | null {
 				return unpickedLabel(this.card);

@@ -43,9 +43,7 @@ body {
 	overflow: hidden;
 	background: var(--sidebar, #111113);
 	color: var(--fg);
-	font:
-		14px/1.5 var(--font-sans),
-		sans-serif;
+	font: 14px/1.5 var(--font-sans), sans-serif;
 	-webkit-font-smoothing: antialiased;
 }
 #root {
@@ -415,9 +413,18 @@ kbd {
 	color: var(--fg-muted);
 	font-weight: 500;
 }
-.tag.blocking {
+.tag.blocking,
+.tag.listen.on {
 	background: var(--prog-bg);
 	color: var(--prog-fg);
+}
+.tag.listen {
+	background: var(--bg-active);
+	color: var(--fg-muted);
+	font-weight: 500;
+}
+.tag.listen.on {
+	font-weight: 600;
 }
 .card h1 {
 	font-size: 22px;
@@ -544,9 +551,7 @@ kbd {
 .facts {
 	background: var(--bg-raised);
 	border-radius: 12px;
-	box-shadow:
-		0 1px 2px rgba(0, 0, 0, 0.3),
-		0 0 0 1px var(--line);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--line);
 	padding: 6px 14px;
 	margin-bottom: 20px;
 }
@@ -613,9 +618,7 @@ kbd {
 	cursor: pointer;
 	background: var(--bg-raised);
 	box-shadow: 0 0 0 1px var(--line-strong);
-	transition:
-		box-shadow 0.12s var(--ease),
-		background 0.12s;
+	transition: box-shadow 0.12s var(--ease), background 0.12s;
 	width: 100%;
 	border: 0;
 	color: var(--fg);
@@ -626,9 +629,7 @@ kbd {
 	box-shadow: 0 0 0 1px var(--fg-faint);
 }
 .opt.sel {
-	box-shadow:
-		0 0 0 1.5px var(--brand),
-		0 0 0 4px var(--ring);
+	box-shadow: 0 0 0 1.5px var(--brand), 0 0 0 4px var(--ring);
 	background: color-mix(in oklab, var(--brand-bg) 35%, var(--bg-raised));
 }
 .optw {
@@ -671,9 +672,7 @@ kbd {
 	margin: 6px 0 0 46px;
 	border-radius: 10px;
 	background: var(--bg-sunken);
-	box-shadow:
-		0 0 0 1.5px var(--brand),
-		0 0 0 4px var(--ring);
+	box-shadow: 0 0 0 1.5px var(--brand), 0 0 0 4px var(--ring);
 	overflow: hidden;
 }
 .note textarea {
@@ -713,9 +712,7 @@ kbd {
 	outline: none;
 }
 .free:focus {
-	box-shadow:
-		0 0 0 1.5px var(--brand),
-		0 0 0 4px var(--ring);
+	box-shadow: 0 0 0 1.5px var(--brand), 0 0 0 4px var(--ring);
 }
 .hints {
 	margin-top: 18px;
@@ -1089,9 +1086,7 @@ kbd {
 	outline: none;
 }
 .chatbox textarea:focus {
-	box-shadow:
-		0 0 0 1.5px var(--brand),
-		0 0 0 4px var(--ring);
+	box-shadow: 0 0 0 1.5px var(--brand), 0 0 0 4px var(--ring);
 }
 .chatbox textarea:disabled {
 	opacity: 0.5;
@@ -1142,9 +1137,7 @@ kbd {
 	left: calc(50% + 136px);
 	transform: translateX(-50%) translateY(6px);
 	background: var(--bg-raised);
-	box-shadow:
-		0 16px 48px -12px rgba(0, 0, 0, 0.6),
-		0 0 0 1px var(--line-strong);
+	box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line-strong);
 	color: var(--fg);
 	padding: 9px 14px;
 	border-radius: 10px;
@@ -1232,9 +1225,7 @@ kbd {
 	left: calc(50% + 136px);
 	transform: translateX(-50%) translateY(-6px);
 	background: var(--bg-raised);
-	box-shadow:
-		0 16px 48px -12px rgba(0, 0, 0, 0.6),
-		0 0 0 1px var(--brand);
+	box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--brand);
 	color: var(--fg);
 	padding: 8px 14px;
 	border-radius: 10px;

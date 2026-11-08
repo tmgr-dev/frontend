@@ -59,6 +59,10 @@
 		"undelivered": "未送达：{reason}",
 		"sessionClosed": "会话已关闭"
 	},
+	"listen": {
+		"on": "智能体正在监听",
+		"off": "智能体离线"
+	},
 	"unpicked": "没有智能体接手",
 	"wait": {
 		"sessionGone": "会话已结束，没有智能体会看到这条内容。",

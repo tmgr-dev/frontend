@@ -59,6 +59,10 @@
 		"undelivered": "Not delivered: {reason}",
 		"sessionClosed": "session closed"
 	},
+	"listen": {
+		"on": "Agent is listening",
+		"off": "Agent offline"
+	},
 	"unpicked": "Not picked up by any agent",
 	"wait": {
 		"sessionGone": "The session ended, so no agent will see this.",

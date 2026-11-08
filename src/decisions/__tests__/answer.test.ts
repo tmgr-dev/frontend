@@ -5,6 +5,7 @@ import {
 	cardMode,
 	deliveryLabel,
 	isEmptyAnswer,
+	listenLabel,
 	unpickedLabel,
 } from '../answer';
 import { makeCard } from './fixtures';
@@ -189,5 +190,28 @@ describe('unpickedLabel', () => {
 			'Not picked up by any agent',
 		);
 		expect(unpickedLabel(makeCard({ unpicked: false }))).toBeNull();
+	});
+});
+
+describe('listenLabel', () => {
+	it('shows listening or offline on live agent-reply cards', () => {
+		expect(listenLabel(makeCard({ reply_via: 'mcp', listening: true }))).toBe(
+			'Agent is listening',
+		);
+		expect(listenLabel(makeCard({ reply_via: 'cli', listening: false }))).toBe(
+			'Agent offline',
+		);
+		expect(listenLabel(makeCard({ reply_via: 'mcp', state: 'deferred' }))).toBe(
+			'Agent offline',
+		);
+	});
+
+	it('stays silent for hook and finished cards', () => {
+		expect(
+			listenLabel(makeCard({ reply_via: 'hook', listening: true })),
+		).toBeNull();
+		expect(
+			listenLabel(makeCard({ reply_via: 'mcp', state: 'answered' })),
+		).toBeNull();
 	});
 });

@@ -59,6 +59,10 @@
 		"undelivered": "전달하지 못했어요: {reason}",
 		"sessionClosed": "세션이 닫혔어요"
 	},
+	"listen": {
+		"on": "에이전트가 대기 중",
+		"off": "에이전트 오프라인"
+	},
 	"unpicked": "어떤 에이전트도 가져가지 않았어요",
 	"wait": {
 		"sessionGone": "세션이 종료되어 어떤 에이전트도 이 내용을 보지 못해요.",

@@ -103,3 +103,13 @@ export const deliveryLabel = (
 
 export const unpickedLabel = (card: CardView): string | null =>
 	card.unpicked ? t('decisions.unpicked') : null;
+
+export const listenLabel = (card: CardView): string | null => {
+	if (
+		(card.state !== 'open' && card.state !== 'deferred') ||
+		(card.reply_via !== 'mcp' && card.reply_via !== 'cli')
+	) {
+		return null;
+	}
+	return card.listening ? t('decisions.listen.on') : t('decisions.listen.off');
+};
