@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR liest die Sitzungslogs, die deine KI-Tools auf diesem Computer schreiben, und speichert Token-Zahlen, Kosten, Modellnamen, Zeitstempel, Sitzungs-IDs, Projektordner und Git-Branches sowie die Namen der Tools, Skills und Befehle, die die KI verwendet hat, die Dateitypen, die sie bearbeitet hat, und die Pull Requests, die sie geöffnet hat. Prompt- und Antworttexte werden nie gespeichert. Die Daten bleiben auf diesem Gerät, es sei denn, du lädst sie mit tmgr usage sync hoch.",
 		"matchFailed": "Nutzung konnte nicht Aufgaben zugeordnet werden: {error}",
 		"documentTitle": "KI-Nutzung"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "An: TMGR liest diese Logs auf diesem Gerät, um Kosten und Limits anzuzeigen, und der Runner liest die Sitzungen, die er startet.",
+				"denied": "Aus: TMGR liest diese Logs auf diesem Gerät nicht für die KI-Nutzung, und der Runner liest keines davon.",
+				"unset": "Noch nicht gewählt: Die Desktop-App und Hintergrundjobs lesen sie nicht für die KI-Nutzung, tmgr-usage-Befehle, die du selbst ausführst, tun es aber. Der Runner liest keines davon, bis du es erlaubst.",
+				"forgetDone": "Gelöscht. Das Lesen von KI-Tool-Logs ist aus."
+			},
+			"format": {
+				"now": "jetzt",
+				"justNow": "gerade eben",
+				"ago": "vor {span}"
+			},
+			"error": {
+				"generic": "Etwas ist schiefgelaufen."
+			}
+		},
+		"toolLabels": {
+			"get_task": "Aufgabe wird gelesen",
+			"list_tasks": "Aufgaben werden aufgelistet",
+			"search_tasks": "Aufgaben werden durchsucht",
+			"list_comments": "Kommentare werden gelesen",
+			"list_statuses": "Board-Status werden gelesen",
+			"list_members": "Mitglieder werden gelesen",
+			"list_routines": "Routinen werden gelesen",
+			"time_summary": "Erfasste Zeit wird summiert",
+			"deadline_report": "Fristen werden geprüft",
+			"routine_agenda": "Deine Routinen werden gelesen",
+			"get_routine": "Routine wird gelesen",
+			"create_task": "Aufgabe wird vorbereitet",
+			"add_comment": "Kommentar wird vorbereitet",
+			"update_task": "Aufgabenänderung wird vorbereitet",
+			"add_checkpoint": "Checkpoint wird vorbereitet",
+			"start_timer": "Timer-Start wird vorbereitet",
+			"stop_timer": "Timer-Stopp wird vorbereitet",
+			"link_tasks": "Aufgabenverknüpfung wird vorbereitet",
+			"create_routine": "Routine wird vorbereitet",
+			"update_routine": "Routinenänderung wird vorbereitet",
+			"set_routine_state": "Routinen-Abhaken wird vorbereitet",
+			"move_routine_instance": "Verschieben der Routine wird vorbereitet",
+			"convert_routine": "Umwandlung der Routine in eine Aufgabe wird vorbereitet"
+		},
+		"compaction": {
+			"nothing": "Im Moment gibt es nichts zu komprimieren.",
+			"rateLimited": "Das Komprimieren ist begrenzt. Versuch es später noch einmal.",
+			"failed": "Der Verlauf konnte nicht komprimiert werden. Bitte versuch es noch einmal."
+		},
+		"pins": {
+			"saveFailed": "Der angeheftete Fakt konnte nicht gespeichert werden. Bitte versuch es noch einmal.",
+			"invalid": "Der angeheftete Fakt ist ungültig.",
+			"limit": "Du kannst bis zu {max} Fakten anheften. Entferne einen, um einen weiteren hinzuzufügen.",
+			"charsLeft": "Für angeheftete Fakten sind nur noch {left} Zeichen übrig."
+		},
+		"cursor": {
+			"taskFallback": "Aufgabe #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "Zusammenfassung für den Morgen",
+				"day_results": "Ergebnisse des Tages",
+				"week_results": "Ergebnisse der Woche",
+				"blockers_stale": "Blocker und liegengebliebene Aufgaben",
+				"estimate_similar": "Schätzung anhand ähnlicher Aufgaben"
+			},
+			"fill": {
+				"epic": "Epic in Unteraufgaben aufteilen",
+				"meeting": "Meeting auswerten"
+			}
+		},
+		"message": {
+			"today": "Heute",
+			"yesterday": "Gestern",
+			"seconds": "{n} s",
+			"minSec": "{min} Min. {sec} s",
+			"min": "{min} Min.",
+			"tokensInOut": "{input} Tokens ein / {output} Tokens aus",
+			"tokensIn": "{n} Tokens ein",
+			"tokensOut": "{n} Tokens aus"
+		},
+		"quotes": {
+			"limit": "Du kannst bis zu {max} Nachrichten zitieren.",
+			"unavailable": "Originalnachricht nicht verfügbar",
+			"you": "Du",
+			"ai": "KI",
+			"message": "Nachricht"
+		},
+		"confirmation": {
+			"expired": "Abgelaufen – nichts wurde geändert",
+			"lessThanMinute": "Läuft in weniger als einer Minute ab",
+			"expiresIn": "Läuft in {n} Min. ab",
+			"applying": "Wird angewendet…",
+			"done": "Erledigt",
+			"failedWith": "Fehlgeschlagen: {message}",
+			"failed": "Fehlgeschlagen",
+			"cancelled": "Abgebrochen",
+			"superseded": "Übersprungen – du hast eine neue Nachricht gesendet",
+			"conflict": "Diese Karte wurde bereits bearbeitet oder ist abgelaufen."
+		},
+		"attachments": {
+			"hint": "PDF, Bilder, Word-, Excel- und PowerPoint-Dateien sowie Textdateien",
+			"file": "DATEI",
+			"tooMany": "Du kannst bis zu {max} Dateien an eine Nachricht anhängen.",
+			"unsupported": "{name}: Dieser Dateityp wird nicht unterstützt. Unterstützt: {hint}.",
+			"tooLarge": "{name} ist größer als {size}.",
+			"empty": "{name} ist leer.",
+			"errors": {
+				"file_not_found": "Eine angehängte Datei wurde nicht gefunden. Entferne sie und versuch es noch einmal.",
+				"forbidden": "Du hast keinen Zugriff auf eine der angehängten Dateien.",
+				"file_not_on_task": "Hier können nur Dateien verwendet werden, die an diese Aufgabe angehängt sind.",
+				"file_too_large": "Eine angehängte Datei ist größer als {size}.",
+				"too_many_files": "Du kannst bis zu {max} Dateien an eine Nachricht anhängen.",
+				"unsupported_file_type": "Eine der Dateien kann vom Assistenten nicht gelesen werden. Unterstützt: {hint}.",
+				"too_many_pages": "Ein PDF hat zu viele Seiten (das Limit liegt bei 40).",
+				"unreadable_file": "Eine der Dateien konnte nicht gelesen werden.",
+				"documents_too_large": "Die angehängten Dokumente sind zu groß, um sie zusammen zu senden. Entferne einige und versuch es noch einmal.",
+				"invalid_file": "Der Dateiname ist ungültig.",
+				"invalid_file_path": "Der Upload konnte nicht angehängt werden. Versuch es noch einmal.",
+				"file_bound_elsewhere": "Der Upload konnte nicht angehängt werden. Versuch es noch einmal."
+			}
+		},
+		"personas": {
+			"nameRequired": "Name ist erforderlich",
+			"nameTooLong": "Der Name darf höchstens {max} Zeichen lang sein",
+			"nameAt": "Der Name darf kein „{'@'}“ enthalten",
+			"validationFailed": "Validierung fehlgeschlagen",
+			"reserved": "Dieser Skill verwendet einen reservierten Namen. Benenne ihn mit der tmgr-CLI um oder lösche ihn.",
+			"skill": {
+				"bodyBytes": "darf {max} Bytes nicht überschreiten",
+				"frontMatter": "muss mit einem Front-Matter-Block beginnen, der mit '---' beginnt und mit einem zweiten '---' endet",
+				"required": "ist erforderlich",
+				"slugPattern": "muss aus Kleinbuchstaben, Ziffern oder '-' bestehen, höchstens 60 Zeichen",
+				"slugReserved": "Dieser Name ist reserviert",
+				"slugMatch": "muss mit dem URL-Slug übereinstimmen",
+				"titleLength": "darf {max} Zeichen nicht überschreiten",
+				"deleteQuestion": "Skill „{title}“ löschen?",
+				"deleteAttached": "{question}\n\nZugewiesen an {list}. Sie verlieren diesen Skill sofort; es wird keine Kopie aufbewahrt.",
+				"pinned": "{name} (angeheftet an v{version})",
+				"deleted": "Skill gelöscht",
+				"deletedDetached": "Skill gelöscht und von {n} Persona entfernt | Skill gelöscht und von {n} Personas entfernt"
+			},
+			"labelRequired": "Label ist erforderlich",
+			"labelTooLong": "Das Label darf höchstens {max} Zeichen lang sein",
+			"requestedBy": "angefordert von {name}",
+			"personaOf": "Persona von {name}",
+			"scopeWorkspace": "Arbeitsbereich",
+			"scopeMe": "Nur ich",
+			"converted": "In einen geteilten Skill umgewandelt",
+			"convertedReplaced": "In einen geteilten Skill umgewandelt und bei {n} Persona ersetzt | In einen geteilten Skill umgewandelt und bei {n} Personas ersetzt"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "wird hochgeladen",
+				"binary": "binär, nicht importiert",
+				"too_large": "zu groß, nicht importiert",
+				"secret": "sieht nach einem Geheimnis aus, blockiert den Skill",
+				"symlink": "Symlink, nicht importiert",
+				"unsupported_name": "nicht unterstützter Name, nicht importiert",
+				"case_conflict": "Name kollidiert ohne Beachtung der Groß-/Kleinschreibung, nicht importiert",
+				"too_deep": "zu tief verschachtelt, nicht importiert",
+				"skipped_hidden": "versteckt, nicht importiert",
+				"unreadable": "nicht lesbar, nicht importiert"
+			},
+			"warn": {
+				"descriptionCut": "Beschreibung auf {max} Zeichen gekürzt",
+				"pluginRoot": "verweist auf {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}, das es in der Bibliothek nicht gibt",
+				"relativePaths": "verweist auf relative Pfade, die nicht aufgelöst werden",
+				"noFrontMatter": "kein Front Matter",
+				"invalidYaml": "Front Matter ist kein gültiges YAML; Name und Beschreibung wurden nicht gelesen",
+				"filesSkipped": "{n} Datei wird nicht importiert, siehe Dateiliste | {n} Dateien werden nicht importiert, siehe Dateiliste"
+			},
+			"blocked": {
+				"secret": "scheint ein Geheimnis zu enthalten",
+				"files": "Dateien: {files}",
+				"size": "{kib} KiB, Limit {limit} KiB",
+				"empty": "leere Datei",
+				"noDescription": "keine Beschreibung"
+			},
+			"plan": {
+				"duplicate": "doppelter Slug in der Auswahl",
+				"taken": "Slug seit dem Scan in der Bibliothek vergeben",
+				"limit": "Bibliothekslimit erreicht"
+			},
+			"summary": {
+				"imported": "{n} Skill importiert | {n} Skills importiert",
+				"failed": "{imported}, {failed} fehlgeschlagen"
+			},
+			"flow": {
+				"changedSincePreview": "seit der Vorschau geändert, erneut scannen",
+				"filesChanged": "Dateien in der Bibliothek haben sich seit dem Scan geändert. Scanne erneut und versuch es noch einmal.",
+				"replaced": "Der Bibliotheks-Skill wurde seit dem letzten Import ersetzt. Hake ihn erneut an, um ihn zu überschreiben.",
+				"requestFailed": "Anfrage fehlgeschlagen"
+			}
+		}
 	}
 }

@@ -969,5 +969,83 @@
 		"copyFailed": "Kopieren fehlgeschlagen",
 		"contactFailed": "Der Kontakt konnte nicht heruntergeladen werden",
 		"confirmRemove": "Das Alarmtelefon entfernen?"
+	},
+	"helpers": {
+		"editorLegacy": "{label} – veraltet",
+		"featureToggle": {
+			"groups": {
+				"pages": "Seiten",
+				"task": "Aufgaben",
+				"notifications": "Benachrichtigungen"
+			},
+			"descriptions": {
+				"categories": "Gruppiere Aufgaben in Projekten, um deinen Arbeitsbereich zu organisieren.",
+				"board": "Wechsle zur Kanban-Board-Ansicht, um den Status von Aufgaben zu verfolgen.",
+				"workflow": "Eigene Status, die Statusauswahl und Board-Spalten.",
+				"pages": "Halte Notizen, Kontext und Dokumentation in einem Seitenbaum fest, den Menschen und Agenten bearbeiten können.",
+				"graph": "Sieh, wie Aufgaben, Seiten, Personen und Agent-Läufe zusammenhängen: ein Graph-Bereich bei Aufgaben und Seiten sowie die Karte des Arbeitsbereichs.",
+				"agentWork": "Lässt KI-Agenten ihre Arbeit und Zeit an Aufgaben melden; wenn aus, sind Agent-Läufe ausgeblendet und Agenten melden nichts.",
+				"dashboard": "Sieh eine Übersicht über Aktivität und Fortschritt in deinem Arbeitsbereich.",
+				"dailyRoutines": "Verfolge wiederkehrende Routinen und Notizen getrennt von deinen Aufgaben.",
+				"taskComments": "Erlaube Kommentare und Diskussionen zu Aufgaben.",
+				"taskCountdown": "Erfasse die für Aufgaben aufgewendete Zeit mit einem Start-/Stopp-Timer.",
+				"taskFiles": "Erlaube das Anhängen von Dateien an Aufgaben.",
+				"taskRelations": "Erlaube das Verknüpfen von Aufgaben mit verwandten Aufgaben.",
+				"taskCheckpoints": "Teile Aufgaben in kleinere Checkpoints auf.",
+				"taskAssignees": "Weise Aufgaben bestimmten Mitgliedern des Arbeitsbereichs zu.",
+				"exports": "Exportiere Daten des Arbeitsbereichs.",
+				"defaultLandingPage": "Wähle, welche Seite nach der Anmeldung zuerst geöffnet wird."
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "Deine Arbeitsbereiche, Status und Projekte sehen",
+			"tasksRead": "Aufgaben und ihre Kommentare lesen",
+			"tasksWrite": "Status und Felder von Aufgaben ändern",
+			"tasksCreate": "Aufgaben erstellen",
+			"commentsCreate": "Kommentare hinzufügen",
+			"timeRead": "Zeitberichte lesen",
+			"timeWrite": "Deinen Timer starten und stoppen",
+			"agentWorkWrite": "Arbeit von KI-Agenten an Aufgaben erfassen",
+			"agentStatusWrite": "Den Status deines lokalen KI-Agenten (arbeitet, wartet, fertig) mit deinem Arbeitsbereich teilen",
+			"pagesRead": "Seiten lesen",
+			"pagesWrite": "Seiten bearbeiten",
+			"pagesAppend": "An Seiten anhängen",
+			"notifySend": "Benachrichtigungen und Handy-Alarme an deine Geräte senden",
+			"agentApprovalsWrite": "Freigaben für Agent-Läufe mit dem Schlüssel dieses Computers signieren",
+			"skillsRead": "Deine geteilten Skills lesen und sehen, welche Personas sie nutzen",
+			"skillsWrite": "Deine geteilten Skills erstellen, ändern und löschen und sie deinen Personas zuweisen (ändert, was diesen Agenten gesagt wird)"
+		},
+		"workspaceColor": {
+			"red": "Rot",
+			"orange": "Orange",
+			"yellow": "Gelb",
+			"green": "Grün",
+			"teal": "Türkis",
+			"blue": "Blau",
+			"violet": "Violett",
+			"pink": "Rosa"
+		},
+		"phones": {
+			"pairStartFailed": "Die Kopplung konnte nicht gestartet werden",
+			"enterName": "Gib einen Namen für diesen Mac ein",
+			"signIn": "Melde dich an, um ein Handy zu koppeln",
+			"genericError": "Etwas ist schiefgelaufen",
+			"never": "nie",
+			"justNow": "gerade eben",
+			"minutesAgo": "vor {n} Min.",
+			"hoursAgo": "vor {n} Std.",
+			"daysAgo": "vor {n} T.",
+			"scanCode": "Scanne diesen Code mit der TMGR-iPhone-App",
+			"typeCodeOn": "Gib den Code ein, der auf {name} angezeigt wird",
+			"typeCodeOnIphone": "Gib den Code ein, der auf deinem iPhone angezeigt wird",
+			"pairingFailed": "Kopplung fehlgeschlagen",
+			"isPaired": "{name} ist gekoppelt",
+			"phonePaired": "Handy gekoppelt",
+			"attemptsLeft": "{n} Versuch übrig | {n} Versuche übrig"
+		},
+		"modules": {
+			"footer": "Wenn du ein Modul ausschaltest, ist es für alle in diesem Arbeitsbereich ausgeblendet. Deine Daten bleiben erhalten. Schalte es wieder ein, und alles ist so, wie du es verlassen hast.",
+			"coreDescription": "Immer verfügbar. Du kannst jedes davon für dich ausblenden."
+		}
 	}
 }

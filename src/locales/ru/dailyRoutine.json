@@ -218,5 +218,22 @@
 		"copyTitle": "{title} (копия)",
 		"importErrors": "\nОшибки:\n- {list}",
 		"importSummary": "Импортировано: {created}, пропущено: {skipped}, заменено: {replaced}.{errors}"
+	},
+	"helpers": {
+		"recurrence": {
+			"daily": "Каждый день",
+			"everyNDays": "Каждый {n} день | Каждые {n} дня | Каждые {n} дней",
+			"weekly": "Каждую неделю",
+			"weekdays": "По будням",
+			"weekends": "По выходным",
+			"monthly": "Каждый месяц · день {day}",
+			"yearly": "Каждый год · {date}"
+		},
+		"relative": {
+			"now": "сейчас",
+			"secondsAgo": "{n} секунду назад | {n} секунды назад | {n} секунд назад",
+			"minutesAgo": "{n} минуту назад | {n} минуты назад | {n} минут назад",
+			"hoursAgo": "{n} час назад | {n} часа назад | {n} часов назад"
+		}
 	}
 }

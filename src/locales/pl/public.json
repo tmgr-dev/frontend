@@ -72,5 +72,26 @@
 		"unsupported": "Wprowadzanie głosowe nie jest tu obsługiwane",
 		"stopTranscribe": "Zatrzymaj i transkrybuj",
 		"dictate": "Podyktuj"
+	},
+	"helpers": {
+		"voice": {
+			"sessionExpired": "Twoja sesja wygasła. Zaloguj się ponownie.",
+			"tooLong": "Nagranie jest zbyt długie. Spróbuj nagrać krótsze.",
+			"badFormat": "Ta przeglądarka nagrywa w nieobsługiwanym formacie.",
+			"noSpeech": "Nie wykryto mowy. Spróbuj ponownie.",
+			"tooMany": "Zbyt wiele żądań głosowych. Poczekaj minutę i spróbuj ponownie.",
+			"unavailable": "Transkrypcja głosu jest teraz niedostępna.",
+			"failed": "Transkrypcja głosu nie powiodła się. Spróbuj ponownie.",
+			"timedOut": "Upłynął czas transkrypcji. Spróbuj ponownie.",
+			"noServer": "Nie udało się połączyć z serwerem. Sprawdź połączenie.",
+			"micBlocked": "Dostęp do mikrofonu jest zablokowany. Zezwól na niego w ustawieniach przeglądarki lub systemu.",
+			"noMic": "Nie znaleziono mikrofonu.",
+			"micBusy": "Mikrofon jest zajęty lub niedostępny.",
+			"micStart": "Nie udało się uruchomić mikrofonu.",
+			"tooShort": "Nagranie było zbyt krótkie.",
+			"nothingRecognized": "Nic nie rozpoznano.",
+			"recordingFailed": "Nagrywanie nie powiodło się.",
+			"recordStart": "Nie udało się rozpocząć nagrywania."
+		}
 	}
 }

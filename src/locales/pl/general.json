@@ -293,5 +293,77 @@
 		"tracked": "Śledzony czas",
 		"running": "W trakcie",
 		"overTime": "Przekroczony czas"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "Ten link prowadzi do przestrzeni roboczej, do której nie masz dostępu.",
+			"notFound": "To zadanie już nie istnieje.",
+			"forbidden": "Nie masz dostępu do tego zadania.",
+			"error": "Nie udało się wczytać tego zadania. Sprawdź połączenie i spróbuj ponownie."
+		},
+		"modules": {
+			"needsColon": "wymaga: {list}",
+			"needs": "wymaga: {list}",
+			"showModule": "Pokaż ten moduł",
+			"enableFeature": "Włącz tę funkcję",
+			"askOwner": "Poproś właściciela o włączenie",
+			"hiddenForYou": "Ukryte dla Ciebie",
+			"showForMe": "Pokaż dla mnie",
+			"hideForMe": "Ukryj dla mnie",
+			"allModules": "Wszystkie moduły",
+			"coreOnly": "Bez modułów, tylko rdzeń",
+			"workflowOffConfirm": "Zadania dostaną pole wyboru Gotowe zamiast statusów, a tablica zostanie ukryta. Statusy i ich zadania zostają i wrócą po ponownym włączeniu.",
+			"workflowOn": "Przepływ pracy: pole wyboru Gotowe → statusy",
+			"workflowOff": "Przepływ pracy: statusy → pole wyboru Gotowe",
+			"presetSummary": {
+				"personal": "Tylko ja: zadania i czas, z polem wyboru Gotowe",
+				"team": "Praca zespołowa ze statusami i tablicą",
+				"developer": "Ja i moi agenci AI, ze statusami i tablicą",
+				"everything": "Wszystkie moduły włączone",
+				"minimal": "Tylko zadania: Lista, Timer i Komentarze"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "Pulpit",
+				"projects": "Projekty",
+				"list": "Lista",
+				"board": "Tablica",
+				"routines": "Rutyny",
+				"pages": "Strony",
+				"map": "Mapa",
+				"files": "Pliki",
+				"askAi": "Zapytaj AI",
+				"personas": "Persony"
+			},
+			"task": {
+				"timer": "Timer",
+				"pomodoro": "Pomodoro",
+				"assignees": "Wykonawcy",
+				"checkpoints": "Punkty kontrolne",
+				"attachments": "Załączniki",
+				"relations": "Powiązania",
+				"agentWork": "Praca agenta",
+				"github": "GitHub",
+				"cursorAgents": "Agenci Cursor",
+				"comments": "Komentarze",
+				"aiReply": "Odpowiedź AI"
+			}
+		},
+		"navTargets": {
+			"dashboard": "Pulpit",
+			"list": "Lista",
+			"board": "Tablica",
+			"localRoutines": "Lokalne rutyny",
+			"dailyRoutines": "Codzienne rutyny",
+			"archive": "Archiwum",
+			"categories": "Kategorie",
+			"pages": "Strony",
+			"statistics": "Statystyki",
+			"aiUsage": "Użycie AI",
+			"files": "Pliki",
+			"map": "Mapa",
+			"settings": "Ustawienia"
+		}
 	}
 }

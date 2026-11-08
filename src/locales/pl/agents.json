@@ -229,5 +229,199 @@
 		"privacyNote": "TMGR odczytuje logi sesji, które Twoje narzędzia AI zapisują na tym komputerze, i przechowuje liczbę tokenów, koszt, nazwy modeli, znaczniki czasu, identyfikatory sesji, foldery projektów i gałęzie git, a także nazwy narzędzi, skilli i poleceń użytych przez AI, typy edytowanych plików i otwarte pull requesty. Treść promptów i odpowiedzi nigdy nie jest zapisywana. Dane zostają na tym urządzeniu, chyba że prześlesz je przez tmgr usage sync.",
 		"matchFailed": "Nie udało się dopasować użycia do zadań: {error}",
 		"documentTitle": "Użycie AI"
+	},
+	"helpers": {
+		"usage": {
+			"consent": {
+				"granted": "Włączone: TMGR czyta te logi na tym urządzeniu, żeby pokazać koszty i limity, a runner czyta sesje, które uruchamia.",
+				"denied": "Wyłączone: TMGR nie czyta tych logów na potrzeby zużycia AI na tym urządzeniu, a runner nie czyta żadnego z nich.",
+				"unset": "Jeszcze nie wybrano: aplikacja desktopowa i zadania w tle nie czytają ich na potrzeby zużycia AI, ale polecenia tmgr usage uruchamiane przez Ciebie nadal to robią. Runner nie czyta żadnego z nich, dopóki tego nie dopuścisz.",
+				"forgetDone": "Usunięto. Czytanie logów narzędzi AI jest wyłączone."
+			},
+			"format": {
+				"now": "teraz",
+				"justNow": "przed chwilą",
+				"ago": "{span} temu"
+			},
+			"error": {
+				"generic": "Coś poszło nie tak."
+			}
+		},
+		"toolLabels": {
+			"get_task": "Czytanie zadania",
+			"list_tasks": "Wyświetlanie zadań",
+			"search_tasks": "Szukanie zadań",
+			"list_comments": "Czytanie komentarzy",
+			"list_statuses": "Czytanie statusów tablicy",
+			"list_members": "Czytanie listy członków",
+			"list_routines": "Czytanie rutyn",
+			"time_summary": "Sumowanie śledzonego czasu",
+			"deadline_report": "Sprawdzanie terminów",
+			"routine_agenda": "Czytanie Twoich rutyn",
+			"get_routine": "Czytanie rutyny",
+			"create_task": "Przygotowanie zadania",
+			"add_comment": "Przygotowanie komentarza",
+			"update_task": "Przygotowanie aktualizacji zadania",
+			"add_checkpoint": "Przygotowanie punktu kontrolnego",
+			"start_timer": "Przygotowanie uruchomienia timera",
+			"stop_timer": "Przygotowanie zatrzymania timera",
+			"link_tasks": "Przygotowanie powiązania zadań",
+			"create_routine": "Przygotowanie rutyny",
+			"update_routine": "Przygotowanie zmiany rutyny",
+			"set_routine_state": "Przygotowanie odhaczenia rutyny",
+			"move_routine_instance": "Przygotowanie przeniesienia rutyny",
+			"convert_routine": "Przygotowanie zamiany rutyny w zadanie"
+		},
+		"compaction": {
+			"nothing": "Na razie nie ma nic do skompaktowania.",
+			"rateLimited": "Kompaktowanie jest ograniczone limitem. Spróbuj ponownie później.",
+			"failed": "Nie udało się skompaktować historii. Spróbuj ponownie."
+		},
+		"pins": {
+			"saveFailed": "Nie udało się zapisać przypiętego faktu. Spróbuj ponownie.",
+			"invalid": "Przypięty fakt jest nieprawidłowy.",
+			"limit": "Możesz przypiąć do {max} faktów. Usuń jeden, aby dodać kolejny.",
+			"charsLeft": "Zostało tylko {left} znaków na przypięte fakty."
+		},
+		"cursor": {
+			"taskFallback": "Zadanie #{id}"
+		},
+		"scenarios": {
+			"run": {
+				"morning_summary": "Poranne podsumowanie",
+				"day_results": "Wyniki dnia",
+				"week_results": "Wyniki tygodnia",
+				"blockers_stale": "Blokady i nieaktualne zadania",
+				"estimate_similar": "Oszacuj na podstawie podobnych zadań"
+			},
+			"fill": {
+				"epic": "Podziel epik na podzadania",
+				"meeting": "Podsumuj spotkanie"
+			}
+		},
+		"message": {
+			"today": "Dziś",
+			"yesterday": "Wczoraj",
+			"seconds": "{n} s",
+			"minSec": "{min} min {sec} s",
+			"min": "{min} min",
+			"tokensInOut": "{input} tokenów wejściowych / {output} wyjściowych",
+			"tokensIn": "{n} tokenów wejściowych",
+			"tokensOut": "{n} tokenów wyjściowych"
+		},
+		"quotes": {
+			"limit": "Możesz zacytować do {max} wiadomości.",
+			"unavailable": "Oryginalna wiadomość jest niedostępna",
+			"you": "Ty",
+			"ai": "AI",
+			"message": "Wiadomość"
+		},
+		"confirmation": {
+			"expired": "Wygasło — nic nie zmieniono",
+			"lessThanMinute": "Wygasa za mniej niż minutę",
+			"expiresIn": "Wygasa za {n} min",
+			"applying": "Stosowanie…",
+			"done": "Gotowe",
+			"failedWith": "Niepowodzenie: {message}",
+			"failed": "Niepowodzenie",
+			"cancelled": "Anulowano",
+			"superseded": "Pominięto — wysłano nową wiadomość",
+			"conflict": "Ta karta została już obsłużona lub wygasła."
+		},
+		"attachments": {
+			"hint": "PDF, obrazy, pliki Word, Excel, PowerPoint i tekstowe",
+			"file": "PLIK",
+			"tooMany": "Do jednej wiadomości możesz dołączyć maksymalnie {max} plików.",
+			"unsupported": "{name}: ten typ pliku nie jest obsługiwany. Obsługiwane: {hint}.",
+			"tooLarge": "Plik {name} jest większy niż {size}.",
+			"empty": "Plik {name} jest pusty.",
+			"errors": {
+				"file_not_found": "Nie znaleziono dołączonego pliku. Usuń go i spróbuj ponownie.",
+				"forbidden": "Nie masz dostępu do jednego z dołączonych plików.",
+				"file_not_on_task": "Tutaj można używać tylko plików dołączonych do tego zadania.",
+				"file_too_large": "Dołączony plik jest większy niż {size}.",
+				"too_many_files": "Do jednej wiadomości możesz dołączyć maksymalnie {max} plików.",
+				"unsupported_file_type": "Asystent nie może odczytać jednego z plików. Obsługiwane: {hint}.",
+				"too_many_pages": "Plik PDF ma zbyt wiele stron (limit to 40).",
+				"unreadable_file": "Nie udało się odczytać jednego z plików.",
+				"documents_too_large": "Dołączone dokumenty są zbyt duże, by wysłać je razem. Usuń część i spróbuj ponownie.",
+				"invalid_file": "Nazwa pliku jest nieprawidłowa.",
+				"invalid_file_path": "Nie udało się dołączyć przesłanego pliku. Spróbuj ponownie.",
+				"file_bound_elsewhere": "Nie udało się dołączyć przesłanego pliku. Spróbuj ponownie."
+			}
+		},
+		"personas": {
+			"nameRequired": "Nazwa jest wymagana",
+			"nameTooLong": "Nazwa może mieć maksymalnie {max} znaków",
+			"nameAt": "Nazwa nie może zawierać znaku \"{'@'}\"",
+			"validationFailed": "Walidacja nie powiodła się",
+			"reserved": "Ten skill używa zastrzeżonej nazwy. Zmień ją w CLI tmgr albo usuń skill.",
+			"skill": {
+				"bodyBytes": "nie może przekraczać {max} bajtów",
+				"frontMatter": "musi zaczynać się blokiem front matter ze znakiem '---', zamkniętym drugim '---'",
+				"required": "jest wymagane",
+				"slugPattern": "musi składać się z małych liter, cyfr lub '-', maksymalnie 60 znaków",
+				"slugReserved": "Ta nazwa jest zastrzeżona",
+				"slugMatch": "musi pasować do sluga w adresie URL",
+				"titleLength": "nie może przekraczać {max} znaków",
+				"deleteQuestion": "Usunąć skill „{title}”?",
+				"deleteAttached": "{question}\n\nPrzypisany do: {list}. Te persony natychmiast tracą ten skill, kopia nie jest zachowywana.",
+				"pinned": "{name} (przypięte do v{version})",
+				"deleted": "Skill usunięty",
+				"deletedDetached": "Skill usunięty i odłączony od {n} persony | Skill usunięty i odłączony od {n} person | Skill usunięty i odłączony od {n} person"
+			},
+			"labelRequired": "Etykieta jest wymagana",
+			"labelTooLong": "Etykieta może mieć maksymalnie {max} znaków",
+			"requestedBy": "na prośbę: {name}",
+			"personaOf": "persona użytkownika {name}",
+			"scopeWorkspace": "Przestrzeń robocza",
+			"scopeMe": "Tylko ja",
+			"converted": "Zamieniono na współdzielony skill",
+			"convertedReplaced": "Zamieniono na współdzielony skill i zastąpiono u {n} persony | Zamieniono na współdzielony skill i zastąpiono u {n} person | Zamieniono na współdzielony skill i zastąpiono u {n} person"
+		},
+		"skillImport": {
+			"fileStatus": {
+				"ok": "zostanie przesłany",
+				"binary": "plik binarny, nie zostanie zaimportowany",
+				"too_large": "zbyt duży, nie zostanie zaimportowany",
+				"secret": "wygląda na sekret, blokuje skill",
+				"symlink": "dowiązanie symboliczne, nie zostanie zaimportowane",
+				"unsupported_name": "nieobsługiwana nazwa, nie zostanie zaimportowany",
+				"case_conflict": "nazwa koliduje po zignorowaniu wielkości liter, nie zostanie zaimportowany",
+				"too_deep": "zbyt głęboko, nie zostanie zaimportowany",
+				"skipped_hidden": "ukryty, nie zostanie zaimportowany",
+				"unreadable": "nie można odczytać, nie zostanie zaimportowany"
+			},
+			"warn": {
+				"descriptionCut": "opis skrócono do {max} znaków",
+				"pluginRoot": "odwołuje się do {'$'}{'{'}CLAUDE_PLUGIN_ROOT{'}'}, które nie istnieje w bibliotece",
+				"relativePaths": "odwołuje się do ścieżek względnych, które nie zostaną rozwiązane",
+				"noFrontMatter": "brak front matter",
+				"invalidYaml": "front matter nie jest prawidłowym YAML-em; nazwa i opis nie zostały odczytane",
+				"filesSkipped": "{n} plik nie zostanie zaimportowany, zobacz listę plików | {n} pliki nie zostaną zaimportowane, zobacz listę plików | {n} plików nie zostanie zaimportowanych, zobacz listę plików"
+			},
+			"blocked": {
+				"secret": "wygląda na zawierający sekret",
+				"files": "pliki: {files}",
+				"size": "{kib} KiB, limit {limit} KiB",
+				"empty": "pusty plik",
+				"noDescription": "brak opisu"
+			},
+			"plan": {
+				"duplicate": "zduplikowany slug w zaznaczeniu",
+				"taken": "slug zajęty w bibliotece od czasu skanowania",
+				"limit": "osiągnięto limit biblioteki"
+			},
+			"summary": {
+				"imported": "Zaimportowano {n} skill | Zaimportowano {n} skille | Zaimportowano {n} skilli",
+				"failed": "{imported}, nie udało się: {failed}"
+			},
+			"flow": {
+				"changedSincePreview": "zmieniono od podglądu, przeskanuj ponownie",
+				"filesChanged": "Pliki w bibliotece zmieniły się od czasu skanowania. Przeskanuj ponownie i spróbuj jeszcze raz.",
+				"replaced": "Skill w bibliotece został zastąpiony od ostatniego importu. Zaznacz go ponownie, aby nadpisać.",
+				"requestFailed": "Żądanie nie powiodło się"
+			}
+		}
 	}
 }

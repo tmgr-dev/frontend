@@ -316,5 +316,44 @@
 		"restoreFailed": "Dieser Eintrag konnte nicht wiederhergestellt werden",
 		"deleted": "Gelöscht",
 		"undo": "Rückgängig"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "Die Eingabe darf nicht leer sein",
+			"emptyAt": "Leere E-Mail-Adresse an Position {position}",
+			"invalid": "Ungültiges E-Mail-Format: {email}"
+		},
+		"notificationTypes": {
+			"fallback": "Benachrichtigung",
+			"taskCreated": "Aufgabe erstellt",
+			"taskUpdated": "Aufgabe aktualisiert",
+			"taskStatusChanged": "Aufgabenstatus geändert",
+			"taskAssigned": "Aufgabe zugewiesen",
+			"taskDeleted": "Aufgabe gelöscht",
+			"taskRestored": "Aufgabe wiederhergestellt",
+			"taskCompleted": "Aufgabe erledigt",
+			"commentCreated": "Neuer Kommentar",
+			"commentUpdated": "Kommentar aktualisiert",
+			"commentDeleted": "Kommentar gelöscht",
+			"categoryCreated": "Projekt erstellt",
+			"categoryUpdated": "Projekt aktualisiert",
+			"categoryDeleted": "Projekt gelöscht",
+			"categoryRestored": "Projekt wiederhergestellt",
+			"fileUploaded": "Datei hochgeladen",
+			"fileDeleted": "Datei gelöscht",
+			"memberJoined": "Mitglied beigetreten",
+			"memberLeft": "Mitglied hat den Arbeitsbereich verlassen",
+			"memberRemoved": "Mitglied entfernt",
+			"taskPersonaAssigned": "Aufgabe einer Persona zugewiesen",
+			"taskPersonaUnassigned": "Aufgabe von einer Persona entfernt",
+			"commentReactionToggled": "Reaktion auf Kommentar",
+			"agentWorkStarted": "Agent-Lauf gestartet",
+			"agentWorkUpdated": "Agent-Lauf aktualisiert",
+			"agentWorkFinished": "Agent-Lauf beendet",
+			"pageCreated": "Neue Seite",
+			"pageUpdated": "Seite aktualisiert",
+			"pageMentioned": "Du wurdest auf einer Seite erwähnt",
+			"memoryAdded": "Zum Speicher hinzugefügt"
+		}
 	}
 }

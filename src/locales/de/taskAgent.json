@@ -236,5 +236,81 @@
 		"pullRequests": "Pull Requests ({n})",
 		"by": "von {author}",
 		"loadFailed": "Git-Aktivität konnte nicht geladen werden"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "Eingabe",
+				"cache_read": "Cache-Lesen",
+				"cache_write_5m": "Cache-Schreiben 5 Min.",
+				"cache_write_1h": "Cache-Schreiben 1 Std.",
+				"output": "Ausgabe",
+				"reasoning": "Reasoning"
+			},
+			"timeActive": "aktiv",
+			"timeWallClock": "Echtzeit",
+			"summary": {
+				"you": "Du {time}",
+				"agents": "Agenten {time}",
+				"ai": "{cost} KI"
+			},
+			"server": {
+				"unsynced": "Dieses Gerät hat {amount} Nutzung, die noch nicht synchronisiert ist.",
+				"readFailed": "Die synchronisierte Nutzung konnte nicht gelesen werden.",
+				"localOnly": "Nur lokal – nicht synchronisiert. Die Aufgabenkosten-API und andere Mitglieder sehen keine KI-Nutzung für diese Aufgabe. Führe `tmgr usage sync` aus, um sie hochzuladen."
+			},
+			"rates": {
+				"input": "Eingabe",
+				"output": "Ausgabe",
+				"cacheRead": "Cache-Lesen",
+				"cacheWrite5m": "Cache-Schreiben 5 Min.",
+				"cacheWrite1h": "Cache-Schreiben 1 Std.",
+				"line": "{label} {value}",
+				"per1M": "{parts} pro 1 Mio. Tokens"
+			},
+			"unpriced": "{count} Ereignis hat keinen Preis; die Kosten sind zu niedrig angesetzt. | {count} Ereignisse haben keinen Preis; die Kosten sind zu niedrig angesetzt."
+		},
+		"status": {
+			"states": {
+				"working": "Arbeitet",
+				"waiting": "Wartet",
+				"blocked": "Blockiert",
+				"idle": "Inaktiv",
+				"done": "Erledigt",
+				"exited": "Beendet"
+			},
+			"justNow": "gerade eben",
+			"minAgo": "vor {n} Min.",
+			"hourAgo": "vor {n} Std.",
+			"dayAgo": "vor {n} T.",
+			"agent": "Agent",
+			"on": " auf {host}",
+			"line": "{state}: {who}{where}",
+			"since": "seit {since}",
+			"noRecent": "keine aktuellen Updates"
+		},
+		"work": {
+			"agents": "Agenten",
+			"active": "Agenten aktiv",
+			"wall": "Echtzeit",
+			"waiting": "Wartezeit zwischen Läufen",
+			"sum": "Agent-Zeit (Summe der Läufe)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "der Web-App",
+				"cli": "der CLI",
+				"mcp": "MCP",
+				"persona": "einer Agent-Persona",
+				"plugin": "einem Plugin",
+				"legacy": "einem veralteten Token",
+				"other": "einer Integration"
+			},
+			"reasonEdited": "Text bearbeitet",
+			"reasonComment": "Kommentar hinzugefügt",
+			"reasonChanged": "geändert",
+			"noCategory": "Kein Projekt",
+			"category": "Projekt #{id}"
+		}
 	}
 }

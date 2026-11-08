@@ -1066,5 +1066,30 @@
 			"command": "Polecenie uruchomione",
 			"agent": "Agent połączony"
 		}
+	},
+	"helpers": {
+		"checklist": {
+			"human": {
+				"createTask": "Utwórz zadanie",
+				"runTimer": "Uruchom timer na minutę",
+				"moveCard": "Przenieś kartę na tablicy",
+				"addRoutine": "Dodaj codzienną rutynę",
+				"writePage": "Napisz stronę",
+				"connectAgent": "Połącz agenta AI"
+			},
+			"agent": {
+				"connectAgent": "Połącz agenta",
+				"firstAgentRun": "Uruchom pierwsze zadanie agenta",
+				"phoneAlert": "Otrzymaj alert na telefonie, gdy agent Cię potrzebuje",
+				"startTimer": "Uruchom timer przy zadaniu",
+				"contextPage": "Napisz stronę z kontekstem, którą czytają Twoi agenci",
+				"inviteTeammate": "Zaproś współpracownika"
+			},
+			"verifyEmail": "Najpierw zweryfikuj swój email"
+		},
+		"aha": {
+			"firstRun": "Zapisano pierwsze uruchomienie agenta. Tym właśnie zajmuje się TMGR.",
+			"timerLogged": "Zapisano {minutes} min przy zadaniu {title}. Twój czas zostaje przy zadaniu."
+		}
 	}
 }

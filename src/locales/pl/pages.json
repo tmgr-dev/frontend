@@ -225,5 +225,73 @@
 		"loading": "Ładowanie...",
 		"notFound": "Nie znaleziono tej strony.",
 		"openFailed": "Nie udało się otworzyć strony. Zamknij to okno i spróbuj ponownie."
+	},
+	"helpers": {
+		"network": {
+			"operational": "Operacyjne",
+			"personal": "Osobiste",
+			"strategic": "Strategiczne"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "E-mail",
+			"other": "Inne"
+		},
+		"validation": {
+			"invalidMember": "Nieprawidłowy członek",
+			"mustBeList": "Musi być listą",
+			"chooseSource": "Wybierz źródło",
+			"enterIdentifier": "Wpisz identyfikator",
+			"nameTooLong": "Nazwa jest zbyt długa",
+			"chooseRelationship": "Wybierz typ relacji",
+			"maxChars": "Maksymalnie 255 znaków",
+			"dateFormat": "Data w formacie RRRR-MM-DD",
+			"invalidTask": "Nieprawidłowe zadanie",
+			"invalidValue": "Nieprawidłowa wartość",
+			"invalidProperties": "Nieprawidłowe właściwości"
+		},
+		"property": {
+			"member": "Członek",
+			"relationship": "Relacja",
+			"company": "Firma",
+			"role": "Rola",
+			"aliases": "Aliasy",
+			"lastContact": "Ostatni kontakt",
+			"date": "Data",
+			"participants": "Uczestnicy",
+			"tasks": "Zadania"
+		},
+		"pageType": {
+			"plain": "Zwykła strona",
+			"context": "Kontekst",
+			"person": "Osoba",
+			"meeting": "Spotkanie"
+		},
+		"owner": {
+			"persona": "Persona",
+			"member": "Członek",
+			"system": "System",
+			"agents": "Agenci"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "Nie znaleziono zaznaczonego tekstu na stronie. Odśwież stronę i spróbuj ponownie.",
+			"pageChanged": "Strona się zmieniła. Odśwież ją i spróbuj ponownie.",
+			"noAccess": "Brak dostępu do kategorii.",
+			"failed": "Nie udało się utworzyć zadania."
+		},
+		"image": {
+			"alignLeft": "Wyrównaj do lewej",
+			"alignCenter": "Wyśrodkuj",
+			"alignRight": "Wyrównaj do prawej",
+			"fullWidth": "Pełna szerokość",
+			"download": "Pobierz",
+			"replaceImage": "Zamień obraz",
+			"deleteImage": "Usuń obraz",
+			"captionPlaceholder": "Dodaj podpis",
+			"loadFailed": "Nie udało się wczytać obrazu"
+		}
 	}
 }

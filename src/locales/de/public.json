@@ -72,5 +72,26 @@
 		"unsupported": "Spracheingabe wird hier nicht unterstützt",
 		"stopTranscribe": "Beenden und transkribieren",
 		"dictate": "Diktieren"
+	},
+	"helpers": {
+		"voice": {
+			"sessionExpired": "Deine Sitzung ist abgelaufen. Melde dich erneut an.",
+			"tooLong": "Die Aufnahme ist zu lang. Versuch es mit einer kürzeren.",
+			"badFormat": "Dieser Browser nimmt in einem nicht unterstützten Format auf.",
+			"noSpeech": "Es wurde keine Sprache erkannt. Versuch es noch einmal.",
+			"tooMany": "Zu viele Sprachanfragen. Warte eine Minute und versuch es noch einmal.",
+			"unavailable": "Die Sprachtranskription ist gerade nicht verfügbar.",
+			"failed": "Die Sprachtranskription ist fehlgeschlagen. Versuch es noch einmal.",
+			"timedOut": "Zeitüberschreitung bei der Transkription. Versuch es noch einmal.",
+			"noServer": "Der Server ist nicht erreichbar. Prüfe deine Verbindung.",
+			"micBlocked": "Der Mikrofonzugriff ist blockiert. Erlaube ihn in den Einstellungen deines Browsers oder Systems.",
+			"noMic": "Es wurde kein Mikrofon gefunden.",
+			"micBusy": "Das Mikrofon ist belegt oder nicht verfügbar.",
+			"micStart": "Das Mikrofon konnte nicht gestartet werden.",
+			"tooShort": "Die Aufnahme war zu kurz.",
+			"nothingRecognized": "Es wurde nichts erkannt.",
+			"recordingFailed": "Die Aufnahme ist fehlgeschlagen.",
+			"recordStart": "Die Aufnahme konnte nicht gestartet werden."
+		}
 	}
 }

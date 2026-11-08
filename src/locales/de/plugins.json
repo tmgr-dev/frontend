@@ -36,5 +36,17 @@
 		"openFailed": "Das Plugin-Fenster konnte nicht geöffnet werden: {error}",
 		"nothingToShow": "Das Plugin hat nichts zum Anzeigen geliefert.",
 		"drawFailed": "Das Plugin konnte diese Seite nicht darstellen: {error}"
+	},
+	"helpers": {
+		"time": {
+			"fewSeconds": "ein paar Sekunden",
+			"min": "{n} Min.",
+			"hour": "{n} Std.",
+			"day": "{n} T.",
+			"justNow": "gerade eben",
+			"ago": "vor {span}",
+			"in": "in {span}",
+			"overdue": "seit {span} überfällig"
+		}
 	}
 }
