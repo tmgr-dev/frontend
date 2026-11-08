@@ -19,16 +19,16 @@
 			<div
 				data-tour="board.card-handle"
 				class="task-drag-handle relative flex h-[18px] w-[14px] cursor-grab touch-none items-center justify-center text-ink-subtle transition-colors duration-150 select-none after:absolute after:-inset-y-[13px] after:-right-[5px] after:-left-[10px] hover:text-ink-muted active:cursor-grabbing"
-				:title="'Drag to reorder'"
+				:title="$t('tasks.boardCard.dragReorder')"
 				role="img"
-				aria-label="Drag to move"
+				:aria-label="$t('tasks.boardCard.dragMove')"
 			>
 				<GripVertical class="pointer-events-none h-3.5 w-3.5" />
 			</div>
 
 			<AppTooltip
 				v-if="showSurface('timer.board-card') && task.start_time"
-				content="Stop timer"
+				:content="$t('tasks.boardCard.stopTimer')"
 				side="top"
 			>
 				<button
@@ -48,7 +48,7 @@
 			</AppTooltip>
 			<AppTooltip
 				v-if="showSurface('timer.board-card') && !task.start_time"
-				content="Start timer"
+				:content="$t('tasks.boardCard.startTimer')"
 				side="top"
 			>
 				<button
@@ -99,7 +99,9 @@
 						class="group/assignee flex items-center justify-center rounded-pill text-ink-subtle transition-colors hover:text-ink"
 						@click.stop
 						:title="
-							visibleAssignees.length ? 'Change assignee' : 'Assign someone'
+							visibleAssignees.length
+								? $t('tasks.boardCard.changeAssignee')
+								: $t('tasks.boardCard.assignSomeone')
 						"
 					>
 						<UserPlus
@@ -126,8 +128,11 @@
 					@click.stop
 				>
 					<Command>
-						<CommandInput placeholder="Search members..." class="h-9" />
-						<CommandEmpty>No members found.</CommandEmpty>
+						<CommandInput
+							:placeholder="$t('tasks.boardCard.searchMembers')"
+							class="h-9"
+						/>
+						<CommandEmpty>{{ $t('tasks.boardCard.noMembers') }}</CommandEmpty>
 						<CommandList>
 							<CommandGroup>
 								<CommandItem
@@ -168,7 +173,7 @@
 				<DropdownMenuTrigger as-child>
 					<button
 						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
-						aria-label="Task actions"
+						:aria-label="$t('tasks.boardCard.taskActions')"
 						@click.stop
 					>
 						<MoreVertical class="h-3.5 w-3.5" />
@@ -178,31 +183,31 @@
 				<DropdownMenuContent align="end" class="w-48">
 					<DropdownMenuItem @click="handleOpenModal">
 						<Eye class="mr-2 h-4 w-4" />
-						<span>Open details</span>
+						<span>{{ $t('tasks.boardCard.openDetails') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem @click="showSettings = true">
 						<Settings2 class="mr-2 h-4 w-4" />
-						<span>Settings</span>
+						<span>{{ $t('tasks.boardCard.settings') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem @click="handleMoveToTop">
 						<ArrowUpToLine class="mr-2 h-4 w-4" />
-						<span>Move to top</span>
+						<span>{{ $t('tasks.boardCard.moveToTop') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem @click="handleMoveToBottom">
 						<ArrowDownToLine class="mr-2 h-4 w-4" />
-						<span>Move to bottom</span>
+						<span>{{ $t('tasks.boardCard.moveToBottom') }}</span>
 					</DropdownMenuItem>
 					<TaskShareItems :task="task" submenu />
 					<PluginTaskMenuItems :task-id="task.id" />
 					<DropdownMenuSeparator />
 					<DropdownMenuItem @click="handleArchive">
 						<ArchiveIcon class="mr-2 h-4 w-4" />
-						<span>Archive</span>
+						<span>{{ $t('tasks.boardCard.archive') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuItem @click="handleDelete" class="text-status-fix-fg">
 						<Trash2 class="mr-2 h-4 w-4" />
-						<span>Delete</span>
+						<span>{{ $t('tasks.boardCard.delete') }}</span>
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
@@ -277,7 +282,7 @@
 				v-if="formattedDate"
 				class="flex items-center gap-1 text-2xs tabular-nums"
 				:class="overtime ? 'text-status-fix-fg' : 'text-ink-subtle'"
-				:title="'Created: ' + formattedDate"
+				:title="$t('tasks.timeInfo.created', { time: formattedDate })"
 			>
 				<ClockPlus class="h-3 w-3" />
 				{{ formattedDate }}
@@ -302,15 +307,15 @@
 		/>
 		<Confirm
 			v-if="showArchiveConfirm"
-			title="Archive task"
-			:body="`Are you sure you want to archive &quot;${task.title}&quot;?`"
+			:title="$t('tasks.boardCard.archiveTitle')"
+			:body="$t('tasks.boardCard.archiveBody', { title: task.title })"
 			@onCancel="showArchiveConfirm = false"
 			@onOk="confirmArchive"
 		/>
 		<Confirm
 			v-if="showDeleteConfirm"
-			title="Delete task"
-			:body="`Are you sure you want to delete &quot;${task.title}&quot;?`"
+			:title="$t('tasks.boardCard.deleteTitle')"
+			:body="$t('tasks.boardCard.deleteBody', { title: task.title })"
 			@onCancel="showDeleteConfirm = false"
 			@onOk="confirmDelete"
 		/>
@@ -318,6 +323,7 @@
 </template>
 
 <script>
+	import { currentLocale, t } from '@/i18n';
 	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import {
 		assignPersonaToTask,
@@ -551,9 +557,11 @@
 				return Number(this.task.comments_count) || 0;
 			},
 			commentsLabel() {
-				return this.commentsCount === 1
-					? '1 comment'
-					: `${this.commentsCount} comments`;
+				return t(
+					'tasks.boardCard.commentsLabel',
+					{ n: this.commentsCount },
+					this.commentsCount,
+				);
 			},
 			displayTask() {
 				if (!this.task.start_time) {
@@ -768,7 +776,7 @@
 			formatFullDate(dateString) {
 				if (!dateString) return '';
 				const date = new Date(dateString);
-				return date.toLocaleString('en-US', {
+				return date.toLocaleString(currentLocale(), {
 					year: 'numeric',
 					month: 'long',
 					day: 'numeric',
@@ -883,8 +891,8 @@
 					);
 					if (!archiveStatus) {
 						this.toast({
-							title: 'Archive status not found',
-							description: 'Create an archive status first.',
+							title: t('tasks.boardCard.archiveStatusMissing'),
+							description: t('tasks.boardCard.archiveStatusMissingHint'),
 							variant: 'destructive',
 						});
 						return;
@@ -902,8 +910,8 @@
 				} catch (e) {
 					console.error('Failed to archive task:', e);
 					this.toast({
-						title: 'Failed to archive task',
-						description: 'Please try again.',
+						title: t('tasks.boardCard.archiveFailed'),
+						description: t('tasks.boardCard.tryAgain'),
 						variant: 'destructive',
 					});
 				}
@@ -919,7 +927,7 @@
 					this.$store.commit('taskDeleted', this.task.id);
 				} catch (e) {
 					console.error('Failed to delete task:', e);
-					alert('Failed to delete task. Please try again.');
+					alert(t('tasks.boardCard.deleteFailed'));
 				}
 			},
 		},

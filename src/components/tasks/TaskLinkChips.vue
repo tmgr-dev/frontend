@@ -4,9 +4,9 @@
 		class="flex flex-wrap items-center gap-1.5"
 		data-testid="task-link-chips"
 	>
-		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase"
-			>Links</span
-		>
+		<span class="text-2xs font-bold tracking-wide text-ink-subtle uppercase">{{
+			$t('tasks.linkChips.title')
+		}}</span>
 		<button
 			v-for="ref in refs"
 			:key="`${ref.kind}/${ref.id}`"
@@ -22,6 +22,7 @@
 <script lang="ts">
 	import { useTmgrDirectory } from '@/components/pages/useTmgrDirectory';
 	import { openTaskLinkInModal } from '@/composable/useTaskKeyLinks';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
 		extractTaskLinkRefs,
@@ -57,7 +58,9 @@
 
 			const label = (ref: TaskLinkRef) =>
 				directory.titleFor(ref.kind, ref.id) ??
-				(ref.kind === 'task' ? `#${ref.id}` : `Page ${ref.id}`);
+				(ref.kind === 'task'
+					? `#${ref.id}`
+					: t('tasks.linkChips.page', { id: ref.id }));
 
 			const open = (ref: TaskLinkRef) => {
 				const parsed = { form: 'storage' as const, kind: ref.kind, id: ref.id };

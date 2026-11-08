@@ -14,7 +14,7 @@
 			@click.stop
 			@change="onChange"
 		/>
-		<span>Done</span>
+		<span>{{ $t('tasks.doneCheckbox.label') }}</span>
 	</label>
 </template>
 

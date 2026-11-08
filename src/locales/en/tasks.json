@@ -1,0 +1,233 @@
+{
+	"doneCheckbox": {
+		"label": "Done"
+	},
+	"linkChips": {
+		"title": "Links",
+		"page": "Page {id}"
+	},
+	"pageMentions": {
+		"title": "Mentioned on pages"
+	},
+	"priorityBadge": {
+		"title": "{label} priority"
+	},
+	"shareMenu": {
+		"share": "Share"
+	},
+	"timeEntries": {
+		"title": "Terminal sessions",
+		"partial": "partly covered by other tracked time"
+	},
+	"timeInfo": {
+		"created": "Created: {time}",
+		"edited": "Edited: {time}",
+		"overtime": "Overtime"
+	},
+	"actions": {
+		"delete": "Delete",
+		"save": "Save",
+		"create": "Create",
+		"settings": "Settings"
+	},
+	"reminder": {
+		"label": "Reminder"
+	},
+	"sidePanel": {
+		"label": "Task"
+	},
+	"exportSettings": {
+		"title": "Export Settings",
+		"roundHoursUp": "Round hours up",
+		"zeroExpectedWeekends": "Zero expected hours on off-days",
+		"weekendDays": "Weekend days:",
+		"customHolidays": "Custom holidays:",
+		"add": "Add",
+		"parseDateFromTitle": "Parse date from task title",
+		"days": {
+			"sun": "Sun",
+			"mon": "Mon",
+			"tue": "Tue",
+			"wed": "Wed",
+			"thu": "Thu",
+			"fri": "Fri",
+			"sat": "Sat"
+		}
+	},
+	"multipleActions": {
+		"title": "Batch Actions",
+		"updateTasks": "Update tasks",
+		"markDone": "Mark done",
+		"markDoneNoStatus": "Mark done (no Done status)",
+		"markOpen": "Mark open",
+		"archive": "Archive",
+		"delete": "Delete",
+		"moveToStatus": "Move to status",
+		"agentRuns": "Agent runs",
+		"confirmAgentRuns": "Confirm for agent runs",
+		"export": "Export",
+		"exportCsv": "Export to CSV",
+		"exportJpg": "Export to JPEG",
+		"exportXlsx": "Export to XLSX",
+		"seconds": "{n}s",
+		"execute": "Execute"
+	},
+	"pomodoroSettings": {
+		"dialogLabel": "Pomodoro settings",
+		"title": "Pomodoro",
+		"description": "Configure focus and break intervals. Settings apply to all your tasks.",
+		"focusDuration": "Focus duration",
+		"shortBreak": "Short break",
+		"longBreak": "Long break",
+		"longBreakEvery": "Long break every",
+		"pomodoros": "pomodoro | pomodoros",
+		"autoStart": "Auto-start next interval",
+		"autoStartHint": "Skip the play button between focus and break",
+		"pauseTracking": "Pause Time Tracked during break",
+		"pauseTrackingHint": "Stop the wall-clock while you rest",
+		"notifications": "Notifications",
+		"notify": {
+			"silent": "Silent",
+			"system": "System",
+			"both": "Both"
+		},
+		"sound": "End-of-interval sound",
+		"sounds": {
+			"bell": "Bell",
+			"chime": "Chime",
+			"wood": "Wood",
+			"digital": "Digital"
+		},
+		"minutesUnit": "min",
+		"saveError": "Couldn't save settings. Try again."
+	},
+	"pomodoroBlock": {
+		"phase": {
+			"focus": "FOCUS",
+			"short": "SHORT BREAK",
+			"long": "LONG BREAK"
+		},
+		"skipPhase": "Skip phase",
+		"reset": "Reset",
+		"distractedHint": "I got distracted",
+		"distracted": "DISTRACTED",
+		"distractedCount": "DISTRACTED · {n}",
+		"settings": "Pomodoro settings",
+		"disable": "Disable Pomodoro for this task",
+		"summary": "{n} POMODOROS · {focus}/{short}/{long}"
+	},
+	"attachments": {
+		"loadError": "Could not load attachments.",
+		"title": "Attachments",
+		"addFiles": "Add files",
+		"pendingNote": "{size} · Will upload when the task is created",
+		"open": "Open {name}",
+		"uploading": "Uploading {size}…",
+		"dismiss": "Dismiss upload",
+		"none": "No attachments yet",
+		"addMore": "Add more files",
+		"dropHint": "Click or drag files here to attach documents, images, or other files",
+		"download": "Download"
+	},
+	"gallery": {
+		"file": "File",
+		"position": "File {n} of {total}",
+		"downloadFailed": "Download failed",
+		"zoomOut": "Zoom out",
+		"zoomIn": "Zoom in",
+		"fitTitle": "Fit to window (0)",
+		"fit": "Fit to window",
+		"actualSizeTitle": "Actual size (100%)",
+		"actualSize": "Actual size",
+		"previous": "Previous",
+		"previousFile": "Previous file",
+		"next": "Next",
+		"nextFile": "Next file",
+		"imageError": "Could not load image. Retry",
+		"fileError": "Could not load file",
+		"unsupported": "Preview is not available here",
+		"previewOf": "Preview of {name}"
+	},
+	"comments": {
+		"activity": "Activity",
+		"filter": {
+			"all": "All",
+			"people": "People",
+			"personas": "Personas",
+			"plugins": "Plugins"
+		},
+		"empty": "No comments yet",
+		"noMatch": "No comments match this filter",
+		"aiAssistant": "AI Assistant",
+		"deleteComment": "Delete comment",
+		"confirmDelete": "Delete this comment?",
+		"addReaction": "Add reaction"
+	},
+	"relations": {
+		"title": "Linked Tasks",
+		"link": "Link",
+		"removeRelation": "Remove relation",
+		"dialogTitle": "Link Issue",
+		"issue": "Issue",
+		"searchPlaceholder": "Search…",
+		"searching": "Searching…",
+		"type": "Type",
+		"select": "Select…",
+		"linking": "Linking…",
+		"removeTitle": "Remove link",
+		"removeBody": "Remove link '{type}' to task #{id}?",
+		"errors": {
+			"loadTypes": "Failed to load relation types",
+			"fillAll": "Please fill all fields",
+			"add": "Failed to add task relation",
+			"remove": "Failed to remove task relation"
+		}
+	},
+	"boardCard": {
+		"dragReorder": "Drag to reorder",
+		"dragMove": "Drag to move",
+		"stopTimer": "Stop timer",
+		"startTimer": "Start timer",
+		"changeAssignee": "Change assignee",
+		"assignSomeone": "Assign someone",
+		"searchMembers": "Search members...",
+		"noMembers": "No members found.",
+		"taskActions": "Task actions",
+		"openDetails": "Open details",
+		"settings": "Settings",
+		"moveToTop": "Move to top",
+		"moveToBottom": "Move to bottom",
+		"archive": "Archive",
+		"delete": "Delete",
+		"commentsLabel": "{n} comment | {n} comments",
+		"archiveTitle": "Archive task",
+		"archiveBody": "Are you sure you want to archive \"{title}\"?",
+		"deleteTitle": "Delete task",
+		"deleteBody": "Are you sure you want to delete \"{title}\"?",
+		"archiveStatusMissing": "Archive status not found",
+		"archiveStatusMissingHint": "Create an archive status first.",
+		"archiveFailed": "Failed to archive task",
+		"tryAgain": "Please try again.",
+		"deleteFailed": "Failed to delete task. Please try again."
+	},
+	"list": {
+		"selectedTasks": "Selected tasks:",
+		"deselectAll": "Deselect all",
+		"selectAll": "Select all",
+		"process": "Process ({n})",
+		"summary": "{selected} of {total} · {hours}h",
+		"summaryOvertime": "{selected} of {total} · {hours}h · +{overtime} overtime",
+		"restore": "Restore",
+		"restoreFromTrash": "Restore from trash",
+		"deleteTask": "Delete task",
+		"timerRunning": "Timer running",
+		"overtime": "+{time} overtime",
+		"showing": "Showing {from} to {to} of {total} tasks",
+		"perPage": "{n} per page",
+		"previous": "Previous",
+		"next": "Next",
+		"page": "Page {page} of {last}",
+		"deleteTasksTitle": "Delete tasks",
+		"deleteTasksBody": "Are you sure?"
+	}
+}

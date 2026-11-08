@@ -5,7 +5,7 @@
 			@click="$emit('removeTask')"
 			class="mr-auto rounded bg-status-fix px-4 py-2 font-bold text-white outline-hidden hover:opacity-90"
 		>
-			Delete
+			{{ $t('tasks.actions.delete') }}
 		</button>
 
 		<slot />
@@ -38,7 +38,7 @@
 						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 					/>
 				</svg>
-				<span>Save</span>
+				<span>{{ $t('tasks.actions.save') }}</span>
 			</button>
 
 			<span
@@ -60,7 +60,7 @@
 			class="mb-5 rounded bg-brand px-4 py-2 font-bold text-on-accent transition hover:bg-brand-hover sm:mb-0"
 			type="button"
 		>
-			Create
+			{{ $t('tasks.actions.create') }}
 		</button>
 
 		<!--		<button
@@ -78,7 +78,7 @@
 			class="rounded bg-surface-active px-4 py-2 font-bold text-ink hover:bg-surface-hover"
 			type="button"
 		>
-			Settings
+			{{ $t('tasks.actions.settings') }}
 		</button>
 	</div>
 </template>

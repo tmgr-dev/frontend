@@ -2,7 +2,7 @@
 	<span
 		v-if="formattedCreatedAtTime"
 		class="flex items-center gap-1"
-		:title="'Created: ' + exactTime(createdAt)"
+		:title="$t('tasks.timeInfo.created', { time: exactTime(createdAt) })"
 	>
 		<ClockPlus class="size-2.5" />
 		{{ formattedCreatedAtTime }}
@@ -14,7 +14,7 @@
 			formattedUpdatedAtTime !== formattedCreatedAtTime
 		"
 		class="flex items-center gap-1"
-		:title="'Edited: ' + exactTime(updatedAt)"
+		:title="$t('tasks.timeInfo.edited', { time: exactTime(updatedAt) })"
 	>
 		<FilePenLine class="size-2.5" />
 		{{ formattedUpdatedAtTime }}
@@ -23,7 +23,7 @@
 	<span
 		v-if="overtime"
 		class="flex items-center gap-1 text-red-500 dark:text-red-400"
-		title="Overtime"
+		:title="$t('tasks.timeInfo.overtime')"
 	>
 		<Siren class="size-2.5" />
 		+{{ overtime }}
@@ -31,6 +31,7 @@
 </template>
 
 <script setup lang="ts">
+	import { currentLocale } from '@/i18n';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import { ClockPlus, FilePenLine, Siren } from 'lucide-vue-next';
 	import { computed } from 'vue';
@@ -52,7 +53,7 @@
 	const exactTime = (value?: string) => {
 		const date = value ? new Date(value) : null;
 		return date && !Number.isNaN(date.getTime())
-			? date.toLocaleString()
+			? date.toLocaleString(currentLocale())
 			: formatRelativeTime(value);
 	};
 </script>

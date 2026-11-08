@@ -17,6 +17,7 @@
 </template>
 
 <script lang="ts" setup>
+	import { t } from '@/i18n';
 	import { useDialogFocus } from '@/composable/useDialogFocus';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import { onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue';
@@ -37,7 +38,12 @@
 	const initialUrl = ref(location.href);
 	const { registerModal, unregisterModal } = useModalEscHandler();
 	const panelEl = ref<HTMLElement | null>(null);
-	const dialogFocus = useDialogFocus(modalId.value, panelEl, 'Task', true);
+	const dialogFocus = useDialogFocus(
+		modalId.value,
+		panelEl,
+		t('tasks.sidePanel.label'),
+		true,
+	);
 	dialogFocus.remember();
 
 	function handleBackdrop() {

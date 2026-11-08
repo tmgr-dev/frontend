@@ -3,7 +3,7 @@
 		<h3
 			class="mb-1.5 text-2xs font-bold tracking-wide text-ink-subtle uppercase"
 		>
-			Mentioned on pages
+			{{ $t('tasks.pageMentions.title') }}
 		</h3>
 		<div class="flex flex-wrap gap-1.5">
 			<router-link
