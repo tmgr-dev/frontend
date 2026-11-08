@@ -9,7 +9,7 @@ use tmgr_core::error::{Error, Result as CoreResult};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::decisions::{
     self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, Found, Inbox, LinkItem, Links, Opt,
-    PatchIn, Response, Secret, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES,
+    PatchIn, PendingDelivery, Response, Secret, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS, MAX_PATCHES,
     MAX_PATCH_BYTES,
 };
 
@@ -798,6 +798,8 @@ impl Spec {
 pub enum DecisionsCommand {
     /// Answers and dismissals you gave in the Decisions inbox, newest first
     Answers(AnswersArgs),
+    /// Final answers no agent has picked up yet, oldest first
+    PendingDelivery,
 }
 
 #[derive(Args)]
@@ -819,6 +821,7 @@ pub struct AnswersArgs {
 pub fn run(command: &DecisionsCommand) -> CoreResult<Output> {
     match command {
         DecisionsCommand::Answers(args) => answers(args),
+        DecisionsCommand::PendingDelivery => pending_delivery(),
     }
 }
 
@@ -844,6 +847,41 @@ fn answers(args: &AnswersArgs) -> CoreResult<Output> {
         json!({"answers": found}),
         answers_human(&found),
     ))
+}
+
+fn pending_delivery() -> CoreResult<Output> {
+    let dir = decisions::decisions_dir()
+        .map_err(|e| Error::internal(format!("cannot locate the Decisions inbox: {e}")))?;
+    let pending = Client::open_in(&dir)
+        .and_then(|c| c.pending_delivery())
+        .map_err(|e| match e.kind() {
+            io::ErrorKind::Unsupported => Error::usage("desktop too old, update TMGR desktop"),
+            _ => Error::internal(format!("the Decisions inbox could not be reached: {e}")),
+        })?;
+    Ok(Output::new(
+        json!({"pending": pending}),
+        pending_human(&pending),
+    ))
+}
+
+fn pending_human(pending: &[PendingDelivery]) -> String {
+    if pending.is_empty() {
+        return "Every answer was picked up".into();
+    }
+    pending
+        .iter()
+        .map(|p| {
+            format!(
+                "{}  {}  {}  {}  {}",
+                created(p.answered_ms),
+                p.card_id,
+                p.delivery_state,
+                p.task.as_deref().map_or_else(|| "-".into(), sanitize_line),
+                sanitize_line(&p.title)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn created(ms: i64) -> String {

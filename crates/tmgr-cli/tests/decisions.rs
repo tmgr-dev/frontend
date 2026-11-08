@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use tmgr_ipc::decisions::{
     prepare_server_dir, read_line_limited, socket_endpoint, token_ok, write_line, Event, Op,
-    Request, Response,
+    PendingDelivery, Request, Response,
 };
 
 type Handler = Box<dyn Fn(&Request) -> Response + Send + Sync>;
@@ -2160,4 +2160,74 @@ fn cancel_ends_a_get_answer_that_is_backing_off() {
     });
     assert!(cancelled_at.elapsed() < Duration::from_secs(2));
     assert!(lines.lock().unwrap().iter().all(|r| r["id"] != 7));
+}
+
+fn pending_rows() -> Handler {
+    Box::new(|_| Response {
+        ok: true,
+        pending: vec![
+            PendingDelivery {
+                card_id: "c_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+                seq: 2,
+                title: "Ship it?".into(),
+                task: Some("https://tmgr.dev/ws/tasks/7".into()),
+                answered_ms: 1_700_000_000_000,
+                delivery_state: "none".into(),
+            },
+            PendingDelivery {
+                card_id: "c_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+                seq: 1,
+                title: "Roll back?".into(),
+                task: None,
+                answered_ms: 1_700_000_100_000,
+                delivery_state: "undelivered".into(),
+            },
+        ],
+        ..Response::ok()
+    })
+}
+
+#[test]
+fn pending_delivery_json_lists_the_rows() {
+    let st = stand();
+    let fake = serve(&st, pending_rows());
+    let out = base(&st, &["decisions", "pending-delivery", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let rows = v["data"]["pending"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["card_id"], "c_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(rows[0]["delivery_state"], "none");
+    assert_eq!(rows[1]["task"], Value::Null);
+    assert_eq!(fake.ops(), [Op::PendingDelivery]);
+}
+
+#[test]
+fn pending_delivery_prints_a_table_and_a_clear_empty_line() {
+    let st = stand();
+    let _fake = serve(&st, pending_rows());
+    let out = base(&st, &["decisions", "pending-delivery"]).output().unwrap();
+    let t = text(&out.stdout);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(t.contains("Ship it?") && t.contains("Roll back?"), "{t}");
+    assert!(t.contains("undelivered") && t.contains("c_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), "{t}");
+    assert!(t.contains("2023-11-14"), "{t}");
+
+    let st = stand();
+    let _fake = serve(&st, Box::new(|_| Response::ok()));
+    let out = base(&st, &["decisions", "pending-delivery"]).output().unwrap();
+    assert!(out.status.success());
+    assert!(text(&out.stdout).contains("Every answer was picked up"));
+}
+
+#[test]
+fn pending_delivery_on_an_old_desktop_says_so_and_fails() {
+    let st = stand();
+    let _fake = serve(&st, Box::new(|_| Response::err("bad request")));
+    let out = base(&st, &["decisions", "pending-delivery"]).output().unwrap();
+    assert!(!out.status.success());
+    assert!(text(&out.stderr).contains("desktop too old, update TMGR desktop"));
+    assert!(text(&out.stdout).is_empty());
 }

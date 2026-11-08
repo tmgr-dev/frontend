@@ -1538,6 +1538,23 @@ mod tests {
     }
 
     #[test]
+    fn pending_delivery_wire_shape_is_additive() {
+        let r = Request {
+            v: PROTO,
+            token: "t".into(),
+            op: Op::PendingDelivery,
+        };
+        let v: serde_json::Value = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["op"], "pending_delivery");
+        assert_eq!(serde_json::from_value::<Request>(v).unwrap(), r);
+        let old: Response = serde_json::from_str(r#"{"ok":true}"#).unwrap();
+        assert!(old.pending.is_empty());
+        assert!(!serde_json::to_string(&Response::ok())
+            .unwrap()
+            .contains("pending"));
+    }
+
+    #[test]
     fn wait_any_wire_shape() {
         let r = Request {
             v: PROTO,

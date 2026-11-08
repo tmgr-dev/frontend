@@ -219,6 +219,20 @@ mod tests {
   }
 
   #[test]
+  fn pending_delivery_lists_unpicked_answers_over_the_socket() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let id = c.create(CardIn { reply_via: "mcp".into(), ..card("Ship?") }).unwrap();
+    assert!(c.pending_delivery().unwrap().is_empty());
+    r.hub.answer(&id, answer_a()).unwrap();
+    let got = c.pending_delivery().unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!((got[0].card_id.as_str(), got[0].delivery_state.as_str()), (id.as_str(), "none"));
+    r.hub.record_delivery(&id, 1, "delivered", "agent", "");
+    assert!(c.pending_delivery().unwrap().is_empty());
+  }
+
+  #[test]
   fn ping_create_and_reject_bad_tokens() {
     let r = rig();
     let c = Client::open_in(&r.dir).unwrap();
