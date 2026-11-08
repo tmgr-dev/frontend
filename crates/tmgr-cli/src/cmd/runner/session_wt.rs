@@ -9,10 +9,11 @@ fn clean(s: &str) -> String {
 }
 
 pub(super) fn config_on() -> bool {
-    config_dir()
-        .ok()
-        .and_then(|d| Config::load(&d).ok())
-        .is_some_and(|c| c.attach_worktree())
+    on_unless_set_off(config_dir().and_then(|d| Config::load(&d)))
+}
+
+fn on_unless_set_off(cfg: tmgr_core::error::Result<Config>) -> bool {
+    cfg.map_or(true, |c| c.attach_worktree())
 }
 
 fn decide(
@@ -287,6 +288,17 @@ mod tests {
         git(&repo, &["commit", "-m", "a"]);
         let sc = sessionwt::create(&repo, Some("s1"), "claude", &[]).unwrap();
         (tmp, sc)
+    }
+
+    #[test]
+    fn an_unreadable_config_keeps_the_clone_default() {
+        assert!(on_unless_set_off(Err(tmgr_core::error::Error::usage(
+            "bad"
+        ))));
+        let mut off = Config::default();
+        off.set("attach.worktree", "false").unwrap();
+        assert!(!on_unless_set_off(Ok(off)));
+        assert!(on_unless_set_off(Ok(Config::default())));
     }
 
     #[test]
