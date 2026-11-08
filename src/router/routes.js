@@ -715,6 +715,19 @@ const routes = [
 		name: 'AgentsGuide',
 	},
 
+	{
+		path: '/cli',
+		component: () => import('@/pages/CliGuide.vue'),
+		meta: {
+			title: 'tmgr command line',
+			transitionName: 'fade-fast',
+			navbarHidden: false,
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+		},
+		name: 'CliGuide',
+	},
+
 	// New URL structure routes
 	// CHANGES: Added keepAlive meta for cached views
 	{

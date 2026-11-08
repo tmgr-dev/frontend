@@ -5,6 +5,9 @@
 		<router-link to="/privacy" class="hover:text-foreground hover:underline">
 			Privacy
 		</router-link>
+		<router-link to="/cli" class="hover:text-foreground hover:underline">
+			Command line
+		</router-link>
 		<button
 			v-if="!desktop"
 			type="button"

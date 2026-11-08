@@ -1,5 +1,65 @@
 # crates
 
+## Why tmgr
+
+`tmgr` is a command-line program for [TMGR](https://tmgr.dev). It lets you work with your tasks without opening the browser, and run AI coding agents (Claude Code, Codex) where you can watch them, stop them and undo what they did. The same text, with more detail, is on https://tmgr.dev/cli.
+
+```bash
+curl -fsSL https://tmgr.dev/install.sh | sh
+```
+
+**Work on tasks without leaving the terminal.** One command creates the git branch, moves the task to In progress and starts the timer; `tmgr done` stops the timer, moves the task to review and adds the pull request link.
+
+```bash
+tmgr start TM-123
+```
+
+**Run AI agents under supervision.** Agents run inside a sandbox. With `--worktree` an agent works in its own copy of your project on its own branch, so two agents never write the same files; with `--checkpoints` its work is saved after every turn (git folders). You can look at it at any moment (`tmgr attach`, `tmgr peek`) and roll its changes back (`tmgr checkpoints restore`).
+
+```bash
+tmgr run --agent claude-code --worktree --checkpoints
+```
+
+**Answer every agent question in one inbox.** An agent sends a card with the question, options, its recommendation and the changes to review; you answer once in the desktop app (macOS and Linux) and the agent gets the answer. Earlier answers can be looked up with `tmgr decisions answers`.
+
+```bash
+tmgr ask --title "Which database?" --option SQLite --option Postgres --recommended 1 --wait
+```
+
+**Get a message on your phone when an agent needs you.** A push when an agent waits for input or finishes a long job; for something urgent, an alarm that rings in the iOS app and then calls you if you do not answer. Needs the TMGR iOS app and `tmgr login`. `tmgr hook install claude` and `tmgr hook install codex` set the hooks up. The same tools ship as [`@tmgr/notify`](https://www.npmjs.com/package/@tmgr/notify).
+
+```bash
+tmgr alarm "Production is down"
+```
+
+**Let agents work through your backlog.** Autopilot starts agent teams on your tasks within limits you set (teams, hours, spend) and, once usage reading is allowed (`tmgr usage consent allow`), stops before you hit your plan limit.
+
+```bash
+tmgr autopilot start --max-teams 2 --max-hours 4 --dry-run
+```
+
+**See what your AI tools cost.** Cost per day, task and account, and how much limit is left. Usage is read from the logs of Claude Code and Codex on your computer (`tmgr usage consent deny` stops it); the usage database never stores prompt text.
+
+```bash
+tmgr usage --week --by task
+```
+
+**Pair it with the desktop app.** Decisions show up in the app. Local workspaces that never touch the cloud work from the command line too, and shared skills attach to personas.
+
+```bash
+tmgr --ws local:my-notes status
+```
+
+**Give your agents the same tools.** `tmgr mcp` is an MCP server: agents can ask you questions, find your earlier answers and notify you. To let them work with your tasks, connect the TMGR task server too. Setup for each agent: https://tmgr.dev/docs/agents.
+
+```bash
+tmgr mcp
+```
+
+Safe by default: the sign-in token is kept in the system keychain (or a private file when there is none), `tmgr self-update` installs only signed releases, agents run in a sandbox, and the TMGR server never sends commands to your agents.
+
+## For developers
+
 Rust workspace of the `tmgr` command line tool. It is a separate Cargo workspace from `src-tauri` (the desktop app): both ship an executable named `tmgr`, so they cannot share one workspace. `src-tauri` keeps its own `Cargo.lock` and target directory.
 
 - `tmgr-core` - shared library (envelope `tmgr.v1`, errors and exit codes, config, credential store, API client, task reference grammar).
