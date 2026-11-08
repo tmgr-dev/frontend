@@ -20,16 +20,18 @@
 			"
 		>
 			<template v-if="status === 'waiting'">
-				Continue in your browser. When it asks to open TMGR, allow it.
+				{{ $t('auth.desktop.social.waiting') }}
 				<button
 					type="button"
 					class="ml-1 font-medium text-foreground underline underline-offset-4"
 					@click="cancel"
 				>
-					Cancel
+					{{ $t('common.actions.cancel') }}
 				</button>
 			</template>
-			<template v-else-if="status === 'completing'">Signing you in…</template>
+			<template v-else-if="status === 'completing'">{{
+				$t('auth.desktop.social.signingIn')
+			}}</template>
 			<template v-else>{{ error }}</template>
 		</div>
 	</div>

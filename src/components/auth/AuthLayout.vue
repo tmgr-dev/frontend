@@ -16,13 +16,14 @@
 				<h2
 					class="text-[44px] leading-[1.08] font-semibold tracking-[-0.03em] text-foreground xl:text-[52px]"
 				>
-					Plan the work.<br />Keep the hours.
+					<i18n-t keypath="auth.layout.headline" tag="span">
+						<template #br><br /></template>
+					</i18n-t>
 				</h2>
 				<p
 					class="mt-5 max-w-[400px] text-[15px] leading-relaxed text-muted-foreground"
 				>
-					Tasks, boards and a timer on every task, in one workspace you can
-					share with your team.
+					{{ $t('auth.layout.tagline') }}
 				</p>
 
 				<div
@@ -122,8 +123,16 @@
 	import logoUrl from '@/assets/img/simple-logo.svg';
 	import ThemeSwitch from '@/components/auth/ThemeSwitch.vue';
 	import PrivacyLinks from '@/components/privacy/PrivacyLinks.vue';
+	import { t } from '@/i18n';
 	import { KanbanSquare, Timer, Users } from 'lucide-vue-next';
-	import { defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		h,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+	} from 'vue';
 
 	const AuthMark = defineComponent({
 		setup() {
@@ -151,35 +160,35 @@
 		name: 'AuthLayout',
 		components: { AuthMark, PrivacyLinks, ThemeSwitch },
 		setup() {
-			const sampleTasks = [
+			const sampleTasks = computed(() => [
 				{
-					title: 'Ship onboarding checklist',
-					status: 'Done',
+					title: t('auth.layout.sample.shipChecklist'),
+					status: t('auth.layout.sample.done'),
 					time: '2:15:40',
 					dot: 'bg-status-done',
 					running: false,
 				},
 				{
-					title: 'Review sprint board',
-					status: 'In progress',
+					title: t('auth.layout.sample.reviewBoard'),
+					status: t('auth.layout.sample.inProgress'),
 					time: '',
 					dot: 'bg-primary',
 					running: true,
 				},
 				{
-					title: 'Draft Q4 roadmap',
-					status: 'To do',
+					title: t('auth.layout.sample.draftRoadmap'),
+					status: t('auth.layout.sample.toDo'),
 					time: '0:00:00',
 					dot: 'bg-status-todo',
 					running: false,
 				},
-			];
+			]);
 
-			const features = [
-				{ icon: KanbanSquare, label: 'Lists, boards, dashboard' },
-				{ icon: Timer, label: 'Time tracking per task' },
-				{ icon: Users, label: 'Shared workspaces' },
-			];
+			const features = computed(() => [
+				{ icon: KanbanSquare, label: t('auth.layout.features.views') },
+				{ icon: Timer, label: t('auth.layout.features.timeTracking') },
+				{ icon: Users, label: t('auth.layout.features.sharedWorkspaces') },
+			]);
 
 			const elapsed = ref(5047);
 			const format = (total: number) => {

@@ -1,6 +1,6 @@
 <template>
 	<AuthLayout>
-		<template #title>Sign in to TMGR with Telegram</template>
+		<template #title>{{ $t('auth.desktop.telegram.title') }}</template>
 		<template #subtitle>{{ message }}</template>
 		<div v-if="canSignIn" class="flex justify-center">
 			<TelegramLoginWidget
@@ -17,6 +17,7 @@
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import TelegramLoginWidget from '@/components/general/TelegramLoginWidget.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { desktopCompleteUrl } from '@/utils/desktopAuth';
 	import { defineComponent, onMounted, ref } from 'vue';
 	import { useRoute } from 'vue-router';
@@ -33,14 +34,14 @@
 			const canSignIn = ref(!!telegramBotName && TX.test(tx));
 			const message = ref(
 				canSignIn.value
-					? 'Log in below, then return to the TMGR app.'
-					: 'This sign-in link is not valid. Start again in TMGR.',
+					? t('auth.desktop.telegram.prompt')
+					: t('auth.desktop.telegram.invalidLink'),
 			);
 
 			// A top-level form POST: the API accepts it only from this site's origin.
 			const complete = (user) => {
 				canSignIn.value = false;
-				message.value = 'Signing you in…';
+				message.value = t('auth.desktop.social.signingIn');
 				const form = document.createElement('form');
 				form.method = 'POST';
 				form.action = desktopCompleteUrl(
@@ -58,7 +59,7 @@
 				form.submit();
 			};
 
-			onMounted(() => setDocumentTitle('TMGR sign-in'));
+			onMounted(() => setDocumentTitle(t('auth.desktop.return.documentTitle')));
 
 			return { telegramBotName, canSignIn, message, complete };
 		},

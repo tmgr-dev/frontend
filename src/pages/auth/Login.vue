@@ -1,7 +1,7 @@
 <template>
 	<AuthLayout>
-		<template #title>Welcome back</template>
-		<template #subtitle>Sign in to pick up where you left off.</template>
+		<template #title>{{ $t('auth.login.title') }}</template>
+		<template #subtitle>{{ $t('auth.login.subtitle') }}</template>
 
 		<div class="grid grid-cols-3 gap-2">
 			<Button
@@ -41,7 +41,7 @@
 				variant="outline"
 				class="h-10"
 				@click="telegramPaused = false"
-				>Try again</Button
+				>{{ $t('auth.common.tryAgain') }}</Button
 			>
 			<TelegramLoginWidget
 				v-else
@@ -56,7 +56,9 @@
 
 		<div class="my-6 flex items-center gap-3">
 			<Separator class="flex-1" />
-			<span class="text-xs text-muted-foreground">Or continue with email</span>
+			<span class="text-xs text-muted-foreground">{{
+				$t('auth.common.orContinueWithEmail')
+			}}</span>
 			<Separator class="flex-1" />
 		</div>
 
@@ -66,30 +68,34 @@
 
 		<form class="space-y-4" @submit.prevent="login">
 			<div class="space-y-2">
-				<Label for="email" class="text-foreground">E-mail</Label>
+				<Label for="email" class="text-foreground">{{
+					$t('auth.common.email')
+				}}</Label>
 				<Input
 					v-model="form.email"
 					id="email"
 					type="email"
-					placeholder="you@company.com"
+					:placeholder="$t('auth.login.emailPlaceholder')"
 					autocomplete="email"
 					class="h-10"
 				/>
 			</div>
 			<div class="space-y-2">
 				<div class="flex items-center justify-between">
-					<Label for="password" class="text-foreground">Password</Label>
+					<Label for="password" class="text-foreground">{{
+						$t('auth.common.password')
+					}}</Label>
 					<router-link
 						to="/password/forget"
 						class="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-						>Forgot your password?</router-link
+						>{{ $t('auth.login.forgotPassword') }}</router-link
 					>
 				</div>
 				<Input
 					v-model="form.password"
 					id="password"
 					type="password"
-					placeholder="Password"
+					:placeholder="$t('auth.login.passwordPlaceholder')"
 					autocomplete="current-password"
 					class="h-10"
 				/>
@@ -100,23 +106,26 @@
 				:aria-busy="isLoading"
 				class="mt-2 h-10 w-full"
 			>
-				{{ isLoading ? 'Signing in…' : 'Sign in' }}
+				{{ isLoading ? $t('auth.login.signingIn') : $t('auth.common.signIn') }}
 			</Button>
 		</form>
 
 		<template #footer>
-			Have no account?
-			<router-link
-				to="/register"
-				class="font-medium text-primary underline-offset-4 hover:underline"
-				>Sign up</router-link
-			>
+			<i18n-t keypath="auth.login.noAccount" tag="span">
+				<template #link>
+					<router-link
+						to="/register"
+						class="font-medium text-primary underline-offset-4 hover:underline"
+						>{{ $t('auth.common.signUp') }}</router-link
+					>
+				</template>
+			</i18n-t>
 			<div v-if="isLocalMode" class="mt-2">
 				<router-link
 					to="/app"
 					data-testid="continue-without-account"
 					class="font-medium text-primary underline-offset-4 hover:underline"
-					>Continue without an account</router-link
+					>{{ $t('auth.common.continueWithoutAccount') }}</router-link
 				>
 			</div>
 		</template>
@@ -143,6 +152,7 @@
 	import { Separator } from '@/components/ui/separator';
 	import { startDesktopSocialLogin } from '@/composable/useDesktopSocialLogin';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { DesktopAuthProvider } from '@/utils/desktopAuth';
@@ -211,7 +221,7 @@
 	}
 
 	function telegramFailed() {
-		message.value = 'Telegram sign-in failed, try again';
+		message.value = t('auth.common.telegramFailed');
 		// Re-render once by itself; later failures wait for a click, so a
 		// widget that fails on every load can't hammer the API.
 		telegramFailures.value++;
@@ -220,8 +230,7 @@
 	}
 
 	function telegramResultDropped() {
-		message.value =
-			"Telegram sign-in didn't finish. Allow pop-ups for this site and try again.";
+		message.value = t('auth.common.telegramNotFinished');
 	}
 
 	async function enterApp() {
@@ -285,16 +294,16 @@
 	}
 
 	onMounted(() => {
-		setDocumentTitle('Login');
+		setDocumentTitle(t('auth.login.documentTitle'));
 		if (consumeSessionExpired()) {
-			message.value = 'Your session has expired. Please sign in again.';
+			message.value = t('auth.login.sessionExpired');
 		}
 		const linkProvider = linkConfirmationProvider(route.query.error);
 		if (linkProvider) {
 			message.value = linkConfirmationNotice(linkProvider);
 		}
 		if (route.query.error === 'telegram') {
-			message.value = 'Telegram sign-in failed, try again';
+			message.value = t('auth.common.telegramFailed');
 		}
 		if ('error' in route.query) {
 			const { error: _error, ...query } = route.query;

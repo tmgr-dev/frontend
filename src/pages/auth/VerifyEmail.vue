@@ -7,23 +7,25 @@
 			:aria-busy="verify.state.value === 'verifying'"
 			class="space-y-4 text-sm text-muted-foreground"
 		>
-			<p v-if="verify.state.value === 'verifying'">Confirming your email…</p>
+			<p v-if="verify.state.value === 'verifying'">
+				{{ $t('auth.verifyEmail.verifying') }}
+			</p>
 			<p v-else-if="verify.state.value === 'success'">
-				Your email address is confirmed. Thanks!
+				{{ $t('auth.verifyEmail.success') }}
 			</p>
 			<p v-else-if="verify.state.value === 'already_verified'">
-				This email address was already confirmed.
+				{{ $t('auth.verifyEmail.alreadyVerified') }}
 			</p>
-			<p v-else-if="verify.state.value === 'expired'">This link has expired.</p>
+			<p v-else-if="verify.state.value === 'expired'">
+				{{ $t('auth.verifyEmail.expired') }}
+			</p>
 			<p v-else-if="verify.state.value === 'wrong_account'">
-				This link is for a different account — sign out and sign in with the
-				account that received the email.
+				{{ $t('auth.common.differentAccountHint') }}
 			</p>
 			<p v-else-if="verify.state.value === 'invalid'">
-				This link is not valid. It may have already been replaced by a newer
-				one.
+				{{ $t('auth.verifyEmail.invalid') }}
 			</p>
-			<p v-else>Something went wrong. Please try again in a moment.</p>
+			<p v-else>{{ $t('auth.common.somethingWrong') }}</p>
 
 			<template
 				v-if="
@@ -36,31 +38,34 @@
 					:disabled="resend.state.value === 'sending'"
 					@click="resend.send"
 				>
-					Send a new link
+					{{ $t('auth.verifyEmail.sendNewLink') }}
 				</Button>
 				<p
 					v-if="resend.state.value === 'sent'"
 					class="text-foreground"
 					data-testid="resend-sent"
 				>
-					A new link is on its way to your inbox.
+					{{ $t('auth.verifyEmail.resendSent') }}
 				</p>
 				<p v-else-if="resend.state.value === 'rate_limited'" role="alert">
-					Too many requests. Try again in
-					{{ retryAfterLabel(resend.retryAfter.value) }}.
+					{{
+						$t('auth.verifyEmail.rateLimited', {
+							wait: retryAfterLabel(resend.retryAfter.value),
+						})
+					}}
 				</p>
 				<p
 					v-else-if="resend.state.value === 'already_verified'"
 					class="text-foreground"
 				>
-					Your email address is already confirmed.
+					{{ $t('auth.verifyEmail.resendAlreadyVerified') }}
 				</p>
 				<p
 					v-else-if="resend.state.value === 'error'"
 					role="alert"
 					class="text-destructive"
 				>
-					Could not send a new link. Please try again.
+					{{ $t('auth.verifyEmail.resendError') }}
 				</p>
 			</template>
 
@@ -69,13 +74,13 @@
 				class="h-10 w-full"
 				@click="signOut"
 			>
-				Sign out
+				{{ $t('auth.common.signOut') }}
 			</Button>
 			<router-link
 				v-else-if="verify.state.value !== 'verifying'"
 				to="/app"
 				class="block font-medium text-primary underline underline-offset-4"
-				>Go to TMGR</router-link
+				>{{ $t('auth.common.goToTmgr') }}</router-link
 			>
 		</div>
 	</AuthLayout>
@@ -91,6 +96,7 @@
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { createVerifyEmail } from '@/composable/useEmailVerification';
 	import store from '@/store';
 	import {
@@ -113,16 +119,16 @@
 	const verify = machine;
 	const resend = machine.resend;
 
-	const titles = {
-		verifying: 'Confirming your email',
-		success: 'Email confirmed',
-		already_verified: 'Already confirmed',
-		expired: 'Link expired',
-		invalid: 'Invalid link',
-		wrong_account: 'Different account',
-		error: 'Something went wrong',
+	const titleKeys: Record<string, string> = {
+		verifying: 'auth.verifyEmail.titles.verifying',
+		success: 'auth.verifyEmail.titles.success',
+		already_verified: 'auth.verifyEmail.titles.already_verified',
+		expired: 'auth.common.titles.linkExpired',
+		invalid: 'auth.common.titles.invalidLink',
+		wrong_account: 'auth.common.titles.differentAccount',
+		error: 'auth.common.titles.somethingWrong',
 	};
-	const title = computed(() => titles[verify.state.value]);
+	const title = computed(() => t(titleKeys[verify.state.value]));
 
 	async function signOut() {
 		saveReturnPath(`${route.path}?token=${encodeURIComponent(token)}`);
@@ -134,7 +140,7 @@
 	}
 
 	onMounted(() => {
-		setDocumentTitle('Confirm email');
+		setDocumentTitle(t('auth.verifyEmail.documentTitle'));
 		router.replace({ query: withoutTokenQuery(route.query) });
 		verify.run(token);
 	});

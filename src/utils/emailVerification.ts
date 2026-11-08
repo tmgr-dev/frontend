@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 interface HttpErrorLike {
 	response?: {
 		status?: number;
@@ -35,8 +37,9 @@ export const shouldShowVerifyBanner = (
 
 export const linkConfirmationNotice = (provider: string): string => {
 	const label =
-		LINK_PROVIDER_LABELS[provider as LinkProvider] ?? 'your provider';
-	return `We emailed you a confirmation link. Open it while signed in to your tmgr.dev account (password or another sign-in method), confirm, then sign in with ${label} again. Can't sign in? Use “Forgot password” to get into your account first.`;
+		LINK_PROVIDER_LABELS[provider as LinkProvider] ??
+		t('auth.common.yourProvider');
+	return t('auth.common.linkNotice', { provider: label });
 };
 
 export const linkConfirmationProvider = (code: unknown): LinkProvider | null =>
@@ -61,12 +64,11 @@ export const errorMessageFrom = (error: unknown, fallback: string): string => {
 };
 
 export const retryAfterLabel = (seconds: number): string => {
-	if (!(seconds > 0)) return 'a moment';
+	if (!(seconds > 0)) return t('auth.retryAfter.moment');
 	if (seconds >= 60) {
-		const minutes = Math.ceil(seconds / 60);
-		return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+		return t('auth.retryAfter.minutes', Math.ceil(seconds / 60));
 	}
-	return `${seconds} second${seconds === 1 ? '' : 's'}`;
+	return t('auth.retryAfter.seconds', seconds);
 };
 
 export const isSafeReturnPath = (path: string | null | undefined): boolean =>

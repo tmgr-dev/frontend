@@ -1,6 +1,6 @@
 <template>
 	<AuthLayout>
-		<template #title>Welcome back!</template>
+		<template #title>{{ $t('auth.socialite.title') }}</template>
 		<div
 			class="text-sm text-muted-foreground"
 			role="status"
@@ -11,7 +11,7 @@
 				v-if="!isLoading"
 				to="/login"
 				class="mt-3 block font-medium text-primary underline underline-offset-4"
-				>Return to sign in</router-link
+				>{{ $t('auth.socialite.returnToSignIn') }}</router-link
 			>
 		</div>
 	</AuthLayout>
@@ -30,6 +30,7 @@
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
 		desktopCompleteUrl,
@@ -50,7 +51,7 @@
 
 	// @todo for savayer only. Find out how to make it global
 	const isLoading = ref(false);
-	const message = ref('Wait for redirect...');
+	const message = ref(t('auth.socialite.waiting'));
 	const errors = ref({});
 	async function relayToDesktop(tx: string) {
 		const platform = route.params.platform;
@@ -159,7 +160,9 @@
 			} else if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;
 
-				message.value = `Something went wrong: ${error.response?.data?.message}... After 3 seconds you will redirected to the login page.`;
+				message.value = t('auth.socialite.failed', {
+					message: error.response?.data?.message,
+				});
 				setTimeout(() => router.push('/login'), 3000);
 			}
 
@@ -169,6 +172,6 @@
 		}
 	}
 
-	setDocumentTitle('Login');
+	setDocumentTitle(t('auth.login.documentTitle'));
 	login();
 </script>

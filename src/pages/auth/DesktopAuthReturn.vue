@@ -3,7 +3,7 @@
 		<template #title>{{ title }}</template>
 		<template #subtitle>{{ subtitle }}</template>
 		<Button v-if="link" as="a" :href="link" class="h-10 w-full">
-			Open TMGR
+			{{ $t('auth.common.openTmgr') }}
 		</Button>
 	</AuthLayout>
 </template>
@@ -12,6 +12,7 @@
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import {
 		buildDesktopCallbackUrl,
 		parseRelayFragment,
@@ -33,22 +34,23 @@
 			const failed = !result || 'error' in result;
 
 			const title = computed(() =>
-				failed ? 'Sign-in did not finish' : 'You are signed in',
+				failed
+					? t('auth.desktop.return.failedTitle')
+					: t('auth.desktop.return.successTitle'),
 			);
 			const subtitle = computed(() => {
-				if (!result)
-					return 'This sign-in link is not valid. Start again in TMGR.';
+				if (!result) return t('auth.desktop.return.invalidLink');
 				if ('error' in result) {
 					const provider = linkConfirmationProvider(result.error);
 					return provider
 						? linkConfirmationNotice(provider)
-						: 'Return to TMGR and try again.';
+						: t('auth.desktop.return.tryAgain');
 				}
-				return 'Return to TMGR to continue. You can close this tab.';
+				return t('auth.desktop.return.done');
 			});
 
 			onMounted(() => {
-				setDocumentTitle('TMGR sign-in');
+				setDocumentTitle(t('auth.desktop.return.documentTitle'));
 				history.replaceState(history.state, '', route.path);
 				if (link) window.location.href = link;
 			});

@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 export type RegisterForm = {
 	password: string;
 	password_confirmation: string;
@@ -13,32 +15,29 @@ type ErrorShape = {
 	response?: { status?: number; data?: any };
 };
 
-export const MISMATCH_MESSAGE = 'The password confirmation does not match.';
-
 export const describeRegisterError = (error: unknown): RegisterFailure => {
 	const response = (error as ErrorShape | null)?.response;
 	const none = { message: '', emailTaken: false, errors: {} };
 	if (!response)
 		return {
 			...none,
-			message:
-				"We couldn't reach the server. Check your connection and try again. If you already created this account, sign in instead.",
+			message: t('auth.register.errors.offline'),
 		};
 	const { status, data } = response;
 	if (status === 409 || data?.error === 'email_taken')
 		return {
 			...none,
 			emailTaken: true,
-			message: 'An account with this email already exists.',
+			message: t('auth.register.errors.emailTaken'),
 		};
 	if (status === 429)
 		return {
 			...none,
-			message: 'Too many attempts. Wait a minute and try again.',
+			message: t('auth.register.errors.tooManyAttempts'),
 		};
 	if (status === 422 && data?.errors && typeof data.errors === 'object')
 		return { ...none, errors: data.errors };
-	return { ...none, message: 'Could not create the account. Try again.' };
+	return { ...none, message: t('auth.register.errors.generic') };
 };
 
 export const submitRegistration = async <F extends RegisterForm>(
@@ -50,7 +49,7 @@ export const submitRegistration = async <F extends RegisterForm>(
 			ok: false,
 			message: '',
 			emailTaken: false,
-			errors: { password_confirmation: [MISMATCH_MESSAGE] },
+			errors: { password_confirmation: [t('auth.register.errors.mismatch')] },
 		};
 	try {
 		await register(form);

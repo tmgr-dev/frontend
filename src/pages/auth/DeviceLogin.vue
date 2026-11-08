@@ -8,9 +8,9 @@
 
 				<div class="space-y-4 text-sm text-muted-foreground" role="status">
 					<template v-if="approval.state.value === 'entry'">
-						<p>Enter the code shown in your terminal.</p>
+						<p>{{ $t('auth.deviceLogin.enterCode') }}</p>
 						<form class="space-y-3" @submit.prevent="approval.find()">
-							<Label for="device-code">Code</Label>
+							<Label for="device-code">{{ $t('auth.deviceLogin.code') }}</Label>
 							<Input
 								id="device-code"
 								:model-value="approval.code.value"
@@ -27,12 +27,14 @@
 								class="h-10 w-full"
 								:disabled="!approval.canLookup.value"
 							>
-								Continue
+								{{ $t('common.actions.continue') }}
 							</Button>
 						</form>
 					</template>
 
-					<p v-else-if="approval.state.value === 'loading'">Looking up code…</p>
+					<p v-else-if="approval.state.value === 'loading'">
+						{{ $t('auth.deviceLogin.lookingUp') }}
+					</p>
 
 					<template
 						v-else-if="
@@ -42,30 +44,38 @@
 					>
 						<dl class="space-y-1 text-foreground">
 							<div class="flex gap-2">
-								<dt class="w-20 shrink-0 text-muted-foreground">Client</dt>
+								<dt class="w-20 shrink-0 text-muted-foreground">
+									{{ $t('auth.deviceLogin.client') }}
+								</dt>
 								<dd class="min-w-0 break-words" data-testid="device-client">
 									{{ approval.request.value.client_name }}
 								</dd>
 							</div>
 							<div class="flex gap-2">
-								<dt class="w-20 shrink-0 text-muted-foreground">Device</dt>
+								<dt class="w-20 shrink-0 text-muted-foreground">
+									{{ $t('auth.deviceLogin.device') }}
+								</dt>
 								<dd class="min-w-0 break-words" data-testid="device-host">
 									{{ approval.request.value.host_label }}
 								</dd>
 							</div>
 							<div class="flex gap-2">
-								<dt class="w-20 shrink-0 text-muted-foreground">Requested</dt>
+								<dt class="w-20 shrink-0 text-muted-foreground">
+									{{ $t('auth.deviceLogin.requested') }}
+								</dt>
 								<dd>{{ requestedAt }}</dd>
 							</div>
 							<div class="flex gap-2">
-								<dt class="w-20 shrink-0 text-muted-foreground">Code</dt>
+								<dt class="w-20 shrink-0 text-muted-foreground">
+									{{ $t('auth.deviceLogin.code') }}
+								</dt>
 								<dd class="font-mono">{{ approval.code.value }}</dd>
 							</div>
 						</dl>
 
 						<fieldset class="space-y-2">
 							<legend class="mb-1 font-medium text-foreground">
-								This device will be able to
+								{{ $t('auth.deviceLogin.willBeAbleTo') }}
 							</legend>
 							<ScopeChecklist
 								:scopes="approval.request.value.requested_scopes"
@@ -77,15 +87,16 @@
 								v-if="approval.selected.value.length === 0"
 								class="text-xs text-destructive"
 							>
-								Select at least one permission to approve.
+								{{ $t('auth.deviceLogin.selectOne') }}
 							</p>
 						</fieldset>
 
 						<p
 							class="rounded-md border border-border bg-muted px-3 py-2 text-xs text-foreground"
 						>
-							Only approve if you started <code>tmgr login</code> yourself on
-							that device.
+							<i18n-t keypath="auth.deviceLogin.onlyApprove" tag="span">
+								<template #command><code>tmgr login</code></template>
+							</i18n-t>
 						</p>
 
 						<div class="flex gap-2">
@@ -97,7 +108,7 @@
 								"
 								@click="approval.approve()"
 							>
-								Approve
+								{{ $t('auth.deviceLogin.approve') }}
 							</Button>
 							<Button
 								variant="outline"
@@ -105,27 +116,30 @@
 								:disabled="approval.state.value === 'submitting'"
 								@click="approval.deny()"
 							>
-								Deny
+								{{ $t('auth.deviceLogin.deny') }}
 							</Button>
 						</div>
 					</template>
 
 					<p v-else-if="approval.state.value === 'approved'">
-						Device approved. You can return to your terminal.
+						{{ $t('auth.deviceLogin.approvedMessage') }}
 					</p>
 					<p v-else-if="approval.state.value === 'denied'">
-						Request denied. Nothing was signed in.
+						{{ $t('auth.deviceLogin.deniedMessage') }}
 					</p>
 
 					<template v-else>
 						<p v-if="approval.state.value === 'not_found'">
-							This code is invalid or has expired. Run
-							<CommandChip command="tmgr login" /> again.
+							<i18n-t keypath="auth.deviceLogin.notFoundMessage" tag="span">
+								<template #command>
+									<CommandChip command="tmgr login" />
+								</template>
+							</i18n-t>
 						</p>
 						<p v-else-if="approval.state.value === 'locked'">
 							{{ lockedMessage }}
 						</p>
-						<p v-else>Something went wrong. Please try again in a moment.</p>
+						<p v-else>{{ $t('auth.common.somethingWrong') }}</p>
 						<Button
 							variant="outline"
 							class="h-10 w-full"
@@ -137,8 +151,8 @@
 						>
 							{{
 								approval.state.value === 'error'
-									? 'Try again'
-									: 'Enter another code'
+									? $t('auth.common.tryAgain')
+									: $t('auth.deviceLogin.enterAnother')
 							}}
 						</Button>
 					</template>
@@ -147,7 +161,7 @@
 						v-if="finished"
 						to="/app"
 						class="block text-center font-medium text-primary underline underline-offset-4"
-						>Go to TMGR</router-link
+						>{{ $t('auth.common.goToTmgr') }}</router-link
 					>
 				</div>
 			</div>
@@ -169,19 +183,20 @@
 	import { Label } from '@/components/ui/label';
 	import { createDeviceApproval } from '@/composable/useDeviceApproval';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { computed, defineComponent, onMounted } from 'vue';
 	import { useRoute } from 'vue-router';
 
-	const TITLES = {
-		entry: 'Approve a device',
-		loading: 'Approve a device',
-		ready: 'Approve this device?',
-		submitting: 'Approve this device?',
-		approved: 'Device approved',
-		denied: 'Request denied',
-		not_found: 'Invalid code',
-		locked: 'Too many attempts',
-		error: 'Something went wrong',
+	const TITLE_KEYS = {
+		entry: 'auth.deviceLogin.titles.approve',
+		loading: 'auth.deviceLogin.titles.approve',
+		ready: 'auth.deviceLogin.titles.confirm',
+		submitting: 'auth.deviceLogin.titles.confirm',
+		approved: 'auth.deviceLogin.titles.approved',
+		denied: 'auth.deviceLogin.titles.denied',
+		not_found: 'auth.deviceLogin.titles.notFound',
+		locked: 'auth.deviceLogin.titles.locked',
+		error: 'auth.deviceLogin.titles.error',
 	};
 
 	export default defineComponent({
@@ -202,7 +217,7 @@
 				deny: denyDeviceRequest,
 			});
 
-			const title = computed(() => TITLES[approval.state.value]);
+			const title = computed(() => t(TITLE_KEYS[approval.state.value]));
 			const finished = computed(() =>
 				['approved', 'denied'].includes(approval.state.value),
 			);
@@ -215,7 +230,7 @@
 			});
 
 			onMounted(() => {
-				setDocumentTitle('Approve a device');
+				setDocumentTitle(t('auth.deviceLogin.documentTitle'));
 				const raw = route.query.code;
 				approval.setCode(Array.isArray(raw) ? raw[0] : raw);
 				if (approval.canLookup.value) approval.find();
@@ -223,12 +238,9 @@
 
 			const lockedMessage = computed(() => {
 				const seconds = approval.retryAfter.value;
-				if (!seconds)
-					return 'Too many wrong codes. Try again in a few minutes.';
+				if (!seconds) return t('auth.deviceLogin.lockedFew');
 				const minutes = Math.max(1, Math.ceil(seconds / 60));
-				return `Too many wrong codes. Try again in ${minutes} minute${
-					minutes === 1 ? '' : 's'
-				}.`;
+				return t('auth.deviceLogin.lockedIn', minutes);
 			});
 
 			return { approval, title, finished, requestedAt, lockedMessage };
