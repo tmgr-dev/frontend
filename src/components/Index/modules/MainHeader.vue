@@ -10,17 +10,17 @@
 					class="flex w-full flex-col justify-center px-4 text-center md:w-1/2 md:text-left"
 				>
 					<p class="tracking-loose w-full uppercase">
-						Track your tasks here! Why not?
+						{{ $t('public.index.header.eyebrow') }}
 					</p>
 					<h1
 						class="my-4 text-3xl leading-tight font-bold text-white lg:text-4xl xl:text-5xl"
 					>
-						Lightweight application for tracking your heavy tasks.
+						{{ $t('public.index.header.headline') }}
 					</h1>
 					<p
 						class="mb-8 text-base leading-normal text-black md:text-lg lg:text-xl xl:text-2xl"
 					>
-						You can take easier tracking your tasks with our application.
+						{{ $t('public.index.header.lead') }}
 					</p>
 
 					<router-link
@@ -28,20 +28,20 @@
 						class="mx-auto my-6 rounded-full border border-gray-400 bg-white px-8 py-4 font-semibold text-gray-800 shadow hover:bg-gray-100"
 						to="/register"
 					>
-						Get started
+						{{ $t('public.index.header.getStarted') }}
 					</router-link>
 					<router-link
 						v-else
 						class="mx-auto my-6 rounded-full border border-gray-400 bg-white px-8 py-4 font-semibold text-gray-800 shadow hover:bg-gray-100"
 						to="/"
 					>
-						Go to system
+						{{ $t('public.index.header.goToSystem') }}
 					</router-link>
 				</div>
 				<!--Right Col-->
 				<div class="w-full px-4 py-6 text-center md:w-1/2">
 					<img
-						alt="TMGR.DEV"
+						:alt="$t('public.index.header.imageAlt')"
 						class="z-50 w-full"
 						src="../../../assets/img/main.svg"
 					/>

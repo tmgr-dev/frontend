@@ -36,7 +36,7 @@
 							d=" M 510.7 189.151 C 505.271 168.95 484.565 156.956 464.365 162.385 L 330.156 198.367 L 155.924 35.878 L 107.19 49.008 L 211.729 230.183 L 86.232 263.767 L 36.614 224.754 L 0 234.603 L 45.957 314.27 L 65.274 347.727 L 105.802 336.869 L 240.011 300.886 L 349.726 271.469 L 483.935 235.486 C 504.134 230.057 516.129 209.352 510.7 189.151 Z "
 						/>
 					</svg>
-					TASK MANAGER
+					{{ $t('public.index.nav.brand') }}
 				</a>
 			</div>
 
@@ -50,7 +50,7 @@
 						viewBox="0 0 20 20"
 						xmlns="http://www.w3.org/2000/svg"
 					>
-						<title>Menu</title>
+						<title>{{ $t('public.index.nav.menu') }}</title>
 						<path d="M0 3h20v2H0V3zm0 6h20v2H0V9zm0 6h20v2H0v-2z" />
 					</svg>
 				</button>
@@ -68,7 +68,7 @@
 							href="#"
 							to="/login"
 						>
-							Login
+							{{ $t('public.index.nav.login') }}
 						</router-link>
 						<router-link
 							v-else
@@ -76,7 +76,7 @@
 							href="#"
 							to="/"
 						>
-							Go to system
+							{{ $t('public.index.nav.goToSystem') }}
 						</router-link>
 					</li>
 				</ul>
@@ -86,7 +86,7 @@
 					class="mx-auto mt-4 rounded-full bg-white px-8 py-4 font-bold text-gray-800 opacity-75 shadow hover:underline lg:mx-0 lg:mt-0"
 					to="/register"
 				>
-					Register
+					{{ $t('public.index.nav.register') }}
 				</router-link>
 			</div>
 		</div>

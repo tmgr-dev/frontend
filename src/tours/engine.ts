@@ -5,6 +5,7 @@ import { resolveAnchor as defaultResolveAnchor } from './anchors';
 import type { OnboardingApi } from './api';
 import { getTour, TOURS } from './catalog';
 import type { TourBus } from './events';
+import { localizedStep, tourTitle } from './i18n';
 import type { KeycapEnv } from './keycaps';
 import { DEFAULT_KEYCAP_ENV, hasTemplate, resolveBodyParts } from './keycaps';
 import type { TourLease } from './lease';
@@ -268,7 +269,11 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
 			if (!view) {
 				active.value = null;
 			} else {
-				const { anchorEl: _anchorEl, mode: _mode, ...rest } = view;
+				const { anchorEl: _anchorEl, mode: _mode, ...viewRest } = view;
+				const rest = {
+					...viewRest,
+					step: localizedStep(viewRest.tour, viewRest.step),
+				};
 				active.value = hasTemplate(rest.step)
 					? {
 							...rest,
@@ -287,7 +292,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
 			const tour = getTour(id);
 			resumePill.value =
 				reason === 'navigated' && tour
-					? { tourId: id, title: tour.title }
+					? { tourId: id, title: tourTitle(tour) }
 					: null;
 			const chain = sequence;
 			if (!chain || chain.current !== id) return;

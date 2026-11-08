@@ -7,27 +7,25 @@
 		class="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-full border border-violet-300 bg-violet-100 py-1.5 pr-1.5 pl-4 text-sm text-violet-900 shadow-lg dark:border-violet-500/30 dark:bg-violet-950 dark:text-violet-200"
 	>
 		<template v-if="playing">
-			<span class="min-w-0"
-				>Simulated locally. No real agent is running. Press Esc to stop.</span
-			>
+			<span class="min-w-0">{{ $t('onboarding.ghost.simulated') }}</span>
 			<button
 				type="button"
 				data-testid="ghost-skip"
 				class="shrink-0 rounded-full px-3 py-1 font-medium hover:bg-violet-200 dark:hover:bg-violet-500/20"
 				@click="skip"
 			>
-				Skip
+				{{ $t('common.actions.skip') }}
 			</button>
 		</template>
 		<template v-else>
-			<span class="min-w-0">Demo agent</span>
+			<span class="min-w-0">{{ $t('onboarding.ghost.demoAgent') }}</span>
 			<button
 				type="button"
 				data-testid="ghost-replay"
 				class="shrink-0 rounded-full px-3 py-1 font-medium hover:bg-violet-200 dark:hover:bg-violet-500/20"
 				@click="replay"
 			>
-				Replay
+				{{ $t('onboarding.ghost.replay') }}
 			</button>
 		</template>
 	</div>

@@ -45,7 +45,7 @@
 				<button
 					type="button"
 					class="inline-flex h-7 w-7 shrink-0 items-center justify-center gap-1 rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-					:aria-label="node.label ?? 'More actions'"
+					:aria-label="node.label ?? $t('plugins.view.moreActions')"
 				>
 					<MoreHorizontal class="h-4 w-4" />
 					<span v-if="node.label" class="text-xs">{{ node.label }}</span>
@@ -64,19 +64,23 @@
 		<AlertDialog v-model:open="menuConfirmOpen">
 			<AlertDialogContent v-if="menuConfirmItem">
 				<AlertDialogHeader>
-					<AlertDialogTitle
-						>Plugin {{ pluginName }}:
-						{{ menuConfirmItem.text }}</AlertDialogTitle
-					>
+					<AlertDialogTitle>{{
+						$t('plugins.view.confirmTitle', {
+							name: pluginName,
+							text: menuConfirmItem.text,
+						})
+					}}</AlertDialogTitle>
 					<AlertDialogDescription>{{
 						menuConfirmItem.confirm
 					}}</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction @click="runMenuConfirm"
-						>Continue</AlertDialogAction
-					>
+					<AlertDialogCancel>{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
+					<AlertDialogAction @click="runMenuConfirm">{{
+						$t('common.actions.continue')
+					}}</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
@@ -131,7 +135,9 @@
 			<button
 				type="button"
 				class="transition-colors hover:text-foreground"
-				:title="isCopied ? 'Copied' : 'Copy'"
+				:title="
+					isCopied ? $t('common.actions.copied') : $t('common.actions.copy')
+				"
 				@click="copyText"
 			>
 				<Check
@@ -323,7 +329,7 @@
 				:disabled="running"
 				@click="sendTextarea"
 			>
-				{{ node.submitText ?? 'Send' }}
+				{{ node.submitText ?? $t('plugins.view.send') }}
 			</Button>
 		</template>
 		<input
@@ -346,7 +352,7 @@
 			@change="onSelectChange"
 		>
 			<option v-if="node.value === null" value="" disabled>
-				{{ node.placeholder ?? 'Select' }}
+				{{ node.placeholder ?? $t('plugins.view.select') }}
 			</option>
 			<option
 				v-for="option in node.options"
@@ -475,7 +481,7 @@
 								type="button"
 								class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
 								:aria-expanded="expandedRows.has(index)"
-								aria-label="Toggle details"
+								:aria-label="$t('plugins.view.toggleDetails')"
 								@click="toggleRow(index)"
 							>
 								<ChevronRight
@@ -583,7 +589,7 @@
 		preserveAspectRatio="none"
 		:class="['h-6 w-24', strokeClass(node.color)]"
 		role="img"
-		:aria-label="node.label || 'Sparkline'"
+		:aria-label="node.label || $t('plugins.view.sparkline')"
 	>
 		<polyline
 			v-if="node.values.length > 0"
@@ -619,7 +625,7 @@
 		v-else-if="node.type === 'skeleton'"
 		class="flex flex-col gap-2"
 		role="status"
-		aria-label="Loading"
+		:aria-label="$t('common.states.loading')"
 	>
 		<template v-if="node.variant === 'card'">
 			<Skeleton class="h-24 w-full" />
@@ -657,14 +663,16 @@
 		</AppTooltip>
 		<AlertDialogContent v-if="node.confirm">
 			<AlertDialogHeader>
-				<AlertDialogTitle
-					>Plugin {{ pluginName }}: {{ node.text }}</AlertDialogTitle
-				>
+				<AlertDialogTitle>{{
+					$t('plugins.view.confirmTitle', { name: pluginName, text: node.text })
+				}}</AlertDialogTitle>
 				<AlertDialogDescription>{{ node.confirm }}</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
-				<AlertDialogCancel>Cancel</AlertDialogCancel>
-				<AlertDialogAction @click="run">Continue</AlertDialogAction>
+				<AlertDialogCancel>{{ $t('common.actions.cancel') }}</AlertDialogCancel>
+				<AlertDialogAction @click="run">{{
+					$t('common.actions.continue')
+				}}</AlertDialogAction>
 			</AlertDialogFooter>
 		</AlertDialogContent>
 	</AlertDialog>
@@ -688,7 +696,9 @@
 		<button
 			type="button"
 			class="text-muted-foreground transition-colors hover:text-foreground"
-			:title="isCopied ? 'Copied' : 'Copy'"
+			:title="
+				isCopied ? $t('common.actions.copied') : $t('common.actions.copy')
+			"
 			@click="copyText"
 		>
 			<Check
@@ -782,6 +792,7 @@
 	import { toast } from '@/components/ui/toast';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
 	import { usePluginTicker } from '@/composable/usePluginTicker';
+	import { t } from '@/i18n';
 	import { formatDueTime, formatTimeAgo } from '@/pluginSystem/relativeTime';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type {
@@ -958,7 +969,7 @@
 					if (pluginState.plugins[props.pluginId]?.status === 'crashed')
 						return false;
 					toast({
-						title: 'The plugin command failed',
+						title: t('plugins.view.commandFailed'),
 						description: error instanceof Error ? error.message : String(error),
 						variant: 'destructive',
 					});
@@ -1102,7 +1113,9 @@
 				if (node.type !== 'collapse' || !node.visible) return '';
 				const hidden = node.children.length - node.visible;
 				if (hidden <= 0) return '';
-				return collapseShowAll.value ? 'Show less' : `${hidden} more`;
+				return collapseShowAll.value
+					? t('plugins.view.showLess')
+					: t('plugins.view.more', { hidden });
 			});
 			const selectedTabId = ref<string | null>(null);
 			const activeTabId = computed(() => {

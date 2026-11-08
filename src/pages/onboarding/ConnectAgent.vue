@@ -24,7 +24,7 @@
 				>
 					<template v-if="blocked">
 						<h1 class="text-xl font-semibold text-ink">
-							Connect your AI agent
+							{{ $t('onboarding.connectAgent.title') }}
 						</h1>
 						<p
 							class="mt-3 text-sm text-ink-subtle"
@@ -37,7 +37,7 @@
 							:to="{ name: 'ModuleSettings' }"
 							class="mt-3 inline-flex min-h-[44px] items-center text-sm text-brand underline"
 						>
-							Turn on MCP
+							{{ $t('onboarding.connectAgent.turnOnMcp') }}
 						</router-link>
 						<div class="mt-4">
 							<button
@@ -46,14 +46,16 @@
 								data-tour-avoid="cta"
 								@click="goWorkspace"
 							>
-								Continue to my workspace
+								{{ $t('onboarding.connectAgent.continueToWorkspace') }}
 							</button>
 						</div>
 					</template>
 
 					<template v-else-if="connected">
 						<h1 class="text-center text-xl font-semibold text-ink">
-							{{ clientLabel }} is connected
+							{{
+								$t('onboarding.connectAgent.connected', { client: clientLabel })
+							}}
 						</h1>
 						<ul class="space-y-2 mx-auto mt-5 max-w-xs text-sm text-ink">
 							<li
@@ -78,7 +80,7 @@
 								data-tour-avoid="cta"
 								@click="goWorkspace"
 							>
-								Open my workspace
+								{{ $t('onboarding.connectAgent.openWorkspace') }}
 							</button>
 						</div>
 						<div class="mt-4"><ConnectStatus state="connected" /></div>
@@ -86,15 +88,13 @@
 
 					<template v-else>
 						<h1 class="text-center text-xl font-semibold text-ink">
-							Connect your AI agent
+							{{ $t('onboarding.connectAgent.title') }}
 						</h1>
 						<p class="mt-2 text-center text-sm text-ink-subtle">
-							Pick the tool you use. TMGR gives it a token and your agent starts
-							picking up tasks.
+							{{ $t('onboarding.connectAgent.pick') }}
 						</p>
 						<p class="mt-2 text-center text-sm text-ink-subtle sm:hidden">
-							Open this page on your computer, or copy the command to send it
-							there.
+							{{ $t('onboarding.connectAgent.mobileHint') }}
 						</p>
 
 						<StillWaiting
@@ -111,7 +111,7 @@
 							<div
 								class="mt-5 flex max-w-full flex-wrap gap-1 border-b border-line pb-2"
 								role="tablist"
-								aria-label="Client"
+								:aria-label="$t('onboarding.connectAgent.clientTabs')"
 								data-tour="connect.client-tabs"
 							>
 								<button
@@ -132,7 +132,7 @@
 									@click="activeId = tab.id"
 									@keydown="onTabKey"
 								>
-									{{ tab.label }}
+									{{ tabLabel(tab) }}
 								</button>
 							</div>
 
@@ -147,7 +147,7 @@
 									class="text-sm text-ink-subtle"
 									role="status"
 								>
-									Checking your account…
+									{{ $t('onboarding.connectAgent.checking') }}
 								</div>
 
 								<div
@@ -155,7 +155,7 @@
 									class="text-sm text-ink-subtle"
 									role="status"
 								>
-									Creating your token…
+									{{ $t('onboarding.connectAgent.creating') }}
 								</div>
 
 								<div
@@ -164,14 +164,14 @@
 									role="alert"
 								>
 									<p class="text-status-fix-fg">
-										Could not check your account.
+										{{ $t('onboarding.connectAgent.checkFailed') }}
 									</p>
 									<button
 										type="button"
 										class="min-h-[44px] text-ink underline"
 										@click="retryPlan"
 									>
-										Try again
+										{{ $t('common.actions.retry') }}
 									</button>
 								</div>
 
@@ -180,15 +180,14 @@
 									class="space-y-3 text-sm text-ink"
 								>
 									<p>
-										An agent has connected to this account before, and you have
-										no active token.
+										{{ $t('onboarding.connectAgent.reconnect') }}
 									</p>
 									<button
 										type="button"
 										class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-on-accent"
 										@click="mint"
 									>
-										Generate a token
+										{{ $t('onboarding.connectAgent.generate') }}
 									</button>
 								</div>
 
@@ -197,13 +196,15 @@
 									class="space-y-2 text-sm"
 									role="alert"
 								>
-									<p class="text-status-fix-fg">Could not create a token.</p>
+									<p class="text-status-fix-fg">
+										{{ $t('onboarding.connectAgent.mintFailed') }}
+									</p>
 									<button
 										type="button"
 										class="min-h-[44px] text-ink underline"
 										@click="mint"
 									>
-										Try again
+										{{ $t('common.actions.retry') }}
 									</button>
 								</div>
 
@@ -212,17 +213,18 @@
 									class="space-y-3 text-sm text-ink"
 								>
 									<p>
-										You already have a token, and TMGR can't show it again.
-										Paste it to build the command, or generate a new one.
+										{{ $t('onboarding.connectAgent.haveToken') }}
 									</p>
 									<label class="block">
-										<span class="sr-only">Existing token</span>
+										<span class="sr-only">{{
+											$t('onboarding.connectAgent.existingToken')
+										}}</span>
 										<input
 											v-model="pasted"
 											type="password"
 											autocomplete="off"
 											spellcheck="false"
-											placeholder="Paste your existing token"
+											:placeholder="$t('onboarding.connectAgent.pasteToken')"
 											class="min-h-[44px] w-full rounded-md border border-line bg-surface px-3 text-sm text-ink"
 											@keydown.enter.prevent="usePasted"
 										/>
@@ -234,7 +236,7 @@
 											:disabled="!pasted.trim()"
 											@click="usePasted"
 										>
-											Use this token
+											{{ $t('onboarding.connectAgent.useToken') }}
 										</button>
 										<button
 											v-if="tokenMode === 'choose'"
@@ -242,18 +244,17 @@
 											class="min-h-[44px] rounded-md border border-line px-4 font-medium text-ink"
 											@click="tokenMode = 'confirm'"
 										>
-											Generate a new token
+											{{ $t('onboarding.connectAgent.generateNew') }}
 										</button>
 									</div>
 									<div
 										v-if="tokenMode === 'confirm'"
 										class="rounded-md border border-status-progress bg-status-progress-bg p-3 text-status-progress-fg"
 										role="alertdialog"
-										aria-label="Generate a new token"
+										:aria-label="$t('onboarding.connectAgent.generateNew')"
 									>
 										<p>
-											A new token replaces the old one. Agents already using the
-											old token will disconnect.
+											{{ $t('onboarding.connectAgent.replaceWarning') }}
 										</p>
 										<div class="mt-2 flex flex-wrap gap-2">
 											<button
@@ -261,14 +262,14 @@
 												class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-on-accent"
 												@click="mint"
 											>
-												Generate new token
+												{{ $t('onboarding.connectAgent.generateNewShort') }}
 											</button>
 											<button
 												type="button"
 												class="min-h-[44px] px-3 underline"
 												@click="tokenMode = 'choose'"
 											>
-												Cancel
+												{{ $t('common.actions.cancel') }}
 											</button>
 										</div>
 									</div>
@@ -280,21 +281,26 @@
 											<CopyCommand
 												:code="snippets.claudeCode"
 												:display="mask(snippets.claudeCode)"
-												label="Claude Code command"
+												:label="$t('onboarding.connectAgent.labels.claude')"
 												client="claude"
 											/>
 										</div>
 									</template>
 									<template v-else-if="activeId === 'codex'">
-										<p class="text-sm text-ink">
-											Add to
-											<code class="font-mono">~/.codex/config.toml</code>:
-										</p>
+										<i18n-t
+											keypath="onboarding.connectAgent.addToFile"
+											tag="p"
+											class="text-sm text-ink"
+										>
+											<template #path>
+												<code class="font-mono">~/.codex/config.toml</code>
+											</template>
+										</i18n-t>
 										<div data-tour="connect.command">
 											<CopyCommand
 												:code="snippets.codexToml"
 												:display="mask(snippets.codexToml)"
-												label="Codex config"
+												:label="$t('onboarding.connectAgent.labels.codex')"
 												client="codex"
 											/>
 										</div>
@@ -305,29 +311,29 @@
 											class="inline-flex min-h-[44px] items-center rounded-md bg-brand px-4 text-sm font-medium text-on-accent hover:opacity-90"
 											@click="onCursorOpen"
 										>
-											Add to Cursor
+											{{ $t('onboarding.connectAgent.addToCursor') }}
 										</a>
 										<p class="text-sm text-ink-subtle">
-											Or copy the install link and open it on your computer.
+											{{ $t('onboarding.connectAgent.cursorHint') }}
 										</p>
 										<div data-tour="connect.command">
 											<CopyCommand
 												:code="snippets.cursorDeeplink"
 												display="cursor://anysphere.cursor-deeplink/mcp/install?name=tmgr&config=…"
-												label="Cursor install link"
+												:label="$t('onboarding.connectAgent.labels.cursor')"
 												client="cursor"
 											/>
 										</div>
 									</template>
 									<template v-else>
 										<p class="text-sm text-ink">
-											Add to your client's MCP config:
+											{{ $t('onboarding.connectAgent.addToClient') }}
 										</p>
 										<div data-tour="connect.command">
 											<CopyCommand
 												:code="snippets.mcpJson"
 												:display="mask(snippets.mcpJson)"
-												label="MCP client config"
+												:label="$t('onboarding.connectAgent.labels.other')"
 												client="other"
 											/>
 										</div>
@@ -337,8 +343,7 @@
 										class="text-xs text-ink-subtle"
 										data-testid="shown-once"
 									>
-										Token shown once. TMGR stores only a hash, so copy the
-										command now.
+										{{ $t('onboarding.connectAgent.shownOnce') }}
 									</p>
 								</template>
 							</div>
@@ -353,7 +358,7 @@
 									data-tour-avoid="cta"
 									@click="checkAgain"
 								>
-									I ran it
+									{{ $t('onboarding.connectAgent.ranIt') }}
 								</button>
 								<button
 									type="button"
@@ -361,7 +366,7 @@
 									data-tour-avoid="cta"
 									@click="later"
 								>
-									Do this later
+									{{ $t('onboarding.connectAgent.later') }}
 								</button>
 							</div>
 						</div>
@@ -379,6 +384,7 @@
 	import CopyCommand from '@/components/onboarding/CopyCommand.vue';
 	import StarterPrompt from '@/components/onboarding/StarterPrompt.vue';
 	import StillWaiting from '@/components/onboarding/StillWaiting.vue';
+	import { t } from '@/i18n';
 	import { planConnect } from '@/onboarding/connectPlan';
 	import { steps } from '@/onboarding/flow';
 	import type { FactsPoller } from '@/onboarding/poller';
@@ -404,10 +410,20 @@
 		| 'error';
 
 	const TABS = [
-		{ id: 'claude', label: 'Claude Code', verify: 'claude mcp list' },
-		{ id: 'codex', label: 'Codex', verify: 'codex mcp list' },
-		{ id: 'cursor', label: 'Cursor', verify: '' },
-		{ id: 'other', label: 'Other (JSON)', verify: '' },
+		{
+			id: 'claude',
+			label: 'Claude Code',
+			labelKey: '',
+			verify: 'claude mcp list',
+		},
+		{ id: 'codex', label: 'Codex', labelKey: '', verify: 'codex mcp list' },
+		{ id: 'cursor', label: 'Cursor', labelKey: '', verify: '' },
+		{
+			id: 'other',
+			label: '',
+			labelKey: 'onboarding.connectAgent.otherTab',
+			verify: '',
+		},
 	];
 
 	const MASK_VISIBLE = 5;
@@ -449,19 +465,21 @@
 				() => !!store.getters['featureToggles/isFeatureEnabled']?.('mcp'),
 			);
 			const blocked = computed(() => {
-				if (localOnly.value)
-					return 'Connecting an AI agent needs a TMGR cloud account.';
+				if (localOnly.value) return t('onboarding.connectAgent.needsCloud');
 				if (!modulesKnown.value) return '';
-				if (!mcpEnabled.value)
-					return 'The MCP module is off for this workspace, so agents cannot connect yet.';
+				if (!mcpEnabled.value) return t('onboarding.connectAgent.mcpOff');
 				return '';
 			});
 
 			const active = computed(
 				() => TABS.find((tab) => tab.id === activeId.value) ?? TABS[0],
 			);
+			const tabLabel = (tab: (typeof TABS)[number]) =>
+				tab.labelKey ? t(tab.labelKey) : tab.label;
 			const clientLabel = computed(() =>
-				activeId.value === 'other' ? 'Your agent' : active.value.label,
+				activeId.value === 'other'
+					? t('onboarding.connectAgent.yourAgent')
+					: tabLabel(active.value),
 			);
 			const mcpUrl = resolveMcpUrl(
 				import.meta.env.VITE_API_BASE_URL,
@@ -481,16 +499,25 @@
 			const stepLabel = computed(() => {
 				const list = steps('agent');
 				const index = list.indexOf('connect');
-				return index >= 0 ? `Step ${index + 1} of ${list.length}` : '';
+				return index >= 0
+					? t('onboarding.connectAgent.step', {
+							n: index + 1,
+							total: list.length,
+						})
+					: '';
 			});
 			const liveMessage = computed(() =>
 				connected.value
-					? 'Agent connected'
+					? t('onboarding.connectAgent.liveConnected')
 					: stalled.value
-						? 'Still waiting for your agent'
+						? t('onboarding.stillWaiting.title')
 						: '',
 			);
-			const doneItems = ['Token created', 'Command ran', 'Agent connected'];
+			const doneItems = computed(() => [
+				t('onboarding.connectAgent.done.token'),
+				t('onboarding.connectAgent.done.command'),
+				t('onboarding.connectAgent.done.agent'),
+			]);
 
 			const workspacePath = (page: string) => {
 				const code = store.getters.currentWorkspace?.code;
@@ -662,6 +689,7 @@
 				consentOpen,
 				consentPad,
 				tabs,
+				tabLabel,
 				activeId,
 				active,
 				clientLabel,

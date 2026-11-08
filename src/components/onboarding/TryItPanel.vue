@@ -2,12 +2,12 @@
 	<div
 		v-if="visible"
 		role="region"
-		aria-label="Try it yourself"
+		:aria-label="$t('onboarding.tryIt.region')"
 		data-tour="ghost.make-it-yours"
 		data-testid="try-it-panel"
 		class="fixed right-4 bottom-4 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-violet-300 bg-violet-50 p-4 text-sm text-violet-900 shadow-lg dark:border-violet-500/30 dark:bg-violet-950 dark:text-violet-200"
 	>
-		<p class="font-semibold">Now it is your turn</p>
+		<p class="font-semibold">{{ $t('onboarding.tryIt.title') }}</p>
 		<ul class="space-y-1 mt-2">
 			<li
 				v-for="item in items"
@@ -18,7 +18,7 @@
 			>
 				<span aria-hidden="true">{{ done[item.id] ? '✓' : '○' }}</span>
 				<span :class="done[item.id] ? 'line-through opacity-70' : ''">{{
-					item.label
+					$t(item.labelKey)
 				}}</span>
 			</li>
 		</ul>
@@ -30,7 +30,7 @@
 				:disabled="busy"
 				@click="finish(false)"
 			>
-				Create my workspace
+				{{ $t('onboarding.tryIt.createWorkspace') }}
 			</Button>
 			<button
 				type="button"
@@ -39,7 +39,7 @@
 				:disabled="busy"
 				@click="finish(true)"
 			>
-				Create and delete the demo
+				{{ $t('onboarding.tryIt.createAndDelete') }}
 			</button>
 		</div>
 	</div>
@@ -48,6 +48,7 @@
 <script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
+	import { t } from '@/i18n';
 	import { completeDemoEntry } from '@/local/demoApi';
 	import { ghostPlaying } from '@/onboarding/ghost';
 	import { ghostStage } from '@/onboarding/ghostStage';
@@ -61,9 +62,9 @@
 	} from 'vue';
 
 	const ITEMS = [
-		{ id: 'move', label: 'Move a card to another column' },
-		{ id: 'timer', label: 'Start a timer on a card' },
-		{ id: 'add', label: 'Add a task of your own' },
+		{ id: 'move', labelKey: 'onboarding.tryIt.items.move' },
+		{ id: 'timer', labelKey: 'onboarding.tryIt.items.timer' },
+		{ id: 'add', labelKey: 'onboarding.tryIt.items.add' },
 	];
 
 	export default defineComponent({
@@ -97,7 +98,7 @@
 				try {
 					await completeDemoEntry({ deleteDemo });
 				} catch (e: any) {
-					error.value = e?.message || 'Could not create the workspace.';
+					error.value = e?.message || t('onboarding.tryIt.createFailed');
 				} finally {
 					busy.value = false;
 				}

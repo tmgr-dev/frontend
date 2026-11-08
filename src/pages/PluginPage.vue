@@ -1,22 +1,27 @@
 <template>
 	<PageContainer width="wide">
 		<div v-if="!entry" class="text-sm text-muted-foreground">
-			This plugin is not installed.
+			{{ $t('plugins.page.notInstalled') }}
 		</div>
 		<div
 			v-else-if="entry.status !== 'running'"
 			class="flex flex-col gap-2 text-sm text-muted-foreground"
 		>
 			<p>
-				{{ entry.manifest.name }} is not running in this workspace{{
-					entry.error ? `: ${entry.error}` : '.'
+				{{
+					entry.error
+						? $t('plugins.page.notRunningWithError', {
+								name: entry.manifest.name,
+								error: entry.error,
+							})
+						: $t('plugins.page.notRunning', { name: entry.manifest.name })
 				}}
 			</p>
 			<router-link
 				to="/settings/plugins"
 				class="w-fit text-primary hover:underline"
 			>
-				Open plugin settings
+				{{ $t('plugins.page.openSettings') }}
 			</router-link>
 		</div>
 		<p
@@ -27,10 +32,11 @@
 		</p>
 		<div v-else-if="view?.ui" class="flex flex-col items-start gap-3 text-sm">
 			<p class="text-muted-foreground">
-				“{{ view.title }}” is the plugin's own page. It opens in a separate
-				window, so it cannot slow down or freeze the app.
+				{{ $t('plugins.page.ownWindow', { title: view.title }) }}
 			</p>
-			<Button size="sm" @click="openWindow">Open window</Button>
+			<Button size="sm" @click="openWindow">{{
+				$t('plugins.page.openWindow')
+			}}</Button>
 			<p v-if="windowError" class="text-red-600 dark:text-red-400">
 				{{ windowError }}
 			</p>
@@ -45,7 +51,9 @@
 				:plugin-id="pluginId"
 			/>
 		</div>
-		<p v-else class="text-sm text-muted-foreground">Loading…</p>
+		<p v-else class="text-sm text-muted-foreground">
+			{{ $t('common.states.loading') }}
+		</p>
 	</PageContainer>
 </template>
 
@@ -54,6 +62,7 @@
 	import PluginView from '@/components/plugins/PluginView.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type { UiNode } from '@/pluginSystem/uiTree';
 	import {
@@ -86,9 +95,9 @@
 				try {
 					await pluginHost()?.openView(pluginId.value, viewId.value, props);
 				} catch (e) {
-					windowError.value = `Could not open the plugin window: ${
-						e instanceof Error ? e.message : e
-					}`;
+					windowError.value = t('plugins.page.openFailed', {
+						error: e instanceof Error ? e.message : String(e),
+					});
 				}
 			};
 			const openWindow = () => openWindowSafely();
@@ -141,12 +150,12 @@
 					);
 					if (current !== request) return;
 					tree.value = next ?? null;
-					error.value = next ? null : 'The plugin returned nothing to show.';
+					error.value = next ? null : t('plugins.page.nothingToShow');
 				} catch (e) {
 					if (current !== request) return;
-					error.value = `The plugin could not draw this page: ${
-						e instanceof Error ? e.message : e
-					}`;
+					error.value = t('plugins.page.drawFailed', {
+						error: e instanceof Error ? e.message : String(e),
+					});
 				}
 			};
 

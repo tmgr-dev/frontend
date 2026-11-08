@@ -12,28 +12,28 @@
 				<p class="text-xl font-bold tracking-tight text-brand">TMGR</p>
 				<main class="mx-auto mt-10 max-w-3xl text-center sm:mt-16">
 					<h1 class="text-2xl font-semibold text-ink sm:text-3xl">
-						How do you want to start?
+						{{ $t('onboarding.welcomeSetup.title') }}
 					</h1>
 					<p class="mt-2 text-sm text-ink-subtle">
-						You can do both later. Nothing here is permanent.
+						{{ $t('onboarding.welcomeSetup.subtitle') }}
 					</p>
 
 					<div
 						class="mt-8 grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2"
 						role="group"
-						aria-label="Start with"
+						:aria-label="$t('onboarding.welcomeSetup.group')"
 					>
 						<IntentCard
-							title="Just track my tasks"
-							description="Tasks, a board and a timer. Ready in a minute."
+							:title="$t('onboarding.welcomeSetup.human.title')"
+							:description="$t('onboarding.welcomeSetup.human.description')"
 							:icon="ListChecks"
 							:selected="selected === 'human'"
 							:disabled="busy"
 							@select="choose('human')"
 						/>
 						<IntentCard
-							title="Connect my AI agent"
-							description="For Claude Code, Codex, Cursor or any MCP client."
+							:title="$t('onboarding.welcomeSetup.agent.title')"
+							:description="$t('onboarding.welcomeSetup.agent.description')"
 							:icon="Bot"
 							:selected="selected === 'agent'"
 							:disabled="busy"
@@ -54,7 +54,7 @@
 							data-tour-avoid="cta"
 							@click="choose('human', false)"
 						>
-							Start with an empty workspace
+							{{ $t('onboarding.welcomeSetup.empty') }}
 						</button>
 						<button
 							type="button"
@@ -64,7 +64,7 @@
 							data-tour-avoid="cta"
 							@click="skip"
 						>
-							Skip, I'll look around
+							{{ $t('onboarding.welcomeSetup.skip') }}
 						</button>
 					</div>
 
@@ -91,6 +91,7 @@
 		getWorkspaceModules,
 		saveModulesChoice,
 	} from '@/actions/tmgr/modules';
+	import { t } from '@/i18n';
 	import IntentCard from '@/components/onboarding/IntentCard.vue';
 	import { enableAgentModules } from '@/onboarding/agentModules';
 	import { steps } from '@/onboarding/flow';
@@ -133,7 +134,7 @@
 					);
 					return true;
 				} catch {
-					error.value = 'Could not save your choice. Try again.';
+					error.value = t('onboarding.welcomeSetup.saveFailed');
 					selected.value = null;
 					busy.value = false;
 					return false;

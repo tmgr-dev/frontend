@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import { t } from '@/i18n';
 	import { useVoiceInput } from '@/composable/useVoiceInput';
 	import { resolveFocusTarget } from '@/utils/focusTarget';
 	import { formatClock, insertAtCursor, MAX_SECONDS } from '@/utils/voiceInput';
@@ -48,10 +49,10 @@
 		() => !supported || state.value.blocked || !!props.disabled,
 	);
 	const title = computed(() => {
-		if (!supported) return 'Voice input is not supported here';
+		if (!supported) return t('public.voice.unsupported');
 		if (state.value.blocked && state.value.error) return state.value.error;
-		if (recording.value) return 'Stop and transcribe';
-		return 'Dictate';
+		if (recording.value) return t('public.voice.stopTranscribe');
+		return t('public.voice.dictate');
 	});
 
 	watch(
@@ -90,8 +91,8 @@
 			v-if="state.status !== 'idle'"
 			type="button"
 			class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-			aria-label="Cancel voice input"
-			title="Cancel"
+			:aria-label="$t('public.voice.cancelAria')"
+			:title="$t('public.voice.cancel')"
 			@click="cancel"
 		>
 			<X class="h-4 w-4" />
@@ -105,7 +106,11 @@
 					: 'text-ink-subtle hover:bg-surface-hover hover:text-ink'
 			"
 			:disabled="unavailable || working"
-			:aria-label="recording ? 'Stop recording' : 'Start voice input'"
+			:aria-label="
+				recording
+					? $t('public.voice.stopRecordingAria')
+					: $t('public.voice.startAria')
+			"
 			:aria-pressed="recording"
 			:title="title"
 			@click="toggle"

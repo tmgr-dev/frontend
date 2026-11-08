@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { Color } from '@/pluginSystem/uiTree';
 
 export interface ChartBox {
@@ -269,12 +270,10 @@ export const clampActive = (
 ): number | null =>
 	current !== null && (current < 0 || current >= count) ? null : current;
 
-export const CHART_KEY_HINT = 'Use arrow keys to read values.';
-
 export const chartSummary = (
 	kind: 'bar' | 'line',
 	seriesNames: string[],
 	count: number,
 	label?: string,
 ): string =>
-	`${label ?? `${kind === 'bar' ? 'Bar' : 'Line'} chart of ${seriesNames.join(', ')} over ${count} ${count === 1 ? 'point' : 'points'}`} ${CHART_KEY_HINT}`;
+	`${label ?? t(kind === 'bar' ? 'plugins.chart.summaryBar' : 'plugins.chart.summaryLine', { series: seriesNames.join(', ') }, count)} ${t('plugins.chart.keyHint')}`;

@@ -41,7 +41,11 @@
 						<component
 							:is="item.checked ? 'CheckSquare' : 'Square'"
 							class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-							:aria-label="item.checked ? 'Done' : 'Not done'"
+							:aria-label="
+								item.checked
+									? $t('plugins.markdown.done')
+									: $t('plugins.markdown.notDone')
+							"
 						/>
 						<PluginMarkdown
 							class="min-w-0 flex-1"

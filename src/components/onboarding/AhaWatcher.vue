@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { getTask } from '@/actions/tmgr/tasks';
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import { createAhaWatcher, type AhaWatcher } from '@/onboarding/aha';
 	import { onboardingApi } from '@/tours/api';
 	import { tourBus } from '@/tours/events';
@@ -85,7 +86,7 @@
 				off = tourBus.on('timer.stopped', async (payload) => {
 					const taskId = payload.taskId;
 					if (taskId == null || !watcher?.timerEligible()) return;
-					let title = 'your task';
+					let title = t('onboarding.ahaWatcher.fallbackTitle');
 					let minutes = 1;
 					try {
 						const task = await getTask(Number(taskId));

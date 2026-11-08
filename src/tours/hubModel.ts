@@ -1,20 +1,23 @@
+import { t } from '@/i18n';
+import { tourTitle } from './i18n';
 import type { TourGroup } from './types';
 import type { HubItem } from './useTours';
 
-export const GROUP_TITLES: Record<TourGroup, string> = {
-	start: 'Getting started',
-	tasks: 'Tasks & board',
-	time: 'Time',
-	agents: 'Agents & MCP',
-	personas: 'Personas',
-	pages: 'Pages & context',
-	graph: 'Graph & map',
-	routines: 'Routines',
-	workspace: 'Workspaces & settings',
-	desktop: 'Desktop',
-};
+const GROUP_ORDER: TourGroup[] = [
+	'start',
+	'tasks',
+	'time',
+	'agents',
+	'personas',
+	'pages',
+	'graph',
+	'routines',
+	'workspace',
+	'desktop',
+];
 
-const GROUP_ORDER = Object.keys(GROUP_TITLES) as TourGroup[];
+export const groupTitle = (group: TourGroup): string =>
+	t(`onboarding.tours.groups.${group}`);
 
 export type HubAction = 'start' | 'resume' | 'done' | 'none';
 
@@ -56,15 +59,15 @@ export const moduleOffMessage = (
 ): string => {
 	const label = moduleLabel(moduleKey);
 	return canManageModules
-		? `Turn on ${label} in Settings -> Modules`
-		: `Ask the workspace owner to turn on ${label}`;
+		? t('onboarding.tours.hub.turnOnModule', { label })
+		: t('onboarding.tours.hub.askOwnerModule', { label });
 };
 
 const rowFor = (item: HubItem, context: HubContext): HubRow | null => {
 	const { tour, state } = item;
 	const base = {
 		id: tour.id,
-		title: tour.title,
+		title: tourTitle(tour),
 		minutes: tour.minutes,
 		updated: false,
 		progress: null as string | null,
@@ -92,7 +95,10 @@ const rowFor = (item: HubItem, context: HubContext): HubRow | null => {
 		return {
 			...base,
 			action: 'resume',
-			progress: `step ${position} of ${tour.steps.length}`,
+			progress: t('onboarding.tours.hub.progress', {
+				position,
+				total: tour.steps.length,
+			}),
 		};
 	}
 	return { ...base, action: 'start' };
@@ -121,7 +127,7 @@ export const buildHubModel = (
 		total,
 		groups: GROUP_ORDER.filter((group) => groups.has(group)).map((group) => ({
 			group,
-			title: GROUP_TITLES[group],
+			title: groupTitle(group),
 			rows: groups.get(group)!,
 		})),
 	};

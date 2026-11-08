@@ -11,6 +11,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import type { PropType } from 'vue';
 	import { computed, defineComponent } from 'vue';
 
@@ -24,10 +25,10 @@
 		setup(props) {
 			const text = computed(() =>
 				props.state === 'connected'
-					? 'Connected'
+					? t('onboarding.connectStatus.connected')
 					: props.state === 'stalled'
-						? 'Not connected yet'
-						: 'Waiting for your agent…',
+						? t('onboarding.connectStatus.stalled')
+						: t('onboarding.connectStatus.waiting'),
 			);
 			const dot = computed(() =>
 				props.state === 'connected'

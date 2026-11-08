@@ -25,7 +25,7 @@
 		<DropdownMenuSub v-if="useSubmenu">
 			<DropdownMenuSubTrigger data-testid="plugin-task-menu-submenu">
 				<Puzzle class="mr-2 h-4 w-4" />
-				<span>Plugins</span>
+				<span>{{ $t('plugins.taskMenu.submenu') }}</span>
 			</DropdownMenuSubTrigger>
 			<DropdownMenuSubContent class="w-56">
 				<DropdownMenuItem

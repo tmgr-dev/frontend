@@ -423,7 +423,7 @@
 	import Profile from '@/pages/Profile.vue';
 	import { isRunnerSupported } from '@/runner/api';
 	import TipsSettings from '@/tours/ui/TipsSettings.vue';
-	import { t } from '@/i18n';
+	import { currentLocale, t } from '@/i18n';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 	import { writeNtfySubscribed } from '@/utils/ntfySubscription';
@@ -637,7 +637,7 @@
 			},
 			formatDate(date) {
 				if (!date) return '';
-				return new Date(date).toLocaleString();
+				return new Date(date).toLocaleString(currentLocale());
 			},
 
 			handleTabFromQuery() {

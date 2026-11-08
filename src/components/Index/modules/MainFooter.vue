@@ -27,103 +27,111 @@
 								d=" M 510.7 189.151 C 505.271 168.95 484.565 156.956 464.365 162.385 L 330.156 198.367 L 155.924 35.878 L 107.19 49.008 L 211.729 230.183 L 86.232 263.767 L 36.614 224.754 L 0 234.603 L 45.957 314.27 L 65.274 347.727 L 105.802 336.869 L 240.011 300.886 L 349.726 271.469 L 483.935 235.486 C 504.134 230.057 516.129 209.352 510.7 189.151 Z "
 							/>
 						</svg>
-						TASK MANAGER
+						{{ $t('public.index.footer.brand') }}
 					</a>
 				</div>
 
 				<div class="flex-1">
-					<p class="text-gray-500 uppercase md:mb-6">Links</p>
+					<p class="text-gray-500 uppercase md:mb-6">
+						{{ $t('public.index.footer.links') }}
+					</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>FAQ</a
+								>{{ $t('public.index.footer.faq') }}</a
 							>
 						</li>
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Help</a
+								>{{ $t('public.index.footer.help') }}</a
 							>
 						</li>
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Support</a
+								>{{ $t('public.index.footer.support') }}</a
 							>
 						</li>
 					</ul>
 				</div>
 				<div class="flex-1">
-					<p class="text-gray-500 uppercase md:mb-6">Legal</p>
+					<p class="text-gray-500 uppercase md:mb-6">
+						{{ $t('public.index.footer.legal') }}
+					</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Terms</a
+								>{{ $t('public.index.footer.terms') }}</a
 							>
 						</li>
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Privacy</a
+								>{{ $t('public.index.footer.privacy') }}</a
 							>
 						</li>
 					</ul>
 				</div>
 				<div class="flex-1">
-					<p class="text-gray-500 uppercase md:mb-6">Social</p>
+					<p class="text-gray-500 uppercase md:mb-6">
+						{{ $t('public.index.footer.social') }}
+					</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Facebook</a
+								>{{ $t('public.index.footer.facebook') }}</a
 							>
 						</li>
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Linkedin</a
+								>{{ $t('public.index.footer.linkedin') }}</a
 							>
 						</li>
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Twitter</a
+								>{{ $t('public.index.footer.twitter') }}</a
 							>
 						</li>
 					</ul>
 				</div>
 				<div class="flex-1">
-					<p class="text-gray-500 uppercase md:mb-6">Company</p>
+					<p class="text-gray-500 uppercase md:mb-6">
+						{{ $t('public.index.footer.company') }}
+					</p>
 					<ul class="list-reset mb-6">
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Official Blog</a
+								>{{ $t('public.index.footer.blog') }}</a
 							>
 						</li>
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>About Us</a
+								>{{ $t('public.index.footer.about') }}</a
 							>
 						</li>
 						<li class="mt-2 mr-2 inline-block md:mr-0 md:block">
 							<a
 								class="text-gray-800 no-underline hover:text-orange-500 hover:underline"
 								href="#"
-								>Contact</a
+								>{{ $t('public.index.footer.contact') }}</a
 							>
 						</li>
 					</ul>
@@ -131,12 +139,12 @@
 			</div>
 		</div>
 
-		<a href="https://www.freepik.com/free-photos-vectors/background"
-			>Background vector created by freepik - www.freepik.com</a
-		>
-		<a href="https://github.com/tailwindtoolbox/Landing-Page"
-			>Based on Tailwind Toolbox - Landing Page Template</a
-		>
+		<a href="https://www.freepik.com/free-photos-vectors/background">{{
+			$t('public.index.footer.freepik')
+		}}</a>
+		<a href="https://github.com/tailwindtoolbox/Landing-Page">{{
+			$t('public.index.footer.template')
+		}}</a>
 	</footer>
 </template>
 

@@ -1,0 +1,1069 @@
+{
+	"tours": {
+		"ui": {
+			"stepOf": "Step {position} of {total}",
+			"positionOf": "{position} of {total}",
+			"waiting": "Waiting for you…",
+			"skipThisStep": "Skip this step",
+			"skipStep": "Skip step",
+			"skipTour": "Skip tour",
+			"skip": "Skip",
+			"more": "More",
+			"takeMeThere": "Take me there",
+			"done": "Done",
+			"next": "Next"
+		},
+		"skipMenu": {
+			"skipStep": {
+				"label": "Skip this step",
+				"hint": "Go to the next one"
+			},
+			"pause": {
+				"label": "Pause tour",
+				"hint": "Resume it from Getting started"
+			},
+			"explore": {
+				"label": "I'll explore myself",
+				"hint": "Stop automatic tours. Getting started stays in the menu."
+			},
+			"never": {
+				"label": "Never show tips",
+				"hint": "Turn them back on in Settings"
+			},
+			"skipTour": {
+				"label": "Skip tour",
+				"hint": "End this tour"
+			}
+		},
+		"tips": {
+			"title": "Tips and tours",
+			"description": "Short guided tours that show up as you use TMGR.",
+			"legend": "When to show tips",
+			"saveFailed": "Could not save your choice. Please try again.",
+			"resetAll": "Reset all tours",
+			"resetPrompt": "Start every tour over?",
+			"options": {
+				"auto": {
+					"label": "Show tips automatically",
+					"description": "A short tour is offered the first time you open a feature."
+				},
+				"hubOnly": {
+					"label": "Only from Getting started",
+					"description": "No automatic tours. Start any tour yourself from the Getting started page."
+				},
+				"off": {
+					"label": "Never show tips",
+					"description": "Tours stay on the Getting started page if you want them."
+				}
+			}
+		},
+		"help": {
+			"label": "Help and tours",
+			"gettingStarted": "Getting started",
+			"watchDemo": "Watch the demo",
+			"restartPageTour": "Restart this page's tour",
+			"tipsSettings": "Tips settings"
+		},
+		"host": {
+			"resume": "Resume tour",
+			"dismiss": "Dismiss",
+			"hints": {
+				"notOpen": "You are on the right page, but this part is not open yet. Open it, or skip this step.",
+				"notFound": "We could not find this on the screen right now.",
+				"timerTooShort": "Let the timer run for at least a minute."
+			}
+		},
+		"keycaps": {
+			"systemTray": "system tray",
+			"fallback": "your {name} shortcut (Settings → Desktop)",
+			"shortcuts": {
+				"quickAdd": "quick-add",
+				"timer": "timer",
+				"screenshot": "screenshot",
+				"selection": "text capture"
+			}
+		},
+		"a11y": {
+			"stepAnnouncement": "Step {position} of {total}: {title}.",
+			"waitingForYou": "Waiting for you."
+		},
+		"groups": {
+			"start": "Getting started",
+			"tasks": "Tasks & board",
+			"time": "Time",
+			"agents": "Agents & MCP",
+			"personas": "Personas",
+			"pages": "Pages & context",
+			"graph": "Graph & map",
+			"routines": "Routines",
+			"workspace": "Workspaces & settings",
+			"desktop": "Desktop"
+		},
+		"hub": {
+			"turnOnModule": "Turn on {label} in Settings -> Modules",
+			"askOwnerModule": "Ask the workspace owner to turn on {label}",
+			"progress": "step {position} of {total}"
+		},
+		"catalog": {
+			"agents": {
+				"workLog": {
+					"title": "Watch an agent log its work",
+					"steps": {
+						"s1": {
+							"title": "Agent runs",
+							"body": "Your agent's runs appear here: branch, commits, tests and time."
+						},
+						"s2": {
+							"title": "Run in progress",
+							"body": "Waiting for the agent to finish its run…"
+						},
+						"s3": {
+							"title": "Agent time",
+							"body": "Agent time never adds to your tracked time. You see both."
+						}
+					}
+				},
+				"phoneAlerts": {
+					"title": "Phone alerts for agents",
+					"steps": {
+						"s1": {
+							"title": "Create a notify token",
+							"body": "Create a notify token so your agent can ping your phone."
+						},
+						"s2": {
+							"title": "Add it to your agent",
+							"body": "Add npx -y {'@'}tmgr/notify mcp to your agent, then send a test."
+						},
+						"s3": {
+							"title": "Send a test",
+							"body": "iPhone (TestFlight beta) rings through Silent mode on iOS 26 or later."
+						}
+					}
+				},
+				"mcpToken": {
+					"title": "Personal MCP token",
+					"steps": {
+						"s1": {
+							"title": "Create a token",
+							"body": "This token lets any MCP client act as you. Shown once, stored hashed."
+						}
+					}
+				},
+				"askAi": {
+					"title": "Ask AI about your workspace",
+					"steps": {
+						"s1": {
+							"title": "Open Ask AI",
+							"body": "Ask questions about tasks, time and deadlines.",
+							"mobileBody": "Tap Ask AI in the top bar."
+						},
+						"s2": {
+							"title": "Ask a question",
+							"body": "Try: what did I work on this week?"
+						}
+					}
+				},
+				"connectLater": {
+					"title": "Connect an agent",
+					"steps": {
+						"s1": {
+							"title": "Pick your client",
+							"body": "Pick the client you use. Each tab shows its own command."
+						},
+						"s2": {
+							"title": "Copy the command",
+							"body": "Copy this command and run it in your terminal. The token is shown once.",
+							"mobileBody": "Open this page on your computer, or copy the command to send it there."
+						},
+						"s3": {
+							"title": "Waiting for your agent",
+							"body": "Waiting for your agent to connect. This updates by itself."
+						},
+						"s4": {
+							"title": "Try a prompt",
+							"body": "Paste this prompt into your agent. It will pick up the starter task."
+						}
+					}
+				}
+			},
+			"desktop": {
+				"quickAdd": {
+					"title": "Add a task from anywhere",
+					"steps": {
+						"s1": {
+							"title": "Quick add",
+							"body": "Press {'{'}key:quickAdd{'}'} in any app. A small capture window opens."
+						},
+						"s2": {
+							"title": "Capture something",
+							"body": "Type a title and press Enter. It joins your daily routine, or becomes a board task if it has a screenshot."
+						}
+					}
+				},
+				"capture": {
+					"title": "Screenshot and selection to task",
+					"steps": {
+						"s1": {
+							"title": "Capture shortcuts",
+							"body": "{'{'}key:screenshot{'}'} turns a screenshot into a task. {'{'}key:selection{'}'} turns selected text into one.",
+							"bodyMacos": "{'{'}key:screenshot{'}'} turns a screenshot into a task. {'{'}key:selection{'}'} turns selected text into one.",
+							"bodyOther": "{'{'}key:screenshot{'}'} turns a screenshot into a task."
+						},
+						"s2": {
+							"title": "Change a shortcut",
+							"body": "Change any shortcut here."
+						}
+					}
+				},
+				"menuBarTimer": {
+					"title": "Timer in the menu bar or tray",
+					"steps": {
+						"s1": {
+							"title": "Your running timer",
+							"body": "Your running timer lives in the menu bar. Stop or switch it without opening TMGR.",
+							"bodyMacos": "Your running timer lives in the menu bar. Stop or switch it without opening TMGR.",
+							"bodyOther": "Your running timer is in the TMGR menu in the system tray. Stop or switch it there."
+						},
+						"s2": {
+							"title": "Closing the window",
+							"body": "Closing the window keeps TMGR running in the {'{'}tray{'}'}."
+						}
+					}
+				},
+				"windows": {
+					"title": "Tasks in their own window",
+					"steps": {
+						"s1": {
+							"title": "Own window",
+							"body": "Open a task or page in its own window. It stays in sync."
+						}
+					}
+				},
+				"localWorkspace": {
+					"title": "Your local workspace",
+					"steps": {
+						"s1": {
+							"title": "Stored on this computer",
+							"body": "This workspace is stored on this computer. Its tasks and pages stay here unless you move them to the cloud."
+						},
+						"s2": {
+							"title": "Local badge",
+							"body": "Local workspaces show this badge. Cloud ones do not."
+						},
+						"s3": {
+							"title": "Create an account",
+							"body": "Create an account later to use TMGR on other devices.",
+							"mobileBody": "Open the menu to create an account later and use TMGR on other devices."
+						}
+					}
+				},
+				"backups": {
+					"title": "Backups",
+					"steps": {
+						"s1": {
+							"title": "Automatic backups",
+							"body": "TMGR backs up local workspaces daily. It keeps 7 daily, 4 weekly and 3 monthly copies."
+						},
+						"s2": {
+							"title": "Back up now",
+							"body": "Back up now before big changes."
+						}
+					}
+				},
+				"localAgent": {
+					"title": "Connect a local agent",
+					"steps": {
+						"s1": {
+							"title": "Connect your agent",
+							"body": "Agents on this computer can work in local workspaces. Tick yours and press Install. TMGR sets up the connection and turns on what it needs."
+						},
+						"s2": {
+							"title": "Connect your agent",
+							"body": "Pick your agent and press Install. We continue on its first call."
+						}
+					}
+				},
+				"plugins": {
+					"title": "Plugins",
+					"steps": {
+						"s1": {
+							"title": "Install a plugin",
+							"body": "Install a plugin from a GitHub URL. Plugins run in a sandbox with declared permissions."
+						},
+						"s2": {
+							"title": "Permissions",
+							"body": "Help explains each permission before you grant it."
+						}
+					}
+				},
+				"whatsNew": {
+					"title": "What is new",
+					"steps": {
+						"s1": {
+							"title": "New in this version",
+							"body": "New in this version. Take a one-minute tour."
+						}
+					}
+				},
+				"moveToCloud": {
+					"title": "Move a local workspace to your account",
+					"steps": {
+						"s1": {
+							"title": "Move to cloud",
+							"body": "Copy this local workspace into your cloud account. Your local copy stays."
+						},
+						"s2": {
+							"title": "Copying",
+							"body": "Copying your workspace. This can take a minute."
+						},
+						"s3": {
+							"title": "Moved",
+							"body": "Done. Open the cloud workspace."
+						}
+					}
+				},
+				"ghostWatch": {
+					"title": "Watch an agent work",
+					"steps": {
+						"s1": {
+							"title": "A demo agent at work",
+							"body": "We open a demo workspace where a simulated agent fixes a bug. Nothing runs on your Mac."
+						},
+						"s2": {
+							"title": "Watch the board",
+							"body": "The card moves, the timer ticks and the run fills in. Press Esc to skip ahead."
+						}
+					}
+				}
+			},
+			"graph": {
+				"map": {
+					"title": "Your workspace map",
+					"steps": {
+						"s1": {
+							"title": "The map",
+							"body": "Tasks, pages and people as a map. Lines are links, relations and mentions."
+						},
+						"s2": {
+							"title": "Filters",
+							"body": "Filter by type or category to see one corner of the workspace."
+						},
+						"s3": {
+							"title": "Search",
+							"body": "Search, or click any node to open it."
+						}
+					}
+				},
+				"enable": {
+					"title": "Turn on Graph",
+					"steps": {
+						"s1": {
+							"title": "Switch Graph on",
+							"body": "Graph is off in this workspace. Switch it on to see the map."
+						}
+					}
+				}
+			},
+			"pages": {
+				"first": {
+					"title": "Write your first page",
+					"steps": {
+						"s1": {
+							"title": "Create a page",
+							"body": "Create a page. Markdown, images and files are welcome."
+						},
+						"s2": {
+							"title": "Page tree",
+							"body": "Pinned and recent pages are in your sidebar. All pages shows the whole tree: drag pages to nest them."
+						}
+					}
+				},
+				"context": {
+					"title": "A context page agents read",
+					"steps": {
+						"s1": {
+							"title": "Create a context page",
+							"body": "Choose the context page type. Agents read it before they work."
+						},
+						"s2": {
+							"title": "Write the context",
+							"body": "Write what every agent should know: stack, conventions, where things live."
+						}
+					}
+				},
+				"links": {
+					"title": "Link pages and tasks",
+					"steps": {
+						"s1": {
+							"title": "Add a link",
+							"body": "Type {'@'} or [[ to link a task, page, category or person."
+						},
+						"s2": {
+							"title": "Backlinks",
+							"body": "Backlinks show every page that mentions this one."
+						}
+					}
+				},
+				"versions": {
+					"title": "Versions and restore",
+					"steps": {
+						"s1": {
+							"title": "Versions",
+							"body": "Open a page, then History. Every save is a version you can compare and restore."
+						}
+					}
+				},
+				"peopleMeetings": {
+					"title": "Person and meeting pages",
+					"steps": {
+						"s1": {
+							"title": "Page types",
+							"body": "Make a person page (role, company, open tasks) or a meeting page (date, participants)."
+						}
+					}
+				},
+				"import": {
+					"title": "Bring your notes",
+					"steps": {
+						"s1": {
+							"title": "Import",
+							"body": "Import .md files or a .zip: an Obsidian vault or a Notion export."
+						},
+						"s2": {
+							"title": "Export",
+							"body": "Export a page as .md, or the whole tree as .zip."
+						}
+					}
+				},
+				"taskFromSelection": {
+					"title": "Turn text into a task",
+					"steps": {
+						"s1": {
+							"title": "Make a task",
+							"body": "Select text, then Make a task. The task links back to this page."
+						}
+					}
+				}
+			},
+			"personas": {
+				"create": {
+					"title": "Give your agent an identity",
+					"steps": {
+						"s1": {
+							"title": "Create a persona",
+							"body": "Create a persona: a name, a system prompt and skills for one agent."
+						},
+						"s2": {
+							"title": "Workspace access",
+							"body": "Grant it workspaces and permissions: allowed, read only or forbidden."
+						}
+					}
+				},
+				"token": {
+					"title": "Persona token",
+					"steps": {
+						"s1": {
+							"title": "Create a token",
+							"body": "Create a token for this persona. Valid 1 to 365 days, shown once."
+						}
+					}
+				},
+				"assign": {
+					"title": "Assign a task to a persona",
+					"steps": {
+						"s1": {
+							"title": "Assign the task",
+							"body": "Assign this task to your persona. It shows up in the agent's queue."
+						},
+						"s2": {
+							"title": "The agent picks it up",
+							"body": "The agent reads its queue with list_my_queue and picks the task up."
+						}
+					}
+				},
+				"skills": {
+					"title": "Persona skills",
+					"steps": {
+						"s1": {
+							"title": "Skills",
+							"body": "Skills are reusable instructions the agent loads when it needs them."
+						}
+					}
+				}
+			},
+			"routines": {
+				"first": {
+					"title": "Add a daily routine",
+					"steps": {
+						"s1": {
+							"title": "Add a routine",
+							"body": "Add something you repeat: daily, weekly, monthly or yearly."
+						},
+						"s2": {
+							"title": "Tick it off",
+							"body": "Tick it off for today."
+						}
+					}
+				},
+				"views": {
+					"title": "Day, week, month, year",
+					"steps": {
+						"s1": {
+							"title": "Views",
+							"body": "Switch views. The year view is a heatmap of what you kept up."
+						}
+					}
+				},
+				"reminders": {
+					"title": "Reminders and conversion",
+					"steps": {
+						"s1": {
+							"title": "Open a routine",
+							"body": "Open a routine to edit it. Add one first if the list is empty."
+						},
+						"s2": {
+							"title": "Reminder",
+							"body": "Set a reminder before a routine is due."
+						},
+						"s3": {
+							"title": "Convert to a task",
+							"body": "Turn a routine into a task when it grows."
+						}
+					}
+				}
+			},
+			"start": {
+				"nav": {
+					"title": "Find your way around",
+					"steps": {
+						"s1": {
+							"title": "Your workspace",
+							"body": "This is your workspace. List, Board, Routines and Pages live here.",
+							"mobileBody": "Tap the menu to switch between List, Board, Routines and Pages."
+						},
+						"s2": {
+							"title": "Workspaces",
+							"body": "Switch workspaces or create a new one here.",
+							"mobileBody": "Open the menu to switch workspaces or create a new one."
+						},
+						"s3": {
+							"title": "New task",
+							"body": "Create a task from anywhere with this button."
+						},
+						"s4": {
+							"title": "Your menu",
+							"body": "Your profile, Settings and light or dark mode are in your menu.",
+							"mobileBody": "Open the menu for your profile, Settings and light or dark mode."
+						},
+						"s5": {
+							"title": "Getting started",
+							"body": "Tours and your checklist wait here. Come back any time.",
+							"mobileBody": "Tours and your checklist are in the menu. Come back any time."
+						}
+					}
+				},
+				"firstTask": {
+					"title": "Create your first task",
+					"steps": {
+						"s1": {
+							"title": "Create a task",
+							"body": "Click here to create a task.",
+							"mobileBody": "Tap here to create a task."
+						},
+						"s2": {
+							"title": "Give it a title",
+							"body": "Type a title, then press Create or Ctrl+S. Everything else is optional.",
+							"mobileBody": "Type a title, then tap Create. Everything else is optional."
+						},
+						"s3": {
+							"title": "Your first task",
+							"body": "Done. Click a task to open details, a timer and comments.",
+							"mobileBody": "Done. Tap a task to open details, a timer and comments."
+						}
+					}
+				},
+				"hub": {
+					"title": "Your Getting started page",
+					"steps": {
+						"s1": {
+							"title": "Checklist",
+							"body": "Your checklist ticks itself as you go."
+						},
+						"s2": {
+							"title": "Tours",
+							"body": "Short tours for every feature. Do them in any order."
+						},
+						"s3": {
+							"title": "Automatic tips",
+							"body": "Turn automatic tips off here. Tours stay available on this page."
+						}
+					}
+				},
+				"connectAgent": {
+					"title": "Connect your AI agent",
+					"steps": {
+						"s1": {
+							"title": "Pick your client",
+							"body": "Pick the client you use. Each tab shows its own command."
+						},
+						"s2": {
+							"title": "Copy the command",
+							"body": "Copy this command and run it in your terminal. The token is shown once.",
+							"mobileBody": "Open this page on your computer, or copy the command to send it there."
+						},
+						"s3": {
+							"title": "Waiting for your agent",
+							"body": "Waiting for your agent to connect. This updates by itself."
+						},
+						"s4": {
+							"title": "Try a prompt",
+							"body": "Paste this prompt into your agent. It will pick up the starter task."
+						}
+					}
+				}
+			},
+			"tasks": {
+				"anatomy": {
+					"title": "Inside a task",
+					"steps": {
+						"s1": {
+							"title": "Status",
+							"body": "Status moves the task across your board."
+						},
+						"s2": {
+							"title": "Category",
+							"body": "Categories give tasks ticket codes: a short prefix plus a number."
+						},
+						"s3": {
+							"title": "Assignees",
+							"body": "Assign people or personas. Personas are your AI agents."
+						},
+						"s4": {
+							"title": "Description",
+							"body": "Write details here. Agents read this too."
+						},
+						"s5": {
+							"title": "Done",
+							"body": "Tick to complete. Completed tasks move to the archive."
+						}
+					}
+				},
+				"boardMove": {
+					"title": "Move a card on the board",
+					"steps": {
+						"s1": {
+							"title": "Columns",
+							"body": "Each column is a status."
+						},
+						"s2": {
+							"title": "Move a card",
+							"body": "Drag this card by its handle to In progress. Or open it and change Status.",
+							"mobileBody": "Open a card and change its Status. No dragging needed."
+						},
+						"s3": {
+							"title": "Add to a column",
+							"body": "Add a task straight into a column here."
+						}
+					}
+				},
+				"commentsFiles": {
+					"title": "Comments and files",
+					"steps": {
+						"s1": {
+							"title": "Comments",
+							"body": "Leave a comment. Agents post their notes here too."
+						},
+						"s2": {
+							"title": "Files",
+							"body": "Attach files up to 25 MB, or paste an image."
+						}
+					}
+				},
+				"archive": {
+					"title": "Finish and archive",
+					"steps": {
+						"s1": {
+							"title": "Archive",
+							"body": "Completed tasks are kept here. Open the archive to find them again.",
+							"mobileBody": "Open the menu to find the archive, where completed tasks are kept."
+						}
+					}
+				},
+				"statuses": {
+					"title": "Shape your workflow",
+					"steps": {
+						"s1": {
+							"title": "Statuses",
+							"body": "Rename, colour and reorder statuses. The type decides what counts as active or done."
+						},
+						"s2": {
+							"title": "Add a status",
+							"body": "Add a status for your own stage, for example Review."
+						}
+					}
+				},
+				"categories": {
+					"title": "Categories and ticket codes",
+					"steps": {
+						"s1": {
+							"title": "Create a category",
+							"body": "Create a category. Its short code becomes the prefix of every task number in it.",
+							"mobileBody": "Open the menu and tap + next to Categories. The short code becomes the prefix of every task number in it."
+						},
+						"s2": {
+							"title": "Open a category",
+							"body": "Open a category to see only its tasks. Categories can nest.",
+							"mobileBody": "Your categories live in the menu. Open one to see only its tasks."
+						}
+					}
+				},
+				"relations": {
+					"title": "Link related tasks",
+					"steps": {
+						"s1": {
+							"title": "Relations",
+							"body": "Mark that this task blocks, duplicates or relates to another one."
+						}
+					}
+				},
+				"filesPage": {
+					"title": "All files in one place",
+					"steps": {
+						"s1": {
+							"title": "Files",
+							"body": "Every file attached to a task or page in this workspace."
+						}
+					}
+				},
+				"multiSelect": {
+					"title": "Act on many tasks",
+					"steps": {
+						"s1": {
+							"title": "Selection mode",
+							"body": "Select several tasks to move, complete or export them together."
+						}
+					}
+				}
+			},
+			"time": {
+				"timer": {
+					"title": "Run a timer",
+					"steps": {
+						"s1": {
+							"title": "Start the timer",
+							"body": "Press play. We'll move on as soon as it is running."
+						},
+						"s2": {
+							"title": "Running timers",
+							"body": "Running timers stay visible here, even when the task is closed."
+						},
+						"s3": {
+							"title": "Stop the timer",
+							"body": "Stop it when you're done. Time adds to the task."
+						},
+						"s4": {
+							"title": "Estimates",
+							"body": "Set an estimate in task settings to see when you run over."
+						}
+					}
+				},
+				"parallel": {
+					"title": "Several timers at once",
+					"steps": {
+						"s1": {
+							"title": "Several timers at once",
+							"body": "Start a timer on each task you work on. Every running timer is collected in one badge."
+						},
+						"s2": {
+							"title": "Running timers",
+							"body": "Stop or switch your running timers here."
+						}
+					}
+				},
+				"checkpoints": {
+					"title": "Checkpoints",
+					"steps": {
+						"s1": {
+							"title": "Log a checkpoint",
+							"body": "Log a checkpoint: a titled slice of time inside this task."
+						}
+					}
+				},
+				"pomodoro": {
+					"title": "Pomodoro",
+					"steps": {
+						"s1": {
+							"title": "Turn on Pomodoro",
+							"body": "Turn on Pomodoro for this task. Focus and breaks sync to iPhone and Watch."
+						},
+						"s2": {
+							"title": "Pomodoro settings",
+							"body": "Change lengths, auto-start and whether breaks pause tracked time."
+						}
+					}
+				},
+				"export": {
+					"title": "Export your hours",
+					"steps": {
+						"s1": {
+							"title": "Select tasks",
+							"body": "Select the tasks to export."
+						},
+						"s2": {
+							"title": "Open actions",
+							"body": "Open the actions for the selected tasks."
+						},
+						"s3": {
+							"title": "Export settings",
+							"body": "Choose rounding, weekend days and holidays for the report."
+						},
+						"s4": {
+							"title": "Download",
+							"body": "Download XLSX, CSV or an image (JPEG)."
+						}
+					}
+				}
+			},
+			"ws": {
+				"modules": {
+					"title": "Turn features on and off",
+					"steps": {
+						"s1": {
+							"title": "Presets",
+							"body": "Start from a preset: personal, developer, team or everything."
+						},
+						"s2": {
+							"title": "Modules",
+							"body": "Each module can be switched on or off. Tours for new modules appear in Getting started."
+						},
+						"s3": {
+							"title": "Hide for yourself",
+							"body": "Members can hide a module just for themselves."
+						}
+					}
+				},
+				"invite": {
+					"title": "Invite a teammate",
+					"steps": {
+						"s1": {
+							"title": "Invite someone",
+							"body": "Invite by email or share a link. Verify your email first."
+						}
+					}
+				},
+				"dashboard": {
+					"title": "Team dashboard",
+					"steps": {
+						"s1": {
+							"title": "Team activity",
+							"body": "See what the team worked on and who is online."
+						},
+						"s2": {
+							"title": "Team members",
+							"body": "Open a member to see their tasks and time."
+						}
+					}
+				},
+				"workspaces": {
+					"title": "Several workspaces",
+					"steps": {
+						"s1": {
+							"title": "Workspaces",
+							"body": "Keep work and personal tasks apart. Each workspace has its own board and modules.",
+							"mobileBody": "Open the menu to keep work and personal tasks in separate workspaces."
+						}
+					}
+				},
+				"appearance": {
+					"title": "Theme and colours",
+					"steps": {
+						"s1": {
+							"title": "Theme",
+							"body": "Light, dark or system, and an accent colour."
+						}
+					}
+				},
+				"notifications": {
+					"title": "Notifications",
+					"steps": {
+						"s1": {
+							"title": "Notifications",
+							"body": "Mentions, assignments and agent updates land here.",
+							"mobileBody": "Tap the bell in the top bar."
+						}
+					}
+				},
+				"privacy": {
+					"title": "Privacy and tips",
+					"steps": {
+						"s1": {
+							"title": "Usage data",
+							"body": "Share usage data that is not linked to your account, or not. Switch it off any time."
+						},
+						"s2": {
+							"title": "Tips",
+							"body": "Turn automatic tips off, or reset all tours."
+						}
+					}
+				},
+				"telegram": {
+					"title": "Telegram bot",
+					"steps": {
+						"s1": {
+							"title": "Link Telegram",
+							"body": "Link Telegram. Send text or voice to create a routine draft, and get notifications."
+						}
+					}
+				},
+				"defaultLanding": {
+					"title": "Choose your start page",
+					"steps": {
+						"s1": {
+							"title": "Start page",
+							"body": "Open TMGR on List, Board, Dashboard or Routines."
+						}
+					}
+				}
+			}
+		}
+	},
+	"removeSampleTasks": {
+		"button": "Remove sample tasks",
+		"none": "No sample tasks to remove",
+		"removed": "Removed {n} sample task | Removed {n} sample tasks",
+		"failed": "Could not remove sample tasks"
+	},
+	"starterPrompt": {
+		"ready": "Your first task is ready: {task}",
+		"paste": "Paste this into your agent:",
+		"label": "Starter prompt",
+		"runLogged": "Run logged. TMGR recorded what your agent did."
+	},
+	"tryIt": {
+		"region": "Try it yourself",
+		"title": "Now it is your turn",
+		"items": {
+			"move": "Move a card to another column",
+			"timer": "Start a timer on a card",
+			"add": "Add a task of your own"
+		},
+		"createWorkspace": "Create my workspace",
+		"createAndDelete": "Create and delete the demo",
+		"createFailed": "Could not create the workspace."
+	},
+	"copyCommand": {
+		"copyLabel": "Copy {label}",
+		"failed": "Could not copy. Select the text and copy it by hand.",
+		"defaultLabel": "Command"
+	},
+	"stillWaiting": {
+		"title": "Still waiting for your agent",
+		"intro": "No call has reached TMGR yet. Check these:",
+		"runCommand": "Run the command in the terminal where you start {client}, not inside a session.",
+		"restart": "Restart the agent so it reloads its MCP config.",
+		"verify": "Run {command} and look for tmgr.",
+		"checkAgain": "Check again",
+		"differentClient": "Use a different client",
+		"guide": "Open troubleshooting guide",
+		"later": "Do this later",
+		"defaultClient": "your agent"
+	},
+	"connectStatus": {
+		"connected": "Connected",
+		"stalled": "Not connected yet",
+		"waiting": "Waiting for your agent…"
+	},
+	"ahaWatcher": {
+		"fallbackTitle": "your task"
+	},
+	"checklist": {
+		"show": "Show checklist",
+		"title": "Getting started",
+		"count": "{done} of {total}",
+		"options": "Checklist options",
+		"hide": "Hide checklist",
+		"optional": "(optional)"
+	},
+	"ghost": {
+		"simulated": "Simulated locally. No real agent is running. Press Esc to stop.",
+		"demoAgent": "Demo agent",
+		"replay": "Replay"
+	},
+	"gettingStarted": {
+		"title": "Getting started",
+		"subtitle": "Short guided tours. Do them in any order, skip any of them.",
+		"showTips": "Show tips automatically",
+		"showInSidebar": "Show in sidebar",
+		"hidePage": "Hide this page",
+		"progress": "{done} of {total} tours done",
+		"minutes": "{n} min",
+		"updated": "Updated",
+		"resumeTour": "Resume {title}",
+		"startTour": "Start {title}",
+		"resume": "Resume",
+		"start": "Start"
+	},
+	"welcomeSetup": {
+		"title": "How do you want to start?",
+		"subtitle": "You can do both later. Nothing here is permanent.",
+		"group": "Start with",
+		"human": {
+			"title": "Just track my tasks",
+			"description": "Tasks, a board and a timer. Ready in a minute."
+		},
+		"agent": {
+			"title": "Connect my AI agent",
+			"description": "For Claude Code, Codex, Cursor or any MCP client."
+		},
+		"empty": "Start with an empty workspace",
+		"skip": "Skip, I'll look around",
+		"saveFailed": "Could not save your choice. Try again."
+	},
+	"connectAgent": {
+		"title": "Connect your AI agent",
+		"turnOnMcp": "Turn on MCP",
+		"continueToWorkspace": "Continue to my workspace",
+		"connected": "{client} is connected",
+		"openWorkspace": "Open my workspace",
+		"pick": "Pick the tool you use. TMGR gives it a token and your agent starts picking up tasks.",
+		"mobileHint": "Open this page on your computer, or copy the command to send it there.",
+		"clientTabs": "Client",
+		"otherTab": "Other (JSON)",
+		"yourAgent": "Your agent",
+		"checking": "Checking your account…",
+		"creating": "Creating your token…",
+		"checkFailed": "Could not check your account.",
+		"reconnect": "An agent has connected to this account before, and you have no active token.",
+		"generate": "Generate a token",
+		"mintFailed": "Could not create a token.",
+		"haveToken": "You already have a token, and TMGR can't show it again. Paste it to build the command, or generate a new one.",
+		"existingToken": "Existing token",
+		"pasteToken": "Paste your existing token",
+		"useToken": "Use this token",
+		"generateNew": "Generate a new token",
+		"replaceWarning": "A new token replaces the old one. Agents already using the old token will disconnect.",
+		"generateNewShort": "Generate new token",
+		"labels": {
+			"claude": "Claude Code command",
+			"codex": "Codex config",
+			"cursor": "Cursor install link",
+			"other": "MCP client config"
+		},
+		"addToFile": "Add to {path}:",
+		"addToCursor": "Add to Cursor",
+		"cursorHint": "Or copy the install link and open it on your computer.",
+		"addToClient": "Add to your client's MCP config:",
+		"shownOnce": "Token shown once. TMGR stores only a hash, so copy the command now.",
+		"ranIt": "I ran it",
+		"later": "Do this later",
+		"needsCloud": "Connecting an AI agent needs a TMGR cloud account.",
+		"mcpOff": "The MCP module is off for this workspace, so agents cannot connect yet.",
+		"step": "Step {n} of {total}",
+		"liveConnected": "Agent connected",
+		"done": {
+			"token": "Token created",
+			"command": "Command ran",
+			"agent": "Agent connected"
+		}
+	}
+}

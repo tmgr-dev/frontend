@@ -2,7 +2,7 @@
 	<Teleport v-if="hostEl && active" :to="hostEl">
 		<component
 			:is="sheet ? 'BottomSheetStep' : 'TourPopover'"
-			:tour-title="active.tour.title"
+			:tour-title="tourTitleText"
 			:title="titleText"
 			:body="bodyText"
 			:body-parts="bodyPartsView"
@@ -24,12 +24,12 @@
 	<Teleport to="body">
 		<div v-if="pill" class="tour-pill-wrap" data-tour-resume>
 			<button type="button" class="tour-pill" @click="resumePaused">
-				Resume tour
+				{{ $t('onboarding.tours.host.resume') }}
 			</button>
 			<button
 				type="button"
 				class="tour-pill tour-pill--icon"
-				aria-label="Dismiss"
+				:aria-label="$t('onboarding.tours.host.dismiss')"
 				@click="api.dismissPill()"
 			>
 				&times;
@@ -61,6 +61,8 @@
 		stepAnnouncement,
 		trapFocus,
 	} from '../a11y';
+	import { t } from '@/i18n';
+	import { tourTitle } from '../i18n';
 	import { partsToText } from '../keycaps';
 	import { createOverlayAdapter } from '../overlay';
 	import type {
@@ -129,12 +131,15 @@
 
 			const bodySuffix = (a: ActiveTour) =>
 				a.unavailable && a.onTargetPage
-					? ' You are on the right page, but this part is not open yet. Open it, or skip this step.'
+					? ` ${t('onboarding.tours.host.hints.notOpen')}`
 					: a.unavailable
-						? ' We could not find this on the screen right now.'
+						? ` ${t('onboarding.tours.host.hints.notFound')}`
 						: a.hint === 'timer_too_short'
-							? ' Let the timer run for at least a minute.'
+							? ` ${t('onboarding.tours.host.hints.timerTooShort')}`
 							: '';
+			const tourTitleText = computed(() =>
+				active.value ? tourTitle(active.value.tour) : '',
+			);
 			const titleText = computed(() => active.value?.step.title ?? '');
 			const bodyText = computed(() => {
 				const a = active.value;
@@ -261,6 +266,7 @@
 				presentation,
 				sheet,
 				titleText,
+				tourTitleText,
 				bodyText,
 				bodyPartsView,
 				pill,

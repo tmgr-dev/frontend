@@ -1,0 +1,40 @@
+{
+	"view": {
+		"moreActions": "More actions",
+		"send": "Send",
+		"select": "Select",
+		"toggleDetails": "Toggle details",
+		"sparkline": "Sparkline",
+		"confirmTitle": "Plugin {name}: {text}",
+		"commandFailed": "The plugin command failed",
+		"showLess": "Show less",
+		"more": "{hidden} more",
+		"controlLabel": "Plugin: {name}"
+	},
+	"chart": {
+		"summaryBar": "Bar chart of {series} over {n} point | Bar chart of {series} over {n} points",
+		"summaryLine": "Line chart of {series} over {n} point | Line chart of {series} over {n} points",
+		"keyHint": "Use arrow keys to read values."
+	},
+	"markdown": {
+		"done": "Done",
+		"notDone": "Not done"
+	},
+	"taskMenu": {
+		"submenu": "Plugins"
+	},
+	"taskSections": {
+		"unavailable": "Not available: {error}"
+	},
+	"page": {
+		"notInstalled": "This plugin is not installed.",
+		"notRunning": "{name} is not running in this workspace.",
+		"notRunningWithError": "{name} is not running in this workspace: {error}",
+		"openSettings": "Open plugin settings",
+		"ownWindow": "“{title}” is the plugin's own page. It opens in a separate window, so it cannot slow down or freeze the app.",
+		"openWindow": "Open window",
+		"openFailed": "Could not open the plugin window: {error}",
+		"nothingToShow": "The plugin returned nothing to show.",
+		"drawFailed": "The plugin could not draw this page: {error}"
+	}
+}

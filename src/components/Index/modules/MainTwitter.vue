@@ -4,7 +4,7 @@
 			<h1
 				class="my-2 w-full text-center text-5xl leading-tight font-bold text-gray-800"
 			>
-				Twitter
+				{{ $t('public.index.twitter.title') }}
 			</h1>
 			<div class="mb-4 w-full">
 				<div class="gradient mx-auto my-0 h-1 w-64 rounded-t py-0 opacity-25" />
@@ -16,14 +16,13 @@
 				>
 					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
 						<p class="w-full px-6 text-xs text-gray-600 md:text-sm">
-							xGETTING STARTED
+							{{ $t('public.index.twitter.kicker') }}
 						</p>
 						<div class="w-full px-6 text-xl font-bold text-gray-800">
-							Lorem ipsum dolor sit amet.
+							{{ $t('public.index.twitter.cardTitle') }}
 						</div>
 						<p class="mb-5 px-6 text-base text-gray-800">
-							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
-							at ipsum eu nunc commodo posuere et sit amet ligula.
+							{{ $t('public.index.twitter.cardText') }}
 						</p>
 					</a>
 				</div>
@@ -34,7 +33,7 @@
 						<button
 							class="gradient mx-auto my-6 rounded-full px-8 py-4 font-bold text-gray-700 shadow-lg hover:bg-gray-100 lg:mx-0"
 						>
-							Action
+							{{ $t('public.index.twitter.action') }}
 						</button>
 					</div>
 				</div>
@@ -46,14 +45,13 @@
 				>
 					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
 						<p class="w-full px-6 text-xs text-gray-600 md:text-sm">
-							xGETTING STARTED
+							{{ $t('public.index.twitter.kicker') }}
 						</p>
 						<div class="w-full px-6 text-xl font-bold text-gray-800">
-							Lorem ipsum dolor sit amet.
+							{{ $t('public.index.twitter.cardTitle') }}
 						</div>
 						<p class="mb-5 px-6 text-base text-gray-800">
-							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
-							at ipsum eu nunc commodo posuere et sit amet ligula.
+							{{ $t('public.index.twitter.cardText') }}
 						</p>
 					</a>
 				</div>
@@ -64,7 +62,7 @@
 						<button
 							class="gradient mx-auto my-6 rounded-full px-8 py-4 font-bold text-gray-700 shadow-lg hover:bg-gray-100 lg:mx-0"
 						>
-							Action
+							{{ $t('public.index.twitter.action') }}
 						</button>
 					</div>
 				</div>
@@ -76,14 +74,13 @@
 				>
 					<a class="flex flex-wrap no-underline hover:no-underline" href="#">
 						<p class="w-full px-6 text-xs text-gray-600 md:text-sm">
-							xGETTING STARTED
+							{{ $t('public.index.twitter.kicker') }}
 						</p>
 						<div class="w-full px-6 text-xl font-bold text-gray-800">
-							Lorem ipsum dolor sit amet.
+							{{ $t('public.index.twitter.cardTitle') }}
 						</div>
 						<p class="mb-5 px-6 text-base text-gray-800">
-							Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
-							at ipsum eu nunc commodo posuere et sit amet ligula.
+							{{ $t('public.index.twitter.cardText') }}
 						</p>
 					</a>
 				</div>
@@ -94,7 +91,7 @@
 						<button
 							class="gradient mx-auto my-6 rounded-full px-8 py-4 font-bold text-gray-700 shadow-lg hover:bg-gray-100 lg:mx-0"
 						>
-							Action
+							{{ $t('public.index.twitter.action') }}
 						</button>
 					</div>
 				</div>

@@ -29,7 +29,7 @@
 			role="menu"
 			class="tour-menu__list"
 			:data-side="side"
-			:data-align="label === 'More' ? 'right' : 'left'"
+			:data-align="align"
 			data-state="open"
 			data-tour-menu="open"
 			:aria-label="label"
@@ -52,6 +52,7 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import {
 		computed,
 		defineComponent,
@@ -64,24 +65,12 @@
 	export type SkipMenuKey =
 		'skip-step' | 'pause' | 'explore' | 'never' | 'skip-tour';
 
-	const ALL_ITEMS: Array<{ key: SkipMenuKey; label: string; hint: string }> = [
-		{ key: 'skip-step', label: 'Skip this step', hint: 'Go to the next one' },
-		{
-			key: 'pause',
-			label: 'Pause tour',
-			hint: 'Resume it from Getting started',
-		},
-		{
-			key: 'explore',
-			label: "I'll explore myself",
-			hint: 'Stop automatic tours. Getting started stays in the menu.',
-		},
-		{
-			key: 'never',
-			label: 'Never show tips',
-			hint: 'Turn them back on in Settings',
-		},
-		{ key: 'skip-tour', label: 'Skip tour', hint: 'End this tour' },
+	const ITEM_KEYS: Array<{ key: SkipMenuKey; path: string }> = [
+		{ key: 'skip-step', path: 'onboarding.tours.skipMenu.skipStep' },
+		{ key: 'pause', path: 'onboarding.tours.skipMenu.pause' },
+		{ key: 'explore', path: 'onboarding.tours.skipMenu.explore' },
+		{ key: 'never', path: 'onboarding.tours.skipMenu.never' },
+		{ key: 'skip-tour', path: 'onboarding.tours.skipMenu.skipTour' },
 	];
 
 	let counter = 0;
@@ -93,7 +82,8 @@
 				type: Array as PropType<SkipMenuKey[]>,
 				default: () => ['skip-step', 'pause', 'explore', 'never', 'skip-tour'],
 			},
-			label: { type: String, default: 'Skip' },
+			label: { type: String, default: () => t('onboarding.tours.ui.skip') },
+			align: { type: String as PropType<'left' | 'right'>, default: 'left' },
 		},
 		emits: ['select'],
 		setup(props, { emit }) {
@@ -105,7 +95,11 @@
 			const trigger = ref<HTMLButtonElement | null>(null);
 
 			const visibleItems = computed(() =>
-				ALL_ITEMS.filter((i) => props.keys.includes(i.key)),
+				ITEM_KEYS.filter((i) => props.keys.includes(i.key)).map((i) => ({
+					key: i.key,
+					label: t(`${i.path}.label`),
+					hint: t(`${i.path}.hint`),
+				})),
 			);
 
 			const items = () =>

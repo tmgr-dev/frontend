@@ -26,7 +26,7 @@
 				class="tour-link"
 				@click="$emit('skip-step')"
 			>
-				Skip step
+				{{ $t('onboarding.tours.ui.skipStep') }}
 			</button>
 		</template>
 		<template v-else>
@@ -51,13 +51,14 @@
 			</button>
 			<div class="tour-sheet__row">
 				<button type="button" class="tour-link" @click="$emit('skip-step')">
-					Skip step
+					{{ $t('onboarding.tours.ui.skipStep') }}
 				</button>
 				<button type="button" class="tour-link" @click="$emit('skip-tour')">
-					Skip tour
+					{{ $t('onboarding.tours.ui.skipTour') }}
 				</button>
 				<TourSkipMenu
-					label="More"
+					:label="$t('onboarding.tours.ui.more')"
+					align="right"
 					:keys="['pause', 'explore', 'never']"
 					@select="onSelect"
 				/>
@@ -74,6 +75,7 @@
 		onMounted,
 		ref,
 	} from 'vue';
+	import { t } from '@/i18n';
 	import { isKeyboardOpen } from '../a11y';
 	import TourSkipMenu, { type SkipMenuKey } from './TourSkipMenu.vue';
 
@@ -92,7 +94,10 @@
 			modal: { type: Boolean, default: true },
 			canTakeMe: { type: Boolean, default: false },
 			unavailable: { type: Boolean, default: false },
-			waitingText: { type: String, default: 'Waiting for you…' },
+			waitingText: {
+				type: String,
+				default: () => t('onboarding.tours.ui.waiting'),
+			},
 		},
 		emits: [
 			'next',
@@ -109,7 +114,13 @@
 			const bodyId = `tour-sheet-body-${counter}`;
 			const collapsed = ref(false);
 			const eyebrow = computed(() =>
-				[props.tourTitle, `${props.position} of ${props.total}`]
+				[
+					props.tourTitle,
+					t('onboarding.tours.ui.positionOf', {
+						position: props.position,
+						total: props.total,
+					}),
+				]
 					.filter(Boolean)
 					.join(' · '),
 			);
@@ -146,12 +157,12 @@
 
 			const primaryLabel = computed(() =>
 				props.canTakeMe
-					? 'Take me there'
+					? t('onboarding.tours.ui.takeMeThere')
 					: props.unavailable
-						? 'Skip step'
+						? t('onboarding.tours.ui.skipStep')
 						: props.position >= props.total
-							? 'Done'
-							: 'Next',
+							? t('onboarding.tours.ui.done')
+							: t('onboarding.tours.ui.next'),
 			);
 
 			function primary() {

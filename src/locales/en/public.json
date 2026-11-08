@@ -1,0 +1,142 @@
+{
+	"index": {
+		"header": {
+			"eyebrow": "Track your tasks here! Why not?",
+			"headline": "Lightweight application for tracking your heavy tasks.",
+			"lead": "You can take easier tracking your tasks with our application.",
+			"getStarted": "Get started",
+			"goToSystem": "Go to system",
+			"imageAlt": "TMGR.DEV"
+		},
+		"nav": {
+			"brand": "TASK MANAGER",
+			"menu": "Menu",
+			"login": "Login",
+			"goToSystem": "Go to system",
+			"register": "Register"
+		},
+		"pricing": {
+			"title": "Pricing",
+			"free": "Free",
+			"manageTasks": "Manage your tasks",
+			"createCategories": "Create cateogiries",
+			"runTimer": "Run time counter",
+			"perUser": "/ per user",
+			"signUp": "Sign Up"
+		},
+		"twitter": {
+			"title": "Twitter",
+			"kicker": "xGETTING STARTED",
+			"cardTitle": "Lorem ipsum dolor sit amet.",
+			"cardText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"action": "Action"
+		},
+		"features": {
+			"title": "Features",
+			"itemTitle": "Lorem ipsum dolor sit amet",
+			"travelBooking": "travel booking",
+			"connectedWorld": "connected world",
+			"itemText": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam at ipsum eu nunc commodo posuere et sit amet ligula.",
+			"imagesFrom": "Images from:"
+		},
+		"footer": {
+			"brand": "TASK MANAGER",
+			"links": "Links",
+			"faq": "FAQ",
+			"help": "Help",
+			"support": "Support",
+			"legal": "Legal",
+			"terms": "Terms",
+			"privacy": "Privacy",
+			"social": "Social",
+			"facebook": "Facebook",
+			"linkedin": "Linkedin",
+			"twitter": "Twitter",
+			"company": "Company",
+			"blog": "Official Blog",
+			"about": "About Us",
+			"contact": "Contact",
+			"freepik": "Background vector created by freepik - www.freepik.com",
+			"template": "Based on Tailwind Toolbox - Landing Page Template"
+		}
+	},
+	"error404": {
+		"goHome": "Go home",
+		"documentTitle": "Page Not Found"
+	},
+	"voice": {
+		"cancelAria": "Cancel voice input",
+		"cancel": "Cancel",
+		"stopRecordingAria": "Stop recording",
+		"startAria": "Start voice input",
+		"unsupported": "Voice input is not supported here",
+		"stopTranscribe": "Stop and transcribe",
+		"dictate": "Dictate"
+	},
+	"cliGuide": {
+		"title": "tmgr command line",
+		"installHeading": "Install on macOS or Linux",
+		"installLabel": "tmgr install command",
+		"installNote": "No sudo needed. On Windows, use WSL2.",
+		"also": "Also:",
+		"safetyHeading": "Built to be safe",
+		"moreHeading": "More",
+		"more": {
+			"agents": "{link}: connect Claude Code, Codex and Cursor.",
+			"agentsLink": "AI agents guide",
+			"notify": "{link}: phone pushes and alarms for any MCP client.",
+			"notifyLink": "{'@'}tmgr/notify",
+			"source": "{link}: tmgr is open source.",
+			"sourceLink": "Source code"
+		}
+	},
+	"agentsGuide": {
+		"title": "AI agents setup",
+		"intro": "Connect Claude Code, Codex, Cursor and other MCP-capable agents to TMGR. Two MCP servers cover two jobs: working with your tasks, and reaching you when an agent needs attention.",
+		"personaHint": "Need an agent to act inside one workspace as a named persona? Create a persona token in Settings → Personas → Connect an agent.",
+		"token": {
+			"heading": "1. Get a token",
+			"body": "Open {link} and press Create token. The token starts with {prefix} and is shown only once, so copy it right away.",
+			"link": "Settings → Agent alerts"
+		},
+		"connect": {
+			"heading": "2. Connect your agent",
+			"body": "Pick your client below. Replace the placeholder with your token. Requires Node 22+ and the TMGR mobile app for pushes and alarms."
+		},
+		"taskMcp": {
+			"heading": "Task MCP (tmgr)",
+			"body": "A remote HTTP MCP server to work with tasks, statuses, comments, time tracking and routines. Generate a device token in {link} and send it in the {header} header.",
+			"link": "Settings → Smart devices",
+			"claudeCode": "Claude Code",
+			"claudeLabel": "Claude Code tmgr command",
+			"jsonLabel": "tmgr mcp.json",
+			"note": "This is not an OAuth connector, so claude.ai custom connectors that require OAuth are not supported."
+		},
+		"alarms": {
+			"heading": "Alarms",
+			"body": "The {tool} tool rings in the iOS app first, then calls your phone if it is not acknowledged (press 1 to acknowledge). To make it reliable:",
+			"item1": "Set and verify an alarm phone in Settings → Agent alerts.",
+			"item2": "Add the TMGR caller number to your contacts or Favorites.",
+			"item3": "Enable Repeated Calls in iOS settings.",
+			"item4": "Allow alarms for the TMGR app."
+		},
+		"troubleshooting": {
+			"heading": "Troubleshooting",
+			"noPush": "No push arrives: check that {path} exists and is readable. Hooks always exit 0 and print nothing.",
+			"mcpList": "Run {command} to check the server is connected.",
+			"settingsJson": "MCP servers do not go into {file}; use {command}.",
+			"codex": "Codex ignores {key} in a project-local {local}; put it in {global}.",
+			"rateLimit": "Requests are limited to 20 per minute per token."
+		},
+		"links": {
+			"heading": "Links",
+			"npm": "{'@'}tmgr/notify on npm",
+			"github": "tmgr-notify on GitHub"
+		},
+		"plugins": {
+			"heading": "Build a plugin with your agent",
+			"body": "Ask your agent to make a TMGR desktop plugin. Point it at {guide} or {llms}: it covers the manifest, permissions and the whole write, test and try loop.",
+			"guide": "the plugin guide"
+		}
+	}
+}

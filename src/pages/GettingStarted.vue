@@ -1,8 +1,8 @@
 <template>
 	<PageContainer width="wide" class="getting-started">
 		<PageHeader
-			title="Getting started"
-			subtitle="Short guided tours. Do them in any order, skip any of them."
+			:title="$t('onboarding.gettingStarted.title')"
+			:subtitle="$t('onboarding.gettingStarted.subtitle')"
 		>
 			<template #actions>
 				<div class="flex items-center gap-3" data-tour="hub.tips-toggle">
@@ -11,7 +11,7 @@
 						class="text-sm font-medium text-ink"
 						for="hub-tips-switch"
 					>
-						Show tips automatically
+						{{ $t('onboarding.gettingStarted.showTips') }}
 					</label>
 					<Switch
 						id="hub-tips-switch"
@@ -27,7 +27,11 @@
 						:disabled="busy"
 						@click="toggleHubHidden"
 					>
-						{{ hubHidden ? 'Show in sidebar' : 'Hide this page' }}
+						{{
+							hubHidden
+								? $t('onboarding.gettingStarted.showInSidebar')
+								: $t('onboarding.gettingStarted.hidePage')
+						}}
 					</button>
 				</div>
 			</template>
@@ -41,7 +45,12 @@
 				aria-labelledby="hub-progress-label"
 			>
 				<p id="hub-progress-label" class="text-sm font-medium text-ink">
-					{{ model.done }} of {{ model.total }} tours done
+					{{
+						$t('onboarding.gettingStarted.progress', {
+							done: model.done,
+							total: model.total,
+						})
+					}}
 				</p>
 				<div
 					class="mt-2 h-2 w-full max-w-md overflow-hidden rounded-full bg-surface-sunken"
@@ -90,31 +99,43 @@
 							<span class="text-ink-subtle">{{ row.disabledMessage }}</span>
 						</template>
 						<template v-else>
-							<span class="text-ink-subtle">{{ row.minutes }} min</span>
+							<span class="text-ink-subtle">{{
+								$t('onboarding.gettingStarted.minutes', { n: row.minutes })
+							}}</span>
 							<span
 								v-if="row.updated"
 								class="rounded bg-status-progress-bg px-1.5 py-0.5 text-2xs font-semibold text-status-progress-fg"
 							>
-								Updated
+								{{ $t('onboarding.gettingStarted.updated') }}
 							</span>
 							<span
 								v-if="row.action === 'done'"
 								class="rounded bg-surface-sunken px-1.5 py-0.5 text-2xs font-semibold text-ink-muted"
 							>
-								Done
+								{{ $t('common.actions.done') }}
 							</span>
 							<button
 								v-else
 								type="button"
 								class="min-h-[28px] rounded bg-brand px-2.5 py-0.5 text-xs font-semibold text-on-accent hover:opacity-90 disabled:opacity-50"
 								:data-testid="`hub-${row.action}-${row.id}`"
-								:aria-label="`${row.action === 'resume' ? 'Resume' : 'Start'} ${
-									row.title
-								}`"
+								:aria-label="
+									row.action === 'resume'
+										? $t('onboarding.gettingStarted.resumeTour', {
+												title: row.title,
+											})
+										: $t('onboarding.gettingStarted.startTour', {
+												title: row.title,
+											})
+								"
 								:disabled="busy"
 								@click="run(row)"
 							>
-								{{ row.action === 'resume' ? 'Resume' : 'Start' }}
+								{{
+									row.action === 'resume'
+										? $t('onboarding.gettingStarted.resume')
+										: $t('onboarding.gettingStarted.start')
+								}}
 							</button>
 							<span v-if="row.progress" class="text-2xs text-ink-subtle">
 								({{ row.progress }})

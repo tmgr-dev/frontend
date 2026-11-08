@@ -4,14 +4,21 @@
 		data-tour="connect.prompt"
 		data-testid="starter-prompt"
 	>
-		<p class="text-sm text-ink-subtle">
-			Your first task is ready:
-			<span class="font-medium text-ink">Say hello to TMGR</span>
+		<i18n-t
+			keypath="onboarding.starterPrompt.ready"
+			tag="p"
+			class="text-sm text-ink-subtle"
+		>
+			<template #task>
+				<span class="font-medium text-ink">Say hello to TMGR</span>
+			</template>
+		</i18n-t>
+		<p class="text-sm font-medium text-ink">
+			{{ $t('onboarding.starterPrompt.paste') }}
 		</p>
-		<p class="text-sm font-medium text-ink">Paste this into your agent:</p>
 		<CopyCommand
 			:code="prompt"
-			label="Starter prompt"
+			:label="$t('onboarding.starterPrompt.label')"
 			:emit-event="false"
 			wrap
 		/>
@@ -21,7 +28,7 @@
 			role="status"
 			data-testid="run-logged"
 		>
-			Run logged. TMGR recorded what your agent did.
+			{{ $t('onboarding.starterPrompt.runLogged') }}
 		</p>
 	</section>
 </template>

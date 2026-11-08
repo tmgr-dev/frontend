@@ -8,7 +8,7 @@
 			:disabled="busy"
 			@click="setHidden(false)"
 		>
-			Show checklist
+			{{ $t('onboarding.checklist.show') }}
 		</button>
 		<div
 			v-else
@@ -18,19 +18,24 @@
 		>
 			<div class="flex items-center justify-between gap-3">
 				<p id="checklist-title" class="text-sm font-semibold text-ink">
-					Getting started
+					{{ $t('onboarding.checklist.title') }}
 					<span
 						class="font-normal text-ink-subtle"
 						data-testid="checklist-count"
 					>
-						{{ checklist.done }} of {{ checklist.total }}
+						{{
+							$t('onboarding.checklist.count', {
+								done: checklist.done,
+								total: checklist.total,
+							})
+						}}
 					</span>
 				</p>
 				<div class="relative">
 					<button
 						type="button"
 						class="flex h-11 w-11 items-center justify-center rounded text-ink-subtle hover:bg-surface-hover hover:text-ink sm:h-8 sm:w-8"
-						aria-label="Checklist options"
+						:aria-label="$t('onboarding.checklist.options')"
 						aria-haspopup="menu"
 						:aria-expanded="menuOpen"
 						data-testid="checklist-menu"
@@ -55,7 +60,7 @@
 							:disabled="busy"
 							@click="setHidden(true)"
 						>
-							Hide checklist
+							{{ $t('onboarding.checklist.hide') }}
 						</button>
 					</div>
 				</div>
@@ -90,12 +95,16 @@
 					</span>
 					<span :class="item.done ? 'text-ink-muted' : 'text-ink'">
 						{{ item.label }}
-						<span v-if="item.optional" class="text-ink-subtle">(optional)</span>
+						<span v-if="item.optional" class="text-ink-subtle">{{
+							$t('onboarding.checklist.optional')
+						}}</span>
 						<em v-if="item.disabledMessage" class="text-ink-subtle">
 							({{ item.disabledMessage }})
 						</em>
 					</span>
-					<span v-if="item.done" class="sr-only">Done</span>
+					<span v-if="item.done" class="sr-only">{{
+						$t('common.actions.done')
+					}}</span>
 				</li>
 			</ul>
 		</div>

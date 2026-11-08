@@ -7,12 +7,13 @@
 		:disabled="busy"
 		@click="remove"
 	>
-		Remove sample tasks
+		{{ $t('onboarding.removeSampleTasks.button') }}
 	</button>
 </template>
 
 <script lang="ts">
 	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
 	import {
 		showRemoveStarters,
 		STARTERS_EXPECTED_KEY,
@@ -89,21 +90,19 @@
 						localStorage.setItem(STARTERS_EXPECTED_KEY, '');
 					} catch {}
 					if (removed === 0) {
-						toast({ title: 'No sample tasks to remove' });
+						toast({ title: t('onboarding.removeSampleTasks.none') });
 					} else {
 						requestCache.invalidate(/^tasks-status-/);
 						requestCache.invalidate(/^task-/);
 						toast({
-							title: `Removed ${removed} sample ${
-								removed === 1 ? 'task' : 'tasks'
-							}`,
+							title: t('onboarding.removeSampleTasks.removed', removed),
 						});
 						emit('removed', removed);
 					}
 				} catch (error) {
 					console.error(error);
 					toast({
-						title: 'Could not remove sample tasks',
+						title: t('onboarding.removeSampleTasks.failed'),
 						variant: 'destructive',
 					});
 				} finally {

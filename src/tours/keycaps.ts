@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { StepDef } from './types';
 
 export type BodyPart =
@@ -12,17 +13,14 @@ export interface KeycapEnv {
 
 export const DEFAULT_KEYCAP_ENV: KeycapEnv = {
 	mac: false,
-	tray: 'system tray',
+	get tray() {
+		return t('onboarding.tours.keycaps.systemTray');
+	},
 	shortcut: () => null,
 	describe: (accelerator) => accelerator,
 };
 
-export const SHORTCUT_LABELS: Record<string, string> = {
-	quickAdd: 'quick-add',
-	timer: 'timer',
-	screenshot: 'screenshot',
-	selection: 'text capture',
-};
+const SHORTCUT_LABEL_KEYS = ['quickAdd', 'timer', 'screenshot', 'selection'];
 
 const TOKEN = /\{(key:[A-Za-z]+|tray)\}/g;
 
@@ -42,7 +40,11 @@ export const hasTemplate = (step: StepDef): boolean =>
 	!!step.bodyByPlatform || tokensIn(step.body).length > 0;
 
 export const fallbackFor = (action: string): string =>
-	`your ${SHORTCUT_LABELS[action] ?? action} shortcut (Settings → Desktop)`;
+	t('onboarding.tours.keycaps.fallback', {
+		name: SHORTCUT_LABEL_KEYS.includes(action)
+			? t(`onboarding.tours.keycaps.shortcuts.${action}`)
+			: action,
+	});
 
 export function resolveBodyParts(step: StepDef, env: KeycapEnv): BodyPart[] {
 	const template = templateFor(step, env);

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { OWN_LAYERS } from './anchors';
 
 const FOCUSABLE =
@@ -11,8 +12,14 @@ export function stepAnnouncement(o: {
 	title: string;
 	waiting: boolean;
 }): string {
-	const base = `Step ${o.position} of ${o.total}: ${o.title}.`;
-	return o.waiting ? `${base} Waiting for you.` : base;
+	const base = t('onboarding.tours.a11y.stepAnnouncement', {
+		position: o.position,
+		total: o.total,
+		title: o.title,
+	});
+	return o.waiting
+		? `${base} ${t('onboarding.tours.a11y.waitingForYou')}`
+		: base;
 }
 
 export function announce(text: string): void {

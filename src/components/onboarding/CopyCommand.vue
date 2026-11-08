@@ -17,22 +17,23 @@
 				]"
 				data-testid="snippet-copy"
 				:disabled="!code"
-				:aria-label="`Copy ${label}`"
+				:aria-label="$t('onboarding.copyCommand.copyLabel', { label })"
 				@click="copy"
 			>
-				{{ copied ? 'Copied' : 'Copy' }}
+				{{ copied ? $t('common.actions.copied') : $t('common.actions.copy') }}
 			</button>
 			<span class="sr-only" role="status" aria-live="polite">{{
-				copied ? 'Copied' : ''
+				copied ? $t('common.actions.copied') : ''
 			}}</span>
 		</div>
 		<p v-if="failed" class="mt-1 text-xs text-status-fix-fg" role="alert">
-			Could not copy. Select the text and copy it by hand.
+			{{ $t('onboarding.copyCommand.failed') }}
 		</p>
 	</div>
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import { tourBus } from '@/tours/events';
 	import {
 		SNIPPET_BUTTON_CLASS,
@@ -46,7 +47,10 @@
 		props: {
 			code: { type: String, required: true },
 			display: { type: String, default: undefined },
-			label: { type: String, default: 'Command' },
+			label: {
+				type: String,
+				default: () => t('onboarding.copyCommand.defaultLabel'),
+			},
 			client: { type: String, default: '' },
 			emitEvent: { type: Boolean, default: true },
 			wrap: { type: Boolean, default: false },

@@ -4,7 +4,7 @@
 			<button
 				type="button"
 				class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
-				aria-label="Help and tours"
+				:aria-label="$t('onboarding.tours.help.label')"
 				data-testid="help-menu"
 			>
 				<CircleQuestionMark class="h-4 w-4" />
@@ -17,7 +17,7 @@
 				@click="$router.push(`/${workspaceCode}/getting-started`)"
 			>
 				<LifeBuoy />
-				Getting started
+				{{ $t('onboarding.tours.help.gettingStarted') }}
 			</DropdownMenuItem>
 			<DropdownMenuItem
 				v-if="isDesktop"
@@ -26,7 +26,7 @@
 				@click="watchDemoClick"
 			>
 				<Play />
-				Watch the demo
+				{{ $t('onboarding.tours.help.watchDemo') }}
 			</DropdownMenuItem>
 			<DropdownMenuItem
 				v-if="canRestart"
@@ -34,14 +34,14 @@
 				@click="restart"
 			>
 				<RotateCcw />
-				Restart this page's tour
+				{{ $t('onboarding.tours.help.restartPageTour') }}
 			</DropdownMenuItem>
 			<DropdownMenuItem
 				class="cursor-pointer"
 				@click="$router.push('/settings?tab=about')"
 			>
 				<SlidersHorizontal />
-				Tips settings
+				{{ $t('onboarding.tours.help.tipsSettings') }}
 			</DropdownMenuItem>
 		</DropdownMenuContent>
 	</DropdownMenu>

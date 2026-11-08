@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import {
 	MAX_INPUT_VALUE,
 	MAX_TEXTAREA_VALUE,
@@ -160,4 +161,4 @@ export const pluginTextareaAttrs = {
 } as const;
 
 export const pluginControlLabel = (pluginName: string): string =>
-	`Plugin: ${pluginName}`;
+	t('plugins.view.controlLabel', { name: pluginName });

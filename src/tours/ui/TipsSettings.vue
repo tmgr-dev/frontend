@@ -1,12 +1,14 @@
 <template>
 	<SettingsSection
-		title="Tips and tours"
-		description="Short guided tours that show up as you use TMGR."
+		:title="$t('onboarding.tours.tips.title')"
+		:description="$t('onboarding.tours.tips.description')"
 		data-tour="settings.tips"
 	>
 		<div class="flex flex-col gap-4">
 			<fieldset :key="renderKey" class="flex flex-col gap-2" :disabled="busy">
-				<legend class="sr-only">When to show tips</legend>
+				<legend class="sr-only">
+					{{ $t('onboarding.tours.tips.legend') }}
+				</legend>
 				<label
 					v-for="option in options"
 					:key="option.value"
@@ -28,7 +30,7 @@
 			</fieldset>
 
 			<p v-if="failed" role="alert" class="text-sm text-status-fix-fg">
-				Could not save your choice. Please try again.
+				{{ $t('onboarding.tours.tips.saveFailed') }}
 			</p>
 
 			<div class="flex flex-wrap items-center gap-3">
@@ -40,11 +42,13 @@
 						:disabled="busy"
 						@click="confirming = true"
 					>
-						Reset all tours
+						{{ $t('onboarding.tours.tips.resetAll') }}
 					</Button>
 				</template>
 				<template v-else>
-					<span class="text-sm text-ink">Start every tour over?</span>
+					<span class="text-sm text-ink">{{
+						$t('onboarding.tours.tips.resetPrompt')
+					}}</span>
 					<Button
 						variant="destructive"
 						size="sm"
@@ -52,10 +56,10 @@
 						:disabled="busy"
 						@click="reset"
 					>
-						Reset
+						{{ $t('common.actions.reset') }}
 					</Button>
 					<Button variant="ghost" size="sm" @click="confirming = false">
-						Cancel
+						{{ $t('common.actions.cancel') }}
 					</Button>
 				</template>
 			</div>
@@ -64,29 +68,17 @@
 </template>
 
 <script lang="ts">
+	import { t } from '@/i18n';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import type { TipsMode } from '@/tours/types';
 	import { useTours } from '@/tours/useTours';
 	import { computed, defineComponent, ref } from 'vue';
 
-	const OPTIONS: { value: TipsMode; label: string; description: string }[] = [
-		{
-			value: 'auto',
-			label: 'Show tips automatically',
-			description: 'A short tour is offered the first time you open a feature.',
-		},
-		{
-			value: 'hub_only',
-			label: 'Only from Getting started',
-			description:
-				'No automatic tours. Start any tour yourself from the Getting started page.',
-		},
-		{
-			value: 'off',
-			label: 'Never show tips',
-			description: 'Tours stay on the Getting started page if you want them.',
-		},
+	const OPTIONS: { value: TipsMode; path: string }[] = [
+		{ value: 'auto', path: 'onboarding.tours.tips.options.auto' },
+		{ value: 'hub_only', path: 'onboarding.tours.tips.options.hubOnly' },
+		{ value: 'off', path: 'onboarding.tours.tips.options.off' },
 	];
 
 	export default defineComponent({
@@ -117,7 +109,13 @@
 			};
 
 			return {
-				options: OPTIONS,
+				options: computed(() =>
+					OPTIONS.map((option) => ({
+						value: option.value,
+						label: t(`${option.path}.label`),
+						description: t(`${option.path}.description`),
+					})),
+				),
 				mode,
 				busy,
 				failed,

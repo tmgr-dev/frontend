@@ -26,6 +26,7 @@
 
 <script lang="ts">
 	import PluginView from '@/components/plugins/PluginView.vue';
+	import { t } from '@/i18n';
 	import { taskSnapshot } from '@/pluginSystem/cardBadges';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import type { UiNode } from '@/pluginSystem/uiTree';
@@ -75,9 +76,9 @@
 						} catch (error) {
 							if (current !== request) return;
 							trees[section.key] = null;
-							errors[section.key] = `Not available: ${
-								error instanceof Error ? error.message : error
-							}`;
+							errors[section.key] = t('plugins.taskSections.unavailable', {
+								error: error instanceof Error ? error.message : String(error),
+							});
 						}
 					}),
 				);
