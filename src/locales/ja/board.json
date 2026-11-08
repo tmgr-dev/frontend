@@ -785,5 +785,84 @@
 		"createTask": "+ タスクを作成",
 		"archiveDialogTitle": "完了済みタスクをアーカイブ",
 		"archiveDialogBody": "完了済みタスク{n}件をアーカイブしますか？"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · 過去 30 日間",
+		"tracked": {
+			"minutes": "{m}分",
+			"hoursMinutes": "{h}時間{m}分"
+		},
+		"heatmap": {
+			"days": "{n} 日",
+			"headlineYear": "{year} 年のコントリビューション: {n} 件",
+			"headlineLastYear": "過去 1 年間のコントリビューション: {n} 件",
+			"streakCurrent": "現在の連続日数: {current} • 最長: {longest}",
+			"streakYear": "{year} 年の最長連続日数: {longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "{n} 件のタスクを移動しました。",
+			"mapping": "{from} → {to}({tasks})",
+			"noStatus": "ステータスなし",
+			"statuses": "ステータス: {mappings}。",
+			"assigneesRemoved": "{n} 人の担当者を削除しました(移動先のワークスペースのメンバーではないため)。"
+		},
+		"activityTitles": {
+			"assignedToPersona": "タスクを {persona} に割り当てました",
+			"unassignedFromPersona": "タスクの {persona} への割り当てを解除しました",
+			"fallback": "アクティビティ",
+			"taskCreated": "タスクを作成しました",
+			"taskUpdated": "タスクを更新しました",
+			"taskCompleted": "タスクを完了しました",
+			"taskDeleted": "タスクを削除しました",
+			"taskRestored": "タスクを復元しました",
+			"taskStatusChanged": "タスクを移動しました",
+			"taskAssigned": "タスクを割り当てました",
+			"taskPersonaAssigned": "タスクをペルソナに割り当てました",
+			"taskPersonaUnassigned": "タスクのペルソナへの割り当てを解除しました",
+			"taskTimerStarted": "タイマーを開始しました",
+			"taskTimerStopped": "タイマーを停止しました",
+			"commentCreated": "コメントを書きました",
+			"commentUpdated": "コメントを編集しました",
+			"commentDeleted": "コメントを削除しました",
+			"categoryCreated": "プロジェクトを作成しました",
+			"categoryUpdated": "プロジェクトを更新しました",
+			"categoryDeleted": "プロジェクトを削除しました",
+			"fileUploaded": "ファイルを添付しました",
+			"fileDeleted": "ファイルを削除しました",
+			"memberJoined": "ワークスペースに参加しました",
+			"memberLeft": "ワークスペースから退出しました",
+			"routineCompleted": "ルーティンを完了しました",
+			"agentWorkStarted": "エージェントの実行を開始しました",
+			"agentWorkUpdated": "エージェントの実行を更新しました",
+			"agentWorkFinished": "エージェントの実行を終了しました"
+		},
+		"graph": {
+			"comment": "コメント",
+			"thisTask": "このタスク",
+			"thisPage": "このページ"
+		},
+		"map": {
+			"pagesTitle": "ページとドキュメント",
+			"noCategory": "プロジェクトなし",
+			"category": "プロジェクト",
+			"listAnd": "{head}と{last}",
+			"blocks": "{who} が {n} 件のタスクをブロックしています",
+			"blocksIn": "{who} が {names} の {n} 件のタスクをブロックしています",
+			"hubs": "{list} が最も多くの項目をつないでいます",
+			"bridges": "{from} が {to} をつないでいます",
+			"orphans": "{n} 件の項目 — どこからもリンクされていないページ、関連のないタスク",
+			"noOrphans": "すべての項目に少なくとも 1 つのリンクがあります"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "GitHub リポジトリが未連携です",
+				"message": "このプロジェクトにはまだ GitHub リポジトリが連携されていません。プロジェクト設定で連携すると、タスクのコミット、ブランチ、プルリクエストを追跡できます。"
+			},
+			"cursor": {
+				"title": "Cursor エージェントが未設定です",
+				"message": "このプロジェクトにはまだ Cursor エージェントが設定されていません。プロジェクト設定で Cursor の API キーを追加すると、タスクでエージェントを起動できます。"
+			},
+			"openCategorySettings": "プロジェクト設定を開く"
+		}
 	}
 }

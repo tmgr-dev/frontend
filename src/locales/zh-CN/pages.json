@@ -225,5 +225,73 @@
 		"loading": "加载中…",
 		"notFound": "找不到此页面。",
 		"openFailed": "无法打开此页面。请关闭此窗口后重试。"
+	},
+	"helpers": {
+		"network": {
+			"operational": "运营",
+			"personal": "个人",
+			"strategic": "战略"
+		},
+		"aliasSource": {
+			"telegram": "Telegram",
+			"rocketchat": "Rocket.Chat",
+			"slack": "Slack",
+			"github": "GitHub",
+			"email": "邮箱",
+			"other": "其他"
+		},
+		"validation": {
+			"invalidMember": "成员无效",
+			"mustBeList": "必须是列表",
+			"chooseSource": "请选择来源",
+			"enterIdentifier": "请输入标识",
+			"nameTooLong": "名称过长",
+			"chooseRelationship": "请选择关系类型",
+			"maxChars": "最多 255 个字符",
+			"dateFormat": "日期格式为 YYYY-MM-DD",
+			"invalidTask": "任务无效",
+			"invalidValue": "值无效",
+			"invalidProperties": "属性无效"
+		},
+		"property": {
+			"member": "成员",
+			"relationship": "关系",
+			"company": "公司",
+			"role": "职务",
+			"aliases": "别名",
+			"lastContact": "最近联系",
+			"date": "日期",
+			"participants": "参与者",
+			"tasks": "任务"
+		},
+		"pageType": {
+			"plain": "普通页面",
+			"context": "上下文",
+			"person": "人员",
+			"meeting": "会议"
+		},
+		"owner": {
+			"persona": "角色",
+			"member": "成员",
+			"system": "系统",
+			"agents": "智能体"
+		},
+		"taskFromSelection": {
+			"selectionNotFound": "在页面上找不到所选文本。请刷新页面后重试。",
+			"pageChanged": "页面已变更。请刷新后重试。",
+			"noAccess": "无权访问该项目。",
+			"failed": "创建任务失败。"
+		},
+		"image": {
+			"alignLeft": "左对齐",
+			"alignCenter": "居中对齐",
+			"alignRight": "右对齐",
+			"fullWidth": "全宽",
+			"download": "下载",
+			"replaceImage": "替换图片",
+			"deleteImage": "删除图片",
+			"captionPlaceholder": "写一段图注",
+			"loadFailed": "图片加载失败"
+		}
 	}
 }

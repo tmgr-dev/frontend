@@ -36,5 +36,17 @@
 		"openFailed": "プラグインのウィンドウを開けませんでした: {error}",
 		"nothingToShow": "プラグインから表示する内容が返されませんでした。",
 		"drawFailed": "プラグインがこのページを描画できませんでした: {error}"
+	},
+	"helpers": {
+		"time": {
+			"fewSeconds": "数秒",
+			"min": "{n} 分",
+			"hour": "{n} 時間",
+			"day": "{n} 日",
+			"justNow": "たった今",
+			"ago": "{span}前",
+			"in": "{span}後",
+			"overdue": "{span} 超過"
+		}
 	}
 }

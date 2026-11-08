@@ -72,5 +72,26 @@
 		"unsupported": "此处不支持语音输入",
 		"stopTranscribe": "停止并转写",
 		"dictate": "语音输入"
+	},
+	"helpers": {
+		"voice": {
+			"sessionExpired": "你的会话已过期。请重新登录。",
+			"tooLong": "录音太长。请录短一些。",
+			"badFormat": "此浏览器录制的格式不受支持。",
+			"noSpeech": "没有检测到语音。请重试。",
+			"tooMany": "语音请求过多。请等一分钟后再试。",
+			"unavailable": "语音转写目前不可用。",
+			"failed": "语音转写失败。请重试。",
+			"timedOut": "转写超时。请重试。",
+			"noServer": "无法连接服务器。请检查网络连接。",
+			"micBlocked": "麦克风权限已被阻止。请在浏览器或系统设置中允许。",
+			"noMic": "没有找到麦克风。",
+			"micBusy": "麦克风正忙或不可用。",
+			"micStart": "无法启动麦克风。",
+			"tooShort": "录音太短。",
+			"nothingRecognized": "没有识别到任何内容。",
+			"recordingFailed": "录音失败。",
+			"recordStart": "无法开始录音。"
+		}
 	}
 }

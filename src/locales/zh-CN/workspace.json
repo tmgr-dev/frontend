@@ -316,5 +316,44 @@
 		"restoreFailed": "无法恢复此条目",
 		"deleted": "已删除",
 		"undo": "撤销"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "输入内容不能为空",
+			"emptyAt": "第 {position} 个位置的邮箱为空",
+			"invalid": "邮箱格式无效：{email}"
+		},
+		"notificationTypes": {
+			"fallback": "通知",
+			"taskCreated": "任务已创建",
+			"taskUpdated": "任务已更新",
+			"taskStatusChanged": "任务状态已更改",
+			"taskAssigned": "任务已分配",
+			"taskDeleted": "任务已删除",
+			"taskRestored": "任务已恢复",
+			"taskCompleted": "任务已完成",
+			"commentCreated": "新评论",
+			"commentUpdated": "评论已更新",
+			"commentDeleted": "评论已删除",
+			"categoryCreated": "项目已创建",
+			"categoryUpdated": "项目已更新",
+			"categoryDeleted": "项目已删除",
+			"categoryRestored": "项目已恢复",
+			"fileUploaded": "文件已上传",
+			"fileDeleted": "文件已删除",
+			"memberJoined": "成员已加入",
+			"memberLeft": "成员已离开工作区",
+			"memberRemoved": "成员已被移除",
+			"taskPersonaAssigned": "任务已分配给角色",
+			"taskPersonaUnassigned": "任务已取消角色分配",
+			"commentReactionToggled": "评论回应",
+			"agentWorkStarted": "智能体运行已开始",
+			"agentWorkUpdated": "智能体运行已更新",
+			"agentWorkFinished": "智能体运行已结束",
+			"pageCreated": "新页面",
+			"pageUpdated": "页面已更新",
+			"pageMentioned": "你在页面中被提及",
+			"memoryAdded": "已添加到记忆"
+		}
 	}
 }

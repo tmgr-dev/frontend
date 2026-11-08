@@ -293,5 +293,77 @@
 		"tracked": "기록된 시간",
 		"running": "실행 중",
 		"overTime": "초과 시간"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "이 링크는 접근 권한이 없는 워크스페이스를 가리켜요.",
+			"notFound": "이 작업은 더 이상 존재하지 않아요.",
+			"forbidden": "이 작업에 접근할 권한이 없어요.",
+			"error": "이 작업을 불러오지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요."
+		},
+		"modules": {
+			"needsColon": "필요: {list}",
+			"needs": "{list} 필요",
+			"showModule": "이 모듈 표시",
+			"enableFeature": "이 기능 켜기",
+			"askOwner": "소유자에게 켜 달라고 요청해 보세요",
+			"hiddenForYou": "나에게 숨김",
+			"showForMe": "나에게 표시",
+			"hideForMe": "나에게 숨기기",
+			"allModules": "모든 모듈",
+			"coreOnly": "모듈 없음, 핵심 기능만",
+			"workflowOffConfirm": "작업에 상태 대신 완료 체크박스가 표시되고 보드는 숨겨져요. 상태와 해당 작업은 그대로 남아 있다가 다시 켜면 돌아와요.",
+			"workflowOn": "워크플로: 완료 체크박스 → 상태",
+			"workflowOff": "워크플로: 상태 → 완료 체크박스",
+			"presetSummary": {
+				"personal": "나 혼자: 완료 체크박스로 작업과 시간 관리",
+				"team": "상태와 보드로 함께 작업",
+				"developer": "나와 AI 에이전트, 상태와 보드 사용",
+				"everything": "모든 모듈 켜기",
+				"minimal": "작업만: 목록, 타이머, 댓글"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "대시보드",
+				"projects": "프로젝트",
+				"list": "목록",
+				"board": "보드",
+				"routines": "루틴",
+				"pages": "페이지",
+				"map": "맵",
+				"files": "파일",
+				"askAi": "AI에게 묻기",
+				"personas": "페르소나"
+			},
+			"task": {
+				"timer": "타이머",
+				"pomodoro": "포모도로",
+				"assignees": "담당자",
+				"checkpoints": "체크포인트",
+				"attachments": "첨부 파일",
+				"relations": "관계",
+				"agentWork": "에이전트 작업",
+				"github": "GitHub",
+				"cursorAgents": "Cursor 에이전트",
+				"comments": "댓글",
+				"aiReply": "AI 답변"
+			}
+		},
+		"navTargets": {
+			"dashboard": "대시보드",
+			"list": "목록",
+			"board": "보드",
+			"localRoutines": "로컬 루틴",
+			"dailyRoutines": "데일리 루틴",
+			"archive": "보관함",
+			"categories": "프로젝트",
+			"pages": "페이지",
+			"statistics": "통계",
+			"aiUsage": "AI 사용량",
+			"files": "파일",
+			"map": "맵",
+			"settings": "설정"
+		}
 	}
 }

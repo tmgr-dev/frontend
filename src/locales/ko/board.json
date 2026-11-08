@@ -785,5 +785,84 @@
 		"createTask": "+ 작업 만들기",
 		"archiveDialogTitle": "완료 작업 보관",
 		"archiveDialogBody": "완료 작업 {n}개를 보관할까요?"
+	},
+	"helpers": {
+		"thirtyDayHint": "{hint} · 최근 30일",
+		"tracked": {
+			"minutes": "{m}분",
+			"hoursMinutes": "{h}시간 {m}분"
+		},
+		"heatmap": {
+			"days": "{n}일",
+			"headlineYear": "{year}년에 {n}건 기여",
+			"headlineLastYear": "최근 1년간 {n}건 기여",
+			"streakCurrent": "현재 연속: {current} • 최장: {longest}",
+			"streakYear": "{year}년 최장 연속: {longest}"
+		},
+		"categoryTransfer": {
+			"tasksMoved": "작업 {n}개를 이동했어요.",
+			"mapping": "{from} → {to} ({tasks})",
+			"noStatus": "상태 없음",
+			"statuses": "상태: {mappings}.",
+			"assigneesRemoved": "담당자 {n}명을 제거했어요 (대상 워크스페이스의 멤버가 아니에요)."
+		},
+		"activityTitles": {
+			"assignedToPersona": "작업을 {persona}에게 지정했어요",
+			"unassignedFromPersona": "작업에서 {persona} 지정을 해제했어요",
+			"fallback": "활동",
+			"taskCreated": "작업을 만들었어요",
+			"taskUpdated": "작업을 수정했어요",
+			"taskCompleted": "작업을 완료했어요",
+			"taskDeleted": "작업을 삭제했어요",
+			"taskRestored": "작업을 복원했어요",
+			"taskStatusChanged": "작업을 이동했어요",
+			"taskAssigned": "작업을 지정했어요",
+			"taskPersonaAssigned": "작업을 페르소나에게 지정했어요",
+			"taskPersonaUnassigned": "작업에서 페르소나 지정을 해제했어요",
+			"taskTimerStarted": "타이머를 시작했어요",
+			"taskTimerStopped": "타이머를 중지했어요",
+			"commentCreated": "댓글을 작성했어요",
+			"commentUpdated": "댓글을 수정했어요",
+			"commentDeleted": "댓글을 삭제했어요",
+			"categoryCreated": "프로젝트를 만들었어요",
+			"categoryUpdated": "프로젝트를 수정했어요",
+			"categoryDeleted": "프로젝트를 삭제했어요",
+			"fileUploaded": "파일을 첨부했어요",
+			"fileDeleted": "파일을 제거했어요",
+			"memberJoined": "워크스페이스에 참여했어요",
+			"memberLeft": "워크스페이스를 떠났어요",
+			"routineCompleted": "루틴을 완료했어요",
+			"agentWorkStarted": "에이전트 작업을 시작했어요",
+			"agentWorkUpdated": "에이전트 작업을 업데이트했어요",
+			"agentWorkFinished": "에이전트 작업을 마쳤어요"
+		},
+		"graph": {
+			"comment": "댓글",
+			"thisTask": "이 작업",
+			"thisPage": "이 페이지"
+		},
+		"map": {
+			"pagesTitle": "페이지 및 문서",
+			"noCategory": "프로젝트 없음",
+			"category": "프로젝트",
+			"listAnd": "{head} 및 {last}",
+			"blocks": "{who}이(가) 작업 {n}개를 막고 있어요",
+			"blocksIn": "{who}이(가) {names}의 작업 {n}개를 막고 있어요",
+			"hubs": "{list}이(가) 가장 많은 항목을 연결해요",
+			"bridges": "{from}이(가) {to}을(를) 연결해요",
+			"orphans": "항목 {n}개 — 아무도 링크하지 않은 페이지, 관계가 없는 작업",
+			"noOrphans": "모든 항목에 링크가 하나 이상 있어요"
+		},
+		"integrationHint": {
+			"github": {
+				"title": "연결된 GitHub 저장소가 없어요",
+				"message": "이 프로젝트에는 아직 연결된 GitHub 저장소가 없어요. 프로젝트 설정에서 연결하면 작업의 커밋, 브랜치, 풀 리퀘스트를 추적할 수 있어요."
+			},
+			"cursor": {
+				"title": "설정된 Cursor 에이전트가 없어요",
+				"message": "이 프로젝트에는 아직 설정된 Cursor 에이전트가 없어요. 프로젝트 설정에서 Cursor API 키를 추가하면 작업에서 에이전트를 실행할 수 있어요."
+			},
+			"openCategorySettings": "프로젝트 설정 열기"
+		}
 	}
 }

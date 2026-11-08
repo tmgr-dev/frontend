@@ -316,5 +316,44 @@
 		"restoreFailed": "このエントリを復元できませんでした",
 		"deleted": "削除しました",
 		"undo": "元に戻す"
+	},
+	"helpers": {
+		"emails": {
+			"empty": "入力が空です",
+			"emptyAt": "{position} 番目のメールアドレスが空です",
+			"invalid": "メールアドレスの形式が正しくありません: {email}"
+		},
+		"notificationTypes": {
+			"fallback": "通知",
+			"taskCreated": "タスクを作成",
+			"taskUpdated": "タスクを更新",
+			"taskStatusChanged": "タスクのステータスを変更",
+			"taskAssigned": "タスクを割り当て",
+			"taskDeleted": "タスクを削除",
+			"taskRestored": "タスクを復元",
+			"taskCompleted": "タスクを完了",
+			"commentCreated": "新しいコメント",
+			"commentUpdated": "コメントを更新",
+			"commentDeleted": "コメントを削除",
+			"categoryCreated": "プロジェクトを作成",
+			"categoryUpdated": "プロジェクトを更新",
+			"categoryDeleted": "プロジェクトを削除",
+			"categoryRestored": "プロジェクトを復元",
+			"fileUploaded": "ファイルをアップロード",
+			"fileDeleted": "ファイルを削除",
+			"memberJoined": "メンバーが参加",
+			"memberLeft": "メンバーがワークスペースを退出",
+			"memberRemoved": "メンバーを削除",
+			"taskPersonaAssigned": "タスクをペルソナに割り当て",
+			"taskPersonaUnassigned": "タスクのペルソナへの割り当てを解除",
+			"commentReactionToggled": "コメントへのリアクション",
+			"agentWorkStarted": "エージェントの実行を開始",
+			"agentWorkUpdated": "エージェントの実行を更新",
+			"agentWorkFinished": "エージェントの実行を終了",
+			"pageCreated": "新しいページ",
+			"pageUpdated": "ページを更新",
+			"pageMentioned": "ページでメンションされました",
+			"memoryAdded": "メモリに追加"
+		}
 	}
 }

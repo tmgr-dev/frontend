@@ -236,5 +236,81 @@
 		"pullRequests": "풀 리퀘스트 ({n})",
 		"by": "{author} 님",
 		"loadFailed": "Git 활동을 불러오지 못했어요"
+	},
+	"helpers": {
+		"usage": {
+			"rows": {
+				"input": "입력",
+				"cache_read": "캐시 읽기",
+				"cache_write_5m": "캐시 쓰기 5분",
+				"cache_write_1h": "캐시 쓰기 1시간",
+				"output": "출력",
+				"reasoning": "추론"
+			},
+			"timeActive": "활성",
+			"timeWallClock": "실제 경과",
+			"summary": {
+				"you": "나 {time}",
+				"agents": "에이전트 {time}",
+				"ai": "AI {cost}"
+			},
+			"server": {
+				"unsynced": "이 기기에 아직 동기화되지 않은 사용량이 {amount} 있어요.",
+				"readFailed": "동기화된 사용량을 읽지 못했어요.",
+				"localOnly": "로컬 전용 — 동기화되지 않았어요. 작업 비용 API와 다른 멤버에게는 이 작업의 AI 사용량이 보이지 않아요. `tmgr usage sync`를 실행해 업로드해 주세요."
+			},
+			"rates": {
+				"input": "입력",
+				"output": "출력",
+				"cacheRead": "캐시 읽기",
+				"cacheWrite5m": "캐시 쓰기 5분",
+				"cacheWrite1h": "캐시 쓰기 1시간",
+				"line": "{label} {value}",
+				"per1M": "100만 토큰당 {parts}"
+			},
+			"unpriced": "가격이 없는 이벤트가 {count}개 있어서 비용이 실제보다 적게 표시돼요."
+		},
+		"status": {
+			"states": {
+				"working": "작업 중",
+				"waiting": "대기 중",
+				"blocked": "막힘",
+				"idle": "유휴",
+				"done": "완료",
+				"exited": "종료됨"
+			},
+			"justNow": "방금",
+			"minAgo": "{n}분 전",
+			"hourAgo": "{n}시간 전",
+			"dayAgo": "{n}일 전",
+			"agent": "에이전트",
+			"on": " ({host})",
+			"line": "{state}: {who}{where}",
+			"since": "{since}부터",
+			"noRecent": "최근 업데이트 없음"
+		},
+		"work": {
+			"agents": "에이전트",
+			"active": "에이전트 활성 시간",
+			"wall": "실제 경과 시간",
+			"waiting": "실행 사이 대기 시간",
+			"sum": "에이전트 시간 (실행 합계)"
+		},
+		"approval": {
+			"revokedBy": {
+				"ui": "웹 앱",
+				"cli": "CLI",
+				"mcp": "MCP",
+				"persona": "에이전트 페르소나",
+				"plugin": "플러그인",
+				"legacy": "레거시 토큰",
+				"other": "연동 서비스"
+			},
+			"reasonEdited": "텍스트 수정됨",
+			"reasonComment": "댓글 추가됨",
+			"reasonChanged": "변경됨",
+			"noCategory": "프로젝트 없음",
+			"category": "프로젝트 #{id}"
+		}
 	}
 }

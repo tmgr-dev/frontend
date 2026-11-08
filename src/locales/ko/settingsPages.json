@@ -969,5 +969,83 @@
 		"copyFailed": "복사하지 못했어요",
 		"contactFailed": "연락처를 다운로드하지 못했어요",
 		"confirmRemove": "알람 전화를 삭제할까요?"
+	},
+	"helpers": {
+		"editorLegacy": "{label} — 레거시",
+		"featureToggle": {
+			"groups": {
+				"pages": "페이지",
+				"task": "작업",
+				"notifications": "알림"
+			},
+			"descriptions": {
+				"categories": "작업을 프로젝트로 묶어 워크스페이스를 정리해요.",
+				"board": "작업 상태를 추적하는 칸반 보드 보기로 전환해요.",
+				"workflow": "사용자 지정 상태, 상태 선택기, 보드 열이에요.",
+				"pages": "메모, 컨텍스트, 문서를 사람과 에이전트가 함께 편집할 수 있는 페이지 트리로 보관해요.",
+				"graph": "작업, 페이지, 사람, 에이전트 실행이 어떻게 연결되는지 살펴봐요. 작업과 페이지의 그래프 섹션과 워크스페이스 맵이 표시돼요.",
+				"agentWork": "AI 에이전트가 작업과 시간을 작업에 보고할 수 있어요. 끄면 에이전트 실행이 숨겨지고 에이전트는 보고하지 않아요.",
+				"dashboard": "워크스페이스 전체의 활동과 진행 상황을 한눈에 확인해요.",
+				"dailyRoutines": "작업과 별개로 반복 루틴과 메모를 관리해요.",
+				"taskComments": "작업에 댓글을 달고 논의할 수 있어요.",
+				"taskCountdown": "시작/중지 타이머로 작업에 쓴 시간을 추적해요.",
+				"taskFiles": "작업에 파일을 첨부할 수 있어요.",
+				"taskRelations": "관련된 작업끼리 연결할 수 있어요.",
+				"taskCheckpoints": "작업을 더 작은 체크포인트로 나눠요.",
+				"taskAssignees": "워크스페이스 멤버에게 작업을 지정해요.",
+				"exports": "워크스페이스 데이터를 내보내요.",
+				"defaultLandingPage": "로그인할 때 가장 먼저 열릴 페이지를 선택해요."
+			}
+		},
+		"deviceScope": {
+			"workspacesRead": "워크스페이스, 상태, 프로젝트 보기",
+			"tasksRead": "작업과 댓글 읽기",
+			"tasksWrite": "작업 상태와 필드 변경",
+			"tasksCreate": "작업 만들기",
+			"commentsCreate": "댓글 추가",
+			"timeRead": "시간 보고서 읽기",
+			"timeWrite": "내 타이머 시작 및 중지",
+			"agentWorkWrite": "작업에 AI 에이전트 작업 기록",
+			"agentStatusWrite": "로컬 AI 에이전트 상태(작업 중, 대기 중, 완료)를 워크스페이스와 공유",
+			"pagesRead": "페이지 읽기",
+			"pagesWrite": "페이지 편집",
+			"pagesAppend": "페이지에 내용 추가",
+			"notifySend": "내 기기에 알림과 휴대폰 알람 보내기",
+			"agentApprovalsWrite": "이 컴퓨터의 키로 에이전트 실행 승인에 서명",
+			"skillsRead": "공유 스킬과 해당 스킬을 쓰는 페르소나 읽기",
+			"skillsWrite": "공유 스킬을 만들고, 변경하고, 삭제하고, 페르소나에 연결 (해당 에이전트가 받는 지시가 바뀌어요)"
+		},
+		"workspaceColor": {
+			"red": "빨강",
+			"orange": "주황",
+			"yellow": "노랑",
+			"green": "초록",
+			"teal": "청록",
+			"blue": "파랑",
+			"violet": "보라",
+			"pink": "분홍"
+		},
+		"phones": {
+			"pairStartFailed": "페어링을 시작하지 못했어요",
+			"enterName": "이 Mac의 이름을 입력해 주세요",
+			"signIn": "휴대폰을 페어링하려면 로그인해 주세요",
+			"genericError": "문제가 발생했어요",
+			"never": "없음",
+			"justNow": "방금",
+			"minutesAgo": "{n}분 전",
+			"hoursAgo": "{n}시간 전",
+			"daysAgo": "{n}일 전",
+			"scanCode": "TMGR iPhone 앱으로 이 코드를 스캔해 주세요",
+			"typeCodeOn": "{name}에 표시된 코드를 입력해 주세요",
+			"typeCodeOnIphone": "iPhone에 표시된 코드를 입력해 주세요",
+			"pairingFailed": "페어링에 실패했어요",
+			"isPaired": "{name}이(가) 페어링되었어요",
+			"phonePaired": "휴대폰이 페어링되었어요",
+			"attemptsLeft": "{n}번 남았어요"
+		},
+		"modules": {
+			"footer": "모듈을 끄면 이 워크스페이스의 모든 사람에게 숨겨져요. 데이터는 그대로 남아 있어요. 다시 켜면 모든 것이 그대로 돌아와요.",
+			"coreDescription": "항상 사용할 수 있어요. 필요하면 나에게만 숨길 수 있어요."
+		}
 	}
 }

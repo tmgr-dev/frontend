@@ -218,5 +218,22 @@
 		"copyTitle": "{title}（コピー）",
 		"importErrors": "\nエラー：\n- {list}",
 		"importSummary": "インポート {created}件、スキップ {skipped}件、置き換え {replaced}件。{errors}"
+	},
+	"helpers": {
+		"recurrence": {
+			"daily": "毎日",
+			"everyNDays": "{n} 日ごと",
+			"weekly": "毎週",
+			"weekdays": "平日",
+			"weekends": "週末",
+			"monthly": "毎月 · {day} 日",
+			"yearly": "毎年 · {date}"
+		},
+		"relative": {
+			"now": "今",
+			"secondsAgo": "{n} 秒前",
+			"minutesAgo": "{n} 分前",
+			"hoursAgo": "{n} 時間前"
+		}
 	}
 }

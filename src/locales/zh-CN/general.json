@@ -293,5 +293,77 @@
 		"tracked": "已记录时间",
 		"running": "运行中",
 		"overTime": "已超时"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "此链接指向一个你无权访问的工作区。",
+			"notFound": "此任务已不存在。",
+			"forbidden": "你无权访问此任务。",
+			"error": "无法加载此任务。请检查网络连接后重试。"
+		},
+		"modules": {
+			"needsColon": "需要：{list}",
+			"needs": "需要 {list}",
+			"showModule": "显示此模块",
+			"enableFeature": "启用此功能",
+			"askOwner": "请让所有者开启此功能",
+			"hiddenForYou": "已对你隐藏",
+			"showForMe": "对我显示",
+			"hideForMe": "对我隐藏",
+			"allModules": "所有模块",
+			"coreOnly": "无模块，仅核心功能",
+			"workflowOffConfirm": "任务将使用“完成”复选框代替状态，看板会被隐藏。状态及其任务会保留，重新开启后即可恢复。",
+			"workflowOn": "工作流：“完成”复选框 → 状态",
+			"workflowOff": "工作流：状态 → “完成”复选框",
+			"presetSummary": {
+				"personal": "仅自己使用：任务和时间，带“完成”复选框",
+				"team": "通过状态和看板协作",
+				"developer": "我和我的 AI 智能体，带状态和看板",
+				"everything": "开启所有模块",
+				"minimal": "只有任务：列表、计时器和评论"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "仪表盘",
+				"projects": "项目",
+				"list": "列表",
+				"board": "看板",
+				"routines": "例行事项",
+				"pages": "页面",
+				"map": "地图",
+				"files": "文件",
+				"askAi": "询问 AI",
+				"personas": "角色"
+			},
+			"task": {
+				"timer": "计时器",
+				"pomodoro": "番茄钟",
+				"assignees": "负责人",
+				"checkpoints": "检查点",
+				"attachments": "附件",
+				"relations": "关联",
+				"agentWork": "智能体运行",
+				"github": "GitHub",
+				"cursorAgents": "Cursor 智能体",
+				"comments": "评论",
+				"aiReply": "AI 回复"
+			}
+		},
+		"navTargets": {
+			"dashboard": "仪表盘",
+			"list": "列表",
+			"board": "看板",
+			"localRoutines": "本地例行事项",
+			"dailyRoutines": "日常事项",
+			"archive": "归档",
+			"categories": "项目",
+			"pages": "页面",
+			"statistics": "统计",
+			"aiUsage": "AI 用量",
+			"files": "文件",
+			"map": "地图",
+			"settings": "设置"
+		}
 	}
 }

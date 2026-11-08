@@ -36,5 +36,17 @@
 		"openFailed": "플러그인 창을 열지 못했어요: {error}",
 		"nothingToShow": "플러그인이 표시할 내용을 반환하지 않았어요.",
 		"drawFailed": "플러그인이 이 페이지를 그리지 못했어요: {error}"
+	},
+	"helpers": {
+		"time": {
+			"fewSeconds": "몇 초",
+			"min": "{n}분",
+			"hour": "{n}시간",
+			"day": "{n}일",
+			"justNow": "방금",
+			"ago": "{span} 전",
+			"in": "{span} 후",
+			"overdue": "{span} 지연"
+		}
 	}
 }

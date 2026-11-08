@@ -293,5 +293,77 @@
 		"tracked": "記録した時間",
 		"running": "実行中",
 		"overTime": "超過"
+	},
+	"helpers": {
+		"openTaskLink": {
+			"workspace": "このリンクは、アクセス権のないワークスペースを指しています。",
+			"notFound": "このタスクはもう存在しません。",
+			"forbidden": "このタスクにアクセスする権限がありません。",
+			"error": "このタスクを読み込めませんでした。接続を確認してもう一度お試しください。"
+		},
+		"modules": {
+			"needsColon": "必要: {list}",
+			"needs": "{list} が必要",
+			"showModule": "このモジュールを表示",
+			"enableFeature": "この機能を有効にする",
+			"askOwner": "オーナーにオンにしてもらってください",
+			"hiddenForYou": "自分には非表示",
+			"showForMe": "自分に表示",
+			"hideForMe": "自分には非表示にする",
+			"allModules": "すべてのモジュール",
+			"coreOnly": "モジュールなし、コアのみ",
+			"workflowOffConfirm": "タスクにはステータスの代わりに「完了」チェックボックスが表示され、ボードは非表示になります。ステータスとそのタスクは残り、オンに戻すと元に戻ります。",
+			"workflowOn": "ワークフロー: 「完了」チェックボックス → ステータス",
+			"workflowOff": "ワークフロー: ステータス → 「完了」チェックボックス",
+			"presetSummary": {
+				"personal": "自分だけ: 「完了」チェックボックス付きのタスクと時間管理",
+				"team": "ステータスとボードでチームで作業",
+				"developer": "自分と AI エージェント、ステータスとボード付き",
+				"everything": "すべてのモジュールをオン",
+				"minimal": "タスクだけ: リスト、タイマー、コメント"
+			}
+		},
+		"previewSurfaces": {
+			"nav": {
+				"dashboard": "ダッシュボード",
+				"projects": "プロジェクト",
+				"list": "リスト",
+				"board": "ボード",
+				"routines": "ルーティン",
+				"pages": "ページ",
+				"map": "マップ",
+				"files": "ファイル",
+				"askAi": "AI に質問",
+				"personas": "ペルソナ"
+			},
+			"task": {
+				"timer": "タイマー",
+				"pomodoro": "ポモドーロ",
+				"assignees": "担当者",
+				"checkpoints": "チェックポイント",
+				"attachments": "添付ファイル",
+				"relations": "関連",
+				"agentWork": "エージェントの実行",
+				"github": "GitHub",
+				"cursorAgents": "Cursor エージェント",
+				"comments": "コメント",
+				"aiReply": "AI の返信"
+			}
+		},
+		"navTargets": {
+			"dashboard": "ダッシュボード",
+			"list": "リスト",
+			"board": "ボード",
+			"localRoutines": "ローカルルーティン",
+			"dailyRoutines": "デイリールーティン",
+			"archive": "アーカイブ",
+			"categories": "プロジェクト",
+			"pages": "ページ",
+			"statistics": "統計",
+			"aiUsage": "AI 利用状況",
+			"files": "ファイル",
+			"map": "マップ",
+			"settings": "設定"
+		}
 	}
 }

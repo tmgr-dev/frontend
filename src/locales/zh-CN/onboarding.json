@@ -1066,5 +1066,30 @@
 			"command": "命令已运行",
 			"agent": "智能体已连接"
 		}
+	},
+	"helpers": {
+		"checklist": {
+			"human": {
+				"createTask": "创建一个任务",
+				"runTimer": "运行计时器一分钟",
+				"moveCard": "在看板上移动一张卡片",
+				"addRoutine": "添加一项日常事项",
+				"writePage": "写一个页面",
+				"connectAgent": "连接一个 AI 智能体"
+			},
+			"agent": {
+				"connectAgent": "连接智能体",
+				"firstAgentRun": "运行你的第一个智能体任务",
+				"phoneAlert": "智能体需要你时，在手机上收到提醒",
+				"startTimer": "为任务启动计时器",
+				"contextPage": "写一个供智能体阅读的上下文页面",
+				"inviteTeammate": "邀请一位队友"
+			},
+			"verifyEmail": "请先验证你的邮箱"
+		},
+		"aha": {
+			"firstRun": "已记录第一次智能体运行。这就是 TMGR 的用处。",
+			"timerLogged": "已在 {title} 上记录 {minutes} 分钟。你的时间会留在任务里。"
+		}
 	}
 }
