@@ -270,19 +270,7 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
 				active.value = null;
 			} else {
 				const { anchorEl: _anchorEl, mode: _mode, ...viewRest } = view;
-				const rest = {
-					...viewRest,
-					step: localizedStep(viewRest.tour, viewRest.step),
-				};
-				active.value = hasTemplate(rest.step)
-					? {
-							...rest,
-							bodyParts: resolveBodyParts(
-								rest.step,
-								deps.keycaps?.() ?? DEFAULT_KEYCAP_ENV,
-							),
-						}
-					: rest;
+				active.value = viewRest;
 			}
 			showView(view);
 		},
@@ -416,6 +404,12 @@ export function createTours(deps: ToursHostDeps): ToursEngine {
 		onboarding: store.state,
 		hostReady,
 		resumePill,
+		bodyPartsFor: (tour, step) => {
+			const localized = localizedStep(tour, step);
+			return hasTemplate(localized)
+				? resolveBodyParts(localized, deps.keycaps?.() ?? DEFAULT_KEYCAP_ENV)
+				: undefined;
+		},
 		start: async (id, trigger) => void (await begin(id, trigger, false)),
 		resume: async (id) => void (await begin(id, 'resume', true)),
 		pause: () => runner.pause(),

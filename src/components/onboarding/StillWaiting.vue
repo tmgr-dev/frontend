@@ -11,7 +11,9 @@
 			{{ $t('onboarding.stillWaiting.intro') }}
 		</p>
 		<ol class="space-y-2 mt-3 list-decimal pl-5">
-			<li>{{ $t('onboarding.stillWaiting.runCommand', { client }) }}</li>
+			<li>
+				{{ $t('onboarding.stillWaiting.runCommand', { client: clientName }) }}
+			</li>
 			<li>{{ $t('onboarding.stillWaiting.restart') }}</li>
 			<i18n-t
 				v-if="verifyCommand"
@@ -66,12 +68,14 @@
 		name: 'StillWaiting',
 		components: { CommandChip },
 		props: {
-			client: {
-				type: String,
-				default: () => t('onboarding.stillWaiting.defaultClient'),
-			},
+			client: { type: String, default: '' },
 			verifyCommand: { type: String, default: '' },
 		},
 		emits: ['check-again', 'different-client', 'later'],
+		computed: {
+			clientName() {
+				return this.client || t('onboarding.stillWaiting.defaultClient');
+			},
+		},
 	});
 </script>

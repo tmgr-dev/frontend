@@ -74,7 +74,6 @@
 			}
 		},
 		"keycaps": {
-			"systemTray": "zone de notification",
 			"fallback": "votre raccourci {name} (Paramètres → Bureau)",
 			"shortcuts": {
 				"quickAdd": "ajout rapide",
@@ -226,7 +225,9 @@
 						},
 						"s2": {
 							"title": "Fermer la fenêtre",
-							"body": "Fermer la fenêtre laisse TMGR actif dans {'{'}tray{'}'}."
+							"body": "Fermer la fenêtre laisse TMGR actif dans la barre des menus.",
+							"bodyMacos": "Fermer la fenêtre laisse TMGR actif dans la barre des menus.",
+							"bodyOther": "Fermer la fenêtre laisse TMGR actif dans la zone de notification."
 						}
 					}
 				},

@@ -53,7 +53,7 @@ describe('S8 desktop catalog', () => {
 	});
 
 	it('uses only known tokens', () => {
-		const known = new Set(['tray', ...SHORTCUT_ACTIONS.map((a) => `key:${a}`)]);
+		const known = new Set(SHORTCUT_ACTIONS.map((a) => `key:${a}`));
 		for (const t of desktopTours)
 			for (const step of t.steps)
 				for (const text of [

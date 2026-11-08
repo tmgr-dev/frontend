@@ -109,7 +109,11 @@ export const desktopTours: TourDef[] = [
 				id: 's2',
 				type: 'modal',
 				title: 'Closing the window',
-				body: 'Closing the window keeps TMGR running in the {tray}.',
+				body: 'Closing the window keeps TMGR running in the menu bar.',
+				bodyByPlatform: {
+					macos: 'Closing the window keeps TMGR running in the menu bar.',
+					other: 'Closing the window keeps TMGR running in the system tray.',
+				},
 			},
 		],
 	},

@@ -6,23 +6,19 @@ export type BodyPart =
 
 export interface KeycapEnv {
 	mac: boolean;
-	tray: string;
 	shortcut(action: string): { accelerator: string; enabled: boolean } | null;
 	describe(accelerator: string): string;
 }
 
 export const DEFAULT_KEYCAP_ENV: KeycapEnv = {
 	mac: false,
-	get tray() {
-		return t('onboarding.tours.keycaps.systemTray');
-	},
 	shortcut: () => null,
 	describe: (accelerator) => accelerator,
 };
 
 const SHORTCUT_LABEL_KEYS = ['quickAdd', 'timer', 'screenshot', 'selection'];
 
-const TOKEN = /\{(key:[A-Za-z]+|tray)\}/g;
+const TOKEN = /\{(key:[A-Za-z]+)\}/g;
 
 export const templateFor = (
 	step: StepDef,
@@ -60,10 +56,6 @@ export function resolveBodyParts(step: StepDef, env: KeycapEnv): BodyPart[] {
 		pushText(template.slice(cursor, match.index));
 		cursor = (match.index ?? 0) + match[0].length;
 		const token = match[1];
-		if (token === 'tray') {
-			pushText(env.tray);
-			continue;
-		}
 		const action = token.slice(4);
 		const setting = env.shortcut(action);
 		if (setting?.enabled && setting.accelerator) {

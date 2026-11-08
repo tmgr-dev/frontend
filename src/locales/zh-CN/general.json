@@ -63,7 +63,7 @@
 			"fri": "周五"
 		},
 		"contributionsOn": "{date} 有 {n} 次贡献",
-		"dayLabel": "{date}：{activity}"
+		"dayLabel": "{date}：{n} 项活动"
 	},
 	"countdown": {
 		"editHint": "双击编辑时间",

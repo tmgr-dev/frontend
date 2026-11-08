@@ -63,7 +63,7 @@
 			"fri": "Vie"
 		},
 		"contributionsOn": "{n} contribución el {date} | {n} contribuciones el {date}",
-		"dayLabel": "{activity} el {date}"
+		"dayLabel": "{n} actividad el {date} | {n} actividades el {date}"
 	},
 	"countdown": {
 		"editHint": "Haz doble clic para editar la hora",

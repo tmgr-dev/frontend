@@ -74,7 +74,6 @@
 			}
 		},
 		"keycaps": {
-			"systemTray": "시스템 트레이",
 			"fallback": "{name} 단축키 (설정 → 데스크톱)",
 			"shortcuts": {
 				"quickAdd": "빠른 추가",
@@ -226,7 +225,9 @@
 						},
 						"s2": {
 							"title": "창 닫기",
-							"body": "창을 닫아도 TMGR은 {'{'}tray{'}'}에서 계속 실행돼요."
+							"body": "창을 닫아도 TMGR은 메뉴 막대에서 계속 실행됩니다.",
+							"bodyMacos": "창을 닫아도 TMGR은 메뉴 막대에서 계속 실행됩니다.",
+							"bodyOther": "창을 닫아도 TMGR은 시스템 트레이에서 계속 실행됩니다."
 						}
 					}
 				},

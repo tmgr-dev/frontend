@@ -10,7 +10,7 @@
 			@click="toggle"
 			@keydown.down.prevent="openAndFocus(0)"
 		>
-			{{ label }}
+			{{ label || $t('onboarding.tours.ui.skip') }}
 			<svg
 				width="12"
 				height="12"
@@ -32,7 +32,7 @@
 			:data-align="align"
 			data-state="open"
 			data-tour-menu="open"
-			:aria-label="label"
+			:aria-label="label || $t('onboarding.tours.ui.skip')"
 			@keydown="onKeydown"
 		>
 			<li v-for="item in visibleItems" :key="item.key" role="none">
@@ -82,7 +82,7 @@
 				type: Array as PropType<SkipMenuKey[]>,
 				default: () => ['skip-step', 'pause', 'explore', 'never', 'skip-tour'],
 			},
-			label: { type: String, default: () => t('onboarding.tours.ui.skip') },
+			label: { type: String, default: '' },
 			align: { type: String as PropType<'left' | 'right'>, default: 'left' },
 		},
 		emits: ['select'],

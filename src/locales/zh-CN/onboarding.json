@@ -74,7 +74,6 @@
 			}
 		},
 		"keycaps": {
-			"systemTray": "系统托盘",
 			"fallback": "你的 {name} 快捷键（设置 → 桌面）",
 			"shortcuts": {
 				"quickAdd": "快速添加",
@@ -226,7 +225,9 @@
 						},
 						"s2": {
 							"title": "关闭窗口",
-							"body": "关闭窗口后，TMGR 会继续在{'{'}tray{'}'}中运行。"
+							"body": "关闭窗口后，TMGR 会继续在菜单栏中运行。",
+							"bodyMacos": "关闭窗口后，TMGR 会继续在菜单栏中运行。",
+							"bodyOther": "关闭窗口后，TMGR 会继续在系统托盘中运行。"
 						}
 					}
 				},

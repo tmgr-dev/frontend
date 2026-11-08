@@ -63,7 +63,7 @@
 			"fri": "金"
 		},
 		"contributionsOn": "{date} に {n} 件の貢献",
-		"dayLabel": "{date} の{activity}"
+		"dayLabel": "{date} の活動 {n} 件"
 	},
 	"countdown": {
 		"editHint": "ダブルクリックで時間を編集",

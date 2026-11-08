@@ -74,7 +74,6 @@
 			}
 		},
 		"keycaps": {
-			"systemTray": "bandeja do sistema",
 			"fallback": "seu atalho {name} (Configurações → Desktop)",
 			"shortcuts": {
 				"quickAdd": "adicionar rápido",
@@ -226,7 +225,9 @@
 						},
 						"s2": {
 							"title": "Ao fechar a janela",
-							"body": "Ao fechar a janela, o TMGR continua rodando na {'{'}tray{'}'}."
+							"body": "Ao fechar a janela, o TMGR continua rodando na barra de menus.",
+							"bodyMacos": "Ao fechar a janela, o TMGR continua rodando na barra de menus.",
+							"bodyOther": "Ao fechar a janela, o TMGR continua rodando na bandeja do sistema."
 						}
 					}
 				},

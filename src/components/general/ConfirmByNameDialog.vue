@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { t } from '@/i18n';
 	import {
 		AlertDialog,
 		AlertDialogCancel,
@@ -32,10 +31,7 @@
 			title: { type: String, required: true },
 			description: { type: String, default: '' },
 			expectedName: { type: String, required: true },
-			confirmLabel: {
-				type: String,
-				default: () => t('common.actions.confirm'),
-			},
+			confirmLabel: { type: String, default: '' },
 			busy: { type: Boolean, default: false },
 		},
 		emits: ['update:open', 'confirm'],
@@ -90,7 +86,7 @@
 					$t('common.actions.cancel')
 				}}</AlertDialogCancel>
 				<Button variant="destructive" :disabled="!canConfirm" @click="confirm">
-					{{ confirmLabel }}
+					{{ confirmLabel || $t('common.actions.confirm') }}
 				</Button>
 			</AlertDialogFooter>
 		</AlertDialogContent>

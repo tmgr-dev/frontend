@@ -74,7 +74,6 @@
 			}
 		},
 		"keycaps": {
-			"systemTray": "bandeja del sistema",
 			"fallback": "tu atajo de {name} (Ajustes → Escritorio)",
 			"shortcuts": {
 				"quickAdd": "añadir rápido",
@@ -226,7 +225,9 @@
 						},
 						"s2": {
 							"title": "Cerrar la ventana",
-							"body": "Al cerrar la ventana, TMGR sigue funcionando en la {'{'}tray{'}'}."
+							"body": "Al cerrar la ventana, TMGR sigue funcionando en la barra de menús.",
+							"bodyMacos": "Al cerrar la ventana, TMGR sigue funcionando en la barra de menús.",
+							"bodyOther": "Al cerrar la ventana, TMGR sigue funcionando en la bandeja del sistema."
 						}
 					}
 				},

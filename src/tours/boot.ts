@@ -5,7 +5,6 @@ import {
 	isMacLike,
 	supportsLocalAccess,
 	supportsPluginWindows,
-	trayName,
 } from '@/utils/desktop';
 import type { AxiosInstance } from 'axios';
 import type { Router } from 'vue-router';
@@ -109,7 +108,6 @@ export function installTours(
 		isDesktopApp()
 			? {
 					mac: isMacLike(desktopPlatform()),
-					tray: trayName(),
 					shortcut: (action) =>
 						shortcuts?.shortcutConfig.value[action as 'quickAdd'] ?? null,
 					describe: (accelerator) =>

@@ -2,7 +2,7 @@
 	<div class="card flex flex-col transition duration-300 ease-in-out">
 		<div class="card-body">
 			<nav :aria-label="$t('general.breadcrumbs.label')" class="text-left">
-				<ol v-if="current" class="breadcrumb md:flex">
+				<ol v-if="currentText" class="breadcrumb md:flex">
 					<li
 						v-for="(item, i) in items"
 						:key="i"
@@ -20,7 +20,7 @@
 						aria-current="page"
 						class="breadcrumb-item active inline font-bold md:mx-1"
 					>
-						{{ current }}
+						{{ currentText }}
 					</li>
 				</ol>
 
@@ -47,17 +47,22 @@
 			title: {
 				required: false,
 				type: String,
-				default: () => t('general.breadcrumbs.title'),
+				default: '',
 			},
 			current: {
 				required: false,
 				type: String,
-				default: () => t('general.breadcrumbs.currentPage'),
+				default: '',
 			},
 			drop: {
 				type: Function,
 				required: false,
 				default: () => () => {},
+			},
+		},
+		computed: {
+			currentText() {
+				return this.current || t('general.breadcrumbs.currentPage');
 			},
 		},
 	};

@@ -74,7 +74,6 @@
 			}
 		},
 		"keycaps": {
-			"systemTray": "Infobereich",
 			"fallback": "dein Kürzel für {name} (Einstellungen → Desktop)",
 			"shortcuts": {
 				"quickAdd": "Schnell hinzufügen",
@@ -226,7 +225,9 @@
 						},
 						"s2": {
 							"title": "Fenster schließen",
-							"body": "Wenn du das Fenster schließt, läuft TMGR im {'{'}tray{'}'} weiter."
+							"body": "Wenn du das Fenster schließt, läuft TMGR in der Menüleiste weiter.",
+							"bodyMacos": "Wenn du das Fenster schließt, läuft TMGR in der Menüleiste weiter.",
+							"bodyOther": "Wenn du das Fenster schließt, läuft TMGR im Infobereich weiter."
 						}
 					}
 				},

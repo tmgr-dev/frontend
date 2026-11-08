@@ -231,11 +231,14 @@ describe('offer', () => {
 const advance = (h: ReturnType<typeof make>, ms: number) => h.advance(ms);
 
 describe('body parts', () => {
+	const parts = (h: ReturnType<typeof make>) => {
+		const a = h.engine.api.active.value;
+		return a ? h.engine.api.bodyPartsFor(a.tour, a.step) : undefined;
+	};
 	const keycaps = (platform: 'macos' | 'windows') => {
 		const config = mergeShortcuts({});
 		return () => ({
 			mac: platform === 'macos',
-			tray: platform === 'macos' ? 'menu bar' : 'system tray',
 			shortcut: (a: string) => config[a as 'quickAdd'],
 			describe: (acc: string) => describeAccelerator(acc, platform),
 		});
@@ -245,7 +248,7 @@ describe('body parts', () => {
 		const h = make({ keycaps: keycaps('windows') });
 		await h.engine.init();
 		await h.engine.api.start('desktop.quick-add', 'hub');
-		expect(h.engine.api.active.value?.bodyParts).toEqual([
+		expect(parts(h)).toEqual([
 			{ kind: 'text', text: 'Press ' },
 			{ kind: 'key', text: 'Alt+Space' },
 			{ kind: 'text', text: ' in any app. A small capture window opens.' },
@@ -256,16 +259,14 @@ describe('body parts', () => {
 		const h = make({ keycaps: keycaps('macos') });
 		await h.engine.init();
 		await h.engine.api.start('desktop.menu-bar-timer', 'hub');
-		expect(h.engine.api.active.value?.bodyParts?.[0].text).toContain(
-			'menu bar',
-		);
+		expect(parts(h)?.[0].text).toContain('menu bar');
 	});
 
 	it('leaves plain steps untouched', async () => {
 		const h = make({ platform: () => 'desktop_local', account: () => 'local' });
 		await h.engine.init();
 		await h.engine.api.start('desktop.local-workspace', 'hub');
-		expect(h.engine.api.active.value?.bodyParts).toBeUndefined();
+		expect(parts(h)).toBeUndefined();
 	});
 });
 

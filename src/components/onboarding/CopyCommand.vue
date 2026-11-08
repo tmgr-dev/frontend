@@ -2,7 +2,7 @@
 	<div>
 		<div :class="rowClass">
 			<pre
-				:aria-label="label"
+				:aria-label="labelText"
 				:class="[
 					textClass,
 					'rounded-md border border-line bg-surface-sunken px-3 py-3 font-mono text-xs text-ink',
@@ -17,7 +17,9 @@
 				]"
 				data-testid="snippet-copy"
 				:disabled="!code"
-				:aria-label="$t('onboarding.copyCommand.copyLabel', { label })"
+				:aria-label="
+					$t('onboarding.copyCommand.copyLabel', { label: labelText })
+				"
 				@click="copy"
 			>
 				{{ copied ? $t('common.actions.copied') : $t('common.actions.copy') }}
@@ -47,10 +49,7 @@
 		props: {
 			code: { type: String, required: true },
 			display: { type: String, default: undefined },
-			label: {
-				type: String,
-				default: () => t('onboarding.copyCommand.defaultLabel'),
-			},
+			label: { type: String, default: '' },
 			client: { type: String, default: '' },
 			emitEvent: { type: Boolean, default: true },
 			wrap: { type: Boolean, default: false },
@@ -85,6 +84,9 @@
 				copied,
 				failed,
 				copy,
+				labelText: computed(
+					() => props.label || t('onboarding.copyCommand.defaultLabel'),
+				),
 				rowClass: SNIPPET_ROW_CLASS,
 				buttonClass: SNIPPET_BUTTON_CLASS,
 				textClass: computed(() => snippetTextClass(props.wrap)),

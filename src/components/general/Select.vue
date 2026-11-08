@@ -7,7 +7,7 @@
 			<vue-select
 				:label="labelKey"
 				:options="preparedOptions"
-				:placeholder="placeholder"
+				:placeholder="placeholder || $t('general.select.placeholder')"
 				v-model="value"
 				:clearable="false"
 				:class="{ 'red-placeholder': hasError }"
@@ -27,7 +27,6 @@
 </template>
 
 <script setup lang="ts">
-	import { t } from '@/i18n';
 	import VueSelect from '@/plugins/VueSelect';
 	import { computed } from 'vue';
 
@@ -53,7 +52,7 @@
 	const props = withDefaults(defineProps<Props>(), {
 		labelKey: 'label',
 		valueKey: 'value',
-		placeholder: () => t('general.select.placeholder'),
+		placeholder: '',
 		showErrorInTooltip: true,
 		selectClass: '',
 	});

@@ -63,7 +63,7 @@
 			"fri": "Fr"
 		},
 		"contributionsOn": "{n} Beitrag am {date} | {n} Beiträge am {date}",
-		"dayLabel": "{activity} am {date}"
+		"dayLabel": "{n} Aktivität am {date} | {n} Aktivitäten am {date}"
 	},
 	"countdown": {
 		"editHint": "Doppelklicken, um die Zeit zu bearbeiten",

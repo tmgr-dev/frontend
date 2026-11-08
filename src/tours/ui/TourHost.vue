@@ -62,7 +62,7 @@
 		trapFocus,
 	} from '../a11y';
 	import { t } from '@/i18n';
-	import { tourTitle } from '../i18n';
+	import { localizedStep, tourTitle } from '../i18n';
 	import { partsToText } from '../keycaps';
 	import { createOverlayAdapter } from '../overlay';
 	import type {
@@ -140,25 +140,39 @@
 			const tourTitleText = computed(() =>
 				active.value ? tourTitle(active.value.tour) : '',
 			);
-			const titleText = computed(() => active.value?.step.title ?? '');
+			const step = computed(() =>
+				active.value
+					? localizedStep(active.value.tour, active.value.step)
+					: null,
+			);
+			const parts = computed(() =>
+				active.value
+					? api.bodyPartsFor(active.value.tour, active.value.step)
+					: undefined,
+			);
+			const titleText = computed(() => step.value?.title ?? '');
 			const bodyText = computed(() => {
 				const a = active.value;
 				if (!a) return '';
+				const s = step.value;
+				if (!s) return '';
 				const base =
-					sheet.value && a.step.mobileBody
-						? a.step.mobileBody
-						: a.bodyParts
-							? partsToText(a.bodyParts)
-							: a.step.body;
+					sheet.value && s.mobileBody
+						? s.mobileBody
+						: parts.value
+							? partsToText(parts.value)
+							: s.body;
 				return base + bodySuffix(a);
 			});
 			const bodyPartsView = computed(() => {
 				const a = active.value;
-				if (!a?.bodyParts || (sheet.value && a.step.mobileBody)) return null;
+				const bodyParts = parts.value;
+				if (!a || !bodyParts || (sheet.value && step.value?.mobileBody))
+					return null;
 				const suffix = bodySuffix(a);
 				return suffix
-					? [...a.bodyParts, { kind: 'text' as const, text: suffix }]
-					: a.bodyParts;
+					? [...bodyParts, { kind: 'text' as const, text: suffix }]
+					: bodyParts;
 			});
 
 			const modal = computed(
@@ -232,7 +246,7 @@
 					stepAnnouncement({
 						position: a.index + 1,
 						total: a.total,
-						title: a.step.title,
+						title: step.value?.title ?? a.step.title,
 						waiting: a.waiting,
 					}),
 				);

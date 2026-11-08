@@ -119,10 +119,7 @@
 
 <script>
 	import { t } from '@/i18n';
-	import {
-		activityCountLabel,
-		formatDayLabel,
-	} from '@/utils/dashboard/activityDayFilter';
+	import { formatDayLabel } from '@/utils/dashboard/activityDayFilter';
 	import {
 		buildHeatmapWeeks,
 		heatmapHeadline,
@@ -390,10 +387,11 @@
 			},
 
 			getDayLabel(day) {
-				return t('general.heatmapCalendar.dayLabel', {
-					activity: activityCountLabel(day.count),
-					date: formatDayLabel(day.date),
-				});
+				return t(
+					'general.heatmapCalendar.dayLabel',
+					{ date: formatDayLabel(day.date) },
+					day.count,
+				);
 			},
 
 			getTooltipText(day) {

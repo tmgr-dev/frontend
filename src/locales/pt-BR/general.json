@@ -63,7 +63,7 @@
 			"fri": "Sex"
 		},
 		"contributionsOn": "{n} contribuição em {date} | {n} contribuições em {date}",
-		"dayLabel": "{activity} em {date}"
+		"dayLabel": "{n} atividade em {date} | {n} atividades em {date}"
 	},
 	"countdown": {
 		"editHint": "Clique duas vezes para editar o tempo",

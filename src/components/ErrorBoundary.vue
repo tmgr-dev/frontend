@@ -80,8 +80,8 @@
 	}
 
 	const props = withDefaults(defineProps<Props>(), {
-		fallbackTitle: () => t('general.errorBoundary.title'),
-		fallbackMessage: () => t('general.errorBoundary.message'),
+		fallbackTitle: '',
+		fallbackMessage: '',
 		showDetails: false,
 		showReportButton: true,
 	});
@@ -106,7 +106,7 @@
 		if (error.value?.name === 'NetworkError') {
 			return t('general.errorBoundary.networkTitle');
 		}
-		return props.fallbackTitle;
+		return props.fallbackTitle || t('general.errorBoundary.title');
 	});
 
 	const errorMessage = computed(() => {
@@ -119,7 +119,7 @@
 		if (error.value?.message) {
 			return error.value.message;
 		}
-		return props.fallbackMessage;
+		return props.fallbackMessage || t('general.errorBoundary.message');
 	});
 
 	const errorDetails = computed(() => {

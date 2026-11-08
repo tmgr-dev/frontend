@@ -74,7 +74,6 @@
 			}
 		},
 		"keycaps": {
-			"systemTray": "system tray",
 			"fallback": "your {name} shortcut (Settings → Desktop)",
 			"shortcuts": {
 				"quickAdd": "quick-add",
@@ -226,7 +225,9 @@
 						},
 						"s2": {
 							"title": "Closing the window",
-							"body": "Closing the window keeps TMGR running in the {'{'}tray{'}'}."
+							"body": "Closing the window keeps TMGR running in the menu bar.",
+							"bodyMacos": "Closing the window keeps TMGR running in the menu bar.",
+							"bodyOther": "Closing the window keeps TMGR running in the system tray."
 						}
 					}
 				},

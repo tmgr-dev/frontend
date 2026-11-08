@@ -39,7 +39,7 @@
 			</div>
 			<div v-if="waiting" class="tour-pop__waiting">
 				<span class="tour-spinner" aria-hidden="true" />
-				<span>{{ waitingText }}</span>
+				<span>{{ waitingText || $t('onboarding.tours.ui.waiting') }}</span>
 			</div>
 			<button
 				v-else
@@ -94,10 +94,7 @@
 			modal: { type: Boolean, default: true },
 			canTakeMe: { type: Boolean, default: false },
 			unavailable: { type: Boolean, default: false },
-			waitingText: {
-				type: String,
-				default: () => t('onboarding.tours.ui.waiting'),
-			},
+			waitingText: { type: String, default: '' },
 		},
 		emits: [
 			'next',

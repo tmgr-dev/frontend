@@ -63,7 +63,7 @@
 			"fri": "금"
 		},
 		"contributionsOn": "{date}에 기여 {n}건",
-		"dayLabel": "{date}의 {activity}"
+		"dayLabel": "{date}의 활동 {n}건"
 	},
 	"countdown": {
 		"editHint": "더블 클릭해서 시간 편집",

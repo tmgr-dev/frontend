@@ -8,7 +8,7 @@
 				hasError && '!border-red-500 placeholder:text-red-400',
 			]"
 			:name="name"
-			:placeholder="placeholder"
+			:placeholder="placeholder || $t('general.textField.placeholder')"
 			v-model="value"
 			:readonly="readonly"
 		/>
@@ -26,7 +26,6 @@
 </template>
 
 <script setup lang="ts">
-	import { t } from '@/i18n';
 	import { computed } from 'vue';
 
 	const tooltipClasses = [
@@ -49,7 +48,7 @@
 	const props = withDefaults(defineProps<Props>(), {
 		type: 'text',
 		name: 'text',
-		placeholder: () => t('general.textField.placeholder'),
+		placeholder: '',
 		showErrorInTooltip: true,
 		inputClass: '',
 	});

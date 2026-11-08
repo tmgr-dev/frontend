@@ -18,7 +18,6 @@ const env = (
 	const config = mergeShortcuts(stored);
 	return {
 		mac: platform === 'macos',
-		tray: platform === 'macos' ? 'menu bar' : 'system tray',
 		shortcut: (action) => config[action as 'quickAdd'] ?? null,
 		describe: (accelerator) => describeAccelerator(accelerator, platform),
 	};
@@ -65,16 +64,6 @@ describe('keycaps', () => {
 		const bare: KeycapEnv = { ...env('macos'), shortcut: () => null };
 		expect(partsToText(resolveBodyParts(quick, bare))).toContain(
 			'(Settings → Desktop)',
-		);
-	});
-
-	it('resolves {tray} per platform', () => {
-		const s = step({ body: 'Stays in the {tray}.' });
-		expect(partsToText(resolveBodyParts(s, env('macos')))).toBe(
-			'Stays in the menu bar.',
-		);
-		expect(partsToText(resolveBodyParts(s, env('linux')))).toBe(
-			'Stays in the system tray.',
 		);
 	});
 

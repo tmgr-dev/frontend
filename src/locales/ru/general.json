@@ -63,7 +63,7 @@
 			"fri": "Пт"
 		},
 		"contributionsOn": "{date}: {n} действие | {date}: {n} действия | {date}: {n} действий",
-		"dayLabel": "{date}: {activity}"
+		"dayLabel": "{date}: {n} активность | {date}: {n} активности | {date}: {n} активностей"
 	},
 	"countdown": {
 		"editHint": "Дважды нажмите, чтобы изменить время",

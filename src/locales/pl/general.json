@@ -63,7 +63,7 @@
 			"fri": "Pt"
 		},
 		"contributionsOn": "{n} wkład w dniu {date} | {n} wkłady w dniu {date} | {n} wkładów w dniu {date}",
-		"dayLabel": "{activity} w dniu {date}"
+		"dayLabel": "{n} aktywność w dniu {date} | {n} aktywności w dniu {date} | {n} aktywności w dniu {date}"
 	},
 	"countdown": {
 		"editHint": "Kliknij dwukrotnie, aby edytować czas",

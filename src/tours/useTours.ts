@@ -21,7 +21,6 @@ export interface ActiveTour {
 	onTargetPage?: boolean;
 	mobile?: boolean;
 	hint?: 'timer_too_short';
-	bodyParts?: BodyPart[];
 }
 
 export interface HubItem {
@@ -42,6 +41,7 @@ export interface ToursApi {
 	hubItems: Readonly<Ref<HubItem[]>>;
 	onboarding: Readonly<Ref<OnboardingState | null>>;
 	hostReady: Readonly<Ref<boolean>>;
+	bodyPartsFor(tour: TourDef, step: StepDef): BodyPart[] | undefined;
 	start(id: TourId, trigger: string): Promise<void>;
 	resume(id: TourId): Promise<void>;
 	pause(): void;
