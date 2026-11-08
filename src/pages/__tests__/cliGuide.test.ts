@@ -77,6 +77,18 @@ const POSITIONAL = new Set([
 	'hook install',
 	'init',
 	'ws use',
+	'peek',
+	'halt',
+	'runner allow',
+	'runner bind',
+	'checkpoints list',
+	'checkpoints diff',
+	'checkpoints restore',
+	'queue rules add',
+	'skills show',
+	'skills put',
+	'skills attach',
+	'agent start',
 ]);
 
 function check(cmd: string): string[] {
