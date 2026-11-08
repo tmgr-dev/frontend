@@ -167,7 +167,17 @@
 		"pickHint": "选择要发送到云端工作区的本地例行事项。",
 		"empty": "没有可移动的本地例行事项。",
 		"selectAria": "选择 {title}",
-		"readError": "无法读取本地例行事项。"
+		"readError": "无法读取本地例行事项。",
+		"messages": {
+			"sessionExpiredStop": "会话已过期，因此未发送剩余的例行事项。请重新登录后重试。",
+			"networkStop": "无法连接 TMGR 服务器，因此未发送剩余的例行事项。请检查网络连接后重试。",
+			"maybeSent": "可能已到达服务器。重试前请先检查工作区。",
+			"somethingWrong": "出错了。",
+			"serverUnreachable": "无法连接 TMGR 服务器。",
+			"sessionExpired": "会话已过期。",
+			"notConfirmed": "服务器未确认例行事项已创建。",
+			"noActiveStatus": "该工作区没有可用于放置任务的活动状态。"
+		}
 	},
 	"page": {
 		"gate": {

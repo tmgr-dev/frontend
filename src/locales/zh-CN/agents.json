@@ -348,6 +348,12 @@
 				"invalid_file": "文件名无效。",
 				"invalid_file_path": "无法附加上传的文件，请重试。",
 				"file_bound_elsewhere": "无法附加上传的文件，请重试。"
+			},
+			"uploadFailed": "上传失败。",
+			"size": {
+				"bytes": "{n} B",
+				"kilobytes": "{n} KB",
+				"megabytes": "{n} MB"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "自上次导入以来，库中的技能已被替换。请再次勾选以覆盖。",
 				"requestFailed": "请求失败"
 			}
+		},
+		"chat": {
+			"justNow": "刚刚",
+			"minutesAgo": "{n} 分钟前",
+			"hoursAgo": "{n} 小时前",
+			"newChat": "新对话",
+			"pinsLoadFailed": "无法加载置顶事实。",
+			"loadFailed": "无法加载对话",
+			"noActiveConversation": "没有活动对话",
+			"decisionFailed": "无法发送你的决定，请重试。",
+			"newChatFailed": "无法开始新对话"
 		}
 	}
 }

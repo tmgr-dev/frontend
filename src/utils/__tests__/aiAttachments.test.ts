@@ -1,6 +1,8 @@
+import { setLocale } from '@/i18n';
 import {
 	MAX_ATTACHMENT_BYTES,
 	attachmentErrorMessage,
+	formatBytes,
 	isSupportedAttachment,
 	validateAttachment,
 	withUniquePasteName,
@@ -82,5 +84,22 @@ describe('aiAttachments', () => {
 		expect(renamed.name).toMatch(/^screenshot-20261021-070509-[a-z0-9]+\.png$/);
 		const named = new File(['x'], 'design.png', { type: 'image/png' });
 		expect(withUniquePasteName(named)).toBe(named);
+	});
+});
+
+describe('formatBytes', () => {
+	afterEach(async () => {
+		await setLocale('en');
+	});
+
+	it('formats byte units in English', () => {
+		expect(
+			[0, 512, 2048, 1572864, MAX_ATTACHMENT_BYTES].map((b) => formatBytes(b)),
+		).toEqual(['0 B', '512 B', '2 KB', '1.5 MB', '10.0 MB']);
+	});
+
+	it('uses the decimal separator of the current locale', async () => {
+		await setLocale('de');
+		expect(formatBytes(1572864)).toBe('1,5 MB');
 	});
 });

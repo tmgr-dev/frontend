@@ -482,6 +482,10 @@
 			"events": "Zdarzenia",
 			"runnerNotRunning": "Runner TMGR nie działa. Uruchom go, aby zobaczyć tu autopilota.",
 			"updateRunner": "Zaktualizuj runnera TMGR, aby zobaczyć tu autopilota."
+		},
+		"allowReminder": {
+			"title": "Uruchomienia agentów w chmurze wkrótce wygasną",
+			"body": "Przestrzeń robocza {workspace} wkrótce przestanie przyjmować uruchomienia agentów na tym komputerze. Odnów je w terminalu: {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "Możesz rozpocząć do 3 przenosin dziennie. Spróbuj jutro.",
 			"running": "Inne przenoszenie nadal trwa.",
 			"tooLarge": "Ta przestrzeń robocza jest zbyt duża, aby przenieść ją za jednym razem.",
-			"genericError": "Coś poszło nie tak."
+			"genericError": "Coś poszło nie tak.",
+			"errors": {
+				"noMoveInProgress": "Brak trwającego przenoszenia",
+				"bundleUpload": "Wysyłanie pakietu przenoszenia",
+				"uploadOf": "Wysyłanie: {key}",
+				"httpFailed": "{what}: błąd (HTTP {status})",
+				"revisionChanged": "Kopia w chmurze została utworzona z innej wersji tej przestrzeni roboczej.",
+				"notPublished": "Serwer nie opublikował jeszcze przenoszenia.",
+				"alreadyInProgress": "Przenoszenie tej przestrzeni roboczej jest już w toku",
+				"noPublishedMove": "Ta przestrzeń robocza nie ma opublikowanego przenoszenia"
+			}
 		},
 		"runner": {
 			"states": {

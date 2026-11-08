@@ -68,7 +68,8 @@ const mutatePublished = (
 	change: (published: PublishedMove) => void,
 ) => {
 	const state = loadPersisted(storage, code);
-	if (!state.published) throw new Error('This workspace has no published move');
+	if (!state.published)
+		throw new Error(t('desktop.helpers.move.errors.noPublishedMove'));
 	change(state.published);
 	savePersisted(storage, code, state);
 	return state.published;
@@ -187,7 +188,8 @@ export const removeLocalCopy = async (
 	typedName: string,
 ): Promise<void> => {
 	const { published } = loadPersisted(deps.storage, code);
-	if (!published) throw new Error('This workspace has no published move');
+	if (!published)
+		throw new Error(t('desktop.helpers.move.errors.noPublishedMove'));
 	const session = deps.session();
 	if (removalAccountMismatch(published, session.userId)) {
 		throw new Error(removeAccountMessage());

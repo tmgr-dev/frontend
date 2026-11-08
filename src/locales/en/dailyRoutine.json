@@ -167,7 +167,17 @@
 		"pickHint": "Pick the local routines to send to a cloud workspace.",
 		"empty": "There are no local routines to move.",
 		"selectAria": "Select {title}",
-		"readError": "The local routines could not be read."
+		"readError": "The local routines could not be read.",
+		"messages": {
+			"sessionExpiredStop": "Your session expired, so the remaining routines were not sent. Sign in again and retry them.",
+			"networkStop": "The TMGR server could not be reached, so the remaining routines were not sent. Check your connection and retry them.",
+			"maybeSent": "May have reached the server. Check the workspace before retrying.",
+			"somethingWrong": "Something went wrong.",
+			"serverUnreachable": "The TMGR server could not be reached.",
+			"sessionExpired": "Your session expired.",
+			"notConfirmed": "The server did not confirm the routine was created.",
+			"noActiveStatus": "That workspace has no active status to put the tasks in."
+		}
 	},
 	"page": {
 		"gate": {

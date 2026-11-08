@@ -482,6 +482,10 @@
 			"events": "Événements",
 			"runnerNotRunning": "Le runner TMGR n'est pas en cours d'exécution. Démarrez-le pour voir l'autopilote ici.",
 			"updateRunner": "Mettez à jour le runner TMGR pour voir l'autopilote ici."
+		},
+		"allowReminder": {
+			"title": "Les exécutions d'agents dans le cloud expirent bientôt",
+			"body": "L'espace de travail {workspace} n'acceptera bientôt plus les exécutions d'agents sur cet ordinateur. Renouvelez-le dans un terminal : {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "Vous pouvez lancer jusqu'à 3 transferts par jour. Réessayez demain.",
 			"running": "Un autre transfert est toujours en cours.",
 			"tooLarge": "Cet espace de travail est trop volumineux pour être transféré en une seule fois.",
-			"genericError": "Une erreur s'est produite."
+			"genericError": "Une erreur s'est produite.",
+			"errors": {
+				"noMoveInProgress": "Aucun transfert en cours",
+				"bundleUpload": "Envoi du lot de transfert",
+				"uploadOf": "Envoi de {key}",
+				"httpFailed": "{what} a échoué (HTTP {status})",
+				"revisionChanged": "La copie cloud a été créée à partir d'une autre révision de cet espace de travail.",
+				"notPublished": "Le serveur n'a pas encore publié le transfert.",
+				"alreadyInProgress": "Un transfert de cet espace de travail est déjà en cours",
+				"noPublishedMove": "Cet espace de travail n'a pas de transfert publié"
+			}
 		},
 		"runner": {
 			"states": {

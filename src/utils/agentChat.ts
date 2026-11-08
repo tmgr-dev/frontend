@@ -1,3 +1,4 @@
+import { currentLocale, t } from '@/i18n';
 import type {
 	AgentConfirmationEvent,
 	AgentConversation,
@@ -303,7 +304,7 @@ export const nextChatAfterRemoval = (
 };
 
 export const chatTitle = (title: string | null | undefined): string =>
-	title && title.trim() ? title : 'New chat';
+	title && title.trim() ? title : t('agents.helpers.chat.newChat');
 
 export const formatChatTime = (
 	iso: string | null,
@@ -313,11 +314,11 @@ export const formatChatTime = (
 	const at = new Date(iso).getTime();
 	if (Number.isNaN(at)) return '';
 	const minutes = Math.max(0, Math.floor((nowMs - at) / 60000));
-	if (minutes < 1) return 'just now';
-	if (minutes < 60) return `${minutes} min ago`;
+	if (minutes < 1) return t('agents.helpers.chat.justNow');
+	if (minutes < 60) return t('agents.helpers.chat.minutesAgo', { n: minutes });
 	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours} h ago`;
-	return new Date(at).toLocaleDateString('en-US', {
+	if (hours < 24) return t('agents.helpers.chat.hoursAgo', { n: hours });
+	return new Date(at).toLocaleDateString(currentLocale(), {
 		month: 'short',
 		day: 'numeric',
 		...(new Date(at).getFullYear() === new Date(nowMs).getFullYear()

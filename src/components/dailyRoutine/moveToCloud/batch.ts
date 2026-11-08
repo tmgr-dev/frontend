@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { LocalRoutine } from './payload';
 
 export type MoveMode = 'routines' | 'tasks';
@@ -47,13 +48,16 @@ export interface MoveOutcome {
 }
 
 export const STOP_MESSAGE = {
-	auth: 'Your session expired, so the remaining routines were not sent. Sign in again and retry them.',
-	network:
-		'The TMGR server could not be reached, so the remaining routines were not sent. Check your connection and retry them.',
+	get auth() {
+		return t('dailyRoutine.moveToCloud.messages.sessionExpiredStop');
+	},
+	get network() {
+		return t('dailyRoutine.moveToCloud.messages.networkStop');
+	},
 } as const;
 
-const MAYBE_SENT_MESSAGE =
-	'May have reached the server. Check the workspace before retrying.';
+const maybeSentMessage = (): string =>
+	t('dailyRoutine.moveToCloud.messages.maybeSent');
 
 let counter = 0;
 const newKey = (): string => {
@@ -65,7 +69,8 @@ const newKey = (): string => {
 };
 
 export const toMessage = (error: unknown): string =>
-	(error as Error)?.message || 'Something went wrong.';
+	(error as Error)?.message ||
+	t('dailyRoutine.moveToCloud.messages.somethingWrong');
 
 const pending = (routine: LocalRoutine, prior?: ItemResult): ItemResult => ({
 	id: routine.id,
@@ -106,7 +111,7 @@ const process = async (
 					mode === 'routines' &&
 					error instanceof CloudError &&
 					error.kind === 'network'
-						? MAYBE_SENT_MESSAGE
+						? maybeSentMessage()
 						: toMessage(error);
 				if (error instanceof CloudError && error.kind !== 'rejected')
 					stopped = error.kind;

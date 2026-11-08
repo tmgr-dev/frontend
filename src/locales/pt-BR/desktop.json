@@ -482,6 +482,10 @@
 			"events": "Eventos",
 			"runnerNotRunning": "O runner do TMGR não está em execução. Inicie-o para ver o piloto automático aqui.",
 			"updateRunner": "Atualize o runner do TMGR para ver o piloto automático aqui."
+		},
+		"allowReminder": {
+			"title": "As execuções de agentes na nuvem expiram em breve",
+			"body": "O espaço de trabalho {workspace} em breve deixará de aceitar execuções de agentes neste computador. Renove em um terminal: {command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "Você pode iniciar até 3 migrações por dia. Tente novamente amanhã.",
 			"running": "Outra migração ainda está em andamento.",
 			"tooLarge": "Este espaço de trabalho é grande demais para ser movido de uma vez.",
-			"genericError": "Algo deu errado."
+			"genericError": "Algo deu errado.",
+			"errors": {
+				"noMoveInProgress": "Nenhuma migração em andamento",
+				"bundleUpload": "Envio do pacote da migração",
+				"uploadOf": "Envio de {key}",
+				"httpFailed": "{what} falhou (HTTP {status})",
+				"revisionChanged": "A cópia na nuvem foi feita a partir de outra revisão deste espaço de trabalho.",
+				"notPublished": "O servidor ainda não publicou a migração.",
+				"alreadyInProgress": "Já há uma migração deste espaço de trabalho em andamento",
+				"noPublishedMove": "Este espaço de trabalho não tem uma migração publicada"
+			}
 		},
 		"runner": {
 			"states": {

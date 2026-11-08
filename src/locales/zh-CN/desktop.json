@@ -482,6 +482,10 @@
 			"events": "事件",
 			"runnerNotRunning": "TMGR 运行器未运行。启动后即可在此查看自动驾驶。",
 			"updateRunner": "请更新 TMGR 运行器，以便在此查看自动驾驶。"
+		},
+		"allowReminder": {
+			"title": "云端智能体运行即将过期",
+			"body": "工作区 {workspace} 很快将不再接受此计算机上的智能体运行。请在终端中续期：{command}"
 		}
 	},
 	"helpers": {
@@ -640,7 +644,17 @@
 			"quota": "每天最多可发起 3 次迁移，请明天再试。",
 			"running": "另一项迁移仍在进行中。",
 			"tooLarge": "此工作区过大，无法一次性迁移。",
-			"genericError": "出了点问题。"
+			"genericError": "出了点问题。",
+			"errors": {
+				"noMoveInProgress": "没有正在进行的迁移",
+				"bundleUpload": "上传迁移包",
+				"uploadOf": "上传 {key}",
+				"httpFailed": "{what}失败（HTTP {status}）",
+				"revisionChanged": "云端副本是基于此工作区的其他版本创建的。",
+				"notPublished": "服务器尚未发布此迁移。",
+				"alreadyInProgress": "此工作区的迁移已在进行中",
+				"noPublishedMove": "此工作区没有已发布的迁移"
+			}
 		},
 		"runner": {
 			"states": {

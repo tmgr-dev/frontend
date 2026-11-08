@@ -167,7 +167,17 @@
 		"pickHint": "Wybierz lokalne rutyny do wysłania do przestrzeni roboczej w chmurze.",
 		"empty": "Brak lokalnych rutyn do przeniesienia.",
 		"selectAria": "Zaznacz {title}",
-		"readError": "Nie udało się odczytać lokalnych rutyn."
+		"readError": "Nie udało się odczytać lokalnych rutyn.",
+		"messages": {
+			"sessionExpiredStop": "Sesja wygasła, więc pozostałe rutyny nie zostały wysłane. Zaloguj się ponownie i spróbuj jeszcze raz.",
+			"networkStop": "Nie można połączyć się z serwerem TMGR, więc pozostałe rutyny nie zostały wysłane. Sprawdź połączenie i spróbuj ponownie.",
+			"maybeSent": "Żądanie mogło dotrzeć do serwera. Sprawdź przestrzeń roboczą przed ponowieniem.",
+			"somethingWrong": "Coś poszło nie tak.",
+			"serverUnreachable": "Nie można połączyć się z serwerem TMGR.",
+			"sessionExpired": "Sesja wygasła.",
+			"notConfirmed": "Serwer nie potwierdził utworzenia rutyny.",
+			"noActiveStatus": "Ta przestrzeń robocza nie ma aktywnego statusu, do którego można przypisać zadania."
+		}
 	},
 	"page": {
 		"gate": {

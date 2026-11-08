@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type { AttachedFile } from '@/utils/aiAttachments';
 import {
 	MAX_ATTACHMENTS_PER_MESSAGE,
@@ -51,7 +52,9 @@ export function useAttachmentQueue(
 			const item = find(key);
 			if (!item) return;
 			item.status = 'error';
-			item.error = attachmentErrorMessage(error) ?? 'Upload failed.';
+			item.error =
+				attachmentErrorMessage(error) ??
+				t('agents.helpers.attachments.uploadFailed');
 		}
 	};
 

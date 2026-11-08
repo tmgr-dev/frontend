@@ -348,6 +348,12 @@
 				"invalid_file": "파일 이름이 올바르지 않아요.",
 				"invalid_file_path": "업로드를 첨부하지 못했어요. 다시 시도해 주세요.",
 				"file_bound_elsewhere": "업로드를 첨부하지 못했어요. 다시 시도해 주세요."
+			},
+			"uploadFailed": "업로드에 실패했어요.",
+			"size": {
+				"bytes": "{n} B",
+				"kilobytes": "{n} KB",
+				"megabytes": "{n} MB"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "마지막 가져오기 이후 라이브러리의 스킬이 교체되었어요. 덮어쓰려면 다시 체크해 주세요.",
 				"requestFailed": "요청에 실패했어요"
 			}
+		},
+		"chat": {
+			"justNow": "방금",
+			"minutesAgo": "{n}분 전",
+			"hoursAgo": "{n}시간 전",
+			"newChat": "새 채팅",
+			"pinsLoadFailed": "고정된 사실을 불러오지 못했어요.",
+			"loadFailed": "대화를 불러오지 못했어요",
+			"noActiveConversation": "활성 대화가 없어요",
+			"decisionFailed": "결정을 보내지 못했어요. 다시 시도해 주세요.",
+			"newChatFailed": "새 대화를 시작하지 못했어요"
 		}
 	}
 }

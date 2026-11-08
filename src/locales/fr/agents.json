@@ -348,6 +348,12 @@
 				"invalid_file": "Le nom du fichier n'est pas valide.",
 				"invalid_file_path": "Le téléversement n'a pas pu être joint. Réessayez.",
 				"file_bound_elsewhere": "Le téléversement n'a pas pu être joint. Réessayez."
+			},
+			"uploadFailed": "Échec de l'envoi.",
+			"size": {
+				"bytes": "{n} o",
+				"kilobytes": "{n} Ko",
+				"megabytes": "{n} Mo"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "La compétence de la bibliothèque a été remplacée depuis le dernier import. Cochez-la à nouveau pour l'écraser.",
 				"requestFailed": "La requête a échoué"
 			}
+		},
+		"chat": {
+			"justNow": "à l'instant",
+			"minutesAgo": "il y a {n} min",
+			"hoursAgo": "il y a {n} h",
+			"newChat": "Nouvelle conversation",
+			"pinsLoadFailed": "Impossible de charger les faits épinglés.",
+			"loadFailed": "Impossible de charger la conversation",
+			"noActiveConversation": "Aucune conversation active",
+			"decisionFailed": "Impossible d'envoyer votre décision. Veuillez réessayer.",
+			"newChatFailed": "Impossible de démarrer une nouvelle conversation"
 		}
 	}
 }

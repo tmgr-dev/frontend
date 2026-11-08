@@ -348,6 +348,12 @@
 				"invalid_file": "ファイル名が正しくありません。",
 				"invalid_file_path": "アップロードを添付できませんでした。もう一度お試しください。",
 				"file_bound_elsewhere": "アップロードを添付できませんでした。もう一度お試しください。"
+			},
+			"uploadFailed": "アップロードに失敗しました。",
+			"size": {
+				"bytes": "{n} B",
+				"kilobytes": "{n} KB",
+				"megabytes": "{n} MB"
 			}
 		},
 		"personas": {
@@ -422,6 +428,17 @@
 				"replaced": "前回の取り込み後にライブラリのスキルが置き換えられました。上書きするには、もう一度チェックを入れてください。",
 				"requestFailed": "リクエストに失敗しました"
 			}
+		},
+		"chat": {
+			"justNow": "たった今",
+			"minutesAgo": "{n} 分前",
+			"hoursAgo": "{n} 時間前",
+			"newChat": "新しいチャット",
+			"pinsLoadFailed": "ピン留めした事実を読み込めませんでした。",
+			"loadFailed": "会話を読み込めませんでした",
+			"noActiveConversation": "アクティブな会話がありません",
+			"decisionFailed": "判断を送信できませんでした。もう一度お試しください。",
+			"newChatFailed": "新しい会話を開始できませんでした"
 		}
 	}
 }
