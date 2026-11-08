@@ -125,6 +125,25 @@ test('active category past the first 5 starts expanded and can collapse', async 
   expect(errors).toEqual([]);
 });
 
+test('filter shows matches without a toggle and the empty message', async ({
+  page,
+}) => {
+  const errors = await boot(page, 7);
+  await page.goto('/demo/categories/1/children');
+  await sidebar(page)
+    .getByRole('button', { name: 'Filter categories' })
+    .click();
+  const input = sidebar(page).getByRole('searchbox', {
+    name: 'Filter categories',
+  });
+  await input.fill('golf');
+  await expect(links(page)).toHaveCount(1);
+  await expect(toggle(page)).toHaveCount(0);
+  await input.fill('zzz');
+  await expect(sidebar(page)).toContainText('No categories match');
+  expect(errors).toEqual([]);
+});
+
 test('narrow viewport, dark theme', async ({ page }) => {
   const errors = await boot(page, 7, { width: 390, height: 800 });
   await page.addInitScript(() => localStorage.setItem('colorScheme', 'dark'));
