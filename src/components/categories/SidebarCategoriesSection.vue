@@ -56,13 +56,13 @@
 		</div>
 		<template v-else>
 			<p
-				v-if="filter.trim() && !rows.length"
+				v-if="filter.trim() && !shownRows.length"
 				class="px-2 py-1 text-xs text-sidebar-foreground/60"
 			>
 				No categories match “{{ filter.trim() }}”
 			</p>
 			<ul class="flex flex-col gap-px">
-				<li v-for="row in rows" :key="row.key">
+				<li v-for="row in shownRows" :key="row.key">
 					<div
 						class="flex items-center rounded-md pr-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 						:class="
@@ -119,6 +119,25 @@
 						</router-link>
 					</div>
 				</li>
+				<li v-if="toggleKind">
+					<button
+						type="button"
+						data-testid="categories-show-toggle"
+						class="flex h-7 w-full items-center rounded-md pr-1.5 text-left text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+						:aria-expanded="toggleKind === 'less'"
+						@click="showAll = !showAll"
+					>
+						<span class="h-7 w-6 shrink-0" aria-hidden="true" />
+						<span class="flex min-w-0 flex-1 items-center gap-2">
+							<ChevronDown
+								class="h-4 w-4 shrink-0 transition-transform"
+								:class="toggleKind === 'less' && 'rotate-180'"
+								aria-hidden="true"
+							/>
+							<span class="truncate">{{ toggleLabel }}</span>
+						</span>
+					</button>
+				</li>
 			</ul>
 		</template>
 	</SidebarGroup>
@@ -132,9 +151,15 @@
 		settingValue,
 		TITLE_PATTERN_KEY,
 	} from '@/utils/categorySettingsPage';
+	import {
+		CATEGORY_ROWS_LIMIT,
+		collapseCategoryRows,
+		rootIndexOf,
+	} from '@/utils/collapseCategoryRows';
 	import { generateCategoryUrl } from '@/utils/url';
 	import {
 		Bot,
+		ChevronDown,
 		ChevronRight,
 		Folder,
 		FolderPlus,
@@ -150,6 +175,7 @@
 		name: 'SidebarCategoriesSection',
 		components: {
 			Bot,
+			ChevronDown,
 			ChevronRight,
 			Folder,
 			FolderPlus,
@@ -265,6 +291,38 @@
 				return list;
 			});
 
+			const showAll = ref(false);
+			const revealedId = ref<number | null>(null);
+			const unlimited = computed(
+				() => !!filter.value.trim() || draftParent.value !== null,
+			);
+			const collapsed = computed(() =>
+				collapseCategoryRows(rows.value, showAll.value),
+			);
+			const shownRows = computed(() =>
+				unlimited.value ? rows.value : collapsed.value.rows,
+			);
+			const toggleKind = computed(() =>
+				unlimited.value ? null : collapsed.value.toggle,
+			);
+			const toggleLabel = computed(() =>
+				toggleKind.value === 'less'
+					? 'Show less'
+					: `Show ${collapsed.value.hidden} more`,
+			);
+			watch(
+				[currentId, rows],
+				() => {
+					const id = currentId.value;
+					if (!id || revealedId.value === id) return;
+					const at = rootIndexOf(rows.value, id);
+					if (at < 0) return;
+					revealedId.value = id;
+					if (at >= CATEGORY_ROWS_LIMIT) showAll.value = true;
+				},
+				{ immediate: true },
+			);
+
 			const toggleFilter = async () => {
 				filterOpen.value = !filterOpen.value;
 				if (!filterOpen.value) {
@@ -293,7 +351,10 @@
 				filter,
 				filterOpen,
 				filterInput,
-				rows,
+				shownRows,
+				showAll,
+				toggleKind,
+				toggleLabel,
 				loaded: tree.loaded,
 				pending: tree.pending,
 				error: tree.error,
