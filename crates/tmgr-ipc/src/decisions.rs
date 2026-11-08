@@ -301,6 +301,10 @@ pub struct Event {
     pub thread: Option<ThreadRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_fp: Option<String>,
 }
 
 impl Event {

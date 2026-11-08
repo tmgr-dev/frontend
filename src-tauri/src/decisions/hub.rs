@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use tmgr_ipc::decisions::{drain_spool, CardIn, Event, Found, LineComment, PatchIn};
 
-use super::store::{AnswerIn, CardView, Created, MessageIn, Store};
+use super::store::{AnswerIn, CardView, Created, MessageIn, PhoneOutcome, PhoneReq, Store};
 
 pub enum Change {
   Created { title: String, body: String },
@@ -323,6 +323,14 @@ impl Hub {
     let r = self.lock().answer(id, a)?;
     self.changed(Change::Updated);
     Ok(r)
+  }
+
+  pub fn answer_from_phone(&self, r: &PhoneReq, now: i64) -> Result<PhoneOutcome, String> {
+    let out = self.lock().phone_answer(r, now)?;
+    if out.applied.is_some() {
+      self.changed(Change::Updated);
+    }
+    Ok(out)
   }
 
   pub fn message(&self, id: &str, m: MessageIn) -> Result<Event, String> {

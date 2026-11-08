@@ -144,6 +144,13 @@ const APP_COMMANDS: &[&str] = &[
   "decisions_message",
   "decisions_diff",
   "decisions_open_link",
+  "phones_begin_pairing",
+  "phones_open_window",
+  "phones_list",
+  "phones_pairing",
+  "phones_confirm",
+  "phones_cancel",
+  "phones_revoke",
 ];
 
 fn build_widget_reload() {

@@ -1,5 +1,6 @@
 mod diff;
 mod hub;
+pub mod phone;
 mod server;
 mod store;
 
@@ -75,6 +76,7 @@ fn on_change<R: Runtime>(app: &AppHandle<R>, change: &Change, count: usize) {
   OPEN.store(count, Ordering::SeqCst);
   let _ = app.emit_to(LABEL, "decisions://changed", json!({ "count": count }));
   crate::tray::refresh_current(app);
+  phone::on_hub_change(app);
   if let Change::Created { title, body } = change {
     crate::plugin_notify::plugin_notify(app.clone(), title.clone(), body.clone(), None);
   }
@@ -114,6 +116,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     }
   };
   app.manage(Decisions { hub: hub.clone(), _server: Mutex::new(server) });
+  phone::setup(app, hub.clone(), &dir);
   crate::tray::refresh_current(app);
   ensure_shortcut(app);
 

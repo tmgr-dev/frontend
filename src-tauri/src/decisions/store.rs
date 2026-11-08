@@ -2,8 +2,11 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::phone;
+
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use tmgr_phone::AckResult;
 use tmgr_ipc::decisions::{
   new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, LineComment, LinkItem, Links, Opt, PatchIn,
   Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
@@ -153,6 +156,72 @@ pub struct Created {
   pub outcome: &'static str,
   pub card: CardIn,
   pub similar: Vec<Found>,
+}
+
+const PHONE_ANSWER_KEEP_MS: i64 = 72 * 3600 * 1000;
+
+pub struct PhoneReq {
+  pub answer_id: String,
+  pub phone_fp: String,
+  pub card_id: String,
+  pub card_digest: String,
+  pub session: String,
+  pub action: tmgr_phone::Action,
+  pub choice: Option<String>,
+  pub text: Option<String>,
+  pub issued_at: i64,
+}
+
+#[derive(Debug)]
+pub struct PhoneOutcome {
+  pub result: AckResult,
+  pub winner: Option<String>,
+  pub label: Option<String>,
+  pub applied: Option<(Event, CardIn)>,
+  pub target: String,
+}
+
+impl PhoneOutcome {
+  fn rejected(result: AckResult, winner: Option<String>, label: Option<String>) -> PhoneOutcome {
+    PhoneOutcome { result, winner, label, applied: None, target: String::new() }
+  }
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredAck {
+  result: String,
+  winner: Option<String>,
+  label: Option<String>,
+}
+
+fn event_label(e: &Event) -> String {
+  if e.dismissed {
+    "Dismissed".into()
+  } else if e.deferred {
+    "Deferred".into()
+  } else {
+    e.choice_label.clone().unwrap_or_else(|| "Text reply".into())
+  }
+}
+
+fn phone_answer_in_of(r: &PhoneReq, card: &CardIn) -> Option<AnswerIn> {
+  use tmgr_phone::Action;
+  match r.action {
+    Action::Defer | Action::Dismiss if r.choice.is_some() || r.text.is_some() => None,
+    Action::Defer => Some(AnswerIn { deferred: true, ..Default::default() }),
+    Action::Dismiss => Some(AnswerIn { dismissed: true, ..Default::default() }),
+    Action::Answer => {
+      let choice_ok = match &r.choice {
+        Some(c) => card.options.iter().any(|o| &o.id == c),
+        None => true,
+      };
+      let text_ok = r.text.as_deref().is_none_or(|t| !t.trim().is_empty() && tmgr_phone::check_text(t).is_ok());
+      if !choice_ok || !text_ok || (r.choice.is_none() && r.text.is_none()) {
+        return None;
+      }
+      Some(AnswerIn { choice: r.choice.clone(), free_text: r.text.clone(), ..Default::default() })
+    }
+  }
 }
 
 pub struct Store {
@@ -455,7 +524,10 @@ impl Store {
          CREATE TABLE IF NOT EXISTS patches(
            card_id TEXT NOT NULL, idx INTEGER NOT NULL, label TEXT NOT NULL, text TEXT NOT NULL,
            PRIMARY KEY(card_id, idx));
-         CREATE TABLE IF NOT EXISTS aliases(alias TEXT PRIMARY KEY, card_id TEXT NOT NULL);",
+         CREATE TABLE IF NOT EXISTS aliases(alias TEXT PRIMARY KEY, card_id TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS phone_answers(
+           answer_id TEXT PRIMARY KEY, phone_fp TEXT NOT NULL, card_id TEXT NOT NULL, ack TEXT NOT NULL,
+           received_ms INTEGER NOT NULL);",
       )
       .map_err(sql_err)?;
     let has_updated: i64 = conn
@@ -809,6 +881,20 @@ impl Store {
   pub fn answer(&mut self, id: &str, a: AnswerIn) -> Result<(Event, CardIn), String> {
     let id = &self.canon(id)?;
     let (_, card) = self.live_card(id)?;
+    let tx = self.conn.unchecked_transaction().map_err(sql_err)?;
+    let done = self.write_answer(&tx, id, card, a, None)?;
+    tx.commit().map_err(sql_err)?;
+    Ok(done)
+  }
+
+  fn write_answer(
+    &self,
+    conn: &Connection,
+    id: &str,
+    card: CardIn,
+    a: AnswerIn,
+    via: Option<(&str, &str)>,
+  ) -> Result<(Event, CardIn), String> {
     let choice = cap_opt(a.choice, 64);
     let choice_label = match &choice {
       Some(c) if !card.options.is_empty() => {
@@ -834,6 +920,8 @@ impl Store {
       line_comments,
       deferred: a.deferred && !a.dismissed,
       dismissed: a.dismissed,
+      via: via.map(|(v, _)| v.to_owned()),
+      via_fp: via.map(|(_, fp)| fp.to_owned()),
       ..Default::default()
     };
     let state = if event.dismissed {
@@ -844,13 +932,97 @@ impl Store {
       "answered"
     };
     let json = serde_json::to_string(&event).map_err(json_err)?;
-    let tx = self.conn.transaction().map_err(sql_err)?;
-    tx.execute("INSERT INTO events(card_id, seq, json) VALUES(?1, ?2, ?3)", params![id, seq as i64, json])
+    conn
+      .execute("INSERT INTO events(card_id, seq, json) VALUES(?1, ?2, ?3)", params![id, seq as i64, json])
       .map_err(sql_err)?;
-    tx.execute("UPDATE cards SET state=?2, answer=?3, session_gone=CASE WHEN ?2='deferred' THEN session_gone ELSE 0 END WHERE id=?1", params![id, state, json])
+    conn.execute("UPDATE cards SET state=?2, answer=?3, session_gone=CASE WHEN ?2='deferred' THEN session_gone ELSE 0 END WHERE id=?1", params![id, state, json])
       .map_err(sql_err)?;
-    tx.commit().map_err(sql_err)?;
     Ok((event, card))
+  }
+
+  pub fn phone_answer(&mut self, r: &PhoneReq, now: i64) -> Result<PhoneOutcome, String> {
+    self.conn.execute_batch("BEGIN IMMEDIATE").map_err(sql_err)?;
+    match self.phone_answer_in(r, now) {
+      Ok(out) => {
+        if let Err(e) = self.conn.execute_batch("COMMIT") {
+          let _ = self.conn.execute_batch("ROLLBACK");
+          return Err(sql_err(e));
+        }
+        Ok(out)
+      }
+      Err(e) => {
+        let _ = self.conn.execute_batch("ROLLBACK");
+        Err(e)
+      }
+    }
+  }
+
+  fn phone_answer_in(&mut self, r: &PhoneReq, now: i64) -> Result<PhoneOutcome, String> {
+    self
+      .conn
+      .execute("DELETE FROM phone_answers WHERE received_ms < ?1", [now - PHONE_ANSWER_KEEP_MS])
+      .map_err(sql_err)?;
+    let seen: Option<String> = self
+      .conn
+      .query_row("SELECT ack FROM phone_answers WHERE answer_id=?1", [&r.answer_id], |x| x.get(0))
+      .optional()
+      .map_err(sql_err)?;
+    if let Some(stored) = seen {
+      let first: StoredAck = serde_json::from_str(&stored).map_err(json_err)?;
+      return Ok(PhoneOutcome::rejected(AckResult::Duplicate, first.winner, first.label));
+    }
+    let record = |this: &Self, out: PhoneOutcome| -> Result<PhoneOutcome, String> {
+      let ack = serde_json::to_string(&StoredAck {
+        result: out.result.as_str().to_owned(),
+        winner: out.winner.clone(),
+        label: out.label.clone(),
+      })
+      .map_err(json_err)?;
+      this
+        .conn
+        .execute(
+          "INSERT INTO phone_answers(answer_id, phone_fp, card_id, ack, received_ms) VALUES(?1, ?2, ?3, ?4, ?5)",
+          params![r.answer_id, r.phone_fp, r.card_id, ack, now],
+        )
+        .map_err(sql_err)?;
+      Ok(out)
+    };
+    let reject = |this: &Self, result| record(this, PhoneOutcome::rejected(result, None, None));
+    if tmgr_phone::check_issued_at(r.issued_at, now).is_err() {
+      return reject(self, AckResult::Expired);
+    }
+    if self.resolve(&r.card_id)?.as_deref() != Some(r.card_id.as_str()) {
+      return reject(self, AckResult::Closed);
+    }
+    let Some(row) = self.raw(&r.card_id)? else { return reject(self, AckResult::Closed) };
+    if !is_live(&row.state) {
+      let ended = row.answer.as_deref().and_then(|a| serde_json::from_str::<Event>(a).ok());
+      let (winner, label) = match ended {
+        Some(e) => (
+          Some(e.via_fp.clone().filter(|_| e.via.as_deref() == Some("phone")).unwrap_or_else(|| "desktop".into())),
+          Some(event_label(&e)),
+        ),
+        None => (None, row.closed_reason.clone()),
+      };
+      return record(self, PhoneOutcome::rejected(AckResult::Closed, winner, label));
+    }
+    let card: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
+    let view = self.view(row)?;
+    let target = phone::delivery_target(&card);
+    match phone::project(&view, &target) {
+      Some(p) if p.digest == r.card_digest && target == r.session => {}
+      _ => return reject(self, AckResult::Changed),
+    }
+    if !phone::eligible(&view) {
+      return reject(self, AckResult::NotEligible);
+    }
+    let Some(a) = phone_answer_in_of(r, &card) else { return reject(self, AckResult::Invalid) };
+    let fp = r.phone_fp.get(..8).unwrap_or(&r.phone_fp);
+    let (event, card) = self.write_answer(&self.conn, &r.card_id, card, a, Some(("phone", fp)))?;
+    let label = event_label(&event);
+    let out =
+      PhoneOutcome { result: AckResult::Applied, winner: None, label: Some(label), applied: Some((event, card)), target };
+    record(self, out)
   }
 
   pub fn owner_message(&mut self, id: &str, m: MessageIn) -> Result<Event, String> {

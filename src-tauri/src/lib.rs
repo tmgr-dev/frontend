@@ -374,7 +374,21 @@ pub fn run() {
       #[cfg(unix)]
       decisions::decisions_diff,
       #[cfg(unix)]
-      decisions::decisions_open_link
+      decisions::decisions_open_link,
+      #[cfg(unix)]
+      decisions::phone::phones_begin_pairing,
+      #[cfg(unix)]
+      decisions::phone::phones_open_window,
+      #[cfg(unix)]
+      decisions::phone::phones_list,
+      #[cfg(unix)]
+      decisions::phone::phones_pairing,
+      #[cfg(unix)]
+      decisions::phone::phones_confirm,
+      #[cfg(unix)]
+      decisions::phone::phones_cancel,
+      #[cfg(unix)]
+      decisions::phone::phones_revoke
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);

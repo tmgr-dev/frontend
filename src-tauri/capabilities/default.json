@@ -25,6 +25,8 @@
 		"core:window:allow-unminimize",
 		"core:window:allow-set-size",
 		"core:window:allow-set-title",
+		"allow-phones-begin-pairing",
+		"allow-phones-open-window",
 		"allow-idle-supported",
 		"allow-capture-screenshot",
 		"allow-capture-selection",
