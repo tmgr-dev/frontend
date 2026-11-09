@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.141 — 2026-11-09
+
+- Security: the zip library is updated to 9.5 (fixes GHSA-m665-v7pm-7grj, GHSA-q7v9-x93c-xqv3, GHSA-8hxf-qr8p-62x4). The updater no longer carries its own zip extractor, and the Move to cloud archive check rejects symlink entries.
+
 ## 0.9.140 — 2026-11-09
 
 - Updates: when an update is already downloaded and a newer one comes out, the app now downloads the newer one too, and "Update to vX" re-checks before installing — you no longer have to update twice.
