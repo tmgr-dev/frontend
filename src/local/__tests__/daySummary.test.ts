@@ -406,7 +406,10 @@ describe('status moves', () => {
 
 	it('still drops tasks to fit the token budget when moves are long', () => {
 		const many = Array.from({ length: 30 }, (_, i) =>
-			task({ key: `TM-${i}`, moves: [{ from: 'A'.repeat(40), to: 'B'.repeat(40) }] }),
+			task({
+				key: `TM-${i}`,
+				moves: [{ from: 'A'.repeat(40), to: 'B'.repeat(40) }],
+			}),
 		);
 		const result = buildDayInput(many, { tokenBudget: 300 });
 		expect(result.omitted).toBeGreaterThan(0);

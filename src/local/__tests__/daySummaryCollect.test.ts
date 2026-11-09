@@ -404,9 +404,13 @@ describe('collectDay cloud workspaces', () => {
 			),
 		);
 
-		await run({ cloud: [{ id: 2, name: 'Ops' }], cloudUserId: 5 });
+		const { skipped } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
 
 		expect(getActivityFeed).toHaveBeenCalledTimes(5);
+		expect(skipped).toEqual(['Ops (partial)']);
 	});
 
 	it('reads an offset-less cloud timestamp as UTC at the day boundary', async () => {
@@ -589,11 +593,41 @@ describe('collectDay status moves', () => {
 		expect(tasks[0].status).toBe('Done');
 	});
 
+	it('keeps the newest status even when its name is gone', async () => {
+		(getActivityFeed as jest.Mock).mockResolvedValue(
+			feed(
+				cloudActivity({
+					id: 2,
+					type: 'task_status_changed',
+					created_at: at(7, 11),
+					old_status_name: 'Doing',
+					new_status_name: null,
+				}),
+				cloudActivity({
+					id: 1,
+					type: 'task_status_changed',
+					created_at: at(7, 9),
+					old_status_name: 'Backlog',
+					new_status_name: 'Doing',
+				}),
+			),
+		);
+
+		const { tasks } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
+
+		expect(tasks[0].status).toBe('');
+		expect(tasks[0].moves).toEqual([{ from: 'Backlog', to: 'Doing' }]);
+	});
+
 	it('adds no move when the names are missing', async () => {
 		(getActivityFeed as jest.Mock).mockResolvedValue(
 			feed(
 				cloudActivity({
 					type: 'task_status_changed',
+					created_at: at(7, 10),
 					metadata: { new_status: 3, new_status_name: 'Done' },
 				}),
 				cloudActivity({

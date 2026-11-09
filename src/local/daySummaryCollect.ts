@@ -163,8 +163,9 @@ const collectCloud = async (
 	workspace: { id: number; name: string },
 	userId: number,
 	range: DayRange,
-): Promise<DayTask[]> => {
+): Promise<{ tasks: DayTask[]; partial: boolean }> => {
 	const activities: Activity[] = [];
+	let partial = false;
 	for (const date of utcDaysOf(range)) {
 		for (let page = 1; page <= FEED_MAX_PAGES; page++) {
 			const result = await getActivityFeed(workspace.id, {
@@ -182,6 +183,7 @@ const collectCloud = async (
 				...items.map((a) => parseTimestamp(a.created_at)),
 			);
 			if (oldest < range.from.getTime()) break;
+			if (page === FEED_MAX_PAGES) partial = true;
 		}
 	}
 	const unique = [...new Map(activities.map((a) => [a.id, a])).values()];
@@ -191,6 +193,7 @@ const collectCloud = async (
 			b.id - a.id,
 	);
 	const tasks = new Map<number, DayTask>();
+	const statusSeen = new Set<number>();
 	for (const activity of unique) {
 		const meta = metadataOf(activity.metadata);
 		const taskId =
@@ -231,8 +234,10 @@ const collectCloud = async (
 					: activity.subject_name || textOf(meta.task_title);
 		if (activity.type === 'task_created') task.createdToday = true;
 		if (activity.type === 'task_status_changed') {
-			if (!task.status)
+			if (!statusSeen.has(taskId)) {
+				statusSeen.add(taskId);
 				task.status = textOf(activity.new_status_name ?? meta.new_status_name);
+			}
 			const move = moveOf(activity.old_status_name, activity.new_status_name);
 			if (move) task.moves.unshift(move);
 		}
@@ -248,10 +253,13 @@ const collectCloud = async (
 				task.minutes = (task.minutes ?? 0) + Math.round(seconds / 60);
 		}
 	}
-	return [...tasks.values()].map((task) => ({
-		...task,
-		title: task.title || task.key,
-	}));
+	return {
+		tasks: [...tasks.values()].map((task) => ({
+			...task,
+			title: task.title || task.key,
+		})),
+		partial,
+	};
 };
 
 export const collectDay = async (
@@ -274,10 +282,16 @@ export const collectDay = async (
 			? []
 			: await Promise.all(
 					opts.cloud.map((workspace) =>
-						collectCloud(workspace, cloudUserId, range).catch(() => {
-							skipped.push(workspace.name);
-							return [] as DayTask[];
-						}),
+						collectCloud(workspace, cloudUserId, range).then(
+							({ tasks, partial }) => {
+								if (partial) skipped.push(`${workspace.name} (partial)`);
+								return tasks;
+							},
+							() => {
+								skipped.push(workspace.name);
+								return [] as DayTask[];
+							},
+						),
 					),
 				);
 	return {
