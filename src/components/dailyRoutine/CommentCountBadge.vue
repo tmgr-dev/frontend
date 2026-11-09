@@ -1,7 +1,7 @@
 <template>
 	<span
 		v-if="count > 0"
-		class="inline-flex shrink-0 items-center gap-0.5 tabular-nums"
+		class="inline-flex shrink-0 items-center gap-0.5 tabular-nums no-underline"
 		data-testid="routine-comment-count"
 	>
 		<MessageCircle class="size-2.5" aria-hidden="true" />

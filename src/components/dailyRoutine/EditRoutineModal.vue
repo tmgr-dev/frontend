@@ -322,7 +322,7 @@
 						</ERSection>
 
 						<ERSection
-							v-if="!isNew && commentsEnabled && routineTaskId"
+							v-if="!isNew && commentsEnabled && !isLocalRoutineId"
 							:label="$t('dailyRoutine.comments.title')"
 							:hint="$t('dailyRoutine.comments.hint')"
 							data-testid="routine-comments"
@@ -468,6 +468,9 @@
 	const isNew = computed(() => !props.routine?.id);
 	const routineTaskId = computed<number>(
 		() => props.routine?.task_id ?? props.routine?.id,
+	);
+	const isLocalRoutineId = computed(
+		() => !routineTaskId.value || routineTaskId.value >= 1_000_000_000,
 	);
 
 	// ── start / end time range ─────────────────────────────────────────────────
@@ -639,7 +642,15 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape' && !props.confirmOpen) requestClose();
+		if (e.key !== 'Escape' || props.confirmOpen) return;
+		const active = document.activeElement;
+		if (
+			active instanceof HTMLTextAreaElement &&
+			active.dataset.testid === 'routine-comment-input' &&
+			active.value.trim()
+		)
+			return;
+		requestClose();
 	}
 
 	function requestClose() {

@@ -45,6 +45,9 @@
 					<span class="truncate">{{
 						(ev.source.entry || ev.source).title
 					}}</span>
+					<CommentCountBadge
+						:count="(ev.source.entry || ev.source).comments_count ?? 0"
+					/>
 				</div>
 				<div
 					v-if="hidden > 0"
@@ -77,6 +80,7 @@
 	import type { PositionedEvent } from '@/utils/dailyRoutines/lanePacking';
 	import { computed, ref } from 'vue';
 	import ClusterPopover from './ClusterPopover.vue';
+	import CommentCountBadge from './CommentCountBadge.vue';
 
 	const HOUR_PX = 56;
 	const ROW_H = 14;

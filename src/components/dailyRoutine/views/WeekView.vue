@@ -92,6 +92,7 @@
 						"
 					>
 						{{ e.title }}
+						<CommentCountBadge :count="e.comments_count ?? 0" />
 						<button
 							type="button"
 							class="dr-edit-btn absolute top-1/2 right-0.5 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-sm bg-black/30"
@@ -208,6 +209,7 @@
 	import { currentTimeZone, nowDateIn, todayDateIn } from '@/utils/timezone';
 	import { computed, onMounted, ref, watch } from 'vue';
 	import ClusterBlock from '../ClusterBlock.vue';
+	import CommentCountBadge from '../CommentCountBadge.vue';
 	import DRIcon from '../DRIcon.vue';
 	import EventBlock from '../EventBlock.vue';
 

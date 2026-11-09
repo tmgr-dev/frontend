@@ -69,6 +69,10 @@
 						>
 							{{ ev.title }}
 						</span>
+						<CommentCountBadge
+							class="text-ink-subtle"
+							:count="ev.comments_count ?? 0"
+						/>
 						<span class="text-2xs text-ink-subtle tabular-nums">{{
 							ev.time
 						}}</span>
@@ -90,6 +94,7 @@
 <script setup lang="ts">
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { computed } from 'vue';
+	import CommentCountBadge from './CommentCountBadge.vue';
 	import DRIcon from './DRIcon.vue';
 
 	const props = defineProps<{
