@@ -9,16 +9,18 @@
 				:style="{ gridTemplateColumns: gridCols, minWidth: innerMinWidth }"
 			>
 				<div />
-				<div
+				<button
 					v-for="(d, i) in days"
 					:key="i"
-					class="px-2 py-2 text-center"
+					type="button"
+					class="cursor-pointer px-2 py-2 text-center hover:bg-surface-hover"
 					:class="i === 0 ? '' : 'border-l border-line'"
 					:style="
 						isSameDay(d, today)
 							? { background: 'rgba(232,133,125,.08)' }
 							: undefined
 					"
+					@click="$emit('select-day', d)"
 				>
 					<div
 						class="text-[10px] font-bold tracking-wider uppercase"
@@ -32,7 +34,7 @@
 					>
 						{{ d.getDate() }}
 					</div>
-				</div>
+				</button>
 			</div>
 
 			<!-- All-day row -->
@@ -223,6 +225,7 @@
 	}>();
 
 	const emit = defineEmits<{
+		(e: 'select-day', date: Date): void;
 		(e: 'toggle', entry: RoutineEntry): void;
 		(e: 'edit', entry: RoutineEntry): void;
 		(

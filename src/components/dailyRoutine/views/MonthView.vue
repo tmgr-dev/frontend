@@ -43,13 +43,22 @@
 					class="flex items-center justify-end text-xs tabular-nums"
 					:style="dayLabelStyle(d)"
 				>
-					<span
+					<button
 						v-if="isSameDay(d, today)"
-						class="inline-flex h-5 w-5 items-center justify-center rounded-pill bg-brand text-[10px] font-bold text-on-accent"
+						type="button"
+						class="inline-flex h-5 w-5 items-center justify-center rounded-pill bg-brand text-[10px] font-bold text-on-accent hover:opacity-80"
+						@click.stop="$emit('select-day', d)"
 					>
 						{{ d.getDate() }}
-					</span>
-					<span v-else>{{ d.getDate() }}</span>
+					</button>
+					<button
+						v-else
+						type="button"
+						class="rounded-sm px-1 hover:bg-surface-hover hover:underline"
+						@click.stop="$emit('select-day', d)"
+					>
+						{{ d.getDate() }}
+					</button>
 				</div>
 				<div
 					v-for="e in byDay[i].slice(0, maxChips)"

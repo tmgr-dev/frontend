@@ -315,14 +315,14 @@
 										<span>{{ unscheduledEntries.length }}</span>
 									</div>
 									<button
-										v-if="unscheduledDoneCount > 0"
+										v-if="doneUnscheduledIdList.length > 0"
 										type="button"
 										class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold tracking-wider text-ink-subtle uppercase hover:border-brand hover:text-brand"
-										@click="onArchiveDoneUnscheduled"
+										@click="onArchiveDoneUnscheduled(doneUnscheduledIdList)"
 									>
 										{{
 											$t('dailyRoutine.archiveDone', {
-												n: unscheduledDoneCount,
+												n: doneUnscheduledIdList.length,
 											})
 										}}
 									</button>
@@ -373,6 +373,7 @@
 								:week-start="weekStart"
 								:is-mobile="isMobile"
 								:is-tablet="isTablet"
+								@select-day="onSelectDay"
 								@toggle="onToggle"
 								@edit="onEdit"
 								@create="onCreateAt"
@@ -464,7 +465,7 @@
 					<button
 						v-if="!selectMode"
 						type="button"
-						class="fixed right-4 bottom-20 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-on-accent shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:right-6 md:bottom-6 md:h-14 md:w-14"
+						class="fixed right-4 bottom-20 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-on-accent shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:right-6 md:bottom-[calc(var(--statusbar-h,0px)+1.5rem)] md:h-14 md:w-14"
 						:title="$t('dailyRoutine.page.newRoutineTitle')"
 						:aria-label="$t('dailyRoutine.page.newRoutine')"
 						data-tour="routines.add"
@@ -536,6 +537,8 @@
 		startOfMonth,
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
+	import { getArchivedDailyTasksCount } from '@/actions/tmgr/daily-tasks';
+	import { doneUnscheduledIds } from '@/utils/dailyRoutines/archiveDone';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
 	import { requestCache } from '@/utils/requestCache';
 	import { nowDateIn, todayDateIn, todayIn } from '@/utils/timezone';
@@ -644,9 +647,17 @@
 			entries.value.filter((e) => !e.time && e.date === todayIso.value),
 		),
 	);
-	const unscheduledDoneCount = computed(
-		() => unscheduledEntries.value.filter((e) => e.completed).length,
+	const doneUnscheduledIdList = computed(() =>
+		doneUnscheduledIds(unscheduledEntries.value),
 	);
+	const archivedCount = ref(0);
+	async function refreshArchivedCount() {
+		try {
+			archivedCount.value = Number(await getArchivedDailyTasksCount());
+		} catch {
+			archivedCount.value = 0;
+		}
+	}
 	const scheduledEntries = computed(() =>
 		entries.value.filter((e) => !!e.time),
 	);
@@ -656,7 +667,7 @@
 		return {
 			routines: todays.length,
 			completed: todays.filter((e) => e.completed).length,
-			archived: 0,
+			archived: archivedCount.value,
 		};
 	});
 
@@ -842,6 +853,7 @@
 		const snapshotKey = routinesSnapshotKey();
 		viewPending.value = true;
 		viewError.value = null;
+		void refreshArchivedCount();
 		try {
 			if (view.value === 'year') {
 				await Promise.all([
@@ -1024,8 +1036,8 @@
 		await reload();
 	}
 
-	async function onArchiveDoneUnscheduled() {
-		await store.dispatch('dailyRoutines/archiveDoneUnscheduled');
+	async function onArchiveDoneUnscheduled(ids: number[]) {
+		await store.dispatch('dailyRoutines/archiveDoneUnscheduled', ids);
 		await reload();
 	}
 

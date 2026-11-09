@@ -273,14 +273,7 @@ const dailyRoutinesModule = {
 			await archiveDailyTask(taskId);
 			commit('removeEntries', (e) => e.task_id === taskId);
 		},
-		async archiveDoneUnscheduled({ commit, state }) {
-			const ids = [
-				...new Set(
-					state.entries
-						.filter((e) => e.frequency === 'NONE' && e.completed)
-						.map((e) => e.task_id),
-				),
-			];
+		async archiveDoneUnscheduled({ commit }, ids) {
 			for (const id of ids) {
 				await archiveDailyTask(id);
 			}

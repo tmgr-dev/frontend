@@ -18,12 +18,14 @@
 					<span>{{ unscheduled.length }}</span>
 				</div>
 				<button
-					v-if="unscheduledDoneCount > 0"
+					v-if="doneUnscheduledIdList.length > 0"
 					type="button"
 					class="rounded-pill border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold tracking-wider text-ink-subtle uppercase hover:border-brand hover:text-brand"
-					@click="$emit('archive-done-unscheduled')"
+					@click="$emit('archive-done-unscheduled', doneUnscheduledIdList)"
 				>
-					{{ $t('dailyRoutine.archiveDone', { n: unscheduledDoneCount }) }}
+					{{
+						$t('dailyRoutine.archiveDone', { n: doneUnscheduledIdList.length })
+					}}
 				</button>
 			</div>
 			<RoutineRow
@@ -117,6 +119,7 @@
 <script setup lang="ts">
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
+	import { doneUnscheduledIds } from '@/utils/dailyRoutines/archiveDone';
 	import { isSameDay, parseTime } from '@/utils/dailyRoutines/dateHelpers';
 	import { clusterEvents } from '@/utils/dailyRoutines/lanePacking';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
@@ -141,7 +144,7 @@
 		(e: 'delete', entry: RoutineEntry): void;
 		(e: 'select', entry: RoutineEntry): void;
 		(e: 'archive', entry: RoutineEntry): void;
-		(e: 'archive-done-unscheduled'): void;
+		(e: 'archive-done-unscheduled', ids: number[]): void;
 		(
 			e: 'create',
 			payload: { date: string; timeH: number; timeM: number },
@@ -195,8 +198,8 @@
 	const unscheduled = computed(() =>
 		sortUnscheduledNewestFirst(props.entries.filter((e) => !e.time)),
 	);
-	const unscheduledDoneCount = computed(
-		() => unscheduled.value.filter((e) => e.completed).length,
+	const doneUnscheduledIdList = computed(() =>
+		doneUnscheduledIds(unscheduled.value),
 	);
 	const scheduled = computed(() => props.entries.filter((e) => !!e.time));
 

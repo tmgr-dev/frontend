@@ -24,7 +24,9 @@ export const getDailyTasks = async (): Promise<Task[]> => {
 export const getArchivedDailyTasksCount = async (): Promise<Number> => {
 	try {
 		const {
-			data: { count },
+			data: {
+				data: { count },
+			},
 		} = await $axios.get(`daily-routines/tasks/archived/count`);
 		return count;
 	} catch (error) {
