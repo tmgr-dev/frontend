@@ -76,9 +76,17 @@ export const createDailyTask = async (task: Task) => {
 	}
 };
 
+export interface RoutineScopeOptions {
+	scope?: 'single' | 'following' | 'all';
+	occurrenceDate?: string;
+	baseVersion?: number | null;
+	opId?: string;
+}
+
 export const updateDailyTask = async (
 	taskId: number,
 	updates: Partial<Task>,
+	options: RoutineScopeOptions = {},
 ) => {
 	try {
 		const data = updates as any;
@@ -104,6 +112,13 @@ export const updateDailyTask = async (
 		if (data.is_recurring && data.recurrence) {
 			payload.recurrence = data.recurrence;
 		}
+		if (options.scope) {
+			payload.scope = options.scope;
+			if (options.occurrenceDate)
+				payload.occurrence_date = options.occurrenceDate;
+		}
+		if (options.opId) payload.op_id = options.opId;
+		if (options.baseVersion != null) payload.base_version = options.baseVersion;
 
 		const {
 			data: { data: result },
@@ -145,17 +160,33 @@ export const archiveDailyTask = async (taskId: number) => {
 	}
 };
 
-export const getDailyTask = async (taskId: number) => {
+export const getDailyTask = async (taskId: number, date?: string) => {
 	const {
 		data: { data },
-	} = await $axios.get(`daily-routines/tasks/${taskId}`);
+	} = await $axios.get(
+		`daily-routines/tasks/${taskId}`,
+		date ? { params: { date } } : undefined,
+	);
 
 	return data;
 };
 
-export const deleteDailyTask = async (taskId: number) => {
+export const deleteDailyTask = async (
+	taskId: number,
+	options: Pick<RoutineScopeOptions, 'scope' | 'occurrenceDate'> = {},
+) => {
 	try {
-		const { data } = await $axios.delete(`daily-routines/tasks/${taskId}`);
+		const { data } = await $axios.delete(
+			`daily-routines/tasks/${taskId}`,
+			options.scope
+				? {
+						params: {
+							scope: options.scope,
+							occurrence_date: options.occurrenceDate,
+						},
+					}
+				: undefined,
+		);
 		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 		return data;
 	} catch (error) {

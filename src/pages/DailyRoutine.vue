@@ -416,7 +416,15 @@
 					<DeleteRoutineDialog
 						v-model:open="deleteDialogOpen"
 						:title="deleteTarget?.title ?? ''"
+						:recurring="deleteTarget?.recurring ?? false"
+						:comments-count="deleteTarget?.commentsCount ?? 0"
 						@confirm="confirmDelete"
+					/>
+
+					<RoutineScopeDialog
+						v-model:open="scopeDialogOpen"
+						:recurrence-changed="scopeRecurrenceChanged"
+						@select="onScopeSelected"
 					/>
 
 					<AlertDialog
@@ -497,8 +505,14 @@
 	import DeleteRoutineDialog from '@/components/dailyRoutine/DeleteRoutineDialog.vue';
 	import EditRoutineModal from '@/components/dailyRoutine/EditRoutineModal.vue';
 	import RoutineContextMenu from '@/components/dailyRoutine/RoutineContextMenu.vue';
+	import RoutineScopeDialog from '@/components/dailyRoutine/RoutineScopeDialog.vue';
 	import {
 		buildRoutinePayload,
+		isStaleSeriesError,
+		needsScopeChoice,
+		newOpId,
+		recurrenceChanged,
+		type RoutineScope,
 		occurrenceRangeOf,
 		routineDraftFrom,
 		routineForEdit,
@@ -553,6 +567,7 @@
 	} from 'lucide-vue-next';
 	import {
 		computed,
+		nextTick,
 		onBeforeUnmount,
 		onMounted,
 		ref,
@@ -598,7 +613,14 @@
 		taskId: number;
 		title: string;
 		fromEditor: boolean;
+		recurring: boolean;
+		occurrenceDate: string;
+		commentsCount: number;
 	} | null>(null);
+	const editingEntry = ref<RoutineEntry | null>(null);
+	const scopeDialogOpen = ref(false);
+	const scopeRecurrenceChanged = ref(false);
+	const pendingDraft = ref<RoutineDraft | null>(null);
 	const quickTitle = ref('');
 	const quickFocused = ref(false);
 	const quickInputRef = ref<HTMLInputElement | null>(null);
@@ -968,7 +990,11 @@
 	}
 
 	async function loadRoutineForEdit(entry: RoutineEntry) {
-		const full = await getDailyTask(entry.task_id);
+		const recurring = !!entry.frequency && entry.frequency !== 'NONE';
+		const full = await getDailyTask(
+			entry.task_id,
+			recurring && !isLocalWorkspace.value ? entry.date : undefined,
+		);
 		let occurrences: RoutineEntry[] = [];
 		if (entry.frequency === 'WEEKLY' && entry.date) {
 			const { from, to } = occurrenceRangeOf(entry.date);
@@ -1000,6 +1026,7 @@
 	async function onEdit(entry: RoutineEntry) {
 		try {
 			editingRoutine.value = await loadRoutineForEdit(entry);
+			editingEntry.value = entry;
 		} catch (error) {
 			toast({
 				title: t('dailyRoutine.page.openError'),
@@ -1014,11 +1041,17 @@
 			taskId: entry.task_id,
 			title: entry.title,
 			fromEditor: false,
+			recurring:
+				!isLocalWorkspace.value &&
+				!!entry.frequency &&
+				entry.frequency !== 'NONE',
+			occurrenceDate: entry.date,
+			commentsCount: isLocalWorkspace.value ? 0 : (entry.comments_count ?? 0),
 		};
 		deleteDialogOpen.value = true;
 	}
 
-	async function confirmDelete() {
+	async function confirmDelete(scope?: RoutineScope) {
 		const target = deleteTarget.value;
 		if (!target) return;
 		if (target.fromEditor) {
@@ -1026,7 +1059,16 @@
 			editorError.value = '';
 		}
 		try {
-			await store.dispatch('dailyRoutines/deleteRoutine', target.taskId);
+			await store.dispatch(
+				'dailyRoutines/deleteRoutine',
+				target.recurring
+					? {
+							taskId: target.taskId,
+							scope,
+							occurrenceDate: target.occurrenceDate,
+						}
+					: target.taskId,
+			);
 			if (target.fromEditor) editingRoutine.value = null;
 			await reload();
 		} catch (error) {
@@ -1055,6 +1097,7 @@
 	}
 
 	function onCreateAt(payload: { date: string; timeH: number; timeM: number }) {
+		editingEntry.value = null;
 		editingRoutine.value = {
 			id: null,
 			title: '',
@@ -1078,6 +1121,7 @@
 		draft: RoutineDraft,
 		fallbackDate?: string,
 		created?: Ref<number | null>,
+		scope?: RoutineScope,
 	) {
 		const time = `${String(draft.timeH).padStart(2, '0')}:${String(
 			draft.timeM,
@@ -1087,9 +1131,23 @@
 			const original = routineDraftFrom(editingRoutine.value, todayIso.value);
 			// The modal raises a shorter duration to its 15 min minimum on open.
 			original.durationMin = Math.max(15, original.durationMin);
+			const recurring = original.frequency !== 'NONE';
+			const versioned = recurring && scope;
 			await updateDailyTask(
 				draft.id,
-				buildRoutinePayload(draft, todayIso.value, original),
+				buildRoutinePayload(draft, todayIso.value, original, scope),
+				isLocalWorkspace.value || (recurring && !scope)
+					? {}
+					: {
+							scope: scope ?? 'all',
+							occurrenceDate: versioned
+								? (editingRoutine.value?.scheduled_date ?? todayIso.value)
+								: undefined,
+							baseVersion: versioned
+								? editingRoutine.value?.series_version
+								: undefined,
+							opId: newOpId(),
+						},
 			);
 		} else {
 			const payload = buildRoutinePayload(draft, todayIso.value);
@@ -1110,12 +1168,26 @@
 			// Quick-create only stores title/date/time; always follow up so
 			// duration, description and recurrence are persisted too.
 			if (newId) {
-				await updateDailyTask(newId, payload);
+				await updateDailyTask(
+					newId,
+					payload,
+					isLocalWorkspace.value ? {} : { scope: 'all', opId: newOpId() },
+				);
 			}
 		}
 	}
 
-	async function onSaveRoutine(draft: RoutineDraft) {
+	async function onSaveRoutine(draft: RoutineDraft, scope?: RoutineScope) {
+		if (!scope && draft.id) {
+			const original = routineDraftFrom(editingRoutine.value, todayIso.value);
+			original.durationMin = Math.max(15, original.durationMin);
+			if (needsScopeChoice(draft, original, isLocalWorkspace.value)) {
+				pendingDraft.value = draft;
+				scopeRecurrenceChanged.value = recurrenceChanged(draft, original);
+				scopeDialogOpen.value = true;
+				return;
+			}
+		}
 		editorBusy.value = true;
 		editorError.value = '';
 		let saved = false;
@@ -1124,15 +1196,37 @@
 				draft,
 				editingRoutine.value?._draftDate,
 				createdRoutineId,
+				scope,
 			);
 			editingRoutine.value = null;
 			saved = true;
 		} catch (error) {
-			editorError.value = errorText(error);
+			if (isStaleSeriesError(error) && editingEntry.value) {
+				const entry = editingEntry.value;
+				editingRoutine.value = null;
+				toast({
+					title: t('dailyRoutine.page.staleSeries'),
+					variant: 'destructive',
+				});
+				try {
+					await nextTick();
+					editingRoutine.value = await loadRoutineForEdit(entry);
+				} catch (reloadError) {
+					editorError.value = errorText(reloadError);
+				}
+			} else {
+				editorError.value = errorText(error);
+			}
 		} finally {
 			editorBusy.value = false;
 		}
 		if (saved || createdRoutineId.value) await reload();
+	}
+
+	function onScopeSelected(scope: RoutineScope) {
+		const draft = pendingDraft.value;
+		pendingDraft.value = null;
+		if (draft) onSaveRoutine(draft, scope);
 	}
 
 	async function onDuplicate(entry: RoutineEntry) {
@@ -1177,6 +1271,19 @@
 	}) {
 		const { entry, startMin, endMin } = payload;
 		const durationMin = Math.max(15, endMin - startMin);
+		if (
+			!isLocalWorkspace.value &&
+			entry.frequency &&
+			entry.frequency !== 'NONE'
+		) {
+			await store.dispatch('dailyRoutines/resizeRecurring', {
+				entry,
+				startMin,
+				durationMin,
+			});
+			await reload();
+			return;
+		}
 		// Duration → task.approximately_time via a partial task update so
 		// checkpoints/status/category are untouched. It's the single source of
 		// truth the expander reads for the block height.
@@ -1197,10 +1304,17 @@
 	}
 
 	function onDeleteRoutine(routine: any) {
+		const entry = editingEntry.value;
 		deleteTarget.value = {
 			taskId: routine.id,
 			title: routine.title,
 			fromEditor: true,
+			recurring:
+				!isLocalWorkspace.value &&
+				!!entry?.frequency &&
+				entry.frequency !== 'NONE',
+			occurrenceDate: routine.scheduled_date ?? todayIso.value,
+			commentsCount: isLocalWorkspace.value ? 0 : (routine.comments_count ?? 0),
 		};
 		deleteDialogOpen.value = true;
 	}

@@ -2,11 +2,15 @@ jest.mock('@/actions/tmgr/daily-tasks', () => ({
 	expandRoutineRange: jest.fn(),
 	expandRoutineYearStats: jest.fn(),
 	completeRoutineOn: jest.fn(),
+	updateDailyTask: jest.fn(),
+	deleteDailyTask: jest.fn(),
 }));
 import {
 	completeRoutineOn,
+	deleteDailyTask,
 	expandRoutineRange,
 	expandRoutineYearStats,
+	updateDailyTask,
 } from '@/actions/tmgr/daily-tasks';
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
@@ -139,3 +143,40 @@ test.each(['refresh', 'session'])(
 		expect(ctx.state.entries[0].completed).toBe(change === 'refresh');
 	},
 );
+
+test('resizing a recurring routine writes scope=single for that date only', async () => {
+	const ctx = context() as any;
+	ctx.dispatch = jest.fn();
+	const entry = {
+		task_id: 4,
+		date: '2026-11-10',
+		title: 'Run',
+		routine_category: 'health',
+	};
+	await routines.actions.resizeRecurring(ctx, {
+		entry,
+		startMin: 570,
+		durationMin: 45,
+	});
+	const [id, body, opts] = (updateDailyTask as jest.Mock).mock.calls[0];
+	expect(id).toBe(4);
+	expect(body.approximately_time).toBe(45);
+	expect(body.scheduled_time).toEqual({ hours: 9, minutes: 30 });
+	expect(opts).toMatchObject({ scope: 'single', occurrenceDate: '2026-11-10' });
+});
+
+test('scoped delete passes scope and date and keeps the other occurrences', async () => {
+	const ctx = context() as any;
+	ctx.dispatch = jest.fn();
+	ctx.state.lastRange = { from: '2026-11-01', to: '2026-11-30' };
+	await routines.actions.deleteRoutine(ctx, {
+		taskId: 4,
+		scope: 'following',
+		occurrenceDate: '2026-11-10',
+	});
+	expect(deleteDailyTask).toHaveBeenCalledWith(4, {
+		scope: 'following',
+		occurrenceDate: '2026-11-10',
+	});
+	expect(ctx.dispatch).toHaveBeenCalledWith('loadRange', ctx.state.lastRange);
+});

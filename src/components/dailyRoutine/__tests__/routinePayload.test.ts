@@ -1,9 +1,14 @@
 import type { RoutineEntry } from '@/types/dailyRoutine';
 import {
 	buildRoutinePayload,
+	deleteChoices,
+	isStaleSeriesError,
+	needsScopeChoice,
 	occurrenceRangeOf,
+	recurrenceChanged,
 	routineDraftFrom,
 	routineForEdit,
+	scopeOptions,
 	type RoutineDraft,
 } from '../routinePayload';
 
@@ -295,5 +300,97 @@ describe('occurrenceRangeOf', () => {
 			from: '2026-10-12',
 			to: '2026-11-15',
 		});
+	});
+});
+
+describe('series scope', () => {
+	const original = draft();
+
+	it('single scope sends the occurrence time and never the recurrence', () => {
+		const p = buildRoutinePayload(
+			draft({ title: 'Stretch+', timeH: 9, durationMin: 45 }),
+			TODAY,
+			original,
+			'single',
+		);
+		expect(p.recurrence).toBeUndefined();
+		expect(p.scheduled_time).toEqual({ hours: 9, minutes: 15 });
+		expect(p.title).toBe('Stretch+');
+		expect(p.approximately_time).toBe(45);
+	});
+
+	it('following scope still sends a changed recurrence', () => {
+		const p = buildRoutinePayload(
+			draft({ frequency: 'WEEKLY', daysOfWeek: [0] }),
+			TODAY,
+			original,
+			'following',
+		);
+		expect(p.recurrence.frequency).toBe('WEEKLY');
+		expect(p.scheduled_time).toBeUndefined();
+	});
+
+	it('asks for a scope only for versioned changes of a recurring routine', () => {
+		expect(needsScopeChoice(draft({ title: 'X' }), original, false)).toBe(true);
+		expect(needsScopeChoice(draft({ reminderMin: 5 }), original, false)).toBe(
+			true,
+		);
+		expect(needsScopeChoice(draft(), original, false)).toBe(false);
+		expect(needsScopeChoice(draft({ title: 'X' }), original, true)).toBe(false);
+		expect(
+			needsScopeChoice(draft({ id: null, title: 'X' }), original, false),
+		).toBe(false);
+		const oneOff = draft({ frequency: 'NONE' });
+		expect(
+			needsScopeChoice(draft({ title: 'X', frequency: 'NONE' }), oneOff, false),
+		).toBe(false);
+		expect(
+			needsScopeChoice(draft({ frequency: 'WEEKLY' }), oneOff, false),
+		).toBe(false);
+	});
+
+	it('disables the single option only when the recurrence changed', () => {
+		expect(recurrenceChanged(draft({ timeH: 10 }), original)).toBe(false);
+		expect(recurrenceChanged(draft({ interval: 2 }), original)).toBe(true);
+		expect(scopeOptions(true).find((o) => o.scope === 'single')?.disabled).toBe(
+			true,
+		);
+		expect(scopeOptions(false).every((o) => !o.disabled)).toBe(true);
+	});
+
+	it('offers three delete choices for a recurring routine and warns about comments on the whole one', () => {
+		expect(deleteChoices(true, 3)).toEqual([
+			{ scope: 'single', warnComments: false },
+			{ scope: 'following', warnComments: false },
+			{ scope: 'all', warnComments: true },
+		]);
+		expect(deleteChoices(true, 0).some((c) => c.warnComments)).toBe(false);
+		expect(deleteChoices(false, 2)).toEqual([
+			{ scope: 'all', warnComments: true },
+		]);
+	});
+
+	it('recognises a stale series conflict', () => {
+		expect(isStaleSeriesError({ response: { status: 409 } })).toBe(true);
+		expect(isStaleSeriesError({ response: { status: 422 } })).toBe(false);
+	});
+
+	it('shows the occurrence override and keeps series_version when editing', () => {
+		const entry = {
+			task_id: 7,
+			date: '2026-10-05',
+			time: '08:15',
+		} as RoutineEntry;
+		const r = routineForEdit(
+			{
+				id: 7,
+				title: 'Stretch',
+				series_version: 3,
+				occurrence: { title: 'One-off' },
+			},
+			entry,
+		);
+		expect(r.title).toBe('One-off');
+		expect(r.series_version).toBe(3);
 	});
 });

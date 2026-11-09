@@ -30,7 +30,12 @@
 	},
 	"deleteDialog": {
 		"title": "Delete routine?",
-		"description": "\"{title}\" and all its occurrences will be deleted. This cannot be undone."
+		"description": "\"{title}\" and all its occurrences will be deleted. This cannot be undone.",
+		"recurringDescription": "\"{title}\" is a repeating routine. Choose what to delete.",
+		"single": "Only this event",
+		"following": "This and following events",
+		"all": "Delete the whole routine",
+		"commentsWarning": "This also deletes {n} comment | This also deletes {n} comments"
 	},
 	"clusterBlock": {
 		"events": "{n} events"
@@ -227,7 +232,8 @@
 		"convertError": "Could not convert the routine",
 		"copyTitle": "{title} (copy)",
 		"importErrors": "\nErrors:\n- {list}",
-		"importSummary": "Imported {created}, skipped {skipped}, replaced {replaced}.{errors}"
+		"importSummary": "Imported {created}, skipped {skipped}, replaced {replaced}.{errors}",
+		"staleSeries": "This routine was changed elsewhere. It was reloaded, review and save again."
 	},
 	"helpers": {
 		"recurrence": {
@@ -253,5 +259,13 @@
 		"send": "Send",
 		"sendError": "Could not send the comment.",
 		"count": "{n} comment | {n} comments"
+	},
+	"scopeDialog": {
+		"title": "Edit repeating routine",
+		"description": "Choose which events to apply the changes to.",
+		"single": "Only this event",
+		"following": "This and following events",
+		"all": "All events",
+		"singleDisabled": "Not available when the repeat schedule changed."
 	}
 }

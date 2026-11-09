@@ -259,9 +259,47 @@ const dailyRoutinesModule = {
 			a.remove();
 			window.URL.revokeObjectURL(url);
 		},
-		async deleteRoutine({ commit }, taskId) {
-			await deleteDailyTask(taskId);
+		async deleteRoutine({ commit, dispatch, state }, target) {
+			const { taskId, scope, occurrenceDate } =
+				typeof target === 'object' ? target : { taskId: target };
+			await deleteDailyTask(taskId, { scope, occurrenceDate });
+			if (scope === 'single' || scope === 'following') {
+				if (state.lastRange.from && state.lastRange.to) {
+					await dispatch('loadRange', state.lastRange);
+				}
+				return;
+			}
 			commit('removeEntries', (e) => e.task_id === taskId);
+		},
+		async resizeRecurring(
+			{ dispatch, state, rootState },
+			{ entry, startMin, durationMin },
+		) {
+			await updateDailyTask(
+				entry.task_id,
+				{
+					title: entry.title,
+					description: entry.description || '',
+					user_id: rootState?.user?.id,
+					is_daily_routine: true,
+					is_recurring: true,
+					routine_category:
+						entry.routine_category?.id ?? entry.routine_category ?? 'none',
+					approximately_time: durationMin,
+					scheduled_time: {
+						hours: Math.floor(startMin / 60),
+						minutes: startMin % 60,
+					},
+				},
+				{
+					scope: 'single',
+					occurrenceDate: entry.date,
+					opId: crypto.randomUUID(),
+				},
+			);
+			if (state.lastRange.from && state.lastRange.to) {
+				await dispatch('loadRange', state.lastRange);
+			}
 		},
 		async convertRoutine(
 			{ commit },

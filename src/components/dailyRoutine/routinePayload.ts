@@ -26,6 +26,8 @@ export interface RoutineDraft {
 	scheduledDate: string;
 }
 
+export type RoutineScope = 'single' | 'following' | 'all';
+
 const DOW_KEYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
 function dowsToIndices(arr: any[] | null | undefined): number[] {
@@ -79,11 +81,14 @@ export function routineForEdit(
 ): any {
 	const routine: any = {
 		...full,
+		title: full.occurrence?.title ?? full.title,
+		description: full.occurrence?.description ?? full.description,
 		scheduled_time: entry.time ?? full.scheduled_time ?? null,
 		scheduled_date: entry.date ?? full.scheduled_date ?? null,
 		durationMin: entry.duration_min ?? full.approximately_time ?? undefined,
 		routine_category: entry.routine_category ?? full.routine_category,
 		reminder_min: entry.reminder_min ?? null,
+		comments_count: entry.comments_count ?? full.comments_count,
 	};
 	const frequency = entry.frequency;
 	if (!frequency || frequency === 'NONE' || !entry.date) return routine;
@@ -166,6 +171,7 @@ export function buildRoutinePayload(
 	draft: RoutineDraft,
 	today: string,
 	original?: RoutineDraft,
+	scope?: RoutineScope,
 ): any {
 	const isRecurring = draft.frequency !== 'NONE';
 	const isUnscheduled = !isRecurring && !!draft.unscheduled;
@@ -178,7 +184,9 @@ export function buildRoutinePayload(
 	};
 	if (isRecurring) {
 		const recurrence = recurrenceOf(draft);
-		if (
+		if (scope === 'single') {
+			payload.scheduled_time = { hours: draft.timeH, minutes: draft.timeM };
+		} else if (
 			!original ||
 			JSON.stringify(recurrence) !== JSON.stringify(recurrenceOf(original))
 		)
@@ -197,4 +205,89 @@ export function buildRoutinePayload(
 		payload.approximately_time = draft.durationMin;
 	}
 	return payload;
+}
+
+export function recurrenceChanged(
+	draft: RoutineDraft,
+	original: RoutineDraft,
+): boolean {
+	const key = (d: RoutineDraft) => {
+		const { frequency, interval, days_of_week, day_of_frequency, month } =
+			recurrenceOf(d);
+		return JSON.stringify([
+			frequency,
+			interval,
+			days_of_week,
+			day_of_frequency,
+			month,
+		]);
+	};
+	return key(draft) !== key(original);
+}
+
+export function versionedFieldsChanged(
+	draft: RoutineDraft,
+	original: RoutineDraft,
+): boolean {
+	return (
+		draft.title !== original.title ||
+		draft.description !== original.description ||
+		draft.cat !== original.cat ||
+		draft.timeH !== original.timeH ||
+		draft.timeM !== original.timeM ||
+		draft.durationMin !== original.durationMin ||
+		draft.reminderMin !== original.reminderMin ||
+		recurrenceChanged(draft, original)
+	);
+}
+
+export function needsScopeChoice(
+	draft: RoutineDraft,
+	original: RoutineDraft,
+	isLocal: boolean,
+): boolean {
+	return (
+		!isLocal &&
+		draft.id != null &&
+		original.frequency !== 'NONE' &&
+		versionedFieldsChanged(draft, original)
+	);
+}
+
+export interface ScopeOption {
+	scope: RoutineScope;
+	disabled: boolean;
+}
+
+export function scopeOptions(recurrenceWasChanged: boolean): ScopeOption[] {
+	return [
+		{ scope: 'single', disabled: recurrenceWasChanged },
+		{ scope: 'following', disabled: false },
+		{ scope: 'all', disabled: false },
+	];
+}
+
+export interface DeleteChoice {
+	scope: RoutineScope;
+	warnComments: boolean;
+}
+
+export function deleteChoices(
+	recurring: boolean,
+	commentsCount: number,
+): DeleteChoice[] {
+	if (!recurring) return [{ scope: 'all', warnComments: commentsCount > 0 }];
+	return [
+		{ scope: 'single', warnComments: false },
+		{ scope: 'following', warnComments: false },
+		{ scope: 'all', warnComments: commentsCount > 0 },
+	];
+}
+
+export function isStaleSeriesError(error: unknown): boolean {
+	return (error as any)?.response?.status === 409;
+}
+
+export function newOpId(): string {
+	return crypto.randomUUID();
 }

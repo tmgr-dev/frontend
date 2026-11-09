@@ -12,19 +12,51 @@
 						$t('dailyRoutine.deleteDialog.title')
 					}}</AlertDialogTitle>
 					<AlertDialogDescription>
-						{{ $t('dailyRoutine.deleteDialog.description', { title }) }}
+						{{
+							recurring
+								? $t('dailyRoutine.deleteDialog.recurringDescription', {
+										title,
+									})
+								: $t('dailyRoutine.deleteDialog.description', { title })
+						}}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
+				<div class="grid gap-2">
+					<template v-for="choice in choices" :key="choice.scope">
+						<AlertDialogAction
+							:data-testid="`routine-delete-${choice.scope}`"
+							:class="
+								choice.scope === 'all'
+									? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+									: 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+							"
+							@click="$emit('confirm', choice.scope)"
+						>
+							{{
+								recurring
+									? $t(`dailyRoutine.deleteDialog.${choice.scope}`)
+									: $t('common.actions.delete')
+							}}
+						</AlertDialogAction>
+						<p
+							v-if="choice.warnComments"
+							class="-mt-1 text-xs text-destructive"
+							data-testid="routine-delete-comments-warning"
+						>
+							{{
+								$t(
+									'dailyRoutine.deleteDialog.commentsWarning',
+									{ n: commentsCount },
+									commentsCount,
+								)
+							}}
+						</p>
+					</template>
+				</div>
 				<AlertDialogFooter>
 					<AlertDialogCancel>{{
 						$t('common.actions.cancel')
 					}}</AlertDialogCancel>
-					<AlertDialogAction
-						class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						@click="$emit('confirm')"
-					>
-						{{ $t('common.actions.delete') }}
-					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialogPortal>
@@ -46,7 +78,8 @@
 		AlertDialogOverlay,
 		AlertDialogPortal,
 	} from 'radix-vue';
-	import { defineComponent } from 'vue';
+	import { computed, defineComponent } from 'vue';
+	import { deleteChoices } from './routinePayload';
 
 	export default defineComponent({
 		name: 'DeleteRoutineDialog',
@@ -65,7 +98,16 @@
 		props: {
 			open: { type: Boolean, required: true },
 			title: { type: String, required: true },
+			recurring: { type: Boolean, default: false },
+			commentsCount: { type: Number, default: 0 },
 		},
 		emits: ['update:open', 'confirm'],
+		setup(props) {
+			return {
+				choices: computed(() =>
+					deleteChoices(props.recurring, props.commentsCount),
+				),
+			};
+		},
 	});
 </script>
