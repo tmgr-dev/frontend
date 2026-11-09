@@ -254,7 +254,8 @@
 		"saveAsPage": "Save as page",
 		"copied": "Copied.",
 		"savedAsPage": "Saved as a page in this workspace.",
-		"pageTitle": "Day summary {date}"
+		"pageTitle": "Day summary {date}",
+		"pastDayNote": "Based on yesterday's records; may be less precise."
 	},
 	"errorBoundary": {
 		"title": "Something went wrong",

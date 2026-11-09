@@ -78,6 +78,10 @@ if (isDesktopApp()) {
 	const isMainWindow = desktopWindowLabel() === 'main';
 	const isDetachedWindow = isDetachedWindowLabel(desktopWindowLabel());
 	if (isMainWindow) startUpdateChecks();
+	if (isMainWindow)
+		void import('@/local/daySummaryScheduler').then(
+			({ startDaySummarySchedule }) => startDaySummarySchedule(),
+		);
 	if (isMainWindow) {
 		void Promise.all([
 			import('@/pluginSystem/app'),

@@ -24,6 +24,10 @@
 				</p>
 			</div>
 
+			<p v-if="isPastDay" class="text-xs text-ink-subtle">
+				{{ $t('general.daySummary.pastDayNote') }}
+			</p>
+
 			<div
 				v-if="lanOrigin"
 				class="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
@@ -164,8 +168,11 @@
 			DialogTitle,
 			RouterLink,
 		},
+		props: {
+			day: { type: Date, default: undefined },
+		},
 		emits: ['close'],
-		setup(_props, { emit }) {
+		setup(props, { emit }) {
 			const store = useStore();
 			const localOnly = !!store.getters?.isLocalOnly;
 			const userId = () =>
@@ -187,6 +194,7 @@
 			const error = ref<string | null>(null);
 			const notice = ref<string | null>(null);
 			const aiOrigin = ref<string | null>(null);
+			const isPastDay = !!props.day;
 			const workspaceCount = computed(
 				() => new Set(tasks.value.map((task) => task.workspace)).size,
 			);
@@ -207,7 +215,7 @@
 				aiOrigin.value = await baseUrl().then(originOf, () => null);
 				try {
 					const result = await collectDay({
-						now: new Date(),
+						now: props.day ?? new Date(),
 						localUserId: userId(),
 						cloud: await cloudWorkspaces(),
 						cloudUserId: localOnly
@@ -314,7 +322,7 @@
 				try {
 					await createPage(await localContext(localWorkspace, localUser()), {
 						title: t('general.daySummary.pageTitle', {
-							date: new Date().toLocaleDateString('en-CA'),
+							date: (props.day ?? new Date()).toLocaleDateString('en-CA'),
 						}),
 						body: summary.value,
 					});
@@ -340,6 +348,7 @@
 				notice,
 				aiOrigin,
 				workspaceCount,
+				isPastDay,
 				localWorkspace,
 				summarize,
 				sendToLan,

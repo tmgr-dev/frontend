@@ -75,6 +75,7 @@
 		<DesktopWhatsNew v-if="isDesktop && isMainWindow" />
 		<DemoOfferHost v-if="isDesktop && isMainWindow" />
 		<GhostRunHost v-if="isDesktop && isMainWindow" />
+		<DaySummaryHost v-if="isDesktop && isMainWindow" />
 		<TryItPanel v-if="isDesktop && isMainWindow" />
 		<PagesImportDialog
 			v-if="pagesImport.open"
@@ -120,6 +121,7 @@
 	import CommandPalette from '@/components/general/CommandPalette.vue';
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import Modal from '@/components/Modal.vue';
+	import DaySummaryHost from '@/components/desktop/DaySummaryHost.vue';
 	import GhostRunHost from '@/components/onboarding/GhostRunHost.vue';
 	import TryItPanel from '@/components/onboarding/TryItPanel.vue';
 	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
@@ -191,6 +193,7 @@
 			DesktopUpdateCheck,
 			DesktopWhatsNew,
 			DemoOfferHost,
+			DaySummaryHost,
 			GhostRunHost,
 			TryItPanel,
 			Modal,

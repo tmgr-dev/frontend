@@ -131,12 +131,39 @@
 		<p v-if="llmError" class="text-sm text-red-600 dark:text-red-400">
 			{{ llmError }}
 		</p>
+		<div class="flex flex-col gap-2 border-t border-border pt-3">
+			<div class="flex items-center justify-between gap-3 text-sm">
+				<span id="daily-summary-label" class="font-medium">{{
+					$t('desktop.localAi.dailySummary')
+				}}</span>
+				<Switch
+					data-testid="daily-summary-switch"
+					aria-labelledby="daily-summary-label"
+					:checked="schedule.enabled"
+					@update:checked="setScheduleEnabled"
+				/>
+			</div>
+			<label v-if="schedule.enabled" class="flex items-center gap-2 text-sm">
+				{{ $t('desktop.localAi.dailySummaryTime') }}
+				<Input
+					type="time"
+					class="w-32"
+					data-testid="daily-summary-time"
+					:model-value="schedule.time"
+					@update:model-value="setScheduleTime(String($event))"
+				/>
+			</label>
+			<p class="text-xs text-muted-foreground">
+				{{ $t('desktop.localAi.dailySummaryHint') }}
+			</p>
+		</div>
 	</section>
 </template>
 
 <script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
+	import { Switch } from '@/components/ui/switch';
 	import { t } from '@/i18n';
 	import {
 		llmDetect,
@@ -145,6 +172,7 @@
 		llmTest,
 		needsConfirmationOrigin,
 	} from '@/local/llmClient';
+	import { readSchedule, updateSchedule } from '@/local/daySummaryScheduler';
 	import { LOCAL_OWNER_ID } from '@/local/personaGate';
 	import { resyncCloudIdentity } from '@/utils/cloudIdentity';
 	import {
@@ -200,12 +228,20 @@
 
 	export default defineComponent({
 		name: 'LocalAiSettings',
-		components: { Button, Input },
+		components: { Button, Input, Switch },
 		setup() {
 			const store = useStore();
 			const localOnly = !!store.getters?.isLocalOnly;
 			const userId = () =>
 				localOnly ? LOCAL_OWNER_ID : Number(store.state.user?.id) || 0;
+
+			const schedule = reactive(readSchedule());
+			const setScheduleEnabled = (enabled: boolean) =>
+				Object.assign(schedule, updateSchedule({ enabled }));
+			const setScheduleTime = (time: string) => {
+				if (/^\d{2}:\d{2}$/.test(time))
+					Object.assign(schedule, updateSchedule({ time }));
+			};
 
 			const llmForm = reactive({ baseUrl: '', model: '', apiKey: '' });
 			const isTypedUrlLocal = computed(() => isLocalLlmUrl(llmForm.baseUrl));
@@ -398,6 +434,9 @@
 				});
 
 			return {
+				schedule,
+				setScheduleEnabled,
+				setScheduleTime,
 				llmDirty,
 				llmNotice,
 				models,

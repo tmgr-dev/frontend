@@ -128,9 +128,9 @@ const loadComponent = () => {
 	};
 };
 
-const mountModal = async () => {
+const mountModal = async (props: Record<string, unknown> = {}) => {
 	const component = loadComponent();
-	const state = component.setup({}, {});
+	const state = component.setup(props, {});
 	await mockMounted!();
 	const render = () =>
 		renderToString(
@@ -301,4 +301,20 @@ test('regenerate is disabled while the LAN confirmation is open', async () => {
 
 	expect(state.lanOrigin.value).toBe('http://192.0.2.5:11434');
 	expect((await render()).match(regenerate)?.[0]).toContain('disabled');
+});
+
+test('a past day is collected for that day and carries a precision note', async () => {
+	const day = new Date(2026, 5, 9, 12);
+	const { render } = await mountModal({ day });
+
+	expect(mockCollect.mock.calls[0][0].now).toBe(day);
+	expect(await render()).toContain(
+		'Based on yesterday&#39;s records; may be less precise.',
+	);
+});
+
+test('today has no precision note', async () => {
+	const { render } = await mountModal();
+
+	expect(await render()).not.toContain('may be less precise');
 });

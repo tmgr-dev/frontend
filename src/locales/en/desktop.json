@@ -277,7 +277,17 @@
 		"allow": "Allow",
 		"ollamaHint": "Ollama picks its context size at startup (often 4096). Raise it with OLLAMA_CONTEXT_LENGTH for long summaries.",
 		"noServer": "No local server found on the default Ollama / LM Studio ports.",
-		"found": "Found {n} models at {url}. Save to use it."
+		"found": "Found {n} models at {url}. Save to use it.",
+		"dailySummary": "Daily summary",
+		"dailySummaryHint": "While the app is open, remind me at this time to summarize the day. Nothing is sent to the model until you open the summary.",
+		"dailySummaryTime": "Time"
+	},
+	"daySummarySchedule": {
+		"readyTitle": "Your day summary is ready",
+		"readyBody": "Open TMGR to review your day.",
+		"open": "Open",
+		"missedTitle": "Summarize yesterday?",
+		"missedBody": "The app was closed at the scheduled time."
 	},
 	"skillsLibrary": {
 		"title": "Skills on this device (local workspaces only)",
