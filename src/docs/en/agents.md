@@ -20,7 +20,7 @@ The quickest way to use TMGR from Claude Code is the official plugin ([tmgr-dev/
 /plugin install tmgr@tmgr
 ```
 
-Claude Code asks for your smart device token (Settings → Smart Devices) and keeps it in the OS keychain. Decisions tools need the local `tmgr mcp` from the [command line](/docs/cli). For Codex and Cursor, see `AGENTS.md` in the plugin repository. To connect by hand instead, follow the steps below.
+Claude Code asks for your smart device token ([Settings → Smart Devices](/settings?tab=device)) and keeps it in the OS keychain. Decisions tools need the local `tmgr mcp` from the [command line](/docs/cli/the-decisions-inbox). For Codex and Cursor, see `AGENTS.md` in the plugin repository. To connect by hand instead, follow the steps below.
 
 ## 1. Get a token {#get-a-token}
 
