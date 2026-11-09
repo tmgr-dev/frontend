@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.137 — 2026-11-09
+
+- Docs: the web app tutorials and guides now come before the command line sections in the docs sidebar.
+
 ## 0.9.136 — 2026-11-09
 
 - Docs: four web-app video lessons with transcripts (first task, workspace modules, personas and skills, routines), new guides for the web app (tasks, statuses and the board, pages and the map, team, notifications and agent alerts, skills library) and CLI guides (runner, agent sessions, autopilot, troubleshooting).
