@@ -36,7 +36,7 @@ const notifyNative = async () => {
 	}).catch(() => undefined);
 };
 
-const showToast = (title: string, description: string, day: Date | null) => {
+const showToast = (title: string, description: string, day: Date) => {
 	toast({
 		title,
 		description,
@@ -45,7 +45,7 @@ const showToast = (title: string, description: string, day: Date | null) => {
 			{
 				altText: t('desktop.daySummarySchedule.open'),
 				onClick: () => {
-					daySummaryRequest.value = day ?? new Date();
+					daySummaryRequest.value = day;
 				},
 			},
 			() => t('desktop.daySummarySchedule.open'),
@@ -71,7 +71,7 @@ export const startDaySummarySchedule = (): (() => void) => {
 			showToast(
 				t('desktop.daySummarySchedule.readyTitle'),
 				t('desktop.daySummarySchedule.readyBody'),
-				null,
+				now,
 			);
 			if (!document.hasFocus()) void notifyNative();
 		} else if (decision.kind === 'missed') {

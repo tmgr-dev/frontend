@@ -43,6 +43,30 @@ jest.mock('@/components/ui/input', () => {
 	const { h } = jest.requireActual('vue');
 	return { Input: { render: () => h('input') } };
 });
+jest.mock('@/components/ui/switch', () => {
+	const { h } = jest.requireActual('vue');
+	return {
+		Switch: {
+			props: ['checked'],
+			render(this: any) {
+				return h('button', {
+					'data-testid': 'daily-summary-switch',
+					'data-checked': String(!!this.checked),
+				});
+			},
+		},
+	};
+});
+const mockUpdateSchedule = jest.fn();
+jest.mock('@/local/daySummaryScheduler', () => ({
+	readSchedule: () => ({
+		enabled: false,
+		time: '18:00',
+		lastRunDay: null,
+		enabledAt: null,
+	}),
+	updateSchedule: (...args: unknown[]) => mockUpdateSchedule(...args),
+}));
 jest.mock('@/local/personaGate', () => ({ LOCAL_OWNER_ID: -1 }));
 jest.mock('@/local/llmClient', () => ({
 	llmDetect: (...args: unknown[]) => mockLlm.llmDetect(...args),
@@ -469,4 +493,24 @@ test('forget confirmation appears after allowing a loopback URL saved with an ex
 	await state.allowLan();
 
 	expect(await render()).toContain('Forget confirmation');
+});
+
+test('the daily summary toggle is off by default and turning it on shows the time', async () => {
+	mockUpdateSchedule.mockReturnValue({
+		enabled: true,
+		time: '18:00',
+		lastRunDay: null,
+		enabledAt: 1,
+	});
+	const { state, render } = await mountSettings();
+	const before = await render();
+	expect(before).toContain('data-checked="false"');
+	expect(before).not.toContain('daily-summary-time');
+
+	state.setScheduleEnabled(true);
+
+	expect(mockUpdateSchedule).toHaveBeenCalledWith({ enabled: true });
+	const after = await render();
+	expect(after).toContain('data-checked="true"');
+	expect(after).toContain('daily-summary-time');
 });

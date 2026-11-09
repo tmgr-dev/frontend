@@ -283,7 +283,7 @@
 		"dailySummaryTime": "Time"
 	},
 	"daySummarySchedule": {
-		"readyTitle": "Your day summary is ready",
+		"readyTitle": "Time to review your day",
 		"readyBody": "Open TMGR to review your day.",
 		"open": "Open",
 		"missedTitle": "Summarize yesterday?",
