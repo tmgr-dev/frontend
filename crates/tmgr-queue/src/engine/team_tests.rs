@@ -60,6 +60,7 @@ fn git_in(dir: &Path, args: &[&str]) -> String {
         .env("GIT_AUTHOR_EMAIL", "t@example.com")
         .env("GIT_COMMITTER_NAME", "t")
         .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .args(["-c", "gc.auto=0", "-c", "maintenance.auto=false"])
         .args(args)
         .output()
         .unwrap();
