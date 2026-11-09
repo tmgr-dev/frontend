@@ -181,18 +181,23 @@ export const getAgentContext = async (
 
 export const listConversations = async (
 	workspaceId: number,
-	{ q = '', archived = false }: { q?: string; archived?: boolean } = {},
-): Promise<AgentConversationItem[]> => {
+	{
+		q = '',
+		archived = false,
+		before = null,
+	}: { q?: string; archived?: boolean; before?: string | null } = {},
+): Promise<{ items: AgentConversationItem[]; nextCursor: string | null }> => {
 	const params: Record<string, unknown> = {
 		workspaceId,
 		archived,
 		limit: 50,
 	};
 	if (q) params.q = q;
+	if (before) params.before = before;
 	const {
-		data: { data },
+		data: { data, next_cursor },
 	} = await $axios.get('/agent/conversations', { params });
-	return data;
+	return { items: data, nextCursor: next_cursor ?? null };
 };
 
 export const getConversation = async (

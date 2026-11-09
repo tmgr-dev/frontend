@@ -130,6 +130,15 @@
 					</button>
 				</div>
 			</li>
+			<li v-if="nextCursor && !error" class="px-2 py-2">
+				<button
+					class="w-full rounded-pill px-3 py-1.5 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:opacity-40"
+					:disabled="loadingMore"
+					@click="loadMore"
+				>
+					{{ $t('agents.chatList.loadMore') }}
+				</button>
+			</li>
 		</ul>
 	</div>
 </template>
@@ -176,6 +185,8 @@
 		setup(props, { emit }) {
 			const items = ref<AgentConversationItem[]>([]);
 			const loading = ref(false);
+			const loadingMore = ref(false);
+			const nextCursor = ref<string | null>(null);
 			const error = ref<string | null>(null);
 			const text = ref(props.query);
 			const effectiveQuery = ref('');
@@ -201,12 +212,42 @@
 						q: effectiveQuery.value,
 						archived: props.showArchived,
 					});
-					if (requests.isCurrent(token)) items.value = result;
+					if (requests.isCurrent(token)) {
+						items.value = result.items;
+						nextCursor.value = result.nextCursor;
+					}
 				} catch {
 					if (requests.isCurrent(token))
 						error.value = t('agents.chatList.loadFailed');
 				} finally {
 					if (requests.isCurrent(token)) loading.value = false;
+				}
+			};
+
+			const loadMore = async (): Promise<void> => {
+				if (!nextCursor.value || loadingMore.value) return;
+				const token = requests.begin();
+				loadingMore.value = true;
+				error.value = null;
+				try {
+					const result = await listConversations(props.workspaceId, {
+						q: effectiveQuery.value,
+						archived: props.showArchived,
+						before: nextCursor.value,
+					});
+					if (requests.isCurrent(token)) {
+						const known = new Set(items.value.map((i) => i.id));
+						items.value = [
+							...items.value,
+							...result.items.filter((i) => !known.has(i.id)),
+						];
+						nextCursor.value = result.nextCursor;
+					}
+				} catch {
+					if (requests.isCurrent(token))
+						error.value = t('agents.chatList.loadFailed');
+				} finally {
+					loadingMore.value = false;
 				}
 			};
 
@@ -318,6 +359,9 @@
 			return {
 				items,
 				loading,
+				loadingMore,
+				nextCursor,
+				loadMore,
 				error,
 				text,
 				effectiveQuery,
