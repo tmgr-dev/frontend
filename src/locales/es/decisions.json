@@ -67,6 +67,7 @@
 	"wait": {
 		"sessionGone": "La sesión terminó, así que ningún agente verá esto.",
 		"notListening": "Ningún agente está escuchando ahora; lo verá cuando vuelva.",
+		"queued": "En cola: se escribirá en la sesión del agente cuando esté libre.",
 		"waiting": "esperando al agente…",
 		"noReplyDelivered": "El agente aún no ha respondido.",
 		"noReplyPending": "El agente aún no ha respondido; lo verá la próxima vez que revise."

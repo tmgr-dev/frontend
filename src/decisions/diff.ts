@@ -114,6 +114,7 @@ export const AGENT_WAIT_MS = 3 * 60 * 1000;
 
 export interface WaitContext {
 	listening: boolean;
+	queued?: boolean;
 	sessionGone: boolean;
 	canReply: boolean;
 	final: boolean;
@@ -131,7 +132,9 @@ export const agentWaitNotice = (
 	if (ctx.sessionGone) return t('decisions.wait.sessionGone');
 	const delivered = last.delivered === true;
 	if (!ctx.listening && !delivered) {
-		return t('decisions.wait.notListening');
+		return ctx.queued
+			? t('decisions.wait.queued')
+			: t('decisions.wait.notListening');
 	}
 	if (ctx.now - last.created_ms < AGENT_WAIT_MS)
 		return t('decisions.wait.waiting');

@@ -232,6 +232,7 @@
 			canReply: { type: Boolean, required: true },
 			final: { type: Boolean, required: true },
 			listening: { type: Boolean, required: true },
+			queued: { type: Boolean, default: false },
 			sessionGone: { type: Boolean, required: true },
 			now: { type: Number, required: true },
 		},
@@ -340,6 +341,7 @@
 				if (this.resolved[this.keyOf(file, line)]) return null;
 				return agentWaitNotice(this.threadMessages(file, line), {
 					listening: this.listening,
+					queued: this.queued,
 					sessionGone: this.sessionGone,
 					canReply: this.canReply,
 					final: this.final,

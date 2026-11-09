@@ -67,6 +67,7 @@
 	"wait": {
 		"sessionGone": "会话已结束，没有智能体会看到这条内容。",
 		"notListening": "目前没有智能体在监听，它回来后会看到这条内容。",
+		"queued": "已排队：智能体会话空闲时会自动输入。",
 		"waiting": "等待智能体…",
 		"noReplyDelivered": "智能体还没有回复。",
 		"noReplyPending": "智能体还没有回复，它下次检查时会看到这条内容。"

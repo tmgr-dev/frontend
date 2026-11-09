@@ -79,6 +79,8 @@ export const answerToast = (card: CardView, answer: Answer): string => {
 	});
 };
 
+export const RUNNER_QUEUE_DETAIL = "Waiting for the agent's prompt";
+
 export const deliveryLabel = (
 	delivery: CardDelivery | null | undefined,
 ): string | null => {
@@ -100,6 +102,13 @@ export const deliveryLabel = (
 			return null;
 	}
 };
+
+export const isTypedQueue = (
+	delivery: CardDelivery | null | undefined,
+): boolean =>
+	delivery?.state === 'queued' &&
+	delivery.via === 'runner' &&
+	delivery.detail === RUNNER_QUEUE_DETAIL;
 
 export const unpickedLabel = (card: CardView): string | null =>
 	card.unpicked ? t('decisions.unpicked') : null;

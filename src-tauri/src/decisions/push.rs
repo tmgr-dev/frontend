@@ -84,7 +84,7 @@ pub fn delivery_text(event: &Event) -> Option<String> {
 }
 
 fn text_for(reply_via: &str, id: &str, event: &Event) -> Option<String> {
-  if reply_via == "mcp" {
+  if reply_via == "mcp" || reply_via == "cli" {
     return match event.kind.as_str() {
       "answer" => Some(format!(
         "TMGR Decisions: the owner answered card {id}. Call get_answer with card_id {id} and continue. If a background agent of yours asked it, pass it on."
@@ -181,7 +181,7 @@ pub fn route_with(
 ) -> RouteOutcome {
   let Ok(Some(r)) = hub.routing(card_id) else { return RouteOutcome::Skipped };
   let card = &r.card;
-  if !(card.reply_via == "mcp" || (card.reply_via == "hook" && card.kind == "stopped")) {
+  if !(matches!(card.reply_via.as_str(), "mcp" | "cli") || (card.reply_via == "hook" && card.kind == "stopped")) {
     return RouteOutcome::Skipped;
   }
   let Some(text) = text_for(&card.reply_via, &r.id, event) else { return RouteOutcome::Skipped };
@@ -521,6 +521,27 @@ mod tests {
     let s = FakeSocket::with(vec![Err(PushErr::Other)]);
     assert_eq!(new_route(&hub, &Queue::default(), &s, &id, &e), RouteOutcome::Undelivered);
     assert!(hub.get(&id).unwrap().push);
+  }
+
+  #[test]
+  fn a_cli_card_is_typed_into_the_runner_session() {
+    let hub = hub();
+    let card = CardIn {
+      reply_via: "cli".into(),
+      source: Source { runner_session: Some("r1".into()), ..mcp("Q").source },
+      ..mcp("Q")
+    };
+    let id = hub.create(card).unwrap().id;
+    let e = answer(&hub, &id, None);
+    let q = Queue::default();
+    assert_eq!(new_route(&hub, &q, &FakeSocket::default(), &id, &e), RouteOutcome::Queued);
+    assert_eq!(state(&hub, &id), Some(("queued".into(), "runner".into(), WAITING.into())));
+    let r = FakeRunner::with(vec![Ok(())]);
+    q.tick(&hub, &r, Instant::now());
+    let calls = r.calls();
+    assert_eq!(calls[0].0, "r1");
+    assert!(calls[0].1.contains(&format!("card {id}")) && calls[0].1.contains("get_answer"));
+    assert_eq!(state(&hub, &id), Some(("delivered".into(), "runner".into(), String::new())));
   }
 
   #[test]

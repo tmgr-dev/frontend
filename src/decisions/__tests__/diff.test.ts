@@ -251,6 +251,12 @@ describe('agentWaitNotice', () => {
 		);
 	});
 
+	it('says the message is queued for the session instead of claiming nobody is listening', () => {
+		expect(
+			agentWaitNotice([owner], { ...ctx, listening: false, queued: true }),
+		).toBe("Queued: it will be typed into the agent's session when it is idle.");
+	});
+
 	it('does not claim nobody has the message once it was delivered', () => {
 		const seen = { ...owner, delivered: true };
 		expect(agentWaitNotice([seen], { ...ctx, listening: false })).toBe(

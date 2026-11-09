@@ -67,6 +67,7 @@
 	"wait": {
 		"sessionGone": "Die Sitzung ist beendet, daher sieht kein Agent das.",
 		"notListening": "Gerade hört kein Agent zu; er sieht es, sobald er zurück ist.",
+		"queued": "In der Warteschlange: wird in die Sitzung des Agents getippt, sobald sie frei ist.",
 		"waiting": "warte auf den Agent…",
 		"noReplyDelivered": "Der Agent hat noch nicht geantwortet.",
 		"noReplyPending": "Der Agent hat noch nicht geantwortet; er sieht es bei der nächsten Prüfung."

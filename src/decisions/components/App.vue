@@ -94,6 +94,7 @@
 							:can-reply="current.can_reply"
 							:final="isFinal(current)"
 							:listening="current.listening"
+							:queued="isTypedQueue(current.delivery)"
 							:session-gone="current.session_gone"
 							:now="now"
 							@send="sendMessage"
@@ -110,6 +111,7 @@
 							:can-reply="current.can_reply && !isFinal(current)"
 							:final="isFinal(current)"
 							:listening="current.listening"
+							:queued="isTypedQueue(current.delivery)"
 							:session-gone="current.session_gone"
 							:now="now"
 							@send="sendChat"
@@ -178,6 +180,7 @@
 		buildAnswer,
 		cardMode,
 		isFinal,
+		isTypedQueue,
 		type AnswerDraft,
 	} from '../answer';
 	import {
@@ -385,6 +388,7 @@
 		},
 		methods: {
 			isFinal,
+			isTypedQueue,
 			async refresh() {
 				if (this.refreshing) {
 					this.refreshAgain = true;

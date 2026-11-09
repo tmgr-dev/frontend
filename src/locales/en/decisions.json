@@ -67,6 +67,7 @@
 	"wait": {
 		"sessionGone": "The session ended, so no agent will see this.",
 		"notListening": "No agent is listening right now; it'll see this when it comes back.",
+		"queued": "Queued: it will be typed into the agent's session when it is idle.",
 		"waiting": "waiting for the agent…",
 		"noReplyDelivered": "The agent hasn't replied yet.",
 		"noReplyPending": "The agent hasn't replied yet; it'll see this when it next checks."
