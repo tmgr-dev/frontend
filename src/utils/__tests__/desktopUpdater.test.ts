@@ -67,15 +67,76 @@ it('downloads a found update in the background and marks it ready', async () => 
 	expect(updateState.value).toEqual({ status: 'ready', version: '0.1.1' });
 });
 
-it('does not download the same update twice', async () => {
+it('does not download the same version twice', async () => {
 	const update = fakeUpdate('0.1.1');
-	check.mockResolvedValue(update);
+	const again = fakeUpdate('0.1.1');
+	check.mockResolvedValueOnce(update).mockResolvedValueOnce(again);
 	const { checkForUpdate } = load();
 
 	await checkForUpdate();
 	await checkForUpdate();
 
-	expect(check).toHaveBeenCalledTimes(1);
+	expect(check).toHaveBeenCalledTimes(2);
+	expect(update.download).toHaveBeenCalledTimes(1);
+	expect(again.download).not.toHaveBeenCalled();
+});
+
+it('replaces a pending update with a newer one', async () => {
+	const old = fakeUpdate('0.1.1');
+	const newer = fakeUpdate('0.1.2');
+	check.mockResolvedValueOnce(old).mockResolvedValueOnce(newer);
+	const { checkForUpdate, installUpdate, updateState } = load();
+
+	await checkForUpdate();
+	await checkForUpdate();
+
+	expect(newer.download).toHaveBeenCalledTimes(1);
+	expect(updateState.value).toEqual({ status: 'ready', version: '0.1.2' });
+	await installUpdate();
+	expect(newer.install).toHaveBeenCalledTimes(1);
+	expect(old.install).not.toHaveBeenCalled();
+});
+
+it('re-checks on install and installs the newest version', async () => {
+	const old = fakeUpdate('0.1.1');
+	const newer = fakeUpdate('0.1.2');
+	check.mockResolvedValueOnce(old).mockResolvedValueOnce(newer);
+	const { checkForUpdate, installUpdate, updateState } = load();
+	await checkForUpdate();
+
+	await installUpdate();
+
+	expect(newer.download).toHaveBeenCalledTimes(1);
+	expect(newer.install).toHaveBeenCalledTimes(1);
+	expect(old.install).not.toHaveBeenCalled();
+	expect(updateState.value).toEqual({ status: 'installing', version: '0.1.2' });
+});
+
+it('installs the pending update when the re-check fails', async () => {
+	const old = fakeUpdate('0.1.1');
+	check.mockResolvedValueOnce(old).mockRejectedValueOnce(new Error('offline'));
+	const { checkForUpdate, installUpdate } = load();
+	await checkForUpdate();
+
+	await installUpdate();
+
+	expect(old.install).toHaveBeenCalledTimes(1);
+	expect(invoke).toHaveBeenCalledWith('relaunch_after_update');
+});
+
+it('skips periodic checks while installing', async () => {
+	const old = fakeUpdate('0.1.1');
+	const found = deferred<ReturnType<typeof fakeUpdate> | null>();
+	check.mockResolvedValueOnce(old).mockReturnValueOnce(found.promise);
+	const { checkForUpdate, installUpdate } = load();
+	await checkForUpdate();
+
+	const install = installUpdate();
+	await checkForUpdate();
+	found.resolve(null);
+	await install;
+
+	expect(check).toHaveBeenCalledTimes(2);
 });
 
 it('swallows network errors and stays idle', async () => {

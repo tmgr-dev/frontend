@@ -15,14 +15,21 @@ export type ManualCheckOutcome =
 
 let pending: Update | null = null;
 let inFlight: Promise<Update | null> | null = null;
+let installing = false;
 
 const runCheck = async (): Promise<Update | null> => {
 	const { check } = await import('@tauri-apps/plugin-updater');
 	const update = await check();
-	if (!update) return null;
+	if (!update) return pending;
+	if (pending && pending.version === update.version) return pending;
 	await update.download();
+	const previous = pending;
 	pending = update;
-	updateState.value = { status: 'ready', version: update.version };
+	updateState.value = {
+		status: installing ? 'installing' : 'ready',
+		version: update.version,
+	};
+	await previous?.close?.().catch(() => {});
 	return update;
 };
 
@@ -49,7 +56,7 @@ const log = async (level: 'error' | 'warn', message: string) => {
 };
 
 export async function checkForUpdate(): Promise<void> {
-	if (pending) return;
+	if (installing) return;
 	try {
 		await sharedCheck();
 	} catch (err) {
@@ -78,13 +85,16 @@ export async function checkForUpdateManually(): Promise<ManualCheckOutcome> {
 
 export async function installUpdate(): Promise<void> {
 	if (!pending || updateState.value.status !== 'ready') return;
+	installing = true;
 	updateState.value = { ...updateState.value, status: 'installing' };
 	try {
+		await sharedCheck().catch(() => {});
 		const { invoke } = await import('@tauri-apps/api/core');
 		await invoke('mark_update_relaunch').catch(() => {});
-		await pending.install();
+		await pending!.install();
 		await invoke('relaunch_after_update');
 	} catch {
+		installing = false;
 		updateState.value = { ...updateState.value, status: 'ready' };
 	}
 }
