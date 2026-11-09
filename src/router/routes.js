@@ -711,6 +711,19 @@ const routes = [
 	// New URL structure routes
 	// CHANGES: Added keepAlive meta for cached views
 	{
+		path: '/:workspace_code',
+		component: () => import('@/pages/Error404.vue'),
+		beforeEnter: (to) =>
+			store.state.workspaces?.some((w) => w.code === to.params.workspace_code)
+				? {
+						path: `/${to.params.workspace_code}/dashboard`,
+						query: to.query,
+						replace: true,
+					}
+				: true,
+		name: 'WorkspaceRoot',
+	},
+	{
 		path: '/:workspace_code/dashboard',
 		component: DashboardPage,
 		meta: {

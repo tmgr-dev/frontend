@@ -15,7 +15,9 @@ const loadRoutes = () => {
 		'@/router/moduleGate': {
 			gatedPage: (_k: string, _t: string, f: unknown) => f,
 		},
-		'@/store': { default: { getters: {} } },
+		'@/store': {
+			default: { getters: {}, state: { workspaces: [{ code: 'tmgrdev' }] } },
+		},
 		'@/utils/simpleStatus': {
 			boardRedirect: () => undefined,
 			isSimpleMode: () => false,
@@ -125,12 +127,21 @@ describe('legacy task route', () => {
 		expect(resolve('/123')).toBe('TasksEdit');
 	});
 
-	it.each(['/some-unknown-slug', '/tmgrdev'])(
-		'sends the unknown one-segment URL %s to the 404 page',
-		(path) => {
-			expect(resolve(path)).toBe('NotFound');
-		},
-	);
+	it('serves a bare workspace code through its own route', () => {
+		expect(resolve('/tmgrdev')).toBe('WorkspaceRoot');
+		expect(resolve('/some-unknown-slug')).toBe('WorkspaceRoot');
+		expect(String(byName('WorkspaceRoot').component)).toContain('Error404');
+	});
+
+	it('redirects a known workspace code to its dashboard and leaves unknown ones on 404', () => {
+		const { beforeEnter } = byName('WorkspaceRoot');
+		expect(
+			beforeEnter({ params: { workspace_code: 'tmgrdev' }, query: { a: '1' } }),
+		).toEqual({ path: '/tmgrdev/dashboard', query: { a: '1' }, replace: true });
+		expect(beforeEnter({ params: { workspace_code: 'nope' }, query: {} })).toBe(
+			true,
+		);
+	});
 
 	it.each([
 		['/login', 'Login'],
