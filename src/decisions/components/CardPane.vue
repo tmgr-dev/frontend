@@ -216,16 +216,20 @@
 			card: { type: Object as PropType<CardView>, required: true },
 			position: { type: Number, required: true },
 			total: { type: Number, required: true },
+			freeDraft: { type: String, default: '' },
+			noteDraft: { type: String, default: '' },
+			noteForDraft: { type: String, default: '' },
 		},
-		emits: ['answer', 'open-link'],
+		emits: ['answer', 'open-link', 'update:draft'],
 		data() {
 			const recommended = recommendedOption(this.card);
 			return {
 				FACT_GLYPH: { ok: '✓', bad: '✗', wait: '◷' },
-				selected: (recommended?.id ?? null) as string | null,
-				noteFor: null as string | null,
-				note: '',
-				freeText: '',
+				selected: (this.noteForDraft || recommended?.id || null) as
+					string | null,
+				noteFor: (this.noteForDraft || null) as string | null,
+				note: this.noteDraft,
+				freeText: this.freeDraft,
 				pickTimer: 0 as number,
 			};
 		},
@@ -275,8 +279,15 @@
 			},
 		},
 		watch: {
-			freeText() {
+			freeText(value: string) {
+				this.$emit('update:draft', { field: 'free', value });
 				void this.$nextTick(() => this.sizeFree());
+			},
+			noteFor(value: string | null) {
+				this.$emit('update:draft', { field: 'noteFor', value: value ?? '' });
+			},
+			note(value: string) {
+				this.$emit('update:draft', { field: 'note', value });
 			},
 		},
 		mounted() {

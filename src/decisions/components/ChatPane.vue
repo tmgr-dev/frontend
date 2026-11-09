@@ -48,9 +48,9 @@
 </template>
 
 <script lang="ts">
+	import { autosizeTextarea } from '@/utils/commentComposer';
 	import { defineComponent, type PropType } from 'vue';
 	import { agentWaitNotice } from '../diff';
-	import { autosizeTextarea } from '@/utils/commentComposer';
 	import { isSubmitKey } from '../keys';
 	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
 	import type { CardMessage } from '../types';
@@ -66,12 +66,18 @@
 			typed: { type: Boolean, default: false },
 			sessionGone: { type: Boolean, required: true },
 			now: { type: Number, required: true },
+			draft: { type: String, default: '' },
 		},
-		emits: ['send', 'open-link'],
-		data() {
-			return { text: '' };
-		},
+		emits: ['send', 'open-link', 'update:draft'],
 		computed: {
+			text: {
+				get(): string {
+					return this.draft;
+				},
+				set(value: string) {
+					this.$emit('update:draft', value);
+				},
+			},
 			notice(): string | null {
 				return agentWaitNotice(this.messages, {
 					listening: this.listening,
@@ -83,6 +89,9 @@
 					now: this.now,
 				});
 			},
+		},
+		mounted() {
+			autosizeTextarea(this.$refs.input as HTMLTextAreaElement | undefined);
 		},
 		watch: {
 			text() {
@@ -112,7 +121,6 @@
 				if (isSubmitKey(event) && this.text.trim()) {
 					event.preventDefault();
 					this.$emit('send', this.text.trim());
-					this.text = '';
 				}
 			},
 		},

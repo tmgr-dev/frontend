@@ -29,7 +29,7 @@ describe('CardPane free answer', () => {
 	it('starts at one row and grows with its text', () => {
 		expect(freeTag).toContain('rows="1"');
 		expect(cardPane).toMatch(
-			/watch: \{\s*freeText\(\) \{\s*void this\.\$nextTick\(\(\) => this\.sizeFree\(\)\);/,
+			/freeText\(value: string\) \{[\s\S]*?void this\.\$nextTick\(\(\) => this\.sizeFree\(\)\);/,
 		);
 		expect(cardPane).toMatch(/mounted\(\) \{\s*this\.sizeFree\(\);/);
 	});

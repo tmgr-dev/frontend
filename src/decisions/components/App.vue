@@ -28,9 +28,13 @@
 						ref="cardPane"
 						:key="current.id"
 						:card="current"
+						:free-draft="freeDraft"
+						:note-draft="noteDraft"
+						:note-for-draft="noteForDraft"
 						:position="position"
 						:total="order.length"
 						@answer="submit"
+						@update:draft="setTextDraft($event.field, $event.value)"
 						@open-link="openLink"
 					/>
 					<section class="right">
@@ -108,6 +112,7 @@
 							v-else
 							ref="chatPane"
 							:key="'c' + current.id"
+							:draft="chatDraft"
 							:messages="chatMessages"
 							:can-reply="current.can_reply && !isFinal(current)"
 							:final="isFinal(current)"
@@ -117,6 +122,7 @@
 							:session-gone="current.session_gone"
 							:now="now"
 							@send="sendChat"
+							@update:draft="setTextDraft('chat', $event)"
 							@open-link="openLink"
 						/>
 					</section>
@@ -206,6 +212,15 @@
 		type RequestSeqs,
 	} from '../diff';
 	import {
+		clearCardDrafts,
+		loadDrafts,
+		pruneDrafts,
+		saveDrafts,
+		setDraft,
+		type DraftField,
+		type TextDrafts,
+	} from '../drafts';
+	import {
 		advanceKonami,
 		advanceStreak,
 		doomAwaits,
@@ -270,6 +285,8 @@
 				now: Date.now(),
 				clock: 0 as number,
 				drafts: {} as Record<string, LineComment[]>,
+				textDrafts: loadDrafts(window.localStorage) as TextDrafts,
+				sendingChat: [] as string[],
 				toast: { on: false, error: false, text: '' },
 				toastTimer: 0 as number,
 				unlisten: null as null | (() => void),
@@ -325,6 +342,26 @@
 			currentDrafts(): LineComment[] {
 				return this.current ? (this.drafts[this.current.id] ?? []) : [];
 			},
+			chatDraft(): string {
+				return this.current
+					? (this.textDrafts[this.current.id]?.chat ?? '')
+					: '';
+			},
+			freeDraft(): string {
+				return this.current
+					? (this.textDrafts[this.current.id]?.free ?? '')
+					: '';
+			},
+			noteForDraft(): string {
+				return this.current
+					? (this.textDrafts[this.current.id]?.noteFor ?? '')
+					: '';
+			},
+			noteDraft(): string {
+				return this.current
+					? (this.textDrafts[this.current.id]?.note ?? '')
+					: '';
+			},
 			chatMessages() {
 				return this.current ? splitMessages(this.current.messages).chat : [];
 			},
@@ -340,6 +377,9 @@
 			},
 		},
 		watch: {
+			textDrafts(value: TextDrafts) {
+				saveDrafts(window.localStorage, value);
+			},
 			order() {
 				this.ensureSelection();
 			},
@@ -402,6 +442,10 @@
 				try {
 					this.cards = await decisionsList();
 					this.loadFailed = false;
+					this.textDrafts = pruneDrafts(
+						this.textDrafts,
+						new Set(this.cards.filter((c) => !isFinal(c)).map((c) => c.id)),
+					);
 				} catch (error) {
 					this.loadFailed = true;
 					this.showToast(
@@ -580,6 +624,9 @@
 				if (!this.resolvedHere.includes(card.id))
 					this.resolvedHere.push(card.id);
 				delete this.drafts[card.id];
+				if (!draft.deferred) {
+					this.textDrafts = clearCardDrafts(this.textDrafts, card.id);
+				}
 				this.showToast(answerToast(card, answer));
 				this.selectedId = following;
 				await this.refresh();
@@ -601,16 +648,25 @@
 				const following = nextCardId(this.order, id);
 				if (!this.resolvedHere.includes(id)) this.resolvedHere.push(id);
 				delete this.drafts[id];
+				this.textDrafts = clearCardDrafts(this.textDrafts, id);
 				this.showToast(answerToast(card, answer));
 				if (this.selectedId === id) this.selectedId = following;
 				await this.refresh();
 				this.ensureSelection();
 			},
-			async sendMessage(message: OutgoingMessage) {
+			async sendMessage(message: OutgoingMessage): Promise<boolean> {
 				const card = this.current;
-				if (!card) return;
+				if (!card) return false;
 				try {
 					await decisionsMessage(card.id, message);
+				} catch (error) {
+					this.showToast(
+						t('decisions.toast.messageFailed', { error: String(error) }),
+						true,
+					);
+					return false;
+				}
+				try {
 					await this.refreshCard(card.id);
 					if (message.action === 'fix') await this.loadDiff(card.id, true);
 				} catch (error) {
@@ -619,9 +675,30 @@
 						true,
 					);
 				}
+				return true;
 			},
-			sendChat(text: string) {
-				void this.sendMessage({ text, action: 'reply' });
+			async sendChat(text: string) {
+				const card = this.current;
+				if (!card || this.sendingChat.includes(card.id)) return;
+				this.sendingChat.push(card.id);
+				try {
+					if (await this.sendMessage({ text, action: 'reply' })) {
+						this.clearChatDraft(card.id, text);
+					}
+				} finally {
+					this.sendingChat = this.sendingChat.filter((id) => id !== card.id);
+				}
+			},
+			clearChatDraft(id: string, sent: string) {
+				if ((this.textDrafts[id]?.chat ?? '').trim() === sent) {
+					this.setTextDraftFor(id, 'chat', '');
+				}
+			},
+			setTextDraft(field: DraftField, value: string) {
+				if (this.current) this.setTextDraftFor(this.current.id, field, value);
+			},
+			setTextDraftFor(id: string, field: DraftField, value: string) {
+				this.textDrafts = setDraft(this.textDrafts, id, field, value);
 			},
 			addDraft(comment: LineComment) {
 				const card = this.current;
