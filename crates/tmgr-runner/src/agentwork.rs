@@ -339,6 +339,21 @@ pub fn step(
 mod tests {
     use super::*;
 
+    // The executable is written by a `cp` child, never by this process: a write fd held here would be
+    // inherited by any child a parallel test forks, and exec would fail with ETXTBSY until it execs.
+    fn executable(path: &std::path::Path, body: String) {
+        use std::os::unix::fs::PermissionsExt;
+        let src = path.with_extension("src");
+        std::fs::write(&src, body).unwrap();
+        let copied = std::process::Command::new("cp")
+            .arg(&src)
+            .arg(path)
+            .status()
+            .unwrap();
+        assert!(copied.success());
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
     #[test]
     fn the_finish_status_follows_the_exit_and_a_halt() {
         let ok = Exit {
@@ -362,16 +377,13 @@ mod tests {
 
     #[test]
     fn a_run_is_started_once_updated_every_ten_minutes_and_finished_once() {
-        use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
         let calls = tmp.path().join("calls");
         let helper = tmp.path().join("helper.sh");
-        std::fs::write(
+        executable(
             &helper,
             format!("#!/bin/sh\ncat >> {calls:?}\necho >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
-        )
-        .unwrap();
-        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let dir = tmp.path().join("s");
         std::fs::create_dir(&dir).unwrap();
         let task = TaskRef {
@@ -421,7 +433,6 @@ mod tests {
 
     #[test]
     fn a_team_member_starts_with_its_role_and_a_plain_run_sends_none() {
-        use std::os::unix::fs::PermissionsExt;
         let task = TaskRef {
             workspace_id: -2,
             task_id: 7,
@@ -430,12 +441,10 @@ mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let calls = tmp.path().join("calls");
             let helper = tmp.path().join("helper.sh");
-            std::fs::write(
+            executable(
                 &helper,
                 format!("#!/bin/sh\ncat >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
-            )
-            .unwrap();
-            std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+            );
             let dir = tmp.path().join("s");
             std::fs::create_dir(&dir).unwrap();
             begin_as(
@@ -458,16 +467,13 @@ mod tests {
 
     #[test]
     fn a_held_run_stays_open_after_a_clean_exit_and_closes_on_failure() {
-        use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
         let calls = tmp.path().join("calls");
         let helper = tmp.path().join("helper.sh");
-        std::fs::write(
+        executable(
             &helper,
             format!("#!/bin/sh\ncat >> {calls:?}\necho >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
-        )
-        .unwrap();
-        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let task = TaskRef {
             workspace_id: 56,
             task_id: 7,
@@ -505,7 +511,6 @@ mod tests {
 
     #[test]
     fn the_finish_summary_names_bypass_and_a_missing_sandbox() {
-        use std::os::unix::fs::PermissionsExt;
         assert_eq!(audit_note(Some("ask"), false), None);
         assert_eq!(
             audit_note(Some("bypass"), false).as_deref(),
@@ -518,12 +523,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let calls = tmp.path().join("calls");
         let helper = tmp.path().join("helper.sh");
-        std::fs::write(
+        executable(
             &helper,
             format!("#!/bin/sh\ncat >> {calls:?}\necho >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
-        )
-        .unwrap();
-        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let dir = tmp.path().join("s");
         std::fs::create_dir(&dir).unwrap();
         let task = TaskRef {
