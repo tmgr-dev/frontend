@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.115
+
+- Commits from team workers reach the lead as one pack instead of many loose objects, with bounded memory and a time limit.
+- Cloning, checking out and repacking an agent clone get more time for large repositories (five extra minutes per GiB of objects).
+- Bringing a branch back accounts for object stores the repository borrows from.
+
 ## 1.0.114
 
 - Agent clones are handled more strictly. Starting a run now fails, and the new clone is removed, when the runner cannot record the clone.
