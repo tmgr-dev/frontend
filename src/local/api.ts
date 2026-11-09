@@ -42,6 +42,7 @@ import {
 import {
 	LocalHttpError,
 	LocalRaw,
+	type BatchStatement,
 	type LocalActor,
 	type LocalContext,
 	type LocalRequest,
@@ -432,6 +433,17 @@ export const noteStatusChange = async (ctx: LocalContext, taskId: number) => {
 	}
 };
 
+const statusHistoryStatement = (
+	ctx: LocalContext,
+	taskId: number,
+	oldStatusId: number | null,
+	newStatusId: number | null,
+): BatchStatement => ({
+	sql: `INSERT INTO task_status_history (task_id, old_status_id, new_status_id, actor_kind, created_at)
+		VALUES (?, ?, ?, ?, ?)`,
+	params: [taskId, oldStatusId, newStatusId, actorOf(ctx).kind, iso(ctx)],
+});
+
 const textOf = (value: unknown): string =>
 	value === null || value === undefined ? '' : String(value);
 
@@ -545,24 +557,22 @@ const updateTask = async (
 		', ',
 	)} WHERE id = ? AND deleted_at IS NULL`;
 	const entries = await taskEditEntries(ctx, id, fields);
-	if (entries.length) {
-		const batch = await journaledBatch(
-			ctx,
-			[{ sql: updateSql, params: [...values, id], expectChanges: true }],
-			entries,
-		);
-		if (batch.failedAt !== null) throw notFound('Task');
-	} else {
-		const result = await ctx.db.execute(updateSql, [...values, id]);
-		if (!result.rowsAffected) throw notFound('Task');
-	}
-	if (
+	const statusChanged =
 		statusBefore !== undefined &&
 		fields.status_id != null &&
-		fields.status_id !== statusBefore
-	) {
-		await noteStatusChange(ctx, id);
-	}
+		fields.status_id !== statusBefore;
+	const statements: BatchStatement[] = [
+		{ sql: updateSql, params: [...values, id], expectChanges: true },
+	];
+	if (statusChanged)
+		statements.push(
+			statusHistoryStatement(ctx, id, statusBefore ?? null, fields.status_id),
+		);
+	const batch = entries.length
+		? await journaledBatch(ctx, statements, entries)
+		: await ctx.db.batch(statements);
+	if (batch.failedAt !== null) throw notFound('Task');
+	if (statusChanged) await noteStatusChange(ctx, id);
 	await syncTaskMentions(ctx, id);
 	return loadTask(ctx, id);
 };
@@ -1545,11 +1555,30 @@ export const createLocalApi = () => {
 					`SELECT status_id FROM tasks WHERE id = ?`,
 					[Number(taskId)],
 				);
-				const moved = await ctx.db.execute(
-					`UPDATE tasks SET status_id = ?, updated_at = ? WHERE id = ?`,
-					[status.id, iso(ctx), Number(taskId)],
-				);
-				if (moved.rowsAffected && before && before.status_id !== status.id) {
+				const changed = !!before && before.status_id !== status.id;
+				const moved = await ctx.db.batch([
+					{
+						sql: `UPDATE tasks SET status_id = ?, updated_at = ? WHERE id = ?`,
+						params: [status.id, iso(ctx), Number(taskId)],
+					},
+					...(changed
+						? [
+								{
+									sql: `INSERT INTO task_status_history (task_id, old_status_id, new_status_id, actor_kind, created_at)
+										SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ?)`,
+									params: [
+										Number(taskId),
+										before.status_id ?? null,
+										status.id,
+										actorOf(ctx).kind,
+										iso(ctx),
+										Number(taskId),
+									],
+								},
+							]
+						: []),
+				]);
+				if (moved.results[0]?.rowsAffected && changed) {
 					await noteStatusChange(ctx, Number(taskId));
 				}
 			}

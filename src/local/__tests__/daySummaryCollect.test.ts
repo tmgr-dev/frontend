@@ -42,18 +42,23 @@ const localTask = (over: Record<string, unknown>) => ({
 const fakeDb = (
 	tasks: Record<string, unknown>[],
 	comments: unknown[] = [],
+	moves: unknown[] = [],
 ) => ({
-	select: jest.fn(async (sql: string) =>
-		sql.startsWith('SELECT task_id') ? comments : tasks,
-	),
+	select: jest.fn(async (sql: string) => {
+		if (sql.startsWith('SELECT h.task_id')) return moves;
+		return sql.startsWith('SELECT task_id') ? comments : tasks;
+	}),
 });
 
 const setLocal = (
-	byCode: Record<string, { tasks?: unknown[]; comments?: unknown[] }>,
+	byCode: Record<
+		string,
+		{ tasks?: unknown[]; comments?: unknown[]; moves?: unknown[] }
+	>,
 ) => {
 	const dbs: Record<string, ReturnType<typeof fakeDb>> = {};
 	for (const [code, data] of Object.entries(byCode))
-		dbs[code] = fakeDb(data.tasks as any[], data.comments);
+		dbs[code] = fakeDb(data.tasks as any[], data.comments, data.moves);
 	(localContext as jest.Mock).mockImplementation(
 		async (ws: { code: string }) => ({
 			db: dbs[ws.code],
@@ -137,7 +142,7 @@ describe('collectDay local workspaces', () => {
 		const taskQuery = (dbs.ws1.select.mock.calls as unknown[][]).find(([sql]) =>
 			(sql as string).includes('FROM tasks'),
 		);
-		expect(taskQuery?.[1]).toEqual([FROM, TO, FROM, TO, FROM, TO]);
+		expect(taskQuery?.[1]).toEqual([FROM, TO, FROM, TO, FROM, TO, FROM, TO]);
 	});
 
 	it('summarises comments from today, keeping the count and up to three snippets, without lifetime minutes', async () => {
@@ -561,6 +566,57 @@ describe('collectDay cloud workspaces', () => {
 });
 
 describe('collectDay status moves', () => {
+	const moveRow = (over: Record<string, unknown>) => ({
+		task_id: 1,
+		created_at: at(7, 9),
+		from_name: 'Backlog',
+		to_name: 'In progress',
+		actor_kind: 'user',
+		...over,
+	});
+
+	it('returns local moves in chronological order, including a task only moved today', async () => {
+		(listLocalWorkspaces as jest.Mock).mockResolvedValue([
+			workspace(1, 'Personal'),
+		]);
+		const dbs = setLocal({
+			ws1: {
+				tasks: [
+					localTask({
+						id: 1,
+						title: 'Old task',
+						created_at: at(1, 9),
+						updated_at: at(1, 9),
+						status: 'Done',
+					}),
+				],
+				moves: [
+					moveRow({ created_at: at(6, 23, 59), from_name: 'X', to_name: 'Y' }),
+					moveRow({ created_at: at(7, 9) }),
+					moveRow({
+						created_at: at(7, 11),
+						from_name: 'In progress',
+						to_name: 'Done',
+					}),
+					moveRow({ created_at: at(7, 12), actor_kind: 'persona' }),
+					moveRow({ created_at: at(7, 13), from_name: null }),
+				],
+			},
+		});
+
+		const { tasks } = await run();
+
+		expect(tasks).toHaveLength(1);
+		expect(tasks[0].moves).toEqual([
+			{ from: 'Backlog', to: 'In progress' },
+			{ from: 'In progress', to: 'Done' },
+		]);
+		const movesQuery = (dbs.ws1.select.mock.calls as unknown[][]).find(
+			([sql]) => (sql as string).includes('task_status_history'),
+		);
+		expect(movesQuery?.[1]).toEqual([FROM, TO]);
+	});
+
 	it('adds a move from the activity row names', async () => {
 		(getActivityFeed as jest.Mock).mockResolvedValue(
 			feed(

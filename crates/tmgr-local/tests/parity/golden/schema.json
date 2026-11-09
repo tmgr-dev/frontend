@@ -2,10 +2,10 @@
 	"meta": [
 		{
 			"key": "schema_version",
-			"value": "14"
+			"value": "15"
 		}
 	],
-	"schema_version": 14,
+	"schema_version": 15,
 	"sqlite_master": [
 		{
 			"name": "meta",
@@ -317,6 +317,24 @@
 			"name": "routine_comments_routine_idx",
 			"sql": "CREATE INDEX routine_comments_routine_idx ON routine_comments (routine_id)",
 			"tbl_name": "routine_comments",
+			"type": "index"
+		},
+		{
+			"name": "task_status_history",
+			"sql": "CREATE TABLE task_status_history (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttask_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\told_status_id INTEGER,\n\t\t\t\tnew_status_id INTEGER,\n\t\t\t\tactor_kind TEXT NOT NULL DEFAULT 'user',\n\t\t\t\tcreated_at TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "task_status_history",
+			"type": "table"
+		},
+		{
+			"name": "task_status_history_task_idx",
+			"sql": "CREATE INDEX task_status_history_task_idx ON task_status_history (task_id)",
+			"tbl_name": "task_status_history",
+			"type": "index"
+		},
+		{
+			"name": "task_status_history_created_idx",
+			"sql": "CREATE INDEX task_status_history_created_idx ON task_status_history (created_at)",
+			"tbl_name": "task_status_history",
 			"type": "index"
 		}
 	],

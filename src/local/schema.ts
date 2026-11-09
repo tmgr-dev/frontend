@@ -470,6 +470,22 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS routine_comments_routine_idx ON routine_comments (routine_id)`,
 		],
 	},
+	{
+		version: 15,
+		atomic: true,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS task_status_history (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+				old_status_id INTEGER,
+				new_status_id INTEGER,
+				actor_kind TEXT NOT NULL DEFAULT 'user',
+				created_at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS task_status_history_task_idx ON task_status_history (task_id)`,
+			`CREATE INDEX IF NOT EXISTS task_status_history_created_idx ON task_status_history (created_at)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

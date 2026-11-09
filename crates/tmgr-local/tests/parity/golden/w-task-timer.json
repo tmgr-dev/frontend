@@ -848,7 +848,7 @@
 		"meta": [
 			{
 				"key": "schema_version",
-				"value": "14"
+				"value": "15"
 			},
 			{
 				"key": "onboarding:board_move:2",
@@ -859,6 +859,16 @@
 			{
 				"page_id": 1,
 				"task_id": 1
+			}
+		],
+		"task_status_history": [
+			{
+				"actor_kind": "user",
+				"created_at": "2026-10-13T12:30:00.000Z",
+				"id": 1,
+				"new_status_id": 4,
+				"old_status_id": 2,
+				"task_id": 2
 			}
 		],
 		"tasks": [

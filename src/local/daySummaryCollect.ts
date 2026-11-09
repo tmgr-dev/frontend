@@ -38,7 +38,15 @@ const TASKS_SQL = `SELECT t.id, t.title, t.created_at, t.updated_at,
 		(t.created_at >= ? AND t.created_at < ?)
 		OR (t.updated_at >= ? AND t.updated_at < ?)
 		OR t.id IN (SELECT task_id FROM comments WHERE deleted_at IS NULL AND created_at >= ? AND created_at < ?)
+		OR t.id IN (SELECT task_id FROM task_status_history WHERE created_at >= ? AND created_at < ?)
 	)`;
+
+const MOVES_SQL = `SELECT h.task_id, h.created_at, h.actor_kind, so.name AS from_name, sn.name AS to_name
+	FROM task_status_history h
+	LEFT JOIN statuses so ON so.id = h.old_status_id
+	LEFT JOIN statuses sn ON sn.id = h.new_status_id
+	WHERE h.created_at >= ? AND h.created_at < ?
+	ORDER BY h.created_at, h.id`;
 
 const COMMENTS_SQL = `SELECT task_id, message, created_at, author_kind FROM comments
 	WHERE deleted_at IS NULL AND created_at >= ? AND created_at < ?
@@ -52,6 +60,14 @@ type LocalTaskRow = {
 	status: string | null;
 	category_code: string | null;
 	seq: number | null;
+};
+
+type LocalMoveRow = {
+	task_id: number;
+	created_at: string;
+	actor_kind: string | null;
+	from_name: string | null;
+	to_name: string | null;
 };
 
 type Move = DayTask['moves'][number];
@@ -118,7 +134,22 @@ const collectLocal = async (
 	).filter(
 		(c) => (c.author_kind ?? 'user') === 'user' && inRange(c.created_at, range),
 	);
+	const movesByTask = new Map<number, Move[]>();
+	for (const row of await ctx.db.select<LocalMoveRow>(MOVES_SQL, [from, to])) {
+		const move = moveOf(row.from_name, row.to_name);
+		if (
+			!move ||
+			(row.actor_kind ?? 'user') !== 'user' ||
+			!inRange(row.created_at, range)
+		)
+			continue;
+		const list = movesByTask.get(row.task_id) ?? [];
+		list.push(move);
+		movesByTask.set(row.task_id, list);
+	}
 	const rows = await ctx.db.select<LocalTaskRow>(TASKS_SQL, [
+		from,
+		to,
 		from,
 		to,
 		from,
@@ -136,7 +167,9 @@ const collectLocal = async (
 		const createdToday = inRange(row.created_at, range);
 		const touchedToday = inRange(row.updated_at, range);
 		const notes = notesByTask.get(row.id) ?? [];
-		if (!createdToday && !touchedToday && !notes.length) return [];
+		const moves = movesByTask.get(row.id) ?? [];
+		if (!createdToday && !touchedToday && !notes.length && !moves.length)
+			return [];
 		return [
 			{
 				workspace: workspace.name,
@@ -152,7 +185,7 @@ const collectLocal = async (
 				commentSnippets: notes
 					.slice(0, SNIPPETS)
 					.map((note) => note.message.trim()),
-				moves: [],
+				moves,
 				source: 'local',
 			},
 		];
