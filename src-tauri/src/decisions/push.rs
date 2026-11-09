@@ -131,7 +131,11 @@ impl Queue {
   }
 
   fn put(&self, card: &str, job: Job) {
-    self.lock().insert(card.to_owned(), job);
+    let mut jobs = self.lock();
+    if jobs.get(card).is_some_and(|j| j.seq > job.seq) {
+      return;
+    }
+    jobs.insert(card.to_owned(), job);
   }
 
   pub fn is_empty(&self) -> bool {
@@ -553,6 +557,17 @@ mod tests {
     assert_eq!(calls[0].0, "r1");
     assert!(calls[0].1.contains(&format!("card {id}")) && calls[0].1.contains("get_answer"));
     assert_eq!(state(&hub, &id), Some(("delivered".into(), "runner".into(), String::new())));
+  }
+
+  #[test]
+  fn an_older_event_never_replaces_a_newer_queued_job() {
+    let q = Queue::default();
+    let job = |seq| Job { session: "r1".into(), text: "t".into(), seq, started: Instant::now() };
+    q.put("c1", job(2));
+    q.put("c1", job(1));
+    assert_eq!(q.lock().get("c1").unwrap().seq, 2);
+    q.put("c1", job(3));
+    assert_eq!(q.lock().get("c1").unwrap().seq, 3);
   }
 
   #[test]

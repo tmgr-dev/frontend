@@ -95,6 +95,7 @@
 							:final="isFinal(current)"
 							:listening="current.listening"
 							:queued="isTypedQueue(current.delivery)"
+							:typed="isTypedDelivered(current.delivery)"
 							:session-gone="current.session_gone"
 							:now="now"
 							@send="sendMessage"
@@ -112,6 +113,7 @@
 							:final="isFinal(current)"
 							:listening="current.listening"
 							:queued="isTypedQueue(current.delivery)"
+							:typed="isTypedDelivered(current.delivery)"
 							:session-gone="current.session_gone"
 							:now="now"
 							@send="sendChat"
@@ -180,6 +182,7 @@
 		buildAnswer,
 		cardMode,
 		isFinal,
+		isTypedDelivered,
 		isTypedQueue,
 		type AnswerDraft,
 	} from '../answer';
@@ -388,6 +391,7 @@
 		},
 		methods: {
 			isFinal,
+			isTypedDelivered,
 			isTypedQueue,
 			async refresh() {
 				if (this.refreshing) {

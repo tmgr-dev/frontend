@@ -259,6 +259,12 @@ describe('agentWaitNotice', () => {
 		);
 	});
 
+	it('does not claim nobody is listening once the runner typed the prompt', () => {
+		expect(
+			agentWaitNotice([owner], { ...ctx, listening: false, typed: true }),
+		).toBe('waiting for the agent…');
+	});
+
 	it('does not claim nobody has the message once it was delivered', () => {
 		const seen = { ...owner, delivered: true };
 		expect(agentWaitNotice([seen], { ...ctx, listening: false })).toBe(

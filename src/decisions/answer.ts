@@ -110,6 +110,10 @@ export const isTypedQueue = (
 	delivery.via === 'runner' &&
 	delivery.detail === RUNNER_QUEUE_DETAIL;
 
+export const isTypedDelivered = (
+	delivery: CardDelivery | null | undefined,
+): boolean => delivery?.state === 'delivered' && delivery.via === 'runner';
+
 export const unpickedLabel = (card: CardView): string | null =>
 	card.unpicked ? t('decisions.unpicked') : null;
 

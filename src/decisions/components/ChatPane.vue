@@ -63,6 +63,7 @@
 			final: { type: Boolean, required: true },
 			listening: { type: Boolean, required: true },
 			queued: { type: Boolean, default: false },
+			typed: { type: Boolean, default: false },
 			sessionGone: { type: Boolean, required: true },
 			now: { type: Number, required: true },
 		},
@@ -75,6 +76,7 @@
 				return agentWaitNotice(this.messages, {
 					listening: this.listening,
 					queued: this.queued,
+					typed: this.typed,
 					sessionGone: this.sessionGone,
 					canReply: this.canReply,
 					final: this.final,
