@@ -56,7 +56,7 @@ impl IdleTracker {
 }
 
 #[cfg(target_os = "macos")]
-fn system_idle_secs() -> f64 {
+pub(crate) fn system_idle_secs() -> f64 {
   #[link(name = "CoreGraphics", kind = "framework")]
   extern "C" {
     fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64;
@@ -67,7 +67,7 @@ fn system_idle_secs() -> f64 {
 }
 
 #[cfg(windows)]
-fn system_idle_secs() -> f64 {
+pub(crate) fn system_idle_secs() -> f64 {
   use windows_sys::Win32::System::SystemInformation::GetTickCount;
   use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
   let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
@@ -79,7 +79,7 @@ fn system_idle_secs() -> f64 {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn system_idle_secs() -> f64 {
+pub(crate) fn system_idle_secs() -> f64 {
   0.0
 }
 

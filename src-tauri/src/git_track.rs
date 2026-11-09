@@ -131,7 +131,7 @@ fn read_capped(path: &Path, max: u64) -> Option<String> {
   Some(content)
 }
 
-fn read_branch(folder: &Path) -> Option<String> {
+pub(crate) fn read_branch(folder: &Path) -> Option<String> {
   let path = head_path(folder)?;
   parse_head(&read_capped(&path, HEAD_MAX_BYTES)?)
 }

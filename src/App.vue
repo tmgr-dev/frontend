@@ -46,6 +46,7 @@
 			<DesktopTray
 				v-if="isDesktop && $store.getters.canUseApp"
 				:tasks="shownActiveTasks"
+				:timer-running="activityTimerRunning"
 			/>
 			<DesktopHotkeys
 				v-if="isDesktop && $store.getters.canUseApp"
@@ -257,6 +258,7 @@
 				prevHeight: 0,
 				transitionName: DEFAULT_TRANSITION,
 				activeTasks: [],
+				activeTasksLoaded: false,
 				activeTasksRequest: 0,
 				bodyOverflow: '',
 				bodyHeight: 800,
@@ -268,6 +270,9 @@
 					(key) => this.$store.getters['featureToggles/isFeatureEnabled'](key),
 					this.activeTasks,
 				);
+			},
+			activityTimerRunning() {
+				return !this.activeTasksLoaded || this.activeTasks.length > 0;
 			},
 			activeTasksContext() {
 				return `${this.$store.state.sessionGeneration}:${this.$store.state.user?.id}:${this.$store.getters.currentWorkspaceId}`;
@@ -310,6 +315,7 @@
 			},
 			activeTasksContext() {
 				this.activeTasks = [];
+				this.activeTasksLoaded = false;
 				this.loadActiveTasks();
 			},
 			'$store.state.reloadActiveTasksKey'() {
@@ -413,7 +419,10 @@
 					generation === this.$store.state.sessionGeneration;
 				try {
 					const tasks = await getLaunchedTasks();
-					if (current()) this.activeTasks = tasks || [];
+					if (current()) {
+						this.activeTasks = tasks || [];
+						this.activeTasksLoaded = true;
+					}
 				} catch (error) {
 					console.error('Error loading active tasks:', error);
 				}
