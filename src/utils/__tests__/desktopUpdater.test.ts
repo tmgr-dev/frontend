@@ -15,6 +15,7 @@ jest.mock('@tauri-apps/api/core', () => ({
 const fakeUpdate = (version: string) => ({
 	version,
 	download: jest.fn().mockResolvedValue(undefined),
+	close: jest.fn().mockResolvedValue(undefined),
 	install: jest.fn().mockResolvedValue(undefined),
 });
 
@@ -122,6 +123,27 @@ it('installs the pending update when the re-check fails', async () => {
 
 	expect(old.install).toHaveBeenCalledTimes(1);
 	expect(invoke).toHaveBeenCalledWith('relaunch_after_update');
+});
+
+it('goes idle and downloads afresh when relaunch fails after a successful install', async () => {
+	const old = fakeUpdate('0.1.1');
+	const fresh = fakeUpdate('0.1.1');
+	check
+		.mockResolvedValueOnce(old)
+		.mockResolvedValueOnce(old)
+		.mockResolvedValueOnce(fresh);
+	invoke.mockImplementation(async (command: string) => {
+		if (command === 'relaunch_after_update') throw new Error('nope');
+	});
+	const { checkForUpdate, installUpdate, updateState } = load();
+	await checkForUpdate();
+
+	await installUpdate();
+	expect(updateState.value.status).toBe('idle');
+	await checkForUpdate();
+
+	expect(fresh.download).toHaveBeenCalledTimes(1);
+	expect(updateState.value).toEqual({ status: 'ready', version: '0.1.1' });
 });
 
 it('skips periodic checks while installing', async () => {

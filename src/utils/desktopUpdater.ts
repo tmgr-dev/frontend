@@ -21,8 +21,16 @@ const runCheck = async (): Promise<Update | null> => {
 	const { check } = await import('@tauri-apps/plugin-updater');
 	const update = await check();
 	if (!update) return pending;
-	if (pending && pending.version === update.version) return pending;
-	await update.download();
+	if (pending && pending.version === update.version) {
+		await update.close().catch(() => {});
+		return pending;
+	}
+	try {
+		await update.download();
+	} catch (err) {
+		await update.close().catch(() => {});
+		throw err;
+	}
 	const previous = pending;
 	pending = update;
 	updateState.value = {
@@ -86,15 +94,22 @@ export async function checkForUpdateManually(): Promise<ManualCheckOutcome> {
 export async function installUpdate(): Promise<void> {
 	if (!pending || updateState.value.status !== 'ready') return;
 	installing = true;
+	let installed = false;
 	updateState.value = { ...updateState.value, status: 'installing' };
 	try {
 		await sharedCheck().catch(() => {});
 		const { invoke } = await import('@tauri-apps/api/core');
 		await invoke('mark_update_relaunch').catch(() => {});
 		await pending!.install();
+		installed = true;
 		await invoke('relaunch_after_update');
 	} catch {
 		installing = false;
+		if (installed) {
+			pending = null;
+			updateState.value = { status: 'idle', version: '' };
+			return;
+		}
 		updateState.value = { ...updateState.value, status: 'ready' };
 	}
 }
