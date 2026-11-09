@@ -138,7 +138,6 @@ export const CATALOG = {
 			'DesktopAuthTelegram',
 			'FallbackBoard',
 			'FallbackCategoriesList',
-			'FallbackCategoryCreate',
 			'FallbackTasksList',
 			'ForgetPassword',
 			'LinkConfirm',

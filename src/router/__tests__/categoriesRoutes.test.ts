@@ -94,15 +94,6 @@ describe('category routes land on the category page', () => {
 		).toEqual(target);
 	});
 
-	it('sends the fallback create route to the fallback list in create mode', () => {
-		expect(
-			byName('FallbackCategoryCreate').redirect({ params: {}, query: {} }),
-		).toEqual({
-			name: 'FallbackCategoriesList',
-			query: { create: 'top' },
-		});
-	});
-
 	it('serves every category screen from the category page', () => {
 		for (const name of [
 			'WorkspaceCategories',

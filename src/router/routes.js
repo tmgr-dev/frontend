@@ -480,7 +480,6 @@ const routes = [
 		},
 		name: 'FallbackBoard',
 	},
-	// Legacy paths for routines
 	{
 		path: '/routines',
 		component: () => import('@/pages/DailyRoutine.vue'),
@@ -935,19 +934,6 @@ const routes = [
 
 	// Note: All /projects-categories routes are defined as redirects earlier in the file
 	// Removing duplicates to prevent conflicts and adding fallback routes instead
-
-	// Fallback route for create category when redirect doesn't work
-	{
-		path: '/fallback-categories-create',
-		redirect: (to) => ({
-			name: 'FallbackCategoriesList',
-			query: { ...to.query, create: 'top' },
-		}),
-		name: 'FallbackCategoryCreate',
-	},
-
-	// IMPORTANT: We're removing all component routes for /projects-categories/*
-	// since they're already defined as redirects earlier in the file
 
 	// Add missing ProjectCategoryChildrenList route
 	{
