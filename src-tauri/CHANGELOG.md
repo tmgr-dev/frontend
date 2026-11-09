@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.142 — 2026-11-09
+
+- Routines: Archive done archives completed one-off routines, the Archived chip shows the real count, the + button sits above the status bar, and clicking a day in Week or Month opens it in Day.
+- Sign-out and account switches no longer leak the previous account's user or settings into the new session.
+
 ## 0.9.141 — 2026-11-09
 
 - Security: the zip library is updated to 9.5 (fixes GHSA-m665-v7pm-7grj, GHSA-q7v9-x93c-xqv3, GHSA-8hxf-qr8p-62x4). The updater no longer carries its own zip extractor, and the Move to cloud archive check rejects symlink entries.
