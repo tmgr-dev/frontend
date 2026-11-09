@@ -117,7 +117,7 @@
 		components: { Button, Switch },
 		setup() {
 			const supported = ref(false);
-			const consent = ref(loadActivityConsent());
+			const consent = ref(loadActivityConsent(store.state.user?.id));
 			const rows = ref([]);
 			const error = ref('');
 			const notice = ref('');
@@ -173,7 +173,7 @@
 
 			const setConsent = async (value) => {
 				consent.value = value;
-				saveActivityConsent(value);
+				saveActivityConsent(store.state.user?.id, value);
 				if (!value) rows.value = [];
 				try {
 					await syncActivity();
@@ -212,8 +212,17 @@
 				}
 			};
 
+			const sessionTimeKnownOn = () =>
+				store.getters['featureToggles/modulesKnown'] &&
+				store.getters['featureToggles/moduleEntry']('session_time')?.enabled ===
+					true;
+
 			const add = async (row) => {
 				if (!row.taskId) return;
+				if (!sessionTimeKnownOn()) {
+					row.error = t('desktop.activity.requires');
+					return;
+				}
 				row.busy = true;
 				row.error = '';
 				notice.value = '';

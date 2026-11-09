@@ -58,6 +58,7 @@
 	} from '@/utils/desktopTray';
 	import {
 		registerActivityContext,
+		resetActivitySync,
 		stopActivity,
 		syncActivity,
 	} from '@/utils/activityHints';
@@ -290,6 +291,7 @@
 			watch(
 				() => store.state.user?.id,
 				(userId) => {
+					if (!userId) resetActivitySync();
 					recent.value = userId ? loadRecent(userId) : [];
 					subscribe(userId);
 					sync();
