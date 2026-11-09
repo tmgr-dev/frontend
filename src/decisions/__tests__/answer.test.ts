@@ -5,6 +5,7 @@ import {
 	cardMode,
 	deliveryLabel,
 	isEmptyAnswer,
+	isTypedQueue,
 	listenLabel,
 	unpickedLabel,
 } from '../answer';
@@ -213,5 +214,21 @@ describe('listenLabel', () => {
 		expect(
 			listenLabel(makeCard({ reply_via: 'mcp', state: 'answered' })),
 		).toBeNull();
+	});
+});
+
+describe('isTypedQueue', () => {
+	const at = (state: string, via: string | null, detail: string | null) =>
+		({ state, via, detail, at_ms: 1 }) as never;
+
+	it('is true only for a runner queue waiting for the prompt', () => {
+		expect(
+			isTypedQueue(at('queued', 'runner', "Waiting for the agent's prompt")),
+		).toBe(true);
+		expect(
+			isTypedQueue(at('queued', 'runner', "Can't confirm the agent's prompt")),
+		).toBe(false);
+		expect(isTypedQueue(at('delivered', 'runner', null))).toBe(false);
+		expect(isTypedQueue(null)).toBe(false);
 	});
 });

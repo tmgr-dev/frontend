@@ -84,7 +84,18 @@ pub fn delivery_text(event: &Event) -> Option<String> {
 }
 
 fn text_for(reply_via: &str, id: &str, event: &Event) -> Option<String> {
-  if reply_via == "mcp" || reply_via == "cli" {
+  if reply_via == "cli" {
+    return match event.kind.as_str() {
+      "answer" => Some(format!(
+        "TMGR Decisions: the owner answered card {id}. Call get_answer (tmgr-notify MCP) with card_id {id} and continue; without the MCP tools run `tmgr decisions answers`."
+      )),
+      "message" => Some(format!(
+        "TMGR Decisions: the owner wrote on card {id}. Call get_answer (tmgr-notify MCP) with card_id {id}, answer with reply_owner. Then continue your work."
+      )),
+      _ => None,
+    };
+  }
+  if reply_via == "mcp" {
     return match event.kind.as_str() {
       "answer" => Some(format!(
         "TMGR Decisions: the owner answered card {id}. Call get_answer with card_id {id} and continue. If a background agent of yours asked it, pass it on."
@@ -542,6 +553,40 @@ mod tests {
     assert_eq!(calls[0].0, "r1");
     assert!(calls[0].1.contains(&format!("card {id}")) && calls[0].1.contains("get_answer"));
     assert_eq!(state(&hub, &id), Some(("delivered".into(), "runner".into(), String::new())));
+  }
+
+  #[test]
+  fn a_cli_listener_gets_no_push() {
+    let hub = hub();
+    let id = hub.create(CardIn { reply_via: "cli".into(), ..mcp("Q") }).unwrap().id;
+    let waiter = listen(&hub, &id, 0);
+    let e = answer(&hub, &id, None);
+    let q = Queue::default();
+    assert_eq!(new_route(&hub, &q, &FakeSocket::default(), &id, &e), RouteOutcome::Listening);
+    waiter.join().unwrap();
+    assert!(q.is_empty());
+  }
+
+  #[test]
+  fn a_cli_message_text_names_the_card_and_hides_the_content() {
+    let hub = hub();
+    let card = CardIn {
+      reply_via: "cli".into(),
+      source: Source { runner_session: Some("r1".into()), ..mcp("Secret title").source },
+      ..mcp("Secret title")
+    };
+    let id = hub.create(card).unwrap().id;
+    let msg = Event { kind: "message".into(), text: Some("secret body".into()), seq: 1, ..Default::default() };
+    let t = text_for("cli", &id, &msg).unwrap();
+    assert!(t.contains(&format!("card {id}")) && t.contains("reply_owner"));
+    assert!(!t.contains("secret body") && !t.contains("Secret title"));
+    let a = text_for("cli", &id, &answer(&hub, &id, None)).unwrap();
+    assert!(a.contains("get_answer") && a.contains("tmgr decisions answers"));
+    assert!(!a.contains("Ship it now"));
+    assert!(text_for("cli", &id, &Event { kind: "other".into(), ..Default::default() }).is_none());
+    let q = Queue::default();
+    assert_eq!(route_with(&hub, &q, &FakeSocket::default(), &id, &msg, None), RouteOutcome::Queued);
+    assert_eq!(state(&hub, &id).unwrap().0, "queued");
   }
 
   #[test]
