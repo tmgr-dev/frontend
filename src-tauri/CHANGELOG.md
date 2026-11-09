@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.140 — 2026-11-09
+
+- Updates: when an update is already downloaded and a newer one comes out, the app now downloads the newer one too, and "Update to vX" re-checks before installing — you no longer have to update twice.
+
 ## 0.9.139 — 2026-11-09
 
 - Decisions: text you type in a card's chat, own-answer field or note is kept per card — it survives switching cards, closing the window and restarting the app. It is cleared only after a successful send, and dropped once the card is answered or gone.
