@@ -130,7 +130,7 @@
 					</button>
 				</div>
 			</li>
-			<li v-if="nextCursor && !error" class="px-2 py-2">
+			<li v-if="nextCursor" class="px-2 py-2">
 				<button
 					class="w-full rounded-pill px-3 py-1.5 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:opacity-40"
 					:disabled="loadingMore"
@@ -206,6 +206,8 @@
 			const refresh = async (): Promise<void> => {
 				const token = requests.begin();
 				loading.value = true;
+				loadingMore.value = false;
+				nextCursor.value = null;
 				error.value = null;
 				try {
 					const result = await listConversations(props.workspaceId, {
@@ -225,7 +227,7 @@
 			};
 
 			const loadMore = async (): Promise<void> => {
-				if (!nextCursor.value || loadingMore.value) return;
+				if (!nextCursor.value || loadingMore.value || loading.value) return;
 				const token = requests.begin();
 				loadingMore.value = true;
 				error.value = null;
@@ -247,7 +249,7 @@
 					if (requests.isCurrent(token))
 						error.value = t('agents.chatList.loadFailed');
 				} finally {
-					loadingMore.value = false;
+					if (requests.isCurrent(token)) loadingMore.value = false;
 				}
 			};
 
