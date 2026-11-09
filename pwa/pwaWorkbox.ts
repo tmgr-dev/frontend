@@ -31,6 +31,7 @@ export const pwaWorkbox = {
 		/^\/(login|register)(\/|\?|$)/i,
 		/^\/desktop-auth(\/|\?|$)/i,
 		/^\/admin(\/|\?|$)/i,
+		/\.(txt|md|json|ts|xml)(\?|$)/i,
 	],
 	importScripts: ['clear-private-api-cache.js'],
 	runtimeCaching: [

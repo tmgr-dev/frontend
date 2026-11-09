@@ -25,6 +25,12 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 		'/l/',
 		'/l?x=1',
 		'/l/assets/x.css',
+		'/llms.txt',
+		'/robots.txt',
+		'/docs/plugins.md',
+		'/docs/plugin-sdk/tmgr.d.ts',
+		'/docs/plugin-sdk/permissions.json',
+		'/sitemap.xml?x=1',
 	])('denies %s', (path) => {
 		expect(denied(path)).toBe(true);
 	});
@@ -43,6 +49,8 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 		'/administrator',
 		'/tmgrdev/admin',
 		'/tmgrdev/login',
+		'/docs/agents',
+		'/tmgrdev/pages/v1.2-notes',
 	])('allows %s', (path) => {
 		expect(denied(path)).toBe(false);
 	});
