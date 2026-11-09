@@ -11,6 +11,17 @@ Connect Claude Code, Codex, Cursor and other MCP-capable agents to TMGR. Two MCP
 
 Need an agent to act inside one workspace as a named persona? Create a persona token in Settings → Personas → Connect an agent.
 
+## Claude Code plugin {#claude-code-plugin}
+
+The quickest way to use TMGR from Claude Code is the official plugin ([tmgr-dev/agent-plugin](https://github.com/tmgr-dev/agent-plugin), MIT). It adds the cloud MCP server and skills that teach the agent to take tasks, report its work, create tasks, and use Decisions and pages.
+
+```sh
+/plugin marketplace add tmgr-dev/agent-plugin
+/plugin install tmgr@tmgr
+```
+
+Claude Code asks for your smart device token (Settings → Smart Devices) and keeps it in the OS keychain. Decisions tools need the local `tmgr mcp` from the [command line](/docs/cli). For Codex and Cursor, see `AGENTS.md` in the plugin repository. To connect by hand instead, follow the steps below.
+
 ## 1. Get a token {#get-a-token}
 
 Open [Settings → Agent alerts](/settings/agent-notifications) and press Create token. The token starts with `tmgrn_` and is shown only once, so copy it right away.

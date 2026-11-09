@@ -18,6 +18,7 @@ Start with the guide; it ends with the full API reference.
 ## Connect an agent to TMGR
 
 - [Agents setup guide](https://tmgr.dev/docs/agents): MCP server, tokens, notifications
+- [Claude Code plugin](https://github.com/tmgr-dev/agent-plugin): skills + MCP server for Claude Code; AGENTS.md for Codex and Cursor
 
 ## Docs
 
