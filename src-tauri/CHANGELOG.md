@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.139 — 2026-11-09
+
+- Decisions: text you type in a card's chat, own-answer field or note is kept per card — it survives switching cards, closing the window and restarting the app. It is cleared only after a successful send, and dropped once the card is answered or gone.
+
 ## 0.9.138 — 2026-11-09
 
 - Decisions: when you answer or write on a card created by `tmgr ask`, the desktop now types a prompt into the agent's runner session (as soon as it is idle) so the agent reads the card and replies in it.
