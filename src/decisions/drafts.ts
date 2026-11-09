@@ -5,6 +5,14 @@ export const DRAFTS_KEY = 'decisions.textDrafts.v1';
 
 const FIELDS: DraftField[] = ['chat', 'free', 'note', 'noteFor'];
 
+export const loadStoredDrafts = (): TextDrafts => {
+	try {
+		return loadDrafts(window.localStorage);
+	} catch {
+		return {};
+	}
+};
+
 export const loadDrafts = (storage: Pick<Storage, 'getItem'>): TextDrafts => {
 	try {
 		const parsed: unknown = JSON.parse(storage.getItem(DRAFTS_KEY) ?? '{}');

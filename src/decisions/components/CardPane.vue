@@ -329,6 +329,7 @@
 					return;
 				}
 				this.noteFor = null;
+				this.note = '';
 				window.clearTimeout(this.pickTimer);
 				this.pickTimer = window.setTimeout(
 					() => this.$emit('answer', { choice: option.id }),

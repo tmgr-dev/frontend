@@ -213,7 +213,7 @@
 	} from '../diff';
 	import {
 		clearCardDrafts,
-		loadDrafts,
+		loadStoredDrafts,
 		pruneDrafts,
 		saveDrafts,
 		setDraft,
@@ -285,7 +285,7 @@
 				now: Date.now(),
 				clock: 0 as number,
 				drafts: {} as Record<string, LineComment[]>,
-				textDrafts: loadDrafts(window.localStorage) as TextDrafts,
+				textDrafts: loadStoredDrafts() as TextDrafts,
 				sendingChat: [] as string[],
 				toast: { on: false, error: false, text: '' },
 				toastTimer: 0 as number,
