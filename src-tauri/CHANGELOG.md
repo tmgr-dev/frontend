@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.143 — 2026-11-10
+
+- Day summary: an optional daily reminder (off by default, Local AI settings) at the time you pick; if the app was closed then, it offers yesterday's summary next time.
+- Day summary now lists status moves of cloud tasks ("moved from X to Y") and warns when a busy workspace was read only partly.
+- Routines show comment counts and take comments in the routine form; the assistant chat list has Load more.
+
 ## 0.9.142 — 2026-11-09
 
 - Routines: Archive done archives completed one-off routines, the Archived chip shows the real count, the + button sits above the status bar, and clicking a day in Week or Month opens it in Day.
