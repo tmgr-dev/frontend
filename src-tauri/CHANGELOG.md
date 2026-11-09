@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.144 — 2026-11-10
+
+- Time hints from activity (macOS and Windows, off by default): Settings > Desktop can suggest time entries for hours you worked in an IDE or terminal without a timer. Only the task key, the minute and the seconds are kept on your device; window titles, paths, branch and app names are never stored. Nothing is sent until you press Add. Needs git auto-tracking with a watched folder on a TM-N branch and the session time module in the workspace. Requires the matching server update.
+
 ## 0.9.143 — 2026-11-10
 
 - Day summary: an optional daily reminder (off by default, Local AI settings) at the time you pick; if the app was closed then, it offers yesterday's summary next time.
