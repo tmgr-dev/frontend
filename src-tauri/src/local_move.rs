@@ -988,6 +988,9 @@ pub fn verify_archive(path: &Path) -> Result<(ArchiveRecord, usize), String> {
     for index in 0..entries {
       let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
       let name = entry.name().map_err(|e| e.to_string())?.to_string();
+      if entry.is_symlink() {
+        return Err(format!("symlink entry {name}"));
+      }
       if name.ends_with('/') {
         continue;
       }
@@ -2445,6 +2448,23 @@ mod tests {
     assert!(backslash.contains("unexpected entry"), "{backslash}");
     let other = check("other", &keep, &[("notes.txt", b"x")]);
     assert!(other.contains("unexpected entry"), "{other}");
+
+    for (suffix, target) in [("symlink-same-bytes", "png"), ("symlink-escape", "../../../etc/passwd")] {
+      let linked = path(suffix);
+      let mut zip = zip::ZipArchive::new(File::open(&result.path).unwrap()).unwrap();
+      let mut out = zip::ZipWriter::new(File::create(&linked).unwrap());
+      for i in 0..zip.len() {
+        let name = zip.by_index(i).unwrap().name().unwrap().to_string();
+        if name == "files/u1/a.png" {
+          out.add_symlink(name, target, zip_options(0)).unwrap();
+        } else {
+          out.raw_copy_file(zip.by_index_raw(i).unwrap()).unwrap();
+        }
+      }
+      out.finish().unwrap();
+      let err = verify_archive(&linked).unwrap_err();
+      assert!(err.contains("symlink"), "{suffix}: {err}");
+    }
 
     let listed_twice = path("listed-twice");
     rewrite_zip(&result.path, &listed_twice, edit_record(|r| r.files.push(r.files[0].clone())), &[]);
