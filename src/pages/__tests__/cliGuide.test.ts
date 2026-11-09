@@ -89,6 +89,20 @@ const POSITIONAL = new Set([
 	'skills put',
 	'skills attach',
 	'agent start',
+	'run',
+	'rename',
+	'send',
+	'rm',
+	'resume',
+	'session summary',
+	'session export',
+	'runner trust',
+	'runner untrust',
+	'runner import',
+	'page pull',
+	'page status',
+	'page push',
+	'autopilot',
 ]);
 
 function check(cmd: string): string[] {

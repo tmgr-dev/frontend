@@ -36,6 +36,20 @@ User docs as plain HTML pages. Every page exists in English and Russian.
 - [8. Personas and skills](https://tmgr.dev/docs/cli/personas-and-skills): a shared skills library for your AI personas
 - [9. Agent work reports](https://tmgr.dev/docs/cli/agent-work-reports): which agent worked on a task, for how long, with which commits and tests
 - [10. The agent queue](https://tmgr.dev/docs/cli/the-agent-queue): approved tasks start on your machine by themselves and arrive as pull requests
+- [1. Your first task](https://tmgr.dev/docs/web/first-task): create a task in the web app, track your time on it, leave a comment and close it on the board
+- [2. Workspace modules](https://tmgr.dev/docs/web/workspace-modules): turn on only the parts of TMGR your workspace needs, with a preset or one module at a time
+- [3. Personas and skills](https://tmgr.dev/docs/web/personas-and-skills): create a persona, give it skills and permissions, connect an agent to it and assign it to a task
+- [4. Routines](https://tmgr.dev/docs/web/routines): add routines that repeat on a schedule, set reminders, mark them done and see them on a calendar
+- [Tasks in detail](https://tmgr.dev/docs/app/tasks): what a task holds and how to work with it: status, priority, key, description, timer, checkpoints, links, files, comments and sharing
+- [Statuses and the board](https://tmgr.dev/docs/app/statuses-and-board): create custom statuses, learn what each status type does, and manage board columns and the archive
+- [Pages and the map](https://tmgr.dev/docs/app/pages): keep notes and documentation in a tree of pages linked to tasks, and see how everything connects on the workspace map
+- [Your team](https://tmgr.dev/docs/app/team): invite people to a workspace, see who can do what, and look at the work of each member
+- [Notifications and agent alerts](https://tmgr.dev/docs/app/notifications): read your notifications, set up agent alerts and an alarm phone so an agent can reach you
+- [Skills library](https://tmgr.dev/docs/app/skills-library): keep shared skills in one place, track their versions and attach them to your personas
+- [Runner maintenance](https://tmgr.dev/docs/cli/runner): start, restart and stop the background runner, keep it alive after a reboot, and clean up what finished agent tasks leave behind
+- [Agent sessions](https://tmgr.dev/docs/cli/sessions): find, rename, talk to, stop and resume the sessions that tmgr run starts, and search, summarize or export their transcripts
+- [Autopilot](https://tmgr.dev/docs/cli/autopilot): let `tmgr autopilot` work through a workspace backlog with agent teams, with limits you set and controls to pause or stop
+- [Troubleshooting](https://tmgr.dev/docs/cli/troubleshooting): fix the common `tmgr` problems: updates, signature errors, sign-in, stored credentials and missing token scopes
 - [Обзор](https://tmgr.dev/docs/ru): о чём эта документация TMGR и с чего начать
 - [AI-агенты](https://tmgr.dev/docs/ru/agents): как подключить к TMGR Claude Code, Codex, Cursor и других MCP-агентов
 - [Командная строка (tmgr)](https://tmgr.dev/docs/ru/cli): задачи из терминала и AI-агенты под присмотром
@@ -49,3 +63,17 @@ User docs as plain HTML pages. Every page exists in English and Russian.
 - [8. Персоны и скиллы](https://tmgr.dev/docs/ru/cli/personas-and-skills): общая библиотека скиллов для ИИ-персон
 - [9. Отчёты агентов о работе](https://tmgr.dev/docs/ru/cli/agent-work-reports): какой агент работал над задачей, сколько, с какими коммитами и тестами
 - [10. Очередь агентов](https://tmgr.dev/docs/ru/cli/the-agent-queue): одобренные задачи сами стартуют на вашей машине и приходят пулл-реквестом
+- [1. Первая задача](https://tmgr.dev/docs/ru/web/first-task): создайте задачу в веб-версии, посчитайте время, оставьте комментарий и закройте её на доске
+- [2. Модули воркспейса](https://tmgr.dev/docs/ru/web/workspace-modules): включите только те части TMGR, которые нужны воркспейсу: готовым набором или по одному модулю
+- [3. Персоны и навыки](https://tmgr.dev/docs/ru/web/personas-and-skills): создайте персону, выдайте ей навыки и права, подключите агента и назначьте персону на задачу
+- [4. Рутины](https://tmgr.dev/docs/ru/web/routines): добавьте рутины, которые повторяются по расписанию, настройте напоминания, отмечайте выполнение и смотрите их в календаре
+- [Задачи подробно](https://tmgr.dev/docs/ru/app/tasks): что есть у задачи и как с ней работать: статус, приоритет, ключ, описание, таймер, контрольные точки, связи, файлы, комментарии и ссылка
+- [Статусы и доска](https://tmgr.dev/docs/ru/app/statuses-and-board): свои статусы, что делает каждый тип статуса, колонки доски и архив
+- [Страницы и карта](https://tmgr.dev/docs/ru/app/pages): заметки и документация в дереве страниц, связанных с задачами, и карта рабочего пространства, на которой видно, как всё связано
+- [Ваша команда](https://tmgr.dev/docs/ru/app/team): как пригласить людей в рабочее пространство, кто что может и как посмотреть работу каждого участника
+- [Уведомления и оповещения от агентов](https://tmgr.dev/docs/ru/app/notifications): читайте уведомления, настройте оповещения от агентов и телефон для будильника, чтобы агент мог до вас дозвониться
+- [Библиотека навыков](https://tmgr.dev/docs/ru/app/skills-library): храните общие навыки в одном месте, следите за их версиями и подключайте к своим персонам
+- [Обслуживание раннера](https://tmgr.dev/docs/ru/cli/runner): как запускать, перезапускать и останавливать фоновый раннер, держать его включённым после перезагрузки и чистить за завершёнными задачами агентов
+- [Сессии агентов](https://tmgr.dev/docs/ru/cli/sessions): как находить, переименовывать, писать в них, останавливать и возобновлять сессии после tmgr run, а также искать по расшифровкам, делать из них сводки и экспортировать
+- [Автопилот](https://tmgr.dev/docs/ru/cli/autopilot): как `tmgr autopilot` разбирает бэклог воркспейса командами агентов: лимиты, пауза, остановка и проверка статуса
+- [Решение проблем](https://tmgr.dev/docs/ru/cli/troubleshooting): как исправить типичные проблемы `tmgr`: обновление, ошибки подписи, вход, хранение учётных данных и нехватку прав у токена

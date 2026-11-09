@@ -26,7 +26,7 @@ const attr = (html: string, pattern: RegExp) => html.match(pattern)?.[1];
 
 describe('docs prerender over the real docs', () => {
 	it('emits one page per md file and language, nothing else', () => {
-		expect(pages.length).toBe(26);
+		expect(pages.length).toBe(54);
 		expect([...byFile.keys()].sort()).toEqual(
 			pages.map((p) => fileFor(p.lang, p.slug)).sort(),
 		);
@@ -87,7 +87,7 @@ describe('docs prerender over the real docs', () => {
 				`<article class="min-w-0 flex-1" lang="${page.lang}">`,
 			);
 			const navLinks = html.match(/data-testid="docs-nav-item"/g) ?? [];
-			expect(navLinks).toHaveLength(13);
+			expect(navLinks).toHaveLength(27);
 			expect(html).toContain(
 				`<a href="${docPath(page.lang, page.slug)}" aria-current="page"`,
 			);

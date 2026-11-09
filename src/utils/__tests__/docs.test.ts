@@ -299,6 +299,18 @@ const LESSON_VIDEOS: Record<string, string> = {
 	'the-agent-queue': '10-queue',
 };
 
+const WEB_LESSON_VIDEOS: Record<string, string> = {
+	'first-task': '01-first-task',
+	'workspace-modules': '02-modules',
+	'personas-and-skills': '03-personas',
+	routines: '04-routines',
+};
+
+const SERIES = [
+	{ dir: 'cli', file: 'tmgr-cli', videos: LESSON_VIDEOS, count: 20 },
+	{ dir: 'web', file: 'tmgr-web', videos: WEB_LESSON_VIDEOS, count: 8 },
+];
+
 describe('docs video resolver', () => {
 	it('keeps resolving a youtube id', () => {
 		expect(docsVideo('dQw4w9WgXcQ')).toEqual({
@@ -406,7 +418,23 @@ describe('docs content', () => {
 		'cli/personas-and-skills',
 		'cli/agent-work-reports',
 		'cli/the-agent-queue',
+		'cli/runner',
+		'cli/sessions',
+		'cli/autopilot',
+		'cli/troubleshooting',
+		'web/first-task',
+		'web/workspace-modules',
+		'web/personas-and-skills',
+		'web/routines',
+		'app/tasks',
+		'app/statuses-and-board',
+		'app/pages',
+		'app/team',
+		'app/notifications',
+		'app/skills-library',
 	];
+	const lessonsOf = (dir: string) =>
+		realPages.filter((p) => p.slug.startsWith(`${dir}/`) && p.video);
 
 	it('has every page in both languages with title and section', () => {
 		for (const lang of langs)
@@ -461,74 +489,104 @@ describe('docs content', () => {
 		for (const name of names) expect(DOCS_COMPONENTS).toContain(name);
 	});
 
-	it('points every cli lesson at its own self-hosted video', () => {
-		const lessons = realPages.filter(
-			(p) => p.slug.startsWith('cli/') && p.slug !== 'cli',
-		);
-		expect(lessons).toHaveLength(20);
-		for (const p of lessons) {
-			const slug = p.slug.replace('cli/', '');
-			const url = `https://tmgr.dev/l/video/${p.lang}/tmgr-cli-${LESSON_VIDEOS[slug]}.mp4`;
-			expect([p.lang, slug, p.video]).toEqual([p.lang, slug, url]);
-			expect(docsVideo(p.video)).toEqual({ kind: 'file', src: url });
-		}
-	});
+	it.each(SERIES)(
+		'points every $dir lesson at its own self-hosted video',
+		({ dir, file, videos, count }) => {
+			const lessons = lessonsOf(dir);
+			expect(lessons).toHaveLength(count);
+			for (const p of lessons) {
+				const slug = p.slug.replace(`${dir}/`, '');
+				const url = `https://tmgr.dev/l/video/${p.lang}/${file}-${videos[slug]}.mp4`;
+				expect([p.lang, slug, p.video]).toEqual([p.lang, slug, url]);
+				expect(docsVideo(p.video)).toEqual({ kind: 'file', src: url });
+			}
+		},
+	);
 
-	it('gives every cli lesson a video transcript split by the video chapters', () => {
-		const CHAPTERS: Record<string, Record<DocsLang, string[]>> = {
-			'install-and-sign-in': {
-				en: ['Install', 'Sign in', 'Who am I', 'Workspaces', 'Menu'],
-				ru: ['Установка', 'Вход', 'Кто вошёл', 'Воркспейсы', 'Меню'],
+	it('gives every lesson a video transcript split by the video chapters', () => {
+		const CHAPTERS: Record<
+			string,
+			Record<string, Record<DocsLang, string[]>>
+		> = {
+			cli: {
+				'install-and-sign-in': {
+					en: ['Install', 'Sign in', 'Who am I', 'Workspaces', 'Menu'],
+					ru: ['Установка', 'Вход', 'Кто вошёл', 'Воркспейсы', 'Меню'],
+				},
+				'tasks-from-the-terminal': {
+					en: ['New task', 'List', 'Board', 'Scripts'],
+					ru: ['Новая задача', 'Список', 'Канбан', 'Скрипты'],
+				},
+				'the-start-done-cycle': {
+					en: ['Start', 'Status', 'Commit', 'Done', 'Today'],
+					ru: ['Старт', 'Статус', 'Коммит', 'Готово', 'Итоги дня'],
+				},
+				'ai-agents-under-supervision': {
+					en: ['Run', 'Watch', 'Roll back'],
+					ru: ['Запуск', 'Наблюдение', 'Откат'],
+				},
+				'the-decisions-inbox': {
+					en: ['Ask', 'Decisions window', 'Answer', 'Past answers'],
+					ru: ['Вопрос', 'Окно «Решения»', 'Ответ', 'Прошлые ответы'],
+				},
+				'your-task-in-the-shell-prompt': {
+					en: ['Snippet', 'Prompt', 'tmux & Claude Code', 'Pause'],
+					ru: ['Сниппет', 'Приглашение', 'tmux и Claude Code', 'Пауза'],
+				},
+				'what-ai-costs-you': {
+					en: ['Consent', 'This week', 'Breakdown', 'Limits'],
+					ru: ['Согласие', 'За неделю', 'Разбивка', 'Лимиты'],
+				},
+				'personas-and-skills': {
+					en: ['New skill', 'Attach to persona', 'Show'],
+					ru: ['Новый скилл', 'Привязка к персоне', 'Просмотр'],
+				},
+				'agent-work-reports': {
+					en: ['Hooks', 'Work report', 'Log'],
+					ru: ['Хуки', 'Отчёт о работе', 'Журнал'],
+				},
+				'the-agent-queue': {
+					en: [
+						'On the web',
+						'Trust this machine',
+						'Repository',
+						'Rule',
+						'Queue',
+						'Result',
+					],
+					ru: [
+						'В вебе',
+						'Доверие машине',
+						'Репозиторий',
+						'Правило',
+						'Очередь',
+						'Результат',
+					],
+				},
 			},
-			'tasks-from-the-terminal': {
-				en: ['New task', 'List', 'Board', 'Scripts'],
-				ru: ['Новая задача', 'Список', 'Канбан', 'Скрипты'],
-			},
-			'the-start-done-cycle': {
-				en: ['Start', 'Status', 'Commit', 'Done', 'Today'],
-				ru: ['Старт', 'Статус', 'Коммит', 'Готово', 'Итоги дня'],
-			},
-			'ai-agents-under-supervision': {
-				en: ['Run', 'Watch', 'Roll back'],
-				ru: ['Запуск', 'Наблюдение', 'Откат'],
-			},
-			'the-decisions-inbox': {
-				en: ['Ask', 'Decisions window', 'Answer', 'Past answers'],
-				ru: ['Вопрос', 'Окно «Решения»', 'Ответ', 'Прошлые ответы'],
-			},
-			'your-task-in-the-shell-prompt': {
-				en: ['Snippet', 'Prompt', 'tmux & Claude Code', 'Pause'],
-				ru: ['Сниппет', 'Приглашение', 'tmux и Claude Code', 'Пауза'],
-			},
-			'what-ai-costs-you': {
-				en: ['Consent', 'This week', 'Breakdown', 'Limits'],
-				ru: ['Согласие', 'За неделю', 'Разбивка', 'Лимиты'],
-			},
-			'personas-and-skills': {
-				en: ['New skill', 'Attach to persona', 'Show'],
-				ru: ['Новый скилл', 'Привязка к персоне', 'Просмотр'],
-			},
-			'agent-work-reports': {
-				en: ['Hooks', 'Work report', 'Log'],
-				ru: ['Хуки', 'Отчёт о работе', 'Журнал'],
-			},
-			'the-agent-queue': {
-				en: [
-					'On the web',
-					'Trust this machine',
-					'Repository',
-					'Rule',
-					'Queue',
-					'Result',
-				],
-				ru: [
-					'В вебе',
-					'Доверие машине',
-					'Репозиторий',
-					'Правило',
-					'Очередь',
-					'Результат',
-				],
+			web: {
+				'first-task': {
+					en: ['New task', 'Timer', 'Comment', 'Board'],
+					ru: ['Новая задача', 'Таймер', 'Комментарий', 'Доска'],
+				},
+				'workspace-modules': {
+					en: ['Modules', 'Preset', 'One module'],
+					ru: ['Модули', 'Набор', 'Один модуль'],
+				},
+				'personas-and-skills': {
+					en: ['New persona', 'Skills', 'Access', 'Connect', 'Assign'],
+					ru: [
+						'Новая персона',
+						'Навыки',
+						'Доступ',
+						'Подключение',
+						'Назначение',
+					],
+				},
+				routines: {
+					en: ['Quick add', 'Schedule', 'Done', 'Calendar'],
+					ru: ['Быстрая рутина', 'Расписание', 'Выполнено', 'Календарь'],
+				},
 			},
 		};
 		const TRANSCRIPT: Record<DocsLang, string> = {
@@ -549,15 +607,19 @@ describe('docs content', () => {
 			'джей-кью',
 			'эм-си-пи',
 			'Клод Код',
+			'Пёрсонал',
+			'Воркфлоу',
+			'Энтер',
 			'WEBSITE',
 			'/Users/Shared',
 		];
-		const lessons = realPages.filter(
-			(p) => p.slug.startsWith('cli/') && p.slug !== 'cli',
-		);
-		expect(lessons).toHaveLength(20);
-		for (const p of lessons) {
-			const slug = p.slug.replace('cli/', '');
+		const lessons = SERIES.flatMap(({ dir, count }) => {
+			const found = lessonsOf(dir);
+			expect(found).toHaveLength(count);
+			return found.map((p) => ({ p, dir }));
+		});
+		for (const { p, dir } of lessons) {
+			const slug = p.slug.replace(`${dir}/`, '');
 			const lang = p.lang;
 			const headings = renderDoc(p.body, { copyLabel: 'Copy' }).headings;
 			const at = headings.findIndex((h) => h.id === 'transcript');
@@ -568,7 +630,7 @@ describe('docs content', () => {
 			expect([slug, lang, chapters.map((h) => h.text)]).toEqual([
 				slug,
 				lang,
-				[...CHAPTERS[slug][lang], NEXT[lang]],
+				[...CHAPTERS[dir][slug][lang], NEXT[lang]],
 			]);
 			expect(chapters.every((h) => h.id.startsWith('t-'))).toBe(true);
 			expect(chapters[chapters.length - 1].id).toBe('t-next');
