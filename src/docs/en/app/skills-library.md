@@ -1,7 +1,7 @@
 ---
 title: Skills library
 section: Web app
-order: 55
+order: 26
 description: Keep shared skills in one place, track their versions and attach them to your personas.
 ---
 

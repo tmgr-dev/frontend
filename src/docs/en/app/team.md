@@ -1,7 +1,7 @@
 ---
 title: Your team
 section: Web app
-order: 53
+order: 24
 description: Invite people to a workspace, see who can do what, and look at the work of each member.
 ---
 

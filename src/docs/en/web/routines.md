@@ -1,7 +1,7 @@
 ---
 title: 4. Routines
 section: Web app tutorials
-order: 43
+order: 14
 description: Add routines that repeat on a schedule, set reminders, mark them done and see them on a calendar.
 video: https://tmgr.dev/l/video/en/tmgr-web-04-routines.mp4
 ---

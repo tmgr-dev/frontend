@@ -1,7 +1,7 @@
 ---
 title: Pages and the map
 section: Web app
-order: 52
+order: 23
 description: Keep notes and documentation in a tree of pages linked to tasks, and see how everything connects on the workspace map.
 ---
 

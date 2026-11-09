@@ -1,7 +1,7 @@
 ---
 title: 3. Персоны и навыки
 section: Уроки по веб-версии
-order: 42
+order: 13
 description: Создайте персону, выдайте ей навыки и права, подключите агента и назначьте персону на задачу.
 video: https://tmgr.dev/l/video/ru/tmgr-web-03-personas.mp4
 ---

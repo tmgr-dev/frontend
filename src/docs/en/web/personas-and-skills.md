@@ -1,7 +1,7 @@
 ---
 title: 3. Personas and skills
 section: Web app tutorials
-order: 42
+order: 13
 description: Create a persona, give it skills and permissions, connect an agent to it and assign it to a task.
 video: https://tmgr.dev/l/video/en/tmgr-web-03-personas.mp4
 ---

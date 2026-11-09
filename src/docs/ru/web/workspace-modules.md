@@ -1,7 +1,7 @@
 ---
 title: 2. Модули воркспейса
 section: Уроки по веб-версии
-order: 41
+order: 12
 description: Включите только те части TMGR, которые нужны воркспейсу: готовым набором или по одному модулю.
 video: https://tmgr.dev/l/video/ru/tmgr-web-02-modules.mp4
 ---

@@ -1,7 +1,7 @@
 ---
 title: 1. Your first task
 section: Web app tutorials
-order: 40
+order: 11
 description: Create a task in the web app, track your time on it, leave a comment and close it on the board.
 video: https://tmgr.dev/l/video/en/tmgr-web-01-first-task.mp4
 ---

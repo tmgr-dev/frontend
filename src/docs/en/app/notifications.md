@@ -1,7 +1,7 @@
 ---
 title: Notifications and agent alerts
 section: Web app
-order: 54
+order: 25
 description: Read your notifications, set up agent alerts and an alarm phone so an agent can reach you.
 ---
 

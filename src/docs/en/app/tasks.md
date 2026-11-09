@@ -1,7 +1,7 @@
 ---
 title: Tasks in detail
 section: Web app
-order: 50
+order: 21
 description: What a task holds and how to work with it: status, priority, key, description, timer, checkpoints, links, files, comments and sharing.
 ---
 

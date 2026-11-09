@@ -1,7 +1,7 @@
 ---
 title: 1. Первая задача
 section: Уроки по веб-версии
-order: 40
+order: 11
 description: Создайте задачу в веб-версии, посчитайте время, оставьте комментарий и закройте её на доске.
 video: https://tmgr.dev/l/video/ru/tmgr-web-01-first-task.mp4
 ---

@@ -1,7 +1,7 @@
 ---
 title: 2. Workspace modules
 section: Web app tutorials
-order: 41
+order: 12
 description: Turn on only the parts of TMGR your workspace needs, with a preset or one module at a time.
 video: https://tmgr.dev/l/video/en/tmgr-web-02-modules.mp4
 ---

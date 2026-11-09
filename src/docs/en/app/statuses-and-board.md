@@ -1,7 +1,7 @@
 ---
 title: Statuses and the board
 section: Web app
-order: 51
+order: 22
 description: Create custom statuses, learn what each status type does, and manage board columns and the archive.
 ---
 
