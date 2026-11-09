@@ -1,0 +1,13 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "activity",
+	"description": "Activity hints from the foreground app and git branch: main window only.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-activity-supported",
+		"allow-activity-update",
+		"allow-activity-suggestions",
+		"allow-activity-consume",
+		"allow-activity-forget"
+	]
+}

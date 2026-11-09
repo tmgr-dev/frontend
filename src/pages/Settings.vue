@@ -68,6 +68,12 @@
 							<SettingsSection :title="$t('settings.desktop.gitTracking')">
 								<DesktopGitTrackSettings />
 							</SettingsSection>
+							<SettingsSection
+								v-if="activitySupported"
+								:title="$t('settings.desktop.activity')"
+							>
+								<DesktopActivitySettings />
+							</SettingsSection>
 							<SettingsSection :title="$t('settings.desktop.shortcuts')">
 								<DesktopShortcutsSettings />
 							</SettingsSection>
@@ -392,6 +398,7 @@
 		updateUserSettings,
 		updateUserSettingsV2,
 	} from '@/actions/tmgr/user';
+	import DesktopActivitySettings from '@/components/desktop/DesktopActivitySettings.vue';
 	import DesktopGitTrackSettings from '@/components/desktop/DesktopGitTrackSettings.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import LocalAccountSection from '@/components/desktop/LocalAccountSection.vue';
@@ -424,6 +431,7 @@
 	import { isRunnerSupported } from '@/runner/api';
 	import TipsSettings from '@/tours/ui/TipsSettings.vue';
 	import { currentLocale, t } from '@/i18n';
+	import { isActivitySupported } from '@/utils/activityHints';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 	import { writeNtfySubscribed } from '@/utils/ntfySubscription';
@@ -450,6 +458,7 @@
 			Profile,
 			Confirm,
 			NotificationSettingsForm,
+			DesktopActivitySettings,
 			DesktopGitTrackSettings,
 			DesktopShortcutsSettings,
 			RunnerExperimentalSettings,
@@ -480,6 +489,9 @@
 		},
 		created() {
 			this.handleTabFromQuery();
+			if (isDesktopApp()) {
+				isActivitySupported().then((value) => (this.activitySupported = value));
+			}
 		},
 		data: () => ({
 			savingSettings: false,
@@ -502,6 +514,7 @@
 			isAgentWork: false,
 			appVersion: '',
 			isDesktop: isDesktopApp(),
+			activitySupported: false,
 			telegramLink: null,
 			showToken: false,
 			tokenCopied: false,
