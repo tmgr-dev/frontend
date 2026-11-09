@@ -521,7 +521,7 @@ const routes = [
 	},
 	// Legacy task route - keep for backward compatibility
 	{
-		path: '/:id',
+		path: '/:id(\\d+)',
 		meta: {
 			transitionName: 'slide',
 			navbarHidden: true,

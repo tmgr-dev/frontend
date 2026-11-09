@@ -41,6 +41,7 @@
 	import store from '@/store';
 	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
 	import { filterTasksByState, paginateLocally } from '@/utils/taskStateFilter';
+	import { categoryStatusPath } from '@/utils/url';
 	import {
 		ArchiveRestoreIcon,
 		ArrowRightLeftIcon,
@@ -155,18 +156,12 @@
 			return;
 		}
 
-		if (route.params.id) {
-			router.push(
-				`/projects-categories/${
-					route.params.id ? `${route.params.id}/children` : '/status'
-				}/${newStatus}`,
-			);
-		} else {
-			router.push({
-				name: 'ProjectCategoryChildrenListWithStatus',
-				params: { status: newStatus },
-			});
-		}
+		const path = categoryStatusPath(
+			workspaceCode.value,
+			route.params.id,
+			newStatus,
+		);
+		if (path) router.push(path);
 	});
 
 	watch(

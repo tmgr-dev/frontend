@@ -1,5 +1,7 @@
 import { readFileSync } from 'fs';
+import { join } from 'path';
 import { ModuleKind, transpileModule } from 'typescript';
+import { createMemoryHistory, createRouter } from 'vue-router';
 
 const loadRoutes = () => {
 	const source = transpileModule(
@@ -113,5 +115,54 @@ describe('category routes land on the category page', () => {
 		]) {
 			expect(String(byName(name).component)).toContain('CategoryPage');
 		}
+	});
+});
+
+describe('legacy task route', () => {
+	const resolve = (path: string) => {
+		const router = createRouter({
+			history: createMemoryHistory(),
+			routes: loadRoutes().map((r) => ({
+				...r,
+				component: r.component ?? { render: () => null },
+			})),
+		});
+		return router.resolve(path).name;
+	};
+
+	it('resolves numeric ids to the task form', () => {
+		expect(resolve('/123')).toBe('TasksEdit');
+	});
+
+	it.each(['/some-unknown-slug', '/tmgrdev'])(
+		'sends the unknown one-segment URL %s to the 404 page',
+		(path) => {
+			expect(resolve(path)).toBe('NotFound');
+		},
+	);
+
+	it.each([
+		['/login', 'Login'],
+		['/routines', 'DailyRoutines'],
+		['/archive', 'ArchiveTasksList'],
+		['/quick-add', 'QuickAdd'],
+		['/settings', 'Settings'],
+	])('keeps %s', (path, name) => {
+		expect(resolve(path)).toBe(name);
+	});
+});
+
+describe('route names used by category screens', () => {
+	it.each([
+		'src/pages/ProjectCategoryList.vue',
+		'src/components/general/CategoryBadge.vue',
+	])('%s only navigates to routes that exist', (file) => {
+		const defined = new Set(loadRoutes().map((r) => r.name));
+		const used = [
+			...readFileSync(join(__dirname, '../../..', file), 'utf8').matchAll(
+				/name: '([A-Z][A-Za-z]+)'/g,
+			),
+		].map((m) => m[1]);
+		expect(used.filter((n) => !defined.has(n))).toEqual([]);
 	});
 });

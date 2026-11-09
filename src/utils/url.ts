@@ -73,3 +73,17 @@ export function generateCategoryUrl(
 
 	return `/${workspace.code}/categories/${categoryId}/${action}`;
 }
+
+export function categoryStatusPath(
+	workspaceCode: string | null | undefined,
+	categoryId: number | string | null | undefined,
+	status: string,
+): string | null {
+	if (categoryId === undefined || categoryId === null || categoryId === '') {
+		return null;
+	}
+	const base = workspaceCode
+		? `/${workspaceCode}/categories`
+		: '/projects-categories';
+	return `${base}/${categoryId}/children/${status}`;
+}
