@@ -49,19 +49,26 @@ export const ACTIVITY_APPS: readonly string[] = [
 	'Windows Terminal',
 ];
 
-const CONSENT_KEY = 'app.activity.enabled';
+type UserId = number | string | null | undefined;
 
-export const loadActivityConsent = (): boolean => {
+const consentKey = (userId: UserId): string | null =>
+	userId == null || userId === '' ? null : `app.activity.enabled.${userId}`;
+
+export const loadActivityConsent = (userId: UserId): boolean => {
+	const key = consentKey(userId);
+	if (!key) return false;
 	try {
-		return localStorage.getItem(CONSENT_KEY) === 'true';
+		return localStorage.getItem(key) === 'true';
 	} catch {
 		return false;
 	}
 };
 
-export const saveActivityConsent = (enabled: boolean): void => {
+export const saveActivityConsent = (userId: UserId, enabled: boolean): void => {
+	const key = consentKey(userId);
+	if (!key) return;
 	try {
-		localStorage.setItem(CONSENT_KEY, enabled ? 'true' : 'false');
+		localStorage.setItem(key, enabled ? 'true' : 'false');
 	} catch {}
 };
 
@@ -118,7 +125,8 @@ export const isActivitySupported = (): Promise<boolean> => {
 };
 
 const push = async (payload: {
-	enabled: boolean;
+	consent: boolean;
+	collecting: boolean;
 	userId: number;
 	workspaceId: number;
 	timerRunning: boolean;
@@ -140,10 +148,11 @@ export const syncActivity = async (): Promise<void> => {
 	const userId = ctx?.userId;
 	const workspaceId = ctx?.workspaceId;
 	const identified = !!ctx && typeof userId === 'number' && workspaceId != null;
-	const enabled =
-		identified &&
+	const consent = identified && loadActivityConsent(userId);
+	const collecting =
+		consent &&
 		activityEnabledFor({
-			consent: loadActivityConsent(),
+			consent,
 			supported: true,
 			mode: loadGitTrackMode(),
 			folders: loadGitTrackFolders(),
@@ -151,7 +160,8 @@ export const syncActivity = async (): Promise<void> => {
 			sessionTimeOn: ctx.sessionTimeOn,
 		});
 	await push({
-		enabled,
+		consent: identified ? consent : true,
+		collecting,
 		userId: identified ? userId : 0,
 		workspaceId: identified ? Number(workspaceId) : 0,
 		timerRunning: ctx?.timerRunning ?? true,
@@ -161,7 +171,13 @@ export const syncActivity = async (): Promise<void> => {
 export const stopActivity = async (): Promise<void> => {
 	if (!(await isActivitySupported())) return;
 	lastPushed = null;
-	await push({ enabled: false, userId: 0, workspaceId: 0, timerRunning: true });
+	await push({
+		consent: true,
+		collecting: false,
+		userId: 0,
+		workspaceId: 0,
+		timerRunning: true,
+	});
 	lastPushed = null;
 };
 

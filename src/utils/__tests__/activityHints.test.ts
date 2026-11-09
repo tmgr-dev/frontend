@@ -65,20 +65,29 @@ beforeEach(() => {
 
 describe('activity consent', () => {
 	it('defaults to false', () => {
-		expect(loadActivityConsent()).toBe(false);
+		expect(loadActivityConsent(3)).toBe(false);
 	});
 
 	it('treats invalid stored values as false', () => {
-		storage.set('app.activity.enabled', 'yes');
-		expect(loadActivityConsent()).toBe(false);
+		storage.set('app.activity.enabled.3', 'yes');
+		expect(loadActivityConsent(3)).toBe(false);
 	});
 
-	it('round-trips true and false', () => {
-		saveActivityConsent(true);
-		expect(storage.get('app.activity.enabled')).toBe('true');
-		expect(loadActivityConsent()).toBe(true);
-		saveActivityConsent(false);
-		expect(loadActivityConsent()).toBe(false);
+	it('round-trips true and false per user', () => {
+		saveActivityConsent(3, true);
+		expect(storage.get('app.activity.enabled.3')).toBe('true');
+		expect(loadActivityConsent(3)).toBe(true);
+		expect(loadActivityConsent(4)).toBe(false);
+		saveActivityConsent(3, false);
+		expect(loadActivityConsent(3)).toBe(false);
+	});
+
+	it('ignores the old shared key and missing users', () => {
+		storage.set('app.activity.enabled', 'true');
+		expect(loadActivityConsent(3)).toBe(false);
+		expect(loadActivityConsent(null)).toBe(false);
+		saveActivityConsent(null, true);
+		expect(storage.size).toBe(1);
 	});
 });
 
@@ -100,55 +109,83 @@ describe('activityEnabledFor', () => {
 });
 
 describe('syncActivity', () => {
+	const withFolders = () =>
+		localStorage.setItem('app.gitTrack.folders', JSON.stringify(['/repo']));
+
 	it('does nothing on unsupported platforms', async () => {
 		invokeMock.mockImplementation((name: string) =>
 			Promise.resolve(name === 'activity_supported' ? false : undefined),
 		);
-		saveActivityConsent(true);
+		saveActivityConsent(3, true);
 		registerActivityContext(() => context());
 		await syncActivity();
 		expect(updates()).toEqual([]);
 	});
 
-	it('pushes enabled with ids and the timer state', async () => {
-		saveActivityConsent(true);
-		localStorage.setItem('app.gitTrack.folders', JSON.stringify(['/repo']));
+	it('pushes consent and collecting with ids and the timer state', async () => {
+		saveActivityConsent(3, true);
+		withFolders();
 		registerActivityContext(() => context({ timerRunning: true }));
 		await syncActivity();
 		expect(updates()).toEqual([
-			{ enabled: true, userId: 3, workspaceId: 5, timerRunning: true },
+			{
+				consent: true,
+				collecting: true,
+				userId: 3,
+				workspaceId: 5,
+				timerRunning: true,
+			},
 		]);
 	});
 
-	it('pushes disabled without consent', async () => {
-		localStorage.setItem('app.gitTrack.folders', JSON.stringify(['/repo']));
+	it('pushes consent false without consent', async () => {
+		withFolders();
 		registerActivityContext(() => context());
 		await syncActivity();
-		expect(updates()[0]).toMatchObject({ enabled: false });
+		expect(updates()[0]).toMatchObject({ consent: false, collecting: false });
+	});
+
+	it('does not read another user consent', async () => {
+		saveActivityConsent(9, true);
+		withFolders();
+		registerActivityContext(() => context());
+		await syncActivity();
+		expect(updates()[0]).toMatchObject({ consent: false, collecting: false });
 	});
 
 	it.each([
 		['unknown modules', { modulesKnown: false }],
 		['session_time off', { sessionTimeOn: false }],
-	])('pushes disabled with %s', async (_name, over) => {
-		saveActivityConsent(true);
-		localStorage.setItem('app.gitTrack.folders', JSON.stringify(['/repo']));
+	])('keeps consent but pauses with %s', async (_name, over) => {
+		saveActivityConsent(3, true);
+		withFolders();
 		registerActivityContext(() => context(over));
 		await syncActivity();
-		expect(updates()[0]).toMatchObject({ enabled: false });
+		expect(updates()[0]).toMatchObject({ consent: true, collecting: false });
 	});
 
-	it('pushes disabled with no context or user', async () => {
-		saveActivityConsent(true);
+	it('keeps consent but pauses when git tracking is off', async () => {
+		saveActivityConsent(3, true);
+		withFolders();
+		localStorage.setItem('app.gitTrack.mode', 'off');
+		registerActivityContext(() => context());
+		await syncActivity();
+		expect(updates()[0]).toMatchObject({ consent: true, collecting: false });
+	});
+
+	it('pauses without revoking consent with no context or user', async () => {
+		saveActivityConsent(3, true);
 		await syncActivity();
 		registerActivityContext(() => context({ userId: null }));
 		await syncActivity();
-		expect(updates().every((u) => u.enabled === false)).toBe(true);
+		expect(
+			updates().every((u) => u.consent === true && u.collecting === false),
+		).toBe(true);
 	});
 
 	it('skips an identical repeat and pushes on change', async () => {
-		saveActivityConsent(true);
-		localStorage.setItem('app.gitTrack.folders', JSON.stringify(['/repo']));
+		saveActivityConsent(3, true);
+		withFolders();
 		let running = false;
 		registerActivityContext(() => context({ timerRunning: running }));
 		await syncActivity();
@@ -158,14 +195,18 @@ describe('syncActivity', () => {
 		expect(updates().map((u) => u.timerRunning)).toEqual([false, true]);
 	});
 
-	it('stopActivity pushes disabled and lets the next sync push again', async () => {
-		saveActivityConsent(true);
-		localStorage.setItem('app.gitTrack.folders', JSON.stringify(['/repo']));
+	it('stopActivity pauses without revoking consent and lets the next sync push again', async () => {
+		saveActivityConsent(3, true);
+		withFolders();
 		registerActivityContext(() => context());
 		await syncActivity();
 		await stopActivity();
 		await syncActivity();
-		expect(updates().map((u) => u.enabled)).toEqual([true, false, true]);
+		expect(updates().map((u) => [u.consent, u.collecting])).toEqual([
+			[true, true],
+			[true, false],
+			[true, true],
+		]);
 	});
 });
 

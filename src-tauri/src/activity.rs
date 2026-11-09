@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -20,7 +21,6 @@ const RETENTION_SECS: i64 = 14 * 86_400;
 const MERGE_GAP_SECS: i64 = 300;
 const MAX_INTERVAL_SECS: i64 = 8 * 3_600;
 const MIN_SHOWN_SECS: i64 = 600;
-const MAX_START_AGE_SECS: i64 = 29 * 86_400;
 const FLUSH_SECS: i64 = 60;
 const FILE_NAME: &str = "activity.json";
 
@@ -109,7 +109,8 @@ type BucketKey = (String, String, i64, String);
 
 #[derive(Default)]
 pub struct ActivityState {
-  enabled: bool,
+  consent: bool,
+  collecting: bool,
   timer_running: bool,
   user_id: String,
   workspace_id: String,
@@ -122,14 +123,19 @@ impl ActivityState {
     Self { timer_running: true, ..Self::default() }
   }
 
-  pub fn update(&mut self, enabled: bool, user_id: String, workspace_id: String, timer_running: bool) {
-    self.enabled = enabled;
+  pub fn update(&mut self, consent: bool, collecting: bool, user_id: String, workspace_id: String, timer_running: bool) {
+    self.consent = consent;
+    self.collecting = consent && collecting;
     self.user_id = user_id;
     self.workspace_id = workspace_id;
     self.timer_running = timer_running;
-    if !enabled {
-      self.buckets.clear();
-      self.dirty = false;
+    if !consent {
+      let before = self.buckets.len();
+      let owner = &self.user_id;
+      self.buckets.retain(|(u, _, _, _), _| u != owner);
+      if self.buckets.len() != before {
+        self.dirty = true;
+      }
     }
   }
 
@@ -159,6 +165,9 @@ impl ActivityState {
   }
 
   pub fn suggestions(&self, user: &str, workspace: &str, now: i64, day_of: impl Fn(i64) -> i64) -> Vec<Suggestion> {
+    if !self.consent {
+      return Vec::new();
+    }
     let mut by_key: BTreeMap<&str, Vec<(i64, u32)>> = BTreeMap::new();
     for ((u, w, minute, key), seconds) in &self.buckets {
       if u == user && w == workspace {
@@ -170,7 +179,7 @@ impl ActivityState {
       let mut current: Option<(i64, i64, i64)> = None;
       let finish = |c: Option<(i64, i64, i64)>, out: &mut Vec<Suggestion>| {
         if let Some((start, end, secs)) = c {
-          if secs >= MIN_SHOWN_SECS && start >= now - MAX_START_AGE_SECS {
+          if secs >= MIN_SHOWN_SECS && start >= now - RETENTION_SECS && now - end > MERGE_GAP_SECS {
             let seconds = secs.min(end - start);
             out.push(Suggestion { id: suggestion_id(user, workspace, key, start, end), key: key.to_string(), started_at: start, ended_at: end, seconds });
           }
@@ -238,9 +247,8 @@ struct StoredBucket {
   s: u32,
 }
 
-pub fn save(dir: &Path, state: &ActivityState) -> std::io::Result<()> {
-  let rows: Vec<StoredBucket> = state
-    .buckets
+pub fn save(dir: &Path, buckets: &BTreeMap<BucketKey, u32>) -> std::io::Result<()> {
+  let rows: Vec<StoredBucket> = buckets
     .iter()
     .map(|((u, w, m, k), s)| StoredBucket { u: u.clone(), w: w.clone(), m: *m, k: k.clone(), s: *s })
     .collect();
@@ -273,20 +281,60 @@ fn remove_file(dir: &Path) {
   let _ = fs::remove_file(dir.join(FILE_NAME));
 }
 
+#[derive(Default)]
+struct IoGate {
+  ticket: AtomicU64,
+  written: Mutex<u64>,
+}
+
+enum Persist {
+  Save(BTreeMap<BucketKey, u32>),
+  Remove,
+}
+
+fn persist(gate: &IoGate, dir: &Path, ticket: u64, op: Persist) -> std::io::Result<()> {
+  let mut written = gate.written.lock().unwrap_or_else(|e| e.into_inner());
+  if ticket <= *written {
+    return Ok(());
+  }
+  *written = ticket;
+  match op {
+    Persist::Save(buckets) => save(dir, &buckets),
+    Persist::Remove => {
+      remove_file(dir);
+      Ok(())
+    }
+  }
+}
+
 pub struct ActivityStore {
   state: Mutex<ActivityState>,
   dir: Mutex<Option<PathBuf>>,
+  io: Arc<IoGate>,
 }
 
 impl Default for ActivityStore {
   fn default() -> Self {
-    Self { state: Mutex::new(ActivityState::new()), dir: Mutex::new(None) }
+    Self { state: Mutex::new(ActivityState::new()), dir: Mutex::new(None), io: Arc::new(IoGate::default()) }
   }
 }
 
 impl ActivityStore {
   fn dir(&self) -> Option<PathBuf> {
     self.dir.lock().ok().and_then(|d| d.clone())
+  }
+
+  fn next_ticket(&self) -> u64 {
+    self.io.ticket.fetch_add(1, Ordering::SeqCst) + 1
+  }
+
+  async fn run_io(&self, ticket: u64, op: Persist) -> Result<(), String> {
+    let Some(dir) = self.dir() else { return Ok(()) };
+    let gate = self.io.clone();
+    tauri::async_runtime::spawn_blocking(move || persist(&gate, &dir, ticket, op))
+      .await
+      .map_err(|e| e.to_string())?
+      .map_err(|e| e.to_string())
   }
 }
 
@@ -346,7 +394,8 @@ pub fn activity_supported() -> bool {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateArgs {
-  enabled: bool,
+  consent: bool,
+  collecting: bool,
   #[serde(deserialize_with = "id_string")]
   user_id: String,
   #[serde(deserialize_with = "id_string")]
@@ -355,16 +404,23 @@ pub struct UpdateArgs {
 }
 
 #[tauri::command]
-pub fn activity_update(store: State<'_, ActivityStore>, args: UpdateArgs) -> Result<(), String> {
-  let enabled = args.enabled && activity_supported();
-  let mut state = store.state.lock().map_err(|e| e.to_string())?;
-  state.update(enabled, args.user_id, args.workspace_id, args.timer_running);
-  if !enabled {
-    if let Some(dir) = store.dir() {
-      remove_file(&dir);
+pub async fn activity_update(store: State<'_, ActivityStore>, args: UpdateArgs) -> Result<(), String> {
+  let consent = args.consent && activity_supported();
+  let pending = {
+    let mut state = store.state.lock().map_err(|e| e.to_string())?;
+    state.update(consent, args.collecting, args.user_id, args.workspace_id, args.timer_running);
+    if consent || !state.dirty {
+      None
+    } else {
+      state.dirty = false;
+      let op = if state.buckets.is_empty() { Persist::Remove } else { Persist::Save(state.buckets.clone()) };
+      Some((store.next_ticket(), op))
     }
+  };
+  match pending {
+    Some((ticket, op)) => store.run_io(ticket, op).await,
+    None => Ok(()),
   }
-  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -395,25 +451,77 @@ pub struct ConsumeArgs {
 }
 
 #[tauri::command]
-pub fn activity_consume(store: State<'_, ActivityStore>, args: ConsumeArgs) -> Result<(), String> {
-  let mut state = store.state.lock().map_err(|e| e.to_string())?;
-  state.consume(&args.user_id, &args.workspace_id, &args.key, args.started_at, args.ended_at);
-  if let Some(dir) = store.dir() {
-    save(&dir, &state).map_err(|e| e.to_string())?;
+pub async fn activity_consume(store: State<'_, ActivityStore>, args: ConsumeArgs) -> Result<(), String> {
+  let (ticket, snapshot) = {
+    let mut state = store.state.lock().map_err(|e| e.to_string())?;
+    state.consume(&args.user_id, &args.workspace_id, &args.key, args.started_at, args.ended_at);
     state.dirty = false;
-  }
-  Ok(())
+    (store.next_ticket(), state.buckets.clone())
+  };
+  store.run_io(ticket, Persist::Save(snapshot)).await
 }
 
 #[tauri::command]
-pub fn activity_forget(store: State<'_, ActivityStore>) -> Result<(), String> {
-  let mut state = store.state.lock().map_err(|e| e.to_string())?;
-  state.buckets.clear();
-  state.dirty = false;
-  if let Some(dir) = store.dir() {
-    remove_file(&dir);
+pub async fn activity_forget(store: State<'_, ActivityStore>) -> Result<(), String> {
+  let ticket = {
+    let mut state = store.state.lock().map_err(|e| e.to_string())?;
+    state.buckets.clear();
+    state.dirty = false;
+    store.next_ticket()
+  };
+  store.run_io(ticket, Persist::Remove).await
+}
+
+#[cfg(target_os = "macos")]
+fn in_pool<R>(f: impl FnOnce() -> R) -> R {
+  objc2::rc::autoreleasepool(|_| f())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn in_pool<R>(f: impl FnOnce() -> R) -> R {
+  f()
+}
+
+fn tick<R: Runtime>(app: &AppHandle<R>, last_poll: &mut Option<i64>, last_flush: &mut i64) {
+  let now = now_secs();
+  let store = app.state::<ActivityStore>();
+  let (collecting, timer_running) = {
+    let s = store.state.lock().unwrap_or_else(|e| e.into_inner());
+    (s.collecting, s.timer_running)
+  };
+  let previous = last_poll.replace(now);
+  if !collecting {
+    return;
   }
-  Ok(())
+  let folders = app.state::<GitTrackStore>().folders.lock().map(|l| l.clone()).unwrap_or_default();
+  let keys = watched_keys(&folders);
+  let sample = decide_sample(SampleInputs {
+    enabled: collecting,
+    idle_secs: system_idle_secs(),
+    now,
+    last_poll: previous,
+    timer_running,
+    app_allowed: foreground_allowed(),
+    keys: &keys,
+  });
+  let mut s = store.state.lock().unwrap_or_else(|e| e.into_inner());
+  if !s.collecting {
+    return;
+  }
+  if let Some(key) = sample {
+    s.add_sample(now, key);
+  }
+  s.prune(now);
+  if s.dirty && now - *last_flush >= FLUSH_SECS {
+    *last_flush = now;
+    if let Some(dir) = store.dir() {
+      match persist(&store.io, &dir, store.next_ticket(), Persist::Save(s.buckets.clone())) {
+        Ok(()) => s.dirty = false,
+        Err(_) => log::warn!("[activity] save failed"),
+      }
+    }
+    log::debug!("[activity] {} buckets", s.buckets.len());
+  }
 }
 
 pub fn start<R: Runtime>(app: &AppHandle<R>) {
@@ -432,45 +540,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) {
     let mut last_flush = now_secs();
     loop {
       std::thread::sleep(Duration::from_secs(POLL_SECS as u64));
-      let now = now_secs();
-      let store = app.state::<ActivityStore>();
-      let (enabled, timer_running) = {
-        let s = store.state.lock().unwrap_or_else(|e| e.into_inner());
-        (s.enabled, s.timer_running)
-      };
-      let previous = last_poll.replace(now);
-      if !enabled {
-        continue;
-      }
-      let folders = app.state::<GitTrackStore>().folders.lock().map(|l| l.clone()).unwrap_or_default();
-      let keys = watched_keys(&folders);
-      let sample = decide_sample(SampleInputs {
-        enabled,
-        idle_secs: system_idle_secs(),
-        now,
-        last_poll: previous,
-        timer_running,
-        app_allowed: foreground_allowed(),
-        keys: &keys,
-      });
-      let mut s = store.state.lock().unwrap_or_else(|e| e.into_inner());
-      if !s.enabled {
-        continue;
-      }
-      if let Some(key) = sample {
-        s.add_sample(now, key);
-      }
-      s.prune(now);
-      if s.dirty && now - last_flush >= FLUSH_SECS {
-        last_flush = now;
-        if let Some(dir) = store.dir() {
-          match save(&dir, &s) {
-            Ok(()) => s.dirty = false,
-            Err(_) => log::warn!("[activity] save failed"),
-          }
-        }
-        log::info!("[activity] {} buckets", s.buckets.len());
-      }
+      in_pool(|| tick(&app, &mut last_poll, &mut last_flush));
     }
   });
 }
@@ -493,7 +563,7 @@ mod tests {
 
   fn state() -> ActivityState {
     let mut s = ActivityState::new();
-    s.update(true, "u1".into(), "w1".into(), false);
+    s.update(true, true, "u1".into(), "w1".into(), false);
     s
   }
 
@@ -536,18 +606,54 @@ mod tests {
   #[test]
   fn starts_disabled_and_treats_timer_as_running() {
     let s = ActivityState::new();
-    assert!(!s.enabled);
+    assert!(!s.consent);
+    assert!(!s.collecting);
     assert!(s.timer_running);
-    assert!(!ActivityStore::default().state.lock().unwrap().enabled);
+    assert!(!ActivityStore::default().state.lock().unwrap().collecting);
   }
 
   #[test]
-  fn disabling_drops_buckets() {
+  fn pausing_keeps_buckets_and_revoking_consent_drops_only_that_user() {
     let mut s = state();
     fill(&mut s, 100, 5, "TM-1");
-    assert!(!s.buckets.is_empty());
-    s.update(false, "u1".into(), "w1".into(), false);
-    assert!(s.buckets.is_empty());
+    s.update(true, false, "u1".into(), "w1".into(), false);
+    assert!(!s.collecting);
+    assert_eq!(s.buckets.len(), 5);
+    s.update(true, false, "u1".into(), "w2".into(), true);
+    assert_eq!(s.buckets.len(), 5);
+
+    s.update(true, true, "u2".into(), "w1".into(), false);
+    fill(&mut s, 200, 2, "TM-2");
+    s.update(false, true, "u2".into(), "w1".into(), false);
+    assert!(!s.collecting);
+    assert_eq!(s.buckets.len(), 5);
+    assert!(s.buckets.keys().all(|(u, _, _, _)| u == "u1"));
+  }
+
+  #[test]
+  fn suggestions_need_consent() {
+    let mut s = state();
+    fill(&mut s, NOW / 60 - 100, 12, "TM-1");
+    assert_eq!(s.suggestions("u1", "w1", NOW, day).len(), 1);
+    s.update(false, false, "u3".into(), "w1".into(), false);
+    s.user_id = "u1".into();
+    assert!(s.suggestions("u1", "w1", NOW, day).is_empty());
+  }
+
+  #[test]
+  fn an_interval_is_hidden_until_its_last_bucket_is_older_than_the_merge_gap() {
+    let mut s = state();
+    let base = NOW / 60 - 30;
+    fill(&mut s, base, 12, "TM-1");
+    let end = (base + 12) * 60;
+    assert!(s.suggestions("u1", "w1", end + MERGE_GAP_SECS, day).is_empty());
+    assert_eq!(s.suggestions("u1", "w1", end + MERGE_GAP_SECS + 1, day).len(), 1);
+  }
+
+  #[test]
+  fn update_args_use_consent_and_collecting() {
+    let a: UpdateArgs = serde_json::from_str(r#"{"consent":true,"collecting":false,"userId":7,"workspaceId":"w","timerRunning":false}"#).unwrap();
+    assert!(a.consent && !a.collecting);
   }
 
   #[test]
@@ -614,8 +720,11 @@ mod tests {
   #[test]
   fn old_intervals_and_other_scopes_are_hidden() {
     let mut s = state();
-    fill(&mut s, (NOW - 30 * 86_400) / 60, 12, "TM-1");
+    fill(&mut s, (NOW - 15 * 86_400) / 60, 12, "TM-1");
     assert!(s.suggestions("u1", "w1", NOW, day).is_empty());
+    let mut s = state();
+    fill(&mut s, (NOW - 13 * 86_400) / 60, 12, "TM-1");
+    assert_eq!(s.suggestions("u1", "w1", NOW, day).len(), 1);
     let mut s = state();
     fill(&mut s, NOW / 60 - 100, 12, "TM-1");
     assert_eq!(s.suggestions("u1", "w1", NOW, day).len(), 1);
@@ -662,11 +771,11 @@ mod tests {
     let mut s = state();
     fill(&mut s, (NOW - 15 * 86_400) / 60, 3, "TM-1");
     fill(&mut s, NOW / 60 - 50, 3, "TM-2");
-    save(dir.path(), &s).unwrap();
+    save(dir.path(), &s.buckets).unwrap();
     let loaded = load(dir.path(), NOW);
     assert_eq!(loaded.buckets.len(), 3);
     assert!(loaded.buckets.keys().all(|(_, _, _, key)| key == "TM-2"));
-    assert!(!loaded.enabled);
+    assert!(!loaded.collecting);
     assert!(loaded.timer_running);
     assert!(!dir.path().join("activity.json.tmp").exists());
     #[cfg(unix)]
@@ -682,7 +791,7 @@ mod tests {
     let dir = tempfile::tempdir().unwrap();
     let mut s = state();
     fill(&mut s, NOW / 60, 1, "TM-1");
-    save(dir.path(), &s).unwrap();
+    save(dir.path(), &s.buckets).unwrap();
     let text = fs::read_to_string(dir.path().join("activity.json")).unwrap();
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     let mut fields: Vec<&str> = v[0].as_object().unwrap().keys().map(String::as_str).collect();
