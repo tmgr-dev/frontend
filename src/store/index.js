@@ -70,6 +70,7 @@ const forgetCloudUser = (state, { bump = true } = {}) => {
 	if (bump) state.sessionGeneration++;
 	state.user = {};
 	state.userSettingsMap = {};
+	state.userSettings = { showTooltips: true };
 	state.defaultWorkspaceId = null;
 	state.clientWorkspaceId = null;
 	state.workspaces = [];
@@ -298,6 +299,7 @@ const mutations = {
 	setUser(state, user) {
 		const subject = tokenSubject(state.token);
 		if (subject != null && user?.id > 0 && user.id !== subject) return;
+		if (state.token == null && user?.id > 0) return;
 		if (state.user?.id !== user?.id) {
 			state.sessionGeneration++;
 			requestCache.clear();

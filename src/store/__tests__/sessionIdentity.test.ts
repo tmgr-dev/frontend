@@ -96,6 +96,22 @@ describe('setToken forgets the cloud user', () => {
 		expect(state.workspacesById).toEqual({});
 	});
 
+	it('resets user settings on logout', () => {
+		const { state, mutations } = signedIn(2, tokenFor('2'), {
+			userSettings: { showTooltips: false, pomodoro: 1 },
+		});
+		mutations.setToken(state, null);
+		expect(state.userSettings).toEqual({ showTooltips: true });
+	});
+
+	it('resets user settings when another account takes over', () => {
+		const { state, mutations } = signedIn(2, tokenFor('2'), {
+			userSettings: { showTooltips: false, pomodoro: 1 },
+		});
+		mutations.setToken(state, tokenFor('5'));
+		expect(state.userSettings).toEqual({ showTooltips: true });
+	});
+
 	it('keeps the user on a same-subject rotation', () => {
 		const { state, mutations, disconnectRealtime } = signedIn(2, tokenFor('2'));
 		mutations.setToken(state, { token: fakeJwt('2') + 'x' });
@@ -162,10 +178,17 @@ describe('setUser ignores a late response for the previous account', () => {
 		expect(state.user.id).toBe(2);
 	});
 
-	it('accepts any id when there is no token', () => {
-		const { state, mutations } = signedIn(5, null);
+	it('ignores a late cloud user after logout', () => {
+		const { state, mutations } = signedIn(2, tokenFor('2'));
+		mutations.setToken(state, null);
 		mutations.setUser(state, { id: 2, settings: [] });
-		expect(state.user.id).toBe(2);
+		expect(state.user.id).toBeUndefined();
+	});
+
+	it('accepts a local profile payload when there is no token', () => {
+		const { state, mutations } = signedIn(5, null);
+		mutations.setUser(state, { id: -1, settings: [] });
+		expect(state.user.id).toBe(-1);
 	});
 
 	it('accepts a local profile payload under a token', () => {

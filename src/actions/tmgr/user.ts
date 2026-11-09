@@ -140,9 +140,12 @@ export const updateUser = async (
 export interface UserSettings {}
 
 export const getUserSettings = async () => {
+	const sessionGeneration = store.state.sessionGeneration;
 	const {
 		data: { data },
 	} = await $axios.get('user/settings');
+
+	if (store.state.sessionGeneration !== sessionGeneration) return;
 
 	if (data?.settings) {
 		store.commit('setUserSettings', data.settings);

@@ -63,6 +63,7 @@ function fixture(
 		},
 		storages,
 	).default;
+	config.state.token = { token: 'opaque' };
 	return { config, getWorkspaces, cache };
 }
 

@@ -16,10 +16,11 @@ jest.mock('@/utils/requestCache', () => ({
 }));
 jest.mock('@/utils/timezoneDetect', () => ({ detectUserTimeZone: jest.fn() }));
 
+import axios from '@/plugins/axios';
 import store from '@/store';
 import requestCache from '@/utils/requestCache';
 import { detectUserTimeZone } from '@/utils/timezoneDetect';
-import { getUser } from '../user';
+import { getUser, getUserSettings } from '../user';
 
 const user = {
 	id: 2,
@@ -46,4 +47,21 @@ test('a response that outlived its session has no effects', async () => {
 	await expect(getUser()).resolves.toBe(user);
 	expect(store.commit).not.toHaveBeenCalled();
 	expect(detectUserTimeZone).not.toHaveBeenCalled();
+});
+
+test('user settings from the current session are applied', async () => {
+	(axios.get as jest.Mock).mockResolvedValue({
+		data: { data: { settings: { a: 1 } } },
+	});
+	await getUserSettings();
+	expect(store.commit).toHaveBeenCalledWith('setUserSettings', { a: 1 });
+});
+
+test('user settings that outlived their session are dropped', async () => {
+	(axios.get as jest.Mock).mockImplementation(async () => {
+		(store.state as any).sessionGeneration = 2;
+		return { data: { data: { settings: { a: 1 } } } };
+	});
+	await getUserSettings();
+	expect(store.commit).not.toHaveBeenCalled();
 });
