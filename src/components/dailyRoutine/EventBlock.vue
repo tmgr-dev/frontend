@@ -25,9 +25,12 @@
 		</div>
 		<div
 			v-if="!isShort"
-			class="mt-0.5 truncate pr-5 text-[10px] text-ink-subtle dark:text-white/60"
+			class="mt-0.5 flex items-center gap-1.5 truncate pr-5 text-[10px] text-ink-subtle dark:text-white/60"
 		>
-			{{ entry.time }}<span v-if="endTimeStr"> – {{ endTimeStr }}</span>
+			<span class="truncate">
+				{{ entry.time }}<span v-if="endTimeStr"> – {{ endTimeStr }}</span>
+			</span>
+			<CommentCountBadge :count="entry.comments_count ?? 0" />
 		</div>
 		<div
 			v-else
@@ -38,6 +41,7 @@
 				entry.time
 			}}</span>
 			<span class="truncate">{{ entry.title }}</span>
+			<CommentCountBadge :count="entry.comments_count ?? 0" />
 		</div>
 		<button
 			v-if="!isShort"
@@ -73,6 +77,7 @@
 	import { hexAlpha, resolveCategory } from '@/utils/dailyRoutines/categoryMap';
 	import { fmtTime } from '@/utils/dailyRoutines/dateHelpers';
 	import { computed, ref, type CSSProperties } from 'vue';
+	import CommentCountBadge from './CommentCountBadge.vue';
 	import DRIcon from './DRIcon.vue';
 
 	const HOUR_PX = 56;

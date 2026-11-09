@@ -99,6 +99,11 @@ const dailyRoutinesModule = {
 				return e;
 			});
 		},
+		patchTaskEntries(state, { taskId, patch }) {
+			state.entries = state.entries.map((e) =>
+				e.task_id === taskId ? { ...e, ...patch } : e,
+			);
+		},
 		removeEntries(state, predicate) {
 			state.entries = state.entries.filter((e) => !predicate(e));
 		},

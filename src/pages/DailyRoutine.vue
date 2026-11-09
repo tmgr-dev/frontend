@@ -405,6 +405,8 @@
 						:busy="editorBusy"
 						:error="editorError"
 						:confirm-open="deleteDialogOpen"
+						:comments-enabled="!isLocalWorkspace"
+						@comments-count="onCommentsCount"
 						@close="editingRoutine = null"
 						@save="onSaveRoutine"
 						@delete="onDeleteRoutine"
@@ -982,6 +984,17 @@
 		return (
 			(error as any)?.response?.data?.message || t('dailyRoutine.page.tryAgain')
 		);
+	}
+
+	function onCommentsCount(taskId: number, count: number) {
+		const stale = (store.state.dailyRoutines.entries as RoutineEntry[]).some(
+			(e) => e.task_id === taskId && e.comments_count !== count,
+		);
+		if (stale)
+			store.commit('dailyRoutines/patchTaskEntries', {
+				taskId,
+				patch: { comments_count: count },
+			});
 	}
 
 	async function onEdit(entry: RoutineEntry) {

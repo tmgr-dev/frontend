@@ -57,7 +57,12 @@
 				{{ entry.title }}
 			</span>
 			<span
-				v-if="entry.time || entry.frequency !== 'NONE' || timeMeta"
+				v-if="
+					entry.time ||
+					entry.frequency !== 'NONE' ||
+					timeMeta ||
+					entry.comments_count
+				"
 				class="mt-1 flex items-center gap-2.5 text-2xs text-ink-subtle"
 			>
 				<span v-if="entry.time" class="inline-flex items-center gap-1">
@@ -71,6 +76,7 @@
 					<DRIcon name="repeat" :size="10" stroke="currentColor" />
 					{{ frequencyLabel }}
 				</span>
+				<CommentCountBadge :count="entry.comments_count ?? 0" />
 				<span
 					class="text-[10px] font-semibold tracking-wide uppercase"
 					:style="{ color: entry.routine_category.color }"
@@ -112,6 +118,7 @@
 	} from '@/utils/dailyRoutines/relativeTime';
 	import { t } from '@/i18n';
 	import { computed } from 'vue';
+	import CommentCountBadge from './CommentCountBadge.vue';
 	import DRIcon from './DRIcon.vue';
 
 	const props = defineProps<{

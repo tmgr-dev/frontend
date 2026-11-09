@@ -321,6 +321,18 @@
 							</div>
 						</ERSection>
 
+						<ERSection
+							v-if="!isNew && commentsEnabled && routineTaskId"
+							:label="$t('dailyRoutine.comments.title')"
+							:hint="$t('dailyRoutine.comments.hint')"
+							data-testid="routine-comments"
+						>
+							<RoutineComments
+								:task-id="routineTaskId"
+								@count="emit('comments-count', routineTaskId, $event)"
+							/>
+						</ERSection>
+
 						<!-- Convert to task -->
 						<ERSection
 							v-if="!isNew"
@@ -419,6 +431,7 @@
 	import ConvertRoutineFields from './ConvertRoutineFields.vue';
 	import DRIcon from './DRIcon.vue';
 	import ERSection from './ERSection.vue';
+	import RoutineComments from './RoutineComments.vue';
 	import { routineDraftFrom, type RoutineDraft } from './routinePayload';
 
 	const props = defineProps<{
@@ -426,12 +439,14 @@
 		busy?: boolean;
 		error?: string;
 		confirmOpen?: boolean;
+		commentsEnabled?: boolean;
 	}>();
 
 	const emit = defineEmits<{
 		(e: 'close'): void;
 		(e: 'save', draft: RoutineDraft): void;
 		(e: 'delete', routine: any): void;
+		(e: 'comments-count', taskId: number, count: number): void;
 		(
 			e: 'convert',
 			payload: {
@@ -451,6 +466,9 @@
 
 	const draft = reactive<RoutineDraft>(initial);
 	const isNew = computed(() => !props.routine?.id);
+	const routineTaskId = computed<number>(
+		() => props.routine?.task_id ?? props.routine?.id,
+	);
 
 	// ── start / end time range ─────────────────────────────────────────────────
 	// The form stores a start (timeH/timeM) + durationMin; the UI edits start and
