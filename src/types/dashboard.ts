@@ -89,6 +89,8 @@ export interface Activity {
 	metadata: Record<string, any>;
 	created_at: string;
 	timestamp_human: string;
+	old_status_name?: string | null;
+	new_status_name?: string | null;
 }
 
 // Contribution Data for Heatmap

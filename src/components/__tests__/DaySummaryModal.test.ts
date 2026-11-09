@@ -148,6 +148,7 @@ const task = {
 	touchedToday: true,
 	comments: 0,
 	commentSnippets: [],
+	moves: [],
 	source: 'cloud' as const,
 };
 

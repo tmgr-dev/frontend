@@ -1,5 +1,5 @@
 import { getActivityFeed } from '@/actions/tmgr/dashboard';
-import { collectDay } from '../daySummaryCollect';
+import { collectDay, utcDaysOf } from '../daySummaryCollect';
 import { listLocalWorkspaces, localContext } from '../runtime';
 
 jest.mock('../runtime', () => ({
@@ -185,6 +185,7 @@ describe('collectDay local workspaces', () => {
 				touchedToday: false,
 				comments: 4,
 				commentSnippets: ['first', 'second', 'third'],
+				moves: [],
 				source: 'local',
 			},
 		]);
@@ -260,7 +261,7 @@ describe('collectDay local workspaces', () => {
 });
 
 describe('collectDay cloud workspaces', () => {
-	it('sends the signed-in user id and the local day window on every feed request', async () => {
+	it('sends the signed-in user id and the UTC day on every feed request', async () => {
 		(listLocalWorkspaces as jest.Mock).mockResolvedValue([]);
 
 		await run({
@@ -277,12 +278,10 @@ describe('collectDay cloud workspaces', () => {
 		for (const [, params] of calls) {
 			expect(params).toMatchObject({
 				per_page: 100,
-				filters: {
-					user_id: 5,
-					date_from: '2026-11-06',
-					date_to: '2026-11-07',
-				},
+				filters: { user_id: 5, date: '2026-11-07' },
 			});
+			expect(params.filters).not.toHaveProperty('date_from');
+			expect(params.filters).not.toHaveProperty('date_to');
 		}
 	});
 
@@ -538,6 +537,7 @@ describe('collectDay cloud workspaces', () => {
 				touchedToday: true,
 				comments: 1,
 				commentSnippets: ['looks good'],
+				moves: [],
 				source: 'cloud',
 			},
 			{
@@ -549,8 +549,88 @@ describe('collectDay cloud workspaces', () => {
 				touchedToday: true,
 				comments: 0,
 				commentSnippets: [],
+				moves: [],
 				source: 'cloud',
 			},
 		]);
+	});
+});
+
+describe('collectDay status moves', () => {
+	it('adds a move from the activity row names', async () => {
+		(getActivityFeed as jest.Mock).mockResolvedValue(
+			feed(
+				cloudActivity({
+					id: 2,
+					type: 'task_status_changed',
+					created_at: at(7, 11),
+					old_status_name: 'Doing',
+					new_status_name: 'Done',
+				}),
+				cloudActivity({
+					id: 1,
+					type: 'task_status_changed',
+					created_at: at(7, 9),
+					old_status_name: 'Backlog',
+					new_status_name: 'Doing',
+				}),
+			),
+		);
+
+		const { tasks } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
+
+		expect(tasks[0].moves).toEqual([
+			{ from: 'Backlog', to: 'Doing' },
+			{ from: 'Doing', to: 'Done' },
+		]);
+		expect(tasks[0].status).toBe('Done');
+	});
+
+	it('adds no move when the names are missing', async () => {
+		(getActivityFeed as jest.Mock).mockResolvedValue(
+			feed(
+				cloudActivity({
+					type: 'task_status_changed',
+					metadata: { new_status: 3, new_status_name: 'Done' },
+				}),
+				cloudActivity({
+					id: 2,
+					type: 'task_status_changed',
+					old_status_name: 'Backlog',
+				}),
+			),
+		);
+
+		const { tasks } = await run({
+			cloud: [{ id: 2, name: 'Ops' }],
+			cloudUserId: 5,
+		});
+
+		expect(tasks[0].moves).toEqual([]);
+		expect(tasks[0].status).toBe('Done');
+	});
+
+	it('lists every UTC day a local day overlaps', () => {
+		expect(
+			utcDaysOf({
+				from: new Date('2026-11-06T21:00:00Z'),
+				to: new Date('2026-11-07T21:00:00Z'),
+			}),
+		).toEqual(['2026-11-06', '2026-11-07']);
+		expect(
+			utcDaysOf({
+				from: new Date('2026-11-07T05:00:00Z'),
+				to: new Date('2026-11-08T05:00:00Z'),
+			}),
+		).toEqual(['2026-11-07', '2026-11-08']);
+		expect(
+			utcDaysOf({
+				from: new Date('2026-11-07T00:00:00Z'),
+				to: new Date('2026-11-08T00:00:00Z'),
+			}),
+		).toEqual(['2026-11-07']);
 	});
 });

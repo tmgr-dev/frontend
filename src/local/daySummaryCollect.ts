@@ -54,6 +54,8 @@ type LocalTaskRow = {
 	seq: number | null;
 };
 
+type Move = DayTask['moves'][number];
+
 type LocalCommentRow = {
 	task_id: number;
 	message: string;
@@ -63,8 +65,26 @@ type LocalCommentRow = {
 
 const pad = (value: number) => String(value).padStart(2, '0');
 
-const localDay = (date: Date) =>
-	`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+const utcDay = (date: Date) =>
+	`${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(
+		date.getUTCDate(),
+	)}`;
+
+export const utcDaysOf = (range: DayRange): string[] => {
+	const days: string[] = [];
+	const last = utcDay(new Date(range.to.getTime() - 1));
+	for (let t = range.from.getTime(); ; t += 86_400_000) {
+		const day = utcDay(new Date(t));
+		days.push(day);
+		if (day >= last) break;
+	}
+	return days;
+};
+
+const moveOf = (from: unknown, to: unknown): Move | null =>
+	typeof from === 'string' && from && typeof to === 'string' && to
+		? { from, to }
+		: null;
 
 const metadataOf = (raw: unknown): Metadata => {
 	let value: unknown = raw;
@@ -132,6 +152,7 @@ const collectLocal = async (
 				commentSnippets: notes
 					.slice(0, SNIPPETS)
 					.map((note) => note.message.trim()),
+				moves: [],
 				source: 'local',
 			},
 		];
@@ -143,30 +164,34 @@ const collectCloud = async (
 	userId: number,
 	range: DayRange,
 ): Promise<DayTask[]> => {
-	const yesterday = new Date(range.from);
-	yesterday.setDate(yesterday.getDate() - 1);
 	const activities: Activity[] = [];
-	for (let page = 1; page <= FEED_MAX_PAGES; page++) {
-		const result = await getActivityFeed(workspace.id, {
-			page,
-			per_page: FEED_PAGE,
-			filters: {
-				user_id: userId,
-				date_from: localDay(yesterday),
-				date_to: localDay(range.from),
-			},
-		});
-		if (result.error || !result.data) {
-			throw new Error(`activity feed failed for ${workspace.name}`);
+	for (const date of utcDaysOf(range)) {
+		for (let page = 1; page <= FEED_MAX_PAGES; page++) {
+			const result = await getActivityFeed(workspace.id, {
+				page,
+				per_page: FEED_PAGE,
+				filters: { user_id: userId, date },
+			});
+			if (result.error || !result.data) {
+				throw new Error(`activity feed failed for ${workspace.name}`);
+			}
+			const items = result.data.data;
+			activities.push(...items);
+			if (items.length < FEED_PAGE) break;
+			const oldest = Math.min(
+				...items.map((a) => parseTimestamp(a.created_at)),
+			);
+			if (oldest < range.from.getTime()) break;
 		}
-		const items = result.data.data;
-		activities.push(...items);
-		if (items.length < FEED_PAGE) break;
-		const oldest = Math.min(...items.map((a) => parseTimestamp(a.created_at)));
-		if (oldest < range.from.getTime()) break;
 	}
+	const unique = [...new Map(activities.map((a) => [a.id, a])).values()];
+	unique.sort(
+		(a, b) =>
+			parseTimestamp(b.created_at) - parseTimestamp(a.created_at) ||
+			b.id - a.id,
+	);
 	const tasks = new Map<number, DayTask>();
-	for (const activity of activities) {
+	for (const activity of unique) {
 		const meta = metadataOf(activity.metadata);
 		const taskId =
 			activity.subject_type === 'comment'
@@ -194,6 +219,7 @@ const collectCloud = async (
 				touchedToday: true,
 				comments: 0,
 				commentSnippets: [],
+				moves: [],
 				source: 'cloud',
 			};
 			tasks.set(taskId, task);
@@ -204,8 +230,12 @@ const collectCloud = async (
 					? textOf(meta.task_title)
 					: activity.subject_name || textOf(meta.task_title);
 		if (activity.type === 'task_created') task.createdToday = true;
-		if (activity.type === 'task_status_changed' && !task.status)
-			task.status = textOf(meta.new_status_name);
+		if (activity.type === 'task_status_changed') {
+			if (!task.status)
+				task.status = textOf(activity.new_status_name ?? meta.new_status_name);
+			const move = moveOf(activity.old_status_name, activity.new_status_name);
+			if (move) task.moves.unshift(move);
+		}
 		if (activity.type === 'comment_created') {
 			task.comments++;
 			const snippet = textOf(meta.comment).trim();
