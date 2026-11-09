@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.138 — 2026-11-09
+
+- Decisions: when you answer or write on a card created by `tmgr ask`, the desktop now types a prompt into the agent's runner session (as soon as it is idle) so the agent reads the card and replies in it.
+- Decisions: a message waiting for a busy session now says "Queued: it will be typed into the agent's session when it is idle" instead of "No agent is listening".
+
 ## 0.9.137 — 2026-11-09
 
 - Docs: the web app tutorials and guides now come before the command line sections in the docs sidebar.
