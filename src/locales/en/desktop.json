@@ -770,5 +770,21 @@
 		"socialLogin": {
 			"startFailed": "Could not start sign-in."
 		}
+	},
+	"activity": {
+		"consent": "Suggest time entries from activity",
+		"requires": "Needs Git auto-tracking turned on with a watched folder, and the Session time module enabled in this workspace.",
+		"collects": "What is collected: minutes spent while an IDE or terminal from the list below is in front, only when exactly one watched repository is on a TM-N branch, no timer is running and you are active.",
+		"never": "What is never collected: window titles, URLs, file names, paths, branch names and app names are not stored or sent. Only task keys (like TM-157) are looked up to show titles; nothing else leaves this device until you press Add.",
+		"apps": "Apps counted: {apps}.",
+		"suggestions": "Suggestions",
+		"empty": "No suggestions yet.",
+		"taskNotFound": "Task not found",
+		"minutes": "{n} minute | {n} minutes",
+		"add": "Add",
+		"dismiss": "Dismiss",
+		"forget": "Forget collected data",
+		"conflict": "{key}: this time was already recorded with different values, so it was not added and the suggestion was removed.",
+		"addFailed": "Could not add the time entry: {message}"
 	}
 }

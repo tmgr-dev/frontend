@@ -5394,7 +5394,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tmgr"
-version = "0.9.142"
+version = "0.9.143"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5411,6 +5411,7 @@ dependencies = [
  "log",
  "mac-notification-sys",
  "minisign-verify",
+ "objc2",
  "objc2-app-kit",
  "p256",
  "qrcode",

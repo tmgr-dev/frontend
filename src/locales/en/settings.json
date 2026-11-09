@@ -64,7 +64,8 @@
 	},
 	"desktop": {
 		"gitTracking": "Git auto-tracking",
-		"shortcuts": "Keyboard shortcuts"
+		"shortcuts": "Keyboard shortcuts",
+		"activity": "Activity hints"
 	},
 	"about": {
 		"version": "Version {version}",

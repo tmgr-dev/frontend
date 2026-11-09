@@ -78,6 +78,7 @@
 
 <script>
 	import { Button } from '@/components/ui/button';
+	import { syncActivity } from '@/utils/activityHints';
 	import {
 		loadGitTrackFolders,
 		loadGitTrackMode,
@@ -119,6 +120,7 @@
 			const persist = async () => {
 				try {
 					await syncGitTrack();
+					await syncActivity();
 					error.value = '';
 				} catch (failure) {
 					error.value = String(failure);

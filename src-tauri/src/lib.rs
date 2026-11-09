@@ -1,3 +1,4 @@
+mod activity;
 mod agent_connect;
 #[cfg(target_os = "macos")]
 mod app_menu;
@@ -218,6 +219,7 @@ pub fn run() {
     .manage(plugin_windows::PluginWindows::default())
     .manage(skill_scan::PickedFolders::default())
     .manage(git_track::GitTrackStore::default())
+    .manage(activity::ActivityStore::default())
     .manage(skill_scan::ScannedSkills::default())
     .register_uri_scheme_protocol(plugin_windows::SCHEME, |ctx, request| {
       plugin_windows::handle(ctx.app_handle(), ctx.webview_label(), request)
@@ -303,6 +305,11 @@ pub fn run() {
       skill_scan::skills_pick_folder,
       git_track::git_track_update,
       git_track::git_track_pick_folder,
+      activity::activity_supported,
+      activity::activity_update,
+      activity::activity_suggestions,
+      activity::activity_consume,
+      activity::activity_forget,
       skill_scan::skills_read_files,
       skill_library::skill_library_read,
       skill_library::skill_library_write,
@@ -487,6 +494,7 @@ pub fn run() {
       }
       idle::start(app.handle());
       git_track::start(app.handle());
+      activity::start(app.handle());
       local_backups::start(app.handle());
       plugin_tick::start(app.handle());
       local_watch::start(app.handle());

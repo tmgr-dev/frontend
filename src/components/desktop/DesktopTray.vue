@@ -56,6 +56,12 @@
 		saveRecent,
 		toTrayTask,
 	} from '@/utils/desktopTray';
+	import {
+		registerActivityContext,
+		resetActivitySync,
+		stopActivity,
+		syncActivity,
+	} from '@/utils/activityHints';
 	import { isDndActive, setDnd } from '@/utils/dnd';
 	import {
 		decideGitTrack,
@@ -110,6 +116,7 @@
 		},
 		props: {
 			tasks: { type: Array, default: () => [] },
+			timerRunning: { type: Boolean, default: true },
 		},
 		setup(props) {
 			const pusher = usePusher();
@@ -265,9 +272,26 @@
 				});
 			};
 
+			const activityContext = () => ({
+				userId: store.state.user?.id,
+				workspaceId: store.getters.currentWorkspaceId,
+				timerRunning: props.timerRunning,
+				modulesKnown: store.getters['featureToggles/modulesKnown'],
+				sessionTimeOn:
+					store.getters['featureToggles/moduleEntry']('session_time')
+						?.enabled === true,
+			});
+			registerActivityContext(activityContext);
+			const pushActivity = () =>
+				syncActivity().catch((error) =>
+					console.error('activity sync failed', error),
+				);
+			watch(() => JSON.stringify(activityContext()), pushActivity);
+
 			watch(
 				() => store.state.user?.id,
 				(userId) => {
+					if (!userId) resetActivitySync();
 					recent.value = userId ? loadRecent(userId) : [];
 					subscribe(userId);
 					sync();
@@ -310,6 +334,7 @@
 				syncGitTrack().catch((error) =>
 					console.error('git track sync failed', error),
 				);
+				pushActivity();
 			});
 
 			onBeforeUnmount(() => {
@@ -318,6 +343,8 @@
 				subscribe(null);
 				pushTrayState({ running: [], recent: [] });
 				unwatchGitTrack().catch(() => {});
+				registerActivityContext(null);
+				stopActivity().catch(() => {});
 			});
 
 			const runningLabel = computed(() =>
