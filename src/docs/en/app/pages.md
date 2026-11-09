@@ -1,7 +1,7 @@
 ---
 title: Pages and the map
 section: Web app
-order: 23
+order: 25
 description: Keep notes and documentation in a tree of pages linked to tasks, and see how everything connects on the workspace map.
 ---
 
@@ -31,8 +31,8 @@ In the page tree, open the page actions menu to use these:
 
 - **Add subpage** creates a page inside this one.
 - **Rename** and **Pin**. Pinned pages appear first, in the **Pinned** list.
-- **Open in window** opens the page in its own window.
-- **Archive** moves the page and its subpages to the Archive.
+- **Open in window** opens the page in its own window. It is in the desktop app only.
+- **Archive** moves the page and its subpages to the Archive. See [Archive](#archive) for who can do it.
 
 Drag pages in the tree to reorder them or to move them under another page.
 
@@ -47,6 +47,32 @@ There are three ways to connect a page and a task:
 - Create the page from the terminal with `tmgr note --task`. See [From the terminal](#cli).
 
 The task shows the pages that mention it under **Mentioned on pages**. The page shows pages that link to it under **Backlinks**, next to the **Contents** list.
+
+## Page types and properties {#properties}
+
+Under the title, a page shows its type, its **Author**, and who changed it last (**Edited by**). Person and Meeting pages also have fields of their own:
+
+- **Person**: **Member** links the page to a member of the workspace. **Relationship** is Operational, Personal or Strategic. **Company** and **Role** are plain text. You cannot edit **Last contact**: tmgr fills it in.
+- **Meeting**: **Date**, **Participants** (people pages or members) and **Tasks** related to the meeting. A new Meeting page starts with the headings Agenda, Outcomes, Decisions and Action items.
+
+**Aliases** on a Person page list the person's accounts in other places. Press **Add alias**, choose a source (Telegram, Rocket.Chat, Slack, GitHub, Email or Other), then fill in **Identifier** and **Display name**. **Remove alias** deletes one.
+
+## Action items {#action-items}
+
+On a Meeting page, every list item under the Action items heading also appears in the side panel under **Action items**. Press **→ task** next to an item to turn it into a task. The **Make a task** dialog opens; choose a category and, if you want, a status. The item on the page becomes a link to the new task. Items that are only a task link already are not listed.
+
+## Files {#files}
+
+The **Files** list in the side panel shows the files of the page. Press **Upload** or drop files on the list to add them. Images you add in the editor appear here too. Click a file to open it.
+
+## Follow a page {#follow}
+
+Press **Follow** in the page header to get notifications about the page:
+
+- when someone changes the page;
+- when someone adds a subpage to it.
+
+Several changes in a row bring one notification, not one for each save. You never get a notification about your own changes. **Unfollow** stops these notifications. People who edited the page before get change notifications even if they do not follow it, and a member you mention with `@` gets a mention notification. More in [Notifications](/docs/app/notifications).
 
 ## Version history {#history}
 
@@ -64,7 +90,7 @@ If someone saves the page while you are editing, you see "Page changed elsewhere
 
 An archived page waits in the Archive. Open it with the **Archive** button in the Pages header. Each entry has **Restore** and **Delete permanently**. **Delete all** empties the Archive, and you have to type a word to confirm. Permanent deletion cannot be undone.
 
-Only the page author or the workspace owner can restore or delete an archived page.
+Archiving, restoring and deleting take the whole branch: the page and its subpages. A member can do it only if they are the author of every page in the branch. Otherwise only the workspace owner can. **Delete all** removes only the pages you are allowed to delete; the rest stay in the Archive, and you see "Some pages were kept".
 
 ## The workspace map {#map}
 
@@ -80,7 +106,7 @@ If the Graph module is off, the Map is not available. With it on, tasks and page
 
 ## From the terminal {#cli}
 
-`tmgr note` opens your `$VISUAL` or `$EDITOR`, then saves what you wrote as a page. The title is the first heading unless you set one.
+`tmgr note` opens your `$VISUAL` or `$EDITOR`, then saves what you wrote as a page. Without `--title`, the title is the first line that is not empty, with any leading `#` removed.
 
 ```sh
 tmgr note --title "Release plan" --task TM-123 --parent 42

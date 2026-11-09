@@ -1,7 +1,7 @@
 ---
 title: Your team
 section: Web app
-order: 24
+order: 29
 description: Invite people to a workspace, see who can do what, and look at the work of each member.
 ---
 
@@ -9,9 +9,10 @@ A workspace can have many members. You invite them by email. Each member sees th
 
 ## Invite people {#invite}
 
-Any member can invite. There are two places to do it:
+Any member can invite. You can start from several places:
 
 - On the List and Board, press the **+** button next to the member avatars ("Invite user").
+- Open the workspace switcher at the top of the sidebar and choose **Invite members**. Workspace settings open with the invitation form.
 - In [Workspace settings](/settings/workspaces), press **Invite**.
 
 Enter one or more email addresses, separated by commas, and press **Send**. Each address gets its own email with a link.
@@ -30,10 +31,12 @@ Sign in with the same email address the invitation was sent to. If you are signe
 
 ## Manage invitations {#invitations}
 
-[Workspace settings](/settings/workspaces) has an **Invitations** section. Filter it by **All**, **Active**, **Expired** or **Accepted**. Each entry shows who invited, and when it expires.
+[Workspace settings](/settings/workspaces) has an **Invitations** section. Filter it by **All**, **Active**, **Expired** or **Accepted**. Each entry shows the email address, who invited and when the invitation expires.
 
 - **Resend** sends the email again with a new link and a new 7-day period.
-- **Revoke** cancels an invitation that nobody accepted yet. You cannot revoke an expired or accepted one.
+- **Revoke** cancels an invitation that is still active.
+
+An expired invitation cannot be resent or revoked, and an accepted one cannot be revoked. For an expired one, send a new invitation.
 
 ## Roles {#roles}
 
@@ -42,10 +45,11 @@ A workspace has two roles: the owner and members. The owner is the person who cr
 Owner and members can both edit tasks and pages. Only the owner can do these things:
 
 - Remove members from the workspace.
+- Rename the workspace and change its colour in [Workspace settings](/settings/workspaces). A member sees the name but cannot change it.
 - Turn modules on and off in [Settings → Modules](/settings/modules). A member can only hide a module for themselves. See [Workspace modules](/docs/web/workspace-modules).
 - Delete the workspace.
 
-A page in the Archive can be restored or deleted only by its author or the owner. A member can leave on their own with **Exit from workspace**; to come back, they need a new invitation.
+Archived pages have their own rule: a member can restore or delete a branch of pages only if they wrote every page in it. See [Pages: Archive](/docs/app/pages#archive). A member can leave on their own with **Exit from workspace**; to come back, they need a new invitation.
 
 ## The members modal {#members}
 
@@ -60,9 +64,9 @@ Click the member avatars on the List or Board. **Workspace Members** opens with 
 The page of a member shows what they have been doing. At the top, pick a period: **Today**, **7 days**, **30 days** or **All time**. The period is kept in the address, so you can share a link to it.
 
 - The header shows whether the member is active now, which task they are working on, and when they were last active.
-- The numbers for the period: **Tracked** time and its share of the team, **Done** tasks, **Active tasks**, **Comments** and the **Streak**.
+- The numbers for the period: **Tracked** time and its share of the team, **Done** tasks, **Active tasks**, **Comments**, the **Streak** and **Activity**, the number of actions. **Comments** shows only while the Comments module is on.
 - The task list has the tabs **Recently touched**, **Assigned**, **Created** and **Done**. Press **Show more** to see more.
-- **Activity** is the feed of what the member did.
+- **Recent Activity** is the feed of what the member did. Press **Load More Activities** to see older entries.
 
 If you open a person who is not in the workspace, you see "This user is not a member of this workspace."
 

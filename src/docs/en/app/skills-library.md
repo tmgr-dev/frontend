@@ -1,11 +1,11 @@
 ---
 title: Skills library
 section: Web app
-order: 26
+order: 33
 description: Keep shared skills in one place, track their versions and attach them to your personas.
 ---
 
-A skill is a short Markdown file with instructions for an agent. The skills library holds skills that you write once and attach to any of your personas. Editing a skill updates every persona it is attached to.
+A skill is a short Markdown file with instructions for an agent. The skills library holds skills that you write once and attach to any of your personas. Editing a skill updates every persona it is attached to, except personas pinned to a version.
 
 The library is on [Settings → Personas](/settings/personas), in the Skills library section below your personas. To do the same from a terminal, see [Personas and skills in the CLI](/docs/cli/personas-and-skills). The web lesson on personas is [Personas and skills](/docs/web/personas-and-skills).
 
@@ -24,8 +24,8 @@ actions: []
 
 Fill in the front matter, then write the instructions below it.
 
-- slug: lowercase letters, digits and `-`, up to 60 characters. The name `deleted` is reserved.
-- title: up to 120 characters.
+- slug: lowercase letters, digits and `-`, up to 60 characters. The name `deleted` is reserved. Required.
+- title: up to 120 characters. Required.
 - when: when the agent should use the skill. Required.
 - actions: the list of actions the skill covers.
 
@@ -47,17 +47,19 @@ The dialog lists which files will be uploaded. Only those are sent, as text. The
 
 Every change makes a new version, and the list shows it as "v3" and so on. Press History next to a skill to see all versions.
 
-- Each version shows what kind of change it was (Created, Edited, Restored or Converted), who made it and when.
+- Each version shows what kind of change it was (Baseline, Created, Edited, Restored or Converted), who made it and when.
 - The Current badge marks the live version.
 - Tick Compare with current to see a diff against it.
 - Press Restore this version to bring an old one back. This does not rewind the history. It creates a new version with the old content.
 - If a persona is pinned to a version, the history says so with "Pinned by".
 
+History keeps the last 50 versions of a skill. Older versions are removed, except versions a persona is pinned to and versions from the last 30 days.
+
 A skill with files shows a Files button with the count, so you can look at its files and delete one.
 
 ## Attach a skill to a persona {#attach}
 
-On the persona's card, open the From library list and press Attach a library skill. A persona can have up to 20 library skills.
+On the persona's card, under From library, open Attach a library skill and pick one. A persona can have up to 20 library skills.
 
 By default a persona gets the latest version of a skill. You can pick a specific version in the Version for list instead, and the persona stays on it until you change it. Files are not pinned. Press Detach to remove the skill from the persona.
 
@@ -75,4 +77,4 @@ To bring it back:
 2. Pick the version you want and read the preview.
 3. Press Restore.
 
-Persona attachments are not restored. Attach the skill to your personas again. Restore fails if a skill with the same slug already exists or the library is full. Delete or rename one first.
+Persona attachments are not restored. Attach the skill to your personas again. Restore fails if a skill with the same slug already exists, if the library is full, or if restoring it would put your skill files over their 10 MiB limit. If the slug is taken, delete the skill that has that slug first.

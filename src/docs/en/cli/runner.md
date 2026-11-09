@@ -27,7 +27,7 @@ tmgr runner start
 
 ## Stop and restart {#stop}
 
-Stopping the runner does not stop your agents. Sessions keep running, and you can reach them again once the runner is back.
+Stopping the runner does not stop your agents. Sessions keep running, and you can reach them again once the runner is back. If you installed the login service on Linux, its service file must be up to date; see the restart notes below.
 
 ```sh
 tmgr runner stop
@@ -35,7 +35,7 @@ tmgr runner stop
 
 To stop a single session, use `halt`. See [Agent sessions](/docs/cli/sessions#stop).
 
-After you update `tmgr`, restart the runner so it uses the new version. Sessions keep running through the restart.
+After you update `tmgr`, restart the runner so it uses the new version. Sessions keep running through the restart. If some do not come back, the output says how many.
 
 ```sh
 tmgr runner restart
@@ -43,9 +43,10 @@ tmgr runner restart
 
 Good to know:
 
-- If the running runner is newer than your `tmgr`, restart refuses. Run the newer `tmgr`, or add `--force` to go back to the older one.
+- If the running runner is newer than your `tmgr`, restart refuses. Run the newer `tmgr`, or add `--force` to go back to the older one. Restart also refuses a runner that does not report its version, unless you add `--force`.
+- On Linux, an older service file lets systemd end every agent session when the runner stops. If sessions are running, restart refuses and tells you to reinstall the service first (next section). `--force` restarts anyway, and systemd can then end those sessions. With no sessions running, restart only warns.
 - If the autopilot loop was running, the restart stops it. Start it again afterwards.
-- If a login service is installed, restart uses it. When the service file is outdated, restart tells you to reinstall it (next section).
+- If a login service is installed, restart uses it.
 
 ## Keep the runner alive after a reboot {#service}
 
@@ -60,6 +61,8 @@ The preview shows the service file and the commands that would run. It uses laun
 ```sh
 tmgr runner install-service --install
 ```
+
+The same command replaces an outdated service file.
 
 On Linux the runner starts at login, not at boot. Starting at boot without a login needs `loginctl enable-linger`, which `tmgr` does not run for you.
 
@@ -104,7 +107,75 @@ To remove the copies:
 tmgr runner gc
 ```
 
-Copies with a running agent, or with an open pull request, are kept. The command exits with an error code if some copy could not be removed.
+The runner must be running, so that `gc` can tell which copies are in use. `gc` does not start it for you.
+
+A copy is kept, with the reason in the output, when:
+
+- an agent or another process works in it;
+- it has uncommitted changes, untracked files, or ignored files that are not build output;
+- it has a stash, or a merge, rebase or similar git operation is in progress;
+- HEAD is not on the task branch;
+- its pull request is still open, there is no pull request, or its state cannot be confirmed, for example because of commits that were never pushed.
+
+The command exits with an error code if some copy could not be removed.
+
+## Rerun tests when files change {#watch}
+
+`tmgr attach` can open a pane that reruns a command, such as your tests, each time files in the folder change. You can run the same watcher in any terminal:
+
+```sh
+tmgr runner watch --dir . --cmd "cargo test"
+```
+
+It runs the command once in that folder, then checks the folder about every half second and runs the command again once the files stop changing. Folders such as `.git`, `node_modules`, `target` and `dist` are skipped. Press Ctrl-C to stop.
+
+This command and `runner git-diff` below do not appear in the built-in help.
+
+## Show the changes of a folder {#git-diff}
+
+`tmgr attach` can also show the uncommitted changes of a session's folder in a pane. In a terminal:
+
+```sh
+tmgr runner git-diff --dir .
+```
+
+It shows `git diff HEAD` for the folder in a pager: the one you pass with `--pager`, otherwise `delta` if it is installed, otherwise `less -R`. It does not run programs that the folder's git settings name. If those settings are unusual, it refuses with `this folder's git settings are not plain, so the diff is not shown`.
+
+## Sign in agents of sandboxed sessions {#agent-login}
+
+A sandboxed session runs with its own home folder, so Claude Code there does not find your usual login. To sign it in, create a long-lived token with `claude setup-token` in a normal terminal, then store it for the `claude-code` profile:
+
+```sh
+tmgr agents login claude-code
+```
+
+Paste the token at the hidden prompt, or pipe it on one line of stdin. `tmgr` writes it to a private file and never prints it. The next session is signed in. To replace a stored token, add `--replace`. To delete it:
+
+```sh
+tmgr agents logout claude-code
+```
+
+Codex can refresh its login inside a session. Your own login file is not changed by that. Instead, `tmgr agents` and `tmgr run` print a line that a refreshed login is waiting. To review and apply it:
+
+```sh
+tmgr agents sync codex
+```
+
+It shows a summary without token values and applies the login only after you type `apply`. It needs a terminal and does not run inside an agent session. `--discard` drops the waiting logins. `--auto on` lets the runner apply them by itself after each session; it explains the risk and asks you to type `I AGREE`. `--auto off` turns that off.
+
+## Follow sessions as they change {#events}
+
+To print a line each time a session changes its state, until you press Ctrl-C:
+
+```sh
+tmgr agents watch
+```
+
+With `--json`, each change is one JSON object per line. To see what the runner recorded of one session: how long it worked, waited and was blocked, the agent, the branch and how it exited:
+
+```sh
+tmgr agents log <session>
+```
 
 ## Related commands {#more}
 
@@ -115,7 +186,14 @@ tmgr runner allowed
 tmgr runner list
 ```
 
-`allowed` lists the cloud workspaces that may start agents here, with expiry. `list` shows the repositories bound to projects. To undo, use `runner disallow` and `runner unbind`.
+`allowed` lists the cloud workspaces that may start agents here, with expiry. `list` shows the repositories bound to projects.
+
+To undo `runner allow`, stop letting a workspace start agents here. To undo `runner bind`, forget the clone of a project; this asks you to confirm:
+
+```sh
+tmgr runner disallow <workspace>
+tmgr runner unbind <workspace>:<project>
+```
 
 To bring the branch of a session clone into your repository, run this from inside the repository with the session name, or pass the path of the clone. Nothing runs in the clone.
 

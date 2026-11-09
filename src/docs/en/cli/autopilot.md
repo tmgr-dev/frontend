@@ -25,13 +25,13 @@ Start with the limits you want:
 tmgr autopilot start --max-teams 2 --max-hours 4
 ```
 
-`start` uses the only cloud rule you have, or the one you pick with `--rule NAME`. To name a workspace instead, write `tmgr autopilot <workspace>` with the same flags. Autopilot asks the setup questions, prints a summary of tasks, signing, limits and the rule, and waits. To confirm, type the text it shows, which is the workspace code and the number of tasks. Flags you pass skip the matching questions. To ask them again, add `--setup`.
+`start` uses the only cloud rule you have, or the one you pick with `--rule NAME`. With several cloud rules, it lists them and asks `Which rule?`; press Enter to take the one you used last. To name a workspace instead, write `tmgr autopilot <workspace>` with the same flags. Autopilot asks the setup questions, prints a summary of tasks, signing, limits and the rule, and waits. To confirm, type the text it shows, which is the workspace code and the number of tasks. Flags you pass skip the matching questions. To ask them again, add `--setup`.
 
 To read the full text of every task before you sign it, add `--review`. To choose tasks, use `--tasks`, `--only`, `--skip` and `--order` with task keys separated by commas.
 
 ## Try it first with --dry-run {#dry-run}
 
-A dry run plans and sorts the tasks and shows the result in the status. It starts nothing, and moves or comments nothing.
+A dry run lets the orchestrator, the agent that plans, sort the tasks, and shows the plan in the status. No task starts, no status or comment changes, no code is written, and the queue stays off. The approvals of the chosen tasks are still signed, so the orchestrator can read the signed texts.
 
 ```sh
 tmgr autopilot start --max-teams 2 --dry-run
@@ -44,7 +44,7 @@ Read the plan with the status command below. A dry run cannot start while the qu
 Limits keep an unattended run inside your budget.
 
 - `--max-teams N`: Teams working at the same time
-- `--max-hours HOURS`: How long autopilot runs
+- `--max-hours HOURS`: How long autopilot starts new tasks
 - `--max-tasks N`: How many tasks it starts
 - `--max-cost USD`: Spending on runs paid by an API key
 - `--usage-soft PCT`: No new tasks from this usage percent
@@ -53,15 +53,19 @@ Limits keep an unattended run inside your budget.
 
 Use `none` instead of a number to remove `--max-hours`, `--max-tasks` or `--max-cost`.
 
+### Time limit {#max-hours}
+
+When `--max-hours` runs out, no new task starts. Autopilot ends once the running agents finish. If agents still run 30 minutes after the limit, autopilot interrupts them, comments `Paused: autopilot time limit reached` on their tasks, and ends.
+
 ### Cost limit {#max-cost}
 
 `--max-cost` counts only runs paid with an API key. Runs on a Claude or Codex subscription are not counted against it, so the cap does not stop them. If autopilot cannot read your AI usage logs, it cannot check the cap and starts no new task. Allow reading with `tmgr usage consent allow`.
 
 ### Plan usage {#usage-guard}
 
-With usage reading allowed, autopilot watches how much of your plan limit is used. It stops starting tasks at the soft percent and pauses running agents at the hard one. `--resume-after-reset yes` makes it continue once the usage window resets.
+Autopilot watches how much of your plan limit is used. It asks the installed `claude` or `codex` for the account's limits, so this does not need the usage reading consent; that consent matters for the cost limit above. It stops starting tasks at the soft percent and pauses running agents at the hard one. `--resume-after-reset yes` makes it continue once the usage window resets.
 
-If autopilot finds no real usage number, it cannot apply these limits. It then stops starting tasks after 8 hours, or after the number of hours you give with `--fallback-hours`.
+If autopilot finds no real usage number when it starts, it cannot apply these limits. It then works as with a time limit: no new tasks after the number of hours in `--fallback-hours`, above 0 and at most 168. Without the flag it uses the value from your last start with the same rule, or 8 hours. If the queue loop is running in the background, start refuses in this case: turn the queue off with `tmgr queue disable`, or pass `--no-usage-limit`.
 
 ## Check progress {#status}
 
@@ -83,7 +87,7 @@ tmgr autopilot log --tail 100
 tmgr autopilot pause
 ```
 
-Pause stops new tasks from starting. Tasks that are already running finish.
+Pause stops new tasks from starting. Agents that are already running finish their tasks.
 
 ```sh
 tmgr autopilot resume
@@ -95,11 +99,12 @@ Resume continues. Run it yourself in a normal terminal: inside an agent session 
 tmgr autopilot stop
 ```
 
-Stop ends autopilot and turns the queue off. If the queue was running in the background before autopilot, it goes back to that.
+Stop interrupts the agents that are running and comments `Paused: autopilot stopped` on their tasks, with a link to a draft pull request when one could be made. Then it ends autopilot and turns the queue off. If the queue was running in the background before autopilot, it goes back to that. To let running agents finish instead, use pause.
 
 If autopilot is not running, these commands answer `autopilot is not running`.
 
 ## If it does not start {#problems}
 
-- `no queue rule for workspace ...`: add a rule with `tmgr queue rules add`, or pass `--rule NAME` when the workspace has several.
+- `no queue rule for workspace ...`: the workspace you named has no rule. Add one with `tmgr queue rules add`.
+- `several rules for workspace ...`: the workspace you named has more than one rule. Pass `--rule NAME`.
 - A 403 error that mentions `agent-approvals:write`: your login lacks the scope to sign approvals. Sign in again with the command from the hint. See [Troubleshooting](/docs/cli/troubleshooting).

@@ -117,7 +117,7 @@ Needs the TMGR iOS app and a signed-in `tmgr` (`tmgr login`). The same tools shi
 
 ## Let agents work through your backlog {#autopilot}
 
-Point autopilot at a workspace and it starts agent teams on your tasks, with limits you set: how many teams, how long, how much to spend. With usage reading allowed (`tmgr usage consent allow`), it stops before you hit your plan limit and can continue after the limit resets.
+Point autopilot at a workspace and it starts agent teams on your tasks, with limits you set: how many teams, how long, how much to spend. It watches your plan usage, stops before you hit the limit and can continue after the limit resets. Allow reading your AI usage logs (`tmgr usage consent allow`) for the cost limit.
 
 ```sh
 tmgr autopilot start --max-teams 2 --max-hours 4 --dry-run
@@ -131,7 +131,7 @@ tmgr agents login
 tmgr agents sync
 ```
 
-`--dry-run` only plans: nothing is started. `--max-cost` counts only runs paid by API key. `agents login` and `agents sync` are experimental: they manage the sign-in of an agent profile used by runner sessions.
+`--dry-run` only plans: no task starts. Approvals are still signed. `--max-cost` counts only runs paid by API key. `agents login` and `agents sync` are experimental: they manage the sign-in of an agent profile used by runner sessions.
 
 ## See what your AI tools cost and how much limit is left {#usage}
 

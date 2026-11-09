@@ -26,17 +26,32 @@ User docs as plain HTML pages. Every page exists in English and Russian.
 
 - [Overview](https://tmgr.dev/docs): what the TMGR docs cover and where to start
 - [AI agents](https://tmgr.dev/docs/agents): connect Claude Code, Codex, Cursor and other MCP agents to TMGR
+- [MCP server](https://tmgr.dev/docs/mcp): what the TMGR task MCP server can do, which token to use for what, and how agents report their work through it
 - [Command line (tmgr)](https://tmgr.dev/docs/cli): work with tasks from the terminal and run AI agents under supervision
 - [1. Your first task](https://tmgr.dev/docs/web/first-task): create a task in the web app, track your time on it, leave a comment and close it on the board
 - [2. Workspace modules](https://tmgr.dev/docs/web/workspace-modules): turn on only the parts of TMGR your workspace needs, with a preset or one module at a time
 - [3. Personas and skills](https://tmgr.dev/docs/web/personas-and-skills): create a persona, give it skills and permissions, connect an agent to it and assign it to a task
 - [4. Routines](https://tmgr.dev/docs/web/routines): add routines that repeat on a schedule, set reminders, mark them done and see them on a calendar
 - [Tasks in detail](https://tmgr.dev/docs/app/tasks): what a task holds and how to work with it: status, priority, key, description, timer, checkpoints, links, files, comments and sharing
+- [The task list](https://tmgr.dev/docs/app/task-list): search, filter and page through tasks, select several at once for batch actions and export, and look through the archive
 - [Statuses and the board](https://tmgr.dev/docs/app/statuses-and-board): create custom statuses, learn what each status type does, and manage board columns and the archive
+- [Categories](https://tmgr.dev/docs/app/categories): group tasks into categories and subcategories, get task keys from the category code, and set defaults for new tasks
 - [Pages and the map](https://tmgr.dev/docs/app/pages): keep notes and documentation in a tree of pages linked to tasks, and see how everything connects on the workspace map
+- [Routines in detail](https://tmgr.dev/docs/app/routines): every routine view, the routine menu, converting a routine to a task, calendar files, categories, and routines from the terminal and Telegram
+- [Search and shortcuts](https://tmgr.dev/docs/app/search-and-shortcuts): find tasks, pages, places and workspaces with the command palette, and work faster with keyboard shortcuts
+- [Dashboard and files](https://tmgr.dev/docs/app/dashboard): see what happens in the workspace on the dashboard, and find every file attached to its tasks on the Files page
 - [Your team](https://tmgr.dev/docs/app/team): invite people to a workspace, see who can do what, and look at the work of each member
 - [Notifications and agent alerts](https://tmgr.dev/docs/app/notifications): read your notifications, set up agent alerts and an alarm phone so an agent can reach you
+- [AI assistant and memory](https://tmgr.dev/docs/app/ai-assistant): ask the AI about your workspace, let it propose changes that you confirm, keep shared facts in memory and use AI on tasks and comments
+- [Agent work in the web app](https://tmgr.dev/docs/app/agent-work): see what AI agents did on a task, confirm tasks for agent runs, decide which personas may work in a workspace and manage your personas
 - [Skills library](https://tmgr.dev/docs/app/skills-library): keep shared skills in one place, track their versions and attach them to your personas
+- [Modules reference](https://tmgr.dev/docs/app/modules): every module in Settings → Modules, what it adds, what it needs, who can turn it on and how presets work
+- [Integrations](https://tmgr.dev/docs/app/integrations): use the Telegram bot, link GitHub repositories, run Cursor agents from tasks, and sign in with GitHub, Google, Apple or Telegram
+- [Account and settings](https://tmgr.dev/docs/app/account-and-settings): change your profile and password, manage signed-in devices and tokens, work with several workspaces, and set notifications, theme, language, timezone and privacy
+- [The desktop app](https://tmgr.dev/docs/desktop/app): download TMGR Desktop, start with or without an account, keep it updated, and use the tray timer, windows, links, the widget and the AI usage page
+- [Quick add, shortcuts and time](https://tmgr.dev/docs/desktop/capture-and-time): add routines, tasks and notes from any app, set global shortcuts, turn screenshots and selected text into tasks, and let the app keep your timer right
+- [Local workspaces and backups](https://tmgr.dev/docs/desktop/local-workspaces): keep a workspace on your computer without an account, back it up, export it, move it to the cloud, and connect agents and a local AI model to it
+- [Plugins](https://tmgr.dev/docs/desktop/plugins): install plugins from GitHub, turn them on per workspace, and stay in control with signatures, permissions and safe mode
 - [1. Install and sign in](https://tmgr.dev/docs/cli/install-and-sign-in): install tmgr, sign in with a device code, pick a workspace and open the menu
 - [2. Tasks from the terminal](https://tmgr.dev/docs/cli/tasks-from-the-terminal): create, list and open tasks, move them on the board and script tmgr with JSON
 - [3. The start → done cycle](https://tmgr.dev/docs/cli/the-start-done-cycle): start a task, track time, link commits and finish with one command
@@ -51,19 +66,37 @@ User docs as plain HTML pages. Every page exists in English and Russian.
 - [Agent sessions](https://tmgr.dev/docs/cli/sessions): find, rename, talk to, stop and resume the sessions that tmgr run starts, and search, summarize or export their transcripts
 - [Autopilot](https://tmgr.dev/docs/cli/autopilot): let `tmgr autopilot` work through a workspace backlog with agent teams, with limits you set and controls to pause or stop
 - [Troubleshooting](https://tmgr.dev/docs/cli/troubleshooting): fix the common `tmgr` problems: updates, signature errors, sign-in, stored credentials and missing token scopes
+- [Queue control](https://tmgr.dev/docs/cli/queue): check, pause, turn on and off the agent queue, manage its rules, and handle single pickups and teams from the terminal
+- [AI usage in detail](https://tmgr.dev/docs/cli/usage): every tmgr usage command and option, from periods and limits to accounts, prices, uploads, consent and reset
+- [More commands](https://tmgr.dev/docs/cli/more-commands): the smaller tmgr commands, from settings, task references and project folders to routines, agent sessions, local task checks, updates and hooks
 - [Обзор](https://tmgr.dev/docs/ru): о чём эта документация TMGR и с чего начать
 - [AI-агенты](https://tmgr.dev/docs/ru/agents): как подключить к TMGR Claude Code, Codex, Cursor и других MCP-агентов
+- [MCP-сервер](https://tmgr.dev/docs/ru/mcp): что умеет MCP-сервер задач TMGR, какой токен для чего нужен и как агенты отчитываются через него о своей работе
 - [Командная строка (tmgr)](https://tmgr.dev/docs/ru/cli): задачи из терминала и AI-агенты под присмотром
 - [1. Первая задача](https://tmgr.dev/docs/ru/web/first-task): создайте задачу в веб-версии, посчитайте время, оставьте комментарий и закройте её на доске
 - [2. Модули воркспейса](https://tmgr.dev/docs/ru/web/workspace-modules): включите только те части TMGR, которые нужны воркспейсу: готовым набором или по одному модулю
 - [3. Персоны и навыки](https://tmgr.dev/docs/ru/web/personas-and-skills): создайте персону, выдайте ей навыки и права, подключите агента и назначьте персону на задачу
 - [4. Рутины](https://tmgr.dev/docs/ru/web/routines): добавьте рутины, которые повторяются по расписанию, настройте напоминания, отмечайте выполнение и смотрите их в календаре
 - [Задачи подробно](https://tmgr.dev/docs/ru/app/tasks): что есть у задачи и как с ней работать: статус, приоритет, ключ, описание, таймер, контрольные точки, связи, файлы, комментарии и ссылка
+- [Список задач](https://tmgr.dev/docs/ru/app/task-list): поиск, фильтры и страницы списка задач, выбор нескольких задач для массовых действий и экспорта, архив
 - [Статусы и доска](https://tmgr.dev/docs/ru/app/statuses-and-board): свои статусы, что делает каждый тип статуса, колонки доски и архив
+- [Проекты](https://tmgr.dev/docs/ru/app/categories): как разложить задачи по проектам и подпроектам, откуда берутся ключи задач и как задать значения по умолчанию для новых задач
 - [Страницы и карта](https://tmgr.dev/docs/ru/app/pages): заметки и документация в дереве страниц, связанных с задачами, и карта рабочего пространства, на которой видно, как всё связано
+- [Рутины подробно](https://tmgr.dev/docs/ru/app/routines): все виды рутин, меню рутины, превращение рутины в задачу, файлы календаря, категории и рутины из терминала и Telegram
+- [Поиск и горячие клавиши](https://tmgr.dev/docs/ru/app/search-and-shortcuts): ищите задачи, страницы, разделы и рабочие пространства в палитре команд и работайте быстрее с горячими клавишами
+- [Дашборд и файлы](https://tmgr.dev/docs/ru/app/dashboard): смотрите на дашборде, что происходит в рабочем пространстве, и находите все файлы его задач на странице «Файлы»
 - [Ваша команда](https://tmgr.dev/docs/ru/app/team): как пригласить людей в рабочее пространство, кто что может и как посмотреть работу каждого участника
 - [Уведомления и оповещения от агентов](https://tmgr.dev/docs/ru/app/notifications): читайте уведомления, настройте оповещения от агентов и телефон для будильника, чтобы агент мог до вас дозвониться
+- [ИИ-ассистент и память](https://tmgr.dev/docs/ru/app/ai-assistant): спрашивайте ИИ о рабочем пространстве, подтверждайте изменения, которые он предлагает, храните общие факты в памяти и используйте ИИ в задачах и комментариях
+- [Работа агентов в веб-приложении](https://tmgr.dev/docs/ru/app/agent-work): смотрите, что ИИ-агенты сделали в задаче, подтверждайте задачи для запусков агентов, решайте, каким персонам можно работать в рабочем пространстве, и управляйте своими персонами
 - [Библиотека навыков](https://tmgr.dev/docs/ru/app/skills-library): храните общие навыки в одном месте, следите за их версиями и подключайте к своим персонам
+- [Справочник модулей](https://tmgr.dev/docs/ru/app/modules): все модули из раздела «Настройки → Модули»: что каждый добавляет, что ему нужно, кто может его включить и как работают наборы
+- [Интеграции](https://tmgr.dev/docs/ru/app/integrations): Telegram-бот, репозитории GitHub, агенты Cursor из задач и вход через GitHub, Google, Apple или Telegram
+- [Аккаунт и настройки](https://tmgr.dev/docs/ru/app/account-and-settings): профиль и пароль, устройства с входом и токены, несколько рабочих пространств, уведомления, тема, язык, часовой пояс и конфиденциальность
+- [Десктопное приложение](https://tmgr.dev/docs/ru/desktop/app): как скачать TMGR Desktop, начать с аккаунтом или без него, обновлять приложение и пользоваться таймером в трее, окнами, ссылками, виджетом и страницей использования ИИ
+- [Быстрое добавление, сочетания клавиш и время](https://tmgr.dev/docs/ru/desktop/capture-and-time): как добавлять рутины, задачи и заметки из любого приложения, настраивать глобальные сочетания клавиш, превращать скриншоты и выделенный текст в задачи и держать таймер в порядке
+- [Локальные рабочие пространства и резервные копии](https://tmgr.dev/docs/ru/desktop/local-workspaces): как держать рабочее пространство на своём компьютере без аккаунта, делать резервные копии, экспортировать, переносить в облако и подключать к нему агентов и локальную ИИ-модель
+- [Плагины](https://tmgr.dev/docs/ru/desktop/plugins): как устанавливать плагины из GitHub, включать их для рабочих пространств и сохранять контроль с помощью подписей, разрешений и безопасного режима
 - [1. Установка и вход](https://tmgr.dev/docs/ru/cli/install-and-sign-in): установка tmgr, вход по коду устройства, выбор воркспейса и интерактивное меню
 - [2. Задачи из терминала](https://tmgr.dev/docs/ru/cli/tasks-from-the-terminal): создаём и смотрим задачи, двигаем их по доске и используем JSON в скриптах
 - [3. Рабочий цикл start → done](https://tmgr.dev/docs/ru/cli/the-start-done-cycle): старт задачи, таймер, связь коммитов с задачей и завершение одной командой
@@ -78,3 +111,6 @@ User docs as plain HTML pages. Every page exists in English and Russian.
 - [Сессии агентов](https://tmgr.dev/docs/ru/cli/sessions): как находить, переименовывать, писать в них, останавливать и возобновлять сессии после tmgr run, а также искать по расшифровкам, делать из них сводки и экспортировать
 - [Автопилот](https://tmgr.dev/docs/ru/cli/autopilot): как `tmgr autopilot` разбирает бэклог воркспейса командами агентов: лимиты, пауза, остановка и проверка статуса
 - [Решение проблем](https://tmgr.dev/docs/ru/cli/troubleshooting): как исправить типичные проблемы `tmgr`: обновление, ошибки подписи, вход, хранение учётных данных и нехватку прав у токена
+- [Управление очередью](https://tmgr.dev/docs/ru/cli/queue): как проверять, ставить на паузу, включать и выключать очередь агентов, вести её правила и разбираться с отдельными задачами и командами из терминала
+- [Расход ИИ подробно](https://tmgr.dev/docs/ru/cli/usage): все команды и опции tmgr usage: периоды, лимиты, аккаунты, цены, загрузка, согласие и сброс
+- [Другие команды](https://tmgr.dev/docs/ru/cli/more-commands): небольшие команды tmgr: настройки, ссылки на задачи, папки проектов, рутины, сессии агентов, проверка локальных задач, обновления и хуки

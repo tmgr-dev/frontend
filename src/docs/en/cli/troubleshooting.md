@@ -76,11 +76,13 @@ Messages like `not logged in or the session expired`, `session expired or revoke
 tmgr login
 ```
 
-To start from scratch, sign out first. It deletes the local token:
+To start from scratch, sign out first. This revokes the token on the server and deletes the local copy:
 
 ```sh
 tmgr logout
 ```
+
+If the server cannot revoke the token, `tmgr logout` warns you and still deletes the local copy. Revoke the token yourself under **Signed-in devices** on your [profile](/profile).
 
 Check who is signed in with `tmgr whoami`. If the browser cannot open, add `--no-browser`. If the login code expired, run `tmgr login` again.
 
@@ -102,5 +104,7 @@ It shows each change and asks `Apply this change? [y/N]` before it writes anythi
 
 ## Server errors {#server}
 
-- `server unavailable (HTTP 502)` and similar: the server or your connection is down. Retry in a moment.
+- `cannot reach <host>`, followed by `timed out`, `connection failed` or `request failed`: `tmgr` cannot connect. Check your connection and the server address in the hint.
+- `server unavailable (HTTP 502)`, `503` or `504`: the server is down or restarting. Retry in a moment.
+- `server error (HTTP ...)` with another code: the server failed on the request. Retry later.
 - `rate limited by the server`: wait a minute.

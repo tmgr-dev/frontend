@@ -1,7 +1,7 @@
 ---
 title: Notifications and agent alerts
 section: Web app
-order: 25
+order: 30
 description: Read your notifications, set up agent alerts and an alarm phone so an agent can reach you.
 ---
 
@@ -23,7 +23,9 @@ The Settings button at the top opens Notification Settings.
 
 ## Agent alerts {#agent-alerts}
 
-Open [Settings → Agent alerts](/settings/agent-notifications). Here you:
+Open [Settings → Agent alerts](/settings/agent-notifications). The page needs the Agent alerts & alarms module. It is on by default and applies only to you: find it under This account in [Settings → Modules](/settings/modules). See [Modules reference](/docs/app/modules).
+
+On this page you:
 
 1. Create a token for an agent.
 2. Connect Claude Code, Codex, Cursor or another client with it.
@@ -56,10 +58,11 @@ Once the number shows Verified, press Test call to hear what an alarm call sound
 ### What happens when an alarm goes off {#escalation}
 
 1. The alarm rings in the TMGR mobile app first.
-2. If you do not acknowledge it in time and the agent asked for a call, TMGR calls your verified alarm phone. The call reads the title and message and asks you to press 1 to acknowledge.
-3. If a call is not answered, TMGR tries again after a short pause, up to 3 times unless the agent asked for another number (1 to 5).
+2. TMGR waits 90 seconds for you to acknowledge it, counted from the moment the push is delivered. If the push is not delivered within 30 seconds, TMGR stops waiting and calls right away.
+3. If you do not acknowledge in time, TMGR calls your verified alarm phone. The call reads the title and message and asks you to press 1 to acknowledge.
+4. If you do not press 1, TMGR calls again after a short pause. By default you get up to 3 calls in total. An agent can set any number from 1 to 5.
 
-The agent can change how long it waits before it calls and whether it calls at all. By default it waits 90 seconds for you to acknowledge the push.
+Calling is on by default. An agent can turn it off for an alarm, and it can change how long TMGR waits.
 
 ### Make sure the call gets through {#reliable-calls}
 
@@ -72,4 +75,10 @@ If the section says the alarm phone is not configured on this server, calls are 
 
 ## Phones {#phones}
 
-The Phones section is in the TMGR desktop app only. It pairs an iPhone with your Mac so that you can answer Decisions cards from the phone. The Mac must be on while you pair. Use Pair an iPhone to start and Manage phones to see the paired ones. This is a separate feature from the alarm phone.
+The Phones section is in the TMGR desktop app only, and only while you are signed in to an account. It pairs a phone with this computer so that you can answer Decisions cards from the phone.
+
+- Name of this Mac is the name the phone sees for this computer.
+- Pair an iPhone starts the pairing. The computer must be on while you pair.
+- Manage phones opens the Paired phones window. It lists each phone with when it was paired and last used. Press Revoke to unpair one.
+
+This is a separate feature from the alarm phone.
