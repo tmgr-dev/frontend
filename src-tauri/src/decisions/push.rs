@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 use tauri::{AppHandle, Manager, Runtime};
 use tmgr_ipc::decisions::Event;
+use tmgr_ipc::loopback::{self, HttpErr};
 
 use super::hub::Hub;
 use super::Decisions;
@@ -22,6 +23,7 @@ const SOCK_DIRS: [&str; 2] = ["/tmp/cc-socks/", "/private/tmp/cc-socks/"];
 const SOCK_TIMEOUT: Duration = Duration::from_millis(500);
 const QUEUE_EVERY: Duration = Duration::from_secs(2);
 const QUEUE_MAX: Duration = Duration::from_secs(2 * 3600);
+const OPENCODE_TIMEOUT: Duration = Duration::from_millis(800);
 const WAITING: &str = "Waiting for the agent's prompt";
 const UNCONFIRMABLE: &str = "Can't confirm the agent's prompt";
 const UNREAD: &str = "Waiting for the agent to read it";
@@ -52,6 +54,10 @@ pub enum RunErr {
 
 pub trait SocketSender {
   fn send(&self, endpoint: &str, token: &str, text: &str) -> Result<(), PushErr>;
+}
+
+pub trait OpencodeSender {
+  fn send(&self, endpoint: &str, password: Option<&str>, session: &str, text: &str) -> Result<(), PushErr>;
 }
 
 pub trait RunnerSender {
@@ -190,6 +196,7 @@ pub fn route_with(
   hub: &Hub,
   queue: &Queue,
   socket: &dyn SocketSender,
+  opencode: &dyn OpencodeSender,
   card_id: &str,
   event: &Event,
   bound_target: Option<&str>,
@@ -218,6 +225,17 @@ pub fn route_with(
       Err(PushErr::Other) => {}
     }
   }
+  for t in r.targets.iter().filter(|t| t.kind == "opencode") {
+    let Some(session) = t.session.as_deref() else { continue };
+    match opencode.send(&t.endpoint, t.token.as_ref().map(|p| p.expose()), session, &text) {
+      Ok(()) => {
+        hub.record_delivery(&r.id, event.seq, "sent", "opencode", "");
+        return RouteOutcome::Sent;
+      }
+      Err(PushErr::Gone) => hub.drop_target(&r.id, &t.endpoint),
+      Err(PushErr::Other) => {}
+    }
+  }
   if let Some(session) = card.source.runner_session.clone() {
     if matches!(card.source.agent.as_str(), "claude-code" | "codex") {
       queue.put(&r.id, Job { session, text, seq: event.seq, started: Instant::now() });
@@ -238,7 +256,7 @@ pub fn route<R: Runtime>(
   bound_target: Option<&str>,
 ) -> RouteOutcome {
   let Some(d) = app.try_state::<Decisions>() else { return RouteOutcome::Skipped };
-  route_with(&d.hub, &d.queue, &ClaudeSocket, card_id, event, bound_target)
+  route_with(&d.hub, &d.queue, &ClaudeSocket, &HttpOpencode, card_id, event, bound_target)
 }
 
 struct RunnerLink(crate::runner::Runner);
@@ -282,6 +300,67 @@ impl SocketSender for ClaudeSocket {
       return Err(PushErr::Gone);
     }
     deliver_at(Path::new(endpoint), token, text, unsafe { libc::getuid() })
+  }
+}
+
+pub struct HttpOpencode;
+
+impl OpencodeSender for HttpOpencode {
+  fn send(&self, endpoint: &str, password: Option<&str>, session: &str, text: &str) -> Result<(), PushErr> {
+    deliver_opencode(endpoint, password, session, text, unsafe { libc::getuid() }, &loopback::listener_owned)
+  }
+}
+
+fn http_status(r: Result<(u16, Vec<u8>), HttpErr>) -> Result<Vec<u8>, PushErr> {
+  match r {
+    Ok((200..=299, body)) => Ok(body),
+    Ok((401 | 403 | 404, _)) | Err(HttpErr::Refused) => Err(PushErr::Gone),
+    _ => Err(PushErr::Other),
+  }
+}
+
+fn last_user_prompt(body: &[u8]) -> Option<(String, serde_json::Value)> {
+  let list: serde_json::Value = serde_json::from_slice(body).ok()?;
+  let info = list.as_array()?.iter().rev().filter_map(|m| m.get("info")).find(|i| i["role"] == "user")?;
+  let agent = info["agent"].as_str().filter(|a| !a.is_empty())?.to_owned();
+  let model = &info["model"];
+  let (provider, id) = (model["providerID"].as_str()?, model["modelID"].as_str()?);
+  Some((agent, json!({"providerID": provider, "modelID": id})))
+}
+
+fn deliver_opencode(
+  endpoint: &str,
+  password: Option<&str>,
+  session: &str,
+  text: &str,
+  uid: u32,
+  owned: &dyn Fn(u32, u16) -> Result<bool, ()>,
+) -> Result<(), PushErr> {
+  let addr = loopback::parse_url(endpoint).ok_or(PushErr::Gone)?;
+  if !loopback::valid_session_id(session) {
+    return Err(PushErr::Gone);
+  }
+  if owned(uid, addr.port()) != Ok(true) {
+    return Err(PushErr::Gone);
+  }
+  let auth = password.map(loopback::basic_header);
+  let auth = auth.as_deref();
+  let listing = http_status(loopback::request(
+    addr,
+    "GET",
+    &format!("/session/{session}/message?limit=20"),
+    auth,
+    None,
+    OPENCODE_TIMEOUT,
+  ))?;
+  let (agent, model) = last_user_prompt(&listing).ok_or(PushErr::Other)?;
+  let body = json!({"parts": [{"type": "text", "text": text}], "agent": agent, "model": model});
+  let body = serde_json::to_vec(&body).map_err(|_| PushErr::Other)?;
+  let r = loopback::request(addr, "POST", &format!("/session/{session}/prompt_async"), auth, Some(&body), OPENCODE_TIMEOUT);
+  match r {
+    Ok((204, _)) => Ok(()),
+    Ok((401 | 403 | 404, _)) | Err(HttpErr::Refused) => Err(PushErr::Gone),
+    _ => Err(PushErr::Other),
   }
 }
 
@@ -393,6 +472,36 @@ mod tests {
     }
   }
 
+  type OcCall = (String, Option<String>, String, String);
+
+  #[derive(Default)]
+  struct FakeOpencode {
+    results: Mutex<Vec<Result<(), PushErr>>>,
+    calls: Mutex<Vec<OcCall>>,
+  }
+
+  impl FakeOpencode {
+    fn with(results: Vec<Result<(), PushErr>>) -> FakeOpencode {
+      FakeOpencode { results: Mutex::new(results), calls: Mutex::default() }
+    }
+
+    fn calls(&self) -> Vec<OcCall> {
+      self.calls.lock().unwrap().clone()
+    }
+  }
+
+  impl OpencodeSender for FakeOpencode {
+    fn send(&self, endpoint: &str, password: Option<&str>, session: &str, text: &str) -> Result<(), PushErr> {
+      self.calls.lock().unwrap().push((endpoint.into(), password.map(Into::into), session.into(), text.into()));
+      let mut r = self.results.lock().unwrap();
+      if r.is_empty() {
+        Ok(())
+      } else {
+        r.remove(0)
+      }
+    }
+  }
+
   struct FakeRunner {
     results: Mutex<Vec<Result<(), RunErr>>>,
     calls: Mutex<Vec<(String, String)>>,
@@ -472,7 +581,7 @@ mod tests {
   }
 
   fn new_route(hub: &Hub, q: &Queue, s: &FakeSocket, id: &str, e: &Event) -> RouteOutcome {
-    route_with(hub, q, s, id, e, None)
+    route_with(hub, q, s, &FakeOpencode::default(), id, e, None)
   }
 
   fn listen(hub: &Arc<Hub>, id: &str, since: u64) -> std::thread::JoinHandle<()> {
@@ -600,7 +709,7 @@ mod tests {
     assert!(!a.contains("Ship it now"));
     assert!(text_for("cli", &id, &Event { kind: "other".into(), ..Default::default() }).is_none());
     let q = Queue::default();
-    assert_eq!(route_with(&hub, &q, &FakeSocket::default(), &id, &msg, None), RouteOutcome::Queued);
+    assert_eq!(route_with(&hub, &q, &FakeSocket::default(), &FakeOpencode::default(), &id, &msg, None), RouteOutcome::Queued);
     assert_eq!(state(&hub, &id).unwrap().0, "queued");
   }
 
@@ -667,13 +776,13 @@ mod tests {
     let q = Queue::default();
     let now = hub.routing(&id).unwrap().unwrap().target.unwrap();
     assert!(now.starts_with("claude:sess-1@"));
-    assert_eq!(route_with(&hub, &q, &s, &id, &e, Some("claude:other")), RouteOutcome::TargetChanged);
-    assert_eq!(route_with(&hub, &q, &s, &id, &e, Some("claude:sess-1@0000000000000000|runner:r2")), RouteOutcome::TargetChanged);
+    assert_eq!(route_with(&hub, &q, &s, &FakeOpencode::default(), &id, &e, Some("claude:other")), RouteOutcome::TargetChanged);
+    assert_eq!(route_with(&hub, &q, &s, &FakeOpencode::default(), &id, &e, Some("claude:sess-1@0000000000000000|runner:r2")), RouteOutcome::TargetChanged);
     assert!(s.calls().is_empty());
-    assert_eq!(route_with(&hub, &q, &s, &id, &e, Some(&now)), RouteOutcome::Sent);
+    assert_eq!(route_with(&hub, &q, &s, &FakeOpencode::default(), &id, &e, Some(&now)), RouteOutcome::Sent);
     let bare = hub.create(mcp("Other")).unwrap().id;
     let e2 = answer(&hub, &bare, None);
-    assert_eq!(route_with(&hub, &q, &s, &bare, &e2, Some("claude:1")), RouteOutcome::TargetChanged);
+    assert_eq!(route_with(&hub, &q, &s, &FakeOpencode::default(), &bare, &e2, Some("claude:1")), RouteOutcome::TargetChanged);
   }
 
   #[test]
@@ -683,7 +792,7 @@ mod tests {
     let id = hub.create_with(card, Some(inbox(SOCK))).unwrap().id;
     let (e, _) = hub.answer(&id, AnswerIn { deferred: true, ..Default::default() }).unwrap();
     let s = FakeSocket::default();
-    assert_eq!(route_with(&hub, &Queue::default(), &s, &id, &e, Some("claude:other")), RouteOutcome::Skipped);
+    assert_eq!(route_with(&hub, &Queue::default(), &s, &FakeOpencode::default(), &id, &e, Some("claude:other")), RouteOutcome::Skipped);
     assert!(s.calls().is_empty());
     assert_eq!(state(&hub, &id), None);
   }
@@ -698,7 +807,7 @@ mod tests {
     hub.create_with(swapped, Some(inbox("/tmp/cc-socks/9999.sock"))).unwrap();
     let e = answer(&hub, &id, Some("secret"));
     let s = FakeSocket::default();
-    assert_eq!(route_with(&hub, &Queue::default(), &s, &id, &e, Some(&bound)), RouteOutcome::TargetChanged);
+    assert_eq!(route_with(&hub, &Queue::default(), &s, &FakeOpencode::default(), &id, &e, Some(&bound)), RouteOutcome::TargetChanged);
     assert!(s.calls().is_empty());
     assert_eq!(state(&hub, &id), Some(("undelivered".into(), String::new(), CHANGED.into())));
   }
@@ -982,5 +1091,326 @@ mod tests {
     assert!(delivery_text(&answer_event()).is_none());
     let long = Event { free_text: Some("x".repeat(DELIVERY_MAX * 2)), ..answer_event() };
     assert_eq!(delivery_text(&long).unwrap().len(), DELIVERY_MAX);
+  }
+
+  const OC: &str = "http://127.0.0.1:4096";
+  const OC_SES: &str = "ses_abc123";
+  const PASS: &str = "pw-SECRET-77";
+
+  fn oc_inbox(endpoint: &str, session: Option<&str>, password: Option<&str>) -> Inbox {
+    Inbox {
+      kind: "opencode".into(),
+      endpoint: endpoint.into(),
+      token: password.map(Secret::new),
+      session: session.map(Into::into),
+    }
+  }
+
+  fn oc_route(hub: &Hub, q: &Queue, s: &FakeSocket, o: &FakeOpencode, id: &str, e: &Event) -> RouteOutcome {
+    route_with(hub, q, s, o, id, e, None)
+  }
+
+  #[test]
+  fn an_opencode_target_is_pushed_and_recorded_as_sent() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(oc_inbox(OC, Some(OC_SES), Some(PASS)))).unwrap().id;
+    let e = answer(&hub, &id, None);
+    let o = FakeOpencode::default();
+    assert_eq!(oc_route(&hub, &Queue::default(), &FakeSocket::default(), &o, &id, &e), RouteOutcome::Sent);
+    let calls = o.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!((calls[0].0.as_str(), calls[0].1.as_deref(), calls[0].2.as_str()), (OC, Some(PASS), OC_SES));
+    assert!(calls[0].3.contains(&format!("card {id}")) && calls[0].3.contains("get_answer"));
+    assert_eq!(state(&hub, &id), Some(("sent".into(), "opencode".into(), String::new())));
+  }
+
+  #[test]
+  fn an_opencode_target_works_without_a_password() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(oc_inbox(OC, Some(OC_SES), None))).unwrap().id;
+    let e = answer(&hub, &id, None);
+    let o = FakeOpencode::default();
+    assert_eq!(oc_route(&hub, &Queue::default(), &FakeSocket::default(), &o, &id, &e), RouteOutcome::Sent);
+    assert_eq!(o.calls()[0].1, None);
+  }
+
+  #[test]
+  fn an_opencode_sent_row_turns_delivered_when_the_agent_reads_the_answer() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(oc_inbox(OC, Some(OC_SES), None))).unwrap().id;
+    let e = answer(&hub, &id, None);
+    let o = FakeOpencode::default();
+    assert_eq!(oc_route(&hub, &Queue::default(), &FakeSocket::default(), &o, &id, &e), RouteOutcome::Sent);
+    hub.wait(&id, 0, Duration::from_secs(2), false).unwrap();
+    assert_eq!(state(&hub, &id), Some(("delivered".into(), "agent".into(), String::new())));
+  }
+
+  #[test]
+  fn a_gone_opencode_target_is_dropped_and_the_runner_queue_takes_over() {
+    let hub = hub();
+    let card = CardIn { source: Source { runner_session: Some("r1".into()), ..mcp("Q").source }, ..mcp("Q") };
+    let id = hub.create_with(card, Some(oc_inbox(OC, Some(OC_SES), None))).unwrap().id;
+    let e = answer(&hub, &id, None);
+    let o = FakeOpencode::with(vec![Err(PushErr::Gone)]);
+    let q = Queue::default();
+    assert_eq!(oc_route(&hub, &q, &FakeSocket::default(), &o, &id, &e), RouteOutcome::Queued);
+    assert!(hub.routing(&id).unwrap().unwrap().targets.is_empty());
+    assert!(!q.is_empty());
+    let bare = hub.create_with(mcp("R"), Some(oc_inbox(OC, Some(OC_SES), None))).unwrap().id;
+    let e = answer(&hub, &bare, None);
+    let o = FakeOpencode::with(vec![Err(PushErr::Gone)]);
+    assert_eq!(oc_route(&hub, &Queue::default(), &FakeSocket::default(), &o, &bare, &e), RouteOutcome::Undelivered);
+    assert!(hub.routing(&bare).unwrap().unwrap().targets.is_empty());
+  }
+
+  #[test]
+  fn another_opencode_error_keeps_the_target_and_falls_through() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(oc_inbox(OC, Some(OC_SES), None))).unwrap().id;
+    let e = answer(&hub, &id, None);
+    let o = FakeOpencode::with(vec![Err(PushErr::Other)]);
+    assert_eq!(oc_route(&hub, &Queue::default(), &FakeSocket::default(), &o, &id, &e), RouteOutcome::Undelivered);
+    assert_eq!(hub.routing(&id).unwrap().unwrap().targets.len(), 1);
+  }
+
+  #[test]
+  fn a_gone_claude_target_falls_through_to_the_opencode_target() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(inbox(SOCK))).unwrap().id;
+    hub.create_with(CardIn { id: Some(id.clone()), ..mcp("Q") }, Some(oc_inbox(OC, Some(OC_SES), None))).unwrap();
+    let e = answer(&hub, &id, None);
+    let s = FakeSocket::with(vec![Err(PushErr::Gone)]);
+    let o = FakeOpencode::default();
+    assert_eq!(oc_route(&hub, &Queue::default(), &s, &o, &id, &e), RouteOutcome::Sent);
+    assert_eq!(s.calls().len(), 1);
+    assert_eq!(o.calls().len(), 1);
+    assert_eq!(state(&hub, &id).unwrap().1, "opencode");
+  }
+
+  #[test]
+  fn an_opencode_target_is_never_offered_to_the_claude_socket() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(oc_inbox(OC, Some(OC_SES), Some(PASS)))).unwrap().id;
+    let e = answer(&hub, &id, None);
+    let s = FakeSocket::default();
+    oc_route(&hub, &Queue::default(), &s, &FakeOpencode::default(), &id, &e);
+    assert!(s.calls().is_empty());
+  }
+
+  #[test]
+  fn an_opencode_port_swap_changes_the_bound_target() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(oc_inbox(OC, Some(OC_SES), None))).unwrap().id;
+    let bound = hub.routing(&id).unwrap().unwrap().target.unwrap();
+    assert!(bound.starts_with(&format!("opencode:{OC_SES}@")));
+    hub.drop_target(&id, OC);
+    hub.create_with(CardIn { id: Some(id.clone()), ..mcp("Q") }, Some(oc_inbox("http://127.0.0.1:4097", Some(OC_SES), None)))
+      .unwrap();
+    let e = answer(&hub, &id, None);
+    let o = FakeOpencode::default();
+    let out = route_with(&hub, &Queue::default(), &FakeSocket::default(), &o, &id, &e, Some(&bound));
+    assert_eq!(out, RouteOutcome::TargetChanged);
+    assert!(o.calls().is_empty());
+  }
+
+  #[test]
+  fn invalid_opencode_inboxes_are_not_stored() {
+    let hub = hub();
+    for (endpoint, session) in [
+      ("http://localhost:4096", Some(OC_SES)),
+      ("http://127.0.0.1:04096", Some(OC_SES)),
+      ("http://127.0.0.1:4096/", Some(OC_SES)),
+      ("http://192.0.2.1:4096", Some(OC_SES)),
+      (OC, Some("bad/id")),
+      (OC, Some("")),
+      (OC, None),
+    ] {
+      let id = hub.create_with(mcp(endpoint), Some(oc_inbox(endpoint, session, None))).unwrap().id;
+      assert!(hub.routing(&id).unwrap().unwrap().targets.is_empty(), "{endpoint} {session:?}");
+    }
+    let v6 = hub.create_with(mcp("v6"), Some(oc_inbox("http://[::1]:4096", Some(OC_SES), None))).unwrap().id;
+    assert_eq!(hub.routing(&v6).unwrap().unwrap().targets.len(), 1);
+  }
+
+  #[test]
+  fn the_opencode_password_never_leaves_the_routing_secret() {
+    let hub = hub();
+    let id = hub.create_with(mcp("Q"), Some(oc_inbox(OC, Some(OC_SES), Some(PASS)))).unwrap().id;
+    let r = hub.routing(&id).unwrap().unwrap();
+    assert!(!r.target.as_deref().unwrap().contains(PASS));
+    assert!(!format!("{:?}", r.targets).contains(PASS));
+    assert!(!serde_json::to_string(&hub.get(&id).unwrap()).unwrap().contains(PASS));
+    let e = answer(&hub, &id, None);
+    let o = FakeOpencode::with(vec![Err(PushErr::Other)]);
+    oc_route(&hub, &Queue::default(), &FakeSocket::default(), &o, &id, &e);
+    assert!(!format!("{:?}", hub.get(&id).unwrap()).contains(PASS));
+    assert!(!format!("{:?} {:?}", PushErr::Gone, PushErr::Other).contains(PASS));
+  }
+
+  #[test]
+  fn closing_the_session_purges_opencode_targets() {
+    let hub = hub();
+    let card = CardIn { kind: "stopped".into(), reply_via: "hook".into(), ..hook("stopped", None, "opencode") };
+    let id = hub.create_with(card, Some(oc_inbox(OC, Some(OC_SES), Some(PASS)))).unwrap().id;
+    assert_eq!(hub.routing(&id).unwrap().unwrap().targets.len(), 1);
+    hub.close_session("opencode", "s1").unwrap();
+    assert!(hub.routing(&id).unwrap().unwrap().targets.is_empty());
+  }
+
+  struct Fake {
+    addr: std::net::SocketAddr,
+    seen: Arc<Mutex<Vec<String>>>,
+    accepted: Arc<std::sync::atomic::AtomicUsize>,
+  }
+
+  fn read_request(c: &mut std::net::TcpStream) -> String {
+    use std::io::Read;
+    c.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+      let n = c.read(&mut chunk).unwrap_or(0);
+      if n == 0 {
+        break;
+      }
+      buf.extend_from_slice(&chunk[..n]);
+      let text = String::from_utf8_lossy(&buf).to_string();
+      if let Some(i) = text.find("\r\n\r\n") {
+        let want = text[..i]
+          .lines()
+          .find_map(|l| l.strip_prefix("Content-Length: ").and_then(|v| v.parse::<usize>().ok()))
+          .unwrap_or(0);
+        if buf.len() >= i + 4 + want {
+          break;
+        }
+      }
+    }
+    String::from_utf8_lossy(&buf).to_string()
+  }
+
+  fn fake_opencode(listing: &'static str, post_status: &'static str) -> Fake {
+    use std::io::Write;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (s2, a2) = (seen.clone(), accepted.clone());
+    std::thread::spawn(move || {
+      for c in listener.incoming() {
+        let Ok(mut c) = c else { break };
+        a2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let req = read_request(&mut c);
+        let reply = if req.starts_with("GET ") {
+          format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{listing}", listing.len())
+        } else {
+          format!("HTTP/1.1 {post_status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        };
+        s2.lock().unwrap().push(req);
+        let _ = c.write_all(reply.as_bytes());
+      }
+    });
+    Fake { addr, seen, accepted }
+  }
+
+  const LISTING: &str = r#"[
+    {"info":{"role":"user","agent":"old","model":{"providerID":"p0","modelID":"m0"}},"parts":[]},
+    {"info":{"role":"user","agent":"build","model":{"providerID":"anthropic","modelID":"opus"}},"parts":[]},
+    {"info":{"role":"assistant","agent":"build"},"parts":[]}
+  ]"#;
+
+  fn uid() -> u32 {
+    unsafe { libc::getuid() }
+  }
+
+  fn lsof_ok() -> bool {
+    std::process::Command::new("lsof").arg("-v").output().is_ok()
+  }
+
+  fn yes(_: u32, _: u16) -> Result<bool, ()> {
+    Ok(true)
+  }
+
+  #[test]
+  fn the_http_sender_reads_the_last_user_prompt_and_posts_it_back() {
+    let f = fake_opencode(LISTING, "204 No Content");
+    let url = loopback::canonical_url(f.addr);
+    assert_eq!(deliver_opencode(&url, Some(PASS), OC_SES, "wake up", uid(), &yes), Ok(()));
+    let seen = f.seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 2);
+    assert!(seen[0].starts_with(&format!("GET /session/{OC_SES}/message?limit=20 HTTP/1.1")));
+    assert!(seen[1].starts_with(&format!("POST /session/{OC_SES}/prompt_async HTTP/1.1")));
+    let header = loopback::basic_header(PASS);
+    assert!(seen.iter().all(|r| r.contains(&format!("Authorization: {header}"))));
+    let body: serde_json::Value = serde_json::from_str(seen[1].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+    assert_eq!(
+      body,
+      json!({"parts": [{"type": "text", "text": "wake up"}], "agent": "build", "model": {"providerID": "anthropic", "modelID": "opus"}})
+    );
+  }
+
+  #[test]
+  fn the_http_sender_sends_no_authorization_without_a_password() {
+    let f = fake_opencode(LISTING, "204 No Content");
+    let url = loopback::canonical_url(f.addr);
+    assert_eq!(deliver_opencode(&url, None, OC_SES, "x", uid(), &yes), Ok(()));
+    assert!(f.seen.lock().unwrap().iter().all(|r| !r.contains("Authorization")));
+  }
+
+  #[test]
+  fn the_http_sender_checks_the_real_listener_owner() {
+    if !lsof_ok() {
+      eprintln!("lsof missing, skipped");
+      return;
+    }
+    let f = fake_opencode(LISTING, "204 No Content");
+    let url = loopback::canonical_url(f.addr);
+    assert_eq!(deliver_opencode(&url, None, OC_SES, "x", uid(), &loopback::listener_owned), Ok(()));
+  }
+
+  #[test]
+  fn nothing_is_sent_when_the_listener_is_not_ours() {
+    let f = fake_opencode(LISTING, "204 No Content");
+    let url = loopback::canonical_url(f.addr);
+    let no = |_: u32, _: u16| Ok(false);
+    let unknown = |_: u32, _: u16| Err(());
+    assert_eq!(deliver_opencode(&url, Some(PASS), OC_SES, "x", uid(), &no), Err(PushErr::Gone));
+    assert_eq!(deliver_opencode(&url, Some(PASS), OC_SES, "x", uid(), &unknown), Err(PushErr::Gone));
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(f.accepted.load(std::sync::atomic::Ordering::SeqCst), 0);
+  }
+
+  #[test]
+  fn an_unreadable_last_user_message_posts_nothing() {
+    for listing in ["[]", "not json", r#"[{"info":{"role":"user"}}]"#, r#"[{"info":{"role":"assistant","agent":"a"}}]"#] {
+      let f = fake_opencode(listing, "204 No Content");
+      let url = loopback::canonical_url(f.addr);
+      assert_eq!(deliver_opencode(&url, None, OC_SES, "x", uid(), &yes), Err(PushErr::Other), "{listing}");
+      assert_eq!(f.seen.lock().unwrap().len(), 1);
+    }
+  }
+
+  #[test]
+  fn the_http_sender_maps_statuses() {
+    for (status, want) in [
+      ("404 Not Found", Err(PushErr::Gone)),
+      ("401 Unauthorized", Err(PushErr::Gone)),
+      ("403 Forbidden", Err(PushErr::Gone)),
+      ("500 Internal Server Error", Err(PushErr::Other)),
+      ("302 Found", Err(PushErr::Other)),
+      ("200 OK", Err(PushErr::Other)),
+    ] {
+      let f = fake_opencode(LISTING, status);
+      let url = loopback::canonical_url(f.addr);
+      assert_eq!(deliver_opencode(&url, None, OC_SES, "x", uid(), &yes), want, "{status}");
+    }
+  }
+
+  #[test]
+  fn a_refused_port_and_bad_input_are_gone() {
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let url = format!("http://127.0.0.1:{port}");
+    assert_eq!(deliver_opencode(&url, None, OC_SES, "x", uid(), &yes), Err(PushErr::Gone));
+    assert_eq!(deliver_opencode("http://example.com:80", None, OC_SES, "x", uid(), &yes), Err(PushErr::Gone));
+    assert_eq!(deliver_opencode(&url, None, "../x", "x", uid(), &yes), Err(PushErr::Gone));
   }
 }

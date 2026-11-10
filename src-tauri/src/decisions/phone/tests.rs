@@ -6,7 +6,7 @@ use tmgr_ipc::decisions::{CardIn, Event, Inbox, Opt, Secret, Source};
 use tmgr_phone::{AckBody, AckResult, Action, AnswerBody, Dir, HelloBody, HelloCtx, Kind, Pairing, SnapshotBody};
 
 use super::super::hub::Hub;
-use super::super::push::{route_with, CHANGED, PushErr, Queue, SocketSender};
+use super::super::push::{route_with, OpencodeSender, CHANGED, PushErr, Queue, SocketSender};
 use super::super::store::{AnswerIn, Store};
 use super::audit::Audit;
 use super::pairing::PairState;
@@ -38,6 +38,14 @@ impl SocketSender for NoSocket {
   }
 }
 
+struct NoOpencode;
+
+impl OpencodeSender for NoOpencode {
+  fn send(&self, _: &str, _: Option<&str>, _: &str, _: &str) -> Result<(), PushErr> {
+    panic!("nothing may be sent to opencode");
+  }
+}
+
 impl Host for FakeHost {
   fn notify(&self, _: &str, body: &str) {
     self.notes.lock().unwrap().push(body.to_owned());
@@ -53,7 +61,7 @@ impl Host for FakeHost {
       bound.unwrap_or_default().to_owned(),
     ));
     let hub = self.hub.lock().unwrap().clone().expect("hub");
-    let out = route_with(&hub, &Queue::default(), &NoSocket, card_id, event, bound);
+    let out = route_with(&hub, &Queue::default(), &NoSocket, &NoOpencode, card_id, event, bound);
     self.outcomes.lock().unwrap().push(out);
     out
   }

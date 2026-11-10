@@ -8,6 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tmgr_phone::AckResult;
+use tmgr_ipc::loopback;
 use tmgr_ipc::decisions::{
   new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
   PatchIn, PendingDelivery, Secret, Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
@@ -176,6 +177,7 @@ pub struct Target {
   pub kind: String,
   pub endpoint: String,
   pub token: Option<Secret>,
+  pub session: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -595,7 +597,7 @@ pub fn delivery_target(conn: &Connection, card_id: &str) -> Option<String> {
       .unwrap_or_default();
     for (kind, endpoint, session) in rows {
       let who = match session.filter(|s| !s.is_empty()) {
-        Some(s) if kind == "claude" => format!("{s}@{}", endpoint_tag(&endpoint)),
+        Some(s) if kind == "claude" || kind == "opencode" => format!("{s}@{}", endpoint_tag(&endpoint)),
         Some(s) => s,
         None => pid_of(&endpoint).unwrap_or_else(|| "unknown".into()),
       };
@@ -780,6 +782,12 @@ impl Store {
     let (Some(kind), Some(endpoint)) = (plain(inbox.kind, 32), plain(inbox.endpoint, 512)) else { return Ok(()) };
     let token = inbox.token.map(|t| t.expose().to_owned()).filter(|t| !t.is_empty());
     let session = inbox.session.and_then(|s| plain(s, 256));
+    if kind == "opencode" {
+      let canonical = loopback::parse_url(&endpoint).is_some_and(|a| loopback::canonical_url(a) == endpoint);
+      if !canonical || !session.as_deref().is_some_and(loopback::valid_session_id) {
+        return Ok(());
+      }
+    }
     self
       .conn
       .execute(
@@ -829,13 +837,14 @@ impl Store {
       self.conn.query_row("SELECT COALESCE(MAX(seq),0) FROM events WHERE card_id=?1", [&id], |r| r.get(0)).map_err(sql_err)?;
     let targets = self
       .conn
-      .prepare("SELECT kind, endpoint, token FROM push_targets WHERE card_id=?1 ORDER BY endpoint")
+      .prepare("SELECT kind, endpoint, token, session FROM push_targets WHERE card_id=?1 ORDER BY endpoint")
       .map_err(sql_err)?
       .query_map([&id], |t| {
         Ok(Target {
           kind: t.get(0)?,
           endpoint: t.get(1)?,
           token: t.get::<_, Option<String>>(2)?.map(Secret::new),
+          session: t.get(3)?,
         })
       })
       .map_err(sql_err)?
