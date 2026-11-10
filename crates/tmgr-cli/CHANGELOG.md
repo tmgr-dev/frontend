@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.117
+
+- Local workspaces on schema 14: routine series history, single-occurrence overrides, moved occurrences and routine comments show up in routine lists and expand, and `tmgr` can list, add, edit and delete routine comments. Scoped edits and deletes of a routine (only this event, this and following, all) go through the desktop app.
+
 ## 1.0.116
 
 - Instant answers for OpenCode: set `TMGR_OPENCODE_URL` (a loopback address of `opencode serve` or `opencode --port`) in the tmgr MCP entry and the Decisions desktop app pushes the owner's answer into the running session. See Instant delivery to OpenCode in the CLI docs.
