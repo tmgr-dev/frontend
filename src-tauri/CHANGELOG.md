@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.146 — 2026-11-10
+
+- Ask persona now stops after 120 seconds without data from the model (was 300).
+- Code blocks in the editor highlight from a bundled copy of highlight.js; the app no longer allows scripts from telegram.org or cdn.jsdelivr.net.
+
 ## 0.9.145 — 2026-11-10
 
 - Decisions answers and your messages on a card reach a running OpenCode session at once, like they do for Claude Code. Opt in with `TMGR_OPENCODE_URL` and the matching `tmgr` 1.0.116; the card shows "Sent", then "Delivered" once the agent reads it. Nothing changes without the opt-in.
