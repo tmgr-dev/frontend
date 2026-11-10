@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.118
+
+- `tmgr attach`: two new pane header buttons and shortcuts. Restart (the refresh icon, Ctrl-] K) relaunches the agent with the same profile, model, folder, sandbox and task and resumes its conversation where the agent supports it, otherwise it starts fresh and says so; a busy session asks first. Fork (Ctrl-] F) opens the same session in a new pane, forking the conversation for Claude Code and Codex and starting fresh with the same settings otherwise.
+
 ## 1.0.117
 
 - Local workspaces on schema 14: routine series history, single-occurrence overrides, moved occurrences and routine comments show up in routine lists and expand, and `tmgr` can list, add, edit and delete routine comments. Scoped edits and deletes of a routine (only this event, this and following, all) go through the desktop app.
