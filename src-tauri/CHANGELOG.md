@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.145 — 2026-11-10
+
+- Decisions answers and your messages on a card reach a running OpenCode session at once, like they do for Claude Code. Opt in with `TMGR_OPENCODE_URL` and the matching `tmgr` 1.0.116; the card shows "Sent", then "Delivered" once the agent reads it. Nothing changes without the opt-in.
+
 ## 0.9.144 — 2026-11-10
 
 - Time hints from activity (macOS and Windows, off by default): Settings > Desktop can suggest time entries for hours you worked in an IDE or terminal without a timer. Only the task key, the minute and the seconds are kept on your device; window titles, paths, branch and app names are never stored. Nothing is sent until you press Add. Needs git auto-tracking with a watched folder on a TM-N branch and the session time module in the workspace. Requires the matching server update.

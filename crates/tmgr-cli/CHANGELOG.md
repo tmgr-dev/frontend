@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.116
+
+- Instant answers for OpenCode: set `TMGR_OPENCODE_URL` (a loopback address of `opencode serve` or `opencode --port`) in the tmgr MCP entry and the Decisions desktop app pushes the owner's answer into the running session. See Instant delivery to OpenCode in the CLI docs.
+
 ## 1.0.115
 
 - Commits from team workers reach the lead as one pack instead of many loose objects, with bounded memory and a time limit.
