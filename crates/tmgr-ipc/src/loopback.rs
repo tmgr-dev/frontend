@@ -366,7 +366,10 @@ pub fn listener_pid(pid: u32, addr: SocketAddr) -> Result<bool, ()> {
 
 #[allow(clippy::result_unit_err)]
 pub fn listener_owned(uid: u32, addr: SocketAddr) -> Result<bool, ()> {
-    let out = lsof(&lsof_args(["-u", &uid.to_string()], addr), LSOF_UID_DEADLINE)?;
+    let out = lsof(
+        &lsof_args(["-u", &uid.to_string()], addr),
+        LSOF_UID_DEADLINE,
+    )?;
     Ok(out
         .lines()
         .filter_map(|l| l.strip_prefix('n'))
@@ -846,22 +849,23 @@ mod tests {
     #[test]
     fn transfer_encoding_last_token_decides() {
         let (addr, _rx) = serve(
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n".to_vec(),
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n"
+                .to_vec(),
         );
         assert_eq!(
             request(addr, "GET", "/", None, None, D),
             Ok((200, b"ok".to_vec()))
         );
         let (addr, _rx) = serve(
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n2\r\nok\r\n0\r\n\r\n".to_vec(),
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n2\r\nok\r\n0\r\n\r\n"
+                .to_vec(),
         );
         assert_eq!(
             request(addr, "GET", "/", None, None, D),
             Err(HttpErr::Other)
         );
-        let (addr, _rx) = serve(
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: identity\r\n\r\nok".to_vec(),
-        );
+        let (addr, _rx) =
+            serve(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: identity\r\n\r\nok".to_vec());
         assert_eq!(
             request(addr, "GET", "/", None, None, D),
             Err(HttpErr::Other)
