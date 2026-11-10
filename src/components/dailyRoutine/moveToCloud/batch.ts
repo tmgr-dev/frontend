@@ -30,6 +30,7 @@ export interface ItemResult {
 	key: string;
 	message?: string;
 	cloudId?: number | null;
+	postedComments?: number[];
 }
 
 export interface MoveDeps {
@@ -40,6 +41,12 @@ export interface MoveDeps {
 		key: string,
 	): Promise<{ id: number | null }>;
 	removeLocal(id: number): Promise<void>;
+	addComment(
+		target: MoveTarget,
+		cloudId: number,
+		message: string,
+		key: string,
+	): Promise<void>;
 }
 
 export interface MoveOutcome {
@@ -77,6 +84,7 @@ const pending = (routine: LocalRoutine, prior?: ItemResult): ItemResult => ({
 	title: routine.title,
 	status: 'not_sent',
 	key: prior?.key ?? newKey(),
+	postedComments: prior?.postedComments ?? [],
 });
 
 const process = async (
@@ -119,6 +127,26 @@ const process = async (
 			}
 		}
 		item.cloudId = cloudId;
+		if (mode === 'routines' && cloudId != null) {
+			try {
+				for (const comment of routine.comments ?? []) {
+					if (item.postedComments?.includes(comment.id)) continue;
+					await deps.addComment(
+						target,
+						cloudId,
+						comment.message,
+						`${item.key}-comment-${comment.id}`,
+					);
+					item.postedComments?.push(comment.id);
+				}
+			} catch (error) {
+				item.status = 'in_cloud';
+				item.message = toMessage(error);
+				if (error instanceof CloudError && error.kind !== 'rejected')
+					stopped = error.kind;
+				continue;
+			}
+		}
 		try {
 			await deps.removeLocal(routine.id);
 			item.status = 'moved';

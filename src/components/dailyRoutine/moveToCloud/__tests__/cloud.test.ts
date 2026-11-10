@@ -75,6 +75,19 @@ describe('createCloudApi', () => {
 		});
 	});
 
+	it('posts a comment to the cloud task with the workspace header and idempotency key', async () => {
+		const h = http();
+		await createCloudApi(h).addComment(7, 42, 'Remember the fern', 'k-1');
+		expect(h.calls[0]).toEqual({
+			method: 'POST',
+			url: 'tasks/42/comments',
+			body: { message: 'Remember the fern' },
+			config: {
+				headers: { 'Idempotency-Key': 'k-1', 'X-Workspace-Id': '7' },
+			},
+		});
+	});
+
 	it('reads statuses and categories of the target workspace from the server client', async () => {
 		const h = http();
 		const api = createCloudApi(h);
@@ -159,6 +172,7 @@ describe('createMoveDeps', () => {
 		categories: jest.fn(),
 		createRoutine: jest.fn(async () => ({ id: 1 })),
 		createTask: jest.fn(async () => ({ id: 2 })),
+		addComment: jest.fn(async () => {}),
 	});
 
 	it('creates a cloud routine through the routine endpoints', async () => {
@@ -195,6 +209,18 @@ describe('createMoveDeps', () => {
 			},
 			'k',
 		);
+	});
+
+	it('adds a routine comment to the cloud routine through the api', async () => {
+		const a = api();
+		const deps = createMoveDeps(a, async () => {});
+		await deps.addComment(
+			{ workspaceId: 7, categoryId: null, statusId: null },
+			42,
+			'Remember the fern',
+			'k-1',
+		);
+		expect(a.addComment).toHaveBeenCalledWith(7, 42, 'Remember the fern', 'k-1');
 	});
 
 	it('refuses to start a conversion when the workspace has no active status', async () => {

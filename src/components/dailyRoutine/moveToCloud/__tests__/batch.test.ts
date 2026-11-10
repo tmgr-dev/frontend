@@ -24,6 +24,7 @@ const target: MoveTarget = { workspaceId: 7, categoryId: null, statusId: 3 };
 const deps = (over: Partial<MoveDeps> = {}) => {
 	const created: number[] = [];
 	const removed: number[] = [];
+	const comments: { cloudId: number; message: string; key: string }[] = [];
 	const value: MoveDeps = {
 		create: async (r) => {
 			created.push(r.id);
@@ -32,9 +33,12 @@ const deps = (over: Partial<MoveDeps> = {}) => {
 		removeLocal: async (id) => {
 			removed.push(id);
 		},
+		addComment: async (_target, cloudId, message, key) => {
+			comments.push({ cloudId, message, key });
+		},
 		...over,
 	};
-	return { value, created, removed };
+	return { value, created, removed, comments };
 };
 
 describe('runMove', () => {
@@ -228,5 +232,92 @@ describe('retryMove', () => {
 		);
 		expect(second.stopped).toBe('auth');
 		expect(second.results.map((r) => r.status)).toEqual(['failed', 'not_sent']);
+	});
+});
+
+describe('moving routine comments', () => {
+	const withComments = (id: number, messages: string[]): LocalRoutine => ({
+		...routine(id),
+		comments: messages.map((message, i) => ({ id: 100 + i, message })),
+	});
+
+	it('posts the comments oldest first to the new cloud routine before removing the local copy', async () => {
+		const order: string[] = [];
+		const d = deps({
+			addComment: async (_t, cloudId, message) => {
+				order.push(`${cloudId}:${message}`);
+			},
+			removeLocal: async () => {
+				order.push('removed');
+			},
+		});
+		const { results } = await runMove(
+			[withComments(1, ['first', 'second'])],
+			'routines',
+			target,
+			d.value,
+		);
+		expect(order).toEqual(['501:first', '501:second', 'removed']);
+		expect(results[0].status).toBe('moved');
+	});
+
+	it('skips comments when moving to tasks mode or when there are none', async () => {
+		const d = deps();
+		await runMove([withComments(1, ['x'])], 'tasks', target, d.value);
+		await runMove([routine(2)], 'routines', target, d.value);
+		expect(d.comments).toEqual([]);
+	});
+
+	it('keeps the local copy and reports in_cloud when a comment is rejected, then retry posts only the missing ones with the same keys', async () => {
+		let fail = true;
+		const posted: { message: string; key: string }[] = [];
+		const d = deps({
+			addComment: async (_t, _c, message, key) => {
+				if (message === 'second' && fail)
+					throw new CloudError('rejected', 'Too long');
+				posted.push({ message, key });
+			},
+		});
+		const routines = [withComments(1, ['first', 'second', 'third'])];
+		const first = await runMove(routines, 'routines', target, d.value);
+		expect(first.results[0]).toMatchObject({
+			status: 'in_cloud',
+			cloudId: 501,
+			message: 'Too long',
+		});
+		expect(d.removed).toEqual([]);
+		expect(posted.map((p) => p.message)).toEqual(['first']);
+		fail = false;
+		const second = await retryMove(
+			routines,
+			first.results,
+			[1],
+			'routines',
+			target,
+			d.value,
+		);
+		expect(d.created).toEqual([1]);
+		expect(posted.map((p) => p.message)).toEqual(['first', 'second', 'third']);
+		expect(new Set(posted.map((p) => p.key)).size).toBe(3);
+		expect(second.results[0].status).toBe('moved');
+		expect(d.removed).toEqual([1]);
+	});
+
+	it('stops the batch when a comment hits a network failure', async () => {
+		const d = deps({
+			addComment: async () => {
+				throw new CloudError('network', 'offline');
+			},
+		});
+		const { results, stopped } = await runMove(
+			[withComments(1, ['a']), withComments(2, ['b'])],
+			'routines',
+			target,
+			d.value,
+		);
+		expect(stopped).toBe('network');
+		expect(results[0].status).toBe('in_cloud');
+		expect(results[1].status).toBe('not_sent');
+		expect(d.created).toEqual([1]);
 	});
 });

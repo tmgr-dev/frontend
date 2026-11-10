@@ -30,6 +30,12 @@ export interface CloudApi {
 		body: Record<string, any>,
 		key: string,
 	): Promise<{ id: number | null }>;
+	addComment(
+		workspaceId: number,
+		taskId: number,
+		message: string,
+		key: string,
+	): Promise<void>;
 }
 
 export const toCloudError = (error: unknown): CloudError => {
@@ -132,5 +138,13 @@ export const createCloudApi = (
 					),
 				),
 			),
+		addComment: (workspaceId, taskId, message, key) =>
+			send(async () => {
+				await http.post(
+					`tasks/${taskId}/comments`,
+					{ message },
+					headers(workspaceId, { 'Idempotency-Key': key }),
+				);
+			}),
 	};
 };

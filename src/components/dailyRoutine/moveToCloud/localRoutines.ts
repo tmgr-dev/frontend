@@ -14,7 +14,7 @@ export const readLocalRoutines = async (): Promise<LocalRoutine[]> => {
 	const workspace = activeLocalWorkspace();
 	if (!workspace) return [];
 	const { db } = await localContext(workspace, { id: 0, name: '', email: '' });
-	const [routines, patterns, instances] = await Promise.all([
+	const [routines, patterns, instances, comments] = await Promise.all([
 		db.select<any>(
 			`SELECT id, title, description, routine_category, approximately_time FROM routines
 			 WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY id DESC`,
@@ -23,7 +23,17 @@ export const readLocalRoutines = async (): Promise<LocalRoutine[]> => {
 		db.select<any>(
 			`SELECT routine_id, scheduled_for, status FROM routine_instances ORDER BY scheduled_for ASC`,
 		),
+		db.select<any>(
+			`SELECT id, routine_id, message FROM routine_comments
+			 WHERE deleted_at IS NULL ORDER BY created_at ASC, id ASC`,
+		),
 	]);
+	const commentsOf = new Map<number, { id: number; message: string }[]>();
+	for (const row of comments) {
+		const list = commentsOf.get(Number(row.routine_id)) ?? [];
+		list.push({ id: Number(row.id), message: String(row.message) });
+		commentsOf.set(Number(row.routine_id), list);
+	}
 	const patternOf = new Map<number, LocalPattern>();
 	for (const row of patterns) {
 		if (!row.frequency) continue;
@@ -64,6 +74,7 @@ export const readLocalRoutines = async (): Promise<LocalRoutine[]> => {
 			scheduledDate: date || null,
 			scheduledTime: time || null,
 			hasHistory: hasHistory.has(id),
+			comments: commentsOf.get(id) ?? [],
 		};
 	});
 };

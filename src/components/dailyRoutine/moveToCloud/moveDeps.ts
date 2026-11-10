@@ -27,6 +27,8 @@ export const createMoveDeps = (
 		);
 	},
 	removeLocal,
+	addComment: (target, cloudId, message, key) =>
+		api.addComment(target.workspaceId, cloudId, message, key),
 });
 
 export const prepareTarget = async (

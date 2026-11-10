@@ -147,7 +147,7 @@
 		"statement": "{n} routine will be sent to the TMGR server and will leave this device. Each local copy is removed after the server confirms it. | {n} routines will be sent to the TMGR server and will leave this device. Each local copy is removed after the server confirms it.",
 		"destination": "Destination:",
 		"pastCompletions": "Past completions are not moved; the cloud copy starts fresh.",
-		"keptRoutines": "Title, description, schedule and repeat pattern are kept. Category and priority are not.",
+		"keptRoutines": "Title, description, schedule, repeat pattern and comments are kept. Category and priority are not.",
 		"keptTasks": "The tasks keep the title and description only. Schedule, repeat pattern and duration are not kept.",
 		"sendAndRemove": "Send to TMGR and remove here",
 		"sending": "Sending to {name}…",

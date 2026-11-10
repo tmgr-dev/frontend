@@ -22,6 +22,7 @@ export interface LocalRoutine {
 	scheduledDate: string | null;
 	scheduledTime: string | null;
 	hasHistory: boolean;
+	comments?: { id: number; message: string }[];
 }
 
 export interface TaskTarget {
