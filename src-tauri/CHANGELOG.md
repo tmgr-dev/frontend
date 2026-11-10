@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.147 — 2026-11-10
+
+- Repeating routines in local workspaces: when you edit or delete one, choose Only this event, This and following events, or All events. Past occurrences keep their old title and time, one occurrence can get its own date, time, duration, title or description, and routines have comments shared by all occurrences. Moving the workspace to the cloud carries this history and the comments along. The local database moves to schema 14; `tmgr` 1.0.117 reads it.
+
 ## 0.9.146 — 2026-11-10
 
 - Ask persona now stops after 120 seconds without data from the model (was 300).
