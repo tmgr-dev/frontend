@@ -14,7 +14,7 @@
 	} from '@/utils/serialEditor';
 	import { escapeCarriedHtml } from '@/utils/titleOverflow';
 	import CodeTool from '@bomdi/codebox';
-	import codeboxThemeUrl from 'highlight.js/styles/atom-one-dark.min.css?url';
+	import codeboxThemeUrl from 'highlight.js/styles/atom-one-dark.min.css?url&no-inline';
 	import Delimiter from '@editorjs/delimiter';
 	import EditorJS from '@editorjs/editorjs';
 	import Embed from '@editorjs/embed';
