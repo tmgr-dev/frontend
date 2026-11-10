@@ -770,5 +770,24 @@
 		"socialLogin": {
 			"startFailed": "Die Anmeldung konnte nicht gestartet werden."
 		}
+	},
+	"activity": {
+		"consent": "Zeitangaben aus Aktivität vorschlagen",
+		"requires": "Erfordert Git-Autotracking mit einem überwachten Ordner und das aktivierte Modul „Sitzungszeit“ in diesem Arbeitsbereich.",
+		"collects": "Erfasst wird: Minuten, während eine IDE oder ein Terminal aus der Liste unten im Vordergrund ist, nur wenn genau ein überwachtes Repository auf einem TM-N-Branch liegt, kein Timer läuft und du aktiv bist.",
+		"never": "Nie erfasst werden: Fenstertitel, URLs, Dateinamen, Pfade, Branch-Namen und App-Namen werden weder gespeichert noch gesendet. Nur Aufgabenschlüssel (etwa TM-157) werden nachgeschlagen, um Titel anzuzeigen; nichts anderes verlässt dieses Gerät, bis du auf Hinzufügen drückst.",
+		"apps": "Gezählte Apps: {apps}.",
+		"suggestions": "Vorschläge",
+		"empty": "Noch keine Vorschläge.",
+		"taskNotFound": "Aufgabe nicht gefunden",
+		"otherWorkspace": "Dieser Schlüssel gehört zu einem anderen Arbeitsbereich. Wechsle dorthin, um die Zeit hinzuzufügen.",
+		"minutes": "{n} Minute | {n} Minuten",
+		"add": "Hinzufügen",
+		"dismiss": "Ausblenden",
+		"forget": "Gesammelte Daten löschen",
+		"conflict": "{key}: Diese Zeit wurde bereits mit anderen Werten erfasst, daher wurde sie nicht hinzugefügt und der Vorschlag entfernt.",
+		"addFailed": "Zeiteintrag konnte nicht hinzugefügt werden: {message}",
+		"toastTitle": "{n} Zeitvorschlag aus Aktivität | {n} Zeitvorschläge aus Aktivität",
+		"toastReview": "Prüfen"
 	}
 }

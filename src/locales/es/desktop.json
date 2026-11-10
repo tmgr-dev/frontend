@@ -770,5 +770,24 @@
 		"socialLogin": {
 			"startFailed": "No se pudo iniciar sesión."
 		}
+	},
+	"activity": {
+		"consent": "Sugerir entradas de tiempo desde la actividad",
+		"requires": "Necesita el seguimiento automático con Git activado con una carpeta vigilada, y el módulo de tiempo de sesión habilitado en este espacio de trabajo.",
+		"collects": "Qué se recopila: minutos mientras un IDE o una terminal de la lista de abajo está en primer plano, solo cuando exactamente un repositorio vigilado está en una rama TM-N, no hay ningún temporizador en marcha y estás activo.",
+		"never": "Qué nunca se recopila: títulos de ventanas, URL, nombres de archivos, rutas, nombres de ramas ni nombres de aplicaciones se guardan ni se envían. Solo se consultan las claves de tareas (como TM-157) para mostrar sus títulos; nada más sale de este dispositivo hasta que pulses Añadir.",
+		"apps": "Aplicaciones contadas: {apps}.",
+		"suggestions": "Sugerencias",
+		"empty": "Aún no hay sugerencias.",
+		"taskNotFound": "Tarea no encontrada",
+		"otherWorkspace": "Esta clave pertenece a otro espacio de trabajo. Cambia a él para añadir el tiempo.",
+		"minutes": "{n} minuto | {n} minutos",
+		"add": "Añadir",
+		"dismiss": "Descartar",
+		"forget": "Olvidar los datos recopilados",
+		"conflict": "{key}: este tiempo ya estaba registrado con otros valores, así que no se añadió y la sugerencia se eliminó.",
+		"addFailed": "No se pudo añadir la entrada de tiempo: {message}",
+		"toastTitle": "{n} sugerencia de tiempo desde la actividad | {n} sugerencias de tiempo desde la actividad",
+		"toastReview": "Revisar"
 	}
 }

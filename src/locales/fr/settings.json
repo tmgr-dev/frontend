@@ -64,7 +64,8 @@
 	},
 	"desktop": {
 		"gitTracking": "Suivi automatique avec Git",
-		"shortcuts": "Raccourcis clavier"
+		"shortcuts": "Raccourcis clavier",
+		"activity": "Indices d'activité"
 	},
 	"about": {
 		"version": "Version {version}",

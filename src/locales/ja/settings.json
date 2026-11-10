@@ -64,7 +64,8 @@
 	},
 	"desktop": {
 		"gitTracking": "Git 自動トラッキング",
-		"shortcuts": "キーボードショートカット"
+		"shortcuts": "キーボードショートカット",
+		"activity": "アクティビティのヒント"
 	},
 	"about": {
 		"version": "バージョン {version}",

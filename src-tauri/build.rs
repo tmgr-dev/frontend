@@ -51,6 +51,7 @@ const APP_COMMANDS: &[&str] = &[
   "git_track_update",
   "git_track_pick_folder",
   "activity_supported",
+  "activity_apps",
   "activity_update",
   "activity_suggestions",
   "activity_consume",

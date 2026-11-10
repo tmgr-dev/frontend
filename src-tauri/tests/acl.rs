@@ -27,6 +27,7 @@ probes!(
   git_track_update,
   git_track_pick_folder,
   activity_supported,
+  activity_apps,
   activity_update,
   activity_suggestions,
   activity_consume,
@@ -96,7 +97,7 @@ fn git_track_commands_are_allowed_for_the_main_window_only() {
 
 #[test]
 fn activity_commands_are_allowed_for_the_main_window_only() {
-  for cmd in ["activity_supported", "activity_update", "activity_suggestions", "activity_consume", "activity_forget"] {
+  for cmd in ["activity_supported", "activity_apps", "activity_update", "activity_suggestions", "activity_consume", "activity_forget"] {
     assert!(call("main", cmd).is_ok(), "{cmd} on main");
     for label in ["task-1", "page-1", "decisions", "quick-add"] {
       assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");

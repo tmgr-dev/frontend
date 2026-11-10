@@ -1,10 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
-	ACTIVITY_APPS,
 	activityEnabledFor,
 	buildTimeEntry,
+	createAnnouncer,
 	entryOutcome,
 	formatSuggestionRange,
+	keyMatchesWorkspace,
+	listActivityApps,
 	loadActivityConsent,
 	minutesOf,
 	registerActivityContext,
@@ -264,9 +266,60 @@ describe('format helpers', () => {
 	});
 });
 
-describe('ACTIVITY_APPS', () => {
-	it('lists display names only', () => {
-		expect(ACTIVITY_APPS.length).toBeGreaterThan(3);
-		expect(new Set(ACTIVITY_APPS).size).toBe(ACTIVITY_APPS.length);
+describe('listActivityApps', () => {
+	it('returns the display names from the app', async () => {
+		invokeMock.mockResolvedValue(['Cursor', 'Xcode']);
+		expect(await listActivityApps()).toEqual(['Cursor', 'Xcode']);
+		expect(invokeMock).toHaveBeenCalledWith('activity_apps', undefined);
+	});
+
+	it('is empty when the command fails', async () => {
+		invokeMock.mockRejectedValue(new Error('no'));
+		expect(await listActivityApps()).toEqual([]);
+	});
+});
+
+describe('keyMatchesWorkspace', () => {
+	it('matches the prefix of the key against the workspace prefixes', () => {
+		expect(keyMatchesWorkspace('TM-157', ['TM', 'WEB'])).toBe(true);
+		expect(keyMatchesWorkspace('tm-157', ['TM'])).toBe(true);
+		expect(keyMatchesWorkspace('MOBILE-APP-24', ['MOBILE-APP'])).toBe(true);
+		expect(keyMatchesWorkspace('API-3', ['TM'])).toBe(false);
+		expect(keyMatchesWorkspace('TM-1', [])).toBe(false);
+	});
+});
+
+describe('createAnnouncer', () => {
+	const at = (id: string, startedAt: number) => ({
+		id,
+		key: 'TM-1',
+		startedAt,
+		endedAt: startedAt + 900,
+		seconds: 900,
+	});
+	const now = Math.floor(Date.now() / 1000);
+	const old = now - 3 * 86400;
+
+	it('announces each suggestion once', () => {
+		const announce = createAnnouncer();
+		expect(announce('a', [at('1', now)]).map((s) => s.id)).toEqual(['1']);
+		expect(announce('a', [at('1', now)])).toEqual([]);
+		expect(
+			announce('a', [at('1', now), at('2', now)]).map((s) => s.id),
+		).toEqual(['2']);
+	});
+
+	it('skips older days on the first poll of a scope', () => {
+		const announce = createAnnouncer();
+		expect(
+			announce('a', [at('1', old), at('2', now)]).map((s) => s.id),
+		).toEqual(['2']);
+		expect(announce('a', [at('1', old)])).toEqual([]);
+	});
+
+	it('starts over when the scope changes', () => {
+		const announce = createAnnouncer();
+		announce('a', [at('1', now)]);
+		expect(announce('b', [at('1', now)]).map((s) => s.id)).toEqual(['1']);
 	});
 });

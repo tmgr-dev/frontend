@@ -41,7 +41,10 @@
 	} from '@/components/ui/alert-dialog';
 	import { ToastAction, useToast } from '@/components/ui/toast';
 	import { currentLocale, t } from '@/i18n';
-	import { resolveTaskByKey } from '@/composable/useTaskKeyLinks';
+	import {
+		resolveTaskByKey,
+		workspaceKeyPrefixes,
+	} from '@/composable/useTaskKeyLinks';
 	import { usePusher } from '@/composable/usePusher';
 	import { pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
@@ -57,6 +60,12 @@
 		toTrayTask,
 	} from '@/utils/desktopTray';
 	import {
+		activityEnabledFor,
+		createAnnouncer,
+		isActivitySupported,
+		keyMatchesWorkspace,
+		listActivitySuggestions,
+		loadActivityConsent,
 		registerActivityContext,
 		resetActivitySync,
 		stopActivity,
@@ -65,6 +74,7 @@
 	import { isDndActive, setDnd } from '@/utils/dnd';
 	import {
 		decideGitTrack,
+		loadGitTrackFolders,
 		loadGitTrackMode,
 		syncGitTrack,
 		unwatchGitTrack,
@@ -286,7 +296,68 @@
 				syncActivity().catch((error) =>
 					console.error('activity sync failed', error),
 				);
-			watch(() => JSON.stringify(activityContext()), pushActivity);
+			watch(
+				() => JSON.stringify(activityContext()),
+				() => {
+					pushActivity();
+					safePollActivity();
+				},
+			);
+
+			const ACTIVITY_POLL_MS = 300000;
+			const announceActivity = createAnnouncer();
+			let activityTimer = null;
+			const pollActivity = async () => {
+				const { userId, workspaceId, modulesKnown, sessionTimeOn } =
+					activityContext();
+				if (typeof userId !== 'number' || workspaceId == null) return;
+				if (!(await isActivitySupported())) return;
+				const enabled = activityEnabledFor({
+					consent: loadActivityConsent(userId),
+					supported: true,
+					mode: loadGitTrackMode(),
+					folders: loadGitTrackFolders(),
+					modulesKnown,
+					sessionTimeOn,
+				});
+				if (!enabled) return;
+				const [suggestions, prefixes] = await Promise.all([
+					listActivitySuggestions(userId, workspaceId),
+					workspaceKeyPrefixes(workspaceId),
+				]);
+				if (unmounted || workspaceId !== store.getters.currentWorkspaceId) {
+					return;
+				}
+				const fresh = announceActivity(
+					`${userId}:${workspaceId}`,
+					suggestions.filter((item) => keyMatchesWorkspace(item.key, prefixes)),
+				);
+				const route = router.currentRoute.value;
+				if (!fresh.length) return;
+				if (route.path === '/settings' && route.query.tab === 'desktop') return;
+				const title = t(
+					'desktop.activity.toastTitle',
+					{ n: fresh.length },
+					fresh.length,
+				);
+				toast({
+					title,
+					duration: 30000,
+					action: h(
+						ToastAction,
+						{
+							altText: t('desktop.activity.toastReview'),
+							onClick: () => router.push('/settings?tab=desktop'),
+						},
+						() => t('desktop.activity.toastReview'),
+					),
+				});
+				notify(title, '');
+			};
+			const safePollActivity = () =>
+				pollActivity().catch((error) =>
+					console.error('activity poll failed', error),
+				);
 
 			watch(
 				() => store.state.user?.id,
@@ -335,6 +406,8 @@
 					console.error('git track sync failed', error),
 				);
 				pushActivity();
+				safePollActivity();
+				activityTimer = setInterval(safePollActivity, ACTIVITY_POLL_MS);
 			});
 
 			onBeforeUnmount(() => {
@@ -343,6 +416,7 @@
 				subscribe(null);
 				pushTrayState({ running: [], recent: [] });
 				unwatchGitTrack().catch(() => {});
+				if (activityTimer) clearInterval(activityTimer);
 				registerActivityContext(null);
 				stopActivity().catch(() => {});
 			});

@@ -24,45 +24,45 @@ const MIN_SHOWN_SECS: i64 = 600;
 const FLUSH_SECS: i64 = 60;
 const FILE_NAME: &str = "activity.json";
 
-const ALLOWLIST: &[&str] = &[
-  "com.apple.dt.xcode",
-  "com.microsoft.vscode",
-  "com.microsoft.vscodeinsiders",
-  "com.todesktop.230313mzl4w4u92",
-  "com.jetbrains.intellij",
-  "com.jetbrains.intellij.ce",
-  "com.jetbrains.webstorm",
-  "com.jetbrains.pycharm",
-  "com.jetbrains.pycharm.ce",
-  "com.jetbrains.goland",
-  "com.jetbrains.rustrover",
-  "com.jetbrains.phpstorm",
-  "com.jetbrains.clion",
-  "com.jetbrains.rider",
-  "com.jetbrains.datagrip",
-  "com.apple.terminal",
-  "com.googlecode.iterm2",
-  "dev.warp.warp-stable",
-  "com.mitchellh.ghostty",
-  "net.kovidgoyal.kitty",
-  "com.github.wez.wezterm",
-  "org.alacritty",
-  "dev.zed.zed",
-  "code.exe",
-  "cursor.exe",
-  "devenv.exe",
-  "idea64.exe",
-  "pycharm64.exe",
-  "webstorm64.exe",
-  "goland64.exe",
-  "rustrover64.exe",
-  "phpstorm64.exe",
-  "clion64.exe",
-  "rider64.exe",
-  "windowsterminal.exe",
-  "wezterm-gui.exe",
-  "alacritty.exe",
-  "zed.exe",
+const ALLOWLIST: &[(&str, &str)] = &[
+  ("com.apple.dt.xcode", "Xcode"),
+  ("com.microsoft.vscode", "Visual Studio Code"),
+  ("com.microsoft.vscodeinsiders", "Visual Studio Code"),
+  ("com.todesktop.230313mzl4w4u92", "Cursor"),
+  ("com.jetbrains.intellij", "IntelliJ IDEA"),
+  ("com.jetbrains.intellij.ce", "IntelliJ IDEA"),
+  ("com.jetbrains.webstorm", "WebStorm"),
+  ("com.jetbrains.pycharm", "PyCharm"),
+  ("com.jetbrains.pycharm.ce", "PyCharm"),
+  ("com.jetbrains.goland", "GoLand"),
+  ("com.jetbrains.rustrover", "RustRover"),
+  ("com.jetbrains.phpstorm", "PhpStorm"),
+  ("com.jetbrains.clion", "CLion"),
+  ("com.jetbrains.rider", "Rider"),
+  ("com.jetbrains.datagrip", "DataGrip"),
+  ("com.apple.terminal", "Terminal"),
+  ("com.googlecode.iterm2", "iTerm2"),
+  ("dev.warp.warp-stable", "Warp"),
+  ("com.mitchellh.ghostty", "Ghostty"),
+  ("net.kovidgoyal.kitty", "kitty"),
+  ("com.github.wez.wezterm", "WezTerm"),
+  ("org.alacritty", "Alacritty"),
+  ("dev.zed.zed", "Zed"),
+  ("code.exe", "Visual Studio Code"),
+  ("cursor.exe", "Cursor"),
+  ("devenv.exe", "Visual Studio"),
+  ("idea64.exe", "IntelliJ IDEA"),
+  ("pycharm64.exe", "PyCharm"),
+  ("webstorm64.exe", "WebStorm"),
+  ("goland64.exe", "GoLand"),
+  ("rustrover64.exe", "RustRover"),
+  ("phpstorm64.exe", "PhpStorm"),
+  ("clion64.exe", "CLion"),
+  ("rider64.exe", "Rider"),
+  ("windowsterminal.exe", "Windows Terminal"),
+  ("wezterm-gui.exe", "WezTerm"),
+  ("alacritty.exe", "Alacritty"),
+  ("zed.exe", "Zed"),
 ];
 
 fn id_string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
@@ -75,7 +75,18 @@ fn id_string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
 
 pub fn is_allowed_app(id: &str) -> bool {
   let id = id.to_ascii_lowercase();
-  ALLOWLIST.contains(&id.as_str())
+  ALLOWLIST.iter().any(|(allowed, _)| *allowed == id)
+}
+
+#[tauri::command]
+pub fn activity_apps() -> Vec<String> {
+  let mut names: Vec<String> = Vec::new();
+  for (id, name) in ALLOWLIST {
+    if id.ends_with(".exe") == cfg!(windows) && !names.iter().any(|n| n == name) {
+      names.push((*name).to_string());
+    }
+  }
+  names
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -548,6 +559,27 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn every_allowed_id_has_a_display_name() {
+    assert!(ALLOWLIST.iter().all(|(id, name)| !id.is_empty() && !name.trim().is_empty()));
+  }
+
+  #[test]
+  fn activity_apps_are_unique_and_clean() {
+    let apps = activity_apps();
+    assert!(!apps.is_empty());
+    let unique: BTreeSet<&String> = apps.iter().collect();
+    assert_eq!(unique.len(), apps.len());
+    assert!(apps.iter().all(|n| !n.contains(".exe")));
+  }
+
+  #[test]
+  fn allowed_check_stays_case_insensitive() {
+    assert!(is_allowed_app("COM.Apple.Terminal"));
+    assert!(is_allowed_app("Code.EXE"));
+    assert!(!is_allowed_app("com.example.other"));
+  }
 
   fn k(keys: &[&str]) -> Vec<String> {
     keys.iter().map(|s| s.to_string()).collect()

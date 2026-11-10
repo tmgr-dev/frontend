@@ -790,11 +790,14 @@
 		"suggestions": "Suggestions",
 		"empty": "No suggestions yet.",
 		"taskNotFound": "Task not found",
+		"otherWorkspace": "This key belongs to another workspace. Switch to it to add the time.",
 		"minutes": "{n} minute | {n} minutes",
 		"add": "Add",
 		"dismiss": "Dismiss",
 		"forget": "Forget collected data",
 		"conflict": "{key}: this time was already recorded with different values, so it was not added and the suggestion was removed.",
-		"addFailed": "Could not add the time entry: {message}"
+		"addFailed": "Could not add the time entry: {message}",
+		"toastTitle": "{n} time suggestion from activity | {n} time suggestions from activity",
+		"toastReview": "Review"
 	}
 }

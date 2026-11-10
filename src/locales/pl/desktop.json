@@ -770,5 +770,24 @@
 		"socialLogin": {
 			"startFailed": "Nie udało się rozpocząć logowania."
 		}
+	},
+	"activity": {
+		"consent": "Proponuj wpisy czasu z aktywności",
+		"requires": "Wymaga włączonego Automatycznego śledzenia Git z obserwowanym folderem oraz włączonego modułu „Czas sesji” w tej przestrzeni roboczej.",
+		"collects": "Zbierane dane: minuty, gdy na pierwszym planie jest IDE lub terminal z listy poniżej, tylko gdy dokładnie jedno obserwowane repozytorium jest na gałęzi TM-N, timer nie działa i jesteś aktywny.",
+		"never": "Czego nigdy nie zbieramy: tytułów okien, adresów URL, nazw plików, ścieżek, nazw gałęzi i aplikacji nie zapisujemy ani nie wysyłamy. Tylko klucze zadań (np. TM-157) są wyszukiwane, by pokazać tytuły; nic innego nie opuszcza tego urządzenia, dopóki nie klikniesz Dodaj.",
+		"apps": "Liczone aplikacje: {apps}.",
+		"suggestions": "Sugestie",
+		"empty": "Brak sugestii.",
+		"taskNotFound": "Nie znaleziono zadania",
+		"otherWorkspace": "Ten klucz należy do innej przestrzeni roboczej. Przełącz się na nią, aby dodać czas.",
+		"minutes": "{n} minuta | {n} minuty | {n} minut",
+		"add": "Dodaj",
+		"dismiss": "Ukryj",
+		"forget": "Usuń zebrane dane",
+		"conflict": "{key}: ten czas był już zapisany z innymi wartościami, więc nie został dodany, a sugestia została usunięta.",
+		"addFailed": "Nie udało się dodać wpisu czasu: {message}",
+		"toastTitle": "{n} sugestia czasu z aktywności | {n} sugestie czasu z aktywności | {n} sugestii czasu z aktywności",
+		"toastReview": "Przejrzyj"
 	}
 }

@@ -1,4 +1,7 @@
-import { getCategories } from '@/actions/tmgr/categories';
+import {
+	getCategories,
+	getCategoriesOfWorkspace,
+} from '@/actions/tmgr/categories';
 import { getTasks } from '@/actions/tmgr/tasks';
 import store from '@/store';
 import { taskIdForModal } from '@/utils/pages/taskLinks';
@@ -42,6 +45,11 @@ export const useTaskKeyPrefixes = () => {
 	}
 	return prefixes;
 };
+
+export const workspaceKeyPrefixes = async (
+	workspaceId: number,
+): Promise<string[]> =>
+	taskKeyPrefixes((await getCategoriesOfWorkspace(workspaceId)) as never[]);
 
 export const resolveTaskByKey = async (key: string) => {
 	try {
