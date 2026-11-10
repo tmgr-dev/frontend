@@ -220,7 +220,12 @@ describe('createMoveDeps', () => {
 			'Remember the fern',
 			'k-1',
 		);
-		expect(a.addComment).toHaveBeenCalledWith(7, 42, 'Remember the fern', 'k-1');
+		expect(a.addComment).toHaveBeenCalledWith(
+			7,
+			42,
+			'Remember the fern',
+			'k-1',
+		);
 	});
 
 	it('refuses to start a conversion when the workspace has no active status', async () => {
