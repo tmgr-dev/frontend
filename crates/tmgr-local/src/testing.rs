@@ -9,6 +9,11 @@ const SCHEMA_GOLDEN: &str = include_str!("../tests/parity/golden/schema.json");
 
 /// The current schema and default statuses from the parity schema golden.
 pub(crate) fn schema() -> String {
+    build_schema(15)
+}
+
+/// The schema before task status history: the v15 table is absent.
+pub(crate) fn schema14() -> String {
     build_schema(14)
 }
 
@@ -26,6 +31,9 @@ fn build_schema(version: u32) -> String {
     let golden: Value = serde_json::from_str(SCHEMA_GOLDEN).unwrap();
     let mut sql = String::new();
     for object in golden["sqlite_master"].as_array().unwrap() {
+        if version < 15 && object["tbl_name"] == "task_status_history" {
+            continue;
+        }
         if version < 13 && object["tbl_name"] == "edit_journal" {
             continue;
         }
@@ -61,6 +69,14 @@ pub(crate) fn db12(seed: &str) -> Connection {
 pub(crate) fn db13(seed: &str) -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(&schema13()).unwrap();
+    conn.execute_batch(seed).unwrap();
+    conn.execute_batch("PRAGMA query_only = ON").unwrap();
+    conn
+}
+
+pub(crate) fn db14(seed: &str) -> Connection {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(&schema14()).unwrap();
     conn.execute_batch(seed).unwrap();
     conn.execute_batch("PRAGMA query_only = ON").unwrap();
     conn

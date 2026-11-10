@@ -9,13 +9,14 @@ use super::page_writes::sync_task_mentions;
 use super::routine_comments;
 use super::tasks::{load_task, persona_view, stop_timer};
 use super::{int, text};
-use crate::db::{execute, select, select_one, Row};
+use crate::db::{execute, schema_version, select, select_one, Row};
 use crate::journal::{self, Entry};
 use crate::js;
 use crate::persona::LOCAL_OWNER_ID;
 use crate::router::{coded, http, not_found, sql, Handled, Outcome, Request};
 use crate::serialize::col;
 
+const HISTORY_SCHEMA: u32 = 15;
 const ROUTINE_ID_BASE: i64 = 1_000_000_000;
 const BOARD_MOVE_META_PREFIX: &str = "onboarding:board_move:";
 
@@ -308,6 +309,24 @@ pub(super) fn note_status_change(req: &Request<'_>, task_id: i64) {
     );
 }
 
+pub(super) fn record_status_history(
+    req: &Request<'_>,
+    task_id: i64,
+    old: &Value,
+    new: &Sql,
+) -> Result<(), Outcome> {
+    if sql(schema_version(req.conn))? < HISTORY_SCHEMA {
+        return Ok(());
+    }
+    let kind = req.ctx.actor.as_ref().map_or("user", |a| a.kind.as_str());
+    sql(execute(
+        req.conn,
+        "INSERT INTO task_status_history (task_id, old_status_id, new_status_id, actor_kind, created_at) VALUES (?, ?, ?, ?, ?)",
+        &[int(task_id), json_sql(old), new.clone(), text(kind), text(&req.ctx.iso_now())],
+    ))?;
+    Ok(())
+}
+
 fn task_exists(req: &Request<'_>, id: i64) -> Result<(), Outcome> {
     load_task(req, id).map(|_| ())
 }
@@ -441,6 +460,7 @@ fn update_task(req: &Request<'_>, id: i64, fields: Vec<(&'static str, Sql)>) -> 
             _ => true,
         };
         if changed {
+            record_status_history(req, id, before, after)?;
             note_status_change(req, id);
         }
     }

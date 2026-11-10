@@ -4,7 +4,9 @@ use rusqlite::types::Value as Sql;
 use serde_json::{json, Value};
 
 use super::catalog::{status_for, statuses, CATEGORY_COUNTS};
-use super::task_writes::{json_sql, note_status_change, number_or_null, number_sql, to_json};
+use super::task_writes::{
+    json_sql, note_status_change, number_or_null, number_sql, record_status_history, to_json,
+};
 use super::tasks::stop_timer;
 use super::{int, text};
 use crate::db::{execute, select_one, Row};
@@ -168,7 +170,11 @@ pub(super) fn move_tasks(req: &Request<'_>) -> Handled {
             "UPDATE tasks SET status_id = ?, updated_at = ? WHERE id = ?",
             &[json_sql(&status_id), text(&req.ctx.iso_now()), task_id],
         ))?;
-        if moved.changes > 0 && before.is_some_and(|b| *col(&b, "status_id") != status_id) {
+        if let Some(old) = before
+            .map(|b| col(&b, "status_id").clone())
+            .filter(|old| moved.changes > 0 && *old != status_id)
+        {
+            record_status_history(req, id, &old, &json_sql(&status_id))?;
             note_status_change(req, id);
         }
     }
@@ -412,6 +418,142 @@ pub(super) fn delete_category(req: &Request<'_>) -> Handled {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::Actor;
+    use crate::testing::{ctx, db, db14};
+    use rusqlite::Connection;
+
+    const SEED: &str = "INSERT INTO tasks (id, title, status_id, created_at, updated_at) VALUES (1, 'A', 1, 'c', 'u');
+        INSERT INTO tasks (id, title, status_id, created_at, updated_at) VALUES (2, 'B', NULL, 'c', 'u');";
+
+    fn write(conn: &Connection, actor: Option<&str>, method: &str, url: &str, body: Value) {
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        let mut c = ctx("2026-10-13T12:00:00.000Z");
+        c.actor = actor.map(|kind| Actor {
+            kind: kind.into(),
+            id: "p1".into(),
+            name: "N".into(),
+            owner_id: None,
+        });
+        crate::dispatch(conn, &c, method, url, Some(&body))
+            .unwrap()
+            .unwrap();
+    }
+
+    type HistoryRow = (i64, Option<i64>, Option<i64>, String, String);
+
+    fn history(conn: &Connection) -> Vec<HistoryRow> {
+        let mut st = conn
+            .prepare("SELECT task_id, old_status_id, new_status_id, actor_kind, created_at FROM task_status_history ORDER BY id")
+            .unwrap();
+        st.query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+    }
+
+    #[test]
+    fn a_status_change_through_a_task_write_records_one_row() {
+        let conn = db(SEED);
+        write(&conn, None, "PATCH", "tasks/1", json!({ "status_id": 2 }));
+        write(&conn, None, "PUT", "tasks/2", json!({ "status_id": 3 }));
+        write(
+            &conn,
+            None,
+            "PATCH",
+            "tasks/1",
+            json!({ "status_id": 2, "title": "A2" }),
+        );
+        write(&conn, None, "PATCH", "tasks/1", json!({ "title": "A3" }));
+        assert_eq!(
+            history(&conn),
+            vec![
+                (
+                    1,
+                    Some(1),
+                    Some(2),
+                    "user".into(),
+                    "2026-10-13T12:00:00.000Z".into()
+                ),
+                (
+                    2,
+                    None,
+                    Some(3),
+                    "user".into(),
+                    "2026-10-13T12:00:00.000Z".into()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_persona_and_an_agent_status_change_record_their_actor_kind() {
+        let conn = db(&format!(
+            "{SEED} INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p1', 1, 'Owner', 'Scribe', 'x');
+            INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at) VALUES ('p1', '[\"tasks:write\"]', 'x');"
+        ));
+        write(
+            &conn,
+            Some("persona"),
+            "PATCH",
+            "tasks/1",
+            json!({ "status_id": 3 }),
+        );
+        write(&conn, Some("agent"), "PUT", "tasks/1/2", json!({}));
+        write(
+            &conn,
+            Some("agent"),
+            "PUT",
+            "statuses/3/tasks",
+            json!({ "task_ids": [1, 2, 99] }),
+        );
+        write(
+            &conn,
+            None,
+            "PUT",
+            "statuses/3/tasks",
+            json!({ "task_ids": [1, 2] }),
+        );
+        let rows: Vec<_> = history(&conn)
+            .into_iter()
+            .map(|(t, o, n, k, _)| (t, o, n, k))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                (1, Some(1), Some(3), "persona".to_string()),
+                (1, Some(3), Some(2), "agent".to_string()),
+                (1, Some(2), Some(3), "agent".to_string()),
+                (2, None, Some(3), "agent".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_schema_14_database_changes_status_without_history() {
+        let conn = db14(SEED);
+        write(&conn, None, "PATCH", "tasks/1", json!({ "status_id": 2 }));
+        write(
+            &conn,
+            None,
+            "PUT",
+            "statuses/3/tasks",
+            json!({ "task_ids": [1] }),
+        );
+        let status: i64 = conn
+            .query_row("SELECT status_id FROM tasks WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status, 3);
+        let table: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'task_status_history'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(table, 0);
+    }
 
     #[test]
     fn category_codes_follow_the_java_derivation() {

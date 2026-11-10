@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 use crate::error::{Error, Result};
 
 /// The newest schema this crate knows; it also accepts every version down to `MIN_SCHEMA_VERSION` and never migrates.
-pub const SCHEMA_VERSION: u32 = 14;
+pub const SCHEMA_VERSION: u32 = 15;
 pub const MIN_SCHEMA_VERSION: u32 = 12;
 
 pub(crate) type Row = Map<String, Value>;
@@ -150,9 +150,9 @@ mod tests {
     #[test]
     fn refuses_newer_and_older_schemas() {
         let (_d1, newer) = file_db(
-            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '15');",
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '16');",
         );
-        assert_eq!(open_read(&newer).unwrap_err(), Error::SchemaTooNew(15));
+        assert_eq!(open_read(&newer).unwrap_err(), Error::SchemaTooNew(16));
         let (_d2, older) = file_db(
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '11');",
         );
@@ -183,9 +183,9 @@ mod tests {
     #[test]
     fn a_refused_database_is_left_untouched() {
         let (_dir, path) = file_db(
-            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '15');",
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '16');",
         );
-        assert_eq!(open_write(&path).unwrap_err(), Error::SchemaTooNew(15));
+        assert_eq!(open_write(&path).unwrap_err(), Error::SchemaTooNew(16));
         let mode: String = Connection::open(&path)
             .unwrap()
             .query_row("PRAGMA journal_mode", [], |r| r.get(0))
