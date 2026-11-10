@@ -1413,4 +1413,101 @@ mod tests {
     assert_eq!(deliver_opencode("http://example.com:80", None, OC_SES, "x", uid(), &yes), Err(PushErr::Gone));
     assert_eq!(deliver_opencode(&url, None, "../x", "x", uid(), &yes), Err(PushErr::Gone));
   }
+
+  mod real_opencode {
+    use super::*;
+
+    fn var(name: &str) -> String {
+      std::env::var(name).unwrap_or_else(|_| panic!("{name} is required"))
+    }
+
+    fn pass() -> Option<String> {
+      std::env::var("TMGR_E2E_OPENCODE_PASSWORD").ok()
+    }
+
+    fn get(path: &str, password: Option<&str>) -> serde_json::Value {
+      let addr = loopback::parse_url(&var("TMGR_E2E_OPENCODE_URL")).unwrap();
+      let auth = password.map(loopback::basic_header);
+      let (status, body) = loopback::request(addr, "GET", path, auth.as_deref(), None, Duration::from_secs(5)).unwrap();
+      assert_eq!(status, 200, "{path}");
+      serde_json::from_slice(&body).unwrap()
+    }
+
+    fn messages(session: &str) -> Vec<serde_json::Value> {
+      get(&format!("/session/{session}/message"), pass().as_deref()).as_array().unwrap().clone()
+    }
+
+    fn user_with(session: &str, text: &str) -> Option<serde_json::Value> {
+      messages(session).into_iter().find(|m| {
+        m["info"]["role"] == "user" && m["parts"].as_array().is_some_and(|p| p.iter().any(|p| p["text"] == text))
+      })
+    }
+
+    fn wait_for<T>(secs: u64, mut f: impl FnMut() -> Option<T>) -> T {
+      let end = Instant::now() + Duration::from_secs(secs);
+      loop {
+        if let Some(v) = f() {
+          return v;
+        }
+        assert!(Instant::now() < end, "timed out");
+        std::thread::sleep(Duration::from_millis(500));
+      }
+    }
+
+    fn send(session: &str, text: &str) -> Result<(), PushErr> {
+      HttpOpencode.send(&var("TMGR_E2E_OPENCODE_URL"), pass().as_deref(), session, text)
+    }
+
+    #[test]
+    #[ignore]
+    fn an_idle_session_gets_the_message_and_keeps_its_agent() {
+      let session = var("TMGR_E2E_OPENCODE_SESSION");
+      let agent = messages(&session).iter().rev().find(|m| m["info"]["role"] == "user").unwrap()["info"]["agent"].clone();
+      assert!(agent.is_string());
+      let text = format!("wake-up {}", std::process::id());
+      assert_eq!(send(&session, &text), Ok(()));
+      let msg = wait_for(10, || user_with(&session, &text));
+      assert_eq!(msg["info"]["agent"], agent);
+    }
+
+    #[test]
+    #[ignore]
+    fn a_busy_session_queues_the_message_and_answers_it_later() {
+      let session = var("TMGR_E2E_OPENCODE_BUSY_SESSION");
+      let dir = var("TMGR_E2E_OPENCODE_BUSY_DIR");
+      let status = get(&format!("/session/status?directory={dir}"), pass().as_deref());
+      assert_eq!(status[&session]["type"], "busy", "the session must be busy: {status}");
+      let text = format!("queued {}", std::process::id());
+      assert_eq!(send(&session, &text), Ok(()));
+      let msg = wait_for(10, || user_with(&session, &text));
+      let id = msg["info"]["id"].clone();
+      wait_for(300, || {
+        messages(&session).into_iter().find(|m| m["info"]["role"] == "assistant" && m["info"]["parentID"] == id)
+      });
+    }
+
+    #[test]
+    #[ignore]
+    fn unknown_sessions_wrong_passwords_and_dead_ports_are_gone() {
+      let url = var("TMGR_E2E_OPENCODE_URL");
+      let session = var("TMGR_E2E_OPENCODE_SESSION");
+      assert_eq!(send("ses_000000000000zzzzzzzzzzzzzz", "x"), Err(PushErr::Gone));
+      assert_eq!(HttpOpencode.send(&url, Some("wrong-password"), &session, "x"), Err(PushErr::Gone));
+      if pass().is_some() {
+        assert_eq!(HttpOpencode.send(&url, None, &session, "x"), Err(PushErr::Gone));
+      }
+      let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+      assert_eq!(HttpOpencode.send(&format!("http://127.0.0.1:{port}"), None, &session, "x"), Err(PushErr::Gone));
+    }
+
+    #[test]
+    #[ignore]
+    fn a_listener_of_another_user_is_not_trusted() {
+      let session = var("TMGR_E2E_OPENCODE_SESSION");
+      let addr = loopback::parse_url(&var("TMGR_E2E_OPENCODE_URL")).unwrap();
+      let other = unsafe { libc::getuid() }.wrapping_add(1);
+      assert_eq!(loopback::listener_owned(other, addr.port()), Ok(false));
+      assert_eq!(deliver_opencode(&var("TMGR_E2E_OPENCODE_URL"), pass().as_deref(), &session, "x", other, &loopback::listener_owned), Err(PushErr::Gone));
+    }
+  }
 }
