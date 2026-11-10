@@ -9,6 +9,7 @@ use base64::Engine;
 const BODY_CAP: usize = 1024 * 1024;
 const HEADER_CAP: usize = 64 * 1024;
 const LSOF_DEADLINE: Duration = Duration::from_secs(1);
+const LSOF_UID_DEADLINE: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HttpErr {
@@ -140,25 +141,43 @@ pub fn request(
                 if raw.len() > BODY_CAP + HEADER_CAP {
                     return Err(HttpErr::Other);
                 }
+                if response_complete(&raw, method)? {
+                    break;
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(e) => return Err(map_io(&e)),
         }
     }
-    parse_response(&raw)
+    parse_response(&raw, method)
 }
 
 fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
-fn parse_response(raw: &[u8]) -> Result<(u16, Vec<u8>), HttpErr> {
-    let split = find(raw, b"\r\n\r\n").ok_or(HttpErr::Other)?;
+struct Head {
+    status: u16,
+    length: Option<usize>,
+    chunked: bool,
+    body_start: usize,
+}
+
+fn no_body(status: u16, method: &str) -> bool {
+    method.eq_ignore_ascii_case("HEAD") || matches!(status, 204 | 304)
+}
+
+fn parse_head(raw: &[u8]) -> Result<Option<Head>, HttpErr> {
+    let Some(split) = find(raw, b"\r\n\r\n") else {
+        if raw.len() > HEADER_CAP {
+            return Err(HttpErr::Other);
+        }
+        return Ok(None);
+    };
     if split > HEADER_CAP {
         return Err(HttpErr::Other);
     }
     let head = std::str::from_utf8(&raw[..split]).map_err(|_| HttpErr::Other)?;
-    let body = &raw[split + 4..];
     let mut lines = head.split("\r\n");
     let status_line = lines.next().ok_or(HttpErr::Other)?;
     let mut parts = status_line.split(' ');
@@ -184,12 +203,47 @@ fn parse_response(raw: &[u8]) -> Result<(u16, Vec<u8>), HttpErr> {
             }
             length = Some(n);
         } else if name.eq_ignore_ascii_case("transfer-encoding") {
-            chunked = value.eq_ignore_ascii_case("chunked");
+            let last = value.rsplit(',').next().unwrap_or("").trim();
+            if !last.eq_ignore_ascii_case("chunked") {
+                return Err(HttpErr::Other);
+            }
+            chunked = true;
         }
     }
-    let body = if chunked {
+    Ok(Some(Head {
+        status,
+        length,
+        chunked,
+        body_start: split + 4,
+    }))
+}
+
+fn response_complete(raw: &[u8], method: &str) -> Result<bool, HttpErr> {
+    let Some(h) = parse_head(raw)? else {
+        return Ok(false);
+    };
+    if no_body(h.status, method) {
+        return Ok(true);
+    }
+    let body = &raw[h.body_start..];
+    Ok(if h.chunked {
+        decode_chunked(body).is_ok()
+    } else if let Some(n) = h.length {
+        n > BODY_CAP || body.len() >= n
+    } else {
+        false
+    })
+}
+
+fn parse_response(raw: &[u8], method: &str) -> Result<(u16, Vec<u8>), HttpErr> {
+    let h = parse_head(raw)?.ok_or(HttpErr::Other)?;
+    if no_body(h.status, method) {
+        return Ok((h.status, Vec::new()));
+    }
+    let body = &raw[h.body_start..];
+    let body = if h.chunked {
         decode_chunked(body)?
-    } else if let Some(n) = length {
+    } else if let Some(n) = h.length {
         if n > BODY_CAP || body.len() < n {
             return Err(HttpErr::Other);
         }
@@ -200,7 +254,7 @@ fn parse_response(raw: &[u8]) -> Result<(u16, Vec<u8>), HttpErr> {
     if body.len() > BODY_CAP {
         return Err(HttpErr::Other);
     }
-    Ok((status, body))
+    Ok((h.status, body))
 }
 
 fn decode_chunked(mut data: &[u8]) -> Result<Vec<u8>, HttpErr> {
@@ -226,13 +280,13 @@ fn decode_chunked(mut data: &[u8]) -> Result<Vec<u8>, HttpErr> {
     }
 }
 
-fn lsof(args: &[String]) -> Result<String, ()> {
-    let bin = if std::path::Path::new("/usr/sbin/lsof").exists() {
-        "/usr/sbin/lsof"
-    } else {
-        "lsof"
-    };
+fn lsof(args: &[String], deadline: Duration) -> Result<String, ()> {
+    let bin = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+        .into_iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .ok_or(())?;
     let mut child = Command::new(bin)
+        .env_clear()
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -245,7 +299,7 @@ fn lsof(args: &[String]) -> Result<String, ()> {
         let _ = (&mut stdout).take(BODY_CAP as u64).read_to_string(&mut s);
         s
     });
-    let end = Instant::now() + LSOF_DEADLINE;
+    let end = Instant::now() + deadline;
     let status = loop {
         match child.try_wait() {
             Ok(Some(st)) => break st,
@@ -266,37 +320,43 @@ fn lsof(args: &[String]) -> Result<String, ()> {
     }
 }
 
-fn lsof_args(who: [&str; 2], port: u16, fields: &str) -> Vec<String> {
+fn lsof_args(who: [&str; 2], addr: SocketAddr) -> Vec<String> {
+    let family = if addr.is_ipv4() { "-i4TCP" } else { "-i6TCP" };
     [
         "-nP",
         "-w",
         "-a",
         who[0],
         who[1],
-        &format!("-iTCP:{port}"),
+        &format!("{family}:{}", addr.port()),
         "-sTCP:LISTEN",
-        fields,
+        "-Fpn",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect()
 }
 
+fn local_matches(name: &str, addr: SocketAddr) -> bool {
+    let local = name.split("->").next().unwrap_or("");
+    let Some(host) = local.strip_suffix(&format!(":{}", addr.port())) else {
+        return false;
+    };
+    match addr {
+        SocketAddr::V4(_) => matches!(host, "127.0.0.1" | "*"),
+        SocketAddr::V6(_) => matches!(host, "[::1]" | "*"),
+    }
+}
+
 #[allow(clippy::result_unit_err)]
-pub fn listener_pid(pid: u32, port: u16) -> Result<bool, ()> {
-    let out = lsof(&lsof_args(["-p", &pid.to_string()], port, "-Fpn"))?;
-    let suffix = format!(":{port}");
+pub fn listener_pid(pid: u32, addr: SocketAddr) -> Result<bool, ()> {
+    let out = lsof(&lsof_args(["-p", &pid.to_string()], addr), LSOF_DEADLINE)?;
     let mut current: Option<u32> = None;
     for line in out.lines() {
         if let Some(p) = line.strip_prefix('p') {
             current = p.parse().ok();
         } else if let Some(n) = line.strip_prefix('n') {
-            let local = n.split("->").next().unwrap_or("");
-            if current == Some(pid)
-                && local
-                    .strip_suffix(&suffix)
-                    .is_some_and(|h| matches!(h, "127.0.0.1" | "[::1]" | "*"))
-            {
+            if current == Some(pid) && local_matches(n, addr) {
                 return Ok(true);
             }
         }
@@ -305,9 +365,12 @@ pub fn listener_pid(pid: u32, port: u16) -> Result<bool, ()> {
 }
 
 #[allow(clippy::result_unit_err)]
-pub fn listener_owned(uid: u32, port: u16) -> Result<bool, ()> {
-    let out = lsof(&lsof_args(["-u", &uid.to_string()], port, "-Fp"))?;
-    Ok(out.lines().any(|l| l.starts_with('p')))
+pub fn listener_owned(uid: u32, addr: SocketAddr) -> Result<bool, ()> {
+    let out = lsof(&lsof_args(["-u", &uid.to_string()], addr), LSOF_UID_DEADLINE)?;
+    Ok(out
+        .lines()
+        .filter_map(|l| l.strip_prefix('n'))
+        .any(|n| local_matches(n, addr)))
 }
 
 #[cfg(test)]
@@ -613,13 +676,13 @@ mod tests {
     }
 
     fn lsof_available() -> bool {
-        Command::new("lsof")
-            .arg("-v")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok()
-            || std::path::Path::new("/usr/sbin/lsof").exists()
+        ["/usr/sbin/lsof", "/usr/bin/lsof"]
+            .iter()
+            .any(|p| std::path::Path::new(p).exists())
+    }
+
+    fn sa(s: &str) -> SocketAddr {
+        s.parse().unwrap()
     }
 
     #[test]
@@ -629,13 +692,13 @@ mod tests {
             return;
         }
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = l.local_addr().unwrap().port();
-        assert_eq!(listener_pid(std::process::id(), port), Ok(true));
+        let addr = l.local_addr().unwrap();
+        assert_eq!(listener_pid(std::process::id(), addr), Ok(true));
         assert_eq!(
-            listener_pid(std::process::id().wrapping_add(1), port),
+            listener_pid(std::process::id().wrapping_add(1), addr),
             Ok(false)
         );
-        assert_eq!(listener_pid(1, port), Ok(false));
+        assert_eq!(listener_pid(1, addr), Ok(false));
     }
 
     #[test]
@@ -647,8 +710,20 @@ mod tests {
         let Ok(l) = TcpListener::bind("[::1]:0") else {
             return;
         };
+        let addr = l.local_addr().unwrap();
+        assert_eq!(listener_pid(std::process::id(), addr), Ok(true));
+    }
+
+    #[test]
+    fn listener_pid_wrong_family_is_false() {
+        if !lsof_available() {
+            eprintln!("lsof missing, skipping");
+            return;
+        }
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
-        assert_eq!(listener_pid(std::process::id(), port), Ok(true));
+        let v6 = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port);
+        assert_eq!(listener_pid(std::process::id(), v6), Ok(false));
     }
 
     #[test]
@@ -658,9 +733,138 @@ mod tests {
             return;
         }
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        let uid = unsafe { libc::getuid() };
+        assert_eq!(listener_owned(uid, addr), Ok(true));
+        assert_eq!(listener_owned(uid.wrapping_add(12345), addr), Ok(false));
+    }
+
+    #[test]
+    fn listener_owned_requires_matching_family() {
+        if !lsof_available() {
+            eprintln!("lsof missing, skipping");
+            return;
+        }
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
         let uid = unsafe { libc::getuid() };
-        assert_eq!(listener_owned(uid, port), Ok(true));
-        assert_eq!(listener_owned(uid.wrapping_add(12345), port), Ok(false));
+        assert_eq!(
+            listener_owned(uid, SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)),
+            Ok(true)
+        );
+        assert_eq!(
+            listener_owned(uid, SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port)),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn local_matches_filters_address() {
+        let v4 = sa("127.0.0.1:80");
+        let v6 = sa("[::1]:80");
+        assert!(local_matches("127.0.0.1:80", v4));
+        assert!(local_matches("*:80", v4));
+        assert!(!local_matches("192.0.2.7:80", v4));
+        assert!(!local_matches("[::1]:80", v4));
+        assert!(!local_matches("127.0.0.1:81", v4));
+        assert!(local_matches("[::1]:80", v6));
+        assert!(local_matches("*:80", v6));
+        assert!(!local_matches("127.0.0.1:80", v6));
+        assert!(!local_matches("[2001:db8::1]:80", v6));
+    }
+
+    #[test]
+    fn no_content_response_returns_without_close() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel::<()>();
+        thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = s.read(&mut buf);
+            let _ = s.write_all(b"HTTP/1.1 204 No Content\r\n\r\n");
+            let _ = rx.recv_timeout(Duration::from_secs(10));
+        });
+        let t = Instant::now();
+        assert_eq!(
+            request(addr, "POST", "/", None, Some(b"{}"), Duration::from_secs(5)),
+            Ok((204, Vec::new()))
+        );
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        drop(tx);
+    }
+
+    fn open_socket_server(reply: &'static [u8]) -> (SocketAddr, mpsc::Sender<()>) {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel::<()>();
+        thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = s.read(&mut buf);
+            let _ = s.write_all(reply);
+            let _ = rx.recv_timeout(Duration::from_secs(10));
+        });
+        (addr, tx)
+    }
+
+    #[test]
+    fn content_length_response_returns_without_close() {
+        let (addr, _tx) = open_socket_server(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+        let t = Instant::now();
+        assert_eq!(
+            request(addr, "GET", "/", None, None, Duration::from_secs(5)),
+            Ok((200, b"ok".to_vec()))
+        );
+        assert!(t.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn chunked_response_returns_at_terminator_without_close() {
+        let (addr, _tx) = open_socket_server(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
+        );
+        let t = Instant::now();
+        assert_eq!(
+            request(addr, "GET", "/", None, None, Duration::from_secs(5)),
+            Ok((200, b"ok".to_vec()))
+        );
+        assert!(t.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn head_response_ignores_content_length() {
+        let (addr, _tx) = open_socket_server(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\n");
+        let t = Instant::now();
+        assert_eq!(
+            request(addr, "HEAD", "/", None, None, Duration::from_secs(5)),
+            Ok((200, Vec::new()))
+        );
+        assert!(t.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn transfer_encoding_last_token_decides() {
+        let (addr, _rx) = serve(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n".to_vec(),
+        );
+        assert_eq!(
+            request(addr, "GET", "/", None, None, D),
+            Ok((200, b"ok".to_vec()))
+        );
+        let (addr, _rx) = serve(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n2\r\nok\r\n0\r\n\r\n".to_vec(),
+        );
+        assert_eq!(
+            request(addr, "GET", "/", None, None, D),
+            Err(HttpErr::Other)
+        );
+        let (addr, _rx) = serve(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: identity\r\n\r\nok".to_vec(),
+        );
+        assert_eq!(
+            request(addr, "GET", "/", None, None, D),
+            Err(HttpErr::Other)
+        );
     }
 }

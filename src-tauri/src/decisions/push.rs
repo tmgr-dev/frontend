@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
+use std::net::SocketAddr;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::os::unix::net::UnixStream;
@@ -321,10 +322,16 @@ fn http_status(r: Result<(u16, Vec<u8>), HttpErr>) -> Result<Vec<u8>, PushErr> {
 
 fn last_user_prompt(body: &[u8]) -> Option<(String, serde_json::Value)> {
   let list: serde_json::Value = serde_json::from_slice(body).ok()?;
-  let info = list.as_array()?.iter().rev().filter_map(|m| m.get("info")).find(|i| i["role"] == "user")?;
-  let agent = info["agent"].as_str().filter(|a| !a.is_empty())?.to_owned();
-  let model = &info["model"];
-  let (provider, id) = (model["providerID"].as_str()?, model["modelID"].as_str()?);
+  let infos = || list.as_array().into_iter().flatten().rev().filter_map(|m| m.get("info"));
+  if let Some(info) = infos().find(|i| i["role"] == "user") {
+    let agent = info["agent"].as_str().filter(|a| !a.is_empty())?.to_owned();
+    let model = &info["model"];
+    let (provider, id) = (model["providerID"].as_str()?, model["modelID"].as_str()?);
+    return Some((agent, json!({"providerID": provider, "modelID": id})));
+  }
+  let info = infos().find(|i| i["role"] == "assistant")?;
+  let agent = ["agent", "mode"].iter().find_map(|k| info[*k].as_str().filter(|a| !a.is_empty()))?.to_owned();
+  let (provider, id) = (info["providerID"].as_str()?, info["modelID"].as_str()?);
   Some((agent, json!({"providerID": provider, "modelID": id})))
 }
 
@@ -334,14 +341,16 @@ fn deliver_opencode(
   session: &str,
   text: &str,
   uid: u32,
-  owned: &dyn Fn(u32, u16) -> Result<bool, ()>,
+  owned: &dyn Fn(u32, SocketAddr) -> Result<bool, ()>,
 ) -> Result<(), PushErr> {
   let addr = loopback::parse_url(endpoint).ok_or(PushErr::Gone)?;
   if !loopback::valid_session_id(session) {
     return Err(PushErr::Gone);
   }
-  if owned(uid, addr.port()) != Ok(true) {
-    return Err(PushErr::Gone);
+  match owned(uid, addr) {
+    Ok(true) => {}
+    Ok(false) => return Err(PushErr::Gone),
+    Err(()) => return Err(PushErr::Other),
   }
   let auth = password.map(loopback::basic_header);
   let auth = auth.as_deref();
@@ -358,7 +367,7 @@ fn deliver_opencode(
   let body = serde_json::to_vec(&body).map_err(|_| PushErr::Other)?;
   let r = loopback::request(addr, "POST", &format!("/session/{session}/prompt_async"), auth, Some(&body), OPENCODE_TIMEOUT);
   match r {
-    Ok((204, _)) => Ok(()),
+    Ok((200..=299, _)) => Ok(()),
     Ok((401 | 403 | 404, _)) | Err(HttpErr::Refused) => Err(PushErr::Gone),
     _ => Err(PushErr::Other),
   }
@@ -1326,7 +1335,7 @@ mod tests {
     std::process::Command::new("lsof").arg("-v").output().is_ok()
   }
 
-  fn yes(_: u32, _: u16) -> Result<bool, ()> {
+  fn yes(_: u32, _: SocketAddr) -> Result<bool, ()> {
     Ok(true)
   }
 
@@ -1371,12 +1380,46 @@ mod tests {
   fn nothing_is_sent_when_the_listener_is_not_ours() {
     let f = fake_opencode(LISTING, "204 No Content");
     let url = loopback::canonical_url(f.addr);
-    let no = |_: u32, _: u16| Ok(false);
-    let unknown = |_: u32, _: u16| Err(());
+    let no = |_: u32, _: SocketAddr| Ok(false);
     assert_eq!(deliver_opencode(&url, Some(PASS), OC_SES, "x", uid(), &no), Err(PushErr::Gone));
-    assert_eq!(deliver_opencode(&url, Some(PASS), OC_SES, "x", uid(), &unknown), Err(PushErr::Gone));
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(f.accepted.load(std::sync::atomic::Ordering::SeqCst), 0);
+  }
+
+  #[test]
+  fn nothing_is_sent_and_the_target_is_kept_when_the_owner_check_fails() {
+    let f = fake_opencode(LISTING, "204 No Content");
+    let url = loopback::canonical_url(f.addr);
+    let unknown = |_: u32, _: SocketAddr| Err(());
+    assert_eq!(deliver_opencode(&url, Some(PASS), OC_SES, "x", uid(), &unknown), Err(PushErr::Other));
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(f.accepted.load(std::sync::atomic::Ordering::SeqCst), 0);
+  }
+
+  #[test]
+  fn a_long_turn_without_a_user_message_in_the_window_uses_the_newest_assistant() {
+    let msg = |i: usize| format!(r#"{{"info":{{"role":"assistant","agent":"build","providerID":"p{i}","modelID":"m{i}"}},"parts":[]}}"#);
+    let listing: &'static str = Box::leak(format!("[{}]", (0..25).map(msg).collect::<Vec<_>>().join(",")).into_boxed_str());
+    let f = fake_opencode(listing, "204 No Content");
+    let url = loopback::canonical_url(f.addr);
+    assert_eq!(deliver_opencode(&url, None, OC_SES, "x", uid(), &yes), Ok(()));
+    let seen = f.seen.lock().unwrap().clone();
+    let body: serde_json::Value = serde_json::from_str(seen[1].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+    assert_eq!(body["agent"], "build");
+    assert_eq!(body["model"], json!({"providerID": "p24", "modelID": "m24"}));
+  }
+
+  #[test]
+  fn the_assistant_fallback_accepts_mode_and_a_user_message_wins() {
+    let mode = r#"[{"info":{"role":"assistant","mode":"plan","providerID":"p","modelID":"m"}}]"#;
+    let f = fake_opencode(mode, "204 No Content");
+    let url = loopback::canonical_url(f.addr);
+    assert_eq!(deliver_opencode(&url, None, OC_SES, "x", uid(), &yes), Ok(()));
+    let seen = f.seen.lock().unwrap().clone();
+    let body: serde_json::Value = serde_json::from_str(seen[1].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+    assert_eq!(body["agent"], "plan");
+    let both = r#"[{"info":{"role":"user","agent":"build","model":{"providerID":"u","modelID":"um"}}},{"info":{"role":"assistant","agent":"a","providerID":"p","modelID":"m"}}]"#;
+    assert_eq!(last_user_prompt(both.as_bytes()), Some(("build".to_string(), json!({"providerID": "u", "modelID": "um"}))));
   }
 
   #[test]
@@ -1397,7 +1440,7 @@ mod tests {
       ("403 Forbidden", Err(PushErr::Gone)),
       ("500 Internal Server Error", Err(PushErr::Other)),
       ("302 Found", Err(PushErr::Other)),
-      ("200 OK", Err(PushErr::Other)),
+      ("200 OK", Ok(())),
     ] {
       let f = fake_opencode(LISTING, status);
       let url = loopback::canonical_url(f.addr);
@@ -1506,7 +1549,7 @@ mod tests {
       let session = var("TMGR_E2E_OPENCODE_SESSION");
       let addr = loopback::parse_url(&var("TMGR_E2E_OPENCODE_URL")).unwrap();
       let other = unsafe { libc::getuid() }.wrapping_add(1);
-      assert_eq!(loopback::listener_owned(other, addr.port()), Ok(false));
+      assert_eq!(loopback::listener_owned(other, addr), Ok(false));
       assert_eq!(deliver_opencode(&var("TMGR_E2E_OPENCODE_URL"), pass().as_deref(), &session, "x", other, &loopback::listener_owned), Err(PushErr::Gone));
     }
   }

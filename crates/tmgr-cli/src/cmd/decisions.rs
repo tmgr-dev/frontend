@@ -127,7 +127,7 @@ fn hook_inbox_with(card: &CardIn, inbox: impl FnOnce() -> Option<Inbox>) -> Opti
 
 pub trait OpencodeProbe {
     #[allow(clippy::result_unit_err)]
-    fn listener_pid(&self, pid: u32, port: u16) -> Result<bool, ()>;
+    fn listener_pid(&self, pid: u32, addr: SocketAddr) -> Result<bool, ()>;
     fn get(
         &self,
         addr: SocketAddr,
@@ -139,8 +139,8 @@ pub trait OpencodeProbe {
 struct RealProbe;
 
 impl OpencodeProbe for RealProbe {
-    fn listener_pid(&self, pid: u32, port: u16) -> Result<bool, ()> {
-        loopback::listener_pid(pid, port)
+    fn listener_pid(&self, pid: u32, addr: SocketAddr) -> Result<bool, ()> {
+        loopback::listener_pid(pid, addr)
     }
 
     fn get(
@@ -202,7 +202,7 @@ fn opencode_inbox_with(
     get("OPENCODE").filter(|v| !v.is_empty())?;
     let addr = loopback::parse_url(&get("TMGR_OPENCODE_URL")?)?;
     let pid: u32 = get("OPENCODE_PID")?.parse().ok()?;
-    if probe.listener_pid(pid, addr.port()) != Ok(true) {
+    if probe.listener_pid(pid, addr) != Ok(true) {
         return None;
     }
     let password = get("OPENCODE_SERVER_PASSWORD").filter(|p| !p.is_empty());
@@ -215,13 +215,21 @@ fn opencode_inbox_with(
     let sessions = listed.as_array()?;
     let mut parents: HashMap<String, Option<String>> = HashMap::new();
     let mut here: HashSet<&str> = HashSet::new();
+    let mut canonical: HashMap<String, String> = HashMap::new();
     for s in sessions {
         let id = s.get("id")?.as_str()?;
         parents.insert(
             id.to_string(),
             s.get("parentID").and_then(Value::as_str).map(String::from),
         );
-        if canonical_dir(s.get("directory")?.as_str()?) == cwd {
+        let dir = s.get("directory")?.as_str()?;
+        if dir == cwd
+            || canonical
+                .entry(dir.to_string())
+                .or_insert_with(|| canonical_dir(dir))
+                .as_str()
+                == cwd
+        {
             here.insert(id);
         }
     }
@@ -1325,7 +1333,7 @@ mod tests {
     }
 
     impl OpencodeProbe for Fake {
-        fn listener_pid(&self, _: u32, _: u16) -> Result<bool, ()> {
+        fn listener_pid(&self, _: u32, _: SocketAddr) -> Result<bool, ()> {
             *self.pid_calls.borrow_mut() += 1;
             self.pid_ok
         }
@@ -1562,7 +1570,7 @@ mod tests {
 
         struct Probe;
         impl OpencodeProbe for Probe {
-            fn listener_pid(&self, _: u32, _: u16) -> Result<bool, ()> {
+            fn listener_pid(&self, _: u32, _: SocketAddr) -> Result<bool, ()> {
                 Ok(true)
             }
             fn get(
