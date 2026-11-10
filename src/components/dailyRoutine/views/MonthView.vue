@@ -82,6 +82,7 @@
 						>{{ e.time }}</span
 					>
 					<span class="truncate">{{ e.title }}</span>
+					<CommentCountBadge :count="e.comments_count ?? 0" />
 				</div>
 				<div
 					v-if="byDay[i].length > maxChips"
@@ -95,6 +96,7 @@
 </template>
 
 <script setup lang="ts">
+	import CommentCountBadge from '../CommentCountBadge.vue';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { hexAlpha } from '@/utils/dailyRoutines/categoryMap';
