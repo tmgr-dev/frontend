@@ -4,23 +4,27 @@ import { LocalHttpError, type LocalContext } from '../types';
 import { localDate, normalizeRecurrence } from './recurrence';
 import { instanceJson, patternJson, routineJson } from './serialize';
 import {
+	deleteRoutineScoped,
+	routineView,
+	updateRoutineScoped,
+} from './seriesEdit';
+import {
 	archiveRoutine,
 	completeForDate,
 	convertRoutineToTask,
 	createRecurringRoutine,
 	createRoutine,
 	deleteInstance,
-	destroyRoutine,
 	expandRange,
 	loadActiveRoutine,
+	moveOccurrence,
+	normalizeDateField,
 	notFoundRoutine,
 	quickCreateRoutine,
 	rescheduleInstance,
 	rescheduleVirtual,
 	resolveReschedule,
-	savePattern,
 	setInstanceStatus,
-	updateRoutine,
 } from './service';
 
 const requireActive = async (ctx: LocalContext, id: number) => {
@@ -94,22 +98,39 @@ export const addRoutineRoutes = (router: LocalRouter): LocalRouter =>
 			);
 			return rows.map((row) => routineJson(row, ctx));
 		})
-		.add('GET', 'daily-routines/tasks/:id(\\d+)', async ({ ctx, params }) =>
-			routineJson(await requireActive(ctx, Number(params.id)), ctx),
+		.add(
+			'GET',
+			'daily-routines/tasks/:id(\\d+)',
+			async ({ ctx, params, query }) =>
+				routineView(
+					ctx,
+					await requireActive(ctx, Number(params.id)),
+					normalizeDateField(query.get('date')),
+				),
 		)
 		.add(
 			'PUT',
 			'daily-routines/tasks/:id(\\d+)',
 			async ({ ctx, params, body }) => {
 				const row = await requireActive(ctx, Number(params.id));
-				return routineJson(await updateRoutine(ctx, row, body ?? {}), ctx);
+				return routineView(
+					ctx,
+					await updateRoutineScoped(ctx, row, body ?? {}),
+					null,
+				);
 			},
 		)
 		.add(
 			'DELETE',
 			'daily-routines/tasks/:id(\\d+)',
-			async ({ ctx, params }) => {
-				await destroyRoutine(ctx, Number(params.id));
+			async ({ ctx, params, query }) => {
+				await deleteRoutineScoped(
+					ctx,
+					Number(params.id),
+					query.get('scope'),
+					query.get('occurrence_date'),
+					query.get('op_id'),
+				);
 				return null;
 			},
 			204,
@@ -234,12 +255,25 @@ export const addRoutineRoutes = (router: LocalRouter): LocalRouter =>
 				const row = await requireActive(ctx, Number(params.id));
 				const { date, time } = resolveReschedule(body ?? {});
 				if (!date) throw new LocalHttpError(422, 'a target date is required');
-				if (params.instanceId.toLowerCase() === 'virtual') {
+				const isVirtual = params.instanceId.toLowerCase() === 'virtual';
+				const instanceId = isVirtual ? 0 : Number(params.instanceId);
+				if (!isVirtual && !Number.isFinite(instanceId))
+					throw new LocalHttpError(400, 'Invalid task instance id');
+				const fromDate = normalizeDateField(body?.from_date);
+				if (fromDate) {
+					const moved = await moveOccurrence(
+						ctx,
+						row.id,
+						isVirtual ? 'virtual' : instanceId,
+						fromDate,
+						date,
+						time,
+					);
+					if (moved) return instanceJson(moved);
+				}
+				if (isVirtual) {
 					return instanceJson(await rescheduleVirtual(ctx, row.id, date, time));
 				}
-				const instanceId = Number(params.instanceId);
-				if (!Number.isFinite(instanceId))
-					throw new LocalHttpError(400, 'Invalid task instance id');
 				return instanceJson(
 					await rescheduleInstance(ctx, row.id, instanceId, date, time),
 				);
@@ -253,7 +287,7 @@ export const addRoutineRoutes = (router: LocalRouter): LocalRouter =>
 				const pattern = normalizeRecurrence(body ?? {});
 				if (!pattern)
 					throw new LocalHttpError(422, 'a recurrence pattern is required');
-				await savePattern(ctx, row.id, pattern);
+				await updateRoutineScoped(ctx, row, { recurrence: body });
 				const [patternRow] = await ctx.db.select<any>(
 					`SELECT * FROM routine_patterns WHERE routine_id = ?`,
 					[row.id],

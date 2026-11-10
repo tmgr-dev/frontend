@@ -1,6 +1,7 @@
 import { parseJson } from '../serialize';
 import type { LocalContext } from '../types';
 import type { RoutineCategoryJson } from './recurrence';
+import type { Version } from './series';
 import type { RoutineEntryJson } from './service';
 
 /** Task-shaped JSON for a routine row, mirroring the Java `Task` entity's Jackson output. */
@@ -46,6 +47,11 @@ export const instanceJson = (row: any) => ({
 	updated_at: row.updated_at,
 	scheduled_date: String(row.scheduled_for).slice(0, 10),
 	scheduled_time: String(row.scheduled_for).slice(11),
+	moved_from: row.moved_from ?? null,
+	override: Number(row.is_override ?? 0) !== 0,
+	duration_min: row.duration_min ?? null,
+	title: row.title ?? null,
+	description: row.description ?? null,
 });
 
 /** Mirrors the Java `TaskPattern` entity's Jackson output for the legacy PUT .../pattern endpoint. */
@@ -72,29 +78,34 @@ const displayTime = (time: string | null | undefined): string | null =>
 
 export const buildPatternEntry = (
 	row: any,
+	v: Version,
 	day: string,
 	inst: any | null,
 	resolveCategory: (id: string | null | undefined) => RoutineCategoryJson,
 ): RoutineEntryJson => {
-	const time: string | null = row.scheduled_time ?? null;
+	const time: string | null =
+		inst && Number(inst.is_override) !== 0 && inst.scheduled_for
+			? String(inst.scheduled_for).slice(11, 19)
+			: v.scheduledTime;
 	const status = inst ? String(inst.status).toLowerCase() : 'pending';
 	return {
 		task_id: row.routine_id,
-		title: row.title,
-		description: row.description,
-		routine_category: resolveCategory(row.routine_category),
+		title: inst?.title ?? v.title ?? '',
+		description: inst?.description ?? v.description,
+		routine_category: resolveCategory(v.routineCategory),
 		date: day,
 		time: displayTime(time),
 		scheduled_for: `${day}T${time ?? '00:00:00'}Z`,
-		duration_min: row.approximately_time ?? row.duration_min ?? null,
-		reminder_min: row.reminder_min ?? null,
-		frequency: row.frequency,
+		duration_min: inst?.duration_min ?? v.durationMin,
+		reminder_min: v.reminderMin,
+		frequency: v.frequency,
 		status,
 		completed: status === 'completed',
 		instance_id: inst ? inst.id : null,
 		virtual: !inst,
 		created_at: row.created_at ?? null,
 		updated_at: row.updated_at ?? null,
+		comments_count: 0,
 	};
 };
 
@@ -121,6 +132,7 @@ export const buildOrphanEntry = (
 		virtual: false,
 		created_at: row.created_at ?? null,
 		updated_at: row.updated_at ?? null,
+		comments_count: 0,
 	};
 };
 
@@ -147,5 +159,6 @@ export const buildPlainEntry = (
 		virtual: true,
 		created_at: row.created_at ?? null,
 		updated_at: row.updated_at ?? null,
+		comments_count: 0,
 	};
 };

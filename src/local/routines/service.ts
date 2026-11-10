@@ -3,7 +3,6 @@ import { parseJson, toJson } from '../serialize';
 import { LocalHttpError, type LocalContext } from '../types';
 import {
 	addDays,
-	firesOn,
 	localDate,
 	localDateTime,
 	nextInstance,
@@ -17,6 +16,15 @@ import {
 	buildPlainEntry,
 	instanceJson,
 } from './serialize';
+import {
+	createdOn,
+	firesOn,
+	fromSegment,
+	governing,
+	liveVersion,
+	withTime,
+	type Version,
+} from './series';
 
 export const ROUTINE_ID_BASE = 1_000_000_000;
 
@@ -39,21 +47,23 @@ export interface RoutineEntryJson {
 	virtual: boolean;
 	created_at: string | null;
 	updated_at: string | null;
+	comments_count: number;
+	moved_from?: string | null;
 }
 
 export const notFoundRoutine = (): LocalHttpError =>
 	new LocalHttpError(404, 'Routine task not found');
 
-const iso = (ctx: LocalContext) => ctx.now().toISOString();
+export const iso = (ctx: LocalContext) => ctx.now().toISOString();
 
-const numberOrNull = (value: any): number | null =>
+export const numberOrNull = (value: any): number | null =>
 	value === null || value === undefined || value === '' ? null : Number(value);
 
-const normalizeDateField = (value: any): string | null =>
+export const normalizeDateField = (value: any): string | null =>
 	typeof value === 'string' && value.length >= 10 ? value.slice(0, 10) : null;
 
 /** Accepts `{hours,minutes[,seconds]}` or an `"HH:mm[:ss]"` string, like the Java DTOs do. */
-const resolveTimeInput = (raw: any): string | null => {
+export const resolveTimeInput = (raw: any): string | null => {
 	const pad2 = (n: number) => String(n).padStart(2, '0');
 	if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
 		const h = raw.hours;
@@ -597,6 +607,17 @@ export const resolveReschedule = (
 	};
 };
 
+const hasRecurringPattern = async (
+	ctx: LocalContext,
+	routineId: number,
+): Promise<any | null> => {
+	const [pattern] = await ctx.db.select<any>(
+		`SELECT * FROM routine_patterns WHERE routine_id = ? AND frequency IS NOT NULL AND frequency NOT IN ('', 'NONE')`,
+		[routineId],
+	);
+	return pattern ?? null;
+};
+
 export const rescheduleVirtual = async (
 	ctx: LocalContext,
 	routineId: number,
@@ -630,16 +651,77 @@ export const rescheduleInstance = async (
 	if (!existing)
 		throw new LocalHttpError(404, 'Task instance not found for routine');
 	const keepTime = time ?? String(existing.scheduled_for).slice(11);
+	const oldDate = String(existing.scheduled_for).slice(0, 10);
+	const movedFrom =
+		existing.moved_from ??
+		(oldDate !== date && (await hasRecurringPattern(ctx, routineId))
+			? oldDate
+			: null);
 	const now = iso(ctx);
 	await ctx.db.execute(
-		`UPDATE routine_instances SET scheduled_for = ?, updated_at = ? WHERE id = ?`,
-		[`${date}T${keepTime}`, now, instanceId],
+		`UPDATE routine_instances SET scheduled_for = ?, moved_from = ?, updated_at = ? WHERE id = ?`,
+		[`${date}T${keepTime}`, movedFrom, now, instanceId],
 	);
 	const [updated] = await ctx.db.select<any>(
 		`SELECT * FROM routine_instances WHERE id = ?`,
 		[instanceId],
 	);
 	return updated;
+};
+
+/** Moves one occurrence of a recurring routine; `moved_from` keeps its original day so expansion hides it there. */
+export const moveOccurrence = async (
+	ctx: LocalContext,
+	routineId: number,
+	instanceId: number | 'virtual',
+	from: string,
+	to: string,
+	time: string | null,
+) => {
+	const pattern = await hasRecurringPattern(ctx, routineId);
+	if (!pattern) return null;
+	const found =
+		instanceId === 'virtual'
+			? (
+					await ctx.db.select<any>(
+						`SELECT * FROM routine_instances WHERE routine_id = ? AND moved_from IS NULL
+						 AND scheduled_for >= ? AND scheduled_for < ? ORDER BY id LIMIT 1`,
+						[routineId, `${from}T00:00:00`, `${addDays(from, 1)}T00:00:00`],
+					)
+				)[0]
+			: (
+					await ctx.db.select<any>(
+						`SELECT * FROM routine_instances WHERE id = ? AND routine_id = ?`,
+						[instanceId, routineId],
+					)
+				)[0];
+	if (instanceId !== 'virtual' && !found)
+		throw new LocalHttpError(404, 'Task instance not found for routine');
+	const kept = found ? String(found.scheduled_for).slice(11, 19) : '00:00:00';
+	const resolved =
+		time ??
+		(kept !== '00:00:00' ? kept : (pattern.scheduled_time ?? '00:00:00'));
+	const scheduledFor = `${to}T${resolved}`;
+	const now = iso(ctx);
+	let id: number;
+	if (found) {
+		await ctx.db.execute(
+			`UPDATE routine_instances SET scheduled_for = ?, moved_from = ?, updated_at = ? WHERE id = ?`,
+			[scheduledFor, found.moved_from ?? from, now, found.id],
+		);
+		id = Number(found.id);
+	} else {
+		const result = await ctx.db.execute(
+			`INSERT INTO routine_instances (routine_id, scheduled_for, status, moved_from, created_at, updated_at) VALUES (?, ?, 'PENDING', ?, ?, ?)`,
+			[routineId, scheduledFor, from, now, now],
+		);
+		id = Number(result.lastInsertId);
+	}
+	const [row] = await ctx.db.select<any>(
+		`SELECT * FROM routine_instances WHERE id = ?`,
+		[id],
+	);
+	return row;
 };
 
 // ── expansion / scheduling ────────────────────────────────────────────────────
@@ -650,10 +732,22 @@ const PATTERN_SQL = `
 	WHERE r.deleted_at IS NULL AND r.archived_at IS NULL
 		AND rp.frequency IS NOT NULL AND rp.frequency NOT IN ('', 'NONE')`;
 
+const SEGMENT_SQL = `
+	SELECT s.* FROM routine_pattern_segments s JOIN routines r ON r.id = s.routine_id
+	WHERE r.deleted_at IS NULL AND r.archived_at IS NULL
+	ORDER BY s.routine_id, s.valid_from, s.id`;
+
 const INSTANCE_SQL = `
 	SELECT ri.* FROM routine_instances ri JOIN routines r ON r.id = ri.routine_id
-	WHERE r.deleted_at IS NULL AND r.archived_at IS NULL
+	WHERE r.deleted_at IS NULL AND r.archived_at IS NULL AND ri.moved_from IS NULL
 		AND ri.scheduled_for >= ? AND ri.scheduled_for < ?`;
+
+const MOVED_SQL = `
+	SELECT ri.* FROM routine_instances ri JOIN routines r ON r.id = ri.routine_id
+	WHERE r.deleted_at IS NULL AND r.archived_at IS NULL AND ri.moved_from IS NOT NULL
+		AND EXISTS (SELECT 1 FROM routine_patterns rp WHERE rp.routine_id = ri.routine_id
+			AND rp.frequency IS NOT NULL AND rp.frequency NOT IN ('', 'NONE'))
+		AND ((ri.scheduled_for >= ? AND ri.scheduled_for < ?) OR (ri.moved_from >= ? AND ri.moved_from <= ?))`;
 
 const ORPHAN_SQL = `
 	SELECT ri.*, r.title, r.description, r.routine_category, r.created_at, r.updated_at,
@@ -692,6 +786,22 @@ const buildInstanceMap = (rows: any[]): Map<string, any> => {
 	return map;
 };
 
+const commentCounts = async (
+	ctx: LocalContext,
+	ids: number[],
+): Promise<Map<number, number>> => {
+	const counts = new Map<number, number>();
+	if (!ids.length) return counts;
+	const rows = await ctx.db.select<{ routine_id: number; n: number }>(
+		`SELECT routine_id, COUNT(*) AS n FROM routine_comments
+		 WHERE routine_id IN (${ids.map(() => '?').join(', ')}) AND deleted_at IS NULL
+		 GROUP BY routine_id`,
+		ids,
+	);
+	for (const r of rows) counts.set(Number(r.routine_id), Number(r.n));
+	return counts;
+};
+
 export const expandRange = async (
 	ctx: LocalContext,
 	from: string,
@@ -701,9 +811,16 @@ export const expandRange = async (
 	const rangeEnd = `${addDays(to, 1)}T00:00:00`;
 
 	const patternRows = await ctx.db.select<any>(PATTERN_SQL);
+	const segmentRows = await ctx.db.select<any>(SEGMENT_SQL);
 	const instanceRows = await ctx.db.select<any>(INSTANCE_SQL, [
 		rangeStart,
 		rangeEnd,
+	]);
+	const movedRows = await ctx.db.select<any>(MOVED_SQL, [
+		rangeStart,
+		rangeEnd,
+		from,
+		to,
 	]);
 	const orphanRows = await ctx.db.select<any>(ORPHAN_SQL, [
 		rangeStart,
@@ -711,18 +828,92 @@ export const expandRange = async (
 	]);
 	const plainRows = await ctx.db.select<any>(PLAIN_SQL);
 
+	const segmentsBy = new Map<number, Version[]>();
+	for (const row of segmentRows) {
+		const list = segmentsBy.get(Number(row.routine_id)) ?? [];
+		list.push(fromSegment(row));
+		segmentsBy.set(Number(row.routine_id), list);
+	}
+	const patternBy = new Map<number, any>();
+	const liveBy = new Map<number, Version>();
+	for (const row of patternRows) {
+		const id = Number(row.routine_id);
+		patternBy.set(id, row);
+		liveBy.set(id, liveVersion(row, row, segmentsBy.get(id) ?? [], true));
+	}
+	const versionFor = (id: number, day: string): Version =>
+		governing(segmentsBy.get(id) ?? [], liveBy.get(id)!, day) ??
+		liveBy.get(id)!;
+
 	const instanceMap = buildInstanceMap(instanceRows);
+	const movedAway = new Set(
+		movedRows.map((m) => `${m.routine_id}|${m.moved_from}`),
+	);
 	const results: RoutineEntryJson[] = [];
+	const emitted = new Set<string>();
 
 	let day = from;
 	while (day <= to) {
 		for (const row of patternRows) {
-			if (firesOn(patternFromRow(row), day, from)) {
-				const inst = instanceMap.get(`${row.routine_id}|${day}`) ?? null;
-				results.push(buildPatternEntry(row, day, inst, resolveCategory));
+			const id = Number(row.routine_id);
+			const key = `${id}|${day}`;
+			if (movedAway.has(key)) continue;
+			const v = governing(segmentsBy.get(id) ?? [], liveBy.get(id)!, day);
+			if (v && firesOn(v, day, from)) {
+				results.push(
+					buildPatternEntry(
+						row,
+						v,
+						day,
+						instanceMap.get(key) ?? null,
+						resolveCategory,
+					),
+				);
+				emitted.add(key);
 			}
 		}
 		day = addDays(day, 1);
+	}
+
+	for (const inst of instanceMap.values()) {
+		const id = Number(inst.routine_id);
+		const date = String(inst.scheduled_for).slice(0, 10);
+		const key = `${id}|${date}`;
+		const row = patternBy.get(id);
+		if (!row || emitted.has(key) || movedAway.has(key)) continue;
+		const status = String(inst.status ?? '').toUpperCase();
+		if (status !== 'COMPLETED' && status !== 'SKIPPED') continue;
+		results.push(
+			buildPatternEntry(
+				row,
+				withTime(
+					versionFor(id, date),
+					String(inst.scheduled_for).slice(11, 19),
+				),
+				date,
+				{ ...inst, is_override: 0 },
+				resolveCategory,
+			),
+		);
+	}
+
+	for (const m of movedRows) {
+		const id = Number(m.routine_id);
+		const row = patternBy.get(id);
+		const movedDay = String(m.scheduled_for).slice(0, 10);
+		if (!row || movedDay < from || movedDay > to) continue;
+		const entry = buildPatternEntry(
+			row,
+			withTime(
+				versionFor(id, m.moved_from),
+				String(m.scheduled_for).slice(11, 19),
+			),
+			movedDay,
+			{ ...m, is_override: 0 },
+			resolveCategory,
+		);
+		entry.moved_from = m.moved_from;
+		results.push(entry);
 	}
 
 	for (const row of orphanRows)
@@ -735,10 +926,45 @@ export const expandRange = async (
 			results.push(buildPlainEntry(row, day2, resolveCategory));
 	}
 
+	const counts = await commentCounts(ctx, [
+		...new Set(results.map((e) => e.task_id)),
+	]);
+	for (const entry of results)
+		entry.comments_count = counts.get(entry.task_id) ?? 0;
+
 	results.sort((a, b) =>
 		(a.scheduled_for ?? '').localeCompare(b.scheduled_for ?? ''),
 	);
 	return results;
+};
+
+const DEFAULT_TIME = '09:00:00';
+
+const createIfAbsent = async (
+	ctx: LocalContext,
+	routineId: number,
+	pattern: any,
+	next: string,
+): Promise<boolean> => {
+	if (pattern.occurrences != null) {
+		const [{ n }] = await ctx.db.select<{ n: number }>(
+			`SELECT COUNT(*) AS n FROM routine_instances WHERE routine_id = ?`,
+			[routineId],
+		);
+		if (Number(n) >= pattern.occurrences) return false;
+	}
+	const nextDate = next.slice(0, 10);
+	const [existing] = await ctx.db.select<any>(
+		`SELECT id FROM routine_instances WHERE routine_id = ? AND scheduled_for >= ? AND scheduled_for < ?`,
+		[routineId, `${nextDate}T00:00:00`, `${addDays(nextDate, 1)}T00:00:00`],
+	);
+	if (existing) return false;
+	const nowIso = iso(ctx);
+	await ctx.db.execute(
+		`INSERT INTO routine_instances (routine_id, scheduled_for, status, created_at, updated_at) VALUES (?, ?, 'PENDING', ?, ?)`,
+		[routineId, next, nowIso, nowIso],
+	);
+	return true;
 };
 
 export const materializeDueInstances = async (
@@ -753,6 +979,28 @@ export const materializeDueInstances = async (
 	);
 	let created = 0;
 	for (const row of rows) {
+		const segmentRows = await ctx.db.select<any>(
+			`SELECT * FROM routine_pattern_segments WHERE routine_id = ? ORDER BY valid_from, id`,
+			[row.routine_id],
+		);
+		if (segmentRows.length) {
+			const [routine] = await ctx.db.select<any>(
+				`SELECT * FROM routines WHERE id = ?`,
+				[row.routine_id],
+			);
+			const history = segmentRows.map(fromSegment);
+			const live = liveVersion(routine, row, history, false);
+			const limit = `${addDays(now.slice(0, 10), 1)}${now.slice(10)}`;
+			for (let offset = 0; offset <= 1; offset++) {
+				const day = addDays(now.slice(0, 10), offset);
+				const v = governing(history, live, day);
+				if (!v || !firesOn(v, day, createdOn(routine))) continue;
+				const next = `${day}T${v.scheduledTime ?? DEFAULT_TIME}`;
+				if (next > limit) continue;
+				if (await createIfAbsent(ctx, row.routine_id, row, next)) created++;
+			}
+			continue;
+		}
 		const pattern = patternFromRow(row);
 		const [latest] = await ctx.db.select<any>(
 			`SELECT scheduled_for FROM routine_instances WHERE routine_id = ? ORDER BY scheduled_for DESC LIMIT 1`,
@@ -764,29 +1012,7 @@ export const materializeDueInstances = async (
 			now,
 		);
 		if (!next) continue;
-		if (pattern.occurrences != null) {
-			const [{ n }] = await ctx.db.select<{ n: number }>(
-				`SELECT COUNT(*) AS n FROM routine_instances WHERE routine_id = ?`,
-				[row.routine_id],
-			);
-			if (Number(n) >= pattern.occurrences) continue;
-		}
-		const nextDate = next.slice(0, 10);
-		const [existing] = await ctx.db.select<any>(
-			`SELECT id FROM routine_instances WHERE routine_id = ? AND scheduled_for >= ? AND scheduled_for < ?`,
-			[
-				row.routine_id,
-				`${nextDate}T00:00:00`,
-				`${addDays(nextDate, 1)}T00:00:00`,
-			],
-		);
-		if (existing) continue;
-		const nowIso = iso(ctx);
-		await ctx.db.execute(
-			`INSERT INTO routine_instances (routine_id, scheduled_for, status, created_at, updated_at) VALUES (?, ?, 'PENDING', ?, ?)`,
-			[row.routine_id, next, nowIso, nowIso],
-		);
-		created++;
+		if (await createIfAbsent(ctx, row.routine_id, row, next)) created++;
 	}
 	return created;
 };

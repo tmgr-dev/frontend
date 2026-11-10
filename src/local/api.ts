@@ -20,6 +20,14 @@ import {
 } from './personaAssignees';
 import { mapsLocalIdentity, requirePersonaPermission } from './personaGate';
 import { LocalRouter } from './router';
+import {
+	createRoutineComment,
+	deleteRoutineComment,
+	listRoutineComments,
+	loadRoutineComment,
+	requireRoutineForComments,
+	updateRoutineComment,
+} from './routines/comments';
 import { addRoutineRoutes } from './routines/routes';
 import { isRoutineId, updateRoutineTaskFields } from './routines/service';
 import {
@@ -1043,6 +1051,12 @@ export const createLocalApi = () => {
 		})
 		// ── comments ────────────────────────────────────────────────────────────
 		.add('GET', 'tasks/:id(\\d+)/comments', async ({ ctx, params }) => {
+			if (isRoutineId(Number(params.id))) {
+				await requireRoutineForComments(ctx, Number(params.id));
+				return (await listRoutineComments(ctx, Number(params.id))).map(
+					routineCommentJson(ctx),
+				);
+			}
 			await loadTask(ctx, Number(params.id));
 			const rows = await ctx.db.select<any>(
 				`SELECT * FROM comments WHERE task_id = ? AND deleted_at IS NULL ORDER BY id ASC`,
@@ -1063,6 +1077,17 @@ export const createLocalApi = () => {
 			async ({ ctx, params, body }) => {
 				const message = String(body?.message ?? body?.content ?? '').trim();
 				if (!message) throw new LocalHttpError(422, 'message is required');
+				if (isRoutineId(Number(params.id))) {
+					await requireRoutineForComments(ctx, Number(params.id));
+					const author = actorOf(ctx);
+					return routineCommentJson(ctx)(
+						await createRoutineComment(ctx, Number(params.id), message, {
+							kind: author.kind,
+							id: author.id,
+							name: author.name,
+						}),
+					);
+				}
 				await loadTask(ctx, Number(params.id));
 				const actor = actorOf(ctx);
 				const now = iso(ctx);
@@ -1105,6 +1130,16 @@ export const createLocalApi = () => {
 		)
 		.add('PUT', 'comments/:id(\\d+)', async ({ ctx, params, body }) => {
 			const id = Number(params.id);
+			if (isRoutineId(id)) {
+				const existing = await loadRoutineComment(ctx, id);
+				if (!existing || existing.deleted_at != null) throw notFound('Comment');
+				assertOwnPersonaComment(ctx, existing, 'edit');
+				const message = String(body?.message ?? body?.content ?? '').trim();
+				if (!message) throw new LocalHttpError(422, 'message is required');
+				return routineCommentJson(ctx)(
+					await updateRoutineComment(ctx, id, message),
+				);
+			}
 			const [comment] = await ctx.db.select<any>(
 				`SELECT * FROM comments WHERE id = ? AND deleted_at IS NULL`,
 				[id],
@@ -1152,6 +1187,14 @@ export const createLocalApi = () => {
 			return { ...commentJson(row, ctx), reactions };
 		})
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
+			if (isRoutineId(Number(params.id))) {
+				const existing = await loadRoutineComment(ctx, Number(params.id));
+				if (ctx.actor?.kind === 'persona' && !existing)
+					throw notFound('Comment');
+				if (existing) assertOwnPersonaComment(ctx, existing, 'delete');
+				await deleteRoutineComment(ctx, Number(params.id));
+				return { success: true, task_id: existing?.routine_id };
+			}
 			const [comment] = await ctx.db.select<any>(
 				`SELECT task_id, author_kind, author_id, deleted_at FROM comments WHERE id = ?`,
 				[Number(params.id)],
@@ -1202,6 +1245,11 @@ export const createLocalApi = () => {
 			'POST',
 			'comments/:id(\\d+)/reactions/toggle',
 			async ({ ctx, params, body }) => {
+				if (isRoutineId(Number(params.id)))
+					throw new LocalHttpError(
+						422,
+						'Reactions are not supported on routine comments',
+					);
 				const emoji = String(body?.emoji ?? '');
 				if (!emoji.trim() || emoji.length > 32)
 					throw new LocalHttpError(422, 'emoji is required');
@@ -2063,6 +2111,29 @@ const commentJson = (row: any, ctx: LocalContext) => {
 		cursor_agent_id: null,
 		cursor_message_type: null,
 	};
+};
+
+const routineCommentJson = (ctx: LocalContext) => (row: any) => ({
+	...commentJson({ ...row, task_id: row.routine_id }, ctx),
+	reactions: [],
+});
+
+const assertOwnPersonaComment = (
+	ctx: LocalContext,
+	comment: any,
+	verb: 'edit' | 'delete',
+) => {
+	if (
+		ctx.actor?.kind === 'persona' &&
+		(comment.author_kind !== 'persona' ||
+			String(comment.author_id) !== ctx.actor.id)
+	) {
+		throw new LocalHttpError(
+			403,
+			`A persona may only ${verb} its own comments`,
+			'NOT_OWN',
+		);
+	}
 };
 
 /** Per-comment reaction summaries, `reacted` and `users` relative to who is asking (see `actorOf`). */
