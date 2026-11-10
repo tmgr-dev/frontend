@@ -127,6 +127,7 @@ interface SeriesCtx {
 	version: number;
 	segments: any[];
 	today: string;
+	timeZone: string | undefined;
 }
 
 const loadSeries = async (
@@ -144,16 +145,17 @@ const loadSeries = async (
 		version: Number(pattern.series_version ?? 0),
 		segments,
 		today: localDate(ctx.now(), ctx.timeZone?.()),
+		timeZone: ctx.timeZone?.(),
 	};
 };
 
 const segVersions = (sc: SeriesCtx): Version[] => sc.segments.map(fromSegment);
 
 const liveOf = (sc: SeriesCtx): Version =>
-	liveVersion(sc.routine, sc.pattern, segVersions(sc), false);
+	liveVersion(sc.routine, sc.pattern, segVersions(sc), false, sc.timeZone);
 
 const anchorOf = (sc: SeriesCtx): string | null =>
-	day10(sc.pattern.start_at) ?? createdOn(sc.routine);
+	day10(sc.pattern.start_at) ?? createdOn(sc.routine, sc.timeZone);
 
 const firstGoverned = (sc: SeriesCtx): string | null => {
 	let first: string | null = null;
@@ -634,9 +636,13 @@ const run = async (
 	statements: BatchStatement[],
 	version: number,
 	guarded: boolean,
+	routineId: number,
+	opId: string | undefined,
 ) => {
 	const result = await ctx.db.batch(statements);
-	if (result.failedAt != null && guarded) throw conflict(version);
+	if (result.failedAt == null || !guarded) return;
+	if (await opSeen(ctx, routineId, opId)) return;
+	throw conflict(version);
 };
 
 const guardStatement = (id: number, version: number): BatchStatement => ({
@@ -696,6 +702,8 @@ export const updateRoutineScoped = async (
 			],
 			sc.version,
 			false,
+			id,
+			req.opId,
 		);
 		return loadRoutineRow(ctx, id);
 	}
@@ -719,7 +727,7 @@ export const updateRoutineScoped = async (
 	} else {
 		statements.push(...followingStatements(sc, req, d, det, now));
 	}
-	await run(ctx, statements, sc.version, true);
+	await run(ctx, statements, sc.version, true, id, req.opId);
 	return loadRoutineRow(ctx, id);
 };
 
@@ -833,11 +841,19 @@ const singleStatements = async (
 			),
 		);
 	}
-	out.push(...scheduleStatements(sc, req, false, now));
 	return out;
 };
 
 // ── scoped delete ────────────────────────────────────────────────────────────
+
+const destroyReplayable = async (ctx: LocalContext, id: number) => {
+	const gone = await ctx.db.select<any>(
+		`SELECT 1 AS x FROM routines WHERE id = ? AND deleted_at IS NOT NULL`,
+		[id],
+	);
+	if (gone.length) return;
+	return destroyRoutine(ctx, id);
+};
 
 export const deleteRoutineScoped = async (
 	ctx: LocalContext,
@@ -857,7 +873,7 @@ export const deleteRoutineScoped = async (
 				'occurrence_date is required for scope=single',
 			);
 		const row = await loadRoutineRow(ctx, id);
-		if (!row) return destroyRoutine(ctx, id);
+		if (!row) return destroyReplayable(ctx, id);
 		if (await opSeen(ctx, id, op)) return;
 		const now = iso(ctx);
 		const start = `${occurrence}T00:00:00`;
@@ -881,19 +897,20 @@ export const deleteRoutineScoped = async (
 	if (scope !== 'following')
 		throw new LocalHttpError(422, `Unknown scope ${scope}`);
 	const row = await loadRoutineRow(ctx, id);
-	if (!row) return destroyRoutine(ctx, id);
+	if (!row) return destroyReplayable(ctx, id);
 	const [pattern] = await ctx.db.select<any>(
 		`SELECT * FROM routine_patterns WHERE routine_id = ?`,
 		[id],
 	);
-	if (!isRecurringPattern(pattern)) return destroyRoutine(ctx, id);
+	if (!isRecurringPattern(pattern)) return destroyReplayable(ctx, id);
 	const sc = await loadSeries(ctx, row, pattern);
 	const d = occurrence ?? sc.today;
 	if (await opSeen(ctx, id, op)) return;
 	const first = firstGoverned(sc);
-	if (first == null || d <= first) return destroyRoutine(ctx, id);
+	if (first == null || d <= first) return destroyReplayable(ctx, id);
 	const now = iso(ctx);
-	await ctx.db.batch([
+	const result = await ctx.db.batch([
+		guardStatement(id, sc.version),
 		...splitAt(sc, d, now),
 		stmt(
 			`UPDATE routine_patterns SET end_at = ?, updated_at = ? WHERE routine_id = ?`,
@@ -902,6 +919,8 @@ export const deleteRoutineScoped = async (
 		deleteAllPendingFrom(id, d),
 		...bumpVersion(id, op, now),
 	]);
+	if (result.failedAt != null && !(await opSeen(ctx, id, op)))
+		throw conflict(sc.version);
 };
 
 // ── views ────────────────────────────────────────────────────────────────────

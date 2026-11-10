@@ -1,5 +1,5 @@
 import { parseJson } from '../serialize';
-import { addDays, daysBetween } from './recurrence';
+import { addDays, daysBetween, localDate } from './recurrence';
 
 export interface Version {
 	segmentId: number | null;
@@ -158,8 +158,10 @@ export const fromSegment = (row: any): Version => ({
 	routineCategory: row.routine_category ?? null,
 });
 
-export const createdOn = (routine: any): string | null =>
-	routine?.created_at ? String(routine.created_at).slice(0, 10) : null;
+export const createdOn = (routine: any, timeZone?: string): string | null =>
+	routine?.created_at
+		? localDate(new Date(routine.created_at), timeZone)
+		: null;
 
 const day10 = (value: any): string | null =>
 	value ? String(value).slice(0, 10) : null;
@@ -170,13 +172,15 @@ export const liveVersion = (
 	pattern: any,
 	segments: Version[],
 	clampToStart: boolean,
+	timeZone?: string,
 ): Version => {
 	const frozen = frozenUntil(segments);
 	const start = day10(pattern.start_at);
 	let validFrom = frozen == null ? null : addDays(frozen, 1);
 	if (clampToStart && start != null && (validFrom == null || start > validFrom))
 		validFrom = start;
-	const anchor = start == null && segments.length ? createdOn(routine) : start;
+	const anchor =
+		start == null && segments.length ? createdOn(routine, timeZone) : start;
 	return {
 		segmentId: null,
 		validFrom,

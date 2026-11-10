@@ -839,7 +839,10 @@ export const expandRange = async (
 	for (const row of patternRows) {
 		const id = Number(row.routine_id);
 		patternBy.set(id, row);
-		liveBy.set(id, liveVersion(row, row, segmentsBy.get(id) ?? [], true));
+		liveBy.set(
+			id,
+			liveVersion(row, row, segmentsBy.get(id) ?? [], true, ctx.timeZone?.()),
+		);
 	}
 	const versionFor = (id: number, day: string): Version =>
 		governing(segmentsBy.get(id) ?? [], liveBy.get(id)!, day) ??
@@ -989,12 +992,13 @@ export const materializeDueInstances = async (
 				[row.routine_id],
 			);
 			const history = segmentRows.map(fromSegment);
-			const live = liveVersion(routine, row, history, false);
+			const live = liveVersion(routine, row, history, false, ctx.timeZone?.());
 			const limit = `${addDays(now.slice(0, 10), 1)}${now.slice(10)}`;
 			for (let offset = 0; offset <= 1; offset++) {
 				const day = addDays(now.slice(0, 10), offset);
 				const v = governing(history, live, day);
-				if (!v || !firesOn(v, day, createdOn(routine))) continue;
+				if (!v || !firesOn(v, day, createdOn(routine, ctx.timeZone?.())))
+					continue;
 				const next = `${day}T${v.scheduledTime ?? DEFAULT_TIME}`;
 				if (next > limit) continue;
 				if (await createIfAbsent(ctx, row.routine_id, row, next)) created++;

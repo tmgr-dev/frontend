@@ -1,5 +1,6 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
+import { createdOn } from '../routines/series';
 import { materializeDueInstances } from '../routines/service';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
@@ -491,6 +492,106 @@ describeSqlite('local routine series edits on SQLite', () => {
 			id,
 		]);
 		expect(row.deleted_at).not.toBeNull();
+	});
+
+	const beforeNextBatch = (action: () => Promise<unknown>) => {
+		const original = ctx.db.batch.bind(ctx.db);
+		let armed = true;
+		ctx.db.batch = async (statements) => {
+			if (armed) {
+				armed = false;
+				await action();
+			}
+			return original(statements);
+		};
+	};
+	const competingEdit = (id: number, opId: string | null) => async () => {
+		await ctx.db.execute(
+			`UPDATE routine_patterns SET series_version = series_version + 1 WHERE routine_id = ?`,
+			[id],
+		);
+		if (opId)
+			await ctx.db.execute(
+				`INSERT INTO routine_ops (routine_id, op_id, created_at) VALUES (?, ?, ?)`,
+				[id, opId, clock.toISOString()],
+			);
+	};
+
+	it('delete following loses to a concurrent edit with 409 and writes nothing', async () => {
+		const id = await create('Run', daily('2026-09-20'));
+		beforeNextBatch(competingEdit(id, null));
+		const res = await call(
+			'DELETE',
+			`daily-routines/tasks/${id}?scope=following&occurrence_date=2026-09-24&op_id=d1`,
+		);
+		expect(res.status).toBe(409);
+		expect(await segments(id)).toEqual([]);
+		expect((await pattern(id)).series_version).toBe(1);
+		expect((await pattern(id)).end_at).toBeNull();
+	});
+
+	it('delete following replayed concurrently with the same op_id succeeds', async () => {
+		const id = await create('Run', daily('2026-09-20'));
+		beforeNextBatch(competingEdit(id, 'd2'));
+		const res = await call(
+			'DELETE',
+			`daily-routines/tasks/${id}?scope=following&occurrence_date=2026-09-24&op_id=d2`,
+		);
+		expect(res.status).toBe(204);
+		expect(await segments(id)).toEqual([]);
+	});
+
+	it('an update racing a request with the same op_id returns the routine', async () => {
+		const id = await create('Run', daily('2026-09-20'));
+		beforeNextBatch(competingEdit(id, 'u1'));
+		const res = await put(id, {
+			title: 'Jog',
+			scope: 'following',
+			occurrence_date: '2026-09-24',
+			op_id: 'u1',
+		});
+		expect(res.status).toBe(200);
+		expect(await segments(id)).toEqual([]);
+	});
+
+	it('single with unscheduled keeps the override and other pending rows', async () => {
+		const id = await create('Run', daily('2026-09-20'));
+		const now = clock.toISOString();
+		await ctx.db.execute(
+			`INSERT INTO routine_instances (routine_id, scheduled_for, status, created_at, updated_at) VALUES (?, '2026-09-28T09:00:00', 'PENDING', ?, ?)`,
+			[id, now, now],
+		);
+		await put(id, {
+			title: 'Once',
+			unscheduled: true,
+			scope: 'single',
+			occurrence_date: '2026-09-24',
+		});
+		const left = await rows(
+			`SELECT scheduled_for, is_override FROM routine_instances WHERE routine_id = ? ORDER BY scheduled_for`,
+			[id],
+		);
+		expect(left).toEqual([
+			{ scheduled_for: '2026-09-24T09:00:00', is_override: 1 },
+			{ scheduled_for: '2026-09-28T09:00:00', is_override: 0 },
+		]);
+	});
+
+	it('createdOn uses the local calendar day of created_at', () => {
+		const routine = { created_at: '2026-09-25T20:00:00.000Z' };
+		expect(createdOn(routine, 'Pacific/Auckland')).toBe('2026-09-26');
+		expect(createdOn(routine, 'UTC')).toBe('2026-09-25');
+	});
+
+	it('replaying a delete that removed the whole routine is a success', async () => {
+		const id = await create('Run', daily('2026-09-20'));
+		const url = `daily-routines/tasks/${id}?scope=following&occurrence_date=2026-09-20&op_id=w1`;
+		expect((await call('DELETE', url)).status).toBe(204);
+		expect((await call('DELETE', url)).status).toBe(204);
+		expect((await call('GET', `daily-routines/tasks/${id}`)).status).toBe(404);
+		expect((await call('DELETE', 'daily-routines/tasks/9999')).status).toBe(
+			404,
+		);
 	});
 
 	it('shows a gap after a stopped series is split again', async () => {
