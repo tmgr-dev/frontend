@@ -1211,6 +1211,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
             if r.tab { "rename tab" } else { "rename" },
             r.text
         )),
+        (None, Some(c)) if c.restart => Some(format!("restart {}? y/n", c.name)),
         (None, Some(c)) if c.remove => Some(format!("stop and remove {}? y/n", c.name)),
         (None, Some(c)) => Some(format!("stop {}? y/n", c.name)),
         _ if st.layout_offer.is_some() => st.layout_offer.as_ref().map(|o| {

@@ -1383,6 +1383,7 @@ fn hover_changes_ask_for_a_redraw_and_a_stray_click_drops_the_confirm() {
         session: "a".into(),
         name: "claude".into(),
         remove: false,
+        restart: false,
     });
     v.on_mouse(AREA, ev(0, 40, 10, false), &info);
     assert_eq!(v.confirm, None);
@@ -8205,6 +8206,19 @@ fn the_offer_names_what_it_will_do_in_the_status_line() {
 }
 
 #[test]
+fn a_restart_confirm_asks_to_restart_not_to_stop() {
+    let mut v = layout_view();
+    v.confirm = Some(Confirm {
+        session: "a".into(),
+        name: "claude".into(),
+        remove: false,
+        restart: true,
+    });
+    let screen = draw(&v, &screens(), 140, 24);
+    assert!(screen.contains("restart claude? y/n"), "{screen}");
+}
+
+#[test]
 fn a_late_start_does_not_override_what_the_user_changed_meanwhile() {
     let mut v = layout_view();
     v.save_layout("work").unwrap();
@@ -8282,6 +8296,7 @@ fn opening_the_filter_ends_rename_confirm_and_scroll() {
         session: "a".into(),
         name: "claude".into(),
         remove: false,
+        restart: false,
     });
     v.open_filter();
     assert!(v.confirm.is_none() && v.scroll.is_none());

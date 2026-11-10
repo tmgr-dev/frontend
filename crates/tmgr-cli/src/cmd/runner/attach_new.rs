@@ -830,6 +830,7 @@ mod tests {
             session: "a".into(),
             name: "a".into(),
             remove: false,
+            restart: false,
         });
         assert_eq!(route(&view, &fwd), Route::Other);
         assert_eq!(route(&view, &Action::Drop(b"x".to_vec())), Route::Other);

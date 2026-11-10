@@ -122,13 +122,7 @@ pub const ACTIONS: &[ActionDef] = &[
         "Remove (close) the focused exited session",
         true,
     ),
-    def(
-        Cmd::Restart,
-        b"K",
-        "K",
-        "Restart the focused session (resumes the conversation)",
-        true,
-    ),
+    def(Cmd::Restart, b"K", "K", "Restart the focused session", true),
     def(
         Cmd::Fork,
         b"F",

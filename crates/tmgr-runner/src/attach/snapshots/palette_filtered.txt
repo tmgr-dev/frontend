@@ -5,7 +5,7 @@
    ◌ dev-server wa│ Rename the focused session                          Ctrl-] r │                 │
  ✓ tests     exite│ Resume the focused session                  Ctrl-] Enter / R │                 │
                   │ Reconnect linked machines                           Ctrl-] M │                 │
-                  │ Restart the focused session (resumes the conversati Ctrl-] K │                 │
+                  │ Restart the focused session                         Ctrl-] K │                 │
                   │ Previous tab                                        Ctrl-] P │                 │
                   │ Previous session                                    Ctrl-] p │                 │
                   │ Remove (close) the focused exited session           Ctrl-] X │                 │

@@ -429,7 +429,7 @@ impl Remote {
             Target::Remote { link, .. } => match ctl {
                 Control::Stop | Control::Interrupt => None,
                 Control::Resume => Some(refusal(&link, true)),
-                Control::Close => Some(refusal(&link, false)),
+                Control::Close | Control::Restart | Control::Fork => Some(refusal(&link, false)),
             },
             Target::Unknown => Some("that session is no longer available".into()),
         }
@@ -1013,6 +1013,12 @@ mod tests {
         assert_eq!(r.remote.control_gate(&remote, Control::Interrupt), None);
         assert!(r.remote.control_gate(&remote, Control::Close).is_some());
         assert!(r.remote.control_gate(&remote, Control::Resume).is_some());
+        assert!(r.remote.control_gate(&remote, Control::Restart).is_some());
+        assert!(r.remote.control_gate(&remote, Control::Fork).is_some());
+        assert_eq!(r.remote.control_gate(LOCAL, Control::Restart), None);
+        assert_eq!(r.remote.control_gate(LOCAL, Control::Fork), None);
+        assert!(r.remote.cmd_gate(Cmd::Restart, Some(&remote)).is_some());
+        assert!(r.remote.cmd_gate(Cmd::Fork, Some(&remote)).is_some());
         assert_eq!(r.remote.control_gate(LOCAL, Control::Close), None);
         assert!(r
             .remote
@@ -1167,6 +1173,7 @@ mod tests {
                 session: format!("spark/{run}"),
                 name: format!("name {run}"),
                 remove: false,
+                restart: false,
             });
         };
         ask(&mut r, A);
@@ -1199,6 +1206,7 @@ mod tests {
             session: LOCAL.into(),
             name: "mine".into(),
             remove: false,
+            restart: false,
         });
         r.apply(LinkMsg::State {
             link: "spark".into(),

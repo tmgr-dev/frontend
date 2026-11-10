@@ -22,10 +22,11 @@ use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_remote::{
     attention_session, local_rows, prefs_for_runner, split_sizes, Remote, Sent,
 };
+use super::attach_restart::{fork_step, restart_step, ForkStep, Launch, RestartStep};
 use super::attach_shell::{
     can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, unique_name, watch_ids,
-    Ladder, KILL_ONLY,
+    Ladder, KILL_ONLY, STOP_LADDER,
 };
 use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNotifier};
 use super::attach_status::{peek_worker, status_worker, PeekJob};
@@ -405,6 +406,7 @@ struct App {
     tried: HashSet<String>,
     last_probe: Instant,
     agents: HashMap<String, AgentSrc>,
+    launches: HashMap<String, Launch>,
     title_tx: SyncSender<Vec<TitleJob>>,
     title_pending: bool,
     titles_tried: HashSet<String>,
@@ -855,6 +857,7 @@ impl App {
             .iter()
             .filter_map(|s| Some((s.id.clone(), agent_src(s)?)))
             .collect();
+        self.launches = list.iter().map(|s| (s.id.clone(), Launch::of(s))).collect();
         self.shell_ids = list
             .iter()
             .filter(|s| is_shell_session(&s.argv, &s.name))
@@ -2473,13 +2476,7 @@ impl App {
             ResumeStep::Ignore => {}
             ResumeStep::Notice(text) => self.notify(text),
             ResumeStep::Start => {
-                let (cols, rows) = layout(self.area(), &self.view)
-                    .panes
-                    .iter()
-                    .find(|p| p.session == id)
-                    .map(|p| (p.inner.width, p.inner.height))
-                    .or_else(|| self.sent_sizes.get(id).copied())
-                    .unwrap_or((80, 24));
+                let (cols, rows) = self.session_size(id);
                 let old = id.to_string();
                 self.resuming.insert(old.clone(), Instant::now());
                 self.notify("resuming…");
@@ -2493,6 +2490,110 @@ impl App {
         }
     }
 
+    fn session_size(&self, id: &str) -> (u16, u16) {
+        layout(self.area(), &self.view)
+            .panes
+            .iter()
+            .find(|p| p.session == id)
+            .map(|p| (p.inner.width, p.inner.height))
+            .or_else(|| self.sent_sizes.get(id).copied())
+            .unwrap_or((80, 24))
+    }
+
+    fn request_restart(&mut self, id: &str) {
+        if !valid_session_id(id) {
+            return self.notify("not available for linked sessions");
+        }
+        let launch = self.launches.get(id);
+        let flagged = launch.is_some_and(Launch::flagged);
+        let row = self.view.sessions.iter().find(|r| r.id == id).cloned();
+        match restart_step(row.as_ref(), self.resuming.contains_key(id), flagged) {
+            RestartStep::Ignore => {}
+            RestartStep::Resume => self.request_resume(id),
+            RestartStep::Confirm => {
+                if let Some(r) = row {
+                    self.view.confirm = Some(Confirm {
+                        session: id.to_string(),
+                        name: r.name,
+                        remove: false,
+                        restart: true,
+                    });
+                }
+            }
+            RestartStep::StopThenResume => self.restart_session(id),
+            RestartStep::Flagged if row.is_some_and(|r| r.exited()) => {
+                if self.past_in_flight() {
+                    return self.notify("a session is still starting");
+                }
+                self.prepare_past(menu::Pick {
+                    id: id.to_string(),
+                    fork: false,
+                    tmgr: true,
+                    bypass: launch.is_some_and(Launch::bypass),
+                    no_sandbox: launch.is_some_and(Launch::no_sandbox),
+                });
+            }
+            RestartStep::Flagged => {
+                self.notify("restart of a bypass/no-sandbox session: stop it, then press Resume")
+            }
+        }
+    }
+
+    fn restart_session(&mut self, id: &str) {
+        if !valid_session_id(id) || self.resuming.contains_key(id) {
+            return;
+        }
+        let (cols, rows) = self.session_size(id);
+        let old = id.to_string();
+        self.resuming.insert(old.clone(), Instant::now());
+        self.stopped.insert(old.clone());
+        self.notify("restarting…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let result = restart_call(&cfg, &old, cols, rows);
+            let _ = tx.send(Msg::Resumed { old, result });
+        });
+    }
+
+    fn fork_session(&mut self, id: &str) {
+        if !valid_session_id(id) {
+            return self.notify("not available for linked sessions");
+        }
+        let Some(launch) = self.launches.get(id) else {
+            return self.notify("this session is not ready to fork yet");
+        };
+        match fork_step(launch) {
+            ForkStep::Native => self.fork_past(id.to_string()),
+            ForkStep::Unsupported => self.notify("this session cannot be forked"),
+            ForkStep::Fresh(req) => self.fork_fresh(*req),
+        }
+    }
+
+    fn fork_fresh(&mut self, req: NewRequest) {
+        if self.new_flow.busy(Instant::now()) {
+            return self.notify("a session is still starting");
+        }
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| "/".into());
+        self.view
+            .open_new_session(req.folder.clone(), installed_kinds(), home);
+        let Some(base) = self.view.new_session.take() else {
+            return;
+        };
+        self.dirty = true;
+        if req.bypass || req.no_sandbox {
+            let mut ns = dialog_for(&base, &req);
+            ns.bypass = req.bypass;
+            ns.no_sandbox = req.no_sandbox;
+            self.view.reopen_new_session(ns);
+            return self.notify("conversation can't be forked: confirm to start fresh");
+        }
+        self.begin_spawn(Some(base), req);
+        self.notify("conversation can't be forked, started fresh");
+    }
+
     fn on_resumed(&mut self, old: &str, result: std::result::Result<RestoredRun, String>) {
         self.resuming.remove(old);
         let from_past = self.past_resumes.remove(old);
@@ -2502,7 +2603,17 @@ impl App {
         self.dirty = true;
         let run = match result {
             Ok(run) => run,
-            Err(e) => return self.notify(&e),
+            Err(e) => {
+                if self
+                    .view
+                    .sessions
+                    .iter()
+                    .any(|r| r.id == old && !r.exited())
+                {
+                    self.stopped.remove(old);
+                }
+                return self.notify(&e);
+            }
         };
         let info = run.session;
         let new = info.id.clone();
@@ -2987,6 +3098,9 @@ impl App {
         };
         self.dirty = true;
         if matches!(data.first(), Some(b'y' | b'Y')) {
+            if c.restart {
+                return self.restart_session(&c.session);
+            }
             match self.remote.stop(&c.session) {
                 None => self.stop_session(&c.session, c.remove),
                 Some(Some(note)) => return self.notify(&note),
@@ -3025,6 +3139,8 @@ impl App {
         }
         match ctl {
             Control::Resume => self.request_resume(id),
+            Control::Restart => self.request_restart(id),
+            Control::Fork => self.fork_session(id),
             Control::Interrupt => {
                 let recent = self
                     .last_interrupt
@@ -3041,6 +3157,7 @@ impl App {
                     session: id.to_string(),
                     name: row.name,
                     remove: false,
+                    restart: false,
                 })
             }
             Control::Close if exited => {
@@ -3052,6 +3169,7 @@ impl App {
                     session: id.to_string(),
                     name: row.name,
                     remove: true,
+                    restart: false,
                 })
             }
         }
@@ -4026,6 +4144,14 @@ impl App {
                                 self.request_resume(&id);
                             }
                         }
+                        Cmd::Restart | Cmd::Fork => {
+                            if let (Some(ctl), Some(id)) = (
+                                control_of(cmd),
+                                self.view.focused_session().map(str::to_string),
+                            ) {
+                                self.control(&id, ctl)?;
+                            }
+                        }
                         Cmd::Reconnect => {
                             let note = self.remote.reconnect();
                             self.notify(&note);
@@ -4814,6 +4940,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
             .iter()
             .filter_map(|s| Some((s.id.clone(), agent_src(s)?)))
             .collect(),
+        launches: list.iter().map(|s| (s.id.clone(), Launch::of(s))).collect(),
         title_tx,
         title_pending: false,
         titles_tried: HashSet::new(),
@@ -5087,6 +5214,8 @@ fn control_of(cmd: Cmd) -> Option<Control> {
     match cmd {
         Cmd::Stop => Some(Control::Stop),
         Cmd::Remove => Some(Control::Close),
+        Cmd::Restart => Some(Control::Restart),
+        Cmd::Fork => Some(Control::Fork),
         _ => None,
     }
 }
@@ -5123,6 +5252,41 @@ fn resume_call(
     client
         .resume(id, cols, rows)
         .map_err(|e| clean(rerr(e).to_string()))
+}
+
+const RESTART_RETRY: Duration = Duration::from_secs(5);
+
+fn restart_call(
+    cfg: &RunnerConfig,
+    id: &str,
+    cols: u16,
+    rows: u16,
+) -> std::result::Result<RestoredRun, String> {
+    run_ladder(cfg, id, false, STOP_LADDER);
+    let end = Instant::now() + RESTART_RETRY;
+    let exited = || {
+        connect(cfg)
+            .ok()
+            .and_then(|mut c| c.list().ok())
+            .is_some_and(|l| {
+                l.iter()
+                    .find(|s| s.id == id)
+                    .is_none_or(|s| s.state.kind == StateKind::Exited)
+            })
+    };
+    while !exited() {
+        if Instant::now() >= end {
+            return Err("could not stop the session, nothing was restarted".into());
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    let end = Instant::now() + RESTART_RETRY;
+    loop {
+        match resume_call(cfg, id, cols, rows) {
+            Err(_) if Instant::now() < end => thread::sleep(Duration::from_millis(300)),
+            result => return result,
+        }
+    }
 }
 
 fn dropped_path_exists(data: &[u8]) -> bool {
@@ -5314,6 +5478,58 @@ mod tests {
         assert_eq!(control_of(Cmd::Stop), Some(Control::Stop));
         assert_eq!(control_of(Cmd::Remove), Some(Control::Close));
         assert_eq!(control_of(Cmd::Resume), None);
+        assert_eq!(control_of(Cmd::Restart), Some(Control::Restart));
+        assert_eq!(control_of(Cmd::Fork), Some(Control::Fork));
+    }
+
+    #[test]
+    fn restart_picks_a_step_from_the_row_and_the_flags() {
+        let row = session_row;
+        assert_eq!(restart_step(None, false, false), RestartStep::Ignore);
+        let working = row(StateKind::Working);
+        assert_eq!(
+            restart_step(Some(&working), true, false),
+            RestartStep::Ignore
+        );
+        assert_eq!(
+            restart_step(Some(&working), false, false),
+            RestartStep::Confirm
+        );
+        assert_eq!(
+            restart_step(Some(&row(StateKind::Exited)), false, false),
+            RestartStep::Resume
+        );
+        for kind in [StateKind::Waiting, StateKind::Blocked, StateKind::Starting] {
+            assert_eq!(
+                restart_step(Some(&row(kind)), false, false),
+                RestartStep::StopThenResume
+            );
+        }
+        for kind in [StateKind::Working, StateKind::Exited, StateKind::Waiting] {
+            assert_eq!(
+                restart_step(Some(&row(kind)), false, true),
+                RestartStep::Flagged
+            );
+        }
+    }
+
+    #[test]
+    fn launch_facts_come_from_the_session_info() {
+        let mut s = info("s1");
+        s.profile = Some("claude-code".into());
+        s.cwd = "/work/app".into();
+        s.permission_mode = Some("bypass".into());
+        s.agent_session_id = Some("0b8f3c52-94c5-4c0e-8e2c-0d1b2f3a4b5c".into());
+        let l = Launch::of(&s);
+        assert!(l.bypass() && l.flagged() && !l.no_sandbox());
+        assert_eq!(fork_step(&l), ForkStep::Native);
+        s.agent_session_id = None;
+        s.no_sandbox = true;
+        let ForkStep::Fresh(req) = fork_step(&Launch::of(&s)) else {
+            panic!("expected a fresh fork");
+        };
+        assert_eq!(req.folder, "/work/app");
+        assert!(req.bypass && req.no_sandbox && req.task.is_none());
     }
 
     #[test]

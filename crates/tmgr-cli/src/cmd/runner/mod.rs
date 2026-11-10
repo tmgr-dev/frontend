@@ -18,6 +18,7 @@ mod attach_prompts;
 mod attach_push;
 mod attach_questions;
 mod attach_remote;
+mod attach_restart;
 mod attach_shell;
 mod attach_signal;
 mod attach_status;

@@ -360,6 +360,7 @@ pub struct Confirm {
     pub session: String,
     pub name: String,
     pub remove: bool,
+    pub restart: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1492,6 +1493,7 @@ impl ViewState {
                         session: r.id.clone(),
                         name: r.name.clone(),
                         remove: false,
+                        restart: false,
                     });
                 }
                 None => {}
