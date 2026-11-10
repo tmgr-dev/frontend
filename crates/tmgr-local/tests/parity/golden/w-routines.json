@@ -123,6 +123,7 @@
 					"approximately_time": 10,
 					"archived_at": null,
 					"category_tasks_sequence_id": null,
+					"comments_count": 0,
 					"common_time": 0,
 					"created_at": "2026-09-20T08:00:00Z",
 					"daily_routine": true,
@@ -134,10 +135,24 @@
 					"order": null,
 					"priority": "medium",
 					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": 5,
+						"time": {
+							"hours": 7,
+							"minutes": 30
+						}
+					},
 					"recurring": false,
 					"routine_category": "health",
 					"scheduled_date": "2026-09-20",
 					"scheduled_time": "07:30",
+					"series_version": 1,
 					"settings": [],
 					"start_time": 0,
 					"status": null,
@@ -169,15 +184,15 @@
 						"MONDAY",
 						"FRIDAY"
 					],
-					"duration_min": null,
+					"duration_min": 10,
 					"end_at": null,
 					"frequency": "WEEKLY",
 					"id": 1,
 					"interval": 2,
 					"month": null,
 					"occurrences": null,
-					"reminder_min": null,
-					"scheduled_time": null,
+					"reminder_min": 5,
+					"scheduled_time": "07:30",
 					"start_at": "2026-10-13",
 					"task_id": 1,
 					"updated_at": "2026-10-13T12:00:00.000Z"
@@ -190,13 +205,18 @@
 				"data": {
 					"completed_at": "2026-10-13T12:00:00.000Z",
 					"created_at": "2026-10-13T12:00:00.000Z",
+					"description": null,
+					"duration_min": null,
 					"id": 5,
+					"moved_from": null,
+					"override": false,
 					"scheduled_date": "2026-10-13",
 					"scheduled_for": "2026-10-13T00:00:00Z",
 					"scheduled_time": "00:00:00",
 					"skipped_at": null,
 					"status": "COMPLETED",
 					"task_id": 1,
+					"title": null,
 					"updated_at": "2026-10-13T12:00:00.000Z"
 				}
 			},
@@ -207,13 +227,18 @@
 				"data": {
 					"completed_at": null,
 					"created_at": "2026-10-13T12:00:00.000Z",
+					"description": null,
+					"duration_min": null,
 					"id": 5,
+					"moved_from": null,
+					"override": false,
 					"scheduled_date": "2026-10-13",
 					"scheduled_for": "2026-10-13T00:00:00Z",
 					"scheduled_time": "00:00:00",
 					"skipped_at": null,
 					"status": "PENDING",
 					"task_id": 1,
+					"title": null,
 					"updated_at": "2026-10-13T12:00:00.000Z"
 				}
 			},
@@ -248,13 +273,18 @@
 				"data": {
 					"completed_at": "2026-10-13T12:00:00.000Z",
 					"created_at": "2026-09-20T08:00:00Z",
+					"description": null,
+					"duration_min": null,
 					"id": 3,
+					"moved_from": null,
+					"override": false,
 					"scheduled_date": "2026-09-26",
 					"scheduled_for": "2026-09-26Z",
 					"scheduled_time": "",
 					"skipped_at": null,
 					"status": "COMPLETED",
 					"task_id": 1,
+					"title": null,
 					"updated_at": "2026-10-13T12:00:00.000Z"
 				}
 			},
@@ -265,13 +295,18 @@
 				"data": {
 					"completed_at": null,
 					"created_at": "2026-09-20T08:00:00Z",
+					"description": null,
+					"duration_min": null,
 					"id": 2,
+					"moved_from": null,
+					"override": false,
 					"scheduled_date": "2026-09-25",
 					"scheduled_for": "2026-09-25Z",
 					"scheduled_time": "",
 					"skipped_at": "2026-10-13T12:00:00.000Z",
 					"status": "SKIPPED",
 					"task_id": 1,
+					"title": null,
 					"updated_at": "2026-10-13T12:00:00.000Z"
 				}
 			},
@@ -527,31 +562,46 @@
 			{
 				"completed_at": "2026-09-21T18:30:00Z",
 				"created_at": "2026-09-20T08:00:00Z",
+				"description": null,
+				"duration_min": null,
 				"id": 4,
+				"is_override": 0,
+				"moved_from": null,
 				"routine_id": 2,
 				"scheduled_for": "2026-09-21",
 				"skipped_at": null,
 				"status": "COMPLETED",
+				"title": null,
 				"updated_at": "2026-09-20T08:00:00Z"
 			},
 			{
 				"completed_at": "2026-10-13T12:00:00.000Z",
 				"created_at": "2026-10-13T12:00:00.000Z",
+				"description": null,
+				"duration_min": null,
 				"id": 6,
+				"is_override": 0,
+				"moved_from": null,
 				"routine_id": 2,
 				"scheduled_for": "2026-10-12T00:00:00",
 				"skipped_at": null,
 				"status": "COMPLETED",
+				"title": null,
 				"updated_at": "2026-10-13T12:00:00.000Z"
 			},
 			{
 				"completed_at": "2026-10-13T12:00:00.000Z",
 				"created_at": "2026-10-13T12:00:00.000Z",
+				"description": null,
+				"duration_min": null,
 				"id": 7,
+				"is_override": 0,
+				"moved_from": null,
 				"routine_id": 2,
 				"scheduled_for": "2026-10-11T00:00:00",
 				"skipped_at": null,
 				"status": "COMPLETED",
+				"title": null,
 				"updated_at": "2026-10-13T12:00:00.000Z"
 			}
 		],
@@ -570,6 +620,7 @@
 				"reminder_min": null,
 				"routine_id": 2,
 				"scheduled_time": "18:00",
+				"series_version": 0,
 				"start_at": "2026-09-21",
 				"updated_at": "2026-09-20T08:00:00Z"
 			}

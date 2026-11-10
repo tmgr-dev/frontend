@@ -1,5 +1,6 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
+import { materializeDueInstances } from '../routines/service';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
@@ -587,5 +588,24 @@ describeSqlite('local routine series edits on SQLite', () => {
 			{ scheduled_for: '2026-09-28 08:00:00' },
 		);
 		expect(res.moved_from).toBe('2026-09-24');
+	});
+
+	it('the scheduler materializes through the governing version', async () => {
+		const id = await create('Run', daily('2026-09-20'));
+		await put(id, {
+			scope: 'following',
+			occurrence_date: '2026-09-26',
+			recurrence: { time: '07:30' },
+		});
+		const created = await materializeDueInstances(ctx);
+		expect(created).toBe(2);
+		const insts = await rows(
+			`SELECT scheduled_for FROM routine_instances WHERE routine_id = ? ORDER BY scheduled_for`,
+			[id],
+		);
+		expect(insts.map((r) => r.scheduled_for)).toEqual([
+			'2026-09-26T07:30:00',
+			'2026-09-27T07:30:00',
+		]);
 	});
 });

@@ -1,0 +1,486 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Run",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"completed": true,
+					"date": "2026-10-12",
+					"instance_id": 1,
+					"status": "COMPLETED",
+					"task_id": 1000000001
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 1,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Jog",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed_at": null,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"description": null,
+					"duration_min": null,
+					"id": 2,
+					"moved_from": "2026-10-07",
+					"override": false,
+					"scheduled_date": "2026-10-08",
+					"scheduled_for": "2026-10-08T18:00:00Z",
+					"scheduled_time": "18:00:00",
+					"skipped_at": null,
+					"status": "PENDING",
+					"task_id": 1000000001,
+					"title": null,
+					"updated_at": "2026-10-13T12:00:00.000Z"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-05",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-05T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-06",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-06T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-08",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-08T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-08",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": 2,
+						"moved_from": "2026-10-07",
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-08T18:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "18:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": false
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-09",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-09T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": true,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-12",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": 1,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-12T00:00:00Z",
+						"status": "completed",
+						"task_id": 1000000001,
+						"time": null,
+						"title": "Jog",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": false
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed_at": "2026-10-13T12:00:00.000Z",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"description": null,
+					"duration_min": null,
+					"id": 1,
+					"moved_from": "2026-10-08",
+					"override": false,
+					"scheduled_date": "2026-10-12",
+					"scheduled_for": "2026-10-12T07:15:00Z",
+					"scheduled_time": "07:15:00",
+					"skipped_at": null,
+					"status": "COMPLETED",
+					"task_id": 1000000001,
+					"title": null,
+					"updated_at": "2026-10-13T12:00:00.000Z"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-08",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": 2,
+						"moved_from": "2026-10-07",
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-08T18:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "18:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": false
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-09",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-09T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": true,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-12",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": 1,
+						"moved_from": "2026-10-08",
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-12T07:15:00Z",
+						"status": "completed",
+						"task_id": 1000000001,
+						"time": "07:15",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": false
+					}
+				]
+			},
+			"status": 200
+		}
+	],
+	"tables": {
+		"routine_instances": [
+			{
+				"completed_at": "2026-10-13T12:00:00.000Z",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"description": null,
+				"duration_min": null,
+				"id": 1,
+				"is_override": 0,
+				"moved_from": "2026-10-08",
+				"routine_id": 1000000001,
+				"scheduled_for": "2026-10-12T07:15:00",
+				"skipped_at": null,
+				"status": "COMPLETED",
+				"title": null,
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"completed_at": null,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"description": null,
+				"duration_min": null,
+				"id": 2,
+				"is_override": 0,
+				"moved_from": "2026-10-07",
+				"routine_id": 1000000001,
+				"scheduled_for": "2026-10-08T18:00:00",
+				"skipped_at": null,
+				"status": "PENDING",
+				"title": null,
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"routine_pattern_segments": [
+			{
+				"anchor_date": "2026-10-01",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"day_of_frequency": null,
+				"days_of_week": "[]",
+				"description": null,
+				"duration_min": null,
+				"frequency": "DAILY",
+				"id": 1,
+				"interval": 1,
+				"is_recurring": 1,
+				"month": null,
+				"reminder_min": null,
+				"routine_category": null,
+				"routine_id": 1000000001,
+				"scheduled_time": "09:00:00",
+				"title": "Run",
+				"valid_from": "2026-10-01",
+				"valid_to": "2026-10-09"
+			},
+			{
+				"anchor_date": "2026-10-01",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"day_of_frequency": null,
+				"days_of_week": "[]",
+				"description": null,
+				"duration_min": null,
+				"frequency": "DAILY",
+				"id": 2,
+				"interval": 1,
+				"is_recurring": 0,
+				"month": null,
+				"reminder_min": null,
+				"routine_category": null,
+				"routine_id": 1000000001,
+				"scheduled_time": "09:00:00",
+				"title": "Run",
+				"valid_from": "2026-10-10",
+				"valid_to": "2026-10-11"
+			}
+		],
+		"routine_patterns": [
+			{
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"day_of_frequency": null,
+				"days_of_week": "[]",
+				"duration_min": null,
+				"end_at": "2026-10-09",
+				"frequency": "DAILY",
+				"id": 1,
+				"interval": 1,
+				"month": null,
+				"occurrences": null,
+				"reminder_min": null,
+				"routine_id": 1000000001,
+				"scheduled_time": "09:00:00",
+				"series_version": 1,
+				"start_at": "2026-10-01",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"routines": [
+			{
+				"approximately_time": null,
+				"archived_at": null,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"description": null,
+				"id": 1000000001,
+				"priority": "medium",
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Jog",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		]
+	}
+}

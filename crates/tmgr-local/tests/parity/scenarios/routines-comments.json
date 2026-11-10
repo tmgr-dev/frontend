@@ -1,0 +1,103 @@
+{
+  "now": "2026-10-13T12:00:00.000Z",
+  "workspace": {
+    "id": -42,
+    "code": "parity",
+    "name": "Parity"
+  },
+  "user": {
+    "id": 7,
+    "name": "Owner",
+    "email": "owner@example.com"
+  },
+  "actor": null,
+  "seed": [],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/recurring",
+      "body": {
+        "title": "Run",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-12",
+          "time": "09:00"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "tasks/1000000001/comments",
+      "body": {
+        "message": "first"
+      }
+    },
+    {
+      "method": "POST",
+      "url": "tasks/1000000001/comments",
+      "body": {
+        "message": "second"
+      }
+    },
+    {
+      "method": "POST",
+      "url": "tasks/1000000001/comments",
+      "body": {
+        "message": "  "
+      }
+    },
+    {
+      "method": "POST",
+      "url": "tasks/1000000006/comments",
+      "body": {
+        "message": "nope"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "tasks/1000000001/comments"
+    },
+    {
+      "method": "PUT",
+      "url": "comments/1000000001",
+      "body": {
+        "message": "edited"
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "comments/1000000009",
+      "body": {
+        "message": "x"
+      }
+    },
+    {
+      "method": "POST",
+      "url": "comments/1000000001/reactions/toggle",
+      "body": {
+        "emoji": "+1"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-12&to=2026-10-13"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/tasks/1000000001"
+    },
+    {
+      "method": "DELETE",
+      "url": "comments/1000000002"
+    },
+    {
+      "method": "GET",
+      "url": "tasks/1000000001/comments"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-12&to=2026-10-12"
+    }
+  ]
+}

@@ -70,10 +70,11 @@ describeSqlite('edit journal', () => {
 	});
 
 	it('migration 13 is additive and idempotent', async () => {
-		expect(LATEST_SCHEMA).toBe(13);
+		expect(LATEST_SCHEMA).toBeGreaterThanOrEqual(13);
 		const id = await create({ title: 'Keep me' });
 		const before = await rows();
-		for (const statement of MIGRATIONS[MIGRATIONS.length - 1].statements)
+		for (const statement of MIGRATIONS.find((m) => m.version === 13)!
+			.statements)
 			await ctx.db.execute(statement);
 		await ctx.db.execute(
 			`UPDATE meta SET value = '12' WHERE key = 'schema_version'`,
@@ -495,7 +496,7 @@ describeSqlite('edit journal', () => {
 				return realBatch([
 					...statements.slice(0, -1),
 					{ sql: 'SELECT * FROM missing_table' },
-				]).catch(() => ({ results: [], failedAt: 0 }));
+				]);
 			}
 			return realBatch(statements);
 		};

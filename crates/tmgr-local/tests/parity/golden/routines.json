@@ -109,6 +109,7 @@
 					"approximately_time": 10,
 					"archived_at": null,
 					"category_tasks_sequence_id": null,
+					"comments_count": 0,
 					"common_time": 0,
 					"created_at": "2026-09-20T08:00:00Z",
 					"daily_routine": true,
@@ -120,10 +121,24 @@
 					"order": null,
 					"priority": "low",
 					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": 10,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": 5,
+						"time": {
+							"hours": 7,
+							"minutes": 30
+						}
+					},
 					"recurring": false,
 					"routine_category": "health",
 					"scheduled_date": "2026-09-20",
 					"scheduled_time": "07:30",
+					"series_version": 0,
 					"settings": [],
 					"start_time": 0,
 					"status": null,
@@ -146,6 +161,7 @@
 					"approximately_time": 30,
 					"archived_at": null,
 					"category_tasks_sequence_id": null,
+					"comments_count": 0,
 					"common_time": 0,
 					"created_at": "2026-09-20T08:00:00Z",
 					"daily_routine": true,
@@ -157,10 +173,26 @@
 					"order": null,
 					"priority": "medium",
 					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [
+							"MONDAY"
+						],
+						"duration_min": 30,
+						"frequency": "WEEKLY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 18,
+							"minutes": 0
+						}
+					},
 					"recurring": false,
 					"routine_category": "work",
 					"scheduled_date": "2026-09-21",
 					"scheduled_time": "18:00",
+					"series_version": 0,
 					"settings": [],
 					"start_time": 0,
 					"status": null,
@@ -213,37 +245,52 @@
 					{
 						"completed_at": "2026-09-24T07:40:00Z",
 						"created_at": "2026-09-20T08:00:00Z",
+						"description": null,
+						"duration_min": null,
 						"id": 1,
+						"moved_from": null,
+						"override": false,
 						"scheduled_date": "2026-09-24",
 						"scheduled_for": "2026-09-24Z",
 						"scheduled_time": "",
 						"skipped_at": null,
 						"status": "COMPLETED",
 						"task_id": 1,
+						"title": null,
 						"updated_at": "2026-09-20T08:00:00Z"
 					},
 					{
 						"completed_at": null,
 						"created_at": "2026-09-20T08:00:00Z",
+						"description": null,
+						"duration_min": null,
 						"id": 2,
+						"moved_from": null,
+						"override": false,
 						"scheduled_date": "2026-09-25",
 						"scheduled_for": "2026-09-25Z",
 						"scheduled_time": "",
 						"skipped_at": "2026-09-25T08:00:00Z",
 						"status": "SKIPPED",
 						"task_id": 1,
+						"title": null,
 						"updated_at": "2026-09-20T08:00:00Z"
 					},
 					{
 						"completed_at": null,
 						"created_at": "2026-09-20T08:00:00Z",
+						"description": null,
+						"duration_min": null,
 						"id": 3,
+						"moved_from": null,
+						"override": false,
 						"scheduled_date": "2026-09-26",
 						"scheduled_for": "2026-09-26Z",
 						"scheduled_time": "",
 						"skipped_at": null,
 						"status": "PENDING",
 						"task_id": 1,
+						"title": null,
 						"updated_at": "2026-09-20T08:00:00Z"
 					}
 				]
@@ -256,13 +303,18 @@
 					{
 						"completed_at": "2026-09-21T18:30:00Z",
 						"created_at": "2026-09-20T08:00:00Z",
+						"description": null,
+						"duration_min": null,
 						"id": 4,
+						"moved_from": null,
+						"override": false,
 						"scheduled_date": "2026-09-21",
 						"scheduled_for": "2026-09-21Z",
 						"scheduled_time": "",
 						"skipped_at": null,
 						"status": "COMPLETED",
 						"task_id": 2,
+						"title": null,
 						"updated_at": "2026-09-20T08:00:00Z"
 					}
 				]
@@ -299,6 +351,7 @@
 			"data": {
 				"data": [
 					{
+						"comments_count": 0,
 						"completed": false,
 						"created_at": "2026-09-20T08:00:00Z",
 						"date": "2026-09-24",
@@ -321,6 +374,7 @@
 						"virtual": true
 					},
 					{
+						"comments_count": 0,
 						"completed": false,
 						"created_at": "2026-09-20T08:00:00Z",
 						"date": "2026-09-25",
@@ -343,6 +397,7 @@
 						"virtual": false
 					},
 					{
+						"comments_count": 0,
 						"completed": false,
 						"created_at": "2026-09-20T08:00:00Z",
 						"date": "2026-09-26",
@@ -365,6 +420,7 @@
 						"virtual": false
 					},
 					{
+						"comments_count": 0,
 						"completed": false,
 						"created_at": "2026-09-20T08:00:00Z",
 						"date": "2026-09-27",
@@ -387,6 +443,7 @@
 						"virtual": true
 					},
 					{
+						"comments_count": 0,
 						"completed": false,
 						"created_at": "2026-09-20T08:00:00Z",
 						"date": "2026-09-28",
@@ -409,6 +466,7 @@
 						"virtual": true
 					},
 					{
+						"comments_count": 0,
 						"completed": false,
 						"created_at": "2026-09-20T08:00:00Z",
 						"date": "2026-09-29",
@@ -431,6 +489,7 @@
 						"virtual": true
 					},
 					{
+						"comments_count": 0,
 						"completed": false,
 						"created_at": "2026-09-20T08:00:00Z",
 						"date": "2026-09-30",
@@ -470,8 +529,8 @@
 						"fires": 1
 					},
 					"2026-09-21": {
-						"completed": 0,
-						"fires": 1
+						"completed": 1,
+						"fires": 2
 					},
 					"2026-09-22": {
 						"completed": 0,
@@ -573,8 +632,8 @@
 						"fires": 1
 					},
 					"2026-09-21": {
-						"completed": 0,
-						"fires": 1
+						"completed": 1,
+						"fires": 2
 					},
 					"2026-09-22": {
 						"completed": 0,
@@ -992,8 +1051,8 @@
 						"fires": 1
 					},
 					"2026-09-21": {
-						"completed": 0,
-						"fires": 1
+						"completed": 1,
+						"fires": 2
 					},
 					"2026-09-22": {
 						"completed": 0,

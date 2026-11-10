@@ -1,0 +1,100 @@
+{
+  "now": "2026-10-13T12:00:00.000Z",
+  "workspace": {
+    "id": -42,
+    "code": "parity",
+    "name": "Parity"
+  },
+  "user": {
+    "id": 7,
+    "name": "Owner",
+    "email": "owner@example.com"
+  },
+  "actor": null,
+  "seed": [],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/recurring",
+      "body": {
+        "title": "Run",
+        "description": "Morning",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-01",
+          "time": "09:00"
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Jog",
+        "scope": "following",
+        "occurrence_date": "2026-10-08",
+        "op_id": "op-split"
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Ignored",
+        "scope": "following",
+        "occurrence_date": "2026-10-08",
+        "op_id": "op-split"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-06&to=2026-10-10"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/tasks/1000000001?date=2026-10-05"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/tasks/1000000001"
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "description": "Evening",
+        "scope": "following",
+        "occurrence_date": "2026-10-04",
+        "base_version": 1,
+        "op_id": "op-overlay"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-03&to=2026-10-09"
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Stale",
+        "scope": "all",
+        "base_version": 0
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Everything",
+        "scope": "all",
+        "op_id": "op-all"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-06&to=2026-10-09"
+    }
+  ]
+}

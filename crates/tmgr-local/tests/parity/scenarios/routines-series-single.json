@@ -1,0 +1,112 @@
+{
+  "now": "2026-10-13T12:00:00.000Z",
+  "workspace": {
+    "id": -42,
+    "code": "parity",
+    "name": "Parity"
+  },
+  "user": {
+    "id": 7,
+    "name": "Owner",
+    "email": "owner@example.com"
+  },
+  "actor": null,
+  "seed": [],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/recurring",
+      "body": {
+        "title": "Run",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-01",
+          "time": "09:00"
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Once",
+        "description": "Body",
+        "approximately_time": 45,
+        "scope": "single",
+        "occurrence_date": "2026-10-10",
+        "op_id": "op-1"
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Twice",
+        "scope": "single",
+        "occurrence_date": "2026-10-10",
+        "op_id": "op-1"
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "scope": "single",
+        "occurrence_date": "2026-10-11",
+        "recurrence": {
+          "time": {
+            "hours": 18,
+            "minutes": 30
+          }
+        },
+        "op_id": "op-2"
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "scope": "single",
+        "occurrence_date": "2026-10-12",
+        "scheduled_date": "2026-10-15",
+        "op_id": "op-3"
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "scope": "single",
+        "occurrence_date": "2026-10-12",
+        "recurrence": {
+          "frequency": "WEEKLY",
+          "interval": 1,
+          "days_of_week": [
+            "MON"
+          ]
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "x",
+        "scope": "single"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/tasks/1000000001?date=2026-10-10"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-09&to=2026-10-16"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand/stats?from=2026-10-09&to=2026-10-16"
+    }
+  ]
+}

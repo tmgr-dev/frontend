@@ -1,0 +1,53 @@
+{
+  "now": "2026-10-13T12:00:00.000Z",
+  "workspace": {
+    "id": -42,
+    "code": "parity",
+    "name": "Parity"
+  },
+  "user": {
+    "id": 7,
+    "name": "Owner",
+    "email": "owner@example.com"
+  },
+  "actor": null,
+  "seed": [],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/recurring",
+      "body": {
+        "title": "Run",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-01",
+          "time": "09:00"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/1000000001/complete-on?date=2026-10-11"
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "scope": "following",
+        "occurrence_date": "2026-10-10",
+        "recurrence": {
+          "frequency": "WEEKLY",
+          "interval": 1,
+          "days_of_week": [
+            "MON"
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-10&to=2026-10-13"
+    }
+  ]
+}

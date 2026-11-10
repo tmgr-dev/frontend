@@ -122,7 +122,8 @@ describeSqlite('English pages migration', () => {
 		const snapshot = JSON.stringify(
 			await db.select(`SELECT * FROM pages ORDER BY id`),
 		);
-		for (const statement of MIGRATIONS[MIGRATIONS.length - 1].statements) {
+		for (const statement of MIGRATIONS.find((m) => m.version === 12)!
+			.statements) {
 			await db.execute(statement);
 		}
 		expect(

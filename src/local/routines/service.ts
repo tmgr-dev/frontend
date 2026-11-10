@@ -47,7 +47,7 @@ export interface RoutineEntryJson {
 	virtual: boolean;
 	created_at: string | null;
 	updated_at: string | null;
-	comments_count: number;
+	comments_count?: number;
 	moved_from?: string | null;
 }
 

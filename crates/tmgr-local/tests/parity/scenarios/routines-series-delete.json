@@ -1,0 +1,84 @@
+{
+  "now": "2026-10-13T12:00:00.000Z",
+  "workspace": {
+    "id": -42,
+    "code": "parity",
+    "name": "Parity"
+  },
+  "user": {
+    "id": 7,
+    "name": "Owner",
+    "email": "owner@example.com"
+  },
+  "actor": null,
+  "seed": [],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/recurring",
+      "body": {
+        "title": "Run",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-01",
+          "time": "09:00"
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Jog",
+        "scope": "following",
+        "occurrence_date": "2026-10-08"
+      }
+    },
+    {
+      "method": "DELETE",
+      "url": "daily-routines/tasks/1000000001?scope=single&occurrence_date=2026-10-09&op_id=d1"
+    },
+    {
+      "method": "DELETE",
+      "url": "daily-routines/tasks/1000000001?scope=single&occurrence_date=2026-10-09&op_id=d1"
+    },
+    {
+      "method": "DELETE",
+      "url": "daily-routines/tasks/1000000001?scope=single"
+    },
+    {
+      "method": "DELETE",
+      "url": "daily-routines/tasks/1000000001?scope=bogus"
+    },
+    {
+      "method": "DELETE",
+      "url": "daily-routines/tasks/1000000001?scope=following&occurrence_date=2026-10-05&op_id=d2"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-03&to=2026-10-10"
+    },
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/recurring",
+      "body": {
+        "title": "Other",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-10",
+          "time": "09:00"
+        }
+      }
+    },
+    {
+      "method": "DELETE",
+      "url": "daily-routines/tasks/1000000002?scope=following&occurrence_date=2026-10-10"
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/tasks/count"
+    }
+  ]
+}

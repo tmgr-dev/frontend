@@ -1,0 +1,75 @@
+{
+  "now": "2026-10-13T12:00:00.000Z",
+  "workspace": {
+    "id": -42,
+    "code": "parity",
+    "name": "Parity"
+  },
+  "user": {
+    "id": 7,
+    "name": "Owner",
+    "email": "owner@example.com"
+  },
+  "actor": null,
+  "seed": [],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/recurring",
+      "body": {
+        "title": "Run",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-01",
+          "time": "09:00",
+          "end_date": "2026-10-09"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "daily-routines/tasks/1000000001/complete-on?date=2026-10-12"
+    },
+    {
+      "method": "PUT",
+      "url": "daily-routines/tasks/1000000001",
+      "body": {
+        "title": "Jog",
+        "scope": "following",
+        "occurrence_date": "2026-10-12",
+        "recurrence": {
+          "frequency": "DAILY",
+          "interval": 1,
+          "start_date": "2026-10-01",
+          "time": "09:00",
+          "end_date": "2026-10-09"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "url": "daily-routines/tasks/1000000001/instances/virtual",
+      "body": {
+        "scheduled_for": "2026-10-08 18:00:00",
+        "from_date": "2026-10-07"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-05&to=2026-10-12"
+    },
+    {
+      "method": "PATCH",
+      "url": "daily-routines/tasks/1000000001/instances/1",
+      "body": {
+        "scheduled_for": "2026-10-12 07:15:00",
+        "from_date": "2026-10-08"
+      }
+    },
+    {
+      "method": "GET",
+      "url": "daily-routines/expand?from=2026-10-07&to=2026-10-12"
+    }
+  ]
+}

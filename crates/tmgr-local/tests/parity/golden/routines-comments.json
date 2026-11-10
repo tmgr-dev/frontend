@@ -1,0 +1,439 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Run",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"content": "first",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"cursor_agent_id": null,
+					"cursor_message_type": null,
+					"id": 1000000001,
+					"message": "first",
+					"reactions": [],
+					"task_id": 1000000001,
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"email": "owner@example.com",
+						"has_avatar": false,
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"content": "second",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"cursor_agent_id": null,
+					"cursor_message_type": null,
+					"id": 1000000002,
+					"message": "second",
+					"reactions": [],
+					"task_id": 1000000001,
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"email": "owner@example.com",
+						"has_avatar": false,
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"message": "message is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"author": {
+							"id": "7",
+							"kind": "user",
+							"name": "Owner"
+						},
+						"content": "first",
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"cursor_agent_id": null,
+						"cursor_message_type": null,
+						"id": 1000000001,
+						"message": "first",
+						"reactions": [],
+						"task_id": 1000000001,
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"user": {
+							"email": "owner@example.com",
+							"has_avatar": false,
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7
+					},
+					{
+						"author": {
+							"id": "7",
+							"kind": "user",
+							"name": "Owner"
+						},
+						"content": "second",
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"cursor_agent_id": null,
+						"cursor_message_type": null,
+						"id": 1000000002,
+						"message": "second",
+						"reactions": [],
+						"task_id": 1000000001,
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"user": {
+							"email": "owner@example.com",
+							"has_avatar": false,
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"content": "edited",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"cursor_agent_id": null,
+					"cursor_message_type": null,
+					"id": 1000000001,
+					"message": "edited",
+					"reactions": [],
+					"task_id": 1000000001,
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"email": "owner@example.com",
+						"has_avatar": false,
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Comment not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"message": "Reactions are not supported on routine comments"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"comments_count": 2,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-12",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-12T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 2,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-13",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-13T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 2,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 0,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Run",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true,
+					"task_id": 1000000001
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"author": {
+							"id": "7",
+							"kind": "user",
+							"name": "Owner"
+						},
+						"content": "edited",
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"cursor_agent_id": null,
+						"cursor_message_type": null,
+						"id": 1000000001,
+						"message": "edited",
+						"reactions": [],
+						"task_id": 1000000001,
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"user": {
+							"email": "owner@example.com",
+							"has_avatar": false,
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"comments_count": 1,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-12",
+						"description": null,
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-12T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					}
+				]
+			},
+			"status": 200
+		}
+	],
+	"tables": {
+		"routine_comments": [
+			{
+				"author_id": "7",
+				"author_kind": "user",
+				"author_name": "Owner",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"id": 1000000001,
+				"message": "edited",
+				"routine_id": 1000000001,
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"author_id": "7",
+				"author_kind": "user",
+				"author_name": "Owner",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": "2026-10-13T12:00:00.000Z",
+				"id": 1000000002,
+				"message": "second",
+				"routine_id": 1000000001,
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"routine_patterns": [
+			{
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"day_of_frequency": null,
+				"days_of_week": "[]",
+				"duration_min": null,
+				"end_at": null,
+				"frequency": "DAILY",
+				"id": 1,
+				"interval": 1,
+				"month": null,
+				"occurrences": null,
+				"reminder_min": null,
+				"routine_id": 1000000001,
+				"scheduled_time": "09:00:00",
+				"series_version": 0,
+				"start_at": "2026-10-12",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"routines": [
+			{
+				"approximately_time": null,
+				"archived_at": null,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"description": null,
+				"id": 1000000001,
+				"priority": "medium",
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Run",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		]
+	}
+}

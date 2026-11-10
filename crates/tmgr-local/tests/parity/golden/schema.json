@@ -2,10 +2,10 @@
 	"meta": [
 		{
 			"key": "schema_version",
-			"value": "13"
+			"value": "14"
 		}
 	],
-	"schema_version": 13,
+	"schema_version": 14,
 	"sqlite_master": [
 		{
 			"name": "meta",
@@ -75,13 +75,13 @@
 		},
 		{
 			"name": "routine_patterns",
-			"sql": "CREATE TABLE routine_patterns (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\troutine_id INTEGER NOT NULL UNIQUE REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tfrequency TEXT,\n\t\t\t\tinterval INTEGER NOT NULL DEFAULT 1,\n\t\t\t\tday_of_frequency INTEGER,\n\t\t\t\tmonth INTEGER,\n\t\t\t\tdays_of_week TEXT,\n\t\t\t\tstart_at TEXT,\n\t\t\t\tend_at TEXT,\n\t\t\t\toccurrences INTEGER,\n\t\t\t\tscheduled_time TEXT,\n\t\t\t\tduration_min INTEGER,\n\t\t\t\treminder_min INTEGER,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t)",
+			"sql": "CREATE TABLE routine_patterns (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\troutine_id INTEGER NOT NULL UNIQUE REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tfrequency TEXT,\n\t\t\t\tinterval INTEGER NOT NULL DEFAULT 1,\n\t\t\t\tday_of_frequency INTEGER,\n\t\t\t\tmonth INTEGER,\n\t\t\t\tdays_of_week TEXT,\n\t\t\t\tstart_at TEXT,\n\t\t\t\tend_at TEXT,\n\t\t\t\toccurrences INTEGER,\n\t\t\t\tscheduled_time TEXT,\n\t\t\t\tduration_min INTEGER,\n\t\t\t\treminder_min INTEGER,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t, series_version INTEGER NOT NULL DEFAULT 0)",
 			"tbl_name": "routine_patterns",
 			"type": "table"
 		},
 		{
 			"name": "routine_instances",
-			"sql": "CREATE TABLE routine_instances (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\troutine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tscheduled_for TEXT NOT NULL,\n\t\t\t\tstatus TEXT NOT NULL DEFAULT 'PENDING',\n\t\t\t\tcompleted_at TEXT,\n\t\t\t\tskipped_at TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t)",
+			"sql": "CREATE TABLE routine_instances (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\troutine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tscheduled_for TEXT NOT NULL,\n\t\t\t\tstatus TEXT NOT NULL DEFAULT 'PENDING',\n\t\t\t\tcompleted_at TEXT,\n\t\t\t\tskipped_at TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t, is_override INTEGER NOT NULL DEFAULT 0, duration_min INTEGER, title TEXT, description TEXT, moved_from TEXT)",
 			"tbl_name": "routine_instances",
 			"type": "table"
 		},
@@ -287,6 +287,36 @@
 			"name": "edit_journal_task_idx",
 			"sql": "CREATE INDEX edit_journal_task_idx ON edit_journal (task_id, seq)",
 			"tbl_name": "edit_journal",
+			"type": "index"
+		},
+		{
+			"name": "routine_pattern_segments",
+			"sql": "CREATE TABLE routine_pattern_segments (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\troutine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tvalid_from TEXT NOT NULL,\n\t\t\t\tvalid_to TEXT,\n\t\t\t\tanchor_date TEXT,\n\t\t\t\tis_recurring INTEGER NOT NULL DEFAULT 1,\n\t\t\t\tfrequency TEXT,\n\t\t\t\tinterval INTEGER,\n\t\t\t\tday_of_frequency INTEGER,\n\t\t\t\tmonth INTEGER,\n\t\t\t\tdays_of_week TEXT,\n\t\t\t\tscheduled_time TEXT,\n\t\t\t\tduration_min INTEGER,\n\t\t\t\treminder_min INTEGER,\n\t\t\t\ttitle TEXT NOT NULL,\n\t\t\t\tdescription TEXT,\n\t\t\t\troutine_category TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "routine_pattern_segments",
+			"type": "table"
+		},
+		{
+			"name": "routine_pattern_segments_routine_idx",
+			"sql": "CREATE INDEX routine_pattern_segments_routine_idx ON routine_pattern_segments (routine_id, valid_from)",
+			"tbl_name": "routine_pattern_segments",
+			"type": "index"
+		},
+		{
+			"name": "routine_ops",
+			"sql": "CREATE TABLE routine_ops (\n\t\t\t\troutine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\top_id TEXT NOT NULL,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tPRIMARY KEY (routine_id, op_id)\n\t\t\t)",
+			"tbl_name": "routine_ops",
+			"type": "table"
+		},
+		{
+			"name": "routine_comments",
+			"sql": "CREATE TABLE routine_comments (\n\t\t\t\tid INTEGER PRIMARY KEY,\n\t\t\t\troutine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tmessage TEXT NOT NULL,\n\t\t\t\tauthor_kind TEXT NOT NULL DEFAULT 'user',\n\t\t\t\tauthor_id TEXT,\n\t\t\t\tauthor_name TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tdeleted_at TEXT\n\t\t\t)",
+			"tbl_name": "routine_comments",
+			"type": "table"
+		},
+		{
+			"name": "routine_comments_routine_idx",
+			"sql": "CREATE INDEX routine_comments_routine_idx ON routine_comments (routine_id)",
+			"tbl_name": "routine_comments",
 			"type": "index"
 		}
 	],

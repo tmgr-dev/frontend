@@ -1,0 +1,804 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Morning",
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Run",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Morning",
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 1,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Jog",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Morning",
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 1,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Jog",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-06",
+						"description": "Morning",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-06T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-07",
+						"description": "Morning",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-07T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-08",
+						"description": "Morning",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-08T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Jog",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-09",
+						"description": "Morning",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-09T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Jog",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-10",
+						"description": "Morning",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-10T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Jog",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Morning",
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 1,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Run",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Morning",
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 1,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Jog",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Evening",
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 2,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Jog",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-03",
+						"description": "Morning",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-03T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-04",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-04T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-05",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-05T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-06",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-06T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-07",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-07T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Run",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-08",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-08T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Jog",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-09",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-09T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Jog",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Routine was changed elsewhere; series_version is 2"
+			},
+			"status": 409
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Evening",
+					"end_time": null,
+					"id": 1000000001,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurrence": {
+						"day_of_frequency": null,
+						"days_of_week": [],
+						"duration_min": null,
+						"frequency": "DAILY",
+						"interval": 1,
+						"month": null,
+						"reminder_min": null,
+						"time": {
+							"hours": 9,
+							"minutes": 0
+						}
+					},
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"series_version": 3,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Everything",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-06",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-06T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Everything",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-07",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-07T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Everything",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-08",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-08T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Everything",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					},
+					{
+						"comments_count": 0,
+						"completed": false,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"date": "2026-10-09",
+						"description": "Evening",
+						"duration_min": null,
+						"frequency": "DAILY",
+						"instance_id": null,
+						"reminder_min": null,
+						"routine_category": {
+							"color": "#888888",
+							"id": "none",
+							"name": "General"
+						},
+						"scheduled_for": "2026-10-09T09:00:00Z",
+						"status": "pending",
+						"task_id": 1000000001,
+						"time": "09:00",
+						"title": "Everything",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"virtual": true
+					}
+				]
+			},
+			"status": 200
+		}
+	],
+	"tables": {
+		"routine_ops": [
+			{
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"op_id": "op-split",
+				"routine_id": 1000000001
+			},
+			{
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"op_id": "op-overlay",
+				"routine_id": 1000000001
+			},
+			{
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"op_id": "op-all",
+				"routine_id": 1000000001
+			}
+		],
+		"routine_patterns": [
+			{
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"day_of_frequency": null,
+				"days_of_week": "[]",
+				"duration_min": null,
+				"end_at": null,
+				"frequency": "DAILY",
+				"id": 1,
+				"interval": 1,
+				"month": null,
+				"occurrences": null,
+				"reminder_min": null,
+				"routine_id": 1000000001,
+				"scheduled_time": "09:00:00",
+				"series_version": 3,
+				"start_at": "2026-10-01",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"routines": [
+			{
+				"approximately_time": null,
+				"archived_at": null,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"description": "Evening",
+				"id": 1000000001,
+				"priority": "medium",
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Everything",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		]
+	}
+}

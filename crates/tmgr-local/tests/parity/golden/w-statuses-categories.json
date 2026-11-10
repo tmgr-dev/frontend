@@ -443,7 +443,7 @@
 		"meta": [
 			{
 				"key": "schema_version",
-				"value": "13"
+				"value": "14"
 			},
 			{
 				"key": "onboarding:board_move:1",
