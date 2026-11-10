@@ -322,7 +322,7 @@
 						</ERSection>
 
 						<ERSection
-							v-if="!isNew && commentsEnabled && !isLocalRoutineId"
+							v-if="!isNew && commentsEnabled && routineTaskId"
 							:label="$t('dailyRoutine.comments.title')"
 							:hint="$t('dailyRoutine.comments.hint')"
 							data-testid="routine-comments"
@@ -468,9 +468,6 @@
 	const isNew = computed(() => !props.routine?.id);
 	const routineTaskId = computed<number>(
 		() => props.routine?.task_id ?? props.routine?.id,
-	);
-	const isLocalRoutineId = computed(
-		() => !routineTaskId.value || routineTaskId.value >= 1_000_000_000,
 	);
 
 	// ── start / end time range ─────────────────────────────────────────────────

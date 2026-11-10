@@ -331,22 +331,19 @@ describe('series scope', () => {
 	});
 
 	it('asks for a scope only for versioned changes of a recurring routine', () => {
-		expect(needsScopeChoice(draft({ title: 'X' }), original, false)).toBe(true);
-		expect(needsScopeChoice(draft({ reminderMin: 5 }), original, false)).toBe(
-			true,
+		expect(needsScopeChoice(draft({ title: 'X' }), original)).toBe(true);
+		expect(needsScopeChoice(draft({ reminderMin: 5 }), original)).toBe(true);
+		expect(needsScopeChoice(draft(), original)).toBe(false);
+		expect(needsScopeChoice(draft({ id: null, title: 'X' }), original)).toBe(
+			false,
 		);
-		expect(needsScopeChoice(draft(), original, false)).toBe(false);
-		expect(needsScopeChoice(draft({ title: 'X' }), original, true)).toBe(false);
-		expect(
-			needsScopeChoice(draft({ id: null, title: 'X' }), original, false),
-		).toBe(false);
 		const oneOff = draft({ frequency: 'NONE' });
 		expect(
-			needsScopeChoice(draft({ title: 'X', frequency: 'NONE' }), oneOff, false),
+			needsScopeChoice(draft({ title: 'X', frequency: 'NONE' }), oneOff),
 		).toBe(false);
-		expect(
-			needsScopeChoice(draft({ frequency: 'WEEKLY' }), oneOff, false),
-		).toBe(false);
+		expect(needsScopeChoice(draft({ frequency: 'WEEKLY' }), oneOff)).toBe(
+			false,
+		);
 	});
 
 	it('disables the single option only when the recurrence changed', () => {

@@ -405,7 +405,7 @@
 						:busy="editorBusy"
 						:error="editorError"
 						:confirm-open="deleteDialogOpen"
-						:comments-enabled="!isLocalWorkspace"
+						comments-enabled
 						@comments-count="onCommentsCount"
 						@close="editingRoutine = null"
 						@save="onSaveRoutine"
@@ -993,7 +993,7 @@
 		const recurring = !!entry.frequency && entry.frequency !== 'NONE';
 		const full = await getDailyTask(
 			entry.task_id,
-			recurring && !isLocalWorkspace.value ? entry.date : undefined,
+			recurring ? entry.date : undefined,
 		);
 		let occurrences: RoutineEntry[] = [];
 		if (entry.frequency === 'WEEKLY' && entry.date) {
@@ -1041,12 +1041,9 @@
 			taskId: entry.task_id,
 			title: entry.title,
 			fromEditor: false,
-			recurring:
-				!isLocalWorkspace.value &&
-				!!entry.frequency &&
-				entry.frequency !== 'NONE',
+			recurring: !!entry.frequency && entry.frequency !== 'NONE',
 			occurrenceDate: entry.date,
-			commentsCount: isLocalWorkspace.value ? 0 : (entry.comments_count ?? 0),
+			commentsCount: entry.comments_count ?? 0,
 		};
 		deleteDialogOpen.value = true;
 	}
@@ -1136,7 +1133,7 @@
 			await updateDailyTask(
 				draft.id,
 				buildRoutinePayload(draft, todayIso.value, original, scope),
-				isLocalWorkspace.value || (recurring && !scope)
+				recurring && !scope
 					? {}
 					: {
 							scope: scope ?? 'all',
@@ -1168,11 +1165,10 @@
 			// Quick-create only stores title/date/time; always follow up so
 			// duration, description and recurrence are persisted too.
 			if (newId) {
-				await updateDailyTask(
-					newId,
-					payload,
-					isLocalWorkspace.value ? {} : { scope: 'all', opId: newOpId() },
-				);
+				await updateDailyTask(newId, payload, {
+					scope: 'all',
+					opId: newOpId(),
+				});
 			}
 		}
 	}
@@ -1181,7 +1177,7 @@
 		if (!scope && draft.id) {
 			const original = routineDraftFrom(editingRoutine.value, todayIso.value);
 			original.durationMin = Math.max(15, original.durationMin);
-			if (needsScopeChoice(draft, original, isLocalWorkspace.value)) {
+			if (needsScopeChoice(draft, original)) {
 				pendingDraft.value = draft;
 				scopeRecurrenceChanged.value = recurrenceChanged(draft, original);
 				scopeDialogOpen.value = true;
@@ -1271,11 +1267,7 @@
 	}) {
 		const { entry, startMin, endMin } = payload;
 		const durationMin = Math.max(15, endMin - startMin);
-		if (
-			!isLocalWorkspace.value &&
-			entry.frequency &&
-			entry.frequency !== 'NONE'
-		) {
+		if (entry.frequency && entry.frequency !== 'NONE') {
 			await store.dispatch('dailyRoutines/resizeRecurring', {
 				entry,
 				startMin,
@@ -1309,12 +1301,9 @@
 			taskId: routine.id,
 			title: routine.title,
 			fromEditor: true,
-			recurring:
-				!isLocalWorkspace.value &&
-				!!entry?.frequency &&
-				entry.frequency !== 'NONE',
+			recurring: !!entry?.frequency && entry.frequency !== 'NONE',
 			occurrenceDate: routine.scheduled_date ?? todayIso.value,
-			commentsCount: isLocalWorkspace.value ? 0 : (routine.comments_count ?? 0),
+			commentsCount: routine.comments_count ?? 0,
 		};
 		deleteDialogOpen.value = true;
 	}

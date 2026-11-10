@@ -244,10 +244,8 @@ export function versionedFieldsChanged(
 export function needsScopeChoice(
 	draft: RoutineDraft,
 	original: RoutineDraft,
-	isLocal: boolean,
 ): boolean {
 	return (
-		!isLocal &&
 		draft.id != null &&
 		original.frequency !== 'NONE' &&
 		versionedFieldsChanged(draft, original)
