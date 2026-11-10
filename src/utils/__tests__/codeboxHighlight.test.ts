@@ -25,8 +25,8 @@ describe('bundleCodeboxHighlight', () => {
 		bundleCodeboxHighlight(Tool);
 		new Tool()._injectHighlightJSScriptElement();
 		expect(added).toEqual([]);
-		const hljs = (globalThis as unknown as { window: { hljs: unknown } })
-			.window.hljs as { highlightBlock: unknown };
+		const hljs = (globalThis as unknown as { window: { hljs: unknown } }).window
+			.hljs as { highlightBlock: unknown };
 		expect(typeof hljs.highlightBlock).toBe('function');
 	});
 });
