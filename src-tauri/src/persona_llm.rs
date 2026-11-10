@@ -963,7 +963,7 @@ pub fn chat_completions_url(base_url: &str) -> String {
 pub const DEFAULT_MAX_TOKENS: u32 = 4096;
 const MIN_MAX_TOKENS: u32 = 256;
 const MAX_MAX_TOKENS: u32 = 65536;
-const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 const TOTAL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Clone, Copy, Debug)]
@@ -3065,7 +3065,7 @@ mod tests {
     assert_eq!(StreamLimits::with_total_ms(None).total, Duration::from_secs(900));
     assert_eq!(StreamLimits::with_total_ms(Some(60_000)).total, Duration::from_secs(60));
     assert_eq!(StreamLimits::with_total_ms(Some(99_999_999)).total, Duration::from_secs(900));
-    assert_eq!(StreamLimits::with_total_ms(None).idle, Duration::from_secs(300));
+    assert_eq!(StreamLimits::with_total_ms(None).idle, Duration::from_secs(120));
   }
 
   async fn serve_replies(listener: tokio::net::TcpListener, replies: Vec<String>, received: std::sync::Arc<Mutex<Vec<String>>>) {

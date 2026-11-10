@@ -6,6 +6,7 @@
 
 <script setup>
 	import { t } from '@/i18n';
+	import { bundleCodeboxHighlight } from '@/utils/codeboxHighlight';
 	import { normalizeBlocks, sameBlocks } from '@/utils/editor';
 	import {
 		createEditorOperationQueue,
@@ -13,6 +14,7 @@
 	} from '@/utils/serialEditor';
 	import { escapeCarriedHtml } from '@/utils/titleOverflow';
 	import CodeTool from '@bomdi/codebox';
+	import codeboxThemeUrl from 'highlight.js/styles/atom-one-dark.min.css?url';
 	import Delimiter from '@editorjs/delimiter';
 	import EditorJS from '@editorjs/editorjs';
 	import Embed from '@editorjs/embed';
@@ -26,6 +28,9 @@
 	import Warning from '@editorjs/warning';
 	import DragDrop from 'editorjs-drag-drop';
 	import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+
+	const codeboxClass = CodeTool.default ?? CodeTool;
+	bundleCodeboxHighlight(codeboxClass);
 
 	const editorRef = ref(null);
 	const props = defineProps(['modelValue', 'placeholder']);
@@ -261,11 +266,10 @@
 				},
 				codebox: {
 					// The package publishes a CommonJS namespace wrapping its default class.
-					class: CodeTool.default ?? CodeTool,
+					class: codeboxClass,
 					shortcut: 'CMD+SHIFT+C',
 					config: {
-						themeURL:
-							'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/build/styles/dracula.min.css', // Optional
+						themeURL: codeboxThemeUrl,
 						themeName: 'atom-one-dark', // Optional
 						useDefaultTheme: 'light', // Optional. This also determines the background color of the language select drop-down
 					},

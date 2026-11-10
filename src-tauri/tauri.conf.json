@@ -33,14 +33,11 @@
 			"csp": {
 				"default-src": "'self'",
 				"script-src": [
-					"'self'",
-					"https://telegram.org",
-					"https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"
+					"'self'"
 				],
 				"style-src": [
 					"'self'",
-					"'unsafe-inline'",
-					"https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"
+					"'unsafe-inline'"
 				],
 				"img-src": [
 					"'self'",
@@ -74,7 +71,6 @@
 				],
 				"frame-src": [
 					"blob:",
-					"https://oauth.telegram.org",
 					"https://www.youtube.com",
 					"https://codesandbox.io",
 					"https://codepen.io",
