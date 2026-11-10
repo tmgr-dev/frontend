@@ -324,7 +324,7 @@ fn notes_become_pages_that_sync_as_markdown() {
 #[test]
 fn a_newer_schema_is_refused_and_auth_stays_with_the_cloud() {
     let local = Local::new();
-    local.workspace("future", "Future", 14);
+    local.workspace("future", "Future", 15);
     let out = local
         .cmd()
         .args(["--ws", "local:future", "task", "list"])
