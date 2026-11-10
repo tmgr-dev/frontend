@@ -44,8 +44,10 @@ const render = async (entries: unknown[]) => {
 			onCellClick: () => undefined,
 		}),
 	});
-	app.config.globalProperties.$t = (_k: string, p?: { n: number }) =>
-		`${p?.n} comments`;
+	(app.config.globalProperties as Record<string, unknown>).$t = (
+		_k: string,
+		p?: { n: number },
+	) => `${p?.n} comments`;
 	return renderToString(app);
 };
 
