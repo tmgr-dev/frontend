@@ -1,7 +1,7 @@
+import { renderToString } from '@vue/server-renderer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { createSSRApp } from 'vue';
-import { renderToString } from '@vue/server-renderer';
 
 const templateOf = (file: string): string => {
 	const src = readFileSync(join(__dirname, file), 'utf8');
