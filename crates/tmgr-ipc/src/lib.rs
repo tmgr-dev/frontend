@@ -12,6 +12,8 @@ pub mod endpoint;
 #[cfg(unix)]
 pub mod frame;
 #[cfg(unix)]
+pub mod loopback;
+#[cfg(unix)]
 pub mod peer;
 #[cfg(unix)]
 pub mod secret;
