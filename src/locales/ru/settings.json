@@ -64,7 +64,8 @@
 	},
 	"desktop": {
 		"gitTracking": "Автоучёт по Git",
-		"shortcuts": "Горячие клавиши"
+		"shortcuts": "Горячие клавиши",
+		"activity": "Подсказки активности"
 	},
 	"about": {
 		"version": "Версия {version}",

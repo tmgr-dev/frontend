@@ -64,7 +64,8 @@
 	},
 	"desktop": {
 		"gitTracking": "Git 自动跟踪",
-		"shortcuts": "键盘快捷键"
+		"shortcuts": "键盘快捷键",
+		"activity": "活动提示"
 	},
 	"about": {
 		"version": "版本 {version}",

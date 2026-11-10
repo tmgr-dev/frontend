@@ -306,6 +306,7 @@ pub fn run() {
       git_track::git_track_update,
       git_track::git_track_pick_folder,
       activity::activity_supported,
+      activity::activity_apps,
       activity::activity_update,
       activity::activity_suggestions,
       activity::activity_consume,

@@ -5,6 +5,7 @@
 	"windows": ["main"],
 	"permissions": [
 		"allow-activity-supported",
+		"allow-activity-apps",
 		"allow-activity-update",
 		"allow-activity-suggestions",
 		"allow-activity-consume",

@@ -64,7 +64,8 @@
 	},
 	"desktop": {
 		"gitTracking": "Git 자동 추적",
-		"shortcuts": "키보드 단축키"
+		"shortcuts": "키보드 단축키",
+		"activity": "활동 힌트"
 	},
 	"about": {
 		"version": "버전 {version}",

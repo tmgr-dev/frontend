@@ -4,7 +4,7 @@ import {
 	loadGitTrackMode,
 	type GitTrackMode,
 } from '@/utils/gitTrack';
-import { format } from 'date-fns';
+import { format, isToday } from 'date-fns';
 
 export interface ActivitySuggestion {
 	id: string;
@@ -23,31 +23,6 @@ export interface ActivityContext {
 }
 
 export type EntryOutcome = 'done' | 'conflict' | 'error';
-
-export const ACTIVITY_APPS: readonly string[] = [
-	'Visual Studio Code',
-	'Cursor',
-	'Visual Studio',
-	'Xcode',
-	'IntelliJ IDEA',
-	'WebStorm',
-	'PyCharm',
-	'GoLand',
-	'RustRover',
-	'PhpStorm',
-	'CLion',
-	'Rider',
-	'DataGrip',
-	'Zed',
-	'Terminal',
-	'iTerm2',
-	'Warp',
-	'Ghostty',
-	'kitty',
-	'WezTerm',
-	'Alacritty',
-	'Windows Terminal',
-];
 
 type UserId = number | string | null | undefined;
 
@@ -242,3 +217,35 @@ export const consumeActivity = (
 
 export const forgetActivity = (): Promise<void> =>
 	invokeCommand('activity_forget');
+
+export const listActivityApps = (): Promise<string[]> =>
+	invokeCommand<string[]>('activity_apps').catch(() => []);
+
+export const keyMatchesWorkspace = (
+	key: string,
+	prefixes: readonly string[],
+): boolean => {
+	const cut = key.lastIndexOf('-');
+	if (cut <= 0) return false;
+	return prefixes.includes(key.slice(0, cut).toUpperCase());
+};
+
+export const createAnnouncer = () => {
+	let scope: string | null = null;
+	let seen = new Set<string>();
+	return (
+		nextScope: string,
+		suggestions: ActivitySuggestion[],
+	): ActivitySuggestion[] => {
+		const first = nextScope !== scope;
+		if (first) {
+			scope = nextScope;
+			seen = new Set();
+		}
+		const fresh = suggestions.filter((item) => !seen.has(item.id));
+		suggestions.forEach((item) => seen.add(item.id));
+		return first
+			? fresh.filter((item) => isToday(new Date(item.startedAt * 1000)))
+			: fresh;
+	};
+};

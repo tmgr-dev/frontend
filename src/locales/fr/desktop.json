@@ -770,5 +770,24 @@
 		"socialLogin": {
 			"startFailed": "Impossible de démarrer la connexion."
 		}
+	},
+	"activity": {
+		"consent": "Proposer des entrées de temps à partir de l'activité",
+		"requires": "Nécessite le suivi automatique avec Git activé, avec un dossier surveillé, et le module Temps de session activé dans cet espace de travail.",
+		"collects": "Ce qui est collecté : les minutes passées pendant qu'un IDE ou un terminal de la liste ci-dessous est au premier plan, uniquement lorsqu'exactement un dépôt surveillé est sur une branche TM-N, qu'aucun minuteur ne tourne et que vous êtes actif.",
+		"never": "Ce qui n'est jamais collecté : les titres de fenêtres, les URL, les noms et chemins de fichiers, les noms de branches et d'applications ne sont ni stockés ni envoyés. Seules les clés de tâche (comme TM-157) sont recherchées pour afficher les titres ; rien d'autre ne quitte cet appareil tant que vous n'appuyez pas sur Ajouter.",
+		"apps": "Applications comptées : {apps}.",
+		"suggestions": "Suggestions",
+		"empty": "Aucune suggestion pour l'instant.",
+		"taskNotFound": "Tâche introuvable",
+		"otherWorkspace": "Cette clé appartient à un autre espace de travail. Basculez dessus pour ajouter le temps.",
+		"minutes": "{n} minute | {n} minutes",
+		"add": "Ajouter",
+		"dismiss": "Ignorer",
+		"forget": "Oublier les données collectées",
+		"conflict": "{key} : ce temps était déjà enregistré avec des valeurs différentes ; il n'a donc pas été ajouté et la suggestion a été supprimée.",
+		"addFailed": "Impossible d'ajouter l'entrée de temps : {message}",
+		"toastTitle": "{n} suggestion de temps à partir de l'activité | {n} suggestions de temps à partir de l'activité",
+		"toastReview": "Examiner"
 	}
 }

@@ -770,5 +770,24 @@
 		"socialLogin": {
 			"startFailed": "Não foi possível iniciar o login."
 		}
+	},
+	"activity": {
+		"consent": "Sugerir lançamentos de tempo a partir da atividade",
+		"requires": "Requer o Rastreamento automático com Git ativado com uma pasta monitorada, e o módulo Tempo de sessão habilitado neste espaço de trabalho.",
+		"collects": "O que é coletado: minutos gastos enquanto um IDE ou terminal da lista abaixo está em primeiro plano, somente quando exatamente um repositório monitorado está em uma branch TM-N, nenhum cronômetro está em execução e você está ativo.",
+		"never": "O que nunca é coletado: títulos de janelas, URLs, nomes e caminhos de arquivos, nomes de branches e de aplicativos não são armazenados nem enviados. Somente chaves de tarefa (como TM-157) são consultadas para mostrar os títulos; nada mais sai deste dispositivo até você pressionar Adicionar.",
+		"apps": "Aplicativos contados: {apps}.",
+		"suggestions": "Sugestões",
+		"empty": "Nenhuma sugestão ainda.",
+		"taskNotFound": "Tarefa não encontrada",
+		"otherWorkspace": "Esta chave pertence a outro espaço de trabalho. Troque para ele para adicionar o tempo.",
+		"minutes": "{n} minuto | {n} minutos",
+		"add": "Adicionar",
+		"dismiss": "Dispensar",
+		"forget": "Esquecer dados coletados",
+		"conflict": "{key}: este tempo já foi registrado com valores diferentes, então não foi adicionado e a sugestão foi removida.",
+		"addFailed": "Não foi possível adicionar o lançamento de tempo: {message}",
+		"toastTitle": "{n} sugestão de tempo a partir da atividade | {n} sugestões de tempo a partir da atividade",
+		"toastReview": "Revisar"
 	}
 }

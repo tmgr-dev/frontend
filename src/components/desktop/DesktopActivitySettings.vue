@@ -43,7 +43,10 @@
 					<div class="flex items-center gap-2">
 						<div class="flex min-w-0 flex-1 flex-col">
 							<span class="truncate text-sm font-medium">{{
-								row.title || $t('desktop.activity.taskNotFound')
+								row.title ||
+								(row.foreign
+									? $t('desktop.activity.otherWorkspace')
+									: $t('desktop.activity.taskNotFound'))
 							}}</span>
 							<span class="text-xs text-muted-foreground">
 								<span class="font-mono">{{ row.suggestion.key }}</span>
@@ -88,17 +91,21 @@
 	import { createTimeEntries } from '@/actions/tmgr/timeEntries';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
-	import { resolveTaskByKey } from '@/composable/useTaskKeyLinks';
+	import {
+		resolveTaskByKey,
+		workspaceKeyPrefixes,
+	} from '@/composable/useTaskKeyLinks';
 	import { t } from '@/i18n';
 	import store from '@/store';
 	import {
-		ACTIVITY_APPS,
 		buildTimeEntry,
 		consumeActivity,
 		entryOutcome,
 		forgetActivity,
 		formatSuggestionRange,
 		isActivitySupported,
+		keyMatchesWorkspace,
+		listActivityApps,
 		listActivitySuggestions,
 		loadActivityConsent,
 		minutesOf,
@@ -120,6 +127,7 @@
 			const consent = ref(loadActivityConsent(store.state.user?.id));
 			const rows = ref([]);
 			const error = ref('');
+			const apps = ref([]);
 			const notice = ref('');
 			let timer = null;
 			let unmounted = false;
@@ -139,6 +147,7 @@
 						userId,
 						workspaceId,
 					);
+					const prefixes = await workspaceKeyPrefixes(workspaceId);
 					const keys = [...new Set(suggestions.map((item) => item.key))];
 					const found = new Map(
 						await Promise.all(
@@ -151,11 +160,14 @@
 						rows.value.map((row) => [row.suggestion.id, row]),
 					);
 					rows.value = suggestions.map((suggestion) => {
-						const task = found.get(suggestion.key);
+						const own = keyMatchesWorkspace(suggestion.key, prefixes);
+						const task = own ? found.get(suggestion.key) : null;
 						return {
 							suggestion,
+							workspaceId,
 							taskId: task?.id ?? null,
 							title: task?.title ?? '',
+							foreign: !own,
 							minutes: minutesOf(suggestion.seconds),
 							...formatSuggestionRange(
 								suggestion.startedAt,
@@ -219,6 +231,10 @@
 
 			const add = async (row) => {
 				if (!row.taskId) return;
+				if (row.workspaceId !== store.getters.currentWorkspaceId) {
+					row.error = t('desktop.activity.otherWorkspace');
+					return;
+				}
 				if (!sessionTimeKnownOn()) {
 					row.error = t('desktop.activity.requires');
 					return;
@@ -258,6 +274,9 @@
 			onMounted(async () => {
 				supported.value = await isActivitySupported();
 				if (!supported.value || unmounted) return;
+				listActivityApps().then((names) => {
+					if (!unmounted) apps.value = names;
+				});
 				refresh();
 				timer = setInterval(refresh, REFRESH_MS);
 			});
@@ -273,7 +292,7 @@
 				rows,
 				error,
 				notice,
-				apps: ACTIVITY_APPS,
+				apps,
 				setConsent,
 				forget,
 				add,
