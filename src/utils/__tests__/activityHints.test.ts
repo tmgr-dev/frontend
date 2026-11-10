@@ -317,9 +317,10 @@ describe('createAnnouncer', () => {
 		expect(announce('a', [at('1', old)])).toEqual([]);
 	});
 
-	it('starts over when the scope changes', () => {
+	it('keeps each scope apart and does not repeat on return', () => {
 		const announce = createAnnouncer();
 		announce('a', [at('1', now)]);
 		expect(announce('b', [at('1', now)]).map((s) => s.id)).toEqual(['1']);
+		expect(announce('a', [at('1', now)])).toEqual([]);
 	});
 });

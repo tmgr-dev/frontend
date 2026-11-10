@@ -231,17 +231,14 @@ export const keyMatchesWorkspace = (
 };
 
 export const createAnnouncer = () => {
-	let scope: string | null = null;
-	let seen = new Set<string>();
+	const seenByScope = new Map<string, Set<string>>();
 	return (
-		nextScope: string,
+		scope: string,
 		suggestions: ActivitySuggestion[],
 	): ActivitySuggestion[] => {
-		const first = nextScope !== scope;
-		if (first) {
-			scope = nextScope;
-			seen = new Set();
-		}
+		const first = !seenByScope.has(scope);
+		const seen = seenByScope.get(scope) ?? new Set<string>();
+		seenByScope.set(scope, seen);
 		const fresh = suggestions.filter((item) => !seen.has(item.id));
 		suggestions.forEach((item) => seen.add(item.id));
 		return first
