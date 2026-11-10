@@ -1741,6 +1741,26 @@ describe('start events', () => {
 		host.dispose();
 	});
 
+	it('does not deliver start events in a tab that does not lead', async () => {
+		const rows: [string, unknown][] = [];
+		const { host } = setup(
+			[startPlugin],
+			{
+				storageSet: async (key: string, json: string) =>
+					void rows.push([key, JSON.parse(json)]),
+			},
+			{},
+			{},
+			{ isLeader: () => false },
+		);
+		await host.load();
+		await host.activate(LOCAL);
+		await flush();
+		await flush();
+		expect(rows).toEqual([]);
+		host.dispose();
+	});
+
 	it('delivers workspace.switched with from/to only when the active workspace actually changes', async () => {
 		const rows: [string, unknown][] = [];
 		const { host, leave } = setup(

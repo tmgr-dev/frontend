@@ -240,6 +240,14 @@ if (isDesktopApp()) {
 			},
 		);
 	}
+} else if (
+	typeof Worker !== 'undefined' &&
+	typeof crypto !== 'undefined' &&
+	!!crypto.subtle
+) {
+	void import('@/pluginSystem/web').then(({ installWebPlugins }) =>
+		installWebPlugins(store),
+	);
 }
 
 store.commit('setColorScheme', localStorage.getItem('colorScheme'));

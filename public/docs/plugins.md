@@ -500,6 +500,14 @@ Lifecycle:
 - In the test host, `tmgr.viewBadges[viewId]` holds `{ count, text, tone }` (one of `count`/`text` is `null`).
   It is set immediately, without the one-second coalescing; `null` or a `0` count deletes the key.
 
+## Plugins on the web
+
+The web app runs the plugins the creator of a cloud workspace pinned (on the desktop app), in the same sandbox as the desktop. It never installs anything by itself: the bundle comes through the backend, and its sha256 must equal the pinned one.
+
+What does not run on the web: plugins that reach this computer (`network.allowedOrigins`, `files:*`, `tray`, `deeplinks`, `links:open`, `images:remote`), and plugins that need `alarms`, `menus:task`, `routines:*` or `views:badge`. Such a plugin shows an error instead of starting. HTML pages (`views[].ui`) are dropped on the web: declarative views, badges, sections and commands still work.
+
+Only one tab per user and workspace runs the start-up events (`app.started`, `workspace.switched`) and listens for page events from other clients.
+
 ## Migrating from 1.3 to 1.4
 
 Nothing changes for existing plugins: `^1.0` to `^1.3` keep working.

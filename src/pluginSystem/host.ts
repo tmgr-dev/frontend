@@ -214,6 +214,8 @@ export interface PluginHostDeps {
 	) => Promise<LocalConnectionResult>;
 	/** Revokes this plugin's local-access tokens; called on disable and uninstall. */
 	revokePluginTokens?: (pluginId: string) => Promise<void>;
+	/** False in a tab that is not the one running the plugins' start-up events; absent means always. */
+	isLeader?: () => boolean;
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -883,7 +885,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			log(pluginId, 'info', `started in ${workspace.name}`);
 			if (!startedThisSession.has(pluginId)) {
 				startedThisSession.add(pluginId);
-				if (registered.event.has('app.started'))
+				if (registered.event.has('app.started') && (deps.isLeader?.() ?? true))
 					void dispatch(pluginId, 'event', 'app.started', {}).catch(
 						() => undefined,
 					);
@@ -891,7 +893,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (fromActivate) {
 				const previous = lastWorkspaceOf.get(storageId);
 				if (previous !== undefined && previous !== workspace.id) {
-					if (registered.event.has('workspace.switched'))
+					if (
+						registered.event.has('workspace.switched') &&
+						(deps.isLeader?.() ?? true)
+					)
 						void dispatch(pluginId, 'event', 'workspace.switched', {
 							from: previous,
 							to: workspace.id,
