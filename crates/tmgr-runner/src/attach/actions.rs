@@ -123,6 +123,20 @@ pub const ACTIONS: &[ActionDef] = &[
         true,
     ),
     def(
+        Cmd::Restart,
+        b"K",
+        "K",
+        "Restart the focused session (resumes the conversation)",
+        true,
+    ),
+    def(
+        Cmd::Fork,
+        b"F",
+        "F",
+        "Fork the focused session into a new pane",
+        true,
+    ),
+    def(
         Cmd::ScrollMode,
         b"[",
         "[",

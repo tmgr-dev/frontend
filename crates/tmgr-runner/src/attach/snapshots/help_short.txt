@@ -20,5 +20,5 @@
                   │ / / y         search scrollback (n older / N newer) / copy m │                 │
                   │ Enter / R / M resume exited / reconnect linked machines      │                 │
                   │ x / X         stop (asks first) / remove if exited           │                 │
- + New session    │ [             scroll back through history                    │─────────────────╯
+ + New session    │ K / F         restart (resumes it) / fork into a new pane    │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯es  Ctrl-] ? help

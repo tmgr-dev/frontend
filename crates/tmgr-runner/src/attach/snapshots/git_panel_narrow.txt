@@ -1,4 +1,4 @@
-╭ 1  claude · working ────────────────────────────── ⏸ ■ ✕ ╮
+╭ 1  claude · working ────────────────────────── ⎇ ↻ ⏸ ■ ✕ ╮
 ╭ Git ─────────────────────────────────────────────────────╮
 │ Repo     shop                                            │
 │ Branch   feature/apple-pay (no upstream)                 │

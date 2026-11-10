@@ -1,4 +1,4 @@
- SESSIONS      Ctrl-] b ╭ 1  claude · ╭ Keys ────────────────────────────────────────────────────────╮iting ──────────────────────── ⏸ ■ ✕ ╮
+ SESSIONS      Ctrl-] b ╭ 1  claude · ╭ Keys ────────────────────────────────────────────────────────╮iting ──────────────────── ⎇ ↻ ⏸ ■ ✕ ╮
  ◆ codex     blocked 3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
  ▾ claude           (2) │I will add an│                                                              │ ms                                  │
    ● claude working 18m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
@@ -20,12 +20,12 @@
                         │             │ / / y         search scrollback (n older / N newer) / copy m │                                     │
                         │             │ Enter / R / M resume exited / reconnect linked machines      │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │
+                        │             │ K / F         restart (resumes it) / fork into a new pane    │                                     │
                         │             │ [             scroll back through history                    │                                     │
                         │             │ q / u / C     agent questions / subagents / checkpoints      │                                     │
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
                         │             │ ? again closes this box                                      │                                     │
-                        │             │                                                              │                                     │
                         │             │                                                              │                                     │
  + New session     tmpl ╰─────────────│                                                              │─────────────────────────────────────╯
  tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯           drag copies  Ctrl-] ? help

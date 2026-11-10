@@ -212,7 +212,7 @@ impl ViewState {
         if n == 0 {
             return None;
         }
-        let base = header_button(outer, Control::Interrupt)?.checked_sub(1)?;
+        let base = header_button(outer, Control::Fork)?.checked_sub(1)?;
         let w = badge_text(n).width() as u16;
         Some((base.checked_sub(w)?, w))
     }

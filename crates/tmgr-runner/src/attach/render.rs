@@ -717,6 +717,8 @@ fn glyph_of(ctl: Control) -> &'static str {
         Control::Interrupt => "⏸",
         Control::Stop => "■",
         Control::Close => "✕",
+        Control::Restart => "↻",
+        Control::Fork => "⎇",
     }
 }
 
@@ -724,8 +726,8 @@ fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
     let Some(row) = st.sessions.iter().find(|s| s.id == p.session) else {
         return;
     };
-    if let Some(x0) = header_button(p.outer, Control::Interrupt) {
-        buf.set_string(x0 - 1, p.outer.y, "       ", Style::new());
+    if let Some(x0) = header_button(p.outer, Control::Fork) {
+        buf.set_string(x0 - 1, p.outer.y, "           ", Style::new());
     }
     if let Some((x, w)) = st.header_badge(p.outer, &p.session) {
         let style = Style::new().fg(colors().warn).add_modifier(Modifier::BOLD);
@@ -739,7 +741,13 @@ fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
             w,
         );
     }
-    for slot in [Control::Interrupt, Control::Stop, Control::Close] {
+    for slot in [
+        Control::Fork,
+        Control::Restart,
+        Control::Interrupt,
+        Control::Stop,
+        Control::Close,
+    ] {
         let Some(x) = header_button(p.outer, slot) else {
             return;
         };
@@ -786,7 +794,7 @@ fn header_geo(p: &PaneRect, st: &ViewState) -> Option<HeaderGeo> {
     };
     let state = state_label(row);
     let buttons = if p.outer.width >= HEADER_MIN_WIDTH {
-        8
+        12
     } else {
         0
     };
@@ -1394,6 +1402,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
     (
         HelpKey::Cmds(&[Cmd::Stop, Cmd::Remove]),
         "stop (asks first) / remove if exited",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Restart, Cmd::Fork]),
+        "restart (resumes it) / fork into a new pane",
     ),
     (
         HelpKey::Cmds(&[Cmd::ScrollMode]),

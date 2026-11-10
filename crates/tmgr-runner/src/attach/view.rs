@@ -72,6 +72,8 @@ pub enum Control {
     Interrupt,
     Stop,
     Close,
+    Restart,
+    Fork,
 }
 
 pub const HEADER_MIN_WIDTH: u16 = 40;
@@ -80,11 +82,13 @@ pub fn header_button(outer: Rect, ctl: Control) -> Option<u16> {
     if outer.width < HEADER_MIN_WIDTH {
         return None;
     }
-    let base = outer.right().checked_sub(8)?;
+    let base = outer.right().checked_sub(12)?;
     Some(match ctl {
-        Control::Interrupt | Control::Resume => base + 1,
-        Control::Stop => base + 3,
-        Control::Close => base + 5,
+        Control::Fork => base + 1,
+        Control::Restart => base + 3,
+        Control::Interrupt | Control::Resume => base + 5,
+        Control::Stop => base + 7,
+        Control::Close => base + 9,
     })
 }
 
@@ -93,7 +97,7 @@ pub fn sidebar_button(area: Rect, ctl: Control) -> Option<u16> {
         return None;
     }
     match ctl {
-        Control::Interrupt => None,
+        Control::Interrupt | Control::Restart | Control::Fork => None,
         Control::Stop | Control::Resume => area.right().checked_sub(5),
         Control::Close => area.right().checked_sub(3),
     }
@@ -1533,7 +1537,7 @@ impl ViewState {
                     self.open_templates();
                 }
             }
-            Cmd::Watch | Cmd::Notes | Cmd::Reconnect => {}
+            Cmd::Watch | Cmd::Notes | Cmd::Reconnect | Cmd::Restart | Cmd::Fork => {}
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
@@ -1861,7 +1865,13 @@ impl ViewState {
         for p in &lay.panes {
             if contains(p.outer, col, row) {
                 if row == p.outer.y {
-                    for slot in [Control::Interrupt, Control::Stop, Control::Close] {
+                    for slot in [
+                        Control::Fork,
+                        Control::Restart,
+                        Control::Interrupt,
+                        Control::Stop,
+                        Control::Close,
+                    ] {
                         if header_button(p.outer, slot) == Some(col) {
                             let ctl = self
                                 .sessions

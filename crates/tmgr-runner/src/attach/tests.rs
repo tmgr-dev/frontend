@@ -1275,6 +1275,46 @@ fn header_buttons_are_hit_tested_on_the_top_border() {
 }
 
 #[test]
+fn restart_and_fork_buttons_are_hit_tested_next_to_the_header_badge_slot() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.apply(Cmd::Sidebar);
+    let lay = layout(AREA, &v);
+    let outer = lay.panes[0].outer;
+    let x = |c| header_button(outer, c).unwrap();
+    assert_eq!(
+        v.hit(AREA, x(Control::Fork), 0),
+        Hit::Button("a".into(), Control::Fork)
+    );
+    assert_eq!(
+        v.hit(AREA, x(Control::Restart), 0),
+        Hit::Button("a".into(), Control::Restart)
+    );
+    assert!(x(Control::Fork) < x(Control::Restart));
+    assert!(x(Control::Restart) < x(Control::Interrupt));
+}
+
+#[test]
+fn header_draws_restart_and_fork_glyphs_only_in_a_wide_pane() {
+    let mut wide = ViewState::new(four(), "local");
+    wide.width = 140;
+    wide.apply(Cmd::Sidebar);
+    let text = draw(&wide, &screens(), 140, 20);
+    assert!(text.lines().next().unwrap().contains("⎇ ↻ ⏸ ■ ✕"));
+
+    let narrow = draw(&wide, &screens(), 38, 20);
+    let top = narrow.lines().next().unwrap();
+    assert!(!top.contains('⎇') && !top.contains('↻'), "{top}");
+}
+
+#[test]
+fn restart_and_fork_glyphs_are_one_column_wide() {
+    use unicode_width::UnicodeWidthStr;
+    assert_eq!("↻".width(), 1);
+    assert_eq!("⎇".width(), 1);
+}
+
+#[test]
 fn header_buttons_hide_in_a_narrow_pane() {
     let mut v = two_pane(90);
     let area = Rect::new(0, 0, 90, 40);
@@ -2236,10 +2276,10 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_35_rows() {
+fn help_shows_the_mouse_section_at_36_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 35);
+    let text = draw(&v, &screens(), 140, 36);
     assert!(text.contains("pick a tab, a session or a pane"));
     assert!(text.contains("select + copy"));
     assert!(text.contains("? again closes this box"));
@@ -2302,6 +2342,13 @@ fn plain_enter_and_r_stay_plain_input_without_the_prefix() {
     let mut s = InputSplitter::new();
     assert_eq!(s.feed(b"R\r"), vec![forward(b"R\r")]);
     assert_eq!(s.feed(&[0x1d, b'r']), vec![Action::Cmd(Cmd::Rename)]);
+}
+
+#[test]
+fn ctrl_bracket_f_forks_and_k_restarts_the_focused_session() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'F']), vec![Action::Cmd(Cmd::Fork)]);
+    assert_eq!(s.feed(&[0x1d, b'K']), vec![Action::Cmd(Cmd::Restart)]);
 }
 
 #[test]
@@ -6501,14 +6548,15 @@ fn open_urls_use_the_validated_workspace_and_id_only() {
 
 #[test]
 fn the_wide_header_shows_the_chip_and_a_click_on_it_opens_the_task() {
-    let v = with_chip(140);
-    let text = draw(&v, &screens(), 140, 22);
+    let area = Rect::new(0, 0, 150, 40);
+    let v = with_chip(150);
+    let text = draw(&v, &screens(), 150, 22);
     let first = text.lines().next().unwrap();
     assert!(
         first.contains("claude · working · TM-644 · tm-644-") && first.contains("· 0:42"),
         "{first}"
     );
-    let lay = layout(AREA, &v);
+    let lay = layout(area, &v);
     let pane = lay.panes.iter().find(|p| p.session == "a").unwrap();
     let (x, w) = render::header_chip(&v, pane).unwrap();
     let col = first.chars().take_while(|_| true).collect::<Vec<_>>();
@@ -6517,10 +6565,10 @@ fn the_wide_header_shows_the_chip_and_a_click_on_it_opens_the_task() {
         .position(|win| win.iter().collect::<String>() == "TM-644")
         .unwrap();
     assert_eq!(usize::from(x), drawn);
-    assert_eq!(v.hit(AREA, x, pane.outer.y), Hit::Chip("a".into()));
-    assert_eq!(v.hit(AREA, x + w - 1, pane.outer.y), Hit::Chip("a".into()));
-    assert_ne!(v.hit(AREA, x + w, pane.outer.y), Hit::Chip("a".into()));
-    assert_ne!(v.hit(AREA, x - 1, pane.outer.y), Hit::Chip("a".into()));
+    assert_eq!(v.hit(area, x, pane.outer.y), Hit::Chip("a".into()));
+    assert_eq!(v.hit(area, x + w - 1, pane.outer.y), Hit::Chip("a".into()));
+    assert_ne!(v.hit(area, x + w, pane.outer.y), Hit::Chip("a".into()));
+    assert_ne!(v.hit(area, x - 1, pane.outer.y), Hit::Chip("a".into()));
 }
 
 #[test]

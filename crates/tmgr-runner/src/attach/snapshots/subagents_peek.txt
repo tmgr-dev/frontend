@@ -1,4 +1,4 @@
- SESSIONS      Ctrl-] b ╭ 1  claude · working · 3/7 · Bash: carg… · 0:42 ─ ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ SESSIONS      Ctrl-] b ╭ 1  claude · working · 3/7 · Bash: … · 0:42 ─ ⎇ ↻ ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────── ⎇ ↻ ⏸ ■ ✕ ╮
  ◆ codex     blocked╭ Subagent · Explore: find auth routes · read-only ────────────────────────────────────────────────╮                   │
  ▾ claude           │prompt: find the auth routes                                                                      │                   │
    ● claude (+2) w… │Looking at the router.                                                                            │                   │

@@ -33,6 +33,8 @@ pub enum Cmd {
     Picker,
     Stop,
     Remove,
+    Restart,
+    Fork,
     Rename,
     Resume,
     Palette,

@@ -1,4 +1,4 @@
- SESSIONS      Ctrl-] b ╭ 1  codex · blocked ─────────────────────────────────────────────────────────────────── ⏸ ■ ✕ ╮
+ SESSIONS      Ctrl-] b ╭ 1  codex · blocked ─────────────────────────────────────────────────────────────── ⎇ ↻ ⏸ ■ ✕ ╮
  ◆ codex     blocked 3m │                                                                                              │
  ● claude   working 18m │                                                                                              │
  ◌ dev-server wait… 12m │                                                                                              │

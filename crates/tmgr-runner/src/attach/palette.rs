@@ -74,6 +74,8 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::Detach => "quit exit",
         Cmd::Stop => "kill",
         Cmd::Remove => "delete",
+        Cmd::Restart => "reload relaunch",
+        Cmd::Fork => "clone duplicate",
         Cmd::Help => "keys",
         Cmd::ScrollMode => "history",
         Cmd::Split => "split pane",

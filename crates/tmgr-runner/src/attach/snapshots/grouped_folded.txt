@@ -1,4 +1,4 @@
- SESSIONS      Ctrl-] b ╭ 1  a · working ─────────────────────────────────────────────────────────────────────────────────────────── ⏸ ■ ✕ ╮
+ SESSIONS      Ctrl-] b ╭ 1  a · working ─────────────────────────────────────────────────────────────────────────────────────── ⎇ ↻ ⏸ ■ ✕ ╮
  ▸ w/app · main     (2) │● Reading src/checkout/Form.vue                                                                                   │
  ● c         working 1m │I will add an Apple Pay button next to the card form, shown only when the session exists.                         │
    w/app-wt · feat/x    │✓ Tests 14 passed                                                                                                 │

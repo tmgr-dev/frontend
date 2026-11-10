@@ -1,4 +1,4 @@
- SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────────────── ?2 ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ───────────────────── ?1 ⏸ ■ ✕ ╮
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────────── ?2 ⎇ ↻ ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ───────────────── ?1 ⎇ ↻ ⏸ ■ ✕ ╮
  ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
  ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
    ● ?2 claude wor… 18m │✓ Tests 14 passed                                       ││                                                        │
