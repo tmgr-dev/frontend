@@ -55,7 +55,7 @@ pub(super) enum ForkStep {
 
 pub(super) fn fork_step(launch: &Launch) -> ForkStep {
     let native = matches!(&launch.kind, Some(SpawnKind::Agent { profile }) if can_fork(profile))
-        && !launch.no_sandbox
+        && !launch.flagged()
         && launch.conversation;
     match (&launch.kind, native) {
         (_, true) => ForkStep::Native,
@@ -128,9 +128,12 @@ mod tests {
         no_id.conversation = false;
         let mut open = launch(agent("codex"));
         open.no_sandbox = true;
+        let mut bypass = launch(agent("claude-code"));
+        bypass.bypass = true;
         for l in [
             no_id,
             open,
+            bypass,
             launch(Some(SpawnKind::Shell)),
             launch(agent("custom")),
         ] {

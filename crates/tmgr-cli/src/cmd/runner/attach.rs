@@ -2571,7 +2571,7 @@ impl App {
     }
 
     fn fork_fresh(&mut self, req: NewRequest) {
-        if self.new_flow.busy(Instant::now()) {
+        if self.past_in_flight() || self.new_flow.busy(Instant::now()) {
             return self.notify("a session is still starting");
         }
         let home = std::env::var_os("HOME")
@@ -2625,6 +2625,7 @@ impl App {
                 None => self.view.sessions.push(row),
             }
         }
+        self.launches.insert(new.clone(), Launch::of(&info));
         self.pending.insert(new.clone(), Instant::now());
         self.starts.remove(old);
         self.starts
@@ -5232,29 +5233,58 @@ fn resumed_notice(name: &str, via: Option<&str>) -> String {
     }
 }
 
-fn resume_call(
+const NO_RESUME_CAP: &str = "this runner cannot resume sessions yet, restart it";
+
+fn busy_error(e: &std::io::Error) -> bool {
+    e.to_string().starts_with("busy: ")
+}
+
+fn resume_attempt(
     cfg: &RunnerConfig,
     id: &str,
     cols: u16,
     rows: u16,
-) -> std::result::Result<RestoredRun, String> {
+) -> std::result::Result<RestoredRun, (bool, String)> {
     let clean = |s: String| sanitize_text(&s).into_owned();
-    let mut client = connect(cfg).map_err(|e| clean(e.to_string()))?;
+    let mut client = connect(cfg).map_err(|e| (false, clean(e.to_string())))?;
     if !client
         .welcome()
         .caps
         .iter()
         .any(|c| c == caps::SESSIONS_RESUME_V1)
     {
-        return Err("this runner cannot resume sessions yet, restart it".into());
+        return Err((false, NO_RESUME_CAP.into()));
     }
     let _ = client.set_timeouts(RESUME_WAIT);
     client
         .resume(id, cols, rows)
-        .map_err(|e| clean(rerr(e).to_string()))
+        .map_err(|e| (busy_error(&e), clean(rerr(e).to_string())))
+}
+
+fn resume_call(
+    cfg: &RunnerConfig,
+    id: &str,
+    cols: u16,
+    rows: u16,
+) -> std::result::Result<RestoredRun, String> {
+    resume_attempt(cfg, id, cols, rows).map_err(|(_, e)| e)
 }
 
 const RESTART_RETRY: Duration = Duration::from_secs(5);
+
+fn can_resume(cfg: &RunnerConfig) -> std::result::Result<(), String> {
+    let client = connect(cfg).map_err(|e| sanitize_text(&e.to_string()).into_owned())?;
+    if client
+        .welcome()
+        .caps
+        .iter()
+        .any(|c| c == caps::SESSIONS_RESUME_V1)
+    {
+        Ok(())
+    } else {
+        Err(NO_RESUME_CAP.into())
+    }
+}
 
 fn restart_call(
     cfg: &RunnerConfig,
@@ -5262,6 +5292,7 @@ fn restart_call(
     cols: u16,
     rows: u16,
 ) -> std::result::Result<RestoredRun, String> {
+    can_resume(cfg)?;
     run_ladder(cfg, id, false, STOP_LADDER);
     let end = Instant::now() + RESTART_RETRY;
     let exited = || {
@@ -5282,9 +5313,9 @@ fn restart_call(
     }
     let end = Instant::now() + RESTART_RETRY;
     loop {
-        match resume_call(cfg, id, cols, rows) {
-            Err(_) if Instant::now() < end => thread::sleep(Duration::from_millis(300)),
-            result => return result,
+        match resume_attempt(cfg, id, cols, rows) {
+            Err((true, _)) if Instant::now() < end => thread::sleep(Duration::from_millis(300)),
+            result => return result.map_err(|(_, e)| e),
         }
     }
 }
@@ -5314,6 +5345,15 @@ fn dropped_path_exists(data: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_busy_resume_errors_are_retried() {
+        let e = |m: &str| std::io::Error::other(m.to_string());
+        assert!(busy_error(&e("busy: session is starting")));
+        for m in ["not_found: x", "forbidden: x", "internal: busy: x"] {
+            assert!(!busy_error(&e(m)), "{m}");
+        }
+    }
+
     #[test]
     fn transcript_text_leaves_only_with_claude_consent() {
         let off = Reads {
@@ -5522,14 +5562,16 @@ mod tests {
         s.agent_session_id = Some("0b8f3c52-94c5-4c0e-8e2c-0d1b2f3a4b5c".into());
         let l = Launch::of(&s);
         assert!(l.bypass() && l.flagged() && !l.no_sandbox());
-        assert_eq!(fork_step(&l), ForkStep::Native);
+        assert!(matches!(fork_step(&l), ForkStep::Fresh(_)));
+        s.permission_mode = None;
+        assert_eq!(fork_step(&Launch::of(&s)), ForkStep::Native);
         s.agent_session_id = None;
         s.no_sandbox = true;
         let ForkStep::Fresh(req) = fork_step(&Launch::of(&s)) else {
             panic!("expected a fresh fork");
         };
         assert_eq!(req.folder, "/work/app");
-        assert!(req.bypass && req.no_sandbox && req.task.is_none());
+        assert!(!req.bypass && req.no_sandbox && req.task.is_none());
     }
 
     #[test]
