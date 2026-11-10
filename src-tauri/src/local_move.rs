@@ -42,6 +42,20 @@ const ENTITIES: [&str; 17] = [
   "meta",
 ];
 
+const SERIES_SCHEMA: u32 = 14;
+const SERIES_ENTITIES: [&str; 2] = ["routine_pattern_segments", "routine_comments"];
+
+fn bundle_entities(local_schema: u32) -> Vec<&'static str> {
+  let mut list = Vec::with_capacity(ENTITIES.len() + SERIES_ENTITIES.len());
+  for entity in ENTITIES {
+    list.push(entity);
+    if entity == "routine_instances" && local_schema >= SERIES_SCHEMA {
+      list.extend(SERIES_ENTITIES);
+    }
+  }
+  list
+}
+
 pub const BUSY: &str = "another move or removal is in progress";
 
 struct Owner {
@@ -747,9 +761,10 @@ pub fn build_bundle(dir: &Path, input: &BundleInput<'_>) -> Result<BundleResult,
     .unwrap_or_else(|| rfc3339(crate::tray::now_secs()));
   let files = file_infos(&conn, dir, input.max_file_bytes, input.mime_allowlist)?;
 
+  let entities = bundle_entities(local_schema);
   let mut counts = Vec::new();
   let mut hashes = Vec::new();
-  for entity in ENTITIES {
+  for &entity in &entities {
     let mut hasher = Sha256::new();
     let mut count = 0usize;
     for_each_line(&conn, entity, &files, &mut |line| {
@@ -765,7 +780,7 @@ pub fn build_bundle(dir: &Path, input: &BundleInput<'_>) -> Result<BundleResult,
   }
 
   let pairs = |values: Vec<String>| {
-    ENTITIES
+    entities
       .iter()
       .zip(values)
       .map(|(entity, value)| format!("{}:{value}", json_text(entity)))
@@ -805,7 +820,7 @@ pub fn build_bundle(dir: &Path, input: &BundleInput<'_>) -> Result<BundleResult,
     let file = File::create(&tmp).map_err(|e| e.to_string())?;
     let mut gz = flate2::write::GzEncoder::new(BufWriter::new(file), flate2::Compression::default());
     writeln!(gz, "{manifest_line}").map_err(|e| e.to_string())?;
-    for entity in ENTITIES {
+    for &entity in &entities {
       for_each_line(&conn, entity, &files, &mut |line| writeln!(gz, "{line}").map_err(|e| e.to_string()))?;
     }
     gz.finish().and_then(|mut w| w.flush()).map_err(|e| e.to_string())?;
@@ -2122,6 +2137,62 @@ mod tests {
       assert_eq!(manifest["hashes"][entity], sha256_hex(lines.join("\n").as_bytes()), "{entity}");
     }
     assert_eq!(manifest["counts"].as_object().unwrap().len(), ENTITIES.len());
+  }
+
+  const SERIES_UPGRADE: &str = "
+    UPDATE meta SET value = '14' WHERE key = 'schema_version';
+    ALTER TABLE routine_instances ADD COLUMN is_override INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE routine_instances ADD COLUMN duration_min INTEGER;
+    ALTER TABLE routine_instances ADD COLUMN title TEXT;
+    ALTER TABLE routine_instances ADD COLUMN description TEXT;
+    ALTER TABLE routine_instances ADD COLUMN moved_from TEXT;
+    CREATE TABLE routine_pattern_segments (id INTEGER PRIMARY KEY AUTOINCREMENT, routine_id INTEGER NOT NULL, valid_from TEXT NOT NULL, valid_to TEXT, anchor_date TEXT, is_recurring INTEGER NOT NULL DEFAULT 1, frequency TEXT, interval INTEGER, day_of_frequency INTEGER, month INTEGER, days_of_week TEXT, scheduled_time TEXT, duration_min INTEGER, reminder_min INTEGER, title TEXT NOT NULL, description TEXT, routine_category TEXT, created_at TEXT NOT NULL);
+    CREATE TABLE routine_comments (id INTEGER PRIMARY KEY, routine_id INTEGER NOT NULL, message TEXT NOT NULL, author_kind TEXT NOT NULL DEFAULT 'user', author_id TEXT, author_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);
+    INSERT INTO routine_pattern_segments (id, routine_id, valid_from, valid_to, anchor_date, frequency, interval, days_of_week, title, created_at) VALUES (1, 7, '2026-01-05', '2026-01-09', '2026-01-05', 'WEEKLY', 1, '[1,3]', 'Old name', '2026-01-10T00:00:00Z');
+    INSERT INTO routine_comments (id, routine_id, message, created_at, updated_at) VALUES (1000000001, 7, 'Remember the fern', '2026-01-06T00:00:00Z', '2026-01-06T00:00:00Z');
+    INSERT INTO routine_instances (id, routine_id, scheduled_for, is_override, duration_min, title, moved_from, created_at, updated_at) VALUES (2, 7, '2026-01-08T09:00:00', 1, 45, 'Moved', '2026-01-07', '2026-01-05T00:00:00Z', '2026-01-05T00:00:00Z');
+  ";
+
+  #[test]
+  fn a_v14_bundle_carries_segments_comments_and_the_new_instance_columns() {
+    let root = temp("series");
+    let dir = workspace(&root, "Series");
+    open_workspace(&dir).execute_batch(SERIES_UPGRADE).unwrap();
+    let live = open_workspace(&dir);
+    let snap_dir = snapshot_db(&live, &dir, 1_800_000_000).unwrap();
+    snapshot_files(&snap_dir, &dir, 1_800_000_000).unwrap();
+    let bundle = build_bundle(
+      &snap_dir,
+      &BundleInput { code: "series", name: "Series", profile_uuid: "p", max_file_bytes: 5, mime_allowlist: &[] },
+    )
+    .unwrap();
+    let text = gunzip(&bundle.path);
+    let manifest = &bundle.manifest;
+    assert_eq!(manifest["local_schema"], 14);
+    assert_eq!(manifest["counts"]["routine_pattern_segments"], 1);
+    assert_eq!(manifest["counts"]["routine_comments"], 1);
+    assert_eq!(manifest["counts"]["routine_instances"], 2);
+    assert_eq!(manifest["counts"].as_object().unwrap().len(), ENTITIES.len() + 2);
+    let lines: Vec<Json> = text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let tags: Vec<&str> = lines.iter().map(|l| l["t"].as_str().unwrap()).collect();
+    let last_instance = tags.iter().rposition(|t| *t == "routine_instances").unwrap();
+    assert_eq!(&tags[last_instance + 1..last_instance + 3], ["routine_pattern_segments", "routine_comments"]);
+    let segment = lines.iter().find(|l| l["t"] == "routine_pattern_segments").unwrap();
+    assert_eq!(segment["r"]["valid_to"], "2026-01-09");
+    assert_eq!(segment["r"]["anchor_date"], "2026-01-05");
+    assert_eq!(segment["r"]["days_of_week"], "[1,3]");
+    let comment = lines.iter().find(|l| l["t"] == "routine_comments").unwrap();
+    assert_eq!(comment["r"]["id"], 1000000001u64);
+    assert_eq!(comment["r"]["message"], "Remember the fern");
+    let moved = lines.iter().find(|l| l["t"] == "routine_instances" && l["r"]["id"] == 2).unwrap();
+    assert_eq!(moved["r"]["is_override"], 1);
+    assert_eq!(moved["r"]["duration_min"], 45);
+    assert_eq!(moved["r"]["title"], "Moved");
+    assert_eq!(moved["r"]["moved_from"], "2026-01-07");
+    for entity in ["routine_pattern_segments", "routine_comments"] {
+      let joined = lines.iter().zip(text.lines()).filter(|(l, _)| l["t"] == entity).map(|(_, raw)| raw).collect::<Vec<_>>().join("\n");
+      assert_eq!(manifest["hashes"][entity], sha256_hex(joined.as_bytes()), "{entity}");
+    }
   }
 
   #[test]
