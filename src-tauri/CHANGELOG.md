@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.148 — 2026-11-10
+
+- Activity hints: TMGR now checks for new time suggestions every 5 minutes and shows a notice with a Review button, so you no longer need to keep Settings open.
+- Activity hints: a suggestion whose task key belongs to another workspace is no longer filed into the open one; it asks you to switch workspace first.
+- Activity hints: the list of counted apps comes from the app itself and shows only apps for your system. The texts are translated into all supported languages.
+
 ## 0.9.147 — 2026-11-10
 
 - Repeating routines in local workspaces: when you edit or delete one, choose Only this event, This and following events, or All events. Past occurrences keep their old title and time, one occurrence can get its own date, time, duration, title or description, and routines have comments shared by all occurrences. Moving the workspace to the cloud carries this history and the comments along. The local database moves to schema 14; `tmgr` 1.0.117 reads it.
