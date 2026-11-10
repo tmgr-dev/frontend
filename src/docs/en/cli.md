@@ -88,6 +88,15 @@ tmgr mcp
 
 The Decisions inbox works in the desktop app on macOS and Linux. Agents can also ask through the MCP tools `ask_owner` and `find_answers`.
 
+### Instant delivery to OpenCode
+
+By default an answer reaches an OpenCode session when the agent next checks. To have the desktop app push it into the running session, opt in:
+
+1. Start OpenCode with a fixed local port, for example `opencode serve --hostname 127.0.0.1 --port 4096`, or `opencode --port 4096`.
+2. In `opencode.json`, give the `tmgr` MCP entry this `environment`: `TMGR_OPENCODE_URL` set to `http://127.0.0.1:4096` and `OPENCODE_SERVER_PASSWORD` set to `{env:OPENCODE_SERVER_PASSWORD}`. Never write the password itself into the file.
+
+The address must be a loopback IP literal (`127.0.0.1` or `[::1]`) over plain `http`. `tmgr` also uses `OPENCODE_PID`, which OpenCode passes to the MCP process by default, and `lsof` to confirm that this OpenCode process owns the port. If the check fails, or the variable is not set, nothing changes. The server password is kept in the desktop app's private local store, like the Claude socket token.
+
 ## Get a message on your phone when an agent needs you {#phone}
 
 Walk away from the screen. A push tells you when an agent is waiting for input or has finished a long job. For something urgent, an alarm rings in the TMGR iOS app and then calls your phone if you do not answer.

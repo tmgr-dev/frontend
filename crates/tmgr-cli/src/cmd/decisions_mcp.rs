@@ -1,6 +1,6 @@
 use crate::cmd::decisions::{
     self, agent_name, check_checked, default_wait, event_text, fact_checked, parent_pid,
-    parse_check, parse_fact, pending_json, send_card_full, source, wait_cards, SentFull, Spec,
+    parse_check, parse_fact, pending_json, send_card_full_meta, source, wait_cards, SentFull, Spec,
     Waited, KINDS, MAX_CONTEXT, MAX_TITLE,
 };
 use crate::cmd::mcp::{arg_err, bool_arg, int_arg, str_arg, text_result};
@@ -407,7 +407,12 @@ fn find_answers(a: &Value) -> Value {
     }
 }
 
-fn ask_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str)) -> Value {
+fn ask_owner(
+    a: &Value,
+    cancel: Option<&Cancel>,
+    meta_session: Option<&str>,
+    progress: &mut dyn FnMut(&str),
+) -> Value {
     let parsed = parse_spec(a).and_then(|s| {
         let wait = wait_arg(a)?;
         let card = s.into_card("mcp", source(client_agent(), Some(parent_pid())))?;
@@ -417,7 +422,7 @@ fn ask_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str))
         Ok(p) => p,
         Err(m) => return arg_err(&m),
     };
-    match send_card_full(card) {
+    match send_card_full_meta(card, meta_session) {
         Ok(SentFull::Live(r))
             if r.outcome.as_deref() == Some(OUTCOME_SIMILAR) && !r.similar.is_empty() =>
         {
@@ -491,11 +496,12 @@ pub fn call(
     name: &str,
     args: &Value,
     cancel: Option<&Cancel>,
+    meta_session: Option<&str>,
     progress: &mut dyn FnMut(&str),
 ) -> Value {
     match name {
         "find_answers" => find_answers(args),
-        "ask_owner" => ask_owner(args, cancel, progress),
+        "ask_owner" => ask_owner(args, cancel, meta_session, progress),
         "get_answer" => get_answer(args, cancel, progress),
         _ => reply_owner(args, cancel, progress),
     }

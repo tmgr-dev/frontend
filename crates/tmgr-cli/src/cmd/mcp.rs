@@ -271,10 +271,11 @@ pub fn call_tool(
     name: &str,
     args: &Value,
     cancel: Option<&Cancel>,
+    meta_session: Option<&str>,
     progress: &mut dyn FnMut(&str),
 ) -> Value {
     #[cfg(not(unix))]
-    let _ = cancel;
+    let _ = (cancel, meta_session);
     if name == "tmgr_cli" {
         return text_result(CLI_HELP, false);
     }
@@ -282,7 +283,7 @@ pub fn call_tool(
     if crate::cmd::decisions_mcp::is_decisions_tool(name) {
         let empty = json!({});
         let args = if args.is_object() { args } else { &empty };
-        return crate::cmd::decisions_mcp::call(name, args, cancel, progress);
+        return crate::cmd::decisions_mcp::call(name, args, cancel, meta_session, progress);
     }
     if !matches!(name, "notify_user" | "alarm" | "alarm_status") {
         return text_result(
@@ -480,6 +481,10 @@ fn tools_call(out: &Out, env: Option<&NotifyEnv>, msg: &Value, cancel: &Cancel) 
         .get("_meta")
         .and_then(|m| m.get("progressToken"))
         .cloned();
+    let meta_session = params
+        .get("_meta")
+        .and_then(|m| m.get("ai.opencode/sessionID"))
+        .and_then(Value::as_str);
     let mut step = 0u64;
     let mut progress = |message: &str| {
         let Some(t) = &token else { return };
@@ -492,7 +497,7 @@ fn tools_call(out: &Out, env: Option<&NotifyEnv>, msg: &Value, cancel: &Cancel) 
             &json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": {"progressToken": t, "progress": step, "message": message}}),
         );
     };
-    let result = call_tool(env, name, &args, Some(cancel), &mut progress);
+    let result = call_tool(env, name, &args, Some(cancel), meta_session, &mut progress);
     if !cancel.is_cancelled() {
         send(out, &ok(&id, result));
     }
@@ -542,15 +547,15 @@ mod tests {
 
     #[test]
     fn help_needs_no_configuration_and_bad_arguments_are_tool_errors() {
-        let r = call_tool(None, "tmgr_cli", &json!({}), None, &mut |_| {});
+        let r = call_tool(None, "tmgr_cli", &json!({}), None, None, &mut |_| {});
         assert!(r["content"][0]["text"]
             .as_str()
             .unwrap()
             .contains("tmgr agent start"));
         assert!(r.get("isError").is_none());
-        let r = call_tool(None, "other", &json!({}), None, &mut |_| {});
+        let r = call_tool(None, "other", &json!({}), None, None, &mut |_| {});
         assert_eq!(r["isError"], true);
-        let r = call_tool(None, "notify_user", &json!({}), None, &mut |_| {});
+        let r = call_tool(None, "notify_user", &json!({}), None, None, &mut |_| {});
         assert_eq!(r["isError"], true);
     }
 }

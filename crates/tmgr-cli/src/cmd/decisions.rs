@@ -1,7 +1,9 @@
 use crate::out::Output;
 use clap::{Args, Subcommand};
 use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::io;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -12,6 +14,7 @@ use tmgr_ipc::decisions::{
     PatchIn, PendingDelivery, Response, Secret, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS,
     MAX_PATCHES, MAX_PATCH_BYTES,
 };
+use tmgr_ipc::loopback::{self, HttpErr};
 
 pub const KINDS: [&str; 5] = ["decision", "review", "release", "check", "question"];
 const FACT_STATES: [&str; 3] = ["ok", "bad", "wait"];
@@ -122,11 +125,148 @@ fn hook_inbox_with(card: &CardIn, inbox: impl FnOnce() -> Option<Inbox>) -> Opti
     (card.kind == "stopped").then(inbox).flatten()
 }
 
-pub fn send_card_full(mut card: CardIn) -> io::Result<SentFull> {
+pub trait OpencodeProbe {
+    #[allow(clippy::result_unit_err)]
+    fn listener_pid(&self, pid: u32, port: u16) -> Result<bool, ()>;
+    fn get(
+        &self,
+        addr: SocketAddr,
+        path: &str,
+        auth: Option<&str>,
+    ) -> Result<(u16, Vec<u8>), HttpErr>;
+}
+
+struct RealProbe;
+
+impl OpencodeProbe for RealProbe {
+    fn listener_pid(&self, pid: u32, port: u16) -> Result<bool, ()> {
+        loopback::listener_pid(pid, port)
+    }
+
+    fn get(
+        &self,
+        addr: SocketAddr,
+        path: &str,
+        auth: Option<&str>,
+    ) -> Result<(u16, Vec<u8>), HttpErr> {
+        loopback::request(addr, "GET", path, auth, None, OPENCODE_DEADLINE)
+    }
+}
+
+const OPENCODE_DEADLINE: Duration = Duration::from_millis(1500);
+
+fn url_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~' | b'/') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+fn canonical_dir(s: &str) -> String {
+    std::fs::canonicalize(s).map_or_else(|_| s.to_string(), |p| p.to_string_lossy().into_owned())
+}
+
+fn opencode_get(
+    probe: &dyn OpencodeProbe,
+    addr: SocketAddr,
+    path: &str,
+    auth: Option<&str>,
+) -> Option<Value> {
+    match probe.get(addr, path, auth) {
+        Ok((200, body)) => serde_json::from_slice(&body).ok(),
+        _ => None,
+    }
+}
+
+fn session_root(id: &str, parents: &HashMap<String, Option<String>>) -> Option<String> {
+    let mut cur = id.to_string();
+    for _ in 0..=parents.len() {
+        match parents.get(&cur)? {
+            None => return Some(cur),
+            Some(p) => cur = p.clone(),
+        }
+    }
+    None
+}
+
+fn opencode_inbox_with(
+    get: impl Fn(&str) -> Option<String>,
+    probe: &dyn OpencodeProbe,
+    meta_session: Option<&str>,
+) -> Option<Inbox> {
+    get("OPENCODE").filter(|v| !v.is_empty())?;
+    let addr = loopback::parse_url(&get("TMGR_OPENCODE_URL")?)?;
+    let pid: u32 = get("OPENCODE_PID")?.parse().ok()?;
+    if probe.listener_pid(pid, addr.port()) != Ok(true) {
+        return None;
+    }
+    let password = get("OPENCODE_SERVER_PASSWORD").filter(|p| !p.is_empty());
+    let auth = password.as_deref().map(loopback::basic_header);
+    let auth = auth.as_deref();
+    let cwd = canonical_dir(&std::env::current_dir().ok()?.to_string_lossy());
+    let query = format!("?directory={}", url_encode(&cwd));
+    let status = opencode_get(probe, addr, &format!("/session/status{query}"), auth)?;
+    let listed = opencode_get(probe, addr, &format!("/session{query}"), auth)?;
+    let sessions = listed.as_array()?;
+    let mut parents: HashMap<String, Option<String>> = HashMap::new();
+    let mut here: HashSet<&str> = HashSet::new();
+    for s in sessions {
+        let id = s.get("id")?.as_str()?;
+        parents.insert(
+            id.to_string(),
+            s.get("parentID").and_then(Value::as_str).map(String::from),
+        );
+        if canonical_dir(s.get("directory")?.as_str()?) == cwd {
+            here.insert(id);
+        }
+    }
+    let busy: HashSet<String> = status
+        .as_object()?
+        .iter()
+        .filter(|(id, v)| v["type"] == "busy" && here.contains(id.as_str()))
+        .filter_map(|(id, _)| session_root(id, &parents))
+        .collect();
+    let id = match meta_session {
+        Some(m) => {
+            busy.contains(&session_root(m, &parents)?).then_some(m)?;
+            m.to_string()
+        }
+        None => {
+            if busy.len() != 1 {
+                return None;
+            }
+            busy.into_iter().next()?
+        }
+    };
+    loopback::valid_session_id(&id).then_some(())?;
+    Some(Inbox {
+        kind: "opencode".into(),
+        endpoint: loopback::canonical_url(addr),
+        token: password.map(Secret::new),
+        session: Some(id),
+    })
+}
+
+fn inbox_from_env(meta_session: Option<&str>) -> Option<Inbox> {
+    claude_inbox_from_env()
+        .or_else(|| opencode_inbox_with(|k| std::env::var(k).ok(), &RealProbe, meta_session))
+}
+
+pub fn send_card_full(card: CardIn) -> io::Result<SentFull> {
+    send_card_full_meta(card, None)
+}
+
+pub fn send_card_full_meta(mut card: CardIn, meta_session: Option<&str>) -> io::Result<SentFull> {
     card.id.get_or_insert_with(decisions::new_card_id);
     let dir = decisions::decisions_dir()?;
-    let inbox = claude_inbox_from_env();
-    match Client::open_in(&dir).and_then(|c| c.create_with(card.clone(), inbox)) {
+    match Client::open_in(&dir)
+        .and_then(|c| c.create_with(card.clone(), inbox_from_env(meta_session)))
+    {
         Ok(response) => Ok(SentFull::Live(Box::new(response))),
         Err(e) if is_refusal(&e) => Err(e),
         Err(_) => decisions::spool(&dir, &card).map(SentFull::Spooled),
@@ -1154,6 +1294,305 @@ mod tests {
     fn inbox_is_skipped_inside_another_agent_started_from_claude() {
         assert!(claude_inbox_with(env_of(&[SOCK_ENV, TOKEN_ENV, ("OPENCODE", "1")])).is_none());
         assert!(claude_inbox_with(env_of(&[SOCK_ENV, TOKEN_ENV, ("GEMINI_CLI", "1")])).is_none());
+    }
+
+    use std::cell::RefCell;
+
+    const PW: &str = "s3cret-pw";
+
+    struct Fake {
+        pid_ok: Result<bool, ()>,
+        status: (u16, String),
+        sessions: (u16, String),
+        calls: RefCell<Vec<(String, Option<String>)>>,
+        pid_calls: RefCell<u32>,
+    }
+
+    impl Fake {
+        fn new(busy: &[&str], sessions: Value) -> Self {
+            let status: serde_json::Map<String, Value> = busy
+                .iter()
+                .map(|id| (id.to_string(), json!({"type": "busy"})))
+                .collect();
+            Fake {
+                pid_ok: Ok(true),
+                status: (200, Value::Object(status).to_string()),
+                sessions: (200, sessions.to_string()),
+                calls: RefCell::default(),
+                pid_calls: RefCell::default(),
+            }
+        }
+    }
+
+    impl OpencodeProbe for Fake {
+        fn listener_pid(&self, _: u32, _: u16) -> Result<bool, ()> {
+            *self.pid_calls.borrow_mut() += 1;
+            self.pid_ok
+        }
+
+        fn get(
+            &self,
+            _: SocketAddr,
+            path: &str,
+            auth: Option<&str>,
+        ) -> Result<(u16, Vec<u8>), HttpErr> {
+            self.calls
+                .borrow_mut()
+                .push((path.to_string(), auth.map(String::from)));
+            let r = if path.starts_with("/session/status") {
+                &self.status
+            } else {
+                &self.sessions
+            };
+            Ok((r.0, r.1.clone().into_bytes()))
+        }
+    }
+
+    fn here() -> String {
+        std::fs::canonicalize(std::env::current_dir().unwrap())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn sess(id: &str, parent: Option<&str>) -> Value {
+        let mut v = json!({"id": id, "directory": here()});
+        if let Some(p) = parent {
+            v["parentID"] = json!(p);
+        }
+        v
+    }
+
+    const OC: [(&str, &str); 3] = [
+        ("OPENCODE", "1"),
+        ("TMGR_OPENCODE_URL", "http://127.0.0.1:4096"),
+        ("OPENCODE_PID", "42"),
+    ];
+
+    fn oc(extra: &[(&str, &str)], fake: &Fake, meta: Option<&str>) -> Option<Inbox> {
+        let mut all = OC.to_vec();
+        all.extend_from_slice(extra);
+        opencode_inbox_with(env_of(&all), fake, meta)
+    }
+
+    #[test]
+    fn opencode_needs_opencode_env_and_pid() {
+        let fake = Fake::new(&["ses_a"], json!([sess("ses_a", None)]));
+        assert!(opencode_inbox_with(env_of(&OC[1..]), &fake, None).is_none());
+        assert!(opencode_inbox_with(env_of(&[OC[0], OC[1]]), &fake, None).is_none());
+        assert!(opencode_inbox_with(env_of(&[OC[0], OC[2]]), &fake, None).is_none());
+        assert!(fake.calls.borrow().is_empty());
+        let i = oc(&[], &fake, None).unwrap();
+        assert_eq!(i.kind, "opencode");
+        assert_eq!(i.endpoint, "http://127.0.0.1:4096");
+        assert_eq!(i.session.as_deref(), Some("ses_a"));
+        assert!(i.token.is_none());
+    }
+
+    #[test]
+    fn bad_opencode_urls_never_reach_the_probe() {
+        let fake = Fake::new(&["a"], json!([sess("a", None)]));
+        for url in [
+            "https://127.0.0.1:4096",
+            "http://localhost:4096",
+            "http://192.0.2.1:4096",
+            "nonsense",
+        ] {
+            let env = [OC[0], OC[2], ("TMGR_OPENCODE_URL", url)];
+            assert!(
+                opencode_inbox_with(env_of(&env), &fake, None).is_none(),
+                "{url}"
+            );
+        }
+        assert_eq!(*fake.pid_calls.borrow(), 0);
+        assert!(fake.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_foreign_listener_pid_fails_closed() {
+        for ok in [Ok(false), Err(())] {
+            let mut fake = Fake::new(&["a"], json!([sess("a", None)]));
+            fake.pid_ok = ok;
+            assert!(oc(&[], &fake, None).is_none());
+            assert!(fake.calls.borrow().is_empty());
+        }
+        let fake = Fake::new(&["a"], json!([sess("a", None)]));
+        assert!(oc(&[("OPENCODE_PID", "x")], &fake, None).is_none());
+    }
+
+    #[test]
+    fn opencode_needs_exactly_one_busy_root() {
+        let none = Fake::new(&[], json!([sess("a", None)]));
+        assert!(oc(&[], &none, None).is_none());
+        let two = Fake::new(&["a", "b"], json!([sess("a", None), sess("b", None)]));
+        assert!(oc(&[], &two, None).is_none());
+        let elsewhere = Fake::new(
+            &["a"],
+            json!([{"id": "a", "directory": "/nonexistent/other"}]),
+        );
+        assert!(oc(&[], &elsewhere, None).is_none());
+    }
+
+    #[test]
+    fn children_collapse_to_their_root() {
+        let list = json!([
+            sess("root", None),
+            sess("c1", Some("root")),
+            sess("c2", Some("c1"))
+        ]);
+        let fake = Fake::new(&["c1", "c2"], list.clone());
+        assert_eq!(
+            oc(&[], &fake, None).unwrap().session.as_deref(),
+            Some("root")
+        );
+        let fake = Fake::new(&["c2"], list);
+        assert_eq!(
+            oc(&[], &fake, Some("c2")).unwrap().session.as_deref(),
+            Some("c2")
+        );
+    }
+
+    #[test]
+    fn broken_parent_chains_are_dropped() {
+        let cycle = Fake::new(&["a"], json!([sess("a", Some("b")), sess("b", Some("a"))]));
+        assert!(oc(&[], &cycle, None).is_none());
+        let orphan = Fake::new(&["a"], json!([sess("a", Some("gone"))]));
+        assert!(oc(&[], &orphan, None).is_none());
+    }
+
+    #[test]
+    fn meta_session_must_belong_to_a_busy_root() {
+        let list = json!([sess("a", None), sess("b", None), sess("c", Some("b"))]);
+        let fake = Fake::new(&["a", "b"], list.clone());
+        assert_eq!(
+            oc(&[], &fake, Some("a")).unwrap().session.as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            oc(&[], &fake, Some("c")).unwrap().session.as_deref(),
+            Some("c")
+        );
+        assert!(oc(&[], &fake, Some("zzz")).is_none());
+        let fake = Fake::new(&["a"], list);
+        assert!(oc(&[], &fake, Some("b")).is_none());
+    }
+
+    #[test]
+    fn session_ids_are_validated() {
+        let fake = Fake::new(&["bad/id"], json!([sess("bad/id", None)]));
+        assert!(oc(&[], &fake, None).is_none());
+    }
+
+    #[test]
+    fn bad_responses_give_no_inbox() {
+        let mut fake = Fake::new(&["a"], json!([sess("a", None)]));
+        fake.status.0 = 401;
+        assert!(oc(&[], &fake, None).is_none());
+        let mut fake = Fake::new(&["a"], json!([sess("a", None)]));
+        fake.sessions.0 = 500;
+        assert!(oc(&[], &fake, None).is_none());
+        let mut fake = Fake::new(&["a"], json!([sess("a", None)]));
+        fake.sessions.1 = "<html>".into();
+        assert!(oc(&[], &fake, None).is_none());
+        let mut fake = Fake::new(&["a"], json!([sess("a", None)]));
+        fake.status.1 = "[]".into();
+        assert!(oc(&[], &fake, None).is_none());
+    }
+
+    #[test]
+    fn the_password_only_lives_in_the_token() {
+        let fake = Fake::new(&["a"], json!([sess("a", None)]));
+        let i = oc(&[("OPENCODE_SERVER_PASSWORD", PW)], &fake, None).unwrap();
+        assert_eq!(i.token.as_ref().unwrap().expose(), PW);
+        assert!(!format!("{i:?}").contains(PW));
+        assert!(!i.endpoint.contains(PW) && i.session.as_deref() != Some(PW));
+        let calls = fake.calls.borrow();
+        assert_eq!(calls.len(), 2);
+        let want = loopback::basic_header(PW);
+        for (path, auth) in calls.iter() {
+            assert_eq!(auth.as_deref(), Some(want.as_str()), "{path}");
+            assert!(path.contains("directory=") && !path.contains(PW));
+        }
+        assert!(calls[0].0.starts_with("/session/status?"));
+        assert!(calls[1].0.starts_with("/session?"));
+    }
+
+    #[test]
+    fn no_password_means_no_token_and_no_authorization() {
+        for pw in [None, Some("")] {
+            let fake = Fake::new(&["a"], json!([sess("a", None)]));
+            let extra: Vec<(&str, &str)> = pw
+                .map(|p| ("OPENCODE_SERVER_PASSWORD", p))
+                .into_iter()
+                .collect();
+            let i = oc(&extra, &fake, None).unwrap();
+            assert!(i.token.is_none());
+            assert!(fake.calls.borrow().iter().all(|(_, a)| a.is_none()));
+        }
+    }
+
+    #[test]
+    fn the_real_probe_talks_to_a_local_server() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let dir = here();
+        let server = std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            for _ in 0..2 {
+                let (mut s, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 4096];
+                let n = s.read(&mut buf).unwrap();
+                let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+                let body = if req.starts_with("GET /session/status") {
+                    json!({"ses_x": {"type": "busy"}}).to_string()
+                } else {
+                    json!([{"id": "ses_x", "directory": dir}]).to_string()
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                s.write_all(head.as_bytes()).unwrap();
+                s.write_all(body.as_bytes()).unwrap();
+                seen.push(req);
+            }
+            seen
+        });
+
+        struct Probe;
+        impl OpencodeProbe for Probe {
+            fn listener_pid(&self, _: u32, _: u16) -> Result<bool, ()> {
+                Ok(true)
+            }
+            fn get(
+                &self,
+                addr: SocketAddr,
+                path: &str,
+                auth: Option<&str>,
+            ) -> Result<(u16, Vec<u8>), HttpErr> {
+                RealProbe.get(addr, path, auth)
+            }
+        }
+
+        let url = format!("http://127.0.0.1:{port}");
+        let env = [
+            OC[0],
+            OC[2],
+            ("TMGR_OPENCODE_URL", url.as_str()),
+            ("OPENCODE_SERVER_PASSWORD", PW),
+        ];
+        let i = opencode_inbox_with(env_of(&env), &Probe, None).unwrap();
+        assert_eq!(i.endpoint, url);
+        assert_eq!(i.session.as_deref(), Some("ses_x"));
+        assert_eq!(i.token.unwrap().expose(), PW);
+        let want = format!(
+            "authorization: {}",
+            loopback::basic_header(PW).to_lowercase()
+        );
+        for req in server.join().unwrap() {
+            assert!(req.to_lowercase().contains(&want), "{req}");
+        }
     }
 
     #[test]
