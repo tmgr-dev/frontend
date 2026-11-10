@@ -90,7 +90,11 @@ export const installWebPlugins = (store: Store<any>) => {
 	});
 	const leader = createLeader();
 	let host: ReturnType<typeof createPluginHost> | null = null;
-	let pinned: WorkspacePluginRecord[] = [];
+	let pinned: { workspaceId: number; records: WorkspacePluginRecord[] } = {
+		workspaceId: 0,
+		records: [],
+	};
+	let requested = '';
 	let sequence = 0;
 	let session: string | null = null;
 	let leading = false;
@@ -136,8 +140,9 @@ export const installWebPlugins = (store: Store<any>) => {
 	const packages = async (): Promise<PluginPackage[]> => {
 		const found: PluginPackage[] = [];
 		const errors: Record<string, string> = {};
-		const workspaceId = pluginState.workspace?.id ?? currentId();
-		for (const record of pinned) {
+		const { workspaceId, records } = pinned;
+		const loadedFor = sequence;
+		for (const record of records) {
 			try {
 				if (record.repo === BUILTIN_REPO) {
 					const builtin = builtinPackages().find(
@@ -159,10 +164,12 @@ export const installWebPlugins = (store: Store<any>) => {
 				}`;
 			}
 		}
-		Object.keys(installedPluginErrors).forEach(
-			(key) => delete installedPluginErrors[key],
-		);
-		Object.assign(installedPluginErrors, errors);
+		if (loadedFor === sequence) {
+			Object.keys(installedPluginErrors).forEach(
+				(key) => delete installedPluginErrors[key],
+			);
+			Object.assign(installedPluginErrors, errors);
+		}
 		return found;
 	};
 
@@ -226,45 +233,54 @@ export const installWebPlugins = (store: Store<any>) => {
 				store.getters.currentWorkspace?.code ?? ''
 			}|${store.state.token ? (store.state.user?.id ?? '') : ''}`,
 		async () => {
-			const current = ++sequence;
 			const user = store.state.token ? String(store.state.user?.id ?? '') : '';
-			const sessionChanged = user !== session;
 			const workspace = user
 				? workspaceOf(store.getters.currentWorkspace)
 				: null;
-			if (
-				!sessionChanged &&
-				pluginState.workspace?.id === workspace?.id &&
-				pluginState.workspace?.code === workspace?.code
-			)
-				return;
+			const target = `${user}|${workspace?.id ?? ''}|${workspace?.code ?? ''}`;
+			if (target === requested) return;
+			requested = target;
+			const current = ++sequence;
 			stepDown();
-			if (sessionChanged) {
+			if (user !== session) {
 				session = user;
 				cloudClients.clear();
 				Object.keys(workspacePlugins).forEach(
 					(id) => delete workspacePlugins[Number(id)],
 				);
 			}
-			if (!workspace) {
-				await host?.activate(null);
-				return;
+			try {
+				if (!workspace) {
+					await host?.activate(null);
+					return;
+				}
+				await loadWorkspacePlugins(workspace.id).catch(() => undefined);
+				if (current !== sequence) return;
+				pinned = {
+					workspaceId: workspace.id,
+					records: workspacePlugins[workspace.id] ?? [],
+				};
+				if (!pinned.records.length) {
+					await host?.activate(null);
+					return;
+				}
+				await ensureHost().load();
+				if (current !== sequence) return;
+				const promoted = () => {
+					if (current !== sequence) return;
+					leading = true;
+					startPageEvents(workspace.id);
+				};
+				const now = await leader.lead(
+					`tmgr-plugins:${user}:${workspace.id}`,
+					promoted,
+				);
+				if (current !== sequence) return;
+				if (now) promoted();
+				await host!.activate(workspace);
+			} catch (error) {
+				console.error('[plugins] could not start on the web', error);
 			}
-			await loadWorkspacePlugins(workspace.id).catch(() => undefined);
-			if (current !== sequence) return;
-			pinned = workspacePlugins[workspace.id] ?? [];
-			if (!pinned.length) {
-				await host?.activate(null);
-				return;
-			}
-			await ensureHost().load();
-			if (current !== sequence) return;
-			await host!.activate(workspace);
-			void leader.lead(`tmgr-plugins:${user}:${workspace.id}`).then((ok) => {
-				if (!ok || current !== sequence) return;
-				leading = true;
-				startPageEvents(workspace.id);
-			});
 		},
 		{ immediate: true },
 	);

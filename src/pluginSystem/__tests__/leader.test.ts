@@ -6,19 +6,26 @@ class FakeLocks implements LockManagerLike {
 
 	request(
 		name: string,
-		options: { signal?: AbortSignal },
-		callback: () => Promise<void>,
+		options: { signal?: AbortSignal; ifAvailable?: boolean },
+		callback: (lock: unknown) => Promise<void>,
 	) {
 		return new Promise<void>((resolve, reject) => {
+			const finish = () => {
+				this.held.delete(name);
+				const next = this.queue.findIndex((q) => q.name === name);
+				if (next >= 0) this.queue.splice(next, 1)[0].run();
+				resolve();
+			};
 			const run = () => {
 				this.held.add(name);
-				void callback().then(() => {
-					this.held.delete(name);
-					const next = this.queue.findIndex((q) => q.name === name);
-					if (next >= 0) this.queue.splice(next, 1)[0].run();
-					resolve();
-				});
+				void callback({ name }).then(finish);
 			};
+			if (!this.held.has(name)) return run();
+			if (options.ifAvailable) {
+				void callback(null).then(() => resolve());
+				return;
+			}
+			this.queue.push({ name, run });
 			options.signal?.addEventListener('abort', () => {
 				const index = this.queue.findIndex((q) => q.run === run);
 				if (index >= 0) {
@@ -26,35 +33,38 @@ class FakeLocks implements LockManagerLike {
 					reject(new Error('aborted'));
 				}
 			});
-			if (this.held.has(name)) this.queue.push({ name, run });
-			else run();
 		});
 	}
 }
 
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 it('leads at once without a lock manager', async () => {
-	expect(await createLeader(null).lead('a')).toBe(true);
+	expect(await createLeader(null).lead('a', () => undefined)).toBe(true);
 });
 
-it('lets one tab lead and the next take over when it leaves', async () => {
+it('lets the first tab lead and promotes the next when it leaves', async () => {
 	const locks = new FakeLocks();
 	const first = createLeader(locks);
 	const second = createLeader(locks);
-	expect(await first.lead('a')).toBe(true);
-	let secondLeads = false;
-	const waiting = second.lead('a').then((ok) => (secondLeads = ok));
-	await Promise.resolve();
-	expect(secondLeads).toBe(false);
+	expect(await first.lead('a', () => undefined)).toBe(true);
+	const promoted = jest.fn();
+	expect(await second.lead('a', promoted)).toBe(false);
+	expect(promoted).not.toHaveBeenCalled();
 	first.leave();
-	expect(await waiting).toBe(true);
+	await flush();
+	expect(promoted).toHaveBeenCalledTimes(1);
 });
 
-it('stops waiting when the tab moves to another name', async () => {
+it('does not promote a tab that moved to another name', async () => {
 	const locks = new FakeLocks();
 	const first = createLeader(locks);
 	const second = createLeader(locks);
-	await first.lead('a');
-	const waiting = second.lead('a');
-	expect(await second.lead('b')).toBe(true);
-	expect(await waiting).toBe(false);
+	await first.lead('a', () => undefined);
+	const promoted = jest.fn();
+	await second.lead('a', promoted);
+	expect(await second.lead('b', () => undefined)).toBe(true);
+	first.leave();
+	await flush();
+	expect(promoted).not.toHaveBeenCalled();
 });

@@ -27,12 +27,12 @@ export const sha256Hex = async (bytes: ArrayBuffer): Promise<string> =>
 		.map((byte) => byte.toString(16).padStart(2, '0'))
 		.join('');
 
-/** The bundle must be byte-for-byte what the creator pinned; the proxy that delivered it is not trusted. */
 export const withoutHtmlPages = <T extends PluginPackage>(pkg: T): T => ({
 	...pkg,
 	pages: {},
 });
 
+/** The bundle must be byte-for-byte what the creator pinned; the proxy that delivered it is not trusted. */
 export const packageFromPin = async (
 	record: WorkspacePluginRecord,
 	download: () => Promise<ArrayBuffer>,

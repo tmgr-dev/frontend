@@ -1,12 +1,12 @@
 export interface LockManagerLike {
 	request(
 		name: string,
-		options: { signal?: AbortSignal },
-		callback: () => Promise<void>,
+		options: { signal?: AbortSignal; ifAvailable?: boolean },
+		callback: (lock: unknown) => Promise<void>,
 	): Promise<unknown>;
 }
 
-/** One tab per name runs the plugins; the others queue and take over when it closes or switches away. */
+/** One tab per name leads; the others queue and are promoted when it closes or switches away. */
 export const createLeader = (
 	locks: LockManagerLike | undefined | null = typeof navigator === 'undefined'
 		? null
@@ -22,26 +22,42 @@ export const createLeader = (
 		release = null;
 	};
 
-	/** Resolves true once this tab leads `name`; false when it was superseded by another `lead` or `leave` call. */
-	const lead = async (name: string): Promise<boolean> => {
+	const hold = () =>
+		new Promise<void>((done) => {
+			release = done;
+		});
+
+	/** Resolves true when this tab leads `name` right now; otherwise false, and `onPromoted` runs if it later takes over. */
+	const lead = async (
+		name: string,
+		onPromoted: () => void,
+	): Promise<boolean> => {
 		leave();
 		if (!locks) return true;
 		const mine = new AbortController();
 		abort = mine;
-		return new Promise<boolean>((resolve) => {
+		const now = await new Promise<boolean>((resolve) => {
 			locks
-				.request(name, { signal: mine.signal }, () => {
-					if (mine.signal.aborted) {
+				.request(name, { ifAvailable: true }, (lock) => {
+					if (!lock || mine.signal.aborted) {
 						resolve(false);
 						return Promise.resolve();
 					}
 					resolve(true);
-					return new Promise<void>((done) => {
-						release = done;
-					});
+					return hold();
 				})
 				.catch(() => resolve(false));
 		});
+		if (now) return true;
+		if (mine.signal.aborted) return false;
+		locks
+			.request(name, { signal: mine.signal }, () => {
+				if (mine.signal.aborted) return Promise.resolve();
+				onPromoted();
+				return hold();
+			})
+			.catch(() => undefined);
+		return false;
 	};
 
 	return { lead, leave };
