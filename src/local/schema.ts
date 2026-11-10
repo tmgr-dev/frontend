@@ -420,6 +420,56 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS edit_journal_task_idx ON edit_journal (task_id, seq)`,
 		],
 	},
+	{
+		version: 14,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS routine_pattern_segments (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				routine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+				valid_from TEXT NOT NULL,
+				valid_to TEXT,
+				anchor_date TEXT,
+				is_recurring INTEGER NOT NULL DEFAULT 1,
+				frequency TEXT,
+				interval INTEGER,
+				day_of_frequency INTEGER,
+				month INTEGER,
+				days_of_week TEXT,
+				scheduled_time TEXT,
+				duration_min INTEGER,
+				reminder_min INTEGER,
+				title TEXT NOT NULL,
+				description TEXT,
+				routine_category TEXT,
+				created_at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS routine_pattern_segments_routine_idx ON routine_pattern_segments (routine_id, valid_from)`,
+			`CREATE TABLE IF NOT EXISTS routine_ops (
+				routine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+				op_id TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY (routine_id, op_id)
+			)`,
+			`ALTER TABLE routine_patterns ADD COLUMN series_version INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE routine_instances ADD COLUMN is_override INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE routine_instances ADD COLUMN duration_min INTEGER`,
+			`ALTER TABLE routine_instances ADD COLUMN title TEXT`,
+			`ALTER TABLE routine_instances ADD COLUMN description TEXT`,
+			`ALTER TABLE routine_instances ADD COLUMN moved_from TEXT`,
+			`CREATE TABLE IF NOT EXISTS routine_comments (
+				id INTEGER PRIMARY KEY,
+				routine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+				message TEXT NOT NULL,
+				author_kind TEXT NOT NULL DEFAULT 'user',
+				author_id TEXT,
+				author_name TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				deleted_at TEXT
+			)`,
+			`CREATE INDEX IF NOT EXISTS routine_comments_routine_idx ON routine_comments (routine_id)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
