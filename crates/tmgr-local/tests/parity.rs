@@ -236,6 +236,14 @@ fn not_ported_yet(method: &str, url: &str) -> bool {
     })
 }
 
+fn touches_routines(url: &str) -> bool {
+    let parts = segments(url);
+    parts.first() == Some(&"daily-routines")
+        || parts
+            .iter()
+            .any(|p| p.parse::<i64>().is_ok_and(|n| n > 1_000_000_000))
+}
+
 fn segments(url: &str) -> Vec<&str> {
     let path = url.split('?').next().unwrap_or("");
     let path = path.trim_start_matches('/').trim_start_matches("api/");
@@ -269,6 +277,7 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
     let before = dump(&conn);
     let base = context(&scenario);
     let mut skipped = false;
+    let mut diverged = false;
     let expected = golden["responses"].as_array().unwrap();
     let requests = scenario["requests"].as_array().unwrap();
     assert_eq!(requests.len(), expected.len(), "{name}: golden length");
@@ -278,6 +287,13 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
         let label = format!("{name}: {method} {url}");
         let not_found = json!({ "status": 404, "data": null });
         if *want == not_found && rust_only(url) {
+            continue;
+        }
+        if diverged && touches_routines(url) {
+            outcome
+                .unported
+                .push(format!("{label} (after an unported routine write)"));
+            skipped |= !method.eq_ignore_ascii_case("GET");
             continue;
         }
         let mut ctx = base.clone();
@@ -294,6 +310,7 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
             Ok(None) if *want != not_found && not_ported_yet(method, url) => {
                 outcome.unported.push(label);
                 skipped |= method != "GET";
+                diverged |= method != "GET" && url.starts_with("daily-routines/tasks");
                 continue;
             }
             Ok(None) => not_found,
@@ -308,6 +325,9 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
                 serde_json::to_string(&got).unwrap()
             ));
         }
+    }
+    if diverged {
+        replay_tail(name, schema, &scenario, &golden, outcome);
     }
     let after = dump(&conn);
     let mut changed = serde_json::Map::new();
@@ -330,6 +350,69 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
         outcome.tables_matched += 1;
     } else {
         outcome.failed.push(table_diff(name, &want, &changed));
+    }
+}
+
+/// A scenario whose routines come from unported writes cannot run end to end. Its trailing reads
+/// (after the last write) still can: they see the golden's final tables.
+fn replay_tail(
+    name: &str,
+    schema: &Value,
+    scenario: &Value,
+    golden: &Value,
+    outcome: &mut Outcome,
+) {
+    let requests = scenario["requests"].as_array().unwrap();
+    let expected = golden["responses"].as_array().unwrap();
+    let start = requests
+        .iter()
+        .rposition(|r| !r["method"].as_str().unwrap().eq_ignore_ascii_case("GET"))
+        .map_or(0, |i| i + 1);
+    let conn = migrated(schema, scenario["now"].as_str().unwrap());
+    for seed in scenario["seed"].as_array().unwrap() {
+        conn.execute(seed["sql"].as_str().unwrap(), []).unwrap();
+    }
+    conn.execute_batch("PRAGMA foreign_keys = OFF").unwrap();
+    for (table, rows) in golden["tables"].as_object().into_iter().flatten() {
+        conn.execute(&format!("DELETE FROM \"{table}\""), [])
+            .unwrap();
+        for row in rows.as_array().unwrap() {
+            insert(&conn, table, row);
+        }
+    }
+    conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+    let base = context(scenario);
+    let not_found = json!({ "status": 404, "data": null });
+    for (request, want) in requests.iter().zip(expected).skip(start) {
+        let method = request["method"].as_str().unwrap();
+        let url = request["url"].as_str().unwrap();
+        let mut ctx = base.clone();
+        if let Some(now) = request.get("now").and_then(Value::as_str) {
+            ctx.now = DateTime::parse_from_rfc3339(now)
+                .unwrap()
+                .with_timezone(&Utc);
+        }
+        if let Some(a) = request.get("actor") {
+            ctx.actor = actor(a);
+        }
+        let got = match dispatch(&conn, &ctx, method, url, request.get("body")) {
+            Ok(Some(r)) => json!({ "status": r.status, "data": r.data }),
+            Ok(None) if *want != not_found && not_ported_yet(method, url) => {
+                outcome.unported.push(format!("{name}: {method} {url}"));
+                continue;
+            }
+            Ok(None) => not_found.clone(),
+            Err(e) => json!({ "error": e.to_string() }),
+        };
+        if got == *want {
+            outcome.passed += 1;
+        } else {
+            outcome.failed.push(format!(
+                "{name}: {method} {url} (tail replay)\n  want {}\n  got  {}",
+                serde_json::to_string(want).unwrap(),
+                serde_json::to_string(&got).unwrap()
+            ));
+        }
     }
 }
 

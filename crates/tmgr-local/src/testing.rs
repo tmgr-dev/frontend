@@ -7,8 +7,13 @@ use crate::workspace::{LocalWorkspace, Manifest};
 
 const SCHEMA_GOLDEN: &str = include_str!("../tests/parity/golden/schema.json");
 
-/// The v13 schema and default statuses from the parity schema golden.
+/// The current schema and default statuses from the parity schema golden.
 pub(crate) fn schema() -> String {
+    build_schema(14)
+}
+
+/// The schema before routine series history: the v14 tables are present but must stay unused.
+pub(crate) fn schema13() -> String {
     build_schema(13)
 }
 
@@ -48,6 +53,14 @@ fn quote(v: &Value) -> String {
 pub(crate) fn db12(seed: &str) -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(&schema12()).unwrap();
+    conn.execute_batch(seed).unwrap();
+    conn.execute_batch("PRAGMA query_only = ON").unwrap();
+    conn
+}
+
+pub(crate) fn db13(seed: &str) -> Connection {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(&schema13()).unwrap();
     conn.execute_batch(seed).unwrap();
     conn.execute_batch("PRAGMA query_only = ON").unwrap();
     conn

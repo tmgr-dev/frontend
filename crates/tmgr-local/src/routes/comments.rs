@@ -11,6 +11,9 @@ use crate::serialize::col;
 
 pub(super) fn list(req: &Request<'_>) -> Handled {
     let id = req.id("id");
+    if super::routine_comments::applies(req, id)? {
+        return super::routine_comments::list(req, id);
+    }
     super::tasks::require_task(req, id)?;
     let rows = sql(select(
         req.conn,

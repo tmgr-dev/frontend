@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use super::catalog::{load_statuses, status_for};
 use super::comments::{comment_json, reactions_for};
 use super::page_writes::sync_task_mentions;
+use super::routine_comments;
 use super::tasks::{load_task, persona_view, stop_timer};
 use super::{int, text};
 use crate::db::{execute, select, select_one, Row};
@@ -553,7 +554,7 @@ pub(super) fn put_settings(req: &Request<'_>) -> Handled {
 
 // ── comments ────────────────────────────────────────────────────────────────
 
-fn message_of(req: &Request<'_>) -> Result<String, Outcome> {
+pub(super) fn message_of(req: &Request<'_>) -> Result<String, Outcome> {
     let b = &req.body;
     let raw = b
         .get("message")
@@ -581,6 +582,9 @@ fn comment_with_reactions(req: &Request<'_>, id: i64) -> Handled {
 pub(super) fn add_comment(req: &Request<'_>) -> Handled {
     let message = message_of(req)?;
     let task_id = req.id("id");
+    if routine_comments::applies(req, task_id)? {
+        return routine_comments::add(req, task_id);
+    }
     task_exists(req, task_id)?;
     let actor = req.ctx.acting();
     let now = req.ctx.iso_now();
@@ -620,7 +624,11 @@ pub(super) fn add_comment(req: &Request<'_>) -> Handled {
     Ok(json)
 }
 
-fn own_comment_check(req: &Request<'_>, comment: &Row, verb: &str) -> Result<(), Outcome> {
+pub(super) fn own_comment_check(
+    req: &Request<'_>,
+    comment: &Row,
+    verb: &str,
+) -> Result<(), Outcome> {
     let Some(actor) = req.ctx.actor.as_ref().filter(|a| a.kind == "persona") else {
         return Ok(());
     };
@@ -638,6 +646,9 @@ fn own_comment_check(req: &Request<'_>, comment: &Row, verb: &str) -> Result<(),
 
 pub(super) fn edit_comment(req: &Request<'_>) -> Handled {
     let id = req.id("id");
+    if routine_comments::applies(req, id)? {
+        return routine_comments::edit(req, id);
+    }
     let comment = sql(select_one(
         req.conn,
         "SELECT * FROM comments WHERE id = ? AND deleted_at IS NULL",
@@ -663,6 +674,9 @@ pub(super) fn edit_comment(req: &Request<'_>) -> Handled {
 
 pub(super) fn delete_comment(req: &Request<'_>) -> Handled {
     let id = req.id("id");
+    if routine_comments::applies(req, id)? {
+        return routine_comments::delete(req, id);
+    }
     let comment = sql(select_one(
         req.conn,
         "SELECT task_id, author_kind, author_id, deleted_at FROM comments WHERE id = ?",
@@ -696,6 +710,9 @@ pub(super) fn delete_comment(req: &Request<'_>) -> Handled {
 }
 
 pub(super) fn toggle_reaction(req: &Request<'_>) -> Handled {
+    if routine_comments::applies(req, req.id("id"))? {
+        return routine_comments::toggle();
+    }
     let emoji = js::string_or_empty(req.body.get("emoji"));
     if emoji.trim().is_empty() || js::length(&emoji) > 32 {
         return Err(http(422, "emoji is required"));

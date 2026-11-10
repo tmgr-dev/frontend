@@ -10,6 +10,8 @@ mod catalog_writes;
 mod comments;
 mod page_writes;
 mod pages;
+mod routine_comments;
+mod routine_series;
 mod routines;
 mod rust_only;
 mod task_writes;
