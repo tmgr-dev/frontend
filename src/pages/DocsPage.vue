@@ -5,6 +5,7 @@
 	>
 		<nav :aria-label="ui.docs" class="hidden w-56 shrink-0 lg:block">
 			<div
+				ref="navBox"
 				class="sticky top-[calc(var(--titlebar-h,0px)+1rem)] max-h-[calc(100svh-2rem)] overflow-y-auto pb-4"
 			>
 				<router-link
@@ -17,7 +18,7 @@
 			</div>
 		</nav>
 
-		<article class="min-w-0 flex-1" :lang="shownLang">
+		<article :key="pageKey" class="min-w-0 flex-1" :lang="shownLang">
 			<div class="mb-6 flex items-center gap-2">
 				<button
 					type="button"
@@ -192,6 +193,7 @@
 
 		<aside
 			v-if="toc.length"
+			:key="pageKey"
 			:aria-label="ui.onThisPage"
 			class="hidden w-52 shrink-0 xl:block"
 		>
@@ -222,7 +224,11 @@
 		</aside>
 
 		<Sheet v-model:open="drawerOpen">
-			<SheetContent side="left" class="overflow-y-auto">
+			<SheetContent
+				side="left"
+				class="overflow-y-auto"
+				@close-auto-focus="onDrawerCloseAutoFocus"
+			>
 				<SheetTitle class="mb-4 text-base">{{ ui.docs }}</SheetTitle>
 				<SheetDescription class="sr-only">{{ ui.menu }}</SheetDescription>
 				<nav :aria-label="ui.docs">
@@ -337,6 +343,7 @@
 			const location = computed(() => parseDocsPath(route.path));
 			const lang = computed(() => location.value.lang);
 			const slug = computed(() => location.value.slug);
+			const pageKey = computed(() => `${lang.value}/${slug.value}`);
 			const ui = computed(() => DOCS_UI[lang.value]);
 			const otherLang = computed(() => (lang.value === 'en' ? 'ru' : 'en'));
 			const otherLangHref = computed(() =>
@@ -375,17 +382,21 @@
 			const drawerOpen = ref(false);
 			const searchOpen = ref(false);
 			const copyStatus = ref('');
+			const navBox = ref<HTMLElement | null>(null);
 
 			const componentFor = (name: string) =>
 				REGISTRY[name as keyof typeof REGISTRY] ?? null;
 
 			watch(
-				() => resolved.value?.page.title ?? ui.value.notFoundTitle,
-				(title) => {
-					setDocumentTitle(title);
+				() => [
+					resolved.value?.page.title ?? ui.value.notFoundTitle,
+					route.name,
+				],
+				([title]) => {
+					setDocumentTitle(title as string);
 					store.commit('setMetaTitle', title);
 				},
-				{ immediate: true },
+				{ immediate: true, flush: 'post' },
 			);
 
 			const applyHead = () => {
@@ -530,20 +541,54 @@
 				searchOpen.value = true;
 			};
 
-			onMounted(() => {
-				window.addEventListener('keydown', onKeydown);
-				nextTick(() =>
-					requestAnimationFrame(() => {
-						const lost =
+			const revealActiveNavItem = () => {
+				const box = navBox.value;
+				const item = box?.querySelector<HTMLElement>('[aria-current="page"]');
+				if (!box || !item) return;
+				const top = item.offsetTop;
+				const bottom = top + item.offsetHeight;
+				if (top < box.scrollTop || bottom > box.scrollTop + box.clientHeight)
+					box.scrollTop = top - (box.clientHeight - item.offsetHeight) / 2;
+			};
+
+			let settleFrame = 0;
+			const settle = (navigated: boolean) =>
+				nextTick(() => {
+					cancelAnimationFrame(settleFrame);
+					settleFrame = requestAnimationFrame(() => {
+						revealActiveNavItem();
+						const focus =
+							navigated ||
 							!document.activeElement ||
 							document.activeElement === document.body;
-						if (route.hash) scrollToHash(route.hash, lost);
-						else if (lost)
+						if (route.hash) scrollToHash(route.hash, focus);
+						else if (focus)
 							document
 								.querySelector<HTMLElement>('[data-docs-title]')
 								?.focus({ preventScroll: true });
-					}),
-				);
+					});
+				});
+
+			let closedByNavigation = false;
+			watch(
+				() => route.fullPath,
+				() => {
+					if (!/^\/docs(\/|$)/.test(route.path)) return;
+					closedByNavigation = drawerOpen.value;
+					drawerOpen.value = false;
+					searchOpen.value = false;
+					settle(true);
+				},
+			);
+
+			const onDrawerCloseAutoFocus = (event: Event) => {
+				if (closedByNavigation) event.preventDefault();
+				closedByNavigation = false;
+			};
+
+			onMounted(() => {
+				window.addEventListener('keydown', onKeydown);
+				settle(false);
 			});
 
 			onBeforeUnmount(() => {
@@ -553,12 +598,14 @@
 					document.documentElement.lang = currentLocale();
 				}
 				window.removeEventListener('keydown', onKeydown);
+				cancelAnimationFrame(settleFrame);
 				copyTimers.forEach((timer) => clearTimeout(timer));
 			});
 
 			return {
 				lang,
 				slug,
+				pageKey,
 				ui,
 				otherLang,
 				otherLangHref,
@@ -573,12 +620,14 @@
 				drawerOpen,
 				searchOpen,
 				copyStatus,
+				navBox,
 				docPath,
 				componentFor,
 				onAnchorClick,
 				onContentClick,
 				switchLanguage,
 				onSearchSelect,
+				onDrawerCloseAutoFocus,
 			};
 		},
 	});

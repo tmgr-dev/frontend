@@ -18,10 +18,13 @@ const queryAwareViews = new Set([
 	'Login',
 ]);
 
+const docsViews = new Set(['Docs', 'AgentsGuide']);
+
 export function routeViewKey(route: {
 	name?: string | symbol | null;
 	path: string;
 	fullPath: string;
 }): string {
+	if (docsViews.has(String(route.name))) return 'docs';
 	return queryAwareViews.has(String(route.name)) ? route.path : route.fullPath;
 }

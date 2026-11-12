@@ -53,6 +53,27 @@ describe('route view identity', () => {
 			routeViewKey(member('/spendly/team/2', '?window=30d&tab=touched')),
 		).not.toBe(key);
 	});
+	it('keeps one docs view across docs pages so the sidebar keeps its place', () => {
+		const key = routeViewKey({
+			name: 'Docs',
+			path: '/docs/app/integrations',
+			fullPath: '/docs/app/integrations#github',
+		});
+		expect(
+			routeViewKey({
+				name: 'Docs',
+				path: '/docs/cli/queue',
+				fullPath: '/docs/cli/queue',
+			}),
+		).toBe(key);
+		expect(
+			routeViewKey({
+				name: 'AgentsGuide',
+				path: '/docs/agents',
+				fullPath: '/docs/agents',
+			}),
+		).toBe(key);
+	});
 	it('preserves query-sensitive identity for screens that do not handle query updates yet', () => {
 		expect(
 			routeViewKey({
