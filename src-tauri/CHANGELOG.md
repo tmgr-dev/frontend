@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.149 — 2026-11-12
+
+- Docs: new guides for the task list, categories, routines, search and shortcuts, the dashboard, the AI assistant, agent work, modules, integrations and your account; a new Desktop app section (quick add and shortcuts, local workspaces and backups, plugins); an MCP server reference; and CLI guides for the queue, AI usage and more commands. Several existing pages were corrected.
+
 ## 0.9.148 — 2026-11-10
 
 - Activity hints: TMGR now checks for new time suggestions every 5 minutes and shows a notice with a Review button, so you no longer need to keep Settings open.
