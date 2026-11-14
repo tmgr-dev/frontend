@@ -714,6 +714,7 @@
 		"passwordChanged": "密码已修改",
 		"savedTitle": "已保存",
 		"savedDescription": "用户数据已保存",
+		"saveFailed": "无法保存你的个人资料",
 		"confirmRevokeAll": "撤销你所有角色的全部角色令牌？",
 		"doneTitle": "完成",
 		"allRevoked": "所有角色令牌已撤销",

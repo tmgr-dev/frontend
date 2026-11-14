@@ -714,6 +714,7 @@
 		"passwordChanged": "Hasło zmienione",
 		"savedTitle": "Zapisano",
 		"savedDescription": "Dane użytkownika zapisane",
+		"saveFailed": "Nie udało się zapisać profilu",
 		"confirmRevokeAll": "Unieważnić każdy token persony we wszystkich Twoich personach?",
 		"doneTitle": "Gotowe",
 		"allRevoked": "Wszystkie tokeny person unieważnione",

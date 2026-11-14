@@ -74,3 +74,47 @@ test('current_password is dropped when no new password is entered', async () => 
 	await updateUser({ ...base, password: null, current_password: 'old-1' });
 	expect(sent()).not.toHaveProperty('current_password');
 });
+
+test.each([
+	['an empty string', ''],
+	['null', null],
+	['undefined', undefined],
+])(
+	'a name-only save with password %s sends no password or session fields',
+	async (_label, password) => {
+		storage.token = JSON.stringify({ token: 't', refresh_token: 'r1' });
+		await updateUser(
+			{
+				...base,
+				name: 'New name',
+				password,
+				password_confirmation: '',
+				current_password: '',
+				logout_other_sessions: true,
+				current_refresh_token: 'stale',
+			} as any,
+			{ logoutOtherSessions: true },
+		);
+		expect(sent().name).toBe('New name');
+		for (const field of [
+			'password',
+			'password_confirmation',
+			'current_password',
+			'logout_other_sessions',
+			'current_refresh_token',
+		])
+			expect(sent()).not.toHaveProperty(field);
+	},
+);
+
+test('a password change sends the password and its confirmation', async () => {
+	await updateUser({
+		...base,
+		password: 'secret-1',
+		password_confirmation: 'secret-1',
+	});
+	expect(sent()).toMatchObject({
+		password: 'secret-1',
+		password_confirmation: 'secret-1',
+	});
+});

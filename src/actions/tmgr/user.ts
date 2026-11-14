@@ -118,13 +118,24 @@ const readRefreshToken = (): string | undefined => {
 export const updateUser = async (
 	payload: User & {
 		password?: string | null;
+		password_confirmation?: string | null;
 		current_password?: string | null;
 	},
 	options: { logoutOtherSessions?: boolean } = {},
 ) => {
-	const body: Record<string, unknown> = { ...payload };
-	if (!payload.password) delete body.current_password;
-	if (payload.password) {
+	const {
+		password,
+		password_confirmation,
+		current_password,
+		logout_other_sessions: _logoutOtherSessions,
+		current_refresh_token: _currentRefreshToken,
+		...rest
+	} = payload as typeof payload & Record<string, unknown>;
+	const body: Record<string, unknown> = { ...rest };
+	if (typeof password === 'string' && password !== '') {
+		body.password = password;
+		body.password_confirmation = password_confirmation;
+		body.current_password = current_password;
 		body.logout_other_sessions = options.logoutOtherSessions ?? true;
 		const refreshToken = readRefreshToken();
 		if (refreshToken) body.current_refresh_token = refreshToken;

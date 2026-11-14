@@ -714,6 +714,7 @@
 		"passwordChanged": "Senha alterada",
 		"savedTitle": "Salvo",
 		"savedDescription": "Dados do usuário salvos",
+		"saveFailed": "Não foi possível salvar seu perfil",
 		"confirmRevokeAll": "Revogar todos os tokens de persona em todas as suas personas?",
 		"doneTitle": "Pronto",
 		"allRevoked": "Todos os tokens de persona foram revogados",

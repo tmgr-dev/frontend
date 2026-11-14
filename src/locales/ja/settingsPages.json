@@ -714,6 +714,7 @@
 		"passwordChanged": "パスワードを変更しました",
 		"savedTitle": "保存しました",
 		"savedDescription": "ユーザーデータを保存しました",
+		"saveFailed": "プロフィールを保存できませんでした",
 		"confirmRevokeAll": "すべてのペルソナのトークンを取り消しますか？",
 		"doneTitle": "完了",
 		"allRevoked": "ペルソナのトークンをすべて取り消しました",

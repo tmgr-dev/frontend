@@ -714,6 +714,7 @@
 		"passwordChanged": "Contraseña cambiada",
 		"savedTitle": "Guardado",
 		"savedDescription": "Datos de usuario guardados",
+		"saveFailed": "No se pudo guardar tu perfil",
 		"confirmRevokeAll": "¿Revocar todos los tokens de todas tus personas?",
 		"doneTitle": "Listo",
 		"allRevoked": "Todos los tokens de personas revocados",

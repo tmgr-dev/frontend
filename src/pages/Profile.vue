@@ -153,6 +153,7 @@
 					</p>
 				</div>
 				<label
+					v-if="user.password"
 					for="profile-logout-other-sessions"
 					class="mt-4 flex items-start gap-2 text-sm text-ink"
 				>
@@ -367,6 +368,13 @@
 						/current password/i.test(data?.message ?? '')
 					)
 						this.errors = { ...this.errors, current_password: [data.message] };
+					if (!Object.keys(this.errors).length)
+						toast({
+							title: t('settingsPages.profile.errorTitle'),
+							description:
+								data?.message || t('settingsPages.profile.saveFailed'),
+							variant: 'destructive',
+						});
 				} finally {
 					this.saving = false;
 				}

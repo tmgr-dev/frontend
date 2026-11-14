@@ -772,6 +772,7 @@
 		"passwordChanged": "Password changed",
 		"savedTitle": "Saved",
 		"savedDescription": "User data saved",
+		"saveFailed": "Could not save your profile",
 		"confirmRevokeAll": "Revoke every persona token across all your personas?",
 		"doneTitle": "Done",
 		"allRevoked": "All persona tokens revoked",

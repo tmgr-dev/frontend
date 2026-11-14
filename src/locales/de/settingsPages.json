@@ -714,6 +714,7 @@
 		"passwordChanged": "Passwort geändert",
 		"savedTitle": "Gespeichert",
 		"savedDescription": "Benutzerdaten gespeichert",
+		"saveFailed": "Dein Profil konnte nicht gespeichert werden",
 		"confirmRevokeAll": "Alle Persona-Tokens über alle deine Personas widerrufen?",
 		"doneTitle": "Fertig",
 		"allRevoked": "Alle Persona-Tokens widerrufen",

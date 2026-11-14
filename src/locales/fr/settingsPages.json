@@ -714,6 +714,7 @@
 		"passwordChanged": "Mot de passe modifié",
 		"savedTitle": "Enregistré",
 		"savedDescription": "Données utilisateur enregistrées",
+		"saveFailed": "Impossible d'enregistrer votre profil",
 		"confirmRevokeAll": "Révoquer tous les jetons de persona de toutes vos personas ?",
 		"doneTitle": "Terminé",
 		"allRevoked": "Tous les jetons de persona ont été révoqués",
