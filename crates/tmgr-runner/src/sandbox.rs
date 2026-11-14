@@ -928,7 +928,7 @@ mod linux {
         RulesetCreatedAttr, RulesetStatus, Scope, ABI,
     };
     use serde::Deserialize;
-    use std::ffi::CString;
+    use std::ffi::{CStr, CString};
     use std::io::Read;
     use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
     use std::os::unix::ffi::OsStrExt;
@@ -1228,6 +1228,134 @@ mod linux {
         }
     }
 
+    const OPEN_TREE_CLONE: libc::c_uint = 1;
+    const MOVE_MOUNT_F_EMPTY_PATH: libc::c_uint = 0x04;
+    const MOVE_MOUNT_T_EMPTY_PATH: libc::c_uint = 0x40;
+
+    fn open_dir(path: &CStr) -> Result<OwnedFd, String> {
+        let fd = unsafe {
+            libc::open(
+                path.as_ptr(),
+                libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(os_err(&format!("open {path:?}")));
+        }
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+
+    fn fd_id(fd: &OwnedFd) -> Result<(u64, u64), String> {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
+            return Err(os_err("fstat"));
+        }
+        Ok((st.st_dev, st.st_ino))
+    }
+
+    fn fd_read_only(fd: &OwnedFd) -> Result<bool, String> {
+        let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstatvfs(fd.as_raw_fd(), &mut vfs) } != 0 {
+            return Err(os_err("fstatvfs"));
+        }
+        Ok(vfs.f_flag as u64 & 1 != 0)
+    }
+
+    fn mount_id(fd: &OwnedFd) -> Result<u64, String> {
+        let info = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", fd.as_raw_fd()))
+            .map_err(|e| format!("fdinfo: {e}"))?;
+        info.lines()
+            .find_map(|l| l.strip_prefix("mnt_id:"))
+            .and_then(|v| v.trim().parse().ok())
+            .ok_or_else(|| "fdinfo has no mnt_id".to_string())
+    }
+
+    fn writable_clone(base: &OwnedFd) -> Result<OwnedFd, String> {
+        let fd = unsafe {
+            libc::syscall(
+                libc::SYS_open_tree,
+                base.as_raw_fd(),
+                c"".as_ptr(),
+                OPEN_TREE_CLONE
+                    | libc::O_CLOEXEC as libc::c_uint
+                    | libc::AT_RECURSIVE as libc::c_uint
+                    | libc::AT_EMPTY_PATH as libc::c_uint,
+            )
+        };
+        if fd < 0 {
+            return Err(os_err("open_tree"));
+        }
+        let tree = unsafe { OwnedFd::from_raw_fd(fd as RawFd) };
+        let attr = MountAttr {
+            attr_set: 0,
+            attr_clr: MOUNT_ATTR_RDONLY,
+            propagation: 0,
+            userns_fd: 0,
+        };
+        let rc = unsafe {
+            libc::syscall(
+                libc::SYS_mount_setattr,
+                tree.as_raw_fd(),
+                c"".as_ptr(),
+                libc::AT_EMPTY_PATH as libc::c_uint,
+                &attr as *const MountAttr,
+                std::mem::size_of::<MountAttr>(),
+            )
+        };
+        if rc != 0 {
+            return Err(os_err("mount_setattr"));
+        }
+        let rc = unsafe {
+            libc::syscall(
+                libc::SYS_move_mount,
+                tree.as_raw_fd(),
+                c"".as_ptr(),
+                base.as_raw_fd(),
+                c"".as_ptr(),
+                MOVE_MOUNT_F_EMPTY_PATH | MOVE_MOUNT_T_EMPTY_PATH,
+            )
+        };
+        if rc != 0 {
+            return Err(os_err("move_mount"));
+        }
+        Ok(tree)
+    }
+
+    fn enter_cwd(policy: &Policy) -> Result<Option<u64>, String> {
+        let id = (policy.cwd_dev, policy.cwd_ino);
+        let at_path = cpath(Path::new(&policy.cwd))
+            .and_then(|p| open_dir(&p))
+            .ok()
+            .filter(|fd| fd_id(fd).ok() == Some(id));
+        let writable = policy.write_ids.iter().any(|w| is_cwd(policy, w));
+        let (dir, mnt) = if writable {
+            let base = match at_path {
+                Some(fd) => fd,
+                None => open_dir(c".")?,
+            };
+            let tree = writable_clone(&base)?;
+            if fd_read_only(&tree)? {
+                return Err(format!("{} is still read-only after the mount", policy.cwd));
+            }
+            let mnt = mount_id(&tree)?;
+            (tree, Some(mnt))
+        } else {
+            let dir = at_path.ok_or_else(|| format!("{} changed after validation", policy.cwd))?;
+            (dir, None)
+        };
+        if fd_id(&dir)? != id {
+            return Err(format!("{} changed after validation", policy.cwd));
+        }
+        if unsafe { libc::fchdir(dir.as_raw_fd()) } != 0 {
+            return Err(os_err("fchdir"));
+        }
+        Ok(mnt)
+    }
+
+    fn is_cwd(policy: &Policy, (root, dev, ino): &(String, u64, u64)) -> bool {
+        *root == policy.cwd && (*dev, *ino) == (policy.cwd_dev, policy.cwd_ino)
+    }
+
     fn validated(root: &str, dev: u64, ino: u64) -> Result<CString, String> {
         let p = Path::new(root);
         if std::fs::canonicalize(p).ok().as_deref() != Some(p) || path_id(p) != Some((dev, ino)) {
@@ -1257,7 +1385,11 @@ mod linux {
         out
     }
 
-    pub(super) fn writable_mounts_outside(mountinfo: &[u8], roots: &[&str]) -> Vec<String> {
+    pub(super) fn writable_mounts_outside(
+        mountinfo: &[u8],
+        roots: &[&str],
+        mount_ids: &[u64],
+    ) -> Vec<String> {
         let mut bad = Vec::new();
         for line in mountinfo.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
             let f: Vec<&[u8]> = line.split(|b| *b == b' ').collect();
@@ -1266,6 +1398,10 @@ mod linux {
                 continue;
             };
             if opts.split(|b| *b == b',').any(|o| o == b"ro") {
+                continue;
+            }
+            let id = std::str::from_utf8(f[0]).ok().and_then(|v| v.parse().ok());
+            if id.is_some_and(|id| mount_ids.contains(&id)) {
                 continue;
             }
             let mp = unescape(mp);
@@ -1336,7 +1472,7 @@ mod linux {
     }
 
     fn remount_roots(policy: &Policy) -> Result<(), String> {
-        for (root, dev, ino) in &policy.write_ids {
+        for (root, dev, ino) in policy.write_ids.iter().filter(|w| !is_cwd(policy, w)) {
             let c = validated(root, *dev, *ino)?;
             mount_call(Some(&c), &c, libc::MS_BIND | libc::MS_REC)?;
             if path_id(Path::new(root)) != Some((*dev, *ino)) {
@@ -1364,16 +1500,16 @@ mod linux {
                 return Err(format!("{root} is still writable after the remount"));
             }
         }
-        if unsafe { libc::chdir(cpath(Path::new(&policy.cwd))?.as_ptr()) } != 0 {
-            return Err(os_err("chdir"));
-        }
+        let cwd_mount = enter_cwd(policy)?;
         let info = std::fs::read("/proc/self/mountinfo").map_err(|e| format!("mountinfo: {e}"))?;
         let roots: Vec<&str> = policy
             .write_ids
             .iter()
+            .filter(|w| !is_cwd(policy, w))
             .map(|(r, _, _)| r.as_str())
             .collect();
-        match writable_mounts_outside(&info, &roots).first() {
+        let ids: Vec<u64> = cwd_mount.into_iter().collect();
+        match writable_mounts_outside(&info, &roots, &ids).first() {
             Some(m) => Err(format!("{m} is still writable")),
             None => Ok(()),
         }
@@ -1418,7 +1554,13 @@ mod linux {
         policy_path: &str,
         force_fallback: bool,
     ) -> Result<(), String> {
-        for (root, dev, ino) in policy.write_ids.iter().chain(&policy.read_ids) {
+        open_cwd(policy)?;
+        for (root, dev, ino) in policy
+            .write_ids
+            .iter()
+            .chain(&policy.read_ids)
+            .filter(|w| !is_cwd(policy, w))
+        {
             validated(root, *dev, *ino)
                 .map_err(|e| format!("tmgr: sandbox setup failed: {e}; the run does not start"))?;
         }
@@ -2360,14 +2502,19 @@ mod tests {
 31 22 0:5 / /dev rw - devtmpfs udev rw\n\
 32 22 0:6 / /work/my\\040proj/sub ro - tmpfs tmpfs rw\n";
         assert_eq!(
-            linux::writable_mounts_outside(info, &["/work/my proj"]),
+            linux::writable_mounts_outside(info, &["/work/my proj"], &[]),
             ["/dev"]
         );
-        assert!(linux::writable_mounts_outside(info, &["/work/my proj", "/dev"]).is_empty());
+        assert!(linux::writable_mounts_outside(info, &["/work/my proj", "/dev"], &[]).is_empty());
         assert_eq!(
-            linux::writable_mounts_outside(info, &["/work/my"]),
+            linux::writable_mounts_outside(info, &["/work/my"], &[]),
             ["/work/my proj", "/dev"]
         );
+        assert_eq!(
+            linux::writable_mounts_outside(info, &["/work/my"], &[31]),
+            ["/work/my proj"]
+        );
+        assert!(linux::writable_mounts_outside(info, &[], &[30, 31]).is_empty());
     }
 
     #[cfg(target_os = "linux")]
