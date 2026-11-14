@@ -6,7 +6,9 @@ import {
 	loadExpanded,
 	saveExpanded,
 } from '@/utils/pagesTree';
-import { computed, ref, watch, type Ref } from 'vue';
+import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
+
+const NOT_READY_WAIT_MS = 20000;
 
 export function usePagesTree(
 	workspaceId: Ref<number | null>,
@@ -18,11 +20,36 @@ export function usePagesTree(
 	const failed = ref(false);
 	const expanded = ref<Set<number>>(new Set());
 	let request = 0;
+	let waitTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const stopWaiting = () => {
+		if (waitTimer) clearTimeout(waitTimer);
+		waitTimer = null;
+	};
+
+	const waitForReady = () => {
+		stopWaiting();
+		failed.value = false;
+		loaded.value = false;
+		waitTimer = setTimeout(() => {
+			waitTimer = null;
+			if (enabled.value) return;
+			failed.value = true;
+			loaded.value = true;
+		}, NOT_READY_WAIT_MS);
+	};
+
+	onScopeDispose(stopWaiting);
 
 	const tree = computed(() => buildPagesTree(pages.value));
 
 	const load = async (useCache = true) => {
-		if (!enabled.value || workspaceId.value === null) return;
+		if (workspaceId.value === null) return;
+		if (!enabled.value) {
+			waitForReady();
+			return;
+		}
+		stopWaiting();
 		const current = ++request;
 		const forWorkspace = workspaceId.value;
 		try {
