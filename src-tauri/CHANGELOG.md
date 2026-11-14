@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.156 — 2026-11-14
+
+- The phone pairing code is now a link: point the iPhone Camera at it and tap the banner to open TMGR on the pairing confirmation. Scanning inside the TMGR app still works. Update the TMGR iPhone app first: older app versions do not read the new code.
+
 ## 0.9.155 — 2026-11-14
 
 - Text you send from the iPhone app to a stopped Claude Code or Codex session is now typed with the prefix "Owner via phone: ", so it can never start a shell (`!`) or slash (`/`) command. Invisible and control characters, line breaks and trailing backslashes are removed first.
