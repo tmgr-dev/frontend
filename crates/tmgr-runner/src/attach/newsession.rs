@@ -1237,12 +1237,46 @@ fn modal_rect(area: Rect) -> Rect {
     Rect::new(area.x, area.y, area.width, (PICK_H + 2).min(area.height))
 }
 
+fn modal_compact(rect: Rect) -> bool {
+    rect.height < PICK_H + 2 || rect.width < 24
+}
+
+fn compact_field(ns: &NewSession, p: &Picker) -> (&'static str, String) {
+    match p.mode {
+        folder_pick::Mode::Search => ("Find> ", strip_control(&p.query)),
+        folder_pick::Mode::Path => ("Path> ", strip_control(&ns.folder)),
+        _ => ("Folder: ", strip_control(&ns.folder)),
+    }
+}
+
+fn draw_modal_compact(buf: &mut Buffer, area: Rect, ns: &NewSession, p: &Picker) {
+    if area.is_empty() {
+        return;
+    }
+    let row = Rect::new(area.x, area.y, area.width, 1);
+    Clear.render(row, buf);
+    let (label, text) = compact_field(ns, p);
+    let tail = query_tail(
+        &text,
+        usize::from(row.width).saturating_sub(label.len() + 1),
+    );
+    put(
+        buf,
+        row.x,
+        row.y,
+        &format!("{label}{tail}"),
+        Style::new().add_modifier(Modifier::BOLD),
+        row.width,
+    );
+}
+
 fn draw_modal(buf: &mut Buffer, area: Rect, ns: &NewSession) {
     let Some(p) = ns.picker.as_ref() else {
         return;
     };
     let rect = modal_rect(area);
-    if rect.height < PICK_H + 2 || rect.width < 24 {
+    if modal_compact(rect) {
+        draw_modal_compact(buf, area, ns, p);
         return;
     }
     Clear.render(rect, buf);
@@ -1379,6 +1413,19 @@ pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u1
         return Some(typed_cursor(p, inner, area.width));
     }
     if let Some(p) = ns.picker.as_ref() {
+        if modal_compact(modal_rect(area)) {
+            if area.is_empty() {
+                return None;
+            }
+            let (label, text) = compact_field(ns, p);
+            let w = query_tail(
+                &text,
+                usize::from(area.width).saturating_sub(label.len() + 1),
+            )
+            .width();
+            let x = area.x.saturating_add((label.len() + w) as u16);
+            return Some((x.min(area.right().saturating_sub(1)), area.y));
+        }
         let m = modal_rect(area).inner(Margin::new(1, 1));
         if m.is_empty() {
             return None;
@@ -2545,6 +2592,19 @@ mod tests {
         assert!(s.contains("boom") && s.contains("Run it yourself: tmgr run x"));
         let s = draw(&v, 30, 8);
         assert!(s.contains("New session"));
+    }
+
+    #[test]
+    fn picker_on_small_terminal_shows_compact_path_field() {
+        let h = tmp();
+        let mut v = open("/r/b", h.path());
+        path_modal(&mut v, "/r/b");
+        let s = draw(&v, 40, 8);
+        assert!(s.contains("Path> /r/b"), "{s}");
+        let cur = new_session_cursor(v.new_session.as_ref().unwrap(), Rect::new(0, 0, 40, 8));
+        assert_eq!(cur, Some((10, 0)));
+        let s = draw(&v, 20, 30);
+        assert!(s.contains("Path> /r/b"), "{s}");
     }
 
     #[test]
