@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.155 — 2026-11-14
+
+- Text you send from the iPhone app to a stopped Claude Code or Codex session is now typed with the prefix "Owner via phone: ", so it can never start a shell (`!`) or slash (`/`) command. Invisible and control characters, line breaks and trailing backslashes are removed first.
+- A phone answer or message goes only to the agent session it was written for. If that session changed in the meantime, nothing is typed: the desktop shows "Not delivered" and the phone asks you to review the updated card.
+- Unpairing or re-pairing the phone while an answer is arriving now reliably rejects that answer.
+
 ## 0.9.154 — 2026-11-14
 
 - The sidebar Pages section now works like Notion: your pinned pages, then the 5 most recent, then a tree of all your pages. Open a branch with its arrow, the page you are on is highlighted and its parents open automatically, and a branch you open here stays open on All pages (and the other way round). Create sub-pages, rename, pin, archive, drag to reorder and drop Markdown files right in the tree. Large workspaces stay fast: the tree scrolls inside the sidebar and loads 100 top-level pages at a time.
