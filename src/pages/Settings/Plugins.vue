@@ -955,10 +955,14 @@
 				async setSafeMode(value: boolean) {
 					if (isDesktopApp() && !(await pushSafeMode(value))) {
 						toast({
-							title: t('settingsPages.plugins.toast.safeModeFailed'),
+							title: t(
+								value
+									? 'settingsPages.plugins.toast.safeModeNotSaved'
+									: 'settingsPages.plugins.toast.safeModeFailed',
+							),
 							variant: 'destructive',
 						});
-						return;
+						if (!value) return;
 					}
 					storeSafeMode(value);
 					pluginState.safeMode = value;

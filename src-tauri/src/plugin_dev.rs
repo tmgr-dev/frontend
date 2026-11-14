@@ -136,7 +136,10 @@ fn safe_mode_file(home: &Path) -> PathBuf {
 }
 
 fn read_safe_mode_flag(file: &Path) -> bool {
-  fs::symlink_metadata(file).map(|meta| meta.is_file()).unwrap_or(false)
+  match fs::symlink_metadata(file) {
+    Ok(meta) => meta.is_file(),
+    Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+  }
 }
 
 fn write_safe_mode_flag(file: &Path, on: bool) -> Result<(), String> {
@@ -144,7 +147,13 @@ fn write_safe_mode_flag(file: &Path, on: bool) -> Result<(), String> {
     if let Some(dir) = file.parent() {
       fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    return fs::write(file, b"1").map_err(|e| e.to_string());
+    let _ = fs::remove_file(file);
+    return fs::OpenOptions::new()
+      .write(true)
+      .create_new(true)
+      .open(file)
+      .and_then(|mut f| std::io::Write::write_all(&mut f, b"1"))
+      .map_err(|e| e.to_string());
   }
   match fs::remove_file(file) {
     Ok(()) => Ok(()),
@@ -165,12 +174,25 @@ pub fn plugins_safe_mode() -> bool {
   std::env::args().any(|arg| arg == "--safe-mode") || STORED_SAFE_MODE.load(Ordering::SeqCst)
 }
 
+fn apply_safe_mode(file: &Path, value: bool, state: &AtomicBool) -> Result<(), String> {
+  if value {
+    state.store(true, Ordering::SeqCst);
+    return write_safe_mode_flag(file, true);
+  }
+  write_safe_mode_flag(file, false)?;
+  state.store(false, Ordering::SeqCst);
+  Ok(())
+}
+
 #[tauri::command]
-pub fn plugins_set_safe_mode<R: Runtime>(app: AppHandle<R>, value: bool) -> Result<(), String> {
+pub fn plugins_set_safe_mode<R: Runtime>(window: tauri::Window<R>, value: bool) -> Result<(), String> {
+  if window.label() != "main" {
+    return Err("Safe mode may only be changed from the main window".into());
+  }
+  let app = window.app_handle();
   let home = app.path().home_dir().map_err(|e| e.to_string())?;
-  write_safe_mode_flag(&safe_mode_file(&home), value)?;
-  STORED_SAFE_MODE.store(value, Ordering::SeqCst);
-  crate::local_access::sync_with_safe_mode(&app)
+  apply_safe_mode(&safe_mode_file(&home), value, &STORED_SAFE_MODE)?;
+  crate::local_access::sync_with_safe_mode(app)
 }
 
 #[cfg(test)]
@@ -189,6 +211,70 @@ mod tests {
     write_safe_mode_flag(&file, false).unwrap();
     assert!(!read_safe_mode_flag(&file));
     write_safe_mode_flag(&file, false).unwrap();
+    let _ = fs::remove_dir_all(&home);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn an_unreadable_flag_location_counts_as_on() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("tmgr-safe-mode-eacces-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    let file = safe_mode_file(&home);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::set_permissions(file.parent().unwrap(), fs::Permissions::from_mode(0o000)).unwrap();
+    let read = read_safe_mode_flag(&file);
+    fs::set_permissions(file.parent().unwrap(), fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = fs::remove_dir_all(&home);
+    assert!(read);
+  }
+
+  #[test]
+  fn turning_it_on_holds_in_memory_even_when_the_file_cannot_be_written() {
+    let base = std::env::temp_dir().join(format!("tmgr-safe-mode-ro-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).unwrap();
+    let blocker = base.join("blocker");
+    fs::write(&blocker, b"x").unwrap();
+    let file = blocker.join(".tmgr.dev").join("plugins-safe-mode");
+    let state = AtomicBool::new(false);
+    assert!(apply_safe_mode(&file, true, &state).is_err());
+    assert!(state.load(Ordering::SeqCst));
+    let _ = fs::remove_dir_all(&base);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn turning_it_off_keeps_it_on_when_the_file_cannot_be_removed() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("tmgr-safe-mode-keep-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    let file = safe_mode_file(&home);
+    let state = AtomicBool::new(false);
+    apply_safe_mode(&file, true, &state).unwrap();
+    fs::set_permissions(file.parent().unwrap(), fs::Permissions::from_mode(0o500)).unwrap();
+    let result = apply_safe_mode(&file, false, &state);
+    fs::set_permissions(file.parent().unwrap(), fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = fs::remove_dir_all(&home);
+    if result.is_err() {
+      assert!(state.load(Ordering::SeqCst));
+    }
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn a_planted_symlink_is_replaced_not_followed() {
+    use std::os::unix::fs::symlink;
+    let home = std::env::temp_dir().join(format!("tmgr-safe-mode-link-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    let file = safe_mode_file(&home);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let target = home.join("victim");
+    fs::write(&target, b"keep").unwrap();
+    symlink(&target, &file).unwrap();
+    write_safe_mode_flag(&file, true).unwrap();
+    assert_eq!(fs::read(&target).unwrap(), b"keep");
+    assert!(read_safe_mode_flag(&file));
     let _ = fs::remove_dir_all(&home);
   }
 

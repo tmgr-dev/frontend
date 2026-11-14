@@ -321,6 +321,9 @@ fn ensure_started<R: Runtime>(app: &AppHandle<R>, state: &LocalAccessState) -> R
     return Ok(());
   }
   let mut running = state.running.lock().map_err(|e| e.to_string())?;
+  if crate::plugin_dev::plugins_safe_mode() {
+    return Ok(());
+  }
   if running.is_some() {
     return Ok(());
   }
@@ -495,7 +498,9 @@ pub fn local_access_status<R: Runtime>(
 }
 
 pub fn sync_with_safe_mode<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-  let state = app.state::<LocalAccessState>();
+  let Some(state) = app.try_state::<LocalAccessState>() else {
+    return Ok(());
+  };
   if crate::plugin_dev::plugins_safe_mode() {
     return stop(&state);
   }
