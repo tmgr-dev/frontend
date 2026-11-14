@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.154 — 2026-11-14
+
+- The sidebar Pages section now works like Notion: your pinned pages, then the 5 most recent, then a tree of all your pages. Open a branch with its arrow, the page you are on is highlighted and its parents open automatically, and a branch you open here stays open on All pages (and the other way round). Create sub-pages, rename, pin, archive, drag to reorder and drop Markdown files right in the tree. Large workspaces stay fast: the tree scrolls inside the sidebar and loads 100 top-level pages at a time.
+
 ## 0.9.153 — 2026-11-14
 
 - Local workspaces get an AI assistant that uses your own OpenAI-compatible server (Ollama, LM Studio, vLLM, llama.cpp) set in Settings → Personas. Turn on the AI assistant module for the workspace. It can read and change tasks, comments, statuses, pages and timers; every change waits for you to confirm it. Your workspace data goes only to your server, and the panel warns you when that server is not on this computer or your local network.

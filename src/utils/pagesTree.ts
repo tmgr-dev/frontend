@@ -93,7 +93,7 @@ export const descendantIds = (
 	return result;
 };
 
-export const RECENT_PAGES_LIMIT = 10;
+export const RECENT_PAGES_LIMIT = 5;
 
 const flattenTree = (nodes: PageNode[]): PageNode[] =>
 	nodes.flatMap((node) => [node, ...flattenTree(node.children)]);
@@ -117,6 +117,27 @@ export const sidebarPages = (
 	return { pinned, recent };
 };
 
+export const SIDEBAR_ROOTS_PAGE = 100;
+
+export const ancestorIds = (pages: PageSummary[], slug: string): number[] => {
+	const byId = new Map(pages.map((page) => [page.id, page]));
+	const result: number[] = [];
+	const seen = new Set<number>();
+	let current = pages.find((page) => page.slug === slug);
+	while (current && current.parent_id !== null && !seen.has(current.id)) {
+		seen.add(current.id);
+		result.push(current.parent_id);
+		current = byId.get(current.parent_id);
+	}
+	return result;
+};
+
+export const visibleRootCount = (
+	total: number,
+	shown: number,
+	activeRootIndex: number,
+): number => Math.min(total, Math.max(shown, activeRootIndex + 1));
+
 const expandedKey = (workspaceId: number | string) =>
 	`pages-expanded-${workspaceId}`;
 
@@ -132,6 +153,14 @@ export const loadExpanded = (workspaceId: number | string): Set<number> => {
 	}
 };
 
+type ExpandedListener = (workspaceId: number | string) => void;
+const expandedListeners = new Set<ExpandedListener>();
+
+export const onExpandedSaved = (listener: ExpandedListener): (() => void) => {
+	expandedListeners.add(listener);
+	return () => expandedListeners.delete(listener);
+};
+
 export const saveExpanded = (
 	workspaceId: number | string,
 	expanded: Set<number>,
@@ -144,6 +173,7 @@ export const saveExpanded = (
 	} catch {
 		return;
 	}
+	expandedListeners.forEach((listener) => listener(workspaceId));
 };
 
 export const pagesAvailable = (
