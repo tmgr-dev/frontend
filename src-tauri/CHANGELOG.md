@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.153 — 2026-11-14
+
+- Local workspaces get an AI assistant that uses your own OpenAI-compatible server (Ollama, LM Studio, vLLM, llama.cpp) set in Settings → Personas. Turn on the AI assistant module for the workspace. It can read and change tasks, comments, statuses, pages and timers; every change waits for you to confirm it. Your workspace data goes only to your server, and the panel warns you when that server is not on this computer or your local network.
+- When your AI server can't be reached, the error now names the server address and asks you to check that it is running.
+
 ## 0.9.152 — 2026-11-14
 
 - Fixed: All pages no longer shows Loading forever in a local workspace. If the page list cannot be loaded it now shows an error with Retry.
