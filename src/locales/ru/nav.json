@@ -57,7 +57,7 @@
 		"back": "Назад"
 	},
 	"categories": {
-		"title": "Категории",
+		"title": "Проекты",
 		"filter": "Фильтр категорий",
 		"new": "Новая категория",
 		"loadFailed": "Не удалось загрузить категории",
@@ -97,7 +97,7 @@
 		"pages": "Страницы",
 		"memory": "Память",
 		"categoryView": "Просмотр категории",
-		"categories": "Категории",
+		"categories": "Проекты",
 		"newCategory": "Новая категория",
 		"subcategories": "Подкатегории",
 		"categoryChildren": "Вложенные категории"

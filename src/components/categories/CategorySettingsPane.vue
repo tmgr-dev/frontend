@@ -64,6 +64,7 @@
 						type="text"
 						autocomplete="off"
 						spellcheck="false"
+						readonly
 						:placeholder="$t('board.categories.pane.fields.codePlaceholder')"
 						:aria-invalid="!!errors.code || undefined"
 						:class="[
@@ -563,12 +564,8 @@
 		[ESTIMATE_KEY]: {
 			labelKey: 'board.categories.pane.settings.estimateLabel',
 		},
-		[REMINDER_KEY]: {
-			labelKey: 'board.categories.pane.settings.reminderLabel',
-			hintKey: 'board.categories.pane.settings.reminderHint',
-		},
 	};
-	const COMPACT_KEYS = [RATE_KEY, ESTIMATE_KEY, REMINDER_KEY];
+	const COMPACT_KEYS = [RATE_KEY, ESTIMATE_KEY];
 	const FIELD_CLASS =
 		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink';
 	const INPUT_CLASS =
@@ -799,7 +796,10 @@
 			);
 			const otherDefs = computed(() =>
 				defs.value.filter(
-					(d) => d.key !== TITLE_PATTERN_KEY && !COMPACT_KEYS.includes(d.key),
+					(d) =>
+						d.key !== TITLE_PATTERN_KEY &&
+						d.key !== REMINDER_KEY &&
+						!COMPACT_KEYS.includes(d.key),
 				),
 			);
 			const copyChoices = computed(() =>

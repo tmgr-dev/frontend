@@ -24,8 +24,7 @@ export interface PomodoroSettings {
 	longMin: number;
 	longEvery: number;
 	autoStart: boolean;
-	pauseTrackingOnBreak: boolean;
-	notify: 'silent' | 'system' | 'both';
+	notify: 'silent' | 'sound' | 'system' | 'both';
 	sound: string;
 	volume: number;
 }
@@ -36,8 +35,7 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
 	longMin: 15,
 	longEvery: 4,
 	autoStart: false,
-	pauseTrackingOnBreak: false,
-	notify: 'system',
+	notify: 'sound',
 	sound: 'bell',
 	volume: 60,
 };

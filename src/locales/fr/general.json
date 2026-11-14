@@ -292,7 +292,9 @@
 	"timeCounter": {
 		"tracked": "Temps suivi",
 		"running": "En cours",
-		"overTime": "Dépassement"
+		"overTime": "Dépassement",
+		"startTimer": "Démarrer le minuteur",
+		"stopTimer": "Arrêter le minuteur"
 	},
 	"helpers": {
 		"openTaskLink": {

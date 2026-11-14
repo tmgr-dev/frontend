@@ -83,13 +83,10 @@
 		"pomodoros": "pomodoro | pomodoro | pomodoro",
 		"autoStart": "Automatycznie rozpoczynaj kolejny interwał",
 		"autoStartHint": "Pomiń przycisk odtwarzania między skupieniem a przerwą",
-		"pauseTracking": "Wstrzymaj śledzony czas podczas przerwy",
-		"pauseTrackingHint": "Zatrzymaj zegar, gdy odpoczywasz",
 		"notifications": "Powiadomienia",
 		"notify": {
 			"silent": "Ciche",
-			"system": "Systemowe",
-			"both": "Oba"
+			"sound": "Dźwięk"
 		},
 		"sound": "Dźwięk końca interwału",
 		"sounds": {
@@ -227,6 +224,7 @@
 		"previous": "Wstecz",
 		"next": "Dalej",
 		"page": "Strona {page} z {last}",
+		"deleteTaskTitle": "Usuń zadanie",
 		"deleteTasksTitle": "Usuń zadania",
 		"deleteTasksBody": "Czy na pewno?"
 	},

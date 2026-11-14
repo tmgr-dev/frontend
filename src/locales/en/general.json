@@ -293,7 +293,9 @@
 	"timeCounter": {
 		"tracked": "Time tracked",
 		"running": "Running",
-		"overTime": "Over time"
+		"overTime": "Over time",
+		"startTimer": "Start timer",
+		"stopTimer": "Stop timer"
 	},
 	"helpers": {
 		"openTaskLink": {

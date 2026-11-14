@@ -1,4 +1,5 @@
 import { deleteTask, restoreDeletedTask } from '@/actions/tmgr/tasks';
+import { t } from '@/i18n';
 
 export default {
 	methods: {
@@ -30,7 +31,11 @@ export default {
 					this.confirm = undefined;
 				}
 			};
-			this.showConfirm('Delete task', 'Are you sure?', deleteTaskConfirmation);
+			this.showConfirm(
+				t('tasks.list.deleteTaskTitle'),
+				t('tasks.list.deleteTasksBody'),
+				deleteTaskConfirmation,
+			);
 		},
 	},
 };
