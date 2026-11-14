@@ -1573,3 +1573,13 @@ fn a_listening_card_refreshes_every_minute_and_an_idle_one_every_five() {
   r.hub.answer(&id, AnswerIn { dismissed: true, ..Default::default() }).unwrap();
   waiter.join().unwrap();
 }
+
+#[test]
+fn the_pairing_qr_is_a_tmgr_pair_link_around_the_raw_payload() {
+  let link = super::pairing::pair_link(br#"{"v":1}"#);
+  let raw = link.strip_prefix("tmgr://pair#").unwrap();
+  let body = raw.strip_prefix("tmgr-pair:v1:").unwrap();
+  use base64::Engine;
+  assert_eq!(base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(body).unwrap(), br#"{"v":1}"#);
+  assert!(!link.contains('?') && link.matches('#').count() == 1);
+}

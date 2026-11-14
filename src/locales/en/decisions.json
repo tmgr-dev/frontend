@@ -189,6 +189,7 @@
 	"phones": {
 		"title": "tmgr · Phones",
 		"qrAlt": "Pairing QR code",
+		"qrHint": "Scan with the iPhone Camera, or in TMGR → Settings → Pair with desktop",
 		"expiresInTime": "Expires in {time}",
 		"typeCode": "Type the code shown on your iPhone",
 		"confirm": "Confirm",
