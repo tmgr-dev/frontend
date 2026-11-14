@@ -123,7 +123,7 @@ impl Phones {
     }
     let chat = req.action == tmgr_phone::Action::Chat;
     let (result, label) = match self.after_apply(&req.card_id, &out, chat) {
-      Some(RouteOutcome::TargetChanged) if !chat => {
+      Some(RouteOutcome::TargetChanged) => {
         self.hub.set_phone_ack_result(&req.answer_id, AckResult::Changed);
         (AckResult::Changed, None)
       }
