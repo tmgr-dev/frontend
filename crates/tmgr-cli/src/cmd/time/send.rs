@@ -159,6 +159,7 @@ struct Run<'a> {
     report: FlushReport,
     state: SendState,
     recorded: HashSet<String>,
+    was_skipped: HashSet<String>,
     access_lost: bool,
 }
 
@@ -189,6 +190,19 @@ impl Run<'_> {
                 .map(|r| sent(&r.id, status, None, at))
                 .collect(),
         )
+    }
+
+    fn skip(&mut self, records: &[&Record]) -> Result<()> {
+        let fresh: Vec<&Record> = records
+            .iter()
+            .filter(|r| !self.was_skipped.contains(&r.id))
+            .copied()
+            .collect();
+        self.mark(&fresh, "skipped")?;
+        for r in records {
+            self.recorded.insert(r.id.clone());
+        }
+        Ok(())
     }
 
     fn fail(&mut self, e: &Error) {
@@ -248,9 +262,11 @@ fn flush_waiting(
     };
     let done = humantime::read_sent(runner_dir);
     let records = humantime::read_records(runner_dir);
-    let pending: Vec<&Record> = records
-        .iter()
-        .filter(|r| r.task.is_some() && !done.contains_key(&r.id))
+    let bound = || records.iter().filter(|r| r.task.is_some());
+    let unsent: Vec<&Record> = bound().filter(|r| !done.contains_key(&r.id)).collect();
+    let was_skipped: HashSet<String> = bound()
+        .filter(|r| done.get(&r.id).is_some_and(|s| s.status == "skipped"))
+        .map(|r| r.id.clone())
         .collect();
     let mut run = Run {
         dir: runner_dir,
@@ -258,13 +274,17 @@ fn flush_waiting(
         report: FlushReport::default(),
         state: SendState::load(runner_dir),
         recorded: HashSet::new(),
+        was_skipped,
         access_lost: false,
     };
-    if pending.is_empty() {
+    if !Settings::load(runner_dir).sync {
+        run.mark(&unsent, "skipped")?;
         return Ok(run.report);
     }
-    if !Settings::load(runner_dir).sync {
-        run.mark(&pending, "skipped")?;
+    let pending: Vec<&Record> = bound()
+        .filter(|r| !done.contains_key(&r.id) || run.was_skipped.contains(&r.id))
+        .collect();
+    if pending.is_empty() {
         return Ok(run.report);
     }
     let mut sendable = Vec::new();
@@ -335,7 +355,7 @@ fn send_all(run: &mut Run, server: &dyn Server, sendable: Vec<&Record>) -> Resul
         };
         run.state.last_enabled.insert(ws.to_string(), enabled);
         if !enabled {
-            run.mark(&all, "skipped")?;
+            run.skip(&all)?;
             continue;
         }
         'tasks: for (task_id, mut recs) in tasks {
@@ -392,7 +412,7 @@ fn send_all(run: &mut Run, server: &dyn Server, sendable: Vec<&Record>) -> Resul
                             .filter(|r| !run.recorded.contains(&r.id))
                             .copied()
                             .collect();
-                        run.mark(&rest, "skipped")?;
+                        run.skip(&rest)?;
                         break 'tasks;
                     }
                 }
@@ -597,6 +617,62 @@ mod tests {
         assert!(fake.posts.borrow().is_empty());
         assert_eq!(status_of(d.path(), &r.id).as_deref(), Some("skipped"));
         assert!(!SendState::load(d.path()).last_enabled["7"]);
+    }
+
+    #[test]
+    fn time_skipped_while_sync_was_off_is_sent_when_sync_turns_on() {
+        let r = recent("a", 1, 1, 0);
+        let d = dir_with(std::slice::from_ref(&r));
+        Settings {
+            sync: false,
+            ..Settings::default()
+        }
+        .save(d.path())
+        .unwrap();
+        let fake = Rc::new(Fake::default());
+        assert_eq!(go(d.path(), NOW, &fake).skipped, 1);
+        assert_eq!(go(d.path(), NOW + 1, &fake), FlushReport::default());
+        Settings::default().save(d.path()).unwrap();
+        let report = go(d.path(), NOW + 2, &fake);
+        assert_eq!(report.created, 1);
+        assert_eq!(status_of(d.path(), &r.id).as_deref(), Some("created"));
+    }
+
+    #[test]
+    fn time_skipped_while_the_module_was_off_is_sent_when_it_turns_on() {
+        let r = recent("a", 7, 1, 0);
+        let d = dir_with(std::slice::from_ref(&r));
+        let fake = Rc::new(Fake::default());
+        fake.enabled.borrow_mut().insert(7, false);
+        assert_eq!(go(d.path(), NOW, &fake).skipped, 1);
+        let again = go(d.path(), NOW + 1, &fake);
+        assert_eq!(again.skipped, 0);
+        assert!(fake.posts.borrow().is_empty());
+        fake.enabled.borrow_mut().insert(7, true);
+        let report = go(d.path(), NOW + 2, &fake);
+        assert_eq!(report.created, 1);
+        assert_eq!(status_of(d.path(), &r.id).as_deref(), Some("created"));
+        assert!(SendState::load(d.path()).last_enabled["7"]);
+    }
+
+    #[test]
+    fn skipped_time_older_than_the_window_expires_instead_of_being_sent() {
+        let old = rec("a", 1, 1, NOW - EXPIRE_S - 100);
+        let d = dir_with(std::slice::from_ref(&old));
+        Settings {
+            sync: false,
+            ..Settings::default()
+        }
+        .save(d.path())
+        .unwrap();
+        let fake = Rc::new(Fake::default());
+        go(d.path(), NOW - 200, &fake);
+        assert_eq!(status_of(d.path(), &old.id).as_deref(), Some("skipped"));
+        Settings::default().save(d.path()).unwrap();
+        let report = go(d.path(), NOW, &fake);
+        assert_eq!((report.expired, report.created), (1, 0));
+        assert_eq!(status_of(d.path(), &old.id).as_deref(), Some("expired"));
+        assert_eq!(fake.connects.get(), 0);
     }
 
     #[test]
