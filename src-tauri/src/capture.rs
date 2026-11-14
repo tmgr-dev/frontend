@@ -61,6 +61,7 @@ fn accessibility_trusted(prompt: bool) -> bool {
   }
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, PartialEq)]
 enum Held {
   Empty,
@@ -68,10 +69,13 @@ enum Held {
   Other,
 }
 
+#[cfg(any(target_os = "macos", test))]
 const TEXT_TYPES: [&str; 4] = ["public.utf8-plain-text", "public.plain-text", "NSStringPboardType", "public.utf16-plain-text"];
+#[cfg(any(target_os = "macos", test))]
 const NON_TEXT_TYPES: [&str; 7] =
   ["public.file-url", "NSFilenamesPboardType", "public.png", "public.tiff", "public.jpeg", "public.image", "com.apple.pict"];
 
+#[cfg(any(target_os = "macos", test))]
 fn classify(types: &[String]) -> Held {
   if types.is_empty() {
     return Held::Empty;
