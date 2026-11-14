@@ -9690,3 +9690,122 @@ fn ctrl_bracket_h_resumes_a_past_session_and_the_palette_and_help_list_it() {
     let help = draw(&v, &screens(), 140, 40);
     assert!(help.contains("resume or fork a past session"), "{help}");
 }
+
+mod pocket_signals {
+    use super::*;
+    use crate::questions::{Entry, Origin, Question, Status};
+
+    fn pocket(n: usize) -> Vec<Entry> {
+        (0..n)
+            .map(|i| Entry {
+                q: Question {
+                    id: format!("q{i}"),
+                    session: "b".into(),
+                    text: "Keep it?".into(),
+                    asked_s: 10,
+                    origin: Origin::Rule,
+                    user: String::new(),
+                    reply: String::new(),
+                    item: String::new(),
+                    pos: 0,
+                    turn: 0,
+                },
+                status: Status::Open,
+            })
+            .collect()
+    }
+
+    fn view(open: usize, since: u64) -> ViewState {
+        let mut v = blocked_view();
+        v.sessions[1].state.kind = StateKind::Waiting;
+        v.sessions[1].state.since_ms = since;
+        v.set_questions(pocket(open));
+        v
+    }
+
+    fn rings(t: &mut SignalTracker, v: &ViewState) -> usize {
+        t.update(v, &SignalSettings::default())
+            .iter()
+            .filter(|(id, _)| id == "b")
+            .count()
+    }
+
+    #[test]
+    fn the_same_open_count_across_two_waits_rings_once() {
+        let mut t = SignalTracker::new();
+        t.update(&view(0, 1), &SignalSettings::default());
+        assert_eq!(rings(&mut t, &view(2, 2)), 1);
+        assert_eq!(rings(&mut t, &view(2, 3)), 0);
+        assert_eq!(rings(&mut t, &view(2, 4)), 0);
+    }
+
+    #[test]
+    fn a_growing_count_rings_again() {
+        let mut t = SignalTracker::new();
+        t.update(&view(0, 1), &SignalSettings::default());
+        assert_eq!(rings(&mut t, &view(1, 2)), 1);
+        assert_eq!(rings(&mut t, &view(2, 3)), 1);
+        assert_eq!(rings(&mut t, &view(2, 4)), 0);
+    }
+
+    #[test]
+    fn a_dropping_then_growing_count_rings_again() {
+        let mut t = SignalTracker::new();
+        t.update(&view(0, 1), &SignalSettings::default());
+        assert_eq!(rings(&mut t, &view(2, 2)), 1);
+        assert_eq!(rings(&mut t, &view(1, 3)), 0);
+        assert_eq!(rings(&mut t, &view(2, 4)), 1);
+    }
+
+    #[test]
+    fn a_permission_prompt_rings_on_every_new_wait() {
+        let mut t = SignalTracker::new();
+        let s = SignalSettings::default();
+        let mut v = view(2, 1);
+        t.update(&v, &s);
+        for since in 2..5 {
+            v.sessions[2].state.since_ms = since;
+            let fresh = t.update(&v, &s);
+            assert_eq!(fresh.iter().filter(|(id, _)| id == "c").count(), 1);
+        }
+    }
+
+    #[test]
+    fn a_live_ask_rings_on_every_new_wait() {
+        let mut t = SignalTracker::new();
+        let s = SignalSettings::default();
+        let mut v = view(0, 1);
+        v.status.insert(
+            "b".into(),
+            SessionStatus {
+                ask: Some("Which?".into()),
+                ..Default::default()
+            },
+        );
+        t.update(&v, &s);
+        for since in 2..5 {
+            v.sessions[1].state.since_ms = since;
+            assert_eq!(rings(&mut t, &v), 1);
+        }
+    }
+
+    #[test]
+    fn a_pushed_pocket_count_is_not_pushed_again_on_a_new_wait() {
+        let mut t = PushTracker::new();
+        let s = push_on();
+        let mut v = push_view();
+        let mut out = 0;
+        for (i, open) in [2usize, 2, 3].into_iter().enumerate() {
+            let since = (100 + 20 * i as u64) * MIN;
+            v.sessions[1].state.since_ms = since;
+            v.set_questions(pocket(open));
+            t.update(&v, &s, since, 600, &nobody);
+            out += t
+                .update(&v, &s, since + 6 * MIN, 600, &nobody)
+                .iter()
+                .filter(|e| e.kind == PushKind::Blocked && e.session == "b")
+                .count();
+        }
+        assert_eq!(out, 2);
+    }
+}

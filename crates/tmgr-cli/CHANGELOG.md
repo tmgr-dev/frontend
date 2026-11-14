@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.120
+
+- `tmgr attach`: a session that ends every turn no longer rings "asked N questions" again and again. Questions waiting in the ?N pocket ring once, and again only when the session has more open questions than the last time you were told. Permission prompts and live questions still ring on every new wait. The same applies to the phone push for a waiting question.
+
 ## 1.0.119
 
 - Local workspaces on schema 15: every task status change `tmgr` makes in a local workspace is recorded in the task status history, which the desktop day summary uses to say which tasks moved from one status to another. Update the desktop app to 0.9.151 together with `tmgr`: older `tmgr` versions refuse to open a workspace the new desktop has upgraded.

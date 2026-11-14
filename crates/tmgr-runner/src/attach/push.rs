@@ -74,6 +74,7 @@ pub struct PushTracker {
     last: HashMap<(String, PushKind), u64>,
     fired: HashSet<(String, u64)>,
     asks: HashMap<String, (String, u64)>,
+    pocket_pushed: HashMap<String, usize>,
 }
 
 fn mins(ms: u64) -> u64 {
@@ -104,6 +105,10 @@ impl PushTracker {
             let id = row.id.as_str();
             let since = row.state.since_ms;
             let prev = self.seen.get(id);
+            let open = view.open_in(id);
+            let pushed = self.pocket_pushed.entry(id.to_string()).or_insert(0);
+            *pushed = (*pushed).min(open);
+            let mut pocket_only = false;
             let mut candidates: Vec<(PushKind, String, u64)> = Vec::new();
             match row.state.kind {
                 StateKind::Waiting => {
@@ -142,7 +147,7 @@ impl PushTracker {
             }
             if let Some(min) = s.blocked_min {
                 let ask = view.status.get(id).and_then(|st| st.ask.as_deref());
-                if let Some(need) = detect(row, ask, view.open_in(id), &any) {
+                if let Some(need) = detect(row, ask, open, &any) {
                     let mut started = since;
                     if need.kind == NeedKind::Question {
                         if let Some(text) = ask {
@@ -156,8 +161,11 @@ impl PushTracker {
                             started = entry.1;
                         }
                     }
+                    pocket_only = need.kind == NeedKind::Question && ask.is_none();
                     let waited = now_ms.saturating_sub(started);
-                    if need.kind != NeedKind::Input && waited >= u64::from(min) * 60_000 {
+                    let grew =
+                        !pocket_only || open > self.pocket_pushed.get(id).copied().unwrap_or(0);
+                    if need.kind != NeedKind::Input && grew && waited >= u64::from(min) * 60_000 {
                         let what = match need.kind {
                             NeedKind::Permission => "is waiting for permission",
                             _ => "asked a question",
@@ -186,6 +194,9 @@ impl PushTracker {
                 }
                 if kind == PushKind::Blocked {
                     self.fired.insert(key);
+                    if pocket_only {
+                        self.pocket_pushed.insert(id.to_string(), open);
+                    }
                 }
                 self.last.insert((id.to_string(), kind), now_ms);
                 out.push(PushEvent {
@@ -217,6 +228,8 @@ impl PushTracker {
         self.last.retain(|(id, _), _| alive.contains(id.as_str()));
         self.fired.retain(|(id, _)| alive.contains(id.as_str()));
         self.asks.retain(|id, _| alive.contains(id.as_str()));
+        self.pocket_pushed
+            .retain(|id, _| alive.contains(id.as_str()));
         out
     }
 }

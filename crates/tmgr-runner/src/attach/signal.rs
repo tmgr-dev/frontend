@@ -109,6 +109,7 @@ pub fn detect(
 pub struct SignalTracker {
     seen: HashMap<String, Wait>,
     current: HashMap<String, Need>,
+    signalled_open: HashMap<String, usize>,
     primed: bool,
 }
 
@@ -136,15 +137,28 @@ impl SignalTracker {
             let open = view.open_in(&row.id);
             let need = detect(row, ask, open, settings);
             let since = row.state.since_ms;
+            let signalled = self.signalled_open.entry(row.id.clone()).or_insert(0);
+            *signalled = (*signalled).min(open);
             if matches!(row.state.kind, StateKind::Waiting | StateKind::Blocked) {
                 alive.push(row.id.clone());
             }
             let Some(need) = need else {
                 continue;
             };
-            let due = match self.seen.get(&row.id).filter(|w| w.since_ms == since) {
-                None => true,
-                Some(w) => need.kind > w.kind || (need.kind == NeedKind::Question && open > w.open),
+            let pocket_only = need.kind == NeedKind::Question && ask.is_none();
+            let due = if pocket_only {
+                let grew = open > self.signalled_open.get(&row.id).copied().unwrap_or(0);
+                if grew {
+                    self.signalled_open.insert(row.id.clone(), open);
+                }
+                grew
+            } else {
+                match self.seen.get(&row.id).filter(|w| w.since_ms == since) {
+                    None => true,
+                    Some(w) => {
+                        need.kind > w.kind || (need.kind == NeedKind::Question && open > w.open)
+                    }
+                }
             };
             if due {
                 fresh.push((row.id.clone(), need.clone()));
@@ -165,6 +179,8 @@ impl SignalTracker {
             current.insert(row.id.clone(), need);
         }
         self.seen.retain(|id, _| alive.contains(id));
+        self.signalled_open
+            .retain(|id, _| view.sessions.iter().any(|r| r.id == *id));
         self.current = current;
         if !self.primed && !view.sessions.is_empty() {
             self.primed = true;
