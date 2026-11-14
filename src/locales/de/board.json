@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "Dashboard-Aktionen",
 		"a11y": {
-			"shortcuts": "Tastenkürzel: Strg+R zum Aktualisieren, Strg+1-5 zum Wechseln zwischen Bereichen, Esc zum Ausblenden von Fehlern",
+			"shortcuts": "Tastenkürzel: {mod}+R zum Aktualisieren, {mod}+1-4 zum Wechseln zwischen Bereichen, Esc zum Ausblenden von Fehlern",
 			"keyNumbers": "Kennzahlen, letzter {n} Tag | Kennzahlen, letzte {n} Tage",
 			"loadedAnnouncement": "Dashboard erfolgreich geladen",
 			"failedAnnouncement": "Dashboard konnte nicht geladen werden",

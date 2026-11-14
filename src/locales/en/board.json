@@ -227,7 +227,9 @@
 			"doneWindow": "Done · {window}",
 			"emptyTitle": "No team members",
 			"emptyDescription": "Invite team members to see their activity here.",
-			"invite": "Invite Members"
+			"invite": "Invite Members",
+			"errorTitle": "Couldn't load the team",
+			"retry": "Try again"
 		},
 		"topCategoriesCard": {
 			"title": "Top categories",
@@ -667,7 +669,7 @@
 		},
 		"actionsLabel": "Dashboard actions",
 		"a11y": {
-			"shortcuts": "Keyboard shortcuts: Ctrl+R to refresh, Ctrl+1-5 to navigate sections, Escape to clear errors",
+			"shortcuts": "Keyboard shortcuts: {mod}+R to refresh, {mod}+1-4 to navigate sections, Escape to clear errors",
 			"keyNumbers": "Key numbers, last {n} day | Key numbers, last {n} days",
 			"loadedAnnouncement": "Dashboard loaded successfully",
 			"failedAnnouncement": "Dashboard failed to load",

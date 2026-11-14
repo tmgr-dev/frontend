@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "Actions du tableau de bord",
 		"a11y": {
-			"shortcuts": "Raccourcis clavier : Ctrl+R pour actualiser, Ctrl+1-5 pour naviguer entre les sections, Échap pour effacer les erreurs",
+			"shortcuts": "Raccourcis clavier : {mod}+R pour actualiser, {mod}+1-4 pour naviguer entre les sections, Échap pour effacer les erreurs",
 			"keyNumbers": "Chiffres clés, {n} dernier jour | Chiffres clés, {n} derniers jours",
 			"loadedAnnouncement": "Tableau de bord chargé avec succès",
 			"failedAnnouncement": "Échec du chargement du tableau de bord",

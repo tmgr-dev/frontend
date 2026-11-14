@@ -42,7 +42,7 @@
 	},
 	"commandPalette": {
 		"description": "Find tasks, pages, places and workspaces",
-		"placeholder": "Ask or search anything…",
+		"placeholder": "Search tasks, pages and places…",
 		"searching": "Searching…",
 		"failed": "Search failed",
 		"empty": "Nothing found",

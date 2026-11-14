@@ -296,7 +296,7 @@
 				break;
 			case 'last_month':
 				const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-				const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+				const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
 				from = lastMonth.toISOString();
 				to = lastMonthEnd.toISOString();
 				break;

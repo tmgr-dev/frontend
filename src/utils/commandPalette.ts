@@ -134,7 +134,9 @@ export const navTargets = (code: string, flags: NavFlags): NavTarget[] =>
 		},
 		flags.routines && {
 			key: 'routines',
-			label: flags.localRoutines ? 'Local routines' : 'Daily Routines',
+			label: flags.localRoutines
+				? t('general.helpers.navTargets.localRoutines')
+				: t('general.helpers.navTargets.dailyRoutines'),
 			to: '/routines',
 		},
 		{

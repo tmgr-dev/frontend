@@ -3,6 +3,8 @@
 	import store from '@/store';
 	import { toggleDay } from '@/utils/dashboard/activityDayFilter';
 	import { dashboardStatisticTarget, taskTarget } from '@/utils/dashboardLinks';
+	import { isTaskActivity, modifierLabel } from '@/utils/dashboardHelpers';
+	import { desktopPlatform } from '@/utils/desktop';
 	import type { Component } from 'vue';
 	import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -685,7 +687,7 @@
 	};
 
 	const handleActivityClick = (activity: Activity) => {
-		if (activity.subject_type === 'Task') openTask(activity.subject_id);
+		if (isTaskActivity(activity.subject_type)) openTask(activity.subject_id);
 	};
 
 	const handleTaskClick = (taskId: number) => {
@@ -818,6 +820,7 @@
 					break;
 				case '1':
 					event.preventDefault();
+					event.stopPropagation();
 					// Focus on statistics section
 					document
 						.querySelector<HTMLElement>(
@@ -827,6 +830,7 @@
 					break;
 				case '2':
 					event.preventDefault();
+					event.stopPropagation();
 					// Focus on heatmap section
 					document
 						.querySelector<HTMLElement>('[aria-labelledby="heatmap-heading"]')
@@ -834,6 +838,7 @@
 					break;
 				case '3':
 					event.preventDefault();
+					event.stopPropagation();
 					// Focus on activity feed
 					document
 						.querySelector<HTMLElement>('[aria-labelledby="activity-heading"]')
@@ -841,6 +846,7 @@
 					break;
 				case '4':
 					event.preventDefault();
+					event.stopPropagation();
 					// Focus on team activity
 					document
 						.querySelector<HTMLElement>(
@@ -1045,7 +1051,11 @@
 						>
 							<!-- Keyboard shortcuts help -->
 							<div class="sr-only" aria-live="polite">
-								{{ $t('board.dashboardPage.a11y.shortcuts') }}
+								{{
+									$t('board.dashboardPage.a11y.shortcuts', {
+										mod: modifierLabel(desktopPlatform() === 'macos'),
+									})
+								}}
 							</div>
 
 							<!-- Error State -->
@@ -1181,11 +1191,17 @@
 									<TeamActivityWidget
 										:team-activity="teamActivity"
 										:loading="loadingStates.teamActivity.isLoading"
+										:error="loadingStates.teamActivity.error"
 										:window="teamActivityWindow"
 										@refresh="() => refreshSection('teamActivity')"
 										@member-click="handleMemberClick"
 										@task-click="handleTaskClick"
-										@invite-members="() => router.push('/settings/workspaces')"
+										@invite-members="
+											router.push({
+												path: '/settings/workspaces',
+												query: { invite: '1' },
+											})
+										"
 										@window-change="setTeamActivityWindow"
 										:aria-describedby="
 											loadingStates.teamActivity.isLoading
