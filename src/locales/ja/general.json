@@ -292,7 +292,9 @@
 	"timeCounter": {
 		"tracked": "記録した時間",
 		"running": "実行中",
-		"overTime": "超過"
+		"overTime": "超過",
+		"startTimer": "タイマーを開始",
+		"stopTimer": "タイマーを停止"
 	},
 	"helpers": {
 		"openTaskLink": {

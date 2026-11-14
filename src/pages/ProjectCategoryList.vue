@@ -18,6 +18,16 @@
 	import MobilePagination from '@/components/general/MobilePagination.vue';
 	import Select from '@/components/general/Select.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
+	import {
+		AlertDialog,
+		AlertDialogAction,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -97,6 +107,7 @@
 		busy: false,
 	});
 	const transferTargets = ref([]);
+	const deleteDialog = ref({ open: false, category: null });
 
 	// Add categories pagination state
 	const categoriesPagination = ref({
@@ -304,6 +315,10 @@
 		} finally {
 			if (current()) categoriesPending.value = false;
 		}
+	};
+
+	const askDeleteCategory = (category) => {
+		deleteDialog.value = { open: true, category };
 	};
 
 	const deleteCategory = async (category) => {
@@ -655,7 +670,7 @@
 
 											<DropdownMenuItem
 												v-if="category.deleted_at === null"
-												@click="deleteCategory(category)"
+												@click="askDeleteCategory(category)"
 											>
 												<Trash2Icon />
 												<span>{{ $t('common.actions.delete') }}</span>
@@ -676,6 +691,32 @@
 							</div>
 						</div>
 					</div>
+
+					<AlertDialog v-model:open="deleteDialog.open">
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>{{
+									$t('board.categories.pane.deleteDialog.title', {
+										title: deleteDialog.category?.title ?? '',
+									})
+								}}</AlertDialogTitle>
+								<AlertDialogDescription>
+									{{ $t('board.categories.pane.deleteDialog.description') }}
+								</AlertDialogDescription>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>{{
+									$t('common.actions.cancel')
+								}}</AlertDialogCancel>
+								<AlertDialogAction
+									class="bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
+									@click="deleteCategory(deleteDialog.category)"
+								>
+									{{ $t('common.actions.delete') }}
+								</AlertDialogAction>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
 
 					<Dialog v-model:open="transferDialog.open">
 						<DialogContent class="sm:max-w-[425px]">

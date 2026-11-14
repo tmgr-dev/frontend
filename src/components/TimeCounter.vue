@@ -25,7 +25,6 @@
 
 	const isTimerActive = ref(false);
 	const lastStartTime = ref<Time>({ hours: 0, minutes: 0 });
-	const isShowModalTimer = ref(false);
 	const task = reactive<Task>({} as Task);
 	const timer = reactive({ hours: 0, minutes: 0, seconds: 0 });
 
@@ -109,7 +108,11 @@
 						: 'bg-status-done text-white'
 					: 'bg-brand text-on-accent'
 			"
-			:title="isTimerActive ? 'Stop timer' : 'Start timer'"
+			:title="
+				isTimerActive
+					? $t('general.timeCounter.stopTimer')
+					: $t('general.timeCounter.startTimer')
+			"
 		>
 			<Pause v-if="isTimerActive" class="h-5 w-5 fill-current" />
 			<Play v-else class="h-5 w-5 fill-current" />
@@ -146,7 +149,6 @@
 					isTimeOver && 'text-status-fix-fg',
 					!isTimerActive && !isTimeOver && 'text-ink',
 				]"
-				@dblclick="isShowModalTimer = true"
 			>
 				<span>{{ timer.hours }}</span>
 				<span>:</span>

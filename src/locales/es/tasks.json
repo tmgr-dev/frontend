@@ -83,13 +83,10 @@
 		"pomodoros": "pomodoro | pomodoros",
 		"autoStart": "Iniciar automáticamente el siguiente intervalo",
 		"autoStartHint": "Omite el botón de reproducir entre enfoque y descanso",
-		"pauseTracking": "Pausar el tiempo registrado durante el descanso",
-		"pauseTrackingHint": "Detiene el reloj mientras descansas",
 		"notifications": "Notificaciones",
 		"notify": {
 			"silent": "Silencio",
-			"system": "Sistema",
-			"both": "Ambas"
+			"sound": "Sonido"
 		},
 		"sound": "Sonido de fin de intervalo",
 		"sounds": {
@@ -227,6 +224,7 @@
 		"previous": "Anterior",
 		"next": "Siguiente",
 		"page": "Página {page} de {last}",
+		"deleteTaskTitle": "Eliminar tarea",
 		"deleteTasksTitle": "Eliminar tareas",
 		"deleteTasksBody": "¿Seguro?"
 	},

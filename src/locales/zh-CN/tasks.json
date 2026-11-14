@@ -83,13 +83,10 @@
 		"pomodoros": "个番茄钟",
 		"autoStart": "自动开始下一阶段",
 		"autoStartHint": "专注与休息之间无需点击播放",
-		"pauseTracking": "休息时暂停计时",
-		"pauseTrackingHint": "休息期间停止真实时间的计算",
 		"notifications": "通知",
 		"notify": {
 			"silent": "静音",
-			"system": "系统",
-			"both": "两者"
+			"sound": "声音"
 		},
 		"sound": "阶段结束提示音",
 		"sounds": {
@@ -227,6 +224,7 @@
 		"previous": "上一页",
 		"next": "下一页",
 		"page": "第 {page} 页，共 {last} 页",
+		"deleteTaskTitle": "删除任务",
 		"deleteTasksTitle": "删除任务",
 		"deleteTasksBody": "确定吗？"
 	},

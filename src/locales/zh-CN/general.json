@@ -292,7 +292,9 @@
 	"timeCounter": {
 		"tracked": "已记录时间",
 		"running": "运行中",
-		"overTime": "已超时"
+		"overTime": "已超时",
+		"startTimer": "开始计时",
+		"stopTimer": "停止计时"
 	},
 	"helpers": {
 		"openTaskLink": {

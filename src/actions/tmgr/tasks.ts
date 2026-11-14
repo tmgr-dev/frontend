@@ -473,7 +473,7 @@ interface ExportSettings {
 
 export const exportTasks = async (
 	exportType: exportType,
-	params: { ids: number[]; per_hour: number } & ExportSettings,
+	params: { ids: number[]; per_hour?: number } & ExportSettings,
 ) => {
 	const { data } = await $axios.get(
 		`exports/tasks/${exportType}?${objectToQueryString(params)}`,

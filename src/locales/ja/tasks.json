@@ -83,13 +83,10 @@
 		"pomodoros": "ポモドーロ",
 		"autoStart": "次の区間を自動で開始",
 		"autoStartHint": "集中と休憩の間の再生ボタンを省略します",
-		"pauseTracking": "休憩中は記録時間を一時停止",
-		"pauseTrackingHint": "休んでいる間は実時間の計測を止めます",
 		"notifications": "通知",
 		"notify": {
 			"silent": "なし",
-			"system": "システム",
-			"both": "両方"
+			"sound": "サウンド"
 		},
 		"sound": "区間終了時のサウンド",
 		"sounds": {
@@ -227,6 +224,7 @@
 		"previous": "前へ",
 		"next": "次へ",
 		"page": "{page} / {last} ページ",
+		"deleteTaskTitle": "タスクを削除",
 		"deleteTasksTitle": "タスクを削除",
 		"deleteTasksBody": "よろしいですか？"
 	},

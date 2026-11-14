@@ -83,13 +83,10 @@
 		"pomodoros": "pomodoro | pomodoros",
 		"autoStart": "Auto-start next interval",
 		"autoStartHint": "Skip the play button between focus and break",
-		"pauseTracking": "Pause Time Tracked during break",
-		"pauseTrackingHint": "Stop the wall-clock while you rest",
 		"notifications": "Notifications",
 		"notify": {
 			"silent": "Silent",
-			"system": "System",
-			"both": "Both"
+			"sound": "Sound"
 		},
 		"sound": "End-of-interval sound",
 		"sounds": {
@@ -227,6 +224,7 @@
 		"previous": "Previous",
 		"next": "Next",
 		"page": "Page {page} of {last}",
+		"deleteTaskTitle": "Delete task",
 		"deleteTasksTitle": "Delete tasks",
 		"deleteTasksBody": "Are you sure?"
 	},

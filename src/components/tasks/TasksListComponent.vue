@@ -1401,7 +1401,6 @@
 				try {
 					const data = await exportTasks(exportType, {
 						ids: tasksIds,
-						per_hour: 1000,
 						...settings,
 					});
 

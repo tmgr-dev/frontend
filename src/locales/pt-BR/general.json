@@ -292,7 +292,9 @@
 	"timeCounter": {
 		"tracked": "Tempo registrado",
 		"running": "Em andamento",
-		"overTime": "Tempo excedido"
+		"overTime": "Tempo excedido",
+		"startTimer": "Iniciar cronômetro",
+		"stopTimer": "Parar cronômetro"
 	},
 	"helpers": {
 		"openTaskLink": {

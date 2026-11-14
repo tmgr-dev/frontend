@@ -83,13 +83,10 @@
 		"pomodoros": "뽀모도로",
 		"autoStart": "다음 구간 자동 시작",
 		"autoStartHint": "집중과 휴식 사이에 재생 버튼을 건너뛰어요",
-		"pauseTracking": "휴식 중 추적 시간 일시 중지",
-		"pauseTrackingHint": "쉬는 동안 경과 시간 측정을 멈춰요",
 		"notifications": "알림",
 		"notify": {
 			"silent": "무음",
-			"system": "시스템",
-			"both": "둘 다"
+			"sound": "소리"
 		},
 		"sound": "구간 종료 소리",
 		"sounds": {
@@ -227,6 +224,7 @@
 		"previous": "이전",
 		"next": "다음",
 		"page": "{page}/{last} 페이지",
+		"deleteTaskTitle": "작업 삭제",
 		"deleteTasksTitle": "작업 삭제",
 		"deleteTasksBody": "정말 삭제할까요?"
 	},

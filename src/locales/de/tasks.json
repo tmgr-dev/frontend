@@ -83,13 +83,10 @@
 		"pomodoros": "Pomodoro | Pomodoros",
 		"autoStart": "Nächstes Intervall automatisch starten",
 		"autoStartHint": "Die Play-Taste zwischen Fokus und Pause überspringen",
-		"pauseTracking": "Zeiterfassung in der Pause anhalten",
-		"pauseTrackingHint": "Die Uhr stoppen, während du dich erholst",
 		"notifications": "Benachrichtigungen",
 		"notify": {
 			"silent": "Lautlos",
-			"system": "System",
-			"both": "Beides"
+			"sound": "Ton"
 		},
 		"sound": "Ton am Intervallende",
 		"sounds": {
@@ -227,6 +224,7 @@
 		"previous": "Zurück",
 		"next": "Weiter",
 		"page": "Seite {page} von {last}",
+		"deleteTaskTitle": "Aufgabe löschen",
 		"deleteTasksTitle": "Aufgaben löschen",
 		"deleteTasksBody": "Bist du sicher?"
 	},

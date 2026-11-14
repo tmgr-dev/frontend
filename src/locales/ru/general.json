@@ -292,7 +292,9 @@
 	"timeCounter": {
 		"tracked": "Учтённое время",
 		"running": "Идёт",
-		"overTime": "Сверх времени"
+		"overTime": "Сверх времени",
+		"startTimer": "Запустить таймер",
+		"stopTimer": "Остановить таймер"
 	},
 	"helpers": {
 		"openTaskLink": {

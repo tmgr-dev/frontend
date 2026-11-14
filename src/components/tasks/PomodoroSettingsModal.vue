@@ -78,13 +78,6 @@
 					:model-value="draft.autoStart"
 					@update:model-value="set('autoStart', $event)"
 				/>
-				<div class="h-px bg-line" />
-				<RowToggle
-					:title="$t('tasks.pomodoroSettings.pauseTracking')"
-					:subtitle="$t('tasks.pomodoroSettings.pauseTrackingHint')"
-					:model-value="draft.pauseTrackingOnBreak"
-					@update:model-value="set('pauseTrackingOnBreak', $event)"
-				/>
 			</div>
 
 			<div class="mb-3.5">
@@ -92,7 +85,7 @@
 					$t('tasks.pomodoroSettings.notifications')
 				}}</SettingLabel>
 				<div
-					class="grid grid-cols-3 gap-1 rounded-[10px] border border-line bg-surface-sunken p-1"
+					class="grid grid-cols-2 gap-1 rounded-[10px] border border-line bg-surface-sunken p-1"
 				>
 					<button
 						v-for="opt in notifyOptions"
@@ -100,7 +93,7 @@
 						type="button"
 						class="flex items-center justify-center gap-1.5 rounded-[7px] py-2.5 text-xs font-medium transition"
 						:class="
-							draft.notify === opt.value
+							(draft.notify === 'silent') === (opt.value === 'silent')
 								? 'bg-surface text-ink'
 								: 'text-ink-muted hover:bg-surface-hover'
 						"
@@ -190,7 +183,7 @@
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import { t } from '@/i18n';
 	import { playPomodoroSound } from '@/utils/pomodoroSound';
-	import { Bell, Eye, Minus, Plus, Volume2, VolumeX, X } from 'lucide-vue-next';
+	import { Eye, Minus, Plus, Volume2, VolumeX, X } from 'lucide-vue-next';
 	import {
 		defineComponent,
 		h,
@@ -499,13 +492,8 @@
 						icon: Eye,
 					},
 					{
-						value: 'system' as const,
-						labelKey: 'tasks.pomodoroSettings.notify.system',
-						icon: Bell,
-					},
-					{
-						value: 'both' as const,
-						labelKey: 'tasks.pomodoroSettings.notify.both',
+						value: 'sound' as const,
+						labelKey: 'tasks.pomodoroSettings.notify.sound',
 						icon: Volume2,
 					},
 				],
