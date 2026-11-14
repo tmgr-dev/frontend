@@ -25,13 +25,14 @@ import {
 	SHARED_SKILL_LIMIT,
 	sharedSkillDeleteConfirm,
 	sortPersonasNewestFirst,
+	togglePermissionList,
 	validatePersonaName,
 	validateSkillMarkdown,
 	validateTokenLabel,
 } from '../personas';
 
 describe('DEFAULT_GRANT_PERMISSIONS', () => {
-	it('is every read permission plus comments:write and agent_work:write', () => {
+	it('is every read permission plus comments:write, agent_work:write and memory:write', () => {
 		expect(DEFAULT_GRANT_PERMISSIONS.sort()).toEqual(
 			[
 				'tasks:read',
@@ -43,6 +44,8 @@ describe('DEFAULT_GRANT_PERMISSIONS', () => {
 				'agent_work:read',
 				'comments:write',
 				'agent_work:write',
+				'memory:read',
+				'memory:write',
 			].sort(),
 		);
 	});
@@ -548,5 +551,30 @@ describe('convert to shared helpers', () => {
 		expect(convertSuccessTitle(3)).toBe(
 			'Converted to a shared skill and replaced on 3 personas',
 		);
+	});
+});
+
+describe('memory permissions', () => {
+	it('are listed, memory:read is a read and survives read_only', () => {
+		expect(PERSONA_PERMISSIONS).toEqual(
+			expect.arrayContaining(['memory:read', 'memory:write']),
+		);
+		expect(isReadPermission('memory:read')).toBe(true);
+		expect(isReadPermission('memory:write')).toBe(false);
+		expect(
+			effectivePermissions(['memory:read', 'memory:write'], 'read_only', false),
+		).toEqual(['memory:read']);
+	});
+
+	it('saving an existing grant keeps memory:read when another permission toggles', () => {
+		const grant = ['tasks:read', 'memory:read'];
+		expect(togglePermissionList(grant, 'comments:write', true)).toEqual([
+			'tasks:read',
+			'memory:read',
+			'comments:write',
+		]);
+		expect(togglePermissionList(grant, 'tasks:read', false)).toEqual([
+			'memory:read',
+		]);
 	});
 });

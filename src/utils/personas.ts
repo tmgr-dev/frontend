@@ -15,6 +15,8 @@ export const PERSONA_PERMISSIONS = [
 	'agent_work:write',
 	'pages:read',
 	'pages:write',
+	'memory:read',
+	'memory:write',
 ] as const;
 
 export type PersonaPermission = (typeof PERSONA_PERMISSIONS)[number];
@@ -29,6 +31,7 @@ const READ_PERMISSIONS: ReadonlySet<string> = new Set<PersonaPermission>([
 	'relations:read',
 	'agent_work:read',
 	'pages:read',
+	'memory:read',
 ]);
 
 export const isReadPermission = (permission: string): boolean =>
@@ -40,7 +43,17 @@ export const DEFAULT_GRANT_PERMISSIONS: PersonaPermission[] = [
 	),
 	'comments:write',
 	'agent_work:write',
+	'memory:write',
 ];
+
+export const togglePermissionList = (
+	current: string[],
+	permission: string,
+	checked: boolean,
+): string[] =>
+	checked
+		? [...current.filter((p) => p !== permission), permission]
+		: current.filter((p) => p !== permission);
 
 export type PersonaPolicy = 'allowed' | 'read_only' | 'forbidden';
 

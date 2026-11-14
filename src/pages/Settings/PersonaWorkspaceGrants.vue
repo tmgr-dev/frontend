@@ -113,6 +113,7 @@
 	import {
 		DEFAULT_GRANT_PERMISSIONS,
 		PERSONA_PERMISSIONS,
+		togglePermissionList,
 	} from '@/utils/personas';
 	import {
 		computed,
@@ -211,9 +212,11 @@
 			) => {
 				const current = grantFor(workspaceId);
 				if (!current) return;
-				const permissions = checked
-					? [...current.permissions, permission]
-					: current.permissions.filter((p) => p !== permission);
+				const permissions = togglePermissionList(
+					current.permissions,
+					permission,
+					checked,
+				);
 				saving[workspaceId] = true;
 				try {
 					grantsByWorkspace[workspaceId] = await upsertWorkspaceGrant(
