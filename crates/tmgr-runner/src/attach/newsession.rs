@@ -255,7 +255,6 @@ pub struct NewSession {
     pub browse_dir: fn(&Path) -> Vec<String>,
     pub folders: Option<FolderData>,
     picker: Option<Picker>,
-    pick_fits: Cell<bool>,
     marks: HashMap<String, Option<FolderMark>>,
     mark_reqs: Vec<String>,
 }
@@ -444,33 +443,43 @@ impl NewSession {
         f
     }
 
-    fn sync_picker(&mut self) {
-        if self.focus != NewField::Folder {
-            self.picker = None;
-        } else if self.picker.is_none() && self.folders.is_some() {
-            self.picker = Some(Picker::new());
+    fn open_picker(&mut self) {
+        if self.picker.is_some() {
+            return;
+        }
+        let mut p = Picker::new();
+        if self.folders.is_none() {
+            p.saved = self.folder.clone();
+            p.mode = folder_pick::Mode::Path;
+        }
+        self.focus = NewField::Folder;
+        self.picker = Some(p);
+    }
+
+    fn close_picker(&mut self) {
+        if let Some(p) = self.picker.take() {
+            if p.mode == folder_pick::Mode::Path {
+                self.folder = p.saved;
+            }
+        }
+    }
+
+    fn picked(&mut self) {
+        self.picker = None;
+        let fields = self.fields();
+        let at = fields.iter().position(|f| *f == NewField::Folder);
+        if let Some(next) = at.and_then(|i| fields.get(i + 1)) {
+            self.focus = *next;
         }
     }
 
     fn picker_live(&self) -> bool {
-        self.pick_fits.get()
-            && self.focus == NewField::Folder
-            && self.picker.as_ref().is_some_and(Picker::live)
-    }
-
-    fn pick_h(&self) -> usize {
-        if self.pick_fits.get() && self.picker_live() {
-            usize::from(PICK_H)
-        } else {
-            0
-        }
+        self.picker.as_ref().is_some_and(Picker::live)
     }
 
     fn pick(&mut self, k: PKey, pins: &mut Option<Vec<String>>) {
-        match self.pick_key(k) {
-            Act::Fall => self.step(k == PKey::Down),
-            Act::Pins(p) => *pins = Some(p),
-            _ => {}
+        if let Act::Pins(p) = self.pick_key(k) {
+            *pins = Some(p);
         }
     }
 
@@ -513,7 +522,7 @@ impl NewSession {
         match self.focus {
             NewField::Task => Some((&mut self.task, MAX_TASK)),
             NewField::Command => Some((&mut self.command, MAX_COMMAND)),
-            NewField::Folder => Some((&mut self.folder, MAX_FOLDER)),
+            NewField::Folder if self.picker.is_some() => Some((&mut self.folder, MAX_FOLDER)),
             NewField::Name => Some((&mut self.name, MAX_NAME)),
             _ => None,
         }
@@ -534,7 +543,6 @@ impl NewSession {
         let n = fields.len();
         let next = if down { (at + 1) % n } else { (at + n - 1) % n };
         self.focus = fields[next];
-        self.sync_picker();
     }
 
     fn cycle(&mut self, forward: bool) {
@@ -643,13 +651,6 @@ impl NewSession {
             Ok(req) => Ok(req),
             Err((field, msg)) => {
                 self.focus = field;
-                self.sync_picker();
-                if field == NewField::Folder {
-                    if let Some(p) = self.picker.as_mut() {
-                        p.saved = self.folder.clone();
-                        p.mode = folder_pick::Mode::Path;
-                    }
-                }
                 self.error = Some(msg.to_string());
                 self.error_hint = None;
                 Err(())
@@ -834,9 +835,9 @@ fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
 
 fn footer(ns: &NewSession) -> &'static str {
     if ns.task.trim().is_empty() {
-        "Enter starts, Ctrl+R resumes a past session, Esc cancels, Tab/Shift+Tab next/prev field"
+        "Enter starts, ^O folder, Ctrl+R resumes a past session, Esc cancels, Tab/Shift+Tab next/prev field"
     } else {
-        "Enter shows the run to confirm, Esc cancels, Tab/Shift+Tab next/prev field"
+        "Enter shows the run to confirm, ^O folder, Esc cancels, Tab/Shift+Tab next/prev field"
     }
 }
 
@@ -890,20 +891,11 @@ fn review_wrapped(lines: &[String], width: u16) -> Vec<String> {
 
 pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
     let n = notes(ns, area.width);
-    let plain = ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + n.help_h() + 5;
-    ns.pick_fits
-        .set(plain + usize::from(PICK_H) <= usize::from(area.height) && area.width >= 30);
     let body = match (&ns.review, &ns.priv_prompt) {
         (Some(lines), _) => review_wrapped(lines, area.width).len() + 4,
         (None, Some(p)) => prompt_lines(p, area.width).len() + 4,
         (None, None) => {
-            ns.fields().len()
-                + ns.pick_h()
-                + n.remembered.len()
-                + n.error_h()
-                + n.hint_h()
-                + n.help_h()
-                + 5
+            ns.fields().len() + n.remembered.len() + n.error_h() + n.hint_h() + n.help_h() + 5
         }
     };
     dialog_rect(area, body)
@@ -932,12 +924,9 @@ fn field_rows(ns: &NewSession, inner: Rect) -> Vec<(NewField, Rect)> {
         .into_iter()
         .zip(0u16..)
         .map(|(f, k)| {
-            let after =
-                ns.fields().iter().position(|x| *x == NewField::Folder) < Some(usize::from(k));
-            let shift = if after { ns.pick_h() as u16 } else { 0 };
             (
                 f,
-                Rect::new(inner.x, inner.y.saturating_add(k + shift), inner.width, 1),
+                Rect::new(inner.x, inner.y.saturating_add(k), inner.width, 1),
             )
         })
         .filter(|(_, r)| r.y < inner.bottom())
@@ -1101,24 +1090,6 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     let rows = field_rows(ns, inner);
-    if let (true, Some(p), Some(data)) = (ns.picker_live(), ns.picker.as_ref(), ns.folders.as_ref())
-    {
-        if let Some((_, frow)) = rows.iter().find(|(f, _)| *f == NewField::Folder) {
-            let area = Rect::new(frow.x + 2, frow.y + 1, frow.width.saturating_sub(2), PICK_H);
-            let area = area.intersection(inner);
-            folder_pick::draw(
-                buf,
-                area,
-                p,
-                &DrawCtx {
-                    data,
-                    marks: &ns.marks,
-                    home: &ns.home,
-                    now: now_ms(),
-                },
-            );
-        }
-    }
     for (f, row) in &rows {
         let focused = *f == ns.focus;
         let marker = if focused { "> " } else { "  " };
@@ -1213,7 +1184,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             }
         }
     }
-    let base = u16::try_from(ns.fields().len() + ns.pick_h()).unwrap_or(u16::MAX);
+    let base = u16::try_from(ns.fields().len()).unwrap_or(u16::MAX);
     let line = |k: usize| {
         inner
             .y
@@ -1259,6 +1230,67 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             put(buf, inner.x, line(help_at + i), text, dim(), inner.width);
         }
     }
+    draw_modal(buf, area, ns);
+}
+
+fn modal_rect(area: Rect) -> Rect {
+    Rect::new(area.x, area.y, area.width, (PICK_H + 2).min(area.height))
+}
+
+fn draw_modal(buf: &mut Buffer, area: Rect, ns: &NewSession) {
+    let Some(p) = ns.picker.as_ref() else {
+        return;
+    };
+    let rect = modal_rect(area);
+    if rect.height < PICK_H + 2 || rect.width < 24 {
+        return;
+    }
+    Clear.render(rect, buf);
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Folder ")
+        .render(rect, buf);
+    let inner = rect.inner(Margin::new(1, 1));
+    if let (true, Some(data)) = (p.live(), ns.folders.as_ref()) {
+        folder_pick::draw(
+            buf,
+            inner,
+            p,
+            &DrawCtx {
+                data,
+                marks: &ns.marks,
+                home: &ns.home,
+                now: now_ms(),
+            },
+        );
+        return;
+    }
+    put(
+        buf,
+        inner.x,
+        inner.y,
+        "Path",
+        Style::new().add_modifier(Modifier::BOLD),
+        inner.width,
+    );
+    let text = strip_control(&ns.folder);
+    let tail = query_tail(&text, usize::from(inner.width).saturating_sub(3));
+    put(
+        buf,
+        inner.x,
+        inner.y + 1,
+        &format!("> {tail}"),
+        Style::new(),
+        inner.width,
+    );
+    put(
+        buf,
+        inner.x,
+        inner.y + PICK_H - 1,
+        "Tab completes  Enter picks  Esc back",
+        dim(),
+        inner.width,
+    );
 }
 
 fn draw_typed(buf: &mut Buffer, inner: Rect, p: &TypedPrompt, area_width: u16, hint: &str) {
@@ -1346,17 +1378,27 @@ pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u1
     if let Some(p) = &ns.priv_prompt {
         return Some(typed_cursor(p, inner, area.width));
     }
+    if let Some(p) = ns.picker.as_ref() {
+        let m = modal_rect(area).inner(Margin::new(1, 1));
+        if m.is_empty() {
+            return None;
+        }
+        let max_x = m.right().saturating_sub(1);
+        return match p.mode {
+            folder_pick::Mode::Search => {
+                let x = m.x + 8 + strip_control(&p.query).width() as u16;
+                Some((x.min(max_x), m.y))
+            }
+            folder_pick::Mode::Path => {
+                let x = m.x + 2 + strip_control(&ns.folder).width() as u16;
+                Some((x.min(max_x), m.y + 1))
+            }
+            _ => None,
+        };
+    }
     let (_, row) = field_rows(ns, inner)
         .into_iter()
         .find(|(f, _)| *f == ns.focus)?;
-    if let Some(p) = ns
-        .picker
-        .as_ref()
-        .filter(|p| ns.picker_live() && p.mode == folder_pick::Mode::Search)
-    {
-        let x = row.x + 2 + 8 + strip_control(&p.query).width() as u16;
-        return Some((x.min(row.right().saturating_sub(1)), row.y + 1));
-    }
     let text = strip_control(field_text(ns, ns.focus)?);
     let avail = value_avail(row);
     let w = query_tail(&text, avail.saturating_sub(1)).width();
@@ -1406,10 +1448,12 @@ impl ViewState {
             browse_dir: folder_pick::browse_dirs,
             folders: self.new_folders.clone(),
             picker: None,
-            pick_fits: Cell::new(true),
             marks: HashMap::new(),
             mark_reqs: Vec::new(),
         });
+        if let Some(ns) = self.new_session.as_mut().filter(|n| n.folder.is_empty()) {
+            ns.open_picker();
+        }
     }
 
     pub fn apply_remembered(&mut self, r: &Remembered) {
@@ -1547,7 +1591,13 @@ impl ViewState {
         }
         self.new_folders = Some(data.clone());
         if let Some(ns) = self.new_session.as_mut() {
+            let waiting = ns.folders.is_none();
             ns.folders = Some(data);
+            if let Some(p) = ns.picker.as_mut().filter(|_| waiting) {
+                if p.mode == folder_pick::Mode::Path && p.saved.is_empty() && ns.folder.is_empty() {
+                    p.mode = folder_pick::Mode::Recent;
+                }
+            }
         }
     }
 
@@ -1585,12 +1635,12 @@ impl ViewState {
             return self.edit_priv_prompt(data);
         }
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
-            if ns
-                .picker
-                .as_ref()
-                .is_some_and(|p| p.mode != folder_pick::Mode::Recent)
-            {
-                ns.pick_key(PKey::Esc);
+            if let Some(p) = ns.picker.as_ref() {
+                if p.mode != folder_pick::Mode::Recent && ns.folders.is_some() {
+                    ns.pick_key(PKey::Esc);
+                } else {
+                    ns.close_picker();
+                }
                 return NewEdit::Editing;
             }
             self.new_session = None;
@@ -1610,23 +1660,21 @@ impl ViewState {
                     match key {
                         Key::Up if ns.picker_live() => ns.pick(PKey::Up, &mut pins),
                         Key::Down if ns.picker_live() => ns.pick(PKey::Down, &mut pins),
+                        Key::Up | Key::Down if ns.picker.is_some() => {}
                         Key::Up => ns.step(false),
                         Key::Down => ns.step(true),
-                        Key::Other => match seq {
+                        Key::Other if ns.picker.is_some() => match seq {
                             b"\x1b[C" | b"\x1bOC" if ns.picker_live() => {
                                 ns.pick(PKey::Right, &mut pins)
                             }
                             b"\x1b[D" | b"\x1bOD" if ns.picker_live() => {
                                 ns.pick(PKey::Left, &mut pins)
                             }
-                            b"\x1b"
-                                if ns
-                                    .picker
-                                    .as_ref()
-                                    .is_some_and(|p| p.mode != folder_pick::Mode::Recent) =>
-                            {
-                                ns.pick(PKey::Esc, &mut pins)
-                            }
+                            b"\x1b" if ns.folders.is_some() => ns.pick(PKey::Esc, &mut pins),
+                            b"\x1b" => ns.close_picker(),
+                            _ => {}
+                        },
+                        Key::Other => match seq {
                             b"\x1b[C" | b"\x1bOC" => ns.cycle(true),
                             b"\x1b[D" | b"\x1bOD" => ns.cycle(false),
                             b"\x1b[Z" => ns.step(false),
@@ -1636,13 +1684,29 @@ impl ViewState {
                 }
                 b'\t' => {
                     i += 1;
-                    if ns.focus != NewField::Folder || ns.picker_live() || !ns.complete_folder() {
-                        ns.step(true);
+                    match ns.picker.as_ref().map(|p| p.mode) {
+                        Some(folder_pick::Mode::Path) => {
+                            ns.complete_folder();
+                        }
+                        Some(_) => {}
+                        None => ns.step(true),
                     }
                 }
                 b'\r' | b'\n' => {
                     i += 1;
-                    if ns.picker_live() && ns.pick_key(PKey::Enter) != Act::Submit {
+                    if ns.picker.is_some() {
+                        let act = if ns.folders.is_some() {
+                            ns.pick_key(PKey::Enter)
+                        } else {
+                            Act::Submit
+                        };
+                        if act == Act::Submit {
+                            ns.picked();
+                        }
+                        continue;
+                    }
+                    if ns.focus == NewField::Folder {
+                        ns.open_picker();
                         continue;
                     }
                     if let Some(req) = ns.try_submit() {
@@ -1676,6 +1740,10 @@ impl ViewState {
                         s.clear();
                         ns.clear_error();
                     }
+                }
+                0x0f => {
+                    i += 1;
+                    ns.open_picker();
                 }
                 0x12 => return NewEdit::ResumePast,
                 _ => {
@@ -1806,6 +1874,9 @@ impl ViewState {
             return out;
         }
         out.redraw = true;
+        if ns.picker.is_some() {
+            return out;
+        }
         let rect = new_session_rect(area, ns);
         if !contains(rect, ev.col, ev.row) {
             self.new_session = None;
@@ -1822,7 +1893,6 @@ impl ViewState {
             return out;
         };
         ns.focus = field;
-        ns.sync_picker();
         let x = value_x(row);
         let avail = value_avail(row);
         match field {
@@ -1873,6 +1943,7 @@ impl ViewState {
                     });
                 }
             }
+            NewField::Folder => ns.open_picker(),
             _ => {}
         }
         out
@@ -1947,6 +2018,7 @@ mod tests {
     }
 
     fn submit_err(v: &mut ViewState) -> String {
+        ns(v).focus = NewField::Start;
         assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
         v.new_session.as_ref().unwrap().error.clone().unwrap()
     }
@@ -2103,6 +2175,7 @@ mod tests {
         let file = h.path().join("f");
         std::fs::write(&file, "x").unwrap();
         let mut v = open("", h.path());
+        v.edit_new_session(b"\x1b");
         assert_eq!(submit_err(&mut v), "folder is required");
         assert_eq!(ns(&mut v).focus, NewField::Folder);
         ns(&mut v).folder = "relative/dir".into();
@@ -2272,7 +2345,7 @@ mod tests {
     fn typing_editing_caps_and_error_reset() {
         let h = tmp();
         let mut v = open("", h.path());
-        submit_err(&mut v);
+        ns(&mut v).error = Some("x".into());
         v.edit_new_session("é\u{7f}ab".as_bytes());
         assert_eq!(ns(&mut v).folder, "ab");
         assert!(ns(&mut v).error.is_none());
@@ -2299,7 +2372,7 @@ mod tests {
         let mut v = open("~", h.path());
         v.edit_new_session(b"\x1b[B\x1b[B\x1bOAx");
         assert_eq!(ns(&mut v).focus, NewField::Folder);
-        assert_eq!(ns(&mut v).folder, "~x");
+        assert_eq!(ns(&mut v).folder, "~");
         let mut v = open("~", h.path());
         v.edit_new_session(b"\x1bOA");
         assert_eq!(ns(&mut v).folder, "~");
@@ -2332,9 +2405,12 @@ mod tests {
         ]
     }
 
-    fn tab_in_folder(v: &mut ViewState, folder: &str) {
+    fn path_modal(v: &mut ViewState, folder: &str) {
         ns(v).folder = folder.into();
         ns(v).focus = NewField::Folder;
+        let mut p = Picker::new();
+        p.mode = folder_pick::Mode::Path;
+        ns(v).picker = Some(p);
         v.edit_new_session(b"\t");
     }
 
@@ -2343,35 +2419,32 @@ mod tests {
         let h = tmp();
         let mut v = open("/r/b", h.path());
         ns(&mut v).list_dir = fake_dirs;
-        tab_in_folder(&mut v, "/r/b");
+        path_modal(&mut v, "/r/b");
         assert_eq!(ns(&mut v).folder, "/r/beta/");
         assert_eq!(ns(&mut v).focus, NewField::Folder);
-        tab_in_folder(&mut v, "/r/a");
+        path_modal(&mut v, "/r/a");
         assert_eq!(ns(&mut v).folder, "/r/alp");
-        assert_eq!(ns(&mut v).focus, NewField::Folder);
-        tab_in_folder(&mut v, "/r/.h");
+        path_modal(&mut v, "/r/.h");
         assert_eq!(ns(&mut v).folder, "/r/.hidden/");
-        tab_in_folder(&mut v, "/r/x");
+        path_modal(&mut v, "/r/x");
         assert_eq!(ns(&mut v).folder, "/r/xy/");
-        tab_in_folder(&mut v, "~");
+        path_modal(&mut v, "~");
         assert_eq!(ns(&mut v).folder, "~/");
         assert_eq!(ns(&mut v).focus, NewField::Folder);
+        assert!(ns(&mut v).picker.is_some());
     }
 
     #[test]
-    fn tab_moves_on_when_completion_changes_nothing() {
+    fn tab_in_path_mode_with_nothing_to_complete_stays_put() {
         let h = tmp();
         let mut v = open("/r", h.path());
         ns(&mut v).list_dir = fake_dirs;
-        tab_in_folder(&mut v, "/r/zz");
-        assert_eq!(ns(&mut v).folder, "/r/zz");
-        assert_eq!(ns(&mut v).focus, NewField::Task);
-        tab_in_folder(&mut v, "/r/alp");
-        assert_eq!(ns(&mut v).focus, NewField::Task);
-        tab_in_folder(&mut v, "relative");
-        assert_eq!(ns(&mut v).focus, NewField::Task);
-        tab_in_folder(&mut v, "");
-        assert_eq!(ns(&mut v).focus, NewField::Task);
+        for f in ["/r/zz", "/r/alp", "relative", ""] {
+            path_modal(&mut v, f);
+            assert_eq!(ns(&mut v).folder, f);
+            assert_eq!(ns(&mut v).focus, NewField::Folder);
+            assert!(ns(&mut v).picker.is_some());
+        }
     }
 
     #[test]
@@ -2380,8 +2453,7 @@ mod tests {
         std::fs::create_dir(h.path().join("projects")).unwrap();
         std::fs::write(h.path().join("pfile"), "x").unwrap();
         let mut v = open("~/p", h.path());
-        ns(&mut v).focus = NewField::Folder;
-        v.edit_new_session(b"\t");
+        path_modal(&mut v, "~/p");
         assert_eq!(ns(&mut v).folder, "~/projects/");
     }
 
@@ -2400,6 +2472,9 @@ mod tests {
         let folder = row_of(&mut v, NewField::Folder);
         click(&mut v, folder.x + 15, folder.y);
         assert_eq!(ns(&mut v).focus, NewField::Folder);
+        assert!(ns(&mut v).picker.is_some());
+        v.edit_new_session(b"\x1b");
+        assert!(ns(&mut v).picker.is_none());
         let wh = row_of(&mut v, NewField::Where);
         let (labels, sel) = option_labels(v.new_session.as_ref().unwrap(), NewField::Where);
         let (_, off, _) = option_spans(&labels, sel, value_avail(wh))[2];
@@ -2419,6 +2494,7 @@ mod tests {
     fn mouse_start_with_error_stays_and_outside_cancels() {
         let h = tmp();
         let mut v = open("", h.path());
+        v.edit_new_session(b"\x1b");
         let start = row_of(&mut v, NewField::Start);
         let out = click(&mut v, value_x(start) + 1, start.y);
         assert_eq!(out.new_edit, Some(NewEdit::Editing));
@@ -2455,7 +2531,7 @@ mod tests {
             "Where",
             "Right",
             "[ Start ]",
-            "Enter starts, Ctrl+R resumes a past session, Esc cancels",
+            "Ctrl+R resumes a past session, Esc cancels",
         ] {
             assert!(s.contains(want), "missing {want}\n{s}");
         }
@@ -2517,7 +2593,7 @@ mod tests {
         assert!(n.hint.len() >= 2 && n.hint.len() <= 3);
         assert_eq!(n.hint.join(" "), long_hint());
         let s = draw(&v, 100, 30);
-        assert!(s.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"));
+        assert!(s.contains("Ctrl+R resumes a past session, Esc cancels"));
         for l in &n.hint {
             assert!(s.contains(l.as_str()), "missing {l}\n{s}");
         }
@@ -2547,6 +2623,7 @@ mod tests {
         let folder = row_of(&mut v, NewField::Folder);
         click(&mut v, folder.x + 15, folder.y);
         assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b");
         let start = row_of(&mut v, NewField::Start);
         let out = click(&mut v, value_x(start) + 2, start.y);
         assert!(matches!(out.new_edit, Some(NewEdit::Submit(_))) || v.new_session.is_some());
@@ -3373,7 +3450,7 @@ mod tests {
         let shown = draw(&v, 100, 30);
         assert!(shown.contains("Bypass is on, remembered from your last session"));
         assert!(shown.contains("folder is required"));
-        assert!(shown.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"));
+        assert!(shown.contains("Ctrl+R resumes a past session, Esc cancels"));
     }
 
     #[test]
@@ -3568,7 +3645,7 @@ mod tests {
         let v = open("/", h.path());
         let shown = draw(&v, 100, 30);
         assert!(
-            shown.contains("Enter starts, Ctrl+R resumes a past session, Esc cancels"),
+            shown.contains("Ctrl+R resumes a past session, Esc cancels"),
             "{shown}"
         );
     }
@@ -3731,7 +3808,7 @@ mod tests {
         let height = |w| new_session_rect(Rect::new(0, 0, w, 40), ns).height;
         let wide = height(100);
         assert!(draw(&v, 100, 40).contains("Ctrl+R resumes a past session, Esc cancels"));
-        assert_eq!(height(50), wide);
+        assert_eq!(height(50), wide + 1);
         assert_eq!(height(40), wide + 1);
         for w in [50, 40] {
             let shown = draw(&v, w, 40);
@@ -3757,7 +3834,7 @@ mod tests {
         h.join(name).to_string_lossy().into_owned()
     }
 
-    fn picking(h: &Path) -> ViewState {
+    fn form(h: &Path) -> ViewState {
         for n in ["alpha", "beta", "gamma"] {
             std::fs::create_dir(h.join(n)).unwrap();
         }
@@ -3771,7 +3848,12 @@ mod tests {
             ],
             pins: Vec::new(),
         });
-        v.edit_new_session(b"\t");
+        v
+    }
+
+    fn picking(h: &Path) -> ViewState {
+        let mut v = form(h);
+        v.edit_new_session(b"\x0f");
         v
     }
 
@@ -3785,74 +3867,143 @@ mod tests {
     }
 
     #[test]
-    fn tab_in_the_live_picker_moves_to_the_next_field_and_keeps_the_folder() {
+    fn ctrl_o_opens_the_modal_from_any_field() {
         let h = tmp();
-        let mut v = picking(h.path());
-        let only = h.path().join("only");
-        std::fs::create_dir(&only).unwrap();
-        for n in ["alpha", "beta", "gamma"] {
-            std::fs::remove_dir(h.path().join(n)).unwrap();
+        let mut v = form(h.path());
+        assert!(ns_of(&v).picker.is_none());
+        for f in [
+            NewField::Kind,
+            NewField::Name,
+            NewField::Where,
+            NewField::Start,
+        ] {
+            ns(&mut v).focus = f;
+            assert_eq!(v.edit_new_session(b"\x0f"), NewEdit::Editing);
+            assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
+            ns(&mut v).picker = None;
         }
-        ns(&mut v).folder = format!("{}/", h.path().display());
-        assert!(ns_of(&v).picker_live());
-        let before = ns_of(&v).folder.clone();
-        v.edit_new_session(b"\t");
-        assert_ne!(ns_of(&v).focus, NewField::Folder);
-        assert_eq!(ns_of(&v).folder, before);
-        v.edit_new_session(b"\x1b[Z");
-        assert_eq!(ns_of(&v).focus, NewField::Folder);
     }
 
     #[test]
-    fn tab_into_the_folder_field_opens_the_picker_on_recent() {
+    fn enter_on_the_folder_field_opens_the_modal_instead_of_submitting() {
         let h = tmp();
-        let v = picking(h.path());
-        assert!(ns_of(&v).picker_live());
-        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
-        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        let mut v = form(h.path());
+        ns(&mut v).focus = NewField::Folder;
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns_of(&v).picker.is_some());
+        assert!(v.new_session.is_some());
     }
 
     #[test]
-    fn down_enter_starts_in_the_second_recent_folder() {
+    fn enter_on_another_field_still_submits() {
+        let h = tmp();
+        let mut v = form(h.path());
+        ns(&mut v).focus = NewField::Name;
+        assert!(matches!(v.edit_new_session(b"\r"), NewEdit::Submit(_)));
+    }
+
+    #[test]
+    fn enter_picks_closes_and_moves_focus_to_the_task_field() {
         let h = tmp();
         let mut v = picking(h.path());
         assert_eq!(v.edit_new_session(b"\x1b[B"), NewEdit::Editing);
-        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
-            panic!("expected submit");
-        };
-        assert_eq!(req.folder, at(h.path(), "alpha"));
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert!(ns_of(&v).picker.is_none());
+        assert_eq!(ns_of(&v).folder, at(h.path(), "alpha"));
+        assert_eq!(ns_of(&v).focus, NewField::Task);
+    }
+
+    #[test]
+    fn enter_for_a_shell_moves_focus_to_the_name_field() {
+        let h = tmp();
+        let mut v = form(h.path());
+        ns(&mut v).kind = 2;
+        v.edit_new_session(b"\x0f\r");
+        assert_eq!(ns_of(&v).focus, NewField::Name);
     }
 
     #[test]
     fn enter_without_moving_keeps_the_default_folder() {
         let h = tmp();
         let mut v = picking(h.path());
-        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
-            panic!("expected submit");
-        };
-        assert_eq!(req.folder, h.path().to_string_lossy());
+        v.edit_new_session(b"\r");
+        assert_eq!(ns_of(&v).folder, h.path().to_string_lossy());
+        assert_eq!(ns_of(&v).focus, NewField::Task);
     }
 
     #[test]
-    fn typing_letters_searches_and_enter_starts_at_the_top_match() {
+    fn esc_closes_the_modal_and_keeps_the_old_folder() {
         let h = tmp();
         let mut v = picking(h.path());
-        assert_eq!(v.edit_new_session(b"g"), NewEdit::Editing);
-        assert_eq!(v.edit_new_session(b"am"), NewEdit::Editing);
-        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Search);
-        assert_eq!(picker_of(&v).query, "gam");
-        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
-            panic!("expected submit");
-        };
-        assert_eq!(req.folder, at(h.path(), "gamma"));
+        v.edit_new_session(b"\x1b[B");
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Editing);
+        assert!(ns_of(&v).picker.is_none());
+        assert!(v.new_session.is_some());
+        assert_eq!(ns_of(&v).folder, h.path().to_string_lossy());
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Cancel);
     }
 
     #[test]
-    fn slash_enters_path_mode_where_tab_completes_and_esc_restores_the_folder() {
+    fn tab_on_the_form_never_changes_the_folder() {
+        let h = tmp();
+        let mut v = form(h.path());
+        ns(&mut v).list_dir = fake_dirs;
+        ns(&mut v).folder = "/r/b".into();
+        ns(&mut v).focus = NewField::Folder;
+        v.edit_new_session(b"\t");
+        assert_eq!(ns_of(&v).folder, "/r/b");
+        assert_eq!(ns_of(&v).focus, NewField::Task);
+        v.edit_new_session(b"\x1b[Z");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(b"\x1b[B");
+        v.edit_new_session(b"\x1b[A");
+        assert_eq!(ns_of(&v).folder, "/r/b");
+    }
+
+    #[test]
+    fn typing_in_the_folder_field_without_the_modal_changes_nothing() {
+        let h = tmp();
+        let mut v = form(h.path());
+        ns(&mut v).focus = NewField::Folder;
+        let before = ns_of(&v).folder.clone();
+        v.edit_new_session(b"xyz\x7f\x15");
+        assert_eq!(ns_of(&v).folder, before);
+        assert!(ns_of(&v).picker.is_none());
+    }
+
+    #[test]
+    fn arrows_on_the_form_move_between_fields_only() {
+        let h = tmp();
+        let mut v = form(h.path());
+        ns(&mut v).focus = NewField::Folder;
+        v.edit_new_session(b"\x1b[B");
+        assert_eq!(ns_of(&v).focus, NewField::Task);
+        assert!(ns_of(&v).picker.is_none());
+        v.edit_new_session(b"\x1b[A");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        assert!(ns_of(&v).picker.is_none());
+    }
+
+    #[test]
+    fn up_and_down_stay_inside_the_modal_at_the_edges() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"\x1b[A");
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        v.edit_new_session(&b"\x1b[B".repeat(5));
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        assert!(ns_of(&v).picker.is_some());
+    }
+
+    #[test]
+    fn tab_in_the_modal_never_leaves_it_and_only_completes_in_path_mode() {
         let h = tmp();
         let mut v = picking(h.path());
         ns(&mut v).list_dir = fake_dirs;
         let before = ns_of(&v).folder.clone();
+        v.edit_new_session(b"\t\x1b[Z");
+        assert!(ns_of(&v).picker.is_some());
+        assert_eq!(ns_of(&v).folder, before);
         v.edit_new_session(b"/");
         assert_eq!(picker_of(&v).mode, folder_pick::Mode::Path);
         assert_eq!(ns_of(&v).folder, "/");
@@ -3860,18 +4011,46 @@ mod tests {
         assert_eq!(ns_of(&v).folder, "/r/b");
         v.edit_new_session(b"\t");
         assert_eq!(ns_of(&v).folder, "/r/beta/");
+        assert!(ns_of(&v).picker.is_some());
         assert_eq!(ns_of(&v).focus, NewField::Folder);
+    }
+
+    #[test]
+    fn esc_in_path_mode_restores_the_folder_then_esc_closes() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        let before = ns_of(&v).folder.clone();
+        v.edit_new_session(b"/abc");
         v.edit_new_session(b"\x1b");
         assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
+        assert_eq!(ns_of(&v).folder, before);
+        v.edit_new_session(b"\x1b");
+        assert!(ns_of(&v).picker.is_none());
         assert_eq!(ns_of(&v).folder, before);
     }
 
     #[test]
-    fn esc_in_recent_cancels_the_dialog() {
+    fn enter_in_path_mode_keeps_the_typed_path_and_moves_on() {
         let h = tmp();
         let mut v = picking(h.path());
-        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Cancel);
-        assert!(v.new_session.is_none());
+        v.edit_new_session(b"/tmp");
+        v.edit_new_session(b"\r");
+        assert!(ns_of(&v).picker.is_none());
+        assert_eq!(ns_of(&v).folder, "/tmp");
+        assert_eq!(ns_of(&v).focus, NewField::Task);
+    }
+
+    #[test]
+    fn typing_letters_searches_and_enter_picks_the_top_match() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        assert_eq!(v.edit_new_session(b"g"), NewEdit::Editing);
+        assert_eq!(v.edit_new_session(b"am"), NewEdit::Editing);
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Search);
+        assert_eq!(picker_of(&v).query, "gam");
+        v.edit_new_session(b"\r");
+        assert_eq!(ns_of(&v).folder, at(h.path(), "gamma"));
+        assert_eq!(ns_of(&v).focus, NewField::Task);
     }
 
     #[test]
@@ -3891,17 +4070,6 @@ mod tests {
     }
 
     #[test]
-    fn down_at_the_bottom_moves_focus_to_the_next_field() {
-        let h = tmp();
-        let mut v = picking(h.path());
-        v.edit_new_session(b"\x1b[B\x1b[B");
-        assert_eq!(ns_of(&v).focus, NewField::Folder);
-        v.edit_new_session(b"\x1b[B");
-        assert_eq!(ns_of(&v).focus, NewField::Task);
-        assert!(ns_of(&v).picker.is_none());
-    }
-
-    #[test]
     fn ctrl_p_pins_the_highlighted_folder_and_returns_the_list() {
         let h = tmp();
         let mut v = picking(h.path());
@@ -3914,25 +4082,51 @@ mod tests {
     }
 
     #[test]
-    fn reopen_clears_the_picker_so_typing_edits_the_folder_text() {
+    fn reopen_closes_the_modal() {
         let h = tmp();
         let mut v = picking(h.path());
-        let before = ns_of(&v).folder.clone();
         let dialog = v.new_session.take().unwrap();
         v.reopen_new_session(dialog);
         assert!(ns_of(&v).picker.is_none());
-        v.edit_new_session(b"x");
-        assert_eq!(ns_of(&v).folder, format!("{before}x"));
     }
 
     #[test]
-    fn a_bypass_request_from_the_picker_still_asks_for_the_word() {
+    fn the_modal_opens_by_itself_when_there_is_no_default_folder() {
         let h = tmp();
-        let mut v = picking(h.path());
-        flip(&mut v, NewField::Bypass);
-        v.edit_new_session(&b"\x1b[Z".repeat(5));
+        let v = open("", h.path());
+        assert!(ns_of(&v).picker.is_some());
         assert_eq!(ns_of(&v).focus, NewField::Folder);
+        let h = tmp();
+        let v = form(h.path());
+        assert!(ns_of(&v).picker.is_none());
+    }
+
+    #[test]
+    fn the_auto_opened_modal_shows_recent_once_the_data_arrives() {
+        let h = tmp();
+        std::fs::create_dir(h.path().join("alpha")).unwrap();
+        let mut v = open("", h.path());
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Path);
+        v.set_new_folders(FolderData {
+            recents: vec![rec(&at(h.path(), "alpha"), 1, false)],
+            pins: Vec::new(),
+        });
+        assert_eq!(picker_of(&v).mode, folder_pick::Mode::Recent);
         v.edit_new_session(b"\x1b[B");
+        v.edit_new_session(b"\x1b");
+        assert!(ns_of(&v).picker.is_none());
+        assert_eq!(ns_of(&v).folder, "");
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Cancel);
+    }
+
+    #[test]
+    fn a_bypass_request_still_asks_for_the_word_after_the_modal() {
+        let h = tmp();
+        let mut v = form(h.path());
+        flip(&mut v, NewField::Bypass);
+        v.edit_new_session(b"\x0f\x1b[B\r");
+        assert_eq!(ns_of(&v).focus, NewField::Task);
+        ns(&mut v).focus = NewField::Start;
         assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
         assert!(ns(&mut v).priv_prompt_open());
         let NewEdit::Submit(req) = keys(&mut v, "bypass\r") else {
@@ -3943,15 +4137,74 @@ mod tests {
     }
 
     #[test]
-    fn paste_into_the_picker_searches_and_enter_starts_at_the_match() {
+    fn ctrl_o_is_ignored_during_the_review_and_the_privilege_prompt() {
+        let h = tmp();
+        let mut v = form(h.path());
+        ns(&mut v).review = Some(vec!["x".into()]);
+        v.edit_new_session(b"\x0f");
+        assert!(ns_of(&v).picker.is_none());
+        ns(&mut v).review = None;
+        flip(&mut v, NewField::Bypass);
+        ns(&mut v).focus = NewField::Start;
+        v.edit_new_session(b"\r");
+        assert!(ns(&mut v).priv_prompt_open());
+        v.edit_new_session(b"\x0f");
+        assert!(ns_of(&v).picker.is_none());
+    }
+
+    #[test]
+    fn paste_into_the_modal_searches_and_enter_picks_the_match() {
         let h = tmp();
         let mut v = picking(h.path());
         v.insert_new_session_text(b"gam");
         assert_eq!(picker_of(&v).mode, folder_pick::Mode::Search);
-        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
-            panic!("expected submit");
-        };
-        assert_eq!(req.folder, at(h.path(), "gamma"));
+        v.edit_new_session(b"\r");
+        assert_eq!(ns_of(&v).folder, at(h.path(), "gamma"));
+    }
+
+    #[test]
+    fn paste_on_the_form_does_not_touch_the_folder() {
+        let h = tmp();
+        let mut v = form(h.path());
+        ns(&mut v).focus = NewField::Folder;
+        v.insert_new_session_text(b"/etc");
+        assert_eq!(ns_of(&v).folder, h.path().to_string_lossy());
+    }
+
+    #[test]
+    fn a_click_on_the_folder_row_opens_the_modal() {
+        let h = tmp();
+        let mut v = form(h.path());
+        let row = row_of(&mut v, NewField::Folder);
+        click(&mut v, row.x + 20, row.y);
+        assert!(ns_of(&v).picker.is_some());
+    }
+
+    #[test]
+    fn a_click_while_the_modal_is_open_keeps_the_dialog() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        click(&mut v, 0, AREA.height - 1);
+        assert!(v.new_session.is_some());
+        assert!(ns_of(&v).picker.is_some());
+    }
+
+    #[test]
+    fn the_form_footer_names_ctrl_o() {
+        let h = tmp();
+        let v = form(h.path());
+        assert!(draw(&v, 120, 40).contains("^O folder"));
+        assert!(draw(&v, 40, 40).contains("^O folder"));
+    }
+
+    #[test]
+    fn the_form_shows_only_the_chosen_path_while_the_modal_is_closed() {
+        let h = tmp();
+        let v = form(h.path());
+        let shown = draw(&v, AREA.width, AREA.height);
+        assert!(shown.contains("Folder"));
+        assert!(!shown.contains("Recent"), "{shown}");
+        assert!(!shown.contains("type to search"), "{shown}");
     }
 
     #[test]
@@ -3979,6 +4232,33 @@ mod tests {
         assert!(shown.contains("git:feat/x ●dirty"), "{shown}");
     }
 
+    #[test]
+    fn the_modal_cursor_follows_search_and_path_input() {
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"ab");
+        let ns = ns_of(&v);
+        let (x, y) = new_session_cursor(ns, AREA).unwrap();
+        assert_eq!(y, AREA.y + 1);
+        assert_eq!(x, AREA.x + 1 + 8 + 2);
+        let h = tmp();
+        let mut v = picking(h.path());
+        v.edit_new_session(b"/ab");
+        let (x, y) = new_session_cursor(ns_of(&v), AREA).unwrap();
+        assert_eq!(y, AREA.y + 2);
+        assert_eq!(x, AREA.x + 1 + 2 + 3);
+    }
+
+    #[test]
+    fn a_tiny_screen_with_the_modal_never_panics() {
+        let h = tmp();
+        let v = picking(h.path());
+        for (w, hh) in [(1, 1), (10, 5), (25, 8), (30, 9), (60, 3)] {
+            draw(&v, w, hh);
+            new_session_cursor(ns_of(&v), Rect::new(0, 0, w, hh));
+        }
+    }
+
     fn picker_view(folder: &str) -> ViewState {
         let mut v = open(folder, Path::new("/work/home"));
         ns(&mut v).browse_dir = fake_browse;
@@ -3991,7 +4271,7 @@ mod tests {
             ],
             pins: vec!["/work/infra".into()],
         });
-        v.edit_new_session(b"\t");
+        v.edit_new_session(b"\x0f");
         v
     }
 
@@ -4028,6 +4308,16 @@ mod tests {
         v.edit_new_session(b"ap");
         snapshot(
             "new_session_picker_search",
+            &draw(&v, AREA.width, AREA.height),
+        );
+    }
+
+    #[test]
+    fn snapshot_picker_path() {
+        let mut v = picker_view("/work/app");
+        v.edit_new_session(b"~/co");
+        snapshot(
+            "new_session_picker_path",
             &draw(&v, AREA.width, AREA.height),
         );
     }
