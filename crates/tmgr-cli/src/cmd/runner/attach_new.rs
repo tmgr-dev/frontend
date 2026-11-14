@@ -798,10 +798,10 @@ mod tests {
         assert_eq!(route(&view, &paste), Route::Dialog);
         assert_eq!(route(&view, &Action::Drop(b"/tmp".to_vec())), Route::Dialog);
         assert_eq!(route(&view, &Action::Forward(b"a".to_vec())), Route::Dialog);
-        view.new_session.as_mut().unwrap().focus = tmgr_runner::attach::NewField::Folder;
+        view.new_session.as_mut().unwrap().focus = tmgr_runner::attach::NewField::Name;
         view.insert_new_session_text(b"\x1b[200~ab\rcd\x1b[201~");
         assert!(view.new_session.is_some());
-        assert_eq!(view.new_session.as_ref().unwrap().folder, "/abcd");
+        assert_eq!(view.new_session.as_ref().unwrap().name, "abcd");
     }
 
     #[test]
@@ -986,7 +986,7 @@ mod tests {
     fn dialog_paste_lands_in_the_focused_field_without_submitting() {
         let mut view = ViewState::new(vec![row("a")], "t");
         open(&mut view);
-        view.new_session.as_mut().unwrap().focus = tmgr_runner::attach::NewField::Folder;
+        view.new_session.as_mut().unwrap().focus = tmgr_runner::attach::NewField::Name;
         let paste = Action::Paste {
             data: b"\x1b[200~x\r\x1b[201~".to_vec(),
             start: true,
@@ -995,7 +995,7 @@ mod tests {
         assert_eq!(route(&view, &paste), Route::Dialog);
         view.insert_new_session_text(b"\x1b[200~ab\rcd\x1b[201~");
         let ns = view.new_session.as_ref().unwrap();
-        assert_eq!(ns.folder, "/abcd");
+        assert_eq!(ns.name, "abcd");
     }
 
     fn task_req(kind: SpawnKind, task: &str) -> NewRequest {

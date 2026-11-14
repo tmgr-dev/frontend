@@ -1,0 +1,30 @@
+╭ Folder ──────────────────────────────────────────────────────────────────────────────────────────╮
+│Path                                                                                              │
+│> ~/co                                                                                            │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│Tab completes  Enter picks  Esc back                                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+              │   Name                                                               │              
+              │   Worktree   Off   On                                                │              
+              │   Approvals  Off   On                                                │              
+              │   Bypass     Off   On                                                │              
+              │   No sandbox Off   On                                                │              
+              │   Where      New tab   Right   Below   Replace                       │              
+              │   Rewind     Off   On                                                │              
+              │             [ Start ]                                                │              
+              │                                                                      │              
+              │                                                                      │              
+              │                                                                      │              
+              │ Enter starts, ^O folder, Ctrl+R resumes a past session, Esc cancels, │              
+              │ Tab/Shift+Tab next/prev field                                        │              
+              │                                                                      │              
+              │                                                                      │              
+              ╰──────────────────────────────────────────────────────────────────────╯              
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
