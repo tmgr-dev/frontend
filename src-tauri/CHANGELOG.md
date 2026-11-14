@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.152 — 2026-11-14
+
+- Fixed: All pages no longer shows Loading forever in a local workspace. If the page list cannot be loaded it now shows an error with Retry.
+
 ## 0.9.151 — 2026-11-14
 
 - Local workspaces now keep a history of task status changes, made from the app, `tmgr` or MCP tools. The day summary uses it to say which tasks moved from one status to another today, and lists tasks that only changed status. Existing workspaces are upgraded on open without losing data; update `tmgr` to 1.0.119 as well.
