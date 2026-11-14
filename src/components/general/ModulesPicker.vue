@@ -37,8 +37,10 @@
 							class="flex items-center justify-between gap-3 py-2"
 						>
 							<div class="min-w-0">
-								<p class="text-sm text-ink">{{ module.name }}</p>
-								<p class="text-xs text-ink-subtle">{{ module.description }}</p>
+								<p class="text-sm text-ink">{{ moduleName(module) }}</p>
+								<p class="text-xs text-ink-subtle">
+									{{ moduleDescription(module) }}
+								</p>
 							</div>
 							<Switch
 								:checked="custom[module.key]"
@@ -87,6 +89,8 @@
 		dismissPicker,
 		groupModules,
 		isPickerDismissed,
+		moduleDescription,
+		moduleName,
 		payloadNotices,
 		shouldShowPicker,
 	} from '@/utils/modules';

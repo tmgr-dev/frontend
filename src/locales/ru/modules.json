@@ -1,0 +1,116 @@
+{
+	"items": {
+		"categories": {
+			"name": "Проекты",
+			"description": "Проекты с номерами задач"
+		},
+		"board": {
+			"name": "Доска",
+			"description": "Канбан-доска"
+		},
+		"task_countdown": {
+			"name": "Таймер",
+			"description": "Запускайте и останавливайте таймер на любой задаче"
+		},
+		"task_comments": {
+			"name": "Комментарии",
+			"description": "Комментарии и реакции"
+		},
+		"task_assignees": {
+			"name": "Исполнители",
+			"description": "Назначайте задачи участникам"
+		},
+		"dashboard": {
+			"name": "Дашборд",
+			"description": "Обзор сегодняшнего дня и недели"
+		},
+		"pomodoro": {
+			"name": "Pomodoro",
+			"description": "Циклы фокуса 25/5 на любой задаче"
+		},
+		"exports": {
+			"name": "Отчёты и экспорт",
+			"description": "Отчёты по времени и CSV"
+		},
+		"session_time": {
+			"name": "Время сессий → задача",
+			"description": "Добавляет ваше активное время в терминальных сессиях tmgr attach к привязанной задаче"
+		},
+		"workflow": {
+			"name": "Рабочий процесс",
+			"description": "Свои статусы, выбор статуса и колонки доски"
+		},
+		"task_checkpoints": {
+			"name": "Контрольные точки",
+			"description": "Чек-лист внутри задачи"
+		},
+		"task_relations": {
+			"name": "Связи",
+			"description": "Связи между задачами (блокирует, связана с)"
+		},
+		"daily_routines": {
+			"name": "Рутины",
+			"description": "Ежедневные и повторяющиеся рутины"
+		},
+		"task_files": {
+			"name": "Вложения и файлы",
+			"description": "Вложения к задачам и экран «Файлы»"
+		},
+		"pages": {
+			"name": "Страницы",
+			"description": "Wiki в Markdown, связанная с задачами"
+		},
+		"graph": {
+			"name": "Граф",
+			"description": "Карта задач, страниц и агентов"
+		},
+		"ai_assistant": {
+			"name": "ИИ-ассистент",
+			"description": "Чат и ответы ИИ на комментарии (тратит кредиты ИИ)"
+		},
+		"agent_work": {
+			"name": "Работа агента",
+			"description": "Что сделали агенты и сколько это заняло"
+		},
+		"personas": {
+			"name": "Персоны",
+			"description": "ИИ-коллеги со своими токенами и навыками"
+		},
+		"cursor": {
+			"name": "Агенты Cursor",
+			"description": "Запуск облачных агентов Cursor из задачи"
+		},
+		"github": {
+			"name": "GitHub",
+			"description": "GitHub App: репозитории, PR и issues"
+		},
+		"telegram": {
+			"name": "Telegram-бот",
+			"description": "Создавайте и получайте задачи в Telegram"
+		},
+		"import": {
+			"name": "Импорт",
+			"description": "Импорт задач из других инструментов"
+		},
+		"notifications_push": {
+			"name": "Push-уведомления",
+			"description": "Push-уведомления на ваши устройства"
+		},
+		"notifications_email": {
+			"name": "Email-уведомления",
+			"description": "Уведомления по email"
+		},
+		"mcp": {
+			"name": "MCP и API-токены",
+			"description": "Позвольте Claude Code, Codex и другим агентам работать с TMGR"
+		},
+		"alerts": {
+			"name": "Оповещения и будильники агентов",
+			"description": "Агенты могут присылать вам пуши и звонить (tmgr-notify, будильники)"
+		},
+		"promotions": {
+			"name": "Ещё от автора",
+			"description": "Другие приложения автора TMGR в разделах «О приложении» и «Что нового»"
+		}
+	}
+}

@@ -348,6 +348,8 @@
 		canApplyPreset,
 		hiddenBadge,
 		hideButtonLabel,
+		moduleDescription,
+		moduleName,
 		payloadFromLegacy,
 		payloadNotices,
 		workflowOffConfirm,
@@ -404,8 +406,8 @@
 			.filter((m) => m.core && m.scope !== 'user')
 			.map((m) => ({
 				key: m.key,
-				name: m.name || humanizeKey(m.key),
-				description: m.description || '',
+				name: moduleName(m),
+				description: moduleDescription(m),
 				hidden: m.hidden === true,
 			})),
 	);

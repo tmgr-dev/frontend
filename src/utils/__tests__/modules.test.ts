@@ -1,3 +1,6 @@
+import { setLocale } from '@/i18n';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
 	buildChoiceRequest,
 	buildModulesView,
@@ -9,6 +12,8 @@ import {
 	hiddenBadge,
 	hideButtonLabel,
 	isEntryVisible,
+	moduleDescription,
+	moduleName,
 	modulesToMap,
 	parseModulesPayload,
 	payloadFromLegacy,
@@ -700,5 +705,82 @@ describe('presetCard', () => {
 			title: 'Focus',
 			summary: '',
 		});
+	});
+});
+
+describe('module names and descriptions by key', () => {
+	afterEach(async () => {
+		await setLocale('en', { persist: false });
+	});
+
+	it('shows the Russian copy for a known key, dotted keys included', async () => {
+		await setLocale('ru', { persist: false });
+		expect(
+			moduleName({ key: 'session_time', name: 'Session time → task' }),
+		).toBe('Время сессий → задача');
+		expect(moduleName({ key: 'task.files', name: 'Attachments & files' })).toBe(
+			'Вложения и файлы',
+		);
+		expect(moduleDescription({ key: 'exports', description: 'x' })).toBe(
+			'Отчёты по времени и CSV',
+		);
+	});
+
+	it('shows English in English', () => {
+		expect(moduleName({ key: 'session_time', name: 'whatever' })).toBe(
+			'Session time → task',
+		);
+	});
+
+	it('falls back to the server name, then the humanized key, for an unknown module', async () => {
+		await setLocale('ru', { persist: false });
+		expect(moduleName({ key: 'brand_new', name: 'Brand new' })).toBe(
+			'Brand new',
+		);
+		expect(moduleName({ key: 'brand_new' })).toBe('Brand new');
+		expect(
+			moduleDescription({ key: 'brand_new', description: 'From server' }),
+		).toBe('From server');
+		expect(moduleDescription({ key: 'brand_new' })).toBe('');
+	});
+
+	it('keeps the server copy in a language without a catalog entry', async () => {
+		await setLocale('de', { persist: false });
+		expect(
+			moduleName({ key: 'session_time', name: 'Session time → task' }),
+		).toBe('Session time → task');
+	});
+
+	it('translates module names in the rows, dependency hints and preset diff', async () => {
+		await setLocale('ru', { persist: false });
+		const payload = parseModulesPayload(raw);
+		const view = buildModulesView(payload, true);
+		const rows = [...view.packs.flatMap((p) => p.rows), ...view.account];
+		for (const row of rows) {
+			const entry = payload.modules.find((m) => m.key === row.key)!;
+			expect(row.name).toBe(moduleName(entry));
+		}
+		const diff = presetDiff(
+			{ key: 'p', name: 'p', description: '', modules: ['dashboard'] },
+			[{ key: 'dashboard', name: 'Dashboard', enabled: false }],
+		);
+		expect(diff.on).toEqual(['Дашборд']);
+	});
+
+	it('has the same module keys with non-empty copy in the English and Russian catalogs', () => {
+		const read = (locale: string) =>
+			JSON.parse(
+				readFileSync(
+					join(__dirname, '..', '..', 'locales', locale, 'modules.json'),
+					'utf8',
+				),
+			).items as Record<string, { name: string; description: string }>;
+		const en = read('en');
+		const ru = read('ru');
+		expect(Object.keys(ru).sort()).toEqual(Object.keys(en).sort());
+		for (const copy of [...Object.values(en), ...Object.values(ru)]) {
+			expect(copy.name.trim()).not.toBe('');
+			expect(copy.description.trim()).not.toBe('');
+		}
 	});
 });

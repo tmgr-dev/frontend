@@ -1,0 +1,116 @@
+{
+	"items": {
+		"categories": {
+			"name": "Projects",
+			"description": "Projects with ticket numbers"
+		},
+		"board": {
+			"name": "Board",
+			"description": "Kanban board"
+		},
+		"task_countdown": {
+			"name": "Timer",
+			"description": "Start and stop a timer on any task"
+		},
+		"task_comments": {
+			"name": "Comments",
+			"description": "Comments and reactions"
+		},
+		"task_assignees": {
+			"name": "Assignees",
+			"description": "Assign tasks to members"
+		},
+		"dashboard": {
+			"name": "Dashboard",
+			"description": "Overview of today and the week"
+		},
+		"pomodoro": {
+			"name": "Pomodoro",
+			"description": "25/5 focus cycles on any task"
+		},
+		"exports": {
+			"name": "Reports & export",
+			"description": "Time reports and CSV"
+		},
+		"session_time": {
+			"name": "Session time → task",
+			"description": "Add your active time in tmgr attach terminal sessions to the bound task"
+		},
+		"workflow": {
+			"name": "Workflow",
+			"description": "Custom statuses, the status picker and board columns"
+		},
+		"task_checkpoints": {
+			"name": "Checkpoints",
+			"description": "Checklist inside a task"
+		},
+		"task_relations": {
+			"name": "Relations",
+			"description": "Links between tasks (blocks, relates to)"
+		},
+		"daily_routines": {
+			"name": "Routines",
+			"description": "Daily and recurring routines"
+		},
+		"task_files": {
+			"name": "Attachments & files",
+			"description": "Attachments on tasks and the Files screen"
+		},
+		"pages": {
+			"name": "Pages",
+			"description": "Markdown wiki linked to tasks"
+		},
+		"graph": {
+			"name": "Graph",
+			"description": "Map of tasks, pages and agents"
+		},
+		"ai_assistant": {
+			"name": "AI assistant",
+			"description": "Chat and AI replies to comments (uses AI credits)"
+		},
+		"agent_work": {
+			"name": "Agent work",
+			"description": "See what agents did and how long"
+		},
+		"personas": {
+			"name": "Personas",
+			"description": "AI teammates with their own tokens and skills"
+		},
+		"cursor": {
+			"name": "Cursor agents",
+			"description": "Launch Cursor cloud agents from a task"
+		},
+		"github": {
+			"name": "GitHub",
+			"description": "GitHub App: link repos, PRs and issues"
+		},
+		"telegram": {
+			"name": "Telegram bot",
+			"description": "Create and get tasks in Telegram"
+		},
+		"import": {
+			"name": "Import",
+			"description": "Import tasks from other tools"
+		},
+		"notifications_push": {
+			"name": "Push notifications",
+			"description": "Push notifications to your devices"
+		},
+		"notifications_email": {
+			"name": "Email notifications",
+			"description": "Email notifications"
+		},
+		"mcp": {
+			"name": "MCP & API tokens",
+			"description": "Let Claude Code, Codex and other agents use TMGR"
+		},
+		"alerts": {
+			"name": "Agent alerts & alarms",
+			"description": "Agents can push and ring you (tmgr-notify, alarms)"
+		},
+		"promotions": {
+			"name": "More from the maker",
+			"description": "Other apps by the TMGR maker in About and What's new"
+		}
+	}
+}
