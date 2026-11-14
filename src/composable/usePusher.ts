@@ -1,5 +1,9 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import type {
+	MemorySummarizeDoneEvent,
+	MemorySummarizeProgressEvent,
+} from '@/actions/tmgr/memory';
+import type {
 	AgentCompactedEvent,
 	AgentConfirmationEvent,
 	AgentReplyEvent,
@@ -622,6 +626,26 @@ export function usePusher(): UsePusherReturn {
 					sub.handlers.forEach((h) => h.onAgentStep?.(data));
 				}
 			});
+
+			channel.listen(
+				'.memory_summarize_progress',
+				(data: MemorySummarizeProgressEvent) => {
+					const sub = routed(channelName, data);
+					if (sub) {
+						sub.handlers.forEach((h) => h.onMemorySummarizeProgress?.(data));
+					}
+				},
+			);
+
+			channel.listen(
+				'.memory_summarize_done',
+				(data: MemorySummarizeDoneEvent) => {
+					const sub = routed(channelName, data);
+					if (sub) {
+						sub.handlers.forEach((h) => h.onMemorySummarizeDone?.(data));
+					}
+				},
+			);
 
 			channel.listen('.agent.reply', (data: AgentReplyEvent) => {
 				const sub = routed(channelName, data);

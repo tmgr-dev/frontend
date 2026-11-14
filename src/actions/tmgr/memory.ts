@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
 
@@ -43,6 +44,62 @@ export interface MemoryProposal {
 	task_id: number | null;
 	created_at: string;
 	entry_id: string | null;
+	kind: 'add' | 'replace' | 'delete';
+	target_entry_id: string | null;
+	target_text: string | null;
+	run_id: number | null;
+}
+
+export interface SummarizeParams {
+	mode: 'sources' | 'extend';
+	days?: number;
+	from?: string;
+	to?: string;
+	category_ids?: number[];
+	my_chats: boolean;
+	topic?: string;
+}
+
+export interface SummarizePreview {
+	tasks: number;
+	comments: number;
+	chats: number;
+	skipped: number;
+	estimated_tokens: number;
+	left_today: number;
+	run_cap: number;
+}
+
+export interface MemorySummarizeProgressEvent {
+	run_id: number;
+	stage: string;
+	done: number;
+	total: number;
+}
+
+export interface MemorySummarizeDoneEvent {
+	run_id: number;
+	status: SummarizeStatus;
+	cards: number;
+	skipped: number;
+	partial: boolean;
+}
+
+export type SummarizeStatus =
+	'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+
+export interface SummarizeRun {
+	id: number;
+	status: SummarizeStatus;
+	mode: 'sources' | 'extend';
+	stage: string | null;
+	progress_done: number;
+	progress_total: number;
+	tokens_used: number;
+	sources_skipped: number;
+	error: string | null;
+	created_at: string;
+	finished_at: string | null;
 }
 
 export type RejectResult =
@@ -181,5 +238,59 @@ export const undoAddedToMemory = async (
 	}
 };
 
-export const memoryErrorMessage = (error: any, fallback: string): string =>
-	error?.response?.data?.message || fallback;
+export const previewSummarize = (
+	workspaceId: number,
+	params: SummarizeParams,
+): Promise<SummarizePreview> =>
+	unwrap($axios.post(`${base(workspaceId)}/summarize/preview`, params));
+
+export const startSummarize = (
+	workspaceId: number,
+	params: SummarizeParams,
+): Promise<SummarizeRun> =>
+	mutate(workspaceId, $axios.post(`${base(workspaceId)}/summarize`, params));
+
+export const getCurrentSummarizeRun = (
+	workspaceId: number,
+): Promise<SummarizeRun | null> =>
+	unwrap($axios.get(`${base(workspaceId)}/summarize/runs/current`));
+
+export const cancelSummarizeRun = (
+	workspaceId: number,
+	runId: number,
+): Promise<SummarizeRun> =>
+	mutate(
+		workspaceId,
+		$axios.post(`${base(workspaceId)}/summarize/runs/${runId}/cancel`),
+	);
+
+export const discardSummarizeRun = (
+	workspaceId: number,
+	runId: number,
+): Promise<SummarizeRun> =>
+	mutate(
+		workspaceId,
+		$axios.post(`${base(workspaceId)}/summarize/runs/${runId}/discard`),
+	);
+
+export const getRunProposals = (
+	workspaceId: number,
+	runId: number,
+): Promise<MemoryProposal[]> =>
+	unwrap(
+		$axios.get(`${base(workspaceId)}/proposals`, { params: { run_id: runId } }),
+	);
+
+const errorMessageKeys: Record<string, string> = {
+	already_running: 'workspace.workspaceMemory.summarize.alreadyRunning',
+	daily_cap: 'workspace.workspaceMemory.summarize.dailyCap',
+	no_sources: 'workspace.workspaceMemory.summarize.noSources',
+	entry_changed: 'workspace.workspaceMemory.summarize.entryChanged',
+};
+
+export const memoryErrorMessage = (error: any, fallback: string): string => {
+	const data = error?.response?.data;
+	const key = errorMessageKeys[data?.error];
+	if (key) return t(key);
+	return data?.message || fallback;
+};
