@@ -185,6 +185,21 @@
 					/>
 				</details>
 
+				<details
+					v-if="canEdit(persona)"
+					class="border-t border-border pt-3"
+					@toggle="(e) => onMemoryToggle(persona, e)"
+				>
+					<summary class="cursor-pointer text-sm font-medium">
+						{{ $t('settingsPages.personaMemory.cardTitle') }}
+					</summary>
+					<PersonaMemory
+						v-if="memoryOpened[persona.id]"
+						:persona="persona"
+						class="mt-3"
+					/>
+				</details>
+
 				<details class="border-t border-border pt-3">
 					<summary
 						data-tour="personas.tokens"
@@ -299,8 +314,9 @@
 		personaScopeLabel,
 		sortPersonasNewestFirst,
 	} from '@/utils/personas';
-	import { computed, defineComponent, onMounted, ref } from 'vue';
+	import { computed, defineComponent, onMounted, reactive, ref } from 'vue';
 	import PersonaForm, { type PersonaFormModel } from './PersonaForm.vue';
+	import PersonaMemory from './PersonaMemory.vue';
 	import PersonaSharedSkills from './PersonaSharedSkills.vue';
 	import PersonaSkills from './PersonaSkills.vue';
 	import PersonaTokens from './PersonaTokens.vue';
@@ -327,6 +343,7 @@
 			SkillsLibrary,
 			PersonaAvatar,
 			PersonaForm,
+			PersonaMemory,
 			PersonaSharedSkills,
 			PersonaSkills,
 			PersonaTokens,
@@ -346,6 +363,11 @@
 			const formErrors = ref<Record<string, string[]>>({});
 			const saving = ref(false);
 			const skillsRevision = ref(0);
+			const memoryOpened = reactive<Record<string, boolean>>({});
+			const onMemoryToggle = (persona: Persona, event: Event) => {
+				if ((event.target as HTMLDetailsElement).open)
+					memoryOpened[persona.id] = true;
+			};
 			const isDesktop = isDesktopApp();
 			const isLocalOnly = isDesktop && !!store.getters.isLocalOnly;
 			const workspaceGrants = ref<PersonaGrant[]>([]);
