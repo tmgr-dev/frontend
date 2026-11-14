@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.126
+
+- `tmgr runner stop` warns when the installed systemd service file is outdated and agent sessions are running, since systemd then ends them; `--json` carries it in `warnings`.
+- `tmgr routine list` and `tmgr today` show each routine's id, so `tmgr routine done <id>` can be used without `--json`.
+- Help for `runner stop`, `runner restart --force` and `autopilot --fallback-hours` now matches what the commands do.
+
 ## 1.0.125
 
 - `tmgr today` and `tmgr status` warn "Partial data: the exports module is off, so only your own time is shown." when the server hides colleagues' time from the time summary; the JSON output carries `hidden` and `note` unchanged.
