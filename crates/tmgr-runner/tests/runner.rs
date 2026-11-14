@@ -6558,6 +6558,7 @@ fn a_set_run_never_remembers_trust_and_trusts_through_repositories_only_when_all
         let trusted = fx.home_of(&info.id)["projects"].get(&cwd).is_some();
         let note = fx.h.client().worklog(&info.id).unwrap().trust;
         let _ = fx.h.client().kill(&info.id, "kill");
+        wait_exited(&mut fx.h.client(), &info.id);
         (trusted, note)
     };
     let ask = |dir: &Path| {
