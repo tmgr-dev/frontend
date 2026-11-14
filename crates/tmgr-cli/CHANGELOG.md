@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.125
+
+- `tmgr today` and `tmgr status` warn "Partial data: the exports module is off, so only your own time is shown." when the server hides colleagues' time from the time summary; the JSON output carries `hidden` and `note` unchanged.
+
 ## 1.0.124
 
 - Sandbox (Linux): the whole filesystem is now mounted read-only inside the session's user and mount namespace, except the session's writable roots, so `chmod`, `chown`, `utime` and `setxattr` on your other files (source trees, `.git/hooks`, `~/.ssh`) fail with `EROFS`. Without unprivileged user namespaces the run falls back to Landlock only and says so; any other setup failure stops the run.
