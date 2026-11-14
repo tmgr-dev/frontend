@@ -226,7 +226,6 @@
 		"pagesTruncated": "仅读取了最近的运行",
 		"ambiguous": "归属不明确：{cost}",
 		"unattributed": "未归属：{cost}",
-		"historyFloor": "仅保留最近 90 天。",
 		"privacyNote": "TMGR 会读取你的 AI 工具在此电脑上写入的会话日志，并保存 token 数量、费用、模型名称、时间戳、会话 ID、项目文件夹和 Git 分支，以及 AI 使用的工具、技能和命令的名称、它编辑的文件类型和它打开的拉取请求。提示词和回复文本绝不会被存储。除非你通过 tmgr usage sync 上传，否则数据只保留在此设备上。",
 		"matchFailed": "无法将用量匹配到任务：{error}",
 		"documentTitle": "AI 用量"

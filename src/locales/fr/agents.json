@@ -226,7 +226,6 @@
 		"pagesTruncated": "Seules les exécutions les plus récentes ont été lues",
 		"ambiguous": "Ambigu : {cost}",
 		"unattributed": "Non attribué : {cost}",
-		"historyFloor": "Seuls les 90 derniers jours sont conservés.",
 		"privacyNote": "TMGR lit les journaux de session que vos outils d'IA écrivent sur cet ordinateur et conserve le nombre de tokens, le coût, les noms de modèles, les horodatages, les identifiants de session, les dossiers de projet et les branches git, ainsi que les noms des outils, compétences et commandes utilisés par l'IA, les types de fichiers qu'elle a modifiés et les pull requests qu'elle a ouvertes. Le texte des requêtes et des réponses n'est jamais stocké. Les données restent sur cet appareil, sauf si vous les envoyez avec tmgr usage sync.",
 		"matchFailed": "Impossible d'associer l'utilisation aux tâches : {error}",
 		"documentTitle": "Utilisation de l'IA"

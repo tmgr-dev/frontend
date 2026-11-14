@@ -226,7 +226,6 @@
 		"pagesTruncated": "Apenas as execuções mais recentes foram lidas",
 		"ambiguous": "Ambíguo: {cost}",
 		"unattributed": "Não atribuído: {cost}",
-		"historyFloor": "Apenas os últimos 90 dias são mantidos.",
 		"privacyNote": "O TMGR lê os logs de sessão que suas ferramentas de IA gravam neste computador e mantém contagem de tokens, custo, nomes de modelos, carimbos de data e hora, ids de sessão, pastas de projeto e branches do git, além dos nomes das ferramentas, habilidades e comandos que a IA usou, dos tipos de arquivo que editou e dos pull requests que abriu. O texto de prompts e respostas nunca é armazenado. Os dados ficam neste dispositivo, a menos que você os envie com tmgr usage sync.",
 		"matchFailed": "Não foi possível associar o uso às tarefas: {error}",
 		"documentTitle": "Uso de IA"

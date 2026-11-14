@@ -226,7 +226,6 @@
 		"pagesTruncated": "최근 실행 기록만 읽었어요",
 		"ambiguous": "모호함: {cost}",
 		"unattributed": "미귀속: {cost}",
-		"historyFloor": "최근 90일만 보관해요.",
 		"privacyNote": "TMGR은 AI 도구가 이 컴퓨터에 기록하는 세션 로그를 읽고, 토큰 수, 비용, 모델 이름, 타임스탬프, 세션 ID, 프로젝트 폴더와 git 브랜치, AI가 사용한 도구·스킬·명령의 이름, 편집한 파일 형식, 연 풀 리퀘스트를 보관해요. 프롬프트와 응답 텍스트는 저장하지 않아요. tmgr usage sync로 업로드하지 않는 한 데이터는 이 기기에 남아요.",
 		"matchFailed": "사용량을 작업에 매칭하지 못했어요: {error}",
 		"documentTitle": "AI 사용량"

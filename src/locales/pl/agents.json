@@ -226,7 +226,6 @@
 		"pagesTruncated": "Odczytano tylko najnowsze uruchomienia",
 		"ambiguous": "Niejednoznaczne: {cost}",
 		"unattributed": "Nieprzypisane: {cost}",
-		"historyFloor": "Przechowywane są tylko ostatnie 90 dni.",
 		"privacyNote": "TMGR odczytuje logi sesji, które Twoje narzędzia AI zapisują na tym komputerze, i przechowuje liczbę tokenów, koszt, nazwy modeli, znaczniki czasu, identyfikatory sesji, foldery projektów i gałęzie git, a także nazwy narzędzi, skilli i poleceń użytych przez AI, typy edytowanych plików i otwarte pull requesty. Treść promptów i odpowiedzi nigdy nie jest zapisywana. Dane zostają na tym urządzeniu, chyba że prześlesz je przez tmgr usage sync.",
 		"matchFailed": "Nie udało się dopasować użycia do zadań: {error}",
 		"documentTitle": "Użycie AI"

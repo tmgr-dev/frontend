@@ -226,7 +226,6 @@
 		"pagesTruncated": "Es wurden nur die letzten Läufe gelesen",
 		"ambiguous": "Mehrdeutig: {cost}",
 		"unattributed": "Nicht zugeordnet: {cost}",
-		"historyFloor": "Es werden nur die letzten 90 Tage gespeichert.",
 		"privacyNote": "TMGR liest die Sitzungslogs, die deine KI-Tools auf diesem Computer schreiben, und speichert Token-Zahlen, Kosten, Modellnamen, Zeitstempel, Sitzungs-IDs, Projektordner und Git-Branches sowie die Namen der Tools, Skills und Befehle, die die KI verwendet hat, die Dateitypen, die sie bearbeitet hat, und die Pull Requests, die sie geöffnet hat. Prompt- und Antworttexte werden nie gespeichert. Die Daten bleiben auf diesem Gerät, es sei denn, du lädst sie mit tmgr usage sync hoch.",
 		"matchFailed": "Nutzung konnte nicht Aufgaben zugeordnet werden: {error}",
 		"documentTitle": "KI-Nutzung"

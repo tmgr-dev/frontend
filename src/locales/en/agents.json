@@ -226,7 +226,7 @@
 		"pagesTruncated": "Only the most recent runs were read",
 		"ambiguous": "Ambiguous: {cost}",
 		"unattributed": "Unattributed: {cost}",
-		"historyFloor": "Only the last 90 days are kept.",
+		"historyFloor": "Sessions and hourly detail are kept for the last 90 days. Older usage stays as daily totals for up to 730 days.",
 		"privacyNote": "TMGR reads the session logs your AI tools write on this computer and keeps token counts, cost, model names, timestamps, session ids, project folders and git branches, and the names of tools, skills and commands the AI used, file types it edited and pull requests it opened. Prompt and reply text is never stored. Data stays on this device unless you upload it with tmgr usage sync.",
 		"matchFailed": "Could not match usage to tasks: {error}",
 		"documentTitle": "AI usage"

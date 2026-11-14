@@ -108,7 +108,7 @@ It shows the running task with a live elapsed time, "+N more" when several timer
 
 The [AI usage](/ai-usage) page shows what your AI coding tools use and cost. Open it with **AI usage** in the **Tools** group of the sidebar. The page is in the desktop app only.
 
-TMGR reads the session logs that Claude Code and Codex write on this computer. The page shows tokens and cost for a period, your **Limits**, a table **By tool and model**, and **Tasks**: usage matched to your tasks by agent runs and git branches. Cost is API-equivalent (list prices), not your subscription bill. Only the last 90 days are kept.
+TMGR reads the session logs that Claude Code and Codex write on this computer. The page shows tokens and cost for a period, your **Limits**, a table **By tool and model**, and **Tasks**: usage matched to your tasks by agent runs and git branches. Cost is API-equivalent (list prices), not your subscription bill. Sessions and hourly detail are kept for 90 days; older usage stays as daily totals for up to 730 days.
 
 Claude Code limits need its status line hook. See [What AI costs you](/docs/cli/what-ai-costs-you).
 
