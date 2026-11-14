@@ -3433,6 +3433,13 @@ mod tests {
         snapshot("new_session_locked_narrow", &draw(&v, 40, 16));
     }
 
+    #[test]
+    fn snapshot_privilege_toggles_off() {
+        let h = tmp();
+        let v = open("/", h.path());
+        snapshot("new_session_privileged_off", &draw(&v, 60, 16));
+    }
+
     fn rem(agent: &str, bypass: bool, no_sandbox: bool) -> Remembered {
         Remembered {
             agent: agent.into(),
