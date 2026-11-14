@@ -1583,3 +1583,9 @@ fn the_pairing_qr_is_a_tmgr_pair_link_around_the_raw_payload() {
   assert_eq!(base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(body).unwrap(), br#"{"v":1}"#);
   assert!(!link.contains('?') && link.matches('#').count() == 1);
 }
+
+#[test]
+fn the_largest_pairing_link_still_fits_in_a_qr_code() {
+  let link = super::pairing::pair_link(&vec![b'x'; 1100]);
+  assert!(super::pairing::qr_data_url(&link).is_ok());
+}
