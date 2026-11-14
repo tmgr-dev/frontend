@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.121
+
+- `tmgr attach`: the New session folder picker is now a modal. The Folder field shows only the chosen path. Press Ctrl+O anywhere in the form, or Enter on the Folder field, to open the picker (Recent, Browse, Search, and the path mode with Tab completion). Enter picks the folder and moves to the next field, Esc closes it and keeps the old folder. Tab and the arrow keys on the form only move between fields and never change Folder. With no default folder the picker opens once by itself. The footer shows `^O folder`.
+
 ## 1.0.120
 
 - `tmgr attach`: a session that ends every turn no longer rings "asked N questions" again and again. Questions waiting in the ?N pocket ring once, and again only when the session has more open questions than the last time you were told. Permission prompts and live questions still ring on every new wait. The same applies to the phone push for a waiting question.
