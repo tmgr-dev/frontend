@@ -868,6 +868,18 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
         .join(&spec.session_id);
     private_dirs(&[&dir])?;
     let policy = dir.join("sandbox.json");
+    let mut write_ids = Vec::new();
+    for w in &plan.paths.write {
+        let id = if *w == plan.cwd {
+            plan.cwd_id
+        } else {
+            let m = w
+                .metadata()
+                .map_err(|e| format!("{} is not usable: {e}", w.display()))?;
+            (m.dev(), m.ino())
+        };
+        write_ids.push((w, id.0, id.1));
+    }
     let body = serde_json::json!({
         "cwd": plan.cwd,
         "cwd_dev": plan.cwd_id.0,
@@ -875,6 +887,7 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
         "read": plan.paths.read,
         "read_ids": plan.read_ids.iter().map(|(p, (d, i))| (p, d, i)).collect::<Vec<_>>(),
         "write": plan.paths.write,
+        "write_ids": write_ids,
         "system_read": system_read,
         "deny": plan.paths.deny,
     });
@@ -959,6 +972,7 @@ mod linux {
         #[serde(default)]
         read_ids: Vec<(String, u64, u64)>,
         write: Vec<String>,
+        write_ids: Vec<(String, u64, u64)>,
         system_read: Vec<String>,
         deny: Vec<String>,
     }
@@ -1186,7 +1200,89 @@ mod linux {
         std::fs::metadata(p).ok().map(|m| (m.dev(), m.ino()))
     }
 
-    fn enter_read_only_namespace(roots: &[(String, u64, u64)]) -> Result<(), String> {
+    const MOUNT_ATTR_RDONLY: u64 = 1;
+
+    #[repr(C)]
+    struct MountAttr {
+        attr_set: u64,
+        attr_clr: u64,
+        propagation: u64,
+        userns_fd: u64,
+    }
+
+    fn tree_read_only() -> Result<(), String> {
+        let attr = MountAttr {
+            attr_set: MOUNT_ATTR_RDONLY,
+            attr_clr: 0,
+            propagation: 0,
+            userns_fd: 0,
+        };
+        let rc = unsafe {
+            libc::syscall(
+                libc::SYS_mount_setattr,
+                libc::AT_FDCWD,
+                c"/".as_ptr(),
+                libc::AT_RECURSIVE as libc::c_uint,
+                &attr as *const MountAttr,
+                std::mem::size_of::<MountAttr>(),
+            )
+        };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(os_err("read-only mount of /"))
+        }
+    }
+
+    fn validated(root: &str, dev: u64, ino: u64) -> Result<CString, String> {
+        let p = Path::new(root);
+        if std::fs::canonicalize(p).ok().as_deref() != Some(p) || path_id(p) != Some((dev, ino)) {
+            return Err(format!("{root} is not the directory that was validated"));
+        }
+        cpath(p)
+    }
+
+    fn unescape(field: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(field.len());
+        let mut i = 0;
+        while i < field.len() {
+            let oct = field
+                .get(i + 1..i + 4)
+                .filter(|d| field[i] == b'\\' && d.iter().all(|c| (b'0'..=b'7').contains(c)));
+            match oct {
+                Some(d) => {
+                    out.push(d.iter().fold(0u8, |a, c| a.wrapping_mul(8) + (c - b'0')));
+                    i += 4;
+                }
+                None => {
+                    out.push(field[i]);
+                    i += 1;
+                }
+            }
+        }
+        out
+    }
+
+    pub(super) fn writable_mounts_outside(mountinfo: &[u8], roots: &[&str]) -> Vec<String> {
+        let mut bad = Vec::new();
+        for line in mountinfo.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
+            let f: Vec<&[u8]> = line.split(|b| *b == b' ').collect();
+            let (Some(mp), Some(opts)) = (f.get(4), f.get(5)) else {
+                bad.push(String::from_utf8_lossy(line).into_owned());
+                continue;
+            };
+            if opts.split(|b| *b == b',').any(|o| o == b"ro") {
+                continue;
+            }
+            let mp = unescape(mp);
+            if !roots.iter().any(|r| r.as_bytes() == mp.as_slice()) {
+                bad.push(String::from_utf8_lossy(&mp).into_owned());
+            }
+        }
+        bad
+    }
+
+    fn enter_read_only_namespace(policy: &Policy) -> Result<(), String> {
         let uid = unsafe { libc::geteuid() };
         let gid = unsafe { libc::getegid() };
         if unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS) } != 0 {
@@ -1200,16 +1296,23 @@ mod linux {
             &cpath(Path::new("/"))?,
             libc::MS_REC | libc::MS_PRIVATE,
         )?;
-        for (root, dev, ino) in roots {
-            let p = Path::new(root);
-            let c = cpath(p)?;
-            if std::fs::canonicalize(p).ok().as_deref() != Some(p)
-                || path_id(p) != Some((*dev, *ino))
-            {
-                return Err(format!("{root} is not the directory that was validated"));
+        tree_read_only()?;
+        for (root, dev, ino) in &policy.write_ids {
+            let c = validated(root, *dev, *ino)?;
+            mount_call(Some(&c), &c, libc::MS_BIND | libc::MS_REC)?;
+            if path_id(Path::new(root)) != Some((*dev, *ino)) {
+                return Err(format!("{root} changed while it was being mounted"));
             }
+            let flags = remount_bits(mount_flags(&c)?);
+            mount_call(None, &c, libc::MS_REMOUNT | libc::MS_BIND | flags)?;
+            if mount_flags(&c)? & 1 != 0 {
+                return Err(format!("{root} is still read-only after the remount"));
+            }
+        }
+        for (root, dev, ino) in &policy.read_ids {
+            let c = validated(root, *dev, *ino)?;
             mount_call(Some(&c), &c, libc::MS_BIND)?;
-            if path_id(p) != Some((*dev, *ino)) {
+            if path_id(Path::new(root)) != Some((*dev, *ino)) {
                 return Err(format!("{root} changed while it was being mounted"));
             }
             let flags = remount_bits(mount_flags(&c)?);
@@ -1222,10 +1325,22 @@ mod linux {
                 return Err(format!("{root} is still writable after the remount"));
             }
         }
-        Ok(())
+        if unsafe { libc::chdir(cpath(Path::new(&policy.cwd))?.as_ptr()) } != 0 {
+            return Err(os_err("chdir"));
+        }
+        let info = std::fs::read("/proc/self/mountinfo").map_err(|e| format!("mountinfo: {e}"))?;
+        let roots: Vec<&str> = policy
+            .write_ids
+            .iter()
+            .map(|(r, _, _)| r.as_str())
+            .collect();
+        match writable_mounts_outside(&info, &roots).first() {
+            Some(m) => Err(format!("{m} is still writable")),
+            None => Ok(()),
+        }
     }
 
-    fn probe_read_only_namespace(roots: &[(String, u64, u64)]) -> Result<(), String> {
+    fn probe_read_only_namespace(policy: &Policy) -> Result<(), String> {
         let mut fds = [0 as RawFd; 2];
         if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
             return Err(os_err("pipe"));
@@ -1235,7 +1350,7 @@ mod linux {
             -1 => Err(os_err("fork")),
             0 => {
                 drop(rd);
-                let code = match enter_read_only_namespace(roots) {
+                let code = match enter_read_only_namespace(policy) {
                     Ok(()) => 0,
                     Err(m) => {
                         let _ =
@@ -1262,33 +1377,39 @@ mod linux {
         }
     }
 
-    fn mount_objects_read_only(
+    fn mount_read_only(
         policy: &Policy,
         policy_path: &str,
         force_fallback: bool,
     ) -> Result<(), String> {
-        if policy.read_ids.is_empty() {
-            return Ok(());
+        for (root, dev, ino) in policy.write_ids.iter().chain(&policy.read_ids) {
+            validated(root, *dev, *ino)
+                .map_err(|e| format!("tmgr: sandbox setup failed: {e}; the run does not start"))?;
         }
+        let mut record = Path::new(policy_path)
+            .parent()
+            .and_then(|d| std::fs::File::create(d.join(crate::objectmodes::RO_RECORD)).ok());
         let single_thread = std::fs::read_dir("/proc/self/task").is_ok_and(|d| d.count() == 1);
         let probed = if force_fallback {
             Err("the namespace was disabled for a test".to_string())
         } else if !single_thread {
             Err("the helper process has several threads".to_string())
         } else {
-            probe_read_only_namespace(&policy.read_ids)
+            probe_read_only_namespace(policy)
         };
         let note = match probed {
             Ok(()) => {
-                enter_read_only_namespace(&policy.read_ids).map_err(|e| {
-                    format!("tmgr: sandbox setup failed: read-only object mount: {e}; the run does not start")
+                enter_read_only_namespace(policy).map_err(|e| {
+                    format!(
+                        "tmgr: sandbox setup failed: read-only mount: {e}; the run does not start"
+                    )
                 })?;
                 "namespace".to_string()
             }
             Err(why) => format!("fallback: {why}"),
         };
-        if let Some(dir) = Path::new(policy_path).parent() {
-            let _ = std::fs::write(dir.join(crate::objectmodes::RO_RECORD), note);
+        if let Some(f) = record.as_mut() {
+            let _ = std::io::Write::write_all(f, note.as_bytes());
         }
         Ok(())
     }
@@ -1311,7 +1432,7 @@ mod linux {
                 return 78;
             }
         };
-        let cwd_fd = match mount_objects_read_only(&policy, policy_path, force_fallback)
+        let cwd_fd = match mount_read_only(&policy, policy_path, force_fallback)
             .and_then(|()| open_cwd(&policy))
             .and_then(|fd| {
                 refuse_granted_deny_roots(&policy)?;
@@ -2182,6 +2303,24 @@ mod tests {
             assert!(!write.iter().any(|w| w.contains(other)), "{other}");
         }
         assert!(!write.contains(&pickup.to_str().unwrap()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_the_writable_roots_may_stay_writable_mounts() {
+        let info = b"22 1 8:1 / / ro,relatime shared:1 - ext4 /dev/sda1 rw\n\
+30 22 8:1 /p /work/my\\040proj rw,nosuid - ext4 /dev/sda1 rw\n\
+31 22 0:5 / /dev rw - devtmpfs udev rw\n\
+32 22 0:6 / /work/my\\040proj/sub ro - tmpfs tmpfs rw\n";
+        assert_eq!(
+            linux::writable_mounts_outside(info, &["/work/my proj"]),
+            ["/dev"]
+        );
+        assert!(linux::writable_mounts_outside(info, &["/work/my proj", "/dev"]).is_empty());
+        assert_eq!(
+            linux::writable_mounts_outside(info, &["/work/my"]),
+            ["/work/my proj", "/dev"]
+        );
     }
 
     #[cfg(target_os = "linux")]

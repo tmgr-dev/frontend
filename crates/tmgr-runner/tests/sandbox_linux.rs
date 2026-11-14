@@ -537,3 +537,83 @@ fn modes_of_a_granted_object_store_are_restored_after_the_run() {
     host_git_reads(s.objects.parent().unwrap());
     host_git_reads(&f.cwd);
 }
+
+const METADATA_CALLS: &str = "import os, sys
+for p in sys.argv[1:]:
+    for name, call in [
+        ('chmod', lambda: os.chmod(p, 0o600)),
+        ('chown', lambda: os.chown(p, os.getuid(), os.getgid())),
+        ('utime', lambda: os.utime(p, (0, 0))),
+        ('setxattr', lambda: os.setxattr(p, 'user.tmgr', b'1')),
+    ]:
+        try:
+            call()
+            rc = 0
+        except OSError as e:
+            rc = e.errno
+        print(name, rc, p)
+";
+
+fn stamp(p: &std::path::Path) -> (u32, i64, i64) {
+    use std::os::unix::fs::MetadataExt;
+    let m = fs::metadata(p).unwrap();
+    (m.mode(), m.mtime(), m.mtime_nsec())
+}
+
+#[test]
+fn metadata_changes_outside_writable_roots_fail_with_erofs() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    let objects = f.borrowing_clone();
+    let source = objects.parent().unwrap().parent().unwrap();
+    let outside = f.root.join("outside.txt");
+    fs::write(&outside, "x").unwrap();
+    let targets = [
+        source.join("a.txt"),
+        source.join(".git/config"),
+        f.real_home.join(".ssh/id_test"),
+        outside,
+    ];
+    let before: Vec<_> = targets.iter().map(|p| stamp(p)).collect();
+    fs::write(f.cwd.join("meta.py"), METADATA_CALLS).unwrap();
+    let paths: Vec<String> = targets.iter().map(|p| f.path(p)).collect();
+    let script = format!(
+        "touch in.txt $HOME/h.txt $TMPDIR/t.txt && python3 meta.py in.txt $HOME/h.txt $TMPDIR/t.txt {} && python3 -c 'import os; os.openpty(); print(\"pty ok\")'",
+        paths.join(" ")
+    );
+    let o = f.run_with_objects(&objects, &script);
+    assert!(o.ok(), "{} {}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("pty ok"), "{} {}", o.stdout, o.stderr);
+    let record =
+        fs::read_to_string(f.runner_dir.join("sessions").join(SID).join("objects_ro")).unwrap();
+    if record != "namespace" {
+        assert!(record.starts_with("fallback: "), "{record}");
+        assert!(
+            std::env::var("TMGR_TEST_REQUIRE_RO_MOUNT").as_deref() != Ok("1"),
+            "TMGR_TEST_REQUIRE_RO_MOUNT=1 requires the read-only mount: {record}"
+        );
+        eprintln!("NAMESPACE PATH NOT TESTED: {record}");
+        return;
+    }
+    let rows: Vec<(&str, &str, &str)> = o
+        .stdout
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.splitn(3, ' ');
+            Some((it.next()?, it.next()?, it.next()?))
+        })
+        .filter(|(n, _, _)| ["chmod", "chown", "utime", "setxattr"].contains(n))
+        .collect();
+    assert_eq!(rows.len(), 4 * (3 + targets.len()), "{}", o.stdout);
+    for (name, rc, p) in &rows {
+        let inside = ["in.txt", "/h.txt", "/t.txt"]
+            .iter()
+            .any(|s| p.ends_with(s));
+        let want = if inside { "0" } else { "30" };
+        assert_eq!(*rc, want, "{name} {p}: {}", o.stdout);
+    }
+    let after: Vec<_> = targets.iter().map(|p| stamp(p)).collect();
+    assert_eq!(before, after);
+}

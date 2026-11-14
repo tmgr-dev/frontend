@@ -215,17 +215,26 @@ reach) and returns `<self exe> __sandbox-exec <policy> -- <argv>`. The binary's 
 and exit 78), builds the ruleset with hard requirements, restricts itself, verifies full enforcement and execs the
 command (exec failure: exit 127).
 
-### Granted object stores
+### Read-only mount namespace (Linux)
 
-A legacy clone that borrows objects through `objects/info/alternates` gets the source repository's object directory as a
-read-only grant. Landlock cannot restrict `chmod`, `chown`, `utime` or `setxattr`, so on Linux the helper also makes the
-directory read-only at the mount level:
+Landlock cannot restrict `chmod`, `chown`, `utime` or `setxattr`, so on Linux the helper also makes everything outside
+the writable roots read-only at the mount level:
 
-- Before Landlock is applied, the helper creates a user and mount namespace (identity uid/gid maps, so file ownership
-  looks unchanged), bind-mounts each granted object directory onto itself and remounts it read-only, keeping the original
-  mount's `nosuid`/`nodev`/`noexec`/atime flags. It then checks that the mount reports read-only. Changing modes,
-  owners, times or extended attributes under the directory then fails with `EROFS`. The mount is private to the session;
-  the host's view is unchanged.
+- Before Landlock is applied, the helper creates a user and mount namespace (identity uid/gid maps; files owned by
+  other users, root included, show as `nobody`). It marks every mount read-only in one recursive `mount_setattr` call,
+  which keeps each mount's locked `nosuid`/`nodev`/`noexec`/atime flags. It then bind-mounts each writable root (the
+  working directory, the per-run home with its `tmp`, a team member's own folder) onto itself and remounts that bind
+  read-write, checking the device and inode before and after, and changes into the working directory again so the
+  process works on the new mount. Submounts below a writable root stay read-only.
+- A legacy clone that borrows objects through `objects/info/alternates` gets the source repository's object directory as
+  a read-only grant; the helper also bind-mounts it onto itself read-only, in case it lies inside a writable root.
+- Finally the helper reads `/proc/self/mountinfo` and refuses to continue if any mount other than a writable root is
+  still writable. Changing modes, owners, times or extended attributes outside the writable roots then fails with
+  `EROFS`. Device nodes (`/dev/null`, the session's terminal, `/dev/ptmx`) and connecting to existing sockets keep
+  working, because a read-only mount does not block them. The mounts are private to the session; the host's view is
+  unchanged.
+- The device and inode of every writable root and object directory are checked before the namespace is tried; a
+  mismatch stops the run (exit 78).
 - The whole sequence is first tried in a forked probe process. If it cannot work, the helper continues without the
   namespace: unprivileged user namespaces disabled (`kernel.unprivileged_userns_clone=0`, `user.max_user_namespaces=0`),
   restricted by the distribution (Ubuntu 24.04 `kernel.apparmor_restrict_unprivileged_userns=1`), blocked by a container
@@ -242,12 +251,11 @@ directory read-only at the mount level:
 
 ## Known limitations
 
-- Linux metadata changes: Landlock has no right for `chmod`, `chown`, `utime` or `setxattr`, so it never stops them. The
-  agent can change the mode, owner (within what the user may do), times and extended attributes of any file the user
-  owns, by absolute path, whether or not the path is granted. The read-only mount covers only the granted object
-  directories, and only when the user namespace works; without it those directories get the mode restore described
-  above (owner, times and extended attributes are not restored). macOS Seatbelt refuses these changes outside the
-  writable roots.
+- Linux metadata changes without a user namespace: Landlock has no right for `chmod`, `chown`, `utime` or `setxattr`, so
+  when the read-only mount namespace cannot be created (see above) the agent can change the mode, owner (within what the
+  user may do), times and extended attributes of any file the user owns, by absolute path, whether or not the path is
+  granted. Granted object directories then get only the mode restore described above (owner, times and extended
+  attributes are not restored). macOS Seatbelt refuses these changes outside the writable roots.
 - Network is open unless the run is `Restricted` (macOS only, see above); an open network is not data-exfiltration protection for anything the agent can read.
 - The agent can use everything it is allowed to touch: its working dir, per-run home, the network, its own CLI
   credentials copied into the per-run home.
@@ -281,7 +289,7 @@ directory read-only at the mount level:
 - Toolchain directories are read-only: `cargo fetch`, `npm install -g` and similar that write there fail.
 - Terminals: the agent reaches its own PTY through inherited fds 0/1/2 and `/dev/tty`. Opening any other terminal device by path is denied (macOS: explicit deny on `/dev/ttys*`, `/dev/pty[p-w]*` and `/dev/tty[p-w]*`; Linux: no `/dev/pts` grant except the session's own slave). Consequence: PTYs the agent creates itself (`openpty`, `script`, `tmux`, pexpect) cannot open their slave by path and fail.
 - Private directories: the runner directory is trusted only if it, its canonical ancestors and every symlink component of the given path live in directories owned by root or the user that are not group/other-writable (unless sticky); there is no group-name exception, so on Ubuntu with umask 002 the fallback `~/.local/state/tmgr/run` is refused until `chmod g-w` or `TMGR_RUNNER_DIR` is set. The homes directory holds no secrets, so it gets only the final-directory checks (owner, 0700, not a symlink).
-- The Linux sandbox tests skip when Landlock is unavailable, unless `TMGR_TEST_REQUIRE_LANDLOCK=1` is set, in which case they fail. CI sets it on Linux. `TMGR_TEST_REQUIRE_RO_MOUNT=1` likewise makes the tests for the read-only object mount fail instead of reporting that only the mode restore was exercised. CI sets it on both Linux jobs (x86_64 and aarch64) and turns off `kernel.apparmor_restrict_unprivileged_userns` there first, because the Ubuntu 24.04 runners restrict unprivileged user namespaces by default.
+- The Linux sandbox tests skip when Landlock is unavailable, unless `TMGR_TEST_REQUIRE_LANDLOCK=1` is set, in which case they fail. CI sets it on Linux. `TMGR_TEST_REQUIRE_RO_MOUNT=1` likewise makes the tests for the read-only mount namespace fail instead of reporting that only the mode restore was exercised. CI sets it on both Linux jobs (x86_64 and aarch64) and turns off `kernel.apparmor_restrict_unprivileged_userns` there first, because the Ubuntu 24.04 runners restrict unprivileged user namespaces by default.
 - Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory (handed over by the shim as a descriptor, not looked up by path) must be the directory with the
   `st_dev`/`st_ino` the runner approved, and the Landlock rule for it is created from that same descriptor; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
 - macOS: the agent also starts in the approved directory object, but Seatbelt rules are path based, so if that directory was renamed meanwhile the agent keeps no write access there (fail closed).
