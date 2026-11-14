@@ -61,6 +61,38 @@ fn accessibility_trusted(prompt: bool) -> bool {
   }
 }
 
+#[derive(Debug, PartialEq)]
+enum Held {
+  Empty,
+  Text,
+  Other,
+}
+
+const TEXT_TYPES: [&str; 4] = ["public.utf8-plain-text", "public.plain-text", "NSStringPboardType", "public.utf16-plain-text"];
+const NON_TEXT_TYPES: [&str; 7] =
+  ["public.file-url", "NSFilenamesPboardType", "public.png", "public.tiff", "public.jpeg", "public.image", "com.apple.pict"];
+
+fn classify(types: &[String]) -> Held {
+  if types.is_empty() {
+    return Held::Empty;
+  }
+  let has = |list: &[&str]| types.iter().any(|t| list.contains(&t.as_str()));
+  if has(&NON_TEXT_TYPES) || !has(&TEXT_TYPES) {
+    Held::Other
+  } else {
+    Held::Text
+  }
+}
+
+#[cfg(target_os = "macos")]
+fn pasteboard_state() -> (Held, isize) {
+  use objc2_app_kit::NSPasteboard;
+
+  let board = NSPasteboard::generalPasteboard();
+  let types: Vec<String> = board.types().map(|t| t.iter().map(|s| s.to_string()).collect()).unwrap_or_default();
+  (classify(&types), board.changeCount())
+}
+
 #[cfg(target_os = "macos")]
 fn press_copy() -> Result<(), String> {
   use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
@@ -86,11 +118,17 @@ pub async fn capture_selection<R: Runtime>(app: AppHandle<R>) -> Result<Option<S
     return Err("accessibility".into());
   }
   let clipboard = app.clipboard();
-  let previous = clipboard.read_text().ok();
-  let _ = clipboard.clear();
-  std::thread::sleep(Duration::from_millis(120));
+  let (held, count) = pasteboard_state();
+  if held == Held::Other {
+    return Err("clipboard_not_text".into());
+  }
+  let previous = if held == Held::Text { clipboard.read_text().ok() } else { None };
   press_copy()?;
   std::thread::sleep(Duration::from_millis(250));
+  if pasteboard_state().1 == count {
+    log::info!("[capture] selection nothing copied");
+    return Ok(None);
+  }
   let text = clipboard.read_text().ok().filter(|t| !t.trim().is_empty());
   match previous {
     Some(previous) => {
@@ -113,6 +151,29 @@ pub async fn capture_selection<R: Runtime>(_app: AppHandle<R>) -> Result<Option<
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  fn kinds(types: &[&str]) -> Held {
+    classify(&types.iter().map(|t| t.to_string()).collect::<Vec<_>>())
+  }
+
+  #[test]
+  fn an_empty_clipboard_is_empty() {
+    assert_eq!(kinds(&[]), Held::Empty);
+  }
+
+  #[test]
+  fn plain_and_rich_text_count_as_text() {
+    assert_eq!(kinds(&["public.utf8-plain-text"]), Held::Text);
+    assert_eq!(kinds(&["public.html", "public.utf8-plain-text", "public.rtf"]), Held::Text);
+  }
+
+  #[test]
+  fn images_files_and_unknown_content_are_not_text() {
+    assert_eq!(kinds(&["public.png", "public.tiff"]), Held::Other);
+    assert_eq!(kinds(&["public.file-url", "public.utf8-plain-text"]), Held::Other);
+    assert_eq!(kinds(&["NSFilenamesPboardType"]), Held::Other);
+    assert_eq!(kinds(&["com.example.private"]), Held::Other);
+  }
 
   #[test]
   fn only_files_inside_the_capture_dir_are_readable() {
