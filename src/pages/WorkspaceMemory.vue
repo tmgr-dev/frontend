@@ -34,6 +34,17 @@
 		</div>
 
 		<template v-else>
+			<div class="mb-6 flex justify-end">
+				<Button
+					v-if="memory.can_edit && memory.pages_enabled && !isLocalOnly"
+					variant="outline"
+					data-testid="memory-summarize"
+					@click="showSummarize = true"
+				>
+					{{ $t('workspace.workspaceMemory.summarize.button') }}
+				</Button>
+			</div>
+
 			<section v-if="cards.length" class="mb-8" data-testid="memory-proposals">
 				<h2 class="mb-3 text-base font-semibold text-ink">
 					{{ $t('workspace.workspaceMemory.waiting') }}
@@ -156,6 +167,44 @@
 				</ul>
 			</section>
 
+			<section v-if="drafts.length" class="mb-8" data-testid="memory-drafts">
+				<div class="mb-3 flex items-center justify-between gap-3">
+					<h2 class="text-base font-semibold text-ink">
+						{{ $t('workspace.workspaceMemory.summarize.draftsTitle') }}
+					</h2>
+					<Button
+						v-if="memory.can_edit"
+						variant="outline"
+						size="sm"
+						:disabled="busy"
+						data-testid="memory-discard-drafts"
+						@click="discardDrafts"
+					>
+						{{ $t('workspace.workspaceMemory.summarize.discardAll') }}
+					</Button>
+				</div>
+				<div
+					v-for="group in draftGroups"
+					:key="group.topic"
+					class="mb-4"
+					data-testid="memory-draft-group"
+				>
+					<div class="mb-1 text-xs font-medium text-ink-subtle uppercase">
+						{{ topicTitle(group.topic) }}
+					</div>
+					<ul class="space-y-3">
+						<li v-for="draft in group.items" :key="draft.id">
+							<SummarizeDraftCard
+								:proposal="draft"
+								:workspace-id="workspaceId"
+								:workspace-code="workspaceCode"
+								@changed="refreshAll"
+							/>
+						</li>
+					</ul>
+				</div>
+			</section>
+
 			<form
 				v-if="memory.can_edit"
 				class="mb-8 flex flex-col gap-2 sm:flex-row"
@@ -235,6 +284,14 @@
 					</li>
 				</ul>
 			</section>
+
+			<SummarizeWorkspaceModal
+				v-if="showSummarize"
+				:workspace-id="workspaceId"
+				:topics="memory.topics"
+				@close="closeSummarize"
+				@done="refreshProposals"
+			/>
 		</template>
 	</PageContainer>
 </template>
@@ -245,6 +302,7 @@
 		acceptMemoryProposal,
 		addMemoryEntry,
 		deleteMemoryEntry,
+		discardSummarizeRun,
 		getMemoryProposals,
 		getWorkspaceMemory,
 		memoryErrorMessage,
@@ -258,6 +316,8 @@
 	} from '@/actions/tmgr/memory';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import SummarizeDraftCard from '@/components/memory/SummarizeDraftCard.vue';
+	import SummarizeWorkspaceModal from '@/components/memory/SummarizeWorkspaceModal.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import {
@@ -304,6 +364,8 @@
 			SelectItem,
 			SelectTrigger,
 			SelectValue,
+			SummarizeDraftCard,
+			SummarizeWorkspaceModal,
 			Textarea,
 		},
 		setup() {
@@ -334,13 +396,28 @@
 			const editText = ref('');
 			const newTopic = ref<MemoryTopicKey>('decisions');
 			const newFact = ref('');
+			const showSummarize = ref(false);
+
+			const isDraft = (p: MemoryProposal) =>
+				p.origin === 'summarize' && p.status === 'pending';
 
 			const cards = computed(() => {
-				const ids = new Set(proposals.value.map((p) => p.id));
+				const plain = proposals.value.filter((p) => p.origin !== 'summarize');
+				const ids = new Set(plain.map((p) => p.id));
 				return [
-					...proposals.value,
+					...plain,
 					...addedCards.value.filter((card) => !ids.has(card.id)),
 				];
+			});
+
+			const drafts = computed(() => proposals.value.filter(isDraft));
+
+			const draftGroups = computed(() => {
+				const groups = new Map<MemoryTopicKey, MemoryProposal[]>();
+				for (const draft of drafts.value) {
+					groups.set(draft.topic, [...(groups.get(draft.topic) ?? []), draft]);
+				}
+				return [...groups].map(([topic, items]) => ({ topic, items }));
 			});
 
 			const topicTitle = (key: MemoryTopicKey) =>
@@ -444,6 +521,26 @@
 					addedCards.value = addedCards.value.filter((c) => c.id !== card.id);
 					await refreshAll();
 				});
+
+			const discardDrafts = () =>
+				run(async () => {
+					const runIds = new Set(
+						drafts.value.flatMap((d) => (d.run_id === null ? [] : [d.run_id])),
+					);
+					try {
+						for (const runId of runIds) {
+							await discardSummarizeRun(workspaceId.value, runId);
+						}
+					} catch (error) {
+						fail(error, t('workspace.workspaceMemory.summarize.discardFailed'));
+					}
+					await refreshProposals();
+				});
+
+			const closeSummarize = () => {
+				showSummarize.value = false;
+				void refreshProposals();
+			};
 
 			const startEdit = (card: MemoryProposal) => {
 				editingId.value = card.id;
@@ -569,8 +666,12 @@
 				alreadyAdded,
 				busy,
 				cards,
+				closeSummarize,
 				countdownLabel,
 				deleteAdded,
+				discardDrafts,
+				draftGroups,
+				drafts,
 				editText,
 				editingId,
 				failed,
@@ -581,12 +682,15 @@
 				newTopic,
 				newestFirst,
 				refreshAll,
+				refreshProposals,
 				reject,
 				removeEntry,
 				saveEdit,
+				showSummarize,
 				startEdit,
 				topicTitle,
 				workspaceCode,
+				workspaceId,
 			};
 		},
 	});

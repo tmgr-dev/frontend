@@ -86,7 +86,7 @@ export interface MemorySummarizeDoneEvent {
 }
 
 export type SummarizeStatus =
-	'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'discarded';
+	'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 
 export interface SummarizeRun {
 	id: number;
