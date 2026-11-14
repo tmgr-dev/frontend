@@ -25,7 +25,7 @@ tmgr config path
 | `server` | Сервер API TMGR. По умолчанию `https://api.tmgr.dev`. |
 | `web_url` | Адрес веб-приложения для ссылок на задачи. |
 | `default_workspace` | Рабочее пространство, когда вы не указываете `--ws`. Его задаёт `tmgr ws use`. Можно указать `local:<code>`. |
-| `branch_template` | Имя ветки, которую создаёт `tmgr start`. По умолчанию `{key_lower}-{slug}`. Подстановки: `{key}`, `{key_lower}`, `{code_lower}`, `{seq}` и `{slug}` (заголовок задачи). |
+| `branch_template` | Имя ветки, которую создаёт `tmgr start`. По умолчанию `{key_lower}-{slug}`. Подстановки: `{key}` (строчными, то же, что `{key_lower}`), `{key_lower}`, `{code_lower}`, `{seq}` и `{slug}` (заголовок задачи). |
 | `review_status` | Статус, в который `tmgr done` переводит задачу. По умолчанию `Review`. |
 | `upload_status` | `true` разрешает `tmgr agent status set` отправлять состояние сессий. По умолчанию выключено. См. [Сессии агентов](#agent-status). |
 | `hook_git_commits` | `false` запрещает хуку Claude Code добавлять в запуск агента коммиты, сделанные во время запуска. По умолчанию включено. |

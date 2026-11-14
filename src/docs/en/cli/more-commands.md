@@ -25,7 +25,7 @@ tmgr config path
 | `server` | The TMGR API server. The default is `https://api.tmgr.dev`. |
 | `web_url` | The address of the web app, used for task links. |
 | `default_workspace` | The workspace used when you do not pass `--ws`. `tmgr ws use` sets it. It can be `local:<code>`. |
-| `branch_template` | The name of the branch `tmgr start` creates. The default is `{key_lower}-{slug}`. Placeholders: `{key}`, `{key_lower}`, `{code_lower}`, `{seq}` and `{slug}` (the task title). |
+| `branch_template` | The name of the branch `tmgr start` creates. The default is `{key_lower}-{slug}`. Placeholders: `{key}` (lowercase, the same as `{key_lower}`), `{key_lower}`, `{code_lower}`, `{seq}` and `{slug}` (the task title). |
 | `review_status` | The status `tmgr done` moves a task to. The default is `Review`. |
 | `upload_status` | `true` lets `tmgr agent status set` send session states. Off by default. See [Agent sessions](#agent-status). |
 | `hook_git_commits` | `false` stops the Claude Code hook from adding the commits made during an agent run to that run. On by default. |

@@ -163,7 +163,6 @@ pub enum Command {
     },
     /// Auto-run queue for local workspaces (experimental)
     #[cfg(feature = "runner")]
-    #[command(hide = true)]
     Queue {
         #[command(subcommand)]
         command: crate::cmd::queue::QueueCommand,

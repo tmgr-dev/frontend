@@ -30,7 +30,7 @@ pub fn slug(title: &str) -> String {
 pub fn validate_template(template: &str) -> Result<()> {
     let bad = |why: &str| {
         Error::usage(format!("invalid branch_template: {why}")).hint(
-            "example: {key_lower}-{slug}; placeholders: key, key_lower, code_lower, seq, slug",
+            "example: {key_lower}-{slug}; placeholders: key (same as key_lower, lowercase), key_lower, code_lower, seq, slug",
         )
     };
     if template.is_empty() || template.len() > 80 {
