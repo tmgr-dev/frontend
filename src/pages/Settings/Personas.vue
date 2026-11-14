@@ -544,6 +544,8 @@
 				formErrors,
 				saving,
 				skillsRevision,
+				memoryOpened,
+				onMemoryToggle,
 				isDesktop,
 				isLocalOnly,
 				currentWorkspace,

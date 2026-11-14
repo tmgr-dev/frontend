@@ -607,6 +607,7 @@
 		"restore": "Restore",
 		"noDeleted": "Nothing deleted in the last 30 days.",
 		"loadFailed": "Could not load memory",
+		"retry": "Retry",
 		"assistantMemory": "Looking for notes you keep yourself? See Assistant memory.",
 		"topics": {
 			"decisions": "Decisions",

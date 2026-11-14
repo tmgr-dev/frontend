@@ -103,6 +103,7 @@
 		ArrowRight,
 		BadgeCheck,
 		BarChart3,
+		Bot,
 		Brain,
 		ChevronsUpDown,
 		ClipboardListIcon,
@@ -943,6 +944,23 @@
 									>
 										<Brain />
 										<span>{{ $t('nav.sidebar.memory') }}</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem
+								v-if="
+									activeWorkspace?.code &&
+									isFeatureEnabled('personas') &&
+									!isLocalOnly
+								"
+							>
+								<SidebarMenuButton as-child>
+									<router-link
+										:to="`/${activeWorkspace.code}/persona-memory`"
+										:class="NAV_ACTIVE"
+									>
+										<Bot />
+										<span>{{ $t('nav.sidebar.personaMemory') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>

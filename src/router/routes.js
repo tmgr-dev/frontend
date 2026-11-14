@@ -849,6 +849,20 @@ const routes = [
 		name: 'WorkspaceMemory',
 	},
 	{
+		path: '/:workspace_code/persona-memory',
+		component: gatedPage(
+			'personas',
+			'Persona memory',
+			() => import('@/pages/WorkspacePersonaMemory.vue'),
+		),
+		meta: {
+			title: 'nav.routes.personaMemory',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		name: 'WorkspacePersonaMemory',
+	},
+	{
 		path: '/:workspace_code/:category_code',
 		component: CategoryPage,
 		meta: {
