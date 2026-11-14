@@ -517,17 +517,13 @@
 			const stageLabel = computed(() => {
 				const current = run.value;
 				const prefix = 'workspace.workspaceMemory.summarize.';
-				if (!current || current.status === 'queued' || !current.stage)
-					return t(`${prefix}stageQueued`);
-				if (current.stage === 'reading')
-					return t(`${prefix}stageReading`, {
+				if (current?.stage === 'extracting')
+					return t(`${prefix}stageExtracting`, {
 						done: current.progress_done,
 						total: current.progress_total,
 					});
-				if (current.stage === 'extracting')
-					return t(`${prefix}stageExtracting`);
-				if (current.stage === 'comparing') return t(`${prefix}stageComparing`);
-				return t(`${prefix}stageWorking`);
+				if (current?.stage === 'comparing') return t(`${prefix}stageComparing`);
+				return t(`${prefix}stageQueued`);
 			});
 
 			const progressPercent = computed(() => {
