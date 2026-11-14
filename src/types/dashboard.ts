@@ -1,4 +1,8 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
+import type {
+	MemorySummarizeDoneEvent,
+	MemorySummarizeProgressEvent,
+} from '@/actions/tmgr/memory';
 import type { AgentSession } from '@/utils/agentStatus';
 import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 // Dashboard TypeScript interfaces and types
@@ -825,6 +829,8 @@ export interface EventHandlers {
 	onAgentReply?: (e: AgentReplyEvent) => void;
 	onAgentConfirmation?: (e: AgentConfirmationEvent) => void;
 	onAgentCompacted?: (e: AgentCompactedEvent) => void;
+	onMemorySummarizeProgress?: (e: MemorySummarizeProgressEvent) => void;
+	onMemorySummarizeDone?: (e: MemorySummarizeDoneEvent) => void;
 	onPageEvent?: (type: PageEventType, payload: PageEventPayload) => void;
 	onError?: (error: ActionError) => void;
 	onReconnect?: () => void;

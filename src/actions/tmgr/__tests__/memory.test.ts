@@ -13,11 +13,18 @@ import { requestCache } from '@/utils/requestCache';
 import {
 	acceptMemoryProposal,
 	addMemoryEntry,
+	cancelSummarizeRun,
 	deleteMemoryEntry,
+	discardSummarizeRun,
+	getCurrentSummarizeRun,
 	getMemoryProposals,
+	getRunProposals,
 	getWorkspaceMemory,
+	memoryErrorMessage,
+	previewSummarize,
 	rejectMemoryProposal,
 	restoreMemoryEntry,
+	startSummarize,
 	undoAddedToMemory,
 	updateMemoryProposal,
 } from '../memory';
@@ -120,5 +127,98 @@ describe('undoAddedToMemory', () => {
 	it('rethrows other errors', async () => {
 		ax.post.mockImplementation(() => fail(500));
 		await expect(undoAddedToMemory(7, 5)).rejects.toBeDefined();
+	});
+});
+
+describe('summarize', () => {
+	const params = { mode: 'sources' as const, days: 7, my_chats: true };
+
+	test('preview posts the params and unwraps the counts', async () => {
+		const preview = { tasks: 3, estimated_tokens: 100 };
+		ax.post.mockImplementation(() => ok(preview));
+		expect(await previewSummarize(7, params)).toEqual(preview);
+		expect(ax.post).toHaveBeenCalledWith(
+			'/workspaces/7/memory/summarize/preview',
+			params,
+		);
+	});
+
+	test('start posts the params and unwraps the run', async () => {
+		ax.post.mockImplementation(() => ok({ id: 11, status: 'running' }));
+		expect(await startSummarize(7, params)).toEqual({
+			id: 11,
+			status: 'running',
+		});
+		expect(ax.post).toHaveBeenCalledWith(
+			'/workspaces/7/memory/summarize',
+			params,
+		);
+	});
+
+	test('start surfaces the error body for 409, 429 and 422', async () => {
+		for (const [status, error] of [
+			[409, 'already_running'],
+			[429, 'daily_cap'],
+			[422, 'no_sources'],
+		] as const) {
+			ax.post.mockImplementation(() => fail(status, { error }));
+			await expect(startSummarize(7, params)).rejects.toMatchObject({
+				response: { status, data: { error } },
+			});
+		}
+	});
+
+	test('current run is read uncached and may be null', async () => {
+		ax.get.mockImplementation(() => ok(null));
+		expect(await getCurrentSummarizeRun(7)).toBeNull();
+		expect(ax.get).toHaveBeenCalledWith(
+			'/workspaces/7/memory/summarize/runs/current',
+		);
+	});
+
+	test('cancel and discard post to the run and drop cached reads', async () => {
+		ax.get.mockImplementation(() => ok([]));
+		ax.post.mockImplementation(() => ok({ id: 11 }));
+		await getMemoryProposals(7, true);
+		await cancelSummarizeRun(7, 11);
+		expect(ax.post).toHaveBeenCalledWith(
+			'/workspaces/7/memory/summarize/runs/11/cancel',
+		);
+		await getMemoryProposals(7, true);
+		expect(ax.get).toHaveBeenCalledTimes(2);
+		await discardSummarizeRun(7, 11);
+		expect(ax.post).toHaveBeenCalledWith(
+			'/workspaces/7/memory/summarize/runs/11/discard',
+		);
+		await getMemoryProposals(7, true);
+		expect(ax.get).toHaveBeenCalledTimes(3);
+	});
+
+	test('run proposals are filtered by run_id', async () => {
+		ax.get.mockImplementation(() => ok([{ id: 1, kind: 'add' }]));
+		expect(await getRunProposals(7, 11)).toEqual([{ id: 1, kind: 'add' }]);
+		expect(ax.get).toHaveBeenCalledWith('/workspaces/7/memory/proposals', {
+			params: { run_id: 11 },
+		});
+	});
+});
+
+describe('memoryErrorMessage', () => {
+	const err = (status: number, data: any) => ({ response: { status, data } });
+
+	test.each([
+		['already_running', 'workspace.workspaceMemory.summarize.alreadyRunning'],
+		['daily_cap', 'workspace.workspaceMemory.summarize.dailyCap'],
+		['no_sources', 'workspace.workspaceMemory.summarize.noSources'],
+		['entry_changed', 'workspace.workspaceMemory.summarize.entryChanged'],
+	])('maps %s to its catalog message', (code) => {
+		const message = memoryErrorMessage(err(409, { error: code }), 'fallback');
+		expect(message).not.toBe('fallback');
+		expect(message).not.toMatch(/^workspace\./);
+	});
+
+	test('falls back to the server message, then the fallback', () => {
+		expect(memoryErrorMessage(err(422, { message: 'Nope' }), 'fb')).toBe('Nope');
+		expect(memoryErrorMessage(err(500, {}), 'fb')).toBe('fb');
 	});
 });
