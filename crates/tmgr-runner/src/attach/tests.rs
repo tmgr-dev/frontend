@@ -9808,4 +9808,68 @@ mod pocket_signals {
         }
         assert_eq!(out, 2);
     }
+
+    #[test]
+    fn a_live_ask_that_clears_in_the_same_wait_does_not_ring_the_pocket() {
+        let mut t = SignalTracker::new();
+        let s = SignalSettings::default();
+        t.update(&view(0, 1), &s);
+        let mut v = view(2, 2);
+        v.status.insert(
+            "b".into(),
+            SessionStatus {
+                ask: Some("Which?".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(rings(&mut t, &v), 1);
+        v.status.clear();
+        assert_eq!(rings(&mut t, &v), 0);
+    }
+
+    #[test]
+    fn questions_seen_in_quiet_hours_or_a_watched_pane_count_as_told() {
+        let mut t = SignalTracker::new();
+        let mut s = SignalSettings::default();
+        s.quiet = Some((22 * 60, 8 * 60));
+        t.update(&view(0, 1), &s);
+        let fresh = t.update(&view(2, 2), &s);
+        let mut n = fake();
+        assert_eq!(
+            deliver(&fresh, |i| i.into(), |_| false, &s, 23 * 60, &mut n),
+            0
+        );
+        assert_eq!(rings(&mut t, &view(2, 3)), 0);
+        let fresh = t.update(&view(3, 4), &s);
+        assert_eq!(
+            deliver(&fresh, |i| i.into(), |id| id == "b", &s, 600, &mut n),
+            0
+        );
+        assert_eq!(rings(&mut t, &view(3, 5)), 0);
+        assert_eq!((n.bells, n.texts.len()), (0, 0));
+    }
+
+    #[test]
+    fn a_live_ask_that_clears_in_the_same_wait_is_not_pushed_as_a_pocket() {
+        let mut t = PushTracker::new();
+        let s = push_on();
+        let mut v = push_view();
+        v.sessions[1].state.since_ms = 100 * MIN;
+        v.set_questions(pocket(2));
+        v.status.insert(
+            "b".into(),
+            SessionStatus {
+                ask: Some("Which?".into()),
+                ..Default::default()
+            },
+        );
+        t.update(&v, &s, 100 * MIN, 600, &nobody);
+        let first = t.update(&v, &s, 106 * MIN, 600, &nobody);
+        assert_eq!(first.iter().filter(|e| e.session == "b").count(), 1);
+        v.status.clear();
+        v.sessions[1].state.since_ms = 120 * MIN;
+        t.update(&v, &s, 120 * MIN, 600, &nobody);
+        let second = t.update(&v, &s, 126 * MIN, 600, &nobody);
+        assert_eq!(second.iter().filter(|e| e.session == "b").count(), 0);
+    }
 }

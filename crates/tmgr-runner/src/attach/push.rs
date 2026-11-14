@@ -109,6 +109,7 @@ impl PushTracker {
             let pushed = self.pocket_pushed.entry(id.to_string()).or_insert(0);
             *pushed = (*pushed).min(open);
             let mut pocket_only = false;
+            let mut question = false;
             let mut candidates: Vec<(PushKind, String, u64)> = Vec::new();
             match row.state.kind {
                 StateKind::Waiting => {
@@ -161,7 +162,8 @@ impl PushTracker {
                             started = entry.1;
                         }
                     }
-                    pocket_only = need.kind == NeedKind::Question && ask.is_none();
+                    question = need.kind == NeedKind::Question;
+                    pocket_only = question && ask.is_none();
                     let waited = now_ms.saturating_sub(started);
                     let grew =
                         !pocket_only || open > self.pocket_pushed.get(id).copied().unwrap_or(0);
@@ -194,7 +196,7 @@ impl PushTracker {
                 }
                 if kind == PushKind::Blocked {
                     self.fired.insert(key);
-                    if pocket_only {
+                    if question {
                         self.pocket_pushed.insert(id.to_string(), open);
                     }
                 }

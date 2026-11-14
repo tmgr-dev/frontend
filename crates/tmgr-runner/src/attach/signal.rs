@@ -153,12 +153,16 @@ impl SignalTracker {
                 }
                 grew
             } else {
-                match self.seen.get(&row.id).filter(|w| w.since_ms == since) {
+                let due = match self.seen.get(&row.id).filter(|w| w.since_ms == since) {
                     None => true,
                     Some(w) => {
                         need.kind > w.kind || (need.kind == NeedKind::Question && open > w.open)
                     }
+                };
+                if due && need.kind == NeedKind::Question {
+                    self.signalled_open.insert(row.id.clone(), open);
                 }
+                due
             };
             if due {
                 fresh.push((row.id.clone(), need.clone()));
