@@ -1,5 +1,7 @@
 import type { PageSummary } from '@/actions/tmgr/pages';
 import {
+	RECENT_PAGES_LIMIT,
+	ancestorIds,
 	applyMove,
 	buildPagesTree,
 	descendantIds,
@@ -8,6 +10,7 @@ import {
 	pagesWorkspaceId,
 	saveExpanded,
 	sidebarPages,
+	visibleRootCount,
 } from '../pagesTree';
 
 const page = (id: number, extra: Partial<PageSummary> = {}): PageSummary => ({
@@ -118,6 +121,7 @@ describe('sidebarPages', () => {
 		const { pinned, recent } = sidebarPages(pages);
 		expect(pinned.map((p) => p.id)).toEqual([3, 2]);
 		expect(recent.map((p) => p.id)).toEqual([4, 6, 5, 1]);
+		expect(RECENT_PAGES_LIMIT).toBe(5);
 		expect([...pinned, ...recent].every((p) => !p.children.length)).toBe(true);
 	});
 
@@ -127,11 +131,41 @@ describe('sidebarPages', () => {
 		);
 		const { pinned, recent } = sidebarPages(pages);
 		expect(pinned.map((p) => p.id)).toEqual([15]);
-		expect(recent.map((p) => p.id)).toEqual([
-			14, 13, 12, 11, 10, 9, 8, 7, 6, 5,
-		]);
+		expect(recent.map((p) => p.id)).toEqual([14, 13, 12, 11, 10]);
 		expect(sidebarPages(pages, 3).recent).toHaveLength(3);
 		expect(sidebarPages([])).toEqual({ pinned: [], recent: [] });
+	});
+});
+
+describe('ancestorIds', () => {
+	const tree = [
+		page(-1, {}),
+		page(-2, { parent_id: -1, slug: 'b' }),
+		page(-3, { parent_id: -2, slug: 'c' }),
+		page(-4, { slug: 'd' }),
+	];
+
+	it('lists every ancestor of a page by slug, including negative ids', () => {
+		expect(ancestorIds(tree, 'c').sort((a, b) => a - b)).toEqual([-2, -1]);
+		expect(ancestorIds(tree, 'b')).toEqual([-1]);
+	});
+
+	it('is empty for roots, unknown slugs and parent cycles', () => {
+		expect(ancestorIds(tree, 'd')).toEqual([]);
+		expect(ancestorIds(tree, 'nope')).toEqual([]);
+		const loop = [
+			page(1, { parent_id: 2, slug: 'x' }),
+			page(2, { parent_id: 1, slug: 'y' }),
+		];
+		expect(ancestorIds(loop, 'x').sort()).toEqual([1, 2]);
+	});
+});
+
+describe('visibleRootCount', () => {
+	it('grows to include the root of the active page', () => {
+		expect(visibleRootCount(500, 100, 3)).toBe(100);
+		expect(visibleRootCount(500, 100, 250)).toBe(251);
+		expect(visibleRootCount(50, 100, -1)).toBe(50);
 	});
 });
 

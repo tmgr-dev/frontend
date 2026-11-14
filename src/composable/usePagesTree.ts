@@ -4,6 +4,7 @@ import {
 	applyMove,
 	buildPagesTree,
 	loadExpanded,
+	onExpandedSaved,
 	saveExpanded,
 } from '@/utils/pagesTree';
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
@@ -88,6 +89,16 @@ export function usePagesTree(
 		if (id !== null) saveExpanded(id, next);
 	};
 
+	const stopSync = onExpandedSaved((savedFor) => {
+		const id = workspaceId.value;
+		if (id !== null && String(savedFor) === String(id))
+			expanded.value = loadExpanded(id);
+	});
+	onScopeDispose(stopSync);
+
+	const expandMany = (ids: number[]) =>
+		update((next) => ids.forEach((id) => next.add(id)));
+
 	const expand = (id: number) => update((next) => next.add(id));
 
 	const toggle = (id: number) =>
@@ -123,6 +134,7 @@ export function usePagesTree(
 		refresh,
 		toggle,
 		expand,
+		expandMany,
 		move,
 	};
 }
