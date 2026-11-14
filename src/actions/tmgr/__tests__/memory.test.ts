@@ -218,7 +218,9 @@ describe('memoryErrorMessage', () => {
 	});
 
 	test('falls back to the server message, then the fallback', () => {
-		expect(memoryErrorMessage(err(422, { message: 'Nope' }), 'fb')).toBe('Nope');
+		expect(memoryErrorMessage(err(422, { message: 'Nope' }), 'fb')).toBe(
+			'Nope',
+		);
 		expect(memoryErrorMessage(err(500, {}), 'fb')).toBe('fb');
 	});
 });
