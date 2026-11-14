@@ -201,6 +201,39 @@ fn ws_list_shows_local_workspaces_without_a_login() {
 }
 
 #[test]
+fn status_moves_are_recorded_in_a_schema_15_workspace() {
+    let local = Local::new();
+    local
+        .db("personal")
+        .execute_batch("UPDATE meta SET value = '15' WHERE key = 'schema_version'")
+        .unwrap();
+    local.json(&["add", "Tracked", "-p", "WK"]);
+    local.json(&["start", "WK-1", "--no-branch"]);
+    local.json(&["stop"]);
+    local.json(&["done", "WK-1", "--no-pr"]);
+
+    let conn = local.db("personal");
+    let mut st = conn
+        .prepare(
+            "SELECT sn.type, h.actor_kind FROM task_status_history h
+             JOIN statuses sn ON sn.id = h.new_status_id
+             WHERE h.task_id = 1 ORDER BY h.id",
+        )
+        .unwrap();
+    let moves: Vec<(String, String)> = st
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        moves.last().map(|m| m.0.as_str()),
+        Some("completed"),
+        "{moves:?}"
+    );
+    assert!(moves.iter().all(|m| m.1 == "user"), "{moves:?}");
+}
+
+#[test]
 fn tasks_are_created_listed_shown_and_moved() {
     let local = Local::new();
     let created = local.json(&["add", "First local task", "-p", "WK"]);
@@ -324,7 +357,7 @@ fn notes_become_pages_that_sync_as_markdown() {
 #[test]
 fn a_newer_schema_is_refused_and_auth_stays_with_the_cloud() {
     let local = Local::new();
-    local.workspace("future", "Future", 15);
+    local.workspace("future", "Future", 16);
     let out = local
         .cmd()
         .args(["--ws", "local:future", "task", "list"])

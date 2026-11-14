@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.119
+
+- Local workspaces on schema 15: every task status change `tmgr` makes in a local workspace is recorded in the task status history, which the desktop day summary uses to say which tasks moved from one status to another. Update the desktop app to 0.9.151 together with `tmgr`: older `tmgr` versions refuse to open a workspace the new desktop has upgraded.
+
 ## 1.0.118
 
 - `tmgr attach`: two new pane header buttons and shortcuts. Restart (the refresh icon, Ctrl-] K) relaunches the agent with the same profile, model, folder, sandbox and task and resumes its conversation where the agent supports it, otherwise it starts fresh and says so; a busy session asks first. Fork (Ctrl-] F) opens the same session in a new pane, forking the conversation for Claude Code and Codex and starting fresh with the same settings otherwise.
