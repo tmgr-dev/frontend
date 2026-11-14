@@ -206,6 +206,74 @@ async fn today_falls_back_to_the_time_summary_on_an_older_server() {
     assert_eq!(v["warnings"][0]["code"], "daily_time_unavailable");
 }
 
+async fn legacy_today(env: &Env, extra: serde_json::Value) {
+    env.login_seed();
+    env.mock_workspaces().await;
+    let mut data = json!({"total_s": 900, "items": [
+        {"task_id": 8974, "key": "TM-512", "title": "TM-512: Fix login", "seconds": 900}
+    ]});
+    for (k, v) in extra.as_object().unwrap() {
+        data[k] = v.clone();
+    }
+    env.mock_json("/api/workspaces/1/time-summary", json!({ "data": data }))
+        .await;
+    env.mock_json("/api/daily-routines/expand", json!([])).await;
+    env.mock_json("/api/workspaces/1/agent-work", json!({"data": []}))
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn today_summary_with_exports_off_warns_and_passes_hidden_and_note_through() {
+    let env = Env::new().await;
+    legacy_today(&env, json!({"hidden": true, "note": "feature_disabled"})).await;
+    let out = today_cmd(&env)
+        .args(["today", "--date", "2026-10-12", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_valid("today", &v);
+    assert_eq!(v["data"]["hidden"], true);
+    assert_eq!(v["data"]["note"], "feature_disabled");
+    let warning = v["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["code"] == "time_summary_partial")
+        .unwrap_or_else(|| panic!("{v}"));
+    assert_eq!(
+        warning["message"],
+        "Partial data: the exports module is off, so only your own time is shown."
+    );
+    let human = today_cmd(&env)
+        .args(["today", "--date", "2026-10-12"])
+        .output()
+        .unwrap();
+    assert!(
+        text(&human.stderr).contains("Partial data: the exports module is off"),
+        "{}",
+        text(&human.stderr)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn today_summary_with_exports_on_has_no_notice_or_extra_fields() {
+    let env = Env::new().await;
+    legacy_today(&env, json!({})).await;
+    let out = today_cmd(&env)
+        .args(["today", "--date", "2026-10-12", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert!(v["data"].get("hidden").is_none() && v["data"].get("note").is_none());
+    assert!(v["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|w| w["code"] != "time_summary_partial"));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn today_with_nothing_prints_an_empty_state_and_survives_missing_modules() {
     let env = Env::new().await;

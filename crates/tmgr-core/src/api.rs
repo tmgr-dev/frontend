@@ -622,25 +622,6 @@ impl Client {
         })
     }
 
-    pub fn time_summary_total(&self, workspace_id: i64, from: &str, to: &str) -> Result<i64> {
-        let body = self.request(
-            Method::GET,
-            &format!("/api/workspaces/{workspace_id}/time-summary"),
-            &[
-                ("from", from.to_string()),
-                ("to", to.to_string()),
-                ("group_by", "task".to_string()),
-            ],
-            None,
-            "time:read",
-        )?;
-        let data = unwrap_data(body);
-        data.get("total_s")
-            .or_else(|| data.get("total_seconds"))
-            .and_then(Value::as_i64)
-            .ok_or_else(|| Error::internal("unexpected time summary response"))
-    }
-
     pub fn create_task(&self, body: &Value) -> Result<ApiTask> {
         parse(unwrap_data(self.request(
             Method::POST,

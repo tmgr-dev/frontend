@@ -154,6 +154,7 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
         )?
         .unwrap_or_default();
 
+    let mut partial: Option<(serde_json::Value, Option<serde_json::Value>)> = None;
     let mut rows: HashMap<u64, Row> = HashMap::new();
     let mut human_total = 0;
     match &summary {
@@ -187,6 +188,10 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
         }
         Some(Summary::Legacy(s)) => {
             human_total = s.total_s;
+            if let Some(notice) = s.partial_notice() {
+                ctx.warn("time_summary_partial", notice);
+                partial = Some((s.hidden.clone().unwrap_or_default(), s.note.clone()));
+            }
             for item in &s.items {
                 let reference = if parse_key(&item.key).is_some() {
                     item.key.clone()
@@ -313,15 +318,19 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
             })
         })
         .collect();
-    Ok(Output::new(
-        json!({
-            "date": ds,
-            "workspace": sanitize_line(&ws.code),
-            "tz": tz,
-            "tasks": tasks,
-            "routines": routines,
-            "totals": {"human_s": human_total, "agent_s": agent_total},
-        }),
-        lines.join("\n"),
-    ))
+    let mut data = json!({
+        "date": ds,
+        "workspace": sanitize_line(&ws.code),
+        "tz": tz,
+        "tasks": tasks,
+        "routines": routines,
+        "totals": {"human_s": human_total, "agent_s": agent_total},
+    });
+    if let Some((hidden, note)) = partial {
+        data["hidden"] = hidden;
+        if let Some(note) = note {
+            data["note"] = note;
+        }
+    }
+    Ok(Output::new(data, lines.join("\n")))
 }

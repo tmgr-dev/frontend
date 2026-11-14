@@ -16,6 +16,41 @@ pub struct TimeItem {
 pub struct TimeSummary {
     pub total_s: i64,
     pub items: Vec<TimeItem>,
+    pub hidden: Option<Value>,
+    pub note: Option<Value>,
+}
+
+impl TimeSummary {
+    pub fn is_partial(&self) -> bool {
+        !matches!(
+            self.hidden,
+            None | Some(Value::Null) | Some(Value::Bool(false))
+        )
+    }
+
+    pub fn partial_notice(&self) -> Option<String> {
+        if !self.is_partial() {
+            return None;
+        }
+        let disabled = self.note.as_ref().and_then(Value::as_str) == Some("feature_disabled")
+            || self
+                .hidden
+                .as_ref()
+                .and_then(|h| h.get("error"))
+                .and_then(Value::as_str)
+                == Some("feature_disabled");
+        if disabled {
+            return Some(
+                "Partial data: the exports module is off, so only your own time is shown.".into(),
+            );
+        }
+        match self.note.as_ref().and_then(Value::as_str) {
+            Some(n) if !n.trim().is_empty() => {
+                Some(format!("Partial data: {}", crate::text::sanitize_line(n)))
+            }
+            _ => Some("Partial data: some time is hidden, so the totals are incomplete.".into()),
+        }
+    }
 }
 
 #[derive(Default, Clone)]
@@ -105,7 +140,12 @@ impl Client {
                     .collect()
             })
             .unwrap_or_default();
-        Ok(TimeSummary { total_s, items })
+        Ok(TimeSummary {
+            total_s,
+            items,
+            hidden: data.get("hidden").cloned(),
+            note: data.get("note").cloned(),
+        })
     }
 
     pub fn workspace_agent_runs(
@@ -509,5 +549,47 @@ mod tests {
             );
         }
         assert_eq!(parse_runs_page(json!({"data": []})).unwrap().runs.len(), 0);
+    }
+
+    fn summary(hidden: Option<Value>, note: Option<Value>) -> TimeSummary {
+        TimeSummary {
+            total_s: 0,
+            items: Vec::new(),
+            hidden,
+            note,
+        }
+    }
+
+    #[test]
+    fn partial_notice_covers_exports_on_off_and_old_backends() {
+        assert_eq!(summary(None, None).partial_notice(), None);
+        assert_eq!(summary(Some(json!(false)), None).partial_notice(), None);
+        assert_eq!(summary(Some(Value::Null), None).partial_notice(), None);
+        let off = "Partial data: the exports module is off, so only your own time is shown.";
+        assert_eq!(
+            summary(Some(json!(true)), Some(json!("feature_disabled")))
+                .partial_notice()
+                .as_deref(),
+            Some(off)
+        );
+        assert_eq!(
+            summary(
+                Some(json!({"error": "feature_disabled", "feature": "exports"})),
+                Some(json!("Only your own tasks."))
+            )
+            .partial_notice()
+            .as_deref(),
+            Some(off)
+        );
+        assert_eq!(
+            summary(Some(json!(true)), Some(json!("quota\u{1b}[31m")))
+                .partial_notice()
+                .as_deref(),
+            Some("Partial data: quota [31m")
+        );
+        assert!(summary(Some(json!(true)), None)
+            .partial_notice()
+            .unwrap()
+            .starts_with("Partial data"));
     }
 }

@@ -28,6 +28,7 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
             "today's time",
         )?
     };
+    let mut partial: Option<(serde_json::Value, Option<serde_json::Value>)> = None;
     let total = match daily {
         Some(Some(d)) => Some(d.total_s),
         Some(None) => {
@@ -36,10 +37,17 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
                 "this server has no per-day time endpoint; using the time summary",
             );
             ctx.soft(
-                client.time_summary_total(ws.id, &today, &today),
+                client.time_summary(ws.id, &today, &today),
                 "time_summary_unavailable",
                 "today's time",
             )?
+            .map(|s| {
+                if let Some(notice) = s.partial_notice() {
+                    ctx.warn("time_summary_partial", notice);
+                    partial = Some((s.hidden.clone().unwrap_or_default(), s.note.clone()));
+                }
+                s.total_s
+            })
         }
         None => None,
     };
@@ -88,13 +96,19 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
     }
     lines.push(String::new());
     lines.push(s.muted("hint: tmgr task list \u{b7} tmgr add \"title\" \u{b7} tmgr ws list"));
-    let data = json!({
+    let mut data = json!({
         "workspace": {"id": ws.id, "code": sanitize_line(&ws.code), "name": sanitize_line(&ws.name)},
         "active": active.as_ref().map(|(v, _)| v),
         "git": null,
         "today": total.map(|t| json!({"total_s": t, "human_s": t, "agent_s": null})),
         "agents": null,
     });
+    if let Some((hidden, note)) = partial {
+        data["hidden"] = hidden;
+        if let Some(note) = note {
+            data["note"] = note;
+        }
+    }
     Ok(Output::new(data, lines.join("\n")))
 }
 

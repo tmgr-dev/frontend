@@ -197,6 +197,32 @@ async fn status_falls_back_to_the_time_summary_on_an_older_server() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn status_summary_with_exports_off_warns_and_passes_hidden_and_note_through() {
+    let env = Env::new().await;
+    env.login_seed();
+    env.mock_workspaces().await;
+    env.mock_json(
+        "/api/workspaces/1/time-summary",
+        json!({"data": {"total_s": 600, "items": [], "hidden": true, "note": "feature_disabled"}}),
+    )
+    .await;
+    let out = env.cmd().args(["status", "--json"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    assert_valid("status", &v);
+    assert_eq!(v["data"]["today"]["total_s"], 600);
+    assert_eq!(v["data"]["hidden"], true);
+    assert_eq!(v["data"]["note"], "feature_disabled");
+    let codes: Vec<_> = v["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w["code"].as_str().unwrap())
+        .collect();
+    assert!(codes.contains(&"time_summary_partial"), "{codes:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn status_without_login_is_exit_4() {
     let env = Env::new().await;
     let out = env.cmd().output().unwrap();
