@@ -371,7 +371,7 @@ async fn exchange(
   let mut response = request
     .send()
     .await
-    .map_err(|e| format!("LLM server unreachable: {}", e.without_url()))?;
+    .map_err(|e| super::send_error(e, url))?;
   let status = response.status();
   if status.is_redirection() {
     let location = response.headers().get("location").and_then(|v| v.to_str().ok());
@@ -1040,5 +1040,21 @@ mod llm_oneshot_tests {
     let printed = format!("{endpoint:?}");
     assert!(!printed.contains("sk-test-key-123456"));
     assert!(printed.contains("[hidden]"));
+  }
+
+  #[tokio::test]
+  async fn exchange_to_a_closed_port_gives_the_friendly_message_without_the_key() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let base = format!("http://127.0.0.1:{port}");
+    let endpoint = loopback_endpoint(&base, Some("sk-test-secret"));
+    let url = format!("{base}/v1/models?k=sk-test-secret");
+    let message = exchange(&endpoint, Duration::from_secs(5), &url, None).await.err().unwrap();
+    assert_eq!(
+      message,
+      format!("Can't reach your AI server at {base}. Check that Ollama, LM Studio or your server is running.")
+    );
+    assert!(!message.contains("sk-test-secret"), "{message}");
   }
 }

@@ -159,6 +159,19 @@ fn normalize_origin(input: &str) -> Result<String, String> {
   Ok(format!("{scheme}://{host}:{port}"))
 }
 
+fn unreachable_message(url: &str) -> String {
+  let target = normalize_origin(url).map(|origin| format!(" at {origin}")).unwrap_or_default();
+  format!("Can't reach your AI server{target}. Check that Ollama, LM Studio or your server is running.")
+}
+
+fn send_error(e: reqwest::Error, url: &str) -> String {
+  if e.is_connect() {
+    unreachable_message(url)
+  } else {
+    format!("LLM server unreachable: {}", e.without_url())
+  }
+}
+
 /// Whether the saved key should still exist after this `llm_config_set` call, before anything is written.
 fn key_will_exist(clear_api_key: bool, new_key_present: bool, origin_changed: bool, had_key: bool) -> bool {
   if clear_api_key {
@@ -1085,7 +1098,7 @@ async fn post_chat(
   if let Some(key) = api_key {
     builder = builder.header("authorization", format!("Bearer {key}"));
   }
-  let response = builder.send().await.map_err(|e| format!("LLM server unreachable: {}", e.without_url()))?;
+  let response = builder.send().await.map_err(|e| send_error(e, url))?;
   if response.status().is_redirection() {
     let location = response.headers().get("location").and_then(|v| v.to_str().ok());
     return Err(redirect_error(location, api_key));
@@ -2891,8 +2904,35 @@ mod tests {
     let client = llm_http_client("http://127.0.0.1").unwrap();
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions?key=QUERYSECRET");
     let message = post_chat(&client, &url, b"{}".to_vec(), None).await.err().unwrap();
-    assert!(message.starts_with("LLM server unreachable"), "{message}");
+    assert_eq!(message, unreachable_message(&format!("http://127.0.0.1:{port}")));
     assert!(!message.contains("QUERYSECRET"), "{message}");
+  }
+
+  #[test]
+  fn unreachable_message_names_only_the_origin() {
+    assert_eq!(
+      unreachable_message("http://user:pw@LocalHost:11434/v1/chat?key=sk-test-secret"),
+      "Can't reach your AI server at http://localhost:11434. Check that Ollama, LM Studio or your server is running."
+    );
+    assert_eq!(
+      unreachable_message("https://example.com/v1"),
+      "Can't reach your AI server at https://example.com:443. Check that Ollama, LM Studio or your server is running."
+    );
+  }
+
+  #[tokio::test]
+  async fn a_refused_connection_gives_the_friendly_message_without_the_key() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let client = llm_http_client("http://127.0.0.1").unwrap();
+    let url = format!("http://u:p@127.0.0.1:{port}/v1/chat/completions?k=sk-test-secret");
+    let message = post_chat(&client, &url, b"{}".to_vec(), Some("sk-test-secret")).await.err().unwrap();
+    assert_eq!(
+      message,
+      format!("Can't reach your AI server at http://127.0.0.1:{port}. Check that Ollama, LM Studio or your server is running.")
+    );
+    assert!(!message.contains("sk-test-secret"), "{message}");
   }
 
   fn redirect_text(location: Option<&str>, key: Option<&str>) -> String {
