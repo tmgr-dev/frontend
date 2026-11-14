@@ -559,9 +559,9 @@ fn shorten(s: &str, max: usize) -> String {
 
 fn help(mode: Mode) -> &'static str {
     match mode {
-        Mode::Recent => "↑↓ pick  Enter start  → open  type to search  ^P pin  ⌫ edit",
-        Mode::Search => "↑↓ pick  Enter start  → open  Esc back  ^P pin",
-        Mode::Browse => "←→ up/into  Enter start  . hidden  ~ home  / search  ^P pin",
+        Mode::Recent => "↑↓ pick  Enter pick  → open  type to search  ^P pin  ⌫ edit",
+        Mode::Search => "↑↓ pick  Enter pick  → open  Esc back  ^P pin",
+        Mode::Browse => "←→ up/into  Enter pick  . hidden  ~ home  / search  ^P pin",
         Mode::Path => "",
     }
 }

@@ -1,15 +1,12 @@
-                                                                                                    
-              ╭ New session ─────────────────────────────────────────────────────────╮              
-              │   Kind       claude   codex   shell   custom                         │              
-              │ > Folder    /work/app                                                │              
-              │   Recent                                                             │              
-              │   ▸ ★ /work/infra                                                    │              
-              │       /work/app/web                                             live │              
-              │       /work/app                                                      │              
-              │       /work/api                                                      │              
-              │       ~/notes                                                        │              
-              │   ↑↓ pick  Enter start  → open  type to search  ^P pin  ⌫ edit       │              
-              │   Task      optional, type a key or words                            │              
+╭ Folder ──────────────────────────────────────────────────────────────────────────────────────────╮
+│Recent                                                                                            │
+│▸ ★ /work/infra                                                                                   │
+│    /work/app/web                                                                             live│
+│    /work/app                                                                                     │
+│    /work/api                                                                                     │
+│    ~/notes                                                                                       │
+│↑↓ pick  Enter pick  → open  type to search  ^P pin  ⌫ edit                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
               │   Name                                                               │              
               │   Worktree   Off   On                                                │              
               │   Approvals  Off   On                                                │              
@@ -21,10 +18,13 @@
               │                                                                      │              
               │                                                                      │              
               │                                                                      │              
-              │ Enter starts, Ctrl+R resumes a past session, Esc cancels,            │              
+              │ Enter starts, ^O folder, Ctrl+R resumes a past session, Esc cancels, │              
               │ Tab/Shift+Tab next/prev field                                        │              
               │                                                                      │              
               │                                                                      │              
               ╰──────────────────────────────────────────────────────────────────────╯              
+                                                                                                    
+                                                                                                    
+                                                                                                    
                                                                                                     
                                                                                                     
