@@ -165,9 +165,7 @@ describe('sign out of other devices checkbox', () => {
 
 	test('is shown only while a new password is typed', () => {
 		const label = findLabel(descriptor.template!.ast);
-		const vIf = label.props.find(
-			(p: any) => p.type === 7 && p.name === 'if',
-		);
+		const vIf = label.props.find((p: any) => p.type === 7 && p.name === 'if');
 		expect(vIf?.exp?.content).toBe('user.password');
 	});
 });
