@@ -84,6 +84,7 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useNavHistory } from '@/composable/useNavHistory';
+	import { isLocalWorkspaceId } from '@/local/classify';
 	import { openMoveDialog } from '@/local/moveToCloud/ui';
 	import { pluginState } from '@/pluginSystem/state';
 	import { t } from '@/i18n';
@@ -146,6 +147,10 @@
 		() => import('@/components/agent/AiAssistantPanel.vue'),
 	);
 
+	const LocalAgentPanel = defineAsyncComponent(
+		() => import('@/components/agent/LocalAgentPanel.vue'),
+	);
+
 	const route = useRoute();
 	const router = useRouter();
 	const { isFeatureEnabled, showSurface } = useFeatureToggles();
@@ -159,6 +164,9 @@
 	const isLocalOnly = computed(() => store.getters.isLocalOnly === true);
 	const { isDemo } = useDemoWorkspace();
 	const isMobile = useMediaQuery('(max-width: 768px)');
+	const isLocalWorkspace = computed(() =>
+		isLocalWorkspaceId(store.getters.currentWorkspaceId),
+	);
 	const showAskAi = computed(
 		() => !isDesktop && !isLocalOnly.value && isFeatureEnabled('ai.assistant'),
 	);
@@ -1260,10 +1268,14 @@
 					<slot />
 				</div>
 			</SidebarInset>
+			<LocalAgentPanel
+				v-if="isDesktop && isLocalWorkspace && isFeatureEnabled('ai.assistant')"
+			/>
 			<AiAssistantPanel
-				v-if="
+				v-else-if="
 					store.getters.isLoggedIn &&
 					!isLocalOnly &&
+					!isLocalWorkspace &&
 					isFeatureEnabled('ai.assistant')
 				"
 			/>

@@ -49,7 +49,7 @@ const OPAQUE_KEYS = new Set([
 	'properties',
 ]);
 
-const camelizeDeep = (value: unknown, opaque = false): unknown => {
+export const camelizeDeep = (value: unknown, opaque = false): unknown => {
 	if (opaque) return value;
 	if (Array.isArray(value)) return value.map((v) => camelizeDeep(v));
 	if (value && typeof value === 'object') {
@@ -201,7 +201,7 @@ const personaRow = (ctx: LocalContext) =>
 		)
 		.then((rows) => rows[0] ?? null);
 
-interface ToolDef {
+export interface ToolDef {
 	name: string;
 	description: string;
 	inputSchema: {
@@ -1117,6 +1117,8 @@ const agentWorkBody = (
 };
 
 TOOLS.push(...PAGES_TOOLS);
+
+export const MCP_TOOLS: readonly ToolDef[] = TOOLS;
 
 const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
 

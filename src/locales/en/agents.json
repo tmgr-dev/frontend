@@ -441,5 +441,26 @@
 			"decisionFailed": "Could not send your decision. Please try again.",
 			"newChatFailed": "Failed to start new conversation"
 		}
+	},
+	"localAssistant": {
+		"title": "AI assistant",
+		"placeholder": "Ask about your tasks and pages…",
+		"send": "Send",
+		"stop": "Stop",
+		"newChat": "New chat",
+		"close": "Close",
+		"retry": "Retry",
+		"empty": "Ask me to find tasks, summarize pages or make changes. I only change things after you confirm.",
+		"noServerTitle": "Connect your own AI server",
+		"noServerBody": "Local workspaces use an OpenAI-compatible server such as Ollama, LM Studio, vLLM or llama.cpp. Set its address in Settings.",
+		"openSettings": "Open AI settings",
+		"remoteWarning": "Your AI server is not on this computer or local network. Workspace data you send in this chat leaves this device.",
+		"confirmTitle": "Allow this change?",
+		"confirm": "Confirm",
+		"reject": "Reject",
+		"toolDone": "Used {tool}",
+		"toolRejected": "Rejected {tool}",
+		"you": "You",
+		"assistant": "Assistant"
 	}
 }

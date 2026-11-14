@@ -96,7 +96,6 @@ describeSqlite('local modules API', () => {
 				'dashboard',
 				'pomodoro',
 				'exports',
-				'ai.assistant',
 				'cursor',
 				'github',
 				'telegram',

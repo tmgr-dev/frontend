@@ -182,7 +182,7 @@ export const MODULES: CatalogModule[] = [
 		'Chat and AI replies to comments (uses AI credits)',
 		'ai',
 		{
-			local: false,
+			local: true,
 		},
 	),
 	entry('agent_work', 'Agent work', 'See what agents did and how long', 'ai', {

@@ -167,7 +167,7 @@ export const createLlmChat = (
 			}
 			for (const [position, buf] of toolBuffers.entries()) {
 				const rawArguments = buf.arguments || '{}';
-				let args: { method: string; path: string; body?: unknown };
+				let args: Record<string, unknown>;
 				try {
 					args = JSON.parse(rawArguments);
 				} catch {

@@ -7,7 +7,7 @@ description: Ask the AI about your workspace, let it propose changes that you co
 
 The AI assistant answers questions about your workspace and helps with tasks. It needs the AI assistant module, which is off by default. The owner turns it on in [Settings → Modules](/settings/modules), in the AI agents group. See [Modules reference](/docs/app/modules).
 
-AI features work in cloud workspaces only. They are not available in a local workspace of the desktop app or when you use the desktop app without an account. The one exception is Ask persona, described at the end of this page.
+The cloud AI features work in cloud workspaces only. In a local workspace of the desktop app, the assistant talks to your own OpenAI-compatible server instead, see [Local workspaces](#local-assistant). Ask persona, described at the end of this page, also works there.
 
 ## Ask AI {#ask-ai}
 
@@ -54,6 +54,14 @@ Pinned facts belong to one chat. Facts that the whole workspace should share go 
 ### Compact history {#compact}
 
 A long chat fills the assistant's context. **Compact history** replaces older messages with a summary, so the chat can go on. It works between answers. TMGR also compacts a chat on its own when it gets too long. The chat then shows "History compacted (automatic)".
+
+## Assistant in local workspaces {#local-assistant}
+
+In a local workspace of the desktop app, **Ask AI** (the sparkle button in the status bar) opens an assistant that uses your own OpenAI-compatible server, such as Ollama, LM Studio, vLLM or llama.cpp. Set the server up in [Settings → Personas](/settings/personas), under **Local LLM**, and turn on the AI assistant module for the workspace. Without a server address the panel offers **Open AI settings**.
+
+The assistant can read and search tasks, comments, statuses and pages. Every change, such as creating or editing a task, a comment, a page, a status or a timer, waits for your **Confirm** or **Reject**. It does one request after another and stops after 8 tool calls in one answer. **Stop** cancels the answer.
+
+The chat stays on this computer and is not saved after you close the app. Workspace data goes only to the server you set. If that server is not on this computer or your local network, the panel shows a warning, because the data you send leaves this device.
 
 ## Write mode {#write-mode}
 

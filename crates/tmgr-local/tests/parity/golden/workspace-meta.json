@@ -312,10 +312,9 @@
 							"enforced": true,
 							"hidden": false,
 							"key": "ai.assistant",
-							"local": false,
+							"local": true,
 							"name": "AI assistant",
 							"pack": "ai",
-							"requires_account": true,
 							"scope": "workspace"
 						},
 						{
@@ -537,6 +536,7 @@
 								"task.files",
 								"pages",
 								"graph",
+								"ai.assistant",
 								"agent_work",
 								"personas"
 							],

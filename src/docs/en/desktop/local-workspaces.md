@@ -117,3 +117,5 @@ A persona can answer with an AI model on your computer, such as Ollama or LM Stu
 A server on your local network is used only after you confirm it with **Allow**. A URL outside this computer and your network shows a warning, because the data will leave the computer.
 
 To use it, open a task in a local workspace and press **Ask persona** next to the comment box. The persona reads the task and posts its answer as a comment.
+
+The same server also powers the **Ask AI** assistant of a local workspace (turn on the AI assistant module). It reads your tasks and pages and asks you to confirm every change. Your data stays on this device unless the server is remote. See [AI assistant](/docs/app/ai-assistant#local-assistant).

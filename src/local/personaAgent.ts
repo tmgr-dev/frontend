@@ -19,7 +19,7 @@ export interface ToolCall {
 	name: string;
 	/** Echoed back verbatim in the assistant message the next turn sees. */
 	rawArguments: string;
-	args: { method: string; path: string; body?: unknown };
+	args: Record<string, any>;
 }
 
 export type ChatStreamEvent =
