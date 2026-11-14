@@ -68,6 +68,8 @@ tmgr runner trust
 tmgr runner allow
 ```
 
+Typed alone in a terminal, `tmgr run` opens a menu that walks you through the start; see [Agent sessions](/docs/cli/sessions#menu).
+
 `session export --page` saves a session as a page in your workspace. Checkpoints need a git folder. `runner trust` and `runner allow` are experimental: they set which folders and workspaces agents may start in.
 
 ## Answer every agent question in one inbox {#decisions}

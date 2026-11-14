@@ -9,6 +9,18 @@ description: Find, rename, talk to, stop and resume the sessions that tmgr run s
 
 All of these commands are experimental. Anywhere a command takes a session, you can give its id or its name.
 
+## Start from the menu {#menu}
+
+Type `tmgr run` with nothing after it, in a terminal, and a menu opens instead of an error. It walks you through the start in steps: pick the agent, then the session (a new one, or a past one to resume or fork), then the flags. The last step shows the final command before anything runs, and Enter starts it and opens the live view.
+
+Past sessions come from `tmgr` and from Claude Code and Codex on this machine. Type to filter them. The filter also searches the local index of your transcripts, so you can find a session by what was said in it. Nothing leaves your computer. Reading transcripts needs your consent: while it is off, the menu says so and shows how to allow it. A session that is running in another terminal can be forked, not resumed.
+
+The menu remembers the last agent, the kind of start (new, resume or fork) and the flags you chose, and offers them again next time.
+
+Bypass permissions and No sandbox are toggles on the flags step, and the menu never skips the confirmation for them: after you press Enter, you still type the confirmation word, as with the same flags on the command line. A session that was recorded without the sandbox needs No sandbox to resume, and the menu locks the toggle on. Ordinary Claude Code and Codex sessions, the ones you started yourself outside `tmgr`, live in your real home, so resuming them needs No sandbox.
+
+The menu does not appear when you add anything after `tmgr run`, such as a flag or a task, when the input or output is not a terminal, or when you run the command inside an agent session. In those cases `tmgr run` behaves as before.
+
 ## See your sessions {#list}
 
 To list sessions with their state:
