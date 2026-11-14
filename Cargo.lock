@@ -4085,7 +4085,7 @@ dependencies = [
  "chrono",
  "clap",
  "ctrlc",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "iana-time-zone",
  "jsonschema",
  "keyring",
@@ -4152,7 +4152,7 @@ name = "tmgr-ipc"
 version = "1.0.123"
 dependencies = [
  "base64 0.22.1",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "hmac 0.13.0",
  "libc",
  "serde",
@@ -4241,7 +4241,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "crossterm",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "landlock",
  "libc",
  "portable-pty",
