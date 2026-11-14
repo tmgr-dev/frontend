@@ -167,6 +167,8 @@ A persona token can use only the tools that a persona needs, and each of them on
 | `agent_work:write` | `start_agent_work`, `update_agent_work`, `finish_agent_work` |
 | `pages:read` | `workspace_context`, `pages_for_task`, `pages_search`, `pages_tree`, `pages_get` |
 | `pages:write` | `pages_create`, `pages_update`, `pages_append`, `pages_set_section` |
+| `memory:read` | `memory_recall` |
+| `memory:write` | `memory_remember`, `memory_forget` |
 
 `whoami`, `list_workspaces`, `get_persona`, `get_persona_skill`, `get_persona_skill_file`, `plugin_authoring_guide` and `tmgr_request` need no permission. `tmgr_request` checks each API call on its own.
 
