@@ -1425,17 +1425,19 @@ mod linux {
         let mut record = Path::new(policy_path)
             .parent()
             .and_then(|d| std::fs::File::create(d.join(crate::objectmodes::RO_RECORD)).ok());
-        let single_thread = std::fs::read_dir("/proc/self/task").is_ok_and(|d| d.count() == 1);
+        let threads = std::fs::read_dir("/proc/self/task").map(|d| d.count());
         let probed = if force_fallback {
             Err(Setup::Unavailable(
                 "the namespace was disabled for a test".into(),
             ))
-        } else if !single_thread {
-            Err(Setup::Unavailable(
-                "the helper process has several threads".into(),
-            ))
         } else {
-            probe_read_only_namespace(policy)
+            match threads {
+                Ok(1) => probe_read_only_namespace(policy),
+                Ok(_) => Err(Setup::Unavailable(
+                    "the helper process has several threads".into(),
+                )),
+                Err(e) => Err(Setup::Failed(format!("/proc/self/task: {e}"))),
+            }
         };
         let entered = probed.and_then(|()| {
             enter_read_only_namespace(policy).map_err(|e| match e {
