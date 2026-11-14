@@ -99,6 +99,11 @@ struct Rig {
 }
 
 fn rig() -> Rig {
+  let store = Arc::new(MemStore::default());
+  rig_with(store.clone(), store)
+}
+
+fn rig_with(store: Arc<MemStore>, pins: Arc<dyn PinStore>) -> Rig {
   let clock = Arc::new(AtomicI64::new(T0));
   let c = clock.clone();
   let dir = tempfile::tempdir().unwrap();
@@ -106,9 +111,8 @@ fn rig() -> Rig {
   let relay = Arc::new(FakeRelay::default());
   let host = Arc::new(FakeHost::default());
   *host.hub.lock().unwrap() = Some(hub.clone());
-  let store = Arc::new(MemStore::default());
   let phones = Phones::new(
-    store.clone(),
+    pins,
     relay.clone(),
     hub.clone(),
     host.clone(),
@@ -599,6 +603,72 @@ fn a_revoked_pairing_gets_ack_revoked_and_applies_nothing() {
   r.phones.handle_answer(&p.pin, &msg).unwrap();
   assert_eq!(r.acks(&p)[0].result, AckResult::Revoked);
   assert_eq!(r.state(&id), "open");
+}
+
+struct ChangedAfterFirstRead {
+  inner: Arc<MemStore>,
+  armed: std::sync::atomic::AtomicBool,
+  replacement: Option<String>,
+}
+
+impl PinStore for ChangedAfterFirstRead {
+  fn get(&self, account: &str) -> Result<Option<String>, String> {
+    let v = self.inner.get(account)?;
+    if account != "index" && self.armed.swap(false, Ordering::SeqCst) {
+      match &self.replacement {
+        Some(r) => self.inner.set(account, r)?,
+        None => self.inner.delete(account)?,
+      }
+    }
+    Ok(v)
+  }
+
+  fn set(&self, account: &str, value: &str) -> Result<(), String> {
+    self.inner.set(account, value)
+  }
+
+  fn delete(&self, account: &str) -> Result<(), String> {
+    self.inner.delete(account)
+  }
+}
+
+fn answer_after_pin_change(replace: impl FnOnce(&Pin) -> Option<Pin>) -> (Rig, Phone, String, String) {
+  let mem = Arc::new(MemStore::default());
+  let probe = rig();
+  let p = probe.pair("mb1", "Pocket", 10);
+  let replacement = replace(&p.pin).map(|pin| serde_json::to_string(&pin).unwrap());
+  let flaky = Arc::new(ChangedAfterFirstRead { inner: mem.clone(), armed: Default::default(), replacement });
+  let r = rig_with(mem, flaky.clone());
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
+  let mid = r.send(&p, &body);
+  let sealed = r.relay.0.lock().unwrap().inbox.iter().find(|m| m.id == mid).unwrap().body.clone();
+  let msg = RelayMsg { id: mid.clone(), kind: "answer".into(), reference: body.answer_id.clone(), body: sealed };
+  flaky.armed.store(true, Ordering::SeqCst);
+  r.phones.handle_answer(&p.pin, &msg).unwrap();
+  (r, p, id, body.answer_id)
+}
+
+#[test]
+fn a_revoke_after_the_first_pairing_check_still_rejects_the_answer() {
+  let (r, p, id, answer_id) = answer_after_pin_change(|_| None);
+  assert_eq!(r.acks(&p).last().unwrap().result, AckResult::Revoked);
+  assert_eq!(r.state(&id), "open");
+  assert!(r.hub.stored_phone_ack(&answer_id).is_none());
+  assert!(r.relay.0.lock().unwrap().inbox.is_empty());
+}
+
+#[test]
+fn a_re_pairing_after_the_first_pairing_check_rejects_the_answer() {
+  let (r, _, id, answer_id) = answer_after_pin_change(|pin| {
+    let mut fresh = pin.clone();
+    fresh.phone_sign_pub = tmgr_phone::b64(&tmgr_phone::public_key(&key(90)).unwrap());
+    Some(fresh)
+  });
+  assert_eq!(r.state(&id), "open");
+  assert!(r.hub.stored_phone_ack(&answer_id).is_none());
 }
 
 #[test]
@@ -1281,17 +1351,67 @@ fn a_replayed_chat_is_a_duplicate_and_stores_one_message() {
 }
 
 #[test]
-fn chat_ignores_a_stale_digest_and_session_but_an_answer_does_not() {
+fn chat_for_a_stale_session_is_changed_and_stores_nothing() {
   let r = rig();
   let p = r.pair("mb1", "Pocket", 10);
-  let id = r.card("Ship it?");
-  r.bind(&p, &id);
-  let stale = "0".repeat(64);
-  let chat = r.body(&id, &stale, "runner:old", Action::Chat, None, Some("still goes"));
-  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Applied);
-  let answer = r.body(&id, &stale, "runner:old", Action::Answer, Some("a"), None);
-  assert_eq!(r.answer_ack(&p, &answer).result, AckResult::Changed);
+  let id = r.hook_card("Agent stopped", "run-1");
+  let (digest, _) = r.bind(&p, &id);
+  let chat = r.body(&id, &digest, "runner:run-0", Action::Chat, None, Some("old session"));
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Changed);
+  assert!(owner_texts(&r, &id).is_empty());
+  assert_eq!(r.typed(), 0);
   assert_eq!(r.state(&id), "open");
+}
+
+#[test]
+fn chat_after_new_messages_on_the_same_session_still_goes() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.hook_card("Agent stopped", "run-1");
+  let (_, session) = r.bind(&p, &id);
+  let chat = r.body(&id, &"0".repeat(64), &session, Action::Chat, None, Some("go on"));
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Applied);
+  assert_eq!(owner_texts(&r, &id), ["go on"]);
+}
+
+#[test]
+fn chat_is_routed_bound_to_the_session_it_was_written_for() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.hook_card("Agent stopped", "run-1");
+  let (digest, session) = r.bind(&p, &id);
+  let chat = r.body(&id, &digest, &session, Action::Chat, None, Some("go on"));
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Applied);
+  assert_eq!(r.host.delivered.lock().unwrap().as_slice(), [(id.clone(), "go on".to_owned(), "runner:run-1".to_owned())]);
+}
+
+#[test]
+fn a_target_change_before_chat_delivery_is_acked_changed_and_types_nothing() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let card = CardIn {
+    title: "Agent stopped".into(),
+    kind: "stopped".into(),
+    reply_via: "hook".into(),
+    source: Source { agent: "claude".into(), session: Some("s2".into()), ..Default::default() },
+    ..Default::default()
+  };
+  let endpoint = "/tmp/cc-socks/77.sock";
+  let inbox = Inbox {
+    kind: "claude".into(),
+    endpoint: endpoint.into(),
+    token: Some(Secret::new("tok")),
+    session: Some("sess-1".into()),
+  };
+  let id = r.hub.create_with(card, Some(inbox)).unwrap().id;
+  let (digest, session) = r.bind(&p, &id);
+  let hub = r.hub.clone();
+  let moved = id.clone();
+  *r.host.before_route.lock().unwrap() = Some(Box::new(move || hub.drop_target(&moved, endpoint)));
+  let chat = r.body(&id, &digest, &session, Action::Chat, None, Some("go on"));
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Changed);
+  assert_eq!(r.host.outcomes.lock().unwrap().as_slice(), [RouteOutcome::TargetChanged]);
+  assert_eq!(owner_texts(&r, &id), ["go on"]);
 }
 
 #[test]

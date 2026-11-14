@@ -86,13 +86,14 @@ impl Phones {
   pub(super) fn handle_answer(&self, listed: &Pin, msg: &RelayMsg) -> Result<(), String> {
     let now = (self.now)();
     let conn = listed.conn();
-    let Some(pin) = self.pins.get(&listed.mailbox)?.filter(|p| !p.expired(now)) else {
+    let revoked = || {
       if tmgr_phone::valid_answer_id(&msg.reference) {
         let _ = self.send_ack(listed, &msg.reference, self.ack_body(&msg.reference, AckResult::Revoked, None, None));
       }
       let _ = self.relay.delete_message(&conn, &msg.id);
-      return Ok(());
+      Ok(())
     };
+    let Some(pin) = self.pins.get(&listed.mailbox)?.filter(|p| !p.expired(now)) else { return revoked() };
     let keys = pin.keys()?;
     let opened = tmgr_phone::open_answer(&keys.kex_secret, &Self::pairing_of(&pin), &keys.phone_sign_pub, &msg.body);
     let Ok(body) = opened else {
@@ -111,13 +112,18 @@ impl Phones {
       text: body.text,
       issued_at: body.issued_at,
     };
-    let out = self.hub.answer_from_phone(&req, now)?;
+    let current = |p: &Pin| {
+      !p.expired(now) && p.phone_sign_pub == pin.phone_sign_pub && p.desktop_kex_secret == pin.desktop_kex_secret
+    };
+    let Some(out) = self.pins.while_current(&pin.mailbox, current, || self.hub.answer_from_phone(&req, now))? else {
+      return revoked();
+    };
     if out.result == AckResult::Applied {
       self.touch(&pin.mailbox, now);
     }
     let chat = req.action == tmgr_phone::Action::Chat;
     let (result, label) = match self.after_apply(&req.card_id, &out, chat) {
-      Some(RouteOutcome::TargetChanged) if !chat => {
+      Some(RouteOutcome::TargetChanged) => {
         self.hub.set_phone_ack_result(&req.answer_id, AckResult::Changed);
         (AckResult::Changed, None)
       }
@@ -138,7 +144,7 @@ impl Phones {
     let (event, _) = out.applied.as_ref()?;
     if chat {
       self.host.notify("TMGR", "Message from iPhone");
-      return Some(self.host.route(card_id, event, None));
+      return Some(self.host.route(card_id, event, Some(&out.target)));
     }
     let label = out.label.as_deref().unwrap_or("Text reply");
     self.host.notify("TMGR", &format!("Answered from iPhone: {label}"));
