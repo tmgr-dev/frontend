@@ -188,10 +188,7 @@ const TREE_TIMEOUT_MS = 20000;
 
 const withTimeout = <T>(request: Promise<T>, ms: number): Promise<T> =>
 	new Promise<T>((resolve, reject) => {
-		const timer = setTimeout(
-			() => reject(new Error('Request timed out')),
-			ms,
-		);
+		const timer = setTimeout(() => reject(new Error('Request timed out')), ms);
 		request.then(resolve, reject).finally(() => clearTimeout(timer));
 	});
 
