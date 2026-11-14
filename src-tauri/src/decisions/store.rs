@@ -1564,11 +1564,12 @@ impl Store {
     let card: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
     let view = self.view(row, now_ms())?;
     let target = delivery_target(&self.conn, &r.card_id).unwrap_or_default();
+    let chat = r.action == tmgr_phone::Action::Chat;
     match phone::project(&view, &target) {
-      Some(p) if p.digest == r.card_digest && target == r.session => {}
+      Some(p) if (chat || p.digest == r.card_digest) && target == r.session => {}
       _ => return reject(self, AckResult::Changed),
     }
-    if r.action == tmgr_phone::Action::Chat {
+    if chat {
       if !phone::eligible(&view) || !expects_agent(&card) {
         return reject(self, AckResult::NotEligible);
       }

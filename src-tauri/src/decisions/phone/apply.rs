@@ -123,7 +123,7 @@ impl Phones {
     }
     let chat = req.action == tmgr_phone::Action::Chat;
     let (result, label) = match self.after_apply(&req.card_id, &out, chat) {
-      Some(RouteOutcome::TargetChanged) => {
+      Some(RouteOutcome::TargetChanged) if !chat => {
         self.hub.set_phone_ack_result(&req.answer_id, AckResult::Changed);
         (AckResult::Changed, None)
       }
@@ -142,14 +142,13 @@ impl Phones {
 
   fn after_apply(&self, card_id: &str, out: &PhoneOutcome, chat: bool) -> Option<RouteOutcome> {
     let (event, _) = out.applied.as_ref()?;
-    let bound = (!out.target.is_empty()).then_some(out.target.as_str());
     if chat {
       self.host.notify("TMGR", "Message from iPhone");
-      return Some(self.host.route(card_id, event, bound));
+      return Some(self.host.route(card_id, event, Some(&out.target)));
     }
     let label = out.label.as_deref().unwrap_or("Text reply");
     self.host.notify("TMGR", &format!("Answered from iPhone: {label}"));
-    bound.map(|t| self.host.route(card_id, event, Some(t)))
+    (!out.target.is_empty()).then(|| self.host.route(card_id, event, Some(&out.target)))
   }
 
   pub fn cleanup_revoked(&self, pin: &Pin) {

@@ -1351,22 +1351,27 @@ fn a_replayed_chat_is_a_duplicate_and_stores_one_message() {
 }
 
 #[test]
-fn chat_with_a_stale_digest_or_session_is_changed_and_stores_nothing() {
+fn chat_for_a_stale_session_is_changed_and_stores_nothing() {
   let r = rig();
   let p = r.pair("mb1", "Pocket", 10);
   let id = r.hook_card("Agent stopped", "run-1");
-  let (digest, session) = r.bind(&p, &id);
-  let stale = "0".repeat(64);
-  let cases = [
-    r.body(&id, &stale, &session, Action::Chat, None, Some("old digest")),
-    r.body(&id, &digest, "runner:run-0", Action::Chat, None, Some("old session")),
-  ];
-  for chat in &cases {
-    assert_eq!(r.answer_ack(&p, chat).result, AckResult::Changed);
-  }
+  let (digest, _) = r.bind(&p, &id);
+  let chat = r.body(&id, &digest, "runner:run-0", Action::Chat, None, Some("old session"));
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Changed);
   assert!(owner_texts(&r, &id).is_empty());
   assert_eq!(r.typed(), 0);
   assert_eq!(r.state(&id), "open");
+}
+
+#[test]
+fn chat_after_new_messages_on_the_same_session_still_goes() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.hook_card("Agent stopped", "run-1");
+  let (_, session) = r.bind(&p, &id);
+  let chat = r.body(&id, &"0".repeat(64), &session, Action::Chat, None, Some("go on"));
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Applied);
+  assert_eq!(owner_texts(&r, &id), ["go on"]);
 }
 
 #[test]
@@ -1381,7 +1386,7 @@ fn chat_is_routed_bound_to_the_session_it_was_written_for() {
 }
 
 #[test]
-fn a_target_change_before_chat_delivery_acks_changed() {
+fn a_target_change_before_chat_delivery_keeps_the_message_but_types_nothing() {
   let r = rig();
   let p = r.pair("mb1", "Pocket", 10);
   let card = CardIn {
@@ -1404,9 +1409,9 @@ fn a_target_change_before_chat_delivery_acks_changed() {
   let moved = id.clone();
   *r.host.before_route.lock().unwrap() = Some(Box::new(move || hub.drop_target(&moved, endpoint)));
   let chat = r.body(&id, &digest, &session, Action::Chat, None, Some("go on"));
-  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Changed);
+  assert_eq!(r.answer_ack(&p, &chat).result, AckResult::Applied);
   assert_eq!(r.host.outcomes.lock().unwrap().as_slice(), [RouteOutcome::TargetChanged]);
-  assert_eq!(r.stored_ack(&chat.answer_id), "changed");
+  assert_eq!(owner_texts(&r, &id), ["go on"]);
 }
 
 #[test]
