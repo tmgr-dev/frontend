@@ -20,6 +20,7 @@ export interface LocalChatEntry {
 }
 
 export interface PendingWrite {
+	key: number;
 	tool: string;
 	args: Record<string, unknown>;
 }
@@ -109,6 +110,7 @@ export function useLocalAgentChat(
 	let cancelled = false;
 	let settle: ((confirmed: boolean) => void) | null = null;
 	let lastUserText = '';
+	let nextPendingKey = 1;
 
 	const push = (entry: Omit<LocalChatEntry, 'id'>) => {
 		messages.value.push({ id: nextId++, ...entry });
@@ -118,7 +120,11 @@ export function useLocalAgentChat(
 	const askConfirmation = (call: ToolCall) =>
 		new Promise<boolean>((resolve) => {
 			settle = resolve;
-			pending.value = { tool: call.name, args: call.args };
+			pending.value = {
+				key: nextPendingKey++,
+				tool: call.name,
+				args: call.args,
+			};
 		});
 
 	const resolvePending = (confirmed: boolean) => {
@@ -228,8 +234,11 @@ export function useLocalAgentChat(
 		await runTurn(lastUserText, false);
 	};
 
-	const confirm = () => resolvePending(true);
-	const reject = () => resolvePending(false);
+	const answer = (key: number, confirmed: boolean) => {
+		if (pending.value?.key === key) resolvePending(confirmed);
+	};
+	const confirm = (key: number) => answer(key, true);
+	const reject = (key: number) => answer(key, false);
 
 	const cancel = async () => {
 		cancelled = true;

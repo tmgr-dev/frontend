@@ -83,11 +83,12 @@ describe('useLocalAgentChat', () => {
 		const sending = api.send('make it');
 		await tick();
 		expect(api.pending.value).toEqual({
+			key: expect.any(Number),
 			tool: 'create_task',
 			args: { title: 'x' },
 		});
 		expect(runTool).not.toHaveBeenCalled();
-		api.confirm();
+		api.confirm(api.pending.value!.key);
 		await sending;
 		expect(runTool).toHaveBeenCalledWith(
 			'create_task',
@@ -104,13 +105,38 @@ describe('useLocalAgentChat', () => {
 		);
 		const sending = api.send('comment');
 		await tick();
-		api.reject();
+		api.reject(api.pending.value!.key);
 		await sending;
 		expect(runTool).not.toHaveBeenCalled();
 		expect(last(seen[1])).toMatchObject({
 			role: 'tool',
 			content: 'The user rejected this action.',
 		});
+	});
+
+	it('ignores a confirm meant for an earlier card', async () => {
+		let n = 0;
+		const { api, runTool } = setup(() =>
+			n++ === 0
+				? [
+						toolEvent(call('add_comment', 'a')),
+						toolEvent(call('update_task', 'b')),
+					]
+				: [text('done')],
+		);
+		const sending = api.send('two writes');
+		await tick();
+		const firstKey = api.pending.value!.key;
+		api.confirm(firstKey);
+		await tick();
+		expect(api.pending.value?.tool).toBe('update_task');
+		api.confirm(firstKey);
+		await tick();
+		expect(api.pending.value?.tool).toBe('update_task');
+		expect(runTool).toHaveBeenCalledTimes(1);
+		api.reject(api.pending.value!.key);
+		await sending;
+		expect(runTool).toHaveBeenCalledTimes(1);
 	});
 
 	it('cancel clears the pending confirmation and stops', async () => {

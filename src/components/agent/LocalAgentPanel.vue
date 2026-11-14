@@ -110,14 +110,14 @@
 						<button
 							type="button"
 							class="rounded-pill bg-brand px-3 py-1 text-on-accent"
-							@click="confirm"
+							@click="confirm(pending.key)"
 						>
 							{{ $t('agents.localAssistant.confirm') }}
 						</button>
 						<button
 							type="button"
 							class="rounded-pill border border-line px-3 py-1"
-							@click="reject"
+							@click="reject(pending.key)"
 						>
 							{{ $t('agents.localAssistant.reject') }}
 						</button>
