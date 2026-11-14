@@ -18,8 +18,8 @@
 	"convert": {
 		"title": "Convert to task",
 		"workspace": "Workspace",
-		"category": "Category",
-		"noCategory": "No category",
+		"category": "Project",
+		"noCategory": "No project",
 		"submit": "Convert"
 	},
 	"routineRow": {

@@ -555,6 +555,10 @@
 	} from '@/utils/dailyRoutines/dateHelpers';
 	import { getArchivedDailyTasksCount } from '@/actions/tmgr/daily-tasks';
 	import { doneUnscheduledIds } from '@/utils/dailyRoutines/archiveDone';
+	import {
+		countPeriod,
+		periodBounds,
+	} from '@/utils/dailyRoutines/periodCounts';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
 	import { requestCache } from '@/utils/requestCache';
 	import { nowDateIn, todayDateIn, todayIn } from '@/utils/timezone';
@@ -686,14 +690,13 @@
 		entries.value.filter((e) => !!e.time),
 	);
 
-	const counts = computed(() => {
-		const todays = todayEntries.value;
-		return {
-			routines: todays.length,
-			completed: todays.filter((e) => e.completed).length,
-			archived: archivedCount.value,
-		};
-	});
+	const counts = computed(() => ({
+		...countPeriod(
+			entries.value,
+			periodBounds(view.value, cursor.value, todayIso.value),
+		),
+		archived: archivedCount.value,
+	}));
 
 	const dateLabel = computed(() => {
 		const c = cursor.value;
@@ -751,7 +754,10 @@
 
 	function rangeForView(): { from: string; to: string } {
 		const c = cursor.value;
-		if (view.value === 'list' || view.value === 'day') {
+		if (view.value === 'list') {
+			return { from: todayIso.value, to: todayIso.value };
+		}
+		if (view.value === 'day') {
 			const iso = fmtDate(c);
 			return { from: iso, to: iso };
 		}
