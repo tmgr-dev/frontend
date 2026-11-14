@@ -229,6 +229,11 @@ fn measure_source_objects_write_through_alternates() {
     unlock(&files);
     let existing = files[0].clone();
     let mode_before = existing.metadata().unwrap().mode();
+    let sdir = f.runner_dir.join("sessions").join(SID);
+    if cfg!(target_os = "linux") {
+        fs::create_dir_all(&sdir).unwrap();
+        tmgr_runner::objectmodes::save(&sdir, std::slice::from_ref(&alt)).unwrap();
+    }
     let fresh = alt.join("tm786-new-file");
     let script = format!(
         "{}echo {MARK} > '{}'; echo \"create=$?\"; {}chmod a+x '{}'; echo \"chmod=$?\"; mkdir '{}/tm786-dir'; echo \"mkdir=$?\"; ln '{}' ./tm786-link; echo \"link=$?\"; [ -e ./tm786-link ] && {} true",
@@ -265,29 +270,31 @@ fn measure_source_objects_write_through_alternates() {
                 .unwrap_or(false),
         ),
     );
-    assert_source_mode_kept(&f, &o, mode_changed);
+    assert_source_mode_kept(&sdir, &o, mode_changed);
+    assert_eq!(existing.metadata().unwrap().mode(), mode_before);
 }
 
 #[cfg(target_os = "macos")]
-fn assert_source_mode_kept(_: &Fx, o: &Out, mode_changed: bool) {
+fn assert_source_mode_kept(_: &Path, o: &Out, mode_changed: bool) {
     assert_ne!(out_line(o, "chmod"), "0", "{} {}", o.stdout, o.stderr);
     assert!(!mode_changed, "{} {}", o.stdout, o.stderr);
 }
 
 #[cfg(target_os = "linux")]
-fn assert_source_mode_kept(f: &Fx, o: &Out, mode_changed: bool) {
-    let record =
-        fs::read_to_string(f.runner_dir.join("sessions").join(SID).join("objects_ro")).unwrap();
-    if record != "namespace" {
+fn assert_source_mode_kept(sdir: &Path, o: &Out, mode_changed: bool) {
+    let record = fs::read_to_string(sdir.join("objects_ro")).unwrap();
+    if record == "namespace" {
+        assert_ne!(out_line(o, "chmod"), "0", "{} {}", o.stdout, o.stderr);
+        assert!(!mode_changed, "{} {}", o.stdout, o.stderr);
+    } else {
+        assert!(record.starts_with("fallback: "), "{record}");
         assert!(
             std::env::var("TMGR_TEST_REQUIRE_RO_MOUNT").as_deref() != Ok("1"),
             "TMGR_TEST_REQUIRE_RO_MOUNT=1 requires the read-only mount: {record}"
         );
         eprintln!("NAMESPACE PATH NOT TESTED: {record}");
-        return;
     }
-    assert_ne!(out_line(o, "chmod"), "0", "{} {}", o.stdout, o.stderr);
-    assert!(!mode_changed, "{} {}", o.stdout, o.stderr);
+    tmgr_runner::objectmodes::finish(sdir);
 }
 
 #[test]

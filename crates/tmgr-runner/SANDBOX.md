@@ -242,6 +242,12 @@ directory read-only at the mount level:
 
 ## Known limitations
 
+- Linux metadata changes: Landlock has no right for `chmod`, `chown`, `utime` or `setxattr`, so it never stops them. The
+  agent can change the mode, owner (within what the user may do), times and extended attributes of any file the user
+  owns, by absolute path, whether or not the path is granted. The read-only mount covers only the granted object
+  directories, and only when the user namespace works; without it those directories get the mode restore described
+  above (owner, times and extended attributes are not restored). macOS Seatbelt refuses these changes outside the
+  writable roots.
 - Network is open unless the run is `Restricted` (macOS only, see above); an open network is not data-exfiltration protection for anything the agent can read.
 - The agent can use everything it is allowed to touch: its working dir, per-run home, the network, its own CLI
   credentials copied into the per-run home.
@@ -275,7 +281,7 @@ directory read-only at the mount level:
 - Toolchain directories are read-only: `cargo fetch`, `npm install -g` and similar that write there fail.
 - Terminals: the agent reaches its own PTY through inherited fds 0/1/2 and `/dev/tty`. Opening any other terminal device by path is denied (macOS: explicit deny on `/dev/ttys*`, `/dev/pty[p-w]*` and `/dev/tty[p-w]*`; Linux: no `/dev/pts` grant except the session's own slave). Consequence: PTYs the agent creates itself (`openpty`, `script`, `tmux`, pexpect) cannot open their slave by path and fail.
 - Private directories: the runner directory is trusted only if it, its canonical ancestors and every symlink component of the given path live in directories owned by root or the user that are not group/other-writable (unless sticky); there is no group-name exception, so on Ubuntu with umask 002 the fallback `~/.local/state/tmgr/run` is refused until `chmod g-w` or `TMGR_RUNNER_DIR` is set. The homes directory holds no secrets, so it gets only the final-directory checks (owner, 0700, not a symlink).
-- The Linux sandbox tests skip when Landlock is unavailable, unless `TMGR_TEST_REQUIRE_LANDLOCK=1` is set, in which case they fail. CI sets it on Linux. `TMGR_TEST_REQUIRE_RO_MOUNT=1` likewise makes the test for the read-only object mount fail instead of reporting that only the mode restore was exercised.
+- The Linux sandbox tests skip when Landlock is unavailable, unless `TMGR_TEST_REQUIRE_LANDLOCK=1` is set, in which case they fail. CI sets it on Linux. `TMGR_TEST_REQUIRE_RO_MOUNT=1` likewise makes the tests for the read-only object mount fail instead of reporting that only the mode restore was exercised. CI sets it on both Linux jobs (x86_64 and aarch64) and turns off `kernel.apparmor_restrict_unprivileged_userns` there first, because the Ubuntu 24.04 runners restrict unprivileged user namespaces by default.
 - Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory (handed over by the shim as a descriptor, not looked up by path) must be the directory with the
   `st_dev`/`st_ino` the runner approved, and the Landlock rule for it is created from that same descriptor; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
 - macOS: the agent also starts in the approved directory object, but Seatbelt rules are path based, so if that directory was renamed meanwhile the agent keeps no write access there (fail closed).

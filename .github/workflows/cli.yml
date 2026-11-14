@@ -76,7 +76,7 @@ jobs:
           key: ${{ matrix.name }}
 
       - name: allow unprivileged user namespaces
-        if: matrix.name == 'linux-x86_64'
+        if: startsWith(matrix.name, 'linux')
         run: |
           if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
