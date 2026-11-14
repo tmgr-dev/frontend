@@ -77,7 +77,7 @@ const activeRun = (extra: Record<string, unknown> = {}) => ({
 	id: 5,
 	status: 'running',
 	mode: 'sources',
-	stage: 'reading',
+	stage: 'extracting',
 	progress_done: 3,
 	progress_total: 8,
 	tokens_used: 0,
@@ -162,7 +162,7 @@ test('alreadyRunningMessage', async () => {
 	mockCurrent.mockResolvedValue(activeRun());
 	const current = await open();
 	expect(current.host.textContent).toContain('A summary is already running');
-	expect(current.host.textContent).toContain('Reading sources 3/8');
+	expect(current.host.textContent).toContain('Extracting facts 3/8');
 	expect(byTestId(current.host, 'summarize-run')).toBeNull();
 	current.unmount();
 
@@ -188,20 +188,21 @@ test('progress comes from events and polling stops on unmount', async () => {
 	const handlers = mockSubscribe.mock.calls[0][1];
 	handlers.onMemorySummarizeProgress({
 		run_id: 5,
-		stage: 'reading',
+		stage: 'extracting',
 		done: 4,
 		total: 8,
 	});
 	await flush();
-	expect(host.textContent).toContain('Reading sources 4/8');
+	expect(host.textContent).toContain('Extracting facts 4/8');
 	handlers.onMemorySummarizeProgress({
 		run_id: 5,
-		stage: 'extracting',
-		done: 0,
-		total: 0,
+		stage: 'comparing',
+		done: 8,
+		total: 8,
 	});
 	await flush();
-	expect(host.textContent).toContain('Extracting facts');
+	expect(host.textContent).toContain('Comparing with existing memory');
+	expect(host.textContent).not.toContain('Working');
 
 	mockCurrent.mockClear();
 	jest.advanceTimersByTime(5000);
