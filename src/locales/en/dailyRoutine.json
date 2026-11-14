@@ -103,6 +103,8 @@
 			"ofEveryMonth": "of every month",
 			"reminder": "Reminder",
 			"reminderOnlyRepeating": "Only for repeating routines",
+			"alarmOnPhone": "Alarm on phone",
+			"alarmOnPhoneHint": "Rings your phone at reminder time. Turn off for a plain notification.",
 			"moveToWorkspace": "Move to a workspace as a regular task…"
 		},
 		"created": "Created {when}",
