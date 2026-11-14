@@ -1,5 +1,6 @@
 <script setup lang="ts">
 	import { cn } from '@/utils';
+	import { isTypingTarget } from '@/utils/dashboardHelpers';
 	import { useEventListener, useMediaQuery, useVModel } from '@vueuse/core';
 	import { TooltipProvider } from 'radix-vue';
 	import {
@@ -64,7 +65,8 @@
 	useEventListener('keydown', (event: KeyboardEvent) => {
 		if (
 			event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-			(event.metaKey || event.ctrlKey)
+			(event.metaKey || event.ctrlKey) &&
+			!isTypingTarget(event.target)
 		) {
 			event.preventDefault();
 			toggleSidebar();

@@ -268,7 +268,9 @@
 			);
 			const workspaceCode = workspace?.code;
 
-			if (workspaceCode) {
+			if (landingPage === 'daily_routines') {
+				await router.push('/routines');
+			} else if (workspaceCode) {
 				await router.push(`/${workspaceCode}/${landingPage}`);
 			} else {
 				await router.push({ name: 'CurrentTasksList' });

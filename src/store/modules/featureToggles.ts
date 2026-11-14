@@ -117,15 +117,8 @@ export default {
 			}
 		},
 
-		async enforceLandingPage({ state, dispatch, getters }) {
-			const allowed = allowedLandings(getters.isFeatureEnabled);
-
-			const current = state.userToggles?.default_landing_page?.value;
-			if (!allowed.includes(current)) {
-				const next = allowed[0];
-				await dispatch('updateUserToggles', { default_landing_page: next });
-			}
-			return allowed;
+		enforceLandingPage({ getters }) {
+			return allowedLandings(getters.isFeatureEnabled);
 		},
 
 		async fetchWorkspaceModules({ commit }, workspaceId) {

@@ -21,6 +21,7 @@
 <script setup lang="ts">
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { t } from '@/i18n';
+	import { formatRoutineRate } from '@/utils/dashboardHelpers';
 	import type { DashboardStatistics } from '@/types/dashboard';
 	import { computed } from 'vue';
 	import StatisticCard from './StatisticCard.vue';
@@ -61,10 +62,6 @@
 		})} ${t('tasks.duration.minutesShort', {
 			n: Math.floor((seconds % 3600) / 60),
 		})}`;
-	};
-
-	const formatPercentage = (value: number): string => {
-		return `${Math.round(value * 100)}%`;
 	};
 
 	const { showSurface } = useFeatureToggles();
@@ -161,7 +158,7 @@
 				{
 					key: 'daily_routine_completion',
 					title: t('board.dashboard.statisticsGrid.dailyRoutine.title'),
-					value: formatPercentage(
+					value: formatRoutineRate(
 						props.statistics.daily_routine_completion_rate || 0,
 					),
 					icon: 'repeat',

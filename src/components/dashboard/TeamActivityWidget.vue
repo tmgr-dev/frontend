@@ -112,6 +112,12 @@
 					/>
 				</div>
 
+				<div class="mt-3 flex justify-end">
+					<Button variant="outline" size="sm" @click="inviteMembers">
+						{{ $t('board.dashboard.teamActivityWidget.invite') }}
+					</Button>
+				</div>
+
 				<!-- Team summary -->
 				<div class="mt-4 border-t border-line pt-4">
 					<div
@@ -173,6 +179,17 @@
 				</div>
 			</template>
 
+			<template v-else-if="error">
+				<EmptyState
+					:title="$t('board.dashboard.teamActivityWidget.errorTitle')"
+					:description="error"
+					:action="{
+						label: $t('board.dashboard.teamActivityWidget.retry'),
+						onClick: refreshTeamActivity,
+					}"
+				/>
+			</template>
+
 			<!-- Empty state -->
 			<template v-else>
 				<EmptyState
@@ -212,6 +229,7 @@
 	interface Props {
 		teamActivity: TeamMemberActivity | null;
 		loading: boolean;
+		error?: string | null;
 		window: TeamActivityWindow;
 	}
 

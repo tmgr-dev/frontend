@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "Akcje pulpitu",
 		"a11y": {
-			"shortcuts": "Skróty klawiszowe: Ctrl+R odświeża, Ctrl+1-5 przechodzi między sekcjami, Escape czyści błędy",
+			"shortcuts": "Skróty klawiszowe: {mod}+R odświeża, {mod}+1-4 przechodzi między sekcjami, Escape czyści błędy",
 			"keyNumbers": "Kluczowe liczby, ostatni {n} dzień | Kluczowe liczby, ostatnie {n} dni | Kluczowe liczby, ostatnie {n} dni",
 			"loadedAnnouncement": "Pulpit wczytany pomyślnie",
 			"failedAnnouncement": "Nie udało się wczytać pulpitu",

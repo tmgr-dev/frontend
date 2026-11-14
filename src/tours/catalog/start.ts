@@ -108,6 +108,12 @@ export const startTours: TourDef[] = [
 				body: 'Type a title, then press Create or Ctrl+S. Everything else is optional.',
 				mobileBody:
 					'Type a title, then tap Create. Everything else is optional.',
+				bodyByPlatform: {
+					macos:
+						'Type a title, then press Create or ⌘S. Everything else is optional.',
+					other:
+						'Type a title, then press Create or Ctrl+S. Everything else is optional.',
+				},
 			},
 			{
 				id: 's3',
