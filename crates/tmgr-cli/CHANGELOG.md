@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.128
+
+- Attach time that was skipped because sending or the workspace's time module was off is now sent when it turns back on. Time older than 29 days still expires instead of being sent.
+
 ## 1.0.127
 
 - `tmgr queue` (experimental) now shows in `tmgr --help`.
