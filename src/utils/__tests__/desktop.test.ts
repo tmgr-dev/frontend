@@ -4,6 +4,7 @@ import {
 	revealInFileManagerLabel,
 	supportsLocalAccess,
 	supportsPluginWindows,
+	supportsScreenCapture,
 	supportsSelectionCapture,
 	thisComputerName,
 	trayName,
@@ -64,6 +65,9 @@ describe('platform copy and capabilities', () => {
 	});
 
 	it('gates features by platform', () => {
+		expect(supportsScreenCapture('macos')).toBe(true);
+		expect(supportsScreenCapture('windows')).toBe(false);
+		expect(supportsScreenCapture('linux')).toBe(false);
 		expect(supportsSelectionCapture('macos')).toBe(true);
 		expect(supportsSelectionCapture('windows')).toBe(false);
 		expect(supportsSelectionCapture('linux')).toBe(false);

@@ -4,6 +4,7 @@ import {
 	DesktopPlatform,
 	desktopPlatform,
 	isMacLike,
+	supportsScreenCapture,
 	supportsSelectionCapture,
 } from '@/utils/desktop';
 import { AuthCallback, parseAuthCallback } from '@/utils/desktopAuth';
@@ -85,7 +86,9 @@ export const shortcutActionsFor = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): ShortcutAction[] =>
 	SHORTCUT_ACTIONS.filter(
-		(action) => action !== 'selection' || supportsSelectionCapture(platform),
+		(action) =>
+			(action !== 'selection' || supportsSelectionCapture(platform)) &&
+			(action !== 'screenshot' || supportsScreenCapture(platform)),
 	);
 
 export const primaryModifiersHint = (

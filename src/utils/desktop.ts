@@ -56,6 +56,10 @@ export const thisComputerName = (
 			: 'desktop.helpers.thisComputer.computer',
 	);
 
+export const supportsScreenCapture = (
+	platform: DesktopPlatform | null = desktopPlatform(),
+): boolean => isMacLike(platform);
+
 export const supportsSelectionCapture = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): boolean => isMacLike(platform);

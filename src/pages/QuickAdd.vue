@@ -204,6 +204,7 @@
 				class="flex items-center gap-3 text-xs"
 			>
 				<button
+					v-if="canCapture"
 					type="button"
 					class="rounded-md border border-border px-2 py-1 text-foreground hover:bg-muted dark:border-border dark:hover:bg-muted"
 					:disabled="saving"
@@ -222,7 +223,13 @@
 					{{ $t('taskForm.quickAdd.chooseImage') }}
 				</button>
 				<span class="text-muted-foreground dark:text-muted-foreground">
-					{{ $t('taskForm.quickAdd.captureOrChoose') }}
+					{{
+						$t(
+							canCapture
+								? 'taskForm.quickAdd.captureOrChoose'
+								: 'taskForm.quickAdd.chooseOnly',
+						)
+					}}
 				</span>
 			</div>
 
@@ -330,6 +337,7 @@
 		prefixPreview,
 		renderPrefix,
 	} from '@/utils/quickAddTitle';
+	import { supportsScreenCapture } from '@/utils/desktop';
 	import { requestCache } from '@/utils/requestCache';
 	import { format } from 'date-fns';
 	import {
@@ -391,6 +399,7 @@
 		setup() {
 			const title = ref('');
 			const note = ref('');
+			const canCapture = supportsScreenCapture();
 			const showNote = ref(false);
 			const screenshot = ref(null);
 			const screenshotUrl = ref('');
@@ -822,6 +831,10 @@
 					error.value = true;
 					message.value = t('taskForm.quickAdd.accessibilityHint');
 				}
+				if (payload?.error === 'clipboard_not_text') {
+					error.value = true;
+					message.value = t('taskForm.quickAdd.clipboardNotText');
+				}
 				if (plan.keep && categoriesWorkspace === workspaceId.value) {
 					if (isTask.value) void loadCategories(true);
 					else categoriesStale = true;
@@ -993,6 +1006,7 @@
 				title,
 				note,
 				showNote,
+				canCapture,
 				screenshotUrl,
 				saving,
 				message,

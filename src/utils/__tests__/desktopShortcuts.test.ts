@@ -116,6 +116,12 @@ describe('off macOS', () => {
 		expect(validateAccelerator('CommandOrControl+C')).toBe('reserved');
 	});
 
+	it('offers the screenshot shortcut on macOS only', () => {
+		expect(shortcutActionsFor('macos')).toContain('screenshot');
+		expect(shortcutActionsFor('windows')).not.toContain('screenshot');
+		expect(shortcutActionsFor('linux')).not.toContain('screenshot');
+	});
+
 	it('drops the selection shortcut and words the modifier hint without macOS symbols', () => {
 		expect(shortcutActionsFor('macos')).toContain('selection');
 		expect(shortcutActionsFor('windows')).not.toContain('selection');
