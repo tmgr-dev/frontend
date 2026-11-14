@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.122
+
+- Sandbox (Linux): the test suite now requires the read-only mount of borrowed object stores on both x86_64 and aarch64, and the sandbox docs state plainly that Landlock never blocks `chmod`, `chown`, `utime` or `setxattr` on files you own; only the namespace mount (granted object stores) and macOS Seatbelt refuse them.
+
 ## 1.0.121
 
 - `tmgr attach`: the New session folder picker is now a modal. The Folder field shows only the chosen path. Press Ctrl+O anywhere in the form, or Enter on the Folder field, to open the picker (Recent, Browse, Search, and the path mode with Tab completion). Enter picks the folder and moves to the next field, Esc closes it and keeps the old folder. Tab and the arrow keys on the form only move between fields and never change Folder. With no default folder the picker opens once by itself. The footer shows `^O folder`.
