@@ -9,6 +9,11 @@ export interface PageCreateOption {
 	labelKey: string;
 }
 
+export const pagesWorkspaceId = (raw: unknown): number | null => {
+	const id = Number(raw);
+	return Number.isFinite(id) && id !== 0 ? id : null;
+};
+
 export const DEFAULT_PAGE_TITLE = 'Untitled';
 
 export const PAGE_CREATE_OPTIONS: PageCreateOption[] = [

@@ -184,10 +184,21 @@ export const getPages = async (
 	params: { parent_id?: number | null; type?: PageType } = {},
 ): Promise<PageSummary[]> => unwrap($axios.get('pages', { params }));
 
+const TREE_TIMEOUT_MS = 20000;
+
+const withTimeout = <T>(request: Promise<T>, ms: number): Promise<T> =>
+	new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(
+			() => reject(new Error('Request timed out')),
+			ms,
+		);
+		request.then(resolve, reject).finally(() => clearTimeout(timer));
+	});
+
 export const getPagesTree = async (useCache = true): Promise<PageSummary[]> =>
 	requestCache.getOrFetch<PageSummary[]>(
 		TREE_KEY,
-		() => unwrap($axios.get('pages/tree')),
+		() => withTimeout(unwrap($axios.get('pages/tree')), TREE_TIMEOUT_MS),
 		{ ttl: 60000, cache: useCache },
 	);
 

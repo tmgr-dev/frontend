@@ -5,6 +5,7 @@ import {
 	descendantIds,
 	loadExpanded,
 	pagesAvailable,
+	pagesWorkspaceId,
 	saveExpanded,
 	sidebarPages,
 } from '../pagesTree';
@@ -184,5 +185,23 @@ describe('pagesAvailable', () => {
 	});
 	it('is disabled without a workspace', () => {
 		expect(pagesAvailable(null, true)).toBe(false);
+	});
+});
+
+describe('pagesWorkspaceId', () => {
+	it('keeps the negative id of a local workspace', () => {
+		expect(pagesWorkspaceId(-48213)).toBe(-48213);
+		expect(pagesWorkspaceId('-48213')).toBe(-48213);
+	});
+
+	it('keeps a cloud id', () => {
+		expect(pagesWorkspaceId('56')).toBe(56);
+	});
+
+	it('is null without a workspace', () => {
+		expect(pagesWorkspaceId(null)).toBeNull();
+		expect(pagesWorkspaceId(undefined)).toBeNull();
+		expect(pagesWorkspaceId(0)).toBeNull();
+		expect(pagesWorkspaceId('abc')).toBeNull();
 	});
 });

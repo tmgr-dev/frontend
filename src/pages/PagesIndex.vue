@@ -117,6 +117,7 @@
 	import { Button } from '@/components/ui/button';
 	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
 	import { usePagesTreeHost } from '@/composable/usePagesTreeHost';
+	import { pagesWorkspaceId } from '@/utils/pagesTree';
 	import { Archive, Download, FileText, Plus, Upload } from 'lucide-vue-next';
 	import { computed, defineComponent } from 'vue';
 	import { useRoute } from 'vue-router';
@@ -144,8 +145,7 @@
 			const store = useStore();
 			const workspaceCode = computed(() => String(route.params.workspace_code));
 			const workspaceId = computed(() => {
-				const id = Number(store.getters.currentWorkspaceId);
-				return Number.isFinite(id) && id > 0 ? id : null;
+				return pagesWorkspaceId(store.getters.currentWorkspaceId);
 			});
 			const { tree, actions, io, dragging, onDragStart, onChange } =
 				usePagesTreeHost(workspaceId, workspaceCode, 'page');
