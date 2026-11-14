@@ -171,6 +171,19 @@ impl Pins {
     Ok(out)
   }
 
+  pub fn while_current<T>(
+    &self,
+    mailbox: &str,
+    current: impl Fn(&Pin) -> bool,
+    f: impl FnOnce() -> Result<T, String>,
+  ) -> Result<Option<T>, String> {
+    let _g = self.gate.lock().unwrap_or_else(|p| p.into_inner());
+    match self.read(mailbox)? {
+      Some(pin) if current(&pin) => f().map(Some),
+      _ => Ok(None),
+    }
+  }
+
   pub fn put(&self, pin: &Pin) -> Result<(), String> {
     let _g = self.gate.lock().unwrap_or_else(|p| p.into_inner());
     let mut ids = self.index()?;

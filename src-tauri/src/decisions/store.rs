@@ -1564,6 +1564,10 @@ impl Store {
     let card: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
     let view = self.view(row, now_ms())?;
     let target = delivery_target(&self.conn, &r.card_id).unwrap_or_default();
+    match phone::project(&view, &target) {
+      Some(p) if p.digest == r.card_digest && target == r.session => {}
+      _ => return reject(self, AckResult::Changed),
+    }
     if r.action == tmgr_phone::Action::Chat {
       if !phone::eligible(&view) || !expects_agent(&card) {
         return reject(self, AckResult::NotEligible);
@@ -1581,10 +1585,6 @@ impl Store {
         target,
       };
       return record(self, out);
-    }
-    match phone::project(&view, &target) {
-      Some(p) if p.digest == r.card_digest && target == r.session => {}
-      _ => return reject(self, AckResult::Changed),
     }
     if !phone::eligible(&view) {
       return reject(self, AckResult::NotEligible);
