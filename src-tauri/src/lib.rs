@@ -290,6 +290,7 @@ pub fn run() {
       plugin_dev::plugins_dev_fingerprints,
       plugin_dev::plugins_dev_reveal,
       plugin_dev::plugins_safe_mode,
+      plugin_dev::plugins_set_safe_mode,
       plugin_net::plugin_fetch,
       plugin_images::plugin_image_fetch,
       plugin_notify::plugin_notify,
@@ -500,6 +501,7 @@ pub fn run() {
       plugin_tick::start(app.handle());
       local_watch::start(app.handle());
       runner::commands::setup(app.handle());
+      plugin_dev::init_safe_mode(app.handle());
       if let Err(error) = local_access::setup(app.handle()) {
         log::error!("[local-access] failed to start: {error}");
       }

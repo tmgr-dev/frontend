@@ -3,6 +3,7 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime};
@@ -128,15 +129,78 @@ pub fn plugins_dev_reveal<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
   app.opener().reveal_item_in_dir(&dir).map_err(|e| e.to_string())
 }
 
-/// `--safe-mode` on the command line starts the app with every plugin off.
+static STORED_SAFE_MODE: AtomicBool = AtomicBool::new(false);
+
+fn safe_mode_file(home: &Path) -> PathBuf {
+  home.join(".tmgr.dev").join("plugins-safe-mode")
+}
+
+fn read_safe_mode_flag(file: &Path) -> bool {
+  fs::symlink_metadata(file).map(|meta| meta.is_file()).unwrap_or(false)
+}
+
+fn write_safe_mode_flag(file: &Path, on: bool) -> Result<(), String> {
+  if on {
+    if let Some(dir) = file.parent() {
+      fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    return fs::write(file, b"1").map_err(|e| e.to_string());
+  }
+  match fs::remove_file(file) {
+    Ok(()) => Ok(()),
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Err(e) => Err(e.to_string()),
+  }
+}
+
+pub fn init_safe_mode<R: Runtime>(app: &AppHandle<R>) {
+  if let Ok(home) = app.path().home_dir() {
+    STORED_SAFE_MODE.store(read_safe_mode_flag(&safe_mode_file(&home)), Ordering::SeqCst);
+  }
+}
+
+/// On when the app was started with `--safe-mode` or the Safe mode switch in Settings is on.
 #[tauri::command]
 pub fn plugins_safe_mode() -> bool {
-  std::env::args().any(|arg| arg == "--safe-mode")
+  std::env::args().any(|arg| arg == "--safe-mode") || STORED_SAFE_MODE.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+pub fn plugins_set_safe_mode<R: Runtime>(app: AppHandle<R>, value: bool) -> Result<(), String> {
+  let home = app.path().home_dir().map_err(|e| e.to_string())?;
+  write_safe_mode_flag(&safe_mode_file(&home), value)?;
+  STORED_SAFE_MODE.store(value, Ordering::SeqCst);
+  crate::local_access::sync_with_safe_mode(&app)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn the_safe_mode_flag_is_a_file_that_survives_restarts() {
+    let home = std::env::temp_dir().join(format!("tmgr-safe-mode-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    let file = safe_mode_file(&home);
+    assert!(!read_safe_mode_flag(&file));
+    write_safe_mode_flag(&file, true).unwrap();
+    assert!(read_safe_mode_flag(&file));
+    write_safe_mode_flag(&file, true).unwrap();
+    write_safe_mode_flag(&file, false).unwrap();
+    assert!(!read_safe_mode_flag(&file));
+    write_safe_mode_flag(&file, false).unwrap();
+    let _ = fs::remove_dir_all(&home);
+  }
+
+  #[test]
+  fn a_directory_or_symlink_in_place_of_the_flag_does_not_count() {
+    let home = std::env::temp_dir().join(format!("tmgr-safe-mode-dir-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    let file = safe_mode_file(&home);
+    fs::create_dir_all(&file).unwrap();
+    assert!(!read_safe_mode_flag(&file));
+    let _ = fs::remove_dir_all(&home);
+  }
 
   #[test]
   fn lists_folders_with_a_manifest_and_code_only() {

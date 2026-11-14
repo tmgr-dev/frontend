@@ -62,6 +62,7 @@
 		"allow-plugins-dev-fingerprints",
 		"allow-plugins-dev-reveal",
 		"allow-plugins-safe-mode",
+		"allow-plugins-set-safe-mode",
 		"allow-plugin-pick-file",
 		"allow-plugin-fetch",
 		"allow-plugin-image-fetch",

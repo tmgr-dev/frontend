@@ -46,6 +46,7 @@ const APP_COMMANDS: &[&str] = &[
   "plugins_dev_fingerprints",
   "plugins_dev_reveal",
   "plugins_safe_mode",
+  "plugins_set_safe_mode",
   "plugin_pick_file",
   "skills_scan",
   "git_track_update",

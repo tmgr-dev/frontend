@@ -43,6 +43,7 @@ import { folderPackagesFrom, type FolderPlugin } from './folder';
 import { createPluginHost, storageIdOf, type PluginPackage } from './host';
 import { bundleToPackage, type Release } from './market';
 import type { WorkerEndpoint } from './process';
+import { syncStoredSafeMode } from './safeMode';
 import {
 	folderPluginErrors,
 	installedPluginErrors,
@@ -476,6 +477,7 @@ export const installPlugins = async (
 ) => {
 	memberId = () => Number(store.state.user?.id ?? 0);
 	pluginState.safeMode = safeModeFlag || safeModeStored();
+	void syncStoredSafeMode(safeModeStored(), safeModeFlag);
 	const host = createPluginHost({
 		state: pluginState,
 		packages: async () => {

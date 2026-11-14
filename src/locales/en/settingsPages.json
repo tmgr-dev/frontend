@@ -188,6 +188,7 @@
 			"updated": "{name} updated",
 			"installed": "{name} installed",
 			"removed": "{name} removed",
+			"safeModeFailed": "Could not change safe mode. Try again.",
 			"changeFailed": "Could not change the plugin for this workspace",
 			"commandFailed": "The plugin command failed",
 			"settingsSaved": "Plugin settings saved",

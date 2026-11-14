@@ -494,6 +494,17 @@ pub fn local_access_status<R: Runtime>(
   })
 }
 
+pub fn sync_with_safe_mode<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+  let state = app.state::<LocalAccessState>();
+  if crate::plugin_dev::plugins_safe_mode() {
+    return stop(&state);
+  }
+  if read_settings(app)?.enabled {
+    ensure_started(app, &state)?;
+  }
+  Ok(())
+}
+
 #[tauri::command]
 pub fn local_access_set_enabled<R: Runtime>(
   app: AppHandle<R>,

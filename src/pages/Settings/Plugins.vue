@@ -649,7 +649,8 @@
 		storeSafeMode,
 		trayTitlePluginStore,
 	} from '@/pluginSystem/storage';
-	import { trayName } from '@/utils/desktop';
+	import { pushSafeMode } from '@/pluginSystem/safeMode';
+	import { isDesktopApp, trayName } from '@/utils/desktop';
 	import {
 		computed,
 		defineComponent,
@@ -952,6 +953,13 @@
 					consentTick.value++;
 				},
 				async setSafeMode(value: boolean) {
+					if (isDesktopApp() && !(await pushSafeMode(value))) {
+						toast({
+							title: t('settingsPages.plugins.toast.safeModeFailed'),
+							variant: 'destructive',
+						});
+						return;
+					}
 					storeSafeMode(value);
 					pluginState.safeMode = value;
 					await pluginHost()?.activate(pluginState.workspace);
