@@ -20,8 +20,8 @@ describe('dashboardHelpers', () => {
 	});
 
 	it('detects typing targets', () => {
-		const inField = { closest: jest.fn(() => ({})) };
-		const elsewhere = { closest: jest.fn(() => null) };
+		const inField = { closest: jest.fn((_selector: string) => ({})) };
+		const elsewhere = { closest: jest.fn((_selector: string) => null) };
 		expect(isTypingTarget(inField as unknown as EventTarget)).toBe(true);
 		expect(inField.closest.mock.calls[0][0]).toContain('textarea');
 		expect(inField.closest.mock.calls[0][0]).toContain('contenteditable');
