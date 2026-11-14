@@ -154,7 +154,7 @@
 		"countLabel": "Zarchiwizowana strona i jej podstrony | Wszystkie {n} zarchiwizowane strony i ich podstrony | Wszystkie {n} zarchiwizowanych stron i ich podstrony",
 		"deleteAll": "Usuń wszystko",
 		"deleteFailed": "Nie udało się usunąć strony",
-		"deleteForbidden": "Tylko autor lub właściciel przestrzeni roboczej może usunąć tę stronę",
+		"deleteForbidden": "Tylko właściciel przestrzeni roboczej lub autor wszystkich stron w tej gałęzi może ją usunąć",
 		"emptied": "Archiwum opróżnione",
 		"empty": "Archiwum jest puste.",
 		"emptyBody": "{label} zostanie usunięte na zawsze. Tej operacji nie można cofnąć.",
@@ -170,7 +170,7 @@
 		"purged": "Strona usunięta trwale",
 		"restore": "Przywróć",
 		"restoreFailed": "Nie udało się przywrócić strony",
-		"restoreForbidden": "Tylko autor lub właściciel przestrzeni roboczej może przywrócić tę stronę",
+		"restoreForbidden": "Tylko właściciel przestrzeni roboczej lub autor wszystkich stron w tej gałęzi może ją przywrócić",
 		"someKept": "Niektóre strony zostały zachowane",
 		"someKeptBody": "{n} zarchiwizowana strona, której nie możesz usunąć, została w archiwum. | {n} zarchiwizowane strony, których nie możesz usunąć, zostały w archiwum. | {n} zarchiwizowanych stron, których nie możesz usunąć, zostało w archiwum.",
 		"title": "Archiwum"

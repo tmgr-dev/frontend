@@ -154,7 +154,7 @@
 		"countLabel": "Die archivierte Seite und ihre Unterseiten | Alle {n} archivierten Seiten und ihre Unterseiten",
 		"deleteAll": "Alle löschen",
 		"deleteFailed": "Seite konnte nicht gelöscht werden",
-		"deleteForbidden": "Nur der Autor oder der Besitzer des Arbeitsbereichs kann diese Seite löschen",
+		"deleteForbidden": "Nur der Besitzer des Arbeitsbereichs oder der Autor aller Seiten in diesem Zweig kann ihn löschen",
 		"emptied": "Archiv geleert",
 		"empty": "Das Archiv ist leer.",
 		"emptyBody": "{label} wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
@@ -170,7 +170,7 @@
 		"purged": "Seite endgültig gelöscht",
 		"restore": "Wiederherstellen",
 		"restoreFailed": "Seite konnte nicht wiederhergestellt werden",
-		"restoreForbidden": "Nur der Autor oder der Besitzer des Arbeitsbereichs kann diese Seite wiederherstellen",
+		"restoreForbidden": "Nur der Besitzer des Arbeitsbereichs oder der Autor aller Seiten in diesem Zweig kann ihn wiederherstellen",
 		"someKept": "Einige Seiten wurden behalten",
 		"someKeptBody": "{n} archivierte Seite, die du nicht löschen darfst, ist im Archiv geblieben. | {n} archivierte Seiten, die du nicht löschen darfst, sind im Archiv geblieben.",
 		"title": "Archiv"

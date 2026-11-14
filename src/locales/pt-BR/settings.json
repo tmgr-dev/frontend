@@ -154,7 +154,7 @@
 			"intro": "O MCP do TMGR usa o token do dispositivo inteligente como cabeçalho personalizado. Gere o token acima e configure um cliente MCP que ofereça suporte a servidores remotos Streamable HTTP com cabeçalhos (Claude Code: {command}).",
 			"serverUrl": "URL do servidor",
 			"clientConfig": "Configuração do cliente",
-			"oauth": "Observação sobre OAuth: este servidor MCP do TMGR ainda não é um conector OAuth. Diferente do Spendly, ele autentica `/mcp/**` com `X-Smart-Device-Token`, então os conectores personalizados do Claude.ai que exigem descoberta OAuth não são compatíveis com esta configuração.",
+			"oauth": "Observação sobre OAuth: este servidor MCP do TMGR ainda não é um conector OAuth. Ele autentica `/mcp/**` com `X-Smart-Device-Token`, então os conectores personalizados do Claude.ai que exigem descoberta OAuth não são compatíveis com esta configuração.",
 			"notify": "Este MCP trabalha com suas tarefas e seu tempo. Para notificações e alarmes no celular vindos dos agentes, conecte o tmgr-notify em {link}.",
 			"notifyLink": "Alertas do agente"
 		},

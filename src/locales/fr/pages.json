@@ -154,7 +154,7 @@
 		"countLabel": "La page archivée et ses sous-pages | Les {n} pages archivées et leurs sous-pages",
 		"deleteAll": "Tout supprimer",
 		"deleteFailed": "Impossible de supprimer la page",
-		"deleteForbidden": "Seul l'auteur ou le propriétaire de l'espace de travail peut supprimer cette page",
+		"deleteForbidden": "Seul le propriétaire de l'espace de travail ou l'auteur de toutes les pages de cette branche peut la supprimer",
 		"emptied": "Archives vidées",
 		"empty": "Les archives sont vides.",
 		"emptyBody": "{label} seront supprimées définitivement. Cette action est irréversible.",
@@ -170,7 +170,7 @@
 		"purged": "Page supprimée définitivement",
 		"restore": "Restaurer",
 		"restoreFailed": "Impossible de restaurer la page",
-		"restoreForbidden": "Seul l'auteur ou le propriétaire de l'espace de travail peut restaurer cette page",
+		"restoreForbidden": "Seul le propriétaire de l'espace de travail ou l'auteur de toutes les pages de cette branche peut la restaurer",
 		"someKept": "Certaines pages ont été conservées",
 		"someKeptBody": "{n} page archivée que vous ne pouvez pas supprimer est restée dans les archives. | {n} pages archivées que vous ne pouvez pas supprimer sont restées dans les archives.",
 		"title": "Archives"

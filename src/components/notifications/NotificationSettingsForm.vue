@@ -168,6 +168,7 @@
 	import {
 		computed,
 		defineComponent,
+		nextTick,
 		onMounted,
 		reactive,
 		ref,
@@ -206,8 +207,11 @@
 
 			const hasTelegram = computed(() => hasTelegramLink(store.state.user));
 
+			const settingsReady = ref(false);
+
 			const loadSettings = async () => {
 				try {
+					settingsReady.value = false;
 					loading.value = true;
 					error.value = null;
 
@@ -225,6 +229,8 @@
 						response.settings.agent_telegram_enabled ?? false;
 
 					availableTypes.value = response.available_types;
+					await nextTick();
+					settingsReady.value = true;
 				} catch (err) {
 					console.error('Error loading notification settings:', err);
 					error.value =
@@ -321,6 +327,7 @@
 			watch(
 				formData,
 				() => {
+					if (!settingsReady.value) return;
 					if (saveTimeout) {
 						clearTimeout(saveTimeout);
 					}

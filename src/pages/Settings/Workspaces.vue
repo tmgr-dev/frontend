@@ -793,6 +793,7 @@
 							!isLoading &&
 							!isLocalActiveWorkspace &&
 							activeWorkspaceType !== 'default' &&
+							!activeWorkspaceItem?.is_default &&
 							isOwnedActiveWorkspace
 						"
 					>

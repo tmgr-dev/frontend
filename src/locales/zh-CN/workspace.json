@@ -83,7 +83,6 @@
 		"pending": "⏳ 待处理",
 		"invitedBy": "邀请人：",
 		"unknown": "未知",
-		"token": "令牌：{token}...",
 		"expires": "过期时间：{date}",
 		"noExpiration": "永不过期",
 		"resendTitle": "重新发送邀请邮件",

@@ -83,7 +83,6 @@
 		"pending": "⏳ Pendiente",
 		"invitedBy": "Invitado por:",
 		"unknown": "Desconocido",
-		"token": "Token: {token}...",
 		"expires": "Caduca: {date}",
 		"noExpiration": "Sin caducidad",
 		"resendTitle": "Reenviar el correo de invitación",

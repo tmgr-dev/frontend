@@ -83,7 +83,6 @@
 		"pending": "⏳ Oczekuje",
 		"invitedBy": "Zaproszono przez:",
 		"unknown": "Nieznany",
-		"token": "Token: {token}...",
 		"expires": "Wygasa: {date}",
 		"noExpiration": "Bez daty wygaśnięcia",
 		"resendTitle": "Wyślij e-mail z zaproszeniem ponownie",

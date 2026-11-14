@@ -154,7 +154,7 @@
 		"countLabel": "보관된 페이지 {n}개와 그 하위 페이지 전체",
 		"deleteAll": "모두 삭제",
 		"deleteFailed": "페이지를 삭제하지 못했어요",
-		"deleteForbidden": "작성자나 워크스페이스 소유자만 이 페이지를 삭제할 수 있어요",
+		"deleteForbidden": "이 페이지 아래 모든 페이지의 작성자나 워크스페이스 소유자만 삭제할 수 있어요",
 		"emptied": "보관함을 비웠어요",
 		"empty": "보관함이 비어 있어요.",
 		"emptyBody": "{label}이(가) 영구적으로 삭제돼요. 되돌릴 수 없어요.",
@@ -170,7 +170,7 @@
 		"purged": "페이지를 영구 삭제했어요",
 		"restore": "복원",
 		"restoreFailed": "페이지를 복원하지 못했어요",
-		"restoreForbidden": "작성자나 워크스페이스 소유자만 이 페이지를 복원할 수 있어요",
+		"restoreForbidden": "이 페이지 아래 모든 페이지의 작성자나 워크스페이스 소유자만 복원할 수 있어요",
 		"someKept": "일부 페이지는 남겨 뒀어요",
 		"someKeptBody": "삭제할 수 없는 보관 페이지 {n}개는 보관함에 남아 있어요.",
 		"title": "보관함"

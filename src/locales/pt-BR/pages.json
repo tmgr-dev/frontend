@@ -154,7 +154,7 @@
 		"countLabel": "A página arquivada e suas subpáginas | Todas as {n} páginas arquivadas e suas subpáginas",
 		"deleteAll": "Excluir tudo",
 		"deleteFailed": "Falha ao excluir a página",
-		"deleteForbidden": "Somente o autor ou o dono do espaço de trabalho pode excluir esta página",
+		"deleteForbidden": "Somente o dono do espaço de trabalho ou o autor de todas as páginas deste ramo pode excluí-lo",
 		"emptied": "Arquivo esvaziado",
 		"empty": "O arquivo está vazio.",
 		"emptyBody": "{label} será excluído para sempre. Isso não pode ser desfeito.",
@@ -170,7 +170,7 @@
 		"purged": "Página excluída permanentemente",
 		"restore": "Restaurar",
 		"restoreFailed": "Falha ao restaurar a página",
-		"restoreForbidden": "Somente o autor ou o dono do espaço de trabalho pode restaurar esta página",
+		"restoreForbidden": "Somente o dono do espaço de trabalho ou o autor de todas as páginas deste ramo pode restaurá-lo",
 		"someKept": "Algumas páginas foram mantidas",
 		"someKeptBody": "{n} página arquivada que você não pode excluir permaneceu no arquivo. | {n} páginas arquivadas que você não pode excluir permaneceram no arquivo.",
 		"title": "Arquivo"

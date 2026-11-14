@@ -154,7 +154,7 @@
 		"countLabel": "La página archivada y sus subpáginas | Las {n} páginas archivadas y sus subpáginas",
 		"deleteAll": "Eliminar todo",
 		"deleteFailed": "No se pudo eliminar la página",
-		"deleteForbidden": "Solo el autor o el propietario del espacio de trabajo puede eliminar esta página",
+		"deleteForbidden": "Solo el propietario del espacio de trabajo o el autor de todas las páginas de esta rama puede eliminarla",
 		"emptied": "Archivo vaciado",
 		"empty": "El archivo está vacío.",
 		"emptyBody": "{label} se eliminará para siempre. Esta acción no se puede deshacer.",
@@ -170,7 +170,7 @@
 		"purged": "Página eliminada definitivamente",
 		"restore": "Restaurar",
 		"restoreFailed": "No se pudo restaurar la página",
-		"restoreForbidden": "Solo el autor o el propietario del espacio de trabajo puede restaurar esta página",
+		"restoreForbidden": "Solo el propietario del espacio de trabajo o el autor de todas las páginas de esta rama puede restaurarla",
 		"someKept": "Se conservaron algunas páginas",
 		"someKeptBody": "{n} página archivada que no puedes eliminar se quedó en el archivo. | {n} páginas archivadas que no puedes eliminar se quedaron en el archivo.",
 		"title": "Archivo"

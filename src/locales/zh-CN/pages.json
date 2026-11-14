@@ -154,7 +154,7 @@
 		"countLabel": "全部 {n} 个已归档页面及其子页面",
 		"deleteAll": "全部删除",
 		"deleteFailed": "无法删除页面",
-		"deleteForbidden": "只有作者或工作区所有者可以删除此页面",
+		"deleteForbidden": "只有工作区所有者或此分支中所有页面的作者可以删除",
 		"emptied": "归档已清空",
 		"empty": "归档为空。",
 		"emptyBody": "{label}将被永久删除，此操作无法撤销。",
@@ -170,7 +170,7 @@
 		"purged": "页面已永久删除",
 		"restore": "恢复",
 		"restoreFailed": "无法恢复页面",
-		"restoreForbidden": "只有作者或工作区所有者可以恢复此页面",
+		"restoreForbidden": "只有工作区所有者或此分支中所有页面的作者可以恢复",
 		"someKept": "部分页面已保留",
 		"someKeptBody": "有 {n} 个你无权删除的已归档页面留在了归档中。",
 		"title": "归档"

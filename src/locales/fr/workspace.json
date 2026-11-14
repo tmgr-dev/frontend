@@ -83,7 +83,6 @@
 		"pending": "⏳ En attente",
 		"invitedBy": "Invité par :",
 		"unknown": "Inconnu",
-		"token": "Jeton : {token}...",
 		"expires": "Expire : {date}",
 		"noExpiration": "Sans expiration",
 		"resendTitle": "Renvoyer l'e-mail d'invitation",

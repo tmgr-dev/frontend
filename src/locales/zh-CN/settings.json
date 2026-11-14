@@ -154,7 +154,7 @@
 			"intro": "TMGR MCP 将智能设备令牌用作自定义请求头。请先在上方生成令牌，然后配置支持带请求头的远程 Streamable HTTP 服务器的 MCP 客户端（Claude Code：{command}）。",
 			"serverUrl": "服务器 URL",
 			"clientConfig": "客户端配置",
-			"oauth": "OAuth 说明：此 TMGR MCP 服务器目前还不是 OAuth 连接器。与 Spendly 不同，它使用 `X-Smart-Device-Token` 验证 `/mcp/**`，因此此配置不支持需要 OAuth 发现的 Claude.ai 自定义连接器。",
+			"oauth": "OAuth 说明：此 TMGR MCP 服务器目前还不是 OAuth 连接器。它使用 `X-Smart-Device-Token` 验证 `/mcp/**`，因此此配置不支持需要 OAuth 发现的 Claude.ai 自定义连接器。",
 			"notify": "此 MCP 用于处理你的任务和工时。如需接收智能体的手机通知和闹钟，请在{link}中连接 tmgr-notify。",
 			"notifyLink": "智能体提醒"
 		},

@@ -83,7 +83,6 @@
 		"pending": "⏳ 대기 중",
 		"invitedBy": "초대한 사람:",
 		"unknown": "알 수 없음",
-		"token": "토큰: {token}...",
 		"expires": "만료: {date}",
 		"noExpiration": "만료 없음",
 		"resendTitle": "초대 이메일 다시 보내기",

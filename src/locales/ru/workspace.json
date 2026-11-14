@@ -83,7 +83,6 @@
 		"pending": "⏳ Ожидает",
 		"invitedBy": "Пригласил:",
 		"unknown": "Неизвестно",
-		"token": "Токен: {token}...",
 		"expires": "Истекает: {date}",
 		"noExpiration": "Бессрочно",
 		"resendTitle": "Отправить приглашение повторно",

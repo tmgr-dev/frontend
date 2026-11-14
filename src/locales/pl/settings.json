@@ -154,7 +154,7 @@
 			"intro": "TMGR MCP używa tokenu inteligentnego urządzenia jako niestandardowego nagłówka. Wygeneruj token powyżej, a następnie skonfiguruj klienta MCP obsługującego zdalne serwery Streamable HTTP z nagłówkami (Claude Code: {command}).",
 			"serverUrl": "Adres URL serwera",
 			"clientConfig": "Konfiguracja klienta",
-			"oauth": "Uwaga o OAuth: ten serwer TMGR MCP nie jest jeszcze konektorem OAuth. W przeciwieństwie do Spendly uwierzytelnia `/mcp/**` przez `X-Smart-Device-Token`, więc niestandardowe konektory Claude.ai wymagające OAuth discovery nie są obsługiwane w tej konfiguracji.",
+			"oauth": "Uwaga o OAuth: ten serwer TMGR MCP nie jest jeszcze konektorem OAuth. Uwierzytelnia `/mcp/**` przez `X-Smart-Device-Token`, więc niestandardowe konektory Claude.ai wymagające OAuth discovery nie są obsługiwane w tej konfiguracji.",
 			"notify": "Ten MCP działa na twoich zadaniach i czasie. Aby otrzymywać od agentów powiadomienia push i alarmy na telefonie, połącz tmgr-notify w sekcji {link}.",
 			"notifyLink": "Alerty agentów"
 		},

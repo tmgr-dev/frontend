@@ -154,7 +154,7 @@
 			"intro": "TMGR MCP は、スマートデバイスのトークンをカスタムヘッダーとして使用します。上でトークンを生成してから、ヘッダー付きのリモート Streamable HTTP サーバーに対応した MCP クライアントを設定してください（Claude Code: {command}）。",
 			"serverUrl": "サーバー URL",
 			"clientConfig": "クライアント設定",
-			"oauth": "OAuth に関する注意: この TMGR MCP サーバーは、まだ OAuth コネクターではありません。Spendly とは異なり、`/mcp/**` を `X-Smart-Device-Token` で認証するため、OAuth ディスカバリーが必要な Claude.ai のカスタムコネクターは、この設定ではサポートされません。",
+			"oauth": "OAuth に関する注意: この TMGR MCP サーバーは、まだ OAuth コネクターではありません。`/mcp/**` を `X-Smart-Device-Token` で認証するため、OAuth ディスカバリーが必要な Claude.ai のカスタムコネクターは、この設定ではサポートされません。",
 			"notify": "この MCP は、タスクと時間を扱います。エージェントからのスマートフォン通知やアラームを使うには、{link}で tmgr-notify を連携してください。",
 			"notifyLink": "エージェント通知"
 		},

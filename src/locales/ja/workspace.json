@@ -83,7 +83,6 @@
 		"pending": "⏳ 保留中",
 		"invitedBy": "招待者：",
 		"unknown": "不明",
-		"token": "トークン：{token}…",
 		"expires": "有効期限：{date}",
 		"noExpiration": "有効期限なし",
 		"resendTitle": "招待メールを再送信",

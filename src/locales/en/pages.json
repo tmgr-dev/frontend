@@ -158,7 +158,7 @@
 		"countLabel": "The archived page and its subpages | All {n} archived pages and their subpages",
 		"deleteAll": "Delete all",
 		"deleteFailed": "Failed to delete page",
-		"deleteForbidden": "Only the author or the workspace owner can delete this page",
+		"deleteForbidden": "Only the workspace owner or the author of every page in this branch can delete it",
 		"emptied": "Archive emptied",
 		"empty": "Archive is empty.",
 		"emptyBody": "{label} will be deleted forever. This can't be undone.",
@@ -174,7 +174,7 @@
 		"purged": "Page deleted permanently",
 		"restore": "Restore",
 		"restoreFailed": "Failed to restore page",
-		"restoreForbidden": "Only the author or the workspace owner can restore this page",
+		"restoreForbidden": "Only the workspace owner or the author of every page in this branch can restore it",
 		"someKept": "Some pages were kept",
 		"someKeptBody": "{n} archived page you can't delete stayed in the archive. | {n} archived pages you can't delete stayed in the archive.",
 		"title": "Archive"

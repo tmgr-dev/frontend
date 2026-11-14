@@ -83,7 +83,6 @@
 		"pending": "⏳ Ausstehend",
 		"invitedBy": "Eingeladen von:",
 		"unknown": "Unbekannt",
-		"token": "Token: {token}...",
 		"expires": "Läuft ab: {date}",
 		"noExpiration": "Läuft nie ab",
 		"resendTitle": "Einladungs-E-Mail erneut senden",

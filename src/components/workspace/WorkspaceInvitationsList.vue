@@ -89,13 +89,6 @@
 						}}
 					</p>
 					<p class="text-xs text-ink-subtle">
-						{{
-							$t('workspace.workspaceInvitationsList.token', {
-								token: invitation.token.substring(0, 8),
-							})
-						}}
-					</p>
-					<p class="text-xs text-ink-subtle">
 						<span v-if="invitation.expired_at">
 							{{
 								$t('workspace.workspaceInvitationsList.expires', {

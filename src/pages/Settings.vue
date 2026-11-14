@@ -180,7 +180,6 @@
 
 						<div v-if="isDevice && !localOnly" class="flex flex-col gap-6">
 							<SettingsSection
-								v-if="mcpEnabled"
 								data-tour="settings.device-token"
 								:title="$t('settings.device.tokenTitle')"
 							>

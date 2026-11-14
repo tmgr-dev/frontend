@@ -154,7 +154,7 @@
 			"intro": "Le MCP de TMGR utilise le jeton de l'appareil connecté comme en-tête personnalisé. Générez le jeton ci-dessus, puis configurez un client MCP compatible avec les serveurs distants Streamable HTTP avec en-têtes (Claude Code : {command}).",
 			"serverUrl": "URL du serveur",
 			"clientConfig": "Configuration du client",
-			"oauth": "Remarque sur OAuth : ce serveur MCP de TMGR n'est pas encore un connecteur OAuth. Contrairement à Spendly, il authentifie `/mcp/**` avec `X-Smart-Device-Token`, donc les connecteurs personnalisés de Claude.ai qui exigent la découverte OAuth ne sont pas pris en charge par cette configuration.",
+			"oauth": "Remarque sur OAuth : ce serveur MCP de TMGR n'est pas encore un connecteur OAuth. Il authentifie `/mcp/**` avec `X-Smart-Device-Token`, donc les connecteurs personnalisés de Claude.ai qui exigent la découverte OAuth ne sont pas pris en charge par cette configuration.",
 			"notify": "Ce MCP gère vos tâches et votre temps. Pour recevoir les notifications et alarmes des agents sur votre téléphone, connectez tmgr-notify dans {link}.",
 			"notifyLink": "Alertes de l'agent"
 		},
