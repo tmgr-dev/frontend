@@ -5943,78 +5943,113 @@ fn external_resume_and_fork_start_from_the_profile_template_in_the_real_home() {
     }
 }
 
-#[test]
-fn external_resume_is_refused_unless_every_condition_holds() {
+fn assert_external_resume_forbidden(client: &str, tweak: impl FnOnce(&ExtFx, &mut RunCreateReq)) {
     if !sessions_available() {
         return;
     }
     let fx = ext_fx(true);
-    let cloud = tmgr_ipc::api::CloudApproval {
-        repos_sha256: None,
-        persona_sha256: None,
-        context_sha256: None,
-        host: "api.tmgr.dev".into(),
-        user_id: 1,
-        workspace_id: 56,
-        task_id: 9002,
-        category_id: 127,
-        content_sha256: "0".repeat(64),
-        key_id: "k".into(),
-        signed_at: 1,
-        signature: "s".into(),
-        kind: "author".into(),
-    };
-    let mut no_sandbox = fx.req(false);
-    no_sandbox.no_sandbox = None;
-    let mut unattended = fx.req(false);
-    unattended.unattended = true;
-    let mut origin = fx.req(false);
-    origin.origin = Some(Origin {
-        link: "laptop".into(),
-        generation: 1,
-    });
-    let mut keyed = fx.req(false);
-    keyed.start_key = Some("q_ext-1".into());
-    let mut cloned = fx.req(false);
-    cloned.clones = vec![tmgr_ipc::api::CloneSpec {
-        name: "a".into(),
-        clone_of: fx.work.display().to_string(),
-    }];
-    let mut team = fx.req(false);
-    team.team = Some(tmgr_ipc::api::TeamLink {
-        role: tmgr_ipc::api::TeamRole::Lead,
-        of: "t1".into(),
-    });
-    let mut work = fx.req(false);
-    work.agent_work = true;
-    let mut cloudy = fx.req(false);
-    cloudy.cloud = Some(cloud);
-    let mut trusted = fx.req(false);
-    trusted.trust_cwd = Some(true);
-    let mut tasked = fx.req(false);
-    tasked.task = Some(TaskRef {
-        workspace_id: 1,
-        task_id: 2,
-    });
-    for (name, client, req) in [
-        ("no_sandbox", "cli", no_sandbox),
-        ("unattended", "cli", unattended),
-        ("origin", "worker", origin),
-        ("start_key", "cli", keyed),
-        ("clones", "cli", cloned),
-        ("team", "cli", team),
-        ("agent_work", "cli", work),
-        ("cloud", "cli", cloudy),
-        ("trust_cwd", "cli", trusted),
-        ("task", "cli", tasked),
-        ("desktop", "desktop", fx.req(false)),
-        ("worker", "worker", fx.req(false)),
-    ] {
-        let mut c = Client::connect_as(&fx.h.run, client).unwrap();
-        let e = err_text(c.create_run(req));
-        assert!(e.starts_with("forbidden: "), "{name}: {e}");
-    }
+    let mut req = fx.req(false);
+    tweak(&fx, &mut req);
+    let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+    let e = err_text(c.create_run(req));
+    assert!(e.starts_with("forbidden: "), "{e}");
     assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn external_resume_is_refused_without_no_sandbox() {
+    assert_external_resume_forbidden("cli", |_, r| r.no_sandbox = None);
+}
+
+#[test]
+fn external_resume_is_refused_for_an_unattended_run() {
+    assert_external_resume_forbidden("cli", |_, r| r.unattended = true);
+}
+
+#[test]
+fn external_resume_is_refused_with_a_link_origin() {
+    assert_external_resume_forbidden("worker", |_, r| {
+        r.origin = Some(Origin {
+            link: "laptop".into(),
+            generation: 1,
+        });
+    });
+}
+
+#[test]
+fn external_resume_is_refused_with_a_start_key() {
+    assert_external_resume_forbidden("cli", |_, r| r.start_key = Some("q_ext-1".into()));
+}
+
+#[test]
+fn external_resume_is_refused_with_clones() {
+    assert_external_resume_forbidden("cli", |fx, r| {
+        r.clones = vec![tmgr_ipc::api::CloneSpec {
+            name: "a".into(),
+            clone_of: fx.work.display().to_string(),
+        }];
+    });
+}
+
+#[test]
+fn external_resume_is_refused_for_a_team_member() {
+    assert_external_resume_forbidden("cli", |_, r| {
+        r.team = Some(tmgr_ipc::api::TeamLink {
+            role: tmgr_ipc::api::TeamRole::Lead,
+            of: "t1".into(),
+        });
+    });
+}
+
+#[test]
+fn external_resume_is_refused_with_agent_work() {
+    assert_external_resume_forbidden("cli", |_, r| r.agent_work = true);
+}
+
+#[test]
+fn external_resume_is_refused_with_a_cloud_approval() {
+    assert_external_resume_forbidden("cli", |_, r| {
+        r.cloud = Some(tmgr_ipc::api::CloudApproval {
+            repos_sha256: None,
+            persona_sha256: None,
+            context_sha256: None,
+            host: "api.tmgr.dev".into(),
+            user_id: 1,
+            workspace_id: 56,
+            task_id: 9002,
+            category_id: 127,
+            content_sha256: "0".repeat(64),
+            key_id: "k".into(),
+            signed_at: 1,
+            signature: "s".into(),
+            kind: "author".into(),
+        });
+    });
+}
+
+#[test]
+fn external_resume_is_refused_with_trust_cwd() {
+    assert_external_resume_forbidden("cli", |_, r| r.trust_cwd = Some(true));
+}
+
+#[test]
+fn external_resume_is_refused_with_a_task() {
+    assert_external_resume_forbidden("cli", |_, r| {
+        r.task = Some(TaskRef {
+            workspace_id: 1,
+            task_id: 2,
+        });
+    });
+}
+
+#[test]
+fn external_resume_is_refused_for_the_desktop_client() {
+    assert_external_resume_forbidden("desktop", |_, _| {});
+}
+
+#[test]
+fn external_resume_is_refused_for_the_worker_client() {
+    assert_external_resume_forbidden("worker", |_, _| {});
 }
 
 #[test]
