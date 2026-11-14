@@ -174,8 +174,18 @@ fn stop(o: &Opts) -> Result<i32> {
         }
         Err(e) => return Err(rerr(e)),
     };
+    let sessions = c.status().map_or(0, |st| st.sessions);
     c.stop().map_err(rerr)?;
-    Ok(emit(o, json!({"stopped": true}), "runner stopped"))
+    let warning = super::restart::real_stop_warning(sessions);
+    let mut human = "runner stopped".to_string();
+    if let Some(w) = &warning {
+        human.push_str(&format!("\nwarning: {w}"));
+    }
+    Ok(emit(
+        o,
+        json!({"stopped": true, "warnings": warning.into_iter().collect::<Vec<_>>()}),
+        human,
+    ))
 }
 
 fn status(o: &Opts) -> Result<i32> {

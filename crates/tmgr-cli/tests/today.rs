@@ -365,6 +365,7 @@ async fn routine_list_json_and_human() {
         !s.contains('\u{1b}') && s.contains("Weekly [31m review"),
         "{s}"
     );
+    assert!(s.contains("id 32") && s.contains("id 33"), "{s}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

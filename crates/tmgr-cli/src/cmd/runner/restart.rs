@@ -434,6 +434,20 @@ impl Service for RealService {
     }
 }
 
+pub(super) fn stop_warning(svc: &mut dyn Service, sessions: u32) -> Option<String> {
+    if sessions == 0 || !svc.unit_outdated() {
+        return None;
+    }
+    Some(format!(
+        "the installed service file lets systemd kill agent sessions when the runner stops; run `{} runner {REINSTALL}`",
+        bin()
+    ))
+}
+
+pub(super) fn real_stop_warning(sessions: u32) -> Option<String> {
+    stop_warning(&mut RealService::new(), sessions)
+}
+
 pub fn run(o: &Opts, force: bool) -> Result<i32> {
     let cfg = runner_config()?;
     let mut ctl = RealControl { cfg };
@@ -565,6 +579,16 @@ mod tests {
 
     fn go(ctl: &mut Fake, svc: &mut FakeSvc, cli: &str, force: bool) -> Result<Outcome> {
         restart(ctl, svc, cli, force, &fast(), true)
+    }
+
+    #[test]
+    fn stop_warns_only_for_an_outdated_unit_with_sessions() {
+        let mut svc = FakeSvc::new(Svc::Ready);
+        svc.outdated = true;
+        assert!(stop_warning(&mut svc, 2).unwrap().contains("systemd kill"));
+        assert!(stop_warning(&mut svc, 0).is_none());
+        svc.outdated = false;
+        assert!(stop_warning(&mut svc, 2).is_none());
     }
 
     #[test]

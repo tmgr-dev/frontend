@@ -136,6 +136,12 @@ function check(cmd: string): string[] {
 	if (tokens[0] !== 'tmgr') return [`${cmd}: not a tmgr command`];
 	const rest = tokens.slice(1);
 	if (rest[0] === '--ws') rest.splice(0, 2);
+	while (
+		rest.length &&
+		rest[0].startsWith('--') &&
+		GLOBAL_FLAGS.has(rest[0].slice(2).split('=')[0].replace(/-/g, '_'))
+	)
+		rest.shift();
 	if (!rest.length) return [];
 	const words: string[] = [];
 	const flags: string[] = [];
@@ -253,6 +259,8 @@ describe('tmgr CLI docs', () => {
 		expect(check('tmgr status TM-123')).not.toEqual([]);
 		expect(check('tmgr task list -p <project> --json -q')).toEqual([]);
 		expect(check('tmgr')).toEqual([]);
+		expect(check('tmgr --json routine list')).toEqual([]);
+		expect(check('tmgr --json workspace list')).not.toEqual([]);
 		expect(
 			segments(
 				`tmgr task list --json | jq -r '.data.items[] | select(.x) | .ref'`,

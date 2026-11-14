@@ -20,13 +20,16 @@ fn day(date: Option<&str>) -> Result<NaiveDate> {
 
 fn mark(ctx: &Ctx, r: &RoutineView) -> String {
     let s = &ctx.style;
-    let when = r.time.as_deref().unwrap_or("");
+    let when = match r.time.as_deref() {
+        Some(t) => format!("{t} id {}", r.id),
+        None => format!("id {}", r.id),
+    };
     let glyph = if r.done {
         s.good("\u{2713}")
     } else {
         "\u{25cb}".to_string()
     };
-    format!("  {glyph} {} {}", r.title, s.muted(when))
+    format!("  {glyph} {} {}", r.title, s.muted(&when))
         .trim_end()
         .to_string()
 }

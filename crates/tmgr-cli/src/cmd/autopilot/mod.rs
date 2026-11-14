@@ -114,7 +114,7 @@ pub struct StartArgs {
     /// Most tasks to start, or none
     #[arg(long, value_name = "N|none")]
     pub max_tasks: Option<String>,
-    /// Hours after which autopilot stops starting tasks when no real usage number is found (default 8)
+    /// Hours after which autopilot stops starting tasks when no real usage number is found (default 8; a later start with the same rule reuses the last value unless you pass this flag)
     #[arg(long, value_name = "HOURS")]
     pub fallback_hours: Option<String>,
     /// Only tasks that carry the rule's persona

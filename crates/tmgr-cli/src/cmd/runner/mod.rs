@@ -154,9 +154,9 @@ pub struct SummaryArgs {
 pub enum RunnerCmd {
     /// [experimental] Start the runner in the background
     Start,
-    /// [experimental] Stop the runner (sessions keep running)
+    /// [experimental] Stop the runner (agent sessions keep running, except on Linux when the login service file is outdated: systemd then ends them; `install-service --install` fixes that)
     Stop,
-    /// [experimental] Restart the runner with the installed version (sessions keep running)
+    /// [experimental] Restart the runner with the installed version (agent sessions keep running unless the login service file is outdated, see `stop`)
     Restart(RestartArgs),
     /// [experimental] Show whether the runner is up
     Status,
@@ -256,7 +256,7 @@ pub struct FolderArgs {
 
 #[derive(Args)]
 pub struct RestartArgs {
-    /// Replace a newer running runner with this older tmgr
+    /// Restart anyway: replace a newer running runner with this older tmgr, restart a runner that reports no version, or restart despite an outdated login service file that lets systemd end agent sessions
     #[arg(long)]
     pub force: bool,
 }
