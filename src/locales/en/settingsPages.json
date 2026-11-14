@@ -74,6 +74,9 @@
 		}
 	},
 	"plugins": {
+		"web": {
+			"refusedTitle": "A shared plugin cannot run in the web app"
+		},
 		"title": "Plugins",
 		"subtitle": "Plugins run in local workspaces, and in a shared workspace once its creator turns them on for everyone. Each runs in its own sandbox with only the permissions listed on its card.",
 		"howItWorks": "How plugins work",

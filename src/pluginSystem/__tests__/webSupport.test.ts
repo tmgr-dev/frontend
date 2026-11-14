@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { parseManifest } from '../manifest';
-import { packageFromPin, webRefusal } from '../webSupport';
+import { newRefusalNotices, packageFromPin, webRefusal } from '../webSupport';
 
 const manifest = (extra: Record<string, unknown> = {}) => ({
 	id: 'acme.board',
@@ -94,6 +94,59 @@ it.each([
 	await expect(
 		packageFromPin(record(sha256), async () => buffer),
 	).rejects.toThrow(message);
+});
+
+const picturesOnly = {
+	engines: { tmgr: '^1.13' },
+	permissions: ['tasks:read', 'images:remote'],
+	images: { allowedDomains: ['example.com'] },
+};
+
+it('names the pictures when remote pictures are the only reason', () => {
+	const refusal = webRefusal({
+		manifest: parseManifest(manifest(picturesOnly)),
+		code: '',
+		source: 'installed',
+	});
+	expect(refusal).toMatch(/pictures/);
+	expect(refusal).not.toMatch(/files, local services/);
+});
+
+it('keeps the computer message when something besides pictures needs it', () => {
+	const refusal = webRefusal({
+		manifest: parseManifest(
+			manifest({
+				...picturesOnly,
+				permissions: [...picturesOnly.permissions, 'files:export'],
+			}),
+		),
+		code: '',
+		source: 'installed',
+	});
+	expect(refusal).toMatch(/this computer/);
+});
+
+describe('newRefusalNotices', () => {
+	it('lists each refused plugin once per workspace and reason', () => {
+		const seen = new Set<string>();
+		const errors = { 'acme.board': 'Shared workspace plugin: it needs alarms' };
+		expect(newRefusalNotices(7, errors, seen)).toEqual([
+			'acme.board: it needs alarms',
+		]);
+		expect(newRefusalNotices(7, errors, seen)).toEqual([]);
+		expect(newRefusalNotices(8, errors, seen)).toHaveLength(1);
+		expect(
+			newRefusalNotices(
+				7,
+				{ 'acme.board': 'Shared workspace plugin: other' },
+				seen,
+			),
+		).toEqual(['acme.board: other']);
+	});
+
+	it('says nothing when nothing was refused', () => {
+		expect(newRefusalNotices(7, {}, new Set())).toEqual([]);
+	});
 });
 
 it('lets a declarative plugin through', () => {

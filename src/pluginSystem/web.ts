@@ -1,5 +1,6 @@
 import { toast } from '@/components/ui/toast';
 import { usePusher } from '@/composable/usePusher';
+import { t } from '@/i18n';
 import $axios from '@/plugins/axios';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import type { AxiosInstance } from 'axios';
@@ -21,7 +22,7 @@ import { createLeader } from './leader';
 import type { WorkerEndpoint } from './process';
 import { installedPluginErrors, pluginState, setPluginHost } from './state';
 import { settingsStore } from './storage';
-import { packageFromPin, webRefusal } from './webSupport';
+import { newRefusalNotices, packageFromPin, webRefusal } from './webSupport';
 
 const workspaceOf = (workspace: any): PluginWorkspace | null =>
 	workspace && Number(workspace.id) > 0
@@ -36,6 +37,7 @@ const workspaceOf = (workspace: any): PluginWorkspace | null =>
 		: null;
 
 const cloudClients = new Map<string, AxiosInstance>();
+const shownRefusals = new Set<string>();
 
 const cloudClientFor = (
 	workspaceId: number,
@@ -169,6 +171,13 @@ export const installWebPlugins = (store: Store<any>) => {
 				(key) => delete installedPluginErrors[key],
 			);
 			Object.assign(installedPluginErrors, errors);
+			newRefusalNotices(workspaceId, errors, shownRefusals).forEach(
+				(description) =>
+					toast({
+						title: t('settingsPages.plugins.web.refusedTitle'),
+						description,
+					}),
+			);
 		}
 		return found;
 	};

@@ -56,11 +56,20 @@ const MACHINE_PERMISSIONS = new Set([
 ]);
 
 /** Files, local services, the menu bar, tmgr:// links or the browser of the member's own computer. */
-export const reachesThisComputer = (manifest: PluginManifest) =>
+const reachesBesidesPictures = (manifest: PluginManifest) =>
 	manifest.network.allowedOrigins.length > 0 ||
-	manifest.images.allowedDomains.length > 0 ||
 	manifest.links.schemes.length > 0 ||
-	manifest.permissions.some((p) => MACHINE_PERMISSIONS.has(p));
+	manifest.permissions.some(
+		(p) => MACHINE_PERMISSIONS.has(p) && p !== 'images:remote',
+	);
+
+export const reachesThisComputer = (manifest: PluginManifest) =>
+	reachesBesidesPictures(manifest) ||
+	manifest.images.allowedDomains.length > 0 ||
+	manifest.permissions.includes('images:remote');
+
+export const reachesOnlyPictures = (manifest: PluginManifest) =>
+	reachesThisComputer(manifest) && !reachesBesidesPictures(manifest);
 
 /** Local-only permissions the server's EnablePluginRequest does not know and rejects with 400. */
 const CLOUD_UNSUPPORTED_PERMISSIONS = new Set(['views:badge', 'images:remote']);

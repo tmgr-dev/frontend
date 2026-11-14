@@ -1,4 +1,8 @@
-import { reachesThisComputer, type WorkspacePluginRecord } from './cloud';
+import {
+	reachesOnlyPictures,
+	reachesThisComputer,
+	type WorkspacePluginRecord,
+} from './cloud';
 import type { PluginPackage } from './host';
 import { bundleToPackage, type Release } from './market';
 
@@ -12,6 +16,8 @@ const WEB_UNSUPPORTED_PERMISSIONS = new Set([
 ]);
 
 export const webRefusal = (pkg: PluginPackage): string | null => {
+	if (reachesOnlyPictures(pkg.manifest))
+		return 'it loads pictures from other websites, which the web app does not allow, so it runs in the desktop app only';
 	if (reachesThisComputer(pkg.manifest))
 		return 'it needs this computer (files, local services, the menu bar or links), so it runs in the desktop app only';
 	const unsupported = pkg.manifest.permissions.find((permission) =>
@@ -21,6 +27,23 @@ export const webRefusal = (pkg: PluginPackage): string | null => {
 		return `it needs the ${unsupported} permission, which the web app does not provide`;
 	return null;
 };
+
+const REFUSAL_PREFIX = 'Shared workspace plugin: ';
+
+export const newRefusalNotices = (
+	workspaceId: number,
+	errors: Record<string, string>,
+	seen: Set<string>,
+): string[] =>
+	Object.entries(errors).flatMap(([pluginId, error]) => {
+		const reason = error.startsWith(REFUSAL_PREFIX)
+			? error.slice(REFUSAL_PREFIX.length)
+			: error;
+		const key = `${workspaceId}|${pluginId}|${reason}`;
+		if (seen.has(key)) return [];
+		seen.add(key);
+		return [`${pluginId}: ${reason}`];
+	});
 
 export const sha256Hex = async (bytes: ArrayBuffer): Promise<string> =>
 	Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
