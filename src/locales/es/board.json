@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "Acciones del panel",
 		"a11y": {
-			"shortcuts": "Atajos de teclado: Ctrl+R para actualizar, Ctrl+1-5 para navegar entre secciones, Escape para borrar errores",
+			"shortcuts": "Atajos de teclado: {mod}+R para actualizar, {mod}+1-4 para navegar entre secciones, Escape para borrar errores",
 			"keyNumbers": "Cifras clave, último {n} día | Cifras clave, últimos {n} días",
 			"loadedAnnouncement": "Panel cargado correctamente",
 			"failedAnnouncement": "No se pudo cargar el panel",

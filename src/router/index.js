@@ -112,13 +112,6 @@ router.beforeEach(async (to, from, next) => {
 				landingPage,
 				store.getters['featureToggles/isFeatureEnabled'],
 			);
-			if (finalLanding !== landingPage) {
-				// persist fix
-				await store.dispatch('featureToggles/updateUserToggles', {
-					default_landing_page: finalLanding,
-				});
-			}
-
 			if (finalLanding === 'daily_routines') {
 				return next('/routines');
 			}

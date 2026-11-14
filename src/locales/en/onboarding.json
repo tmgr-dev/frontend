@@ -574,6 +574,8 @@
 						"s2": {
 							"title": "Give it a title",
 							"body": "Type a title, then press Create or Ctrl+S. Everything else is optional.",
+							"bodyMacos": "Type a title, then press Create or ⌘S. Everything else is optional.",
+							"bodyOther": "Type a title, then press Create or Ctrl+S. Everything else is optional.",
 							"mobileBody": "Type a title, then tap Create. Everything else is optional."
 						},
 						"s3": {
@@ -732,7 +734,7 @@
 					"steps": {
 						"s1": {
 							"title": "Files",
-							"body": "Every file attached to a task or page in this workspace."
+							"body": "Every file attached to a task in this workspace."
 						}
 					}
 				},

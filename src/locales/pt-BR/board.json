@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "Ações do painel",
 		"a11y": {
-			"shortcuts": "Atalhos de teclado: Ctrl+R para atualizar, Ctrl+1-5 para navegar pelas seções, Escape para limpar erros",
+			"shortcuts": "Atalhos de teclado: {mod}+R para atualizar, {mod}+1-4 para navegar pelas seções, Escape para limpar erros",
 			"keyNumbers": "Números principais, último {n} dia | Números principais, últimos {n} dias",
 			"loadedAnnouncement": "Painel carregado com sucesso",
 			"failedAnnouncement": "Falha ao carregar o painel",

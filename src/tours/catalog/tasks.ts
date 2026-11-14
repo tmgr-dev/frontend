@@ -287,7 +287,7 @@ export const tasksTours: TourDef[] = [
 				anchor: 'files.list',
 				route: FILES,
 				title: 'Files',
-				body: 'Every file attached to a task or page in this workspace.',
+				body: 'Every file attached to a task in this workspace.',
 			},
 		],
 	},

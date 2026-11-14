@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "ダッシュボードの操作",
 		"a11y": {
-			"shortcuts": "キーボードショートカット：Ctrl+Rで更新、Ctrl+1〜5でセクション移動、Escapeでエラーを解除",
+			"shortcuts": "キーボードショートカット：{mod}+Rで更新、{mod}+1-4でセクション移動、Escapeでエラーを解除",
 			"keyNumbers": "主要な数値（過去{n}日間）",
 			"loadedAnnouncement": "ダッシュボードを読み込みました",
 			"failedAnnouncement": "ダッシュボードを読み込めませんでした",

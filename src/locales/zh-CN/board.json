@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "仪表盘操作",
 		"a11y": {
-			"shortcuts": "键盘快捷键：Ctrl+R 刷新，Ctrl+1-5 切换区域，Escape 清除错误",
+			"shortcuts": "键盘快捷键：{mod}+R 刷新，{mod}+1-4 切换区域，Escape 清除错误",
 			"keyNumbers": "最近 {n} 天的关键数据",
 			"loadedAnnouncement": "仪表盘加载成功",
 			"failedAnnouncement": "仪表盘加载失败",

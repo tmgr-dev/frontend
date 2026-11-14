@@ -667,7 +667,7 @@
 		},
 		"actionsLabel": "대시보드 동작",
 		"a11y": {
-			"shortcuts": "키보드 단축키: Ctrl+R 새로 고침, Ctrl+1-5 섹션 이동, Escape 오류 지우기",
+			"shortcuts": "키보드 단축키: {mod}+R 새로 고침, {mod}+1-4 섹션 이동, Escape 오류 지우기",
 			"keyNumbers": "최근 {n}일 주요 수치",
 			"loadedAnnouncement": "대시보드를 불러왔어요",
 			"failedAnnouncement": "대시보드를 불러오지 못했어요",
