@@ -279,7 +279,7 @@ pub fn route_with(
   if let Some(session) = card.source.runner_session.clone() {
     if matches!(card.source.agent.as_str(), "claude-code" | "codex") {
       let now = hub.delivery_target(&r.id);
-      if bound_target.is_some_and(|b| b != now) && !dropped {
+      if bound_target.is_some_and(|b| if dropped { !only_lost_parts(b, &now) } else { b != now }) {
         hub.record_delivery(&r.id, event.seq, "undelivered", "", CHANGED);
         return RouteOutcome::TargetChanged;
       }
@@ -293,6 +293,10 @@ pub fn route_with(
   }
   hub.record_delivery(&r.id, event.seq, "undelivered", "", UNREAD);
   RouteOutcome::Undelivered
+}
+
+fn only_lost_parts(bound: &str, now: &str) -> bool {
+  now.split('|').filter(|p| !p.is_empty()).all(|p| bound.split('|').any(|b| b == p))
 }
 
 pub fn route<R: Runtime>(
@@ -1065,6 +1069,40 @@ mod tests {
     assert!(q.is_empty());
   }
 
+  struct ReplacesTargetWhileSending<'a>(&'a Hub, String);
+
+  impl SocketSender for ReplacesTargetWhileSending<'_> {
+    fn send(&self, _: &str, _: &str, _: &str) -> Result<(), PushErr> {
+      let card = CardIn { id: Some(self.1.clone()), ..hook("stopped", Some("r1"), "codex") };
+      let fresh = Inbox { session: Some("sess-2".into()), ..inbox("/tmp/cc-socks/other.sock") };
+      self.0.create_with(card, Some(fresh)).unwrap();
+      Err(PushErr::Gone)
+    }
+  }
+
+  #[test]
+  fn a_bound_job_is_not_queued_when_a_dead_socket_was_replaced_while_sending() {
+    let hub = hub();
+    let id = hub.create_with(hook("stopped", Some("r1"), "codex"), Some(inbox(SOCK))).unwrap().id;
+    let e = hub.message(&id, MessageIn { text: "go on".into(), ..Default::default() }).unwrap();
+    let q = Queue::default();
+    let s = ReplacesTargetWhileSending(&hub, id.clone());
+    assert_eq!(bound_route(&hub, &q, &s, &id, &e), RouteOutcome::TargetChanged);
+    assert!(q.is_empty());
+  }
+
+  #[test]
+  fn a_bound_job_is_typed_through_the_runner_after_its_socket_died() {
+    let hub = hub();
+    let id = hub.create_with(hook("stopped", Some("r1"), "codex"), Some(inbox(SOCK))).unwrap().id;
+    let e = hub.message(&id, MessageIn { text: "go on".into(), ..Default::default() }).unwrap();
+    let q = Queue::default();
+    assert_eq!(bound_route(&hub, &q, &FakeSocket::with(vec![Err(PushErr::Gone)]), &id, &e), RouteOutcome::Queued);
+    let run = FakeRunner::with(vec![Ok(())]);
+    q.tick(&hub, &run, Instant::now());
+    assert_eq!(run.calls(), [("r1".to_owned(), "go on\r".to_owned())]);
+  }
+
   #[test]
   fn a_desktop_job_is_typed_after_the_delivery_target_changed() {
     let hub = hub();
@@ -1101,6 +1139,9 @@ mod tests {
   #[test]
   fn phone_text_cannot_end_in_a_line_continuation() {
     assert_eq!(typed_from_phone("message", "go on \\\\ \n"), (RouteOutcome::Sent, vec!["Owner via phone: go on".to_owned()]));
+    for text in ["go on \\\u{7}", "go on \\\u{1b}", "go on \\\u{85}"] {
+      assert_eq!(typed_from_phone("message", text), (RouteOutcome::Sent, vec!["Owner via phone: go on".to_owned()]));
+    }
   }
 
   #[test]
