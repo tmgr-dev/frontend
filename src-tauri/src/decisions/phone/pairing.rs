@@ -97,7 +97,7 @@ pub(super) fn pair_link(json: &[u8]) -> String {
   format!("tmgr://pair#tmgr-pair:v1:{}", URL_SAFE_NO_PAD.encode(json))
 }
 
-fn qr_data_url(text: &str) -> Result<String, String> {
+pub(super) fn qr_data_url(text: &str) -> Result<String, String> {
   let code = qrcode::QrCode::new(text.as_bytes()).map_err(|_| "could not draw the QR code".to_owned())?;
   let svg = code.render::<qrcode::render::svg::Color>().min_dimensions(320, 320).quiet_zone(true).build();
   Ok(format!("data:image/svg+xml;base64,{}", STANDARD.encode(svg)))
