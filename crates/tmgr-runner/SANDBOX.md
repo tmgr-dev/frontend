@@ -238,10 +238,12 @@ the writable roots read-only at the mount level:
 - The whole sequence is first tried in a forked probe process. If it cannot work, the helper continues without the
   namespace: unprivileged user namespaces disabled (`kernel.unprivileged_userns_clone=0`, `user.max_user_namespaces=0`),
   restricted by the distribution (Ubuntu 24.04 `kernel.apparmor_restrict_unprivileged_userns=1`), blocked by a container
-  seccomp profile (Docker's default), or a multithreaded helper process. Only a failure to create the namespace or to
-  make `/` read-only leads to that fallback; a failure while re-binding the writable roots or in the final check, in the
-  probe or afterwards, stops the run (exit 78).
-- The helper records the outcome in `<runner dir>/sessions/<id>/objects_ro` (`namespace` or `fallback: <reason>`), and the
+  seccomp profile (Docker's default), or a multithreaded helper process. Only a refusal to create the namespace or to
+  make `/` read-only (`EPERM`, `EACCES`, `EINVAL`, `ENOSYS`, or `ENOSPC` with `user.max_user_namespaces=0`) leads to
+  that fallback. Any other failure, in the probe or afterwards, stops the run (exit 78): a probe that cannot fork, a
+  namespace quota that is used up, a failure while re-binding the writable roots or in the final check.
+- The helper records the outcome in `<runner dir>/sessions/<id>/objects_ro` (`namespace`, `fallback: <reason>` or
+  `failed: <reason>`), and the
   daemon logs it when the run ends.
 - Independently of the namespace, the daemon records the mode of every directory and file under each granted object
   directory before the run (`objects-modes` in the session directory, outside the sandbox) and, after the run ends

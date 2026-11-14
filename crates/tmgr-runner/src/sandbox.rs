@@ -1194,10 +1194,6 @@ mod linux {
         bits
     }
 
-    fn write_proc(file: &str, text: &str) -> Result<(), String> {
-        std::fs::write(file, text).map_err(|e| format!("{file}: {e}"))
-    }
-
     fn path_id(p: &Path) -> Option<(u64, u64)> {
         use std::os::unix::fs::MetadataExt;
         std::fs::metadata(p).ok().map(|m| (m.dev(), m.ino()))
@@ -1213,14 +1209,14 @@ mod linux {
         userns_fd: u64,
     }
 
-    fn tree_read_only() -> Result<(), String> {
+    fn tree_read_only() -> libc::c_long {
         let attr = MountAttr {
             attr_set: MOUNT_ATTR_RDONLY,
             attr_clr: 0,
             propagation: 0,
             userns_fd: 0,
         };
-        let rc = unsafe {
+        unsafe {
             libc::syscall(
                 libc::SYS_mount_setattr,
                 libc::AT_FDCWD,
@@ -1229,11 +1225,6 @@ mod linux {
                 &attr as *const MountAttr,
                 std::mem::size_of::<MountAttr>(),
             )
-        };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(os_err("read-only mount of /"))
         }
     }
 
@@ -1291,25 +1282,57 @@ mod linux {
     }
 
     fn enter_read_only_namespace(policy: &Policy) -> Result<(), Setup> {
-        isolate().map_err(Setup::Unavailable)?;
+        isolate()?;
         remount_roots(policy).map_err(Setup::Failed)
     }
 
-    fn isolate() -> Result<(), String> {
+    fn refused(what: &str, e: std::io::Error) -> Setup {
+        let unavailable = match e.raw_os_error() {
+            Some(libc::EPERM | libc::EACCES | libc::EINVAL | libc::ENOSYS) => true,
+            Some(libc::ENOSPC) => std::fs::read_to_string("/proc/sys/user/max_user_namespaces")
+                .is_ok_and(|v| v.trim() == "0"),
+            _ => false,
+        };
+        let m = format!("{what}: {e}");
+        if unavailable {
+            Setup::Unavailable(m)
+        } else {
+            Setup::Failed(m)
+        }
+    }
+
+    fn isolate() -> Result<(), Setup> {
+        let check = |rc: libc::c_long, what: &str| match rc {
+            0 => Ok(()),
+            _ => Err(refused(what, std::io::Error::last_os_error())),
+        };
         let uid = unsafe { libc::geteuid() };
         let gid = unsafe { libc::getegid() };
-        if unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS) } != 0 {
-            return Err(os_err("unshare"));
-        }
-        write_proc("/proc/self/setgroups", "deny")?;
-        write_proc("/proc/self/uid_map", &format!("{uid} {uid} 1"))?;
-        write_proc("/proc/self/gid_map", &format!("{gid} {gid} 1"))?;
-        mount_call(
-            None,
-            &cpath(Path::new("/"))?,
-            libc::MS_REC | libc::MS_PRIVATE,
+        check(
+            unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS) }.into(),
+            "unshare",
         )?;
-        tree_read_only()
+        for (file, text) in [
+            ("/proc/self/setgroups", "deny".to_string()),
+            ("/proc/self/uid_map", format!("{uid} {uid} 1")),
+            ("/proc/self/gid_map", format!("{gid} {gid} 1")),
+        ] {
+            std::fs::write(file, text).map_err(|e| refused(file, e))?;
+        }
+        check(
+            unsafe {
+                libc::mount(
+                    std::ptr::null(),
+                    c"/".as_ptr(),
+                    std::ptr::null(),
+                    libc::MS_REC | libc::MS_PRIVATE,
+                    std::ptr::null(),
+                )
+            }
+            .into(),
+            "private mount of /",
+        )?;
+        check(tree_read_only(), "read-only mount of /")
     }
 
     fn remount_roots(policy: &Policy) -> Result<(), String> {
@@ -1359,11 +1382,11 @@ mod linux {
     fn probe_read_only_namespace(policy: &Policy) -> Result<(), Setup> {
         let mut fds = [0 as RawFd; 2];
         if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
-            return Err(Setup::Unavailable(os_err("pipe")));
+            return Err(Setup::Failed(os_err("pipe")));
         }
         let (rd, wr) = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
         match unsafe { libc::fork() } {
-            -1 => Err(Setup::Unavailable(os_err("fork"))),
+            -1 => Err(Setup::Failed(os_err("fork"))),
             0 => {
                 drop(rd);
                 let (code, m) = match enter_read_only_namespace(policy) {
@@ -1426,7 +1449,7 @@ mod linux {
         };
         let note = match &result {
             Ok(n) => n.clone(),
-            Err(e) => format!("fallback: read-only mount failed ({e}); the run did not start"),
+            Err(e) => format!("failed: {e}"),
         };
         if let Some(f) = record.as_mut() {
             let _ = std::io::Write::write_all(f, note.as_bytes());

@@ -233,11 +233,14 @@ pub fn finish(sdir: &Path) -> Vec<String> {
     }
     let mut out = Vec::new();
     if let Ok(note) = fs::read_to_string(sdir.join(RO_RECORD)) {
-        out.push(match note.strip_prefix("fallback: ") {
-            Some(why) => format!(
+        out.push(if let Some(why) = note.strip_prefix("fallback: ") {
+            format!(
                 "granted object stores were not mounted read-only ({why}); modes are restored after the run"
-            ),
-            None => "granted object stores were mounted read-only".to_string(),
+            )
+        } else if let Some(why) = note.strip_prefix("failed: ") {
+            format!("the read-only mount failed ({why}); the run did not start")
+        } else {
+            "granted object stores were mounted read-only".to_string()
         });
     }
     let mut complete = true;
