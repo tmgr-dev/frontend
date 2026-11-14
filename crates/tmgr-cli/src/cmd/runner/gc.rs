@@ -2051,12 +2051,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
         let m = multi_team(&root);
-        for i in 0..2 {
+        for repo in m.repos.iter().take(2) {
             sh(
-                &m.repos[i],
+                repo,
                 &["update-ref", "refs/heads/queue-team/q_abc/w1", "HEAD"],
             );
-            sh(&m.repos[i], &["branch", "keep"]);
+            sh(repo, &["branch", "keep"]);
         }
         let c = m.candidate();
         assert_eq!(c.team_refs.as_ref().map(|t| t.repos.len()), Some(2));
