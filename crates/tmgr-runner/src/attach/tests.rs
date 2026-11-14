@@ -9830,8 +9830,10 @@ mod pocket_signals {
     #[test]
     fn questions_seen_in_quiet_hours_or_a_watched_pane_count_as_told() {
         let mut t = SignalTracker::new();
-        let mut s = SignalSettings::default();
-        s.quiet = Some((22 * 60, 8 * 60));
+        let s = SignalSettings {
+            quiet: Some((22 * 60, 8 * 60)),
+            ..SignalSettings::default()
+        };
         t.update(&view(0, 1), &s);
         let fresh = t.update(&view(2, 2), &s);
         let mut n = fake();

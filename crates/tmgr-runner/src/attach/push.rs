@@ -108,7 +108,6 @@ impl PushTracker {
             let open = view.open_in(id);
             let pushed = self.pocket_pushed.entry(id.to_string()).or_insert(0);
             *pushed = (*pushed).min(open);
-            let mut pocket_only = false;
             let mut question = false;
             let mut candidates: Vec<(PushKind, String, u64)> = Vec::new();
             match row.state.kind {
@@ -163,7 +162,7 @@ impl PushTracker {
                         }
                     }
                     question = need.kind == NeedKind::Question;
-                    pocket_only = question && ask.is_none();
+                    let pocket_only = question && ask.is_none();
                     let waited = now_ms.saturating_sub(started);
                     let grew =
                         !pocket_only || open > self.pocket_pushed.get(id).copied().unwrap_or(0);
