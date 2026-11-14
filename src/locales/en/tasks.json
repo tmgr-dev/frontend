@@ -1,4 +1,5 @@
 {
+	"exportDisabledForOthers": "Exports are turned off in this workspace for tasks of other members.",
 	"doneCheckbox": {
 		"label": "Done"
 	},

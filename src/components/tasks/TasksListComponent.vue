@@ -524,6 +524,8 @@
 
 <script lang="ts">
 	import { currentLocale, t } from '@/i18n';
+	import { toast } from '@/components/ui/toast';
+	import { isExportFeatureDisabled } from '@/utils/exportErrors';
 	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
@@ -1406,7 +1408,14 @@
 
 					downloadFile(data, 'export.' + exportType);
 				} catch (e) {
-					console.error(e);
+					if (await isExportFeatureDisabled(e)) {
+						toast({
+							description: t('tasks.exportDisabledForOthers'),
+							variant: 'destructive',
+						});
+					} else {
+						console.error(e);
+					}
 				} finally {
 					this.loadingActionsForMultipleTasks =
 						this.loadingActionsForMultipleTasks.filter(
