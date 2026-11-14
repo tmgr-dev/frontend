@@ -53,7 +53,7 @@ jobs:
     env:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       TMGR_TEST_REQUIRE_LANDLOCK: ${{ startsWith(matrix.name, 'linux') && '1' || '' }}
-      TMGR_TEST_REQUIRE_RO_MOUNT: ${{ matrix.name == 'linux-x86_64' && '1' || '' }}
+      TMGR_TEST_REQUIRE_RO_MOUNT: ${{ startsWith(matrix.name, 'linux') && '1' || '' }}
     strategy:
       fail-fast: false
       matrix:

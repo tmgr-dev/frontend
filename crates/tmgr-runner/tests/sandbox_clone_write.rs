@@ -241,6 +241,7 @@ fn measure_source_objects_write_through_alternates() {
         append(Path::new("./tm786-link"), "linkwrite"),
     );
     let o = f.run_with_objects(&objects, &script);
+    let mode_changed = existing.metadata().unwrap().mode() != mode_before;
     emit(
         "alternates_write",
         &format!(
@@ -255,7 +256,7 @@ fn measure_source_objects_write_through_alternates() {
             out_line(&o, "linkwrite"),
             fresh.exists(),
             any_tampered(&alt),
-            existing.metadata().unwrap().mode() != mode_before,
+            mode_changed,
             alt.join("tm786-dir").exists(),
             f.cwd
                 .join("tm786-link")
@@ -264,6 +265,29 @@ fn measure_source_objects_write_through_alternates() {
                 .unwrap_or(false),
         ),
     );
+    assert_source_mode_kept(&f, &o, mode_changed);
+}
+
+#[cfg(target_os = "macos")]
+fn assert_source_mode_kept(_: &Fx, o: &Out, mode_changed: bool) {
+    assert_ne!(out_line(o, "chmod"), "0", "{} {}", o.stdout, o.stderr);
+    assert!(!mode_changed, "{} {}", o.stdout, o.stderr);
+}
+
+#[cfg(target_os = "linux")]
+fn assert_source_mode_kept(f: &Fx, o: &Out, mode_changed: bool) {
+    let record =
+        fs::read_to_string(f.runner_dir.join("sessions").join(SID).join("objects_ro")).unwrap();
+    if record != "namespace" {
+        assert!(
+            std::env::var("TMGR_TEST_REQUIRE_RO_MOUNT").as_deref() != Ok("1"),
+            "TMGR_TEST_REQUIRE_RO_MOUNT=1 requires the read-only mount: {record}"
+        );
+        eprintln!("NAMESPACE PATH NOT TESTED: {record}");
+        return;
+    }
+    assert_ne!(out_line(o, "chmod"), "0", "{} {}", o.stdout, o.stderr);
+    assert!(!mode_changed, "{} {}", o.stdout, o.stderr);
 }
 
 #[test]
