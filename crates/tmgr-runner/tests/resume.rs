@@ -1281,7 +1281,7 @@ fn fork_refuses_bad_ids_a_missing_transcript_and_other_agents() {
 }
 
 #[test]
-fn fork_is_refused_for_agents_other_than_claude_code() {
+fn fork_is_refused_for_agents_that_are_neither_claude_code_nor_codex() {
     if !sessions_available() {
         return;
     }
