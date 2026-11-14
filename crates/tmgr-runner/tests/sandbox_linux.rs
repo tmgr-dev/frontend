@@ -580,12 +580,12 @@ fn metadata_changes_outside_writable_roots_fail_with_erofs() {
     fs::write(f.cwd.join("meta.py"), METADATA_CALLS).unwrap();
     let paths: Vec<String> = targets.iter().map(|p| f.path(p)).collect();
     let script = format!(
-        "touch in.txt $HOME/h.txt $TMPDIR/t.txt && python3 meta.py in.txt $HOME/h.txt $TMPDIR/t.txt {} && python3 -c 'import os; os.openpty(); print(\"pty ok\")'",
+        "touch in.txt $HOME/h.txt $TMPDIR/t.txt && python3 meta.py in.txt $HOME/h.txt $TMPDIR/t.txt {} && python3 -c 'import os; os.close(os.open(\"/dev/ptmx\", os.O_RDWR | os.O_NOCTTY)); print(\"ptmx ok\")'",
         paths.join(" ")
     );
     let o = f.run_with_objects(&objects, &script);
     assert!(o.ok(), "{} {}", o.stdout, o.stderr);
-    assert!(o.stdout.contains("pty ok"), "{} {}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("ptmx ok"), "{} {}", o.stdout, o.stderr);
     let record =
         fs::read_to_string(f.runner_dir.join("sessions").join(SID).join("objects_ro")).unwrap();
     if record != "namespace" {

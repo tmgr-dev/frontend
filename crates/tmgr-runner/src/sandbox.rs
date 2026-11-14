@@ -1188,6 +1188,9 @@ mod linux {
         if st & ST_NOSYMFOLLOW != 0 {
             bits |= MS_NOSYMFOLLOW;
         }
+        if st & (1024 | 4096) == 0 {
+            bits |= libc::MS_STRICTATIME;
+        }
         bits
     }
 
@@ -1282,7 +1285,17 @@ mod linux {
         bad
     }
 
-    fn enter_read_only_namespace(policy: &Policy) -> Result<(), String> {
+    enum Setup {
+        Unavailable(String),
+        Failed(String),
+    }
+
+    fn enter_read_only_namespace(policy: &Policy) -> Result<(), Setup> {
+        isolate().map_err(Setup::Unavailable)?;
+        remount_roots(policy).map_err(Setup::Failed)
+    }
+
+    fn isolate() -> Result<(), String> {
         let uid = unsafe { libc::geteuid() };
         let gid = unsafe { libc::getegid() };
         if unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS) } != 0 {
@@ -1296,7 +1309,10 @@ mod linux {
             &cpath(Path::new("/"))?,
             libc::MS_REC | libc::MS_PRIVATE,
         )?;
-        tree_read_only()?;
+        tree_read_only()
+    }
+
+    fn remount_roots(policy: &Policy) -> Result<(), String> {
         for (root, dev, ino) in &policy.write_ids {
             let c = validated(root, *dev, *ino)?;
             mount_call(Some(&c), &c, libc::MS_BIND | libc::MS_REC)?;
@@ -1340,24 +1356,22 @@ mod linux {
         }
     }
 
-    fn probe_read_only_namespace(policy: &Policy) -> Result<(), String> {
+    fn probe_read_only_namespace(policy: &Policy) -> Result<(), Setup> {
         let mut fds = [0 as RawFd; 2];
         if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
-            return Err(os_err("pipe"));
+            return Err(Setup::Unavailable(os_err("pipe")));
         }
         let (rd, wr) = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
         match unsafe { libc::fork() } {
-            -1 => Err(os_err("fork")),
+            -1 => Err(Setup::Unavailable(os_err("fork"))),
             0 => {
                 drop(rd);
-                let code = match enter_read_only_namespace(policy) {
-                    Ok(()) => 0,
-                    Err(m) => {
-                        let _ =
-                            std::io::Write::write_all(&mut std::fs::File::from(wr), m.as_bytes());
-                        1
-                    }
+                let (code, m) = match enter_read_only_namespace(policy) {
+                    Ok(()) => (0, String::new()),
+                    Err(Setup::Unavailable(m)) => (2, m),
+                    Err(Setup::Failed(m)) => (1, m),
                 };
+                let _ = std::io::Write::write_all(&mut std::fs::File::from(wr), m.as_bytes());
                 unsafe { libc::_exit(code) }
             }
             pid => {
@@ -1366,12 +1380,11 @@ mod linux {
                 let _ = std::fs::File::from(rd).read_to_string(&mut msg);
                 let mut status = 0;
                 unsafe { libc::waitpid(pid, &mut status, 0) };
-                if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0 {
-                    Ok(())
-                } else if msg.is_empty() {
-                    Err("the probe process ended abnormally".into())
-                } else {
-                    Err(msg)
+                match (libc::WIFEXITED(status), libc::WEXITSTATUS(status)) {
+                    (true, 0) => Ok(()),
+                    (true, 2) => Err(Setup::Unavailable(msg)),
+                    (true, 1) => Err(Setup::Failed(msg)),
+                    _ => Err(Setup::Failed("the probe process ended abnormally".into())),
                 }
             }
         }
@@ -1391,27 +1404,36 @@ mod linux {
             .and_then(|d| std::fs::File::create(d.join(crate::objectmodes::RO_RECORD)).ok());
         let single_thread = std::fs::read_dir("/proc/self/task").is_ok_and(|d| d.count() == 1);
         let probed = if force_fallback {
-            Err("the namespace was disabled for a test".to_string())
+            Err(Setup::Unavailable(
+                "the namespace was disabled for a test".into(),
+            ))
         } else if !single_thread {
-            Err("the helper process has several threads".to_string())
+            Err(Setup::Unavailable(
+                "the helper process has several threads".into(),
+            ))
         } else {
             probe_read_only_namespace(policy)
         };
-        let note = match probed {
-            Ok(()) => {
-                enter_read_only_namespace(policy).map_err(|e| {
-                    format!(
-                        "tmgr: sandbox setup failed: read-only mount: {e}; the run does not start"
-                    )
-                })?;
-                "namespace".to_string()
-            }
-            Err(why) => format!("fallback: {why}"),
+        let entered = probed.and_then(|()| {
+            enter_read_only_namespace(policy).map_err(|e| match e {
+                Setup::Unavailable(m) | Setup::Failed(m) => Setup::Failed(m),
+            })
+        });
+        let result = match entered {
+            Ok(()) => Ok("namespace".to_string()),
+            Err(Setup::Unavailable(why)) => Ok(format!("fallback: {why}")),
+            Err(Setup::Failed(e)) => Err(e),
+        };
+        let note = match &result {
+            Ok(n) => n.clone(),
+            Err(e) => format!("fallback: read-only mount failed ({e}); the run did not start"),
         };
         if let Some(f) = record.as_mut() {
             let _ = std::io::Write::write_all(f, note.as_bytes());
         }
-        Ok(())
+        result.map(|_| ()).map_err(|e| {
+            format!("tmgr: sandbox setup failed: read-only mount: {e}; the run does not start")
+        })
     }
 
     pub fn run(policy_path: &str, argv: &[String], force_fallback: bool) -> i32 {

@@ -238,8 +238,9 @@ the writable roots read-only at the mount level:
 - The whole sequence is first tried in a forked probe process. If it cannot work, the helper continues without the
   namespace: unprivileged user namespaces disabled (`kernel.unprivileged_userns_clone=0`, `user.max_user_namespaces=0`),
   restricted by the distribution (Ubuntu 24.04 `kernel.apparmor_restrict_unprivileged_userns=1`), blocked by a container
-  seccomp profile (Docker's default), or a multithreaded helper process. Once the probe succeeds, any later failure
-  stops the run (exit 78).
+  seccomp profile (Docker's default), or a multithreaded helper process. Only a failure to create the namespace or to
+  make `/` read-only leads to that fallback; a failure while re-binding the writable roots or in the final check, in the
+  probe or afterwards, stops the run (exit 78).
 - The helper records the outcome in `<runner dir>/sessions/<id>/objects_ro` (`namespace` or `fallback: <reason>`), and the
   daemon logs it when the run ends.
 - Independently of the namespace, the daemon records the mode of every directory and file under each granted object
@@ -256,6 +257,8 @@ the writable roots read-only at the mount level:
   user may do), times and extended attributes of any file the user owns, by absolute path, whether or not the path is
   granted. Granted object directories then get only the mode restore described above (owner, times and extended
   attributes are not restored). macOS Seatbelt refuses these changes outside the writable roots.
+- Linux file descriptors the helper inherits from the runner keep pointing at the host's mounts, so metadata changes
+  through them (`fchmod`, `fchown`, `futimens`, `fsetxattr`) are not refused by the read-only mounts.
 - Network is open unless the run is `Restricted` (macOS only, see above); an open network is not data-exfiltration protection for anything the agent can read.
 - The agent can use everything it is allowed to touch: its working dir, per-run home, the network, its own CLI
   credentials copied into the per-run home.
