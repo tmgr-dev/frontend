@@ -1,5 +1,5 @@
-import $axios from '@/plugins/axios';
 import { t } from '@/i18n';
+import $axios from '@/plugins/axios';
 import { requestCache } from '@/utils/requestCache';
 
 export const MEMORY_TOPICS = [

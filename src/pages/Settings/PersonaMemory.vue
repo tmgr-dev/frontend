@@ -113,7 +113,13 @@
 		selfMemoryTooLong,
 	} from '@/utils/personaMemory';
 	import { byteLength } from '@/utils/personas';
-	import { computed, defineComponent, onMounted, ref, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		ref,
+		type PropType,
+	} from 'vue';
 
 	interface WorkspaceRef {
 		id: number;
@@ -191,7 +197,8 @@
 				).filter(
 					(w) =>
 						!w.is_local &&
-						(!props.persona.workspace_id || w.id === props.persona.workspace_id),
+						(!props.persona.workspace_id ||
+							w.id === props.persona.workspace_id),
 				);
 				const collected: MemoryRow[] = [];
 				const journal: RecentEntry[] = [];
@@ -199,7 +206,9 @@
 					workspaces.map(async (workspace) => {
 						try {
 							const grants = await listWorkspacePersonas(workspace.id);
-							const grant = grants.find((g) => g.persona.id === props.persona.id);
+							const grant = grants.find(
+								(g) => g.persona.id === props.persona.id,
+							);
 							if (!grant || grant.blocked) return;
 							const overview = await getWorkspaceMemoryOverview(workspace.id);
 							const mine = overview.find(
