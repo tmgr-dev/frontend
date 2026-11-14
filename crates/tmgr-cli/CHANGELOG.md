@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.127
+
+- `tmgr queue` (experimental) now shows in `tmgr --help`.
+- The `branch_template` hint and the docs say `{key}` is lowercase, the same as `{key_lower}`.
+
 ## 1.0.126
 
 - `tmgr runner stop` warns when the installed systemd service file is outdated and agent sessions are running, since systemd then ends them; `--json` carries it in `warnings`.
