@@ -103,7 +103,11 @@
 			"importMarkdown": "Import Markdown…",
 			"newPage": "New page",
 			"pageType": "Page type",
-			"title": "Pages"
+			"pinned": "Pinned",
+			"recent": "Recent",
+			"showMore": "Show {count} more",
+			"title": "Pages",
+			"tree": "Page tree"
 		}
 	},
 	"previews": {

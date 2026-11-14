@@ -103,7 +103,11 @@
 			"importMarkdown": "Импортировать Markdown…",
 			"newPage": "Новая страница",
 			"pageType": "Тип страницы",
-			"title": "Страницы"
+			"pinned": "Закреплённые",
+			"recent": "Недавние",
+			"showMore": "Показать ещё {count}",
+			"title": "Страницы",
+			"tree": "Дерево страниц"
 		}
 	},
 	"previews": {
