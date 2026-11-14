@@ -1,4 +1,4 @@
-import { t } from '@/i18n';
+import { t, te } from '@/i18n';
 import { humanizeGroupName, humanizeKey } from '@/utils/featureToggleCopy';
 import { moduleNeedsAccount } from '@/utils/localOnly';
 
@@ -45,6 +45,23 @@ export interface ModulesPayload {
 }
 
 export type ModulesMap = Record<string, ModuleEntry>;
+
+const moduleMessageKey = (key: string, field: 'name' | 'description') =>
+	`modules.items.${key.replace(/\./g, '_')}.${field}`;
+
+export const moduleName = (
+	entry: Pick<ModuleEntry, 'key' | 'name'>,
+): string => {
+	const key = moduleMessageKey(entry.key, 'name');
+	return te(key) ? t(key) : entry.name || humanizeKey(entry.key);
+};
+
+export const moduleDescription = (
+	entry: Pick<ModuleEntry, 'key' | 'description'>,
+): string => {
+	const key = moduleMessageKey(entry.key, 'description');
+	return te(key) ? t(key) : entry.description || '';
+};
 
 export const parseModulesPayload = (raw: any): ModulesPayload => {
 	const body =
@@ -177,7 +194,7 @@ export const dependencyLabel = (
 	if (!entry.depends_on?.length) return '';
 	return t('general.helpers.modules.needsColon', {
 		list: entry.depends_on
-			.map((key) => map[key]?.name || humanizeKey(key))
+			.map((key) => (map[key] ? moduleName(map[key]) : humanizeKey(key)))
 			.join(', '),
 	});
 };
@@ -205,8 +222,8 @@ export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
 		const enabled = entry.enabled === true;
 		return {
 			key: entry.key,
-			name: entry.name || humanizeKey(entry.key),
-			description: entry.description || '',
+			name: moduleName(entry),
+			description: moduleDescription(entry),
 			clients: (entry.clients || []).join(' · '),
 			needs: dependencyLabel(entry, map),
 			enabled,
@@ -219,7 +236,7 @@ export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
 		};
 	};
 	const coreItems = grouped.core.map((entry) => {
-		const name = entry.name || humanizeKey(entry.key);
+		const name = moduleName(entry);
 		const blocking = (entry.depends_on || [])
 			.map((key) => map[key])
 			.filter((dep) => dep && !dep.core && dep.enabled === false);
@@ -227,9 +244,7 @@ export const buildModulesView = (payload: ModulesPayload, isOwner: boolean) => {
 			name,
 			needs: blocking.length
 				? t('general.helpers.modules.needs', {
-						list: blocking
-							.map((dep) => dep.name || humanizeKey(dep.key))
-							.join(', '),
+						list: blocking.map((dep) => moduleName(dep)).join(', '),
 					})
 				: '',
 			off: blocking.length > 0,
@@ -340,7 +355,7 @@ export const presetSummary = (
 	if (preset.key === 'everything')
 		return t('general.helpers.modules.allModules');
 	if (preset.modules.length === 0) return t('general.helpers.modules.coreOnly');
-	const names = new Map(modules.map((m) => [m.key, m.name]));
+	const names = new Map(modules.map((m) => [m.key, moduleName(m)]));
 	return preset.modules
 		.filter((key) => !key.startsWith('notifications.'))
 		.map((key) => names.get(key) || humanizeKey(key))
@@ -359,7 +374,7 @@ export const presetDiff = (
 		if (m.core || m.scope === 'user') continue;
 		const target =
 			preset.key === 'everything' || preset.modules.includes(m.key);
-		const name = m.name || humanizeKey(m.key);
+		const name = moduleName(m);
 		if (target && m.enabled !== true) on.push(name);
 		if (!target && m.enabled === true) off.push(name);
 	}
