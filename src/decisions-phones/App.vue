@@ -14,6 +14,7 @@
 						:src="s.pairing.qr_svg_data_url"
 						:alt="$t('decisions.phones.qrAlt')"
 					/>
+					<p class="muted" data-test="qr-hint">{{ $t('decisions.phones.qrHint') }}</p>
 					<p class="muted">
 						<i18n-t keypath="decisions.phones.expiresInTime" scope="global">
 							<template #time>
