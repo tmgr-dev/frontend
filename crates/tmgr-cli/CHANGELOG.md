@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.124
+
+- Sandbox (Linux): the whole filesystem is now mounted read-only inside the session's user and mount namespace, except the session's writable roots, so `chmod`, `chown`, `utime` and `setxattr` on your other files (source trees, `.git/hooks`, `~/.ssh`) fail with `EROFS`. Without unprivileged user namespaces the run falls back to Landlock only and says so; any other setup failure stops the run.
+
 ## 1.0.123
 
 - `tmgr attach`: on a terminal too small for the folder picker modal (under 9 rows or 24 columns), Ctrl+O now shows a one-line path field instead of an invisible picker that still took keys.
