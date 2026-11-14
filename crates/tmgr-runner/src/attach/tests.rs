@@ -9824,7 +9824,24 @@ mod pocket_signals {
         );
         assert_eq!(rings(&mut t, &v), 1);
         v.status.clear();
+        v.sessions[1].state.since_ms = 3;
         assert_eq!(rings(&mut t, &v), 0);
+    }
+
+    #[test]
+    fn a_live_ask_arriving_late_in_a_rung_wait_rings() {
+        let mut t = SignalTracker::new();
+        t.update(&view(0, 1), &SignalSettings::default());
+        let mut v = view(2, 2);
+        assert_eq!(rings(&mut t, &v), 1);
+        v.status.insert(
+            "b".into(),
+            SessionStatus {
+                ask: Some("Which?".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(rings(&mut t, &v), 1);
     }
 
     #[test]

@@ -117,6 +117,7 @@ struct Wait {
     since_ms: u64,
     kind: NeedKind,
     open: usize,
+    ask: bool,
 }
 
 impl SignalTracker {
@@ -156,7 +157,9 @@ impl SignalTracker {
                 let due = match self.seen.get(&row.id).filter(|w| w.since_ms == since) {
                     None => true,
                     Some(w) => {
-                        need.kind > w.kind || (need.kind == NeedKind::Question && open > w.open)
+                        need.kind > w.kind
+                            || (need.kind == NeedKind::Question && open > w.open)
+                            || (ask.is_some() && !w.ask)
                     }
                 };
                 if due && need.kind == NeedKind::Question {
@@ -178,6 +181,7 @@ impl SignalTracker {
                     since_ms: since,
                     kind,
                     open,
+                    ask: ask.is_some(),
                 },
             );
             current.insert(row.id.clone(), need);
