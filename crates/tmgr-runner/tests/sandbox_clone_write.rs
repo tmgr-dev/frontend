@@ -270,6 +270,13 @@ fn measure_source_objects_write_through_alternates() {
                 .unwrap_or(false),
         ),
     );
+    assert_eq!(out_line(&o, "ctl"), "0", "{} {}", o.stdout, o.stderr);
+    assert!(
+        out_line(&o, "chmod").parse::<i32>().is_ok(),
+        "{} {}",
+        o.stdout,
+        o.stderr
+    );
     assert_source_mode_kept(&sdir, &o, mode_changed);
     assert_eq!(existing.metadata().unwrap().mode(), mode_before);
 }
