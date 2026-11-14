@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.123
+
+- `tmgr attach`: on a terminal too small for the folder picker modal (under 9 rows or 24 columns), Ctrl+O now shows a one-line path field instead of an invisible picker that still took keys.
+
 ## 1.0.122
 
 - Sandbox (Linux): the test suite now requires the read-only mount of borrowed object stores on both x86_64 and aarch64, and the sandbox docs state plainly that Landlock never blocks `chmod`, `chown`, `utime` or `setxattr` on files you own; only the namespace mount (granted object stores) and macOS Seatbelt refuse them.
