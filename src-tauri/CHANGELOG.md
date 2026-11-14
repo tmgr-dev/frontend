@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.157 — 2026-11-14
+
+- Plugins: the Safe mode switch now also blocks agents from connecting to this computer, and keeps blocking after a restart. Starting the app with --safe-mode still does the same.
+- Screenshot to task (the shortcut and the Capture screenshot button in quick add) is offered on macOS only. On Windows and Linux you can still choose an image.
+- Capturing selected text no longer wipes an image or files from your clipboard. If the clipboard holds one, TMGR leaves it alone and tells you.
+- AI usage: the note now says what is kept: 90 days of sessions and hourly detail, and daily totals for up to 730 days.
+- Web: a shared plugin that cannot run in the web app now tells you why, and says so when remote pictures are the only reason.
+
 ## 0.9.156 — 2026-11-14
 
 - The phone pairing code is now a link: point the iPhone Camera at it and tap the banner to open TMGR on the pairing confirmation. Scanning inside the TMGR app still works. Update the TMGR iPhone app first: older app versions do not read the new code.
