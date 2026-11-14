@@ -28,6 +28,7 @@ const draft = (over: Partial<RoutineDraft> = {}): RoutineDraft => ({
 	dayOfMonth: 12,
 	month: 0,
 	reminderMin: 15,
+	reminderAlarm: true,
 	unscheduled: false,
 	scheduledDate: TODAY,
 	...over,
@@ -73,6 +74,16 @@ describe('buildRoutinePayload', () => {
 			time: { hours: 8, minutes: 15 },
 			duration_min: 20,
 		});
+	});
+
+	it('sends the phone alarm switch on the recurrence and defaults it on', () => {
+		expect(buildRoutinePayload(draft(), TODAY).recurrence.reminder_alarm).toBe(
+			true,
+		);
+		expect(
+			buildRoutinePayload(draft({ reminderAlarm: false }), TODAY).recurrence
+				.reminder_alarm,
+		).toBe(false);
 	});
 
 	it('keeps a known interval and sends null when it is unknown', () => {
@@ -208,6 +219,25 @@ describe('routineForEdit + routineDraftFrom (reopening Edit)', () => {
 
 	it('reads the string category of the bare GET task', () => {
 		expect(routineDraftFrom(fullTask, TODAY).cat).toBe('health');
+	});
+
+	it('reopens a routine with the phone alarm on unless the server says off', () => {
+		expect(reopen(entry()).reminderAlarm).toBe(true);
+		const off = routineDraftFrom(
+			routineForEdit(
+				{ ...fullTask, recurrence: { reminder_alarm: false } },
+				entry(),
+				[],
+			),
+			TODAY,
+		);
+		expect(off.reminderAlarm).toBe(false);
+	});
+
+	it('asks for a scope when only the phone alarm switch changed', () => {
+		expect(needsScopeChoice(draft({ reminderAlarm: false }), draft())).toBe(
+			true,
+		);
 	});
 
 	it('round-trips the reminder through save', () => {

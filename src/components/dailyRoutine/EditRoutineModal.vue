@@ -319,6 +319,26 @@
 									{{ $t(p.labelKey) }}
 								</button>
 							</div>
+							<label
+								v-if="draft.frequency !== 'NONE' && draft.reminderMin !== null"
+								class="mt-2.5 flex cursor-pointer items-center gap-2 text-sm text-ink"
+								data-testid="routine-reminder-alarm"
+							>
+								<input
+									v-model="draft.reminderAlarm"
+									type="checkbox"
+									class="h-4 w-4 accent-brand"
+								/>
+								<span class="flex-1">{{
+									$t('dailyRoutine.editModal.fields.alarmOnPhone')
+								}}</span>
+							</label>
+							<div
+								v-if="draft.frequency !== 'NONE' && draft.reminderMin !== null"
+								class="mt-1 text-2xs text-ink-subtle"
+							>
+								{{ $t('dailyRoutine.editModal.fields.alarmOnPhoneHint') }}
+							</div>
 						</ERSection>
 
 						<ERSection

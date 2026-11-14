@@ -22,6 +22,7 @@ export interface RoutineDraft {
 	dayOfMonth: number;
 	month: number;
 	reminderMin: number | null;
+	reminderAlarm: boolean;
 	unscheduled: boolean;
 	scheduledDate: string;
 }
@@ -109,6 +110,7 @@ export function routineForEdit(
 			: undefined,
 		month: frequency === 'YEARLY' ? date.getMonth() : undefined,
 		reminder_min: entry.reminder_min ?? null,
+		reminder_alarm: full.recurrence?.reminder_alarm,
 	};
 	return routine;
 }
@@ -135,6 +137,7 @@ export function routineDraftFrom(r: any, today: string): RoutineDraft {
 		dayOfMonth: r.recurrence?.day_of_frequency ?? new Date().getDate(),
 		month: r.recurrence?.month ?? 0,
 		reminderMin: r.recurrence?.reminder_min ?? r.reminder_min ?? null,
+		reminderAlarm: r.recurrence?.reminder_alarm ?? r.reminder_alarm ?? true,
 		unscheduled: isUnscheduledDraft(r),
 		scheduledDate: r.scheduled_date ?? r._draftDate ?? r.date ?? today,
 	};
@@ -155,6 +158,7 @@ function recurrenceOf(draft: RoutineDraft) {
 		time: { hours: draft.timeH, minutes: draft.timeM },
 		duration_min: draft.durationMin,
 		reminder_min: draft.reminderMin,
+		reminder_alarm: draft.reminderAlarm,
 	};
 }
 
@@ -237,6 +241,7 @@ export function versionedFieldsChanged(
 		draft.timeM !== original.timeM ||
 		draft.durationMin !== original.durationMin ||
 		draft.reminderMin !== original.reminderMin ||
+		draft.reminderAlarm !== original.reminderAlarm ||
 		recurrenceChanged(draft, original)
 	);
 }
