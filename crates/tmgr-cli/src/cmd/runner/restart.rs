@@ -434,7 +434,7 @@ impl Service for RealService {
     }
 }
 
-pub(super) fn stop_warning(svc: &mut dyn Service, sessions: u32) -> Option<String> {
+pub(super) fn stop_warning(svc: &mut dyn Service, sessions: usize) -> Option<String> {
     if sessions == 0 || !svc.unit_outdated() {
         return None;
     }
@@ -444,7 +444,7 @@ pub(super) fn stop_warning(svc: &mut dyn Service, sessions: u32) -> Option<Strin
     ))
 }
 
-pub(super) fn real_stop_warning(sessions: u32) -> Option<String> {
+pub(super) fn real_stop_warning(sessions: usize) -> Option<String> {
     stop_warning(&mut RealService::new(), sessions)
 }
 
