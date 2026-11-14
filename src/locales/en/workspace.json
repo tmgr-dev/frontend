@@ -315,7 +315,13 @@
 		"cannotAdd": "This fact cannot be added",
 		"restoreFailed": "Could not restore this entry",
 		"deleted": "Deleted",
-		"undo": "Undo"
+		"undo": "Undo",
+		"summarize": {
+			"alreadyRunning": "A summary is already running for this workspace.",
+			"dailyCap": "Daily summary limit reached. Try again tomorrow.",
+			"noSources": "No sources found for the selected period.",
+			"entryChanged": "This entry changed since the proposal was made. Review it again."
+		}
 	},
 	"helpers": {
 		"emails": {
