@@ -684,6 +684,18 @@ const routes = [
 		beforeEnter: async () => (await import('@/usage/guard')).desktopOnly(),
 	},
 	{
+		path: '/meetings',
+		component: () => import('@/pages/Meetings.vue'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: false,
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+		},
+		name: 'Meetings',
+		beforeEnter: async () => (await import('@/usage/guard')).desktopOnly(),
+	},
+	{
 		path: '/push-notifications-enable-guide',
 		component: () => import('@/pages/PushNotificationsEnableGuide.vue'),
 		meta: {

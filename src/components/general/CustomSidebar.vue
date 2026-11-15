@@ -111,6 +111,7 @@
 		FileDown,
 		FolderOpen,
 		Gauge,
+		FileText,
 		HardDrive,
 		Inbox,
 		LayoutDashboard,
@@ -918,6 +919,14 @@
 									<router-link to="/ai-usage" :class="NAV_ACTIVE">
 										<Gauge />
 										<span>{{ $t('nav.sidebar.aiUsage') }}</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem v-if="isDesktop">
+								<SidebarMenuButton as-child>
+									<router-link to="/meetings" :class="NAV_ACTIVE">
+										<FileText />
+										<span>{{ $t('nav.sidebar.meetings') }}</span>
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
