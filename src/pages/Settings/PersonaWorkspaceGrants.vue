@@ -81,20 +81,22 @@
 					/>
 					{{ perm }}
 				</label>
-				<label class="flex items-center gap-2 text-xs">
-					<Switch
-						:checked="!!grantFor(ws.id)?.permissions.includes(CHATS_REPLY)"
-						:disabled="!!saving[ws.id]"
-						@update:checked="(v) => togglePermission(ws.id, CHATS_REPLY, v)"
-					/>
-					{{ $t('settingsPages.personaWorkspaceGrants.allowInChats') }}
-				</label>
-				<p
-					v-if="grantFor(ws.id)?.permissions.includes(CHATS_REPLY)"
-					class="text-2xs text-amber-700 dark:text-amber-300"
-				>
-					{{ $t('settingsPages.personaWorkspaceGrants.chatsWarning') }}
-				</p>
+				<template v-if="chatsOn[ws.id]">
+					<label class="flex items-center gap-2 text-xs">
+						<Switch
+							:checked="!!grantFor(ws.id)?.permissions.includes(CHATS_REPLY)"
+							:disabled="!!saving[ws.id]"
+							@update:checked="(v) => togglePermission(ws.id, CHATS_REPLY, v)"
+						/>
+						{{ $t('settingsPages.personaWorkspaceGrants.allowInChats') }}
+					</label>
+					<p
+						v-if="grantFor(ws.id)?.permissions.includes(CHATS_REPLY)"
+						class="text-2xs text-amber-700 dark:text-amber-300"
+					>
+						{{ $t('settingsPages.personaWorkspaceGrants.chatsWarning') }}
+					</p>
+				</template>
 				<p class="text-2xs text-muted-foreground">
 					{{
 						$t('settingsPages.personaWorkspaceGrants.effective', {
@@ -117,6 +119,7 @@
 		type Persona,
 		type PersonaGrant,
 	} from '@/actions/tmgr/personas';
+	import { getWorkspaceModules } from '@/actions/tmgr/modules';
 	import { type Workspace } from '@/actions/tmgr/workspaces';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
@@ -125,6 +128,7 @@
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
+		chatsModuleOn,
 		DEFAULT_GRANT_PERMISSIONS,
 		PERSONA_PERMISSIONS,
 		togglePermissionList,
@@ -149,6 +153,7 @@
 				{},
 			);
 			const saving = reactive<Record<number, boolean>>({});
+			const chatsOn = reactive<Record<number, boolean>>({});
 			const loading = ref(true);
 
 			const workspaces = computed(() =>
@@ -187,6 +192,13 @@
 									grants.find((g) => g.persona.id === props.persona.id) ?? null;
 							} catch {
 								grantsByWorkspace[ws.id] = null;
+							}
+							try {
+								chatsOn[ws.id] = chatsModuleOn(
+									await getWorkspaceModules(ws.id),
+								);
+							} catch {
+								chatsOn[ws.id] = false;
 							}
 						}),
 					);
@@ -257,6 +269,7 @@
 
 			return {
 				workspaces,
+				chatsOn,
 				loading,
 				saving,
 				grantFor,

@@ -7,6 +7,7 @@ import {
 	buildPersonaTokenSnippet,
 	buildReplacePersonas,
 	byteLength,
+	chatsModuleOn,
 	convertSuccessTitle,
 	DEFAULT_GRANT_PERMISSIONS,
 	DEFAULT_TOKEN_EXPIRY_DAYS,
@@ -586,5 +587,23 @@ describe('chats permission', () => {
 		expect(effectivePermissions(['chats:reply'], 'read_only', false)).toEqual(
 			[],
 		);
+	});
+});
+
+describe('chatsModuleOn', () => {
+	const payload = (modules: Array<{ key: string; enabled: boolean }>) =>
+		({ modules }) as any;
+
+	it('is true only when the chats module is enabled', () => {
+		expect(chatsModuleOn(payload([{ key: 'chats', enabled: true }]))).toBe(
+			true,
+		);
+		expect(chatsModuleOn(payload([{ key: 'chats', enabled: false }]))).toBe(
+			false,
+		);
+		expect(chatsModuleOn(payload([{ key: 'pages', enabled: true }]))).toBe(
+			false,
+		);
+		expect(chatsModuleOn(null)).toBe(false);
 	});
 });

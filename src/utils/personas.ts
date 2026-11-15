@@ -1,5 +1,6 @@
 import { t } from '@/i18n';
 import type { AuthorRef } from '@/types/author';
+import type { ModulesPayload } from '@/utils/modules';
 
 export const PERSONA_PERMISSIONS = [
 	'tasks:read',
@@ -478,3 +479,6 @@ export const convertSuccessTitle = (replaced: number): string => {
 	if (replaced <= 0) return t('agents.helpers.personas.converted');
 	return t('agents.helpers.personas.convertedReplaced', replaced);
 };
+
+export const chatsModuleOn = (payload: ModulesPayload | null): boolean =>
+	!!payload?.modules.some((m) => m.key === 'chats' && m.enabled === true);
