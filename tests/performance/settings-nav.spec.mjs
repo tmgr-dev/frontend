@@ -77,7 +77,7 @@ async function expectActive(page, key) {
 test.describe('desktop web', () => {
   test.use({ viewport: DESKTOP });
 
-  test('the avatar menu holds only Profile, Settings, the theme toggle and Log out', async ({
+  test('the avatar menu holds only Profile, Settings, the theme toggle, Language and Log out', async ({
     page,
   }) => {
     await webApp(page);
@@ -89,6 +89,7 @@ test.describe('desktop web', () => {
       'Profile',
       'Settings',
       'Dark mode',
+      'Language',
       'Log out',
     ]);
   });
@@ -107,6 +108,7 @@ test.describe('desktop web', () => {
       'Settings',
       'Getting started',
       'Dark mode',
+      'Language',
       'Log out',
     ]);
   });
@@ -609,6 +611,7 @@ test.describe('desktop app', () => {
       'Profile',
       'Settings',
       'Dark mode',
+      'Language',
       'Log out',
     ]);
     await page.getByRole('menuitem', { name: 'Settings' }).click();

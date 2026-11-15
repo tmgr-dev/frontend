@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script lang="ts">
 	import { switchLanguage } from '@/components/general/switchLanguage';
 	import {
 		DropdownMenuRadioGroup,
@@ -10,24 +10,39 @@
 	import { useToast } from '@/components/ui/toast';
 	import { i18n, LOCALE_NAMES, SUPPORTED_LOCALES, t } from '@/i18n';
 	import { Languages } from 'lucide-vue-next';
-	import { computed, ref } from 'vue';
+	import { computed, defineComponent, ref } from 'vue';
 
-	const toaster = useToast();
-	const saving = ref(false);
-	const current = computed(() => i18n.global.locale.value);
+	export default defineComponent({
+		name: 'LanguageMenuItem',
+		components: {
+			DropdownMenuRadioGroup,
+			DropdownMenuRadioItem,
+			DropdownMenuSub,
+			DropdownMenuSubContent,
+			DropdownMenuSubTrigger,
+			Languages,
+		},
+		setup() {
+			const toaster = useToast();
+			const saving = ref(false);
+			const current = computed(() => i18n.global.locale.value);
 
-	const onSelect = async (value: unknown) => {
-		if (typeof value !== 'string' || saving.value) return;
-		saving.value = true;
-		const ok = await switchLanguage(value, current.value);
-		saving.value = false;
-		if (!ok) {
-			toaster.toast({
-				title: t('nav.sidebar.languageSaveFailed'),
-				variant: 'destructive',
-			});
-		}
-	};
+			const onSelect = async (value: unknown) => {
+				if (typeof value !== 'string' || saving.value) return;
+				saving.value = true;
+				const ok = await switchLanguage(value, current.value);
+				saving.value = false;
+				if (!ok) {
+					toaster.toast({
+						title: t('nav.sidebar.languageSaveFailed'),
+						variant: 'destructive',
+					});
+				}
+			};
+
+			return { current, onSelect, LOCALE_NAMES, SUPPORTED_LOCALES };
+		},
+	});
 </script>
 
 <template>
