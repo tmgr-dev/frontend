@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.129
+
+- Haiku classification of agent questions is now off by default. A choice you already saved with `tmgr questions haiku on|off` is kept. Turn it on with `tmgr questions haiku on`.
+
 ## 1.0.128
 
 - Attach time that was skipped because sending or the workspace's time module was off is now sent when it turns back on. Time older than 29 days still expires instead of being sent.
