@@ -13,14 +13,22 @@
 				class="absolute bottom-full left-0 z-10 mb-1 max-h-48 w-64 overflow-y-auto rounded-card border border-line bg-surface shadow-md"
 				data-testid="chat-mention-list"
 			>
-				<li v-for="(member, index) in suggestions" :key="member.id">
+				<li
+					v-for="(member, index) in suggestions"
+					:key="`${member.kind ?? 'user'}-${member.id}`"
+				>
 					<button
 						type="button"
 						class="w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-surface-hover"
 						:class="index === highlighted ? 'bg-surface-hover' : ''"
 						@mousedown.prevent="pick(member)"
 					>
-						{{ member.name }}
+						{{ member.name
+						}}<span
+							v-if="member.kind === 'persona'"
+							class="ml-1.5 rounded bg-brand-bg px-1 py-0.5 text-[10px] font-semibold text-brand dark:bg-surface-hover dark:text-ink"
+							>{{ $t('chats.persona.badge') }}</span
+						>
 					</button>
 				</li>
 			</ul>
@@ -107,6 +115,7 @@
 	interface Member {
 		id: number;
 		name: string;
+		kind?: 'user' | 'persona';
 	}
 
 	export default defineComponent({
@@ -169,7 +178,11 @@
 					member.name,
 				);
 				text.value = next.text;
-				if (!mentions.value.some((m) => m.id === member.id)) {
+				if (
+					!mentions.value.some(
+						(m) => m.id === member.id && m.kind === member.kind,
+					)
+				) {
 					mentions.value.push(member);
 				}
 				mention.value = null;
@@ -203,7 +216,7 @@
 					body,
 					mentions: mentions.value
 						.filter((m) => body.includes(`@${m.name}`))
-						.map((m): ChatMention => ({ kind: 'user', id: m.id })),
+						.map((m): ChatMention => ({ kind: m.kind ?? 'user', id: m.id })),
 					files: files.value,
 				};
 				try {

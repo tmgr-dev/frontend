@@ -12,6 +12,12 @@
 				<span class="text-sm font-semibold text-ink">{{
 					message.author.name
 				}}</span>
+				<span
+					v-if="isPersona"
+					class="rounded bg-brand-bg px-1.5 py-0.5 text-[10px] font-semibold text-brand dark:bg-surface-hover dark:text-ink"
+					data-testid="chat-persona-badge"
+					>{{ $t('chats.persona.badge') }}</span
+				>
 				<span class="text-xs text-ink-subtle">{{ time }}</span>
 				<span
 					v-if="message.edited_at && !message.deleted"
@@ -33,6 +39,35 @@
 					></textarea>
 					<p class="text-xs text-ink-subtle">{{ $t('chats.editHint') }}</p>
 				</div>
+				<div
+					v-else-if="message.status === 'pending'"
+					class="flex items-center gap-2 text-sm text-ink-subtle"
+					data-testid="chat-persona-pending"
+				>
+					<span class="italic">{{ $t('chats.persona.thinking') }}</span>
+					<Button
+						v-if="mayStop"
+						variant="ghost"
+						size="sm"
+						data-testid="chat-persona-stop"
+						@click="stop"
+						>{{ $t('chats.persona.stop') }}</Button
+					>
+				</div>
+				<p
+					v-else-if="message.status === 'failed'"
+					class="text-sm text-destructive"
+					data-testid="chat-persona-failed"
+				>
+					{{ $t('chats.persona.failed') }}
+				</p>
+				<p
+					v-else-if="message.status === 'canceled'"
+					class="text-sm text-ink-subtle italic"
+					data-testid="chat-persona-canceled"
+				>
+					{{ $t('chats.persona.stopped') }}
+				</p>
 				<MarkdownText v-else :content="message.body ?? ''" />
 				<ul v-if="message.files.length" class="space-y-1 mt-1">
 					<li v-for="file in message.files" :key="file.id">
@@ -164,6 +199,7 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
+	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
 	import {
 		canDeleteMessage,
@@ -171,6 +207,7 @@
 		useChats,
 	} from '@/composable/useChats';
 	import { t } from '@/i18n';
+	import { canStopMessage, isPersonaMessage } from '@/utils/chatPersonas';
 	import { isEnterSend } from '@/utils/commentComposer';
 	import { DEFAULT_REACTION_EMOJIS } from '@/utils/commentReactions';
 	import { MessageSquare, Paperclip, Pencil, Trash2 } from 'lucide-vue-next';
@@ -180,6 +217,7 @@
 	export default defineComponent({
 		name: 'ChatMessageItem',
 		components: {
+			Button,
 			AlertDialog,
 			AlertDialogAction,
 			AlertDialogCancel,
@@ -200,14 +238,16 @@
 			showReply: { type: Boolean, default: true },
 			canModerate: { type: Boolean, default: false },
 			members: {
-				type: Array as PropType<Array<{ id: number; name: string }>>,
+				type: Array as PropType<
+					Array<{ id: number; name: string; kind?: 'user' | 'persona' }>
+				>,
 				default: () => [],
 			},
 		},
 		emits: ['reply'],
 		setup(props) {
 			const store = useStore();
-			const { saveEdit, removeMessage } = useChats();
+			const { saveEdit, removeMessage, stopReply } = useChats();
 			const selfId = computed<number | null>(
 				() => store.state.user?.id ?? null,
 			);
@@ -217,6 +257,20 @@
 			const mayDelete = computed(() =>
 				canDeleteMessage(props.message, selfId.value, props.canModerate),
 			);
+			const isPersona = computed(() => isPersonaMessage(props.message));
+			const mayStop = computed(() =>
+				canStopMessage(props.message, selfId.value),
+			);
+			const stop = async () => {
+				try {
+					await stopReply(props.message);
+				} catch {
+					toast({
+						title: t('chats.persona.stopFailed'),
+						variant: 'destructive',
+					});
+				}
+			};
 			const editing = ref(false);
 			const draft = ref('');
 			const confirmDelete = ref(false);
@@ -230,7 +284,7 @@
 				if (!body) return;
 				const mentions = props.members
 					.filter((m) => body.includes(`@${m.name}`))
-					.map((m) => ({ kind: 'user' as const, id: m.id }));
+					.map((m) => ({ kind: m.kind ?? ('user' as const), id: m.id }));
 				try {
 					await saveEdit(props.message, body, mentions);
 					editing.value = false;
@@ -286,6 +340,9 @@
 			};
 			return {
 				reactions,
+				isPersona,
+				mayStop,
+				stop,
 				mayEdit,
 				mayDelete,
 				editing,

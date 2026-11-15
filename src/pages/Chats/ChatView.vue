@@ -39,10 +39,17 @@
 						<Users />
 						{{ chat.member_count }}
 					</Button>
+					<span
+						v-if="budgetLabel"
+						class="shrink-0 text-xs text-ink-subtle"
+						data-testid="chat-persona-budget"
+						>{{ budgetLabel }}</span
+					>
 					<ChatMenu
 						:chat="chat"
 						@mark-read="markOpenChatRead"
 						@gone="leaveView"
+						@persona-invited="loadChatMembers"
 					/>
 				</header>
 
@@ -126,15 +133,24 @@
 			:chat-id="chat.id"
 			:can-moderate="chat.can_moderate"
 			:self-id="selfId"
-			:workspace-members="members"
+			:workspace-members="workspaceMembers"
 			@changed="onMembersChanged"
 		/>
 	</div>
 </template>
 
 <script lang="ts">
-	import { joinChat } from '@/actions/tmgr/chats';
-	import type { ChatMessage, SendMessagePayload } from '@/actions/tmgr/chats';
+	import {
+		getChatMembers,
+		getPersonaBudget,
+		joinChat,
+	} from '@/actions/tmgr/chats';
+	import type {
+		ChatMember,
+		ChatMessage,
+		PersonaBudget,
+		SendMessagePayload,
+	} from '@/actions/tmgr/chats';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
 	import ChatComposer from '@/components/chats/ChatComposer.vue';
 	import ChatMembersDialog from '@/components/chats/ChatMembersDialog.vue';
@@ -143,6 +159,9 @@
 	import ThreadPanel from '@/components/chats/ThreadPanel.vue';
 	import { Button } from '@/components/ui/button';
 	import { chatTitle, useChats } from '@/composable/useChats';
+	import { t } from '@/i18n';
+	import { reportPersonaRefusals } from '@/utils/chatPersonaToasts';
+	import { personaMembers } from '@/utils/chatPersonas';
 	import { Lock, Users } from 'lucide-vue-next';
 	import { computed, defineComponent, nextTick, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -184,7 +203,9 @@
 
 			const scroller = ref<HTMLElement | null>(null);
 			const showMembers = ref(false);
-			const members = ref<Array<{ id: number; name: string }>>([]);
+			const workspaceMembers = ref<Array<{ id: number; name: string }>>([]);
+			const chatMembers = ref<ChatMember[]>([]);
+			const budget = ref<PersonaBudget | null>(null);
 
 			const chatId = computed(() => Number(route.params.chat_id));
 			const chat = computed(
@@ -218,10 +239,77 @@
 				const workspace = store.getters.currentWorkspace;
 				if (!workspace) return;
 				const all = await getWorkspaceMembers(workspace.id);
-				members.value = all
+				workspaceMembers.value = all
 					.filter((m) => m.id !== selfId.value)
 					.map((m) => ({ id: m.id, name: m.name }));
 			};
+
+			const personas = computed(() => personaMembers(chatMembers.value));
+			const members = computed(() => [
+				...workspaceMembers.value.map((m) => ({
+					...m,
+					kind: 'user' as const,
+				})),
+				...personas.value.map((m) => ({
+					id: m.id as number,
+					name: m.name,
+					kind: 'persona' as const,
+				})),
+			]);
+
+			const loadChatMembers = async () => {
+				const id = chatId.value;
+				if (!chat.value?.can_read) return;
+				try {
+					const list = await getChatMembers(id);
+					if (id === chatId.value) chatMembers.value = list;
+				} catch {
+					return;
+				}
+			};
+
+			const loadBudget = async () => {
+				const workspace = store.getters.currentWorkspace;
+				if (!workspace || !personas.value.length) {
+					budget.value = null;
+					return;
+				}
+				try {
+					budget.value = await getPersonaBudget(workspace.id);
+				} catch {
+					budget.value = null;
+				}
+			};
+
+			const budgetLabel = computed(() =>
+				personas.value.length && budget.value && budget.value.used !== null
+					? t('chats.persona.budget', {
+							used: budget.value.used,
+							limit: budget.value.limit,
+						})
+					: '',
+			);
+
+			const pendingPersonaReplies = computed(
+				() =>
+					messages.value.filter(
+						(m) => m.author.kind === 'persona' && m.status === 'pending',
+					).length,
+			);
+
+			watch(
+				[chatId, () => chat.value?.member_count, () => chat.value?.can_read],
+				() => {
+					chatMembers.value = [];
+					void loadChatMembers();
+				},
+				{ immediate: true },
+			);
+			watch(
+				[() => personas.value.length, pendingPersonaReplies],
+				() => void loadBudget(),
+				{ immediate: true },
+			);
 
 			watch(chatId, load, { immediate: true });
 			void loadMembers().catch(() => undefined);
@@ -257,9 +345,9 @@
 				el.scrollTop = el.scrollHeight - before;
 			};
 
-			const submit = (
+			const submit = async (
 				payload: Pick<SendMessagePayload, 'body' | 'mentions' | 'files'>,
-			) => send(chatId.value, payload);
+			) => reportPersonaRefusals(await send(chatId.value, payload));
 
 			const join = async () => upsertChat(await joinChat(chatId.value));
 
@@ -268,7 +356,8 @@
 				router.push(`/${store.getters.currentWorkspace.code}/chats`);
 			};
 
-			const onMembersChanged = (count: number) => {
+			const onMembersChanged = (count: number, list: ChatMember[]) => {
+				chatMembers.value = list;
 				if (chat.value) upsertChat({ ...chat.value, member_count: count });
 			};
 
@@ -286,6 +375,9 @@
 				scroller,
 				messages,
 				members,
+				workspaceMembers,
+				budgetLabel,
+				loadChatMembers,
 				selfId,
 				threadRoot,
 				replies,

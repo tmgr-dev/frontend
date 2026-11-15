@@ -53,6 +53,9 @@
 							</DropdownMenuItem>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
+					<DropdownMenuItem v-if="canInvitePersona" @click="inviting = true">{{
+						$t('chats.persona.invite')
+					}}</DropdownMenuItem>
 					<DropdownMenuItem @click="$emit('mark-read')">{{
 						$t('chats.markAsRead')
 					}}</DropdownMenuItem>
@@ -77,6 +80,12 @@
 				>
 			</DropdownMenuContent>
 		</DropdownMenu>
+
+		<InvitePersonaDialog
+			v-model:open="inviting"
+			:chat-id="chat.id"
+			@invited="$emit('persona-invited')"
+		/>
 
 		<AlertDialog v-model:open="confirmDelete">
 			<AlertDialogContent>
@@ -120,6 +129,7 @@
 		AlertDialogHeader,
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
+	import InvitePersonaDialog from '@/components/chats/InvitePersonaDialog.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		DropdownMenu,
@@ -149,6 +159,7 @@
 			AlertDialogTitle,
 			Button,
 			Check,
+			InvitePersonaDialog,
 			DropdownMenu,
 			DropdownMenuContent,
 			DropdownMenuItem,
@@ -162,11 +173,15 @@
 		props: {
 			chat: { type: Object as PropType<Chat>, required: true },
 		},
-		emits: ['mark-read', 'gone'],
+		emits: ['mark-read', 'gone', 'persona-invited'],
 		setup(props, { emit }) {
 			const { t } = useI18n();
 			const { upsertChat, removeChat } = useChats();
 			const confirmDelete = ref(false);
+			const inviting = ref(false);
+			const canInvitePersona = computed(
+				() => props.chat.can_moderate && props.chat.can_write,
+			);
 
 			const levels: Array<{ value: NotifyLevel; label: string }> = [
 				{ value: 'all', label: t('chats.notifications.all') },
@@ -222,6 +237,8 @@
 
 			return {
 				confirmDelete,
+				inviting,
+				canInvitePersona,
 				levels,
 				currentLevel,
 				muted,

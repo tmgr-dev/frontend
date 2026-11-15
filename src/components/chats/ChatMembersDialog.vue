@@ -9,12 +9,31 @@
 			>
 				<li
 					v-for="member in chatMembers"
-					:key="member.user_id"
+					:key="`${member.kind ?? 'user'}-${member.id ?? member.user_id}`"
 					class="flex items-center gap-2 px-3 py-2 text-sm text-ink"
 				>
-					<span class="flex-1 truncate">{{ member.name }}</span>
+					<span class="truncate">{{ member.name }}</span>
+					<span
+						v-if="member.kind === 'persona'"
+						class="rounded bg-brand-bg px-1.5 py-0.5 text-[10px] font-semibold text-brand dark:bg-surface-hover dark:text-ink"
+						data-testid="chat-member-ai"
+						>{{ $t('chats.persona.badge') }}</span
+					>
+					<span class="flex-1"></span>
 					<Button
-						v-if="canModerate && member.user_id !== selfId"
+						v-if="member.kind === 'persona' && canModerate"
+						variant="ghost"
+						size="sm"
+						data-testid="chat-persona-remove"
+						@click="removePersona(member.id as number)"
+						>{{ $t('common.actions.remove') }}</Button
+					>
+					<Button
+						v-else-if="
+							canModerate &&
+							member.user_id !== null &&
+							member.user_id !== selfId
+						"
 						variant="ghost"
 						size="sm"
 						@click="remove(member.user_id)"
@@ -42,10 +61,14 @@
 		addChatMembers,
 		getChatMembers,
 		removeChatMember,
+		removeChatPersona,
 	} from '@/actions/tmgr/chats';
 	import type { ChatMember } from '@/actions/tmgr/chats';
 	import MemberPicker from '@/components/chats/MemberPicker.vue';
 	import { Button } from '@/components/ui/button';
+	import { toast } from '@/components/ui/toast';
+	import { t } from '@/i18n';
+	import { serverMessageFrom } from '@/utils/serverError';
 	import {
 		Dialog,
 		DialogContent,
@@ -84,7 +107,7 @@
 
 			const load = async () => {
 				chatMembers.value = await getChatMembers(props.chatId);
-				emit('changed', chatMembers.value.length);
+				emit('changed', chatMembers.value.length, chatMembers.value);
 			};
 
 			watch(
@@ -118,7 +141,27 @@
 				await load();
 			};
 
-			return { chatMembers, selected, busy, candidates, add, remove };
+			const removePersona = async (personaId: number) => {
+				try {
+					await removeChatPersona(props.chatId, personaId);
+					await load();
+				} catch (e) {
+					toast({
+						title: serverMessageFrom(e, t('chats.persona.removeFailed')),
+						variant: 'destructive',
+					});
+				}
+			};
+
+			return {
+				chatMembers,
+				selected,
+				busy,
+				candidates,
+				add,
+				remove,
+				removePersona,
+			};
 		},
 	});
 </script>

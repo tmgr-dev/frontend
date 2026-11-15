@@ -53,6 +53,7 @@
 	import ChatComposer from '@/components/chats/ChatComposer.vue';
 	import ChatMessageItem from '@/components/chats/ChatMessageItem.vue';
 	import { useChats } from '@/composable/useChats';
+	import { reportPersonaRefusals } from '@/utils/chatPersonaToasts';
 	import { X } from 'lucide-vue-next';
 	import { defineComponent, type PropType } from 'vue';
 
@@ -65,20 +66,24 @@
 			canWrite: { type: Boolean, default: true },
 			canModerate: { type: Boolean, default: false },
 			members: {
-				type: Array as PropType<Array<{ id: number; name: string }>>,
+				type: Array as PropType<
+					Array<{ id: number; name: string; kind?: 'user' | 'persona' }>
+				>,
 				default: () => [],
 			},
 		},
 		emits: ['close'],
 		setup(props) {
 			const { send } = useChats();
-			const submitReply = (
+			const submitReply = async (
 				payload: Pick<SendMessagePayload, 'body' | 'mentions' | 'files'>,
 			) =>
-				send(props.root.chat_id, {
-					...payload,
-					parent_message_id: props.root.id,
-				});
+				reportPersonaRefusals(
+					await send(props.root.chat_id, {
+						...payload,
+						parent_message_id: props.root.id,
+					}),
+				);
 			return { submitReply };
 		},
 	});
