@@ -155,3 +155,60 @@ describe('unread from thread replies', () => {
 		expect(result.chats[0].last_message?.id).toBe(5);
 	});
 });
+
+describe('persona replies queued by a send', () => {
+	const chats = useChats();
+
+	beforeEach(() => {
+		jest.resetAllMocks();
+		chats.chats.value = [chat(1)];
+		mocked.getMessages.mockResolvedValue([msg(100, 1)]);
+	});
+
+	it('shows the pending persona message without waiting for realtime', async () => {
+		await chats.openChat(1);
+		mocked.sendMessage.mockResolvedValue(
+			msg(101, 1, {
+				persona_replies: [
+					{ persona_id: 3, status: 'queued', message_id: 102 },
+					{ persona_id: 4, status: 'refused', reason: 'busy' },
+				],
+			}),
+		);
+		mocked.getMessage.mockResolvedValue(
+			msg(102, 1, {
+				author: { kind: 'persona', id: 3, name: 'Scout' },
+				status: 'pending',
+			}),
+		);
+		await chats.send(1, { body: '@Scout hi' });
+		expect(mocked.getMessage).toHaveBeenCalledTimes(1);
+		expect(mocked.getMessage).toHaveBeenCalledWith(1, 102);
+		expect(chats.messages.value.map((m) => [m.id, m.status])).toEqual([
+			[100, undefined],
+			[101, undefined],
+			[102, 'pending'],
+		]);
+	});
+
+	it('keeps a reply that realtime already brought in', async () => {
+		await chats.openChat(1);
+		mocked.sendMessage.mockResolvedValue(
+			msg(101, 1, {
+				persona_replies: [{ persona_id: 3, status: 'queued', message_id: 102 }],
+			}),
+		);
+		let resolve!: (m: ChatMessage) => void;
+		mocked.getMessage.mockReturnValue(new Promise((r) => (resolve = r)));
+		const sending = chats.send(1, { body: '@Scout hi' });
+		await Promise.resolve();
+		await Promise.resolve();
+		chats.messages.value = [
+			...chats.messages.value,
+			msg(102, 1, { status: 'done', body: 'answer' }),
+		];
+		resolve(msg(102, 1, { status: 'pending' }));
+		await sending;
+		expect(chats.messages.value.find((m) => m.id === 102)?.status).toBe('done');
+	});
+});

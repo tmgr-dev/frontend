@@ -38,3 +38,8 @@ export const personaMembers = (members: ChatMember[]): ChatMember[] =>
 export const refusedReplies = (
 	replies: PersonaReply[] | undefined,
 ): PersonaReply[] => (replies ?? []).filter((r) => r.status === 'refused');
+
+export const queuedReplyIds = (replies: PersonaReply[] | undefined): number[] =>
+	(replies ?? [])
+		.filter((r) => r.status === 'queued' && r.message_id != null)
+		.map((r) => r.message_id as number);

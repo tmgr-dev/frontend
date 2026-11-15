@@ -4,6 +4,7 @@ import {
 	isPersonaMessage,
 	personaMembers,
 	personaRefusalKey,
+	queuedReplyIds,
 	refusedReplies,
 } from '@/utils/chatPersonas';
 
@@ -106,4 +107,17 @@ test('refusedReplies drops queued replies', () => {
 		]).map((r) => r.persona_id),
 	).toEqual([2]);
 	expect(refusedReplies(undefined)).toEqual([]);
+});
+
+describe('queuedReplyIds', () => {
+	it('keeps only queued replies that carry a message id', () => {
+		expect(
+			queuedReplyIds([
+				{ persona_id: 1, status: 'queued', message_id: 7 },
+				{ persona_id: 2, status: 'queued' },
+				{ persona_id: 3, status: 'refused', reason: 'busy' },
+			] as never),
+		).toEqual([7]);
+		expect(queuedReplyIds(undefined)).toEqual([]);
+	});
 });

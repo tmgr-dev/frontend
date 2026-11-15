@@ -18,6 +18,7 @@ import {
 } from '@/actions/tmgr/chats';
 import { usePusher } from '@/composable/usePusher';
 import type { ChatEventPayload, ChatEventType } from '@/types/dashboard';
+import { queuedReplyIds } from '@/utils/chatPersonas';
 import { ref } from 'vue';
 
 const PAGE_SIZE = 50;
@@ -39,6 +40,12 @@ export const markMessageDeleted = (
 	list.map((m) =>
 		m.id === messageId ? { ...m, deleted: true, body: null, files: [] } : m,
 	);
+
+export const addMissing = (
+	list: ChatMessage[],
+	message: ChatMessage,
+): ChatMessage[] =>
+	list.some((m) => m.id === message.id) ? list : mergeMessages(list, [message]);
 
 export const patchMessageStatus = (
 	list: ChatMessage[],
@@ -306,7 +313,22 @@ const send = async (chatId: number, payload: SendMessagePayload) => {
 	} else {
 		messages.value = mergeMessages(messages.value, [message]);
 	}
+	await loadQueuedReplies(chatId, message);
 	return message;
+};
+
+const loadQueuedReplies = async (chatId: number, message: ChatMessage) => {
+	const ids = queuedReplyIds(message.persona_replies);
+	if (!ids.length) return;
+	const fresh = await Promise.all(ids.map((id) => getMessage(chatId, id)));
+	if (openChatId.value !== chatId) return;
+	fresh.forEach((m) => {
+		if (m.parent_message_id === null) {
+			messages.value = addMissing(messages.value, m);
+		} else if (threadRoot.value?.id === m.parent_message_id) {
+			replies.value = addMissing(replies.value, m);
+		}
+	});
 };
 
 const applyMessage = (message: ChatMessage) => {
