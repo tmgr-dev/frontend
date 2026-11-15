@@ -60,6 +60,8 @@
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AiRewritePanel from '@/components/tasks/AiRewritePanel.vue';
+	import ForwardDialog from '@/components/chats/ForwardDialog.vue';
+	import { useChatsAvailable } from '@/composable/useChatsAvailable';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import CloudAgentApproval from '@/components/tasks/CloudAgentApproval.vue';
 	import ConfirmForAgentRuns from '@/components/tasks/ConfirmForAgentRuns.vue';
@@ -205,6 +207,7 @@
 		ArchiveRestore,
 		Bot,
 		Loader2,
+		Forward,
 		MoreVertical,
 		Save,
 		Send,
@@ -331,6 +334,8 @@
 		() => store.state.createTaskInProjectCategoryId,
 	);
 	const { isFeatureEnabled, showSurface } = useFeatureToggles();
+	const chatsOn = useChatsAvailable();
+	const forwardOpen = ref(false);
 	const { simpleMode } = useWorkflowMode();
 	const pagesVisible = computed(() =>
 		pagesAvailable(store.getters.currentWorkspace, isFeatureEnabled('pages')),
@@ -449,6 +454,19 @@
 		},
 		checkpoints: [],
 	});
+
+	const taskPrefill = store.state.taskPrefill as {
+		title: string;
+		description: string;
+	} | null;
+	if (taskPrefill && !store.state.currentTaskIdForModal) {
+		form.value.title = taskPrefill.title;
+		form.value.description = taskPrefill.description;
+		if (editorType.value === 'block')
+			form.value.description_json = getBlockEditorDescription(
+				taskPrefill.description,
+			);
+	}
 
 	const taskId = computed(() => {
 		// If we're in task creation mode, don't use route params (they might be category ID)
@@ -2651,6 +2669,7 @@
 							v-if="
 								form.id &&
 								(pluginTaskMenuItems.length ||
+									chatsOn ||
 									canArchiveTask ||
 									canUnarchiveTask)
 							"
@@ -2676,9 +2695,18 @@
 									<ArchiveIcon class="mr-2 h-4 w-4" />
 									<span>{{ $t('taskForm.form.archive') }}</span>
 								</DropdownMenuItem>
+								<DropdownMenuItem v-if="chatsOn" @click="forwardOpen = true">
+									<Forward class="mr-2 h-4 w-4" />
+									<span>{{ $t('chats.forward.action') }}</span>
+								</DropdownMenuItem>
 								<PluginTaskMenuItems :task-id="form.id" :separator="false" />
 							</DropdownMenuContent>
 						</DropdownMenu>
+						<ForwardDialog
+							v-if="chatsOn && form.id"
+							v-model:open="forwardOpen"
+							:source="{ type: 'task', id: form.id }"
+						/>
 
 						<SettingsComponent :form="form" />
 

@@ -38,14 +38,26 @@
 		offset,
 		shift,
 	} from '@floating-ui/dom';
+	import ForwardDialog from '@/components/chats/ForwardDialog.vue';
+	import { useChatsAvailable } from '@/composable/useChatsAvailable';
 	import {
 		Bot,
+		Forward,
 		MessageCircle,
 		SmilePlus,
 		Sparkles,
 		Trash2,
 	} from 'lucide-vue-next';
 	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+
+	const chatsOn = useChatsAvailable();
+	const forwardCommentId = ref<number | null>(null);
+	const forwardOpen = computed({
+		get: () => forwardCommentId.value !== null,
+		set: (open: boolean) => {
+			if (!open) forwardCommentId.value = null;
+		},
+	});
 
 	interface ChatComment {
 		id: number;
@@ -533,11 +545,29 @@
 						</span>
 						<div
 							v-if="
-								comment.user.id === currentUser?.id && !comment.cursor_agent_id
+								chatsOn ||
+								(comment.user.id === currentUser?.id &&
+									!comment.cursor_agent_id)
 							"
 							class="ml-auto flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
 						>
 							<Button
+								v-if="chatsOn"
+								variant="ghost"
+								size="icon"
+								class="h-6 w-6"
+								:aria-label="$t('chats.forward.action')"
+								:title="$t('chats.forward.action')"
+								data-testid="comment-forward"
+								@click="forwardCommentId = comment.id"
+							>
+								<Forward class="h-3 w-3" />
+							</Button>
+							<Button
+								v-if="
+									comment.user.id === currentUser?.id &&
+									!comment.cursor_agent_id
+								"
 								variant="ghost"
 								size="icon"
 								class="h-6 w-6 hover:bg-status-fix-bg hover:text-status-fix-fg"
@@ -618,5 +648,10 @@
 				</div>
 			</div>
 		</div>
+		<ForwardDialog
+			v-if="chatsOn && forwardCommentId !== null"
+			v-model:open="forwardOpen"
+			:source="{ type: 'comment', id: forwardCommentId }"
+		/>
 	</div>
 </template>

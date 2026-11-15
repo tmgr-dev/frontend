@@ -54,6 +54,7 @@ export interface RootState {
 	createTaskInProjectCategoryId: number | null;
 	taskStatusId: number | null;
 	showCreatingTaskModal: boolean;
+	taskPrefill: { title: string; description: string } | null;
 	reloadActiveTasksKey: number;
 	reloadTasksKey: number;
 	appRerenderKey: number;

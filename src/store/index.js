@@ -101,6 +101,7 @@ const state = {
 	createTaskInProjectCategoryId: null,
 	taskStatusId: null,
 	showCreatingTaskModal: false,
+	taskPrefill: null,
 	reloadActiveTasksKey: 0,
 	reloadTasksKey: 0,
 	createdTaskKey: 0,
@@ -401,6 +402,9 @@ const mutations = {
 		state.showCreatingTaskModal = true;
 		state.taskStatusId = statusId;
 	},
+	setTaskPrefill(state, prefill) {
+		state.taskPrefill = prefill;
+	},
 	createTaskInProjectCategoryId(state, { projectCategoryId, statusId }) {
 		state.taskStatusId = statusId;
 		state.currentTaskIdForModal = null;
@@ -441,6 +445,7 @@ const mutations = {
 		state.currentTaskIdForModal = null;
 		state.createTaskInProjectCategoryId = null;
 		state.showCreatingTaskModal = false;
+		state.taskPrefill = null;
 	},
 	setUserTimeZone(state, timezone) {
 		const existing = state.userSettingsMap['timezone'];

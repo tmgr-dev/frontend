@@ -68,7 +68,83 @@
 				>
 					{{ $t('chats.persona.stopped') }}
 				</p>
-				<MarkdownText v-else :content="message.body ?? ''" />
+				<MarkdownText
+					v-else-if="message.body || !message.forward"
+					:content="message.body ?? ''"
+				/>
+				<div
+					v-if="forwardView && message.forward && !editing"
+					class="mt-1 rounded-md border border-l-4 border-line border-l-brand bg-surface p-2 text-sm dark:bg-surface-hover"
+					data-testid="chat-forward-card"
+				>
+					<div
+						class="flex flex-wrap items-baseline gap-x-2 text-xs text-ink-subtle"
+					>
+						<span class="font-semibold">{{
+							$t('chats.forward.from', { source: forwardLabel })
+						}}</span>
+						<template v-if="!forwardView.deleted">
+							<span v-if="message.forward.author_name">{{
+								message.forward.author_name
+							}}</span>
+							<span v-if="forwardTime">{{ forwardTime }}</span>
+						</template>
+					</div>
+					<p
+						v-if="forwardView.deleted"
+						class="mt-1 text-ink-subtle italic"
+						data-testid="chat-forward-deleted"
+					>
+						{{ $t('chats.forward.deleted') }}
+					</p>
+					<template v-else>
+						<p
+							v-if="forwardView.edited"
+							class="text-xs text-ink-subtle"
+							data-testid="chat-forward-edited"
+						>
+							{{ $t('chats.forward.edited') }}
+						</p>
+						<MarkdownText
+							v-if="forwardView.text"
+							:content="forwardView.text"
+							:untrusted="true"
+						/>
+						<ul v-if="forwardView.fileNames.length" class="space-y-0.5 mt-1">
+							<li
+								v-for="name in forwardView.fileNames"
+								:key="name"
+								class="inline-flex items-center gap-1 text-xs text-ink-subtle"
+							>
+								<Paperclip class="h-3 w-3" />
+								{{ name }}
+							</li>
+						</ul>
+						<router-link
+							v-if="message.forward.task && forwardTaskLink"
+							:to="forwardTaskLink"
+							class="mt-1 block rounded-md border border-line bg-surface-hover p-2 hover:bg-surface-sunken dark:bg-surface"
+							data-testid="chat-forward-task"
+						>
+							<span class="text-xs font-semibold text-brand">{{
+								message.forward.task.key
+							}}</span>
+							<span class="ml-1 text-sm text-ink">{{
+								message.forward.task.title
+							}}</span>
+							<span
+								class="mt-0.5 flex flex-wrap gap-x-2 text-xs text-ink-subtle"
+							>
+								<span v-if="message.forward.task.status">{{
+									message.forward.task.status.name
+								}}</span>
+								<span v-if="message.forward.task.assignees.length">{{
+									message.forward.task.assignees.join(', ')
+								}}</span>
+							</span>
+						</router-link>
+					</template>
+				</div>
 				<ul v-if="message.files.length" class="space-y-1 mt-1">
 					<li v-for="file in message.files" :key="file.id">
 						<button
@@ -138,6 +214,28 @@
 				<MessageSquare class="h-4 w-4" />
 			</button>
 			<button
+				v-if="sourceActions"
+				type="button"
+				class="rounded p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
+				:title="$t('chats.forward.action')"
+				:aria-label="$t('chats.forward.action')"
+				data-testid="chat-forward"
+				@click="forwardOpen = true"
+			>
+				<Forward class="h-4 w-4" />
+			</button>
+			<button
+				v-if="sourceActions"
+				type="button"
+				class="rounded p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
+				:title="$t('chats.forward.createTask')"
+				:aria-label="$t('chats.forward.createTask')"
+				data-testid="chat-create-task"
+				@click="createTask"
+			>
+				<ListPlus class="h-4 w-4" />
+			</button>
+			<button
 				v-if="mayEdit"
 				type="button"
 				class="rounded p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
@@ -160,6 +258,11 @@
 				<Trash2 class="h-4 w-4" />
 			</button>
 		</div>
+		<ForwardDialog
+			v-if="sourceActions"
+			v-model:open="forwardOpen"
+			:source="{ type: 'message', id: message.id }"
+		/>
 		<AlertDialog v-model:open="confirmDelete">
 			<AlertDialogContent>
 				<AlertDialogHeader>
@@ -188,6 +291,7 @@
 <script lang="ts">
 	import { getFileDownload, toggleReaction } from '@/actions/tmgr/chats';
 	import type { ChatMessage, ChatReaction } from '@/actions/tmgr/chats';
+	import ForwardDialog from '@/components/chats/ForwardDialog.vue';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import {
 		AlertDialog,
@@ -207,10 +311,23 @@
 		useChats,
 	} from '@/composable/useChats';
 	import { t } from '@/i18n';
+	import {
+		forwardCardView,
+		forwardSnapshotLabel,
+		taskDraftFromMessage,
+		taskLink,
+	} from '@/utils/chatForward';
 	import { canStopMessage, isPersonaMessage } from '@/utils/chatPersonas';
 	import { isEnterSend } from '@/utils/commentComposer';
 	import { DEFAULT_REACTION_EMOJIS } from '@/utils/commentReactions';
-	import { MessageSquare, Paperclip, Pencil, Trash2 } from 'lucide-vue-next';
+	import {
+		Forward,
+		ListPlus,
+		MessageSquare,
+		Paperclip,
+		Pencil,
+		Trash2,
+	} from 'lucide-vue-next';
 	import { useStore } from 'vuex';
 	import { computed, defineComponent, ref, watch, type PropType } from 'vue';
 
@@ -226,6 +343,9 @@
 			AlertDialogFooter,
 			AlertDialogHeader,
 			AlertDialogTitle,
+			ForwardDialog,
+			Forward,
+			ListPlus,
 			MarkdownText,
 			MessageSquare,
 			Paperclip,
@@ -237,6 +357,7 @@
 			canWrite: { type: Boolean, default: true },
 			showReply: { type: Boolean, default: true },
 			canModerate: { type: Boolean, default: false },
+			canForward: { type: Boolean, default: false },
 			members: {
 				type: Array as PropType<
 					Array<{ id: number; name: string; kind?: 'user' | 'persona' }>
@@ -257,6 +378,52 @@
 			const mayDelete = computed(() =>
 				canDeleteMessage(props.message, selfId.value, props.canModerate),
 			);
+			const sourceActions = computed(
+				() =>
+					props.canForward &&
+					!props.message.deleted &&
+					(!props.message.status || props.message.status === 'done'),
+			);
+			const forwardOpen = ref(false);
+			const workspaceCode = computed<string>(
+				() => store.getters.currentWorkspace?.code ?? '',
+			);
+			const forwardView = computed(() =>
+				props.message.forward ? forwardCardView(props.message.forward) : null,
+			);
+			const forwardLabel = computed(() =>
+				props.message.forward
+					? forwardSnapshotLabel(props.message.forward)
+					: '',
+			);
+			const forwardTime = computed(() =>
+				props.message.forward?.created_at
+					? new Date(props.message.forward.created_at).toLocaleString([], {
+							dateStyle: 'short',
+							timeStyle: 'short',
+						})
+					: '',
+			);
+			const forwardTaskLink = computed(() => {
+				const forward = props.message.forward;
+				const id =
+					forward?.task_id ?? (forward?.type === 'task' ? forward.id : null);
+				return id && workspaceCode.value
+					? taskLink(workspaceCode.value, id)
+					: null;
+			});
+			const createTask = () => {
+				store.commit(
+					'setTaskPrefill',
+					taskDraftFromMessage(
+						props.message.body,
+						workspaceCode.value,
+						props.message.chat_id,
+						props.message.id,
+					),
+				);
+				store.commit('setShowCreatingTaskModal');
+			};
 			const isPersona = computed(() => isPersonaMessage(props.message));
 			const mayStop = computed(() =>
 				canStopMessage(props.message, selfId.value),
@@ -339,6 +506,13 @@
 				window.open(download_url, '_blank', 'noopener');
 			};
 			return {
+				sourceActions,
+				forwardOpen,
+				forwardView,
+				forwardLabel,
+				forwardTime,
+				forwardTaskLink,
+				createTask,
 				reactions,
 				isPersona,
 				mayStop,

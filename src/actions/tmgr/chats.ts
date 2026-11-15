@@ -90,6 +90,36 @@ export interface ChatFile {
 	mime: string | null;
 }
 
+export type ForwardSourceType = 'task' | 'comment' | 'message';
+export type ForwardState = 'live' | 'edited' | 'deleted';
+
+export interface ForwardSource {
+	type: ForwardSourceType;
+	id: number;
+}
+
+export interface ForwardTask {
+	key: string | null;
+	title: string;
+	status: { name: string; type: string } | null;
+	assignees: string[];
+}
+
+export interface ForwardDto {
+	type: ForwardSourceType;
+	id: number;
+	task_id?: number | null;
+	chat_id?: number | null;
+	title?: string | null;
+	key?: string | null;
+	author_name?: string | null;
+	created_at?: string | null;
+	text?: string | null;
+	file_names?: string[] | null;
+	state: ForwardState;
+	task?: ForwardTask | null;
+}
+
 export interface ChatMessage {
 	id: number;
 	chat_id: number;
@@ -107,6 +137,7 @@ export interface ChatMessage {
 	status?: ChatMessageStatus;
 	invoked_by?: ChatInvoker | null;
 	persona_replies?: PersonaReply[];
+	forward?: ForwardDto | null;
 }
 
 export interface ChatMessageHit {
@@ -132,6 +163,7 @@ export interface SendMessagePayload {
 	mentions?: ChatMention[];
 	parent_message_id?: number | null;
 	files?: ChatFileUpload[];
+	forward?: ForwardSource;
 }
 
 export interface CreateChannelPayload {
@@ -289,6 +321,17 @@ export const sendMessage = (
 	payload: SendMessagePayload,
 ): Promise<ChatMessage> =>
 	unwrap($axios.post(`${chat(chatId)}/messages`, payload));
+
+export const forwardToChat = (
+	chatId: number,
+	source: ForwardSource,
+	options: { body?: string; mentions?: ChatMention[] } = {},
+): Promise<ChatMessage> =>
+	sendMessage(chatId, {
+		body: options.body ?? '',
+		mentions: options.mentions ?? [],
+		forward: source,
+	});
 
 export const editMessage = (
 	chatId: number,

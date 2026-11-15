@@ -86,6 +86,7 @@
 							:message="message"
 							:can-write="chat.can_write"
 							:can-moderate="chat.can_moderate"
+							:can-forward="openChannel"
 							:members="members"
 							@reply="openThread"
 						/>
@@ -122,6 +123,7 @@
 				:replies="replies"
 				:can-write="chat.can_write"
 				:can-moderate="chat.can_moderate"
+				:can-forward="openChannel"
 				:members="members"
 				@close="closeThread"
 			/>
@@ -161,6 +163,7 @@
 	import { chatTitle, useChats } from '@/composable/useChats';
 	import { t } from '@/i18n';
 	import { reportPersonaRefusals } from '@/utils/chatPersonaToasts';
+	import { isOpenChannel } from '@/utils/chatForward';
 	import { personaMembers } from '@/utils/chatPersonas';
 	import { Lock, Users } from 'lucide-vue-next';
 	import { computed, defineComponent, nextTick, ref, watch } from 'vue';
@@ -368,7 +371,10 @@
 				},
 			);
 
+			const openChannel = computed(() => isOpenChannel(chat.value));
+
 			return {
+				openChannel,
 				chat,
 				title,
 				loading,

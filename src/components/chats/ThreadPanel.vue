@@ -21,6 +21,7 @@
 				:message="root"
 				:can-write="canWrite"
 				:can-moderate="canModerate"
+				:can-forward="canForward"
 				:members="members"
 				:show-reply="false"
 			/>
@@ -31,6 +32,7 @@
 				:message="reply"
 				:can-write="canWrite"
 				:can-moderate="canModerate"
+				:can-forward="canForward"
 				:members="members"
 				:show-reply="false"
 			/>
@@ -65,6 +67,7 @@
 			replies: { type: Array as PropType<ChatMessage[]>, required: true },
 			canWrite: { type: Boolean, default: true },
 			canModerate: { type: Boolean, default: false },
+			canForward: { type: Boolean, default: false },
 			members: {
 				type: Array as PropType<
 					Array<{ id: number; name: string; kind?: 'user' | 'persona' }>

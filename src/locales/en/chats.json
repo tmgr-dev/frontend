@@ -93,5 +93,23 @@
 			"rate_limited": "Too many requests to this persona. Slow down.",
 			"unavailable": "The persona is unavailable right now."
 		}
+	},
+	"forward": {
+		"action": "Forward to chat",
+		"askPersona": "Ask a persona about this",
+		"chat": "Chat",
+		"createTask": "Create task from message",
+		"deleted": "Original was deleted",
+		"edited": "Edited since forwarded",
+		"failed": "Could not forward. Please try again.",
+		"from": "Forwarded from {source}",
+		"noChats": "No chats you can write in.",
+		"noPersona": "No persona",
+		"note": "Add a note (optional)",
+		"notAllowed": "This item cannot be forwarded.",
+		"send": "Forward",
+		"sent": "Forwarded",
+		"sourceNotFound": "The original is not available anymore.",
+		"title": "Forward to chat"
 	}
 }
