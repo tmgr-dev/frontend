@@ -341,7 +341,15 @@ const applyMessage = (message: ChatMessage) => {
 };
 
 const stopReply = async (message: ChatMessage) => {
-	const fresh = await cancelPersonaReply(message.chat_id, message.id);
+	let fresh: ChatMessage;
+	try {
+		fresh = await cancelPersonaReply(message.chat_id, message.id);
+	} catch (error) {
+		fresh = await getMessage(message.chat_id, message.id).catch(() => {
+			throw error;
+		});
+		if (fresh.status === 'pending') throw error;
+	}
 	if (openChatId.value === message.chat_id) applyMessage(fresh);
 };
 

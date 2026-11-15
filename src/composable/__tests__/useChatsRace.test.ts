@@ -2,6 +2,7 @@ jest.mock('@/actions/tmgr/chats', () => ({
 	getChat: jest.fn(),
 	getMessages: jest.fn(),
 	getMessage: jest.fn(),
+	cancelPersonaReply: jest.fn(),
 	getReplies: jest.fn(),
 	sendMessage: jest.fn(),
 	editMessage: jest.fn(),
@@ -210,5 +211,36 @@ describe('persona replies queued by a send', () => {
 		resolve(msg(102, 1, { status: 'pending' }));
 		await sending;
 		expect(chats.messages.value.find((m) => m.id === 102)?.status).toBe('done');
+	});
+});
+
+describe('stopping a persona reply', () => {
+	const chats = useChats();
+	const pending = () =>
+		msg(102, 1, {
+			author: { kind: 'persona', id: 3, name: 'Scout' },
+			status: 'pending',
+		});
+
+	beforeEach(async () => {
+		jest.resetAllMocks();
+		chats.chats.value = [chat(1)];
+		mocked.getMessages.mockResolvedValue([pending()]);
+		await chats.openChat(1);
+	});
+
+	it('shows the real state when the reply already ended', async () => {
+		mocked.cancelPersonaReply.mockRejectedValue(new Error('422'));
+		mocked.getMessage.mockResolvedValue(msg(102, 1, { status: 'failed' }));
+		await chats.stopReply(pending());
+		expect(chats.messages.value[0].status).toBe('failed');
+	});
+
+	it('still fails when the reply is running', async () => {
+		const error = new Error('500');
+		mocked.cancelPersonaReply.mockRejectedValue(error);
+		mocked.getMessage.mockResolvedValue(pending());
+		await expect(chats.stopReply(pending())).rejects.toBe(error);
+		expect(chats.messages.value[0].status).toBe('pending');
 	});
 });
