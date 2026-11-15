@@ -216,10 +216,10 @@ export const persistThemeSettings = async (
 		: [];
 	const payload = current
 		.filter((s: any) => typeof s.id === 'number')
-		.map((s: any) => {
-			if (s.key === 'theme') return { id: s.id, value: theme };
-			if (s.key === 'colorScheme') return { id: s.id, value: colorScheme };
-			return { id: s.id, value: s.value };
+		.flatMap((s: any) => {
+			if (s.key === 'theme') return [{ id: s.id, value: theme }];
+			if (s.key === 'colorScheme') return [{ id: s.id, value: colorScheme }];
+			return [];
 		});
 	const updatedUser = await updateUserSettingsV2(payload);
 	store.commit('setUser', updatedUser);

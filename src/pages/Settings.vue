@@ -382,7 +382,7 @@
 <script>
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
-	import { withCurrentAgentUsageSync } from '@/actions/tmgr/agentUsage';
+	import { changedSettings } from '@/utils/changedSettings';
 	import { sendNotification } from '@/actions/tmgr/notifications';
 	import {
 		generateSmartDeviceToken,
@@ -495,6 +495,7 @@
 			initialError: null,
 			availableSettings: [],
 			settings: [],
+			savedSettings: [],
 			user: {},
 			confirm: null,
 			isNotification: false,
@@ -1023,7 +1024,7 @@
 			},
 
 			initSettings(availableSettings, settings = []) {
-				return availableSettings.map((item, index) => {
+				availableSettings.forEach((item, index) => {
 					const setting = this.getSettingById(settings, item.id, {
 						id: item.id,
 						value: '',
@@ -1035,6 +1036,10 @@
 							(val) => val.value === setting.value,
 						) === -1;
 				});
+				this.savedSettings = this.settings.map((setting) => ({
+					id: setting.id,
+					value: setting.value,
+				}));
 			},
 
 			getSettingById(settings, id, defaultResult = null) {
@@ -1052,7 +1057,9 @@
 					const originalEditorValue = originalEditorSetting?.value;
 
 					const [data] = await Promise.all([
-						updateUserSettingsV2(withCurrentAgentUsageSync(this.settings)),
+						updateUserSettingsV2(
+							changedSettings(this.settings, this.savedSettings),
+						),
 						updateUserSettings({ settings: this.userSettings }),
 					]);
 

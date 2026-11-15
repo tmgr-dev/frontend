@@ -41,7 +41,6 @@ import {
 	listAgentUsage,
 	setAgentUsageSync,
 	uploadRows,
-	withCurrentAgentUsageSync,
 } from '../agentUsage';
 
 const user = (value: string | null) => ({
@@ -72,12 +71,11 @@ describe('agent usage sync setting', () => {
 		expect(isAgentUsageSyncOn()).toBe(false);
 	});
 
-	it('puts every setting with the new value for this one', async () => {
+	it('puts only the agent usage sync value', async () => {
 		state.user = user('0');
 		put.mockResolvedValue({ data: { data: user('1') } });
 		await setAgentUsageSync(true);
 		expect(put).toHaveBeenCalledWith('v2/user/settings', [
-			{ id: 5, value: 56 },
 			{ id: 9, value: '1' },
 		]);
 		expect(isAgentUsageSyncOn()).toBe(true);
@@ -164,26 +162,5 @@ describe('uploads', () => {
 			tokens: '10k tokens',
 		});
 		expect(rows[1]).toMatchObject({ task: '#2', cost: null });
-	});
-});
-
-describe('withCurrentAgentUsageSync', () => {
-	it('replaces a stale cached value with the current one', () => {
-		state.user = user('1');
-		const stale = [
-			{ id: 5, value: 56 },
-			{ id: 9, value: '0' },
-		];
-		expect(withCurrentAgentUsageSync(stale)).toEqual([
-			{ id: 5, value: 56 },
-			{ id: 9, value: '1' },
-		]);
-		expect(stale[1].value).toBe('0');
-	});
-
-	it('leaves the list alone without the setting', () => {
-		state.user = user(null);
-		const list = [{ id: 5, value: 56 }];
-		expect(withCurrentAgentUsageSync(list)).toBe(list);
 	});
 });

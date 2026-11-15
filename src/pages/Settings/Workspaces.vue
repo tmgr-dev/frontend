@@ -58,6 +58,7 @@
 	import { t } from '@/i18n';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
+	import { changedSettings } from '@/utils/changedSettings';
 	import { validateEmailString, ValidationResult } from '@/utils/emails.ts';
 	import { errorMessageFrom, httpErrorInfo } from '@/utils/emailVerification';
 	import { serverMessageFrom } from '@/utils/serverError';
@@ -103,6 +104,7 @@
 	const route = useRoute();
 	const router = useRouter();
 	const settings = ref();
+	const savedSettings = ref<{ id: number; value: unknown }[]>([]);
 	const workspaces: Ref<Workspace[]> = ref([]);
 	const activeWorkspace = ref<FormSetting>();
 	const activeWorkspaceType = computed(() => {
@@ -261,6 +263,10 @@
 			settings.value = mappedSettingWithUserSettings.filter(
 				(setting) => setting.key !== 'current_workspace',
 			);
+			savedSettings.value = settings.value.map((setting: any) => ({
+				id: setting.id,
+				value: setting.value,
+			}));
 			initialLoaded.value = true;
 		} catch {
 			if (!disposed)
@@ -275,7 +281,10 @@
 		if (savingSettings.value) return;
 		savingSettings.value = true;
 		try {
-			const updatedSettings = [...settings.value, activeWorkspace.value];
+			const updatedSettings = changedSettings(
+				settings.value,
+				savedSettings.value,
+			);
 
 			// Store original editor value to check if it changes
 			const preferredEditorSetting = settings.value.find(
@@ -317,6 +326,10 @@
 			}
 
 			await updateUserSettingsV2(updatedSettings);
+			savedSettings.value = settings.value.map((setting: any) => ({
+				id: setting.id,
+				value: setting.value,
+			}));
 
 			// If editor setting has changed, reload the page to apply changes immediately
 			if (preferredEditorSetting) {
@@ -423,8 +436,10 @@
 		savingDefaultWorkspace.value = true;
 		try {
 			const payload = [
-				...settings.value,
-				{ ...activeWorkspace.value, value: defaultWorkspaceSelection.value },
+				{
+					id: activeWorkspace.value.id,
+					value: defaultWorkspaceSelection.value,
+				},
 			];
 			const updatedUser = await updateUserSettingsV2(payload, {
 				setDefaultWorkspace: true,

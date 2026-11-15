@@ -39,18 +39,6 @@ export const isAgentUsageSyncAvailable = (): boolean =>
 export const isAgentUsageSyncOn = (): boolean =>
 	isOn(store.getters.userSettingByKey(AGENT_USAGE_SYNC_KEY)?.value);
 
-export const withCurrentAgentUsageSync = <
-	T extends { id: number; value?: unknown },
->(
-	settings: T[],
-): T[] => {
-	const current = store.getters.userSettingByKey(AGENT_USAGE_SYNC_KEY);
-	if (!current) return settings;
-	return settings.map((s) =>
-		s.id === current.id ? { ...s, value: current.value } : s,
-	);
-};
-
 export const setAgentUsageSync = async (on: boolean): Promise<void> => {
 	const user = (store.state as any).user;
 	const setting = store.getters.userSettingByKey(AGENT_USAGE_SYNC_KEY);
@@ -58,10 +46,7 @@ export const setAgentUsageSync = async (on: boolean): Promise<void> => {
 		throw new Error('Agent usage sync is not available on this server yet.');
 	}
 	const value = on ? '1' : '0';
-	const payload = user.settings.map((s: any) => ({
-		id: s.id,
-		value: s.key === AGENT_USAGE_SYNC_KEY ? value : s.value,
-	}));
+	const payload = [{ id: setting.id, value }];
 	store.commit('setUser', {
 		...user,
 		settings: withValue(user.settings, value),

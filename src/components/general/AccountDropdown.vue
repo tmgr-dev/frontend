@@ -145,16 +145,12 @@
 	});
 
 	async function onSelectChange(workspaceId: number) {
-		const settingsWithUpdatedWorkspace = user.value.settings.map((setting) => {
-			if (setting.key === 'current_workspace') {
+		const settingsWithUpdatedWorkspace = user.value.settings
+			.filter((setting) => setting.key === 'current_workspace')
+			.map((setting) => {
 				setting.value = workspaceId;
-			}
-
-			return {
-				id: setting.id,
-				value: setting.value,
-			};
-		});
+				return { id: setting.id, value: setting.value };
+			});
 
 		const updatedUser = await updateUserSettingsV2(
 			settingsWithUpdatedWorkspace,

@@ -450,15 +450,9 @@
 
 			if (workspace.is_local) {
 				// local/install.ts activates it and keeps the server default untouched.
-				const settingsWithUpdatedWorkspace = user.value?.settings.map(
-					(setting) => ({
-						id: setting.id,
-						value:
-							setting.key === 'current_workspace'
-								? workspace.id
-								: setting.value,
-					}),
-				);
+				const settingsWithUpdatedWorkspace = user.value?.settings
+					.filter((setting) => setting.key === 'current_workspace')
+					.map((setting) => ({ id: setting.id, value: workspace.id }));
 				const updatedUser = await updateUserSettingsV2(
 					settingsWithUpdatedWorkspace,
 				);

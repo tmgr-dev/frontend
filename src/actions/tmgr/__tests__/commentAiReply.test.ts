@@ -57,7 +57,7 @@ test('reads the stored value of the user setting', () => {
 	expect(isCommentAiReplyOn()).toBe(false);
 });
 
-test('saves the full settings list with only the AI reply value changed', async () => {
+test('saves only the AI reply value', async () => {
 	(store.state as any).user = userWith([
 		{ id: 6, key: 'dark_mode', value: '1' },
 		{ id: 20, key: 'comment_ai_reply', value: '0' },
@@ -71,7 +71,6 @@ test('saves the full settings list with only the AI reply value changed', async 
 	expect(isCommentAiReplyOn()).toBe(true);
 	await pending;
 	expect($axios.put).toHaveBeenCalledWith('v2/user/settings', [
-		{ id: 6, value: '1' },
 		{ id: 20, value: '1' },
 	]);
 	expect((store.state as any).user).toEqual(saved);

@@ -20,7 +20,7 @@ beforeEach(() => {
 	($axios.put as jest.Mock).mockResolvedValue({ data: { data: {} } });
 });
 
-test('never sends a settings item without a numeric id', async () => {
+test('sends only the theme and color scheme, never other keys or items without an id', async () => {
 	(store.state as any).user.settings = [
 		{ id: 6, key: 'theme', value: 'default' },
 		{ id: 7, key: 'colorScheme', value: 'system' },
@@ -31,6 +31,5 @@ test('never sends a settings item without a numeric id', async () => {
 	expect($axios.put).toHaveBeenCalledWith('v2/user/settings', [
 		{ id: 6, value: 'ocean' },
 		{ id: 7, value: 'dark' },
-		{ id: 9, value: 1 },
 	]);
 });

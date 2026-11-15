@@ -29,10 +29,9 @@ export const openCloudWorkspace = async (
 	if (!workspace) {
 		throw new Error('The cloud workspace is not in your account list yet.');
 	}
-	const settings = store.state.user?.settings?.map((setting) => ({
-		id: setting.id,
-		value: setting.key === 'current_workspace' ? workspace.id : setting.value,
-	}));
+	const settings = store.state.user?.settings
+		?.filter((setting) => setting.key === 'current_workspace')
+		.map((setting) => ({ id: setting.id, value: workspace.id }));
 	store.commit('setUser', await updateUserSettingsV2(settings as any));
 	await syncActiveLocalWorkspace(workspace.id);
 	store.commit('updateUserWorkspaceSetting', { workspaceId: workspace.id });

@@ -27,10 +27,7 @@ export const setCommentAiReply = async (on: boolean): Promise<void> => {
 		return;
 	}
 	const value = on ? '1' : '0';
-	const payload = user.settings.map((s: any) => ({
-		id: s.id,
-		value: s.key === COMMENT_AI_REPLY_KEY ? value : s.value,
-	}));
+	const payload = [{ id: setting.id, value }];
 	store.commit('setUser', {
 		...user,
 		settings: withValue(user.settings, value),
