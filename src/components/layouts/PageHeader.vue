@@ -1,6 +1,7 @@
 <template>
 	<header
-		class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+		class="mb-6 flex flex-col gap-3"
+		:class="stacked ? '' : 'sm:flex-row sm:items-start sm:justify-between'"
 		data-page-header
 	>
 		<div class="min-w-0">
@@ -24,7 +25,8 @@
 		</div>
 		<div
 			v-if="$slots.actions"
-			class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end"
+			class="flex flex-wrap items-center gap-2"
+			:class="stacked ? '' : 'sm:shrink-0 sm:justify-end'"
 		>
 			<slot name="actions" />
 		</div>
@@ -43,6 +45,7 @@
 			subtitle: { type: String, default: '' },
 			back: { type: [String, Object], default: null },
 			backLabel: { type: String, default: '' },
+			stacked: { type: Boolean, default: false },
 		},
 	});
 </script>
