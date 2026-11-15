@@ -9,7 +9,7 @@
 		<LocalSkillsLibrary class="mt-6" />
 	</PageContainer>
 	<PageContainer v-else width="narrow">
-		<PageHeader :title="$t('settingsPages.personas.title')">
+		<PageHeader stacked :title="$t('settingsPages.personas.title')">
 			<template #subtitle>
 				{{
 					$t('settingsPages.personas.subtitle', {

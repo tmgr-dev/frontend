@@ -690,7 +690,7 @@
 
 <template>
 	<PageContainer width="narrow">
-		<PageHeader :title="$t('settingsPages.workspaces.title')">
+		<PageHeader stacked :title="$t('settingsPages.workspaces.title')">
 			<template #actions>
 				<div class="flex flex-wrap items-center gap-2">
 					<Dialog v-model:open="isOpen">
