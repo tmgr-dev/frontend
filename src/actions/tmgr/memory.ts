@@ -48,6 +48,7 @@ export interface MemoryProposal {
 	target_entry_id: string | null;
 	target_text: string | null;
 	run_id: number | null;
+	proposed_by?: string | null;
 }
 
 export interface SummarizeParams {

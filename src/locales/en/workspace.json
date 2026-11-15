@@ -290,6 +290,7 @@
 		"save": "Save",
 		"cancel": "Cancel",
 		"source": "Source: {source}",
+		"proposedBy": "Proposed by {name}",
 		"taskRef": "Task #{id}",
 		"alreadyAdded": "Already added",
 		"needsApproval": "Needs your approval",

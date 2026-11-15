@@ -83,6 +83,17 @@
 							<p class="text-sm [overflow-wrap:anywhere] text-ink">
 								{{ card.fact }}
 							</p>
+							<p
+								v-if="card.proposed_by"
+								class="mt-1 text-xs [overflow-wrap:anywhere] text-ink-subtle"
+								data-testid="memory-proposed-by"
+							>
+								{{
+									$t('workspace.workspaceMemory.proposedBy', {
+										name: card.proposed_by,
+									})
+								}}
+							</p>
 							<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
 								<span class="text-xs text-ink-subtle">
 									<template v-if="card.task_id">

@@ -37,3 +37,23 @@ test('en and ru catalogs carry the same summarize keys', () => {
 		Object.keys(load('en')).sort(),
 	);
 });
+
+describe('proposed by', () => {
+	const en = JSON.parse(
+		readFileSync(join(__dirname, '../../../locales/en/workspace.json'), 'utf8'),
+	).workspaceMemory;
+
+	test('en catalog formats the proposer name as plain text', () => {
+		expect(en.proposedBy).toBe('Proposed by {name}');
+		expect(en.proposedBy.replace('{name}', '<img src=x>')).toBe(
+			'Proposed by <img src=x>',
+		);
+	});
+
+	test('page shows proposer only when set, via text interpolation', () => {
+		expect(page).toMatch(
+			/<p\s+v-if="card\.proposed_by"[\s\S]*?\$t\('workspace\.workspaceMemory\.proposedBy',\s*\{\s*name: card\.proposed_by,?\s*\}\)/,
+		);
+		expect(page).not.toContain('v-html');
+	});
+});
