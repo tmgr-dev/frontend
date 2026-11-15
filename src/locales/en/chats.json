@@ -69,5 +69,29 @@
 	"thread": "Thread",
 	"title": "Chats",
 	"unarchiveChannel": "Unarchive channel",
-	"unmute": "Unmute"
+	"unmute": "Unmute",
+	"persona": {
+		"badge": "AI",
+		"budget": "Persona replies today: {used} of {limit}",
+		"failed": "Couldn't reply. Try again.",
+		"invite": "Invite persona",
+		"inviteFailed": "Could not invite the persona.",
+		"inviteNone": "No personas available.",
+		"invited": "Persona invited",
+		"refusalTitle": "Persona did not reply",
+		"removeFailed": "Could not remove the persona.",
+		"stop": "Stop",
+		"stopFailed": "Could not stop the reply.",
+		"stopped": "Stopped",
+		"thinking": "Thinking…",
+		"refusal": {
+			"budget_unavailable": "The reply limit cannot be checked right now. Try again later.",
+			"busy": "The persona is still answering another message.",
+			"daily_budget": "The workspace reached today's limit of persona replies.",
+			"not_allowed": "The persona is not allowed to reply in this chat.",
+			"personal_budget": "You reached your daily limit of persona replies.",
+			"rate_limited": "Too many requests to this persona. Slow down.",
+			"unavailable": "The persona is unavailable right now."
+		}
+	}
 }

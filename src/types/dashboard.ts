@@ -797,6 +797,7 @@ export interface ChatEventPayload {
 	author_id?: number;
 	preview?: string | null;
 	parent_message_id?: number | null;
+	status?: 'done' | 'pending' | 'failed' | 'canceled';
 	last_read_message_id?: number;
 	action?: string;
 	user_id?: number;

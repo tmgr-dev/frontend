@@ -15,12 +15,16 @@ jest.mock('../files', () => ({
 
 import $axios from '@/plugins/axios';
 import {
+	cancelPersonaReply,
 	createChannel,
 	getMessage,
 	getMessages,
+	getPersonaBudget,
+	invitePersona,
 	listChats,
 	markRead,
 	openDm,
+	removeChatPersona,
 	searchChats,
 	sendMessage,
 	setChatNotifications,
@@ -123,4 +127,36 @@ test('uploads a file through presign and returns the attach payload', async () =
 		mime: 'image/png',
 	});
 	expect(putToStorage).toHaveBeenCalled();
+});
+
+test('invites a persona by id and unwraps the members', async () => {
+	ax.post.mockReturnValue(ok([{ kind: 'persona', id: 9 }]));
+	await expect(invitePersona(3, 'uuid-1')).resolves.toEqual([
+		{ kind: 'persona', id: 9 },
+	]);
+	expect(ax.post).toHaveBeenCalledWith('/chats/3/personas', {
+		persona_id: 'uuid-1',
+	});
+});
+
+test('removes a persona from a chat', async () => {
+	ax.delete.mockResolvedValue({});
+	await removeChatPersona(3, 9);
+	expect(ax.delete).toHaveBeenCalledWith('/chats/3/personas/9');
+});
+
+test('cancels a pending persona reply', async () => {
+	ax.post.mockReturnValue(ok({ id: 4, status: 'canceled' }));
+	await expect(cancelPersonaReply(3, 4)).resolves.toEqual({
+		id: 4,
+		status: 'canceled',
+	});
+	expect(ax.post).toHaveBeenCalledWith('/chats/3/messages/4/cancel');
+});
+
+test('loads the persona budget of a workspace', async () => {
+	const budget = { used: 12, limit: 200, mine_used: 2, mine_limit: 50 };
+	ax.get.mockReturnValue(ok(budget));
+	await expect(getPersonaBudget(7)).resolves.toEqual(budget);
+	expect(ax.get).toHaveBeenCalledWith('/workspaces/7/chats/persona-budget');
 });

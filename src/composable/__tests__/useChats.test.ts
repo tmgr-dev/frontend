@@ -12,6 +12,7 @@ import {
 	isMuted,
 	markMessageDeleted,
 	mergeMessages,
+	patchMessageStatus,
 	totalUnread,
 } from '@/composable/useChats';
 import { findMentionQuery, insertMention } from '@/utils/chatMentions';
@@ -74,6 +75,34 @@ describe('mergeMessages', () => {
 		expect(out[1].deleted).toBe(true);
 		expect(out[1].body).toBeNull();
 		expect(out[0].deleted).toBe(false);
+	});
+});
+
+describe('persona replies', () => {
+	const pending = (id: number) =>
+		msg(id, {
+			author: { kind: 'persona', id: 9, name: 'Ada' },
+			body: null,
+			status: 'pending',
+		});
+
+	it.each(['done', 'failed', 'canceled'] as const)(
+		'flips a pending message to %s',
+		(status) => {
+			const out = patchMessageStatus([pending(1), pending(2)], 2, status);
+			expect(out[1].status).toBe(status);
+			expect(out[0].status).toBe('pending');
+		},
+	);
+
+	it('leaves the list untouched for an unknown message', () => {
+		const list = [pending(1)];
+		expect(patchMessageStatus(list, 7, 'done')).toBe(list);
+	});
+
+	it('does not allow editing persona messages', () => {
+		const own = msg(1, { author: { kind: 'persona', id: 10, name: 'Ada' } });
+		expect(canEditMessage(own, 10)).toBe(false);
 	});
 });
 

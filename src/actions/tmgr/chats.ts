@@ -6,7 +6,9 @@ export type ChatVisibility = 'workspace' | 'members';
 export type NotifyLevel = 'all' | 'mentions' | 'none';
 
 export interface ChatMember {
-	user_id: number;
+	kind?: 'user' | 'persona';
+	id?: number;
+	user_id: number | null;
 	name: string;
 	role: string;
 	joined_at: string | null;
@@ -48,8 +50,29 @@ export interface ChatAuthor {
 	name: string | null;
 }
 
+export type ChatMessageStatus = 'done' | 'pending' | 'failed' | 'canceled';
+
+export interface ChatInvoker {
+	id: number;
+	name: string;
+}
+
+export interface PersonaReply {
+	persona_id: number;
+	status: 'queued' | 'refused';
+	reason?: string;
+	message_id?: number;
+}
+
+export interface PersonaBudget {
+	used: number | null;
+	limit: number;
+	mine_used: number | null;
+	mine_limit: number;
+}
+
 export interface ChatMention {
-	kind: 'user';
+	kind: 'user' | 'persona';
 	id: number;
 }
 
@@ -81,6 +104,9 @@ export interface ChatMessage {
 	edited_at: string | null;
 	deleted: boolean;
 	created_at: string;
+	status?: ChatMessageStatus;
+	invoked_by?: ChatInvoker | null;
+	persona_replies?: PersonaReply[];
 }
 
 export interface ChatMessageHit {
@@ -127,6 +153,7 @@ export interface ChatMessageEvent {
 	author_id?: number;
 	preview?: string | null;
 	parent_message_id?: number | null;
+	status?: ChatMessageStatus;
 }
 
 export interface ChatReadEvent {
@@ -208,6 +235,28 @@ export const removeChatMember = async (
 ): Promise<void> => {
 	await $axios.delete(`${chat(chatId)}/members/${userId}`);
 };
+
+export const invitePersona = (
+	chatId: number,
+	personaId: string,
+): Promise<ChatMember[]> =>
+	unwrap($axios.post(`${chat(chatId)}/personas`, { persona_id: personaId }));
+
+export const removeChatPersona = async (
+	chatId: number,
+	personaId: number,
+): Promise<void> => {
+	await $axios.delete(`${chat(chatId)}/personas/${personaId}`);
+};
+
+export const cancelPersonaReply = (
+	chatId: number,
+	messageId: number,
+): Promise<ChatMessage> =>
+	unwrap($axios.post(`${chat(chatId)}/messages/${messageId}/cancel`));
+
+export const getPersonaBudget = (workspaceId: number): Promise<PersonaBudget> =>
+	unwrap($axios.get(`${workspace(workspaceId)}/persona-budget`));
 
 export const joinChat = (chatId: number): Promise<Chat> =>
 	unwrap($axios.post(`${chat(chatId)}/join`));

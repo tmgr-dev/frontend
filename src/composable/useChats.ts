@@ -1,4 +1,5 @@
 import {
+	cancelPersonaReply,
 	deleteMessage,
 	editMessage,
 	getChat,
@@ -12,6 +13,7 @@ import {
 	type ChatMention,
 	type ChatMessage,
 	type ChatMessageHit,
+	type ChatMessageStatus,
 	type SendMessagePayload,
 } from '@/actions/tmgr/chats';
 import { usePusher } from '@/composable/usePusher';
@@ -37,6 +39,15 @@ export const markMessageDeleted = (
 	list.map((m) =>
 		m.id === messageId ? { ...m, deleted: true, body: null, files: [] } : m,
 	);
+
+export const patchMessageStatus = (
+	list: ChatMessage[],
+	messageId: number,
+	status: ChatMessageStatus,
+): ChatMessage[] =>
+	list.some((m) => m.id === messageId)
+		? list.map((m) => (m.id === messageId ? { ...m, status } : m))
+		: list;
 
 export const canEditMessage = (
 	message: ChatMessage,
@@ -288,13 +299,14 @@ const closeThread = () => {
 
 const send = async (chatId: number, payload: SendMessagePayload) => {
 	const message = await sendMessage(chatId, payload);
-	if (openChatId.value !== chatId) return;
+	if (openChatId.value !== chatId) return message;
 	if (payload.parent_message_id) {
 		replies.value = mergeMessages(replies.value, [message]);
 		await refreshRoot(chatId, payload.parent_message_id);
 	} else {
 		messages.value = mergeMessages(messages.value, [message]);
 	}
+	return message;
 };
 
 const applyMessage = (message: ChatMessage) => {
@@ -304,6 +316,11 @@ const applyMessage = (message: ChatMessage) => {
 	} else {
 		replies.value = mergeMessages(replies.value, [message]);
 	}
+};
+
+const stopReply = async (message: ChatMessage) => {
+	const fresh = await cancelPersonaReply(message.chat_id, message.id);
+	if (openChatId.value === message.chat_id) applyMessage(fresh);
 };
 
 const removeMessage = async (message: ChatMessage) => {
@@ -369,6 +386,18 @@ const handleEvent = async (type: ChatEventType, payload: ChatEventPayload) => {
 	try {
 		if (type === 'chat.message.created' || type === 'chat.message.updated') {
 			if (type === 'chat.message.updated' && payload.message_id) {
+				if (payload.status) {
+					messages.value = patchMessageStatus(
+						messages.value,
+						payload.message_id,
+						payload.status,
+					);
+					replies.value = patchMessageStatus(
+						replies.value,
+						payload.message_id,
+						payload.status,
+					);
+				}
 				const fresh = await getMessage(payload.chat_id, payload.message_id);
 				if (openChatId.value !== payload.chat_id) return;
 				if (fresh.parent_message_id === null) {
@@ -451,6 +480,7 @@ export const useChats = () => {
 		closeThread,
 		send,
 		saveEdit,
+		stopReply,
 		removeMessage,
 		scheduleMarkRead,
 		markOpenChatRead,
