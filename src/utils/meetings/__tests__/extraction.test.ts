@@ -243,7 +243,7 @@ describe('extractItems', () => {
 		expect(prompts.length).toBeGreaterThan(2);
 		expect(result.items.length).toBeGreaterThan(2);
 		expect(result.dropped).toBe(prompts.length);
-		expect(progress.at(-1)).toBe(prompts.length);
+		expect(progress[progress.length - 1]).toBe(prompts.length);
 	});
 
 	it('stops when cancelled', async () => {

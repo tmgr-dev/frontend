@@ -203,7 +203,7 @@ describe('createOutputs', () => {
 		});
 
 		expect(saved.length).toBeGreaterThanOrEqual(5);
-		expect(saved.at(-1)).toBe(12);
+		expect(saved[saved.length - 1]).toBe(12);
 	});
 
 	it('skips the page when not wanted and creates nothing when nothing is selected', async () => {
