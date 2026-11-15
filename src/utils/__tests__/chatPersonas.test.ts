@@ -1,5 +1,6 @@
 import type { ChatMember, ChatMessage } from '@/actions/tmgr/chats';
 import {
+	agentDisclosureLines,
 	canStopMessage,
 	isPersonaMessage,
 	personaMembers,
@@ -119,5 +120,24 @@ describe('queuedReplyIds', () => {
 			] as never),
 		).toEqual([7]);
 		expect(queuedReplyIds(undefined)).toEqual([]);
+	});
+});
+
+describe('agentDisclosureLines', () => {
+	it('is empty without agent personas', () => {
+		expect(agentDisclosureLines(undefined)).toEqual([]);
+		expect(agentDisclosureLines([])).toEqual([]);
+	});
+
+	it('names the persona owner running the agent, one line each', () => {
+		expect(
+			agentDisclosureLines([
+				{ id: 1, name: 'Ada', run_by: { name: 'Anna' } },
+				{ id: 2, name: 'Bo', run_by: { name: 'Ben' } },
+			]),
+		).toEqual([
+			"This persona is run by Anna's agent. Anna can read this chat.",
+			"This persona is run by Ben's agent. Ben can read this chat.",
+		]);
 	});
 });

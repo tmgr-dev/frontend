@@ -20,6 +20,13 @@
 						/>
 						{{ persona.name }}
 					</label>
+					<p
+						v-if="persona.chat_mode === 'agent'"
+						class="px-3 pb-2 text-xs text-amber-800 dark:text-amber-200"
+						data-testid="chat-invite-agent-note"
+					>
+						{{ $t('chats.persona.agentRunBy', { owner: persona.owner.name }) }}
+					</p>
 				</li>
 				<li v-if="!personas.length" class="px-3 py-2 text-sm text-ink-subtle">
 					{{ $t('chats.persona.inviteNone') }}

@@ -19,6 +19,8 @@ export const PERSONA_PERMISSIONS = [
 	'memory:read',
 	'memory:write',
 	'chats:reply',
+	'chats:read',
+	'chats:write',
 ] as const;
 
 export type PersonaPermission = (typeof PERSONA_PERMISSIONS)[number];
@@ -34,6 +36,7 @@ const READ_PERMISSIONS: ReadonlySet<string> = new Set<PersonaPermission>([
 	'agent_work:read',
 	'pages:read',
 	'memory:read',
+	'chats:read',
 ]);
 
 export const isReadPermission = (permission: string): boolean =>
@@ -41,7 +44,7 @@ export const isReadPermission = (permission: string): boolean =>
 
 export const DEFAULT_GRANT_PERMISSIONS: PersonaPermission[] = [
 	...(Array.from(READ_PERMISSIONS) as PersonaPermission[]).filter(
-		(permission) => permission !== 'pages:read',
+		(permission) => permission !== 'pages:read' && permission !== 'chats:read',
 	),
 	'comments:write',
 	'agent_work:write',
@@ -403,6 +406,7 @@ export interface PersonaAssignee {
 	avatar_url: string | null;
 	owner: { id: number; name: string; has_avatar?: boolean };
 	workspace_id: number | null;
+	chat_mode?: 'server' | 'agent';
 }
 
 interface AssigneeBearing {

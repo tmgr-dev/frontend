@@ -12,6 +12,13 @@ export interface ChatMember {
 	name: string;
 	role: string;
 	joined_at: string | null;
+	run_by?: { name: string } | null;
+}
+
+export interface AgentPersona {
+	id: number;
+	name: string;
+	run_by: { name: string };
 }
 
 export interface ChatLastMessage {
@@ -42,6 +49,7 @@ export interface Chat {
 	created_at: string | null;
 	notify_level: NotifyLevel | null;
 	muted_until: string | null;
+	agent_personas?: AgentPersona[];
 }
 
 export interface ChatAuthor {

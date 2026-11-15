@@ -47,6 +47,7 @@ import {
 	revokeAllMyPersonaTokens,
 	revokeAllPersonaTokens,
 	revokePersonaToken,
+	setPersonaChatMode,
 	setPersonaPolicy,
 	unblockWorkspacePersona,
 	unpinSharedSkill,
@@ -752,5 +753,38 @@ describe('recently deleted shared skills', () => {
 		(axios.post as jest.Mock).mockRejectedValue(new Error('409'));
 		await expect(restoreDeletedSharedSkill('triage', 2)).rejects.toThrow();
 		expect(requestCache.has('shared-skills')).toBe(true);
+	});
+});
+
+describe('setPersonaChatMode', () => {
+	it('PUTs the mode and invalidates grants and assignable personas', async () => {
+		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [GRANT] } });
+		await listWorkspacePersonas(5);
+		await getAssignablePersonas(5);
+		(axios.put as jest.Mock).mockResolvedValue({
+			data: { data: { mode: 'agent', agent_since: 'now' } },
+		});
+		const result = await setPersonaChatMode('uuid-1', 5, 'agent');
+		expect(axios.put).toHaveBeenCalledWith(
+			'/personas/uuid-1/workspaces/5/chat-mode',
+			{ mode: 'agent' },
+		);
+		expect(result).toEqual({ mode: 'agent', agent_since: 'now' });
+		expect(requestCache.has('ws-5-persona-grants')).toBe(false);
+	});
+
+	it('maps a persona_agent_needs_grants 422 to a typed error', async () => {
+		(axios.put as jest.Mock).mockRejectedValue({
+			response: { status: 422, data: { error: 'persona_agent_needs_grants' } },
+		});
+		await expect(
+			setPersonaChatMode('uuid-1', 5, 'agent'),
+		).rejects.toMatchObject({ code: 'persona_agent_needs_grants' });
+	});
+
+	it('rethrows other errors unchanged', async () => {
+		const error = new Error('500');
+		(axios.put as jest.Mock).mockRejectedValue(error);
+		await expect(setPersonaChatMode('uuid-1', 5, 'server')).rejects.toBe(error);
 	});
 });

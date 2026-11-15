@@ -96,6 +96,48 @@
 					>
 						{{ $t('settingsPages.personaWorkspaceGrants.chatsWarning') }}
 					</p>
+					<label class="flex items-center gap-2 text-xs">
+						<Switch
+							:checked="!!grantFor(ws.id)?.permissions.includes(CHATS_READ)"
+							:disabled="!!saving[ws.id]"
+							@update:checked="(v) => togglePermission(ws.id, CHATS_READ, v)"
+						/>
+						{{ $t('settingsPages.personaWorkspaceGrants.readChats') }}
+					</label>
+					<label class="flex items-center gap-2 text-xs">
+						<Switch
+							:checked="!!grantFor(ws.id)?.permissions.includes(CHATS_WRITE)"
+							:disabled="!!saving[ws.id]"
+							@update:checked="(v) => togglePermission(ws.id, CHATS_WRITE, v)"
+						/>
+						{{ $t('settingsPages.personaWorkspaceGrants.writeChats') }}
+					</label>
+					<label class="flex flex-col gap-1 text-xs">
+						{{ $t('settingsPages.personaWorkspaceGrants.chatReplies') }}
+						<select
+							class="h-8 w-fit rounded-md border border-border bg-background px-2 text-xs"
+							data-testid="persona-chat-mode"
+							:value="grantFor(ws.id)?.chat_mode ?? 'server'"
+							:disabled="!!saving[ws.id]"
+							@change="
+								(e) =>
+									changeChatMode(
+										ws.id,
+										(e.target as HTMLSelectElement).value as PersonaChatMode,
+									)
+							"
+						>
+							<option value="server">
+								{{ $t('settingsPages.personaWorkspaceGrants.chatModeServer') }}
+							</option>
+							<option value="agent">
+								{{ $t('settingsPages.personaWorkspaceGrants.chatModeAgent') }}
+							</option>
+						</select>
+					</label>
+					<p class="text-2xs text-muted-foreground">
+						{{ $t('settingsPages.personaWorkspaceGrants.chatModeHelp') }}
+					</p>
 				</template>
 				<p class="text-2xs text-muted-foreground">
 					{{
@@ -114,9 +156,12 @@
 <script lang="ts">
 	import {
 		listWorkspacePersonas,
+		PersonaChatModeError,
 		removeWorkspaceGrant,
+		setPersonaChatMode,
 		upsertWorkspaceGrant,
 		type Persona,
+		type PersonaChatMode,
 		type PersonaGrant,
 	} from '@/actions/tmgr/personas';
 	import { getWorkspaceModules } from '@/actions/tmgr/modules';
@@ -169,8 +214,10 @@
 				grantsByWorkspace[workspaceId] ?? null;
 
 			const CHATS_REPLY = 'chats:reply';
+			const CHATS_READ = 'chats:read';
+			const CHATS_WRITE = 'chats:write';
 			const LISTED_PERMISSIONS = PERSONA_PERMISSIONS.filter(
-				(p) => p !== CHATS_REPLY,
+				(p) => p !== CHATS_REPLY && p !== CHATS_READ && p !== CHATS_WRITE,
 			);
 
 			const isDesktop = isDesktopApp();
@@ -265,6 +312,32 @@
 				}
 			};
 
+			const changeChatMode = async (
+				workspaceId: number,
+				mode: PersonaChatMode,
+			) => {
+				const current = grantFor(workspaceId);
+				if (!current) return;
+				saving[workspaceId] = true;
+				try {
+					await setPersonaChatMode(props.persona.id, workspaceId, mode);
+					grantsByWorkspace[workspaceId] = { ...current, chat_mode: mode };
+				} catch (error) {
+					grantsByWorkspace[workspaceId] = { ...current };
+					toast({
+						title: t('settingsPages.personaWorkspaceGrants.chatModeFailed'),
+						description:
+							error instanceof PersonaChatModeError &&
+							error.code === 'persona_agent_needs_grants'
+								? t('settingsPages.personaWorkspaceGrants.chatModeNeedsGrants')
+								: undefined,
+						variant: 'destructive',
+					});
+				} finally {
+					saving[workspaceId] = false;
+				}
+			};
+
 			onMounted(load);
 
 			return {
@@ -275,8 +348,11 @@
 				grantFor,
 				toggle,
 				togglePermission,
+				changeChatMode,
 				LISTED_PERMISSIONS,
 				CHATS_REPLY,
+				CHATS_READ,
+				CHATS_WRITE,
 				isDesktop,
 				goToLocalPersonas,
 			};

@@ -569,6 +569,14 @@
 		"blockedByCreator": "Blocked by the workspace creator",
 		"permissionsFailed": "Could not update permissions",
 		"allowInChats": "Allow in chats",
+		"readChats": "Read chats",
+		"writeChats": "Write in chats",
+		"chatReplies": "Chat replies",
+		"chatModeServer": "TMGR AI",
+		"chatModeAgent": "Your own agent",
+		"chatModeHelp": "Your agent answers mentions through MCP with this persona's token. Chat members will see that you can read the chats this persona is in.",
+		"chatModeNeedsGrants": "Turn on Read chats and Write in chats first.",
+		"chatModeFailed": "Could not change chat replies",
 		"chatsWarning": "Chat members can see this persona's answers and may be able to get it to reveal its instructions."
 	},
 	"personaMemory": {

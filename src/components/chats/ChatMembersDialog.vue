@@ -19,6 +19,14 @@
 						data-testid="chat-member-ai"
 						>{{ $t('chats.persona.badge') }}</span
 					>
+					<span
+						v-if="member.run_by"
+						class="truncate text-xs text-ink-subtle"
+						data-testid="chat-member-run-by"
+						>{{
+							$t('chats.persona.agentRunByHint', { owner: member.run_by.name })
+						}}</span
+					>
 					<span class="flex-1"></span>
 					<Button
 						v-if="member.kind === 'persona' && canModerate"

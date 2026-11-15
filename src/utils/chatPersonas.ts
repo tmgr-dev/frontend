@@ -1,8 +1,10 @@
 import type {
+	AgentPersona,
 	ChatMember,
 	ChatMessage,
 	PersonaReply,
 } from '@/actions/tmgr/chats';
+import { t } from '@/i18n';
 
 const REFUSAL_REASONS = [
 	'busy',
@@ -43,3 +45,10 @@ export const queuedReplyIds = (replies: PersonaReply[] | undefined): number[] =>
 	(replies ?? [])
 		.filter((r) => r.status === 'queued' && r.message_id != null)
 		.map((r) => r.message_id as number);
+
+export const agentDisclosureLines = (
+	personas: AgentPersona[] | undefined,
+): string[] =>
+	(personas ?? []).map((p) =>
+		t('chats.persona.agentRunBy', { owner: p.run_by.name }),
+	);

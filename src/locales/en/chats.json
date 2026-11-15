@@ -71,6 +71,8 @@
 	"unarchiveChannel": "Unarchive channel",
 	"unmute": "Unmute",
 	"persona": {
+		"agentRunBy": "This persona is run by {owner}'s agent. {owner} can read this chat.",
+		"agentRunByHint": "Run by {owner}'s agent",
 		"badge": "AI",
 		"budget": "Persona replies today: {used} of {limit}",
 		"failed": "Couldn't reply. Try again.",

@@ -54,6 +54,14 @@
 				</header>
 
 				<div
+					v-if="chat.can_read && agentLines.length"
+					class="flex flex-col gap-0.5 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+					data-testid="chat-agent-banner"
+				>
+					<p v-for="(line, i) in agentLines" :key="i">{{ line }}</p>
+				</div>
+
+				<div
 					v-if="!chat.can_read"
 					class="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center"
 				>
@@ -164,7 +172,7 @@
 	import { t } from '@/i18n';
 	import { reportPersonaRefusals } from '@/utils/chatPersonaToasts';
 	import { isOpenChannel } from '@/utils/chatForward';
-	import { personaMembers } from '@/utils/chatPersonas';
+	import { agentDisclosureLines, personaMembers } from '@/utils/chatPersonas';
 	import { Lock, Users } from 'lucide-vue-next';
 	import { computed, defineComponent, nextTick, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -259,6 +267,10 @@
 					kind: 'persona' as const,
 				})),
 			]);
+
+			const agentLines = computed(() =>
+				agentDisclosureLines(chat.value?.agent_personas),
+			);
 
 			const loadChatMembers = async () => {
 				const id = chatId.value;
@@ -374,6 +386,7 @@
 			const openChannel = computed(() => isOpenChannel(chat.value));
 
 			return {
+				agentLines,
 				openChannel,
 				chat,
 				title,

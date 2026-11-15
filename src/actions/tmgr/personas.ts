@@ -132,9 +132,12 @@ export interface DeletedSharedSkillVersion extends DeletedSharedSkillVersionRow 
 	body: string;
 }
 
+export type PersonaChatMode = 'server' | 'agent';
+
 export interface PersonaGrant {
 	persona: PersonaGrantSummary;
 	workspace_id: number;
+	chat_mode?: PersonaChatMode;
 	permissions: string[];
 	blocked: boolean;
 	blocked_at: string | null;
@@ -728,6 +731,40 @@ export const upsertWorkspaceGrant = async (
 	requestCache.invalidate(workspaceGrantsKey(workspaceId));
 	invalidateAssignable(workspaceId);
 	return data;
+};
+
+export class PersonaChatModeError extends Error {
+	code: string;
+
+	constructor(code: string) {
+		super(code);
+		this.code = code;
+	}
+}
+
+export const setPersonaChatMode = async (
+	personaUuid: string,
+	workspaceId: number,
+	mode: PersonaChatMode,
+): Promise<{ mode: PersonaChatMode; agent_since: string | null }> => {
+	try {
+		const {
+			data: { data },
+		} = await $axios.put(
+			`/personas/${personaUuid}/workspaces/${workspaceId}/chat-mode`,
+			{ mode },
+		);
+		requestCache.invalidate(workspaceGrantsKey(workspaceId));
+		invalidateAssignable(workspaceId);
+		return data;
+	} catch (error) {
+		const response = (
+			error as { response?: { status?: number; data?: { error?: string } } }
+		)?.response;
+		if (response?.status === 422 && response.data?.error)
+			throw new PersonaChatModeError(response.data.error);
+		throw error;
+	}
 };
 
 export const removeWorkspaceGrant = async (
