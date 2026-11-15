@@ -77,7 +77,7 @@ fn lists_answers_and_ignores_without_a_runner() {
     h.seed();
     let v = h.json(&["--json", "questions"]);
     assert_eq!(v["data"]["questions"].as_array().unwrap().len(), 2);
-    assert_eq!(v["data"]["haiku"], true);
+    assert_eq!(v["data"]["haiku"], false);
     h.json(&["--json", "questions", "answer", "aaaa"]);
     h.json(&["--json", "questions", "ignore", "bbbb"]);
     let v = h.json(&["--json", "questions"]);
@@ -96,11 +96,15 @@ fn lists_answers_and_ignores_without_a_runner() {
 }
 
 #[test]
-fn haiku_can_be_turned_off() {
+fn haiku_can_be_turned_on_and_off() {
     let h = Home::new();
-    let v = h.json(&["--json", "questions", "haiku", "off"]);
+    let v = h.json(&["--json", "questions", "haiku"]);
     assert_eq!(v["data"]["haiku"], false);
+    let v = h.json(&["--json", "questions", "haiku", "on"]);
+    assert_eq!(v["data"]["haiku"], true);
     let v = h.json(&["--json", "questions"]);
+    assert_eq!(v["data"]["haiku"], true);
+    let v = h.json(&["--json", "questions", "haiku", "off"]);
     assert_eq!(v["data"]["haiku"], false);
 }
 

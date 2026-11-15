@@ -33,7 +33,7 @@ pub enum QuestionsCommand {
         #[arg(value_name = "ID")]
         id: String,
     },
-    /// Show or change asking Haiku (through your own `claude`) to tell real questions from rhetorical ones
+    /// Show or change asking Haiku (through your own `claude`) to tell real questions from rhetorical ones. Off by default
     Haiku {
         #[arg(value_enum)]
         state: Option<Switch>,
@@ -96,7 +96,7 @@ fn haiku(store: &Store, state: Option<Switch>) -> Result<Output> {
     let human = if settings.haiku {
         "Haiku is on: the text of an agent message that looks like it asks something is sent through your own `claude` command (model haiku) to pick the real questions"
     } else {
-        "Haiku is off: questions are found by rules only and nothing is sent anywhere"
+        "Haiku is off: questions are found by rules only and nothing is sent anywhere. Turn it on with `tmgr questions haiku on`"
     };
     Ok(Output::new(
         json!({"haiku": settings.haiku}),
@@ -211,7 +211,7 @@ mod tests {
         assert!(!out.human.contains('\u{1b}'));
         assert_eq!(out.data["questions"].as_array().unwrap().len(), 2);
         assert_eq!(out.data["questions"][0]["id"], "bbbb33334444");
-        assert_eq!(out.data["haiku"], true);
+        assert_eq!(out.data["haiku"], false);
     }
 
     #[test]
@@ -247,13 +247,17 @@ mod tests {
         assert!(haiku(&store, None)
             .unwrap()
             .human
-            .starts_with("Haiku is on"));
-        assert!(haiku(&store, Some(Switch::Off))
+            .starts_with("Haiku is off"));
+        assert!(haiku(&store, Some(Switch::On))
             .unwrap()
             .human
-            .starts_with("Haiku is off"));
+            .starts_with("Haiku is on"));
+        assert!(store.settings().haiku);
+        assert_eq!(
+            haiku(&store, Some(Switch::Off)).unwrap().data["haiku"],
+            false
+        );
         assert!(!store.settings().haiku);
-        assert_eq!(haiku(&store, Some(Switch::On)).unwrap().data["haiku"], true);
     }
 
     #[test]

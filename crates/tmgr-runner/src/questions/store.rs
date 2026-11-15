@@ -83,16 +83,10 @@ struct Mark {
     at_s: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub haiku: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Settings { haiku: true }
-    }
 }
 
 #[derive(Clone, Debug)]
