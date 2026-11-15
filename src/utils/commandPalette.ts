@@ -112,6 +112,7 @@ export interface NavFlags {
 	pages: boolean;
 	files: boolean;
 	map: boolean;
+	chats?: boolean;
 	aiUsage: boolean;
 }
 
@@ -173,6 +174,11 @@ export const navTargets = (code: string, flags: NavFlags): NavTarget[] =>
 			key: 'map',
 			label: t('general.helpers.navTargets.map'),
 			to: `/${code}/map`,
+		},
+		flags.chats && {
+			key: 'chats',
+			label: t('general.helpers.navTargets.chats'),
+			to: `/${code}/chats`,
 		},
 		{
 			key: 'settings',

@@ -12,6 +12,8 @@ import type {
 import type {
 	ActionError,
 	Activity,
+	ChatEventPayload,
+	ChatEventType,
 	DashboardStatistics,
 	EventHandlers,
 	PageEventPayload,
@@ -37,6 +39,16 @@ const PAGE_EVENT_TYPES: PageEventType[] = [
 	'page.purged',
 	'page.restored',
 	'page.moved',
+];
+
+const CHAT_EVENT_TYPES: ChatEventType[] = [
+	'chat.message.created',
+	'chat.message.updated',
+	'chat.message.deleted',
+	'chat.reaction.changed',
+	'chat.read',
+	'chat.member.changed',
+	'chat.changed',
 ];
 
 // Connection state type
@@ -616,6 +628,15 @@ export function usePusher(): UsePusherReturn {
 					const sub = routed(channelName, data);
 					if (sub) {
 						sub.handlers.forEach((h) => h.onPageEvent?.(type, data));
+					}
+				});
+			});
+
+			CHAT_EVENT_TYPES.forEach((type) => {
+				channel.listen(`.${type}`, (data: ChatEventPayload) => {
+					const sub = routed(channelName, data);
+					if (sub) {
+						sub.handlers.forEach((h) => h.onChatEvent?.(type, data));
 					}
 				});
 			});

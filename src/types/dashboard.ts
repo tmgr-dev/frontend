@@ -782,6 +782,27 @@ export interface TaskAssignmentEvent {
 	personas?: Array<{ uuid: string; name: string; owner_user_id: number }>;
 }
 
+export type ChatEventType =
+	| 'chat.message.created'
+	| 'chat.message.updated'
+	| 'chat.message.deleted'
+	| 'chat.reaction.changed'
+	| 'chat.read'
+	| 'chat.member.changed'
+	| 'chat.changed';
+
+export interface ChatEventPayload {
+	chat_id: number;
+	message_id?: number;
+	author_id?: number;
+	preview?: string | null;
+	parent_message_id?: number | null;
+	last_read_message_id?: number;
+	action?: string;
+	user_id?: number;
+	user_ids?: number[];
+}
+
 export type PageEventType =
 	| 'page.created'
 	| 'page.updated'
@@ -832,6 +853,7 @@ export interface EventHandlers {
 	onMemorySummarizeProgress?: (e: MemorySummarizeProgressEvent) => void;
 	onMemorySummarizeDone?: (e: MemorySummarizeDoneEvent) => void;
 	onPageEvent?: (type: PageEventType, payload: PageEventPayload) => void;
+	onChatEvent?: (type: ChatEventType, payload: ChatEventPayload) => void;
 	onError?: (error: ActionError) => void;
 	onReconnect?: () => void;
 }

@@ -62,6 +62,7 @@ const SURFACE_FILES: Record<SurfaceId, string[]> = {
 	],
 	'assignees.task-row': ['pages/NewForm.vue'],
 	'assignees.board-filter': ['components/general/FiltersBoard.vue'],
+	'chats.nav': ['components/general/CustomSidebar.vue'],
 };
 
 const read = (file: string) =>

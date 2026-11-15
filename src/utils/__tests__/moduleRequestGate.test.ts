@@ -35,6 +35,8 @@ describe('moduleKeyForRequest', () => {
 		['pages/tree', 'pages'],
 		['tasks/9/pages', 'pages'],
 		['graph/related', 'graph'],
+		['workspaces/3/chats', 'chats'],
+		['chats/5/messages', 'chats'],
 	])('%s belongs to %s', (url, key) => {
 		expect(moduleKeyForRequest(url)).toBe(key);
 	});

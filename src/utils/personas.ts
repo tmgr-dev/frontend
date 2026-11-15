@@ -17,6 +17,7 @@ export const PERSONA_PERMISSIONS = [
 	'pages:write',
 	'memory:read',
 	'memory:write',
+	'chats:reply',
 ] as const;
 
 export type PersonaPermission = (typeof PERSONA_PERMISSIONS)[number];

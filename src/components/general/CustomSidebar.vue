@@ -84,6 +84,8 @@
 	import { useDemoWorkspace } from '@/composable/useDemoWorkspace';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import { usePusher } from '@/composable/usePusher';
+	import { listChats } from '@/actions/tmgr/chats';
 	import { useNavHistory } from '@/composable/useNavHistory';
 	import { isLocalWorkspaceId } from '@/local/classify';
 	import { openMoveDialog } from '@/local/moveToCloud/ui';
@@ -97,7 +99,7 @@
 	import { requestCache } from '@/utils/requestCache';
 	import { serverMessageFrom } from '@/utils/serverError';
 	import { workspaceIconStyle } from '@/utils/workspaceColor';
-	import { useMediaQuery } from '@vueuse/core';
+	import { useDebounceFn, useEventListener, useMediaQuery } from '@vueuse/core';
 	import {
 		ArchiveIcon,
 		ArrowLeft,
@@ -118,6 +120,7 @@
 		LayoutDashboard,
 		LifeBuoy,
 		LogOut,
+		MessageSquare,
 		Package,
 		PackageOpen,
 		PaperclipIcon,
@@ -172,6 +175,10 @@
 	);
 	const showAskAi = computed(
 		() => !isDesktop && !isLocalOnly.value && isFeatureEnabled('ai.assistant'),
+	);
+	const showChats = computed(
+		() =>
+			!isLocalOnly.value && !isLocalWorkspace.value && showSurface('chats.nav'),
 	);
 	const NAV_ACTIVE =
 		'[&.router-link-active]:bg-sidebar-primary/10 [&.router-link-active]:font-medium dark:[&.router-link-active]:bg-sidebar-primary/15 [&.router-link-active>svg]:text-sidebar-primary';
@@ -247,6 +254,55 @@
 	}
 
 	const activeWorkspace = ref(workspaces.value[0]);
+	const chatsUnread = ref(0);
+	const chatsUnreadLabel = computed(() =>
+		chatsUnread.value > 99 ? '99+' : String(chatsUnread.value),
+	);
+	async function refreshChatsUnread() {
+		const workspaceId = activeWorkspace.value?.id;
+		if (!showChats.value || !workspaceId) {
+			chatsUnread.value = 0;
+			return;
+		}
+		try {
+			const chats = await listChats(Number(workspaceId));
+			if (Number(activeWorkspace.value?.id) !== Number(workspaceId)) return;
+			chatsUnread.value = chats.reduce((sum, c) => sum + (c.unread ?? 0), 0);
+		} catch {
+			chatsUnread.value = 0;
+		}
+	}
+	const refreshChatsUnreadDebounced = useDebounceFn(refreshChatsUnread, 500);
+	useEventListener(window, 'focus', refreshChatsUnreadDebounced);
+	watch(
+		() => [showChats.value, activeWorkspace.value?.id],
+		refreshChatsUnread,
+		{ immediate: true },
+	);
+	let chatsChannel: string | null = null;
+	let chatsSubscription: string | null = null;
+	watch(
+		() => [showChats.value, store.state.user?.id],
+		([enabled, userId]) => {
+			if (chatsChannel && chatsSubscription) {
+				usePusher().unsubscribeHandler(chatsChannel, chatsSubscription);
+				chatsChannel = chatsSubscription = null;
+			}
+			if (!enabled || !userId) return;
+			chatsChannel = `App.User.${userId}`;
+			chatsSubscription = usePusher().subscribeToUser(Number(userId), {
+				onChatEvent: () => {
+					refreshChatsUnreadDebounced();
+				},
+			});
+		},
+		{ immediate: true },
+	);
+	onBeforeUnmount(() => {
+		if (chatsChannel && chatsSubscription) {
+			usePusher().unsubscribeHandler(chatsChannel, chatsSubscription);
+		}
+	});
 
 	const sidebarPending = ref(false),
 		sidebarError = ref<string | null>(null);
@@ -937,6 +993,27 @@
 										<span>{{ $t('nav.sidebar.files') }}</span>
 									</router-link>
 								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem v-if="activeWorkspace?.code && showChats">
+								<SidebarMenuButton as-child>
+									<router-link
+										:to="`/${activeWorkspace.code}/chats`"
+										:class="NAV_ACTIVE"
+									>
+										<MessageSquare />
+										<span>{{ $t('nav.sidebar.chats') }}</span>
+									</router-link>
+								</SidebarMenuButton>
+								<SidebarMenuBadge
+									v-if="chatsUnread > 0"
+									class="rounded-full bg-sidebar-primary/15 px-1.5 text-2xs font-semibold text-sidebar-primary dark:bg-sidebar-primary/25"
+									data-testid="chats-unread-badge"
+									:aria-label="
+										$t('nav.sidebar.chatsUnread', { count: chatsUnreadLabel })
+									"
+								>
+									{{ chatsUnreadLabel }}
+								</SidebarMenuBadge>
 							</SidebarMenuItem>
 							<SidebarMenuItem
 								v-if="activeWorkspace?.code && pagesEnabled && !isLocalOnly"

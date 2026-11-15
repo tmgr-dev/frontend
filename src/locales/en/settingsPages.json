@@ -567,7 +567,9 @@
 		"effective": "Effective here: {permissions}",
 		"changeFailed": "Could not change this workspace",
 		"blockedByCreator": "Blocked by the workspace creator",
-		"permissionsFailed": "Could not update permissions"
+		"permissionsFailed": "Could not update permissions",
+		"allowInChats": "Allow in chats",
+		"chatsWarning": "Chat members can see this persona's answers and may be able to get it to reveal its instructions."
 	},
 	"personaMemory": {
 		"secretDetected": "Looks like a secret — not saved",

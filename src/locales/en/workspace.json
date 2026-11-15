@@ -407,7 +407,10 @@
 			"pageCreated": "New page",
 			"pageUpdated": "Page updated",
 			"pageMentioned": "You were mentioned on a page",
-			"memoryAdded": "Added to memory"
+			"memoryAdded": "Added to memory",
+			"chatDm": "New direct message",
+			"chatMention": "You were mentioned in a chat",
+			"chatThreadReply": "New reply in a chat thread"
 		}
 	}
 }

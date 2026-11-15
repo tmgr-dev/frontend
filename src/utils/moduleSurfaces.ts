@@ -23,6 +23,7 @@ export const SURFACES = {
 	'comments.count': ['task.comments'],
 	'assignees.task-row': ['task.assignees'],
 	'assignees.board-filter': ['task.assignees'],
+	'chats.nav': ['chats'],
 } as const;
 
 export type SurfaceId = keyof typeof SURFACES;

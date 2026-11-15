@@ -811,6 +811,31 @@ const routes = [
 		name: 'PageWindow',
 	},
 	{
+		path: '/:workspace_code/chats',
+		component: gatedPage(
+			'chats',
+			'Chats',
+			() => import('@/pages/Chats/ChatsLayout.vue'),
+		),
+		meta: {
+			title: 'chats.title',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
+		children: [
+			{
+				path: '',
+				name: 'Chats',
+				component: { render: () => null },
+			},
+			{
+				path: ':chat_id(\\d+)',
+				name: 'ChatView',
+				component: () => import('@/pages/Chats/ChatView.vue'),
+			},
+		],
+	},
+	{
 		path: '/:workspace_code/pages',
 		component: () => import('@/pages/PagesLayout.vue'),
 		meta: {

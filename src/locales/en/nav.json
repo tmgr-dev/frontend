@@ -30,6 +30,8 @@
 		"meetings": "Meeting transcripts",
 		"files": "Files",
 		"memory": "Memory",
+		"chats": "Chats",
+		"chatsUnread": "{count} unread chat messages",
 		"personaMemory": "Persona memory",
 		"map": "Map",
 		"gettingStarted": "Getting started",

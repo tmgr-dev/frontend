@@ -30,6 +30,9 @@ const NOTIFICATION_TYPES = [
 	'page_updated',
 	'page_mentioned',
 	'memory_added',
+	'chat_dm',
+	'chat_mention',
+	'chat_thread_reply',
 ];
 
 const camelType = (type: string): string =>
@@ -62,6 +65,9 @@ export const notificationTitle = (notification: {
 	);
 };
 
+export const isChatNotification = (type: string): boolean =>
+	normalizeNotificationType(type).startsWith('chat_');
+
 export const isPageNotification = (type: string): boolean =>
 	normalizeNotificationType(type).startsWith('page_');
 
@@ -86,8 +92,12 @@ export const notificationTarget = (
 		}
 		return link;
 	}
-	if (!isPageNotification(notification.type ?? '')) return null;
 	const data = notification.data ?? {};
+	if (isChatNotification(notification.type ?? '')) {
+		if (!data.chat_id || !workspaceCode) return null;
+		return `/${workspaceCode}/chats/${encodeURIComponent(String(data.chat_id))}`;
+	}
+	if (!isPageNotification(notification.type ?? '')) return null;
 	const target = data.page_slug ?? data.slug ?? data.page_id;
 	if (!target || !workspaceCode) return null;
 	return `/${workspaceCode}/pages/${encodeURIComponent(String(target))}`;

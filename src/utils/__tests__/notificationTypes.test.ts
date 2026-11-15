@@ -92,3 +92,16 @@ describe('notificationTitle', () => {
 		);
 	});
 });
+
+describe('chat notifications', () => {
+	it('labels chat types', () => {
+		expect(notificationTypeLabel('chat_mention')).toBe(
+			'You were mentioned in a chat',
+		);
+	});
+	it('targets the chat from data when there is no link', () => {
+		expect(
+			notificationTarget({ type: 'chat_dm', data: { chat_id: 7 } }, 'acme'),
+		).toBe('/acme/chats/7');
+	});
+});

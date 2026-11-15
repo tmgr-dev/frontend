@@ -233,6 +233,10 @@
 					pages: pagesEnabled.value,
 					files: showSurface('files.nav'),
 					map: isFeatureEnabled('graph'),
+					chats:
+						!store.getters.isLocalOnly &&
+						!workspace.value.is_local &&
+						showSurface('chats.nav'),
 					aiUsage: isDesktop,
 				});
 				return rankByLabel(targets, trimmed.value, (t) => t.label).map(

@@ -31,6 +31,8 @@ const RULES: Array<[RegExp, string]> = [
 	[/^pages(\/|$)/, 'pages'],
 	[/^tasks\/[^/]+\/pages$/, 'pages'],
 	[/^graph(\/|$)/, 'graph'],
+	[/^chats(\/|$)/, 'chats'],
+	[/^workspaces\/[^/]+\/chats(\/|$)/, 'chats'],
 ];
 
 export const moduleKeyForRequest = (url: string | undefined): string | null => {

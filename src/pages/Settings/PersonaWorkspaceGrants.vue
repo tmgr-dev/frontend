@@ -61,7 +61,7 @@
 				class="flex flex-col gap-1 border-t border-border pt-2"
 			>
 				<label
-					v-for="perm in PERSONA_PERMISSIONS"
+					v-for="perm in LISTED_PERMISSIONS"
 					:key="perm"
 					class="flex items-center gap-2 text-xs"
 				>
@@ -81,6 +81,20 @@
 					/>
 					{{ perm }}
 				</label>
+				<label class="flex items-center gap-2 text-xs">
+					<Switch
+						:checked="!!grantFor(ws.id)?.permissions.includes(CHATS_REPLY)"
+						:disabled="!!saving[ws.id]"
+						@update:checked="(v) => togglePermission(ws.id, CHATS_REPLY, v)"
+					/>
+					{{ $t('settingsPages.personaWorkspaceGrants.allowInChats') }}
+				</label>
+				<p
+					v-if="grantFor(ws.id)?.permissions.includes(CHATS_REPLY)"
+					class="text-2xs text-amber-700 dark:text-amber-300"
+				>
+					{{ $t('settingsPages.personaWorkspaceGrants.chatsWarning') }}
+				</p>
 				<p class="text-2xs text-muted-foreground">
 					{{
 						$t('settingsPages.personaWorkspaceGrants.effective', {
@@ -148,6 +162,11 @@
 
 			const grantFor = (workspaceId: number): PersonaGrant | null =>
 				grantsByWorkspace[workspaceId] ?? null;
+
+			const CHATS_REPLY = 'chats:reply';
+			const LISTED_PERMISSIONS = PERSONA_PERMISSIONS.filter(
+				(p) => p !== CHATS_REPLY,
+			);
 
 			const isDesktop = isDesktopApp();
 
@@ -243,7 +262,8 @@
 				grantFor,
 				toggle,
 				togglePermission,
-				PERSONA_PERMISSIONS,
+				LISTED_PERMISSIONS,
+				CHATS_REPLY,
 				isDesktop,
 				goToLocalPersonas,
 			};

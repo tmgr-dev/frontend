@@ -226,6 +226,22 @@ describe('classify pages endpoints', () => {
 	});
 });
 
+describe('classify chats endpoints', () => {
+	it('goes to the server outside a local workspace', () => {
+		expect(classify('GET', 'workspaces/3/chats', false)).toBe('server');
+	});
+
+	it('never reaches the server from a local workspace', () => {
+		for (const [method, url] of [
+			['GET', 'workspaces/3/chats'],
+			['GET', 'chats/5/messages'],
+			['POST', 'chats/5/messages'],
+		]) {
+			expect(classify(method, url, true)).toBe('local');
+		}
+	});
+});
+
 describe('pages endpoints in the local API', () => {
 	const api = createLocalApi();
 

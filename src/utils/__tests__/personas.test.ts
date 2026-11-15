@@ -578,3 +578,13 @@ describe('memory permissions', () => {
 		]);
 	});
 });
+
+describe('chats permission', () => {
+	it('is listed, never default, and dropped by read_only', () => {
+		expect(PERSONA_PERMISSIONS).toContain('chats:reply');
+		expect(DEFAULT_GRANT_PERMISSIONS).not.toContain('chats:reply');
+		expect(effectivePermissions(['chats:reply'], 'read_only', false)).toEqual(
+			[],
+		);
+	});
+});
