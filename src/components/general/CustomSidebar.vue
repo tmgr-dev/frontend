@@ -33,6 +33,7 @@
 	import DarkMode from '@/components/general/DarkMode.vue';
 	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
 	import GlobalSearch from '@/components/general/GlobalSearch.vue';
+	import LanguageMenuItem from '@/components/general/LanguageMenuItem.vue';
 	import ModulesPicker from '@/components/general/ModulesPicker.vue';
 	import NotificationBell from '@/components/notifications/NotificationBell.vue';
 	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
@@ -1148,6 +1149,7 @@
 										<DropdownMenuItem>
 											<DarkMode />
 										</DropdownMenuItem>
+										<LanguageMenuItem />
 									</DropdownMenuGroup>
 
 									<template v-if="!isLocalOnly">

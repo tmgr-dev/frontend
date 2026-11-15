@@ -45,7 +45,9 @@
 		"exitFailed": "退出工作区失败，请重试。",
 		"loadFailed": "部分导航数据无法加载。",
 		"featuresFailed": "无法加载工作区功能。",
-		"badgePending": "{title}，{count} 项待处理"
+		"badgePending": "{title}，{count} 项待处理",
+		"language": "语言",
+		"languageSaveFailed": "无法保存语言"
 	},
 	"account": {
 		"settings": "设置",

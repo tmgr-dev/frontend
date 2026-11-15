@@ -1,10 +1,4 @@
 {
-	"language": {
-		"title": "Język",
-		"label": "Język interfejsu",
-		"description": "Używany w aplikacji, e-mailach i powiadomieniach.",
-		"saveFailed": "Nie udało się zapisać języka"
-	},
 	"page": {
 		"settings": "Ustawienia",
 		"profile": "Profil",

@@ -47,7 +47,9 @@
 		"exitFailed": "Failed to exit workspace. Please try again.",
 		"loadFailed": "Some navigation data could not be loaded.",
 		"featuresFailed": "Could not load workspace features.",
-		"badgePending": "{title}, {count} pending"
+		"badgePending": "{title}, {count} pending",
+		"language": "Language",
+		"languageSaveFailed": "Failed to save the language"
 	},
 	"account": {
 		"settings": "Settings",

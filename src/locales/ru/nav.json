@@ -45,7 +45,9 @@
 		"exitFailed": "Не удалось выйти из рабочего пространства. Попробуйте ещё раз.",
 		"loadFailed": "Не удалось загрузить часть данных навигации.",
 		"featuresFailed": "Не удалось загрузить функции рабочего пространства.",
-		"badgePending": "{title}, ожидает: {count}"
+		"badgePending": "{title}, ожидает: {count}",
+		"language": "Язык",
+		"languageSaveFailed": "Не удалось сохранить язык"
 	},
 	"account": {
 		"settings": "Настройки",

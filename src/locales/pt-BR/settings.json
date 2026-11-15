@@ -1,10 +1,4 @@
 {
-	"language": {
-		"title": "Idioma",
-		"label": "Idioma da interface",
-		"description": "Usado em todo o aplicativo, nos e-mails e nas notificações.",
-		"saveFailed": "Não foi possível salvar o idioma"
-	},
 	"page": {
 		"settings": "Configurações",
 		"profile": "Perfil",

@@ -45,7 +45,9 @@
 		"exitFailed": "워크스페이스에서 나가지 못했어요. 다시 시도해 주세요.",
 		"loadFailed": "일부 탐색 데이터를 불러오지 못했어요.",
 		"featuresFailed": "워크스페이스 기능을 불러오지 못했어요.",
-		"badgePending": "{title}, 대기 중 {count}건"
+		"badgePending": "{title}, 대기 중 {count}건",
+		"language": "언어",
+		"languageSaveFailed": "언어를 저장하지 못했습니다"
 	},
 	"account": {
 		"settings": "설정",

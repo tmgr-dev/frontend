@@ -45,7 +45,9 @@
 		"exitFailed": "Não foi possível sair do espaço de trabalho. Tente novamente.",
 		"loadFailed": "Não foi possível carregar alguns dados de navegação.",
 		"featuresFailed": "Não foi possível carregar os recursos do espaço de trabalho.",
-		"badgePending": "{title}, {count} pendentes"
+		"badgePending": "{title}, {count} pendentes",
+		"language": "Idioma",
+		"languageSaveFailed": "Falha ao salvar o idioma"
 	},
 	"account": {
 		"settings": "Configurações",

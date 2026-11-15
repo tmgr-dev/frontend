@@ -45,7 +45,9 @@
 		"exitFailed": "Nie udało się opuścić przestrzeni roboczej. Spróbuj ponownie.",
 		"loadFailed": "Nie udało się wczytać części danych nawigacji.",
 		"featuresFailed": "Nie udało się wczytać funkcji przestrzeni roboczej.",
-		"badgePending": "{title}, oczekuje: {count}"
+		"badgePending": "{title}, oczekuje: {count}",
+		"language": "Język",
+		"languageSaveFailed": "Nie udało się zapisać języka"
 	},
 	"account": {
 		"settings": "Ustawienia",

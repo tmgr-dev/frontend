@@ -1,10 +1,4 @@
 {
-	"language": {
-		"title": "Sprache",
-		"label": "Sprache der Oberfläche",
-		"description": "Wird in der App, in E-Mails und in Benachrichtigungen verwendet.",
-		"saveFailed": "Die Sprache konnte nicht gespeichert werden"
-	},
 	"page": {
 		"settings": "Einstellungen",
 		"profile": "Profil",

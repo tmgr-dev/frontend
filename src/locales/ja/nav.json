@@ -45,7 +45,9 @@
 		"exitFailed": "ワークスペースから退出できませんでした。もう一度お試しください。",
 		"loadFailed": "一部のナビゲーションデータを読み込めませんでした。",
 		"featuresFailed": "ワークスペースの機能を読み込めませんでした。",
-		"badgePending": "{title}、保留中 {count} 件"
+		"badgePending": "{title}、保留中 {count} 件",
+		"language": "言語",
+		"languageSaveFailed": "言語を保存できませんでした"
 	},
 	"account": {
 		"settings": "設定",

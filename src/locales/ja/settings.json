@@ -1,10 +1,4 @@
 {
-	"language": {
-		"title": "言語",
-		"label": "表示言語",
-		"description": "アプリ全体、メール、通知で使われます。",
-		"saveFailed": "言語を保存できませんでした"
-	},
 	"page": {
 		"settings": "設定",
 		"profile": "プロフィール",

@@ -1,10 +1,4 @@
 {
-	"language": {
-		"title": "Langue",
-		"label": "Langue de l'interface",
-		"description": "Utilisée dans toute l'application, les e-mails et les notifications.",
-		"saveFailed": "Impossible d'enregistrer la langue"
-	},
 	"page": {
 		"settings": "Paramètres",
 		"profile": "Profil",

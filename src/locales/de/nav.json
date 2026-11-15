@@ -45,7 +45,9 @@
 		"exitFailed": "Der Arbeitsbereich konnte nicht verlassen werden. Bitte versuche es erneut.",
 		"loadFailed": "Einige Navigationsdaten konnten nicht geladen werden.",
 		"featuresFailed": "Die Funktionen des Arbeitsbereichs konnten nicht geladen werden.",
-		"badgePending": "{title}, {count} ausstehend"
+		"badgePending": "{title}, {count} ausstehend",
+		"language": "Sprache",
+		"languageSaveFailed": "Sprache konnte nicht gespeichert werden"
 	},
 	"account": {
 		"settings": "Einstellungen",

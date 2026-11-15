@@ -1,10 +1,4 @@
 {
-	"language": {
-		"title": "Language",
-		"label": "Interface language",
-		"description": "Used across the app, emails and notifications.",
-		"saveFailed": "Failed to save the language"
-	},
 	"page": {
 		"settings": "Settings",
 		"profile": "Profile",
