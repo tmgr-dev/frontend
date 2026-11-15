@@ -1,7 +1,5 @@
 <template>
-	<div
-		class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-	>
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 		<button
 			v-for="t in cards"
 			:key="t.id"
@@ -15,9 +13,9 @@
 			@click="choose(t.id)"
 		>
 			<!-- name + tag -->
-			<div class="mb-2 flex items-center gap-2">
+			<div class="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
 				<span
-					class="inline-block h-2.5 w-2.5 rounded-full"
+					class="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
 					:style="{ background: t.tokens.brand }"
 				></span>
 				<span
@@ -34,7 +32,7 @@
 				>
 				<span
 					v-if="selected === t.id"
-					class="ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+					class="ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold whitespace-nowrap"
 					:style="{ background: t.tokens.brand, color: t.tokens.onAccent }"
 					>{{ $t('settings.theme.active') }}</span
 				>
@@ -193,26 +191,26 @@
 			<!-- default light/dark toggle -->
 			<div
 				v-if="t.id === 'default'"
-				class="mt-2 flex items-center gap-2"
+				class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1"
 				@click.stop
 			>
 				<span class="text-[11px]" :style="{ color: t.tokens.muted }">{{
 					$t('settings.theme.mode')
 				}}</span>
 				<span
-					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
+					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap"
 					:style="modeStyle('default', t.tokens)"
 					@click="chooseScheme('default')"
 					>{{ $t('settings.theme.light') }}</span
 				>
 				<span
-					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
+					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap"
 					:style="modeStyle('dark', t.tokens)"
 					@click="chooseScheme('dark')"
 					>{{ $t('settings.theme.dark') }}</span
 				>
 				<span
-					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
+					class="cursor-pointer rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap"
 					:style="modeStyle('system', t.tokens)"
 					@click="chooseScheme('system')"
 					>{{ $t('settings.theme.system') }}</span
