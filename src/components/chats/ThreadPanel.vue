@@ -74,7 +74,11 @@
 			const { send } = useChats();
 			const submitReply = (
 				payload: Pick<SendMessagePayload, 'body' | 'mentions' | 'files'>,
-			) => send({ ...payload, parent_message_id: props.root.id });
+			) =>
+				send(props.root.chat_id, {
+					...payload,
+					parent_message_id: props.root.id,
+				});
 			return { submitReply };
 		},
 	});

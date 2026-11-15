@@ -1,0 +1,157 @@
+jest.mock('@/actions/tmgr/chats', () => ({
+	getChat: jest.fn(),
+	getMessages: jest.fn(),
+	getMessage: jest.fn(),
+	getReplies: jest.fn(),
+	sendMessage: jest.fn(),
+	editMessage: jest.fn(),
+	deleteMessage: jest.fn(),
+	listChats: jest.fn(),
+	markRead: jest.fn(),
+}));
+jest.mock('@/composable/usePusher', () => ({ usePusher: jest.fn() }));
+
+import type { Chat, ChatMessage, ChatMessageHit } from '@/actions/tmgr/chats';
+import * as api from '@/actions/tmgr/chats';
+import { applyChatEvent, readableHits, useChats } from '@/composable/useChats';
+
+const mocked = api as jest.Mocked<typeof api>;
+
+const msg = (id: number, chatId: number, over: Partial<ChatMessage> = {}) =>
+	({
+		id,
+		chat_id: chatId,
+		author: { kind: 'user', id: 2, name: 'A' },
+		body: `m${id}`,
+		mentions: [],
+		parent_message_id: null,
+		reply_count: 0,
+		last_reply_at: null,
+		reactions: [],
+		files: [],
+		edited_at: null,
+		deleted: false,
+		created_at: '2026-01-01T00:00:00Z',
+		...over,
+	}) as ChatMessage;
+
+const chat = (id: number, over: Partial<Chat> = {}) =>
+	({
+		id,
+		workspace_id: 1,
+		kind: 'channel',
+		visibility: 'members',
+		title: `c${id}`,
+		topic: null,
+		joined: true,
+		can_read: true,
+		can_write: true,
+		can_moderate: false,
+		can_delete: false,
+		archived_at: null,
+		last_message_at: null,
+		last_message: null,
+		unread: 0,
+		member_count: 2,
+		members: null,
+		created_at: null,
+		notify_level: null,
+		muted_until: null,
+		...over,
+	}) as Chat;
+
+const hit = (messageId: number, chatId: number) =>
+	({
+		message_id: messageId,
+		chat_id: chatId,
+		chat_title: `c${chatId}`,
+		chat_kind: 'channel',
+		parent_message_id: null,
+		author: { kind: 'user', id: 2, name: 'A' },
+		snippet: 'secret plan',
+		created_at: '2026-01-01T00:00:00Z',
+	}) as ChatMessageHit;
+
+const deferred = <T>() => {
+	let resolve!: (v: T) => void;
+	const promise = new Promise<T>((r) => (resolve = r));
+	return { promise, resolve };
+};
+
+describe('readableHits', () => {
+	it('keeps hits only from chats the user can still read', () => {
+		const hits = [hit(1, 1), hit(2, 2), hit(3, 3)];
+		const chats = [chat(1), chat(2, { can_read: false, joined: false })];
+		expect(readableHits(hits, chats).map((h) => h.message_id)).toEqual([1]);
+	});
+
+	it('drops a hit once its chat leaves the list', () => {
+		const hits = [hit(1, 1)];
+		expect(readableHits(hits, [chat(1)])).toHaveLength(1);
+		expect(readableHits(hits, [])).toHaveLength(0);
+	});
+});
+
+describe('chat switches', () => {
+	const chats = useChats();
+
+	beforeEach(() => {
+		jest.resetAllMocks();
+		chats.chats.value = [chat(1), chat(2)];
+		mocked.getMessages.mockImplementation(async (id: number) => [
+			msg(id * 100, id),
+		]);
+	});
+
+	it('sends to the chat the composer belongs to and keeps it out of the open one', async () => {
+		await chats.openChat(1);
+		const pending = deferred<ChatMessage>();
+		mocked.sendMessage.mockReturnValue(pending.promise);
+		const sending = chats.send(1, { body: 'draft for A' });
+		await chats.openChat(2);
+		pending.resolve(msg(150, 1));
+		await sending;
+		expect(mocked.sendMessage).toHaveBeenCalledWith(1, { body: 'draft for A' });
+		expect(chats.messages.value.map((m) => m.id)).toEqual([200]);
+	});
+
+	it('ignores an edit response from a chat that is no longer open', async () => {
+		await chats.openChat(1);
+		const pending = deferred<ChatMessage>();
+		mocked.editMessage.mockReturnValue(pending.promise);
+		const saving = chats.saveEdit(msg(100, 1), 'edited', []);
+		await chats.openChat(2);
+		pending.resolve(msg(100, 1, { body: 'edited' }));
+		await saving;
+		expect(chats.messages.value.map((m) => m.chat_id)).toEqual([2]);
+	});
+
+	it('ignores a delete response from a chat that is no longer open', async () => {
+		await chats.openChat(1);
+		const pending = deferred<void>();
+		mocked.deleteMessage.mockReturnValue(pending.promise);
+		const removing = chats.removeMessage(msg(100, 1));
+		await chats.openChat(2);
+		chats.messages.value = [msg(100, 2)];
+		pending.resolve();
+		await removing;
+		expect(chats.messages.value[0].deleted).toBe(false);
+	});
+});
+
+describe('unread from thread replies', () => {
+	it('does not count a reply, matching the server count of top-level messages', () => {
+		const result = applyChatEvent(
+			[
+				chat(1, {
+					last_message: { id: 5, author_id: 2, preview: 'x', deleted: false },
+				}),
+			],
+			'chat.message.created',
+			{ chat_id: 1, message_id: 9, parent_message_id: 5, author_id: 3 },
+			{ openChatId: null, selfId: 2 },
+		);
+		expect(result.chats[0].unread).toBe(0);
+		expect(result.chats[0].last_message?.id).toBe(5);
+	});
+});

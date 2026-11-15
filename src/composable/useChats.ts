@@ -11,6 +11,7 @@ import {
 	type Chat,
 	type ChatMention,
 	type ChatMessage,
+	type ChatMessageHit,
 	type SendMessagePayload,
 } from '@/actions/tmgr/chats';
 import { usePusher } from '@/composable/usePusher';
@@ -74,6 +75,14 @@ export const chatTitle = (chat: Chat, selfId: number | null): string => {
 	return names.join(', ') || chat.title || '';
 };
 
+export const readableHits = (
+	hits: ChatMessageHit[],
+	chats: Chat[],
+): ChatMessageHit[] => {
+	const readable = new Set(chats.filter((c) => c.can_read).map((c) => c.id));
+	return hits.filter((h) => readable.has(h.chat_id));
+};
+
 export const isMuted = (chat: Chat, now = Date.now()): boolean =>
 	chat.notify_level === 'none' ||
 	(!!chat.muted_until && Date.parse(chat.muted_until) > now);
@@ -111,6 +120,7 @@ export const applyChatEvent = (
 				payload.message_id <= current.last_message.id
 			)
 				return { chats, reload: false };
+			if (payload.parent_message_id) return { chats, reload: false };
 			const foreign = payload.author_id !== ctx.selfId;
 			const unreadCounts = foreign && payload.chat_id !== ctx.openChatId;
 			return {
@@ -118,14 +128,12 @@ export const applyChatEvent = (
 					...c,
 					unread: unreadCounts ? (c.unread ?? 0) + 1 : c.unread,
 					last_message_at: new Date().toISOString(),
-					last_message: payload.parent_message_id
-						? c.last_message
-						: {
-								id: payload.message_id ?? 0,
-								author_id: payload.author_id ?? null,
-								preview: payload.preview ?? null,
-								deleted: false,
-							},
+					last_message: {
+						id: payload.message_id ?? 0,
+						author_id: payload.author_id ?? null,
+						preview: payload.preview ?? null,
+						deleted: false,
+					},
 				})),
 				reload: false,
 			};
@@ -278,9 +286,7 @@ const closeThread = () => {
 	replies.value = [];
 };
 
-const send = async (payload: SendMessagePayload) => {
-	const chatId = openChatId.value;
-	if (chatId === null) return;
+const send = async (chatId: number, payload: SendMessagePayload) => {
 	const message = await sendMessage(chatId, payload);
 	if (openChatId.value !== chatId) return;
 	if (payload.parent_message_id) {
@@ -302,6 +308,7 @@ const applyMessage = (message: ChatMessage) => {
 
 const removeMessage = async (message: ChatMessage) => {
 	await deleteMessage(message.chat_id, message.id);
+	if (openChatId.value !== message.chat_id) return;
 	if (message.parent_message_id === null) {
 		messages.value = markMessageDeleted(messages.value, message.id);
 		if (threadRoot.value?.id === message.id) closeThread();
@@ -316,9 +323,11 @@ const saveEdit = async (
 	body: string,
 	mentions: ChatMention[],
 ) => {
-	applyMessage(
-		await editMessage(message.chat_id, message.id, { body, mentions }),
-	);
+	const fresh = await editMessage(message.chat_id, message.id, {
+		body,
+		mentions,
+	});
+	if (openChatId.value === message.chat_id) applyMessage(fresh);
 };
 
 const flushMarkRead = async () => {

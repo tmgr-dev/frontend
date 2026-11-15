@@ -13,11 +13,14 @@
 			<p v-if="searching" class="px-3 py-2 text-sm text-ink-subtle">
 				{{ $t('common.states.loading') }}
 			</p>
-			<p v-else-if="!hits.length" class="px-3 py-2 text-sm text-ink-subtle">
+			<p
+				v-else-if="!visibleHits.length"
+				class="px-3 py-2 text-sm text-ink-subtle"
+			>
 				{{ $t('chats.search.empty') }}
 			</p>
 			<button
-				v-for="hit in hits"
+				v-for="hit in visibleHits"
 				:key="hit.message_id"
 				type="button"
 				class="block w-full px-3 py-2 text-left hover:bg-surface-hover"
@@ -36,7 +39,8 @@
 	import { searchChats } from '@/actions/tmgr/chats';
 	import type { ChatMessageHit } from '@/actions/tmgr/chats';
 	import { Input } from '@/components/ui/input';
-	import { defineComponent, onBeforeUnmount, ref } from 'vue';
+	import { readableHits, useChats } from '@/composable/useChats';
+	import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
 
 	export default defineComponent({
 		name: 'ChatSearch',
@@ -49,20 +53,34 @@
 			const query = ref('');
 			const hits = ref<ChatMessageHit[]>([]);
 			const searching = ref(false);
+			const { chats } = useChats();
+			const visibleHits = computed(() => readableHits(hits.value, chats.value));
 			let timer: ReturnType<typeof setTimeout> | null = null;
+			let request = 0;
 
 			const run = async () => {
 				const q = query.value.trim();
 				if (!q) return;
+				const current = ++request;
 				try {
 					const found = await searchChats(props.workspaceId, q);
-					if (q === query.value.trim()) hits.value = found;
+					if (current === request) hits.value = found;
 				} catch {
-					hits.value = [];
+					if (current === request) hits.value = [];
 				} finally {
-					searching.value = false;
+					if (current === request) searching.value = false;
 				}
 			};
+
+			watch(
+				() => props.workspaceId,
+				() => {
+					request++;
+					query.value = '';
+					hits.value = [];
+					searching.value = false;
+				},
+			);
 
 			const schedule = () => {
 				if (timer) clearTimeout(timer);
@@ -80,7 +98,7 @@
 				if (timer) clearTimeout(timer);
 			});
 
-			return { query, hits, searching, schedule, open };
+			return { query, visibleHits, searching, schedule, open };
 		},
 	});
 </script>

@@ -259,7 +259,7 @@
 
 			const submit = (
 				payload: Pick<SendMessagePayload, 'body' | 'mentions' | 'files'>,
-			) => send(payload);
+			) => send(chatId.value, payload);
 
 			const join = async () => upsertChat(await joinChat(chatId.value));
 
