@@ -435,11 +435,24 @@ fn old_questions_expire() {
 }
 
 #[test]
-fn settings_default_to_haiku_on() {
+fn settings_default_to_haiku_off() {
     let d = private_tmp();
     let store = Store::new(d.path());
+    assert!(!store.settings().haiku);
+    store.save_settings(Settings { haiku: true }).unwrap();
     assert!(store.settings().haiku);
     store.save_settings(Settings { haiku: false }).unwrap();
+    assert!(!store.settings().haiku);
+}
+
+#[test]
+fn a_saved_haiku_choice_survives_the_default_change() {
+    let d = private_tmp();
+    let store = Store::new(d.path());
+    std::fs::create_dir_all(store.dir()).unwrap();
+    std::fs::write(store.dir().join("settings.json"), "{\"haiku\":true}").unwrap();
+    assert!(store.settings().haiku);
+    std::fs::write(store.dir().join("settings.json"), "{}").unwrap();
     assert!(!store.settings().haiku);
 }
 
@@ -492,6 +505,12 @@ impl Rig {
             bin: private_tmp(),
             work: private_tmp(),
         }
+    }
+
+    fn haiku_on(&self) {
+        Store::new(self.runner.path())
+            .save_settings(Settings { haiku: true })
+            .unwrap();
     }
 
     fn scanner(&self, claude: Option<std::path::PathBuf>) -> Scanner {
@@ -570,6 +589,7 @@ fn nothing_is_asked_of_haiku_without_a_candidate() {
 #[test]
 fn haiku_narrows_the_rule_candidates() {
     let rig = Rig::new();
+    rig.haiku_on();
     let bin = fake(
         rig.bin.path(),
         "cat >/dev/null\necho '{\"questions\":[\"Should I also update the docs?\"]}'",
@@ -591,6 +611,7 @@ fn haiku_narrows_the_rule_candidates() {
 #[test]
 fn a_failing_haiku_falls_back_to_rules_and_backs_off() {
     let rig = Rig::new();
+    rig.haiku_on();
     let bin = fake(
         rig.bin.path(),
         "echo x >> calls.txt\ncat >/dev/null\nexit 1",
@@ -876,6 +897,7 @@ fn rule_fallback_stores_two_questions_in_message_order() {
 #[test]
 fn six_haiku_sentences_still_store_two_questions_in_message_order() {
     let rig = rig_with_two_items();
+    rig.haiku_on();
     let bin = fake(
         rig.bin.path(),
         &format!("cat >/dev/null\ncat <<'EOF'\n{SIX_SENTENCES}\nEOF"),
@@ -1000,6 +1022,7 @@ fn consent_withdrawn_before_haiku_never_runs_the_binary_and_saves_nothing() {
 #[test]
 fn consent_withdrawn_during_haiku_saves_nothing_and_keeps_the_offset() {
     let rig = Rig::new();
+    rig.haiku_on();
     let bin = fake(
         rig.bin.path(),
         "touch called.txt\ncat >/dev/null\necho '{\"questions\":[\"Should I also update the docs?\"]}'",
