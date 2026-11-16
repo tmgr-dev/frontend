@@ -3358,7 +3358,11 @@ impl Runner {
                     .agent_session_id
                     .clone()
                     .or_else(|| resume::id_from_log(&self.sdir(old).join("output.log"), profile))
-                    .or_else(|| q.agent_session_id.clone());
+                    .or_else(|| {
+                        q.agent_session_id
+                            .clone()
+                            .filter(|_| q.no_sandbox.is_some())
+                    });
                 self.resume_agent(
                     (&meta, profile.as_str()),
                     (cols, rows),

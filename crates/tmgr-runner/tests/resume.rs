@@ -2124,6 +2124,26 @@ fn flagged_resume_takes_the_conversation_from_the_client_when_the_log_has_none()
 }
 
 #[test]
+fn a_resume_without_no_sandbox_ignores_the_client_conversation() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let s = h.finished(Was {
+        no_sandbox: false,
+        bypass: false,
+    });
+    fs::write(h.sdir(&s.id).join("output.log"), "nothing to see\n").unwrap();
+    let r = h.resume_flags_with(&s.id, None, false, Some(U2)).unwrap();
+    assert!(
+        !r.session.argv.iter().any(|a| a == U2),
+        "{:?}",
+        r.session.argv
+    );
+    h.stop_and_remove(&r.session.id);
+}
+
+#[test]
 fn the_log_wins_over_the_client_conversation() {
     if !sessions_available() {
         return;

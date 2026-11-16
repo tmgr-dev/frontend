@@ -3,7 +3,7 @@
 ## Unreleased
 
 - `tmgr attach`: Fork (the branch icon, Ctrl-] F) on a Claude Code or Codex session now forks the conversation even when the runner has not recorded its id. It finds the conversation in the agent's own files, as the questions pocket does, instead of silently starting a fresh session. Without a conversation to fork it says so. Sessions started with bypass or without the sandbox still start fresh after a confirmation.
-- `tmgr attach` and `tmgr resume`: Resume after Stop works again for a session started without the sandbox. The conversation id is looked up in the agent's files when the session log has no resume line (a stopped agent does not print one), instead of failing with "the agent's conversation id was not found in the session log". Resume on such a session in `tmgr attach` now opens the same confirmation as Restart. Needs a runner restart (`tmgr runner restart`) to take effect.
+- `tmgr attach` and `tmgr resume`: Resume after Stop works again for a session started without the sandbox. For Claude Code, when the session log has no resume line (a stopped agent does not print one), the conversation id is taken from the one transcript the session wrote during its life, and never guessed when several fit, instead of failing with "the agent's conversation id was not found in the session log". Resume on such a session in `tmgr attach` now opens the same confirmation as Restart. Needs a runner restart (`tmgr runner restart`) to take effect.
 
 ## 1.0.132
 

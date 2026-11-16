@@ -13,11 +13,10 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{
     CwdPin, ExternalResume, RestoredRun, ResumeParams, RunCreateReq, SessionInfo, StateKind,
 };
-use tmgr_runner::attach::{locate, locate_unsandboxed_claude, Format, Source};
+use tmgr_runner::attach::Format;
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
-use tmgr_runner::questions::tail::locate_codex_rollout;
-use tmgr_runner::resume::valid_resume_id;
+use tmgr_runner::resume::{id_from_log, valid_resume_id};
 use tmgr_usage::paths::Env;
 
 #[derive(Debug)]
@@ -323,18 +322,12 @@ pub(super) fn resume_gate(
     super::privilege::check_external_cap(have)
 }
 
-fn fresh_since(path: &Path, created_ms: u64) -> bool {
-    std::fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .is_some_and(|d| d.as_millis() >= u128::from(created_ms))
-}
+const EXIT_SLACK_MS: u64 = 5_000;
 
-fn id_of_stem(path: &Path) -> Option<String> {
-    let stem = path.file_stem()?.to_str()?;
-    let id = stem.get(stem.len().checked_sub(36)?..)?;
-    valid_resume_id(id).then(|| id.to_string())
+fn modified_ms(path: &Path) -> Option<u64> {
+    let t = std::fs::symlink_metadata(path).ok()?.modified().ok()?;
+    let ms = t.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis();
+    u64::try_from(ms).ok()
 }
 
 pub(super) fn unsandboxed_conversation(
@@ -342,37 +335,39 @@ pub(super) fn unsandboxed_conversation(
     home: Option<std::path::PathBuf>,
     reads: Reads,
 ) -> Option<String> {
-    let src = agent_src(s).filter(|a| can_fork(&a.profile))?;
+    let src = agent_src(s).filter(|a| a.format == Format::Claude && can_fork(&a.profile))?;
     if reads.denial(src.format).is_some() {
         return None;
     }
-    let home = home?;
-    match src.format {
-        Format::Claude => {
-            if let Some((_, id)) =
-                locate_unsandboxed_claude(&home, &s.cwd, s.child_pid, s.created_ms)
-            {
-                return Some(id);
-            }
-            let (path, id) = locate(&Source {
-                home: &home,
-                format: Format::Claude,
-                cwd: &s.cwd,
-                pid: 0,
-                log_id: None,
-            })?;
-            if !fresh_since(&path, s.created_ms) {
-                return None;
-            }
-            id.or_else(|| id_of_stem(&path))
-        }
-        Format::Codex => {
-            let path = locate_codex_rollout(&home, None, &s.cwd)?;
-            fresh_since(&path, s.created_ms)
-                .then(|| id_of_stem(&path))
+    let (from, to) = (s.created_ms, s.state.since_ms.saturating_add(EXIT_SLACK_MS));
+    let projects = home?.join(".claude").join("projects");
+    let mut names = vec![s.cwd.clone()];
+    if let Ok(real) = std::fs::canonicalize(&s.cwd) {
+        names.push(real.display().to_string());
+    }
+    let mut found: Vec<String> = Vec::new();
+    for name in names {
+        let dir = projects.join(name.replace(|c: char| !c.is_ascii_alphanumeric(), "-"));
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for e in rd.flatten().take(2000) {
+            let path = e.path();
+            let in_window = modified_ms(&path).is_some_and(|m| m >= from && m <= to);
+            let id = path
+                .extension()
+                .is_some_and(|x| x == "jsonl")
+                .then(|| path.file_stem()?.to_str().map(str::to_string))
                 .flatten()
+                .filter(|i| valid_resume_id(i));
+            if let Some(id) = id.filter(|_| in_window) {
+                if !found.contains(&id) {
+                    found.push(id);
+                }
+            }
         }
     }
+    (found.len() == 1).then(|| found.remove(0))
 }
 
 pub(super) fn with_found_conversation(
@@ -382,13 +377,21 @@ pub(super) fn with_found_conversation(
 ) -> SessionInfo {
     let mut s = s.clone();
     let recorded = s.agent_session_id.as_deref().is_some_and(valid_resume_id);
-    if no_sandbox && !recorded {
+    if no_sandbox && s.no_sandbox && !recorded {
         s.agent_session_id = find(&s);
     }
     s
 }
 
 pub(super) fn real_conversation(s: &SessionInfo) -> Option<String> {
+    let cfg = runner_config().ok()?;
+    let log = cfg.dir.join("sessions").join(&s.id).join("output.log");
+    if s.profile
+        .as_deref()
+        .is_some_and(|p| id_from_log(&log, p).is_some())
+    {
+        return None;
+    }
     unsandboxed_conversation(s, super::attach_export::home_dir(), Reads::current())
 }
 
@@ -818,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unsandboxed_session_only_takes_a_transcript_written_since_it_started() {
+    fn an_unsandboxed_session_only_takes_the_one_transcript_written_during_its_life() {
         let dir = tempfile::tempdir().unwrap();
         let (home, work) = (dir.path().join("home"), dir.path().join("work"));
         std::fs::create_dir_all(&work).unwrap();
@@ -828,34 +831,44 @@ mod tests {
             .join("projects")
             .join(cwd.replace(|c: char| !c.is_ascii_alphanumeric(), "-"));
         std::fs::create_dir_all(&projects).unwrap();
-        let (old, new) = (
+        let (before, mine, other, after) = (
             "0199a213-81c0-7800-8aa1-bbab2a035a53",
             "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b",
+            "3f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b",
+            "4f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b",
         );
         let at = |name: &str, secs: u64| {
             let f = std::fs::File::create(projects.join(format!("{name}.jsonl"))).unwrap();
             f.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs))
                 .unwrap();
         };
-        at(old, 1_000);
         let mut s = session("claude-code", true, None);
         s.cwd = cwd;
-        s.child_pid = 0;
         s.created_ms = 2_000_000;
+        s.state.since_ms = 4_000_000;
         let on = Reads {
             claude: true,
             codex: true,
         };
-        let found = |s: &SessionInfo, reads, home: Option<std::path::PathBuf>| {
-            unsandboxed_conversation(s, home, reads)
-        };
-        assert_eq!(found(&s, on, Some(home.clone())), None);
-        at(new, 3_000);
-        assert_eq!(found(&s, on, Some(home.clone())).as_deref(), Some(new));
-        assert_eq!(found(&s, Reads::default(), Some(home.clone())), None);
-        assert_eq!(found(&s, on, None), None);
-        s.profile = Some("custom".into());
-        assert_eq!(found(&s, on, Some(home)), None);
+        let h = Some(home);
+        at(before, 1_000);
+        at(after, 9_000);
+        assert_eq!(unsandboxed_conversation(&s, h.clone(), on), None);
+        at(mine, 3_000);
+        assert_eq!(
+            unsandboxed_conversation(&s, h.clone(), on).as_deref(),
+            Some(mine)
+        );
+        at(other, 3_500);
+        assert_eq!(unsandboxed_conversation(&s, h.clone(), on), None);
+        std::fs::remove_file(projects.join(format!("{other}.jsonl"))).unwrap();
+        assert_eq!(
+            unsandboxed_conversation(&s, h.clone(), Reads::default()),
+            None
+        );
+        assert_eq!(unsandboxed_conversation(&s, None, on), None);
+        s.profile = Some("codex".into());
+        assert_eq!(unsandboxed_conversation(&s, h, on), None);
     }
 
     #[test]
