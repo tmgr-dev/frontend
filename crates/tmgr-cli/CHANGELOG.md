@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.132
 
 - The `reply_owner` MCP tool takes an optional `card` patch (title, question, context, options, recommended, facts, checks, prs, commits, tags, links). One call posts your reply and updates the card in the owner's Decisions inbox: omitted fields stay, a sent field replaces the whole field, and the limits are the same as for `ask_owner`. A card the owner already answered or dismissed is not changed, but the text is still posted and the result says `card_patch: refused`. Needs a desktop that carries the same change; an older desktop posts the text and reports that the card was not updated.
 
