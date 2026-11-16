@@ -1,5 +1,5 @@
 use super::attach_consent::Reads;
-use super::attach_goto::{can_fork, fork_call, fork_name};
+use super::attach_goto::{can_fork, conversation_id, fork_call, fork_name};
 use super::attach_questions::QuestionJob;
 use super::attach_title::{agent_src, AgentSrc};
 use super::catalog::{self, Entry, Live};
@@ -321,14 +321,38 @@ pub(super) fn resume_gate(
     super::privilege::check_external_cap(have)
 }
 
+pub(super) fn unsandboxed_conversation(
+    cfg: &RunnerConfig,
+    s: &SessionInfo,
+    home: Option<std::path::PathBuf>,
+    reads: Reads,
+) -> Option<String> {
+    let src = agent_src(s).filter(|a| can_fork(&a.profile))?;
+    if reads.denial(src.format).is_some() {
+        return None;
+    }
+    let mut job = fork_job(cfg, s, src);
+    job.sandbox_home = home?;
+    job.pid = 0;
+    conversation_id(&job, None)
+}
+
 pub(super) fn resume_flagged(
     c: &mut Client,
+    cfg: &RunnerConfig,
     s: &SessionInfo,
     known: Option<&str>,
     mode: Option<PermissionMode>,
     no_sandbox: bool,
 ) -> Result<RestoredRun> {
     let have = c.welcome().caps.clone();
+    let found = match known {
+        None if no_sandbox => {
+            unsandboxed_conversation(cfg, s, super::attach_export::home_dir(), Reads::current())
+        }
+        _ => None,
+    };
+    let known = known.or(found.as_deref());
     resume_gate(known, &have, mode, no_sandbox, &|id| check_known(id, false))?;
     c.resume_with(ResumeParams {
         id: s.id.clone(),
@@ -336,6 +360,7 @@ pub(super) fn resume_flagged(
         rows: s.rows,
         permission_mode: mode.map(|m| m.as_str().to_string()),
         no_sandbox: super::privilege::request(no_sandbox),
+        agent_session_id: known.map(str::to_string),
     })
     .map_err(rerr)
 }
@@ -743,6 +768,45 @@ mod tests {
         let err = recheck_entry(Some(e), off, true).unwrap_err();
         assert_eq!(err.kind, Kind::Forbidden);
         assert_eq!(err.hint.as_deref(), off);
+    }
+
+    #[test]
+    fn an_unsandboxed_session_without_a_recorded_id_finds_its_conversation_in_the_real_home() {
+        let dir = tempfile::tempdir().unwrap();
+        let (home, work) = (dir.path().join("home"), dir.path().join("work"));
+        std::fs::create_dir_all(&work).unwrap();
+        let cwd = std::fs::canonicalize(&work).unwrap().display().to_string();
+        let projects = home
+            .join(".claude")
+            .join("projects")
+            .join(cwd.replace(|c: char| !c.is_ascii_alphanumeric(), "-"));
+        std::fs::create_dir_all(&projects).unwrap();
+        let id = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+        std::fs::write(projects.join(format!("{id}.jsonl")), "{}\n").unwrap();
+        let cfg = RunnerConfig {
+            dir: dir.path().join("run"),
+            homes: dir.path().join("homes"),
+            self_exe: dir.path().join("tmgr"),
+            quiet_ms: 0,
+            version: "0".into(),
+            max_sessions: 1,
+        };
+        let mut s = session("claude-code", true, None);
+        s.cwd = cwd;
+        s.no_sandbox = true;
+        s.state.kind = StateKind::Exited;
+        let on = Reads {
+            claude: true,
+            codex: true,
+        };
+        let found = |s: &SessionInfo, reads, home: Option<std::path::PathBuf>| {
+            unsandboxed_conversation(&cfg, s, home, reads)
+        };
+        assert_eq!(found(&s, on, Some(home.clone())).as_deref(), Some(id));
+        assert_eq!(found(&s, Reads::default(), Some(home.clone())), None);
+        assert_eq!(found(&s, on, None), None);
+        s.profile = Some("custom".into());
+        assert_eq!(found(&s, on, Some(home)), None);
     }
 
     #[test]

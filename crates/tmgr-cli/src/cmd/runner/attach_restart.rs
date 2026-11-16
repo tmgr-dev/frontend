@@ -2,7 +2,6 @@ use super::attach_goto::can_fork;
 use super::attach_shell::is_shell_session;
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_runner::attach::{NewRequest, Place, SessionRow, SpawnKind};
-use tmgr_runner::resume::valid_resume_id;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Launch {
@@ -11,7 +10,6 @@ pub(super) struct Launch {
     bypass: bool,
     no_sandbox: bool,
     permission_cards: bool,
-    conversation: bool,
 }
 
 impl Launch {
@@ -29,7 +27,6 @@ impl Launch {
             bypass: s.permission_mode.as_deref() == Some("bypass"),
             no_sandbox: s.no_sandbox,
             permission_cards: s.permission_cards,
-            conversation: s.agent_session_id.as_deref().is_some_and(valid_resume_id),
         }
     }
 
@@ -55,8 +52,7 @@ pub(super) enum ForkStep {
 
 pub(super) fn fork_step(launch: &Launch) -> ForkStep {
     let native = matches!(&launch.kind, Some(SpawnKind::Agent { profile }) if can_fork(profile))
-        && !launch.flagged()
-        && launch.conversation;
+        && !launch.flagged();
     match (&launch.kind, native) {
         (_, true) => ForkStep::Native,
         (Some(kind), false) => ForkStep::Fresh(Box::new(NewRequest {
@@ -106,7 +102,6 @@ mod tests {
             bypass: false,
             no_sandbox: false,
             permission_cards: true,
-            conversation: true,
         }
     }
 
@@ -124,14 +119,11 @@ mod tests {
 
     #[test]
     fn everything_else_forks_fresh() {
-        let mut no_id = launch(agent("claude-code"));
-        no_id.conversation = false;
         let mut open = launch(agent("codex"));
         open.no_sandbox = true;
         let mut bypass = launch(agent("claude-code"));
         bypass.bypass = true;
         for l in [
-            no_id,
             open,
             bypass,
             launch(Some(SpawnKind::Shell)),
@@ -145,7 +137,6 @@ mod tests {
     #[test]
     fn a_fresh_fork_copies_the_launch_config_without_a_task() {
         let mut l = launch(agent("codex"));
-        l.conversation = false;
         l.bypass = true;
         l.no_sandbox = true;
         let ForkStep::Fresh(req) = fork_step(&l) else {

@@ -3139,6 +3139,9 @@ impl App {
             self.view.rename = None;
         }
         match ctl {
+            Control::Resume if self.launches.get(id).is_some_and(Launch::flagged) => {
+                self.request_restart(id)
+            }
             Control::Resume => self.request_resume(id),
             Control::Restart => self.request_restart(id),
             Control::Fork => self.fork_session(id),
@@ -5569,6 +5572,7 @@ mod tests {
         s.permission_mode = None;
         assert_eq!(fork_step(&Launch::of(&s)), ForkStep::Native);
         s.agent_session_id = None;
+        assert_eq!(fork_step(&Launch::of(&s)), ForkStep::Native);
         s.no_sandbox = true;
         let ForkStep::Fresh(req) = fork_step(&Launch::of(&s)) else {
             panic!("expected a fresh fork");

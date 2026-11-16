@@ -114,8 +114,10 @@ pub(super) fn fork_call(
         return Err(hint.to_string());
     }
     let clean = |s: String| sanitize_text(&s).into_owned();
-    let agent_id = conversation_id(job, recorded)
-        .ok_or_else(|| "cannot tell which conversation this session has".to_string())?;
+    let agent_id = conversation_id(job, recorded).ok_or_else(|| {
+        "no conversation of this session was found to fork; send the agent a message first"
+            .to_string()
+    })?;
     let mut client = connect(cfg).map_err(|e| clean(e.to_string()))?;
     if !client
         .welcome()
@@ -196,7 +198,10 @@ mod tests {
             ),
         )
         .unwrap_err();
-        assert_eq!(err, "cannot tell which conversation this session has");
+        assert_eq!(
+            err,
+            "no conversation of this session was found to fork; send the agent a message first"
+        );
     }
     const X1: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
     const X2: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";

@@ -192,6 +192,7 @@ impl Client {
             rows,
             permission_mode: None,
             no_sandbox: None,
+            agent_session_id: None,
         })
     }
 

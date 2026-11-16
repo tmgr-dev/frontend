@@ -211,7 +211,7 @@ pub(super) fn run_tmgr_resume(
         privileged::guard()?;
         let mut client = connect(cfg)?;
         let _ = client.set_timeouts(START_WAIT);
-        resume_flagged(&mut client, session, known, mode, no_sandbox)
+        resume_flagged(&mut client, cfg, session, known, mode, no_sandbox)
     };
     go().map_err(task_err)
 }

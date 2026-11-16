@@ -1924,6 +1924,16 @@ impl H {
         mode: Option<&str>,
         no_sandbox: bool,
     ) -> std::io::Result<tmgr_ipc::api::RestoredRun> {
+        self.resume_flags_with(id, mode, no_sandbox, None)
+    }
+
+    fn resume_flags_with(
+        &self,
+        id: &str,
+        mode: Option<&str>,
+        no_sandbox: bool,
+        agent_id: Option<&str>,
+    ) -> std::io::Result<tmgr_ipc::api::RestoredRun> {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             let r = self.client().resume_with(ResumeParams {
@@ -1932,6 +1942,7 @@ impl H {
                 rows: 24,
                 permission_mode: mode.map(str::to_string),
                 no_sandbox: no_sandbox.then(NoSandbox::default),
+                agent_session_id: agent_id.map(str::to_string),
             });
             match r {
                 Err(e) if e.to_string() == OLD_GROUP_BUSY && Instant::now() < deadline => {
@@ -2088,6 +2099,43 @@ fn flagged_resume_needs_the_agent_id_and_a_valid_mode() {
         .to_string();
     assert!(e.starts_with("invalid_params: "), "{e}");
     assert!(h.state_of(&s.id).is_some());
+}
+
+#[test]
+fn flagged_resume_takes_the_conversation_from_the_client_when_the_log_has_none() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let s = h.finished(Was {
+        no_sandbox: true,
+        bypass: false,
+    });
+    fs::write(h.sdir(&s.id).join("output.log"), "nothing to see\n").unwrap();
+    let e = h
+        .resume_flags_with(&s.id, None, true, Some("not-an-id"))
+        .unwrap_err()
+        .to_string();
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    let r = h.resume_flags_with(&s.id, None, true, Some(U2)).unwrap();
+    assert_eq!(r.session.agent_session_id.as_deref(), Some(U2));
+    assert_eq!(r.session.argv[2..], ["--ask", "--resume-id", U2]);
+    h.stop_and_remove(&r.session.id);
+}
+
+#[test]
+fn the_log_and_the_record_win_over_the_client_conversation() {
+    if !sessions_available() {
+        return;
+    }
+    let h = flagged_h();
+    let s = h.finished(Was {
+        no_sandbox: true,
+        bypass: false,
+    });
+    let r = h.resume_flags_with(&s.id, None, true, Some(U2)).unwrap();
+    assert_eq!(r.session.agent_session_id.as_deref(), Some(U1));
+    h.stop_and_remove(&r.session.id);
 }
 
 #[test]

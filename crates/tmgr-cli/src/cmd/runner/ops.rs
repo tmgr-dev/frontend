@@ -1176,7 +1176,14 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
     let r = if flagged {
         let bypass = a.mode == Some(super::PermissionMode::Bypass);
         super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
-        super::resume_any::resume_flagged(&mut c, &s, known.as_deref(), a.mode, a.no_sandbox)?
+        super::resume_any::resume_flagged(
+            &mut c,
+            &runner_config()?,
+            &s,
+            known.as_deref(),
+            a.mode,
+            a.no_sandbox,
+        )?
     } else {
         crate::interact::confirm("Start it again?", false, false)?;
         c.resume(&s.id, s.cols, s.rows).map_err(rerr)?

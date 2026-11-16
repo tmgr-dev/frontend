@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr attach`: Fork (the branch icon, Ctrl-] F) on a Claude Code or Codex session now forks the conversation even when the runner has not recorded its id. It finds the conversation in the agent's own files, as the questions pocket does, instead of silently starting a fresh session. Without a conversation to fork it says so. Sessions started with bypass or without the sandbox still start fresh after a confirmation.
+- `tmgr attach` and `tmgr resume`: Resume after Stop works again for a session started without the sandbox. The conversation id is looked up in the agent's files when the session log has no resume line (a stopped agent does not print one), instead of failing with "the agent's conversation id was not found in the session log". Resume on such a session in `tmgr attach` now opens the same confirmation as Restart. Needs a runner restart (`tmgr runner restart`) to take effect.
+
 ## 1.0.132
 
 - The `reply_owner` MCP tool takes an optional `card` patch (title, question, context, options, recommended, facts, checks, prs, commits, tags, links). One call posts your reply and updates the card in the owner's Decisions inbox: omitted fields stay, a sent field replaces the whole field, and the limits are the same as for `ask_owner`. A card the owner already answered or dismissed is not changed, but the text is still posted and the result says `card_patch: refused`. Needs a desktop that carries the same change; an older desktop posts the text and reports that the card was not updated.

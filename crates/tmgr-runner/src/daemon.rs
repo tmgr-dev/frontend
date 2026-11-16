@@ -3301,6 +3301,12 @@ impl Runner {
 
     fn resume_session(self: &Arc<Self>, q: &ResumeParams) -> Result<RestoredRun, ApiErr> {
         let (old, cols, rows) = (q.id.as_str(), q.cols, q.rows);
+        if q.agent_session_id
+            .as_deref()
+            .is_some_and(|i| !resume::valid_resume_id(i))
+        {
+            return Err(api(ErrorCode::InvalidParams, "invalid agent session id"));
+        }
         let s = self
             .session(old)
             .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
@@ -3351,7 +3357,8 @@ impl Runner {
                 let resume_id = meta
                     .agent_session_id
                     .clone()
-                    .or_else(|| resume::id_from_log(&self.sdir(old).join("output.log"), profile));
+                    .or_else(|| resume::id_from_log(&self.sdir(old).join("output.log"), profile))
+                    .or_else(|| q.agent_session_id.clone());
                 self.resume_agent(
                     (&meta, profile.as_str()),
                     (cols, rows),
