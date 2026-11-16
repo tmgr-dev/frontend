@@ -261,12 +261,16 @@ pub fn step(
         if let Some(role) = &s.role {
             request["role"] = json!(role);
         }
+        if let Some(parent) = &s.parent {
+            request["parent_session_id"] = json!(parent);
+        }
         let reply = call(helper, &request)?;
         let id = reply["run_id"]
             .as_i64()
             .filter(|id| *id > 0)
             .ok_or_else(|| io::Error::other("agent work helper answered without a run id"))?;
         s.run_id = Some(id);
+        s.parent_sent = s.parent.is_some();
         s.last_update_ms = now;
         save(dir, &s)?;
         return Ok(Some("start"));
@@ -442,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn a_handed_over_run_sends_its_parent_session_once_right_after_the_start() {
+    fn a_handed_over_run_sends_its_parent_session_with_the_start() {
         let tmp = tempfile::tempdir().unwrap();
         let calls = tmp.path().join("calls");
         let helper = tmp.path().join("helper.sh");
@@ -478,9 +482,9 @@ mod tests {
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
             .collect();
-        assert_eq!(sent[0].get("parent_session_id"), None);
-        assert_eq!(sent[1]["op"], "update");
-        assert_eq!(sent[1]["parent_session_id"], "s_old");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0]["op"], "start");
+        assert_eq!(sent[0]["parent_session_id"], "s_old");
     }
 
     #[test]

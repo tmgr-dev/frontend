@@ -352,3 +352,27 @@ fn export_masks_and_lands_where_the_lookup_finds_it() {
     assert_eq!(path, copy);
     assert!(newest(&roots, Agent::Claude).is_none());
 }
+
+#[cfg(unix)]
+#[test]
+fn the_masked_copy_is_private_and_stays_inside_the_run_home() {
+    use std::os::unix::fs::PermissionsExt;
+    use tmgr_session::locate::export_masked;
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("old.jsonl");
+    std::fs::write(
+        &src,
+        "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n",
+    )
+    .unwrap();
+    let worktree = dir.path().join("worktree");
+    std::fs::create_dir(&worktree).unwrap();
+    let home = dir.path().join("homes/new");
+    let copy = export_masked(&src, Agent::Claude, &home).unwrap();
+    assert!(copy.starts_with(&home));
+    assert_eq!(
+        std::fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(std::fs::read_dir(&worktree).unwrap().count(), 0);
+}

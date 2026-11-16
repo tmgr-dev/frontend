@@ -145,6 +145,8 @@ enum Request {
         session_id: Option<String>,
         #[serde(default)]
         role: Option<String>,
+        #[serde(default)]
+        parent_session_id: Option<String>,
     },
     Update {
         workspace: String,
@@ -280,6 +282,7 @@ fn handle(request: Request) -> Result<Value> {
             branch,
             session_id,
             role,
+            parent_session_id,
         } => {
             let ws = find_workspace(&workspace)?;
             let task_id = positive("task_id", task_id)?;
@@ -295,6 +298,9 @@ fn handle(request: Request) -> Result<Value> {
             });
             if let Some(role) = role.as_deref() {
                 body["role"] = json!(word("role", role, 32, "-")?);
+            }
+            if let Some(p) = parent_session_id.as_deref() {
+                body["parent_session_id"] = json!(word("parent_session_id", p, 191, "_.:-")?);
             }
             let s = Session::open(&ws, Some(runner_actor()), true)?;
             if let Some(sid) = session.as_deref() {

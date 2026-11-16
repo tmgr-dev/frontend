@@ -101,6 +101,11 @@ fn report(
     if let Some(w) = &warning {
         eprintln!("warning: {w}");
     }
+    let safe_note = (old.permission_mode.as_deref() == Some("bypass") || old.no_sandbox)
+        .then_some("the old session ran with bypass or without the sandbox; the new one starts in safe mode and will ask for approvals");
+    if let (Some(n), false) = (safe_note, o.json) {
+        eprintln!("{n}");
+    }
     let human = format!(
         "switched {} to {}: new session {} in {}\nattach with: {bin} attach {}",
         clean(&old.name),
@@ -116,6 +121,7 @@ fn report(
             "to": started.info.id,
             "agent": target.profile(),
             "warning": warning,
+            "safe_mode_note": safe_note,
             "session": started.info,
         }),
         human,
