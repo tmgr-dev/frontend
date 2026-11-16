@@ -1,3 +1,5 @@
+#![cfg(feature = "runner")]
+
 use assert_cmd::Command;
 use std::fs;
 
