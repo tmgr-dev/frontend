@@ -6,6 +6,7 @@ use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
 use crate::folders;
 use crate::humantime;
+use crate::limit;
 use crate::login;
 use crate::objectmodes;
 use crate::orchestrator;
@@ -69,6 +70,7 @@ const SHIM_QUEUE: usize = 1024;
 const SHIM_INPUT_CAP: usize = 1 << 20;
 const SHIM_INPUT_FRAMES: usize = 512;
 const SHIM_CREDIT_FRAMES: u64 = 1024;
+const LIMIT_CONFIRM: Duration = Duration::from_secs(3);
 const SHIM_LINK_SILENT: Duration = Duration::from_secs(5);
 const ATTACH_INPUT_WAIT: Duration = Duration::from_secs(2);
 // A note typed into the agent only shows on screen after its next redraw; wait that long before the next one.
@@ -421,6 +423,8 @@ struct Meta {
     team: Option<TeamLink>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    limit: Option<tmgr_ipc::api::LimitHit>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -495,6 +499,7 @@ struct Inner {
     fixed: Option<State>,
     size_owner: Option<u64>,
     input_sent_at: Option<Instant>,
+    limit_first: Option<Instant>,
 }
 
 #[derive(Default)]
@@ -731,6 +736,7 @@ impl Session {
         SessionInfo {
             team: m.team.clone(),
             agent_session_id: m.agent_session_id.clone(),
+            limit: m.limit.clone(),
             id: m.id.clone(),
             name: m.name.clone(),
             argv: m.argv.clone(),
@@ -992,10 +998,47 @@ impl Session {
             }
         });
         self.version.fetch_add(1, Ordering::SeqCst);
+        if live {
+            self.watch_limit(None);
+        }
         for reply in replies {
             if self.reply_allowed() {
                 let _ = self.shim_input(&reply);
             }
+        }
+    }
+
+    fn watch_limit(&self, exit: Option<Option<i32>>) {
+        let mut hit = None;
+        {
+            let mut i = lock(&self.inner);
+            if i.meta.limit.is_some() {
+                return;
+            }
+            let Some(profile) = i.meta.profile.clone() else {
+                return;
+            };
+            let found = limit::detect(&profile, &i.screen.bottom_text(12));
+            match (found, exit) {
+                (Some(line), Some(code)) if code != Some(0) => hit = Some(line),
+                (Some(line), None) => {
+                    let first = *i.limit_first.get_or_insert_with(Instant::now);
+                    if first.elapsed() >= LIMIT_CONFIRM {
+                        hit = Some(line);
+                    }
+                }
+                (None, _) | (Some(_), Some(_)) => i.limit_first = None,
+            }
+            if let Some(line) = &hit {
+                i.meta.limit = Some(tmgr_ipc::api::LimitHit {
+                    line: line.clone(),
+                    at_ms: now_ms(),
+                });
+            }
+        }
+        if hit.is_some() {
+            self.persist();
+            self.version.fetch_add(1, Ordering::SeqCst);
         }
     }
 
@@ -1226,6 +1269,7 @@ impl Session {
             }
             out.extend(changed)
         });
+        self.watch_limit(Some(e.code));
         self.worklog.exited(at, e.code, e.signal);
         self.learn_trust();
         finish_seeds(&self.dir, &self.id);
@@ -1289,6 +1333,9 @@ impl Session {
 
     fn tick(self: &Arc<Self>) {
         self.change(|i, now, out| out.extend(i.det.tick(now)));
+        if !self.is_exited() {
+            self.watch_limit(None);
+        }
         self.cp_tick();
         self.agent_work();
     }
@@ -4602,6 +4649,7 @@ impl Runner {
             permission_cards: extra.permission_cards,
             team: extra.team.clone(),
             agent_session_id: extra.agent_session_id.clone(),
+            limit: None,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -4649,6 +4697,7 @@ impl Runner {
                 fixed: None,
                 size_owner: None,
                 input_sent_at: None,
+                limit_first: None,
             }),
             version: AtomicU64::new(0),
             shim: Mutex::new(None),
@@ -5870,6 +5919,62 @@ mod tests {
 
     fn settled() -> Instant {
         Instant::now() + SEND_SETTLE
+    }
+
+    const LIMIT_SCREEN: &[u8] = "\r\n5-hour limit reached \u{2219} resets 3pm\r\n".as_bytes();
+
+    fn backdate_limit(s: &Session) {
+        lock(&s.inner).limit_first = Some(Instant::now() - LIMIT_CONFIRM - Duration::from_secs(1));
+    }
+
+    #[test]
+    fn a_limit_message_counts_only_after_it_stayed_on_screen() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(LIMIT_SCREEN, true);
+        assert!(s.info().limit.is_none());
+        backdate_limit(&s);
+        s.watch_limit(None);
+        let hit = s.info().limit.expect("limit hit");
+        assert!(hit.line.starts_with("5-hour limit reached"));
+        assert!(lock(&s.inner).meta.limit.is_some());
+    }
+
+    #[test]
+    fn a_limit_message_that_goes_away_resets_the_wait() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(LIMIT_SCREEN, true);
+        s.feed(b"\x1b[2J\x1b[Hworking again\r\n", true);
+        backdate_limit(&s);
+        s.watch_limit(None);
+        assert!(s.info().limit.is_none());
+    }
+
+    #[test]
+    fn prose_that_mentions_a_limit_is_not_a_hit() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(
+            b"\r\nI added a check for 5-hour limit reached in limit.rs\r\n",
+            true,
+        );
+        backdate_limit(&s);
+        s.watch_limit(None);
+        assert!(s.info().limit.is_none());
+    }
+
+    #[test]
+    fn a_failed_exit_with_the_message_on_screen_counts_at_once() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(LIMIT_SCREEN, true);
+        s.watch_limit(Some(Some(1)));
+        assert!(s.info().limit.is_some());
+    }
+
+    #[test]
+    fn a_clean_exit_never_counts() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(LIMIT_SCREEN, true);
+        s.watch_limit(Some(Some(0)));
+        assert!(s.info().limit.is_none());
     }
 
     #[test]

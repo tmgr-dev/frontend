@@ -78,6 +78,7 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
     SessionInfo {
         team: None,
         agent_session_id: None,
+        limit: None,
         id: id.into(),
         name: req.name.clone().unwrap_or_default(),
         argv: vec!["/usr/bin/true".into(), "--secret-flag".into()],
@@ -1565,6 +1566,7 @@ fn local(id: &str, edit: impl FnOnce(&mut SessionInfo)) -> SessionInfo {
     let mut s = SessionInfo {
         team: None,
         agent_session_id: None,
+        limit: None,
         id: id.into(),
         name: "hand-started".into(),
         argv: vec!["/usr/bin/true".into()],

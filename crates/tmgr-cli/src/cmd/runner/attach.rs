@@ -5389,6 +5389,7 @@ mod tests {
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
             agent_session_id: None,
+            limit: None,
             team: None,
             id: id.into(),
             name: id.into(),

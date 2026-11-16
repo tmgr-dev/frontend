@@ -318,6 +318,15 @@ pub struct SessionInfo {
     pub team: Option<TeamLink>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<LimitHit>,
+}
+
+/// The agent printed its usage-limit message and the message stayed on screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LimitHit {
+    pub line: String,
+    pub at_ms: u64,
 }
 
 /// Params of `runs.lookup`.

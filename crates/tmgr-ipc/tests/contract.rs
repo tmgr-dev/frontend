@@ -139,6 +139,7 @@ fn session_info() -> SessionInfo {
     SessionInfo {
         team: None,
         agent_session_id: None,
+        limit: None,
         id: SID.into(),
         name: "fix login".into(),
         argv: vec![
@@ -469,6 +470,16 @@ fn method_params_and_results() {
         },
     );
     golden(
+        "session_info_limit",
+        &SessionInfo {
+            limit: Some(LimitHit {
+                line: "5-hour limit reached resets 3pm".into(),
+                at_ms: 1_700_000_000_000,
+            }),
+            ..session_info()
+        },
+    );
+    golden(
         "lookup_params",
         &LookupParams {
             start_key: "q_abc-1".into(),
@@ -605,6 +616,7 @@ fn method_params_and_results() {
         &SessionInfo {
             team: None,
             agent_session_id: None,
+            limit: None,
             id: SID.into(),
             name: "sh".into(),
             argv: vec!["/bin/sh".into()],
@@ -1551,6 +1563,7 @@ fn full_info() -> SessionInfo {
     SessionInfo {
         team: None,
         agent_session_id: None,
+        limit: None,
         permission_cards: false,
         id: "s_abcdefghij".into(),
         name: "n".into(),
