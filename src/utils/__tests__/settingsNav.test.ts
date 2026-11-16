@@ -39,7 +39,7 @@ describe('settingsNavGroups', () => {
 	it('shows every group and item when all flags are on', () => {
 		expect(shape(ALL_ON)).toEqual({
 			Account: ['Profile', 'Notifications', 'Smart Devices', 'Privacy'],
-			Workspace: ['General', 'Modules', 'Personas'],
+			Workspace: ['General', 'Modules', 'Personas', 'Slack'],
 			Agents: ['Agent work', 'Agent alerts', 'Plugins'],
 			App: ['Theme', 'Desktop', 'Local data', 'Experimental', 'About'],
 		});
@@ -82,6 +82,16 @@ describe('settingsNavGroups', () => {
 		expect(
 			keys({ ...ALL_ON, isFeatureEnabled: (k) => k !== 'personas' }),
 		).not.toContain('personas');
+	});
+
+	it('Slack follows the slack module', () => {
+		expect(
+			keys({ ...ALL_OFF, isFeatureEnabled: (k) => k === 'slack' }),
+		).toContain('slack');
+		expect(
+			keys({ ...ALL_ON, isFeatureEnabled: (k) => k !== 'slack' }),
+		).not.toContain('slack');
+		expect(item('slack').path).toBe('/settings/integrations/slack');
 	});
 
 	it('Agent alerts needs the alerts module and a cloud account', () => {

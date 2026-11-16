@@ -120,7 +120,13 @@
 		"saving": "Guardando…",
 		"saved": "Guardado",
 		"loadFailed": "No se pudieron cargar los ajustes",
-		"saveFailed": "No se pudieron guardar los ajustes"
+		"saveFailed": "No se pudieron guardar los ajustes",
+		"slackTitle": "Slack notifications",
+		"slackLinkHint": "Link your Slack account to receive direct messages.",
+		"slackLinkAction": "Open Slack settings",
+		"slackSend": "Send direct messages in Slack",
+		"slackType_task_assigned": "Task assigned to you",
+		"slackType_page_mentioned": "Mentioned on a page"
 	},
 	"notificationBell": {
 		"label": "Notificaciones",

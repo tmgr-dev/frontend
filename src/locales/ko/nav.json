@@ -102,6 +102,7 @@
 		"categories": "카테고리",
 		"newCategory": "새 카테고리",
 		"subcategories": "하위 카테고리",
-		"categoryChildren": "하위 카테고리"
+		"categoryChildren": "하위 카테고리",
+		"slack": "Slack"
 	}
 }

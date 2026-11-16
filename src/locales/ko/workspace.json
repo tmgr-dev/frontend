@@ -120,7 +120,13 @@
 		"saving": "저장 중…",
 		"saved": "저장됨",
 		"loadFailed": "설정을 불러오지 못했어요",
-		"saveFailed": "설정을 저장하지 못했어요"
+		"saveFailed": "설정을 저장하지 못했어요",
+		"slackTitle": "Slack notifications",
+		"slackLinkHint": "Link your Slack account to receive direct messages.",
+		"slackLinkAction": "Open Slack settings",
+		"slackSend": "Send direct messages in Slack",
+		"slackType_task_assigned": "Task assigned to you",
+		"slackType_page_mentioned": "Mentioned on a page"
 	},
 	"notificationBell": {
 		"label": "알림",

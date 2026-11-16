@@ -120,7 +120,13 @@
 		"saving": "正在保存…",
 		"saved": "已保存",
 		"loadFailed": "无法加载设置",
-		"saveFailed": "无法保存设置"
+		"saveFailed": "无法保存设置",
+		"slackTitle": "Slack notifications",
+		"slackLinkHint": "Link your Slack account to receive direct messages.",
+		"slackLinkAction": "Open Slack settings",
+		"slackSend": "Send direct messages in Slack",
+		"slackType_task_assigned": "Task assigned to you",
+		"slackType_page_mentioned": "Mentioned on a page"
 	},
 	"notificationBell": {
 		"label": "通知",

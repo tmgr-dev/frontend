@@ -606,6 +606,22 @@ const routes = [
 		name: 'PersonaSettings',
 	},
 	{
+		path: '/settings/integrations/slack',
+		component: gatedPage(
+			'slack',
+			'Slack',
+			() => import('@/pages/Settings/SlackSettingsPage.vue'),
+		),
+		meta: {
+			title: 'nav.routes.slack',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+			settingsLayout: true,
+			returnAfterLogin: true,
+		},
+		name: 'SlackSettings',
+	},
+	{
 		path: '/settings/agent-notifications',
 		component: gatedPage(
 			'alerts',

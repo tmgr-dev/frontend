@@ -120,7 +120,13 @@
 		"saving": "Zapisywanie…",
 		"saved": "Zapisano",
 		"loadFailed": "Nie udało się wczytać ustawień",
-		"saveFailed": "Nie udało się zapisać ustawień"
+		"saveFailed": "Nie udało się zapisać ustawień",
+		"slackTitle": "Slack notifications",
+		"slackLinkHint": "Link your Slack account to receive direct messages.",
+		"slackLinkAction": "Open Slack settings",
+		"slackSend": "Send direct messages in Slack",
+		"slackType_task_assigned": "Task assigned to you",
+		"slackType_page_mentioned": "Mentioned on a page"
 	},
 	"notificationBell": {
 		"label": "Powiadomienia",

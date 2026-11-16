@@ -53,6 +53,7 @@ const GROUPS: { key: string; items: NavItemDef[] }[] = [
 			page('workspaces', '/settings/workspaces', 'workspace'),
 			page('modules', '/settings/modules', 'modules'),
 			page('personas', '/settings/personas', 'personas'),
+			page('slack', '/settings/integrations/slack', 'slack'),
 		],
 	},
 	{
@@ -79,6 +80,7 @@ const VISIBLE: Record<string, (f: SettingsNavFlags) => boolean> = {
 	notification: (f) => !f.isLocalOnly,
 	device: (f) => !f.isLocalOnly,
 	personas: (f) => f.isFeatureEnabled('personas'),
+	slack: (f) => f.isFeatureEnabled('slack'),
 	'agent-work': (f) => !f.isLocalOnly,
 	'agent-notifications': (f) => !f.isLocalOnly && f.isFeatureEnabled('alerts'),
 	plugins: (f) => f.isDesktop,

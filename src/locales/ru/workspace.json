@@ -120,7 +120,13 @@
 		"saving": "Сохранение…",
 		"saved": "Сохранено",
 		"loadFailed": "Не удалось загрузить настройки",
-		"saveFailed": "Не удалось сохранить настройки"
+		"saveFailed": "Не удалось сохранить настройки",
+		"slackTitle": "Slack notifications",
+		"slackLinkHint": "Link your Slack account to receive direct messages.",
+		"slackLinkAction": "Open Slack settings",
+		"slackSend": "Send direct messages in Slack",
+		"slackType_task_assigned": "Task assigned to you",
+		"slackType_page_mentioned": "Mentioned on a page"
 	},
 	"notificationBell": {
 		"label": "Уведомления",

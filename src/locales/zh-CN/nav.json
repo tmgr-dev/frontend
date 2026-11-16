@@ -102,6 +102,7 @@
 		"categories": "分类",
 		"newCategory": "新建分类",
 		"subcategories": "子分类",
-		"categoryChildren": "子分类"
+		"categoryChildren": "子分类",
+		"slack": "Slack"
 	}
 }

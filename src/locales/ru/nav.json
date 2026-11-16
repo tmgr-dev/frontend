@@ -102,6 +102,7 @@
 		"categories": "Проекты",
 		"newCategory": "Новая категория",
 		"subcategories": "Подкатегории",
-		"categoryChildren": "Вложенные категории"
+		"categoryChildren": "Вложенные категории",
+		"slack": "Slack"
 	}
 }

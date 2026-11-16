@@ -24,7 +24,7 @@
 				</template>
 				<div
 					v-if="formData.web_enabled"
-					class="divide-y divide-border flex flex-col rounded-md border border-border"
+					class="flex flex-col divide-y divide-border rounded-md border border-border"
 				>
 					<label
 						v-for="type in notificationTypeGroups"
@@ -63,7 +63,7 @@
 				</template>
 				<div
 					v-if="formData.telegram_enabled && hasTelegram"
-					class="divide-y divide-border flex flex-col rounded-md border border-border"
+					class="flex flex-col divide-y divide-border rounded-md border border-border"
 				>
 					<label
 						v-for="type in notificationTypeGroups"
@@ -82,6 +82,54 @@
 			</SettingsSection>
 
 			<SettingsSection
+				v-if="slackState !== 'hidden'"
+				:title="$t('workspace.notificationSettingsForm.slackTitle')"
+			>
+				<template #description>
+					<span v-if="slackState === 'link'">
+						{{ $t('workspace.notificationSettingsForm.slackLinkHint') }}
+						<router-link to="/settings/integrations/slack" class="underline">{{
+							$t('workspace.notificationSettingsForm.slackLinkAction')
+						}}</router-link>
+					</span>
+					<span v-else>{{
+						$t('workspace.notificationSettingsForm.slackSend')
+					}}</span>
+				</template>
+				<template v-if="slackState === 'settings'" #actions>
+					<Switch
+						:checked="formData.slack_enabled !== false"
+						@update:checked="(v) => (formData.slack_enabled = v)"
+					/>
+				</template>
+				<div
+					v-if="slackState === 'settings' && formData.slack_enabled !== false"
+					class="flex flex-col divide-y divide-border rounded-md border border-border"
+				>
+					<label
+						v-for="type in slackTypes"
+						:key="type"
+						class="flex items-center gap-3 px-3 py-2 text-sm text-ink"
+					>
+						<input
+							type="checkbox"
+							:checked="slackTypeChecked(formData.slack_types, type)"
+							@change="onSlackTypeChange(type, $event.target.checked)"
+							class="h-4 w-4 rounded border-border accent-primary"
+						/>
+						{{
+							$t(
+								`workspace.notificationSettingsForm.slackType_${type.replace(
+									'.',
+									'_',
+								)}`,
+							)
+						}}
+					</label>
+				</div>
+			</SettingsSection>
+
+			<SettingsSection
 				:title="$t('workspace.notificationSettingsForm.emailTitle')"
 				:description="$t('workspace.notificationSettingsForm.emailDescription')"
 			>
@@ -93,7 +141,7 @@
 				</template>
 				<div
 					v-if="formData.email_enabled"
-					class="divide-y divide-border flex flex-col rounded-md border border-border"
+					class="flex flex-col divide-y divide-border rounded-md border border-border"
 				>
 					<label
 						v-for="type in notificationTypeGroups"
@@ -119,7 +167,7 @@
 				"
 			>
 				<div
-					class="divide-y divide-border flex flex-col rounded-md border border-border"
+					class="flex flex-col divide-y divide-border rounded-md border border-border"
 				>
 					<div
 						class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink"
@@ -155,16 +203,16 @@
 </template>
 
 <script>
-	import { t } from '@/i18n';
 	import {
 		getNotificationSettings,
 		updateNotificationSettings,
 	} from '@/actions/tmgr/notifications';
+	import { getSlackInstallation } from '@/actions/tmgr/slack';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
+	import { t } from '@/i18n';
 	import { notificationTypeLabel } from '@/utils/notificationTypes';
-	import { hasTelegramLink } from './telegramLink';
 	import {
 		computed,
 		defineComponent,
@@ -175,6 +223,14 @@
 		watch,
 	} from 'vue';
 	import { useStore } from 'vuex';
+	import {
+		SLACK_DM_TYPES,
+		slackPayload,
+		slackSectionState,
+		slackTypeChecked,
+		toggleSlackType,
+	} from './slackSettings';
+	import { hasTelegramLink } from './telegramLink';
 
 	export default defineComponent({
 		name: 'NotificationSettingsForm',
@@ -192,6 +248,8 @@
 				telegram_types: [],
 				email_enabled: true,
 				email_types: [],
+				slack_enabled: null,
+				slack_types: null,
 				agent_push_enabled: true,
 				agent_telegram_enabled: false,
 			});
@@ -208,6 +266,28 @@
 			const hasTelegram = computed(() => hasTelegramLink(store.state.user));
 
 			const settingsReady = ref(false);
+			const slackInstallation = ref(null);
+
+			const isFeatureEnabled = (key) =>
+				store.getters['featureToggles/isFeatureEnabled'](key);
+
+			const slackState = computed(() =>
+				slackSectionState(isFeatureEnabled('slack'), slackInstallation.value),
+			);
+
+			const loadSlackInstallation = async () => {
+				slackInstallation.value = null;
+				if (!isFeatureEnabled('slack')) return;
+				const workspaceId = store.state.user?.settings?.find(
+					(s) => s.key === 'current_workspace',
+				)?.value;
+				if (!workspaceId) return;
+				try {
+					slackInstallation.value = await getSlackInstallation(workspaceId);
+				} catch {
+					slackInstallation.value = null;
+				}
+			};
 
 			const loadSettings = async () => {
 				try {
@@ -227,6 +307,10 @@
 						response.settings.agent_push_enabled ?? true;
 					formData.agent_telegram_enabled =
 						response.settings.agent_telegram_enabled ?? false;
+
+					formData.slack_enabled = response.settings.slack_enabled ?? null;
+					formData.slack_types = response.settings.slack_types ?? null;
+					await loadSlackInstallation();
 
 					availableTypes.value = response.available_types;
 					await nextTick();
@@ -288,6 +372,14 @@
 				handleTelegramEnabledChange();
 			};
 
+			const onSlackTypeChange = (type, checked) => {
+				formData.slack_types = toggleSlackType(
+					formData.slack_types,
+					type,
+					checked,
+				);
+			};
+
 			const onEmailEnabledChange = (value) => {
 				formData.email_enabled = value;
 				handleEmailEnabledChange();
@@ -310,6 +402,7 @@
 						email_enabled: formData.email_enabled,
 						email_types:
 							formData.email_types.length > 0 ? formData.email_types : null,
+						...slackPayload(formData.slack_enabled, formData.slack_types),
 						agent_push_enabled: formData.agent_push_enabled,
 						agent_telegram_enabled: formData.agent_telegram_enabled,
 					});
@@ -349,8 +442,11 @@
 				formData,
 				notificationTypeGroups,
 				hasTelegram,
-				isFeatureEnabled: (key) =>
-					store.getters['featureToggles/isFeatureEnabled'](key),
+				isFeatureEnabled,
+				slackState,
+				slackTypes: SLACK_DM_TYPES,
+				slackTypeChecked,
+				onSlackTypeChange,
 				loadSettings,
 				onWebEnabledChange,
 				onTelegramEnabledChange,

@@ -39,6 +39,8 @@ export interface NotificationSettings {
 	web_types: string[] | null;
 	email_enabled: boolean;
 	email_types: string[] | null;
+	slack_enabled?: boolean | null;
+	slack_types?: string[] | null;
 	agent_push_enabled?: boolean;
 	agent_telegram_enabled?: boolean;
 	created_at: string;
@@ -57,6 +59,8 @@ export interface UpdateNotificationSettingsPayload {
 	web_types?: string[];
 	email_enabled?: boolean;
 	email_types?: string[];
+	slack_enabled?: boolean;
+	slack_types?: string[];
 	agent_push_enabled?: boolean;
 	agent_telegram_enabled?: boolean;
 }

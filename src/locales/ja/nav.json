@@ -102,6 +102,7 @@
 		"categories": "カテゴリー",
 		"newCategory": "新しいカテゴリー",
 		"subcategories": "サブカテゴリー",
-		"categoryChildren": "子カテゴリー"
+		"categoryChildren": "子カテゴリー",
+		"slack": "Slack"
 	}
 }

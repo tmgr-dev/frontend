@@ -107,6 +107,7 @@
 		"categories": "Categories",
 		"newCategory": "New category",
 		"subcategories": "Subcategories",
-		"categoryChildren": "Category Children"
+		"categoryChildren": "Category Children",
+		"slack": "Slack"
 	}
 }

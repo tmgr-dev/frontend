@@ -39,7 +39,8 @@
 			"desktop": "데스크톱",
 			"data": "로컬 데이터",
 			"experimental": "실험 기능",
-			"about": "정보"
+			"about": "정보",
+			"slack": "Slack"
 		}
 	},
 	"alerts": {
@@ -184,5 +185,82 @@
 		"inWorkspace": "이 워크스페이스에서",
 		"openModulesLabel": "모듈 설정 열기",
 		"openModules": "모듈 열기"
+	},
+	"slack": {
+		"title": "Slack",
+		"subtitle": "Connect a Slack workspace, link your account and post task events to channels.",
+		"loading": "Loading Slack settings",
+		"connect": "Connect Slack",
+		"link": "Link my Slack account",
+		"unlink": "Unlink",
+		"askAdmin": "Ask a workspace admin to connect Slack.",
+		"connection": {
+			"title": "Connection",
+			"connectedTo": "Connected to {team}",
+			"notConnected": "Slack is not connected to this workspace."
+		},
+		"disconnect": {
+			"label": "Disconnect",
+			"confirmTitle": "Disconnect Slack?",
+			"confirmDescription": "This removes the TMGR app from your Slack workspace. Channels, subscriptions and account links of this workspace will stop working."
+		},
+		"done": {
+			"install": "Slack is connected.",
+			"link": "Your Slack account is linked."
+		},
+		"errors": {
+			"invalid_state": "The Slack request expired or was already used. Start again.",
+			"access_denied": "Slack access was denied.",
+			"forbidden": "You do not have permission to do that.",
+			"module_disabled": "The Slack module is turned off for this workspace.",
+			"slack_not_installed": "Slack is not connected to this workspace yet.",
+			"slack_team_mismatch": "That Slack account belongs to a different Slack workspace than the one connected.",
+			"slack_guest_not_allowed": "Slack guest accounts cannot be linked.",
+			"slack_user_inactive": "That Slack account is deactivated.",
+			"slack_user_linked_elsewhere": "That Slack account is already linked to another TMGR user.",
+			"invalid_id_token": "Slack sent an invalid sign-in response. Try again.",
+			"slack_unavailable": "Slack is not available right now. Try again later.",
+			"slack_api_error": "Slack returned an error. Try again later.",
+			"slack_token_rotation_required": "Slack token rotation is enabled for this app, which TMGR does not support.",
+			"server_error": "Something went wrong on our side. Try again.",
+			"expired": "This Slack step was already completed or has expired.",
+			"unknown": "Something went wrong while talking to Slack."
+		},
+		"people": {
+			"title": "Linked people",
+			"empty": "Nobody has linked a Slack account yet.",
+			"loadFailed": "Could not load linked people.",
+			"unlinkFailed": "Could not unlink this person."
+		},
+		"channels": {
+			"title": "Channels",
+			"inviteHint": "Invite the bot first: /invite {'@'}TMGR",
+			"idPlaceholder": "Channel ID, for example C0123456789",
+			"add": "Add channel",
+			"empty": "No channels added yet.",
+			"shared": "Shared",
+			"remove": "Remove",
+			"loadFailed": "Could not load channels.",
+			"addFailed": "Could not add this channel.",
+			"removeFailed": "Could not remove this channel."
+		},
+		"subscriptions": {
+			"title": "Subscriptions",
+			"events": {
+				"task_created": "Task created",
+				"task_status_changed": "Status changed",
+				"task_assigned": "Task assigned",
+				"comment_created": "Comment added"
+			},
+			"wholeWorkspace": "Whole workspace",
+			"anyPriority": "Any priority",
+			"mode_thread": "Thread",
+			"mode_flat": "Flat",
+			"add": "Add subscription",
+			"delete": "Delete",
+			"loadFailed": "Could not load subscriptions.",
+			"addFailed": "Could not add this subscription.",
+			"deleteFailed": "Could not delete this subscription."
+		}
 	}
 }
