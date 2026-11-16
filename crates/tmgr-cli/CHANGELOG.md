@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.131
+
+- New `tmgr runner switch-agent <session>` (experimental) stops a Claude Code or Codex session and continues the same task in the other agent, in the same task clone. The new agent starts with a handoff note (your messages, the final replies, files touched, git state, the open plan, the last test run) and can look up the old conversation with `tmgr session`. The old run is finished as cancelled with "handed to <agent>" and the new run records the old session as its parent. Works for tasks of local workspaces started with `tmgr run`; the new agent starts in the default permission mode, never in a riskier one.
+- The runner now notices the usage-limit message of Claude Code and Codex on a running session and shows it as `limit` in the session data. Nothing is switched automatically.
+
 ## 1.0.130
 
 - New `tmgr session turns|show|grep|files|errors <id>` read a local Claude Code or Codex session as clean text: a numbered turn list, one turn with its tool calls, matches with turn numbers, files read and edited, and failed commands. Long text is trimmed (`--full` shows everything) and secrets such as tokens, keys and passwords are masked. Nothing leaves the machine.
