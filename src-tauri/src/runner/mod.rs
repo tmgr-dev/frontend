@@ -244,7 +244,7 @@ impl Runner {
     if !welcome.has(caps::PROFILES_LOGIN_CHECK_V1) {
       return Ok(None);
     }
-    api::login_problem(&mut conn, profile).map_err(err)
+    Ok(api::login_problem(&mut conn, profile).unwrap_or(None))
   }
 
   pub fn begin_switch(&self, sid: &str) -> Result<SwitchGuard, String> {

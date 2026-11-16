@@ -2527,12 +2527,16 @@ impl Runner {
                 let q: LoginCheckParams = params(p)?;
                 let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
                 let prof = known_profile(&set, &q.profile)?;
-                let home = std::env::var_os("HOME")
+                let bin = self
+                    .cfg
+                    .self_exe
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("tmgr");
+                let problem = std::env::var_os("HOME")
                     .map(PathBuf::from)
-                    .unwrap_or_default();
-                Ok(to_json(&LoginCheck {
-                    problem: login::login_problem(prof, &home, "tmgr"),
-                }))
+                    .and_then(|home| login::login_problem(prof, &home, bin));
+                Ok(to_json(&LoginCheck { problem }))
             }
             method::SESSIONS_LIST => {
                 let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
