@@ -236,6 +236,7 @@
 				freeText: this.freeDraft,
 				pickTimer: 0 as number,
 				selectionCleared: false,
+				picked: false,
 			};
 		},
 		computed: {
@@ -289,7 +290,12 @@
 					selected: this.selected,
 					noteFor: this.noteFor,
 				});
-				if (!result.cleared) return;
+				if (!result.cleared) {
+					if (!this.picked) {
+						this.selected = recommendedOption(this.card)?.id ?? this.selected;
+					}
+					return;
+				}
 				window.clearTimeout(this.pickTimer);
 				this.selected = result.selected;
 				if (this.noteFor !== result.noteFor) {
@@ -340,6 +346,7 @@
 				if (!option || this.mode !== 'answer') return;
 				this.selected = option.id;
 				this.selectionCleared = false;
+				this.picked = true;
 				if (withNote) {
 					this.noteFor = option.id;
 					void this.$nextTick(() => {

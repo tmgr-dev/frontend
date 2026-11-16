@@ -504,7 +504,8 @@ fn card_patch(a: &Value) -> Result<Option<CardPatch>, String> {
         patch.recommended = Some(n as u32);
         probe.remove("recommended");
     }
-    let card = parse_spec(&Value::Object(probe))?.into_card("mcp", Source::default())?;
+    let probe = Value::Object(probe);
+    let card = parse_spec(&probe)?.into_card("mcp", Source::default())?;
     let links = |kind: &str| {
         card.links
             .items
@@ -532,7 +533,12 @@ fn card_patch(a: &Value) -> Result<Option<CardPatch>, String> {
         patch.checks = Some(card.checks.clone());
     }
     if has("prs") {
-        patch.prs = Some(links("pr"));
+        let wanted = items(&probe, "prs")?.len();
+        let kept = links("pr");
+        if kept.len() != wanted {
+            return Err("prs must be http(s) URLs or owner/repo#123".into());
+        }
+        patch.prs = Some(kept);
     }
     if has("commits") {
         patch.commits = Some(links("commit"));
@@ -804,6 +810,7 @@ mod tests {
         assert!(card_patch(&json!({"card": {"options": ["a"], "recommended": 3}})).is_err());
         assert!(card_patch(&json!({"card": {"facts": ["bogus: x"]}})).is_err());
         assert!(card_patch(&json!({"card": {"title": ""}})).is_err());
+        assert!(card_patch(&json!({"card": {"prs": ["not a pr"]}})).is_err());
         let long = "x".repeat(MAX_CONTEXT + 1);
         assert!(card_patch(&json!({"card": {"context": long}})).is_err());
     }

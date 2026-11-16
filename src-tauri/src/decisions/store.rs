@@ -393,7 +393,7 @@ fn apply_patch(old: &CardIn, p: CardPatch) -> Result<(CardIn, Vec<String>), Stri
   for (kind, items) in [("pr", p.prs), ("commit", p.commits), ("tag", p.tags), ("url", p.links)] {
     if let Some(items) = items {
       c.links.items.retain(|i| i.kind != kind);
-      c.links.items.extend(items);
+      c.links.items.extend(items.into_iter().map(|i| LinkItem { kind: kind.to_owned(), ..i }));
       if kind == "pr" {
         c.links.pr = c.links.items.iter().find(|i| i.kind == "pr").map(|i| i.url.clone());
       }
@@ -1488,7 +1488,7 @@ impl Store {
   pub fn answer(&mut self, id: &str, a: AnswerIn) -> Result<(Event, CardIn), String> {
     let id = &self.canon(id)?;
     let (row, card) = self.live_card(id)?;
-    if let Some(seen) = a.seen_ms.filter(|_| !a.dismissed) {
+    if let Some(seen) = a.seen_ms.filter(|_| !a.dismissed && !a.deferred) {
       if seen != row.updated_ms.unwrap_or(row.created_ms) {
         return Err("the card changed since you opened it; review it and answer again".into());
       }

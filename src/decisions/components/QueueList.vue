@@ -18,20 +18,27 @@
 			}}</span>
 		</div>
 		<div class="prog"><i :style="{ width: progress.percent + '%' }"></i></div>
-		<div v-if="clearCount > 0 && !confirmingClear" class="clear-row">
+		<div v-if="clearIds.length > 0 && !confirmingClear" class="clear-row">
 			<button type="button" class="clear-all" @click="openConfirm">
 				{{ $t('decisions.queue.clearAll') }}
 			</button>
 		</div>
 		<div
-			v-if="clearCount > 0 && confirmingClear"
+			v-if="clearIds.length > 0 && confirmingClear"
 			class="clear-confirm"
 			role="alertdialog"
 			:aria-label="$t('decisions.queue.clearAll')"
 			@keydown.esc.stop.prevent="closeConfirm"
+			@focusout="onConfirmFocusOut"
 		>
 			<p>
-				{{ $t('decisions.queue.clearConfirm', { n: clearCount }, clearCount) }}
+				{{
+					$t(
+						'decisions.queue.clearConfirm',
+						{ n: pendingClear.length },
+						pendingClear.length,
+					)
+				}}
 			</p>
 			<div class="clear-actions">
 				<button ref="cancelClear" type="button" @click="closeConfirm">
@@ -127,24 +134,31 @@
 			progress: { type: Object as PropType<QueueProgress>, required: true },
 			query: { type: String, default: '' },
 			subtitle: { type: String, default: 'decisions.subtitle.default' },
-			clearCount: { type: Number, default: 0 },
+			clearIds: { type: Array as PropType<string[]>, default: () => [] },
 		},
 		emits: ['select', 'dismiss', 'update:query', 'clear-all', 'confirming'],
 		data() {
-			return { confirmingClear: false };
+			return { confirmingClear: false, pendingClear: [] as string[] };
 		},
 		watch: {
-			clearCount(count: number) {
-				if (count === 0) this.closeConfirm();
+			clearIds(ids: string[]) {
+				if (ids.length === 0) this.closeConfirm();
 			},
 		},
 		methods: {
 			openConfirm() {
+				this.pendingClear = [...this.clearIds];
 				this.confirmingClear = true;
 				this.$emit('confirming', true);
 				void this.$nextTick(() => {
 					(this.$refs.cancelClear as HTMLButtonElement | undefined)?.focus();
 				});
+			},
+			onConfirmFocusOut(event: FocusEvent) {
+				const box = event.currentTarget as HTMLElement;
+				if (!box.contains(event.relatedTarget as Node | null)) {
+					this.closeConfirm();
+				}
 			},
 			closeConfirm() {
 				if (!this.confirmingClear) return;
@@ -152,8 +166,9 @@
 				this.$emit('confirming', false);
 			},
 			confirmClear() {
+				const ids = this.pendingClear;
 				this.closeConfirm();
-				this.$emit('clear-all');
+				this.$emit('clear-all', ids);
 			},
 			kindLabel,
 			onInput(event: Event) {

@@ -20,7 +20,7 @@
 				:subtitle="subtitle"
 				@update:query="query = $event"
 				@select="select"
-				:clear-count="clearIds.length"
+				:clear-ids="clearIds"
 				@dismiss="closeCard"
 				@clear-all="clearAll"
 				@confirming="confirmingClear = $event"
@@ -624,6 +624,7 @@
 						t('decisions.toast.answerFailed', { error: String(error) }),
 						true,
 					);
+					await this.refresh();
 					return;
 				}
 				if (solved) {
@@ -664,8 +665,7 @@
 				await this.refresh();
 				this.ensureSelection();
 			},
-			async clearAll() {
-				const ids = this.clearIds;
+			async clearAll(ids: string[]) {
 				if (ids.length === 0) return;
 				let cleared = 0;
 				try {
@@ -747,7 +747,10 @@
 				);
 			},
 			onKeydown(event: KeyboardEvent) {
-				if (this.confirmingClear) return;
+				if (this.confirmingClear) {
+					if (event.key === 'Escape') this.confirmingClear = false;
+					return;
+				}
 				this.feedKonami(event);
 				const target = document.activeElement as HTMLElement | null;
 				const card = this.current;

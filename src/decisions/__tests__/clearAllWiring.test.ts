@@ -12,13 +12,13 @@ describe('Clear all', () => {
 	it('asks for confirmation before emitting clear-all', () => {
 		const source = template('QueueList.vue');
 		expect(source).toMatch(
-			/v-if="clearCount > 0 && !confirmingClear"[\s\S]*?@click="openConfirm"/,
+			/v-if="clearIds.length > 0 && !confirmingClear"[\s\S]*?@click="openConfirm"/,
 		);
 		expect(source).toMatch(
-			/v-if="clearCount > 0 && confirmingClear"[\s\S]*?decisions\.queue\.clearConfirm[\s\S]*?@click="confirmClear"/,
+			/v-if="clearIds.length > 0 && confirmingClear"[\s\S]*?decisions\.queue\.clearConfirm[\s\S]*?@click="confirmClear"/,
 		);
 		expect(read('QueueList.vue')).toMatch(
-			/confirmClear\(\) \{\s*this\.closeConfirm\(\);\s*this\.\$emit\('clear-all'\);/,
+			/confirmClear\(\) \{\s*const ids = this\.pendingClear;\s*this\.closeConfirm\(\);\s*this\.\$emit\('clear-all', ids\);/,
 		);
 	});
 
@@ -27,19 +27,20 @@ describe('Clear all', () => {
 			'@keydown.esc.stop.prevent="closeConfirm"',
 		);
 		expect(read('App.vue')).toMatch(
-			/onKeydown\(event: KeyboardEvent\) \{\s*if \(this\.confirmingClear\) return;/,
+			/onKeydown\(event: KeyboardEvent\) \{\s*if \(this\.confirmingClear\) \{[\s\S]*?return;/,
 		);
 	});
 
 	it('counts the visible pending cards and sends exactly those ids once', () => {
 		const app = read('App.vue');
 		expect(template('App.vue')).toMatch(
-			/:clear-count="clearIds\.length"[\s\S]*?@clear-all="clearAll"/,
+			/:clear-ids="clearIds"[\s\S]*?@clear-all="clearAll"/,
 		);
 		expect(app).toMatch(
 			/clearIds\(\): string\[\] \{\s*return this\.order\.filter\(isPending\)\.map/,
 		);
 		expect((app.match(/decisionsDismissAll\(ids\)/g) ?? []).length).toBe(1);
+		expect(read('QueueList.vue')).toContain("this.$emit('clear-all', ids)");
 		expect(readFileSync(join(__dirname, '..', 'api.ts'), 'utf8')).toContain(
 			"invoke<number>('decisions_dismiss_all', { ids })",
 		);
