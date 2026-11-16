@@ -581,6 +581,21 @@ fn method_params_and_results() {
         }],
     );
     golden(
+        "login_check_params",
+        &LoginCheckParams {
+            profile: "codex".into(),
+        },
+    );
+    golden(
+        "login_check_problem",
+        &LoginCheck {
+            problem: Some("Codex has no login yet".into()),
+        },
+    );
+    golden("login_check_ok", &LoginCheck { problem: None });
+    let old: LoginCheck = serde_json::from_value(json!({})).unwrap();
+    assert_eq!(old.problem, None);
+    golden(
         "work_summary",
         &WorkSummary {
             started_ms: 1_700_000_000_000,
@@ -943,7 +958,8 @@ fn constants_are_pinned() {
             "checkpoints.v1",
             "permission_cards.v1",
             "team.workers.v1",
-            "team.multi.v1"
+            "team.multi.v1",
+            "profiles_login_check.v1"
         ]
     );
     let methods = [
@@ -964,6 +980,7 @@ fn constants_are_pinned() {
         method::ATTACH_SET,
         method::ORIGIN_REVOKE,
         method::CANDIDATES_LIST,
+        method::PROFILES_LOGIN_CHECK,
         method::SESSIONS_WORKLOG,
         method::RUNS_RESTORE,
         method::RUNS_LOOKUP,
@@ -998,6 +1015,7 @@ fn constants_are_pinned() {
             "attach.set",
             "origin.revoke",
             "candidates.list",
+            "profiles.login_check",
             "sessions.worklog",
             "runs.restore",
             "runs.lookup",
@@ -1039,7 +1057,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 37);
+    assert_eq!(w.caps.len(), 38);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

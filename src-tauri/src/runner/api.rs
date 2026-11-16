@@ -1,6 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
-use tmgr_ipc::api::{caps, method, limits, AuthorKind, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotStatus, ClientMsg, CwdPin, Request, RunCreateReq, SessionInfo, State, TeamLink, TeamRole};
+use tmgr_ipc::api::{caps, method, limits, AuthorKind, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotStatus, ClientMsg, CwdPin, LoginCheck, LoginCheckParams, Request, RunCreateReq, SessionInfo, State, TeamLink, TeamRole};
 
 pub use tmgr_ipc::api::StateKind;
 
@@ -11,6 +11,7 @@ use super::sanitize;
 
 pub const PROFILES: &[(&str, &str)] = &[("claude-code", "Claude Code"), ("codex", "Codex")];
 const TITLE_MAX: usize = 120;
+const LOGIN_PROBLEM_MAX: usize = 400;
 const NAME_MAX: usize = 120;
 const RUN_NAME_MAX: usize = 64;
 const RUN_COLS: u16 = 120;
@@ -310,6 +311,14 @@ pub fn kill_session_with_reason(conn: &mut Conn, id: &str, reason: &str) -> Resu
 pub fn session_infos(conn: &mut Conn) -> Result<Vec<SessionInfo>, ConnError> {
   let v = conn.call(method::SESSIONS_LIST, Value::Null)?;
   serde_json::from_value(v).map_err(|_| ConnError::Failed("unexpected reply from runner".to_owned()))
+}
+
+pub fn login_problem(conn: &mut Conn, profile: &str) -> Result<Option<String>, ConnError> {
+  let params = serde_json::to_value(LoginCheckParams { profile: profile.to_owned() }).map_err(|e| ConnError::Failed(e.to_string()))?;
+  let v = conn.call(method::PROFILES_LOGIN_CHECK, params)?;
+  serde_json::from_value::<LoginCheck>(v)
+    .map(|r| r.problem.map(|p| sanitize::text(&p, LOGIN_PROBLEM_MAX)))
+    .map_err(|_| ConnError::Failed("unexpected reply from runner".to_owned()))
 }
 
 pub fn kill_session(conn: &mut Conn, id: &str) -> Result<(), ConnError> {

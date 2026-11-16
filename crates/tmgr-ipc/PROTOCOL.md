@@ -122,6 +122,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `team.v1` | `team` in a run bundle (section 5, "Run bundles") |
 | `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
 | `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
+| `profiles_login_check.v1` | `profiles.login_check` |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
@@ -159,6 +160,7 @@ missing params) and `internal`.
 | `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`, `trust_via_repo`, `exe_pin`, `argv_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
+| `profiles.login_check` | `{profile}` | `{problem?}` (the reason a session of the profile cannot start for lack of a login, absent when there is none) | `unknown_profile`, `invalid_params`, `forbidden` | any client except `worker`; cap `profiles_login_check.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
 | `sessions.resume` | `{id, cols?, rows?}` (an exited session) | `{session: SessionInfo, resumed, via}` | `not_found`, `busy`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only; cap `sessions_resume.v1` |
 | `sessions.fork` | `{id, agent_id, name?, cols?, rows?}` (any state) | `{session: SessionInfo, resumed, via}` (`via` is `fork`) | `not_found`, `busy`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit`, `internal` | `client: "cli"` only; cap `sessions_fork.v1` |

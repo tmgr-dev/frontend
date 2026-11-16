@@ -300,6 +300,10 @@ pub async fn runner_switch_agent<R: Runtime>(
   api::build_switch(&info, ids, target.profile(), (&pin.0, pin.1), &caps, (&"x".repeat(api::SWITCH_NOTE_MAX), &old.id))
     .map_err(|e| format!("The task is too large to carry a handoff note: {e}"))?;
   sw::ensure_readable(&old).map_err(|e| e.to_string())?;
+  let (r, profile) = (runner.clone(), target.profile().to_owned());
+  if let Some(problem) = blocking(move || r.login_problem(&profile)).await? {
+    return Err(problem);
+  }
   if !auto {
     let mut message = format!(
       "Stop \"{}\" and continue this task in {}?\nThe old session is stopped and the new agent starts in the same folder with a note of what was done.",

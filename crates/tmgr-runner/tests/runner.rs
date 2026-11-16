@@ -3502,6 +3502,25 @@ fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
 }
 
 #[test]
+fn the_login_check_names_a_missing_login_and_refuses_an_unknown_profile() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = guard_fx(&guard_doc(5, "old-rt"), "true\n");
+    fx.h.start(5000);
+    let check = |fx: &mut LoginFx, profile: &str| {
+        fx.h.client()
+            .call("profiles.login_check", json!({"profile": profile}))
+    };
+    assert_eq!(check(&mut fx, "guard").unwrap(), json!({}));
+    fs::remove_file(fx.home.join(".codex/auth.json")).unwrap();
+    let problem = check(&mut fx, "guard").unwrap();
+    assert!(problem["problem"].as_str().unwrap().contains("no login"));
+    let err = check(&mut fx, "nope").unwrap_err().to_string();
+    assert!(err.contains("unknown_profile"), "{err}");
+}
+
+#[test]
 fn a_session_that_refreshes_the_seeded_login_leaves_a_candidate_and_the_original_alone() {
     if !sessions_available() {
         return;

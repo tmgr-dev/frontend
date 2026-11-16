@@ -45,11 +45,11 @@ use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
     AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
-    EventMsg, ExePin, ForkParams, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
-    OriginRevoked, PathParams, PermissionAnswer, PermissionCard, PermissionChoice, RestoredRun,
-    ResumeParams, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
-    StatusInfo, TaskRef, TeamLink, TeamRole, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP,
-    CLIENT_WORKER,
+    EventMsg, ExePin, ForkParams, LoginCheck, LoginCheckParams, LookupParams,
+    OrchestratorCreateReq, Origin, OriginRevokeParams, OriginRevoked, PathParams, PermissionAnswer,
+    PermissionCard, PermissionChoice, RestoredRun, ResumeParams, RunCreateReq, RunStatus,
+    SessionInfo, SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TeamLink, TeamRole,
+    TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -2517,6 +2517,23 @@ impl Runner {
             })),
             method::RUNNER_STOP => Ok(Value::Null),
             method::CANDIDATES_LIST => Ok(to_json(&seedguard::pending(&self.cfg.dir))),
+            method::PROFILES_LOGIN_CHECK => {
+                if conn.client == CLIENT_WORKER {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "login state is never available to link workers",
+                    ));
+                }
+                let q: LoginCheckParams = params(p)?;
+                let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+                let prof = known_profile(&set, &q.profile)?;
+                let home = std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_default();
+                Ok(to_json(&LoginCheck {
+                    problem: login::login_problem(prof, &home, "tmgr"),
+                }))
+            }
             method::SESSIONS_LIST => {
                 let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
                 {

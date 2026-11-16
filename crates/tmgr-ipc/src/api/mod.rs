@@ -66,8 +66,9 @@ pub mod caps {
     pub const EXTERNAL_RESUME_V1: &str = "external_resume.v1";
     pub const CHECKPOINTS_V1: &str = "checkpoints.v1";
     pub const PERMISSION_CARDS_V1: &str = "permission_cards.v1";
+    pub const PROFILES_LOGIN_CHECK_V1: &str = "profiles_login_check.v1";
 
-    pub const ALL: [&str; 37] = [
+    pub const ALL: [&str; 38] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -105,6 +106,7 @@ pub mod caps {
         PERMISSION_CARDS_V1,
         TEAM_WORKERS_V1,
         TEAM_MULTI_V1,
+        PROFILES_LOGIN_CHECK_V1,
     ];
 }
 
@@ -127,6 +129,7 @@ pub mod method {
     pub const ATTACH_SET: &str = "attach.set";
     pub const ORIGIN_REVOKE: &str = "origin.revoke";
     pub const CANDIDATES_LIST: &str = "candidates.list";
+    pub const PROFILES_LOGIN_CHECK: &str = "profiles.login_check";
     pub const RUNS_RESTORE: &str = "runs.restore";
     pub const SESSIONS_RESUME: &str = "sessions.resume";
     pub const SESSIONS_FORK: &str = "sessions.fork";

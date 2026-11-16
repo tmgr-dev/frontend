@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The runner answers a new `profiles.login_check` request (capability `profiles_login_check.v1`) with the reason an agent profile cannot start for lack of a login, if any. The desktop uses it to refuse an agent switch before the old session is stopped.
+
 ## 1.0.133
 
 - `tmgr attach`: Fork (the branch icon, Ctrl-] F) on a Claude Code or Codex session now forks the conversation even when the runner has not recorded its id. It finds the conversation in the agent's own files, as the questions pocket does, instead of silently starting a fresh session. Without a conversation to fork it says so. Sessions started with bypass or without the sandbox still start fresh after a confirmation.

@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## Unreleased
+
+- Switching an agent in the desktop now checks the target agent's login first. If Claude Code or Codex is not logged in for the runner, the switch is refused with the same message as `tmgr runner switch-agent`, before the confirmation and before the old session is stopped. With an older runner that cannot check, the switch behaves as before.
+
 ## 0.9.159 — 2026-11-16
 
 - Decisions: a new Clear all button above the queue dismisses every open card at once, after a confirmation. Agents waiting on them get "dismissed", and cards you already answered are not touched.

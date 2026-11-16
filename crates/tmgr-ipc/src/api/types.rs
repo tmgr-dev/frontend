@@ -344,6 +344,19 @@ pub struct LookupParams {
     pub start_key: String,
 }
 
+/// Params of `profiles.login_check`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoginCheckParams {
+    pub profile: String,
+}
+
+/// Result of `profiles.login_check`: why a session of the profile cannot start for lack of a login, or none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoginCheck {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<String>,
+}
+
 /// Result of `runs.status`: cheap, no screen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunStatus {

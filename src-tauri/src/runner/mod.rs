@@ -238,6 +238,15 @@ impl Runner {
     api::session_infos(&mut self.connect()?.0).map_err(err)
   }
 
+  pub fn login_problem(&self, profile: &str) -> Result<Option<String>, String> {
+    self.gate()?;
+    let (mut conn, welcome) = self.connect()?;
+    if !welcome.has(caps::PROFILES_LOGIN_CHECK_V1) {
+      return Ok(None);
+    }
+    api::login_problem(&mut conn, profile).map_err(err)
+  }
+
   pub fn begin_switch(&self, sid: &str) -> Result<SwitchGuard, String> {
     if !lock(&self.0.switching).insert(sid.to_owned()) {
       return Err("This session is already being switched".to_owned());
@@ -673,6 +682,47 @@ mod tests {
     let connector: Connector = Arc::new(|| Err(ConnError::Incompatible("proto".into())));
     let r = Runner::new(dir.path().join("runner.json"), connector);
     assert_eq!(r.caps().unwrap_err(), "proto");
+  }
+
+  fn login_runner(caps: Option<Vec<String>>, problem: Option<&str>) -> (Runner, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let problem = problem.map(str::to_owned);
+    let connector: Connector = Arc::new(move || {
+      let (a, b) = UnixStream::pair().unwrap();
+      let mut m = Mock::new("secret");
+      m.caps = caps.clone();
+      m.login_problem = problem.clone();
+      mock::spawn(b, m);
+      Conn::handshake(a, "secret", "desktop")
+    });
+    let r = Runner::new(dir.path().join("runner.json"), connector);
+    r.set_enabled(true).unwrap();
+    (r, dir)
+  }
+
+  #[test]
+  fn login_problem_of_the_target_is_returned_as_the_runner_words_it() {
+    let msg = "Codex has no login yet: run `codex` once in a normal terminal and log in, then start the session again";
+    let (r, _d) = login_runner(None, Some(msg));
+    assert_eq!(r.login_problem("codex").unwrap().as_deref(), Some(msg));
+  }
+
+  #[test]
+  fn a_logged_in_target_has_no_login_problem() {
+    let (r, _d) = login_runner(None, None);
+    assert_eq!(r.login_problem("codex").unwrap(), None);
+  }
+
+  #[test]
+  fn a_runner_without_the_login_check_is_not_asked() {
+    let (r, _d) = login_runner(Some(caps_vec(&["runs.create.v1", "cwd_pin.v1", "run_bundle.v1"])), Some("never shown"));
+    assert_eq!(r.login_problem("codex").unwrap(), None);
+  }
+
+  #[test]
+  fn login_problem_text_is_sanitized() {
+    let (r, _d) = login_runner(None, Some("bad\u{1b}[31m login"));
+    assert!(!r.login_problem("codex").unwrap().unwrap().contains('\u{1b}'));
   }
 
   #[test]
