@@ -168,6 +168,7 @@
 		"loadFailed": "Could not load changes: {error}",
 		"none": "No changes.",
 		"truncated": "The diff is too large and was truncated.",
+		"showAllLines": "Show all ({lines} lines)",
 		"commentOnLine": "Comment on this line",
 		"you": "You",
 		"agent": "Agent",

@@ -136,3 +136,36 @@ describe('clickedHttpLink', () => {
 		expect(event.defaultPrevented).toBe(false);
 	});
 });
+
+describe('collapseLongCode', () => {
+	const fence = (n: number) =>
+		['```ts', ...Array.from({ length: n }, (_, i) => `l${i}<`), '```'].join(
+			'\n',
+		);
+
+	it('leaves short blocks alone', () => {
+		const root = parse(renderMarkdown(fence(40)));
+		expect(root.querySelector('.bigcode')).toBeNull();
+		expect(root.querySelectorAll('pre')).toHaveLength(1);
+	});
+
+	it('previews the first lines and keeps the whole block behind a toggle', () => {
+		const root = parse(renderMarkdown(fence(500)));
+		const [preview, full] = Array.from(root.querySelectorAll('pre'));
+		expect(preview.textContent?.trimEnd().split('\n')).toHaveLength(40);
+		expect(full.textContent?.trimEnd().split('\n')).toHaveLength(500);
+		expect(full.parentElement?.tagName).toBe('DETAILS');
+		expect(root.querySelector('summary')?.textContent).toBe(
+			'Show all (500 lines)',
+		);
+		expect(full.querySelector('code')?.className).toBe('language-ts');
+		expect(preview.innerHTML).toContain('l0&lt;');
+	});
+
+	it('renders a 20k-line block as plain text without per-line nodes', () => {
+		const started = Date.now();
+		const root = parse(renderMarkdown(fence(20000)));
+		expect(Date.now() - started).toBeLessThan(1000);
+		expect(root.querySelectorAll('*').length).toBeLessThan(12);
+	});
+});
