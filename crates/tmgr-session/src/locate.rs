@@ -1,3 +1,4 @@
+use crate::lines::first_line;
 use crate::model::{Agent, Session};
 use crate::{claude, codex};
 use std::fs;
@@ -24,8 +25,8 @@ impl Roots {
 
 pub fn find(roots: &Roots, id: &str) -> Result<(Agent, PathBuf), String> {
     let path = Path::new(id);
-    if path.is_file() {
-        return Ok((sniff(path), path.to_path_buf()));
+    if id.contains('/') || id.contains('\\') || path.is_file() {
+        return in_roots(roots, path);
     }
     if id.len() < 8 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err(format!("not a session id or file: {id}"));
@@ -57,6 +58,22 @@ pub fn find(roots: &Roots, id: &str) -> Result<(Agent, PathBuf), String> {
     }
 }
 
+fn in_roots(roots: &Roots, path: &Path) -> Result<(Agent, PathBuf), String> {
+    let real = fs::canonicalize(path).map_err(|_| format!("no such file: {}", path.display()))?;
+    let allowed = |root: &Option<PathBuf>, sub: &str| {
+        root.as_ref()
+            .and_then(|r| fs::canonicalize(r.join(sub)).ok())
+            .is_some_and(|r| real.starts_with(r))
+    };
+    if !real.is_file() || real.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+        return Err("not a session file".into());
+    }
+    if allowed(&roots.claude, "projects") || allowed(&roots.codex, "sessions") {
+        return Ok((sniff(&real), real));
+    }
+    Err("the file is outside the Claude and Codex session folders".into())
+}
+
 pub fn load(agent: Agent, path: &Path) -> Result<Session, String> {
     let file = fs::File::open(path).map_err(|e| format!("cannot open session file: {e}"))?;
     let stem = path
@@ -78,16 +95,18 @@ fn matches(file: &Path, id: &str, codex: bool) -> bool {
         return false;
     };
     if codex {
-        stem.starts_with("rollout-") && stem.contains(id)
+        stem.starts_with("rollout-")
+            && stem.len() >= 36
+            && stem.is_char_boundary(stem.len() - 36)
+            && stem[stem.len() - 36..].starts_with(id)
     } else {
         stem.starts_with(id)
     }
 }
 
 fn sniff(path: &Path) -> Agent {
-    let first = fs::read_to_string(path)
-        .ok()
-        .and_then(|s| s.lines().next().map(str::to_string))
+    let first = fs::File::open(path)
+        .map(|f| first_line(BufReader::new(f)))
         .unwrap_or_default();
     if first.contains("\"session_meta\"") || first.contains("\"payload\"") {
         Agent::Codex

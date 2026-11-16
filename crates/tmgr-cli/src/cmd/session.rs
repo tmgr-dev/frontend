@@ -16,8 +16,11 @@ pub enum Target {
 pub enum SessionCommand {
     /// Numbered list of turns, one line each
     Turns {
-        /// Session id (or a unique start of it), or a path to a session file
+        /// Session id (or a unique start of it), or a path to a session file in the Claude or Codex folders
         id: String,
+        /// Show every turn
+        #[arg(long)]
+        full: bool,
     },
     /// One turn with its tool calls and trimmed results
     Show {
@@ -38,7 +41,12 @@ pub enum SessionCommand {
         full: bool,
     },
     /// Files read and edited, per turn
-    Files { id: String },
+    Files {
+        id: String,
+        /// Show every file
+        #[arg(long)]
+        full: bool,
+    },
     /// Failed tool calls and their output
     Errors {
         id: String,
@@ -90,12 +98,12 @@ fn print(text: &str) {
 
 fn exec(cmd: &SessionCommand) -> Result<(), String> {
     match cmd {
-        SessionCommand::Turns { id } => print(&render::turns(&open(id)?)),
+        SessionCommand::Turns { id, full } => print(&render::turns(&open(id)?, *full)),
         SessionCommand::Show { id, turn, full } => print(&render::show(&open(id)?, *turn, *full)?),
         SessionCommand::Grep { id, pattern, full } => {
             print(&render::grep(&open(id)?, pattern, *full)?)
         }
-        SessionCommand::Files { id } => print(&render::files(&open(id)?)),
+        SessionCommand::Files { id, full } => print(&render::files(&open(id)?, *full)),
         SessionCommand::Errors { id, full } => print(&render::errors(&open(id)?, *full)),
         SessionCommand::Handoff {
             id,
@@ -143,14 +151,28 @@ fn exec(cmd: &SessionCommand) -> Result<(), String> {
 }
 
 fn write_private(path: &Path, text: &str) -> Result<(), String> {
+    let fail = |e: std::io::Error| format!("cannot write {}: {e}", path.display());
     let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
+    opts.write(true).create(true).truncate(false);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
+        opts.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     }
-    opts.open(path)
-        .and_then(|mut f| f.write_all(text.as_bytes()))
-        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+    #[cfg(not(unix))]
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(format!("{} is a symlink", path.display()));
+    }
+    let mut file = opts.open(path).map_err(fail)?;
+    if !file.metadata().map_err(fail)?.is_file() {
+        return Err(format!("{} is not a regular file", path.display()));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(fail)?;
+    }
+    file.set_len(0).map_err(fail)?;
+    file.write_all(text.as_bytes()).map_err(fail)
 }

@@ -1,3 +1,4 @@
+use crate::lines::for_each_line;
 use crate::model::{Agent, Builder, Session, ToolCall};
 use regex::Regex;
 use serde_json::Value;
@@ -25,9 +26,9 @@ fn exit_code() -> &'static Regex {
 
 pub fn parse(reader: impl BufRead, fallback_id: &str) -> Session {
     let mut b = Builder::new(Agent::Codex, fallback_id.to_string());
-    for line in reader.lines().map_while(Result::ok) {
-        let Ok(v) = serde_json::from_str::<Value>(&line) else {
-            continue;
+    let skipped = for_each_line(reader, |line| {
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            return false;
         };
         let p = &v["payload"];
         match v["type"].as_str() {
@@ -41,7 +42,9 @@ pub fn parse(reader: impl BufRead, fallback_id: &str) -> Session {
             Some("response_item") => item(&mut b, p),
             _ => {}
         }
-    }
+        true
+    });
+    b.session.skipped = skipped;
     b.session
 }
 
@@ -58,27 +61,11 @@ fn item(b: &mut Builder, p: &Value) {
                 b.session.plan = plan(&args);
             }
             let command = command_of(&args);
-            b.tool(
-                call_id(p),
-                ToolCall {
-                    summary: command.clone().unwrap_or_else(|| name.clone()),
-                    command,
-                    name,
-                    ..ToolCall::default()
-                },
-            );
+            b.tool(call_id(p), shell_call(name, command));
         }
         Some("local_shell_call") => {
             let command = command_of(&p["action"]);
-            b.tool(
-                call_id(p),
-                ToolCall {
-                    name: "shell".into(),
-                    summary: command.clone().unwrap_or_default(),
-                    command,
-                    ..ToolCall::default()
-                },
-            );
+            b.tool(call_id(p), shell_call("shell".into(), command));
         }
         Some("custom_tool_call") => {
             let name = p["name"].as_str().unwrap_or("tool").to_string();
@@ -107,6 +94,25 @@ fn item(b: &mut Builder, p: &Value) {
             b.result(&call_id(p), out, failed);
         }
         _ => {}
+    }
+}
+
+fn shell_call(name: String, command: Option<String>) -> ToolCall {
+    let edited = command
+        .as_deref()
+        .map(|c| {
+            patch_file()
+                .captures_iter(c)
+                .map(|m| m[1].trim().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    ToolCall {
+        summary: command.clone().unwrap_or_else(|| name.clone()),
+        command,
+        name,
+        edited,
+        ..ToolCall::default()
     }
 }
 

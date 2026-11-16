@@ -1,3 +1,4 @@
+use crate::lines::for_each_line;
 use crate::model::{Agent, Builder, Session, ToolCall};
 use serde_json::Value;
 use std::io::BufRead;
@@ -12,12 +13,12 @@ const NOISE: [&str; 4] = [
 pub fn parse(reader: impl BufRead, fallback_id: &str) -> Session {
     let mut b = Builder::new(Agent::Claude, fallback_id.to_string());
     let mut id_set = false;
-    for line in reader.lines().map_while(Result::ok) {
-        let Ok(v) = serde_json::from_str::<Value>(&line) else {
-            continue;
+    let skipped = for_each_line(reader, |line| {
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            return false;
         };
         if v["isSidechain"].as_bool() == Some(true) {
-            continue;
+            return true;
         }
         if !id_set {
             if let Some(id) = v["sessionId"].as_str() {
@@ -36,7 +37,9 @@ pub fn parse(reader: impl BufRead, fallback_id: &str) -> Session {
             Some("assistant") => assistant(&mut b, &v),
             _ => {}
         }
-    }
+        true
+    });
+    b.session.skipped = skipped;
     b.session
 }
 
@@ -110,12 +113,16 @@ fn tool_call(name: String, input: &Value) -> ToolCall {
         .find_map(|k| input[*k].as_str())
         .map(str::to_string);
     let command = input["command"].as_str().map(str::to_string);
+    let pattern = input["pattern"].as_str().map(str::to_string);
+    let searching = matches!(name.as_str(), "Grep" | "Glob");
     let mut call = ToolCall {
         summary: command
             .clone()
+            .or_else(|| pattern.clone().filter(|_| searching))
             .or_else(|| path.clone())
+            .or(pattern)
             .or_else(|| {
-                ["pattern", "query", "url", "description", "prompt"]
+                ["query", "url", "description", "prompt"]
                     .iter()
                     .find_map(|k| input[*k].as_str().map(str::to_string))
             })

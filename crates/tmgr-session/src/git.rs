@@ -10,7 +10,7 @@ pub struct GitState {
 
 fn git(dir: &Path, args: &[&str]) -> String {
     Command::new("git")
-        .arg("-C")
+        .args(["-c", "core.fsmonitor=false", "-C"])
         .arg(dir)
         .args(args)
         .output()
@@ -26,7 +26,7 @@ pub fn collect(dir: &Path) -> Option<GitState> {
     }
     Some(GitState {
         status: git(dir, &["status", "--short", "--branch"]),
-        diff_stat: git(dir, &["diff", "--stat", "HEAD"]),
+        diff_stat: git(dir, &["diff", "--no-ext-diff", "--stat", "HEAD"]),
         log: git(dir, &["log", "--oneline", "-5"]),
     })
 }

@@ -86,3 +86,48 @@ fn handoff_writes_private_file() {
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn handoff_output_tightens_an_existing_file_and_refuses_a_symlink() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    let h = home();
+    let existing = h.path().join("old.md");
+    fs::write(&existing, "old content that is longer than the note").unwrap();
+    fs::set_permissions(&existing, fs::Permissions::from_mode(0o644)).unwrap();
+    tmgr(
+        &h,
+        &[
+            "session",
+            "handoff",
+            CLAUDE_ID,
+            "-o",
+            existing.to_str().unwrap(),
+        ],
+    )
+    .success();
+    assert_eq!(
+        fs::metadata(&existing).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(!fs::read_to_string(&existing)
+        .unwrap()
+        .contains("old content"));
+
+    let target = h.path().join("target.txt");
+    fs::write(&target, "keep").unwrap();
+    let link = h.path().join("link.md");
+    symlink(&target, &link).unwrap();
+    tmgr(
+        &h,
+        &[
+            "session",
+            "handoff",
+            CLAUDE_ID,
+            "-o",
+            link.to_str().unwrap(),
+        ],
+    )
+    .failure();
+    assert_eq!(fs::read_to_string(&target).unwrap(), "keep");
+}

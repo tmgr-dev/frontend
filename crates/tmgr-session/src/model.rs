@@ -29,6 +29,7 @@ pub struct Session {
     pub cwd: Option<String>,
     pub branch: Option<String>,
     pub plan: Option<String>,
+    pub skipped: usize,
     pub turns: Vec<Turn>,
 }
 
@@ -112,6 +113,7 @@ impl Builder {
                 cwd: None,
                 branch: None,
                 plan: None,
+                skipped: 0,
                 turns: Vec::new(),
             },
             index: HashMap::new(),

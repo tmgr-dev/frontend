@@ -1,11 +1,15 @@
-use regex::Regex;
+use regex::{Captures, Regex};
 use std::sync::OnceLock;
 
 struct Rules {
     pem: Regex,
     url: Regex,
     shapes: Regex,
+    auth: Regex,
     bearer: Regex,
+    flag: Regex,
+    short_pass: Regex,
+    user_flag: Regex,
     kv: Regex,
 }
 
@@ -13,17 +17,39 @@ fn rules() -> &'static Rules {
     static R: OnceLock<Rules> = OnceLock::new();
     R.get_or_init(|| Rules {
         pem: Regex::new(
-            r"(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)",
+            r"(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|$)",
         )
         .expect("pem"),
-        url: Regex::new(r"(?i)([a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s/@]+@").expect("url"),
-        shapes: Regex::new(
-            r"\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})",
-        )
+        url: Regex::new(r"(?i)([a-z][a-z0-9+.-]*://[^\s/:@]*:)[^\s@]+@").expect("url"),
+        shapes: Regex::new(concat!(
+            r"\b(?:sk-[A-Za-z0-9_-]{16,}",
+            r"|[sr]k_(?:live|test)_[A-Za-z0-9]{10,}",
+            r"|gh[pousr]_[A-Za-z0-9]{20,}",
+            r"|github_pat_[A-Za-z0-9_]{20,}",
+            r"|glpat-[A-Za-z0-9_-]{15,}",
+            r"|hf_[A-Za-z0-9]{20,}",
+            r"|npm_[A-Za-z0-9]{20,}",
+            r"|ya29\.[A-Za-z0-9_-]{20,}",
+            r"|xox[abprs]-[A-Za-z0-9-]{10,}",
+            r"|AKIA[0-9A-Z]{16}",
+            r"|AIza[0-9A-Za-z_-]{30,}",
+            r"|\d{8,10}:[A-Za-z0-9_-]{35}",
+            r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})",
+        ))
         .expect("shapes"),
-        bearer: Regex::new(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{8,}").expect("bearer"),
+        auth: Regex::new(
+            r#"(?i)\b(authorization\s*[:=]\s*\\?["']?(?:basic|bearer|token)\s+)[^\s"'\\]+"#,
+        )
+        .expect("auth"),
+        bearer: Regex::new(r"(?i)\b((?:bearer|basic)\s+)[A-Za-z0-9._~+/=-]{8,}").expect("bearer"),
+        flag: Regex::new(
+            r#"(?i)(\s--?(?:password|passwd|pass|pwd|token|secret|api-key|apikey|access-token|auth-token|client-secret)(?:\s+|=))("[^"]*"|'[^']*'|\S+)"#,
+        )
+        .expect("flag"),
+        short_pass: Regex::new(r"(\s-p)[^\s=-]\S{2,}").expect("short_pass"),
+        user_flag: Regex::new(r"(\s(?:-u|--user)(?:\s+|=)[^\s:]+:)\S+").expect("user_flag"),
         kv: Regex::new(
-            r#"(?i)\b([A-Za-z0-9_.-]*(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential|authorization)[A-Za-z0-9_.-]*)(["']?\s*[:=]\s*["']?)([^\s"',;&]{4,})"#,
+            r#"(?i)\b([A-Za-z0-9_.-]*(?:password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential|authorization)[A-Za-z0-9_.-]*)((?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)([^\s"',;&\\]{4,})"#,
         )
         .expect("kv"),
     })
@@ -34,6 +60,17 @@ pub fn mask(text: &str) -> String {
     let s = r.pem.replace_all(text, "[masked private key]");
     let s = r.url.replace_all(&s, "${1}***@");
     let s = r.shapes.replace_all(&s, "***");
+    let s = r.auth.replace_all(&s, "${1}***");
     let s = r.bearer.replace_all(&s, "${1}***");
-    r.kv.replace_all(&s, "${1}${2}***").into_owned()
+    let s = r.flag.replace_all(&s, "${1}***");
+    let s = r.short_pass.replace_all(&s, "${1}***");
+    let s = r.user_flag.replace_all(&s, "${1}***");
+    r.kv.replace_all(&s, |c: &Captures| {
+        if c[1].to_ascii_lowercase().ends_with("tokens") {
+            c[0].to_string()
+        } else {
+            format!("{}{}***", &c[1], &c[2])
+        }
+    })
+    .into_owned()
 }
