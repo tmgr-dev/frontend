@@ -95,6 +95,7 @@ export interface Answer {
 	line_comments: LineComment[];
 	deferred: boolean;
 	dismissed: boolean;
+	seen_ms?: number;
 }
 
 export type MessageAction = 'reply' | 'fix';

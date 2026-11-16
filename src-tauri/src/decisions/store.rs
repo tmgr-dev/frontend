@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use tmgr_phone::AckResult;
 use tmgr_ipc::loopback;
 use tmgr_ipc::decisions::{
-  new_card_id, valid_card_id, CardIn, Check, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
+  new_card_id, valid_card_id, CardIn, CardPatch, Check, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
   PatchIn, PendingDelivery, Secret, Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
   OUTCOME_SIMILAR, OUTCOME_UPDATED,
 };
@@ -89,6 +89,8 @@ pub struct AnswerIn {
   pub deferred: bool,
   #[serde(default)]
   pub dismissed: bool,
+  #[serde(default)]
+  pub seen_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -357,6 +359,78 @@ fn sanitize(mut c: CardIn) -> Result<CardIn, String> {
   c.replaces = cap_opt(c.replaces.take(), 64);
   c.key = cap_opt(c.key.take(), KEY_MAX);
   Ok(c)
+}
+
+fn apply_patch(old: &CardIn, p: CardPatch) -> Result<(CardIn, Vec<String>), String> {
+  let mut c = old.clone();
+  if let Some(t) = p.title {
+    c.title = t;
+  }
+  if let Some(q) = p.question {
+    c.question = Some(q);
+  }
+  if let Some(x) = p.context {
+    c.context = Some(x);
+  }
+  if let Some(o) = p.options {
+    c.options = o;
+  }
+  if let Some(n) = p.recommended {
+    let n = n as usize;
+    if n == 0 || n > c.options.len() {
+      return Err("recommended must be the 1-based number of an option".into());
+    }
+    for (i, o) in c.options.iter_mut().enumerate() {
+      o.recommended = i + 1 == n;
+    }
+  }
+  if let Some(f) = p.facts {
+    c.facts = f;
+  }
+  if let Some(k) = p.checks {
+    c.checks = k;
+  }
+  for (kind, items) in [("pr", p.prs), ("commit", p.commits), ("tag", p.tags), ("url", p.links)] {
+    if let Some(items) = items {
+      c.links.items.retain(|i| i.kind != kind);
+      c.links.items.extend(items);
+      if kind == "pr" {
+        c.links.pr = c.links.items.iter().find(|i| i.kind == "pr").map(|i| i.url.clone());
+      }
+    }
+  }
+  let c = sanitize(c)?;
+  let mut changes = Vec::new();
+  if c.title != old.title {
+    changes.push("title changed".to_owned());
+  }
+  if c.question != old.question {
+    changes.push("question changed".to_owned());
+  }
+  if c.context != old.context {
+    changes.push("context changed".to_owned());
+  }
+  let labels = |c: &CardIn| c.options.iter().map(|o| o.label.clone()).collect::<Vec<_>>();
+  if labels(&c) != labels(old) {
+    changes.push("options changed".to_owned());
+  }
+  let rec = |c: &CardIn| c.options.iter().position(|o| o.recommended);
+  if rec(&c) != rec(old) || (labels(&c) != labels(old) && rec(&c).is_some()) {
+    match rec(&c) {
+      Some(i) => changes.push(format!("recommended \u{2192} option {}", i + 1)),
+      None => changes.push("recommendation removed".to_owned()),
+    }
+  }
+  if c.facts != old.facts {
+    changes.push("facts changed".to_owned());
+  }
+  if c.checks != old.checks {
+    changes.push("checks changed".to_owned());
+  }
+  if c.links != old.links {
+    changes.push("links changed".to_owned());
+  }
+  Ok((c, changes))
 }
 
 fn safe_ref(v: Option<String>) -> Option<String> {
@@ -1413,25 +1487,29 @@ impl Store {
 
   pub fn answer(&mut self, id: &str, a: AnswerIn) -> Result<(Event, CardIn), String> {
     let id = &self.canon(id)?;
-    let (_, card) = self.live_card(id)?;
+    let (row, card) = self.live_card(id)?;
+    if let Some(seen) = a.seen_ms.filter(|_| !a.dismissed) {
+      if seen != row.updated_ms.unwrap_or(row.created_ms) {
+        return Err("the card changed since you opened it; review it and answer again".into());
+      }
+    }
     let tx = self.conn.unchecked_transaction().map_err(sql_err)?;
     let done = self.write_answer(&tx, id, card, a, None)?;
     tx.commit().map_err(sql_err)?;
     Ok(done)
   }
 
-  pub fn dismiss_all(&mut self) -> Result<Vec<Event>, String> {
-    let ids: Vec<String> = {
-      let mut stmt = self
-        .conn
-        .prepare("SELECT id FROM cards WHERE state IN ('open','deferred') ORDER BY created_ms, rowid")
-        .map_err(sql_err)?;
-      let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(sql_err)?;
-      rows.collect::<Result<_, _>>().map_err(sql_err)?
-    };
+  pub fn dismiss_cards(&mut self, ids: &[String]) -> Result<Vec<Event>, String> {
+    let mut live: Vec<String> = Vec::new();
+    for id in ids {
+      let Ok(canon) = self.canon(id) else { continue };
+      if self.raw(&canon)?.is_some_and(|r| is_live(&r.state)) && !live.contains(&canon) {
+        live.push(canon);
+      }
+    }
     let tx = self.conn.unchecked_transaction().map_err(sql_err)?;
-    let mut events = Vec::with_capacity(ids.len());
-    for id in &ids {
+    let mut events = Vec::with_capacity(live.len());
+    for id in &live {
       let (_, card) = self.live_card(id)?;
       let (event, _) = self.write_answer(&tx, id, card, AnswerIn { dismissed: true, ..Default::default() }, None)?;
       events.push(event);
@@ -1677,6 +1755,16 @@ impl Store {
     text: Option<String>,
     lines: Vec<LineComment>,
   ) -> Result<String, String> {
+    self.agent_reply(id, text, lines, None).map(|(id, _)| id)
+  }
+
+  pub fn agent_reply(
+    &mut self,
+    id: &str,
+    text: Option<String>,
+    lines: Vec<LineComment>,
+    patch: Option<CardPatch>,
+  ) -> Result<(String, Option<String>), String> {
     let id = &self.canon(id)?;
     let rows = self.thread_rows(id)?;
     let mut items: Vec<Item> = Vec::new();
@@ -1696,11 +1784,34 @@ impl Store {
       };
       items.insert(0, (t, file, line, side));
     }
-    if items.is_empty() {
+    if items.is_empty() && patch.is_none() {
       return Err("text is required".into());
+    }
+    let mut status = None;
+    let mut update = None;
+    if let Some(p) = patch {
+      let raw = self.raw(id)?.ok_or_else(|| "unknown card".to_owned())?;
+      let old: CardIn = serde_json::from_str(&raw.card).map_err(json_err)?;
+      if !is_live(&raw.state) {
+        status = Some("refused: the card is already answered or closed, so it was not changed".to_owned());
+      } else if old.reply_via == "hook" {
+        status = Some("refused: this card comes from a terminal session and cannot be updated".to_owned());
+      } else {
+        let (card, changes) = apply_patch(&old, p)?;
+        if changes.is_empty() {
+          status = Some("unchanged".to_owned());
+        } else {
+          status = Some(format!("applied: {}", changes.join(", ")));
+          items.push((format!("Card updated: {}", changes.join(", ")), None, None, None));
+          update = Some(serde_json::to_string(&card).map_err(json_err)?);
+        }
+      }
     }
     let first = self.next_message_seq(id)?;
     let tx = self.conn.transaction().map_err(sql_err)?;
+    if let Some(json) = update {
+      tx.execute("UPDATE cards SET card=?2, updated_ms=?3 WHERE id=?1", params![id, json, now_ms()]).map_err(sql_err)?;
+    }
     for (seq, (text, file, line, side)) in (first..).zip(items) {
       tx.execute(
         "INSERT INTO messages(card_id, seq, author, text, file, line, side, created_ms) VALUES(?1, ?2, 'agent', ?3, ?4, ?5, ?6, ?7)",
@@ -1709,7 +1820,7 @@ impl Store {
       .map_err(sql_err)?;
     }
     tx.commit().map_err(sql_err)?;
-    Ok(id.clone())
+    Ok((id.clone(), status))
   }
 
   fn thread_rows(&self, id: &str) -> Result<Vec<ThreadRow>, String> {
@@ -2088,6 +2199,119 @@ mod tests {
 
   fn placed(s: &Store, id: &str) -> Vec<(String, String, Option<String>, Option<u32>)> {
     s.get(id).unwrap().unwrap().messages.into_iter().map(|m| (m.author, m.text, m.file, m.line)).collect()
+  }
+
+  fn opt(id: &str, label: &str, recommended: bool) -> Opt {
+    Opt { id: id.into(), label: label.into(), recommended }
+  }
+
+  #[test]
+  fn a_card_patch_updates_the_card_and_posts_the_message_together() {
+    let mut s = mem();
+    let id = s.create_id(card("Ship?"));
+    let patch = CardPatch {
+      question: Some("Ship v2?".into()),
+      options: Some(vec![opt("1", "Ship", false), opt("2", "Hold", false), opt("3", "Revert", true)]),
+      facts: Some(vec![Fact { state: "ok".into(), text: "CI green".into(), link: None }]),
+      ..Default::default()
+    };
+    let (_, status) = s.agent_reply(&id, Some("done".into()), vec![], Some(patch)).unwrap();
+    assert!(status.unwrap().starts_with("applied: question changed, options changed, recommended"));
+    let v = s.get(&id).unwrap().unwrap();
+    assert_eq!(v.question.as_deref(), Some("Ship v2?"));
+    assert_eq!(v.options.len(), 3);
+    assert_eq!(v.facts.len(), 1);
+    assert!(v.updated_ms.is_some());
+    let texts: Vec<_> = v.messages.iter().map(|m| m.text.as_str()).collect();
+    assert_eq!(texts.len(), 2);
+    assert_eq!(texts[0], "done");
+    assert!(texts[1].starts_with("Card updated: question changed"));
+  }
+
+  #[test]
+  fn omitted_patch_fields_stay_and_recommended_alone_moves_the_star() {
+    let mut s = mem();
+    let id = s.create_id(card("Ship?"));
+    let patch = CardPatch { recommended: Some(2), ..Default::default() };
+    let (_, status) = s.agent_reply(&id, None, vec![], Some(patch)).unwrap();
+    assert_eq!(status.as_deref(), Some("applied: recommended \u{2192} option 2"));
+    let v = s.get(&id).unwrap().unwrap();
+    assert_eq!(v.title, "Ship?");
+    assert_eq!(v.options.iter().map(|o| o.recommended).collect::<Vec<_>>(), [false, true]);
+    let again = CardPatch { recommended: Some(2), ..Default::default() };
+    let (_, status) = s.agent_reply(&id, Some("same".into()), vec![], Some(again)).unwrap();
+    assert_eq!(status.as_deref(), Some("unchanged"));
+    assert_eq!(s.get(&id).unwrap().unwrap().messages.len(), 2);
+  }
+
+  #[test]
+  fn a_bad_patch_stores_neither_the_card_change_nor_the_message() {
+    let mut s = mem();
+    let id = s.create_id(card("Ship?"));
+    let patch = CardPatch { title: Some("New".into()), recommended: Some(9), ..Default::default() };
+    assert!(s.agent_reply(&id, Some("x".into()), vec![], Some(patch)).is_err());
+    let v = s.get(&id).unwrap().unwrap();
+    assert_eq!(v.title, "Ship?");
+    assert!(v.messages.is_empty() && v.updated_ms.is_none());
+  }
+
+  #[test]
+  fn patches_are_refused_on_closed_cards_but_the_text_is_posted() {
+    let mut s = mem();
+    for dismissed in [false, true] {
+      let id = s.create_id(card("Ship?"));
+      s.answer(&id, AnswerIn { choice: Some("a".into()), dismissed, ..Default::default() }).unwrap();
+      let patch = CardPatch { title: Some("Changed".into()), ..Default::default() };
+      let (_, status) = s.agent_reply(&id, Some("fyi".into()), vec![], Some(patch)).unwrap();
+      assert!(status.unwrap().starts_with("refused"));
+      let v = s.get(&id).unwrap().unwrap();
+      assert_eq!(v.title, "Ship?");
+      assert_eq!(v.messages.len(), 1);
+    }
+  }
+
+  #[test]
+  fn hook_cards_are_never_patched() {
+    let mut s = mem();
+    let id = s.create_id(CardIn { reply_via: "hook".into(), kind: "stopped".into(), ..card("Done") });
+    let patch = CardPatch { title: Some("Changed".into()), ..Default::default() };
+    let (_, status) = s.agent_reply(&id, Some("x".into()), vec![], Some(patch)).unwrap();
+    assert!(status.unwrap().starts_with("refused"));
+    assert_eq!(s.get(&id).unwrap().unwrap().title, "Done");
+  }
+
+  #[test]
+  fn an_answer_to_a_card_that_changed_since_it_was_opened_is_refused() {
+    let mut s = mem();
+    let id = s.create_id(card("Ship?"));
+    let seen = s.get(&id).unwrap().unwrap().created_ms;
+    std::thread::sleep(std::time::Duration::from_millis(3));
+    let patch = CardPatch { recommended: Some(2), ..Default::default() };
+    s.agent_reply(&id, None, vec![], Some(patch)).unwrap();
+    let stale = AnswerIn { choice: Some("a".into()), seen_ms: Some(seen), ..Default::default() };
+    assert!(s.answer(&id, stale).unwrap_err().contains("changed"));
+    let dismissed = AnswerIn { dismissed: true, seen_ms: Some(seen), ..Default::default() };
+    assert!(s.answer(&id, dismissed).is_ok());
+  }
+
+  #[test]
+  fn link_patches_replace_only_their_kind() {
+    let mut s = mem();
+    let mut c = card("Ship?");
+    c.links.items = vec![
+      LinkItem { kind: "pr".into(), url: "https://github.com/o/r/pull/1".into(), label: None },
+      LinkItem { kind: "tag".into(), url: "https://github.com/o/r/releases/tag/v1".into(), label: None },
+    ];
+    c.links.pr = Some("https://github.com/o/r/pull/1".into());
+    let id = s.create_id(c);
+    let patch = CardPatch {
+      prs: Some(vec![LinkItem { kind: "pr".into(), url: "https://github.com/o/r/pull/2".into(), label: None }]),
+      ..Default::default()
+    };
+    s.agent_reply(&id, None, vec![], Some(patch)).unwrap();
+    let v = s.get(&id).unwrap().unwrap();
+    assert_eq!(v.links.pr.as_deref(), Some("https://github.com/o/r/pull/2"));
+    assert_eq!(v.links.items.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>(), ["tag", "pr"]);
   }
 
   fn lr(file: &str, line: u32, text: &str) -> LineComment {

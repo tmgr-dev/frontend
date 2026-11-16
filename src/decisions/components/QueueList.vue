@@ -19,7 +19,7 @@
 		</div>
 		<div class="prog"><i :style="{ width: progress.percent + '%' }"></i></div>
 		<div v-if="clearCount > 0 && !confirmingClear" class="clear-row">
-			<button type="button" class="clear-all" @click="confirmingClear = true">
+			<button type="button" class="clear-all" @click="openConfirm">
 				{{ $t('decisions.queue.clearAll') }}
 			</button>
 		</div>
@@ -28,12 +28,13 @@
 			class="clear-confirm"
 			role="alertdialog"
 			:aria-label="$t('decisions.queue.clearAll')"
+			@keydown.esc.stop.prevent="closeConfirm"
 		>
 			<p>
 				{{ $t('decisions.queue.clearConfirm', { n: clearCount }, clearCount) }}
 			</p>
 			<div class="clear-actions">
-				<button type="button" @click="confirmingClear = false">
+				<button ref="cancelClear" type="button" @click="closeConfirm">
 					{{ $t('decisions.queue.clearCancel') }}
 				</button>
 				<button type="button" class="danger" @click="confirmClear">
@@ -128,18 +129,30 @@
 			subtitle: { type: String, default: 'decisions.subtitle.default' },
 			clearCount: { type: Number, default: 0 },
 		},
-		emits: ['select', 'dismiss', 'update:query', 'clear-all'],
+		emits: ['select', 'dismiss', 'update:query', 'clear-all', 'confirming'],
 		data() {
 			return { confirmingClear: false };
 		},
 		watch: {
 			clearCount(count: number) {
-				if (count === 0) this.confirmingClear = false;
+				if (count === 0) this.closeConfirm();
 			},
 		},
 		methods: {
-			confirmClear() {
+			openConfirm() {
+				this.confirmingClear = true;
+				this.$emit('confirming', true);
+				void this.$nextTick(() => {
+					(this.$refs.cancelClear as HTMLButtonElement | undefined)?.focus();
+				});
+			},
+			closeConfirm() {
+				if (!this.confirmingClear) return;
 				this.confirmingClear = false;
+				this.$emit('confirming', false);
+			},
+			confirmClear() {
+				this.closeConfirm();
 				this.$emit('clear-all');
 			},
 			kindLabel,

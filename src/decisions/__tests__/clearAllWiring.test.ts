@@ -12,27 +12,44 @@ describe('Clear all', () => {
 	it('asks for confirmation before emitting clear-all', () => {
 		const source = template('QueueList.vue');
 		expect(source).toMatch(
-			/v-if="clearCount > 0 && !confirmingClear"[\s\S]*?@click="confirmingClear = true"/,
+			/v-if="clearCount > 0 && !confirmingClear"[\s\S]*?@click="openConfirm"/,
 		);
 		expect(source).toMatch(
 			/v-if="clearCount > 0 && confirmingClear"[\s\S]*?decisions\.queue\.clearConfirm[\s\S]*?@click="confirmClear"/,
 		);
 		expect(read('QueueList.vue')).toMatch(
-			/confirmClear\(\) \{\s*this\.confirmingClear = false;\s*this\.\$emit\('clear-all'\);/,
+			/confirmClear\(\) \{\s*this\.closeConfirm\(\);\s*this\.\$emit\('clear-all'\);/,
 		);
 	});
 
-	it('counts every pending card and calls the bulk command once', () => {
+	it('lets Esc cancel the confirmation and mutes the global shortcuts meanwhile', () => {
+		expect(template('QueueList.vue')).toContain(
+			'@keydown.esc.stop.prevent="closeConfirm"',
+		);
+		expect(read('App.vue')).toMatch(
+			/onKeydown\(event: KeyboardEvent\) \{\s*if \(this\.confirmingClear\) return;/,
+		);
+	});
+
+	it('counts the visible pending cards and sends exactly those ids once', () => {
 		const app = read('App.vue');
 		expect(template('App.vue')).toMatch(
-			/:clear-count="pendingCount"[\s\S]*?@clear-all="clearAll"/,
+			/:clear-count="clearIds\.length"[\s\S]*?@clear-all="clearAll"/,
 		);
 		expect(app).toMatch(
-			/pendingCount\(\): number \{\s*return this\.cards\.filter\(isPending\)\.length;/,
+			/clearIds\(\): string\[\] \{\s*return this\.order\.filter\(isPending\)\.map/,
 		);
-		expect((app.match(/decisionsDismissAll\(\)/g) ?? []).length).toBe(1);
+		expect((app.match(/decisionsDismissAll\(ids\)/g) ?? []).length).toBe(1);
 		expect(readFileSync(join(__dirname, '..', 'api.ts'), 'utf8')).toContain(
-			"invoke<number>('decisions_dismiss_all')",
+			"invoke<number>('decisions_dismiss_all', { ids })",
+		);
+	});
+});
+
+describe('Answer guard', () => {
+	it('sends the card revision the owner saw with every answer', () => {
+		expect(read('App.vue')).toContain(
+			'answer.seen_ms = card.updated_ms ?? card.created_ms;',
 		);
 	});
 });

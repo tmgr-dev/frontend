@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
-use tmgr_ipc::decisions::{drain_spool, CardIn, Event, Found, Inbox, LineComment, PatchIn, PendingDelivery};
+use tmgr_ipc::decisions::{drain_spool, CardIn, CardPatch, Event, Found, Inbox, LineComment, PatchIn, PendingDelivery};
 
 use super::store::{AnswerIn, CardView, Created, MessageIn, PendingTaskComment, PhoneOutcome, PhoneReq, Recorded, Routing, Store};
 
@@ -345,6 +345,18 @@ impl Hub {
     Ok(id)
   }
 
+  pub fn reply_patched(
+    &self,
+    id: &str,
+    text: Option<String>,
+    lines: Vec<LineComment>,
+    patch: Option<CardPatch>,
+  ) -> Result<(String, Option<String>), String> {
+    let r = self.lock().agent_reply(id, text, lines, patch)?;
+    self.changed(Change::Updated);
+    Ok(r)
+  }
+
   pub fn close_session(&self, agent: &str, session: &str) -> Result<u64, String> {
     let n = self.lock().close_session(agent, session)?;
     if n > 0 {
@@ -359,8 +371,8 @@ impl Hub {
     Ok(r)
   }
 
-  pub fn dismiss_all(&self) -> Result<Vec<Event>, String> {
-    let events = self.lock().dismiss_all()?;
+  pub fn dismiss_cards(&self, ids: &[String]) -> Result<Vec<Event>, String> {
+    let events = self.lock().dismiss_cards(ids)?;
     if !events.is_empty() {
       self.changed(Change::Updated);
     }
@@ -565,16 +577,17 @@ mod tests {
   }
 
   #[test]
-  fn dismiss_all_releases_the_waiter_with_dismissed_and_is_idempotent() {
+  fn dismiss_cards_releases_the_waiter_with_dismissed_and_is_idempotent() {
     let (hub, updates, id) = rig();
     let other = hub.create(CardIn { title: "Other".into(), ..Default::default() }).unwrap().id;
     let done = hub.create(CardIn { title: "Done".into(), ..Default::default() }).unwrap().id;
+    let kept_open = hub.create(CardIn { title: "Arrived later".into(), ..Default::default() }).unwrap().id;
     hub.answer(&done, AnswerIn { choice: None, free_text: Some("ok".into()), ..Default::default() }).unwrap();
     let (h, id2) = (hub.clone(), id.clone());
     let t = std::thread::spawn(move || h.wait(&id2, 0, Duration::from_secs(10), false).unwrap());
     until("listening", || listening(&hub, &id));
     updates.store(0, Ordering::SeqCst);
-    let events = hub.dismiss_all().unwrap();
+    let events = hub.dismiss_cards(&[id.clone(), other.clone(), done.clone(), "c_00000000000000000000000000000000".into(), id.clone()]).unwrap();
     assert_eq!(events.len(), 2);
     assert!(t.join().unwrap().1.unwrap().dismissed);
     assert_eq!(hub.get(&other).unwrap().state, "dismissed");
@@ -582,9 +595,10 @@ mod tests {
     assert_eq!(kept.state, "answered");
     assert!(!kept.answer.unwrap().dismissed);
     assert_eq!(updates.load(Ordering::SeqCst), 1);
-    assert!(hub.dismiss_all().unwrap().is_empty());
+    assert!(hub.dismiss_cards(&[id.clone(), other.clone()]).unwrap().is_empty());
     assert_eq!(updates.load(Ordering::SeqCst), 1);
-    assert_eq!(hub.open_count(), 0);
+    assert_eq!(hub.get(&kept_open).unwrap().state, "open");
+    assert_eq!(hub.open_count(), 1);
   }
 
   #[test]

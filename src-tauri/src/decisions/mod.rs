@@ -172,9 +172,9 @@ pub async fn decisions_answer<R: Runtime>(app: AppHandle<R>, id: String, answer:
 }
 
 #[tauri::command]
-pub async fn decisions_dismiss_all<R: Runtime>(app: AppHandle<R>) -> Result<usize, String> {
+pub async fn decisions_dismiss_all<R: Runtime>(app: AppHandle<R>, ids: Vec<String>) -> Result<usize, String> {
   let hub = hub_of(&app)?;
-  let events = blocking(move || hub.dismiss_all()).await?;
+  let events = blocking(move || hub.dismiss_cards(&ids)).await?;
   let count = events.len();
   if count > 0 {
     let app = app.clone();

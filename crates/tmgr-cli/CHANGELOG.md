@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The `reply_owner` MCP tool takes an optional `card` patch (title, question, context, options, recommended, facts, checks, prs, commits, tags, links). One call posts your reply and updates the card in the owner's Decisions inbox: omitted fields stay, a sent field replaces the whole field, and the limits are the same as for `ask_owner`. A card the owner already answered or dismissed is not changed, but the text is still posted and the result says `card_patch: refused`. Needs a desktop that carries the same change; an older desktop posts the text and reports that the card was not updated.
+
 ## 1.0.131
 
 - New `tmgr runner switch-agent <session>` (experimental) stops a Claude Code or Codex session and continues the same task in the other agent, in the same task clone. The new agent starts with a handoff note (your messages, the final replies, files touched, git state, the open plan, the last test run) and can look up the old conversation with `tmgr session`. The old run is finished as cancelled with "handed to <agent>" and the new run records the old session as its parent. Works for tasks of local workspaces started with `tmgr run`; the new agent starts in the default permission mode, never in a riskier one.

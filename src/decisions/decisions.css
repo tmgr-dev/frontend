@@ -657,6 +657,14 @@ kbd {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
+.sel-cleared {
+	margin: 0 0 8px;
+	padding: 6px 10px;
+	border-radius: 8px;
+	background: var(--bg-active);
+	color: var(--fg-muted);
+	font-size: 12px;
+}
 .opt {
 	display: flex;
 	gap: 12px;

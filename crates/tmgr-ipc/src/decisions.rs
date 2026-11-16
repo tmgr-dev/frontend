@@ -234,6 +234,32 @@ pub struct CardIn {
     pub force_new: Option<bool>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CardPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<Opt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub facts: Option<Vec<Fact>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checks: Option<Vec<Check>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prs: Option<Vec<LinkItem>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commits: Option<Vec<LinkItem>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<LinkItem>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<LinkItem>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Found {
     pub card_id: String,
@@ -368,6 +394,14 @@ pub enum Op {
         text: Option<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         line_replies: Vec<LineComment>,
+    },
+    ReplyCard {
+        card_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        line_replies: Vec<LineComment>,
+        card: Box<CardPatch>,
     },
     CloseSession {
         agent: String,
@@ -522,6 +556,8 @@ pub struct Response {
     pub similar: Vec<Found>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pending: Vec<PendingDelivery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch: Option<String>,
 }
 
 impl Response {
@@ -855,6 +891,29 @@ impl Client {
             line_replies,
         })
         .map(|_| ())
+    }
+
+    pub fn reply_card(
+        &self,
+        card_id: &str,
+        text: Option<String>,
+        line_replies: Vec<LineComment>,
+        card: CardPatch,
+    ) -> io::Result<Option<String>> {
+        let r = self.call(Op::ReplyCard {
+            card_id: card_id.to_string(),
+            text,
+            line_replies,
+            card: Box::new(card),
+        })?;
+        if r.ok {
+            return Ok(r.patch);
+        }
+        let msg = r.error.unwrap_or_else(|| "refused".into());
+        if msg == BAD_REQUEST {
+            return Err(io::Error::new(io::ErrorKind::Unsupported, msg));
+        }
+        Err(io::Error::other(msg))
     }
 
     pub fn pending_delivery(&self) -> io::Result<Vec<PendingDelivery>> {

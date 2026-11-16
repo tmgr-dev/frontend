@@ -150,6 +150,14 @@ fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
       card_id: Some(card_id),
       ..Default::default()
     })),
+    Op::ReplyCard { card_id, text, line_replies, card } => {
+      done(hub.reply_patched(&card_id, text, line_replies, Some(*card)).map(|(card_id, patch)| Response {
+        ok: true,
+        card_id: Some(card_id),
+        patch,
+        ..Default::default()
+      }))
+    }
     Op::PendingDelivery => {
       done(hub.pending_delivery().map(|pending| Response { ok: true, pending, ..Default::default() }))
     }
@@ -395,6 +403,19 @@ mod tests {
   fn last_message(r: &Rig, id: &str) -> (String, Option<String>, Option<u32>) {
     let m = r.hub.get(id).unwrap().messages.pop().unwrap();
     (m.text, m.file, m.line)
+  }
+
+  #[test]
+  fn a_reply_with_a_card_patch_updates_the_card_through_the_client() {
+    let r = rig();
+    let c = Client::open_in(&r.dir).unwrap();
+    let id = c.create(card("Ship?")).unwrap();
+    let patch = tmgr_ipc::decisions::CardPatch { title: Some("Ship it?".into()), ..Default::default() };
+    let status = c.reply_card(&id, Some("updated".into()), vec![], patch).unwrap();
+    assert_eq!(status.as_deref(), Some("applied: title changed"));
+    let v = r.hub.get(&id).unwrap();
+    assert_eq!(v.title, "Ship it?");
+    assert_eq!(v.messages.len(), 2);
   }
 
   #[test]

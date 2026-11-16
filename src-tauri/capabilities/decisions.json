@@ -15,6 +15,7 @@
 		"allow-decisions-get",
 		"allow-decisions-answer",
 		"allow-decisions-message",
+		"allow-decisions-dismiss-all",
 		"allow-decisions-diff",
 		"allow-decisions-open-link"
 	]

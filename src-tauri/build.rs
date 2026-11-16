@@ -153,6 +153,7 @@ const APP_COMMANDS: &[&str] = &[
   "decisions_get",
   "decisions_answer",
   "decisions_message",
+  "decisions_dismiss_all",
   "decisions_diff",
   "decisions_open_link",
   "decisions_pending_task_comments",

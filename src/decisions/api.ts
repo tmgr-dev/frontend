@@ -10,8 +10,8 @@ export const decisionsGet = (id: string) =>
 export const decisionsAnswer = (id: string, answer: Answer) =>
 	invoke<void>('decisions_answer', { id, answer });
 
-export const decisionsDismissAll = () =>
-	invoke<number>('decisions_dismiss_all');
+export const decisionsDismissAll = (ids: string[]) =>
+	invoke<number>('decisions_dismiss_all', { ids });
 
 export const decisionsMessage = (id: string, message: OutgoingMessage) =>
 	invoke<void>('decisions_message', { id, message });

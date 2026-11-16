@@ -118,12 +118,13 @@
 		"closeCard": "Close card",
 		"clearAll": "Clear all",
 		"clearCancel": "Cancel",
-		"clearConfirm": "Clear {n} card? Agents waiting on it get 'dismissed'. | Clear {n} cards? Agents waiting on them get 'dismissed'."
+		"clearConfirm": "Clear {n} card? Agents waiting on it get 'dismissed', deferred cards included. | Clear {n} cards? Agents waiting on them get 'dismissed', deferred cards included."
 	},
 	"card": {
 		"sessionEnded": "Session ended",
 		"agentWaiting": "Agent is waiting",
 		"updatedAt": "updated {time}",
+		"selectionCleared": "The option you had selected is no longer available. The card was updated, so choose again.",
 		"position": "· {position} of {total}",
 		"dismissed": "Dismissed",
 		"closed": "Closed",

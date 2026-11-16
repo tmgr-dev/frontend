@@ -98,6 +98,9 @@
 			</div>
 
 			<template v-else>
+				<p v-if="selectionCleared" class="sel-cleared" role="status">
+					{{ $t('decisions.card.selectionCleared') }}
+				</p>
 				<div
 					v-for="(option, index) in card.options"
 					:key="option.id"
@@ -205,7 +208,8 @@
 	} from '../format';
 	import { isSubmitKey } from '../keys';
 	import { clickedHttpLink, renderMarkdown } from '../markdown';
-	import type { CardView } from '../types';
+	import { reconcileSelection } from '../selection';
+	import type { CardOption, CardView } from '../types';
 
 	const PICK_DELAY_MS = 180;
 	const FREE_MAX_HEIGHT = 240;
@@ -231,6 +235,7 @@
 				note: this.noteDraft,
 				freeText: this.freeDraft,
 				pickTimer: 0 as number,
+				selectionCleared: false,
 			};
 		},
 		computed: {
@@ -279,6 +284,20 @@
 			},
 		},
 		watch: {
+			'card.options'(next: CardOption[], previous: CardOption[]) {
+				const result = reconcileSelection(previous, next, {
+					selected: this.selected,
+					noteFor: this.noteFor,
+				});
+				if (!result.cleared) return;
+				window.clearTimeout(this.pickTimer);
+				this.selected = result.selected;
+				if (this.noteFor !== result.noteFor) {
+					this.noteFor = result.noteFor;
+					this.note = '';
+				}
+				this.selectionCleared = true;
+			},
 			freeText(value: string) {
 				this.$emit('update:draft', { field: 'free', value });
 				void this.$nextTick(() => this.sizeFree());
@@ -320,6 +339,7 @@
 				const option = this.card.options[index];
 				if (!option || this.mode !== 'answer') return;
 				this.selected = option.id;
+				this.selectionCleared = false;
 				if (withNote) {
 					this.noteFor = option.id;
 					void this.$nextTick(() => {

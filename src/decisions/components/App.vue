@@ -20,9 +20,10 @@
 				:subtitle="subtitle"
 				@update:query="query = $event"
 				@select="select"
-				:clear-count="pendingCount"
+				:clear-count="clearIds.length"
 				@dismiss="closeCard"
 				@clear-all="clearAll"
+				@confirming="confirmingClear = $event"
 			/>
 			<main class="canvas">
 				<template v-if="current">
@@ -280,6 +281,7 @@
 			return {
 				cards: [] as CardView[],
 				resolvedHere: [] as string[],
+				confirmingClear: false,
 				selectedId: null as string | null,
 				query: '',
 				tab: 'diff' as Tab,
@@ -326,8 +328,8 @@
 			progress() {
 				return queueProgress(this.visible);
 			},
-			pendingCount(): number {
-				return this.cards.filter(isPending).length;
+			clearIds(): string[] {
+				return this.order.filter(isPending).map((card) => card.id);
 			},
 			current(): CardView | null {
 				return this.order.find((card) => card.id === this.selectedId) ?? null;
@@ -608,6 +610,7 @@
 					...draft,
 					lineComments: this.drafts[card.id] ?? [],
 				});
+				answer.seen_ms = card.updated_ms ?? card.created_ms;
 				const pane =
 					(this.$refs.cardPane as { $el?: Element } | undefined)?.$el ?? null;
 				const solved =
@@ -662,10 +665,11 @@
 				this.ensureSelection();
 			},
 			async clearAll() {
-				const ids = this.cards.filter(isPending).map((card) => card.id);
+				const ids = this.clearIds;
 				if (ids.length === 0) return;
+				let cleared = 0;
 				try {
-					await decisionsDismissAll();
+					cleared = await decisionsDismissAll(ids);
 				} catch (error) {
 					this.showToast(
 						t('decisions.toast.answerFailed', { error: String(error) }),
@@ -673,14 +677,12 @@
 					);
 					return;
 				}
+				this.resolvedHere = this.resolvedHere.filter((id) => !ids.includes(id));
 				for (const id of ids) {
-					if (!this.resolvedHere.includes(id)) this.resolvedHere.push(id);
 					delete this.drafts[id];
 					this.textDrafts = clearCardDrafts(this.textDrafts, id);
 				}
-				this.showToast(
-					t('decisions.toast.cleared', { n: ids.length }, ids.length),
-				);
+				this.showToast(t('decisions.toast.cleared', { n: cleared }, cleared));
 				this.selectedId = null;
 				await this.refresh();
 				this.ensureSelection();
@@ -745,6 +747,7 @@
 				);
 			},
 			onKeydown(event: KeyboardEvent) {
+				if (this.confirmingClear) return;
 				this.feedKonami(event);
 				const target = document.activeElement as HTMLElement | null;
 				const card = this.current;

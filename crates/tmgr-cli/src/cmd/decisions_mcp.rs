@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 use tmgr_ipc::decisions::{
-    Cancel, Client, DiffSpec, Found, LineComment, PatchIn, WaitCard, MAX_PATCH_BYTES,
-    MAX_WAIT_CARDS, OUTCOME_SIMILAR,
+    Cancel, CardPatch, Client, DiffSpec, Found, LineComment, PatchIn, Source, WaitCard,
+    MAX_PATCH_BYTES, MAX_WAIT_CARDS, OUTCOME_SIMILAR,
 };
 use tmgr_ipc::decisions::{MAX_DIFFS, MAX_PATCHES};
 
@@ -68,7 +68,7 @@ pub fn defs() -> Vec<Value> {
     vec![
         json!({
             "name": "ask_owner",
-            "description": "Before asking, call find_answers for the same task: the owner often already answered. If ask_owner returns status similar_answered, use that answer instead of asking again. Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head or repos (the owner sees the diffs and can comment on lines), patches (diff text you hold, no repository needed), task, prs, commits, tags and links when useful. Line comments on a card with 2 or more diff groups (repos plus patches) arrive as file = \"<label>:<path>\" where the label is the repository folder name (a second one gets -2) or the patch label; with one group the file is the plain path. Keep the repos order when you resend so the labels stay stable. To resend a question instead of piling up cards, pass key or replaces. key names one question for good: the same key from the same agent and working directory updates the still-open card in place (same card_id, queue position and messages), and if the owner already answered or dismissed it nothing is reopened and the existing answer is returned; a new round of the question needs a new key. A deliberate new round of a question the owner already answered needs force_new:true together with a new key. The key is scoped to (agent, working directory, key), so a resend from another worktree needs replaces (the card_id returned the first time), which wins over key. Always use the card_id the call returns. Returns JSON: an event with type \"answer\" (choice, choice_label, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running.",
+            "description": "Before asking, call find_answers for the same task: the owner often already answered. If ask_owner returns status similar_answered, use that answer instead of asking again. Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head or repos (the owner sees the diffs and can comment on lines), patches (diff text you hold, no repository needed), task, prs, commits, tags and links when useful. Line comments on a card with 2 or more diff groups (repos plus patches) arrive as file = \"<label>:<path>\" where the label is the repository folder name (a second one gets -2) or the patch label; with one group the file is the plain path. Keep the repos order when you resend so the labels stay stable. To resend a question instead of piling up cards, pass key or replaces. key names one question for good: the same key from the same agent and working directory updates the still-open card in place (same card_id, queue position and messages), and if the owner already answered or dismissed it nothing is reopened and the existing answer is returned; a new round of the question needs a new key. A deliberate new round of a question the owner already answered needs force_new:true together with a new key. The key is scoped to (agent, working directory, key), so a resend from another worktree needs replaces (the card_id returned the first time), which wins over key. Always use the card_id the call returns. Returns JSON: an event with type \"answer\" (choice, choice_label, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running. When the owner's chat messages change the facts or options, update the card with the card field of reply_owner in the same call as your reply instead of sending a new card.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -161,12 +161,30 @@ pub fn defs() -> Vec<Value> {
         }),
         json!({
             "name": "reply_owner",
-            "description": "Answer an interim \"message\" event from the owner (a thread comment, chat message or fix request) on a card, then wait for the next event like get_answer. Use line_replies to answer comments on specific lines of the diff. A text-only reply goes to the general chat, unless the owner has no unanswered chat message and exactly one line thread is waiting for you: then it is posted in that thread. If two or more line threads are waiting the call is refused with the list; answer them with line_replies.",
+            "description": "Answer an interim \"message\" event from the owner (a thread comment, chat message or fix request) on a card, then wait for the next event like get_answer. When your reply changes facts, options or the question, send the same update in the card field in this call, so the card on the owner's screen matches what you wrote (text and card are applied together; the card shows an \"Updated\" line in the chat). card is a patch: fields you omit stay, a field you send replaces that whole field (options replaces the whole option list, ids are positional; recommended alone moves the star to that 1-based option; facts, checks, prs, commits, tags and links replace the whole list of that kind). It follows the same validation and limits as ask_owner. A card that is already answered or dismissed is not changed, but your text is still posted and the result says card_patch refused. Use line_replies to answer comments on specific lines of the diff. A text-only reply goes to the general chat, unless the owner has no unanswered chat message and exactly one line thread is waiting for you: then it is posted in that thread. If two or more line threads are waiting the call is refused with the list; answer them with line_replies.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "card_id": {"type": "string", "description": "card_id of the card"},
                     "text": {"type": "string", "maxLength": MAX_REPLY, "description": "Your reply. Goes to the general chat, or to the single line thread waiting for you when the chat has no unanswered owner message; refused when two or more line threads are waiting (use line_replies)"},
+                    "card": {
+                        "type": "object",
+                        "description": "Optional patch of the card itself, applied in the same call as the reply. Omitted fields stay as they are",
+                        "properties": {
+                            "title": {"type": "string", "minLength": 1, "maxLength": MAX_TITLE},
+                            "question": {"type": "string", "maxLength": MAX_CONTEXT, "description": "New question; an empty string removes it"},
+                            "context": {"type": "string", "maxLength": MAX_CONTEXT, "description": "New context (Markdown); an empty string removes it"},
+                            "options": {"type": "array", "maxItems": 9, "description": "The full new option list (strings or {label, recommended}); replaces the old one"},
+                            "recommended": {"type": "integer", "minimum": 1, "maximum": 9, "description": "1-based option to recommend"},
+                            "facts": {"type": "array", "description": "Full new list, same format as ask_owner facts"},
+                            "checks": {"type": "array", "description": "Full new list, same format as ask_owner checks"},
+                            "prs": {"type": "array", "items": {"type": "string"}},
+                            "commits": {"type": "array", "items": {"type": "string"}},
+                            "tags": {"type": "array", "items": {"type": "string"}},
+                            "links": {"type": "array", "items": {"type": "string"}}
+                        },
+                        "additionalProperties": false
+                    },
                     "line_replies": {"type": "array", "maxItems": 50, "items": {
                         "type": "object",
                         "properties": {"file": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "side": {"type": "string", "enum": ["old", "new"], "description": "old = the deleted line, new = the added or unchanged line; omit to join the thread already on that line"}, "text": {"type": "string"}},
@@ -442,6 +460,107 @@ fn get_answer(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str)
     }
 }
 
+const OLD_DESKTOP: &str = "error: this TMGR desktop is too old to update cards from a reply; nothing was posted. Update the app, or call reply_owner again without card";
+
+const PATCH_KEYS: [&str; 11] = [
+    "title",
+    "question",
+    "context",
+    "options",
+    "recommended",
+    "facts",
+    "checks",
+    "prs",
+    "commits",
+    "tags",
+    "links",
+];
+
+fn card_patch(a: &Value) -> Result<Option<CardPatch>, String> {
+    let Some(v) = a.get("card") else {
+        return Ok(None);
+    };
+    let obj = v.as_object().ok_or("card must be an object")?;
+    if obj.is_empty() {
+        return Err("card must name at least one field to change".into());
+    }
+    if let Some(k) = obj.keys().find(|k| !PATCH_KEYS.contains(&k.as_str())) {
+        return Err(format!(
+            "card.{k} cannot be patched; allowed: {}",
+            PATCH_KEYS.join(", ")
+        ));
+    }
+    let mut probe = obj.clone();
+    probe.retain(|_, v| !v.is_null());
+    let keys: Vec<String> = probe.keys().cloned().collect();
+    let has = |k: &str| keys.iter().any(|x| x == k);
+    probe
+        .entry("title")
+        .or_insert_with(|| Value::String("-".into()));
+    let mut patch = CardPatch::default();
+    if has("recommended") && !has("options") {
+        let n = int_arg(&Value::Object(probe.clone()), "recommended", 1, 9)?
+            .ok_or("recommended must be a number")?;
+        patch.recommended = Some(n as u32);
+        probe.remove("recommended");
+    }
+    let card = parse_spec(&Value::Object(probe))?.into_card("mcp", Source::default())?;
+    let links = |kind: &str| {
+        card.links
+            .items
+            .iter()
+            .filter(|i| i.kind == kind)
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    if has("title") {
+        patch.title = Some(card.title.clone());
+    }
+    if has("question") {
+        patch.question = Some(card.question.clone().unwrap_or_default());
+    }
+    if has("context") {
+        patch.context = Some(card.context.clone().unwrap_or_default());
+    }
+    if has("options") {
+        patch.options = Some(card.options.clone());
+    }
+    if has("facts") {
+        patch.facts = Some(card.facts.clone());
+    }
+    if has("checks") {
+        patch.checks = Some(card.checks.clone());
+    }
+    if has("prs") {
+        patch.prs = Some(links("pr"));
+    }
+    if has("commits") {
+        patch.commits = Some(links("commit"));
+    }
+    if has("tags") {
+        patch.tags = Some(links("tag"));
+    }
+    if has("links") {
+        patch.links = Some(links("url"));
+    }
+    Ok(Some(patch))
+}
+
+fn with_patch_status(result: Value, status: Option<String>) -> Value {
+    let Some(status) = status else {
+        return result;
+    };
+    let is_error = result.get("isError").and_then(Value::as_bool) == Some(true);
+    let text = result["content"][0]["text"].as_str().unwrap_or_default();
+    match serde_json::from_str::<Value>(text) {
+        Ok(Value::Object(mut m)) => {
+            m.insert("card_patch".into(), Value::String(status));
+            text_result(Value::Object(m).to_string(), is_error)
+        }
+        _ => result,
+    }
+}
+
 fn reply_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str)) -> Value {
     let parsed = (|| {
         let id = card_id_arg(a)?;
@@ -463,20 +582,29 @@ fn reply_owner(a: &Value, cancel: Option<&Cancel>, progress: &mut dyn FnMut(&str
                 text: text.to_string(),
             });
         }
-        if text.is_none() && lines.is_empty() {
-            return Err("text or line_replies is required".to_string());
+        let patch = card_patch(a)?;
+        if text.is_none() && lines.is_empty() && patch.is_none() {
+            return Err("text, line_replies or card is required".to_string());
         }
-        Ok((id, text, lines, wait_arg(a)?))
+        Ok((id, text, lines, patch, wait_arg(a)?))
     })();
-    let (id, text, lines, wait) = match parsed {
+    let (id, text, lines, patch, wait) = match parsed {
         Ok(p) => p,
         Err(m) => return arg_err(&m),
     };
+    let patched = patch.is_some();
     let sent = tmgr_ipc::decisions::decisions_dir()
         .and_then(|d| Client::open_in(&d))
-        .and_then(|c| c.reply(&id, text, lines));
+        .and_then(|c| match patch {
+            Some(p) => c.reply_card(&id, text, lines, p),
+            None => c.reply(&id, text, lines).map(|()| None),
+        });
     match sent {
-        Ok(()) => collect(&[id], wait, cancel, progress),
+        Ok(status) => {
+            let status = patched.then(|| status.unwrap_or_default());
+            with_patch_status(collect(&[id], wait, cancel, progress), status)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::Unsupported => text_result(OLD_DESKTOP, true),
         Err(e) if decisions::is_refusal(&e) => text_result(format!("error: {e}"), true),
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => text_result(
             "error: the Decisions inbox did not accept the connection (unauthorized); the reply was not delivered, try again".to_string(),
@@ -617,6 +745,80 @@ mod tests {
         assert!(find_args(&json!({"limit": 0})).is_err());
         assert!(find_args(&json!({"limit": 51})).is_err());
         assert!(find_args(&json!({"query": ""})).is_err());
+    }
+
+    #[test]
+    fn reply_owner_schema_has_a_card_patch() {
+        let reply = defs()
+            .into_iter()
+            .find(|d| d["name"] == "reply_owner")
+            .unwrap();
+        assert!(reply["inputSchema"]["properties"]["card"]["properties"]["options"].is_object());
+        assert!(reply["description"]
+            .as_str()
+            .unwrap()
+            .contains("card field"));
+    }
+
+    #[test]
+    fn no_card_means_no_patch_and_unknown_fields_are_refused() {
+        assert_eq!(card_patch(&json!({"card_id": A})).unwrap(), None);
+        assert!(card_patch(&json!({"card": {}})).is_err());
+        let err = card_patch(&json!({"card": {"repos": []}})).unwrap_err();
+        assert!(err.contains("card.repos"), "{err}");
+        assert!(card_patch(&json!({"card": "x"})).is_err());
+    }
+
+    #[test]
+    fn only_the_named_fields_land_in_the_patch() {
+        let p = card_patch(&json!({"card": {
+            "question": "Ship v2?",
+            "options": ["Ship", {"label": "Hold", "recommended": true}],
+            "facts": ["ok: CI green"],
+            "prs": ["o/r#7"],
+            "links": []
+        }}))
+        .unwrap()
+        .unwrap();
+        assert_eq!(p.title, None);
+        assert_eq!(p.question.as_deref(), Some("Ship v2?"));
+        let options = p.options.unwrap();
+        assert_eq!(options.len(), 2);
+        assert!(options[1].recommended && !options[0].recommended);
+        assert_eq!(p.facts.unwrap()[0].text, "CI green");
+        assert_eq!(p.prs.unwrap()[0].url, "https://github.com/o/r/pull/7");
+        assert_eq!(p.links, Some(vec![]));
+        assert_eq!(
+            (p.checks, p.commits, p.tags, p.context),
+            (None, None, None, None)
+        );
+    }
+
+    #[test]
+    fn recommended_alone_is_passed_through_and_limits_match_ask_owner() {
+        let p = card_patch(&json!({"card": {"recommended": 2}}))
+            .unwrap()
+            .unwrap();
+        assert_eq!((p.recommended, p.options), (Some(2), None));
+        assert!(card_patch(&json!({"card": {"recommended": 0}})).is_err());
+        assert!(card_patch(&json!({"card": {"options": ["a"], "recommended": 3}})).is_err());
+        assert!(card_patch(&json!({"card": {"facts": ["bogus: x"]}})).is_err());
+        assert!(card_patch(&json!({"card": {"title": ""}})).is_err());
+        let long = "x".repeat(MAX_CONTEXT + 1);
+        assert!(card_patch(&json!({"card": {"context": long}})).is_err());
+    }
+
+    #[test]
+    fn the_patch_status_is_added_to_the_event_json() {
+        let base = text_result(
+            json!({"status": "pending", "card_id": A}).to_string(),
+            false,
+        );
+        let out = with_patch_status(base.clone(), Some("applied: title changed".into()));
+        let v: Value = serde_json::from_str(out["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(v["card_patch"], "applied: title changed");
+        assert_eq!(v["card_id"], A);
+        assert_eq!(with_patch_status(base.clone(), None), base);
     }
 
     #[test]

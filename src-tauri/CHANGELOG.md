@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## Unreleased
+
+- Decisions: a new Clear all button above the queue dismisses every open card at once, after a confirmation. Agents waiting on them get "dismissed", and cards you already answered are not touched.
+- Decisions: when an agent replies in a card's chat it can update the card itself in the same call (question, context, options, recommended option, facts, checks, links). The card shows "updated" and a line in the chat says what changed. If the option you had selected no longer exists, the selection is cleared and you are told. Cards you already answered or dismissed are never changed.
+
 ## 0.9.158 — 2026-11-16
 
 - Agent runs: the sessions panel shows when Claude Code or Codex has hit its usage limit and has a Switch agent button. It stops the session and continues the same task in the other agent, in the same folder, with a short note of what was done. The new agent starts in the default permission mode and asks for approvals.
