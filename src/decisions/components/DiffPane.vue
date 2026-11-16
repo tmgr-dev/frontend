@@ -150,7 +150,7 @@
 								</div>
 								<template v-if="isComposing(row.qpath, row.line)">
 									<textarea
-										:ref="setComposer"
+										:ref="focusComposer"
 										v-model="texts[row.key]"
 										data-input="thread"
 										:placeholder="composerPlaceholder(row.qpath, row.line)"
@@ -195,7 +195,7 @@
 
 <script lang="ts">
 	import { t, te } from '@/i18n';
-	import { useVirtualizer } from '@tanstack/vue-virtual';
+	import { defaultRangeExtractor, useVirtualizer } from '@tanstack/vue-virtual';
 	import {
 		computed,
 		defineComponent,
@@ -216,7 +216,13 @@
 		threadKey,
 		type LineAnchor,
 	} from '../diff';
-	import { buildDiffRows, type DiffRow, type DiffRows } from '../diffRows';
+	import {
+		buildDiffRows,
+		keySignature,
+		withPinnedIndexes,
+		type DiffRow,
+		type DiffRows,
+	} from '../diffRows';
 	import { isSubmitKey } from '../keys';
 	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
 	import type {
@@ -265,6 +271,7 @@
 		setup() {
 			const scroller = shallowRef<HTMLElement | null>(null);
 			const rows = shallowRef<DiffRow[]>([]);
+			const pinned = shallowRef<number[]>([]);
 			const virtualizer = useVirtualizer(
 				computed(() => ({
 					count: rows.value.length,
@@ -272,11 +279,19 @@
 					estimateSize: (index: number) => estimate(rows.value[index]),
 					getItemKey: (index: number) => rows.value[index]?.id ?? index,
 					overscan: 30,
+					rangeExtractor: (
+						range: Parameters<typeof defaultRangeExtractor>[0],
+					) =>
+						withPinnedIndexes(
+							defaultRangeExtractor(range),
+							pinned.value,
+							rows.value.length,
+						),
 				})),
 			);
 			const measure = (el: Element | ComponentPublicInstance | null) =>
 				virtualizer.value.measureElement(el as Element | null);
-			return { scroller, rows, virtualizer, measure };
+			return { scroller, rows, pinned, virtualizer, measure };
 		},
 		data() {
 			return {
@@ -285,8 +300,7 @@
 				modes: {} as Record<string, ComposerMode>,
 				texts: {} as Record<string, string>,
 				resolved: {} as Record<string, 'kept' | 'fixSent'>,
-				composer: null as HTMLTextAreaElement | null,
-				focusPending: false,
+				focusKey: null as string | null,
 			};
 		},
 		computed: {
@@ -316,9 +330,16 @@
 				for (const key in this.open) if (this.open[key]) keys.add(key);
 				return keys;
 			},
+			activeSignature(): string {
+				return keySignature(this.activeKeys);
+			},
 			built(): DiffRows {
 				const groups = toRaw(this.diff?.groups ?? []);
-				return buildDiffRows(groups, this.activeKeys);
+				const signature = this.activeSignature;
+				return buildDiffRows(
+					groups,
+					new Set(signature ? signature.split('\0') : []),
+				);
 			},
 			items() {
 				return this.virtualizer
@@ -339,6 +360,13 @@
 				immediate: true,
 				handler(built: DiffRows) {
 					this.rows = built.rows;
+					this.updatePinned();
+				},
+			},
+			open: {
+				deep: true,
+				handler() {
+					this.updatePinned();
 				},
 			},
 		},
@@ -364,12 +392,15 @@
 					fbot: row !== undefined && 'bottom' in row && row.bottom,
 				};
 			},
-			scrollToThread(key: string) {
-				const index =
-					this.built.threadIndex.get(key) ?? this.built.lineIndex.get(key);
-				if (index !== undefined) {
-					this.virtualizer.scrollToIndex(index, { align: 'center' });
+			updatePinned() {
+				const pinned: number[] = [];
+				for (const key in this.open) {
+					const index = this.open[key]
+						? this.built.threadIndex.get(key)
+						: undefined;
+					if (index !== undefined) pinned.push(index);
 				}
+				this.pinned = pinned;
 			},
 			groupKind(kind: string): string {
 				const key = `decisions.diff.groupKind.${kind}`;
@@ -425,23 +456,27 @@
 					? t('decisions.diff.fixPlaceholder')
 					: t('decisions.diff.commentPlaceholder');
 			},
-			setComposer(el: unknown) {
-				this.composer = (el as HTMLTextAreaElement | null) ?? this.composer;
-				if (el && this.focusPending) {
-					this.focusPending = false;
-					(el as HTMLTextAreaElement).focus();
-				}
+			focusComposer(el: unknown) {
+				const key = this.focusKey;
+				if (key === null || !(el instanceof HTMLTextAreaElement)) return;
+				if (!el.isConnected) return;
+				if (el.closest<HTMLElement>('.thread')?.dataset.key !== key) return;
+				this.focusKey = null;
+				el.focus();
 			},
 			openThread(file: string, line: DiffLine, mode: MessageAction) {
 				const key = this.keyOf(file, line);
 				this.open[key] = true;
 				this.modes[key] = mode;
 				delete this.resolved[key];
-				this.focusPending = true;
+				this.focusKey = key;
 				void this.$nextTick(() => {
-					if (this.composer?.isConnected) {
-						this.focusPending = false;
-						this.composer.focus();
+					const threads =
+						this.scroller?.querySelectorAll<HTMLElement>('.thread');
+					for (const thread of threads ?? []) {
+						if (thread.dataset.key === key) {
+							this.focusComposer(thread.querySelector('textarea'));
+						}
 					}
 				});
 			},

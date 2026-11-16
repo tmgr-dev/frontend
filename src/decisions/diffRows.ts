@@ -114,3 +114,15 @@ export const buildDiffRows = (
 	});
 	return { rows, threadIndex, lineIndex, maxChars };
 };
+
+export const withPinnedIndexes = (
+	range: readonly number[],
+	pinned: Iterable<number>,
+	count: number,
+): number[] =>
+	[...new Set([...range, ...pinned])]
+		.filter((index) => index >= 0 && index < count)
+		.sort((a, b) => a - b);
+
+export const keySignature = (keys: Iterable<string>): string =>
+	[...new Set(keys)].sort().join('\0');

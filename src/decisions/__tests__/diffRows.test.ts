@@ -1,4 +1,4 @@
-import { buildDiffRows } from '../diffRows';
+import { buildDiffRows, keySignature, withPinnedIndexes } from '../diffRows';
 import type { DiffGroup, DiffLine } from '../types';
 
 const lines = (n: number): DiffLine[] =>
@@ -117,5 +117,20 @@ describe('buildDiffRows', () => {
 		expect(Date.now() - started).toBeLessThan(500);
 		expect(rows).toHaveLength(20004);
 		expect(maxChars).toBe(301);
+	});
+});
+
+describe('withPinnedIndexes', () => {
+	it('merges, sorts, dedupes and drops out-of-range indexes', () => {
+		expect(withPinnedIndexes([5, 6, 7], [100, 6, 2, 999, -1], 500)).toEqual([
+			2, 5, 6, 7, 100,
+		]);
+	});
+});
+
+describe('keySignature', () => {
+	it('is order and duplicate independent', () => {
+		expect(keySignature(['b', 'a', 'b'])).toBe(keySignature(['a', 'b']));
+		expect(keySignature([])).toBe('');
 	});
 });

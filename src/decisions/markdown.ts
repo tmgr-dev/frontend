@@ -20,6 +20,7 @@ export const collapseLongCode = (html: string): string =>
 		);
 	});
 
+// collapseLongCode must run after sanitizeHtml: its <details> markup is ours, not sanitized input
 export const renderMarkdown = (text: string): string =>
 	text
 		? collapseLongCode(
