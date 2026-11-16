@@ -1,5 +1,5 @@
 use super::ops::{clean, with_session};
-use super::run_task::{execute_switch, prepare, Handoff, Launch, Started};
+use super::run_task::{plan_switch, prepare, start_switch, Launch, Started};
 use super::{emit, rerr, Opts, PermissionMode};
 use clap::ValueEnum;
 use serde_json::json;
@@ -35,10 +35,10 @@ fn err(e: SwitchError) -> Error {
 pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     let target = lib::check(&s, a.to.map(Target::from)).map_err(err)?;
-    let reference = s
+    let task = s
         .task
-        .map(|t| format!("#{}", t.task_id))
         .ok_or_else(|| Error::usage("the session has no task"))?;
+    let reference = format!("#{}", task.task_id);
     let prepared = prepare(
         o.ws.as_deref(),
         None,
@@ -46,8 +46,26 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
         target.profile(),
         PermissionMode::Ask,
     )?;
+    let launch = Launch {
+        model: None,
+        name: None,
+        base: None,
+        size: super::ops::terminal_size(),
+    };
+    let plan = plan_switch(prepared, &launch, &s.cwd)?;
+    if plan.task() != task {
+        return Err(Error::usage(
+            "the task of this session was not found in the selected workspace",
+        )
+        .hint("pass --ws local:<code> for the workspace of the session's task"));
+    }
+    lib::ensure_readable(&s).map_err(err)?;
     if !o.json && !o.quiet {
-        eprintln!("{}", prepared.summary());
+        eprintln!(
+            "Continue task #{} in {} (new session, same folder, default permission mode)",
+            task.task_id,
+            target.profile()
+        );
     }
     crate::interact::confirm(
         &format!(
@@ -59,33 +77,25 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
         a.yes,
     )?;
     let sessions = c.list().map_err(rerr)?;
-    lib::ensure_readable(&s).map_err(err)?;
-    lib::stop(&mut c, &s, target).map_err(err)?;
-    let note = lib::prepare_note(&s, &sessions, target, &reference).map_err(err)?;
-    let started = execute_switch(
-        prepared,
-        &Launch {
-            model: None,
-            name: None,
-            base: None,
-            size: super::ops::terminal_size(),
-        },
-        &Handoff {
-            old_id: &s.id,
-            old_cwd: &s.cwd,
-            note: &note.text,
-        },
-    )
-    .map_err(|e| {
+    let resume_hint = format!("Resume the old one with `{} resume {}`", super::bin(), s.id);
+    lib::stop(&mut c, &s, target).map_err(|e| {
         Error::new(
             Kind::Conflict,
             format!(
-                "the old session stopped, but the new agent did not start: {e}. Resume the old one with `{} resume {}`",
-                super::bin(),
-                s.id
+                "{e}. The old session got an interrupt and then a terminate signal and may have stopped in the middle of a turn. {resume_hint}"
             ),
         )
     })?;
+    let after_stop = |e: String| {
+        Error::new(
+            Kind::Conflict,
+            format!("the old session stopped, but the new agent did not start: {e}. {resume_hint}"),
+        )
+    };
+    let note = lib::prepare_note(&s, &sessions, target, &reference)
+        .map_err(|e| after_stop(e.to_string()))?;
+    let started =
+        start_switch(plan, &launch, (&s.id, &note.text)).map_err(|e| after_stop(e.to_string()))?;
     let warning = lib::export_all(&started.info.id, &note.exports);
     report(o, &s, target, &started, warning)
 }

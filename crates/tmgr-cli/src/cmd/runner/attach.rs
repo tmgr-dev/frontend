@@ -5391,6 +5391,7 @@ mod tests {
             agent_session_id: None,
             limit: None,
             handoff_from: None,
+            managed: false,
             team: None,
             id: id.into(),
             name: id.into(),

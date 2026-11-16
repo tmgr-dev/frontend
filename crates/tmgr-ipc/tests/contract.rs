@@ -141,6 +141,7 @@ fn session_info() -> SessionInfo {
         agent_session_id: None,
         limit: None,
         handoff_from: None,
+        managed: false,
         id: SID.into(),
         name: "fix login".into(),
         argv: vec![
@@ -627,6 +628,7 @@ fn method_params_and_results() {
             agent_session_id: None,
             limit: None,
             handoff_from: None,
+            managed: false,
             id: SID.into(),
             name: "sh".into(),
             argv: vec!["/bin/sh".into()],
@@ -1576,6 +1578,7 @@ fn full_info() -> SessionInfo {
         agent_session_id: None,
         limit: None,
         handoff_from: None,
+        managed: false,
         permission_cards: false,
         id: "s_abcdefghij".into(),
         name: "n".into(),

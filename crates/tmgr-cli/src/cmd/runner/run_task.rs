@@ -16,6 +16,7 @@ use tmgr_ipc::api::{
 use tmgr_queue::source::{Candidate, LocalTasks};
 use tmgr_queue::workdir;
 use tmgr_runner::daemon;
+use tmgr_session::mask::mask;
 
 struct Plan {
     candidate: Candidate,
@@ -478,24 +479,38 @@ fn create(
     })
 }
 
-pub(super) struct Handoff<'a> {
-    pub old_id: &'a str,
-    pub old_cwd: &'a str,
-    pub note: &'a str,
+pub(super) struct SwitchPlan {
+    p: Prepared,
+    cwd: String,
+    pins: (ExePin, String),
+    bundle: RunBundle,
+}
+
+impl SwitchPlan {
+    pub(super) fn task(&self) -> tmgr_ipc::api::TaskRef {
+        self.p.plan.candidate.task
+    }
 }
 
 const ORIGINAL_BODY_CAP: usize = 6000;
+const NOTE_BUDGET: usize = 40_000;
 
-pub(super) fn execute_switch(mut p: Prepared, l: &Launch, h: &Handoff) -> Result<Started> {
+fn continued(b: &mut RunBundle, note: &str) {
+    let original: String = mask(&b.body).chars().take(ORIGINAL_BODY_CAP).collect();
+    b.title = format!("Continue: {}", mask(&b.title));
+    b.body = format!("{note}\n\n## Original task\n{original}");
+}
+
+pub(super) fn plan_switch(mut p: Prepared, l: &Launch, old_cwd: &str) -> Result<SwitchPlan> {
     recalled(&mut p.plan);
     let profile = p.profile.clone();
     let mode = p.mode;
     super::ops::login_preflight(&profile)?;
-    let (exe_pin, argv_digest) = launch_pin(&profile, l.model, mode)?;
+    let pins = launch_pin(&profile, l.model, mode)?;
     let gone =
         || Error::not_found("the clone of this task is gone, so there is no folder to continue in");
     let clone = std::fs::canonicalize(&p.plan.clone).map_err(|_| gone())?;
-    let cwd = std::fs::canonicalize(h.old_cwd).map_err(|_| gone())?;
+    let cwd = std::fs::canonicalize(old_cwd).map_err(|_| gone())?;
     if clone != cwd {
         return Err(Error::new(
             Kind::Conflict,
@@ -506,23 +521,38 @@ pub(super) fn execute_switch(mut p: Prepared, l: &Launch, h: &Handoff) -> Result
         .to_str()
         .ok_or_else(|| Error::usage("the folder of the session is not valid text"))?
         .to_string();
-    let mut bundle = bundle(&p.plan, &profile, l.model, mode, &cwd)?;
-    let original: String = bundle.body.chars().take(ORIGINAL_BODY_CAP).collect();
-    bundle.title = format!("Continue: {}", bundle.title);
-    bundle.body = format!("{}\n\n## Original task\n{original}", h.note);
-    bundle.validate().map_err(Error::usage)?;
-    if bundle.canonical().len() > MAX_BUNDLE {
+    let bundle = bundle(&p.plan, &profile, l.model, mode, &cwd)?;
+    let mut probe = bundle.clone();
+    continued(&mut probe, &"x".repeat(NOTE_BUDGET));
+    probe.validate().map_err(Error::usage)?;
+    if probe.canonical().len() > MAX_BUNDLE {
         return Err(Error::usage(
-            "the handoff note is larger than the run bundle allows",
+            "the task is too large to carry a handoff note in the run bundle",
         ));
     }
-    create(
-        &p,
-        l,
+    Ok(SwitchPlan {
+        p,
         cwd,
+        pins,
         bundle,
-        (exe_pin, argv_digest),
-        (false, Some(h.old_id)),
+    })
+}
+
+pub(super) fn start_switch(
+    mut plan: SwitchPlan,
+    l: &Launch,
+    (old_id, note): (&str, &str),
+) -> Result<Started> {
+    let note: String = note.chars().take(NOTE_BUDGET).collect();
+    continued(&mut plan.bundle, &note);
+    plan.bundle.validate().map_err(Error::usage)?;
+    create(
+        &plan.p,
+        l,
+        plan.cwd,
+        plan.bundle,
+        plan.pins,
+        (false, Some(old_id)),
     )
 }
 

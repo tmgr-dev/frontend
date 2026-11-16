@@ -741,6 +741,7 @@ impl Session {
             agent_session_id: m.agent_session_id.clone(),
             limit: m.limit.clone(),
             handoff_from: m.handoff_from.clone(),
+            managed: m.start_key.is_some() || m.multi,
             id: m.id.clone(),
             name: m.name.clone(),
             argv: m.argv.clone(),
@@ -2412,6 +2413,24 @@ fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr
     Ok(())
 }
 
+fn parent_verdict(
+    parent: &str,
+    known: Option<(bool, Option<TaskRef>)>,
+    task: Option<TaskRef>,
+) -> Result<(), &'static str> {
+    if !valid_parent(parent) {
+        return Err("parent_session is not a session id");
+    }
+    let (exited, parent_task) = known.ok_or("parent_session is not a known session")?;
+    if !exited {
+        return Err("parent_session is still running");
+    }
+    if task.is_none() || parent_task != task {
+        return Err("parent_session belongs to another task");
+    }
+    Ok(())
+}
+
 fn valid_parent(p: &str) -> bool {
     !p.is_empty()
         && p.len() <= 191
@@ -2525,6 +2544,15 @@ impl Runner {
                         ErrorCode::Forbidden,
                         "runs for a link come only from the worker and must name their origin",
                     ));
+                }
+                if let Some(parent) = req.parent_session.as_deref() {
+                    if conn.client != CLIENT_CLI && conn.client != CLIENT_DESKTOP {
+                        return Err(api(
+                            ErrorCode::Forbidden,
+                            "parent_session is accepted only from the tmgr CLI and the desktop",
+                        ));
+                    }
+                    self.check_parent(parent, req.task)?;
                 }
                 if req.trust_cwd.is_some() {
                     if conn.client != CLIENT_CLI {
@@ -3635,6 +3663,13 @@ impl Runner {
             Some(old),
         )?;
         Ok((info, false, "rerun"))
+    }
+
+    fn check_parent(&self, parent: &str, task: Option<TaskRef>) -> Result<(), ApiErr> {
+        let known = self
+            .session(parent)
+            .map(|s| (s.is_exited(), lock(&s.inner).meta.task));
+        parent_verdict(parent, known, task).map_err(|m| api(ErrorCode::InvalidParams, m))
     }
 
     fn create_run(
@@ -5933,6 +5968,22 @@ mod tests {
 
     fn settled() -> Instant {
         Instant::now() + SEND_SETTLE
+    }
+
+    #[test]
+    fn a_parent_must_be_a_known_exited_session_of_the_same_task() {
+        let t = |n| {
+            Some(TaskRef {
+                workspace_id: -1,
+                task_id: n,
+            })
+        };
+        assert!(parent_verdict("s_a", Some((true, t(1))), t(1)).is_ok());
+        assert!(parent_verdict("s_a", None, t(1)).is_err());
+        assert!(parent_verdict("s_a", Some((false, t(1))), t(1)).is_err());
+        assert!(parent_verdict("s_a", Some((true, t(2))), t(1)).is_err());
+        assert!(parent_verdict("s_a", Some((true, None)), None).is_err());
+        assert!(parent_verdict("../x", Some((true, t(1))), t(1)).is_err());
     }
 
     const LIMIT_SCREEN: &[u8] = "\r\n5-hour limit reached \u{2219} resets 3pm\r\n".as_bytes();

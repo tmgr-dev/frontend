@@ -74,3 +74,57 @@ pub fn mask(text: &str) -> String {
     })
     .into_owned()
 }
+
+fn secret_key(k: &str) -> bool {
+    let k = k.to_ascii_lowercase();
+    !k.ends_with("tokens")
+        && [
+            "password",
+            "passwd",
+            "passphrase",
+            "secret",
+            "token",
+            "api_key",
+            "apikey",
+            "api-key",
+            "access_key",
+            "private_key",
+            "credential",
+            "authorization",
+        ]
+        .iter()
+        .any(|n| k.contains(n))
+}
+
+fn mask_value(v: &mut serde_json::Value) {
+    match v {
+        serde_json::Value::String(s) => {
+            let t = s.trim_start();
+            if t.starts_with('{') || t.starts_with('[') {
+                if let Ok(mut inner) = serde_json::from_str::<serde_json::Value>(s) {
+                    mask_value(&mut inner);
+                    *s = inner.to_string();
+                    return;
+                }
+            }
+            *s = mask(s);
+        }
+        serde_json::Value::Array(a) => a.iter_mut().for_each(mask_value),
+        serde_json::Value::Object(o) => {
+            for (k, val) in o.iter_mut() {
+                if secret_key(k) && val.is_string() {
+                    *val = serde_json::Value::String("***".into());
+                } else {
+                    mask_value(val);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+pub fn mask_json_line(line: &str) -> Option<String> {
+    let mut v: serde_json::Value = serde_json::from_str(line).ok()?;
+    mask_value(&mut v);
+    Some(v.to_string())
+}

@@ -4269,6 +4269,7 @@ dependencies = [
 name = "tmgr-session"
 version = "1.0.131"
 dependencies = [
+ "libc",
  "regex",
  "serde_json",
  "tempfile",

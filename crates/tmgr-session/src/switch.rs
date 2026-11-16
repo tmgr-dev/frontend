@@ -90,6 +90,9 @@ pub fn refusal(s: &SessionInfo) -> Option<&'static str> {
     if s.origin.is_some() {
         return Some("a session started from a link or the queue cannot be switched");
     }
+    if s.managed {
+        return Some("a session started by the queue or as part of a batch cannot be switched");
+    }
     if s.team.is_some() {
         return Some("a team member cannot be switched");
     }
@@ -142,6 +145,12 @@ fn roots_of(s: &SessionInfo) -> Result<Roots> {
 
 fn log_of(s: &SessionInfo, agent: Agent) -> Result<PathBuf> {
     let roots = roots_of(s)?;
+    if s.no_sandbox && !s.agent_session_id.as_deref().is_some_and(is_uuid) {
+        return Err(SwitchError::NotFound(format!(
+            "the conversation id of session {} is unknown, so its log cannot be told apart from your other sessions",
+            s.id
+        )));
+    }
     if let Some(id) = s.agent_session_id.as_deref().filter(|i| is_uuid(i)) {
         if let Ok((_, path)) = find(&roots, id) {
             return Ok(path);
@@ -199,7 +208,9 @@ pub fn check(s: &SessionInfo, to: Option<Target>) -> Result<Target> {
 }
 
 pub fn ensure_readable(s: &SessionInfo) -> Result<()> {
-    log_of(s, agent_of(s)?).map(drop)
+    let agent = agent_of(s)?;
+    let path = log_of(s, agent)?;
+    load(agent, &path).map(drop).map_err(SwitchError::Internal)
 }
 
 pub fn prepare_note(
@@ -295,6 +306,7 @@ mod tests {
             agent_session_id: None,
             limit: None,
             handoff_from: None,
+            managed: false,
         }
     }
 
@@ -328,6 +340,20 @@ mod tests {
             generation: 1,
         });
         assert!(refusal(&s).is_some());
+    }
+
+    #[test]
+    fn queue_and_batch_sessions_are_refused() {
+        let mut s = info("a", "codex");
+        s.managed = true;
+        assert!(refusal(&s).unwrap().contains("queue"));
+    }
+
+    #[test]
+    fn an_unsandboxed_session_without_a_conversation_id_is_refused() {
+        let mut s = info("a", "codex");
+        s.no_sandbox = true;
+        assert!(log_of(&s, Agent::Codex).is_err());
     }
 
     #[test]

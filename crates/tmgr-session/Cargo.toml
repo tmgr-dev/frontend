@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 serde_json.workspace = true
 regex.workspace = true
+libc.workspace = true
 tmgr-ipc.workspace = true
 tmgr-usage.workspace = true
 

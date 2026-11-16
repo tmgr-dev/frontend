@@ -318,6 +318,7 @@ fn locate_rules() {
     let roots = Roots {
         claude: Some(dir.path().join("claude")),
         codex: Some(dir.path().join("codex")),
+        jail: None,
     };
     assert!(find(&roots, uuid).is_ok());
     assert!(find(&roots, "019a0000").is_ok());
@@ -343,13 +344,17 @@ fn export_masks_and_lands_where_the_lookup_finds_it() {
     let found = newest(&Roots::for_home(&old), Agent::Claude).unwrap();
     assert_eq!(found, src);
     let new_home = dir.path().join("new");
+    std::fs::create_dir_all(&new_home).unwrap();
     let copy = export_masked(&src, Agent::Claude, &new_home).unwrap();
     let text = std::fs::read_to_string(&copy).unwrap();
     assert!(!text.contains("LEAKTAIL") && text.contains("use "));
     let roots = Roots::for_home(&new_home);
     let (agent, path) = find(&roots, id).unwrap();
     assert_eq!(agent, Agent::Claude);
-    assert_eq!(path, copy);
+    assert_eq!(
+        std::fs::canonicalize(path).unwrap(),
+        std::fs::canonicalize(copy).unwrap()
+    );
     assert!(newest(&roots, Agent::Claude).is_none());
 }
 
@@ -368,11 +373,132 @@ fn the_masked_copy_is_private_and_stays_inside_the_run_home() {
     let worktree = dir.path().join("worktree");
     std::fs::create_dir(&worktree).unwrap();
     let home = dir.path().join("homes/new");
+    std::fs::create_dir_all(&home).unwrap();
     let copy = export_masked(&src, Agent::Claude, &home).unwrap();
-    assert!(copy.starts_with(&home));
+    assert!(copy.starts_with(std::fs::canonicalize(&home).unwrap()));
     assert_eq!(
         std::fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
         0o600
     );
     assert_eq!(std::fs::read_dir(&worktree).unwrap().count(), 0);
+}
+
+#[cfg(unix)]
+mod hardening {
+    use super::*;
+    use std::os::unix::fs::symlink;
+    use tmgr_session::locate::{export_masked, find, newest, Roots};
+
+    fn session_line(id: &str, text: &str) -> String {
+        format!(
+            "{{\"type\":\"user\",\"sessionId\":\"{id}\",\"message\":{{\"content\":\"{text}\"}}}}\n"
+        )
+    }
+
+    #[test]
+    fn a_symlinked_project_folder_is_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("owner/projects/p");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(
+            outside.join("22222222-aaaa-bbbb-cccc-000000000002.jsonl"),
+            session_line("x", "owner secret"),
+        )
+        .unwrap();
+        let home = dir.path().join("home");
+        let projects = home.join(".claude/projects");
+        std::fs::create_dir_all(&projects).unwrap();
+        symlink(&outside, projects.join("evil")).unwrap();
+        let roots = Roots::for_home(&home);
+        assert!(newest(&roots, Agent::Claude).is_none());
+        assert!(find(&roots, "22222222-aaaa").is_err());
+    }
+
+    #[test]
+    fn a_symlinked_session_file_is_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("netrc");
+        std::fs::write(&target, "machine x password hunter22\n").unwrap();
+        let home = dir.path().join("home");
+        let project = home.join(".claude/projects/p");
+        std::fs::create_dir_all(&project).unwrap();
+        symlink(
+            &target,
+            project.join("33333333-aaaa-bbbb-cccc-000000000003.jsonl"),
+        )
+        .unwrap();
+        let roots = Roots::for_home(&home);
+        assert!(newest(&roots, Agent::Claude).is_none());
+        assert!(find(&roots, "33333333-aaaa").is_err());
+        assert!(export_masked(
+            &project.join("33333333-aaaa-bbbb-cccc-000000000003.jsonl"),
+            Agent::Claude,
+            &dir.path().join("new")
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn a_symlinked_claude_folder_leaves_the_jail() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("owner/.claude");
+        std::fs::create_dir_all(real.join("projects/p")).unwrap();
+        std::fs::write(real.join("projects/p/a.jsonl"), session_line("x", "owner")).unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        symlink(&real, home.join(".claude")).unwrap();
+        assert!(newest(&Roots::for_home(&home), Agent::Claude).is_none());
+    }
+
+    #[test]
+    fn the_export_refuses_a_planted_target_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("old.jsonl");
+        std::fs::write(&src, session_line("s", "hi")).unwrap();
+        let home = dir.path().join("new");
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir_all(home.join(".claude/projects")).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        symlink(&elsewhere, home.join(".claude/projects/handoff")).unwrap();
+        assert!(export_masked(&src, Agent::Claude, &home).is_err());
+        assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn export_masks_values_without_breaking_the_lines() {
+    use tmgr_session::locate::export_masked;
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("old.jsonl");
+    let pem = format!(
+        "-----BEGIN {0} KEY-----\nZZPEMBODY\n-----END {0} KEY-----",
+        "PRIVATE"
+    );
+    let line = serde_json::json!({
+        "type": "user",
+        "message": {"content": format!("run mysql -pHUNTERSECRET1 --password OTHERSECRET2 {pem} and done")},
+        "api_key": "KEYVALUE12345",
+    });
+    let bad = "{\"type\":\"user\" broken";
+    std::fs::write(&src, format!("{line}\n{bad}\n")).unwrap();
+    std::fs::create_dir_all(dir.path().join("new")).unwrap();
+    let copy = export_masked(&src, Agent::Claude, &dir.path().join("new")).unwrap();
+    let text = std::fs::read_to_string(copy).unwrap();
+    assert_eq!(text.lines().count(), 1);
+    let v: serde_json::Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
+    for leak in [
+        "HUNTERSECRET1",
+        "OTHERSECRET2",
+        "ZZPEMBODY",
+        "KEYVALUE12345",
+    ] {
+        assert!(!text.contains(leak), "{leak}");
+    }
+    assert!(
+        v["message"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("and done")
+            || v["message"]["content"].as_str().unwrap().contains("masked")
+    );
 }
