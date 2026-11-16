@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.134
 
 - The runner answers a new `profiles.login_check` request (capability `profiles_login_check.v1`) with the reason an agent profile cannot start for lack of a login, if any. The desktop uses it to refuse an agent switch before the old session is stopped.
 
