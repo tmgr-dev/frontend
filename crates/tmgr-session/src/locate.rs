@@ -1,4 +1,5 @@
-use crate::lines::first_line;
+use crate::lines::{first_line, for_each_line};
+use crate::mask::mask;
 use crate::model::{Agent, Session};
 use crate::{claude, codex};
 use std::fs;
@@ -21,6 +22,82 @@ impl Roots {
             codex: var("CODEX_HOME").or_else(|| env.home.as_ref().map(|h| h.join(".codex"))),
         }
     }
+}
+
+impl Roots {
+    pub fn for_home(home: &Path) -> Roots {
+        Roots {
+            claude: Some(home.join(".claude")),
+            codex: Some(home.join(".codex")),
+        }
+    }
+}
+
+pub fn newest(roots: &Roots, agent: Agent) -> Option<PathBuf> {
+    let mut files = Vec::new();
+    match agent {
+        Agent::Claude => {
+            for project in read_dir(&roots.claude.as_ref()?.join("projects")) {
+                files.extend(read_dir(&project));
+            }
+        }
+        Agent::Codex => walk(&roots.codex.as_ref()?.join("sessions"), 5, &mut files),
+    }
+    files
+        .into_iter()
+        .filter(|f| match agent {
+            Agent::Claude => f.extension().is_some_and(|e| e == "jsonl"),
+            Agent::Codex => is_rollout(f),
+        })
+        .filter(|f| !f.components().any(|c| c.as_os_str() == "handoff"))
+        .filter_map(|f| Some((fs::metadata(&f).ok()?.modified().ok()?, f)))
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, f)| f)
+}
+
+fn is_rollout(f: &Path) -> bool {
+    f.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("rollout-") && n.ends_with(".jsonl"))
+}
+
+pub const EXPORT_MAX_BYTES: u64 = 64 << 20;
+
+pub fn export_masked(src: &Path, agent: Agent, into_home: &Path) -> Result<PathBuf, String> {
+    let meta = fs::metadata(src).map_err(|e| format!("cannot read the session file: {e}"))?;
+    if meta.len() > EXPORT_MAX_BYTES {
+        return Err("the session file is too large to export".into());
+    }
+    let name = src.file_name().ok_or("the session file has no name")?;
+    let dir = match agent {
+        Agent::Claude => into_home.join(".claude").join("projects").join("handoff"),
+        Agent::Codex => into_home.join(".codex").join("sessions").join("handoff"),
+    };
+    fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let dest = dir.join(name);
+    let mut out = String::new();
+    let file = fs::File::open(src).map_err(|e| format!("cannot open the session file: {e}"))?;
+    for_each_line(BufReader::new(file), |line| {
+        out.push_str(&mask(line));
+        out.push('\n');
+        true
+    });
+    write_private(&dest, out.as_bytes())?;
+    Ok(dest)
+}
+
+fn write_private(path: &Path, data: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    opts.open(path)
+        .and_then(|mut f| f.write_all(data))
+        .map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
 pub fn find(roots: &Roots, id: &str) -> Result<(Agent, PathBuf), String> {

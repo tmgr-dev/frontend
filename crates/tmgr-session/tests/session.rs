@@ -114,6 +114,7 @@ fn handoff_note_has_the_essentials() {
                 log: "abc123 first".into(),
             }),
             rules_files: vec!["AGENTS.md".into()],
+            lookup_hint: Some("A copy is under your home.".into()),
         },
     );
     for needle in [
@@ -269,6 +270,7 @@ fn only_real_test_runs_count_as_the_last_test() {
                 previous: vec![],
                 git: None,
                 rules_files: vec![],
+                lookup_hint: None,
             },
         )
     };
@@ -295,6 +297,7 @@ fn the_handoff_note_stays_small_for_a_long_session() {
             previous: vec![],
             git: None,
             rules_files: vec![],
+            lookup_hint: None,
         },
     );
     assert!(note.len() < 30_000, "{}", note.len());
@@ -321,4 +324,31 @@ fn locate_rules() {
     assert!(find(&roots, "2026-01-01").is_err());
     assert!(find(&roots, f.to_str().unwrap()).is_ok());
     assert!(find(&roots, outside.to_str().unwrap()).is_err());
+}
+
+#[test]
+fn export_masks_and_lands_where_the_lookup_finds_it() {
+    use tmgr_session::locate::{export_masked, find, newest, Roots};
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let project = old.join(".claude/projects/p");
+    std::fs::create_dir_all(&project).unwrap();
+    let id = "11111111-2222-3333-4444-555555555555";
+    let src = project.join(format!("{id}.jsonl"));
+    let secret = format!("{}-proj-abcdefghijklmnopqrstLEAKTAIL", "sk");
+    let body = format!(
+        "{{\"type\":\"user\",\"sessionId\":\"{id}\",\"message\":{{\"content\":\"use {secret} now\"}}}}\n"
+    );
+    std::fs::write(&src, body).unwrap();
+    let found = newest(&Roots::for_home(&old), Agent::Claude).unwrap();
+    assert_eq!(found, src);
+    let new_home = dir.path().join("new");
+    let copy = export_masked(&src, Agent::Claude, &new_home).unwrap();
+    let text = std::fs::read_to_string(&copy).unwrap();
+    assert!(!text.contains("LEAKTAIL") && text.contains("use "));
+    let roots = Roots::for_home(&new_home);
+    let (agent, path) = find(&roots, id).unwrap();
+    assert_eq!(agent, Agent::Claude);
+    assert_eq!(path, copy);
+    assert!(newest(&roots, Agent::Claude).is_none());
 }

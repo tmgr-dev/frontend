@@ -123,6 +123,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Rm(a) => rm(o, a),
         RunnerCommands::Resume(a) => resume(o, a),
         RunnerCommands::Rename(a) => rename(o, a),
+        RunnerCommands::SwitchAgent(a) => super::switch::switch(o, a),
         RunnerCommands::Session {
             command: super::SessionCmd::Summary(a),
         } => super::attach_summary::print_summary(o, &a.session, a.plain),
@@ -269,6 +270,7 @@ pub(super) fn run_create_run(
     RunCreateReq {
         team: None,
         finish_marker: false,
+        parent_session: None,
         clones: Vec::new(),
         profile,
         task: None,
@@ -903,7 +905,7 @@ fn send(o: &Opts, a: &SendArgs) -> Result<i32> {
     ))
 }
 
-fn wait_exit(c: &mut Client, id: &str, limit: Duration) -> Result<bool> {
+pub(super) fn wait_exit(c: &mut Client, id: &str, limit: Duration) -> Result<bool> {
     let end = Instant::now() + limit;
     loop {
         let list = c.list().map_err(rerr)?;

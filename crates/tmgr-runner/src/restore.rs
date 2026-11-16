@@ -412,6 +412,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
     RunCreateReq {
         team: None,
         finish_marker: false,
+        parent_session: None,
         clones: Vec::new(),
         profile: i.profile.clone(),
         task: i.task,

@@ -186,6 +186,7 @@ impl H {
         RunCreateReq {
             team: None,
             finish_marker: false,
+            parent_session: None,
             clones: Vec::new(),
             profile: self.agent_id.clone(),
             task: None,

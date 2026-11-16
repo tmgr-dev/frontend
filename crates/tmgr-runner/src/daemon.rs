@@ -425,6 +425,8 @@ struct Meta {
     agent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     limit: Option<tmgr_ipc::api::LimitHit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    handoff_from: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -448,6 +450,7 @@ struct RunExtra {
     egress: Option<Vec<crate::egress::HostPattern>>,
     mode_note: Option<String>,
     run_id_env: bool,
+    handoff_from: Option<String>,
     resume_of: Option<ResumeSeed>,
     fork: Option<ForkSeed>,
     no_sandbox: Option<std::collections::BTreeMap<String, String>>,
@@ -737,6 +740,7 @@ impl Session {
             team: m.team.clone(),
             agent_session_id: m.agent_session_id.clone(),
             limit: m.limit.clone(),
+            handoff_from: m.handoff_from.clone(),
             id: m.id.clone(),
             name: m.name.clone(),
             argv: m.argv.clone(),
@@ -1352,7 +1356,7 @@ impl Session {
             intent.model.as_deref(),
             &self.id,
             (intent.hold_success, intent.audit.clone()),
-            intent.role.clone(),
+            (intent.role.clone(), intent.parent.clone()),
         ) {
             Ok(()) => *pending = None,
             Err(e) => {
@@ -2406,6 +2410,13 @@ fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr
         ));
     }
     Ok(())
+}
+
+fn valid_parent(p: &str) -> bool {
+    !p.is_empty()
+        && p.len() <= 191
+        && p.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
 }
 
 fn kill_reason(p: &Value) -> Result<Option<String>, ApiErr> {
@@ -4024,6 +4035,7 @@ impl Runner {
             permission_cards,
             team: req.team.clone(),
             agent_session_id: external.as_ref().filter(|e| !e.fork).map(|e| e.id.clone()),
+            handoff_from: req.parent_session.clone().filter(|p| valid_parent(p)),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -4170,6 +4182,7 @@ impl Runner {
         if let (true, Some(task), Some(s)) = (req.agent_work, req.task, self.session(&info.id)) {
             *lock(&s.aw_pending) = Some(agentwork::Intent {
                 task,
+                parent: req.parent_session.clone().filter(|p| valid_parent(p)),
                 agent: info.profile.clone().unwrap_or_default(),
                 model: info_model,
                 hold_success: holds_success(cloud_run, req.team.as_ref()),
@@ -4650,6 +4663,7 @@ impl Runner {
             team: extra.team.clone(),
             agent_session_id: extra.agent_session_id.clone(),
             limit: None,
+            handoff_from: extra.handoff_from.clone(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);

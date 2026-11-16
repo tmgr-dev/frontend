@@ -323,6 +323,7 @@ fn create_request(
     RunCreateReq {
         team: None,
         finish_marker: false,
+        parent_session: None,
         clones: Vec::new(),
         profile: profile.to_string(),
         task: Some(plan.candidate.task),
@@ -418,6 +419,28 @@ fn execute_with(p: &Prepared, l: &Launch, no_sandbox: bool) -> Result<Started> {
         .to_string_lossy()
         .into_owned();
     let bundle = bundle(plan, profile, l.model, mode, &cwd)?;
+    create(
+        p,
+        l,
+        cwd,
+        bundle,
+        (exe_pin, argv_digest),
+        (no_sandbox, None),
+    )
+}
+
+fn create(
+    p: &Prepared,
+    l: &Launch,
+    cwd: String,
+    bundle: RunBundle,
+    (exe_pin, argv_digest): (ExePin, String),
+    (no_sandbox, parent): (bool, Option<&str>),
+) -> Result<Started> {
+    let profile = p.profile.as_str();
+    let mode = p.mode;
+    let reference = p.reference.as_str();
+    let plan = &p.plan;
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut client = connect(&cfg)?;
@@ -437,22 +460,70 @@ fn execute_with(p: &Prepared, l: &Launch, no_sandbox: bool) -> Result<Started> {
         && !tmgr_link::privileged::RUN_ENV
             .iter()
             .any(|k| std::env::var_os(k).is_some());
-    let info = client
-        .create_run(create_request(
-            &p.plan,
-            l,
-            cwd.clone(),
-            bundle,
-            via_repo,
-            (exe_pin, argv_digest),
-            (profile, mode, super::privilege::request(no_sandbox)),
-        ))
-        .map_err(rerr)?;
+    let mut request = create_request(
+        &p.plan,
+        l,
+        cwd.clone(),
+        bundle,
+        via_repo,
+        (exe_pin, argv_digest),
+        (profile, mode, super::privilege::request(no_sandbox)),
+    );
+    request.parent_session = parent.map(str::to_string);
+    let info = client.create_run(request).map_err(rerr)?;
     Ok(Started {
         info,
         cwd,
         fetch: import_line(&plan.code, reference),
     })
+}
+
+pub(super) struct Handoff<'a> {
+    pub old_id: &'a str,
+    pub old_cwd: &'a str,
+    pub note: &'a str,
+}
+
+const ORIGINAL_BODY_CAP: usize = 6000;
+
+pub(super) fn execute_switch(mut p: Prepared, l: &Launch, h: &Handoff) -> Result<Started> {
+    recalled(&mut p.plan);
+    let profile = p.profile.clone();
+    let mode = p.mode;
+    super::ops::login_preflight(&profile)?;
+    let (exe_pin, argv_digest) = launch_pin(&profile, l.model, mode)?;
+    let gone =
+        || Error::not_found("the clone of this task is gone, so there is no folder to continue in");
+    let clone = std::fs::canonicalize(&p.plan.clone).map_err(|_| gone())?;
+    let cwd = std::fs::canonicalize(h.old_cwd).map_err(|_| gone())?;
+    if clone != cwd {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the session does not run in the clone of its task, so it cannot be switched",
+        ));
+    }
+    let cwd = cwd
+        .to_str()
+        .ok_or_else(|| Error::usage("the folder of the session is not valid text"))?
+        .to_string();
+    let mut bundle = bundle(&p.plan, &profile, l.model, mode, &cwd)?;
+    let original: String = bundle.body.chars().take(ORIGINAL_BODY_CAP).collect();
+    bundle.title = format!("Continue: {}", bundle.title);
+    bundle.body = format!("{}\n\n## Original task\n{original}", h.note);
+    bundle.validate().map_err(Error::usage)?;
+    if bundle.canonical().len() > MAX_BUNDLE {
+        return Err(Error::usage(
+            "the handoff note is larger than the run bundle allows",
+        ));
+    }
+    create(
+        &p,
+        l,
+        cwd,
+        bundle,
+        (exe_pin, argv_digest),
+        (false, Some(h.old_id)),
+    )
 }
 
 pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {

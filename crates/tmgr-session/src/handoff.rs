@@ -24,6 +24,7 @@ pub struct Opts {
     pub previous: Vec<String>,
     pub git: Option<GitState>,
     pub rules_files: Vec<String>,
+    pub lookup_hint: Option<String>,
 }
 
 fn test_cmd() -> &'static Regex {
@@ -190,6 +191,9 @@ pub fn build(s: &Session, o: &Opts) -> String {
         let _ = writeln!(tail, "- {}", safe_cut(p, 80, false));
     }
     let _ = writeln!(tail, "- {} ({})", s.id, s.agent.name());
+    if let Some(h) = &o.lookup_hint {
+        let _ = writeln!(tail, "\n{}", safe_cut(h, 400, false));
+    }
     let _ = writeln!(
         tail,
         "\nDetails are in session {id}. Use `tmgr session turns {id}`, `tmgr session show {id} --turn N`, `tmgr session grep {id} \"<pattern>\"`, `tmgr session files {id}` and `tmgr session errors {id}` before guessing or redoing work. You are the {}.",

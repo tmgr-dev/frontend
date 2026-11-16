@@ -1047,6 +1047,7 @@ fn run_request(p: &RunPlan) -> RunCreateReq {
     RunCreateReq {
         team: None,
         finish_marker: false,
+        parent_session: None,
         clones: p.clones.clone(),
         profile: p.profile.to_string(),
         task: Some(p.task),
@@ -3313,6 +3314,7 @@ mod tests {
             let mut r = RunCreateReq {
                 team: None,
                 finish_marker: false,
+                parent_session: None,
                 clones: Vec::new(),
                 profile: "claude-code".into(),
                 task: Some(task),

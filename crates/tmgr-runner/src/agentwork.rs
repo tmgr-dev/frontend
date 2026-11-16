@@ -37,6 +37,10 @@ pub struct State {
     pub audit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub parent_sent: bool,
 }
 
 pub fn audit_note(mode: Option<&str>, no_sandbox: bool) -> Option<String> {
@@ -57,6 +61,7 @@ pub struct Intent {
     pub hold_success: bool,
     pub audit: Option<String>,
     pub role: Option<String>,
+    pub parent: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -98,7 +103,7 @@ pub fn begin(
     session: &str,
     flags: (bool, Option<String>),
 ) -> io::Result<()> {
-    begin_as(dir, task, agent, model, session, flags, None)
+    begin_as(dir, task, agent, model, session, flags, (None, None))
 }
 
 pub fn begin_as(
@@ -108,7 +113,7 @@ pub fn begin_as(
     model: Option<&str>,
     session: &str,
     (hold_success, audit): (bool, Option<String>),
-    role: Option<String>,
+    (role, parent): (Option<String>, Option<String>),
 ) -> io::Result<()> {
     save(
         dir,
@@ -124,6 +129,8 @@ pub fn begin_as(
             hold_success,
             audit,
             role,
+            parent,
+            parent_sent: false,
         },
     )
 }
@@ -316,20 +323,23 @@ pub fn step(
         save(dir, &s)?;
         return Ok(Some("finish"));
     }
-    if now.saturating_sub(s.last_update_ms) < UPDATE_EVERY_MS {
+    let parent = s.parent.clone().filter(|_| !s.parent_sent);
+    if parent.is_none() && now.saturating_sub(s.last_update_ms) < UPDATE_EVERY_MS {
         return Ok(None);
     }
-    call(
-        helper,
-        &json!({
-            "op": "update",
-            "workspace": s.workspace,
-            "task_id": s.task_id,
-            "run_id": run_id,
-            "branch": summary.branch,
-            "commits": commit_lines(&summary),
-        }),
-    )?;
+    let mut request = json!({
+        "op": "update",
+        "workspace": s.workspace,
+        "task_id": s.task_id,
+        "run_id": run_id,
+        "branch": summary.branch,
+        "commits": commit_lines(&summary),
+    });
+    if let Some(p) = &parent {
+        request["parent_session_id"] = json!(p);
+    }
+    call(helper, &request)?;
+    s.parent_sent = s.parent_sent || parent.is_some();
     s.last_update_ms = now;
     save(dir, &s)?;
     Ok(Some("update"))
@@ -432,6 +442,48 @@ mod tests {
     }
 
     #[test]
+    fn a_handed_over_run_sends_its_parent_session_once_right_after_the_start() {
+        let tmp = tempfile::tempdir().unwrap();
+        let calls = tmp.path().join("calls");
+        let helper = tmp.path().join("helper.sh");
+        executable(
+            &helper,
+            format!("#!/bin/sh\ncat >> {calls:?}\necho >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
+        );
+        let dir = tmp.path().join("s");
+        std::fs::create_dir(&dir).unwrap();
+        let task = TaskRef {
+            workspace_id: -2,
+            task_id: 7,
+        };
+        begin_as(
+            &dir,
+            task,
+            "codex",
+            None,
+            "s_new",
+            (false, None),
+            (None, Some("s_old".into())),
+        )
+        .unwrap();
+        let t0 = 1_000_000;
+        assert_eq!(step(&helper, &dir, t0, None).unwrap(), Some("start"));
+        assert_eq!(
+            step(&helper, &dir, t0 + 1000, None).unwrap(),
+            Some("update")
+        );
+        assert_eq!(step(&helper, &dir, t0 + 2000, None).unwrap(), None);
+        let sent: Vec<Value> = std::fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(sent[0].get("parent_session_id"), None);
+        assert_eq!(sent[1]["op"], "update");
+        assert_eq!(sent[1]["parent_session_id"], "s_old");
+    }
+
+    #[test]
     fn a_team_member_starts_with_its_role_and_a_plain_run_sends_none() {
         let task = TaskRef {
             workspace_id: -2,
@@ -454,7 +506,7 @@ mod tests {
                 None,
                 "s_abc",
                 (false, None),
-                role.map(str::to_string),
+                (role.map(str::to_string), None),
             )
             .unwrap();
             assert_eq!(step(&helper, &dir, 1_000_000, None).unwrap(), Some("start"));

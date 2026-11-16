@@ -140,6 +140,7 @@ impl H {
         RunCreateReq {
             team: None,
             finish_marker: false,
+            parent_session: None,
             clones: Vec::new(),
             profile: "fake".into(),
             task: None,

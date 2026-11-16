@@ -133,6 +133,7 @@ impl Fx {
         RunCreateReq {
             team: None,
             finish_marker: false,
+            parent_session: None,
             clones: Vec::new(),
             profile: profile.into(),
             task: None,

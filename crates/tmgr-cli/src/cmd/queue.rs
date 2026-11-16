@@ -1637,6 +1637,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
         external_resume: None,
         permission_cards: false,
         finish_marker: req.finish_marker,
+        parent_session: None,
     }
 }
 

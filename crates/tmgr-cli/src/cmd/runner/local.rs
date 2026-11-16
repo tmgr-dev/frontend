@@ -152,6 +152,8 @@ enum Request {
         run_id: i64,
         branch: Option<String>,
         commits: Option<Vec<String>>,
+        #[serde(default)]
+        parent_session_id: Option<String>,
     },
     Finish {
         workspace: String,
@@ -314,10 +316,14 @@ fn handle(request: Request) -> Result<Value> {
             run_id,
             branch,
             commits: lines,
+            parent_session_id,
         } => {
             let ws = find_workspace(&workspace)?;
             let (task_id, run_id) = (positive("task_id", task_id)?, positive("run_id", run_id)?);
             let mut body = json!({});
+            if let Some(p) = parent_session_id.as_deref() {
+                body["parent_session_id"] = json!(word("parent_session_id", p, 191, "_.:-")?);
+            }
             if let Some(b) = optional("branch", branch.as_deref(), 255)? {
                 body["branch"] = json!(b);
             }

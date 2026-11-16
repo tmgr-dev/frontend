@@ -140,6 +140,7 @@ fn session_info() -> SessionInfo {
         team: None,
         agent_session_id: None,
         limit: None,
+        handoff_from: None,
         id: SID.into(),
         name: "fix login".into(),
         argv: vec![
@@ -243,6 +244,7 @@ fn requests_and_responses() {
     let run = RunCreateReq {
         team: None,
         finish_marker: false,
+        parent_session: None,
         clones: Vec::new(),
         profile: "codex".into(),
         task: Some(TASK),
@@ -480,6 +482,13 @@ fn method_params_and_results() {
         },
     );
     golden(
+        "session_info_handoff_from",
+        &SessionInfo {
+            handoff_from: Some("s_older".into()),
+            ..session_info()
+        },
+    );
+    golden(
         "lookup_params",
         &LookupParams {
             start_key: "q_abc-1".into(),
@@ -617,6 +626,7 @@ fn method_params_and_results() {
             team: None,
             agent_session_id: None,
             limit: None,
+            handoff_from: None,
             id: SID.into(),
             name: "sh".into(),
             argv: vec!["/bin/sh".into()],
@@ -1525,6 +1535,7 @@ fn full_req() -> RunCreateReq {
     RunCreateReq {
         team: None,
         finish_marker: false,
+        parent_session: None,
         permission_cards: false,
         profile: "claude".into(),
         task: Some(TaskRef {
@@ -1564,6 +1575,7 @@ fn full_info() -> SessionInfo {
         team: None,
         agent_session_id: None,
         limit: None,
+        handoff_from: None,
         permission_cards: false,
         id: "s_abcdefghij".into(),
         name: "n".into(),

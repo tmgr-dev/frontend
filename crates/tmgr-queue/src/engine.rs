@@ -2891,6 +2891,7 @@ mod tests {
         RunCreateReq {
             team: None,
             finish_marker: false,
+            parent_session: None,
             clones: Vec::new(),
             profile: start.profile.clone(),
             task: Some(task),

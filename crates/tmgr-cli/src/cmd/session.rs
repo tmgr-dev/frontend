@@ -136,6 +136,7 @@ fn exec(cmd: &SessionCommand) -> Result<(), String> {
                     previous: previous.clone(),
                     git: cwd.and_then(git::collect),
                     rules_files,
+                    lookup_hint: None,
                 },
             );
             match output {

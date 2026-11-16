@@ -48,6 +48,7 @@ mod run_task;
 mod service;
 mod session_list;
 mod session_wt;
+mod switch;
 mod trusted;
 mod watch;
 
@@ -90,6 +91,9 @@ pub enum RunnerCommands {
     Resume(ResumeArgs),
     /// [experimental] Give a session a new name (the id stays the same)
     Rename(RenameArgs),
+    /// [experimental] Stop an agent session and continue the same task in the other agent (Claude Code or Codex), with a note of what was done
+    #[command(name = "switch-agent")]
+    SwitchAgent(SwitchArgs),
     /// [experimental] Work with a session's transcript
     Session {
         #[command(subcommand)]
@@ -551,6 +555,18 @@ pub struct RenameArgs {
     pub session: String,
     /// New name, unique among sessions
     pub name: String,
+}
+
+#[derive(Args)]
+pub struct SwitchArgs {
+    /// Session id or name
+    pub session: String,
+    /// Agent to continue in (default: the other one)
+    #[arg(long, value_enum)]
+    pub to: Option<switch::SwitchTarget>,
+    /// Do not ask for confirmation
+    #[arg(short, long)]
+    pub yes: bool,
 }
 
 #[derive(Args)]

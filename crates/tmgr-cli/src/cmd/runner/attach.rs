@@ -5390,6 +5390,7 @@ mod tests {
         SessionInfo {
             agent_session_id: None,
             limit: None,
+            handoff_from: None,
             team: None,
             id: id.into(),
             name: id.into(),
