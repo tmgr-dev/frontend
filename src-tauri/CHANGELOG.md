@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.158 — 2026-11-16
+
+- Agent runs: the sessions panel shows when Claude Code or Codex has hit its usage limit and has a Switch agent button. It stops the session and continues the same task in the other agent, in the same folder, with a short note of what was done. The new agent starts in the default permission mode and asks for approvals.
+- Agent runs: a new opt-in setting switches automatically when an agent hits its limit. It is off by default, works only while the app is open, and switches a task at most twice.
+
 ## 0.9.157 — 2026-11-14
 
 - Plugins: the Safe mode switch now also blocks agents from connecting to this computer, and keeps blocking after a restart. Starting the app with --safe-mode still does the same.

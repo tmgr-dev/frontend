@@ -283,6 +283,8 @@ pub(crate) fn test_start(workspace_id: i64, task_id: i64, profile: &str) -> Star
   build_start(&task, (workspace_id, task_id), profile, "/work/project", (16, 99), &caps::ALL.map(String::from)).unwrap()
 }
 
+pub const SWITCH_NOTE_MAX: usize = 40_000;
+
 pub fn build_switch(
   task: &TaskInfo,
   ids: (i64, i64),
@@ -291,8 +293,9 @@ pub fn build_switch(
   runner_caps: &[String],
   (note, parent): (&str, &str),
 ) -> Result<StartRun, String> {
-  let original: String = task.description.chars().take(6000).collect();
-  let continued = TaskInfo { title: format!("Continue: {}", task.title), description: format!("{note}\n\n## Original task\n{original}"), comments: Vec::new() };
+  let original: String = tmgr_session::mask::mask(&task.description).chars().take(6000).collect();
+  let note: String = note.chars().take(SWITCH_NOTE_MAX).collect();
+  let continued = TaskInfo { title: format!("Continue: {}", tmgr_session::mask::mask(&task.title)), description: format!("{note}\n\n## Original task\n{original}"), comments: Vec::new() };
   let mut run = build_start(&continued, ids, profile, cwd, cwd_pin, runner_caps)?;
   run.name = run_name(&task.title, ids.1);
   run.parent_session = Some(parent.to_owned());

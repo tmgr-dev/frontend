@@ -265,6 +265,12 @@ pub async fn runner_switch_agent<R: Runtime>(
   let snapshot = blocking(move || folder::Snapshot::capture(Path::new(&cwd), h.as_deref())).await?;
   let safe_note = (old.permission_mode.as_deref() == Some("bypass") || old.no_sandbox)
     .then(|| "The old session ran with bypass or without the sandbox. The new one starts in safe mode and will ask for approvals.".to_owned());
+  let ref_text = format!("#{}", task.task_id);
+  let ids = (task.workspace_id, task.task_id);
+  let pin = (snapshot.path().to_owned(), snapshot.pin());
+  api::build_switch(&info, ids, target.profile(), (&pin.0, pin.1), &caps, (&"x".repeat(api::SWITCH_NOTE_MAX), &old.id))
+    .map_err(|e| format!("The task is too large to carry a handoff note: {e}"))?;
+  sw::ensure_readable(&old).map_err(|e| e.to_string())?;
   if !auto {
     let mut message = format!(
       "Stop \"{}\" and continue this task in {}?\nThe old session is stopped and the new agent starts in the same folder with a note of what was done.",
@@ -279,22 +285,18 @@ pub async fn runner_switch_agent<R: Runtime>(
       return Err("cancelled".to_owned());
     }
   }
-  let ref_text = format!("#{}", task.task_id);
-  let (o2, a2) = (old.clone(), all.clone());
-  sw::ensure_readable(&o2).map_err(|e| e.to_string())?;
+  let resume = "Resume the old session from the session list.";
   let reason = format!("handed to {}", target.agent().name());
   let (r, sid) = (runner.clone(), session.clone());
-  blocking(move || r.stop_for_switch(&sid, &reason)).await?;
-  let note = blocking(move || sw::prepare_note(&o2, &a2, target, &ref_text).map_err(|e| e.to_string())).await?;
-  let req = api::build_switch(
-    &info,
-    (task.workspace_id, task.task_id),
-    target.profile(),
-    (snapshot.path(), snapshot.pin()),
-    &caps,
-    (&note.text, &old.id),
-  )
-  .map_err(|e| format!("The old session stopped, but the new agent could not start: {e}"))?;
+  blocking(move || r.stop_for_switch(&sid, &reason))
+    .await
+    .map_err(|e| format!("{e}. The old session got a terminate signal and may have stopped in the middle of a turn. {resume}"))?;
+  let (o2, a2) = (old.clone(), all.clone());
+  let note = blocking(move || sw::prepare_note(&o2, &a2, target, &ref_text).map_err(|e| e.to_string()))
+    .await
+    .map_err(|e| format!("The old session stopped, but the new agent did not start: {e}. {resume}"))?;
+  let req = api::build_switch(&info, ids, target.profile(), (&pin.0, pin.1), &caps, (&note.text, &old.id))
+    .map_err(|e| format!("The old session stopped, but the new agent could not start: {e}. {resume}"))?;
   let exports = note.exports;
   let r = runner.clone();
   let started = blocking(move || {
@@ -302,7 +304,7 @@ pub async fn runner_switch_agent<R: Runtime>(
     r.start_run(&req)
   })
   .await
-  .map_err(|e| format!("The old session stopped, but the new agent did not start: {e}"))?;
+  .map_err(|e| format!("The old session stopped, but the new agent did not start: {e}. {resume}"))?;
   let new_id = started.id.clone();
   let warning = blocking(move || Ok(sw::export_all(&new_id, &exports))).await?;
   Ok(SwitchResult { session: started, safe_mode_note: safe_note, warning })
