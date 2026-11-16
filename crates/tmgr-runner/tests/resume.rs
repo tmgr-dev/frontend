@@ -2124,7 +2124,7 @@ fn flagged_resume_takes_the_conversation_from_the_client_when_the_log_has_none()
 }
 
 #[test]
-fn the_log_and_the_record_win_over_the_client_conversation() {
+fn the_log_wins_over_the_client_conversation() {
     if !sessions_available() {
         return;
     }

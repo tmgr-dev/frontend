@@ -1,5 +1,5 @@
 use super::attach_consent::Reads;
-use super::attach_goto::{can_fork, conversation_id, fork_call, fork_name};
+use super::attach_goto::{can_fork, fork_call, fork_name};
 use super::attach_questions::QuestionJob;
 use super::attach_title::{agent_src, AgentSrc};
 use super::catalog::{self, Entry, Live};
@@ -13,8 +13,10 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{
     CwdPin, ExternalResume, RestoredRun, ResumeParams, RunCreateReq, SessionInfo, StateKind,
 };
+use tmgr_runner::attach::{locate, locate_unsandboxed_claude, Format, Source};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
+use tmgr_runner::questions::tail::locate_codex_rollout;
 use tmgr_runner::resume::valid_resume_id;
 use tmgr_usage::paths::Env;
 
@@ -321,8 +323,21 @@ pub(super) fn resume_gate(
     super::privilege::check_external_cap(have)
 }
 
+fn fresh_since(path: &Path, created_ms: u64) -> bool {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .is_some_and(|d| d.as_millis() >= u128::from(created_ms))
+}
+
+fn id_of_stem(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    let id = stem.get(stem.len().checked_sub(36)?..)?;
+    valid_resume_id(id).then(|| id.to_string())
+}
+
 pub(super) fn unsandboxed_conversation(
-    cfg: &RunnerConfig,
     s: &SessionInfo,
     home: Option<std::path::PathBuf>,
     reads: Reads,
@@ -331,28 +346,60 @@ pub(super) fn unsandboxed_conversation(
     if reads.denial(src.format).is_some() {
         return None;
     }
-    let mut job = fork_job(cfg, s, src);
-    job.sandbox_home = home?;
-    job.pid = 0;
-    conversation_id(&job, None)
+    let home = home?;
+    match src.format {
+        Format::Claude => {
+            if let Some((_, id)) =
+                locate_unsandboxed_claude(&home, &s.cwd, s.child_pid, s.created_ms)
+            {
+                return Some(id);
+            }
+            let (path, id) = locate(&Source {
+                home: &home,
+                format: Format::Claude,
+                cwd: &s.cwd,
+                pid: 0,
+                log_id: None,
+            })?;
+            if !fresh_since(&path, s.created_ms) {
+                return None;
+            }
+            id.or_else(|| id_of_stem(&path))
+        }
+        Format::Codex => {
+            let path = locate_codex_rollout(&home, None, &s.cwd)?;
+            fresh_since(&path, s.created_ms)
+                .then(|| id_of_stem(&path))
+                .flatten()
+        }
+    }
+}
+
+pub(super) fn with_found_conversation(
+    s: &SessionInfo,
+    no_sandbox: bool,
+    find: &dyn Fn(&SessionInfo) -> Option<String>,
+) -> SessionInfo {
+    let mut s = s.clone();
+    let recorded = s.agent_session_id.as_deref().is_some_and(valid_resume_id);
+    if no_sandbox && !recorded {
+        s.agent_session_id = find(&s);
+    }
+    s
+}
+
+pub(super) fn real_conversation(s: &SessionInfo) -> Option<String> {
+    unsandboxed_conversation(s, super::attach_export::home_dir(), Reads::current())
 }
 
 pub(super) fn resume_flagged(
     c: &mut Client,
-    cfg: &RunnerConfig,
     s: &SessionInfo,
     known: Option<&str>,
     mode: Option<PermissionMode>,
     no_sandbox: bool,
 ) -> Result<RestoredRun> {
     let have = c.welcome().caps.clone();
-    let found = match known {
-        None if no_sandbox => {
-            unsandboxed_conversation(cfg, s, super::attach_export::home_dir(), Reads::current())
-        }
-        _ => None,
-    };
-    let known = known.or(found.as_deref());
     resume_gate(known, &have, mode, no_sandbox, &|id| check_known(id, false))?;
     c.resume_with(ResumeParams {
         id: s.id.clone(),
@@ -771,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unsandboxed_session_without_a_recorded_id_finds_its_conversation_in_the_real_home() {
+    fn an_unsandboxed_session_only_takes_a_transcript_written_since_it_started() {
         let dir = tempfile::tempdir().unwrap();
         let (home, work) = (dir.path().join("home"), dir.path().join("work"));
         std::fs::create_dir_all(&work).unwrap();
@@ -781,32 +828,55 @@ mod tests {
             .join("projects")
             .join(cwd.replace(|c: char| !c.is_ascii_alphanumeric(), "-"));
         std::fs::create_dir_all(&projects).unwrap();
-        let id = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
-        std::fs::write(projects.join(format!("{id}.jsonl")), "{}\n").unwrap();
-        let cfg = RunnerConfig {
-            dir: dir.path().join("run"),
-            homes: dir.path().join("homes"),
-            self_exe: dir.path().join("tmgr"),
-            quiet_ms: 0,
-            version: "0".into(),
-            max_sessions: 1,
+        let (old, new) = (
+            "0199a213-81c0-7800-8aa1-bbab2a035a53",
+            "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b",
+        );
+        let at = |name: &str, secs: u64| {
+            let f = std::fs::File::create(projects.join(format!("{name}.jsonl"))).unwrap();
+            f.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs))
+                .unwrap();
         };
+        at(old, 1_000);
         let mut s = session("claude-code", true, None);
         s.cwd = cwd;
-        s.no_sandbox = true;
-        s.state.kind = StateKind::Exited;
+        s.child_pid = 0;
+        s.created_ms = 2_000_000;
         let on = Reads {
             claude: true,
             codex: true,
         };
         let found = |s: &SessionInfo, reads, home: Option<std::path::PathBuf>| {
-            unsandboxed_conversation(&cfg, s, home, reads)
+            unsandboxed_conversation(s, home, reads)
         };
-        assert_eq!(found(&s, on, Some(home.clone())).as_deref(), Some(id));
+        assert_eq!(found(&s, on, Some(home.clone())), None);
+        at(new, 3_000);
+        assert_eq!(found(&s, on, Some(home.clone())).as_deref(), Some(new));
         assert_eq!(found(&s, Reads::default(), Some(home.clone())), None);
         assert_eq!(found(&s, on, None), None);
         s.profile = Some("custom".into());
         assert_eq!(found(&s, on, Some(home)), None);
+    }
+
+    #[test]
+    fn a_found_conversation_fills_only_an_unsandboxed_session_without_a_recorded_one() {
+        let id = uid(7);
+        let find = |_: &SessionInfo| Some(id.clone());
+        let plain = session("claude-code", false, None);
+        assert_eq!(
+            with_found_conversation(&plain, false, &find).agent_session_id,
+            None
+        );
+        let open = session("claude-code", true, None);
+        assert_eq!(
+            with_found_conversation(&open, true, &find).agent_session_id,
+            Some(id.clone())
+        );
+        let recorded = session("claude-code", true, Some(&uid(8)));
+        assert_eq!(
+            with_found_conversation(&recorded, true, &find).agent_session_id,
+            Some(uid(8))
+        );
     }
 
     #[test]

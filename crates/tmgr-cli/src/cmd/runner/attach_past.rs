@@ -3,7 +3,8 @@ use super::catalog::{self, Entry};
 use super::menu::Pick;
 use super::resume_any::{
     create_external, fork_job, fork_refusal, fork_run, fork_source, plan, plan_header,
-    recheck_external, resume_flagged, tmgr_resume_checks_with, tmgr_resume_header, Plan,
+    recheck_external, resume_flagged, tmgr_resume_checks_with, tmgr_resume_header,
+    with_found_conversation, Plan,
 };
 use super::{connect, rerr, PermissionMode};
 use std::time::Duration;
@@ -39,6 +40,9 @@ pub(super) fn shape(p: &Pick) -> Shape {
     }
 }
 
+type KnownFn<'a> = dyn Fn(&str) -> Result<Vec<String>> + 'a;
+type ConversationFn<'a> = dyn Fn(&SessionInfo) -> Option<String> + 'a;
+
 pub(super) enum Go {
     External {
         query: String,
@@ -64,6 +68,7 @@ pub(super) struct Deps<'a> {
     pub entry: &'a dyn Fn(&str) -> Found,
     pub session: &'a dyn Fn(&str) -> Result<SessionInfo>,
     pub known: &'a dyn Fn(&str) -> Result<Vec<String>>,
+    pub conversation: &'a dyn Fn(&SessionInfo) -> Option<String>,
     pub ask: &'a dyn Fn(bool, bool) -> Asked,
 }
 
@@ -112,9 +117,10 @@ fn external_ready(
 fn tmgr_ready(
     session: SessionInfo,
     pick: &Pick,
-    known: &dyn Fn(&str) -> Result<Vec<String>>,
+    (known, conversation): (&KnownFn<'_>, &ConversationFn<'_>),
     ask: &dyn Fn(bool, bool) -> Asked,
 ) -> std::result::Result<Ready, SpawnErr> {
+    let session = with_found_conversation(&session, pick.no_sandbox, conversation);
     let (warnings, known) =
         tmgr_resume_checks_with(&session, pick.no_sandbox, known).map_err(task_err)?;
     let mut lines = warnings;
@@ -141,7 +147,7 @@ pub(super) fn prepare_with(pick: &Pick, deps: &Deps) -> std::result::Result<Read
         Shape::External => external_ready((deps.entry)(&pick.id), pick, deps.ask),
         Shape::ResumeFlagged => {
             let session = (deps.session)(&pick.id).map_err(task_err)?;
-            tmgr_ready(session, pick, deps.known, deps.ask)
+            tmgr_ready(session, pick, (deps.known, deps.conversation), deps.ask)
         }
         Shape::Resume | Shape::Fork => Err(SpawnErr {
             message: "nothing to confirm".into(),
@@ -170,6 +176,7 @@ pub(super) fn prepare(cfg: &RunnerConfig, pick: &Pick) -> std::result::Result<Re
             entry: &find,
             session: &|id| session_by_id(cfg, id),
             known: &|id| super::resume_any::check_known(id, false),
+            conversation: &super::resume_any::real_conversation,
             ask: &privileged_ask,
         },
     )
@@ -211,7 +218,7 @@ pub(super) fn run_tmgr_resume(
         privileged::guard()?;
         let mut client = connect(cfg)?;
         let _ = client.set_timeouts(START_WAIT);
-        resume_flagged(&mut client, cfg, session, known, mode, no_sandbox)
+        resume_flagged(&mut client, session, known, mode, no_sandbox)
     };
     go().map_err(task_err)
 }
@@ -393,6 +400,7 @@ mod tests {
             entry: &entry_of,
             session: &session,
             known: &known,
+            conversation: &|_| None,
             ask: &ask,
         };
         let mut p = pick(false, false, false, false);
@@ -442,9 +450,14 @@ mod tests {
         let mut s = exited("claude-code", None);
         s.state.kind = StateKind::Working;
         let known = |_: &str| Ok(Vec::new());
-        let err = tmgr_ready(s, &pick(true, false, true, false), &known, &ask_ok(&calls))
-            .err()
-            .unwrap();
+        let err = tmgr_ready(
+            s,
+            &pick(true, false, true, false),
+            (&known, &|_| None),
+            &ask_ok(&calls),
+        )
+        .err()
+        .unwrap();
         assert!(err.message.contains("is still running"));
         assert!(calls.borrow().is_empty());
     }
@@ -455,8 +468,13 @@ mod tests {
         let id = uid(9);
         let s = exited("claude-code", Some(&id));
         let known = |_: &str| Ok(vec!["warning: may still be running".to_string()]);
-        let ready =
-            tmgr_ready(s, &pick(true, false, false, true), &known, &ask_ok(&calls)).unwrap();
+        let ready = tmgr_ready(
+            s,
+            &pick(true, false, false, true),
+            (&known, &|_| None),
+            &ask_ok(&calls),
+        )
+        .unwrap();
         assert_eq!(*calls.borrow(), [(false, true)]);
         assert_eq!(ready.lines[0], "warning: may still be running");
         assert_eq!(ready.lines[1], "Resume this session?");
@@ -499,6 +517,7 @@ mod tests {
             entry: &entry_of,
             session: &session,
             known: &known,
+            conversation: &|_| None,
             ask: &ask,
         };
         for p in [
@@ -523,6 +542,7 @@ mod tests {
             entry: &entry_of,
             session: &session,
             known: &known,
+            conversation: &|_| None,
             ask: &ask,
         };
         for p in [

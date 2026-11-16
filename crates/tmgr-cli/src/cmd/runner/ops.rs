@@ -1165,6 +1165,11 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
         return super::resume_any::fork_tmgr(o, a, &s);
     }
     let flagged = a.mode.is_some() || a.no_sandbox;
+    let s = super::resume_any::with_found_conversation(
+        &s,
+        a.no_sandbox,
+        &super::resume_any::real_conversation,
+    );
     let (warnings, known) = super::resume_any::tmgr_resume_checks(&s, a.no_sandbox)?;
     for w in &warnings {
         eprintln!("{w}");
@@ -1176,14 +1181,7 @@ fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
     let r = if flagged {
         let bypass = a.mode == Some(super::PermissionMode::Bypass);
         super::privilege::confirm(bypass, a.no_sandbox, false, false)?;
-        super::resume_any::resume_flagged(
-            &mut c,
-            &runner_config()?,
-            &s,
-            known.as_deref(),
-            a.mode,
-            a.no_sandbox,
-        )?
+        super::resume_any::resume_flagged(&mut c, &s, known.as_deref(), a.mode, a.no_sandbox)?
     } else {
         crate::interact::confirm("Start it again?", false, false)?;
         c.resume(&s.id, s.cols, s.rows).map_err(rerr)?
