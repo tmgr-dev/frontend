@@ -24,7 +24,7 @@
 				</template>
 				<div
 					v-if="formData.web_enabled"
-					class="flex flex-col divide-y divide-border rounded-md border border-border"
+					class="divide-y divide-border flex flex-col rounded-md border border-border"
 				>
 					<label
 						v-for="type in notificationTypeGroups"
@@ -63,7 +63,7 @@
 				</template>
 				<div
 					v-if="formData.telegram_enabled && hasTelegram"
-					class="flex flex-col divide-y divide-border rounded-md border border-border"
+					class="divide-y divide-border flex flex-col rounded-md border border-border"
 				>
 					<label
 						v-for="type in notificationTypeGroups"
@@ -104,7 +104,7 @@
 				</template>
 				<div
 					v-if="slackState === 'settings' && formData.slack_enabled !== false"
-					class="flex flex-col divide-y divide-border rounded-md border border-border"
+					class="divide-y divide-border flex flex-col rounded-md border border-border"
 				>
 					<label
 						v-for="type in slackTypes"
@@ -141,7 +141,7 @@
 				</template>
 				<div
 					v-if="formData.email_enabled"
-					class="flex flex-col divide-y divide-border rounded-md border border-border"
+					class="divide-y divide-border flex flex-col rounded-md border border-border"
 				>
 					<label
 						v-for="type in notificationTypeGroups"
@@ -167,7 +167,7 @@
 				"
 			>
 				<div
-					class="flex flex-col divide-y divide-border rounded-md border border-border"
+					class="divide-y divide-border flex flex-col rounded-md border border-border"
 				>
 					<div
 						class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink"

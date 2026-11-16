@@ -22,10 +22,7 @@ export interface SlackChannel {
 }
 
 export type SlackEvent =
-	| 'task_created'
-	| 'task_status_changed'
-	| 'task_assigned'
-	| 'comment_created';
+	'task_created' | 'task_status_changed' | 'task_assigned' | 'comment_created';
 
 export interface SlackSubscriptionInput {
 	project_category_id: number | null;
