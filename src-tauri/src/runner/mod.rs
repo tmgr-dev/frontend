@@ -78,10 +78,22 @@ struct Inner {
   next_watch: AtomicU64,
   disable_gen: AtomicU64,
   closes: Mutex<HashMap<String, u64>>,
+  switching: Mutex<std::collections::HashSet<String>>,
 }
 
 #[derive(Clone)]
 pub struct Runner(Arc<Inner>);
+
+pub struct SwitchGuard {
+  runner: Runner,
+  sid: String,
+}
+
+impl Drop for SwitchGuard {
+  fn drop(&mut self) {
+    lock(&self.runner.0.switching).remove(&self.sid);
+  }
+}
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
   m.lock().unwrap_or_else(|e| e.into_inner())
@@ -105,6 +117,7 @@ impl Runner {
       next_watch: AtomicU64::new(1),
       disable_gen: AtomicU64::new(0),
       closes: Mutex::new(HashMap::new()),
+      switching: Mutex::new(std::collections::HashSet::new()),
     }))
   }
 
@@ -225,10 +238,21 @@ impl Runner {
     api::session_infos(&mut self.connect()?.0).map_err(err)
   }
 
+  pub fn begin_switch(&self, sid: &str) -> Result<SwitchGuard, String> {
+    if !lock(&self.0.switching).insert(sid.to_owned()) {
+      return Err("This session is already being switched".to_owned());
+    }
+    Ok(SwitchGuard { runner: self.clone(), sid: sid.to_owned() })
+  }
+
   pub fn stop_for_switch(&self, sid: &str, reason: &str) -> Result<(), String> {
     self.gate()?;
     api::check_session_id(sid)?;
     let (mut conn, _) = self.connect()?;
+    let exited = api::session_infos(&mut conn).map_err(err)?.iter().any(|s| s.id == sid && s.state.kind == tmgr_ipc::api::StateKind::Exited);
+    if exited {
+      return Ok(());
+    }
     api::kill_session_with_reason(&mut conn, sid, reason).map_err(err)?;
     let end = std::time::Instant::now() + std::time::Duration::from_secs(15);
     loop {
@@ -529,6 +553,36 @@ mod tests {
       logs.push(h.join().unwrap());
     }
     assert!(logs.iter().any(|l| l.requests.iter().any(|q| q["method"] == "sessions.kill")));
+  }
+
+  #[test]
+  fn a_second_switch_of_the_same_session_is_refused_until_the_first_ends() {
+    let (r, _c, _s, _d) = mock_runner(true);
+    let first = r.begin_switch(SID).unwrap();
+    assert_eq!(r.begin_switch(SID).err().as_deref(), Some("This session is already being switched"));
+    assert!(r.begin_switch("other").is_ok());
+    drop(first);
+    assert!(r.begin_switch(SID).is_ok());
+  }
+
+  #[test]
+  fn stopping_an_exited_session_for_a_switch_sends_no_kill() {
+    let dir = tempfile::tempdir().unwrap();
+    let servers: Arc<Mutex<Vec<std::thread::JoinHandle<mock::Log>>>> = Arc::new(Mutex::new(Vec::new()));
+    let s = servers.clone();
+    let connector: Connector = Arc::new(move || {
+      let (a, b) = UnixStream::pair().unwrap();
+      let mut m = Mock::new("secret");
+      m.sessions = vec![session(SID, json!({"kind": "exited", "since_ms": 1, "detail": null, "exit_code": 0}))];
+      s.lock().unwrap().push(mock::spawn(b, m));
+      Conn::handshake(a, "secret", "desktop")
+    });
+    let r = Runner::new(dir.path().join("runner.json"), connector);
+    r.set_enabled(true).unwrap();
+    r.stop_for_switch(SID, "handed to codex").unwrap();
+    for h in servers.lock().unwrap().drain(..) {
+      assert!(!h.join().unwrap().requests.iter().any(|q| q["method"] == "sessions.kill"));
+    }
   }
 
   fn runner_with_caps(caps: &[&str]) -> (Runner, tempfile::TempDir) {

@@ -193,6 +193,27 @@ pub async fn runner_halt<R: Runtime>(app: AppHandle<R>, runner: State<'_, Runner
 
 const AUTO_SWITCH_KEY: &str = "auto_switch";
 const AUTO_SWITCH_MAX_CHAIN: usize = 2;
+const AUTO_SWITCH_CONFIRM: &str = "When an agent hits its usage limit, the desktop will stop that session and continue the task in the other agent, in the same folder, without asking. It works only while this app is open and switches a task at most twice.";
+const DEPTH_KEY: &str = "switch_depth";
+
+fn depth_of(runner: &Runner, all: &[tmgr_ipc::api::SessionInfo], old: &tmgr_ipc::api::SessionInfo) -> usize {
+  let stored = super::flag::read_object(runner.config_path())
+    .get(DEPTH_KEY)
+    .and_then(|v| v.get(&old.id))
+    .and_then(Value::as_u64)
+    .unwrap_or(0) as usize;
+  stored.max(tmgr_session::switch::ancestors(all, old).len())
+}
+
+fn record_depth(runner: &Runner, all: &[tmgr_ipc::api::SessionInfo], new_id: &str, depth: usize) {
+  let live: std::collections::HashSet<&str> = all.iter().map(|s| s.id.as_str()).collect();
+  let _ = super::flag::update_object(runner.config_path(), |o| {
+    let mut map = o.get(DEPTH_KEY).and_then(Value::as_object).cloned().unwrap_or_default();
+    map.retain(|k, _| live.contains(k.as_str()));
+    map.insert(new_id.to_owned(), Value::from(depth as u64));
+    o.insert(DEPTH_KEY.to_owned(), Value::Object(map));
+  });
+}
 
 #[tauri::command]
 pub fn runner_auto_switch(runner: State<'_, Runner>) -> bool {
@@ -200,7 +221,10 @@ pub fn runner_auto_switch(runner: State<'_, Runner>) -> bool {
 }
 
 #[tauri::command]
-pub async fn runner_set_auto_switch(runner: State<'_, Runner>, enabled: bool) -> Result<(), String> {
+pub async fn runner_set_auto_switch<R: Runtime>(app: AppHandle<R>, runner: State<'_, Runner>, enabled: bool) -> Result<(), String> {
+  if enabled && !confirm(&app, "Automatic agent switching", AUTO_SWITCH_CONFIRM.to_owned(), "Turn on").await {
+    return Err("cancelled".to_owned());
+  }
   let path = runner.config_path().to_path_buf();
   blocking(move || {
     super::flag::update_object(&path, |o| {
@@ -248,7 +272,12 @@ pub async fn runner_switch_agent<R: Runtime>(
   let all = blocking(move || r.session_infos()).await?;
   let old = all.iter().find(|s| s.id == sid).cloned().ok_or_else(|| "session not found".to_owned())?;
   let target = sw::check(&old, target_hint).map_err(|e| e.to_string())?;
-  if auto && sw::ancestors(&all, &old).len() >= AUTO_SWITCH_MAX_CHAIN {
+  if auto && old.limit.is_none() {
+    return Err("The agent has not hit its usage limit".to_owned());
+  }
+  let _guard = runner.begin_switch(&session)?;
+  let depth = depth_of(&runner, &all, &old);
+  if auto && depth >= AUTO_SWITCH_MAX_CHAIN {
     return Err("This task was already switched twice; switch it by hand".to_owned());
   }
   let task = old.task.ok_or_else(|| "The session has no task".to_owned())?;
@@ -306,6 +335,7 @@ pub async fn runner_switch_agent<R: Runtime>(
   .await
   .map_err(|e| format!("The old session stopped, but the new agent did not start: {e}. {resume}"))?;
   let new_id = started.id.clone();
+  record_depth(&runner, &all, &new_id, depth + 1);
   let warning = blocking(move || Ok(sw::export_all(&new_id, &exports))).await?;
   Ok(SwitchResult { session: started, safe_mode_note: safe_note, warning })
 }

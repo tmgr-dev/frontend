@@ -163,7 +163,7 @@ fn write_in_home(
     fn err(what: &str) -> String {
         format!("{what}: {}", std::io::Error::last_os_error())
     }
-    fn open_dir(at: libc::c_int, name: &CString) -> Result<OwnedFd, String> {
+    fn open_dir(at: libc::c_int, name: &CString) -> Result<OwnedFd, std::io::Error> {
         let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
         let fd = unsafe {
             if at == libc::AT_FDCWD {
@@ -173,17 +173,18 @@ fn write_in_home(
             }
         };
         if fd < 0 {
-            return Err(err("cannot open the folder"));
+            return Err(std::io::Error::last_os_error());
         }
         Ok(unsafe { OwnedFd::from_raw_fd(fd) })
     }
 
-    let mut dir = open_dir(libc::AT_FDCWD, &c(home.as_os_str().as_bytes())?)?;
+    let mut dir = open_dir(libc::AT_FDCWD, &c(home.as_os_str().as_bytes())?)
+        .map_err(|e| format!("cannot open the new home: {e}"))?;
     for part in parts {
         let cp = c(part.as_bytes())?;
         dir = match open_dir(dir.as_raw_fd(), &cp) {
             Ok(fd) => fd,
-            Err(_) if std::io::Error::last_os_error().raw_os_error() == Some(libc::ENOENT) => {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 if unsafe { libc::mkdirat(dir.as_raw_fd(), cp.as_ptr(), 0o700) } != 0 {
                     return Err(err(&format!("cannot create {part}")));
                 }
