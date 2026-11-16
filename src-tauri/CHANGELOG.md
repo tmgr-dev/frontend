@@ -7,6 +7,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 - Decisions: a new Clear all button above the queue dismisses every open card at once, after a confirmation. Agents waiting on them get "dismissed", and cards you already answered are not touched.
 - Decisions: when an agent replies in a card's chat it can update the card itself in the same call (question, context, options, recommended option, facts, checks, links). The card shows "updated" and a line in the chat says what changed. If the option you had selected no longer exists, the selection is cleared and you are told. Cards you already answered or dismissed are never changed.
+- Decisions: a card with a huge diff (15,000 lines and more) no longer freezes the app. The diff pane draws only the lines on screen, and long code blocks in a card's text are collapsed behind a Show all button.
 
 ## 0.9.158 — 2026-11-16
 
