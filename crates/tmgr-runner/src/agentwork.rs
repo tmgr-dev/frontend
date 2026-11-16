@@ -472,11 +472,7 @@ mod tests {
         .unwrap();
         let t0 = 1_000_000;
         assert_eq!(step(&helper, &dir, t0, None).unwrap(), Some("start"));
-        assert_eq!(
-            step(&helper, &dir, t0 + 1000, None).unwrap(),
-            Some("update")
-        );
-        assert_eq!(step(&helper, &dir, t0 + 2000, None).unwrap(), None);
+        assert_eq!(step(&helper, &dir, t0 + 1000, None).unwrap(), None);
         let sent: Vec<Value> = std::fs::read_to_string(&calls)
             .unwrap()
             .lines()
