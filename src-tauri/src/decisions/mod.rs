@@ -172,6 +172,22 @@ pub async fn decisions_answer<R: Runtime>(app: AppHandle<R>, id: String, answer:
 }
 
 #[tauri::command]
+pub async fn decisions_dismiss_all<R: Runtime>(app: AppHandle<R>) -> Result<usize, String> {
+  let hub = hub_of(&app)?;
+  let events = blocking(move || hub.dismiss_all()).await?;
+  let count = events.len();
+  if count > 0 {
+    let app = app.clone();
+    std::thread::spawn(move || {
+      for event in events {
+        push::route(&app, &event.card_id, &event, None);
+      }
+    });
+  }
+  Ok(count)
+}
+
+#[tauri::command]
 pub async fn decisions_message<R: Runtime>(
   app: AppHandle<R>,
   id: String,

@@ -1420,6 +1420,26 @@ impl Store {
     Ok(done)
   }
 
+  pub fn dismiss_all(&mut self) -> Result<Vec<Event>, String> {
+    let ids: Vec<String> = {
+      let mut stmt = self
+        .conn
+        .prepare("SELECT id FROM cards WHERE state IN ('open','deferred') ORDER BY created_ms, rowid")
+        .map_err(sql_err)?;
+      let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(sql_err)?;
+      rows.collect::<Result<_, _>>().map_err(sql_err)?
+    };
+    let tx = self.conn.unchecked_transaction().map_err(sql_err)?;
+    let mut events = Vec::with_capacity(ids.len());
+    for id in &ids {
+      let (_, card) = self.live_card(id)?;
+      let (event, _) = self.write_answer(&tx, id, card, AnswerIn { dismissed: true, ..Default::default() }, None)?;
+      events.push(event);
+    }
+    tx.commit().map_err(sql_err)?;
+    Ok(events)
+  }
+
   fn write_answer(
     &self,
     conn: &Connection,

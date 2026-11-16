@@ -359,6 +359,14 @@ impl Hub {
     Ok(r)
   }
 
+  pub fn dismiss_all(&self) -> Result<Vec<Event>, String> {
+    let events = self.lock().dismiss_all()?;
+    if !events.is_empty() {
+      self.changed(Change::Updated);
+    }
+    Ok(events)
+  }
+
   pub fn answer_from_phone(&self, r: &PhoneReq, now: i64) -> Result<PhoneOutcome, String> {
     let out = self.lock().phone_answer(r, now)?;
     if out.applied.is_some() {
@@ -554,6 +562,29 @@ mod tests {
     until("idle", || !listening(&hub, &id));
     assert_eq!(hub.lock_listen().get(&id).map(|l| l.waiters).unwrap_or(0), 0);
     assert!(hub.wait("c_00000000000000000000000000000000", 0, Duration::ZERO, false).is_err());
+  }
+
+  #[test]
+  fn dismiss_all_releases_the_waiter_with_dismissed_and_is_idempotent() {
+    let (hub, updates, id) = rig();
+    let other = hub.create(CardIn { title: "Other".into(), ..Default::default() }).unwrap().id;
+    let done = hub.create(CardIn { title: "Done".into(), ..Default::default() }).unwrap().id;
+    hub.answer(&done, AnswerIn { choice: None, free_text: Some("ok".into()), ..Default::default() }).unwrap();
+    let (h, id2) = (hub.clone(), id.clone());
+    let t = std::thread::spawn(move || h.wait(&id2, 0, Duration::from_secs(10), false).unwrap());
+    until("listening", || listening(&hub, &id));
+    updates.store(0, Ordering::SeqCst);
+    let events = hub.dismiss_all().unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(t.join().unwrap().1.unwrap().dismissed);
+    assert_eq!(hub.get(&other).unwrap().state, "dismissed");
+    let kept = hub.get(&done).unwrap();
+    assert_eq!(kept.state, "answered");
+    assert!(!kept.answer.unwrap().dismissed);
+    assert_eq!(updates.load(Ordering::SeqCst), 1);
+    assert!(hub.dismiss_all().unwrap().is_empty());
+    assert_eq!(updates.load(Ordering::SeqCst), 1);
+    assert_eq!(hub.open_count(), 0);
   }
 
   #[test]

@@ -20,7 +20,9 @@
 				:subtitle="subtitle"
 				@update:query="query = $event"
 				@select="select"
+				:clear-count="pendingCount"
 				@dismiss="closeCard"
+				@clear-all="clearAll"
 			/>
 			<main class="canvas">
 				<template v-if="current">
@@ -194,6 +196,7 @@
 	} from '../answer';
 	import {
 		decisionsAnswer,
+		decisionsDismissAll,
 		decisionsDiff,
 		decisionsGet,
 		decisionsList,
@@ -242,6 +245,7 @@
 		buildQueue,
 		filterCards,
 		flattenQueue,
+		isPending,
 		nextCardId,
 		queueProgress,
 		selectionAfterFilter,
@@ -321,6 +325,9 @@
 			},
 			progress() {
 				return queueProgress(this.visible);
+			},
+			pendingCount(): number {
+				return this.cards.filter(isPending).length;
 			},
 			current(): CardView | null {
 				return this.order.find((card) => card.id === this.selectedId) ?? null;
@@ -651,6 +658,30 @@
 				this.textDrafts = clearCardDrafts(this.textDrafts, id);
 				this.showToast(answerToast(card, answer));
 				if (this.selectedId === id) this.selectedId = following;
+				await this.refresh();
+				this.ensureSelection();
+			},
+			async clearAll() {
+				const ids = this.cards.filter(isPending).map((card) => card.id);
+				if (ids.length === 0) return;
+				try {
+					await decisionsDismissAll();
+				} catch (error) {
+					this.showToast(
+						t('decisions.toast.answerFailed', { error: String(error) }),
+						true,
+					);
+					return;
+				}
+				for (const id of ids) {
+					if (!this.resolvedHere.includes(id)) this.resolvedHere.push(id);
+					delete this.drafts[id];
+					this.textDrafts = clearCardDrafts(this.textDrafts, id);
+				}
+				this.showToast(
+					t('decisions.toast.cleared', { n: ids.length }, ids.length),
+				);
+				this.selectedId = null;
 				await this.refresh();
 				this.ensureSelection();
 			},

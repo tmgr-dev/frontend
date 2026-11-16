@@ -385,6 +385,7 @@ pub fn run() {
       decisions::decisions_answer,
       #[cfg(unix)]
       decisions::decisions_message,
+      decisions::decisions_dismiss_all,
       #[cfg(unix)]
       decisions::decisions_diff,
       #[cfg(unix)]

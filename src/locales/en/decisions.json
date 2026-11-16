@@ -75,7 +75,8 @@
 	"toast": {
 		"loadFailed": "Could not load decisions: {error}",
 		"answerFailed": "Could not send the answer: {error}",
-		"messageFailed": "Could not send the message: {error}"
+		"messageFailed": "Could not send the message: {error}",
+		"cleared": "Cleared {n} card | Cleared {n} cards"
 	},
 	"tabs": {
 		"changes": "Changes",
@@ -114,7 +115,10 @@
 		"deferred": "deferred",
 		"updated": "updated",
 		"agentWaiting": "An agent is waiting",
-		"closeCard": "Close card"
+		"closeCard": "Close card",
+		"clearAll": "Clear all",
+		"clearCancel": "Cancel",
+		"clearConfirm": "Clear {n} card? Agents waiting on it get 'dismissed'. | Clear {n} cards? Agents waiting on them get 'dismissed'."
 	},
 	"card": {
 		"sessionEnded": "Session ended",

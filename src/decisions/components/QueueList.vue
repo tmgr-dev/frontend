@@ -18,6 +18,29 @@
 			}}</span>
 		</div>
 		<div class="prog"><i :style="{ width: progress.percent + '%' }"></i></div>
+		<div v-if="clearCount > 0 && !confirmingClear" class="clear-row">
+			<button type="button" class="clear-all" @click="confirmingClear = true">
+				{{ $t('decisions.queue.clearAll') }}
+			</button>
+		</div>
+		<div
+			v-if="clearCount > 0 && confirmingClear"
+			class="clear-confirm"
+			role="alertdialog"
+			:aria-label="$t('decisions.queue.clearAll')"
+		>
+			<p>
+				{{ $t('decisions.queue.clearConfirm', { n: clearCount }, clearCount) }}
+			</p>
+			<div class="clear-actions">
+				<button type="button" @click="confirmingClear = false">
+					{{ $t('decisions.queue.clearCancel') }}
+				</button>
+				<button type="button" class="danger" @click="confirmClear">
+					{{ $t('decisions.queue.clearAll') }}
+				</button>
+			</div>
+		</div>
 		<input
 			type="text"
 			autocomplete="off"
@@ -103,9 +126,22 @@
 			progress: { type: Object as PropType<QueueProgress>, required: true },
 			query: { type: String, default: '' },
 			subtitle: { type: String, default: 'decisions.subtitle.default' },
+			clearCount: { type: Number, default: 0 },
 		},
-		emits: ['select', 'dismiss', 'update:query'],
+		emits: ['select', 'dismiss', 'update:query', 'clear-all'],
+		data() {
+			return { confirmingClear: false };
+		},
+		watch: {
+			clearCount(count: number) {
+				if (count === 0) this.confirmingClear = false;
+			},
+		},
 		methods: {
+			confirmClear() {
+				this.confirmingClear = false;
+				this.$emit('clear-all');
+			},
 			kindLabel,
 			onInput(event: Event) {
 				this.$emit('update:query', (event.target as HTMLInputElement).value);
