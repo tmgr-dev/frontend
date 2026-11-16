@@ -1,5 +1,5 @@
 <template>
-	<div class="pane">
+	<div ref="scroller" class="pane">
 		<div v-if="!hasDiff" class="placeholder">
 			{{ $t('decisions.diff.noneAttached') }}
 		</div>
@@ -13,196 +13,210 @@
 			<div v-if="diff.groups.length === 0" class="placeholder">
 				{{ $t('decisions.diff.none') }}
 			</div>
-			<section v-for="(group, gi) in panes" :key="group.key" class="dgroup">
-				<div v-if="panes.length > 1" class="gh">
-					<span class="gl">{{ group.label }}</span>
-					<span class="gk">{{ groupKind(group.kind) }}</span>
-					<span v-if="group.base || group.head" class="gr">{{
-						rangeLabel(group.base, group.head)
-					}}</span>
-				</div>
-				<div v-if="group.view.error" class="placeholder">
-					{{ group.view.error }}
-				</div>
-				<div v-else-if="group.view.files.length === 0" class="placeholder">
-					{{ $t('decisions.diff.none') }}
-				</div>
-				<div v-if="group.view.truncated" class="placeholder">
-					{{ $t('decisions.diff.truncated') }}
-				</div>
-				<div v-for="(file, fi) in group.files" :key="file.path" class="file">
-					<div class="fh">
-						<span class="path">{{ file.path }}</span>
-						<span class="stat"
-							><span class="a">+{{ file.added }}</span>
-							<span class="d"> −{{ file.removed }}</span></span
+			<div
+				v-else
+				class="vlist"
+				:style="{
+					height: totalSize + 'px',
+					minWidth: 'calc(' + built.maxChars + 'ch + 100px)',
+				}"
+			>
+				<div
+					v-for="item in items"
+					:key="String(item.key)"
+					:ref="measure"
+					:data-index="item.index"
+					class="vr"
+					:class="rowClass(rows[item.index])"
+					:style="{ transform: 'translateY(' + item.start + 'px)' }"
+				>
+					<template v-for="row in [rows[item.index]]" :key="row.id">
+						<div v-if="row.kind === 'group'" class="gh">
+							<span class="gl">{{ row.group.label }}</span>
+							<span class="gk">{{ groupKind(row.group.kind) }}</span>
+							<span v-if="row.group.base || row.group.head" class="gr">{{
+								rangeLabel(row.group.base, row.group.head)
+							}}</span>
+						</div>
+						<div v-else-if="row.kind === 'note'" class="placeholder">
+							<template v-if="row.note === 'error'">{{ row.text }}</template>
+							<template v-else-if="row.note === 'none'">{{
+								$t('decisions.diff.none')
+							}}</template>
+							<template v-else>{{ $t('decisions.diff.truncated') }}</template>
+						</div>
+						<div v-else-if="row.kind === 'file'" class="vb top fh">
+							<span class="path">{{ row.file.path }}</span>
+							<span class="stat"
+								><span class="a">+{{ row.file.added }}</span>
+								<span class="d"> −{{ row.file.removed }}</span></span
+							>
+						</div>
+						<div v-else-if="row.kind === 'hunk'" class="vb dl hunk">
+							<span class="no"></span><span class="no"></span>
+							<span class="cb" style="visibility: hidden"></span>
+							<span class="code">{{ row.header }}</span>
+						</div>
+						<div
+							v-else-if="row.kind === 'line'"
+							class="vb dl"
+							:class="[row.line.kind, { hascm: hasKey(row.key) }]"
 						>
-					</div>
-					<div class="dv">
-						<template v-for="(hunk, hi) in file.hunks" :key="hi">
-							<div class="dl hunk">
-								<span class="no"></span><span class="no"></span>
-								<span class="cb" style="visibility: hidden"></span>
-								<span class="code">{{ hunk.header }}</span>
-							</div>
-							<template v-for="(line, li) in hunk.lines" :key="li">
+							<span class="no">{{ row.line.old ?? '' }}</span>
+							<span class="no">{{ row.line.new ?? '' }}</span>
+							<button
+								type="button"
+								class="cb"
+								:title="$t('decisions.diff.commentOnLine')"
+								@click="openThread(row.qpath, row.line, 'reply')"
+							>
+								+
+							</button>
+							<span class="code"
+								>{{ PREFIX[row.line.kind] }}{{ row.line.text }}</span
+							>
+						</div>
+						<div v-else class="vb tr">
+							<div class="thread" :data-key="row.key">
 								<div
-									class="dl"
-									:class="[line.kind, { hascm: hasThread(file.qpath, line) }]"
+									v-for="message in threadMessages(row.qpath, row.line)"
+									:key="message.seq"
+									class="cm"
+									:class="message.author"
 								>
-									<span class="no">{{ line.old ?? '' }}</span>
-									<span class="no">{{ line.new ?? '' }}</span>
-									<button
-										type="button"
-										class="cb"
-										:title="$t('decisions.diff.commentOnLine')"
-										@click="openThread(file.qpath, line, 'reply')"
-									>
-										+
-									</button>
-									<span class="code"
-										>{{ PREFIX[line.kind] }}{{ line.text }}</span
-									>
+									<div class="who">
+										<template v-if="message.author === 'owner'">{{
+											$t('decisions.diff.you')
+										}}</template>
+										<template v-else
+											><i></i>{{ $t('decisions.diff.agent') }}</template
+										>
+									</div>
+									<div
+										v-if="isAgent(message)"
+										class="md"
+										@click="onMarkdownClick"
+										v-html="render(message.text)"
+									></div>
+									<template v-else>{{ message.text }}</template>
 								</div>
 								<div
-									v-if="anchored(gi, fi, hi, li, file.qpath, line)"
-									class="thread"
-									:data-key="keyOf(file.qpath, line)"
+									v-for="(draft, di) in draftsFor(row.qpath, row.line)"
+									:key="'d' + di"
+									class="cm owner"
 								>
-									<div
-										v-for="message in threadMessages(file.qpath, line)"
-										:key="message.seq"
-										class="cm"
-										:class="message.author"
-									>
-										<div class="who">
-											<template v-if="message.author === 'owner'">{{
-												$t('decisions.diff.you')
-											}}</template>
-											<template v-else
-												><i></i>{{ $t('decisions.diff.agent') }}</template
-											>
-										</div>
-										<div
-											v-if="isAgent(message)"
-											class="md"
-											@click="onMarkdownClick"
-											v-html="render(message.text)"
-										></div>
-										<template v-else>{{ message.text }}</template>
+									<div class="who">{{ $t('decisions.diff.draftLabel') }}</div>
+									{{ draft.comment.text }}
+									<div class="acts">
+										<button
+											type="button"
+											@click="$emit('remove-draft', draft.index)"
+										>
+											{{ $t('decisions.diff.remove') }}
+										</button>
 									</div>
-									<div
-										v-for="(draft, di) in draftsFor(file.qpath, line)"
-										:key="'d' + di"
-										class="cm owner"
-									>
-										<div class="who">{{ $t('decisions.diff.draftLabel') }}</div>
-										{{ draft.comment.text }}
-										<div class="acts">
+								</div>
+								<div v-if="waitNotice(row.qpath, row.line)" class="cm typing">
+									{{ waitNotice(row.qpath, row.line) }}
+								</div>
+								<div v-if="canAct(row.qpath, row.line)" class="cm">
+									<div class="acts">
+										<button
+											type="button"
+											class="pri"
+											@click="fix(row.qpath, row.line, '')"
+										>
+											{{ $t('decisions.diff.fix') }}
+										</button>
+										<button
+											type="button"
+											@click="openThread(row.qpath, row.line, 'fix')"
+										>
+											{{ $t('decisions.diff.fixClarify') }}
+										</button>
+										<button type="button" @click="keep(row.qpath, row.line)">
+											{{ $t('decisions.diff.keep') }}
+										</button>
+										<button
+											type="button"
+											@click="openThread(row.qpath, row.line, 'reply')"
+										>
+											{{ $t('decisions.diff.reply') }}
+										</button>
+									</div>
+								</div>
+								<div v-if="resolvedLabel(row.qpath, row.line)" class="resolved">
+									{{ resolvedLabel(row.qpath, row.line) }}
+								</div>
+								<template v-if="isComposing(row.qpath, row.line)">
+									<textarea
+										:ref="setComposer"
+										v-model="texts[row.key]"
+										data-input="thread"
+										:placeholder="composerPlaceholder(row.qpath, row.line)"
+										@keydown="onComposerKey($event, row.qpath, row.line)"
+									></textarea>
+									<div class="tf">
+										<span>{{ composerHint }}</span>
+										<span class="btns">
 											<button
-												type="button"
-												@click="$emit('remove-draft', draft.index)"
-											>
-												{{ $t('decisions.diff.remove') }}
-											</button>
-										</div>
-									</div>
-									<div v-if="waitNotice(file.qpath, line)" class="cm typing">
-										{{ waitNotice(file.qpath, line) }}
-									</div>
-									<div v-if="canAct(file.qpath, line)" class="cm">
-										<div class="acts">
-											<button
+												v-if="canReply && !final"
 												type="button"
 												class="pri"
-												@click="fix(file.qpath, line, '')"
+												@click="submit(row.qpath, row.line, 'send')"
 											>
-												{{ $t('decisions.diff.fix') }}
+												{{
+													modes[row.key] === 'fix'
+														? $t('decisions.diff.fix')
+														: $t('decisions.diff.send')
+												}}
 											</button>
 											<button
+												v-if="!final && modes[row.key] !== 'fix'"
 												type="button"
-												@click="openThread(file.qpath, line, 'fix')"
+												@click="submit(row.qpath, row.line, 'draft')"
 											>
-												{{ $t('decisions.diff.fixClarify') }}
+												{{ $t('decisions.diff.addToAnswer') }}
 											</button>
-											<button type="button" @click="keep(file.qpath, line)">
-												{{ $t('decisions.diff.keep') }}
+											<button type="button" @click="close(row.qpath, row.line)">
+												{{ $t('decisions.diff.close') }}
 											</button>
-											<button
-												type="button"
-												@click="openThread(file.qpath, line, 'reply')"
-											>
-												{{ $t('decisions.diff.reply') }}
-											</button>
-										</div>
+										</span>
 									</div>
-									<div v-if="resolvedLabel(file.qpath, line)" class="resolved">
-										{{ resolvedLabel(file.qpath, line) }}
-									</div>
-									<template v-if="isComposing(file.qpath, line)">
-										<textarea
-											:ref="setComposer"
-											v-model="texts[keyOf(file.qpath, line)]"
-											data-input="thread"
-											:placeholder="composerPlaceholder(file.qpath, line)"
-											@keydown="onComposerKey($event, file.qpath, line)"
-										></textarea>
-										<div class="tf">
-											<span>{{ composerHint }}</span>
-											<span class="btns">
-												<button
-													v-if="canReply && !final"
-													type="button"
-													class="pri"
-													@click="submit(file.qpath, line, 'send')"
-												>
-													{{
-														modes[keyOf(file.qpath, line)] === 'fix'
-															? $t('decisions.diff.fix')
-															: $t('decisions.diff.send')
-													}}
-												</button>
-												<button
-													v-if="
-														!final && modes[keyOf(file.qpath, line)] !== 'fix'
-													"
-													type="button"
-													@click="submit(file.qpath, line, 'draft')"
-												>
-													{{ $t('decisions.diff.addToAnswer') }}
-												</button>
-												<button type="button" @click="close(file.qpath, line)">
-													{{ $t('decisions.diff.close') }}
-												</button>
-											</span>
-										</div>
-									</template>
-								</div>
-							</template>
-						</template>
-					</div>
+								</template>
+							</div>
+						</div>
+					</template>
 				</div>
-			</section>
+			</div>
 		</template>
 	</div>
 </template>
 
 <script lang="ts">
 	import { t, te } from '@/i18n';
-	import { defineComponent, type PropType } from 'vue';
+	import { useVirtualizer } from '@tanstack/vue-virtual';
+	import {
+		computed,
+		defineComponent,
+		shallowRef,
+		toRaw,
+		type ComponentPublicInstance,
+		type PropType,
+	} from 'vue';
 	import {
 		agentWaitNotice,
 		awaitsOwner,
 		buildAnchors,
 		fixMessageText,
 		lineNumber,
-		qualifyFile,
 		remapLegacyThreads,
 		sideOf,
 		splitMessages,
 		threadKey,
 		type LineAnchor,
 	} from '../diff';
+	import { buildDiffRows, type DiffRow, type DiffRows } from '../diffRows';
 	import { isSubmitKey } from '../keys';
 	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
 	import type {
@@ -222,6 +236,16 @@
 
 	type ComposerMode = MessageAction | '';
 
+	const LINE_HEIGHT = 20;
+
+	const estimate = (row: DiffRow | undefined): number => {
+		if (!row) return LINE_HEIGHT;
+		if (row.kind === 'thread') return 120;
+		if (row.kind === 'file') return 44;
+		if (row.kind === 'group' || row.kind === 'note') return 40;
+		return LINE_HEIGHT;
+	};
+
 	export default defineComponent({
 		name: 'DiffPane',
 		props: {
@@ -238,6 +262,22 @@
 			now: { type: Number, required: true },
 		},
 		emits: ['send', 'add-draft', 'remove-draft', 'open-link'],
+		setup() {
+			const scroller = shallowRef<HTMLElement | null>(null);
+			const rows = shallowRef<DiffRow[]>([]);
+			const virtualizer = useVirtualizer(
+				computed(() => ({
+					count: rows.value.length,
+					getScrollElement: () => scroller.value,
+					estimateSize: (index: number) => estimate(rows.value[index]),
+					getItemKey: (index: number) => rows.value[index]?.id ?? index,
+					overscan: 30,
+				})),
+			);
+			const measure = (el: Element | ComponentPublicInstance | null) =>
+				virtualizer.value.measureElement(el as Element | null);
+			return { scroller, rows, virtualizer, measure };
+		},
 		data() {
 			return {
 				PREFIX: { add: '+', del: '-', ctx: ' ' },
@@ -246,24 +286,17 @@
 				texts: {} as Record<string, string>,
 				resolved: {} as Record<string, 'kept' | 'fixSent'>,
 				composer: null as HTMLTextAreaElement | null,
+				focusPending: false,
 			};
 		},
 		computed: {
-			panes() {
-				const groups = this.diff?.groups ?? [];
-				return groups.map((group) => ({
-					...group,
-					view: group.view,
-					files: group.view.files.map((file) => ({
-						...file,
-						qpath: qualifyFile(group.label, file.path, groups.length),
-					})),
-				}));
-			},
 			anchors(): Map<string, LineAnchor>[] {
 				const groups = this.diff?.groups ?? [];
 				return groups.map((group) =>
-					buildAnchors(group.view, groups.length > 1 ? group.label : null),
+					buildAnchors(
+						toRaw(group).view,
+						groups.length > 1 ? group.label : null,
+					),
 				);
 			},
 			threads(): Map<string, CardMessage[]> {
@@ -272,10 +305,41 @@
 					this.anchors,
 				);
 			},
+			commentedKeys(): Set<string> {
+				const keys = new Set<string>(this.threads.keys());
+				for (const d of this.drafts)
+					keys.add(threadKey(d.file, d.line, d.side));
+				return keys;
+			},
+			activeKeys(): Set<string> {
+				const keys = new Set<string>(this.commentedKeys);
+				for (const key in this.open) if (this.open[key]) keys.add(key);
+				return keys;
+			},
+			built(): DiffRows {
+				const groups = toRaw(this.diff?.groups ?? []);
+				return buildDiffRows(groups, this.activeKeys);
+			},
+			items() {
+				return this.virtualizer
+					.getVirtualItems()
+					.filter((item) => item.index < this.rows.length);
+			},
+			totalSize(): number {
+				return this.virtualizer.getTotalSize();
+			},
 			composerHint(): string {
 				return this.canReply && !this.final
 					? t('decisions.diff.hintSend')
 					: t('decisions.diff.hintDraft');
+			},
+		},
+		watch: {
+			built: {
+				immediate: true,
+				handler(built: DiffRows) {
+					this.rows = built.rows;
+				},
 			},
 		},
 		methods: {
@@ -291,12 +355,21 @@
 			numberOf(line: DiffLine): number | null {
 				return lineNumber(line);
 			},
-			hasThread(file: string, line: DiffLine): boolean {
-				const key = this.keyOf(file, line);
-				return (
-					this.threads.has(key) ||
-					this.drafts.some((d) => threadKey(d.file, d.line, d.side) === key)
-				);
+			hasKey(key: string): boolean {
+				return this.commentedKeys.has(key);
+			},
+			rowClass(row: DiffRow | undefined): Record<string, boolean> {
+				return {
+					ftop: row?.kind === 'file',
+					fbot: row !== undefined && 'bottom' in row && row.bottom,
+				};
+			},
+			scrollToThread(key: string) {
+				const index =
+					this.built.threadIndex.get(key) ?? this.built.lineIndex.get(key);
+				if (index !== undefined) {
+					this.virtualizer.scrollToIndex(index, { align: 'center' });
+				}
 			},
 			groupKind(kind: string): string {
 				const key = `decisions.diff.groupKind.${kind}`;
@@ -304,27 +377,6 @@
 			},
 			rangeLabel(base?: string, head?: string): string {
 				return `${base ?? ''}..${head ?? ''}`;
-			},
-			anchored(
-				gi: number,
-				fi: number,
-				hi: number,
-				li: number,
-				file: string,
-				line: DiffLine,
-			): boolean {
-				if (lineNumber(line) === null) return false;
-				const key = this.keyOf(file, line);
-				const anchor = this.anchors[gi]?.get(key);
-				if (
-					!anchor ||
-					anchor.fileIndex !== fi ||
-					anchor.hunkIndex !== hi ||
-					anchor.lineIndex !== li
-				) {
-					return false;
-				}
-				return this.hasThread(file, line) || Boolean(this.open[key]);
 			},
 			threadMessages(file: string, line: DiffLine): CardMessage[] {
 				return this.threads.get(this.keyOf(file, line)) ?? [];
@@ -375,13 +427,23 @@
 			},
 			setComposer(el: unknown) {
 				this.composer = (el as HTMLTextAreaElement | null) ?? this.composer;
+				if (el && this.focusPending) {
+					this.focusPending = false;
+					(el as HTMLTextAreaElement).focus();
+				}
 			},
 			openThread(file: string, line: DiffLine, mode: MessageAction) {
 				const key = this.keyOf(file, line);
 				this.open[key] = true;
 				this.modes[key] = mode;
 				delete this.resolved[key];
-				void this.$nextTick(() => this.composer?.focus());
+				this.focusPending = true;
+				void this.$nextTick(() => {
+					if (this.composer?.isConnected) {
+						this.focusPending = false;
+						this.composer.focus();
+					}
+				});
 			},
 			close(file: string, line: DiffLine) {
 				const key = this.keyOf(file, line);

@@ -49,6 +49,7 @@
 		"@milkdown/crepe": "^7.22.1",
 		"@milkdown/kit": "^7.22.1",
 		"@radial-color-picker/vue-color-picker": "^5.0.1",
+		"@tanstack/vue-virtual": "^3.10.9",
 		"@tauri-apps/api": "^2.11.1",
 		"@tauri-apps/plugin-deep-link": "^2.4.10",
 		"@tauri-apps/plugin-global-shortcut": "^2.3.2",

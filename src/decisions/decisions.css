@@ -514,6 +514,15 @@ kbd {
 	background: none;
 	padding: 0;
 }
+.md .bigcode:has(details[open]) > pre {
+	display: none;
+}
+.md .bigcode summary {
+	cursor: pointer;
+	color: var(--brand-fg);
+	font-size: 12px;
+	margin: 4px 0;
+}
 .md table {
 	border-collapse: collapse;
 }
@@ -900,10 +909,7 @@ kbd {
 	color: var(--fg-subtle);
 	font-size: 13px;
 }
-.dgroup {
-	display: contents;
-}
-.dgroup .gh {
+.vr .gh {
 	display: flex;
 	align-items: baseline;
 	gap: 8px;
@@ -911,25 +917,67 @@ kbd {
 	font: 12px var(--font-mono);
 	color: var(--fg-muted);
 }
-.dgroup .gh .gl {
+.vr .gh .gl {
 	color: var(--fg);
 	font-weight: 600;
 }
-.dgroup .gh .gk {
+.vr .gh .gk {
 	color: var(--fg-faint);
 }
-.file {
-	margin: 12px 12px 0;
-	border-radius: 10px;
-	overflow: hidden;
-	background: var(--bg-raised);
-	box-shadow: 0 0 0 1px var(--line-strong);
+.vlist {
+	position: relative;
 	flex-shrink: 0;
+	width: 100%;
+	font: 12px/20px var(--font-mono);
 }
-.file:last-child {
-	margin-bottom: 12px;
+.vr {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	padding: 0 12px;
+	contain: layout style;
 }
-.file .fh {
+.vr.ftop {
+	padding-top: 12px;
+}
+.vr.fbot {
+	padding-bottom: 12px;
+}
+.vr .vb {
+	background: var(--bg-raised);
+	box-shadow:
+		inset 1px 0 0 var(--line-strong),
+		inset -1px 0 0 var(--line-strong);
+}
+.vr.ftop .vb {
+	border-radius: 10px 10px 0 0;
+	box-shadow:
+		inset 1px 0 0 var(--line-strong),
+		inset -1px 0 0 var(--line-strong),
+		inset 0 1px 0 var(--line-strong);
+}
+.vr.fbot .vb {
+	border-radius: 0 0 10px 10px;
+	box-shadow:
+		inset 1px 0 0 var(--line-strong),
+		inset -1px 0 0 var(--line-strong),
+		inset 0 -1px 0 var(--line-strong);
+}
+.vr.ftop.fbot .vb {
+	border-radius: 10px;
+	box-shadow: 0 0 0 1px var(--line-strong);
+}
+.vr .vb.tr {
+	display: flow-root;
+}
+.vr .vb.dl.add {
+	background: color-mix(in oklab, var(--done-bg) 60%, var(--bg-raised));
+}
+.vr .vb.dl.del {
+	background: color-mix(in oklab, var(--fix-bg) 60%, var(--bg-raised));
+}
+.vr .vb.fh {
 	padding: 7px 12px;
 	font: 12px var(--font-mono);
 	display: flex;
@@ -938,22 +986,17 @@ kbd {
 	border-bottom: 1px solid var(--line);
 	color: var(--fg-muted);
 }
-.file .fh .path {
+.vr .fh .path {
 	overflow-wrap: anywhere;
 }
-.file .fh .stat {
+.vr .fh .stat {
 	white-space: nowrap;
 }
-.file .fh .stat .a {
+.vr .fh .stat .a {
 	color: var(--done);
 }
-.file .fh .stat .d {
+.vr .fh .stat .d {
 	color: var(--fix);
-}
-.dv {
-	padding: 4px 0;
-	font: 12px/1.65 var(--font-mono);
-	overflow-x: auto;
 }
 .dl {
 	display: flex;
