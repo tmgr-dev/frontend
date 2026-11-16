@@ -4,7 +4,6 @@ use crate::locate::{export_counted, find, load, newest, Roots};
 use crate::{Agent, Session};
 use std::path::{Path, PathBuf};
 use tmgr_ipc::api::SessionInfo;
-use tmgr_ipc::dirs::homes_dir;
 use tmgr_usage::paths::Env;
 
 const MAX_CHAIN: usize = 5;
@@ -125,6 +124,19 @@ fn is_uuid(id: &str) -> bool {
             8 | 13 | 18 | 23 => b == b'-',
             _ => matches!(b, b'0'..=b'9' | b'a'..=b'f'),
         })
+}
+
+#[cfg(unix)]
+fn homes_dir() -> std::io::Result<PathBuf> {
+    tmgr_ipc::dirs::homes_dir()
+}
+
+#[cfg(not(unix))]
+fn homes_dir() -> std::io::Result<PathBuf> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "the runner is not available on this platform",
+    ))
 }
 
 fn roots_of(s: &SessionInfo) -> Result<Roots> {
