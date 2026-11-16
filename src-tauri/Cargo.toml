@@ -47,6 +47,7 @@ unicode-width = "0.2"
 zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
 tmgr-ipc = { path = "../crates/tmgr-ipc" }
 tmgr-usage = { path = "../crates/tmgr-usage" }
+tmgr-session = { path = "../crates/tmgr-session" }
 tmgr-phone = { path = "../crates/tmgr-phone" }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 trash = "5"

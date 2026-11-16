@@ -28,6 +28,8 @@ export interface RunnerSession {
 	state: RunnerState;
 	createdMs: number;
 	team?: RunnerTeam | null;
+	limit?: string | null;
+	handoffFrom?: string | null;
 }
 
 export type RunnerStatusState =
@@ -106,6 +108,25 @@ export const runnerStartRun = (args: StartRunArgs): Promise<RunnerSession> =>
 
 export const runnerHalt = (session: string): Promise<void> =>
 	invoke<void>('runner_halt', { session });
+
+export interface RunnerSwitchResult {
+	session: RunnerSession;
+	safeModeNote: string | null;
+	warning: string | null;
+}
+
+export const runnerSwitchAgent = (
+	session: string,
+	to: string | null,
+	auto: boolean,
+): Promise<RunnerSwitchResult> =>
+	invoke<RunnerSwitchResult>('runner_switch_agent', { session, to, auto });
+
+export const runnerAutoSwitch = (): Promise<boolean> =>
+	invoke<boolean>('runner_auto_switch');
+
+export const runnerSetAutoSwitch = (enabled: boolean): Promise<void> =>
+	invoke<void>('runner_set_auto_switch', { enabled });
 
 export const runnerOpenTerminal = (session: string): Promise<void> =>
 	invoke<void>('runner_open_terminal', { session });

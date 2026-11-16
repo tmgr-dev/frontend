@@ -450,7 +450,11 @@
 		"sessions": {
 			"error": "error:",
 			"empty": "No agents running. Start one with Run with agent on a task.",
-			"stop": "Stop"
+			"stop": "Stop",
+			"limitReached": "Limit reached",
+			"switchAgent": "Switch agent",
+			"autoSwitch": "Switch automatically when an agent hits its limit",
+			"switched": "Switched to {agent}."
 		},
 		"run": {
 			"runWithAgent": "Run with agent",

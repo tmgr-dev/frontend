@@ -191,6 +191,127 @@ pub async fn runner_halt<R: Runtime>(app: AppHandle<R>, runner: State<'_, Runner
   blocking(move || runner.kill(&session)).await
 }
 
+const AUTO_SWITCH_KEY: &str = "auto_switch";
+const AUTO_SWITCH_MAX_CHAIN: usize = 2;
+
+#[tauri::command]
+pub fn runner_auto_switch(runner: State<'_, Runner>) -> bool {
+  super::flag::read_object(runner.config_path()).get(AUTO_SWITCH_KEY).and_then(Value::as_bool).unwrap_or(false)
+}
+
+#[tauri::command]
+pub async fn runner_set_auto_switch(runner: State<'_, Runner>, enabled: bool) -> Result<(), String> {
+  let path = runner.config_path().to_path_buf();
+  blocking(move || {
+    super::flag::update_object(&path, |o| {
+      o.insert(AUTO_SWITCH_KEY.to_owned(), Value::Bool(enabled));
+    })
+    .map_err(|e| e.to_string())
+  })
+  .await
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchResult {
+  pub session: RunnerSession,
+  pub safe_mode_note: Option<String>,
+  pub warning: Option<String>,
+}
+
+fn target_of(to: Option<&str>) -> Result<Option<tmgr_session::switch::Target>, String> {
+  match to {
+    None => Ok(None),
+    Some(p) => tmgr_session::switch::Target::of_profile(Some(p)).map(Some).ok_or_else(|| "Unknown agent".to_owned()),
+  }
+}
+
+#[tauri::command]
+pub async fn runner_switch_agent<R: Runtime>(
+  app: AppHandle<R>,
+  runner: State<'_, Runner>,
+  session: String,
+  to: Option<String>,
+  auto: bool,
+) -> Result<SwitchResult, String> {
+  use tmgr_session::switch as sw;
+  let runner = runner.inner().clone();
+  if !runner.enabled() {
+    return Err("disabled".to_owned());
+  }
+  api::check_session_id(&session)?;
+  if auto && !runner_auto_switch_value(&runner) {
+    return Err("Automatic switching is off".to_owned());
+  }
+  let target_hint = target_of(to.as_deref())?;
+  let (r, sid) = (runner.clone(), session.clone());
+  let all = blocking(move || r.session_infos()).await?;
+  let old = all.iter().find(|s| s.id == sid).cloned().ok_or_else(|| "session not found".to_owned())?;
+  let target = sw::check(&old, target_hint).map_err(|e| e.to_string())?;
+  if auto && sw::ancestors(&all, &old).len() >= AUTO_SWITCH_MAX_CHAIN {
+    return Err("This task was already switched twice; switch it by hand".to_owned());
+  }
+  let task = old.task.ok_or_else(|| "The session has no task".to_owned())?;
+  local_workspace_code(&app, task.workspace_id)?;
+  let root = crate::local_workspaces::root(&app)?;
+  let info = blocking(move || lookup_in(&root, task.workspace_id, task.task_id)).await?;
+  let caps = {
+    let runner = runner.clone();
+    blocking(move || runner.caps()).await?
+  };
+  require_caps(&caps)?;
+  let home = app.path().home_dir().ok();
+  let (cwd, h) = (old.cwd.clone(), home.clone());
+  let snapshot = blocking(move || folder::Snapshot::capture(Path::new(&cwd), h.as_deref())).await?;
+  let safe_note = (old.permission_mode.as_deref() == Some("bypass") || old.no_sandbox)
+    .then(|| "The old session ran with bypass or without the sandbox. The new one starts in safe mode and will ask for approvals.".to_owned());
+  if !auto {
+    let mut message = format!(
+      "Stop \"{}\" and continue this task in {}?\nThe old session is stopped and the new agent starts in the same folder with a note of what was done.",
+      api::display_text(&old.name),
+      api::profile_label(target.profile())
+    );
+    if let Some(n) = &safe_note {
+      message.push_str("\n\n");
+      message.push_str(n);
+    }
+    if !confirm(&app, "Switch agent", message, "Switch").await {
+      return Err("cancelled".to_owned());
+    }
+  }
+  let ref_text = format!("#{}", task.task_id);
+  let (o2, a2) = (old.clone(), all.clone());
+  sw::ensure_readable(&o2).map_err(|e| e.to_string())?;
+  let reason = format!("handed to {}", target.agent().name());
+  let (r, sid) = (runner.clone(), session.clone());
+  blocking(move || r.stop_for_switch(&sid, &reason)).await?;
+  let note = blocking(move || sw::prepare_note(&o2, &a2, target, &ref_text).map_err(|e| e.to_string())).await?;
+  let req = api::build_switch(
+    &info,
+    (task.workspace_id, task.task_id),
+    target.profile(),
+    (snapshot.path(), snapshot.pin()),
+    &caps,
+    (&note.text, &old.id),
+  )
+  .map_err(|e| format!("The old session stopped, but the new agent could not start: {e}"))?;
+  let exports = note.exports;
+  let r = runner.clone();
+  let started = blocking(move || {
+    snapshot.verify(home.as_deref())?;
+    r.start_run(&req)
+  })
+  .await
+  .map_err(|e| format!("The old session stopped, but the new agent did not start: {e}"))?;
+  let new_id = started.id.clone();
+  let warning = blocking(move || Ok(sw::export_all(&new_id, &exports))).await?;
+  Ok(SwitchResult { session: started, safe_mode_note: safe_note, warning })
+}
+
+fn runner_auto_switch_value(runner: &Runner) -> bool {
+  super::flag::read_object(runner.config_path()).get(AUTO_SWITCH_KEY).and_then(Value::as_bool).unwrap_or(false)
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AutopilotInfo {
   pub running: bool,

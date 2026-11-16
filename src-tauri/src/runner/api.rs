@@ -50,6 +50,10 @@ pub struct RunnerSession {
   pub created_ms: u64,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub team: Option<RunnerTeam>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub limit: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub handoff_from: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -107,6 +111,8 @@ pub fn session_from_info(w: SessionInfo) -> Option<RunnerSession> {
     state: state_from_ipc(&w.state, Detail::ExitOnly),
     created_ms: w.created_ms,
     team: team_from_ipc(w.team),
+    limit: w.limit.map(|l| sanitize::text(&l.line, NAME_MAX)),
+    handoff_from: w.handoff_from.filter(|h| valid_session_id(h)),
     id: w.id,
   })
 }
@@ -137,6 +143,7 @@ pub struct StartRun {
   pub name: String,
   pub cwd_pin: (u64, u64),
   pub bundle: Prepared,
+  pub parent_session: Option<String>,
 }
 
 pub fn run_name(title: &str, task_id: i64) -> String {
@@ -180,7 +187,7 @@ pub fn build_start(
 ) -> Result<StartRun, String> {
   require_caps(runner_caps)?;
   let bundle = bundle::prepare(task, workspace_id, task_id, profile, cwd)?;
-  let run = StartRun { workspace_id, task_id, profile: profile.to_owned(), cwd: cwd.to_owned(), name: run_name(&task.title, task_id), cwd_pin, bundle };
+  let run = StartRun { workspace_id, task_id, profile: profile.to_owned(), cwd: cwd.to_owned(), name: run_name(&task.title, task_id), cwd_pin, bundle, parent_session: None };
   check_frame(&run)?;
   Ok(run)
 }
@@ -198,7 +205,7 @@ fn create_params(r: &StartRun) -> Result<Value, String> {
     bundle_sha256: Some(r.bundle.sha256.clone()),
     cwd_pin: Some(CwdPin { dev: r.cwd_pin.0, ino: r.cwd_pin.1 }),
     origin: None,
-    permission_mode: None, start_key: None, clone_of: None, trust_cwd: None, trust_via_repo: None, exe_pin: None, argv_sha256: None, agent_work: false, cloud: None, unattended: false, clones: Vec::new(), no_sandbox: None, external_resume: None, permission_cards: false, team: None, finish_marker: false, parent_session: None,
+    permission_mode: None, start_key: None, clone_of: None, trust_cwd: None, trust_via_repo: None, exe_pin: None, argv_sha256: None, agent_work: false, cloud: None, unattended: false, clones: Vec::new(), no_sandbox: None, external_resume: None, permission_cards: false, team: None, finish_marker: false, parent_session: r.parent_session.clone(),
   };
   serde_json::to_value(&req).map_err(|e| e.to_string())
 }
@@ -274,6 +281,32 @@ pub fn create_run(conn: &mut Conn, r: &StartRun, welcome: &Welcome) -> Result<Ru
 pub(crate) fn test_start(workspace_id: i64, task_id: i64, profile: &str) -> StartRun {
   let task = TaskInfo { title: "Fix login".into(), description: "body".into(), comments: Vec::new() };
   build_start(&task, (workspace_id, task_id), profile, "/work/project", (16, 99), &caps::ALL.map(String::from)).unwrap()
+}
+
+pub fn build_switch(
+  task: &TaskInfo,
+  ids: (i64, i64),
+  profile: &str,
+  (cwd, cwd_pin): (&str, (u64, u64)),
+  runner_caps: &[String],
+  (note, parent): (&str, &str),
+) -> Result<StartRun, String> {
+  let original: String = task.description.chars().take(6000).collect();
+  let continued = TaskInfo { title: format!("Continue: {}", task.title), description: format!("{note}\n\n## Original task\n{original}"), comments: Vec::new() };
+  let mut run = build_start(&continued, ids, profile, cwd, cwd_pin, runner_caps)?;
+  run.name = run_name(&task.title, ids.1);
+  run.parent_session = Some(parent.to_owned());
+  check_frame(&run)?;
+  Ok(run)
+}
+
+pub fn kill_session_with_reason(conn: &mut Conn, id: &str, reason: &str) -> Result<(), ConnError> {
+  conn.call(method::SESSIONS_KILL, serde_json::json!({"id": id, "signal": "term", "reason": reason})).map(drop)
+}
+
+pub fn session_infos(conn: &mut Conn) -> Result<Vec<SessionInfo>, ConnError> {
+  let v = conn.call(method::SESSIONS_LIST, Value::Null)?;
+  serde_json::from_value(v).map_err(|_| ConnError::Failed("unexpected reply from runner".to_owned()))
 }
 
 pub fn kill_session(conn: &mut Conn, id: &str) -> Result<(), ConnError> {
@@ -655,5 +688,18 @@ mod tests {
     assert_eq!(serde_json::to_value(&t).unwrap()["team"], json!({"of": "t", "role": "lead"}));
     let w = session_from_value(&with_team(json!({"role": {"worker": 1}, "of": "t"}))).unwrap();
     assert_eq!(serde_json::to_value(&w).unwrap()["team"], json!({"of": "t", "role": "worker", "worker": 1}));
+  }
+
+  #[test]
+  fn a_switch_run_carries_the_note_first_and_the_old_session_as_parent() {
+    let task = TaskInfo { title: "Fix login".into(), description: "original text".into(), comments: Vec::new() };
+    let run = build_switch(&task, (-1, 7), "codex", ("/work/project", (16, 99)), &caps::ALL.map(String::from), ("NOTE", "s_old")).unwrap();
+    assert_eq!(run.parent_session.as_deref(), Some("s_old"));
+    assert_eq!(run.name, "Fix login");
+    assert_eq!(run.bundle.bundle.title, "Continue: Fix login");
+    assert!(run.bundle.bundle.body.starts_with("NOTE"));
+    assert!(run.bundle.bundle.body.contains("original text"));
+    let params = create_params(&run).unwrap();
+    assert_eq!(params["parent_session"], "s_old");
   }
 }

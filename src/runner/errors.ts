@@ -1,6 +1,6 @@
 import { t } from '@/i18n';
 
-export type RunnerAction = 'start' | 'stop' | 'input' | 'open';
+export type RunnerAction = 'start' | 'stop' | 'input' | 'open' | 'switch';
 
 export interface RunnerErrorView {
 	cancelled: boolean;

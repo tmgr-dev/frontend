@@ -5439,6 +5439,7 @@ dependencies = [
  "tempfile",
  "tmgr-ipc",
  "tmgr-phone",
+ "tmgr-session",
  "tmgr-usage",
  "tokio",
  "trash",
@@ -5476,6 +5477,16 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "subtle",
+]
+
+[[package]]
+name = "tmgr-session"
+version = "1.0.131"
+dependencies = [
+ "regex",
+ "serde_json",
+ "tmgr-ipc",
+ "tmgr-usage",
 ]
 
 [[package]]

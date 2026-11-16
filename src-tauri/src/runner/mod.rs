@@ -220,6 +220,29 @@ impl Runner {
     api::kill_session(&mut self.connect()?.0, sid).map_err(err)
   }
 
+  pub fn session_infos(&self) -> Result<Vec<tmgr_ipc::api::SessionInfo>, String> {
+    self.gate()?;
+    api::session_infos(&mut self.connect()?.0).map_err(err)
+  }
+
+  pub fn stop_for_switch(&self, sid: &str, reason: &str) -> Result<(), String> {
+    self.gate()?;
+    api::check_session_id(sid)?;
+    let (mut conn, _) = self.connect()?;
+    api::kill_session_with_reason(&mut conn, sid, reason).map_err(err)?;
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+      let gone = api::session_infos(&mut conn).map_err(err)?.iter().any(|s| s.id == sid && s.state.kind == tmgr_ipc::api::StateKind::Exited);
+      if gone {
+        return Ok(());
+      }
+      if std::time::Instant::now() >= end {
+        return Err("The agent did not stop in time".to_owned());
+      }
+      std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+  }
+
   pub fn session_exists(&self, sid: &str) -> Result<bool, String> {
     self.gate()?;
     api::check_session_id(sid)?;

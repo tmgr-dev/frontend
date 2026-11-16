@@ -12,14 +12,26 @@
 			<CommandText :text="unavailable" />
 		</p>
 		<p
-			v-else-if="!list.length"
+			v-if="!unavailable && !list.length"
 			class="rounded-md border border-dashed border-line-strong px-3 py-3 text-sm text-ink-subtle"
 			data-testid="agent-sessions-empty"
 		>
 			{{ $t('desktop.runner.sessions.empty') }}
 		</p>
+		<label
+			v-if="!unavailable"
+			class="flex items-center gap-2 text-xs text-ink-subtle"
+			data-testid="agent-auto-switch"
+		>
+			<input
+				type="checkbox"
+				:checked="autoSwitch"
+				@change="setAuto(($event.target as HTMLInputElement).checked)"
+			/>
+			{{ $t('desktop.runner.sessions.autoSwitch') }}
+		</label>
 		<ul
-			v-else
+			v-if="!unavailable && list.length"
 			class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
 		>
 			<li
@@ -44,6 +56,12 @@
 				<span class="min-w-0 flex-1 truncate font-medium text-ink">{{
 					session.name
 				}}</span>
+				<span
+					v-if="session.limit"
+					class="rounded border border-line px-1.5 text-xs font-medium text-destructive"
+					data-testid="agent-limit"
+					>{{ $t('desktop.runner.sessions.limitReached') }}</span
+				>
 				<span v-if="session.profile" class="text-xs text-ink-subtle">{{
 					profileLabel(session.profile)
 				}}</span>
@@ -59,6 +77,15 @@
 					{{ $t('desktop.runner.openTerminal') }}
 				</Button>
 				<Button
+					v-if="canSwitch(session)"
+					variant="outline"
+					size="sm"
+					data-testid="agent-switch"
+					@click="switchAgent(session.id, false)"
+				>
+					{{ $t('desktop.runner.sessions.switchAgent') }}
+				</Button>
+				<Button
 					v-if="session.state.kind !== 'exited'"
 					variant="outline"
 					size="sm"
@@ -70,6 +97,14 @@
 				</Button>
 			</li>
 		</ul>
+		<p
+			v-if="notice"
+			class="text-xs text-ink-subtle"
+			role="status"
+			data-testid="agent-switch-notice"
+		>
+			{{ notice }}
+		</p>
 		<p v-if="actionError" class="text-xs text-destructive" role="alert">
 			<CommandText :text="actionError" />
 		</p>
@@ -80,7 +115,14 @@
 	import CommandText from '@/components/general/CommandText.vue';
 	import AgentStateChip from '@/components/runner/AgentStateChip.vue';
 	import { Button } from '@/components/ui/button';
-	import { runnerHalt, runnerOpenTerminal } from '@/runner/api';
+	import {
+		runnerAutoSwitch,
+		runnerHalt,
+		runnerOpenTerminal,
+		runnerSetAutoSwitch,
+		runnerSwitchAgent,
+		type RunnerSession,
+	} from '@/runner/api';
 	import { describeRunnerError } from '@/runner/errors';
 	import { formatAge } from '@/runner/format';
 	import { absentTooltip } from '@/runner/runButton';
@@ -94,6 +136,7 @@
 		onBeforeUnmount,
 		onMounted,
 		ref,
+		watch,
 		type PropType,
 	} from 'vue';
 
@@ -115,10 +158,16 @@
 			const runner = useRunner();
 			const now = ref(Date.now());
 			const actionError = ref('');
+			const notice = ref('');
+			const autoSwitch = ref(false);
+			const tried = new Set<string>();
 			let timer: ReturnType<typeof setInterval> | undefined;
 
 			onMounted(() => {
 				timer = setInterval(() => (now.value = Date.now()), 30_000);
+				runnerAutoSwitch()
+					.then((on) => (autoSwitch.value = on))
+					.catch(() => undefined);
 			});
 			onBeforeUnmount(() => clearInterval(timer));
 
@@ -145,7 +194,7 @@
 
 			const guarded = async (
 				action: () => Promise<void>,
-				kind: 'stop' | 'open',
+				kind: 'stop' | 'open' | 'switch',
 			) => {
 				actionError.value = '';
 				try {
@@ -156,7 +205,49 @@
 				}
 			};
 
+			const canSwitch = (s: RunnerSession) =>
+				!!s.task &&
+				!s.team &&
+				(s.profile === 'claude-code' || s.profile === 'codex');
+
+			const switchAgent = (id: string, auto: boolean) =>
+				guarded(async () => {
+					notice.value = '';
+					const result = await runnerSwitchAgent(id, null, auto);
+					notice.value = [
+						result.session.name,
+						result.safeModeNote,
+						result.warning,
+					]
+						.filter(Boolean)
+						.join(' ');
+				}, 'switch');
+
+			const setAuto = (on: boolean) => {
+				autoSwitch.value = on;
+				runnerSetAutoSwitch(on).catch(() => (autoSwitch.value = !on));
+			};
+
+			watch(
+				() => [autoSwitch.value, runner.sessions.value] as const,
+				([on, sessions]) => {
+					if (!on) return;
+					for (const s of sessions) {
+						if (!s.limit || !canSwitch(s) || tried.has(s.id)) continue;
+						if (sessions.some((o) => o.handoffFrom === s.id)) continue;
+						tried.add(s.id);
+						switchAgent(s.id, true);
+					}
+				},
+				{ deep: true },
+			);
+
 			return {
+				canSwitch,
+				switchAgent,
+				setAuto,
+				autoSwitch,
+				notice,
 				list,
 				rows,
 				unavailable,
