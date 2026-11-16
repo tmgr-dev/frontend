@@ -57,8 +57,16 @@ pub fn open_regular(path: &Path) -> Result<fs::File, String> {
     let file = opts
         .open(path)
         .map_err(|e| format!("cannot open the session file: {e}"))?;
-    if !file.metadata().map(|m| m.is_file()).unwrap_or(false) {
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    if !meta.is_file() {
         return Err("not a regular file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if meta.nlink() > 1 {
+            return Err("the session file has several hard links".into());
+        }
     }
     Ok(file)
 }
@@ -104,6 +112,14 @@ fn is_rollout(f: &Path) -> bool {
 pub const EXPORT_MAX_BYTES: u64 = 64 << 20;
 
 pub fn export_masked(src: &Path, agent: Agent, into_home: &Path) -> Result<PathBuf, String> {
+    export_counted(src, agent, into_home).map(|(p, _)| p)
+}
+
+pub fn export_counted(
+    src: &Path,
+    agent: Agent,
+    into_home: &Path,
+) -> Result<(PathBuf, usize), String> {
     let file = open_regular(src)?;
     let size = file.metadata().map_err(|e| e.to_string())?.len();
     if size > EXPORT_MAX_BYTES {
@@ -116,7 +132,116 @@ pub fn export_masked(src: &Path, agent: Agent, into_home: &Path) -> Result<PathB
         Agent::Claude => &[".claude", "projects", "handoff"],
         Agent::Codex => &[".codex", "sessions", "handoff"],
     };
-    let mut dir = home.clone();
+    let mut out = String::new();
+    let skipped = for_each_line(BufReader::new(file), |line| match mask_json_line(line) {
+        Some(masked) => {
+            out.push_str(&masked);
+            out.push('\n');
+            true
+        }
+        None => false,
+    });
+    let dest = write_in_home(&home, parts, name, out.as_bytes())?;
+    Ok((dest, skipped))
+}
+
+#[cfg(unix)]
+fn write_in_home(
+    home: &Path,
+    parts: &[&str],
+    name: &std::ffi::OsStr,
+    data: &[u8],
+) -> Result<PathBuf, String> {
+    use std::ffi::CString;
+    use std::io::Write;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+
+    fn c(b: &[u8]) -> Result<CString, String> {
+        CString::new(b).map_err(|_| "a path contains a NUL byte".to_string())
+    }
+    fn err(what: &str) -> String {
+        format!("{what}: {}", std::io::Error::last_os_error())
+    }
+    fn open_dir(at: libc::c_int, name: &CString) -> Result<OwnedFd, String> {
+        let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        let fd = unsafe {
+            if at == libc::AT_FDCWD {
+                libc::open(name.as_ptr(), flags)
+            } else {
+                libc::openat(at, name.as_ptr(), flags)
+            }
+        };
+        if fd < 0 {
+            return Err(err("cannot open the folder"));
+        }
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+
+    let mut dir = open_dir(libc::AT_FDCWD, &c(home.as_os_str().as_bytes())?)?;
+    for part in parts {
+        let cp = c(part.as_bytes())?;
+        dir = match open_dir(dir.as_raw_fd(), &cp) {
+            Ok(fd) => fd,
+            Err(_) if std::io::Error::last_os_error().raw_os_error() == Some(libc::ENOENT) => {
+                if unsafe { libc::mkdirat(dir.as_raw_fd(), cp.as_ptr(), 0o700) } != 0 {
+                    return Err(err(&format!("cannot create {part}")));
+                }
+                open_dir(dir.as_raw_fd(), &cp)
+                    .map_err(|_| format!("{part} is not a plain folder"))?
+            }
+            Err(_) => return Err(format!("{part} is not a plain folder")),
+        };
+    }
+    let tmp = c(format!(".{}.tmp{}", name.to_string_lossy(), std::process::id()).as_bytes())?;
+    let fd = unsafe {
+        libc::openat(
+            dir.as_raw_fd(),
+            tmp.as_ptr(),
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600 as libc::c_uint,
+        )
+    };
+    if fd < 0 {
+        return Err(err("cannot create the copy"));
+    }
+    let mut f = std::fs::File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+    let cname = c(name.as_bytes())?;
+    let done = f
+        .write_all(data)
+        .map_err(|e| format!("cannot write the copy: {e}"));
+    drop(f);
+    let done = done.and_then(|_| {
+        if unsafe {
+            libc::renameat(
+                dir.as_raw_fd(),
+                tmp.as_ptr(),
+                dir.as_raw_fd(),
+                cname.as_ptr(),
+            )
+        } != 0
+        {
+            return Err(err("cannot place the copy"));
+        }
+        Ok(())
+    });
+    if let Err(e) = done {
+        unsafe { libc::unlinkat(dir.as_raw_fd(), tmp.as_ptr(), 0) };
+        return Err(e);
+    }
+    let mut dest = home.to_path_buf();
+    dest.extend(parts);
+    Ok(dest.join(name))
+}
+
+#[cfg(not(unix))]
+fn write_in_home(
+    home: &Path,
+    parts: &[&str],
+    name: &std::ffi::OsStr,
+    data: &[u8],
+) -> Result<PathBuf, String> {
+    let mut dir = home.to_path_buf();
     for part in parts {
         dir.push(part);
         match fs::symlink_metadata(&dir) {
@@ -127,35 +252,9 @@ pub fn export_masked(src: &Path, agent: Agent, into_home: &Path) -> Result<PathB
             }
         }
     }
-    if !fs::canonicalize(&dir).is_ok_and(|d| d.starts_with(&home)) {
-        return Err("the target folder leaves the new home".into());
-    }
     let dest = dir.join(name);
-    let mut out = String::new();
-    for_each_line(BufReader::new(file), |line| match mask_json_line(line) {
-        Some(masked) => {
-            out.push_str(&masked);
-            out.push('\n');
-            true
-        }
-        None => false,
-    });
-    write_private(&dest, out.as_bytes())?;
+    fs::write(&dest, data).map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
     Ok(dest)
-}
-
-fn write_private(path: &Path, data: &[u8]) -> Result<(), String> {
-    use std::io::Write;
-    let mut opts = fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-    }
-    opts.open(path)
-        .and_then(|mut f| f.write_all(data))
-        .map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
 pub fn find(roots: &Roots, id: &str) -> Result<(Agent, PathBuf), String> {

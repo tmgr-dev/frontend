@@ -451,6 +451,52 @@ mod hardening {
     }
 
     #[test]
+    fn a_hard_linked_session_file_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.jsonl");
+        std::fs::write(&src, session_line("s", "hi")).unwrap();
+        std::fs::hard_link(&src, dir.path().join("b.jsonl")).unwrap();
+        let home = dir.path().join("new");
+        std::fs::create_dir_all(&home).unwrap();
+        assert!(export_masked(&src, Agent::Claude, &home).is_err());
+    }
+
+    #[test]
+    fn an_unparsable_line_is_skipped_and_counted() {
+        use tmgr_session::locate::export_counted;
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.jsonl");
+        let text = format!(
+            "{}not json\n{}",
+            session_line("s", "one"),
+            session_line("s", "two")
+        );
+        std::fs::write(&src, text).unwrap();
+        let home = dir.path().join("new");
+        std::fs::create_dir_all(&home).unwrap();
+        let (copy, skipped) = export_counted(&src, Agent::Claude, &home).unwrap();
+        assert_eq!(skipped, 1);
+        let out = std::fs::read_to_string(copy).unwrap();
+        assert!(out.contains("one") && out.contains("two") && !out.contains("not json"));
+    }
+
+    #[test]
+    fn an_existing_copy_is_replaced_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.jsonl");
+        std::fs::write(&src, session_line("s", "fresh")).unwrap();
+        let home = dir.path().join("new");
+        let handoff = home.join(".claude/projects/handoff");
+        std::fs::create_dir_all(&handoff).unwrap();
+        let victim = dir.path().join("victim");
+        std::fs::write(&victim, "keep").unwrap();
+        symlink(&victim, handoff.join("a.jsonl")).unwrap();
+        let copy = export_masked(&src, Agent::Claude, &home).unwrap();
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+        assert!(std::fs::read_to_string(copy).unwrap().contains("fresh"));
+    }
+
+    #[test]
     fn the_export_refuses_a_planted_target_folder() {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("old.jsonl");

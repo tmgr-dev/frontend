@@ -1,6 +1,6 @@
 use crate::git;
 use crate::handoff::{build, Opts as NoteOpts};
-use crate::locate::{export_masked, find, load, newest, Roots};
+use crate::locate::{export_counted, find, load, newest, Roots};
 use crate::{Agent, Session};
 use std::path::{Path, PathBuf};
 use tmgr_ipc::api::SessionInfo;
@@ -145,11 +145,17 @@ fn roots_of(s: &SessionInfo) -> Result<Roots> {
 
 fn log_of(s: &SessionInfo, agent: Agent) -> Result<PathBuf> {
     let roots = roots_of(s)?;
-    if s.no_sandbox && !s.agent_session_id.as_deref().is_some_and(is_uuid) {
-        return Err(SwitchError::NotFound(format!(
-            "the conversation id of session {} is unknown, so its log cannot be told apart from your other sessions",
-            s.id
-        )));
+    if s.no_sandbox {
+        let id = s.agent_session_id.as_deref().filter(|i| is_uuid(i));
+        return id
+            .and_then(|id| find(&roots, id).ok())
+            .map(|(_, path)| path)
+            .ok_or_else(|| {
+                SwitchError::NotFound(format!(
+                    "the conversation of session {} cannot be told apart from your other sessions",
+                    s.id
+                ))
+            });
     }
     if let Some(id) = s.agent_session_id.as_deref().filter(|i| is_uuid(i)) {
         if let Ok((_, path)) = find(&roots, id) {
@@ -255,15 +261,22 @@ pub fn prepare_note(
 
 pub fn export_all(new_session: &str, exports: &[(Agent, PathBuf)]) -> Option<String> {
     let home = homes_dir().ok()?.join(new_session);
-    let failed: Vec<String> = exports
-        .iter()
-        .filter_map(|(agent, path)| export_masked(path, *agent, &home).err())
-        .collect();
-    (!failed.is_empty()).then(|| {
-        format!(
+    let mut failed: Vec<String> = Vec::new();
+    let mut skipped = 0;
+    for (agent, path) in exports {
+        match export_counted(path, *agent, &home) {
+            Ok((_, n)) => skipped += n,
+            Err(e) => failed.push(e),
+        }
+    }
+    if !failed.is_empty() {
+        return Some(format!(
             "the old conversation could not be copied for lookup ({}); the note still carries the essentials",
             failed.join("; ")
-        )
+        ));
+    }
+    (skipped > 0).then(|| {
+        format!("{skipped} unreadable lines of the old conversation were left out of the copy")
     })
 }
 
@@ -354,6 +367,17 @@ mod tests {
         let mut s = info("a", "codex");
         s.no_sandbox = true;
         assert!(log_of(&s, Agent::Codex).is_err());
+    }
+
+    #[test]
+    fn an_unsandboxed_session_whose_conversation_is_gone_never_falls_back_to_the_newest() {
+        let mut s = info("a", "codex");
+        s.no_sandbox = true;
+        s.agent_session_id = Some("99999999-aaaa-bbbb-cccc-000000000009".into());
+        assert!(matches!(
+            log_of(&s, Agent::Codex),
+            Err(SwitchError::NotFound(_))
+        ));
     }
 
     #[test]
