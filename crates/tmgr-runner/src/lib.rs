@@ -51,6 +51,8 @@ pub mod sessionwt;
 #[cfg(unix)]
 pub mod shim;
 #[cfg(unix)]
+pub mod switch;
+#[cfg(unix)]
 pub mod trust;
 #[cfg(unix)]
 pub mod wire;

@@ -4256,6 +4256,7 @@ dependencies = [
  "tmgr-approval",
  "tmgr-fuzzy",
  "tmgr-ipc",
+ "tmgr-session",
  "tmgr-usage",
  "toml",
  "toml_edit 0.22.27",
@@ -4271,6 +4272,7 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
+ "tmgr-ipc",
  "tmgr-usage",
 ]
 
