@@ -1,0 +1,11 @@
+{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"019a0000-aaaa-bbbb-cccc-000000000001","cwd":"/work/demo","git":{"branch":"feat/demo"}}}
+{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"permissions"}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>cwd</environment_context>"}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Add a retry to the fetch helper"}]}}
+{"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"cargo test -p demo\"]}","call_id":"c1"}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"{\"output\":\"test result: FAILED\",\"metadata\":{\"exit_code\":101}}"}}
+{"type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","input":"*** Begin Patch\n*** Update File: src/fetch.rs\n@@\n-a\n+b\n*** End Patch","call_id":"c2"}}
+{"type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"c2","output":"Exit code: 0\nDone"}}
+{"type":"response_item","payload":{"type":"function_call","name":"update_plan","arguments":"{\"plan\":[{\"step\":\"fix test\",\"status\":\"in_progress\"}]}","call_id":"c3"}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Patched the helper."}]}}
+{"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"cargo build\"]}","call_id":"c4"}}

@@ -1,0 +1,11 @@
+{"type":"permission-mode","permissionMode":"default","sessionId":"11111111-2222-3333-4444-555555555555"}
+{"type":"user","sessionId":"11111111-2222-3333-4444-555555555555","cwd":"/work/demo","gitBranch":"feat/demo","message":{"role":"user","content":"Add a retry to the fetch helper"}}
+{"type":"user","isMeta":true,"sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"user","content":"<system-reminder>ignore</system-reminder>"}}
+{"type":"assistant","sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"assistant","content":[{"type":"text","text":"Reading the helper first."},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/work/demo/src/fetch.rs"}}]}}
+{"type":"user","sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"fn fetch() {}"}]}}
+{"type":"assistant","sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Edit","input":{"file_path":"/work/demo/src/fetch.rs","old_string":"a","new_string":"b"}},{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"cargo test -p demo"}}]}}
+{"type":"user","sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"edited"},{"type":"tool_result","tool_use_id":"t3","is_error":true,"content":[{"type":"text","text":"error: test failed\nAPI_TOKEN=abcd1234secretvalue"}]}]}}
+{"type":"assistant","sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"assistant","content":[{"type":"text","text":"The test failed, fixing."},{"type":"tool_use","id":"t4","name":"TodoWrite","input":{"todos":[{"content":"fix test","status":"in_progress"}]}}]}}
+{"type":"user","sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"user","content":[{"type":"text","text":"Also add a timeout"}]}}
+{"type":"assistant","isSidechain":true,"sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"assistant","content":[{"type":"text","text":"sidechain noise"}]}}
+{"type":"assistant","sessionId":"11111111-2222-3333-4444-555555555555","message":{"role":"assistant","content":[{"type":"tool_use","id":"t5","name":"Bash","input":{"command":"cargo build"}}]}}

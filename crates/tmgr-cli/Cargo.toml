@@ -23,6 +23,7 @@ tmgr-core.workspace = true
 tmgr-fuzzy.workspace = true
 tmgr-link.workspace = true
 tmgr-usage.workspace = true
+tmgr-session.workspace = true
 ctrlc.workspace = true
 rpassword.workspace = true
 chrono.workspace = true

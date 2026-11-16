@@ -32,6 +32,8 @@ pub mod routine;
 #[cfg(feature = "runner")]
 pub mod runner;
 pub mod self_update;
+#[cfg(feature = "runner")]
+pub mod session;
 pub mod setup_terminal;
 pub mod shared;
 #[cfg(feature = "runner")]

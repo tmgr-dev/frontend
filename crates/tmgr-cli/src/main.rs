@@ -67,6 +67,10 @@ fn run() -> i32 {
 fn standalone(cli: &Cli) -> Option<i32> {
     match &cli.command {
         #[cfg(feature = "runner")]
+        Some(Command::Runner(cmd::runner::RunnerCommands::Session {
+            command: cmd::runner::SessionCmd::Read(c),
+        })) => Some(cmd::session::run(c)),
+        #[cfg(feature = "runner")]
         Some(Command::Runner(c)) => Some(cmd::runner::run(cli, c)),
         Some(Command::Prompt(args)) => Some(cmd::prompt::prompt(args, cli.no_color)),
         Some(Command::Statusline { target }) => Some(cmd::prompt::statusline(*target)),

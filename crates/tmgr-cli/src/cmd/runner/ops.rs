@@ -132,6 +132,9 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Session {
             command: super::SessionCmd::List(a),
         } => super::session_list::run(o, a),
+        RunnerCommands::Session {
+            command: super::SessionCmd::Read(_),
+        } => unreachable!("handled before the session starts"),
     }
 }
 

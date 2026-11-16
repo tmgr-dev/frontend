@@ -4,7 +4,7 @@ exclude = ["src-tauri"]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.129"
+version = "1.0.130"
 edition = "2021"
 license = "AGPL-3.0-only"
 rust-version = "1.89"
@@ -44,6 +44,7 @@ tmgr-link = { path = "crates/tmgr-link" }
 tmgr-ipc = { path = "crates/tmgr-ipc" }
 tmgr-runner = { path = "crates/tmgr-runner" }
 tmgr-usage = { path = "crates/tmgr-usage" }
+tmgr-session = { path = "crates/tmgr-session" }
 tmgr-queue = { path = "crates/tmgr-queue" }
 tmgr-approval = { path = "crates/tmgr-approval" }
 tmgr-fuzzy = { path = "crates/tmgr-fuzzy" }

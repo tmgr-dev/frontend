@@ -37,6 +37,12 @@ rename | Agents | session, name
 session summary | Other | session, plain
 session export | Other | session, md, page, remove_findings
 session list | Other | agent, search, limit
+session turns | Other | id
+session show | Other | id, turn, full
+session grep | Other | id, pattern, full
+session files | Other | id
+session errors | Other | id, full
+session handoff | Other | id, to, task, previous, output
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds

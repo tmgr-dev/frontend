@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.130
+
+- New `tmgr session turns|show|grep|files|errors <id>` read a local Claude Code or Codex session as clean text: a numbered turn list, one turn with its tool calls, matches with turn numbers, files read and edited, and failed commands. Long text is trimmed (`--full` shows everything) and secrets such as tokens, keys and passwords are masked. Nothing leaves the machine.
+- New `tmgr session handoff <id>` writes a short note for continuing the work in the other agent (Claude to Codex or back): your messages, final replies, files touched, git state, the open plan, the last test run and the earlier session ids. Use `--to`, `--task`, `--previous` and `-o FILE`.
+
 ## 1.0.129
 
 - Haiku classification of agent questions is now off by default. A choice you already saved with `tmgr questions haiku on|off` is kept. Turn it on with `tmgr questions haiku on`.

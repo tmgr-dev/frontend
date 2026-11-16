@@ -1,0 +1,17 @@
+[package]
+name = "tmgr-session"
+description = "Read-only reader of local Claude Code and Codex sessions, and the handoff note builder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+serde_json.workspace = true
+regex.workspace = true
+tmgr-usage.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

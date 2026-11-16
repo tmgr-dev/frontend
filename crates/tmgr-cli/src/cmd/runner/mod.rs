@@ -105,6 +105,8 @@ pub enum SessionCmd {
     Export(ExportArgs),
     /// [experimental] List past sessions: tmgr's own and those of Claude Code and Codex on this machine (nothing leaves it)
     List(SessionListArgs),
+    #[command(flatten)]
+    Read(crate::cmd::session::SessionCommand),
 }
 
 #[derive(Clone, Copy, ValueEnum)]
