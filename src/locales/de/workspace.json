@@ -233,7 +233,8 @@
 		"accept": "Einladung annehmen",
 		"invitedTo": "Du wurdest eingeladen, beizutreten: „{name}“",
 		"loadFailed": "Einladungsdetails konnten nicht geladen werden",
-		"acceptFailed": "Einladung konnte nicht angenommen werden"
+		"acceptFailed": "Einladung konnte nicht angenommen werden",
+		"guestHint": "Melde dich an oder erstelle ein Konto, um diese Einladung anzunehmen."
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "Push-Benachrichtigungen in Chrome, Firefox und Safari aktivieren oder deaktivieren",

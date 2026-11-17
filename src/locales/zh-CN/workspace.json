@@ -233,7 +233,8 @@
 		"accept": "接受邀请",
 		"invitedTo": "你被邀请加入：“{name}”",
 		"loadFailed": "无法加载邀请详情",
-		"acceptFailed": "无法接受邀请"
+		"acceptFailed": "无法接受邀请",
+		"guestHint": "请登录或创建账户以接受此邀请。"
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "如何在 Chrome、Firefox 和 Safari 浏览器中启用或停用推送通知？",

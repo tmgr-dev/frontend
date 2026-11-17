@@ -78,7 +78,7 @@
 			</Button>
 			<router-link
 				v-else-if="verify.state.value !== 'verifying'"
-				to="/app"
+				:to="continueTo"
 				class="block font-medium text-primary underline underline-offset-4"
 				>{{ $t('auth.common.goToTmgr') }}</router-link
 			>
@@ -116,6 +116,10 @@
 		resend: resendVerificationEmail,
 		refreshUser: getUser,
 	});
+	const pendingInvitation = localStorage.getItem('workspace.invitation');
+	const continueTo = pendingInvitation
+		? { name: 'WorkspaceInvitation', params: { token: pendingInvitation } }
+		: '/app';
 	const verify = machine;
 	const resend = machine.resend;
 

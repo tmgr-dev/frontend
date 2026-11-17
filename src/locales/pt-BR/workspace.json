@@ -233,7 +233,8 @@
 		"accept": "Aceitar convite",
 		"invitedTo": "Você foi convidado para participar de: \"{name}\"",
 		"loadFailed": "Falha ao carregar os detalhes do convite",
-		"acceptFailed": "Falha ao aceitar o convite"
+		"acceptFailed": "Falha ao aceitar o convite",
+		"guestHint": "Entre ou crie uma conta para aceitar este convite."
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "Como ativar ou desativar notificações push no Chrome, Firefox e Safari?",

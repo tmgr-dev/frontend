@@ -233,7 +233,8 @@
 		"accept": "招待を承諾",
 		"invitedTo": "「{name}」に招待されています",
 		"loadFailed": "招待の詳細を読み込めませんでした",
-		"acceptFailed": "招待を承諾できませんでした"
+		"acceptFailed": "招待を承諾できませんでした",
+		"guestHint": "この招待を承諾するには、ログインするかアカウントを作成してください。"
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "Chrome、Firefox、Safariでプッシュ通知を有効または無効にするには？",

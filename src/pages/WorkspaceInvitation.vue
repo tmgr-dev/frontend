@@ -14,13 +14,31 @@
 						</p>
 					</div>
 
+					<!-- Guest State -->
+					<div v-else-if="isGuest" class="flex flex-col gap-3">
+						<Button type="button" @click="goTo('Register')">
+							{{ $t('auth.register.submit') }}
+						</Button>
+						<Button type="button" variant="outline" @click="goTo('Login')">
+							{{ $t('auth.common.signIn') }}
+						</Button>
+					</div>
+
 					<!-- Error State -->
 					<div v-else-if="error">
 						<p class="mb-4 text-status-fix-fg">{{ error }}</p>
 						<a
 							href="#"
+							v-if="needsVerification"
+							@click.prevent="load()"
+							class="text-brand hover:underline"
+						>
+							{{ $t('auth.common.tryAgain') }}
+						</a>
+						<a
+							href="#"
 							@click="loginWithCorrectEmail()"
-							v-if="!user || errorCode === 403"
+							v-else-if="!user || errorCode === 403"
 							class="text-brand hover:underline"
 						>
 							{{ $t('workspace.workspaceInvitation.loginCorrect') }}
@@ -58,7 +76,6 @@
 </template>
 
 <script>
-	import { t } from '@/i18n';
 	import { getUser } from '@/actions/tmgr/user';
 	import {
 		acceptWorkspaceInvitation,
@@ -67,6 +84,7 @@
 	} from '@/actions/tmgr/workspaces';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { t } from '@/i18n';
 	import { requestCache } from '@/utils/requestCache';
 
 	export default {
@@ -82,14 +100,18 @@
 			workspaceName: '',
 			workspaceId: null,
 			user: null,
+			isGuest: false,
 		}),
 
 		computed: {
 			workspaceInvitationToken() {
-				localStorage.setItem('workspace.invitation', this.$route.params.token);
 				return this.$route.params.token;
 			},
+			needsVerification() {
+				return this.errorCode === 403 && /verify your email/i.test(this.error);
+			},
 			invitationSubtitle() {
+				if (this.isGuest) return t('workspace.workspaceInvitation.guestHint');
 				return this.workspaceName
 					? t('workspace.workspaceInvitation.invitedTo', {
 							name: this.workspaceName,
@@ -100,25 +122,54 @@
 
 		async mounted() {
 			setDocumentTitle(t('workspace.workspaceInvitation.title'));
-			try {
-				this.user = await getUser();
-				const data = await workspaceInvitationInfo(
-					this.workspaceInvitationToken,
-				);
-				this.workspaceName = data.workspace.name;
-				this.workspaceId = data.workspace.id;
+			localStorage.setItem(
+				'workspace.invitation',
+				this.workspaceInvitationToken,
+			);
+			if (!this.$store.getters.isLoggedIn) {
+				this.isGuest = true;
 				this.loading = false;
-			} catch (e) {
-				console.log(e);
-				this.error =
-					e.response?.data?.message ||
-					t('workspace.workspaceInvitation.loadFailed');
-				this.errorCode = e.response?.status;
-				this.loading = false;
+				return;
 			}
+			await this.load();
 		},
 
 		methods: {
+			async load() {
+				this.loading = true;
+				this.error = null;
+				this.errorCode = null;
+				try {
+					this.user = await getUser();
+					const data = await workspaceInvitationInfo(
+						this.workspaceInvitationToken,
+					);
+					this.workspaceName = data.workspace.name;
+					this.workspaceId = data.workspace.id;
+					if (data.already_member) {
+						localStorage.removeItem('workspace.invitation');
+						this.accepted = true;
+					}
+					this.loading = false;
+				} catch (e) {
+					console.log(e);
+					this.error =
+						e.response?.data?.message ||
+						t('workspace.workspaceInvitation.loadFailed');
+					this.errorCode = e.response?.status;
+					this.forgetSettledInvitation(e);
+					this.loading = false;
+				}
+			},
+			forgetSettledInvitation(e) {
+				const message = e.response?.data?.message ?? '';
+				if (e.response?.status !== 403 || /already/i.test(message)) {
+					localStorage.removeItem('workspace.invitation');
+				}
+			},
+			goTo(name) {
+				this.$router.push({ name });
+			},
 			async loginWithCorrectEmail() {
 				await this.$store.dispatch('logout');
 				this.$router.push({ name: 'Login' });
@@ -148,6 +199,7 @@
 					this.error =
 						e.response?.data?.message ||
 						t('workspace.workspaceInvitation.acceptFailed');
+					this.forgetSettledInvitation(e);
 				} finally {
 					this.loading = false;
 				}

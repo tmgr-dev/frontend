@@ -233,7 +233,8 @@
 		"accept": "Przyjmij zaproszenie",
 		"invitedTo": "Zaproszono Cię do przestrzeni: „{name}”",
 		"loadFailed": "Nie udało się wczytać szczegółów zaproszenia",
-		"acceptFailed": "Nie udało się przyjąć zaproszenia"
+		"acceptFailed": "Nie udało się przyjąć zaproszenia",
+		"guestHint": "Zaloguj się lub utwórz konto, aby zaakceptować to zaproszenie."
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "Jak włączyć lub wyłączyć powiadomienia push w przeglądarkach Chrome, Firefox i Safari?",

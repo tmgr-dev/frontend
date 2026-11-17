@@ -233,7 +233,8 @@
 		"accept": "Aceptar invitación",
 		"invitedTo": "Te han invitado a unirte a: «{name}»",
 		"loadFailed": "No se pudieron cargar los detalles de la invitación",
-		"acceptFailed": "No se pudo aceptar la invitación"
+		"acceptFailed": "No se pudo aceptar la invitación",
+		"guestHint": "Inicia sesión o crea una cuenta para aceptar esta invitación."
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "¿Cómo activar o desactivar las notificaciones push en Chrome, Firefox y Safari?",

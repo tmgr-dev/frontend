@@ -192,3 +192,41 @@ describe('router guard without a cloud account', () => {
 		expect(next).toHaveBeenCalledWith({ name: 'CurrentTasksList' });
 	});
 });
+
+describe('workspace invitation link', () => {
+	const inviteMeta = () => {
+		const source = readFileSync(require.resolve('../routes.js'), 'utf8');
+		const block = source.match(
+			/path: '\/workspaces\/invitations\/:token',[\s\S]*?meta: \{([\s\S]*?)\},\s*name: 'WorkspaceInvitation'/,
+		);
+		return {
+			allowedGuests: /allowedGuests: true/.test(block?.[1] ?? ''),
+			notOnlyForLoggedUsers: /notOnlyForLoggedUsers: true/.test(
+				block?.[1] ?? '',
+			),
+		};
+	};
+
+	it.each([
+		['a guest', localStore({ canUseApp: false, accountMode: 'none' })],
+		[
+			'a signed-in user',
+			localStore({ isLoggedIn: true, accountMode: 'cloud' }),
+		],
+	])('opens the invitation page for %s', async (_label, store) => {
+		const next = jest.fn();
+
+		await loadGuard(store, false)(
+			route(
+				'WorkspaceInvitation',
+				'/workspaces/invitations/abc',
+				inviteMeta(),
+				{ token: 'abc' },
+			),
+			{},
+			next,
+		);
+
+		expect(next).toHaveBeenCalledWith();
+	});
+});

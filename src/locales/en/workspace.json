@@ -233,7 +233,8 @@
 		"accept": "Accept Invitation",
 		"invitedTo": "You have been invited to join: \"{name}\"",
 		"loadFailed": "Failed to load invitation details",
-		"acceptFailed": "Failed to accept invitation"
+		"acceptFailed": "Failed to accept invitation",
+		"guestHint": "Log in or create an account to accept this invitation."
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "How to enable or disable Push Notifications on Chrome, Firefox & Safari Browser?",

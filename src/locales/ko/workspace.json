@@ -233,7 +233,8 @@
 		"accept": "초대 수락",
 		"invitedTo": "\"{name}\"에 초대되었어요",
 		"loadFailed": "초대 정보를 불러오지 못했어요",
-		"acceptFailed": "초대를 수락하지 못했어요"
+		"acceptFailed": "초대를 수락하지 못했어요",
+		"guestHint": "이 초대를 수락하려면 로그인하거나 계정을 만드세요."
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "Chrome, Firefox, Safari 브라우저에서 푸시 알림을 켜거나 끄는 방법",

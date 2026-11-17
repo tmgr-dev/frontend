@@ -116,7 +116,10 @@
 			}
 			await getUser();
 
-			const returnPath = takeReturnPath();
+			const pendingInvitation = localStorage.getItem('workspace.invitation');
+			const returnPath = pendingInvitation
+				? { name: 'WorkspaceInvitation', params: { token: pendingInvitation } }
+				: takeReturnPath();
 			if (returnPath) {
 				await router.push(returnPath);
 				store.commit('rerenderApp');

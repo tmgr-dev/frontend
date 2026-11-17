@@ -671,6 +671,8 @@ const routes = [
 		path: '/workspaces/invitations/:token',
 		component: () => import('@/pages/WorkspaceInvitation.vue'),
 		meta: {
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
 			transitionName: 'fade-fast',
 			navbarHidden: true,
 		},

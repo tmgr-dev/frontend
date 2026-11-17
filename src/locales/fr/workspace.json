@@ -233,7 +233,8 @@
 		"accept": "Accepter l'invitation",
 		"invitedTo": "Vous avez été invité à rejoindre : « {name} »",
 		"loadFailed": "Échec du chargement des détails de l'invitation",
-		"acceptFailed": "Échec de l'acceptation de l'invitation"
+		"acceptFailed": "Échec de l'acceptation de l'invitation",
+		"guestHint": "Connectez-vous ou créez un compte pour accepter cette invitation."
 	},
 	"pushNotificationsEnableGuide": {
 		"title": "Comment activer ou désactiver les notifications push sur Chrome, Firefox et Safari ?",
