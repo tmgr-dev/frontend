@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.161 — 2026-11-17
+
+- Plugins: while developer mode is on, the log lines of a folder plugin (its `tmgr.log` calls, thrown errors and refused calls) are also written to the app log as `[plugin] <id> [<level>] <message>`, so `tmgr-plugin dev` shows them in the terminal.
+
 ## 0.9.160 — 2026-11-16
 
 - Switching an agent in the desktop now checks the target agent's login first. If Claude Code or Codex is not logged in for the runner, the switch is refused with the same message as `tmgr runner switch-agent`, before the confirmation and before the old session is stopped. With an older runner that cannot check, the switch behaves as before.
