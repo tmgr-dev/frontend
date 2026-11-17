@@ -163,7 +163,10 @@
 			},
 			forgetSettledInvitation(e) {
 				const message = e.response?.data?.message ?? '';
-				if (e.response?.status !== 403 || /already/i.test(message)) {
+				if (
+					[404, 422].includes(e.response?.status) ||
+					/already/i.test(message)
+				) {
 					localStorage.removeItem('workspace.invitation');
 				}
 			},
