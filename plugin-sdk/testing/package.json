@@ -1,5 +1,5 @@
 {
-	"name": "tmgr-plugin-testing",
+	"name": "@tmgr/plugin-testing",
 	"version": "1.0.0",
 	"description": "Runs a TMGR plugin's main.js in a real QuickJS sandbox, with a mock of the app's broker.",
 	"main": "index.js",
@@ -30,5 +30,8 @@
 		"@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
 		"marked": "^18.0.12",
 		"quickjs-emscripten-core": "^0.32.0"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }

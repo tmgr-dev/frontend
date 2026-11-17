@@ -6,9 +6,9 @@ const cliDir = join(__dirname, '../../../plugin-sdk/cli');
 const testDir = join(cliDir, 'test');
 
 beforeAll(() => {
-	const link = join(cliDir, 'node_modules', 'tmgr-plugin-testing');
+	const link = join(cliDir, 'node_modules', '@tmgr', 'plugin-testing');
 	if (!existsSync(link)) {
-		mkdirSync(join(cliDir, 'node_modules'), { recursive: true });
+		mkdirSync(join(cliDir, 'node_modules', '@tmgr'), { recursive: true });
 		symlinkSync(join(cliDir, '..', 'testing'), link, 'dir');
 	}
 });

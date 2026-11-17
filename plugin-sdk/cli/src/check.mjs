@@ -4,11 +4,11 @@ import { validate } from '../lib/validate.mjs';
 
 const loadTestHost = async () => {
   try {
-    return (await import('tmgr-plugin-testing')).createTestHost;
+    return (await import('@tmgr/plugin-testing')).createTestHost;
   } catch (error) {
     if (error.code === 'ERR_MODULE_NOT_FOUND') {
       throw new Error(
-        'tmgr-plugin-testing is not installed; run `npm install tmgr-plugin-testing` next to tmgr-plugin',
+        '@tmgr/plugin-testing is not installed; run `npm install @tmgr/plugin-testing` next to @tmgr/plugin',
       );
     }
     throw error;

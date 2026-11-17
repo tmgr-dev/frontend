@@ -1,10 +1,10 @@
-# tmgr-plugin
+# @tmgr/plugin
 
 Command line for TMGR desktop plugins: lint, bundle, smoke-test in the sandbox, and install into the
 desktop app while you edit. Node 22.12 or newer.
 
 ```bash
-npm install --save-dev tmgr-plugin
+npm install --save-dev @tmgr/plugin
 npx tmgr-plugin validate [dir] [--json] [--strict]
 npx tmgr-plugin build [dir]
 npx tmgr-plugin check [dir]
@@ -16,7 +16,7 @@ npx tmgr-plugin dev [dir] [--once]
 - `validate` checks `manifest.json`, the files it references and the permissions the code uses, with the
   same rules as the app. `--strict` fails on warnings, `--json` prints one machine-readable report.
 - `build` writes `dist/tmgr-plugin.json`, the one file a GitHub release carries.
-- `check` runs `validate`, loads `main.js` in the QuickJS test host (`tmgr-plugin-testing`), runs every
+- `check` runs `validate`, loads `main.js` in the QuickJS test host (`@tmgr/plugin-testing`), runs every
   command in `contributes.commands` with `null` arguments (task menu commands are clicked on a sample
   task), renders every view without a `ui` page, and prints thrown errors, `console` output and the
   permission groups. It exits 1 if anything threw.

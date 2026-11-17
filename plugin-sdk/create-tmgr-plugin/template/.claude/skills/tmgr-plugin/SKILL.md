@@ -21,13 +21,13 @@ References:
 
 ## The loop
 
-1. Scaffold: `npm create tmgr-plugin@latest publisher.name [dir]`. If the npm packages are not published yet, run
+1. Scaffold: `npm create @tmgr/plugin@latest publisher.name [dir]`. If the npm packages are not published yet, run
    `node plugin-sdk/create-tmgr-plugin/bin/create-tmgr-plugin.mjs <id> <dir>` from a checkout of
    https://github.com/tmgr-dev/frontend instead of copying the template by hand. The scaffold's `devDependencies`
-   (`tmgr-plugin`, `tmgr-plugin-testing`) still come from npm, so tell the user that `npm install` needs them published.
+   (`@tmgr/plugin`, `@tmgr/plugin-testing`) still come from npm, so tell the user that `npm install` needs them published.
 2. Edit `manifest.json`: `id` is `publisher.name`, command ids start with the id, `permissions` lists what you call.
    Then edit `main.js`, and `ui/page.html` if you add a page.
-3. `npm test`: runs `main.test.mjs` against `createTestHost` from `tmgr-plugin-testing`. It uses the app's own broker,
+3. `npm test`: runs `main.test.mjs` against `createTestHost` from `@tmgr/plugin-testing`. It uses the app's own broker,
    manifest rules and UI sanitizer over an in-memory mock of TMGR data. Write or update a test for each behaviour you change.
 4. `npm run validate`: checks the manifest and files. It reports permissions used but not declared, and declared but
    never used. `--strict` turns warnings into a failure.

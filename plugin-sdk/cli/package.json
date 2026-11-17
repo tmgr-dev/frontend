@@ -1,5 +1,5 @@
 {
-	"name": "tmgr-plugin",
+	"name": "@tmgr/plugin",
 	"version": "1.0.0",
 	"description": "Validate, build, check and live-install TMGR desktop plugins.",
 	"license": "MIT",
@@ -27,6 +27,9 @@
 		"plugin"
 	],
 	"dependencies": {
-		"tmgr-plugin-testing": "^1.0.0"
+		"@tmgr/plugin-testing": "^1.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }

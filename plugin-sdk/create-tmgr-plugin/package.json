@@ -1,7 +1,7 @@
 {
-	"name": "create-tmgr-plugin",
+	"name": "@tmgr/create-plugin",
 	"version": "1.0.0",
-	"description": "Scaffolds a TMGR plugin: npm create tmgr-plugin@latest publisher.name [dir]",
+	"description": "Scaffolds a TMGR plugin: npm create @tmgr/plugin@latest publisher.name [dir]",
 	"license": "MIT",
 	"type": "module",
 	"bin": {
@@ -30,5 +30,8 @@
 		"type": "git",
 		"url": "git+https://github.com/tmgr-dev/frontend.git",
 		"directory": "plugin-sdk/create-tmgr-plugin"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }

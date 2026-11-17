@@ -9,6 +9,6 @@
 		"test": "node --test main.test.mjs"
 	},
 	"devDependencies": {
-		"tmgr-plugin-testing": "file:../testing"
+		"@tmgr/plugin-testing": "file:../testing"
 	}
 }

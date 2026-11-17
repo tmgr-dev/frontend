@@ -23,12 +23,12 @@ turns them on for everyone. Web and mobile do not run plugins.
 ## The loop an agent should follow
 
 1. Scaffold: clone https://github.com/tmgr-dev/frontend and copy `plugin-sdk/template/` to a new folder
-   next to `plugin-sdk/testing` (until `tmgr-plugin-testing` is published on npm, the template depends on
+   next to `plugin-sdk/testing` (until `@tmgr/plugin-testing` is published on npm, the template depends on
    it by the path `file:../testing`).
 2. Edit `manifest.json` (id `publisher.name`, command ids start with the plugin id, `engines.tmgr`
    `^1.13` to use the newest nodes) and `main.js`.
 3. Test without the app: `npm install && npm test` runs `main.test.mjs` against `createTestHost` from
-   `tmgr-plugin-testing`. It uses the app's own broker, manifest rules and UI sanitizer over an
+   `@tmgr/plugin-testing`. It uses the app's own broker, manifest rules and UI sanitizer over an
    in-memory mock of TMGR data, so permission errors and bad parameters show up exactly as in the app.
 4. Lint: `npm run validate` (`node validate.mjs .`) checks the manifest and files, and reports
    permissions used but not declared and declared but never used, for `main.js` and `ui/*.html`.

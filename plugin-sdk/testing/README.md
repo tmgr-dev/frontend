@@ -1,11 +1,11 @@
-# tmgr-plugin-testing
+# @tmgr/plugin-testing
 
 Runs a TMGR plugin's `main.js` in a real QuickJS sandbox, wired to the app's own broker (permission
 checks, parameter validation) and manifest validation — backed by an in-memory mock of TMGR's data
 instead of the real API.
 
 ```js
-const { createTestHost } = require('tmgr-plugin-testing');
+const { createTestHost } = require('@tmgr/plugin-testing');
 const manifest = require('./manifest.json');
 
 const host = await createTestHost({
@@ -49,7 +49,7 @@ taskId)` refuses like the app does (`NOT_DECLARED` for a command that is not one
 ## Why CommonJS
 
 This package is plain `require()`-able CommonJS, not ESM. A `node:test` file (an ESM `.mjs`, as in
-`plugin-sdk/template/main.test.mjs`) can still `import { createTestHost } from 'tmgr-plugin-testing'`
+`plugin-sdk/template/main.test.mjs`) can still `import { createTestHost } from '@tmgr/plugin-testing'`
 directly — Node resolves a CommonJS package's named exports for ESM importers on its own. CommonJS was
 chosen because the TMGR app's own Jest suite (which loads this same package for its kitchen-sink example
 test) cannot load real ESM modules without `--experimental-vm-modules`; either way, a plugin author needs

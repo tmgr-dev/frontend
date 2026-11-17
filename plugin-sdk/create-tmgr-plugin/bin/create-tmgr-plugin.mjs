@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Scaffolds a TMGR plugin from the bundled template:  npm create tmgr-plugin@latest publisher.name [dir]
+// Scaffolds a TMGR plugin from the bundled template:  npm create @tmgr/plugin@latest publisher.name [dir]
 import {
   existsSync,
   mkdirSync,
@@ -57,8 +57,8 @@ const packageJson = (text, { publisher, name }) => {
     test: 'node --test main.test.mjs',
   };
   pkg.devDependencies = {
-    'tmgr-plugin-testing': '^1.0.0',
-    'tmgr-plugin': '^1.0.0',
+    '@tmgr/plugin-testing': '^1.0.0',
+    '@tmgr/plugin': '^1.0.0',
   };
   return `${JSON.stringify(pkg, null, '\t')}\n`;
 };
@@ -121,7 +121,7 @@ const isMain =
 if (isMain) {
   const [id, dirArg] = process.argv.slice(2);
   if (!id) {
-    console.error('usage: npm create tmgr-plugin@latest publisher.name [dir]');
+    console.error('usage: npm create @tmgr/plugin@latest publisher.name [dir]');
     process.exit(1);
   }
   try {

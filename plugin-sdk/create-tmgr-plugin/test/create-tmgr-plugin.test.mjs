@@ -71,8 +71,8 @@ test('the generated package.json uses published ranges, not file paths', () => {
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
   assert.equal(pkg.name, 'acme-tools-tmgr-plugin');
   assert.deepEqual(pkg.devDependencies, {
-    'tmgr-plugin-testing': '^1.0.0',
-    'tmgr-plugin': '^1.0.0',
+    '@tmgr/plugin-testing': '^1.0.0',
+    '@tmgr/plugin': '^1.0.0',
   });
   assert.deepEqual(pkg.scripts, {
     validate: 'tmgr-plugin validate .',
