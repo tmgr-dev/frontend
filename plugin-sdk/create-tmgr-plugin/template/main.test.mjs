@@ -1,7 +1,7 @@
+import { createTestHost } from '@tmgr/plugin-testing';
 import { deepStrictEqual, strictEqual } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { createTestHost } from '@tmgr/plugin-testing';
 
 const manifest = JSON.parse(
   readFileSync(new URL('./manifest.json', import.meta.url), 'utf8'),
