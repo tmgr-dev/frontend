@@ -37,6 +37,7 @@ import {
 } from './cloud';
 import { cloudPluginClient, type MintedToken } from './cloudClient';
 import { createDataApi } from './dataApi';
+import { createDevLogMirror } from './devLogMirror';
 import { stepDevWatch, type DevWatchState } from './devReload';
 import { encodeFile } from './fileData';
 import { folderPackagesFrom, type FolderPlugin } from './folder';
@@ -478,8 +479,23 @@ export const installPlugins = async (
 	memberId = () => Number(store.state.user?.id ?? 0);
 	pluginState.safeMode = safeModeFlag || safeModeStored();
 	void syncStoredSafeMode(safeModeStored(), safeModeFlag);
+	let tauriLog: Promise<typeof import('@tauri-apps/plugin-log') | null> | null =
+		null;
+	const mirrorPluginLog = createDevLogMirror({
+		enabled: (id) =>
+			pluginState.plugins[id]?.source === 'folder' && devModeStored(),
+		write: (level, line) => {
+			tauriLog ??= import('@tauri-apps/plugin-log').catch(() => null);
+			void tauriLog.then((m) =>
+				m?.[level === 'info' ? 'info' : level === 'warn' ? 'warn' : 'error'](
+					line,
+				).catch(() => undefined),
+			);
+		},
+	});
 	const host = createPluginHost({
 		state: pluginState,
+		onLog: mirrorPluginLog,
 		packages: async () => {
 			const builtins = builtinPackages();
 			const installed = (await installedPackages()).filter(

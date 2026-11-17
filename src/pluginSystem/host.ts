@@ -216,6 +216,8 @@ export interface PluginHostDeps {
 	revokePluginTokens?: (pluginId: string) => Promise<void>;
 	/** False in a tab that is not the one running the plugins' start-up events; absent means always. */
 	isLeader?: () => boolean;
+	/** Called for every line added to a plugin's in-app log. */
+	onLog?: (pluginId: string, line: PluginLogLine) => void;
 	now?: () => number;
 	cpuMs?: number;
 	wallMs?: number;
@@ -437,6 +439,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		entry.log.push(line);
 		if (entry.log.length > LOG_LIMIT)
 			entry.log.splice(0, entry.log.length - LOG_LIMIT);
+		deps.onLog?.(pluginId, line);
 		return line;
 	};
 

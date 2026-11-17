@@ -36,7 +36,7 @@ turns them on for everyone. Web and mobile do not run plugins.
    what enforces permissions.
 5. Try it in the app: copy `manifest.json`, `main.js` and `ui/*.html` to `~/.tmgr.dev/plugins/<folder>/`
    (files of at most 1 MB, at most 10 pages), turn on developer mode and switch the plugin on. The app
-   reloads it when the files change. A start failure is written to the app log as `[plugin] <id> ...`.
+   reloads it when the files change. A start failure is written to the app log as `[plugin] <id> ...`. While developer mode is on, the log lines of a folder plugin (your `tmgr.log` calls, thrown errors and refused calls) are written there too, as `[plugin] <id> [<level>] <message>`: one line each, cut at 500 characters, at most about 10 lines a second. `tmgr-plugin dev` prints them in the terminal.
 6. Publish (public plugins): sign and tag, see the template README.
 
 ## manifest.json

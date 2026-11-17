@@ -2869,3 +2869,30 @@ describe('task menu items', () => {
 		without.host.dispose();
 	});
 });
+
+it('passes every plugin log line to onLog', async () => {
+	const seen: string[] = [];
+	const { host } = setup(
+		[
+			pkg(
+				'tmgr.denied',
+				`tmgr.commands.register('tmgr.denied.go', () => tmgr.tasks.list({}).catch(() => null));`,
+				[],
+				{ commands: [{ id: 'tmgr.denied.go', title: 'Go' }] },
+			),
+		],
+		{},
+		{},
+		{},
+		{
+			onLog: (id, line) =>
+				void seen.push(`${id} ${line.level} ${line.message}`),
+		},
+	);
+	await host.load();
+	await host.activate(LOCAL);
+	await host.runCommand('tmgr.denied', 'tmgr.denied.go');
+	expect(seen).toContain(
+		'tmgr.denied warn tasks.list: PERMISSION_DENIED tasks.list needs tasks:read',
+	);
+});
