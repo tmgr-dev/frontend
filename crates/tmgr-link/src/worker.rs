@@ -7,9 +7,11 @@ use crate::sha256_hex;
 use crate::store::{Paths, Store};
 use crate::taskref::{LocalRefs, TaskResolver};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::net::IpAddr;
 use tmgr_core::error::Result;
+use tmgr_ipc::api::SessionInfo;
 
 pub const MAX_REQUESTS: u32 = 256;
 pub const REQUESTS_PER_MINUTE: u32 = 120;
@@ -35,9 +37,27 @@ impl Default for Limits {
 pub type Connector<'a> = &'a (dyn Fn(Option<std::time::Instant>) -> std::result::Result<Box<dyn Backend>, BackendError>
          + 'a);
 
+pub struct RunTitle {
+    pub text: String,
+    pub auto: bool,
+}
+
+pub trait Titles {
+    fn titles(&self, sessions: &[&SessionInfo]) -> HashMap<String, RunTitle>;
+}
+
+pub struct NoTitles;
+
+impl Titles for NoTitles {
+    fn titles(&self, _: &[&SessionInfo]) -> HashMap<String, RunTitle> {
+        HashMap::new()
+    }
+}
+
 pub struct Runtime<'a> {
     pub connect: Connector<'a>,
     pub resolver: &'a dyn TaskResolver,
+    pub titles: &'a dyn Titles,
 }
 
 fn no_runner(
@@ -51,6 +71,7 @@ impl Runtime<'static> {
         Runtime {
             connect: &no_runner,
             resolver: &LocalRefs,
+            titles: &NoTitles,
         }
     }
 }

@@ -2,7 +2,10 @@ use super::attach_consent::Reads;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
-use tmgr_ipc::api::SessionInfo;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use tmgr_ipc::api::{SessionInfo, StateKind};
+use tmgr_link::worker::{RunTitle, Titles};
 use tmgr_runner::attach::{
     locate, locate_unsandboxed_claude, AgentTitle, Format, Source, TitleScan,
 };
@@ -79,6 +82,120 @@ pub(super) fn titler(
             return;
         }
     }
+}
+
+const FOLLOWER_JOBS: usize = 32;
+const FOLLOWER_BUDGET: Duration = Duration::from_millis(1500);
+const FOLLOWER_EVERY: Duration = Duration::from_secs(5);
+
+#[derive(Default)]
+struct Scanned {
+    scans: HashMap<String, TitleScan>,
+    found: HashMap<String, (Instant, Option<RunTitle>)>,
+}
+
+pub(crate) struct FollowerTitles {
+    homes: PathBuf,
+    dir: PathBuf,
+    state: Mutex<Scanned>,
+}
+
+impl FollowerTitles {
+    pub(crate) fn new() -> Option<FollowerTitles> {
+        let cfg = super::runner_config().ok()?;
+        Some(FollowerTitles {
+            homes: cfg.homes,
+            dir: cfg.dir,
+            state: Mutex::new(Scanned::default()),
+        })
+    }
+}
+
+impl Titles for FollowerTitles {
+    fn titles(&self, sessions: &[&SessionInfo]) -> HashMap<String, RunTitle> {
+        let Ok(mut state) = self.state.lock() else {
+            return HashMap::new();
+        };
+        follower_titles(
+            sessions,
+            &Where {
+                homes: &self.homes,
+                dir: &self.dir,
+                home: super::attach_export::home_dir(),
+            },
+            Reads::current(),
+            &mut state,
+            Instant::now(),
+        )
+    }
+}
+
+struct Where<'a> {
+    homes: &'a Path,
+    dir: &'a Path,
+    home: Option<PathBuf>,
+}
+
+fn follower_titles(
+    sessions: &[&SessionInfo],
+    at: &Where,
+    reads: Reads,
+    state: &mut Scanned,
+    now: Instant,
+) -> HashMap<String, RunTitle> {
+    let ids: HashSet<&str> = sessions.iter().map(|s| s.id.as_str()).collect();
+    state.scans.retain(|id, _| ids.contains(id.as_str()));
+    state.found.retain(|id, _| ids.contains(id.as_str()));
+    let mut order: Vec<&&SessionInfo> = sessions.iter().collect();
+    order.sort_by_key(|s| {
+        (
+            s.state.kind == StateKind::Exited,
+            std::cmp::Reverse(s.created_ms),
+        )
+    });
+    let mut out = HashMap::new();
+    let mut jobs = 0;
+    for s in order {
+        let exited = s.state.kind == StateKind::Exited;
+        let Some(src) = agent_src(s).filter(|src| s.name == src.default_name) else {
+            continue;
+        };
+        if !reads.allows(src.format) {
+            state.scans.remove(&s.id);
+            state.found.remove(&s.id);
+            continue;
+        }
+        let cached = state.found.get(&s.id);
+        let fresh = cached.is_some_and(|(when, _)| {
+            exited || now.saturating_duration_since(*when) < FOLLOWER_EVERY
+        });
+        if !fresh && jobs < FOLLOWER_JOBS && now.elapsed() < FOLLOWER_BUDGET {
+            jobs += 1;
+            let job = TitleJob {
+                pid: if exited { 0 } else { src.pid },
+                sandbox_home: at.homes.join(&s.id),
+                log: at.dir.join("sessions").join(&s.id).join("output.log"),
+                real_home: title_real_home(&src, at.home.clone()),
+                id: s.id.clone(),
+                src,
+            };
+            let title = title_for(&job, &mut state.scans, reads).map(|t| RunTitle {
+                text: sanitize_text(&t.text).chars().take(64).collect(),
+                auto: t.auto,
+            });
+            state.found.insert(s.id.clone(), (now, title));
+        }
+        if let Some((_, Some(t))) = state.found.get(&s.id) {
+            out.insert(
+                s.id.clone(),
+                RunTitle {
+                    text: t.text.clone(),
+                    auto: t.auto,
+                },
+            );
+        }
+    }
+    out
 }
 
 fn title_for(
@@ -655,5 +772,83 @@ mod tests {
         assert_eq!(calls.get(), 2);
         assert_eq!(got[0].1.as_ref().map(|t| t.text.as_str()), Some("Auto"));
         assert!(got[1].1.is_none());
+    }
+
+    fn listed(id: &str, name: &str, child_pid: u32) -> SessionInfo {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "name": name, "argv": ["claude"], "cwd": "/work/app",
+            "profile": "claude-code", "cols": 80, "rows": 24, "created_ms": 1,
+            "shim_pid": 1, "child_pid": child_pid,
+            "state": {"kind": "working", "since_ms": 1}
+        }))
+        .unwrap()
+    }
+
+    fn plant_sandbox(dir: &Path, id: &str, pid: u32, title: &str) {
+        let home = dir.join("homes").join(id);
+        let proj = home.join(".claude/projects/-work-app");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(home.join(".claude/sessions")).unwrap();
+        std::fs::write(
+            home.join(format!(".claude/sessions/{pid}.json")),
+            format!("{{\"pid\":{pid},\"sessionId\":\"{U}\"}}"),
+        )
+        .unwrap();
+        std::fs::write(
+            proj.join(format!("{U}.jsonl")),
+            format!("{{\"type\":\"custom-title\",\"customTitle\":\"{title}\"}}\n"),
+        )
+        .unwrap();
+    }
+
+    fn run_follower(
+        dir: &Path,
+        sessions: &[&SessionInfo],
+        reads: Reads,
+        state: &mut Scanned,
+    ) -> HashMap<String, RunTitle> {
+        let at = Where {
+            homes: &dir.join("homes"),
+            dir,
+            home: None,
+        };
+        follower_titles(sessions, &at, reads, state, Instant::now())
+    }
+
+    #[test]
+    fn a_follower_titles_only_default_named_sessions_and_honours_its_consent() {
+        let dir = tempfile::tempdir().unwrap();
+        plant_sandbox(dir.path(), "s_aaaaaaaaaa", 4242, "Fix login");
+        plant_sandbox(dir.path(), "s_bbbbbbbbbb", 4343, "Hidden");
+        let plain = listed("s_aaaaaaaaaa", "claude", 4242);
+        let renamed = listed("s_bbbbbbbbbb", "my name", 4343);
+        let mut state = Scanned::default();
+        let got = run_follower(dir.path(), &[&plain, &renamed], ALL, &mut state);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got["s_aaaaaaaaaa"].text, "Fix login");
+        assert!(!got["s_aaaaaaaaaa"].auto);
+        let off = Reads {
+            claude: false,
+            codex: true,
+        };
+        let got = run_follower(dir.path(), &[&plain, &renamed], off, &mut state);
+        assert!(got.is_empty());
+        assert!(state.scans.is_empty() && state.found.is_empty());
+    }
+
+    #[test]
+    fn a_follower_title_is_sanitised_capped_and_rescanned_not_every_poll() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = "x".repeat(200);
+        plant_sandbox(dir.path(), "s_aaaaaaaaaa", 4242, &long);
+        let plain = listed("s_aaaaaaaaaa", "claude", 4242);
+        let mut state = Scanned::default();
+        let got = run_follower(dir.path(), &[&plain], ALL, &mut state);
+        assert!(got["s_aaaaaaaaaa"].text.chars().count() <= 64);
+        plant_sandbox(dir.path(), "s_aaaaaaaaaa", 4242, "Changed");
+        let again = run_follower(dir.path(), &[&plain], ALL, &mut state);
+        assert_eq!(again["s_aaaaaaaaaa"].text, got["s_aaaaaaaaaa"].text);
+        let none = run_follower(dir.path(), &[], ALL, &mut state);
+        assert!(none.is_empty() && state.found.is_empty());
     }
 }

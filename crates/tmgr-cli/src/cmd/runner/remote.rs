@@ -31,6 +31,10 @@ pub(super) struct RunView {
     pub task: Option<String>,
     #[serde(default)]
     pub via: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub title_auto: bool,
 }
 
 impl RunView {

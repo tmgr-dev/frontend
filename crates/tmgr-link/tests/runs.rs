@@ -392,12 +392,24 @@ fn frames(items: &[Value]) -> Vec<u8> {
 }
 
 fn session(w: &World, name: &str, enr: &str, fake: &Fake, items: &[Value]) -> Vec<Value> {
+    session_with(w, name, enr, fake, items, &tmgr_link::worker::NoTitles)
+}
+
+fn session_with(
+    w: &World,
+    name: &str,
+    enr: &str,
+    fake: &Fake,
+    items: &[Value],
+    titles: &dyn tmgr_link::worker::Titles,
+) -> Vec<Value> {
     let mut out = Vec::new();
     {
         let connect = |_d: Option<Instant>| Ok(Box::new(fake.clone()) as Box<dyn Backend>);
         let rt = Runtime {
             connect: &connect,
             resolver: &LocalRefs,
+            titles,
         };
         let mut chan = Framed::new(Cursor::new(frames(items)), &mut out);
         let _ = serve_with(
@@ -736,6 +748,7 @@ fn live(w: &World, name: &'static str, enr: &'static str, fake: &Fake) -> Live {
         let rt = Runtime {
             connect: &connect,
             resolver: &LocalRefs,
+            titles: &tmgr_link::worker::NoTitles,
         };
         let mut chan = Timed::spawn(
             w_in_r,
@@ -1543,6 +1556,7 @@ fn a_slow_handshake_and_a_slow_list_still_answer_inside_the_deadline() {
         let rt = Runtime {
             connect: &connect,
             resolver: &LocalRefs,
+            titles: &tmgr_link::worker::NoTitles,
         };
         let mut chan = Framed::new(Cursor::new(frames(&[create(&w, json!({}))])), &mut out);
         let _ = serve_with(
@@ -2348,4 +2362,64 @@ fn an_owned_attach_audit_has_no_remote_label() {
         .find(|e| e["method"] == "attach.open" && e["decision"] == "accepted")
         .unwrap();
     assert!(open["args"].get("via").is_none());
+}
+
+struct FixedTitles(String, String, bool);
+
+impl tmgr_link::worker::Titles for FixedTitles {
+    fn titles(
+        &self,
+        sessions: &[&SessionInfo],
+    ) -> std::collections::HashMap<String, tmgr_link::worker::RunTitle> {
+        sessions
+            .iter()
+            .filter(|s| s.id == self.0)
+            .map(|s| {
+                (
+                    s.id.clone(),
+                    tmgr_link::worker::RunTitle {
+                        text: self.1.clone(),
+                        auto: self.2,
+                    },
+                )
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn a_listed_run_carries_the_title_only_when_the_follower_has_one() {
+    let w = world();
+    let fake = Fake::default();
+    let made = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let id = run_id(&made[0]);
+    let list = [json!({"id":1,"method":"runs.list"})];
+    let plain = session(&w, "laptop", E1, &fake, &list);
+    assert!(plain[0]["result"]["runs"][0].get("title").is_none());
+    assert!(plain[0]["result"]["runs"][0].get("title_auto").is_none());
+    let long = format!("Fix login\u{1b}[31m {}", "x".repeat(100));
+    let titled = session_with(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &list,
+        &FixedTitles(id.clone(), long, true),
+    );
+    let run = &titled[0]["result"]["runs"][0];
+    let title = run["title"].as_str().unwrap();
+    assert!(title.starts_with("Fix login"), "{title}");
+    assert!(!title.contains('\u{1b}'));
+    assert!(title.chars().count() <= 64);
+    assert_eq!(run["title_auto"], json!(true));
+    let manual = session_with(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &list,
+        &FixedTitles(id, "Mine".into(), false),
+    );
+    assert_eq!(manual[0]["result"]["runs"][0]["title"], "Mine");
+    assert!(manual[0]["result"]["runs"][0].get("title_auto").is_none());
 }

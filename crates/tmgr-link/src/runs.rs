@@ -5,7 +5,7 @@ use crate::registry::{self, Attached};
 use crate::runner::{AttachRecv, AttachSession, Backend, BackendError};
 use crate::scope::{self, canonical_repo, is_bypass_session, Scope};
 use crate::taskref::format_ref;
-use crate::worker::{say, Conn, State, Step};
+use crate::worker::{say, Conn, RunTitle, State, Step};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -103,7 +103,7 @@ fn clean_line(s: &str, max: usize) -> String {
     attach::clean_text(&tmgr_core::text::truncate_chars(s, max).0)
 }
 
-fn view(s: &SessionInfo, rec: Option<&RunRecord>) -> Value {
+fn view(s: &SessionInfo, rec: Option<&RunRecord>, title: Option<&RunTitle>) -> Value {
     let mut v = json!({
         "id": s.id,
         "name": clean_line(&s.name, 64),
@@ -121,6 +121,12 @@ fn view(s: &SessionInfo, rec: Option<&RunRecord>) -> Value {
     });
     if rec.is_none() {
         v["via"] = json!("remote_control");
+    }
+    if let Some(t) = title.filter(|t| !t.text.is_empty()) {
+        v["title"] = json!(clean_line(&t.text, 64));
+        if t.auto {
+            v["title_auto"] = json!(true);
+        }
     }
     v
 }
@@ -236,19 +242,26 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, scope: &Scope
     let existing: Vec<String> = listed.iter().map(|s| s.id.clone()).collect();
     let _ = runs.retain_existing(&existing);
     let modes = reports_modes(st);
-    let mine: Vec<Value> = listed
+    let visible: Vec<(&SessionInfo, Option<RunRecord>)> = listed
         .iter()
         .filter(|s| {
             runs.owns(conn.name, conn.enrollment, &s.id)
                 || (modes && scope.may_see(false, is_bypass_session(s)))
         })
         .map(|s| {
-            view(
-                s,
-                runs.get(&s.id)
-                    .filter(|_| runs.owns(conn.name, conn.enrollment, &s.id)),
-            )
+            let rec = runs
+                .get(&s.id)
+                .filter(|_| runs.owns(conn.name, conn.enrollment, &s.id))
+                .cloned();
+            (s, rec)
         })
+        .collect();
+    drop(runs);
+    let sessions: Vec<&SessionInfo> = visible.iter().map(|(s, _)| *s).collect();
+    let titles = conn.rt.titles.titles(&sessions);
+    let mine: Vec<Value> = visible
+        .iter()
+        .map(|(s, rec)| view(s, rec.as_ref(), titles.get(&s.id)))
         .collect();
     Step::Reply(proto::ok(id, json!({"runs": mine})))
 }
@@ -308,7 +321,7 @@ fn get(
                     .ok()
                     .and_then(|r| r.get(run).cloned())
                     .filter(|_| reach.owned);
-                Step::Reply(proto::ok(id, view(s, rec.as_ref())))
+                Step::Reply(proto::ok(id, view(s, rec.as_ref(), None)))
             }
         },
     }
@@ -647,7 +660,7 @@ fn create(
         kill(st);
         return audit_down();
     }
-    Step::Reply(proto::ok(id, view(&info, Some(&record))))
+    Step::Reply(proto::ok(id, view(&info, Some(&record), None)))
 }
 
 struct Stats {

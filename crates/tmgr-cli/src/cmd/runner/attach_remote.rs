@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::store::Paths;
 use tmgr_runner::attach::{
-    prefs_without_ids, Cmd, Control, LayoutPrefs, Machine, MachineState, ScrollKey, SessionRow,
-    ViewState,
+    prefs_without_ids, AgentTitle, Cmd, Control, LayoutPrefs, Machine, MachineState, ScrollKey,
+    SessionRow, ViewState,
 };
 use tmgr_runner::client::ScreenCache;
 use tmgr_runner::sanitize::sanitize_text;
@@ -219,6 +219,7 @@ impl Remote {
         let mut rows = local;
         let mut remote = HashMap::new();
         let mut machines = Vec::new();
+        let mut titles: HashMap<String, AgentTitle> = HashMap::new();
         for (link, state) in &self.states {
             let Some(state) = machine_state(state) else {
                 continue;
@@ -231,8 +232,19 @@ impl Remote {
                 remote.insert(row.id.clone(), link.clone());
                 rows.push(row);
             }
+            titles.extend(hub.titles(link));
         }
-        let changed = view.machines != machines || view.remote != remote;
+        let mut changed = view.machines != machines || view.remote != remote;
+        for id in remote.keys() {
+            match titles.remove(id) {
+                Some(t) if view.titles.get(id) != Some(&t) => {
+                    view.titles.insert(id.clone(), t);
+                    changed = true;
+                }
+                None => changed |= view.titles.remove(id).is_some(),
+                _ => {}
+            }
+        }
         view.machines = machines;
         view.remote = remote;
         (rows, changed)
@@ -679,6 +691,67 @@ mod tests {
         assert!(r.view.machine_dimmed("lab"));
         assert!(!r.view.machine_dimmed("spark"));
         assert_eq!(r.view.sessions.len(), 4);
+    }
+
+    fn set_title(r: &Rig, run: &str, title: Option<&str>, auto: bool) {
+        r.fake.with("spark", |l| {
+            let item = l.runs.iter_mut().find(|v| v["id"] == run).unwrap();
+            match title {
+                Some(t) => {
+                    item["title"] = serde_json::json!(t);
+                    item["title_auto"] = serde_json::json!(auto);
+                }
+                None => {
+                    item.as_object_mut().unwrap().remove("title");
+                    item.as_object_mut().unwrap().remove("title_auto");
+                }
+            }
+        });
+    }
+
+    fn remote_title(r: &Rig, run: &str) -> Option<(String, bool)> {
+        let id = format!("spark/{run}");
+        let row = r.view.sessions.iter().find(|s| s.id == id)?;
+        r.view.agent_title(row).map(|t| (t.text.clone(), t.auto))
+    }
+
+    #[test]
+    fn a_remote_title_shows_like_a_local_one_follows_changes_and_clears() {
+        let mut r = rig(&["spark"], |f| {
+            f.set_runs("spark", &[A, B]);
+            f.with("spark", |l| {
+                l.runs[0]["title"] = serde_json::json!("Fix the login\u{1b}[31m bug");
+                l.runs[0]["title_auto"] = serde_json::json!(true);
+            });
+        });
+        r.until("title", |r| remote_title(r, A).is_some());
+        let (text, auto) = remote_title(&r, A).unwrap();
+        assert!(auto && !text.contains('\u{1b}'), "{text:?}");
+        assert!(text.starts_with("Fix the login"));
+        assert_eq!(remote_title(&r, B), None);
+        assert!(r.view.agent_title(&r.view.sessions[0]).is_none());
+        set_title(&r, A, Some("Mine"), false);
+        r.until("changed", |r| {
+            remote_title(r, A) == Some(("Mine".into(), false))
+        });
+        set_title(&r, A, None, false);
+        r.until("cleared", |r| {
+            r.view.sessions.len() == 3 && remote_title(r, A).is_none()
+        });
+        assert!(r.view.titles.is_empty());
+    }
+
+    #[test]
+    fn a_follower_without_titles_leaves_default_names_and_a_long_title_is_capped() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A]));
+        r.rows(2);
+        r.settle(Duration::from_millis(100));
+        assert_eq!(remote_title(&r, A), None);
+        set_title(&r, A, Some(&"y".repeat(500)), true);
+        r.until("capped", |r| remote_title(r, A).is_some());
+        assert_eq!(remote_title(&r, A).unwrap().0.chars().count(), 64);
+        set_title(&r, A, Some("   "), true);
+        r.until("blank dropped", |r| remote_title(r, A).is_none());
     }
 
     #[test]

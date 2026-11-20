@@ -1,9 +1,11 @@
+#[cfg(feature = "runner")]
+use super::runner::attach_title::FollowerTitles;
 use std::time::Duration;
 use tmgr_link::proto::{Timed, MAX_FRAME};
 use tmgr_link::runner::{Backend, RunnerClient};
 use tmgr_link::store::Paths;
 use tmgr_link::taskref::LocalRefs;
-use tmgr_link::worker::{check_argv, serve_with, watchdog, Env, Limits, Runtime};
+use tmgr_link::worker::{check_argv, serve_with, watchdog, Env, Limits, NoTitles, Runtime, Titles};
 
 const IDLE: Duration = Duration::from_secs(30);
 const SESSION: Duration = Duration::from_secs(600);
@@ -32,9 +34,18 @@ pub fn run() -> i32 {
     let connect = |deadline| {
         RunnerClient::connect_default_until(deadline).map(|c| Box::new(c) as Box<dyn Backend>)
     };
+    #[cfg(feature = "runner")]
+    let found = FollowerTitles::new();
+    #[cfg(not(feature = "runner"))]
+    let found: Option<NoTitles> = None;
+    let titles: &dyn Titles = match &found {
+        Some(t) => t,
+        None => &NoTitles,
+    };
     let rt = Runtime {
         connect: &connect,
         resolver: &LocalRefs,
+        titles,
     };
     match serve_with(
         &paths,

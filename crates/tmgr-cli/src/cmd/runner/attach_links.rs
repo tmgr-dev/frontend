@@ -18,7 +18,8 @@ use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::attach::{read_incoming, write_outgoing, Incoming, Outgoing};
 use tmgr_link::leader::{self, Client, KeyFile};
 use tmgr_link::store::{Paths, Store};
-use tmgr_runner::attach::SessionRow;
+use tmgr_runner::attach::{AgentTitle, SessionRow};
+use tmgr_runner::sanitize::sanitize_text;
 
 const MAX_RUNS_PER_LINK: usize = 200;
 const STREAMS_PER_LINK: usize = 2;
@@ -600,6 +601,33 @@ impl RemoteState {
             .collect()
     }
 
+    pub(super) fn titles(&self, link: &str) -> Vec<(String, AgentTitle)> {
+        let Some(entry) = self.links.get(link).filter(|e| !e.removed) else {
+            return Vec::new();
+        };
+        entry
+            .runs
+            .iter()
+            .filter_map(|r| {
+                let text: String = sanitize_text(r.title.as_deref()?)
+                    .trim()
+                    .chars()
+                    .take(MAX_NAME)
+                    .collect();
+                (!text.is_empty()).then(|| {
+                    (
+                        view_id(link, &r.id),
+                        AgentTitle {
+                            text,
+                            auto: r.title_auto,
+                            base: r.name.clone(),
+                        },
+                    )
+                })
+            })
+            .collect()
+    }
+
     pub(super) fn remove_link(&mut self, link: &str) {
         if let Some(e) = self.links.get_mut(link) {
             e.removed = true;
@@ -976,6 +1004,10 @@ impl Hub {
 
     pub(super) fn rows(&self, link: &str) -> Vec<SessionRow> {
         self.state().rows(link)
+    }
+
+    pub(super) fn titles(&self, link: &str) -> Vec<(String, AgentTitle)> {
+        self.state().titles(link)
     }
 
     pub(super) fn target_of<'a>(&self, id: &'a str) -> Target<'a> {
