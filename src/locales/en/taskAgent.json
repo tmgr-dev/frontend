@@ -226,7 +226,11 @@
 			"launch": "Failed to launch agent",
 			"stop": "Failed to stop agent",
 			"followUp": "Failed to send follow-up"
-		}
+		},
+		"repositories": "Repositories",
+		"primaryRepository": "primary",
+		"sourceBranchPrimary": "Source branch (applies to the primary repository)",
+		"selectRepository": "Select at least one repository"
 	},
 	"git": {
 		"none": "No git activity linked to this task yet",

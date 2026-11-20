@@ -3,9 +3,13 @@ import {
 	ACTIVE_CURSOR_AGENT_STATUSES,
 	canJumpToCursorAgentTask,
 	cursorAgentLabel,
+	cursorAgentRepositoryRows,
 	cursorAgentTaskRoute,
+	defaultSelectedRepositories,
 	filterActiveCursorAgents,
 	isActiveCursorAgent,
+	repositoriesForLaunch,
+	toggleRepository,
 } from '../cursorAgents';
 
 const makeAgent = (overrides: Partial<CursorAgent> = {}): CursorAgent => ({
@@ -139,5 +143,39 @@ describe('cursorAgents helpers', () => {
 			).toBe(false);
 			expect(canJumpToCursorAgentTask(makeAgent())).toBe(false);
 		});
+	});
+});
+
+describe('cursor repository helpers', () => {
+	const repos = [
+		{ full_name: 'org/a', default_branch: 'main', primary: true },
+		{ full_name: 'org/b', default_branch: null, primary: false },
+	];
+
+	it('selects all repositories by default', () => {
+		expect(defaultSelectedRepositories(repos)).toEqual(['org/a', 'org/b']);
+	});
+
+	it('toggles a repository', () => {
+		expect(toggleRepository(['org/a', 'org/b'], 'org/b')).toEqual(['org/a']);
+		expect(toggleRepository(['org/a'], 'org/b')).toEqual(['org/a', 'org/b']);
+	});
+
+	it('returns launch repositories in list order, undefined without a list', () => {
+		expect(repositoriesForLaunch(repos, ['org/b', 'org/a'])).toEqual([
+			'org/a',
+			'org/b',
+		]);
+		expect(repositoriesForLaunch([], [])).toBeUndefined();
+	});
+
+	it('returns agent repository rows or an empty list', () => {
+		expect(cursorAgentRepositoryRows(makeAgent())).toEqual([]);
+		const rows = [
+			{ full_name: 'org/a', starting_ref: null, branch: 'x', pr_url: null },
+		];
+		expect(cursorAgentRepositoryRows(makeAgent({ repositories: rows }))).toBe(
+			rows,
+		);
 	});
 });

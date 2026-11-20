@@ -42,9 +42,48 @@
 					</div>
 
 					<div v-else-if="branches.length || branchSearch" class="space-y-4">
+						<div v-if="repositories.length" data-testid="cursor-repositories">
+							<span class="mb-2 block text-sm font-medium text-ink">
+								{{ $t('taskAgent.cursor.repositories') }}
+							</span>
+							<div v-if="repositories.length === 1" class="text-sm text-ink">
+								<code
+									class="rounded border border-line bg-surface px-2 py-0.5 font-mono text-xs"
+									>{{ repositories[0].full_name }}</code
+								>
+							</div>
+							<label
+								v-for="repo in repositories"
+								v-else
+								:key="repo.full_name"
+								class="flex items-center gap-2 py-1 text-sm text-ink"
+							>
+								<input
+									type="checkbox"
+									:checked="selectedRepositories.includes(repo.full_name)"
+									@change="onToggleRepository(repo.full_name)"
+								/>
+								<span class="font-mono text-xs">{{ repo.full_name }}</span>
+								<span
+									v-if="repo.primary"
+									class="rounded-pill border border-line px-2 py-0.5 text-2xs text-ink-subtle"
+									>{{ $t('taskAgent.cursor.primaryRepository') }}</span
+								>
+							</label>
+							<p
+								v-if="!selectedRepositories.length"
+								class="mt-1 text-xs text-status-fix-fg"
+							>
+								{{ $t('taskAgent.cursor.selectRepository') }}
+							</p>
+						</div>
 						<div>
 							<label class="mb-2 block text-sm font-medium text-ink">
-								{{ $t('taskAgent.cursor.sourceBranch') }}
+								{{
+									repositories.length > 1
+										? $t('taskAgent.cursor.sourceBranchPrimary')
+										: $t('taskAgent.cursor.sourceBranch')
+								}}
 							</label>
 							<input
 								v-model="branchSearch"
@@ -102,7 +141,7 @@
 
 						<button
 							@click="launchAgent('implement')"
-							:disabled="launching || !selectedBranch"
+							:disabled="launchDisabled"
 							class="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-on-accent transition hover:bg-brand-hover disabled:opacity-50"
 						>
 							<svg
@@ -132,7 +171,7 @@
 
 						<button
 							@click="launchAgent('research')"
-							:disabled="launching || !selectedBranch"
+							:disabled="launchDisabled"
 							:title="$t('taskAgent.cursor.researchTitle')"
 							data-testid="cursor-research-button"
 							class="flex w-full items-center justify-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:bg-surface-hover disabled:opacity-50"
@@ -244,7 +283,34 @@
 						</button>
 					</div>
 
-					<div v-if="agent.branch_name" class="mb-2 text-sm text-ink">
+					<ul
+						v-if="agentRepositoryRows(agent).length"
+						class="space-y-1 mb-2"
+						data-testid="cursor-agent-repositories"
+					>
+						<li
+							v-for="repo in agentRepositoryRows(agent)"
+							:key="repo.full_name"
+							class="flex flex-wrap items-center gap-2 text-sm text-ink"
+						>
+							<span class="font-mono text-xs">{{ repo.full_name }}</span>
+							<code
+								v-if="repo.branch"
+								class="rounded border border-line bg-surface px-2 py-0.5 font-mono text-xs text-ink"
+								>{{ repo.branch }}</code
+							>
+							<a
+								v-if="repo.pr_url"
+								:href="repo.pr_url"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="text-brand hover:underline"
+								>{{ $t('taskAgent.cursor.viewPullRequest') }}</a
+							>
+						</li>
+					</ul>
+
+					<div v-else-if="agent.branch_name" class="mb-2 text-sm text-ink">
 						<span class="font-medium text-ink-subtle">{{
 							$t('taskAgent.cursor.branch')
 						}}</span>
@@ -261,10 +327,14 @@
 						<p class="mt-1">{{ agent.summary }}</p>
 					</div>
 
-					<div v-if="agent.pr_url" class="mb-3">
+					<div
+						v-if="agent.pr_url && !agentRepositoryRows(agent).length"
+						class="mb-3"
+					>
 						<a
 							:href="agent.pr_url"
 							target="_blank"
+							rel="noopener noreferrer"
 							class="inline-flex items-center gap-1 text-sm text-brand hover:underline"
 						>
 							<svg
@@ -334,6 +404,7 @@
 	import {
 		getCursorAgents,
 		getCursorConversation,
+		getCursorRepositories,
 		getGitHubBranches,
 		launchCursorAgent,
 		sendFollowUp,
@@ -342,6 +413,12 @@
 	import { currentLocale, t } from '@/i18n';
 	import { apiErrorText } from '@/utils/apiErrorText';
 	import { autosizeTextarea, isEnterSend } from '@/utils/commentComposer';
+	import {
+		cursorAgentRepositoryRows,
+		defaultSelectedRepositories,
+		repositoriesForLaunch,
+		toggleRepository,
+	} from '@/utils/cursorAgents';
 	import { createCursorConversationSync } from '@/utils/cursorConversationSync';
 	import { createPollingLoop } from '@/utils/pollingLoop';
 	import { defineComponent } from 'vue';
@@ -359,6 +436,8 @@
 			return {
 				agents: [],
 				branches: [],
+				repositories: [],
+				selectedRepositories: [],
 				selectedBranch: null,
 				branchSearch: '',
 				searchTimeout: null,
@@ -378,6 +457,13 @@
 			};
 		},
 		computed: {
+			launchDisabled() {
+				return (
+					this.launching ||
+					!this.selectedBranch ||
+					(this.repositories.length > 0 && !this.selectedRepositories.length)
+				);
+			},
 			hasActiveAgents() {
 				return this.agents.some(
 					(agent) => agent.status === 'CREATING' || agent.status === 'RUNNING',
@@ -413,7 +499,10 @@
 		},
 		async mounted() {
 			await this.loadAgents();
-			await this.loadBranchesFromGitHub();
+			await Promise.all([
+				this.loadBranchesFromGitHub(),
+				this.loadRepositories(),
+			]);
 
 			if (!this.agents.length) {
 				this.showLaunchForm = true;
@@ -495,6 +584,26 @@
 					this.loadingBranches = false;
 				}
 			},
+			agentRepositoryRows(agent) {
+				return cursorAgentRepositoryRows(agent);
+			},
+			onToggleRepository(fullName) {
+				this.selectedRepositories = toggleRepository(
+					this.selectedRepositories,
+					fullName,
+				);
+			},
+			async loadRepositories() {
+				try {
+					this.repositories = await getCursorRepositories(this.taskId);
+					this.selectedRepositories = defaultSelectedRepositories(
+						this.repositories,
+					);
+				} catch (e) {
+					this.repositories = [];
+					this.selectedRepositories = [];
+				}
+			},
 			onBranchSearch() {
 				if (this.searchTimeout) {
 					clearTimeout(this.searchTimeout);
@@ -512,6 +621,7 @@
 						this.taskId,
 						this.selectedBranch,
 						mode,
+						repositoriesForLaunch(this.repositories, this.selectedRepositories),
 					);
 					this.agents.unshift(agent);
 					this.showLaunchForm = false;

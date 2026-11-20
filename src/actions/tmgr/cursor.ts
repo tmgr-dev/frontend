@@ -2,6 +2,7 @@ import $axios from '@/plugins/axios';
 import type {
 	ActiveCursorAgent,
 	CursorAgent,
+	CursorLaunchRepository,
 	CursorStatus,
 	GitHubBranch,
 } from '@/types/cursor';
@@ -10,10 +11,12 @@ export async function launchCursorAgent(
 	taskId: number,
 	sourceBranch?: string,
 	mode: 'implement' | 'research' = 'implement',
+	repositories?: string[],
 ): Promise<CursorAgent> {
 	const response = await $axios.post(`/tasks/${taskId}/cursor-agent`, {
 		source_branch: sourceBranch,
 		mode,
+		...(repositories ? { repositories } : {}),
 	});
 	return response.data.agent;
 }
@@ -27,6 +30,15 @@ export async function getGitHubBranches(
 		params,
 	});
 	return response.data.branches;
+}
+
+export async function getCursorRepositories(
+	taskId: number,
+): Promise<CursorLaunchRepository[]> {
+	const response = await $axios.get(
+		`/tasks/${taskId}/cursor-agent/repositories`,
+	);
+	return response.data?.data?.repositories ?? [];
 }
 
 export async function getCursorAgents(taskId: number): Promise<CursorAgent[]> {
