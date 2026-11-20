@@ -1,4 +1,9 @@
-import { activitySubject, activityTime, activityTitle } from '../activityLines';
+import {
+	activityPage,
+	activitySubject,
+	activityTime,
+	activityTitle,
+} from '../activityLines';
 
 describe('activityTitle', () => {
 	it('keeps the title the API sent', () => {
@@ -130,5 +135,19 @@ describe('activityTime', () => {
 			'5 minutes ago',
 		);
 		expect(activityTime({}, now)).toBe('');
+	});
+});
+
+describe('activityPage', () => {
+	it('reads rows and total from the {data, meta} page the API sends', () => {
+		const rows = [{ id: 1 }];
+		expect(activityPage({ data: rows, meta: { total: 9 } })).toEqual({
+			rows,
+			total: 9,
+		});
+	});
+
+	it('is empty for a missing page', () => {
+		expect(activityPage(undefined)).toEqual({ rows: [], total: undefined });
 	});
 });

@@ -129,3 +129,14 @@ export function activityTime(
 		numeric: 'auto',
 	}).format(Math.trunc(seconds / size), unit);
 }
+
+export function activityPage<T>(page: unknown): {
+	rows: T[];
+	total: number | undefined;
+} {
+	const { data, meta } = (page ?? {}) as {
+		data?: T[];
+		meta?: { total?: number };
+	};
+	return { rows: data ?? [], total: meta?.total };
+}

@@ -81,6 +81,7 @@
 	import { useMemberPage } from '@/composable/useMemberPage';
 	import store from '@/store';
 	import type { Activity } from '@/types/dashboard';
+	import { activityPage } from '@/utils/activityLines';
 	import {
 		computed,
 		defineComponent,
@@ -173,17 +174,10 @@
 					if (!current()) return;
 					if (result.success && result.data) {
 						activitiesLoaded.value = true;
-						const rows = (
-							result.data as {
-								data?: { data?: Activity[]; meta?: { total?: number } };
-							}
-						).data;
+						const page = activityPage<Activity>(result.data);
 						activities.value =
-							nextPage === 1
-								? (rows?.data ?? [])
-								: [...activities.value, ...(rows?.data ?? [])];
-						activitiesTotal.value =
-							rows?.meta?.total ?? activities.value.length;
+							nextPage === 1 ? page.rows : [...activities.value, ...page.rows];
+						activitiesTotal.value = page.total ?? activities.value.length;
 						activitiesPage.value = nextPage;
 					} else {
 						activitiesError.value =
