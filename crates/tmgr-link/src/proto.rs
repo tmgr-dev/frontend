@@ -3,13 +3,15 @@ use std::io::{Read, Write};
 
 pub const MAX_FRAME: usize = 1 << 20;
 pub const PROTOCOL: u32 = 1;
-pub const METHODS: [&str; 6] = [
+pub const METHODS: [&str; 8] = [
     "hello",
     "runs.list",
     "runs.get",
     "runs.create",
     "runs.halt",
     "attach.open",
+    "runs.rename",
+    "runs.paste_image",
 ];
 
 #[derive(Debug, PartialEq, Eq)]

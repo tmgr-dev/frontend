@@ -45,6 +45,7 @@ struct FakeState {
     revoke_noop: bool,
     revokes: Vec<(String, u64)>,
     refuse_create: Option<&'static str>,
+    refuse_rename: Option<&'static str>,
     next: u32,
     reports_modes: bool,
     remote_off_on_list: Option<Paths>,
@@ -257,6 +258,21 @@ impl Backend for Fake {
         let mut s = self.0.lock().unwrap();
         s.calls.push("sessions.remove".into());
         s.sessions.retain(|x| x.id != id);
+        Ok(())
+    }
+
+    fn rename(&mut self, id: &str, name: &str) -> Result<(), BackendError> {
+        let mut s = self.0.lock().unwrap();
+        s.calls.push("sessions.rename".into());
+        if let Some(code) = s.refuse_rename {
+            return Err(BackendError::Refused {
+                code: code.into(),
+                message: "no".into(),
+            });
+        }
+        for sess in s.sessions.iter_mut().filter(|x| x.id == id) {
+            sess.name = name.into();
+        }
         Ok(())
     }
 
@@ -697,6 +713,65 @@ fn halt_stops_an_owned_run_and_is_audited() {
     assert_eq!(r[0]["result"]["signal"], "int");
     assert_eq!(fake.called("sessions.kill"), 1);
     assert!(w.audit().iter().any(|e| e["event"] == "worker.run_halted"));
+}
+
+fn rename_req(run: &str, name: &str) -> Value {
+    json!({"id":1,"method":"runs.rename","params":{"run":run,"name":name}})
+}
+
+#[test]
+fn rename_needs_the_attach_input_scope_and_is_audited() {
+    let w = world();
+    let fake = Fake::default();
+    let made = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let id = run_id(&made[0]);
+    let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, "web")]);
+    assert_eq!(r[0]["error"], "forbidden");
+    assert_eq!(fake.called("sessions.rename"), 0);
+    assert!(w
+        .audit()
+        .iter()
+        .any(|e| { e["method"] == "runs.rename" && e["decision"] == "rejected" }));
+    w.set_scope("laptop", |s| s.allow_attach_input = true);
+    let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, "  web  ")]);
+    assert_eq!(r[0]["result"]["name"], "web");
+    assert_eq!(fake.called("sessions.rename"), 1);
+    assert_eq!(fake.0.lock().unwrap().sessions[0].name, "web");
+    let ev = w.audit();
+    assert!(ev.iter().any(|e| {
+        e["method"] == "runs.rename"
+            && e["decision"] == "accepted"
+            && e["args"]["name"] == "  web  "
+    }));
+    let done = ev
+        .iter()
+        .find(|e| e["event"] == "worker.run_renamed")
+        .unwrap();
+    assert_eq!(done["run"], json!(id));
+    assert_eq!(done["name"], "web");
+}
+
+#[test]
+fn rename_refuses_bad_names_foreign_runs_and_runner_conflicts() {
+    let w = world();
+    w.set_scope("laptop", |s| s.allow_attach_input = true);
+    let fake = Fake::default();
+    let made = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let id = run_id(&made[0]);
+    let long = "x".repeat(65);
+    for bad in ["", "   ", long.as_str(), "a\u{1b}[31mb", "two\nlines"] {
+        let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, bad)]);
+        assert_eq!(r[0]["error"], "bad_params", "{bad:?}");
+    }
+    let ok = "y".repeat(64);
+    let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, &ok)]);
+    assert_eq!(r[0]["result"]["name"], json!(ok));
+    let other = session(&w, "phone", E2, &fake, &[rename_req(&id, "mine")]);
+    assert_eq!(other[0]["error"], "not_found");
+    assert_eq!(fake.called("sessions.rename"), 1);
+    fake.0.lock().unwrap().refuse_rename = Some("conflict");
+    let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, "again")]);
+    assert_eq!(r[0]["error"], "conflict");
 }
 
 #[test]

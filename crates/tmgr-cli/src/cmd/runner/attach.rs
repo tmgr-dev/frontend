@@ -3221,8 +3221,11 @@ impl App {
     }
 
     fn rename_session(&mut self, id: &str, name: &str) {
-        if !valid_session_id(id) {
-            return self.notify("not available for linked sessions");
+        if let Some(note) = self.remote.rename(id, name) {
+            if let Some(note) = note {
+                self.notify(&note);
+            }
+            return;
         }
         let result = connect(&self.cfg).and_then(|mut c| c.rename(id, name).map_err(rerr));
         match result {

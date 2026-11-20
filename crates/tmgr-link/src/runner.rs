@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     caps, limits, method, AttachParams, ErrorCode, IdParams, KillParams, OriginRevokeParams,
-    RunCreateReq, SendParams, SessionInfo,
+    RenameParams, RunCreateReq, SendParams, SessionInfo,
 };
 use tmgr_ipc::frame::{read_frame, write_json, Frame};
 use tmgr_ipc::proto::{ClientMsg, Request, Resize, Scroll, ServerMsg};
@@ -86,6 +86,7 @@ pub trait Backend: Send {
     fn kill(&mut self, id: &str, signal: &str) -> Result<(), BackendError>;
     fn send(&mut self, id: &str, text: &str) -> Result<(), BackendError>;
     fn remove(&mut self, id: &str) -> Result<(), BackendError>;
+    fn rename(&mut self, id: &str, name: &str) -> Result<(), BackendError>;
     fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<OriginKilled, BackendError>;
     fn attach(
         &mut self,
@@ -328,6 +329,22 @@ impl Backend for RunnerClient {
                 .map(|id| attach_clean(id))
                 .collect(),
         })
+    }
+
+    fn rename(&mut self, id: &str, name: &str) -> Result<(), BackendError> {
+        let p = RenameParams {
+            id: id.into(),
+            name: name.into(),
+        };
+        self.call(method::SESSIONS_RENAME, params(&p)?)
+            .map(drop)
+            .map_err(|e| match e {
+                BackendError::Busy => BackendError::Refused {
+                    code: "conflict".into(),
+                    message: "another session already has that name".into(),
+                },
+                other => other,
+            })
     }
 
     fn remove(&mut self, id: &str) -> Result<(), BackendError> {

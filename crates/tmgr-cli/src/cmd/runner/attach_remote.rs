@@ -110,6 +110,7 @@ fn allows(cmd: Cmd) -> bool {
             | Cmd::Reconnect
             | Cmd::Search
             | Cmd::CopyMode
+            | Cmd::Rename
     )
 }
 
@@ -372,6 +373,24 @@ impl Remote {
                     });
                 }
             }
+            LinkMsg::Renamed { id, name, result } => {
+                let link = link_of(&id).to_string();
+                fx.notice = Some(match result {
+                    Ok(()) => {
+                        view.rename_done(&id, &name);
+                        fx.dirty = true;
+                        format!("renamed to {} on {link}", sanitize_text(&name))
+                    }
+                    Err(e) => format!("{link}: {}", sanitize_text(&e)),
+                });
+            }
+            LinkMsg::Pasted { id, result } => {
+                let link = link_of(&id).to_string();
+                fx.notice = Some(match result {
+                    Ok(()) => format!("pasted the image into {link}"),
+                    Err(e) => format!("{link}: {}", sanitize_text(&e)),
+                });
+            }
             LinkMsg::Halted { id, result } => {
                 let link = link_of(&id).to_string();
                 let name = view
@@ -436,6 +455,19 @@ impl Remote {
                 self.hub
                     .as_ref()
                     .and_then(|h| h.halt(&link, &run).err())
+                    .map(|e| format!("{link}: {e}")),
+            ),
+            Target::Unknown => Some(Some("that session is no longer available".into())),
+        }
+    }
+
+    pub(super) fn rename(&self, id: &str, name: &str) -> Option<Option<String>> {
+        match self.route(id) {
+            Target::Local(_) => None,
+            Target::Remote { link, run } => Some(
+                self.hub
+                    .as_ref()
+                    .and_then(|h| h.rename(&link, &run, name).err())
                     .map(|e| format!("{link}: {e}")),
             ),
             Target::Unknown => Some(Some("that session is no longer available".into())),
@@ -549,6 +581,7 @@ mod tests {
     use super::super::attach_links::tests::{fast, push, state, Fake, FakeDialer, A, B, C, LOCAL};
     use super::super::attach_links::{DialErr, Permit};
     use super::*;
+    use serde_json::json;
     use std::sync::mpsc::Receiver;
     use tmgr_core::error::Kind;
     use tmgr_ipc::api::{Attr, Color, Line, Snapshot, Span};
@@ -908,6 +941,55 @@ mod tests {
     }
 
     #[test]
+    fn renaming_a_remote_session_goes_over_the_link_and_updates_the_row() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A]));
+        r.rows(2);
+        let id = format!("spark/{A}");
+        assert_eq!(r.remote.rename(&id, "web"), Some(None));
+        r.until("renamed", |r| {
+            r.notes.iter().any(|n| n.starts_with("renamed to web"))
+        });
+        assert_eq!(
+            r.fake.calls("spark", "runs.rename"),
+            vec![json!({"run": A, "name": "web"})]
+        );
+        assert_eq!(
+            r.view.sessions.iter().find(|s| s.id == id).unwrap().name,
+            "web"
+        );
+        assert_eq!(r.remote.rename(LOCAL, "web"), None);
+        assert!(matches!(r.remote.rename("ghost/s_x", "web"), Some(Some(_))));
+    }
+
+    #[test]
+    fn a_refused_remote_rename_shows_the_followers_answer_and_keeps_the_name() {
+        let mut r = rig(&["spark"], |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| l.act_err = Some(Kind::Forbidden));
+        });
+        r.rows(2);
+        let id = format!("spark/{A}");
+        let before = r
+            .view
+            .sessions
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .name
+            .clone();
+        assert_eq!(r.remote.rename(&id, "web"), Some(None));
+        r.until("refusal", |r| {
+            r.notes
+                .iter()
+                .any(|n| n.starts_with("spark:") && n.contains("scripted failure"))
+        });
+        assert_eq!(
+            r.view.sessions.iter().find(|s| s.id == id).unwrap().name,
+            before
+        );
+    }
+
+    #[test]
     fn a_stream_lost_while_the_link_flaps_is_opened_again_after_it_is_back() {
         let mut r = rig(&["spark"], |f| {
             f.set_runs("spark", &[A]);
@@ -1063,7 +1145,6 @@ mod tests {
             Cmd::SplitDown,
             Cmd::Templates,
             Cmd::Watch,
-            Cmd::Rename,
         ] {
             assert!(
                 r.remote.cmd_gate(cmd, Some(&remote)).is_some(),
@@ -1090,6 +1171,7 @@ mod tests {
             Cmd::Prompts,
             Cmd::Search,
             Cmd::CopyMode,
+            Cmd::Rename,
         ] {
             assert_eq!(r.remote.cmd_gate(cmd, Some(&remote)), None, "{cmd:?}");
         }

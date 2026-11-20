@@ -168,6 +168,7 @@ pub struct Accepted {
 pub const AUDIT_VALUE_MAX: usize = 256;
 const AUDIT_FIELDS: &[&str] = &[
     "run",
+    "name",
     "task",
     "task_hash",
     "repo",
@@ -244,10 +245,27 @@ pub fn validate_run_method(
                 Err(Reject::bad("invalid run id"))
             }
         }
+        "runs.rename" => validate_rename(&obj),
         "runs.create" => validate_create(&obj, scope, live_runs),
         "attach.open" => validate_attach(&obj),
         _ => Err(Reject::bad("not a run method")),
     }
+}
+
+pub const NAME_MAX: usize = 64;
+
+fn validate_rename(obj: &Map<String, Value>) -> Result<Accepted, Reject> {
+    only_keys(obj, &["run", "name"])?;
+    let run = required(obj, "run")?;
+    if !grammar::token(run, 64) || run.contains('/') {
+        return Err(Reject::bad("invalid run id"));
+    }
+    let name = required(obj, "name")?;
+    let len = name.trim().chars().count();
+    if len == 0 || len > NAME_MAX || name.chars().any(char::is_control) {
+        return Err(Reject::bad("name must be 1 to 64 printable characters"));
+    }
+    Ok(Accepted::default())
 }
 
 fn validate_attach(obj: &Map<String, Value>) -> Result<Accepted, Reject> {

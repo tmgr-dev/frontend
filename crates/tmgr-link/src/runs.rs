@@ -217,6 +217,7 @@ pub(crate) fn run_method(
         "runs.list" => list(conn, st, id, args, scope),
         "runs.get" => get(conn, st, id, args, &run_param(&params), scope),
         "runs.halt" => halt(conn, st, id, args, &run_param(&params), scope),
+        "runs.rename" => rename(conn, st, id, args, &params, scope),
         "runs.create" => create(conn, st, id, args, &params, accepted.repo, scope),
         _ => attach_open(conn, st, chan, id, args, &params, scope),
     }
@@ -405,6 +406,63 @@ fn halt(
             ))
         }
         Err(e) => failed(conn, "runs.halt", args, id, &e),
+    }
+}
+
+fn input_granted(conn: &Conn, st: &State, reach: &Reach, scope: &Scope) -> bool {
+    let grants = if reports_modes(st) {
+        scope.may_input(reach.owned, reach.bypass)
+    } else {
+        reach.owned && scope.allow_attach_input
+    };
+    grants && matches!(conn.current(), Ok(Ok(s)) if s.may_input(reach.owned, reach.bypass))
+}
+
+fn rename(
+    conn: &Conn,
+    st: &mut State,
+    id: Option<u64>,
+    args: Value,
+    params: &Value,
+    scope: &Scope,
+) -> Step {
+    let method = "runs.rename";
+    let run = run_param(params);
+    let reach = match resolve(conn, st, id, method, &args, &run, scope) {
+        Ok(r) => r,
+        Err(step) => return step,
+    };
+    if !input_granted(conn, st, &reach, scope) {
+        return deny(
+            conn,
+            method,
+            args,
+            id,
+            "forbidden",
+            "attach input is not allowed",
+        );
+    }
+    let name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if conn.record(method, args.clone(), "accepted", "").is_err() {
+        return audit_down();
+    }
+    match with_backend(conn, st, false, None, |b| b.rename(&run, &name)) {
+        Ok(()) => {
+            let mut fact = json!({"link": conn.name, "run": run, "name": name});
+            if !reach.owned {
+                fact["via"] = json!("remote_control");
+            }
+            if conn.audit.append("worker.run_renamed", fact).is_err() {
+                return audit_down();
+            }
+            Step::Reply(proto::ok(id, json!({"id": run, "name": name})))
+        }
+        Err(e) => failed(conn, method, args, id, &e),
     }
 }
 

@@ -27,6 +27,7 @@ const OUT_QUEUE: usize = 256;
 const MAX_NAME: usize = 64;
 const MAX_DETAIL: usize = 512;
 const MAX_WHY: usize = 200;
+pub(super) const PASTE_CHUNK: usize = 512 * 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Timing {
@@ -34,6 +35,7 @@ pub(super) struct Timing {
     pub call: Duration,
     pub open: Duration,
     pub halt: Duration,
+    pub paste: Duration,
     pub backoff_min: Duration,
     pub backoff_max: Duration,
     pub reconnect_after: Duration,
@@ -54,6 +56,7 @@ impl Default for Timing {
             call: Duration::from_secs(10),
             open: Duration::from_secs(20),
             halt: Duration::from_secs(20),
+            paste: Duration::from_secs(30),
             backoff_min: Duration::from_secs(1),
             backoff_max: Duration::from_secs(30),
             reconnect_after: Duration::from_secs(9 * 60),
@@ -454,6 +457,15 @@ pub(super) enum LinkMsg {
         id: String,
         result: std::result::Result<(), String>,
     },
+    Renamed {
+        id: String,
+        name: String,
+        result: std::result::Result<(), String>,
+    },
+    Pasted {
+        id: String,
+        result: std::result::Result<(), String>,
+    },
 }
 
 fn cap(s: &str, max: usize) -> String {
@@ -809,8 +821,21 @@ impl Flow {
     }
 }
 
+enum Job {
+    Rename {
+        run: String,
+        name: String,
+    },
+    Paste {
+        run: String,
+        image: Arc<Vec<u8>>,
+        bracketed: bool,
+    },
+}
+
 enum Cmd {
     Halt(String, Option<Binding>),
+    Act(Job, Option<Binding>),
     Retry,
     Shutdown,
 }
@@ -1019,7 +1044,12 @@ impl Hub {
         self.state().want_streams(visible)
     }
 
-    pub(super) fn halt(&self, link: &str, run: &str) -> std::result::Result<(), &'static str> {
+    fn queue(
+        &self,
+        link: &str,
+        run: &str,
+        make: impl FnOnce(Option<Binding>) -> Cmd,
+    ) -> std::result::Result<(), &'static str> {
         let id = view_id(link, run);
         let ok = matches!(
             self.state().target_of(&id),
@@ -1031,11 +1061,48 @@ impl Hub {
         self.ctl
             .get(link)
             .ok_or("unknown machine")?
-            .send(Cmd::Halt(
-                run.to_string(),
-                lock(&self.inner.bound).get(link).cloned(),
-            ))
+            .send(make(lock(&self.inner.bound).get(link).cloned()))
             .map_err(|_| "the link is shutting down")
+    }
+
+    pub(super) fn halt(&self, link: &str, run: &str) -> std::result::Result<(), &'static str> {
+        self.queue(link, run, |stamp| Cmd::Halt(run.to_string(), stamp))
+    }
+
+    pub(super) fn rename(
+        &self,
+        link: &str,
+        run: &str,
+        name: &str,
+    ) -> std::result::Result<(), &'static str> {
+        self.queue(link, run, |stamp| {
+            Cmd::Act(
+                Job::Rename {
+                    run: run.to_string(),
+                    name: name.to_string(),
+                },
+                stamp,
+            )
+        })
+    }
+
+    pub(super) fn paste_image(
+        &self,
+        link: &str,
+        run: &str,
+        image: Vec<u8>,
+        bracketed: bool,
+    ) -> std::result::Result<(), &'static str> {
+        self.queue(link, run, |stamp| {
+            Cmd::Act(
+                Job::Paste {
+                    run: run.to_string(),
+                    image: Arc::new(image),
+                    bracketed,
+                },
+                stamp,
+            )
+        })
     }
 
     pub(super) fn retry_all(&self) {
@@ -1198,6 +1265,21 @@ fn halt_refused(inner: &Inner, link: &str, run: &str, why: &str) {
     });
 }
 
+fn job_refused(inner: &Inner, link: &str, job: &Job, why: &str) {
+    let result = Err(why.to_string());
+    inner.emit(match job {
+        Job::Rename { run, name } => LinkMsg::Renamed {
+            id: view_id(link, run),
+            name: name.clone(),
+            result,
+        },
+        Job::Paste { run, .. } => LinkMsg::Pasted {
+            id: view_id(link, run),
+            result,
+        },
+    });
+}
+
 fn pause(inner: &Inner, link: &str, cmds: &Receiver<Cmd>, wait: Option<Duration>) -> bool {
     let until = wait.map(|w| Instant::now() + w);
     loop {
@@ -1210,6 +1292,7 @@ fn pause(inner: &Inner, link: &str, cmds: &Receiver<Cmd>, wait: Option<Duration>
             Ok(Cmd::Halt(run, _)) => {
                 halt_refused(inner, link, &run, "the machine is not reachable")
             }
+            Ok(Cmd::Act(job, _)) => job_refused(inner, link, &job, "the machine is not reachable"),
             Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => return false,
         }
     }
@@ -1411,31 +1494,159 @@ fn session(
         }
         match cmds.recv_timeout(t.poll) {
             Err(RecvTimeoutError::Timeout) => {}
-            Ok(Cmd::Halt(run, stamp)) if stamp.as_ref() != Some(bound) => {
-                halt_refused(inner, link, &run, "the link changed, try again");
+            Ok(Cmd::Halt(run, stamp)) => {
+                let job = Order::Halt(run);
+                if let Some(exit) = order(inner, link, conn.as_mut(), bound, job, stamp) {
+                    return exit;
+                }
+                requests += 1;
             }
-            Ok(Cmd::Halt(run, _)) => match rebound(inner, link, bound) {
-                Rebound::Same => {
-                    requests += 1;
-                    halt(inner, link, &run, conn.as_mut());
+            Ok(Cmd::Act(job, stamp)) => {
+                if let Some(exit) = order(inner, link, conn.as_mut(), bound, job.into(), stamp) {
+                    return exit;
                 }
-                Rebound::Unknown => {
-                    halt_refused(inner, link, &run, "cannot verify the link, try again");
-                }
-                Rebound::Gone => {
-                    halt_refused(inner, link, &run, "the machine is no longer linked");
-                    return Exit::Removed;
-                }
-                Rebound::Changed => {
-                    halt_refused(inner, link, &run, "the link changed, try again");
-                    inner.lose_link(link);
-                    return Exit::Rebind;
-                }
-            },
+                requests += 1;
+            }
             Ok(Cmd::Retry) => return Exit::Retry,
             Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => return Exit::Shutdown,
         }
     }
+}
+
+enum Order {
+    Halt(String),
+    Job(Job),
+}
+
+impl From<Job> for Order {
+    fn from(job: Job) -> Order {
+        Order::Job(job)
+    }
+}
+
+fn order_refused(inner: &Inner, link: &str, order: &Order, why: &str) {
+    match order {
+        Order::Halt(run) => halt_refused(inner, link, run, why),
+        Order::Job(job) => job_refused(inner, link, job, why),
+    }
+}
+
+fn order(
+    inner: &Inner,
+    link: &str,
+    conn: &mut dyn LinkConn,
+    bound: &Binding,
+    order: Order,
+    stamp: Option<Binding>,
+) -> Option<Exit> {
+    if stamp.as_ref() != Some(bound) {
+        order_refused(inner, link, &order, "the link changed, try again");
+        return None;
+    }
+    match rebound(inner, link, bound) {
+        Rebound::Same => {
+            match &order {
+                Order::Halt(run) => halt(inner, link, run, conn),
+                Order::Job(job) => job_done(inner, link, job, conn),
+            }
+            None
+        }
+        Rebound::Unknown => {
+            order_refused(inner, link, &order, "cannot verify the link, try again");
+            None
+        }
+        Rebound::Gone => {
+            order_refused(inner, link, &order, "the machine is no longer linked");
+            Some(Exit::Removed)
+        }
+        Rebound::Changed => {
+            order_refused(inner, link, &order, "the link changed, try again");
+            inner.lose_link(link);
+            Some(Exit::Rebind)
+        }
+    }
+}
+
+fn remote_why(link: &str, e: &Error) -> String {
+    if e.message.to_ascii_lowercase().contains("unknown method") {
+        return format!("{link} runs an older tmgr, update it to use this");
+    }
+    cap(&e.message, MAX_WHY)
+}
+
+fn listed(inner: &Inner, link: &str, run: &str) -> bool {
+    matches!(
+        lock(&inner.state).target_of(&view_id(link, run)),
+        Target::Remote { link: l, run: r } if l == link && r == run
+    )
+}
+
+fn job_done(inner: &Inner, link: &str, job: &Job, conn: &mut dyn LinkConn) {
+    let gone = || Err("that run is not listed on this machine".to_string());
+    match job {
+        Job::Rename { run, name } => {
+            let result = if listed(inner, link, run) {
+                conn.call(
+                    "runs.rename",
+                    json!({"run": run, "name": name}),
+                    inner.timing.halt,
+                )
+                .map(|_| ())
+                .map_err(|e| remote_why(link, &e))
+            } else {
+                gone()
+            };
+            inner.emit(LinkMsg::Renamed {
+                id: view_id(link, run),
+                name: name.clone(),
+                result,
+            });
+        }
+        Job::Paste {
+            run,
+            image,
+            bracketed,
+        } => {
+            let result = if listed(inner, link, run) {
+                upload(inner, link, run, image, *bracketed, conn)
+            } else {
+                gone()
+            };
+            inner.emit(LinkMsg::Pasted {
+                id: view_id(link, run),
+                result,
+            });
+        }
+    }
+}
+
+fn upload(
+    inner: &Inner,
+    link: &str,
+    run: &str,
+    image: &[u8],
+    bracketed: bool,
+    conn: &mut dyn LinkConn,
+) -> std::result::Result<(), String> {
+    use base64::Engine;
+    let mut offset = 0;
+    for chunk in image.chunks(PASTE_CHUNK) {
+        let data = base64::engine::general_purpose::STANDARD.encode(chunk);
+        conn.call(
+            "runs.paste_image",
+            json!({
+                "run": run,
+                "total": image.len(),
+                "offset": offset,
+                "data": data,
+                "bracketed": bracketed,
+            }),
+            inner.timing.paste,
+        )
+        .map_err(|e| remote_why(link, &e))?;
+        offset += chunk.len();
+    }
+    Ok(())
 }
 
 fn halt(inner: &Inner, link: &str, run: &str, conn: &mut dyn LinkConn) {
@@ -1785,6 +1996,7 @@ pub(super) mod tests {
         pub(crate) block_writes: bool,
         pub(crate) killed: Arc<AtomicBool>,
         pub(crate) halt_err: Option<Kind>,
+        pub(crate) act_err: Option<Kind>,
         pub(crate) input: bool,
         pub(crate) calls: Vec<(String, Value)>,
         pub(crate) feeds: HashMap<String, Sender<Vec<u8>>>,
@@ -1955,6 +2167,10 @@ pub(super) mod tests {
                         Some(k) => Plan::Fail(k),
                         None => Plan::Ok(json!({})),
                     },
+                    "runs.rename" | "runs.paste_image" => match l.act_err {
+                        Some(k) => Plan::Fail(k),
+                        None => Plan::Ok(json!({})),
+                    },
                     "attach.open" => {
                         let run = params["run"].as_str().unwrap().to_string();
                         let (tx, rx) = mpsc::channel();
@@ -2009,6 +2225,7 @@ pub(super) mod tests {
             call: Duration::from_millis(100),
             open: Duration::from_millis(500),
             halt: Duration::from_millis(500),
+            paste: Duration::from_millis(500),
             backoff_min: Duration::from_millis(30),
             backoff_max: Duration::from_millis(120),
             reconnect_after: Duration::from_secs(3600),

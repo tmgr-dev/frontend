@@ -486,9 +486,8 @@ fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) 
             }
             Step::Reply(proto::ok(id, reply))
         }
-        "runs.list" | "runs.get" | "runs.create" | "runs.halt" | "attach.open" => {
-            crate::runs::run_method(conn, state, chan, &req, &scope)
-        }
+        "runs.list" | "runs.get" | "runs.create" | "runs.halt" | "attach.open" | "runs.rename"
+        | "runs.paste_image" => crate::runs::run_method(conn, state, chan, &req, &scope),
         other => {
             let shown = tmgr_core::text::truncate_chars(
                 &other
