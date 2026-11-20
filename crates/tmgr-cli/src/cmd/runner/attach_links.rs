@@ -463,6 +463,7 @@ fn cap(s: &str, max: usize) -> String {
 fn shorten(mut r: RunView) -> RunView {
     r.name = cap(&r.name, MAX_NAME);
     r.agent = r.agent.map(|a| cap(&a, MAX_NAME));
+    r.title = r.title.map(|t| cap(&t, MAX_NAME));
     r.task = r.task.map(|t| cap(&t, MAX_NAME));
     r.state.detail = r.state.detail.map(|d| cap(&d, MAX_DETAIL));
     r

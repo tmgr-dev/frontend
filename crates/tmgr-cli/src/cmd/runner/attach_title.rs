@@ -91,7 +91,7 @@ const FOLLOWER_EVERY: Duration = Duration::from_secs(5);
 #[derive(Default)]
 struct Scanned {
     scans: HashMap<String, TitleScan>,
-    found: HashMap<String, (Instant, Option<RunTitle>)>,
+    found: HashMap<String, (Instant, Option<RunTitle>, bool)>,
 }
 
 pub(crate) struct FollowerTitles {
@@ -166,8 +166,12 @@ fn follower_titles(
             continue;
         }
         let cached = state.found.get(&s.id);
-        let fresh = cached.is_some_and(|(when, _)| {
-            exited || now.saturating_duration_since(*when) < FOLLOWER_EVERY
+        let fresh = cached.is_some_and(|(when, _, closed)| {
+            if exited {
+                *closed
+            } else {
+                now.saturating_duration_since(*when) < FOLLOWER_EVERY
+            }
         });
         if !fresh && jobs < FOLLOWER_JOBS && now.elapsed() < FOLLOWER_BUDGET {
             jobs += 1;
@@ -183,9 +187,9 @@ fn follower_titles(
                 text: sanitize_text(&t.text).chars().take(64).collect(),
                 auto: t.auto,
             });
-            state.found.insert(s.id.clone(), (now, title));
+            state.found.insert(s.id.clone(), (now, title, exited));
         }
-        if let Some((_, Some(t))) = state.found.get(&s.id) {
+        if let Some((_, Some(t), _)) = state.found.get(&s.id) {
             out.insert(
                 s.id.clone(),
                 RunTitle {
@@ -850,5 +854,22 @@ mod tests {
         assert_eq!(again["s_aaaaaaaaaa"].text, got["s_aaaaaaaaaa"].text);
         let none = run_follower(dir.path(), &[], ALL, &mut state);
         assert!(none.is_empty() && state.found.is_empty());
+    }
+
+    #[test]
+    fn a_session_that_exits_after_a_live_scan_gets_one_final_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        plant_sandbox(dir.path(), "s_aaaaaaaaaa", 4242, "First");
+        let live = listed("s_aaaaaaaaaa", "claude", 4242);
+        let mut state = Scanned::default();
+        run_follower(dir.path(), &[&live], ALL, &mut state);
+        plant_sandbox(dir.path(), "s_aaaaaaaaaa", 4242, "Last words");
+        let mut gone = live.clone();
+        gone.state.kind = StateKind::Exited;
+        let got = run_follower(dir.path(), &[&gone], ALL, &mut state);
+        assert_eq!(got["s_aaaaaaaaaa"].text, "Last words");
+        plant_sandbox(dir.path(), "s_aaaaaaaaaa", 4242, "Ignored");
+        let again = run_follower(dir.path(), &[&gone], ALL, &mut state);
+        assert_eq!(again["s_aaaaaaaaaa"].text, "Last words");
     }
 }
