@@ -62,8 +62,10 @@ impl Clipboard for SystemClipboard {
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const OSA_MAX: usize = 2 * tmgr_link::paste::MAX_IMAGE + 4096;
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn osascript(script: &str) -> Option<String> {
     use std::io::Read;
     let mut child = Command::new("/usr/bin/osascript")
@@ -87,6 +89,7 @@ fn osascript(script: &str) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out).into_owned())
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(super) fn data_class(reply: &str, tag: &str) -> Option<Vec<u8>> {
     let hex = reply
         .trim()
@@ -101,6 +104,7 @@ pub(super) fn data_class(reply: &str, tag: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(super) fn image_only(info: &str) -> Option<&'static str> {
     let text = ["utf8", "string", "ut16", "furl"]
         .iter()
