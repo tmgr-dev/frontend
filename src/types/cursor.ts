@@ -1,3 +1,16 @@
+export interface CursorAgentRepository {
+	full_name: string;
+	starting_ref: string | null;
+	branch: string | null;
+	pr_url: string | null;
+}
+
+export interface CursorLaunchRepository {
+	full_name: string;
+	default_branch: string | null;
+	primary: boolean;
+}
+
 export interface CursorAgent {
 	id: number;
 	cursor_agent_id: string;
@@ -14,6 +27,8 @@ export interface CursorAgent {
 	created_at: string;
 	updated_at: string;
 	workspace_code?: string | null;
+	api_version?: 'v0' | 'v1';
+	repositories?: CursorAgentRepository[];
 }
 
 // Contract for the global GET /cursor-agents/active endpoint: workspace_code is

@@ -1,5 +1,9 @@
 import { t } from '@/i18n';
-import type { CursorAgent } from '../types/cursor';
+import type {
+	CursorAgent,
+	CursorAgentRepository,
+	CursorLaunchRepository,
+} from '../types/cursor';
 
 export const ACTIVE_CURSOR_AGENT_STATUSES: ReadonlyArray<
 	CursorAgent['status']
@@ -56,4 +60,35 @@ export function cursorAgentTaskRoute(
 			task_id: agent.task_id,
 		},
 	};
+}
+
+export function defaultSelectedRepositories(
+	repos: CursorLaunchRepository[],
+): string[] {
+	return repos.map((repo) => repo.full_name);
+}
+
+export function toggleRepository(
+	selected: string[],
+	fullName: string,
+): string[] {
+	return selected.includes(fullName)
+		? selected.filter((name) => name !== fullName)
+		: [...selected, fullName];
+}
+
+export function repositoriesForLaunch(
+	repos: CursorLaunchRepository[],
+	selected: string[],
+): string[] | undefined {
+	if (!repos.length) return undefined;
+	return repos
+		.map((repo) => repo.full_name)
+		.filter((name) => selected.includes(name));
+}
+
+export function cursorAgentRepositoryRows(
+	agent: Pick<CursorAgent, 'repositories'>,
+): CursorAgentRepository[] {
+	return Array.isArray(agent.repositories) ? agent.repositories : [];
 }

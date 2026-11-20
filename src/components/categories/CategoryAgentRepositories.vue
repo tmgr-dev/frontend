@@ -10,6 +10,9 @@
 		<p class="mb-4 text-sm text-ink-muted">
 			{{ $t('board.categories.agentRepositories.description') }}
 		</p>
+		<p class="mb-4 text-sm text-ink-muted">
+			{{ $t('board.categories.agentRepositories.cursorHint') }}
+		</p>
 		<textarea
 			v-model="text"
 			rows="4"

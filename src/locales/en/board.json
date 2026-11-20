@@ -371,7 +371,8 @@
 		"agentRepositories": {
 			"title": "Agent run repositories",
 			"description": "Repositories agents may work on for tasks of this category. Leave empty to use the linked GitHub repository.",
-			"saveFailed": "Could not save the repositories."
+			"saveFailed": "Could not save the repositories.",
+			"cursorHint": "Cursor cloud agents work on these repositories too. When the list is empty, Cursor uses the category's connected GitHub repository."
 		},
 		"titlePattern": {
 			"defaultLabel": "Task title pattern",
