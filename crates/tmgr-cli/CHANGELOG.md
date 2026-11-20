@@ -3,6 +3,11 @@
 ## 1.0.135
 
 - Remote control: `tmgr attach` on the leader now shows the live agent title of follower sessions on tabs and in the sidebar, as for local sessions. The follower computes it from the agent's own transcript (same rules as local titles, only for sessions still named after their agent, and only when the follower's own log-reading consent allows it) and sends it as an optional `title` field of `runs.list`; the text is cleaned and capped at 64 characters. A name you set explicitly still wins. Older leaders ignore the field and older followers send none, so those sessions keep the default name. `tmgr agents --host` JSON output carries the new `title` and `title_auto` fields. Needs the new CLI on both machines.
+## 1.0.136
+
+- `tmgr attach`: sessions of a linked machine can now be selected with the mouse, searched and copied in copy mode, as local ones. Selection and search work on what your terminal has received from the follower (the visible screen plus the lines you have scrolled through), and the copy goes to your own clipboard. Nothing extra crosses the link.
+- `tmgr attach`: Rename works on a linked machine's session. The follower applies it only when the link's scope allows attach input, records it in its audit log and keeps the usual name rules (1 to 64 characters). Needs the follower to run the same or a newer tmgr (the link answers "older tmgr" otherwise).
+- `tmgr attach`: pasting an image (Cmd-V or Ctrl-V with only an image on your clipboard) into a linked machine's session sends the image to the follower, which stores it in a private folder of that session's sandbox home and pastes its path, so Claude Code and Codex attach it. Needs attach input in the link's scope and a sandboxed session. PNG, JPEG, GIF and WebP up to 10 MB are accepted; the follower checks the file type itself. Screenshots are read from the clipboard on macOS only.
 
 ## 1.0.134
 

@@ -1,6 +1,6 @@
 use super::attach_checkpoints;
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
-use super::attach_clip::{Clipboard, SystemClipboard};
+use super::attach_clip::{clipboard_image, Clipboard, SystemClipboard};
 use super::attach_consent::Reads;
 use super::attach_export;
 use super::attach_git::{diff_pane_argv, git_worker, GitJob};
@@ -236,6 +236,11 @@ enum Msg {
     ScrollText {
         session: String,
         result: std::result::Result<ScrollText, String>,
+    },
+    ClipImage {
+        session: String,
+        image: Vec<u8>,
+        bracketed: bool,
     },
     TaskPrepared {
         id: u64,
@@ -710,6 +715,15 @@ impl App {
                 result,
                 generation,
             } => self.on_layout_started(&saved, &req, result, generation),
+            Msg::ClipImage {
+                session,
+                image,
+                bracketed,
+            } => {
+                if let Some(note) = self.remote.paste_image(&session, image, bracketed) {
+                    self.notify(&note);
+                }
+            }
             Msg::ScrollText { session, result } => {
                 self.text_pending = None;
                 self.text_at = Instant::now();
@@ -3096,6 +3110,32 @@ impl App {
             .collect()
     }
 
+    fn focused_is_remote(&self) -> bool {
+        self.view
+            .focused_session()
+            .is_some_and(|id| self.remote.is_remote(id))
+    }
+
+    fn paste_clipboard_image(&mut self) {
+        let Some(session) = self.view.focused_session().map(str::to_string) else {
+            return;
+        };
+        if !self.remote.is_remote(&session) {
+            return;
+        }
+        let bracketed = self.bracketed(&session);
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            if let Some(image) = clipboard_image() {
+                let _ = tx.send(Msg::ClipImage {
+                    session,
+                    image,
+                    bracketed,
+                });
+            }
+        });
+    }
+
     fn bracketed(&self, session: &str) -> bool {
         self.cache
             .snapshot(session)
@@ -3891,6 +3931,9 @@ impl App {
                             self.hold_typed(&id, &data);
                         } else {
                             self.send_to(&id, &data)?;
+                            if data == b"\x16" {
+                                self.paste_clipboard_image();
+                            }
                             let typed = peer_bytes(&data);
                             for peer in self.broadcast_peers(&id) {
                                 self.send_to(&peer, &typed)?;
@@ -3929,6 +3972,13 @@ impl App {
                             self.send_to(&id, &out)?;
                         }
                     }
+                }
+                Action::Paste {
+                    data,
+                    start: true,
+                    end: true,
+                } if data == b"\x1b[200~\x1b[201~" && self.focused_is_remote() => {
+                    self.paste_clipboard_image();
                 }
                 Action::Paste { data, start, end } => {
                     if start {

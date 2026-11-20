@@ -269,7 +269,7 @@ fn validate_rename(obj: &Map<String, Value>) -> Result<Accepted, Reject> {
     Ok(Accepted::default())
 }
 
-const PASTE_DATA_MAX: usize = (crate::paste::MAX_CHUNK + 2) / 3 * 4;
+const PASTE_DATA_MAX: usize = crate::paste::MAX_CHUNK.div_ceil(3) * 4;
 
 fn validate_paste(obj: &Map<String, Value>) -> Result<Accepted, Reject> {
     only_keys(obj, &["run", "total", "offset", "data", "bracketed"])?;

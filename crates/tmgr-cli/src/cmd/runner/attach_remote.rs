@@ -474,6 +474,34 @@ impl Remote {
         }
     }
 
+    pub(super) fn paste_image(
+        &mut self,
+        id: &str,
+        image: Vec<u8>,
+        bracketed: bool,
+    ) -> Option<String> {
+        let Target::Remote { link, run } = self.route(id) else {
+            return None;
+        };
+        if self.inputs.get(id) != Some(&true) {
+            return self.say(format!("input:{link}"), format!("read-only on {link}"));
+        }
+        if image.len() > tmgr_link::paste::MAX_IMAGE {
+            return Some("the image is larger than 10 MB".into());
+        }
+        if tmgr_link::paste::image_ext(&image).is_none() {
+            return Some("the clipboard image is not a PNG, JPEG, GIF or WebP".into());
+        }
+        match self
+            .hub
+            .as_ref()
+            .map(|h| h.paste_image(&link, &run, image, bracketed))
+        {
+            Some(Err(e)) => Some(format!("{link}: {e}")),
+            _ => Some(format!("sending the image to {link}")),
+        }
+    }
+
     pub(super) fn scroll(&self, id: &str, offset: u32) -> bool {
         match self.route(id) {
             Target::Local(_) => false,
@@ -987,6 +1015,99 @@ mod tests {
             r.view.sessions.iter().find(|s| s.id == id).unwrap().name,
             before
         );
+    }
+
+    fn png(n: usize) -> Vec<u8> {
+        let mut v = b"\x89PNG\r\n\x1a\n".to_vec();
+        v.resize(n, 9);
+        v
+    }
+
+    fn decoded(calls: &[serde_json::Value]) -> Vec<u8> {
+        use base64::Engine;
+        calls
+            .iter()
+            .flat_map(|c| {
+                base64::engine::general_purpose::STANDARD
+                    .decode(c["data"].as_str().unwrap())
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_clipboard_image_goes_over_the_link_in_chunks_to_the_focused_remote_pane() {
+        let mut r = rig(&["spark"], |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| l.input = true);
+        });
+        r.rows(2);
+        let id = r.pane("spark", A);
+        let img = png(600_000);
+        let note = r.remote.paste_image(&id, img.clone(), true).unwrap();
+        assert_eq!(note, "sending the image to spark");
+        r.until("pasted", |r| {
+            r.notes.iter().any(|n| n.starts_with("pasted the image"))
+        });
+        let calls = r.fake.calls("spark", "runs.paste_image");
+        assert_eq!(calls.len(), 2);
+        assert!(calls.iter().all(|c| c["run"] == A && c["total"] == 600_000));
+        assert_eq!(calls[0]["offset"], 0);
+        assert_eq!(calls[1]["offset"], 512 * 1024);
+        assert_eq!(calls[0]["bracketed"], true);
+        assert_eq!(decoded(&calls), img);
+        assert_eq!(r.remote.paste_image(LOCAL, png(10), true), None);
+    }
+
+    #[test]
+    fn an_image_that_is_too_big_not_an_image_or_for_a_read_only_pane_is_never_sent() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A]));
+        r.rows(2);
+        let id = r.pane("spark", A);
+        assert_eq!(
+            r.remote.paste_image(&id, png(100), false),
+            Some("read-only on spark".into())
+        );
+        r.fake.with("spark", |l| l.input = true);
+        let mut w = rig(&["spark"], |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| l.input = true);
+        });
+        w.rows(2);
+        let id = w.pane("spark", A);
+        assert_eq!(
+            w.remote
+                .paste_image(&id, png(10 * 1024 * 1024 + 1), false)
+                .unwrap(),
+            "the image is larger than 10 MB"
+        );
+        assert!(w
+            .remote
+            .paste_image(&id, b"#!/bin/sh\nrm -rf ~\n".to_vec(), false)
+            .unwrap()
+            .contains("not a PNG"));
+        w.settle(Duration::from_millis(150));
+        assert!(w.fake.calls("spark", "runs.paste_image").is_empty());
+        assert!(r.fake.calls("spark", "runs.paste_image").is_empty());
+    }
+
+    #[test]
+    fn a_follower_refusing_the_image_shows_its_answer() {
+        let mut r = rig(&["spark"], |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| {
+                l.input = true;
+                l.act_err = Some(Kind::Forbidden);
+            });
+        });
+        r.rows(2);
+        let id = r.pane("spark", A);
+        r.remote.paste_image(&id, png(100), false);
+        r.until("refusal", |r| {
+            r.notes
+                .iter()
+                .any(|n| n.starts_with("spark:") && n.contains("scripted failure"))
+        });
     }
 
     #[test]
