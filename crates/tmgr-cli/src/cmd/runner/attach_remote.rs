@@ -5,10 +5,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tmgr_ipc::api::Snapshot;
 use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::store::Paths;
 use tmgr_runner::attach::{
-    prefs_without_ids, AgentTitle, Cmd, Control, LayoutPrefs, Machine, MachineState, ScrollKey,
+    prefs_without_ids, AgentTitle, Cmd, Control, LayoutPrefs, Machine, MachineState, ScrollText,
     SessionRow, ViewState,
 };
 use tmgr_runner::client::ScreenCache;
@@ -107,7 +108,36 @@ fn allows(cmd: Cmd) -> bool {
             | Cmd::Layouts
             | Cmd::Filter
             | Cmd::Reconnect
+            | Cmd::Search
+            | Cmd::CopyMode
     )
+}
+
+pub(super) fn scroll_text(session: &str, snap: &Snapshot, prev: Option<&ScrollText>) -> ScrollText {
+    let rows = usize::from(snap.rows);
+    let cols = usize::from(snap.cols);
+    let total = snap.scroll_max + rows;
+    let top = snap.scroll_max.saturating_sub(snap.scroll_offset);
+    let mut text = match prev {
+        Some(p) if p.session == session && p.cols == cols && p.scroll_max <= snap.scroll_max => {
+            p.clone()
+        }
+        _ => ScrollText {
+            session: session.to_string(),
+            cols,
+            ..ScrollText::default()
+        },
+    };
+    text.lines.resize(total, String::new());
+    text.wrapped.resize(total, false);
+    text.scroll_max = snap.scroll_max;
+    text.rows = rows;
+    for (i, line) in snap.lines.iter().take(rows).enumerate() {
+        let raw: String = line.spans.iter().map(|s| s.t.as_str()).collect();
+        text.lines[top + i] = sanitize_text(raw.trim_end()).into_owned();
+        text.wrapped[top + i] = false;
+    }
+    text
 }
 
 fn link_of(id: &str) -> &str {
@@ -425,6 +455,10 @@ impl Remote {
         }
     }
 
+    pub(super) fn is_remote(&self, id: &str) -> bool {
+        matches!(self.route(id), Target::Remote { .. })
+    }
+
     pub(super) fn reconnect(&self) -> String {
         match &self.hub {
             Some(hub) => {
@@ -459,22 +493,6 @@ impl Remote {
             None
         } else {
             Some(refusal(&link, cmd == Cmd::Resume))
-        }
-    }
-
-    pub(super) fn scroll_key_gate(&self, key: ScrollKey, focused: Option<&str>) -> Option<String> {
-        let id = focused?;
-        if !matches!(
-            key,
-            ScrollKey::Search | ScrollKey::CopyMode | ScrollKey::Select
-        ) {
-            return None;
-        }
-        match self.route(id) {
-            Target::Local(_) => None,
-            Target::Remote { link, .. } => Some(refusal(&link, false)),
-            Target::Unknown if id.contains('/') => Some(refusal(link_of(id), false)),
-            Target::Unknown => None,
         }
     }
 
@@ -533,10 +551,12 @@ mod tests {
     use super::*;
     use std::sync::mpsc::Receiver;
     use tmgr_core::error::Kind;
+    use tmgr_ipc::api::{Attr, Color, Line, Snapshot, Span};
     use tmgr_ipc::api::{EventMsg, StateKind};
     use tmgr_ipc::proto::ServerMsg;
     use tmgr_link::attach::{encode_event, encode_screen, Outgoing};
     use tmgr_runner::attach::{Confirm, LayoutPrefs, Node, TabPrefs};
+    use tmgr_runner::attach::{Finish, Gran, MouseSel};
 
     const AREA: Rect = Rect {
         x: 0,
@@ -1030,7 +1050,6 @@ mod tests {
         r.rows(2);
         let remote = format!("spark/{A}");
         for cmd in [
-            Cmd::Rename,
             Cmd::Remove,
             Cmd::Resume,
             Cmd::Export,
@@ -1044,8 +1063,7 @@ mod tests {
             Cmd::SplitDown,
             Cmd::Templates,
             Cmd::Watch,
-            Cmd::Search,
-            Cmd::CopyMode,
+            Cmd::Rename,
         ] {
             assert!(
                 r.remote.cmd_gate(cmd, Some(&remote)).is_some(),
@@ -1070,6 +1088,8 @@ mod tests {
             Cmd::NewSession,
             Cmd::Reconnect,
             Cmd::Prompts,
+            Cmd::Search,
+            Cmd::CopyMode,
         ] {
             assert_eq!(r.remote.cmd_gate(cmd, Some(&remote)), None, "{cmd:?}");
         }
@@ -1077,11 +1097,7 @@ mod tests {
             r.remote.cmd_gate(Cmd::Resume, Some(&remote)).unwrap(),
             "resume works only on spark; start it again with: tmgr run --on spark"
         );
-        assert_eq!(
-            r.remote.cmd_gate(Cmd::Rename, Some(&remote)).unwrap(),
-            "not available for spark sessions"
-        );
-        assert!(r.remote.cmd_gate(Cmd::Rename, Some("ghost/s_x")).is_some());
+        assert!(r.remote.cmd_gate(Cmd::Remove, Some("ghost/s_x")).is_some());
         assert_eq!(r.remote.control_gate(&remote, Control::Stop), None);
         assert_eq!(r.remote.control_gate(&remote, Control::Interrupt), None);
         assert!(r.remote.control_gate(&remote, Control::Close).is_some());
@@ -1093,18 +1109,78 @@ mod tests {
         assert!(r.remote.cmd_gate(Cmd::Restart, Some(&remote)).is_some());
         assert!(r.remote.cmd_gate(Cmd::Fork, Some(&remote)).is_some());
         assert_eq!(r.remote.control_gate(LOCAL, Control::Close), None);
-        assert!(r
-            .remote
-            .scroll_key_gate(ScrollKey::Search, Some(&remote))
-            .is_some());
-        assert_eq!(
-            r.remote.scroll_key_gate(ScrollKey::PageUp, Some(&remote)),
-            None
-        );
-        assert_eq!(
-            r.remote.scroll_key_gate(ScrollKey::Search, Some(LOCAL)),
-            None
-        );
+    }
+
+    fn snap(lines: &[&str], max: usize, offset: usize) -> Snapshot {
+        Snapshot {
+            rows: lines.len() as u16,
+            cols: 20,
+            lines: lines
+                .iter()
+                .map(|t| Line {
+                    spans: vec![Span {
+                        a: Attr {
+                            fg: Color::Default,
+                            bg: Color::Default,
+                            flags: 0,
+                        },
+                        t: format!("{t}   "),
+                    }],
+                })
+                .collect(),
+            cursor: None,
+            modes: tmgr_ipc::api::Modes {
+                app_cursor: false,
+                bracketed_paste: false,
+                alt_screen: false,
+                hide_cursor: false,
+                mouse: Default::default(),
+            },
+            scroll_offset: offset,
+            scroll_max: max,
+        }
+    }
+
+    #[test]
+    fn remote_text_puts_the_visible_rows_where_the_selection_looks_for_them() {
+        let t = scroll_text("spark/s_a", &snap(&["alpha", "beta"], 3, 1), None);
+        assert_eq!(t.lines, ["", "", "alpha", "beta", ""]);
+        assert_eq!((t.scroll_max, t.rows, t.cols), (3, 2, 20));
+        let live = scroll_text("spark/s_a", &snap(&["gamma", "delta"], 3, 0), Some(&t));
+        assert_eq!(live.lines, ["", "", "alpha", "gamma", "delta"]);
+        let other = scroll_text("spark/s_b", &snap(&["x", "y"], 3, 0), Some(&t));
+        assert_eq!(other.lines, ["", "", "", "x", "y"]);
+    }
+
+    #[test]
+    fn a_selection_on_a_remote_pane_copies_the_text_of_the_leaders_grid() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A]));
+        r.rows(2);
+        let id = format!("spark/{A}");
+        let text = scroll_text(&id, &snap(&["one two", "three four"], 0, 0), None);
+        r.view.set_scroll_text(text, 2);
+        let sel = |anchor, head, gran| MouseSel {
+            session: id.clone(),
+            anchor,
+            head,
+            press_cell: (0, 0),
+            pointer: (0, 0),
+            moved: true,
+            held: false,
+            gran,
+            deferred: None,
+            finish: Finish::Pending,
+            last_scroll: None,
+        };
+        r.view.msel = Some(sel((0, 4), (1, 4), Gran::Cell));
+        assert!(r.view.finish_msel());
+        assert_eq!(r.view.take_copied().as_deref(), Some("two\nthree"));
+        r.view.msel = Some(sel((1, 6), (1, 6), Gran::Word));
+        assert!(r.view.finish_msel());
+        assert_eq!(r.view.take_copied().as_deref(), Some("four"));
+        r.view.msel = Some(sel((0, 0), (0, 0), Gran::Line));
+        assert!(r.view.finish_msel());
+        assert_eq!(r.view.take_copied().as_deref(), Some("one two"));
     }
 
     #[test]

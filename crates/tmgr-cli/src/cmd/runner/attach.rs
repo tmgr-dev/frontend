@@ -20,7 +20,7 @@ use super::attach_prompts;
 use super::attach_push;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_remote::{
-    attention_session, local_rows, prefs_for_runner, split_sizes, Remote, Sent,
+    attention_session, local_rows, prefs_for_runner, scroll_text, split_sizes, Remote, Sent,
 };
 use super::attach_restart::{fork_step, restart_step, ForkStep, Launch, RestartStep};
 use super::attach_shell::{
@@ -2995,15 +2995,24 @@ impl App {
     }
 
     fn request_text(&mut self) {
-        let Some(session) = self
-            .view
-            .focused_session()
-            .filter(|id| valid_session_id(id))
-            .map(str::to_string)
-        else {
+        let Some(session) = self.view.focused_session().map(str::to_string) else {
             return;
         };
         if self.text_pending.as_deref() == Some(session.as_str()) {
+            return;
+        }
+        if self.remote.is_remote(&session) {
+            self.text_pending = Some(session.clone());
+            self.text_dirty = false;
+            let result = self
+                .cache
+                .snapshot(&session)
+                .map(|s| scroll_text(&session, s, self.view.stext.as_ref()))
+                .ok_or_else(|| "the screen is not loaded yet".to_string());
+            let _ = self.tx.send(Msg::ScrollText { session, result });
+            return;
+        }
+        if !valid_session_id(&session) {
             return;
         }
         self.text_pending = Some(session.clone());
@@ -4181,13 +4190,6 @@ impl App {
                     }
                 }
                 Action::Scroll(key) => {
-                    if let Some(note) = self
-                        .remote
-                        .scroll_key_gate(key, self.view.focused_session())
-                    {
-                        self.notify(&note);
-                        continue;
-                    }
                     self.sync_scroll_max();
                     let page = self.page();
                     if key == ScrollKey::Search {
