@@ -129,15 +129,13 @@ export const updateCategory = async (categoryId: number, payload: Category) => {
 };
 
 export const deleteCategory = async (categoryId: number) => {
-	const {
-		data: { data },
-	} = await $axios.delete(`project_categories/${categoryId}`);
+	await $axios.delete(`project_categories/${categoryId}`);
 
 	requestCache.invalidate('categories');
 
 	requestCache.invalidate(/^categories-workspace-/);
 
-	return data.deleted_at;
+	return new Date().toISOString();
 };
 
 export const restoreCategory = async (categoryId: number) => {
