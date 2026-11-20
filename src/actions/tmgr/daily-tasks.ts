@@ -285,9 +285,14 @@ export const quickCreateRoutine = async (payload: {
 	time?: string;
 	category?: string;
 }) => {
+	const { date, time, ...rest } = payload;
 	const {
 		data: { data },
-	} = await $axios.post('daily-routines/tasks/quick', payload);
+	} = await $axios.post('daily-routines/tasks/quick', {
+		...rest,
+		scheduled_date: date,
+		scheduled_time: time,
+	});
 	requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	return data;
 };

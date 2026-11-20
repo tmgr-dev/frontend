@@ -82,3 +82,25 @@ describe('scoped writes', () => {
 		).rejects.toBe(err);
 	});
 });
+
+describe('quickCreateRoutine', () => {
+	it('sends the schedule under the names the backend binds', async () => {
+		const { quickCreateRoutine } = jest.requireActual('../daily-tasks');
+		const ax = axios as any;
+		ax.post = jest.fn().mockResolvedValue({ data: { data: { id: 3 } } });
+
+		await quickCreateRoutine({
+			title: 'Walk',
+			date: '2026-11-21',
+			time: '09:30',
+			category: 'TM',
+		});
+
+		expect(ax.post).toHaveBeenCalledWith('daily-routines/tasks/quick', {
+			title: 'Walk',
+			scheduled_date: '2026-11-21',
+			scheduled_time: '09:30',
+			category: 'TM',
+		});
+	});
+});
