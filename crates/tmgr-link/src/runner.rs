@@ -1,3 +1,4 @@
+use crate::paste;
 use serde_json::Value;
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -9,7 +10,7 @@ use tmgr_ipc::api::{
     RenameParams, RunCreateReq, SendParams, SessionInfo,
 };
 use tmgr_ipc::frame::{read_frame, write_json, Frame};
-use tmgr_ipc::proto::{ClientMsg, Request, Resize, Scroll, ServerMsg};
+use tmgr_ipc::proto::{valid_session_id, ClientMsg, Request, Resize, Scroll, ServerMsg};
 use tmgr_ipc::{dirs, endpoint, secret, server};
 
 pub const CLIENT_NAME: &str = "worker";
@@ -87,6 +88,13 @@ pub trait Backend: Send {
     fn send(&mut self, id: &str, text: &str) -> Result<(), BackendError>;
     fn remove(&mut self, id: &str) -> Result<(), BackendError>;
     fn rename(&mut self, id: &str, name: &str) -> Result<(), BackendError>;
+    fn paste_image(
+        &mut self,
+        id: &str,
+        image: &[u8],
+        ext: &str,
+        bracketed: bool,
+    ) -> Result<(), BackendError>;
     fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<OriginKilled, BackendError>;
     fn attach(
         &mut self,
@@ -345,6 +353,35 @@ impl Backend for RunnerClient {
                 },
                 other => other,
             })
+    }
+
+    fn paste_image(
+        &mut self,
+        id: &str,
+        image: &[u8],
+        ext: &str,
+        bracketed: bool,
+    ) -> Result<(), BackendError> {
+        let refuse = |message: &str| BackendError::Refused {
+            code: "unsupported".into(),
+            message: message.into(),
+        };
+        if !valid_session_id(id) {
+            return Err(refuse("invalid session id"));
+        }
+        let home = dirs::homes_dir().map_err(unavailable)?.join(id);
+        let path = paste::store(&home, image, ext).map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                refuse("image paste needs a sandboxed session")
+            } else {
+                refuse("cannot store the image in the session home")
+            }
+        })?;
+        let sent = self.send(id, &paste::paste_text(&path, bracketed));
+        if sent.is_err() {
+            paste::remove(&path);
+        }
+        sent
     }
 
     fn remove(&mut self, id: &str) -> Result<(), BackendError> {

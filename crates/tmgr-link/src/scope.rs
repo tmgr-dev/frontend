@@ -246,6 +246,7 @@ pub fn validate_run_method(
             }
         }
         "runs.rename" => validate_rename(&obj),
+        "runs.paste_image" => validate_paste(&obj),
         "runs.create" => validate_create(&obj, scope, live_runs),
         "attach.open" => validate_attach(&obj),
         _ => Err(Reject::bad("not a run method")),
@@ -264,6 +265,36 @@ fn validate_rename(obj: &Map<String, Value>) -> Result<Accepted, Reject> {
     let len = name.trim().chars().count();
     if len == 0 || len > NAME_MAX || name.chars().any(char::is_control) {
         return Err(Reject::bad("name must be 1 to 64 printable characters"));
+    }
+    Ok(Accepted::default())
+}
+
+const PASTE_DATA_MAX: usize = (crate::paste::MAX_CHUNK + 2) / 3 * 4;
+
+fn validate_paste(obj: &Map<String, Value>) -> Result<Accepted, Reject> {
+    only_keys(obj, &["run", "total", "offset", "data", "bracketed"])?;
+    let run = required(obj, "run")?;
+    if !grammar::token(run, 64) || run.contains('/') {
+        return Err(Reject::bad("invalid run id"));
+    }
+    let number = |key: &str| {
+        obj.get(key)
+            .and_then(Value::as_u64)
+            .ok_or_else(|| Reject::bad(format!("{key} must be a number")))
+    };
+    let total = number("total")?;
+    if total == 0 || total > crate::paste::MAX_IMAGE as u64 {
+        return Err(Reject::bad("the image is larger than 10 MB"));
+    }
+    if number("offset")? >= total {
+        return Err(Reject::bad("offset is past the end of the image"));
+    }
+    let data = required(obj, "data")?;
+    if data.is_empty() || data.len() > PASTE_DATA_MAX {
+        return Err(Reject::bad("data is empty or too large for one chunk"));
+    }
+    if obj.get("bracketed").is_some_and(|v| !v.is_boolean()) {
+        return Err(Reject::bad("bracketed must be a boolean"));
     }
     Ok(Accepted::default())
 }

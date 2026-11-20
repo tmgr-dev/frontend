@@ -1,11 +1,12 @@
 use crate::attach::{self, Outgoing};
 use crate::ownership::{RunRecord, Runs};
+use crate::paste;
 use crate::proto::{self, Channel, Poll, Request};
 use crate::registry::{self, Attached};
 use crate::runner::{AttachRecv, AttachSession, Backend, BackendError};
 use crate::scope::{self, canonical_repo, is_bypass_session, Scope};
 use crate::taskref::format_ref;
-use crate::worker::{say, Conn, RunTitle, State, Step};
+use crate::worker::{say, Conn, RunTitle, State, Step, Upload};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -205,6 +206,9 @@ pub(crate) fn run_method(
             m.entry("repo").or_insert_with(|| json!(scope.repos[0]));
         }
     }
+    if method != "runs.paste_image" {
+        st.upload = None;
+    }
     let mut args = scope::audit_args(&params);
     let accepted = match scope::validate_run_method(method, &params, scope, 0) {
         Ok(a) => a,
@@ -218,6 +222,7 @@ pub(crate) fn run_method(
         "runs.get" => get(conn, st, id, args, &run_param(&params), scope),
         "runs.halt" => halt(conn, st, id, args, &run_param(&params), scope),
         "runs.rename" => rename(conn, st, id, args, &params, scope),
+        "runs.paste_image" => paste_image(conn, st, id, args, &params, scope),
         "runs.create" => create(conn, st, id, args, &params, accepted.repo, scope),
         _ => attach_open(conn, st, chan, id, args, &params, scope),
     }
@@ -462,6 +467,128 @@ fn rename(
             }
             Step::Reply(proto::ok(id, json!({"id": run, "name": name})))
         }
+        Err(e) => failed(conn, method, args, id, &e),
+    }
+}
+
+fn paste_image(
+    conn: &Conn,
+    st: &mut State,
+    id: Option<u64>,
+    mut args: Value,
+    params: &Value,
+    scope: &Scope,
+) -> Step {
+    use base64::Engine;
+    let method = "runs.paste_image";
+    let run = run_param(params);
+    let number = |key: &str| params.get(key).and_then(Value::as_u64).unwrap_or(0) as usize;
+    let (total, offset) = (number("total"), number("offset"));
+    let bracketed = params
+        .get("bracketed")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if let Value::Object(m) = &mut args {
+        m.insert("total".into(), json!(total));
+    }
+    let reach = match resolve(conn, st, id, method, &args, &run, scope) {
+        Ok(r) => r,
+        Err(step) => {
+            st.upload = None;
+            return step;
+        }
+    };
+    if !input_granted(conn, st, &reach, scope) {
+        st.upload = None;
+        return deny(
+            conn,
+            method,
+            args,
+            id,
+            "forbidden",
+            "attach input is not allowed",
+        );
+    }
+    let data = params.get("data").and_then(Value::as_str).unwrap_or("");
+    let chunk = match base64::engine::general_purpose::STANDARD.decode(data) {
+        Ok(c) if !c.is_empty() && c.len() <= paste::MAX_CHUNK => c,
+        _ => {
+            st.upload = None;
+            return deny(
+                conn,
+                method,
+                args,
+                id,
+                "bad_params",
+                "data is not a valid chunk",
+            );
+        }
+    };
+    if offset == 0 {
+        if paste::image_ext(&chunk).is_none() {
+            st.upload = None;
+            return deny(
+                conn,
+                method,
+                args,
+                id,
+                "bad_params",
+                "not a PNG, JPEG, GIF or WebP image",
+            );
+        }
+        if conn.record(method, args.clone(), "accepted", "").is_err() {
+            return audit_down();
+        }
+        st.upload = Some(Upload {
+            run: run.clone(),
+            total,
+            buf: Vec::with_capacity(total),
+        });
+    }
+    let fits = |u: &Upload| {
+        u.run == run && u.total == total && u.buf.len() == offset && offset + chunk.len() <= total
+    };
+    let Some(up) = st.upload.as_mut().filter(|u| fits(u)) else {
+        st.upload = None;
+        return deny(
+            conn,
+            method,
+            args,
+            id,
+            "bad_params",
+            "chunk out of sequence",
+        );
+    };
+    up.buf.extend_from_slice(&chunk);
+    if up.buf.len() < total {
+        let received = up.buf.len();
+        return Step::Reply(proto::ok(id, json!({"received": received, "done": false})));
+    }
+    let image = st.upload.take().map(|u| u.buf).unwrap_or_default();
+    let Some(ext) = paste::image_ext(&image) else {
+        return deny(
+            conn,
+            method,
+            args,
+            id,
+            "bad_params",
+            "not a PNG, JPEG, GIF or WebP image",
+        );
+    };
+    let mut fact = json!({"link": conn.name, "run": run, "bytes": image.len(), "type": ext});
+    if !reach.owned {
+        fact["via"] = json!("remote_control");
+    }
+    if conn.audit.append("worker.image_pasted", fact).is_err() {
+        return audit_down();
+    }
+    match with_backend(conn, st, false, None, |b| {
+        b.paste_image(&run, &image, ext, bracketed)
+    }) {
+        Ok(()) => Step::Reply(proto::ok(
+            id,
+            json!({"received": image.len(), "done": true}),
+        )),
         Err(e) => failed(conn, method, args, id, &e),
     }
 }

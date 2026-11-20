@@ -46,6 +46,8 @@ struct FakeState {
     revokes: Vec<(String, u64)>,
     refuse_create: Option<&'static str>,
     refuse_rename: Option<&'static str>,
+    refuse_paste: Option<&'static str>,
+    pastes: Vec<(String, Vec<u8>, String, bool)>,
     next: u32,
     reports_modes: bool,
     remote_off_on_list: Option<Paths>,
@@ -273,6 +275,26 @@ impl Backend for Fake {
         for sess in s.sessions.iter_mut().filter(|x| x.id == id) {
             sess.name = name.into();
         }
+        Ok(())
+    }
+
+    fn paste_image(
+        &mut self,
+        id: &str,
+        image: &[u8],
+        ext: &str,
+        bracketed: bool,
+    ) -> Result<(), BackendError> {
+        let mut s = self.0.lock().unwrap();
+        s.calls.push("sessions.paste_image".into());
+        if let Some(code) = s.refuse_paste {
+            return Err(BackendError::Refused {
+                code: code.into(),
+                message: "no".into(),
+            });
+        }
+        s.pastes
+            .push((id.into(), image.to_vec(), ext.into(), bracketed));
         Ok(())
     }
 
@@ -772,6 +794,192 @@ fn rename_refuses_bad_names_foreign_runs_and_runner_conflicts() {
     fake.0.lock().unwrap().refuse_rename = Some("conflict");
     let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, "again")]);
     assert_eq!(r[0]["error"], "conflict");
+}
+
+fn png(n: usize) -> Vec<u8> {
+    let mut v = b"\x89PNG\r\n\x1a\n".to_vec();
+    v.resize(n, 7);
+    v
+}
+
+fn paste_req(id: u64, run: &str, image: &[u8], offset: usize, len: usize, total: usize) -> Value {
+    use base64::Engine;
+    let data = base64::engine::general_purpose::STANDARD.encode(&image[offset..offset + len]);
+    json!({"id":id,"method":"runs.paste_image","params":{
+        "run":run,"total":total,"offset":offset,"data":data,"bracketed":true}})
+}
+
+fn whole(run: &str, image: &[u8]) -> Vec<Value> {
+    vec![paste_req(1, run, image, 0, image.len(), image.len())]
+}
+
+fn pasting() -> (World, Fake, String) {
+    let w = world();
+    w.set_scope("laptop", |s| s.allow_attach_input = true);
+    let fake = Fake::default();
+    let made = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let id = run_id(&made[0]);
+    (w, fake, id)
+}
+
+fn pastes(fake: &Fake) -> Vec<(String, Vec<u8>, String, bool)> {
+    fake.0.lock().unwrap().pastes.clone()
+}
+
+#[test]
+fn an_image_paste_needs_the_attach_input_scope_and_is_audited() {
+    let w = world();
+    let fake = Fake::default();
+    let made = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let id = run_id(&made[0]);
+    let img = png(100);
+    let r = session(&w, "laptop", E1, &fake, &whole(&id, &img));
+    assert_eq!(r[0]["error"], "forbidden");
+    assert!(pastes(&fake).is_empty());
+    assert!(w
+        .audit()
+        .iter()
+        .any(|e| { e["method"] == "runs.paste_image" && e["decision"] == "rejected" }));
+    w.set_scope("laptop", |s| s.allow_attach_input = true);
+    let r = session(&w, "laptop", E1, &fake, &whole(&id, &img));
+    assert_eq!(r[0]["result"]["done"], true);
+    assert_eq!(
+        pastes(&fake),
+        [(id.clone(), img.clone(), "png".to_string(), true)]
+    );
+    let ev = w.audit();
+    let done = ev
+        .iter()
+        .find(|e| e["event"] == "worker.image_pasted")
+        .unwrap();
+    assert_eq!(done["bytes"], 100);
+    assert_eq!(done["type"], "png");
+    assert_eq!(done["run"], json!(id));
+    assert!(ev.iter().any(|e| {
+        e["method"] == "runs.paste_image"
+            && e["decision"] == "accepted"
+            && e["args"]["total"] == 100
+    }));
+    assert!(!serde_json::to_string(&ev).unwrap().contains("iVBOR"));
+}
+
+#[test]
+fn a_large_image_arrives_in_chunks_and_is_pasted_once_when_complete() {
+    let (w, fake, id) = pasting();
+    let img = png(600_000);
+    let split = 512 * 1024;
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[
+            paste_req(1, &id, &img, 0, split, img.len()),
+            paste_req(2, &id, &img, split, img.len() - split, img.len()),
+        ],
+    );
+    assert_eq!(r[0]["result"]["done"], false);
+    assert_eq!(r[0]["result"]["received"], split);
+    assert_eq!(r[1]["result"]["done"], true);
+    assert_eq!(pastes(&fake).len(), 1);
+    assert_eq!(pastes(&fake)[0].1, img);
+}
+
+#[test]
+fn an_image_over_the_size_cap_is_refused_before_anything_is_kept() {
+    let (w, fake, id) = pasting();
+    let img = png(64);
+    let over = 10 * 1024 * 1024 + 1;
+    let mut req = paste_req(1, &id, &img, 0, 64, over);
+    req["params"]["total"] = json!(over);
+    let r = session(&w, "laptop", E1, &fake, &[req]);
+    assert_eq!(r[0]["error"], "bad_params");
+    let mut zero = paste_req(1, &id, &img, 0, 64, 64);
+    zero["params"]["total"] = json!(0);
+    let r = session(&w, "laptop", E1, &fake, &[zero]);
+    assert_eq!(r[0]["error"], "bad_params");
+    let mut huge = paste_req(1, &id, &img, 0, 64, 64);
+    huge["params"]["data"] = json!("A".repeat(800_000));
+    let r = session(&w, "laptop", E1, &fake, &[huge]);
+    assert_eq!(r[0]["error"], "bad_params");
+    assert!(pastes(&fake).is_empty());
+}
+
+#[test]
+fn only_png_jpeg_gif_and_webp_are_accepted_whatever_the_leader_claims() {
+    let (w, fake, id) = pasting();
+    let bad: [&[u8]; 5] = [
+        b"#!/bin/sh\nrm -rf ~\n  ",
+        b"<svg xmlns='x'><script/></svg>",
+        b"RIFF\x01\0\0\0WAVEfmt ....",
+        b"%PDF-1.7 0000000000000",
+        b"BM000000000000000000000",
+    ];
+    for body in bad {
+        let r = session(&w, "laptop", E1, &fake, &whole(&id, body));
+        assert_eq!(r[0]["error"], "bad_params", "{body:?}");
+    }
+    assert!(pastes(&fake).is_empty());
+    let good: [(&[u8], &str); 3] = [
+        (b"\xff\xd8\xff\xe0JFIFxxxxxxxx", "jpg"),
+        (b"GIF89a\x01\0\x01\0xxxxxxxx", "gif"),
+        (b"RIFF\x10\0\0\0WEBPVP8 xxxx", "webp"),
+    ];
+    for (body, ext) in good {
+        let r = session(&w, "laptop", E1, &fake, &whole(&id, body));
+        assert_eq!(r[0]["result"]["done"], true, "{ext}");
+    }
+    let kinds: Vec<String> = pastes(&fake).into_iter().map(|p| p.2).collect();
+    assert_eq!(kinds, ["jpg", "gif", "webp"]);
+}
+
+#[test]
+fn a_chunk_out_of_sequence_or_for_another_upload_discards_the_upload() {
+    let (w, fake, id) = pasting();
+    let img = png(1000);
+    let first = paste_req(1, &id, &img, 0, 400, 1000);
+    let skip = paste_req(2, &id, &img, 500, 500, 1000);
+    let r = session(&w, "laptop", E1, &fake, &[first.clone(), skip]);
+    assert_eq!(r[1]["error"], "bad_params");
+    let resumed = paste_req(3, &id, &img, 400, 600, 1000);
+    let r = session(&w, "laptop", E1, &fake, &[first.clone(), resumed.clone()]);
+    assert_eq!(r[1]["result"]["done"], true);
+    let other_total = paste_req(4, &id, &img, 400, 500, 900);
+    let r = session(&w, "laptop", E1, &fake, &[first.clone(), other_total]);
+    assert_eq!(r[1]["error"], "bad_params");
+    let halt = json!({"id":5,"method":"runs.get","params":{"run":id}});
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[first.clone(), halt, resumed.clone()],
+    );
+    assert_eq!(r[2]["error"], "bad_params");
+    let r = session(&w, "laptop", E1, &fake, &[resumed]);
+    assert_eq!(r[0]["error"], "bad_params");
+    assert_eq!(pastes(&fake).len(), 1);
+}
+
+#[test]
+fn a_foreign_run_a_broken_chunk_and_a_runner_refusal_paste_nothing() {
+    let (w, fake, id) = pasting();
+    let img = png(100);
+    w.set_scope("phone", |s| s.allow_attach_input = true);
+    let r = session(&w, "phone", E2, &fake, &whole(&id, &img));
+    assert_eq!(r[0]["error"], "not_found");
+    let mut broken = paste_req(1, &id, &img, 0, 100, 100);
+    broken["params"]["data"] = json!("not base64!!");
+    let r = session(&w, "laptop", E1, &fake, &[broken]);
+    assert_eq!(r[0]["error"], "bad_params");
+    fake.0.lock().unwrap().refuse_paste = Some("unsupported");
+    let r = session(&w, "laptop", E1, &fake, &whole(&id, &img));
+    assert_eq!(r[0]["error"], "unsupported");
+    assert!(pastes(&fake).is_empty());
+    assert!(w
+        .audit()
+        .iter()
+        .any(|e| { e["method"] == "runs.paste_image" && e["decision"] == "failed" }));
 }
 
 #[test]

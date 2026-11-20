@@ -8,6 +8,7 @@ pub mod grammar;
 pub mod jump;
 pub mod leader;
 pub mod ownership;
+pub mod paste;
 pub mod privileged;
 pub mod proto;
 pub mod registry;

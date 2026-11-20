@@ -326,7 +326,10 @@ pub fn serve_with(
         rt,
         hello_only: store.jump_for.contains_key(name),
     };
-    let mut state = State { backend: None };
+    let mut state = State {
+        backend: None,
+        upload: None,
+    };
     let max_requests = limits.max_requests;
     let mut recent: std::collections::VecDeque<std::time::Instant> = Default::default();
     let original = env.original_command.as_deref();
@@ -413,8 +416,15 @@ pub(crate) enum Step {
     Done,
 }
 
+pub(crate) struct Upload {
+    pub(crate) run: String,
+    pub(crate) total: usize,
+    pub(crate) buf: Vec<u8>,
+}
+
 pub(crate) struct State {
     pub(crate) backend: Option<Box<dyn Backend>>,
+    pub(crate) upload: Option<Upload>,
 }
 
 fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) -> Step {

@@ -4167,6 +4167,7 @@ dependencies = [
 name = "tmgr-link"
 version = "1.0.135"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "keyring",
  "libc",
