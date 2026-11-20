@@ -65,7 +65,6 @@
 		user: {
 			id: number;
 			name: string;
-			email?: string;
 			avatar?: string;
 			has_avatar?: boolean;
 		};
@@ -463,7 +462,7 @@
 					'group flex gap-3',
 					comment.cursor_agent_id
 						? '-ml-3 rounded-lg border-l-4 border-status-testing bg-surface-sunken p-3'
-						: comment.user?.email === 'ai@tmgr.dev'
+						: comment.author?.kind === 'ai'
 							? '-ml-3 rounded-lg border-l-4 border-brand bg-surface-sunken p-3'
 							: '',
 				]"
@@ -480,7 +479,7 @@
 						<Bot class="h-4 w-4 text-status-testing-fg" />
 					</div>
 				</template>
-				<template v-else-if="comment.user?.email === 'ai@tmgr.dev'">
+				<template v-else-if="comment.author?.kind === 'ai'">
 					<div
 						class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-bg"
 					>
@@ -527,7 +526,7 @@
 							Cursor Agent
 						</span>
 						<span
-							v-else-if="comment.user?.email === 'ai@tmgr.dev'"
+							v-else-if="comment.author?.kind === 'ai'"
 							class="text-sm font-semibold text-brand"
 						>
 							{{ $t('tasks.comments.aiAssistant') }}

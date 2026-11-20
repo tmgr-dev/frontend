@@ -54,7 +54,7 @@
 					<div class="space-x-1 flex items-center">
 						<ClockIcon class="h-3 w-3" />
 						<time :datetime="task.updated_at" :title="formattedDate">
-							{{ task.updated_at_human }}
+							{{ updatedAtText }}
 						</time>
 					</div>
 				</div>
@@ -184,6 +184,7 @@
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import type { RecentTask } from '@/types/dashboard';
 	import { cn } from '@/utils';
+	import { activityTime } from '@/utils/activityLines';
 	import { priorityOption } from '@/utils/priority';
 	import {
 		doneDisabledTooltip,
@@ -241,6 +242,13 @@
 	const formattedDate = computed(() => {
 		return new Date(props.task.updated_at).toLocaleString(currentLocale());
 	});
+
+	const updatedAtText = computed(() =>
+		activityTime({
+			timestamp_human: props.task.updated_at_human,
+			created_at: props.task.updated_at,
+		}),
+	);
 
 	const priorityIcon = computed(() => priorityOption(props.task.priority).icon);
 
@@ -311,7 +319,7 @@
 				name: props.task.user.name,
 			}),
 			t('board.dashboard.recentTaskItem.ariaUpdated', {
-				when: props.task.updated_at_human,
+				when: updatedAtText.value,
 			}),
 		];
 
