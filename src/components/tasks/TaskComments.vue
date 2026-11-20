@@ -65,6 +65,7 @@
 		user: {
 			id: number;
 			name: string;
+			email?: string;
 			avatar?: string;
 			has_avatar?: boolean;
 		};
