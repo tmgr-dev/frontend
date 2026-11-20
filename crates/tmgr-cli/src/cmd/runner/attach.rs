@@ -55,6 +55,7 @@ use std::panic;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
@@ -425,6 +426,7 @@ struct App {
     opener: Box<dyn Opener>,
     clipboard: Box<dyn Clipboard>,
     text_pending: Option<String>,
+    clip_busy: Arc<AtomicBool>,
     text_dirty: bool,
     text_at: Instant,
     signals: SignalTracker,
@@ -3123,8 +3125,12 @@ impl App {
         if !self.remote.is_remote(&session) {
             return;
         }
+        if self.clip_busy.swap(true, Ordering::SeqCst) {
+            return;
+        }
         let bracketed = self.bracketed(&session);
         let tx = self.tx.clone();
+        let busy = Arc::clone(&self.clip_busy);
         thread::spawn(move || {
             if let Some(image) = clipboard_image() {
                 let _ = tx.send(Msg::ClipImage {
@@ -3133,6 +3139,7 @@ impl App {
                     bracketed,
                 });
             }
+            busy.store(false, Ordering::SeqCst);
         });
     }
 
@@ -3931,7 +3938,9 @@ impl App {
                             self.hold_typed(&id, &data);
                         } else {
                             self.send_to(&id, &data)?;
-                            if data == b"\x16" {
+                            if data == b"\x16"
+                                && self.view.sessions.iter().any(|r| r.id == id && r.esc)
+                            {
                                 self.paste_clipboard_image();
                             }
                             let typed = peer_bytes(&data);
@@ -5013,6 +5022,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         opener: Box::new(SystemOpener),
         clipboard: Box::new(SystemClipboard),
         text_pending: None,
+        clip_busy: Arc::new(AtomicBool::new(false)),
         text_dirty: false,
         text_at: Instant::now(),
         signals: SignalTracker::new(),

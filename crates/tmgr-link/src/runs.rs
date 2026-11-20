@@ -8,6 +8,7 @@ use crate::scope::{self, canonical_repo, is_bypass_session, Scope};
 use crate::taskref::format_ref;
 use crate::worker::{say, Conn, RunTitle, State, Step, Upload};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{EventMsg, Origin, RunCreateReq, ScreenPush, SessionInfo, StateKind};
@@ -467,6 +468,31 @@ fn rename(
             }
             Step::Reply(proto::ok(id, json!({"id": run, "name": name})))
         }
+        Err(BackendError::Refused { code, .. }) if code == "conflict" => {
+            let clash = with_backend(conn, st, true, None, |b| b.list())
+                .map(|list| {
+                    let modes = reports_modes(st);
+                    list.iter().any(|s| {
+                        s.id != run
+                            && s.name == name
+                            && (owned(conn, &s.id) == Some(true)
+                                || (modes && scope.may_see(false, is_bypass_session(s))))
+                    })
+                })
+                .unwrap_or(false);
+            let e = if clash {
+                BackendError::Refused {
+                    code: "conflict".into(),
+                    message: "another session already has that name".into(),
+                }
+            } else {
+                BackendError::Refused {
+                    code: "refused".into(),
+                    message: "that name cannot be used".into(),
+                }
+            };
+            failed(conn, method, args, id, &e)
+        }
         Err(e) => failed(conn, method, args, id, &e),
     }
 }
@@ -575,20 +601,32 @@ fn paste_image(
             "not a PNG, JPEG, GIF or WebP image",
         );
     };
-    let mut fact = json!({"link": conn.name, "run": run, "bytes": image.len(), "type": ext});
-    if !reach.owned {
-        fact["via"] = json!("remote_control");
-    }
-    if conn.audit.append("worker.image_pasted", fact).is_err() {
-        return audit_down();
-    }
     match with_backend(conn, st, false, None, |b| {
         b.paste_image(&run, &image, ext, bracketed)
     }) {
-        Ok(()) => Step::Reply(proto::ok(
-            id,
-            json!({"received": image.len(), "done": true}),
-        )),
+        Ok(()) => {
+            let sha256: String = Sha256::digest(&image)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            let mut fact = json!({
+                "link": conn.name,
+                "run": run,
+                "bytes": image.len(),
+                "type": ext,
+                "sha256": sha256,
+            });
+            if !reach.owned {
+                fact["via"] = json!("remote_control");
+            }
+            if conn.audit.append("worker.image_pasted", fact).is_err() {
+                return audit_down();
+            }
+            Step::Reply(proto::ok(
+                id,
+                json!({"received": image.len(), "done": true}),
+            ))
+        }
         Err(e) => failed(conn, method, args, id, &e),
     }
 }

@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tmgr_ipc::api::Snapshot;
+use tmgr_ipc::api::{limits, Snapshot};
 use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::store::Paths;
 use tmgr_runner::attach::{
@@ -117,26 +117,39 @@ fn allows(cmd: Cmd) -> bool {
 pub(super) fn scroll_text(session: &str, snap: &Snapshot, prev: Option<&ScrollText>) -> ScrollText {
     let rows = usize::from(snap.rows);
     let cols = usize::from(snap.cols);
-    let total = snap.scroll_max + rows;
-    let top = snap.scroll_max.saturating_sub(snap.scroll_offset);
-    let mut text = match prev {
-        Some(p) if p.session == session && p.cols == cols && p.scroll_max <= snap.scroll_max => {
-            p.clone()
-        }
-        _ => ScrollText {
-            session: session.to_string(),
-            cols,
-            ..ScrollText::default()
-        },
+    let full = snap.scroll_max.saturating_add(rows);
+    let keep = full.min(limits::MAX_TEXT_LINES as usize);
+    let base = full - keep;
+    let mut text = ScrollText {
+        session: session.to_string(),
+        lines: vec![String::new(); keep],
+        cols,
+        wrapped: vec![false; keep],
+        scroll_max: snap.scroll_max,
+        rows,
     };
-    text.lines.resize(total, String::new());
-    text.wrapped.resize(total, false);
-    text.scroll_max = snap.scroll_max;
-    text.rows = rows;
+    if let Some(p) =
+        prev.filter(|p| p.session == session && p.cols == cols && p.scroll_max <= snap.scroll_max)
+    {
+        let old_base = (p.scroll_max + p.rows).saturating_sub(p.lines.len());
+        for i in 0..keep {
+            if let Some(j) = (base + i)
+                .checked_sub(old_base)
+                .filter(|j| *j < p.lines.len())
+            {
+                text.lines[i] = p.lines[j].clone();
+                text.wrapped[i] = p.wrapped.get(j).copied().unwrap_or(false);
+            }
+        }
+    }
+    let top = snap.scroll_max.saturating_sub(snap.scroll_offset);
     for (i, line) in snap.lines.iter().take(rows).enumerate() {
+        let Some(at) = (top + i).checked_sub(base).filter(|a| *a < keep) else {
+            continue;
+        };
         let raw: String = line.spans.iter().map(|s| s.t.as_str()).collect();
-        text.lines[top + i] = sanitize_text(raw.trim_end()).into_owned();
-        text.wrapped[top + i] = false;
+        text.lines[at] = sanitize_text(raw.trim_end()).into_owned();
+        text.wrapped[at] = false;
     }
     text
 }
@@ -1353,6 +1366,47 @@ mod tests {
         assert_eq!(live.lines, ["", "", "alpha", "gamma", "delta"]);
         let other = scroll_text("spark/s_b", &snap(&["x", "y"], 3, 0), Some(&t));
         assert_eq!(other.lines, ["", "", "", "x", "y"]);
+    }
+
+    #[test]
+    fn wide_characters_and_tabs_survive_into_the_text_and_select_by_cell() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A]));
+        r.rows(2);
+        let id = format!("spark/{A}");
+        let t = scroll_text(&id, &snap(&["\u{65e5}\u{672c}\u{8a9e} a\tb"], 0, 0), None);
+        assert_eq!(t.lines, ["\u{65e5}\u{672c}\u{8a9e} a?b"]);
+        r.view.set_scroll_text(t, 1);
+        r.view.msel = Some(MouseSel {
+            session: id.clone(),
+            anchor: (0, 2),
+            head: (0, 3),
+            press_cell: (0, 0),
+            pointer: (0, 0),
+            moved: true,
+            held: false,
+            gran: Gran::Cell,
+            deferred: None,
+            finish: Finish::Pending,
+            last_scroll: None,
+        });
+        assert!(r.view.finish_msel());
+        assert_eq!(r.view.take_copied().as_deref(), Some("\u{672c}"));
+    }
+
+    #[test]
+    fn a_hostile_scroll_max_cannot_force_a_huge_text() {
+        let max = 4_000_000_000usize;
+        let t = scroll_text("spark/s_a", &snap(&["x", "y"], max, 0), None);
+        assert_eq!(
+            t.lines.len(),
+            tmgr_ipc::api::limits::MAX_TEXT_LINES as usize
+        );
+        assert_eq!(t.lines.last().unwrap(), "y");
+        let again = scroll_text("spark/s_a", &snap(&["x", "z"], max, 0), Some(&t));
+        assert_eq!(again.lines.len(), t.lines.len());
+        assert_eq!(&again.lines[again.lines.len() - 2..], ["x", "z"]);
+        let far = scroll_text("spark/s_a", &snap(&["gone"], max, max), None);
+        assert!(far.lines.iter().all(|l| l.is_empty()));
     }
 
     #[test]

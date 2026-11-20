@@ -861,6 +861,7 @@ struct Inner {
     cooldown: Mutex<HashMap<String, Instant>>,
     bound: Mutex<HashMap<String, Binding>>,
     key_notice: AtomicBool,
+    pasting: AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -1008,6 +1009,7 @@ impl Hub {
             cooldown: Mutex::new(HashMap::new()),
             bound: Mutex::new(HashMap::new()),
             key_notice: AtomicBool::new(false),
+            pasting: AtomicBool::new(false),
         });
         let mut ctl = HashMap::new();
         let mut threads = Vec::new();
@@ -1093,7 +1095,10 @@ impl Hub {
         image: Vec<u8>,
         bracketed: bool,
     ) -> std::result::Result<(), &'static str> {
-        self.queue(link, run, |stamp| {
+        if self.inner.pasting.swap(true, Ordering::SeqCst) {
+            return Err("an image is already being sent");
+        }
+        let queued = self.queue(link, run, |stamp| {
             Cmd::Act(
                 Job::Paste {
                     run: run.to_string(),
@@ -1102,7 +1107,11 @@ impl Hub {
                 },
                 stamp,
             )
-        })
+        });
+        if queued.is_err() {
+            self.inner.pasting.store(false, Ordering::SeqCst);
+        }
+        queued
     }
 
     pub(super) fn retry_all(&self) {
@@ -1273,11 +1282,15 @@ fn job_refused(inner: &Inner, link: &str, job: &Job, why: &str) {
             name: name.clone(),
             result,
         },
-        Job::Paste { run, .. } => LinkMsg::Pasted {
-            id: view_id(link, run),
-            result,
-        },
+        Job::Paste { run, .. } => {
+            return pasted(inner, view_id(link, run), result);
+        }
     });
+}
+
+fn pasted(inner: &Inner, id: String, result: std::result::Result<(), String>) {
+    inner.pasting.store(false, Ordering::SeqCst);
+    inner.emit(LinkMsg::Pasted { id, result });
 }
 
 fn pause(inner: &Inner, link: &str, cmds: &Receiver<Cmd>, wait: Option<Duration>) -> bool {
@@ -1496,13 +1509,23 @@ fn session(
             Err(RecvTimeoutError::Timeout) => {}
             Ok(Cmd::Halt(run, stamp)) => {
                 let job = Order::Halt(run);
-                if let Some(exit) = order(inner, link, conn.as_mut(), bound, job, stamp) {
+                if let Some(exit) =
+                    order(inner, link, conn.as_mut(), bound, job, stamp, &mut requests)
+                {
                     return exit;
                 }
                 requests += 1;
             }
             Ok(Cmd::Act(job, stamp)) => {
-                if let Some(exit) = order(inner, link, conn.as_mut(), bound, job.into(), stamp) {
+                if let Some(exit) = order(
+                    inner,
+                    link,
+                    conn.as_mut(),
+                    bound,
+                    job.into(),
+                    stamp,
+                    &mut requests,
+                ) {
                     return exit;
                 }
                 requests += 1;
@@ -1538,6 +1561,7 @@ fn order(
     bound: &Binding,
     order: Order,
     stamp: Option<Binding>,
+    requests: &mut u32,
 ) -> Option<Exit> {
     if stamp.as_ref() != Some(bound) {
         order_refused(inner, link, &order, "the link changed, try again");
@@ -1545,6 +1569,14 @@ fn order(
     }
     match rebound(inner, link, bound) {
         Rebound::Same => {
+            if let Order::Job(Job::Paste { image, .. }) = &order {
+                let chunks = image.len().div_ceil(PASTE_CHUNK) as u32;
+                if requests.saturating_add(chunks) >= inner.timing.reconnect_requests {
+                    order_refused(inner, link, &order, "the link is renewing, paste again");
+                    return Some(Exit::Planned);
+                }
+                *requests += chunks;
+            }
             match &order {
                 Order::Halt(run) => halt(inner, link, run, conn),
                 Order::Job(job) => job_done(inner, link, job, conn),
@@ -1612,10 +1644,7 @@ fn job_done(inner: &Inner, link: &str, job: &Job, conn: &mut dyn LinkConn) {
             } else {
                 gone()
             };
-            inner.emit(LinkMsg::Pasted {
-                id: view_id(link, run),
-                result,
-            });
+            pasted(inner, view_id(link, run), result);
         }
     }
 }
@@ -1997,6 +2026,7 @@ pub(super) mod tests {
         pub(crate) killed: Arc<AtomicBool>,
         pub(crate) halt_err: Option<Kind>,
         pub(crate) act_err: Option<Kind>,
+        pub(crate) paste_delay: Duration,
         pub(crate) input: bool,
         pub(crate) calls: Vec<(String, Value)>,
         pub(crate) feeds: HashMap<String, Sender<Vec<u8>>>,
@@ -2183,6 +2213,9 @@ pub(super) mod tests {
                     _ => Plan::Fail(Kind::Usage),
                 }
             });
+            if method == "runs.paste_image" {
+                thread::sleep(self.fake.with(&self.link, |l| l.paste_delay));
+            }
             match plan {
                 Plan::Hang => {
                     thread::sleep(timeout);
@@ -3505,6 +3538,52 @@ pub(super) mod tests {
         });
         assert!(result.is_err());
         assert!(r.fake.calls("spark", "runs.halt").is_empty());
+    }
+
+    #[test]
+    fn only_one_image_is_in_flight_and_the_next_waits_for_its_answer() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| l.paste_delay = Duration::from_millis(300));
+        });
+        r.runs("spark", 1);
+        let png = || {
+            let mut v = b"\x89PNG\r\n\x1a\n".to_vec();
+            v.resize(100, 1);
+            v
+        };
+        r.hub.paste_image("spark", A, png(), false).unwrap();
+        assert_eq!(
+            r.hub.paste_image("spark", A, png(), false),
+            Err("an image is already being sent")
+        );
+        let done = r.until(|m| match m {
+            LinkMsg::Pasted { result, .. } => Some(result.clone()),
+            _ => None,
+        });
+        assert!(done.is_ok());
+        assert!(r.hub.paste_image("ghost", A, png(), false).is_err());
+        r.hub.paste_image("spark", A, png(), false).unwrap();
+        r.until(|m| matches!(m, LinkMsg::Pasted { .. }).then_some(()));
+        r.hub.shutdown();
+    }
+
+    #[test]
+    fn an_upload_that_cannot_fit_the_followers_request_budget_renews_the_link_first() {
+        let mut timing = fast();
+        timing.reconnect_requests = 15;
+        let mut r = rig(&["spark"], timing, |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        let mut big = b"\x89PNG\r\n\x1a\n".to_vec();
+        big.resize(10 * 1024 * 1024, 1);
+        r.hub.paste_image("spark", A, big, false).unwrap();
+        let result = r.until(|m| match m {
+            LinkMsg::Pasted { result, .. } => Some(result.clone()),
+            _ => None,
+        });
+        assert!(result.unwrap_err().contains("renewing"));
+        assert!(r.fake.calls("spark", "runs.paste_image").is_empty());
+        r.hub.shutdown();
     }
 
     #[test]

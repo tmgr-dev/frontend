@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::collections::VecDeque;
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
@@ -51,6 +52,7 @@ struct FakeState {
     next: u32,
     reports_modes: bool,
     remote_off_on_list: Option<Paths>,
+    remote_off_skip: u32,
 }
 
 #[derive(Clone, Default)]
@@ -124,7 +126,9 @@ impl Backend for Fake {
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("sessions.list".into());
-        if let Some(paths) = s.remote_off_on_list.take() {
+        if s.remote_off_skip > 0 {
+            s.remote_off_skip -= 1;
+        } else if let Some(paths) = s.remote_off_on_list.take() {
             Store::update(&paths, |st| {
                 let scope = &mut st.leaders.get_mut("laptop").unwrap().scope;
                 scope.remote_control = false;
@@ -270,6 +274,12 @@ impl Backend for Fake {
             return Err(BackendError::Refused {
                 code: code.into(),
                 message: "no".into(),
+            });
+        }
+        if s.sessions.iter().any(|x| x.id != id && x.name == name) {
+            return Err(BackendError::Refused {
+                code: "conflict".into(),
+                message: "taken".into(),
             });
         }
         for sess in s.sessions.iter_mut().filter(|x| x.id == id) {
@@ -791,9 +801,111 @@ fn rename_refuses_bad_names_foreign_runs_and_runner_conflicts() {
     let other = session(&w, "phone", E2, &fake, &[rename_req(&id, "mine")]);
     assert_eq!(other[0]["error"], "not_found");
     assert_eq!(fake.called("sessions.rename"), 1);
-    fake.0.lock().unwrap().refuse_rename = Some("conflict");
+    fake.0.lock().unwrap().refuse_rename = Some("unsupported");
     let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, "again")]);
+    assert_eq!(r[0]["error"], "unsupported");
+}
+
+#[test]
+fn a_rename_clash_names_only_sessions_the_link_can_see() {
+    let w = world();
+    w.set_scope("laptop", |s| s.allow_attach_input = true);
+    let fake = Fake::default();
+    let made = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let id = run_id(&made[0]);
+    fake.0
+        .lock()
+        .unwrap()
+        .sessions
+        .push(local("s_hidden0001", |s| s.name = "secret-work".into()));
+    let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, "secret-work")]);
+    assert_eq!(r[0]["error"], "refused");
+    assert!(!r[0].to_string().contains("secret-work"));
+    let other = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[create(&w, json!({"task": "w1:8"}))],
+    );
+    let other_id = run_id(&other[0]);
+    let other_name = fake
+        .0
+        .lock()
+        .unwrap()
+        .sessions
+        .iter()
+        .find(|s| s.id == other_id)
+        .unwrap()
+        .name
+        .clone();
+    let r = session(&w, "laptop", E1, &fake, &[rename_req(&id, &other_name)]);
     assert_eq!(r[0]["error"], "conflict");
+}
+
+fn rename_and_paste(run: &str) -> Vec<Value> {
+    let img = png(64);
+    vec![
+        rename_req(run, "viaremote"),
+        paste_req(2, run, &img, 0, 64, 64),
+    ]
+}
+
+#[test]
+fn rename_and_paste_on_a_remote_controlled_run_work_and_are_marked_remote() {
+    let w = world();
+    let fake = fleet(true);
+    control(&w, true, false, true);
+    let r = session(&w, "laptop", E1, &fake, &rename_and_paste(PLAIN));
+    assert_eq!(r[0]["result"]["name"], "viaremote");
+    assert_eq!(r[1]["result"]["done"], true);
+    assert_eq!(pastes(&fake).len(), 1);
+    let ev = w.audit();
+    for event in ["worker.run_renamed", "worker.image_pasted"] {
+        let e = ev.iter().find(|e| e["event"] == event).unwrap();
+        assert_eq!(e["via"], "remote_control", "{event}");
+    }
+}
+
+#[test]
+fn rename_and_paste_on_bypass_sessions_without_include_bypass_look_like_a_missing_run() {
+    let w = world();
+    let fake = fleet(true);
+    control(&w, true, false, true);
+    for run in [NOSB, MODE, ARGV, "s_missing0001"] {
+        let r = session(&w, "laptop", E1, &fake, &rename_and_paste(run));
+        assert!(refused(&r), "{run}: {r:?}");
+    }
+    assert_eq!(fake.called("sessions.rename"), 0);
+    assert!(pastes(&fake).is_empty());
+}
+
+#[test]
+fn narrowing_the_scope_between_chunks_stops_the_upload_with_nothing_stored() {
+    let w = world();
+    let fake = fleet(true);
+    control(&w, true, false, true);
+    {
+        let mut st = fake.0.lock().unwrap();
+        st.remote_off_on_list = Some(w.paths.clone());
+        st.remote_off_skip = 1;
+    }
+    let img = png(1000);
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[
+            paste_req(1, PLAIN, &img, 0, 400, 1000),
+            paste_req(2, PLAIN, &img, 400, 600, 1000),
+            paste_req(3, PLAIN, &img, 400, 600, 1000),
+        ],
+    );
+    assert_eq!(r[0]["result"]["done"], false);
+    assert!(r[1]["error"].is_string(), "{r:?}");
+    assert!(r[2]["error"].is_string(), "{r:?}");
+    assert!(pastes(&fake).is_empty());
 }
 
 fn png(n: usize) -> Vec<u8> {
@@ -854,6 +966,11 @@ fn an_image_paste_needs_the_attach_input_scope_and_is_audited() {
         .unwrap();
     assert_eq!(done["bytes"], 100);
     assert_eq!(done["type"], "png");
+    let digest: String = sha2::Sha256::digest(&img)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(done["sha256"], json!(digest));
     assert_eq!(done["run"], json!(id));
     assert!(ev.iter().any(|e| {
         e["method"] == "runs.paste_image"
