@@ -81,7 +81,7 @@ fn is_loopback(host: &str) -> bool {
 }
 
 /// The origin only: request paths already carry `/api/chat-relay`.
-fn checked_origin(base: &str) -> Result<String, String> {
+pub(crate) fn checked_origin(base: &str) -> Result<String, String> {
   let url = url::Url::parse(base).map_err(|_| "the relay address is not valid".to_owned())?;
   let host = url.host_str().ok_or_else(|| "the relay address is not valid".to_owned())?;
   let secure = url.scheme() == "https" || (url.scheme() == "http" && is_loopback(host));

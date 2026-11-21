@@ -427,7 +427,9 @@ pub fn run() {
       manager::manager_join_decide,
       manager::manager_revoke_decide,
       manager::manager_revoke,
-      manager::manager_reset_identity
+      manager::manager_reset_identity,
+      manager::manager_set_relay_auth,
+      manager::manager_clear_relay_auth
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);

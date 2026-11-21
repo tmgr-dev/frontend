@@ -25,6 +25,8 @@ probes!(
   manager_join_decide,
   manager_revoke_decide,
   manager_revoke,
+  manager_set_relay_auth,
+  manager_clear_relay_auth,
   persona_cache_clear_for_user,
   persona_llm_clear_for_user,
   skill_library_read,
@@ -127,6 +129,17 @@ fn git_track_commands_are_allowed_for_the_main_window_only() {
 fn activity_commands_are_allowed_for_the_main_window_only() {
   for cmd in ["activity_supported", "activity_apps", "activity_update", "activity_suggestions", "activity_consume", "activity_forget"] {
     assert!(call("main", cmd).is_ok(), "{cmd} on main");
+    for label in ["task-1", "page-1", "decisions", "quick-add"] {
+      assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");
+    }
+  }
+}
+
+#[test]
+fn relay_auth_commands_are_allowed_for_main_and_manager_only() {
+  for cmd in ["manager_set_relay_auth", "manager_clear_relay_auth"] {
+    assert!(call("main", cmd).is_ok(), "{cmd} on main");
+    assert!(call("manager", cmd).is_ok(), "{cmd} on manager");
     for label in ["task-1", "page-1", "decisions", "quick-add"] {
       assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");
     }

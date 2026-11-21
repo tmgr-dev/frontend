@@ -169,6 +169,8 @@ const APP_COMMANDS: &[&str] = &[
   "manager_revoke_decide",
   "manager_revoke",
   "manager_reset_identity",
+  "manager_set_relay_auth",
+  "manager_clear_relay_auth",
   "decisions_pending_actions",
   "decisions_claim_action",
   "decisions_finish_action",

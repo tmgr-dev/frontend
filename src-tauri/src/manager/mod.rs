@@ -20,6 +20,7 @@ pub const TITLE: &str = "Manager";
 pub struct ManagerState {
   backend: Arc<dyn ManagerBackend>,
   relay: Arc<dyn relay::port::RelayPort>,
+  switch: Arc<relay::switch::SwitchRelay>,
 }
 
 fn backend_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<dyn ManagerBackend>, String> {
@@ -79,33 +80,17 @@ fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {
 /// Flip once the chat-relay backend (Liquibase 230) ships and `relay_engine` has a real login token and user id.
 const RELAY_ENABLED: bool = false;
 
-fn select_relay(
-  enabled: bool,
-  engine: impl FnOnce() -> Result<Arc<dyn relay::port::RelayPort>, String>,
-) -> Arc<dyn relay::port::RelayPort> {
-  if !enabled {
-    return Arc::new(relay::port::NoRelay);
-  }
-  engine().unwrap_or_else(|e| {
-    log::warn!("[manager] chat relay unavailable: {e}");
-    Arc::new(relay::port::NoRelay)
-  })
-}
-
-fn relay_engine<R: Runtime>(_app: &AppHandle<R>) -> Result<Arc<dyn relay::port::RelayPort>, String> {
-  // The login JWT and the user id live only in the web UI; no Rust-side source exists yet, so there is nothing
-  // to feed `RelayEngine::<HttpTransport, KeychainStore>::new` and `HttpTransport::new` with.
-  Err("no login token or user id is available to the desktop backend".to_owned())
-}
-
-fn build_relay<R: Runtime>(app: &AppHandle<R>) -> Arc<dyn relay::port::RelayPort> {
-  select_relay(RELAY_ENABLED, || relay_engine(app))
-}
-
 pub fn setup<R: Runtime>(app: &AppHandle<R>) {
-  let relay = build_relay(app);
-  let backend: Arc<dyn ManagerBackend> = match app.try_state::<crate::runner::Runner>() {
-    Some(runner) => {
+  let runner = app.try_state::<crate::runner::Runner>().map(|r| Arc::new(local::RunnerLocal::new(Arc::new(r.inner().clone()))));
+  let machine_source = runner.clone();
+  let machine: relay::switch::MachineSource = Box::new(move || match &machine_source {
+    Some(local) => local::LocalPort::machine(&**local),
+    None => Err("the runner is not available".to_owned()),
+  });
+  let switch = Arc::new(relay::switch::SwitchRelay::new(RELAY_ENABLED, relay::switch::keychain_builder(), machine));
+  let relay: Arc<dyn relay::port::RelayPort> = switch.clone();
+  let backend: Arc<dyn ManagerBackend> = match (app.try_state::<crate::runner::Runner>(), runner) {
+    (Some(runner), Some(local)) => {
       let handle = app.clone();
       let resync_handle = app.clone();
       bridge::spawn(
@@ -117,15 +102,47 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
           let _ = tauri::Emitter::emit_to(&resync_handle, LABEL, "manager://resync", ());
         },
       );
-      Arc::new(composite::CompositeBackend::new(
-        Arc::new(local::RunnerLocal::new(Arc::new(runner.inner().clone()))),
-        relay.clone(),
-      ))
+      Arc::new(composite::CompositeBackend::new(local, relay.clone()))
     }
-    None => Arc::new(StubBackend::default()),
+    _ => Arc::new(StubBackend::default()),
   };
-  app.manage(ManagerState { backend, relay });
+  if switch.enabled() {
+    let handle = app.clone();
+    relay::switch::spawn_poll(&switch, move |message| {
+      let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
+    });
+  }
+  app.manage(ManagerState { backend, relay, switch });
   ensure_shortcut(app);
+}
+
+fn switch_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<relay::switch::SwitchRelay>, String> {
+  app.try_state::<ManagerState>().map(|m| m.switch.clone()).ok_or_else(|| "the manager chat is not running".to_owned())
+}
+
+#[tauri::command]
+pub async fn manager_set_relay_auth<R: Runtime>(app: AppHandle<R>, token: String, user_id: u64, api_base: String) -> Result<(), String> {
+  let auth = relay::auth::RelayAuth::new(token, user_id, &api_base)?;
+  let switch = switch_of(&app)?;
+  blocking(move || {
+    switch.set_auth(auth);
+    Ok(())
+  })
+  .await?;
+  trust_changed(&app);
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn manager_clear_relay_auth<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+  let switch = switch_of(&app)?;
+  blocking(move || {
+    switch.clear();
+    Ok(())
+  })
+  .await?;
+  trust_changed(&app);
+  Ok(())
 }
 
 #[tauri::command]
@@ -202,26 +219,4 @@ pub async fn manager_reset_identity<R: Runtime>(app: AppHandle<R>) -> Result<(),
   blocking(move || relay.reset_identity()).await?;
   trust_changed(&app);
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn relay_is_off_by_default_and_never_builds_the_engine() {
-    let relay = select_relay(RELAY_ENABLED, || panic!("engine must not be built"));
-    assert_eq!(relay.reset_identity().unwrap_err(), "chat sync is not set up");
-  }
-
-  #[test]
-  fn enabled_relay_falls_back_to_no_relay_when_the_engine_fails() {
-    let called = std::cell::Cell::new(false);
-    let relay = select_relay(true, || {
-      called.set(true);
-      Err("no login".into())
-    });
-    assert!(called.get());
-    assert_eq!(relay.reset_identity().unwrap_err(), "chat sync is not set up");
-  }
 }
