@@ -168,25 +168,19 @@
       }
     },
     {
-      "name": "signature_raw64_low_s_accepted",
+      "name": "signature_raw64_low_s_rejected",
       "class": "signature",
       "body": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000002\",\"from\":\"00000000-0000-4000-8000-00000000000a\",\"eph\":\"BB4YUy/UdUwC8wQdnHXOszuD/9gax85P6ILMscmLxYlupGwxHE4v9A3ZajZT5uRURdMt/khuztdcepDGoYiBwKM=\",\"nonce\":\"CAgICAgICAgICAgI\",\"ct\":\"k7ppZrZfW7KKFvHFH5WmVkA8oAtlJ8GRC+B+PhBCs3E4Ng31JUdj0nAkTpnUAYwJAsNRakjKP5+WRFoOMZp435uF/X7t02uDvI+tv5meGscVwJ0lU8sbzzMWcX9bw8HcB4ebwXYlIuh5pQ1cphTcw4uVO9PKVB/RMuTcJy1rtNNwqU/TN5wMtr3RLYXFJSKMyaPO9YizLxntHHkJqSOIJnXc5ncR+T5NbA7Befnv9C+J8sj7Wk6gQoHJF/PTM1x/D/v/cq2U/v6YiB6V9ICiWOXdDLL58l3jZcVcVe32DLzTvBCS0lWwgnwfPxESKwerPVr4jMrYnFDC0nLsvlHE0sqVpQlWWGQe\"}",
       "expect": {
-        "ok": {
-          "seq": 1,
-          "trusted": true
-        }
+        "error": "bad_signature"
       }
     },
     {
-      "name": "signature_raw64_high_s_accepted",
+      "name": "signature_raw64_high_s_rejected",
       "class": "signature",
       "body": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000002\",\"from\":\"00000000-0000-4000-8000-00000000000a\",\"eph\":\"BB4YUy/UdUwC8wQdnHXOszuD/9gax85P6ILMscmLxYlupGwxHE4v9A3ZajZT5uRURdMt/khuztdcepDGoYiBwKM=\",\"nonce\":\"CAgICAgICAgICAgI\",\"ct\":\"k7ppZrZfW7KKFvHFH5WmVkA8oAtlJ8GRC+B+PhBCs3E4Ng31JUdj0nAkTpnUAYwJAsNRakjKP5+WRFoOMZp435uF/X7t02uDvI+tv5meGscVwJ0lU8sbzzMWcX9bw8HcB4ebwXYlIuh5pQ1cphTcw4uVO9PKVB/RMuTcJy1rtNNwqU/TN5wMtr3RLYXFJSKMyaPO9YizLxntHHkJqSOIJnXc5ncR+T5NbA7Befnv9C+J8sj7Wk6gQoHJF/PTM1x/D/v/cq2U/v6Z9DmijrbYb8LqOLuBxXqKF8gucuTRKtaPhCOB10CewmEkCQhPVwfDPB2vnMrYnFBfQZfSfeHtQrPqw9H/CRmP\"}",
       "expect": {
-        "ok": {
-          "seq": 1,
-          "trusted": true
-        }
+        "error": "bad_signature"
       }
     },
     {

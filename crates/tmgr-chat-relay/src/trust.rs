@@ -6,7 +6,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use subtle::ConstantTimeEq;
-use tmgr_phone::{b64, b64_decode, h, pair_mac, sign, verify};
+use tmgr_phone::{b64, b64_decode, h, pair_mac, sign, verify_der};
 
 pub const JOIN_PREFIX: &str = "tmgr-chat-join:v1:";
 
@@ -130,7 +130,7 @@ pub fn verify_intro(
     if fingerprint(signer_sign_pub_b64, signer_kex_pub_b64) != intro.parsed.introducer_fp {
         return Err(Error::BadKey);
     }
-    verify(
+    verify_der(
         &b64_decode(signer_sign_pub_b64)?,
         &intro.statement,
         &intro.sig,
@@ -226,7 +226,7 @@ pub fn verify_revoke(
     if fingerprint(revoker_sign_pub_b64, revoker_kex_pub_b64) != r.parsed.revoker_fp {
         return Err(Error::BadKey);
     }
-    verify(&b64_decode(revoker_sign_pub_b64)?, &r.statement, &r.sig)?;
+    verify_der(&b64_decode(revoker_sign_pub_b64)?, &r.statement, &r.sig)?;
     Ok(r)
 }
 
@@ -307,8 +307,8 @@ pub fn verify_spawnkey(
     {
         return Err(Error::BadKey);
     }
-    verify(&b64_decode(device_sign_pub_b64)?, &k.statement, &k.sig)?;
-    verify(&b64_decode(&st.spawn_pub_b64)?, &k.statement, &k.spawn_sig)?;
+    verify_der(&b64_decode(device_sign_pub_b64)?, &k.statement, &k.sig)?;
+    verify_der(&b64_decode(&st.spawn_pub_b64)?, &k.statement, &k.spawn_sig)?;
     Ok(st)
 }
 
@@ -514,7 +514,7 @@ pub fn trusted_set(
                 continue;
             };
             let verified = b64_decode(&introducer.sign_pub)
-                .and_then(|key| verify(&key, &intro.statement, &intro.sig))
+                .and_then(|key| verify_der(&key, &intro.statement, &intro.sig))
                 .is_ok();
             if !verified {
                 failed[n] = true;

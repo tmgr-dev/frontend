@@ -4,7 +4,7 @@ use crate::trust::Trusted;
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tmgr_phone::{b64_decode, h, hex, open_ctx, seal_ctx_with, sign, verify, Entropy, Sealed};
+use tmgr_phone::{b64_decode, h, hex, open_ctx, seal_ctx_with, sign, verify_der, Entropy, Sealed};
 
 const MAX_AGE_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_SKEW_MS: u64 = 5 * 60 * 1000;
@@ -277,7 +277,7 @@ where
         inner.sent_at,
         &plain.body,
     )?;
-    verify(&b64_decode(&sender_sign)?, &signed, &plain.sig)?;
+    verify_der(&b64_decode(&sender_sign)?, &signed, &plain.sig)?;
     if inner.sent_at < now_ms.saturating_sub(MAX_AGE_MS) || inner.sent_at > now_ms + MAX_SKEW_MS {
         return Err(Error::BadWindow);
     }

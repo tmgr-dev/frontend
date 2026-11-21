@@ -49,8 +49,8 @@ later versions can add fields. Duplicate keys are never ignored: they are reject
 
 ## Notes for the JS port
 
-- `@noble` p256: verify with `lowS: false` (high-S signatures must be accepted) and accept both DER and raw
-  64-byte r||s; emit DER low-S.
+- `@noble` p256: verify with `lowS: false` (high-S signatures must be accepted), DER only: a raw 64-byte r||s
+  signature is rejected; emit DER low-S.
 - Use a strict JSON parser that rejects duplicate keys at any depth (body, plaintext, inner, payload) and
   rejects lone surrogate escapes.
 - Check base64 by re-encoding: decode, encode again, and require the exact original string (padded, canonical).
