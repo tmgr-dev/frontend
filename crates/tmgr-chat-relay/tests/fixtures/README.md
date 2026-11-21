@@ -40,6 +40,36 @@ STANDARD padded, secrets are test keys only.
   introducer matched on `(by, introducer_fp)`; the statement `user_id` must equal the user; a new entry takes
   its keys from the directory entry of that id and only if their fp equals the intro's `N_fp`; a revoked fp never
   re-enters, even under a new id.
+- `trust_v2.json`: top-level `user_id` and `cases[]`, each `{name, note, inputs, outputs, same_outputs_as?}`.
+  Run every case through the kind-aware trust evaluation (`trusted_set_by_kind`) and compare; when
+  `same_outputs_as` names another case, the two `outputs` must be equal (order independence, runner wins in both
+  orders). All lists in `outputs` are compared after sorting.
+  - `inputs.devices[]`: `{name, device_id, keys}` (same `keys` object as the other files, secrets included;
+    only the public parts and `fp` are needed). Keys such as `own`, `roots`, `known` use `"{device_id}:{fp}"`.
+  - `inputs.own`: key of the evaluating device, or `null`. It never blocks the runner gate and never takes a kind.
+  - `inputs.start[]`: starting pins `{device_id, fp, sign_pub, kex_pub}` (the pins on a normal sync, the base
+    roots on a revoke).
+  - `inputs.roots[]`: base roots. A root without an entry in `known` is assumed to be `desktop` for vouching only;
+    that stand-in is never returned as a kind, never conflicts and never counts as an existing value.
+  - `inputs.known`: map key to kind (`desktop|mobile|runner`), the kinds stored before the run.
+  - `inputs.revoked[]`: revoked fps. `inputs.max_passes`: pass cap, `null` means `2 * n + 1` where `n` counts
+    the distinct keys in `known`, `start` and intro targets.
+  - `inputs.intros[]`: intro JSON strings (v1 and v2) in the given order, `inputs.directory[]`:
+    `{device_id, sign_pub, kex_pub}`.
+  - `inputs.revoke_from_base`: `null`, or `{trusted_before: [key]}`. When set, the result of the run is restricted:
+    `trusted` keeps only keys in `trusted_before`, and `kinds` keeps only entries whose key has a value in `known`
+    and whose new value is `runner` (revoke may only drop trust and lower kinds).
+  - `outputs.trusted[]`: `{device_id, fp}`. `outputs.kinds[]`: `{device_id, fp, kind}`, kinds learned by the run
+    for trusted keys only (value differs from `known`, assumed roots excluded). `outputs.conflicts[]`:
+    `{device_id, fp}` of the final pass. `outputs.unstable[]`: device ids (set semantics). `outputs.passes`: count.
+  - Algorithm the cases pin down: each pass starts from `known` (plus assumed roots) with the `lowered` set
+    (keys demoted to `runner` so far) applied and the kinds `raised` by the previous pass; only counted v2
+    intros of trusted signers that may vouch give candidates (self-intros give none; v1 intros count only for a
+    target with a known `desktop`/`mobile` kind and only while the runner gate is closed). Merge per key: any
+    `runner` claim wins; desktop vs mobile keeps the existing value; a tie with no existing value stays unknown;
+    each disagreement is a conflict. New `runner` results go into `lowered` and clear `raised`, then the pass
+    reruns; a change in `raised` also reruns. Only the final pass counts. At the cap the result is `unstable`,
+    trusted keeps only `own`, and no kinds are returned.
 - `negative.json`: `context` (user, now, default msg id, recipient and sender), `message_vectors[]` and
   `intro_vectors[]`. A message vector is opened with the recipient keys and the sender pinned (not pinned when
   `sender_trusted` is false; then the sender's directory keys are offered, which only `join` accepts). Optional

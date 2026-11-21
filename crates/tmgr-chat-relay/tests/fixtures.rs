@@ -1,10 +1,13 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use p256::ecdsa::Signature;
 use serde_json::{json, Value};
 use tmgr_chat_relay::keys::DeviceKeys;
 use tmgr_chat_relay::trust::{
-    decode_join_code, encode_join_code, join_mac, sign_intro, sign_revoke, sign_spawnkey,
-    trusted_set, verify_intro, verify_join_mac, verify_revoke, verify_spawnkey, DirEntry,
-    IntroStatement, JoinCode, JoinMacInput, RevokeStatement, SpawnStatement, Trusted,
+    decode_join_code, encode_join_code, join_mac, restrict_to_before, sign_intro, sign_revoke,
+    sign_spawnkey, trusted_set, trusted_set_by_kind, verify_intro, verify_join_mac, verify_revoke,
+    verify_spawnkey, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement,
+    SpawnStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{
     chat_ctx, msg_id_from, open_message, seal_message_unpadded_with, seal_message_with,
@@ -1009,6 +1012,330 @@ fn negative_fixture() -> Value {
     })
 }
 
+const TRUST_V2_DEVICES: [&str; 5] = ["A", "B", "X", "Y", "Z"];
+
+fn tkeys() -> Vec<DeviceKeys> {
+    (1..=5).map(keys).collect()
+}
+
+fn tkey(k: &[DeviceKeys], i: usize) -> String {
+    format!("{}:{}", IDS[i], k[i].fingerprint())
+}
+
+fn tintro(k: &[DeviceKeys], ver: u8, by: usize, target: usize, kind: &str) -> String {
+    let st = IntroStatement {
+        version: ver,
+        user_id: USER,
+        introducer_fp: k[by].fingerprint(),
+        target_id: IDS[target].into(),
+        target_fp: k[target].fingerprint(),
+        target_kind: kind.into(),
+        issued_at_ms: NOW,
+    };
+    sign_intro(&k[by], IDS[by], &st).unwrap()
+}
+
+struct TrustV2Case<'a> {
+    name: &'a str,
+    note: &'a str,
+    start: &'a [usize],
+    roots: &'a [usize],
+    known: &'a [(usize, &'a str)],
+    own: Option<usize>,
+    max_passes: Option<usize>,
+    intros: Vec<String>,
+    directory: &'a [usize],
+    before: Option<&'a [usize]>,
+    same_outputs_as: Option<&'a str>,
+}
+
+fn trust_v2_run(user: u64, inputs: &Value) -> Value {
+    let list = |v: &Value| -> Vec<Value> { v.as_array().unwrap().clone() };
+    let pins: Vec<Trusted> = list(&inputs["start"])
+        .iter()
+        .map(|p| {
+            Trusted::new(
+                p["device_id"].as_str().unwrap(),
+                p["sign_pub"].as_str().unwrap(),
+                p["kex_pub"].as_str().unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let strs = |v: &Value| -> Vec<String> {
+        list(v)
+            .iter()
+            .map(|x| x.as_str().unwrap().to_owned())
+            .collect()
+    };
+    let revoked = strs(&inputs["revoked"]);
+    let intros = strs(&inputs["intros"]);
+    let dir: Vec<DirEntry> = list(&inputs["directory"])
+        .iter()
+        .map(|d| DirEntry {
+            device_id: d["device_id"].as_str().unwrap().into(),
+            sign_pub_b64: d["sign_pub"].as_str().unwrap().into(),
+            kex_pub_b64: d["kex_pub"].as_str().unwrap().into(),
+        })
+        .collect();
+    let known: BTreeMap<String, String> = inputs["known"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+        .collect();
+    let assumed: BTreeSet<String> = strs(&inputs["roots"])
+        .into_iter()
+        .filter(|k| !known.contains_key(k))
+        .collect();
+    let mut set = trusted_set_by_kind(
+        user,
+        &pins,
+        &revoked,
+        &intros,
+        &dir,
+        Some(&KindCtx {
+            known: &known,
+            own: inputs["own"].as_str(),
+            assumed: &assumed,
+            max_passes: inputs["max_passes"].as_u64().map(|n| n as usize),
+        }),
+    );
+    if let Some(r) = inputs["revoke_from_base"].as_object() {
+        let before: BTreeSet<String> = strs(&r["trusted_before"]).into_iter().collect();
+        set = restrict_to_before(set, &before, &known);
+    }
+    let mut trusted: Vec<Value> = set
+        .trusted
+        .iter()
+        .map(|t| json!({"device_id": t.device_id, "fp": t.fp}))
+        .collect();
+    trusted.sort_by_key(|v| v.to_string());
+    let mut kinds: Vec<Value> = set
+        .kinds
+        .iter()
+        .map(|(id, fp, kind)| json!({"device_id": id, "fp": fp, "kind": kind}))
+        .collect();
+    kinds.sort_by_key(|v| v.to_string());
+    let mut conflicts: Vec<Value> = set
+        .conflicts
+        .iter()
+        .map(|(id, fp)| json!({"device_id": id, "fp": fp}))
+        .collect();
+    conflicts.sort_by_key(|v| v.to_string());
+    let unstable: BTreeSet<String> = set.unstable.iter().cloned().collect();
+    json!({
+        "trusted": trusted,
+        "kinds": kinds,
+        "conflicts": conflicts,
+        "unstable": unstable,
+        "passes": set.passes,
+    })
+}
+
+fn trust_v2_case(c: TrustV2Case) -> Value {
+    let k = tkeys();
+    let devices: Vec<Value> = (0..5)
+        .map(|i| json!({"name": TRUST_V2_DEVICES[i], "device_id": IDS[i], "keys": key_json(&k[i])}))
+        .collect();
+    let known: BTreeMap<String, String> = c
+        .known
+        .iter()
+        .map(|(i, kind)| (tkey(&k, *i), (*kind).to_owned()))
+        .collect();
+    let mut inputs = json!({
+        "own": c.own.map(|i| tkey(&k, i)),
+        "start": c.start.iter().map(|i| pin(IDS[*i], &k[*i])).collect::<Vec<_>>(),
+        "roots": c.roots.iter().map(|i| tkey(&k, *i)).collect::<Vec<_>>(),
+        "known": known,
+        "revoked": Vec::<String>::new(),
+        "max_passes": c.max_passes,
+        "intros": c.intros,
+        "directory": dir_json(&c.directory.iter().map(|i| (IDS[*i], &k[*i])).collect::<Vec<_>>()),
+        "revoke_from_base": c.before.map(|b| json!({"trusted_before": b.iter().map(|i| tkey(&k, *i)).collect::<Vec<_>>()})),
+    });
+    inputs["devices"] = Value::Array(devices);
+    let outputs = trust_v2_run(USER, &inputs);
+    let mut case = json!({"name": c.name, "note": c.note, "inputs": inputs, "outputs": outputs});
+    if let Some(o) = c.same_outputs_as {
+        case["same_outputs_as"] = json!(o);
+    }
+    case
+}
+
+fn trust_v2_fixture() -> Value {
+    let k = tkeys();
+    let (a, b, x, y, z) = (0, 1, 2, 3, 4);
+    let i = |ver: u8, by: usize, target: usize, kind: &str| tintro(&k, ver, by, target, kind);
+    let base = |name, note, intros: Vec<String>| TrustV2Case {
+        name,
+        note,
+        start: &[0],
+        roots: &[],
+        known: &[(0, "desktop")],
+        own: Some(0),
+        max_passes: None,
+        intros,
+        directory: &[1, 2, 3, 4],
+        before: None,
+        same_outputs_as: None,
+    };
+    let chain = || {
+        vec![
+            i(2, a, x, "desktop"),
+            i(2, x, y, "desktop"),
+            i(2, y, z, "desktop"),
+        ]
+    };
+    let mut chain_rev = chain();
+    chain_rev.reverse();
+    let cases = vec![
+        trust_v2_case(base(
+            "runner_wins_desktop_first",
+            "A vouches X as desktop and as runner; the result is runner whatever the order, with a conflict",
+            vec![i(2, a, x, "desktop"), i(2, a, x, "runner")],
+        )),
+        trust_v2_case(TrustV2Case {
+            same_outputs_as: Some("runner_wins_desktop_first"),
+            ..base(
+                "runner_wins_runner_first",
+                "same intros in the reverse order",
+                vec![i(2, a, x, "runner"), i(2, a, x, "desktop")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0, 1],
+            known: &[(0, "desktop"), (1, "desktop")],
+            ..base(
+                "demotion_rerun_drops_what_the_demoted_vouched_for",
+                "A vouches X as desktop, X vouches Y, B vouches X as runner: X is demoted and Y falls out",
+                vec![i(2, a, x, "desktop"), i(2, x, y, "desktop"), i(2, b, x, "runner")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0, 1, 2, 3],
+            known: &[(0, "desktop"), (1, "desktop"), (2, "desktop")],
+            ..base(
+                "m3_a_candidate_from_a_demoted_signer_does_not_survive",
+                "X (pinned, desktop) names pinned Y desktop, B names X runner: Y keeps no kind after X is demoted",
+                vec![i(2, b, x, "runner"), i(2, x, y, "desktop")],
+            )
+        }),
+        trust_v2_case(base(
+            "chain_settles_in_four_passes",
+            "A -> X -> Y -> Z, each step needs the kind learned in the previous pass",
+            chain(),
+        )),
+        trust_v2_case(TrustV2Case {
+            max_passes: Some(1),
+            ..base(
+                "cap_reached_raises_trust_unstable_and_keeps_only_own",
+                "the same chain with max_passes 1: unstable, only the own key stays trusted, no kinds",
+                chain(),
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            same_outputs_as: Some("chain_settles_in_four_passes"),
+            ..base(
+                "order_independence_reversed_chain",
+                "the chain intros in reverse order give the same output",
+                chain_rev,
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0, 2],
+            ..base(
+                "self_intro_yields_no_kind",
+                "self-intros (X says mobile, A says mobile) never give a kind, not even to their signer",
+                vec![i(2, x, x, "mobile"), i(2, a, a, "mobile")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            known: &[(0, "desktop"), (2, "desktop")],
+            ..base(
+                "v1_counts_for_a_target_with_a_known_kind",
+                "gate closed: A's v1 intro admits X whose kind is known, and gives no kind",
+                vec![i(1, a, x, "mobile")],
+            )
+        }),
+        trust_v2_case(base(
+            "v1_ignored_for_a_target_of_unknown_kind",
+            "A's v1 intro for X is ignored because X has no known kind",
+            vec![i(1, a, x, "mobile")],
+        )),
+        trust_v2_case(TrustV2Case {
+            known: &[(0, "desktop"), (2, "desktop")],
+            own: None,
+            ..base(
+                "v1_ignored_once_the_gate_is_open",
+                "A and X both show a counted v2 self-intro, so the gate opens and the v1 intro for X no longer counts",
+                vec![i(1, a, x, "mobile"), i(2, a, a, "desktop"), i(2, x, x, "desktop")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0, 1],
+            known: &[(0, "desktop"), (1, "desktop")],
+            ..base(
+                "tie_desktop_vs_mobile_without_an_existing_kind",
+                "A says X desktop, B says X mobile, X has no kind: the kind stays unknown and a conflict is raised",
+                vec![i(2, a, x, "desktop"), i(2, b, x, "mobile")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0, 1],
+            known: &[(0, "desktop"), (1, "desktop"), (2, "desktop")],
+            ..base(
+                "tie_desktop_vs_mobile_keeps_the_existing_kind",
+                "X is already desktop; a mobile claim only raises a conflict",
+                vec![i(2, a, x, "mobile"), i(2, b, x, "desktop")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0],
+            roots: &[0],
+            known: &[],
+            own: None,
+            directory: &[1],
+            before: Some(&[0]),
+            ..base(
+                "m1_revoke_from_base_never_trusts_what_was_untrusted_before",
+                "root A has no known kind and vouches D as desktop; D was not trusted before the revoke: D stays out and no kind is stored",
+                vec![i(2, a, b, "desktop")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0],
+            roots: &[0],
+            known: &[],
+            own: None,
+            directory: &[1],
+            before: Some(&[0, 1]),
+            ..base(
+                "m1_revoke_from_base_keeps_what_was_trusted_before_without_learning_its_kind",
+                "same intro, D was trusted before: D stays, but the kind the unknown-kind root vouched is not stored",
+                vec![i(2, a, b, "desktop")],
+            )
+        }),
+        trust_v2_case(TrustV2Case {
+            start: &[0, 1],
+            roots: &[],
+            known: &[(0, "desktop"), (1, "desktop"), (2, "desktop")],
+            before: Some(&[0, 1, 2]),
+            ..base(
+                "m1_revoke_from_base_may_lower_a_known_kind",
+                "X was desktop; B vouches X as runner: X stays and is lowered to runner",
+                vec![i(2, a, x, "desktop"), i(2, b, x, "runner")],
+            )
+        }),
+    ];
+    let _ = (y, z);
+    json!({
+        "description": "trust evaluation with device kinds (intro v2): trusted_set_by_kind plus the revoke-from-base restriction. See README.md for the case schema",
+        "user_id": USER,
+        "cases": cases,
+    })
+}
+
 fn all() -> Vec<(&'static str, Value)> {
     vec![
         ("chat", chat_fixture()),
@@ -1021,6 +1348,7 @@ fn all() -> Vec<(&'static str, Value)> {
         ("join_v2", join_v2_fixture()),
         ("spawnkey", spawnkey_fixture()),
         ("trust", trust_fixture()),
+        ("trust_v2", trust_v2_fixture()),
         ("negative", negative_fixture()),
     ]
 }
@@ -1289,4 +1617,114 @@ fn committed_v2_vectors_verify_from_inputs_only() {
         ..input
     };
     assert!(verify_join_mac(&secret, &v1, j["outputs"]["mac_hex"].as_str().unwrap()).is_err());
+}
+
+#[test]
+fn committed_trust_v2_cases_recompute() {
+    let f = read("trust_v2");
+    let user = f["user_id"].as_u64().unwrap();
+    let cases = f["cases"].as_array().unwrap();
+    for c in cases {
+        assert_eq!(
+            trust_v2_run(user, &c["inputs"]),
+            c["outputs"],
+            "{}",
+            c["name"]
+        );
+        if let Some(other) = c["same_outputs_as"].as_str() {
+            let o = cases.iter().find(|x| x["name"] == other).unwrap();
+            assert_eq!(c["outputs"], o["outputs"], "{}", c["name"]);
+        }
+    }
+}
+
+#[test]
+fn trust_v2_cases_pin_the_documented_semantics() {
+    let f = read("trust_v2");
+    let find = |name: &str| -> Value {
+        f["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap_or_else(|| panic!("{name}"))["outputs"]
+            .clone()
+    };
+    let ids = |v: &Value, key: &str| -> Vec<String> {
+        let mut out: Vec<String> = v[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                IDS.iter()
+                    .position(|i| *i == t["device_id"])
+                    .map_or("?", |n| ["A", "B", "X", "Y", "Z"][n])
+                    .to_owned()
+            })
+            .collect();
+        out.sort();
+        out
+    };
+    let kinds = |v: &Value| -> Vec<(String, String)> {
+        v["kinds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                let n = IDS.iter().position(|i| *i == t["device_id"]).unwrap();
+                (
+                    ["A", "B", "X", "Y", "Z"][n].to_owned(),
+                    t["kind"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    let o = find("runner_wins_desktop_first");
+    assert_eq!(ids(&o, "trusted"), ["A", "X"]);
+    assert_eq!(kinds(&o), [("X".to_owned(), "runner".to_owned())]);
+    assert_eq!(ids(&o, "conflicts"), ["X"]);
+    let o = find("demotion_rerun_drops_what_the_demoted_vouched_for");
+    assert_eq!(ids(&o, "trusted"), ["A", "B", "X"]);
+    assert_eq!(kinds(&o), [("X".to_owned(), "runner".to_owned())]);
+    let o = find("m3_a_candidate_from_a_demoted_signer_does_not_survive");
+    assert_eq!(ids(&o, "trusted"), ["A", "B", "X", "Y"]);
+    assert_eq!(kinds(&o), [("X".to_owned(), "runner".to_owned())]);
+    let o = find("chain_settles_in_four_passes");
+    assert_eq!(ids(&o, "trusted"), ["A", "X", "Y", "Z"]);
+    assert_eq!(o["passes"], 4);
+    let o = find("cap_reached_raises_trust_unstable_and_keeps_only_own");
+    assert_eq!(ids(&o, "trusted"), ["A"]);
+    assert!(!o["unstable"].as_array().unwrap().is_empty());
+    assert!(o["kinds"].as_array().unwrap().is_empty());
+    let o = find("self_intro_yields_no_kind");
+    assert!(o["kinds"].as_array().unwrap().is_empty());
+    assert!(o["conflicts"].as_array().unwrap().is_empty());
+    assert_eq!(
+        ids(&find("v1_counts_for_a_target_with_a_known_kind"), "trusted"),
+        ["A", "X"]
+    );
+    assert_eq!(
+        ids(&find("v1_ignored_for_a_target_of_unknown_kind"), "trusted"),
+        ["A"]
+    );
+    assert_eq!(
+        ids(&find("v1_ignored_once_the_gate_is_open"), "trusted"),
+        ["A"]
+    );
+    let o = find("tie_desktop_vs_mobile_without_an_existing_kind");
+    assert_eq!(ids(&o, "trusted"), ["A", "B", "X"]);
+    assert!(o["kinds"].as_array().unwrap().is_empty());
+    assert_eq!(ids(&o, "conflicts"), ["X"]);
+    let o = find("tie_desktop_vs_mobile_keeps_the_existing_kind");
+    assert!(o["kinds"].as_array().unwrap().is_empty());
+    assert_eq!(ids(&o, "conflicts"), ["X"]);
+    let o = find("m1_revoke_from_base_never_trusts_what_was_untrusted_before");
+    assert_eq!(ids(&o, "trusted"), ["A"]);
+    assert!(o["kinds"].as_array().unwrap().is_empty());
+    let o = find("m1_revoke_from_base_keeps_what_was_trusted_before_without_learning_its_kind");
+    assert_eq!(ids(&o, "trusted"), ["A", "B"]);
+    assert!(o["kinds"].as_array().unwrap().is_empty());
+    let o = find("m1_revoke_from_base_may_lower_a_known_kind");
+    assert_eq!(ids(&o, "trusted"), ["A", "B", "X"]);
+    assert_eq!(kinds(&o), [("X".to_owned(), "runner".to_owned())]);
 }

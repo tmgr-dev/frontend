@@ -529,6 +529,7 @@ pub struct TrustSet {
 pub struct KindCtx<'a> {
     pub known: &'a BTreeMap<String, String>,
     pub own: Option<&'a str>,
+    pub assumed: &'a BTreeSet<String>,
     pub max_passes: Option<usize>,
 }
 
@@ -544,6 +545,24 @@ pub fn trusted_set(
     directory: &[DirEntry],
 ) -> TrustSet {
     trusted_set_by_kind(user_id, pins, revoked, intros, directory, None)
+}
+
+/// Revoke recompute from base: the result may only drop trust and lower kinds (to `runner`) relative to what was trusted and known before.
+pub fn restrict_to_before(
+    mut set: TrustSet,
+    trusted_before: &BTreeSet<String>,
+    kinds_before: &BTreeMap<String, String>,
+) -> TrustSet {
+    set.trusted
+        .retain(|t| trusted_before.contains(&kind_key(&t.device_id, &t.fp)));
+    set.kinds.retain(|(id, fp, kind)| {
+        kinds_before
+            .get(&kind_key(id, fp))
+            .is_some_and(|have| lowers_kind(have, kind))
+    });
+    set.mismatches
+        .retain(|m| set.trusted.iter().any(|t| t.device_id == m.device_id));
+    set
 }
 
 pub fn lowers_kind(have: &str, new: &str) -> bool {
@@ -753,24 +772,23 @@ fn run_pass(
 struct Merge {
     kinds: BTreeMap<String, String>,
     conflicts: Vec<(String, String)>,
-    changed: Vec<String>,
 }
 
 fn merge_kinds(
     known: &BTreeMap<String, String>,
     candidates: &[(String, String, String)],
     own: Option<&str>,
+    assumed: &BTreeSet<String>,
 ) -> Merge {
     let mut kinds = known.clone();
     let mut conflicts = Vec::new();
-    let mut changed = Vec::new();
     let keys: BTreeSet<(String, String)> = candidates
         .iter()
         .map(|(id, fp, _)| (id.clone(), fp.clone()))
         .collect();
     for (id, fp) in keys {
         let key = kind_key(&id, &fp);
-        if Some(key.as_str()) == own {
+        if Some(key.as_str()) == own || assumed.contains(&key) {
             continue;
         }
         let existing = known.get(&key).cloned();
@@ -796,25 +814,10 @@ fn merge_kinds(
         if let Some(r) = result {
             if existing.as_deref() != Some(r.as_str()) {
                 kinds.insert(key.clone(), r);
-                changed.push(key);
             }
         }
     }
-    Merge {
-        kinds,
-        conflicts,
-        changed,
-    }
-}
-
-fn vouch_changed(
-    old: &BTreeMap<String, String>,
-    new: &BTreeMap<String, String>,
-    keys: &[String],
-) -> bool {
-    keys.iter().any(|k| {
-        may_vouch(old.get(k).map(String::as_str)) != may_vouch(new.get(k).map(String::as_str))
-    })
+    Merge { kinds, conflicts }
 }
 
 fn mismatches_of(trusted: &[Trusted], directory: &[DirEntry]) -> Vec<KeyMismatch> {
@@ -871,8 +874,12 @@ pub fn trusted_set_by_kind(
         .filter(|(_, v)| check_device_kind(v).is_ok())
         .map(|(a, b)| (a.clone(), b.clone()))
         .collect();
-    let mut known = original.clone();
-    let population: BTreeSet<String> = original
+    let mut base = original.clone();
+    for k in ctx.assumed {
+        base.entry(k.clone())
+            .or_insert_with(|| "desktop".to_owned());
+    }
+    let population: BTreeSet<String> = base
         .keys()
         .cloned()
         .chain(start.iter().map(|t| kind_key(&t.device_id, &t.fp)))
@@ -883,55 +890,87 @@ pub fn trusted_set_by_kind(
         )
         .collect();
     let cap = ctx.max_passes.unwrap_or(2 * population.len() + 1);
-    let mut conflicts: Vec<(String, String)> = Vec::new();
+    let mut lowered: BTreeSet<String> = BTreeSet::new();
+    let mut raised: BTreeMap<String, String> = BTreeMap::new();
     let mut passes = 0;
-    let (mut trusted, mut unstable);
     loop {
         passes += 1;
+        let mut known = base.clone();
+        for (k, v) in &raised {
+            known.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+        for k in &lowered {
+            known.insert(k.clone(), "runner".to_owned());
+        }
         let mut pass = run_pass(&inp, &start, Some(&known), true);
         let markers = self_markers_of(&parsed, &pass.trusted, &known);
         if gate_blockers(&pass.trusted, &known, ctx.own, &markers).is_empty() {
             pass = run_pass(&inp, &start, Some(&known), false);
         }
-        let merge = merge_kinds(&known, &pass.candidates, ctx.own);
-        for c in merge.conflicts {
-            if !conflicts.contains(&c) {
-                conflicts.push(c);
-            }
-        }
-        let rerun = vouch_changed(&known, &merge.kinds, &merge.changed);
-        known = merge.kinds;
-        trusted = pass.trusted;
-        unstable = Vec::new();
-        if !rerun {
-            break;
+        let merge = merge_kinds(&known, &pass.candidates, ctx.own, ctx.assumed);
+        let demoted: Vec<String> = merge
+            .kinds
+            .iter()
+            .filter(|(_, v)| v.as_str() == "runner")
+            .filter(|(k, _)| known.get(*k).map(String::as_str) != Some("runner"))
+            .map(|(k, _)| k.clone())
+            .collect();
+        let next_raised: BTreeMap<String, String> = merge
+            .kinds
+            .iter()
+            .filter(|(k, v)| {
+                v.as_str() != "runner" && !base.contains_key(*k) && !lowered.contains(*k)
+            })
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let moving = !demoted.is_empty() || next_raised != raised;
+        if !moving {
+            let learned = merge
+                .kinds
+                .iter()
+                .filter(|(k, v)| original.get(*k) != Some(*v) && !ctx.assumed.contains(*k))
+                .filter(|(k, _)| {
+                    pass.trusted
+                        .iter()
+                        .any(|t| kind_key(&t.device_id, &t.fp) == **k)
+                })
+                .filter_map(|(k, v)| {
+                    let (id, fp) = k.split_once(':')?;
+                    Some((id.to_owned(), fp.to_owned(), v.clone()))
+                })
+                .collect();
+            return TrustSet {
+                mismatches: mismatches_of(&pass.trusted, directory),
+                trusted: pass.trusted,
+                kinds: learned,
+                conflicts: merge.conflicts,
+                unstable: Vec::new(),
+                passes,
+            };
         }
         if passes >= cap {
-            let moved: Vec<&String> = merge.changed.iter().collect();
-            trusted.retain(|t| !moved.contains(&&kind_key(&t.device_id, &t.fp)));
-            unstable = merge
-                .changed
+            let mut trusted = pass.trusted;
+            trusted.retain(|t| Some(kind_key(&t.device_id, &t.fp).as_str()) == ctx.own);
+            let unstable = demoted
                 .iter()
+                .chain(next_raised.keys().filter(|k| !raised.contains_key(*k)))
                 .filter_map(|k| k.split(':').next().map(str::to_owned))
                 .collect();
-            break;
+            return TrustSet {
+                mismatches: mismatches_of(&trusted, directory),
+                trusted,
+                kinds: Vec::new(),
+                conflicts: merge.conflicts,
+                unstable,
+                passes,
+            };
         }
-    }
-    let learned = known
-        .iter()
-        .filter(|(k, v)| original.get(*k) != Some(*v))
-        .filter_map(|(k, v)| {
-            let (id, fp) = k.split_once(':')?;
-            Some((id.to_owned(), fp.to_owned(), v.clone()))
-        })
-        .collect();
-    TrustSet {
-        mismatches: mismatches_of(&trusted, directory),
-        trusted,
-        kinds: learned,
-        conflicts,
-        unstable,
-        passes,
+        if demoted.is_empty() {
+            raised = next_raised;
+        } else {
+            lowered.extend(demoted);
+            raised.clear();
+        }
     }
 }
 
@@ -1524,6 +1563,7 @@ mod tests {
             Some(&KindCtx {
                 known,
                 own: None,
+                assumed: &BTreeSet::new(),
                 max_passes: cap,
             }),
         )
@@ -1606,6 +1646,7 @@ mod tests {
                 Some(&KindCtx {
                     known: &known,
                     own: Some(&own),
+                    assumed: &BTreeSet::new(),
                     max_passes: None,
                 }),
             )
@@ -1649,6 +1690,7 @@ mod tests {
             Some(&KindCtx {
                 known: &known,
                 own: None,
+                assumed: &BTreeSet::new(),
                 max_passes: None,
             }),
         );

@@ -3328,3 +3328,104 @@ fn a_legacy_state_without_a_runner_gate_can_still_join_runners_after_migration()
     a2.poll_once().unwrap();
     a2.decide_join(&my_id(&r), true).unwrap();
 }
+
+#[test]
+fn m1_revoke_from_base_never_trusts_a_device_that_was_untrusted_before() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (_c, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+    let (_d, did, d_fp) = registered(&fake, &clock, "Desktop D", "desktop");
+    let aid = my_id(&a);
+    put_raw_intro(&fake, &aid, &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+    b.poll_once().unwrap();
+    assert!(is_trusted_with(&b, &cid, "desktop"));
+    {
+        let mut g = b.lock();
+        let prefix = kind_key(&aid, "");
+        g.st.kinds.retain(|k, _| !k.starts_with(&prefix));
+        g.st.intros
+            .retain(|i| parse_intro(i).is_ok_and(|p| p.parsed.target_id != aid));
+    }
+    fake.0
+        .lock()
+        .unwrap()
+        .devices
+        .iter_mut()
+        .find(|d| d.id == aid)
+        .unwrap()
+        .intros
+        .clear();
+    put_raw_intro(&fake, &aid, &did, &signed_intro(&a, &did, &d_fp, "desktop"));
+    b.poll_once().unwrap();
+    let trusted_ids = |e: &Engine| -> Vec<String> {
+        e.trust_state()
+            .unwrap()
+            .devices
+            .iter()
+            .filter(|d| d.state == DeviceState::Trusted)
+            .map(|d| d.id.clone())
+            .collect()
+    };
+    let before = trusted_ids(&b);
+    assert!(!before.contains(&did));
+    {
+        let mut g = b.lock();
+        apply_revoke(&mut g, USER, T0, &cid, &c_fp, "C");
+    }
+    let after = trusted_ids(&b);
+    assert!(after.iter().all(|id| before.contains(id)));
+    assert!(!after.contains(&did));
+    assert!(kind_entries_of(&b, &did).is_empty());
+}
+
+#[test]
+fn m4_join_approval_refuses_a_kind_that_contradicts_a_known_one() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let n = engine_with(&fake, &clock, "Runner N").with_kind("runner");
+    let code = a.open_join_code().unwrap();
+    n.join_with_code(&code).unwrap();
+    a.poll_once().unwrap();
+    let (nid, n_fp) = (my_id(&n), fp_of(&n));
+    a.lock()
+        .st
+        .kinds
+        .insert(kind_key(&nid, &n_fp), "desktop".to_owned());
+    let intros_before = a.lock().st.intros.len();
+    assert!(a.decide_join(&nid, true).is_err());
+    assert_eq!(a.lock().st.intros.len(), intros_before);
+    assert!(!is_trusted_with(&a, &nid, "runner"));
+    assert!(fake
+        .0
+        .lock()
+        .unwrap()
+        .devices
+        .iter()
+        .find(|d| d.id == nid)
+        .unwrap()
+        .intros
+        .is_empty());
+}
+
+#[test]
+fn m3_a_device_admitted_only_by_a_demoted_signer_keeps_no_stored_kind() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+    let (_y, yid, y_fp) = registered(&fake, &clock, "Desktop Y", "desktop");
+    let aid = my_id(&a);
+    put_raw_intro(&fake, &aid, &xid, &signed_intro(&a, &xid, &x_fp, "desktop"));
+    b.poll_once().unwrap();
+    assert!(is_trusted_with(&b, &xid, "desktop"));
+    put_raw_intro(&fake, &xid, &yid, &signed_intro(&x, &yid, &y_fp, "desktop"));
+    put_raw_intro(&fake, &aid, &xid, &signed_intro(&a, &xid, &x_fp, "runner"));
+    b.poll_once().unwrap();
+    assert!(is_trusted_with(&b, &xid, "runner"));
+    assert!(b
+        .trust_state()
+        .unwrap()
+        .devices
+        .iter()
+        .all(|d| d.id != yid || d.state != DeviceState::Trusted));
+    assert!(kind_entries_of(&b, &yid).is_empty());
+}
