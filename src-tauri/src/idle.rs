@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use serde::Serialize;
+use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::tray::{now_secs, TrayStore};
@@ -23,11 +24,13 @@ pub struct IdleTracker {
   last_poll: Option<i64>,
   was_running: bool,
   away_since: Option<i64>,
+  announced: bool,
+  pending_start: Option<i64>,
 }
 
 impl IdleTracker {
   pub fn new(threshold: i64) -> Self {
-    Self { threshold, last_poll: None, was_running: false, away_since: None }
+    Self { threshold, last_poll: None, was_running: false, away_since: None, announced: false, pending_start: None }
   }
 
   pub fn tick(&mut self, now: i64, idle_secs: f64, timer_running: bool) -> Option<AwayEvent> {
@@ -35,6 +38,7 @@ impl IdleTracker {
     let was_running = std::mem::replace(&mut self.was_running, timer_running);
     if !timer_running {
       self.away_since = None;
+      self.announced = false;
       return None;
     }
     if let (Some(previous), true) = (previous, was_running) {
@@ -48,10 +52,23 @@ impl IdleTracker {
     match self.away_since {
       Some(since) if idle_secs < BACK_WITHIN_SECS => {
         self.away_since = None;
+        self.announced = false;
         Some(AwayEvent { away_since: since, away_seconds: now - since })
       }
-      _ => None,
+      Some(since) => {
+        if !self.announced {
+          self.announced = true;
+          self.pending_start = Some(since);
+        }
+        None
+      }
+      None => None,
     }
+  }
+
+  /// The start of an away period, once per period, as soon as the user is known to still be away.
+  pub fn take_away_started(&mut self) -> Option<i64> {
+    self.pending_start.take()
   }
 }
 
@@ -100,8 +117,16 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) {
     loop {
       std::thread::sleep(Duration::from_secs(POLL_SECS as u64));
       let running = !app.state::<TrayStore>().0.lock().unwrap().running.is_empty();
-      if let Some(event) = tracker.tick(now_secs(), system_idle_secs(), running) {
+      let now = now_secs();
+      let returned = tracker.tick(now, system_idle_secs(), running);
+      if let Some(since) = tracker.take_away_started() {
+        log::info!("[idle] away since {since}");
+        let _ = app.emit("idle://away-started", json!({ "awaySince": since }));
+        crate::toast::push_idle(&app, since, now);
+      }
+      if let Some(event) = returned {
         log::info!("[idle] back after {}s away", event.away_seconds);
+        crate::toast::dismiss(&app, crate::toast::IDLE_ID);
         let _ = app.emit("idle://returned", event);
       }
     }
@@ -151,5 +176,45 @@ mod tests {
     let mut t = IdleTracker::new(600);
     assert!(poll_until(&mut t, 1_000, 1_800, |now| if now < 1_750 { (now - 1_000) as f64 } else { 1.0 }, false).is_empty());
     assert_eq!(t.tick(4_000, 1.0, true), None);
+  }
+
+  #[test]
+  fn away_start_is_reported_once_per_period() {
+    let mut t = IdleTracker::new(600);
+    let mut starts = Vec::new();
+    for now in (1_000..=2_000).step_by(POLL_SECS as usize) {
+      t.tick(now, (now - 1_000) as f64, true);
+      starts.extend(t.take_away_started());
+    }
+    assert_eq!(starts, vec![1_000]);
+    t.tick(2_005, 1.0, true);
+    assert_eq!(t.take_away_started(), None);
+    let mut again = Vec::new();
+    for now in (2_010..=3_000).step_by(POLL_SECS as usize) {
+      t.tick(now, (now - 2_005) as f64, true);
+      again.extend(t.take_away_started());
+    }
+    assert_eq!(again, vec![2_005]);
+  }
+
+  #[test]
+  fn no_away_start_while_active_or_without_a_timer() {
+    let mut t = IdleTracker::new(600);
+    for now in (1_000..=2_000).step_by(POLL_SECS as usize) {
+      t.tick(now, 1.0, true);
+      assert_eq!(t.take_away_started(), None);
+    }
+    for now in (3_000..=4_000).step_by(POLL_SECS as usize) {
+      t.tick(now, (now - 3_000) as f64, false);
+      assert_eq!(t.take_away_started(), None);
+    }
+  }
+
+  #[test]
+  fn a_sleep_gap_returns_without_an_away_start() {
+    let mut t = IdleTracker::new(600);
+    t.tick(1_000, 1.0, true);
+    assert!(t.tick(4_000, 1.0, true).is_some());
+    assert_eq!(t.take_away_started(), None);
   }
 }

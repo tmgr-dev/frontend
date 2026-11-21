@@ -48,6 +48,8 @@ mod usage;
 mod page_windows;
 mod popover;
 mod task_windows;
+mod toast;
+mod toast_fullscreen;
 mod tray;
 mod update_relaunch;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
@@ -214,6 +216,7 @@ pub fn run() {
     .manage(tray::TrayStore::default())
     .manage(tray::DndStore::default())
     .manage(popover::PopoverStore::default())
+    .manage(toast::ToastStore::default())
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
     .manage(local_backups::BackupErrors::default())
@@ -246,6 +249,12 @@ pub fn run() {
       popover::popover_quick_add,
       popover::popover_resize,
       popover::popover_extras_update,
+      toast::toast_push,
+      toast::toast_action,
+      toast::toast_dismiss,
+      toast::toast_resize,
+      toast::toast_expand,
+      toast::toast_state,
       native_i18n::native_locale_set,
       update_relaunch::mark_update_relaunch,
       update_relaunch::relaunch_after_update,
@@ -531,6 +540,9 @@ pub fn run() {
       #[cfg(any(target_os = "macos", windows))]
       if let Err(error) = popover::setup(app.handle()) {
         log::error!("[popover] unavailable: {error}");
+      }
+      if let Err(error) = toast::setup(app.handle()) {
+        log::error!("[toast] unavailable: {error}");
       }
       idle::start(app.handle());
       git_track::start(app.handle());

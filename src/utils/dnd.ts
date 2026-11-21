@@ -69,10 +69,10 @@ const untilFor = (option: DndOption, from: number): number | null => {
 	}
 };
 
-const pushToTray = async (option: DndOption) => {
+const pushToTray = async (option: DndOption, until: number | null) => {
 	try {
 		const { invoke } = await import('@tauri-apps/api/core');
-		await invoke('dnd_update', { option });
+		await invoke('dnd_update', { option, until });
 	} catch (error) {
 		console.error('dnd_update failed', error);
 	}
@@ -82,7 +82,7 @@ export const setDnd = (option: DndOption): void => {
 	dndState.option = option;
 	dndState.until = untilFor(option, Date.now());
 	persist();
-	void pushToTray(option);
+	void pushToTray(option, dndState.until);
 };
 
 /** Turns an expired "until" off so the tray checkmark and status bar do not stay on past it. */
@@ -96,13 +96,17 @@ export const expireDndIfNeeded = (now: number = Date.now()): void => {
 	dndState.option = 'off';
 	dndState.until = null;
 	persist();
-	void pushToTray('off');
+	void pushToTray('off', null);
 };
 
 /** Called once at startup: an "until" saved from a previous session may already have expired. */
 export const syncDndToTray = (): void => {
 	expireDndIfNeeded();
-	void pushToTray(isDndActive() ? dndState.option : 'off');
+	const active = isDndActive();
+	void pushToTray(
+		active ? dndState.option : 'off',
+		active ? dndState.until : null,
+	);
 };
 
 let ticker: ReturnType<typeof setInterval> | null = null;

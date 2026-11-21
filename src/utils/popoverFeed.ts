@@ -15,6 +15,7 @@ import { isRunnerSupported, runnerSessions } from '@/runner/api';
 import { usageOverview } from '@/usage/api';
 import { pickDefaultStatusId } from '@/utils/defaultStatus';
 import { isDesktopApp } from '@/utils/desktop';
+import { limitToasts, pushToast } from '@/utils/toastTriggers';
 import { format } from 'date-fns';
 import {
 	buildMachines,
@@ -152,6 +153,7 @@ export const startPopoverFeed = ({
 	let debounce: ReturnType<typeof setTimeout> | null = null;
 	let lastPayload = '';
 	let unlisten: (() => void) | null = null;
+	const seenLimits = new Set<string>();
 
 	const push = async (extras: PopoverExtras) => {
 		const payload = JSON.stringify(extras);
@@ -169,7 +171,12 @@ export const startPopoverFeed = ({
 		running = true;
 		try {
 			const extras = await gatherExtras(store, recent);
-			if (!stopped) await push(extras);
+			if (!stopped) {
+				await push(extras);
+				limitToasts(extras.usage, seenLimits, Date.now() / 1000).forEach(
+					(toast) => void pushToast(toast),
+				);
+			}
 		} catch (error) {
 			console.error('popover feed update failed', error);
 		} finally {

@@ -230,6 +230,7 @@ pub struct Inputs {
   pub decisions_available: bool,
   pub open_decisions: usize,
   pub extras: Value,
+  pub missed: Vec<Value>,
   pub version: String,
   pub platform: &'static str,
   pub now: i64,
@@ -282,7 +283,7 @@ pub fn build_model(state: &TrayState, inputs: Inputs) -> PopoverModel {
     decisions_available: inputs.decisions_available,
     open_decisions: inputs.open_decisions,
     extras: inputs.extras,
-    missed: Vec::new(),
+    missed: inputs.missed,
   }
 }
 
@@ -317,6 +318,7 @@ fn gather<R: Runtime>(app: &AppHandle<R>) -> Inputs {
     decisions_available: cfg!(unix),
     open_decisions: open_decisions(),
     extras,
+    missed: crate::toast::missed_records(app),
     version: app.package_info().version.to_string(),
     platform: platform(),
     now: crate::tray::now_secs(),
@@ -347,6 +349,10 @@ pub fn emit_model<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
     *last = Some(key);
   }
   let _ = app.emit_to(LABEL, "popover://model", &model);
+}
+
+pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
+  emit_model(app, &tray_state(app));
 }
 
 #[cfg(any(target_os = "macos", windows))]
@@ -799,6 +805,7 @@ mod tests {
       decisions_available: true,
       open_decisions: 3,
       extras: json!({}),
+      missed: Vec::new(),
       version: "1.2.3".into(),
       platform: "macos",
       now: 500,

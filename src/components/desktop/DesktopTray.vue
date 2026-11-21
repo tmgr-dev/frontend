@@ -72,6 +72,8 @@
 		syncActivity,
 	} from '@/utils/activityHints';
 	import { isDndActive, setDnd } from '@/utils/dnd';
+	import { useRunner } from '@/runner/store';
+	import { agentFinishedToasts, pushToast } from '@/utils/toastTriggers';
 	import {
 		decideGitTrack,
 		loadGitTrackFolders,
@@ -299,6 +301,39 @@
 				await router.push(path);
 			};
 
+			const onToastAction = async ({ kind, actionId, data }) => {
+				if (kind === 'idle') {
+					if (actionId === 'stop' || actionId === 'stop-at') await stopAll();
+					return;
+				}
+				if (actionId === 'open-task' && data?.taskId) {
+					await openTaskPreferringWindow(
+						{ taskId: data.taskId, workspaceId: data.workspaceId },
+						store,
+						router,
+						showWindow,
+					);
+				}
+			};
+
+			const runner = useRunner();
+			let knownSessions = null;
+			watch(
+				() => runner.sessions.value,
+				(sessions) => {
+					const { toasts, next } = agentFinishedToasts(
+						knownSessions ?? new Map(),
+						sessions,
+						Date.now(),
+					);
+					const first = knownSessions === null;
+					knownSessions = next;
+					if (first) return;
+					toasts.forEach((item) => void pushToast(item));
+				},
+				{ deep: true },
+			);
+
 			const subscribe = (userId) => {
 				if (userSubscription && subscribedUserId) {
 					pusher.unsubscribeHandler(
@@ -433,6 +468,7 @@
 						gitQueue = gitQueue.then(() => safely(onGitBranch)(event));
 					}),
 					await listen('tray://dnd', ({ payload }) => setDnd(payload)),
+					await listen('toast://action', safely(onToastAction)),
 					await listen('idle://returned', async (event) => {
 						reloadActiveTasks();
 						if (!props.tasks.length) return;

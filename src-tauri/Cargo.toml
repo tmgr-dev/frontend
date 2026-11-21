@@ -65,7 +65,7 @@ keyring = { version = "3.6", default-features = false, features = ["apple-native
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["windows-native"] }
-windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_System_SystemInformation", "Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_System_SystemInformation", "Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }

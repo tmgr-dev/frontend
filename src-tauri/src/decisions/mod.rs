@@ -21,7 +21,8 @@ use tmgr_ipc::decisions::{decisions_dir, Event, DB};
 use diff::DiffGroups;
 use hub::{pid_alive, Change, Hub};
 use server::Server;
-use store::{AnswerIn, CardView, MessageIn, PendingAction, PendingTaskComment, Store};
+pub(crate) use store::AnswerIn;
+use store::{CardView, MessageIn, PendingAction, PendingTaskComment, Store};
 
 pub const LABEL: &str = "decisions";
 pub const SHORTCUT: &str = "CmdOrCtrl+Shift+D";
@@ -83,10 +84,14 @@ fn on_change<R: Runtime>(app: &AppHandle<R>, change: &Change, count: usize) {
   crate::tray::refresh_current(app);
   phone::on_hub_change(app);
   match change {
-    Change::Created { title, body } => {
-      crate::plugin_notify::plugin_notify(app.clone(), title.clone(), body.clone(), None);
+    Change::Created { id, title, body, meta, options } => {
+      let toast = crate::toast::decision_toast(id, title, meta.clone(), options);
+      crate::toast::push_with_fallback(app, toast, (title.clone(), body.clone()));
     }
-    Change::Finished(event) => spawn_route(app, event.card_id.clone(), (**event).clone()),
+    Change::Finished(event) => {
+      crate::toast::decision_answered(app, &event.card_id);
+      spawn_route(app, event.card_id.clone(), (**event).clone());
+    }
     Change::Updated => {}
   }
 }

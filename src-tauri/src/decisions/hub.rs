@@ -14,7 +14,7 @@ use super::store::{
 };
 
 pub enum Change {
-  Created { title: String, body: String },
+  Created { id: String, title: String, body: String, meta: Option<String>, options: Vec<(String, String, bool)> },
   Updated,
   Finished(Box<Event>),
 }
@@ -188,7 +188,20 @@ impl Hub {
   pub fn create_with(&self, card: CardIn, inbox: Option<Inbox>) -> Result<Created, String> {
     let created = self.lock().create_with(card, inbox)?;
     if created.fresh {
-      self.changed(Change::Created { title: created.card.title.clone(), body: body_of(&created.card) });
+      let source = &created.card.source;
+      let meta = match (source.agent.as_str(), source.title.as_deref()) {
+        ("", title) => title.map(str::to_owned),
+        (agent, Some(title)) => Some(format!("{agent} · {title}")),
+        (agent, None) => Some(agent.to_owned()),
+      };
+      let options = created.card.options.iter().map(|o| (o.id.clone(), o.label.clone(), o.recommended)).collect();
+      self.changed(Change::Created {
+        id: created.id.clone(),
+        title: created.card.title.clone(),
+        body: body_of(&created.card),
+        meta,
+        options,
+      });
     } else if created.changed {
       self.changed(Change::Updated);
     }

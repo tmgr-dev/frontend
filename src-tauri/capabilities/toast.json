@@ -1,0 +1,15 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "toast",
+	"description": "Toast window: event listening and its own commands.",
+	"windows": ["toast"],
+	"permissions": [
+		"core:event:allow-listen",
+		"core:event:allow-unlisten",
+		"allow-toast-state",
+		"allow-toast-action",
+		"allow-toast-dismiss",
+		"allow-toast-resize",
+		"allow-toast-expand"
+	]
+}

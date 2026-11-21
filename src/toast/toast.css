@@ -1,0 +1,182 @@
+html,
+body {
+	background: transparent;
+	margin: 0;
+	overflow: hidden;
+}
+
+body {
+	font-family:
+		'Inter',
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		sans-serif;
+	font-size: 13px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+}
+
+button {
+	font-family: inherit;
+}
+
+.toast-root {
+	--bg: #ffffff;
+	--bg2: #f7f7f8;
+	--fg: #18181b;
+	--muted: #71717a;
+	--line: rgba(24, 24, 27, 0.08);
+	--hover: rgba(24, 24, 27, 0.04);
+	--active: rgba(24, 24, 27, 0.07);
+	--accent: oklch(0.62 0.17 27);
+	--accent-soft: oklch(0.95 0.03 27);
+	--accent-fg: oklch(0.48 0.15 27);
+	--ok: #16a36a;
+	--crit: oklch(0.55 0.2 25);
+	--bar: #e4e4e8;
+	--shadow: 0 18px 50px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(24, 24, 27, 0.08);
+	padding: 8px;
+	color: var(--fg);
+	color-scheme: light;
+}
+
+html.dark .toast-root {
+	--bg: #19191c;
+	--bg2: #111113;
+	--fg: #ededf0;
+	--muted: #8d8d97;
+	--line: rgba(255, 255, 255, 0.08);
+	--hover: rgba(255, 255, 255, 0.05);
+	--active: rgba(255, 255, 255, 0.08);
+	--accent: oklch(0.72 0.16 27);
+	--accent-soft: oklch(0.3 0.08 27);
+	--accent-fg: oklch(0.86 0.1 27);
+	--ok: #3ecf8e;
+	--crit: oklch(0.68 0.2 25);
+	--bar: #2a2a2e;
+	--shadow:
+		0 18px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+	color-scheme: dark;
+}
+
+.stackbox {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 10px;
+}
+
+.toast {
+	width: 340px;
+	max-width: 100%;
+	box-sizing: border-box;
+	background: var(--bg);
+	color: var(--fg);
+	border-radius: 12px;
+	box-shadow: var(--shadow);
+	font-size: 13px;
+	padding: 11px 12px;
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	gap: 2px 10px;
+	align-items: start;
+}
+
+.toast .ti {
+	width: 28px;
+	height: 28px;
+	border-radius: 8px;
+	display: grid;
+	place-items: center;
+	font-size: 13px;
+	grid-row: 1 / 4;
+	background: var(--accent-soft);
+	color: var(--accent-fg);
+}
+
+.toast .ti.ok {
+	background: color-mix(in oklch, var(--ok) 18%, transparent);
+	color: var(--ok);
+}
+
+.toast .th {
+	font-weight: 600;
+	font-size: 12.5px;
+}
+
+.toast .tt {
+	font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+	font-size: 10.5px;
+	color: var(--muted);
+}
+
+.toast .tb {
+	grid-column: 2 / 4;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.toast .tb .m {
+	color: var(--muted);
+}
+
+.toast .ta {
+	grid-column: 2 / 4;
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin-top: 6px;
+}
+
+.toast .ta button {
+	font-size: 11.5px;
+	border: 1px solid var(--line);
+	background: var(--bg2);
+	color: var(--fg);
+	border-radius: 6px;
+	padding: 3px 9px;
+	cursor: pointer;
+}
+
+.toast .ta button.rec {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+.toast.stack {
+	opacity: 0.55;
+	transform: scale(0.97);
+	transform-origin: top right;
+	padding: 8px 12px;
+	align-items: center;
+	text-align: left;
+	font: inherit;
+	border: 0;
+	cursor: pointer;
+}
+
+.toast.stack.static {
+	cursor: default;
+}
+
+.toast.stack .ti.small {
+	width: 20px;
+	height: 20px;
+	font-size: 10px;
+	grid-row: auto;
+}
+
+.toast.stack .th.muted {
+	font-weight: 500;
+}
