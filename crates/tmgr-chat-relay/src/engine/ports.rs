@@ -64,3 +64,15 @@ impl KeyStore for MemKeyStore {
 pub trait ChatSink: Send + Sync {
     fn deliver(&self, from_device: &str, msg: ChatMessage) -> Result<(), String>;
 }
+
+/// Runs under the engine lock: implementations must only enqueue (try_send) and never call back into the engine.
+pub trait RpcSink: Send + Sync {
+    fn deliver_rpc(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        kind: &str,
+        msg_id: &str,
+        payload: serde_json::Value,
+    );
+}

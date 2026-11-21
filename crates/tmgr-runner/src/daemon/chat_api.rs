@@ -1,9 +1,14 @@
+use super::manager::ManagerHost;
 use super::*;
 use crate::chat::{self, tail};
+use crate::mgr_rpc::dispatch::SEEN_FILE;
+use crate::mgr_rpc::relay::{serve_tick, MachinesCache, RelayTransport, RpcInbox, RpcSend};
+use crate::mgr_rpc::{Dispatcher, FileAudit};
 use std::sync::mpsc::RecvTimeoutError as ChatRecv;
 use tmgr_ipc::chat::{method as chat_method, ChatPush, HistoryParams, SearchParams, SendParams};
 
 const CAPTURE_EVERY: Duration = Duration::from_secs(3);
+const RPC_TICK: Duration = Duration::from_millis(100);
 
 fn bad(msg: String) -> ApiErr {
     api(ErrorCode::InvalidParams, msg)
@@ -41,6 +46,8 @@ impl Runner {
             return;
         };
         let (ingest_rt, sub_rt, stop_rt) = (self.clone(), self.clone(), self.clone());
+        let rpc = Arc::new(RpcInbox::new());
+        let (serve_rt, serve_inbox) = (self.clone(), rpc.clone());
         let setup = chat::relay::pump::Setup {
             dir: self.cfg.dir.clone(),
             machine: self.chat.machine().to_owned(),
@@ -56,10 +63,52 @@ impl Runner {
             }),
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
             stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
+            rpc,
+            serve_rpc: Arc::new(move |send| serve_rt.spawn_rpc_server(serve_inbox.clone(), send)),
         };
         if let Err(e) = chat::relay::pump::spawn(setup) {
             log(&format!("chat relay: pump did not start: {e}"));
         }
+    }
+
+    fn spawn_rpc_server(
+        self: &Arc<Self>,
+        inbox: Arc<RpcInbox>,
+        send: RpcSend,
+    ) -> Option<thread::JoinHandle<()>> {
+        let dir = self.cfg.dir.clone();
+        let audit = Arc::new(FileAudit::new(&dir));
+        let transport = RelayTransport::new(
+            inbox,
+            Arc::new(MachinesCache::new(&dir)),
+            audit.clone(),
+            Arc::new(now_ms),
+            send,
+        );
+        let dispatcher = Dispatcher::with_store(
+            self.chat.machine(),
+            crate::manager::State::new(Box::new(self.chat.clone())),
+            audit,
+            Some(dir.join(SEEN_FILE)),
+            now_ms(),
+        );
+        let rt = self.clone();
+        thread::Builder::new()
+            .name("mgr-rpc-serve".into())
+            .spawn(move || {
+                while !rt.stop.load(Ordering::SeqCst) {
+                    let manager = rt.live_manager();
+                    let host = ManagerHost {
+                        rt: &rt,
+                        me: manager.as_ref().map_or("-", |m| m.id.as_str()),
+                    };
+                    if !serve_tick(&transport, &dispatcher, &dir, &host) {
+                        thread::sleep(RPC_TICK);
+                    }
+                }
+            })
+            .map_err(|e| log(&format!("manager rpc: serve thread did not start: {e}")))
+            .ok()
     }
 
     pub(super) fn chat_dispatch(

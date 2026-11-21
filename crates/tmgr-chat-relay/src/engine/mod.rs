@@ -3,11 +3,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tmgr_ipc::chat::{AuthorKind, ChatMessage, RoomRef};
+use tmgr_ipc::mgr_rpc::{limits, KIND_REQ, KIND_RES};
 use tmgr_phone::{b64, b64_decode, h};
 
 use crate::api::{self, Directory, Msg, Request};
@@ -21,7 +22,7 @@ use crate::trust::{
 };
 use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 
-pub use ports::{ChatSink, KeyStore, MemKeyStore, Slot, Transport};
+pub use ports::{ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, Transport};
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
 };
@@ -32,6 +33,7 @@ pub mod trust_state;
 const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_SEEN: usize = 5000;
+const MAX_RPC_SEEN: usize = 2000;
 const MAX_GAPS: usize = 100;
 const MAX_HELD: usize = 200;
 const HOLD_MS: u64 = 60_000;
@@ -142,6 +144,8 @@ struct State {
     pending_revokes: Vec<PendingRevoke>,
     declined: Vec<String>,
     seen: Vec<Seen>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    rpc_seen: Vec<Seen>,
     mismatch: Vec<String>,
     #[serde(default)]
     seq_in: BTreeMap<String, u64>,
@@ -675,6 +679,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore, S: ChatSink> {
     kind: String,
     now: Box<dyn Fn() -> u64 + Send + Sync>,
     scope: RoomScope,
+    rpc: Option<Arc<dyn RpcSink>>,
     core: Mutex<Core>,
 }
 
@@ -712,6 +717,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             kind: "desktop".into(),
             now,
             scope: RoomScope::default(),
+            rpc: None,
             core: Mutex::new(core),
         })
     }
@@ -723,6 +729,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             c.st.join_code = None;
         }
         backfill_self(c, kind);
+        self
+    }
+
+    pub fn with_rpc_sink(mut self, sink: Arc<dyn RpcSink>) -> Self {
+        self.rpc = Some(sink);
         self
     }
 
@@ -1117,7 +1128,45 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         .ok()
     }
 
+    fn apply_rpc(&self, c: &mut Core, o: &Opened, now: u64) {
+        let Some(sink) = &self.rpc else { return };
+        let cap = if o.kind == KIND_REQ {
+            limits::MAX_REQ_BYTES
+        } else {
+            limits::MAX_RES_BYTES
+        };
+        let own = c.identity.as_ref().map(|i| i.device_id.as_str());
+        if self.kind != "runner"
+            || !c.st.joined
+            || !o.trusted
+            || Some(o.from.as_str()) == own
+            || c.st.kind_of_trusted(&o.from) != Some("runner")
+            || c.st
+                .rpc_seen
+                .iter()
+                .any(|s| s.from == o.from && s.id == o.id)
+            || serde_json::to_vec(&o.payload).map_or(true, |b| b.len() > cap)
+        {
+            return;
+        }
+        c.st.rpc_seen.push(Seen {
+            from: o.from.clone(),
+            id: o.id.clone(),
+            at: o.sent_at,
+        });
+        c.st.rpc_seen.retain(|s| s.at + SEEN_TTL_MS >= now);
+        if c.st.rpc_seen.len() > MAX_RPC_SEEN {
+            let cut = c.st.rpc_seen.len() - MAX_RPC_SEEN;
+            c.st.rpc_seen.drain(..cut);
+        }
+        sink.deliver_rpc(&o.from, &o.from_fp, &o.kind, &o.id, o.payload.clone());
+    }
+
     fn apply(&self, c: &mut Core, opened: Opened, now: u64) -> Result<Option<ChatMessage>, String> {
+        if opened.kind == KIND_REQ || opened.kind == KIND_RES {
+            self.apply_rpc(c, &opened, now);
+            return Ok(None);
+        }
         let Some(chat) = self.handle(c, &opened, now) else {
             return Ok(None);
         };
@@ -1388,6 +1437,47 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
         let payload = serde_json::to_value(msg).map_err(err)?;
         self.seal_and_post(c, "chat", &msg.id, &payload, &targets, push)?;
+        self.save_now(c)
+    }
+
+    pub fn send_rpc(
+        &self,
+        to_device: &str,
+        kind: &str,
+        msg_id: &str,
+        payload: &Value,
+    ) -> Result<(), String> {
+        let (cap, letter) = match kind {
+            KIND_REQ => (limits::MAX_REQ_BYTES, "g_"),
+            KIND_RES => (limits::MAX_RES_BYTES, "h_"),
+            _ => return Err("unsupported rpc kind".into()),
+        };
+        if !msg_id.starts_with(letter) {
+            return Err("the rpc message id has the wrong prefix".into());
+        }
+        if self.kind != "runner" {
+            return Err("only a runner can send rpc messages".into());
+        }
+        if serde_json::to_vec(payload).map_err(err)?.len() > cap {
+            return Err("the rpc payload is too large".into());
+        }
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (id, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        if to_device == id.device_id {
+            return Err("cannot send an rpc message to this device".into());
+        }
+        let target =
+            c.st.trusted
+                .iter()
+                .find(|d| d.id == to_device && c.st.kind_of(&d.id, &d.fp) == Some("runner"))
+                .cloned()
+                .ok_or_else(|| "the target is not a trusted runner device".to_owned())?;
+        self.seal_and_post(c, kind, msg_id, payload, &[target], false)?;
         self.save_now(c)
     }
 

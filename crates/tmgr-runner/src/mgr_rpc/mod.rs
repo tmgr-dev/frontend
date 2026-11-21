@@ -1,8 +1,13 @@
+pub mod audit;
 pub mod dispatch;
+pub mod machines;
 pub mod policy;
+pub mod relay;
 pub mod transport;
 
+pub use audit::FileAudit;
 pub use dispatch::{Audit, AuditRecord, Dispatcher, MemoryAudit};
+pub use machines::Machines;
 pub use policy::Policy;
 pub use transport::{serve_one, Inbound, MemoryNet, Transport};
 
