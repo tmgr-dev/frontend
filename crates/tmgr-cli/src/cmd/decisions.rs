@@ -1145,7 +1145,7 @@ fn answers_human(found: &[Found]) -> String {
             if let Some(c) = &f.choice_label {
                 lines.push(format!("  Choice: {}", sanitize_line(c)));
             }
-            if f.choices.len() > 1 || f.choices.iter().any(|c| c.note.is_some()) {
+            if f.choices.len() > 1 {
                 lines.push("  Choices:".into());
                 lines.extend(
                     f.choices
@@ -1205,7 +1205,7 @@ pub fn event_text(e: &Event) -> String {
     if let Some(label) = e.choice_label.as_deref().or(e.choice.as_deref()) {
         lines.push(format!("choice: {label}"));
     }
-    if e.choices.len() > 1 || e.choices.iter().any(|c| c.note.is_some()) {
+    if e.choices.len() > 1 {
         lines.push("choices:".to_string());
         lines.extend(e.choices.iter().map(|c| format!("  - {}", choice_line(c))));
     }
@@ -1926,6 +1926,17 @@ mod tests {
             ..Default::default()
         };
         assert!(!event_text(&single).contains("choices"));
+        let noted = Event {
+            choice_label: Some("Ship".into()),
+            note: Some("after lunch".into()),
+            choices: vec![ChoiceOut {
+                id: "a".into(),
+                label: "Ship".into(),
+                note: Some("after lunch".into()),
+            }],
+            ..Default::default()
+        };
+        assert_eq!(event_text(&noted), "choice: Ship\nnote: after lunch");
     }
 
     #[test]

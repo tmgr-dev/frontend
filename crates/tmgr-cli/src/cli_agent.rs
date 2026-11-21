@@ -332,11 +332,11 @@ pub const ASK_HELP: &str = "Several repositories and patches
 
 Code and answers
   --code [NAME[:START]=]FILE or - (stdin, once, not together with a stdin --patch) shows one code
-  block. NAME is the file name shown above the code (name it like the source file so the owner sees
-  the language; default: the
-  file's own name, or \"code\" for stdin, so give stdin a name with an extension: src/a.rs=-), START the number of its first line (default 1). At most
-  64 KiB; a bigger block is refused, never cut.
-  The code block cannot be changed by a later reply; resend the card with --key or --replaces.
+  block. NAME is the file name shown above the code; name it like the source file so the owner
+  sees the language (default: the file's own name, or \"code\" for stdin, so give stdin a name
+  with an extension: src/a.rs=-). START is the number of the first line (default 1). At most
+  64 KiB; a bigger block is refused, never cut. A later reply cannot change the code block;
+  resend the card with --key or --replaces.
   On a card with 2 or more options the owner may tick several options and add a note to each;
   there is no flag for it and no way to force a single pick. choice is only the first pick, so
   read choices (every pick with its label and note; `tmgr decisions answers` prints them as
