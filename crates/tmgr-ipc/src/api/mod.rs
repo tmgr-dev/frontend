@@ -170,6 +170,7 @@ pub mod method {
     pub const HANDOFF_FINISH: &str = "handoff.finish";
     pub const SESSIONS_SWITCH: &str = "sessions.switch";
     pub const SPAWN_CHALLENGE: &str = "spawn.challenge";
+    pub const SPAWN_CARD: &str = "spawn.card";
 }
 
 pub mod limits {

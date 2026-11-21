@@ -20,3 +20,22 @@ pub struct SpawnChallengeResult {
     pub req: String,
     pub req_sha256: String,
 }
+
+/// Params of `spawn.card` (`client: "cli"` or `"desktop"` only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnCardParams {
+    pub card_id: String,
+}
+
+/// `state` is one of `issued`, `approved`, `claimed`, `spawned`, `refused`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnCardResult {
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exp_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
