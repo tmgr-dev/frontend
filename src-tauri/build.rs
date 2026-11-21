@@ -164,7 +164,6 @@ const APP_COMMANDS: &[&str] = &[
   "manager_send",
   "manager_search",
   "manager_commands",
-  "manager_open_window",
   "phones_begin_pairing",
   "phones_open_window",
   "phones_list",

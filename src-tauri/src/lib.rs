@@ -416,8 +416,7 @@ pub fn run() {
       manager::manager_history,
       manager::manager_send,
       manager::manager_search,
-      manager::manager_commands,
-      manager::manager_open_window
+      manager::manager_commands
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);

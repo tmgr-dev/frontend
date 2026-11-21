@@ -105,8 +105,3 @@ pub async fn manager_commands<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> R
   let backend = backend_of(&app)?;
   blocking(move || backend.commands(&room)).await
 }
-
-#[tauri::command]
-pub fn manager_open_window<R: Runtime>(app: AppHandle<R>) {
-  open_window(&app);
-}
