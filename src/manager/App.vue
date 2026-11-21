@@ -51,9 +51,10 @@
 					@older="store.loadOlder"
 				>
 					<template #decision="{ message }">
-						<div class="decision-ref">
-							{{ message.decision?.card_id }}
-						</div>
+						<DecisionCard
+							v-if="message.decision?.card_id"
+							:card-id="message.decision.card_id"
+						/>
 					</template>
 				</MessageList>
 				<Composer
@@ -140,6 +141,7 @@
 	import ChatHeader from './components/ChatHeader.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
+	import DecisionCard from './components/DecisionCard.vue';
 	import Icon from './components/Icon.vue';
 	import MessageList from './components/MessageList.vue';
 	import SearchPanel from './components/SearchPanel.vue';
@@ -169,6 +171,7 @@
 			ChatHeader,
 			ChatList,
 			Composer,
+			DecisionCard,
 			DevicesPanel,
 			Icon,
 			JoinConfirmDialog,

@@ -17,6 +17,12 @@
 		"idle": "Idle",
 		"done": "Done"
 	},
+	"decision": {
+		"loading": "Loading the card…",
+		"openInDecisions": "This card needs the Decisions window.",
+		"freePlaceholder": "Or write an answer",
+		"send": "Send"
+	},
 	"messages": {
 		"label": "Messages",
 		"reply": "Reply",

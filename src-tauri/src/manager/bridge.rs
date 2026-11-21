@@ -1,0 +1,216 @@
+use std::collections::{HashSet, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde_json::Value;
+
+use super::backend::ChatMessage;
+
+const SEEN_CAP: usize = 512;
+const BACKOFF_MIN: Duration = Duration::from_millis(500);
+const BACKOFF_MAX: Duration = Duration::from_secs(30);
+
+pub trait Feed: Send {
+  fn next_push(&mut self) -> Result<Option<Value>, String>;
+}
+
+pub trait Source: Send + Sync {
+  fn open(&self) -> Result<Box<dyn Feed>, String>;
+}
+
+pub fn parse_push(push: &Value) -> Option<ChatMessage> {
+  serde_json::from_value(push.get("message")?.clone()).ok()
+}
+
+#[derive(Default)]
+struct Seen {
+  order: VecDeque<String>,
+  ids: HashSet<String>,
+}
+
+impl Seen {
+  fn first_time(&mut self, id: &str) -> bool {
+    if !self.ids.insert(id.to_owned()) {
+      return false;
+    }
+    self.order.push_back(id.to_owned());
+    if self.order.len() > SEEN_CAP {
+      if let Some(old) = self.order.pop_front() {
+        self.ids.remove(&old);
+      }
+    }
+    true
+  }
+}
+
+struct Backoff(Duration);
+
+impl Backoff {
+  fn new() -> Self {
+    Backoff(BACKOFF_MIN)
+  }
+
+  fn reset(&mut self) {
+    self.0 = BACKOFF_MIN;
+  }
+
+  fn next(&mut self) -> Duration {
+    let now = self.0;
+    self.0 = (self.0 * 2).min(BACKOFF_MAX);
+    now
+  }
+}
+
+pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), stop: &AtomicBool, sleep: &dyn Fn(Duration)) {
+  let mut seen = Seen::default();
+  let mut backoff = Backoff::new();
+  while !stop.load(Ordering::SeqCst) {
+    if let Ok(mut feed) = source.open() {
+      backoff.reset();
+      loop {
+        if stop.load(Ordering::SeqCst) {
+          return;
+        }
+        match feed.next_push() {
+          Ok(Some(push)) => {
+            if let Some(message) = parse_push(&push) {
+              if seen.first_time(&message.id) {
+                emit(message);
+              }
+            }
+          }
+          Ok(None) | Err(_) => break,
+        }
+      }
+    }
+    if stop.load(Ordering::SeqCst) {
+      return;
+    }
+    sleep(backoff.next());
+  }
+}
+
+pub fn spawn(source: Arc<dyn Source>, emit: impl Fn(ChatMessage) + Send + 'static) {
+  let spawned = std::thread::Builder::new().name("manager-bridge".into()).spawn(move || {
+    run(&*source, &emit, &AtomicBool::new(false), &std::thread::sleep);
+  });
+  if let Err(e) = spawned {
+    log::error!("[manager] live bridge did not start: {e}");
+  }
+}
+
+pub struct RunnerSource(pub crate::runner::Runner);
+
+impl Source for RunnerSource {
+  fn open(&self) -> Result<Box<dyn Feed>, String> {
+    Ok(Box::new(self.0.chat_subscribe()?))
+  }
+}
+
+impl Feed for crate::runner::ChatFeed {
+  fn next_push(&mut self) -> Result<Option<Value>, String> {
+    crate::runner::ChatFeed::next_push(self)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use serde_json::json;
+  use std::sync::Mutex;
+
+  struct Script(VecDeque<Result<Value, String>>);
+
+  impl Feed for Script {
+    fn next_push(&mut self) -> Result<Option<Value>, String> {
+      match self.0.pop_front() {
+        Some(Ok(v)) => Ok(Some(v)),
+        Some(Err(e)) => Err(e),
+        None => Ok(None),
+      }
+    }
+  }
+
+  struct Fake {
+    opens: Mutex<VecDeque<Result<Vec<Result<Value, String>>, String>>>,
+    stop: Arc<AtomicBool>,
+  }
+
+  impl Source for Fake {
+    fn open(&self) -> Result<Box<dyn Feed>, String> {
+      match self.opens.lock().unwrap().pop_front() {
+        Some(Ok(items)) => Ok(Box::new(Script(items.into()))),
+        Some(Err(e)) => Err(e),
+        None => {
+          self.stop.store(true, Ordering::SeqCst);
+          Err("done".into())
+        }
+      }
+    }
+  }
+
+  fn push(id: &str) -> Value {
+    json!({"message": {
+      "v": 1, "id": id, "room": {"kind": "manager", "machine": "mac"},
+      "author": {"kind": "manager", "id": "m"}, "ts_ms": 1, "kind": "text", "body_md": "hi"
+    }})
+  }
+
+  fn drive(opens: Vec<Result<Vec<Result<Value, String>>, String>>) -> (Vec<String>, Vec<Duration>) {
+    let stop = Arc::new(AtomicBool::new(false));
+    let fake = Fake { opens: Mutex::new(opens.into()), stop: stop.clone() };
+    let got = Mutex::new(Vec::new());
+    let sleeps = Mutex::new(Vec::new());
+    run(&fake, &|m| got.lock().unwrap().push(m.id), &stop, &|d| sleeps.lock().unwrap().push(d));
+    (got.into_inner().unwrap(), sleeps.into_inner().unwrap())
+  }
+
+  #[test]
+  fn parses_the_wire_push_and_ignores_garbage() {
+    assert_eq!(parse_push(&push("m_1")).unwrap().body_md, "hi");
+    assert!(parse_push(&json!({"message": {"id": 5}})).is_none());
+    assert!(parse_push(&json!({"nope": 1})).is_none());
+  }
+
+  #[test]
+  fn emits_each_message_once_even_across_reconnects() {
+    let (got, _) = drive(vec![
+      Ok(vec![Ok(push("m_1")), Ok(push("m_1")), Ok(json!({"x": 1})), Ok(push("m_2"))]),
+      Ok(vec![Ok(push("m_2")), Ok(push("m_3"))]),
+    ]);
+    assert_eq!(got, ["m_1", "m_2", "m_3"]);
+  }
+
+  #[test]
+  fn reconnects_with_growing_backoff_that_resets_after_a_connection() {
+    let (got, sleeps) = drive(vec![
+      Err("down".into()),
+      Err("down".into()),
+      Err("down".into()),
+      Ok(vec![Ok(push("m_1")), Err("closed".into())]),
+      Err("down".into()),
+    ]);
+    assert_eq!(got, ["m_1"]);
+    let ms: Vec<u128> = sleeps.iter().map(|d| d.as_millis()).collect();
+    assert_eq!(&ms[..5], &[500, 1000, 2000, 500, 1000]);
+  }
+
+  #[test]
+  fn backoff_is_capped() {
+    let mut b = Backoff::new();
+    let last = (0..20).map(|_| b.next()).last().unwrap();
+    assert_eq!(last, BACKOFF_MAX);
+  }
+
+  #[test]
+  fn seen_set_is_bounded() {
+    let mut s = Seen::default();
+    for i in 0..SEEN_CAP + 10 {
+      assert!(s.first_time(&format!("m_{i}")));
+    }
+    assert!(s.first_time("m_0"));
+    assert_eq!(s.ids.len(), s.order.len());
+    assert!(s.ids.len() <= SEEN_CAP);
+  }
+}

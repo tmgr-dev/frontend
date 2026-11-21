@@ -936,10 +936,62 @@ html.dark .manager .qt {
 	color: var(--fix-fg);
 	font-size: 12.5px;
 }
-.manager .decision-ref {
-	font-family: var(--font-mono);
-	font-size: 12px;
-	color: var(--subtle);
+.manager .dcard {
+	border: 1px solid var(--line-strong);
+	background: var(--raised);
+	border-radius: var(--r-sm);
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: 520px;
+}
+.manager .dc-title {
+	font-weight: 600;
+}
+.manager .dc-q,
+.manager .dc-note {
+	font-size: 13px;
+	color: var(--muted);
+}
+.manager .dc-err {
+	color: var(--fix-fg);
+}
+.manager .dc-opts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.manager .dc-opt,
+.manager .dc-free button {
+	border: 1px solid var(--line-strong);
+	border-radius: 6px;
+	padding: 4px 10px;
+	font-size: 13px;
+	color: var(--ink);
+}
+.manager .dc-opt.rec {
+	border-color: var(--brand);
+	background: var(--brand-soft);
+	color: var(--brand-fg);
+}
+.manager .dc-opt:disabled,
+.manager .dc-free button:disabled {
+	opacity: 0.5;
+}
+.manager .dc-free {
+	display: flex;
+	gap: 6px;
+}
+.manager .dc-free input {
+	flex: 1;
+	min-width: 0;
+	background: var(--sunken);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 4px 8px;
+	font-size: 13px;
+	color: var(--ink);
 }
 html:has(.manager.app-shell),
 body:has(.manager.app-shell) {
