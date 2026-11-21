@@ -20,6 +20,8 @@ pub struct ScopeInput {
     pub allow_attach_input: Option<bool>,
     pub remote_control: Option<bool>,
     pub include_bypass: Option<bool>,
+    pub allow_bypass: Option<bool>,
+    pub allow_no_sandbox: Option<bool>,
 }
 
 fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
@@ -77,6 +79,12 @@ fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
     }
     if let Some(on) = input.include_bypass {
         scope.include_bypass = on;
+    }
+    if let Some(on) = input.allow_bypass {
+        scope.allow_bypass = on;
+    }
+    if let Some(on) = input.allow_no_sandbox {
+        scope.allow_no_sandbox = on;
     }
     if let Some(allow) = input.allow_attach_input {
         scope.allow_attach_input = allow;
@@ -368,6 +376,8 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         "widening": plan.widening,
         "from": plan.old.summary(),
         "to": plan.new.summary(),
+        "allow_bypass": plan.new.allow_bypass,
+        "allow_no_sandbox": plan.new.allow_no_sandbox,
     });
     if plan.widening {
         audit.append("link.scope.intent", fields.clone())?;
@@ -727,6 +737,8 @@ mod tests {
                 allow_attach_input: None,
                 remote_control: None,
                 include_bypass: None,
+                allow_bypass: None,
+                allow_no_sandbox: None,
             },
         }
     }
@@ -1411,6 +1423,42 @@ mod tests {
         apply_scope(&f.paths, &plan, &f.bin).unwrap();
         let plan = plan_scope(&f.paths, "laptop", &on).unwrap();
         assert!(apply_scope(&f.paths, &plan, &f.bin).is_err());
+    }
+
+    #[test]
+    fn the_privileged_opt_ins_widen_are_audited_as_intent_and_bump_the_generation() {
+        let f = fx();
+        trust(&f, "laptop");
+        let before = Store::load(&f.paths).unwrap().generation("laptop");
+        let on = ScopeInput {
+            remote_control: Some(true),
+            allow_bypass: Some(true),
+            allow_no_sandbox: Some(true),
+            ..Default::default()
+        };
+        let plan = plan_scope(&f.paths, "laptop", &on).unwrap();
+        assert!(plan.widening);
+        apply_scope(&f.paths, &plan, &f.bin).unwrap();
+        let store = Store::load(&f.paths).unwrap();
+        let s = &store.leaders["laptop"].scope;
+        assert!(s.allow_bypass && s.allow_no_sandbox);
+        assert!(store.generation("laptop") > before);
+        let events = Audit::new(&f.paths.audit_dir()).tail(50).unwrap();
+        assert!(events.iter().any(|e| e["event"] == "link.scope.intent"
+            && e["allow_bypass"] == true
+            && e["allow_no_sandbox"] == true));
+        let off = ScopeInput {
+            allow_bypass: Some(false),
+            allow_no_sandbox: Some(false),
+            ..Default::default()
+        };
+        let plan = plan_scope(&f.paths, "laptop", &off).unwrap();
+        assert!(!plan.widening);
+        apply_scope(&f.paths, &plan, &f.bin).unwrap();
+        let s = Store::load(&f.paths).unwrap().leaders["laptop"]
+            .scope
+            .clone();
+        assert!(!s.allow_bypass && !s.allow_no_sandbox && s.remote_control);
     }
 
     #[test]
