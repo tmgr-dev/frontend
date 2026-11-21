@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.170 — 2026-11-21
+
+- Tray: the popover now opens on the screen where you clicked the icon (it used to jump to the main screen on multi-monitor Macs), and it is wider (400 px).
+
 ## 0.9.169 — 2026-11-21
 
 - Tray: clicking the menu bar (macOS) or tray (Windows) icon now opens a TMGR popover instead of the native menu: quick add, running timers with Stop, open Decisions you can answer in place, Switch to, Today, machines and sessions, Do Not Disturb, AI usage limits, plugin sections and Quit. Linux keeps the native menu.
