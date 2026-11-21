@@ -176,7 +176,7 @@ missing params) and `internal`.
 | `trust.add` | `{path, dev?, ino?}` (absolute) | `TrustedFolder` | `invalid_params` | `client: "cli"` only; cap `trusted_folders.v1` |
 | `trust.remove` | `{path}` | `{removed}` | | `client: "cli"` only; cap `trusted_folders.v1` |
 | `objects.list` | none | `[ExemptFolder]` (`{path, dev, ino, birth_ns, fsid, added_ms, measured_ms, stale}`) | `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
-| `objects.allow` | `{path, dev, ino, measured_ms}` (absolute) | `ExemptFolder` | `invalid_params`, `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
+| `objects.allow` | `{path, dev, ino, birth_ns, fsid, measured_ms}` (absolute; all four identity fields must equal what the runner reads now) | `ExemptFolder` | `invalid_params`, `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
 | `objects.deny` | `{path, dev?, ino?}` (removes the entries with this path or this `dev`/`ino`) | `{removed}` | `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
 | `sessions.kill` | `{id, signal, reason?}` (`term`, `kill`, `int`, `hup`; `reason` at most 200 characters, control characters become `?`) | `null` | `not_found`, `not_running`, `invalid_params` | any |
 | `orchestrator.create` | `{profile, cwd, start_key, name?}` (no other field) | `SessionInfo` | `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit`, `busy` | `client: "cli"` only; cap `orchestrator.v1` |

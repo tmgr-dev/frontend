@@ -4670,16 +4670,21 @@ fn only_the_cli_changes_trusted_folders() {
         .is_empty());
 }
 
+fn allow_params(dir: &std::path::Path) -> Value {
+    use std::os::fd::AsRawFd;
+    let f = fs::File::open(dir).unwrap();
+    let id = tmgr_runner::objects_exempt::ident_fd(f.as_raw_fd()).unwrap();
+    json!({"path": dir, "dev": id.dev, "ino": id.ino, "birth_ns": id.birth_ns, "fsid": id.fsid, "measured_ms": 1})
+}
+
 #[test]
 fn only_the_cli_manages_exempt_folders() {
     if !sessions_available() {
         return;
     }
-    use std::os::unix::fs::MetadataExt;
     let mut h = Harness::new();
     h.start(5000);
-    let m = fs::metadata(&h.work).unwrap();
-    let allow = json!({"path": h.work, "dev": m.dev(), "ino": m.ino(), "measured_ms": 1});
+    let allow = allow_params(&h.work);
     for client in ["worker", "desktop"] {
         let mut c = Client::connect_as(&h.run, client).unwrap();
         for (method, params) in [
@@ -4705,8 +4710,12 @@ fn an_exempt_folder_skips_only_the_shared_object_check() {
     if !sessions_available() {
         return;
     }
-    use std::os::unix::fs::MetadataExt;
     let mut h = Harness::new();
+    let script = h.script(
+        "fake-agent.sh",
+        "echo ready\nwhile true; do sleep 0.2; done\n",
+    );
+    h.profile("fake", &["/bin/sh", &script]);
     h.start(5000);
     let objects = h.work.join(".git/objects");
     fs::create_dir_all(objects.join("pack")).unwrap();
@@ -4719,15 +4728,11 @@ fn an_exempt_folder_skips_only_the_shared_object_check() {
         refused.contains("git object files") && refused.contains("objects allow"),
         "{refused}"
     );
-    let m = fs::metadata(&h.work).unwrap();
     h.client()
-        .call(
-            "objects.allow",
-            json!({"path": h.work, "dev": m.dev(), "ino": m.ino(), "measured_ms": 1}),
-        )
+        .call("objects.allow", allow_params(&h.work))
         .unwrap();
     let info = h.client().create_run(h.run_req("fake")).unwrap();
-    h.client().kill(&info.id, "kill").unwrap();
+    let _ = h.client().kill(&info.id, "kill");
 
     let shared_store = |dir: &std::path::Path, name: &str| {
         fs::create_dir_all(dir.join(".git/objects/ab")).unwrap();

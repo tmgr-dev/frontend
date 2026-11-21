@@ -2836,7 +2836,12 @@ impl Runner {
                     let r = objects_exempt::add(
                         homes,
                         Path::new(&q.path),
-                        (q.dev, q.ino),
+                        &objects_exempt::Ident {
+                            dev: q.dev,
+                            ino: q.ino,
+                            birth_ns: q.birth_ns,
+                            fsid: q.fsid,
+                        },
                         q.measured_ms,
                         now_ms(),
                     );

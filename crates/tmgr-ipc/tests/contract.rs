@@ -1067,6 +1067,26 @@ fn an_exempt_folder_without_stale_is_not_stale_and_unknown_fields_are_ignored() 
 }
 
 #[test]
+fn objects_allow_params_carry_the_full_folder_identity() {
+    let q = ObjectsAllowParams {
+        path: "/w".into(),
+        dev: 1,
+        ino: 2,
+        birth_ns: 5,
+        fsid: 6,
+        measured_ms: 4,
+    };
+    assert_eq!(
+        serde_json::to_value(&q).unwrap(),
+        json!({"path": "/w", "dev": 1, "ino": 2, "birth_ns": 5, "fsid": 6, "measured_ms": 4})
+    );
+    assert!(serde_json::from_value::<ObjectsAllowParams>(
+        json!({"path": "/w", "dev": 1, "ino": 2, "measured_ms": 4})
+    )
+    .is_err());
+}
+
+#[test]
 fn a_session_info_without_the_no_sandbox_field_is_sandboxed() {
     let info: SessionInfo = serde_json::from_value(fixture("session_info")).unwrap();
     assert!(!info.no_sandbox);

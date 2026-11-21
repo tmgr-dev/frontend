@@ -2,6 +2,7 @@ use super::{connect, emit, rerr, runner_config, Opts};
 use crate::out::table;
 use serde_json::{json, Value};
 use std::io::{IsTerminal, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use tmgr_core::error::{Error, Kind, Result};
@@ -12,7 +13,7 @@ use tmgr_link::privileged;
 use tmgr_link::store::Paths;
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon;
-use tmgr_runner::objects_exempt::{self, Measured};
+use tmgr_runner::objects_exempt::{self, Ident, Measured};
 use tmgr_runner::wire::now_ms;
 
 const SHOWN: usize = 10;
@@ -182,6 +183,11 @@ fn walk(path: &Path) -> Result<Measured> {
     Ok(m)
 }
 
+fn identity(path: &Path) -> Result<Ident> {
+    let f = std::fs::File::open(path).map_err(|e| Error::usage(e.to_string()))?;
+    objects_exempt::ident_fd(f.as_raw_fd()).map_err(|e| Error::usage(e.to_string()))
+}
+
 fn tty() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
 }
@@ -189,14 +195,14 @@ fn tty() -> bool {
 pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
     gate(privileged::in_agent_session(), tty())?;
     let shown = canonical(dir)?;
-    let id = std::fs::metadata(&shown).map_err(|e| Error::usage(e.to_string()))?;
+    let id = identity(&shown)?;
     let paths = Paths::from_env()?;
     require_pin_set(&pin::status(&paths)?)?;
     let entered = rpassword::prompt_password("Follower PIN (input hidden): ")?;
     authorize(&paths, &entered)?;
     drop(entered);
     let m = walk(&shown)?;
-    if m.root != (id.dev(), id.ino()) {
+    if m.root != id {
         return Err(Error::usage(CHANGED));
     }
     refuse_outside(&m)?;
@@ -207,8 +213,10 @@ pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
         "object_exempt.add",
         json!({
             "path": text,
-            "dev": id.dev(),
-            "ino": id.ino(),
+            "dev": id.dev,
+            "ino": id.ino,
+            "birth_ns": id.birth_ns,
+            "fsid": id.fsid,
             "files_seen": m.files_seen,
             "measured_ms": m.elapsed_ms,
         }),
@@ -218,13 +226,15 @@ pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
         method::OBJECTS_ALLOW,
         serde_json::to_value(ObjectsAllowParams {
             path: text.clone(),
-            dev: id.dev(),
-            ino: id.ino(),
+            dev: id.dev,
+            ino: id.ino,
+            birth_ns: id.birth_ns,
+            fsid: id.fsid,
             measured_ms: m.elapsed_ms,
         })
         .map_err(|e| Error::usage(e.to_string()))?,
     );
-    let v = outcome(&audit, call, "object_exempt.added", &text)?;
+    let v = outcome(&audit, call, &text, |_| Some("object_exempt.added"))?;
     let f: ExemptFolder = serde_json::from_value(v).map_err(|e| Error::usage(e.to_string()))?;
     let human = format!(
         "{} no longer gets the shared-object check at start",
@@ -233,10 +243,21 @@ pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
     Ok(emit(o, &f, human))
 }
 
-fn outcome(audit: &Audit, call: std::io::Result<Value>, done: &str, path: &str) -> Result<Value> {
+fn outcome(
+    audit: &Audit,
+    call: std::io::Result<Value>,
+    path: &str,
+    done: impl Fn(&Value) -> Option<&'static str>,
+) -> Result<Value> {
     match call {
         Ok(v) => {
-            audit.append(done, json!({ "path": path }))?;
+            if let Some(event) = done(&v) {
+                if audit.append(event, json!({ "path": path })).is_err() {
+                    eprintln!(
+                        "warning: the change was made, but its audit entry could not be written"
+                    );
+                }
+            }
             Ok(v)
         }
         Err(e) => {
@@ -267,7 +288,9 @@ pub fn deny(o: &Opts, dir: &Path) -> Result<i32> {
         params["ino"] = ino.into();
     }
     let call = c.call(method::OBJECTS_DENY, params);
-    let v = outcome(&audit, call, "object_exempt.removed", &path)?;
+    let v = outcome(&audit, call, &path, |v| {
+        (v["removed"] == true).then_some("object_exempt.removed")
+    })?;
     let r: ObjectsDenied = serde_json::from_value(v).map_err(|e| Error::usage(e.to_string()))?;
     let human = if r.removed {
         format!(
@@ -329,7 +352,12 @@ mod tests {
 
     fn measured(outside: &[&str], count: u64) -> Measured {
         Measured {
-            root: (1, 2),
+            root: Ident {
+                dev: 1,
+                ino: 2,
+                birth_ns: 3,
+                fsid: 4,
+            },
             files_seen: 1234,
             outside: outside.iter().map(|s| s.to_string()).collect(),
             outside_count: count,
@@ -449,6 +477,58 @@ mod tests {
         assert!(lines[1].contains("3.2 s") && lines[1].contains("2h 00m ago"));
         assert!(out.contains("not exempt"));
         assert!(!rows(&[folder("/a", false)], 0).contains("not exempt"));
+    }
+
+    fn broken_audit() -> (tempfile::TempDir, Audit) {
+        let d = tempfile::tempdir().unwrap();
+        let file = d.path().join("f");
+        std::fs::write(&file, "").unwrap();
+        let audit = Audit::new(&file.join("sub"));
+        assert!(audit.append("x", json!({})).is_err());
+        (d, audit)
+    }
+
+    fn events(audit: &Audit) -> Vec<String> {
+        audit
+            .tail(100)
+            .unwrap()
+            .iter()
+            .map(|e| e["event"].as_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn a_removed_false_answer_writes_no_removed_audit_entry() {
+        let d = tempfile::tempdir().unwrap();
+        let audit = Audit::new(d.path());
+        let done = |v: &Value| (v["removed"] == true).then_some("object_exempt.removed");
+        outcome(&audit, Ok(json!({"removed": false})), "/p", done).unwrap();
+        assert!(events(&audit).is_empty());
+        outcome(&audit, Ok(json!({"removed": true})), "/p", done).unwrap();
+        assert_eq!(events(&audit), vec!["object_exempt.removed"]);
+    }
+
+    #[test]
+    fn an_audit_failure_after_a_successful_change_keeps_the_success() {
+        let (_d, audit) = broken_audit();
+        let v = outcome(&audit, Ok(json!({"removed": true})), "/p", |_| {
+            Some("object_exempt.removed")
+        })
+        .unwrap();
+        assert_eq!(v["removed"], true);
+    }
+
+    #[test]
+    fn a_failed_call_is_still_an_error_even_when_the_audit_is_broken() {
+        let (_d, audit) = broken_audit();
+        let e = outcome(
+            &audit,
+            Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)),
+            "/p",
+            |_| Some("object_exempt.added"),
+        )
+        .unwrap_err();
+        assert_eq!(e.exit_code(), 7);
     }
 
     #[test]

@@ -514,6 +514,8 @@ pub struct ObjectsAllowParams {
     pub path: String,
     pub dev: u64,
     pub ino: u64,
+    pub birth_ns: u64,
+    pub fsid: u64,
     pub measured_ms: u64,
 }
 

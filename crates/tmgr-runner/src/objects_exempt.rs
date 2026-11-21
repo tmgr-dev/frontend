@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -108,7 +107,7 @@ fn ident_path(path: &Path) -> std::io::Result<Ident> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Measured {
-    pub root: (u64, u64),
+    pub root: Ident,
     pub files_seen: u64,
     pub outside: Vec<String>,
     pub outside_count: u64,
@@ -133,7 +132,7 @@ fn save(homes: &Path, all: &[ExemptFolder]) -> Result<(), String> {
 pub fn add(
     homes: &Path,
     path: &Path,
-    expect: (u64, u64),
+    expect: &Ident,
     measured_ms: u64,
     now_ms: u64,
 ) -> Result<ExemptFolder, String> {
@@ -147,7 +146,7 @@ pub fn add(
         return Err(format!("{} is not a folder", canon.display()));
     }
     let id = ident_path(&canon).map_err(|e| format!("cannot read {}: {e}", canon.display()))?;
-    if (id.dev, id.ino) != expect {
+    if id != *expect {
         return Err("the folder changed since it was confirmed".into());
     }
     let folder = ExemptFolder {
@@ -213,6 +212,11 @@ fn ident(st: &libc::stat) -> (u64, u64) {
 
 const CHANGED: &str = "the folder changed while it was checked, try again";
 
+#[allow(clippy::unnecessary_cast)]
+fn nlink(st: &libc::stat) -> u64 {
+    st.st_nlink as u64
+}
+
 struct Walk<'a> {
     changed: bool,
     dirs: HashSet<(u64, u64)>,
@@ -266,11 +270,10 @@ impl Walk<'_> {
                         (self.progress)(self.files);
                     }
                     if st.st_nlink > 1 {
-                        let e = self.links.entry(ident(&st)).or_insert((
-                            u64::from(st.st_nlink),
-                            0,
-                            child,
-                        ));
+                        let e = self
+                            .links
+                            .entry(ident(&st))
+                            .or_insert((nlink(&st), 0, child));
                         e.1 += 1;
                         if e.1 > e.0 {
                             self.changed = true;
@@ -288,10 +291,9 @@ impl Walk<'_> {
 pub fn measure(path: &Path, progress: &mut dyn FnMut(u64)) -> Result<Measured, String> {
     let started = Instant::now();
     let root = open_root(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
-    let root_id = root
-        .metadata()
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let root_id = (root_id.dev(), root_id.ino());
+    let root_ident =
+        ident_fd(root.as_raw_fd()).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let root_id = (root_ident.dev, root_ident.ino);
     let mut walk = Walk {
         changed: false,
         dirs: HashSet::from([root_id]),
@@ -316,7 +318,7 @@ pub fn measure(path: &Path, progress: &mut dyn FnMut(u64)) -> Result<Measured, S
     let outside_count = outside.len() as u64;
     outside.truncate(SHOWN);
     Ok(Measured {
-        root: root_id,
+        root: root_ident,
         files_seen: walk.files,
         outside,
         outside_count,
@@ -349,8 +351,17 @@ mod tests {
     }
 
     fn allow(homes: &Path, p: &Path) -> Result<ExemptFolder, String> {
-        add(homes, p, id(p), 7, 5)
+        let id = ident_path(&std::fs::canonicalize(p).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        add(homes, p, &id, 7, 5)
     }
+
+    const NOBODY: Ident = Ident {
+        dev: 0,
+        ino: 0,
+        birth_ns: 0,
+        fsid: 0,
+    };
 
     fn measured(p: &Path) -> Result<Measured, String> {
         measure(p, &mut |_| {})
@@ -367,7 +378,7 @@ mod tests {
         );
         let i = full(&work);
         assert_eq!((f.birth_ns, f.fsid), (i.birth_ns, i.fsid));
-        assert_ne!(f.fsid, 0);
+        assert_eq!(full(&work).fsid, i.fsid);
         assert_eq!(list(&homes), vec![f]);
         assert_eq!(
             std::fs::metadata(store(&homes))
@@ -396,12 +407,33 @@ mod tests {
     #[test]
     fn relative_missing_and_non_folder_paths_and_changed_identity_are_refused() {
         let (_t, homes, work) = dirs();
-        assert!(add(&homes, Path::new("rel"), (0, 0), 1, 1).is_err());
-        assert!(add(&homes, &work.join("nope"), (0, 0), 1, 1).is_err());
+        assert!(add(&homes, Path::new("rel"), &NOBODY, 1, 1).is_err());
+        assert!(add(&homes, &work.join("nope"), &NOBODY, 1, 1).is_err());
         std::fs::write(work.join("f"), "").unwrap();
         assert!(allow(&homes, &work.join("f")).is_err());
-        assert!(add(&homes, &work, (0, 0), 1, 1).is_err());
+        assert!(add(&homes, &work, &NOBODY, 1, 1).is_err());
         assert!(list(&homes).is_empty());
+    }
+
+    #[test]
+    fn add_is_refused_when_only_birth_time_or_filesystem_differs() {
+        let (_t, homes, work) = dirs();
+        let i = full(&work);
+        let birth = Ident {
+            birth_ns: i.birth_ns.wrapping_add(1),
+            ..i
+        };
+        let fsid = Ident {
+            fsid: i.fsid ^ 1,
+            ..i
+        };
+        for other in [birth, fsid] {
+            assert_eq!((other.dev, other.ino), (i.dev, i.ino));
+            let e = add(&homes, &work, &other, 1, 1).unwrap_err();
+            assert!(e.contains("changed"), "{e}");
+        }
+        assert!(list(&homes).is_empty());
+        assert!(add(&homes, &work, &i, 1, 1).is_ok());
     }
 
     #[test]
@@ -604,7 +636,7 @@ mod tests {
         std::os::unix::fs::symlink("/etc/hosts", work.join("sym")).unwrap();
         let mut last = 0;
         let m = measure(&work, &mut |n| last = n).unwrap();
-        assert_eq!(m.root, id(&work));
+        assert_eq!(m.root, full(&work));
         assert_eq!((m.files_seen, m.outside_count), (4, 0));
         assert!(m.outside.is_empty());
         assert_eq!(last, 4);
