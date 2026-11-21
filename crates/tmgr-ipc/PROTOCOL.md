@@ -123,6 +123,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
 | `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
 | `profiles_login_check.v1` | `profiles.login_check` |
+| `run_prompt.v1` | `prompt` on `runs.create` |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
@@ -518,6 +519,8 @@ A bundle may carry `team` `{size, mode}` (cap `team.v1`; `size` 1 to 5, `mode` `
 `runs.create` takes an optional `team` `{role, of}` (cap `team.workers.v1`, no other fields): `role` is `"lead"` or `{"worker": N}` with `N` from 1, `of` is the pickup id (1 to 64 characters of `A-Za-z0-9._-`); the run is created with it and `SessionInfo.team` returns it. It is a label for grouping and display and grants nothing: the sandbox, grants, home and egress of a member are built exactly as for a single run, and an invalid link is `invalid_params`. A bundle may carry `assignment`, a string of at most 16384 bytes, omitted when absent so other bundles and their hashes are unchanged and part of the hash when present. It is unsigned text written by the lead agent: it is outside the cloud signature, the runner refuses it (`invalid_params`) unless the request carries a `team` with role `worker`, and `task.md` shows it after the team block under "Assignment from the lead", inside the same untrusted data markers as other task text (`<<<` is escaped), never among the owner sections.
 
 `runs.create` takes an optional `finish_marker` (boolean, omitted when false): the queue sets it for a single-agent run that ends when the agent writes an empty `.tmgr/done` in its folder, and the runner adds a "When you are done" block to `task.md` and a one-line note to the prompt. It is ignored for a run with a `team`.
+
+`runs.create` takes an optional `prompt` (text, at most 100000 bytes, control characters other than newline and tab removed): the first prompt of a plain run, passed to the agent the way a task prompt is. It needs `client: "cli"` or `"desktop"`, is ignored when the session is resumed, and is refused together with `task`, `bundle`, `origin`, `team`, `cloud`, `external_resume`, `clones`, `start_key`, `agent_work` or `unattended`. `parent_session` (CLI and desktop only) names an exited session of the same task, or of no task when the new run has none.
 
 `author.kind` is `human`, `agent` or `other`; `author.id`, `persona` and
 `launch.model` are optional and are omitted, never `null`. `v` is `1`. Unknown

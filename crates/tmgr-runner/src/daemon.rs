@@ -2425,8 +2425,37 @@ fn parent_verdict(
     if !exited {
         return Err("parent_session is still running");
     }
-    if task.is_none() || parent_task != task {
+    if parent_task != task {
         return Err("parent_session belongs to another task");
+    }
+    Ok(())
+}
+
+fn prompt_verdict(req: &RunCreateReq, from_cli: bool) -> Result<(), &'static str> {
+    let Some(prompt) = req.prompt.as_deref() else {
+        return Ok(());
+    };
+    if !from_cli {
+        return Err("prompt is accepted only from the tmgr CLI and the desktop");
+    }
+    if prompt.trim().is_empty() || prompt.len() > tmgr_ipc::api::limits::MAX_RUN_PROMPT {
+        return Err("prompt must be 1 to 100000 bytes of text");
+    }
+    if req.bundle.is_some()
+        || req.bundle_sha256.is_some()
+        || req.task.is_some()
+        || req.origin.is_some()
+        || req.team.is_some()
+        || req.cloud.is_some()
+        || req.external_resume.is_some()
+        || req.unattended
+        || req.agent_work
+        || req.start_key.is_some()
+        || !req.clones.is_empty()
+    {
+        return Err(
+            "prompt is only for a plain run without a task, bundle, link, team or cloud approval",
+        );
     }
     Ok(())
 }
@@ -2575,6 +2604,11 @@ impl Runner {
                     }
                     self.check_parent(parent, req.task)?;
                 }
+                prompt_verdict(
+                    &req,
+                    conn.client == CLIENT_CLI || conn.client == CLIENT_DESKTOP,
+                )
+                .map_err(|m| api(ErrorCode::InvalidParams, m))?;
                 if req.trust_cwd.is_some() {
                     if conn.client != CLIENT_CLI {
                         return Err(api(
@@ -4150,6 +4184,16 @@ impl Runner {
                 req.team.as_ref(),
                 req.finish_marker && req.team.is_none(),
             ));
+            extra.prompt_at = prof
+                .prompt
+                .args
+                .iter()
+                .position(|a| a == "{prompt}")
+                .filter(|_| !args.is_empty())
+                .map(|i| argv.len() + i);
+            argv.extend(args);
+        } else if let (false, Some(p)) = (resumed, req.prompt.as_deref()) {
+            let args = prof.prompt_args(&crate::bundle::clean(p));
             extra.prompt_at = prof
                 .prompt
                 .args
@@ -6002,8 +6046,49 @@ mod tests {
         Instant::now() + SEND_SETTLE
     }
 
+    fn plain_req() -> RunCreateReq {
+        RunCreateReq {
+            prompt: Some("note".into()),
+            ..tmgr_ipc::api::OrchestratorCreateReq {
+                profile: "codex".into(),
+                cwd: "/w".into(),
+                start_key: "k".into(),
+                name: None,
+                exe_pin: None,
+            }
+            .as_run()
+        }
+    }
+
     #[test]
-    fn a_parent_must_be_a_known_exited_session_of_the_same_task() {
+    fn a_prompt_is_for_plain_runs_from_the_cli_or_desktop_only() {
+        let mut r = plain_req();
+        r.start_key = None;
+        r.unattended = false;
+        assert!(prompt_verdict(&r, true).is_ok());
+        assert!(prompt_verdict(&r, false).is_err());
+        let mut none = r.clone();
+        none.prompt = None;
+        assert!(prompt_verdict(&none, false).is_ok());
+        let mut big = r.clone();
+        big.prompt = Some("x".repeat(tmgr_ipc::api::limits::MAX_RUN_PROMPT + 1));
+        assert!(prompt_verdict(&big, true).is_err());
+        let mut blank = r.clone();
+        blank.prompt = Some("  \n".into());
+        assert!(prompt_verdict(&blank, true).is_err());
+        let mut task = r.clone();
+        task.task = Some(TaskRef {
+            workspace_id: -1,
+            task_id: 1,
+        });
+        assert!(prompt_verdict(&task, true).is_err());
+        let mut unattended = r.clone();
+        unattended.unattended = true;
+        assert!(prompt_verdict(&unattended, true).is_err());
+    }
+
+    #[test]
+    fn a_parent_must_be_a_known_exited_session_of_the_same_task_or_both_without_one() {
         let t = |n| {
             Some(TaskRef {
                 workspace_id: -1,
@@ -6014,7 +6099,11 @@ mod tests {
         assert!(parent_verdict("s_a", None, t(1)).is_err());
         assert!(parent_verdict("s_a", Some((false, t(1))), t(1)).is_err());
         assert!(parent_verdict("s_a", Some((true, t(2))), t(1)).is_err());
-        assert!(parent_verdict("s_a", Some((true, None)), None).is_err());
+        assert!(parent_verdict("s_a", Some((true, None)), None).is_ok());
+        assert!(parent_verdict("s_a", Some((true, None)), t(1)).is_err());
+        assert!(parent_verdict("s_a", Some((true, t(1))), None).is_err());
+        assert!(parent_verdict("s_a", Some((false, None)), None).is_err());
+        assert!(parent_verdict("s_a", None, None).is_err());
         assert!(parent_verdict("../x", Some((true, t(1))), t(1)).is_err());
     }
 

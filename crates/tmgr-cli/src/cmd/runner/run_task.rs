@@ -325,6 +325,7 @@ fn create_request(
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         clones: Vec::new(),
         profile: profile.to_string(),
         task: Some(plan.candidate.task),
