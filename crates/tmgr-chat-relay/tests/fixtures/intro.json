@@ -1,0 +1,33 @@
+{
+  "description": "intro signed by P for N; uploaded as the intros string",
+  "inputs": {
+    "user_id": 42,
+    "introducer": {
+      "device_id": "00000000-0000-4000-8000-00000000000a",
+      "keys": {
+        "sign_secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+        "kex_secret_hex": "6565656565656565656565656565656565656565656565656565656565656565",
+        "sign_pub": "BG/wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW/AdxT9sCwx+7ni0DG/30lqW4igrmJzvccFEo=",
+        "kex_pub": "BCA5SAYO/Wge2vfxq0nV9jHxEi0uDLRSos5UkEl7Mt8iU3K4C4blpxCmTotNkjGEFKF5R5uWgn8zed4kcWOUkIQ=",
+        "fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233"
+      }
+    },
+    "target": {
+      "device_id": "00000000-0000-4000-8000-00000000000b",
+      "kind": "mobile",
+      "keys": {
+        "sign_secret_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "kex_secret_hex": "6666666666666666666666666666666666666666666666666666666666666666",
+        "sign_pub": "BFUPRxAD89+Xw99QaseX9nIfsaH7e49vg9IkSYplyI4kE2CT1wEuUJpzcVy9CwCjzA/0tcAbP/oZarH7MnA2uOY=",
+        "kex_pub": "BAu7xei8hL0z0dPOA/+smnR/TBmT/dsuyTpBFqhvAip3w8FxkVWaTCoapX55uNGXfaLJWRcvR440HicCjWn/+3s=",
+        "fp": "41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33"
+      }
+    },
+    "issued_at_ms": 1800000000000
+  },
+  "outputs": {
+    "statement": "tmgr-chat-intro:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000b:41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33:mobile:1800000000000",
+    "sig": "MEUCIQCgV2cOlozf+VuSMCvfERyJ6JGMfpm8reRajbWOvwdjuQIgG7XxiMIjCN39qyLuNDZsZjO0pPVnQdFQFjlIWvxJvZA=",
+    "intro_json": "{\"v\":1,\"by\":\"00000000-0000-4000-8000-00000000000a\",\"statement\":\"tmgr-chat-intro:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000b:41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33:mobile:1800000000000\",\"sig\":\"MEUCIQCgV2cOlozf+VuSMCvfERyJ6JGMfpm8reRajbWOvwdjuQIgG7XxiMIjCN39qyLuNDZsZjO0pPVnQdFQFjlIWvxJvZA=\"}"
+  }
+}

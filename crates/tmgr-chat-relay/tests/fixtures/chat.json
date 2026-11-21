@@ -1,0 +1,63 @@
+{
+  "description": "chat message sealed from sender to recipient with fixed keys and entropy; padded body and unpadded body",
+  "inputs": {
+    "user_id": 42,
+    "now_ms": 1800000000000,
+    "sender": {
+      "device_id": "00000000-0000-4000-8000-00000000000a",
+      "keys": {
+        "sign_secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+        "kex_secret_hex": "6565656565656565656565656565656565656565656565656565656565656565",
+        "sign_pub": "BG/wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW/AdxT9sCwx+7ni0DG/30lqW4igrmJzvccFEo=",
+        "kex_pub": "BCA5SAYO/Wge2vfxq0nV9jHxEi0uDLRSos5UkEl7Mt8iU3K4C4blpxCmTotNkjGEFKF5R5uWgn8zed4kcWOUkIQ=",
+        "fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233"
+      }
+    },
+    "recipient": {
+      "device_id": "00000000-0000-4000-8000-00000000000b",
+      "keys": {
+        "sign_secret_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+        "kex_secret_hex": "6666666666666666666666666666666666666666666666666666666666666666",
+        "sign_pub": "BFUPRxAD89+Xw99QaseX9nIfsaH7e49vg9IkSYplyI4kE2CT1wEuUJpzcVy9CwCjzA/0tcAbP/oZarH7MnA2uOY=",
+        "kex_pub": "BAu7xei8hL0z0dPOA/+smnR/TBmT/dsuyTpBFqhvAip3w8FxkVWaTCoapX55uNGXfaLJWRcvR440HicCjWn/+3s=",
+        "fp": "41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33"
+      }
+    },
+    "kind": "chat",
+    "msg_id": "m_00000000000000000000000000000001",
+    "sent_at_ms": 1799999990000,
+    "seq": 3,
+    "payload": {
+      "text": "hello",
+      "n": 1
+    },
+    "entropy": {
+      "eph_secret_hex": "0707070707070707070707070707070707070707070707070707070707070707",
+      "nonce_hex": "080808080808080808080808"
+    }
+  },
+  "outputs": {
+    "ctx": "tmgr-chat:v1:42:00000000-0000-4000-8000-00000000000a:00000000-0000-4000-8000-00000000000b:chat:m_00000000000000000000000000000001",
+    "inner": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000001\",\"sent_at\":1799999990000,\"seq\":3,\"payload\":{\"text\":\"hello\",\"n\":1}}",
+    "inner_sha256_hex": "c6bc66ce89de8e5cfb1bfe654e06f36a07a2aa9f1a204095c391fd94aeeb9737",
+    "signed_string": "tmgr-chat-msg:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33:00000000-0000-4000-8000-00000000000a:00000000-0000-4000-8000-00000000000b:chat:m_00000000000000000000000000000001:1799999990000:c6bc66ce89de8e5cfb1bfe654e06f36a07a2aa9f1a204095c391fd94aeeb9737",
+    "sig": "MEUCIQCS5UbSRT6qLexr5g2q20Z5Zug0lClv8jwbZd78n9wrwwIgBalEIiwmKYjXl/qkU7zzXwyRcGBk1awslrL9iOZJp0U=",
+    "plaintext": "{\"body\":\"{\\\"v\\\":1,\\\"kind\\\":\\\"chat\\\",\\\"id\\\":\\\"m_00000000000000000000000000000001\\\",\\\"sent_at\\\":1799999990000,\\\"seq\\\":3,\\\"payload\\\":{\\\"text\\\":\\\"hello\\\",\\\"n\\\":1}}\",\"sig\":\"MEUCIQCS5UbSRT6qLexr5g2q20Z5Zug0lClv8jwbZd78n9wrwwIgBalEIiwmKYjXl/qkU7zzXwyRcGBk1awslrL9iOZJp0U=\",\"pad\":\"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             \"}",
+    "plaintext_len": 1024,
+    "body": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000001\",\"from\":\"00000000-0000-4000-8000-00000000000a\",\"eph\":\"BB4YUy/UdUwC8wQdnHXOszuD/9gax85P6ILMscmLxYlupGwxHE4v9A3ZajZT5uRURdMt/khuztdcepDGoYiBwKM=\",\"nonce\":\"CAgICAgICAgICAgI\",\"ct\":\"loA47672VxkKNp8GW/TKvYNjspduzc8mvjLgbgVuePC8BcXimHRb/vjr2+RSfqW08EdhdSQzoK+oBJDy1sdTQa+FhFH76EaHLk/N6npZ+8MQCe6iEsuKvCO7NubJiw2HReSzFe8ywTgGuzkVcYUuGOEaNJglfwobJXwC4Iq4M9dnRjgM0kfyiCDEjUcTGGtu/2Bi85kKoKvBnzM/8o9kJXhau909wGAK3qDYa8cMPggHomzYtSmaQIZCrgRjE2hGxbUxfED8SQM9TOlDXbLjx3QWhxIvzOyH2fl9EwxO8/tivEYChKDHivAqeWPkIwyWaL0XzM7j9nZMZG3CimQZBI2tpHhlqPuBqp36dDlhUNzvxtpenDckoq9VhcnqSTWRfN7djxlrvj8vafu56mtgeSCi/WVG6l4FtcSqy8SITRx3s+n7R1/++Y4cx4HH0/Lhaa5ijh1AB7Kf84FaJRmyfd3sMzIPdA6CtZiQcJbJyJk/HtexlSAzeFBmGlOGHwuMYzNjxAGxkQAYPVcv1+gdShHSqzwLuq0I6pgUl5LAT8ZPzpL4vLQrqOifVqJE5E2u3w1fZun6Y2oX17mKgyJtptEI8gQfefqSg2sHlgZa2Cw1V/U7hu4DI8wvgAT2rIfA7/HQ53fj2pO/MfUy9tBoDuoc/UqNVrHVOaznAz+8ADwsbghV1HMvCQY+/dcj8caNqdjZDhInY73kpNjRKgZAusNddRpWnqDCPWcJcxVi6IMU2xfQeblwq1966r5LZekLPmFR/cs608NzKJPZjLB2suRMeApg8RNyBIrAgAj1Hio6Z9kAUz6yelq+rUFU0PpF50GCUCuqIGP8Ai4303CI9qypK6LCfsDSMawXmYIBB0m3oIH8VuzDt2n4eDW3RTbucvj+C+a82Y/fqHjYlCWTHr3lqHT/1DKxWodxfTw6aVFFnbpjdveOItgFmrIZMy4VyQSNrdvVOsUQdIpjNom1mSiRxVvPEfOJI3URWtEK1AihLi+ooMw1U176/aNEHFk5AgRYdoItF6WrElk8+7rpuXE+wMOsxf1UFCGCE7v8qP9Tac3HZTJCllXisKf/ysSIaJjbbxP25imSlE5zvqbXr/zJofzzn2Senis1vuMD1av3IyUBkfpWfzUwkmmEdZM+BopDqNajTghBrF8NKDw8L9VCJEgR561r9MFTOp9EeQZFV8Fy4eLc4+i+ecIcc1czLQHTeDnSA27i5bYLrbfFVtT6k07dgDmLi8iTW8jDoNB0UthnqgOEyJ7Hvk+Fv67L+rtqagtKB/VVUsOyFH/4fHbNbJJS4V3VAA4e+VTwkqW/Hul+ZxpyaVFx8OGUWK9+I5ayPq14RVGun3lg5Lu9pX+ZgKhb6V4fp6Yz+SjVTdg=\"}",
+    "plaintext_unpadded": "{\"body\":\"{\\\"v\\\":1,\\\"kind\\\":\\\"chat\\\",\\\"id\\\":\\\"m_00000000000000000000000000000001\\\",\\\"sent_at\\\":1799999990000,\\\"seq\\\":3,\\\"payload\\\":{\\\"text\\\":\\\"hello\\\",\\\"n\\\":1}}\",\"sig\":\"MEUCIQCS5UbSRT6qLexr5g2q20Z5Zug0lClv8jwbZd78n9wrwwIgBalEIiwmKYjXl/qkU7zzXwyRcGBk1awslrL9iOZJp0U=\"}",
+    "body_unpadded": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000001\",\"from\":\"00000000-0000-4000-8000-00000000000a\",\"eph\":\"BB4YUy/UdUwC8wQdnHXOszuD/9gax85P6ILMscmLxYlupGwxHE4v9A3ZajZT5uRURdMt/khuztdcepDGoYiBwKM=\",\"nonce\":\"CAgICAgICAgICAgI\",\"ct\":\"loA47672VxkKNp8GW/TKvYNjspduzc8mvjLgbgVuePC8BcXimHRb/vjr2+RSfqW08EdhdSQzoK+oBJDy1sdTQa+FhFH76EaHLk/N6npZ+8MQCe6iEsuKvCO7NubJiw2HReSzFe8ywTgGuzkVcYUuGOEaNJglfwobJXwC4Iq4M9dnRjgM0kfyiCDEjUcTGGtu/2Bi85kKoKvBnzM/8o9kJXhau909wGAK3qDYa8cMPggHomzYtSmaQIZCrgRjE2hGxbUxfED8SQM9TOlDXbLjx3QWhxIvzOyH2fl9EwxO8/tivEYChKDHivAqeWPkIwyWaL0XzM7j9nZMZG3CimQZBI2tpHhlqPuBqsyqm+dPlRkwKf4JOelpAfh2\"}",
+    "open": {
+      "from": "00000000-0000-4000-8000-00000000000a",
+      "from_fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233",
+      "kind": "chat",
+      "id": "m_00000000000000000000000000000001",
+      "seq": 3,
+      "sent_at": 1799999990000,
+      "payload": {
+        "text": "hello",
+        "n": 1
+      }
+    }
+  }
+}
