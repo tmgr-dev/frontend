@@ -281,6 +281,29 @@ pub fn send_card_full_meta(mut card: CardIn, meta_session: Option<&str>) -> io::
     }
 }
 
+pub const ACTIONS_DOWN: &str =
+    "tmgr desktop is not running; action cards are never queued, start it and try again";
+pub const ACTIONS_OLD: &str = "update the TMGR desktop app to approve actions";
+
+pub fn send_action_card(mut card: CardIn, meta_session: Option<&str>) -> io::Result<Response> {
+    card.id.get_or_insert_with(decisions::new_card_id);
+    let down = |_| io::Error::new(io::ErrorKind::NotConnected, ACTIONS_DOWN);
+    let client = decisions::decisions_dir()
+        .and_then(|d| Client::open_in(&d))
+        .map_err(down)?;
+    let pong = client
+        .ping()
+        .map_err(|e| if is_refusal(&e) { e } else { down(e) })?;
+    if !pong
+        .capabilities
+        .iter()
+        .any(|c| c == tmgr_ipc::actions::CAP_ACTIONS)
+    {
+        return Err(io::Error::other(ACTIONS_OLD));
+    }
+    client.create_with(card, inbox_from_env(meta_session))
+}
+
 pub fn send_card(card: CardIn) -> io::Result<Sent> {
     match send_card_full(card)? {
         SentFull::Live(response) => Ok(Sent::Live(
@@ -1011,6 +1034,7 @@ impl Spec {
             },
             reply_via: reply_via.to_string(),
             supersede: false,
+            action: None,
         };
         let line = serde_json::to_vec(&card).map_or(0, |v| v.len());
         if line + 4096 > MAX_LINE {

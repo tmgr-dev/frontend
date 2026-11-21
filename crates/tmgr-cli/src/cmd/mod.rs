@@ -24,6 +24,7 @@ pub mod notifyenv;
 pub mod page;
 pub mod project;
 pub mod prompt;
+pub mod propose;
 #[cfg(feature = "runner")]
 pub mod questions;
 #[cfg(feature = "runner")]

@@ -280,6 +280,12 @@ pub fn call_tool(
         return text_result(CLI_HELP, false);
     }
     #[cfg(unix)]
+    if name == "propose_action" {
+        let empty = json!({});
+        let args = if args.is_object() { args } else { &empty };
+        return crate::cmd::propose::mcp_call(env, args, meta_session);
+    }
+    #[cfg(unix)]
     if crate::cmd::decisions_mcp::is_decisions_tool(name) {
         let empty = json!({});
         let args = if args.is_object() { args } else { &empty };
@@ -525,7 +531,13 @@ mod tests {
             .collect();
         let mut expected = vec!["notify_user", "alarm", "alarm_status", "tmgr_cli"];
         if cfg!(unix) {
-            expected.extend(["ask_owner", "get_answer", "find_answers", "reply_owner"]);
+            expected.extend([
+                "ask_owner",
+                "get_answer",
+                "find_answers",
+                "reply_owner",
+                "propose_action",
+            ]);
         }
         assert_eq!(names, expected);
         for t in tool_defs().as_array().unwrap() {
