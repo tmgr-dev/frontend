@@ -1,8 +1,10 @@
 pub mod audit;
 pub mod dispatch;
+pub mod files;
 pub mod machines;
 pub mod policy;
 pub mod relay;
+pub mod top;
 pub mod transport;
 
 pub use audit::FileAudit;
