@@ -170,6 +170,16 @@ pub fn paste_text(path: &Path, bracketed: bool) -> String {
 mod tests {
     use super::*;
 
+    fn private_tmp() -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        fs::set_permissions(
+            t.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
+        t
+    }
+
     #[test]
     fn only_png_jpeg_gif_and_webp_are_recognised_by_their_magic_bytes() {
         assert_eq!(image_ext(b"\x89PNG\r\n\x1a\n\0\0"), Some("png"));
@@ -250,7 +260,7 @@ mod tests {
 
     #[test]
     fn without_a_session_home_the_image_goes_to_a_private_per_session_directory() {
-        let d = tempfile::tempdir().unwrap();
+        let d = private_tmp();
         let root = fs::canonicalize(d.path()).unwrap().join("paste");
         let a = store_private(&root, "s_aaaaaaaaa3", b"\x89PNG\r\n\x1a\nA", "png").unwrap();
         assert_eq!(a.parent().unwrap(), root.join("s_aaaaaaaaa3").join(DIR));
@@ -267,7 +277,7 @@ mod tests {
 
     #[test]
     fn a_planted_symlink_or_open_session_directory_is_refused_in_the_fallback() {
-        let d = tempfile::tempdir().unwrap();
+        let d = private_tmp();
         let root = fs::canonicalize(d.path()).unwrap().join("paste");
         let elsewhere = fs::canonicalize(d.path()).unwrap().join("elsewhere");
         fs::create_dir(&elsewhere).unwrap();
@@ -287,7 +297,7 @@ mod tests {
 
     #[test]
     fn a_fallback_root_that_is_a_symlink_or_open_is_refused() {
-        let d = tempfile::tempdir().unwrap();
+        let d = private_tmp();
         let base = fs::canonicalize(d.path()).unwrap();
         let elsewhere = base.join("elsewhere");
         fs::create_dir(&elsewhere).unwrap();
@@ -302,7 +312,7 @@ mod tests {
 
     #[test]
     fn the_fallback_refuses_ids_that_could_leave_the_directory() {
-        let d = tempfile::tempdir().unwrap();
+        let d = private_tmp();
         let root = fs::canonicalize(d.path()).unwrap().join("paste");
         for id in ["", ".", "..", "../x", "a/b", "s_1/../../x"] {
             assert!(store_private(&root, id, b"x", "png").is_err(), "{id}");
@@ -311,7 +321,7 @@ mod tests {
 
     #[test]
     fn only_the_newest_images_are_kept_in_the_fallback() {
-        let d = tempfile::tempdir().unwrap();
+        let d = private_tmp();
         let root = fs::canonicalize(d.path()).unwrap().join("paste");
         for _ in 0..KEEP + 4 {
             store_private(&root, "s_aaaaaaaaa3", b"\x89PNG\r\n\x1a\n", "png").unwrap();
