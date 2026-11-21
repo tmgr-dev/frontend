@@ -66,6 +66,105 @@
 			"legend": "凡例",
 			"byTool": "ツール別",
 			"byModel": "モデル別"
+		},
+		"machines": {
+			"title": "AI 使用量 · すべてのマシン",
+			"subtitle": "コストは API 換算(定価)で、サブスクリプションの請求額ではありません。同期されるのは数値のみで、プロンプトや返信は送られません。",
+			"tabs": {
+				"label": "AI 使用量の表示",
+				"device": "このデバイス",
+				"all": "すべてのマシン"
+			},
+			"period": {
+				"label": "期間",
+				"today": "今日",
+				"d7": "7日",
+				"d30": "30日",
+				"d90": "90日"
+			},
+			"filters": {
+				"machine": "マシン",
+				"agent": "エージェント",
+				"model": "モデル",
+				"task": "タスク",
+				"all": "すべて",
+				"unassigned": "未割り当て"
+			},
+			"limits": {
+				"title": "上限",
+				"reset": "リセット済み",
+				"resetsIn": "{time}後にリセット",
+				"asOf": "更新 {age} · {source}",
+				"seen": "最終確認 {age}",
+				"none": "上限のデータはまだありません。Claude Code または Codex の対話セッション後に表示されます。"
+			},
+			"countdown": {
+				"dh": "{d}日{h}時間",
+				"hm": "{h}時間{m}分",
+				"m": "{m}分",
+				"soon": "まもなくリセット"
+			},
+			"age": {
+				"justNow": "たった今",
+				"m": "{n}分前",
+				"h": "{n}時間前",
+				"d": "{n}日前"
+			},
+			"windows": {
+				"session": "5時間",
+				"weekly": "週間",
+				"model": "{model} 週間"
+			},
+			"sources": {
+				"statusline": "ステータスライン",
+				"rollout": "セッションログ",
+				"probe": "プローブ",
+				"limit_hit": "上限到達"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "その他"
+			},
+			"remove": {
+				"menu": "マシンの操作",
+				"action": "マシンを削除",
+				"title": "{label} を削除しますか?",
+				"body": "{label} は同期を停止し、上限と日次合計がアカウントから削除されます。再開するには、そのマシンで {command} を実行してください。",
+				"confirm": "削除",
+				"cancel": "キャンセル",
+				"failed": "マシンを削除できませんでした: {error}"
+			},
+			"totals": {
+				"cost": "コスト(API 換算)",
+				"tokens": "トークン",
+				"sessions": "セッション",
+				"sessionsHint": "セッションは日・モデル・タスクごとに数えるため、複数にまたがるセッションは重複して数えられることがあります。"
+			},
+			"chart": {
+				"title": "日別の使用量",
+				"stackBy": "積み上げ",
+				"metric": "指標",
+				"byMachine": "マシン別",
+				"byAgent": "エージェント別",
+				"cost": "コスト",
+				"tokens": "トークン",
+				"empty": "この期間の使用量はありません。"
+			},
+			"table": {
+				"title": "モデル・タスク別",
+				"model": "モデル",
+				"task": "タスク",
+				"agent": "エージェント"
+			},
+			"empty": {
+				"title": "マシンはまだありません",
+				"body": "Claude Code または Codex を使うコンピュータで {command} を実行してください。送信されるのはトークン数、コスト、モデル名、タスク ID、上限の割合のみで、プロンプトや返信は送られません。"
+			},
+			"loading": "すべてのマシンの使用量を読み込み中",
+			"error": "使用量を読み込めませんでした: {error}",
+			"truncated": "行が多すぎます。最初の 20,000 行のみ表示しています。期間またはフィルターを絞ってください。"
 		}
 	},
 	"overview": {

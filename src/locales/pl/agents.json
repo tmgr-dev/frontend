@@ -66,6 +66,105 @@
 			"legend": "Legenda",
 			"byTool": "Według narzędzia",
 			"byModel": "Według modelu"
+		},
+		"machines": {
+			"title": "Użycie AI · Wszystkie komputery",
+			"subtitle": "Koszt to ekwiwalent API (ceny katalogowe), a nie rachunek za subskrypcję. Synchronizowane są tylko liczby, nigdy prompty ani odpowiedzi.",
+			"tabs": {
+				"label": "Widoki użycia AI",
+				"device": "To urządzenie",
+				"all": "Wszystkie komputery"
+			},
+			"period": {
+				"label": "Okres",
+				"today": "Dziś",
+				"d7": "7 dni",
+				"d30": "30 dni",
+				"d90": "90 dni"
+			},
+			"filters": {
+				"machine": "Komputer",
+				"agent": "Agent",
+				"model": "Model",
+				"task": "Zadanie",
+				"all": "Wszystkie",
+				"unassigned": "Nieprzypisane"
+			},
+			"limits": {
+				"title": "Limity",
+				"reset": "zresetowano",
+				"resetsIn": "reset za {time}",
+				"asOf": "zaktualizowano {age} · {source}",
+				"seen": "widziany {age}",
+				"none": "Brak jeszcze danych o limitach. Pojawią się po interaktywnej sesji Claude Code lub Codex."
+			},
+			"countdown": {
+				"dh": "{d} d {h} godz.",
+				"hm": "{h} godz. {m} min",
+				"m": "{m} min",
+				"soon": "reset wkrótce"
+			},
+			"age": {
+				"justNow": "przed chwilą",
+				"m": "{n} min temu",
+				"h": "{n} godz. temu",
+				"d": "{n} d temu"
+			},
+			"windows": {
+				"session": "5 godzin",
+				"weekly": "Tygodniowy",
+				"model": "{model} tygodniowy"
+			},
+			"sources": {
+				"statusline": "pasek stanu",
+				"rollout": "dziennik sesji",
+				"probe": "sonda",
+				"limit_hit": "osiągnięto limit"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "Inny"
+			},
+			"remove": {
+				"menu": "Akcje komputera",
+				"action": "Usuń komputer",
+				"title": "Usunąć {label}?",
+				"body": "{label} przestanie się synchronizować, a jego limity i dzienne sumy zostaną usunięte z Twojego konta. Aby zacząć od nowa, uruchom {command} na tym komputerze.",
+				"confirm": "Usuń",
+				"cancel": "Anuluj",
+				"failed": "Nie udało się usunąć komputera: {error}"
+			},
+			"totals": {
+				"cost": "Koszt (ekwiwalent API)",
+				"tokens": "Tokeny",
+				"sessions": "Sesje",
+				"sessionsHint": "Sesje liczone są na dzień, model i zadanie, więc sesja obejmująca kilka z nich może zostać policzona więcej niż raz."
+			},
+			"chart": {
+				"title": "Dzienne użycie",
+				"stackBy": "Grupuj wg",
+				"metric": "Miara",
+				"byMachine": "Wg komputera",
+				"byAgent": "Wg agenta",
+				"cost": "Koszt",
+				"tokens": "Tokeny",
+				"empty": "Brak użycia w tym okresie."
+			},
+			"table": {
+				"title": "Wg modelu i zadania",
+				"model": "Model",
+				"task": "Zadanie",
+				"agent": "Agent"
+			},
+			"empty": {
+				"title": "Brak komputerów",
+				"body": "Uruchom {command} na komputerze, na którym używasz Claude Code lub Codex. Wysyłane są tylko liczby tokenów, koszt, nazwy modeli, identyfikatory zadań i procenty limitów, nigdy prompty ani odpowiedzi."
+			},
+			"loading": "Wczytywanie użycia ze wszystkich komputerów",
+			"error": "Nie udało się wczytać użycia: {error}",
+			"truncated": "Za dużo wierszy: pokazano tylko pierwsze 20 000. Zawęź okres lub filtry."
 		}
 	},
 	"overview": {

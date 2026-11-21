@@ -66,6 +66,105 @@
 			"legend": "범례",
 			"byTool": "도구별",
 			"byModel": "모델별"
+		},
+		"machines": {
+			"title": "AI 사용량 · 모든 기기",
+			"subtitle": "비용은 구독 요금이 아닌 API 정가 기준 환산입니다. 숫자만 동기화되며 프롬프트나 답변은 전송되지 않습니다.",
+			"tabs": {
+				"label": "AI 사용량 보기",
+				"device": "이 기기",
+				"all": "모든 기기"
+			},
+			"period": {
+				"label": "기간",
+				"today": "오늘",
+				"d7": "7일",
+				"d30": "30일",
+				"d90": "90일"
+			},
+			"filters": {
+				"machine": "기기",
+				"agent": "에이전트",
+				"model": "모델",
+				"task": "작업",
+				"all": "전체",
+				"unassigned": "미지정"
+			},
+			"limits": {
+				"title": "한도",
+				"reset": "초기화됨",
+				"resetsIn": "{time} 후 초기화",
+				"asOf": "업데이트 {age} · {source}",
+				"seen": "{age} 확인",
+				"none": "한도 데이터가 아직 없습니다. Claude Code 또는 Codex 대화형 세션 후에 나타납니다."
+			},
+			"countdown": {
+				"dh": "{d}일 {h}시간",
+				"hm": "{h}시간 {m}분",
+				"m": "{m}분",
+				"soon": "곧 초기화"
+			},
+			"age": {
+				"justNow": "방금",
+				"m": "{n}분 전",
+				"h": "{n}시간 전",
+				"d": "{n}일 전"
+			},
+			"windows": {
+				"session": "5시간",
+				"weekly": "주간",
+				"model": "{model} 주간"
+			},
+			"sources": {
+				"statusline": "상태 표시줄",
+				"rollout": "세션 로그",
+				"probe": "프로브",
+				"limit_hit": "한도 도달"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "기타"
+			},
+			"remove": {
+				"menu": "기기 작업",
+				"action": "기기 제거",
+				"title": "{label}을(를) 제거할까요?",
+				"body": "{label}은(는) 동기화가 중단되고, 한도와 일별 합계가 계정에서 삭제됩니다. 다시 시작하려면 해당 기기에서 {command}을(를) 실행하세요.",
+				"confirm": "제거",
+				"cancel": "취소",
+				"failed": "기기를 제거하지 못했습니다: {error}"
+			},
+			"totals": {
+				"cost": "비용(API 환산)",
+				"tokens": "토큰",
+				"sessions": "세션",
+				"sessionsHint": "세션은 일, 모델, 작업별로 집계되므로 여러 항목에 걸친 세션은 중복 집계될 수 있습니다."
+			},
+			"chart": {
+				"title": "일별 사용량",
+				"stackBy": "누적 기준",
+				"metric": "지표",
+				"byMachine": "기기별",
+				"byAgent": "에이전트별",
+				"cost": "비용",
+				"tokens": "토큰",
+				"empty": "이 기간에는 사용량이 없습니다."
+			},
+			"table": {
+				"title": "모델 및 작업별",
+				"model": "모델",
+				"task": "작업",
+				"agent": "에이전트"
+			},
+			"empty": {
+				"title": "기기가 아직 없습니다",
+				"body": "Claude Code 또는 Codex를 사용하는 컴퓨터에서 {command}을(를) 실행하세요. 토큰 수, 비용, 모델 이름, 작업 ID, 한도 비율만 전송되며 프롬프트나 답변은 전송되지 않습니다."
+			},
+			"loading": "모든 기기의 사용량을 불러오는 중",
+			"error": "사용량을 불러오지 못했습니다: {error}",
+			"truncated": "행이 너무 많습니다. 처음 20,000개만 표시됩니다. 기간이나 필터를 좁혀 주세요."
 		}
 	},
 	"overview": {

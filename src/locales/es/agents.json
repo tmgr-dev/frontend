@@ -66,6 +66,105 @@
 			"legend": "Leyenda",
 			"byTool": "Por herramienta",
 			"byModel": "Por modelo"
+		},
+		"machines": {
+			"title": "Uso de IA · Todos los equipos",
+			"subtitle": "El coste equivale a la tarifa de la API, no a tu factura de suscripción. Solo se sincronizan números, nunca prompts ni respuestas.",
+			"tabs": {
+				"label": "Vistas del uso de IA",
+				"device": "Este dispositivo",
+				"all": "Todos los equipos"
+			},
+			"period": {
+				"label": "Periodo",
+				"today": "Hoy",
+				"d7": "7 días",
+				"d30": "30 días",
+				"d90": "90 días"
+			},
+			"filters": {
+				"machine": "Equipo",
+				"agent": "Agente",
+				"model": "Modelo",
+				"task": "Tarea",
+				"all": "Todos",
+				"unassigned": "Sin asignar"
+			},
+			"limits": {
+				"title": "Límites",
+				"reset": "reiniciado",
+				"resetsIn": "se reinicia en {time}",
+				"asOf": "actualizado {age} · {source}",
+				"seen": "visto {age}",
+				"none": "Aún no hay datos de límites. Aparecen tras una sesión interactiva de Claude Code o Codex."
+			},
+			"countdown": {
+				"dh": "{d} d {h} h",
+				"hm": "{h} h {m} min",
+				"m": "{m} min",
+				"soon": "se reinicia pronto"
+			},
+			"age": {
+				"justNow": "ahora mismo",
+				"m": "hace {n} min",
+				"h": "hace {n} h",
+				"d": "hace {n} d"
+			},
+			"windows": {
+				"session": "5 horas",
+				"weekly": "Semanal",
+				"model": "{model} semanal"
+			},
+			"sources": {
+				"statusline": "línea de estado",
+				"rollout": "registro de sesión",
+				"probe": "sondeo",
+				"limit_hit": "límite alcanzado"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "Otro"
+			},
+			"remove": {
+				"menu": "Acciones del equipo",
+				"action": "Quitar equipo",
+				"title": "¿Quitar {label}?",
+				"body": "{label} dejará de sincronizarse y sus límites y totales diarios se borrarán de tu cuenta. Para volver a empezar, ejecuta {command} en ese equipo.",
+				"confirm": "Quitar",
+				"cancel": "Cancelar",
+				"failed": "No se pudo quitar el equipo: {error}"
+			},
+			"totals": {
+				"cost": "Coste (equivalente API)",
+				"tokens": "Tokens",
+				"sessions": "Sesiones",
+				"sessionsHint": "Las sesiones se cuentan por día, modelo y tarea, así que una sesión que abarque varios puede contarse más de una vez."
+			},
+			"chart": {
+				"title": "Uso diario",
+				"stackBy": "Agrupar por",
+				"metric": "Métrica",
+				"byMachine": "Por equipo",
+				"byAgent": "Por agente",
+				"cost": "Coste",
+				"tokens": "Tokens",
+				"empty": "Sin uso en este periodo."
+			},
+			"table": {
+				"title": "Por modelo y tarea",
+				"model": "Modelo",
+				"task": "Tarea",
+				"agent": "Agente"
+			},
+			"empty": {
+				"title": "Aún no hay equipos",
+				"body": "Ejecuta {command} en un ordenador donde uses Claude Code o Codex. Solo se envían recuentos de tokens, coste, nombres de modelo, ids de tarea y porcentajes de límite, nunca prompts ni respuestas."
+			},
+			"loading": "Cargando el uso de todos los equipos",
+			"error": "No se pudo cargar el uso: {error}",
+			"truncated": "Demasiadas filas: solo se muestran las primeras 20 000. Acota el periodo o los filtros."
 		}
 	},
 	"overview": {

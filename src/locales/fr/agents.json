@@ -66,6 +66,105 @@
 			"legend": "Légende",
 			"byTool": "Par outil",
 			"byModel": "Par modèle"
+		},
+		"machines": {
+			"title": "Usage IA · Toutes les machines",
+			"subtitle": "Le coût est l'équivalent API (tarifs publics), pas votre facture d'abonnement. Seuls des chiffres sont synchronisés, jamais les prompts ni les réponses.",
+			"tabs": {
+				"label": "Vues de l'usage IA",
+				"device": "Cet appareil",
+				"all": "Toutes les machines"
+			},
+			"period": {
+				"label": "Période",
+				"today": "Aujourd'hui",
+				"d7": "7 jours",
+				"d30": "30 jours",
+				"d90": "90 jours"
+			},
+			"filters": {
+				"machine": "Machine",
+				"agent": "Agent",
+				"model": "Modèle",
+				"task": "Tâche",
+				"all": "Tous",
+				"unassigned": "Non attribué"
+			},
+			"limits": {
+				"title": "Limites",
+				"reset": "réinitialisé",
+				"resetsIn": "réinitialisation dans {time}",
+				"asOf": "mis à jour {age} · {source}",
+				"seen": "vue {age}",
+				"none": "Pas encore de données de limites. Elles apparaissent après une session interactive de Claude Code ou Codex."
+			},
+			"countdown": {
+				"dh": "{d} j {h} h",
+				"hm": "{h} h {m} min",
+				"m": "{m} min",
+				"soon": "réinitialisation imminente"
+			},
+			"age": {
+				"justNow": "à l'instant",
+				"m": "il y a {n} min",
+				"h": "il y a {n} h",
+				"d": "il y a {n} j"
+			},
+			"windows": {
+				"session": "5 heures",
+				"weekly": "Hebdomadaire",
+				"model": "{model} hebdomadaire"
+			},
+			"sources": {
+				"statusline": "ligne d'état",
+				"rollout": "journal de session",
+				"probe": "sonde",
+				"limit_hit": "limite atteinte"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "Autre"
+			},
+			"remove": {
+				"menu": "Actions de la machine",
+				"action": "Retirer la machine",
+				"title": "Retirer {label} ?",
+				"body": "{label} cesse de se synchroniser, et ses limites et totaux quotidiens sont supprimés de votre compte. Pour recommencer, exécutez {command} sur cette machine.",
+				"confirm": "Retirer",
+				"cancel": "Annuler",
+				"failed": "Impossible de retirer la machine : {error}"
+			},
+			"totals": {
+				"cost": "Coût (équivalent API)",
+				"tokens": "Jetons",
+				"sessions": "Sessions",
+				"sessionsHint": "Les sessions sont comptées par jour, modèle et tâche ; une session couvrant plusieurs d'entre eux peut donc être comptée plusieurs fois."
+			},
+			"chart": {
+				"title": "Usage quotidien",
+				"stackBy": "Empiler par",
+				"metric": "Mesure",
+				"byMachine": "Par machine",
+				"byAgent": "Par agent",
+				"cost": "Coût",
+				"tokens": "Jetons",
+				"empty": "Aucun usage sur cette période."
+			},
+			"table": {
+				"title": "Par modèle et tâche",
+				"model": "Modèle",
+				"task": "Tâche",
+				"agent": "Agent"
+			},
+			"empty": {
+				"title": "Aucune machine pour le moment",
+				"body": "Exécutez {command} sur un ordinateur où vous utilisez Claude Code ou Codex. Seuls le nombre de jetons, le coût, les noms de modèles, les identifiants de tâches et les pourcentages de limites sont envoyés, jamais les prompts ni les réponses."
+			},
+			"loading": "Chargement de l'usage de toutes les machines",
+			"error": "Impossible de charger l'usage : {error}",
+			"truncated": "Trop de lignes : seules les 20 000 premières sont affichées. Réduisez la période ou les filtres."
 		}
 	},
 	"overview": {

@@ -66,6 +66,105 @@
 			"legend": "Legenda",
 			"byTool": "Por ferramenta",
 			"byModel": "Por modelo"
+		},
+		"machines": {
+			"title": "Uso de IA · Todas as máquinas",
+			"subtitle": "O custo equivale ao preço de tabela da API, não à sua fatura de assinatura. Só números são sincronizados, nunca prompts ou respostas.",
+			"tabs": {
+				"label": "Visões do uso de IA",
+				"device": "Este dispositivo",
+				"all": "Todas as máquinas"
+			},
+			"period": {
+				"label": "Período",
+				"today": "Hoje",
+				"d7": "7 dias",
+				"d30": "30 dias",
+				"d90": "90 dias"
+			},
+			"filters": {
+				"machine": "Máquina",
+				"agent": "Agente",
+				"model": "Modelo",
+				"task": "Tarefa",
+				"all": "Todas",
+				"unassigned": "Sem tarefa"
+			},
+			"limits": {
+				"title": "Limites",
+				"reset": "reiniciado",
+				"resetsIn": "reinicia em {time}",
+				"asOf": "atualizado {age} · {source}",
+				"seen": "visto {age}",
+				"none": "Ainda não há dados de limites. Eles aparecem após uma sessão interativa do Claude Code ou Codex."
+			},
+			"countdown": {
+				"dh": "{d} d {h} h",
+				"hm": "{h} h {m} min",
+				"m": "{m} min",
+				"soon": "reinicia em breve"
+			},
+			"age": {
+				"justNow": "agora mesmo",
+				"m": "há {n} min",
+				"h": "há {n} h",
+				"d": "há {n} d"
+			},
+			"windows": {
+				"session": "5 horas",
+				"weekly": "Semanal",
+				"model": "{model} semanal"
+			},
+			"sources": {
+				"statusline": "linha de status",
+				"rollout": "log da sessão",
+				"probe": "sondagem",
+				"limit_hit": "limite atingido"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "Outro"
+			},
+			"remove": {
+				"menu": "Ações da máquina",
+				"action": "Remover máquina",
+				"title": "Remover {label}?",
+				"body": "{label} deixa de sincronizar, e seus limites e totais diários são excluídos da sua conta. Para recomeçar, execute {command} nessa máquina.",
+				"confirm": "Remover",
+				"cancel": "Cancelar",
+				"failed": "Não foi possível remover a máquina: {error}"
+			},
+			"totals": {
+				"cost": "Custo (equivalente à API)",
+				"tokens": "Tokens",
+				"sessions": "Sessões",
+				"sessionsHint": "As sessões são contadas por dia, modelo e tarefa, então uma sessão que abrange várias delas pode ser contada mais de uma vez."
+			},
+			"chart": {
+				"title": "Uso diário",
+				"stackBy": "Agrupar por",
+				"metric": "Métrica",
+				"byMachine": "Por máquina",
+				"byAgent": "Por agente",
+				"cost": "Custo",
+				"tokens": "Tokens",
+				"empty": "Sem uso neste período."
+			},
+			"table": {
+				"title": "Por modelo e tarefa",
+				"model": "Modelo",
+				"task": "Tarefa",
+				"agent": "Agente"
+			},
+			"empty": {
+				"title": "Nenhuma máquina ainda",
+				"body": "Execute {command} em um computador onde você usa Claude Code ou Codex. Só são enviados contagem de tokens, custo, nomes de modelos, ids de tarefas e porcentagens de limites, nunca prompts ou respostas."
+			},
+			"loading": "Carregando o uso de todas as máquinas",
+			"error": "Não foi possível carregar o uso: {error}",
+			"truncated": "Linhas demais: só as primeiras 20.000 são exibidas. Reduza o período ou os filtros."
 		}
 	},
 	"overview": {

@@ -66,6 +66,105 @@
 			"legend": "Legend",
 			"byTool": "By tool",
 			"byModel": "By model"
+		},
+		"machines": {
+			"title": "AI usage · All machines",
+			"subtitle": "Cost is API-equivalent (list prices), not your subscription bill. Only numbers are synced, never prompts or replies.",
+			"tabs": {
+				"label": "AI usage views",
+				"device": "This device",
+				"all": "All machines"
+			},
+			"period": {
+				"label": "Period",
+				"today": "Today",
+				"d7": "7 days",
+				"d30": "30 days",
+				"d90": "90 days"
+			},
+			"filters": {
+				"machine": "Machine",
+				"agent": "Agent",
+				"model": "Model",
+				"task": "Task",
+				"all": "All",
+				"unassigned": "Unassigned"
+			},
+			"limits": {
+				"title": "Limits",
+				"reset": "reset",
+				"resetsIn": "resets in {time}",
+				"asOf": "updated {age} · {source}",
+				"seen": "seen {age}",
+				"none": "No limit data yet. Limits appear after an interactive Claude Code or Codex session."
+			},
+			"countdown": {
+				"dh": "{d} d {h} h",
+				"hm": "{h} h {m} m",
+				"m": "{m} m",
+				"soon": "resets soon"
+			},
+			"age": {
+				"justNow": "just now",
+				"m": "{n} m ago",
+				"h": "{n} h ago",
+				"d": "{n} d ago"
+			},
+			"windows": {
+				"session": "5-hour",
+				"weekly": "Weekly",
+				"model": "{model} weekly"
+			},
+			"sources": {
+				"statusline": "status line",
+				"rollout": "session log",
+				"probe": "probe",
+				"limit_hit": "limit hit"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "Other"
+			},
+			"remove": {
+				"menu": "Machine actions",
+				"action": "Remove machine",
+				"title": "Remove {label}?",
+				"body": "{label} stops syncing, and its limits and daily totals are deleted from your account. To start again, run {command} on that machine.",
+				"confirm": "Remove",
+				"cancel": "Cancel",
+				"failed": "Could not remove the machine: {error}"
+			},
+			"totals": {
+				"cost": "Cost (API-equivalent)",
+				"tokens": "Tokens",
+				"sessions": "Sessions",
+				"sessionsHint": "Sessions are counted per day, model and task, so a session that spans several of them can be counted more than once."
+			},
+			"chart": {
+				"title": "Daily usage",
+				"stackBy": "Stack by",
+				"metric": "Metric",
+				"byMachine": "By machine",
+				"byAgent": "By agent",
+				"cost": "Cost",
+				"tokens": "Tokens",
+				"empty": "No usage in this period."
+			},
+			"table": {
+				"title": "By model and task",
+				"model": "Model",
+				"task": "Task",
+				"agent": "Agent"
+			},
+			"empty": {
+				"title": "No machines yet",
+				"body": "Run {command} on a computer where you use Claude Code or Codex. Only token counts, cost, model names, task ids and limit percentages are sent, never prompts or replies."
+			},
+			"loading": "Loading usage from all machines",
+			"error": "Could not load usage: {error}",
+			"truncated": "Too many rows: only the first 20,000 are shown. Narrow the period or the filters."
 		}
 	},
 	"overview": {

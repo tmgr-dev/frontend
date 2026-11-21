@@ -66,6 +66,105 @@
 			"legend": "Legende",
 			"byTool": "Nach Tool",
 			"byModel": "Nach Modell"
+		},
+		"machines": {
+			"title": "KI-Nutzung · Alle Rechner",
+			"subtitle": "Die Kosten entsprechen den API-Listenpreisen, nicht deiner Abo-Rechnung. Es werden nur Zahlen synchronisiert, nie Prompts oder Antworten.",
+			"tabs": {
+				"label": "Ansichten der KI-Nutzung",
+				"device": "Dieses Gerät",
+				"all": "Alle Rechner"
+			},
+			"period": {
+				"label": "Zeitraum",
+				"today": "Heute",
+				"d7": "7 Tage",
+				"d30": "30 Tage",
+				"d90": "90 Tage"
+			},
+			"filters": {
+				"machine": "Rechner",
+				"agent": "Agent",
+				"model": "Modell",
+				"task": "Aufgabe",
+				"all": "Alle",
+				"unassigned": "Ohne Aufgabe"
+			},
+			"limits": {
+				"title": "Limits",
+				"reset": "zurückgesetzt",
+				"resetsIn": "Reset in {time}",
+				"asOf": "aktualisiert {age} · {source}",
+				"seen": "zuletzt {age}",
+				"none": "Noch keine Limit-Daten. Sie erscheinen nach einer interaktiven Claude-Code- oder Codex-Sitzung."
+			},
+			"countdown": {
+				"dh": "{d} T {h} Std",
+				"hm": "{h} Std {m} Min",
+				"m": "{m} Min",
+				"soon": "Reset gleich"
+			},
+			"age": {
+				"justNow": "gerade eben",
+				"m": "vor {n} Min",
+				"h": "vor {n} Std",
+				"d": "vor {n} T"
+			},
+			"windows": {
+				"session": "5 Stunden",
+				"weekly": "Wöchentlich",
+				"model": "{model} wöchentlich"
+			},
+			"sources": {
+				"statusline": "Statuszeile",
+				"rollout": "Sitzungslog",
+				"probe": "Abfrage",
+				"limit_hit": "Limit erreicht"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "Sonstige"
+			},
+			"remove": {
+				"menu": "Rechner-Aktionen",
+				"action": "Rechner entfernen",
+				"title": "{label} entfernen?",
+				"body": "{label} wird nicht mehr synchronisiert, und seine Limits und Tagessummen werden aus deinem Konto gelöscht. Zum Neustart führe {command} auf diesem Rechner aus.",
+				"confirm": "Entfernen",
+				"cancel": "Abbrechen",
+				"failed": "Der Rechner konnte nicht entfernt werden: {error}"
+			},
+			"totals": {
+				"cost": "Kosten (API-Äquivalent)",
+				"tokens": "Token",
+				"sessions": "Sitzungen",
+				"sessionsHint": "Sitzungen werden pro Tag, Modell und Aufgabe gezählt, daher kann eine Sitzung, die mehrere davon umfasst, mehrfach zählen."
+			},
+			"chart": {
+				"title": "Tägliche Nutzung",
+				"stackBy": "Gruppieren nach",
+				"metric": "Messwert",
+				"byMachine": "Nach Rechner",
+				"byAgent": "Nach Agent",
+				"cost": "Kosten",
+				"tokens": "Token",
+				"empty": "Keine Nutzung in diesem Zeitraum."
+			},
+			"table": {
+				"title": "Nach Modell und Aufgabe",
+				"model": "Modell",
+				"task": "Aufgabe",
+				"agent": "Agent"
+			},
+			"empty": {
+				"title": "Noch keine Rechner",
+				"body": "Führe {command} auf einem Computer aus, auf dem du Claude Code oder Codex nutzt. Gesendet werden nur Token-Zahlen, Kosten, Modellnamen, Aufgaben-IDs und Limit-Prozente, nie Prompts oder Antworten."
+			},
+			"loading": "Nutzung aller Rechner wird geladen",
+			"error": "Nutzung konnte nicht geladen werden: {error}",
+			"truncated": "Zu viele Zeilen: nur die ersten 20.000 werden angezeigt. Grenze Zeitraum oder Filter ein."
 		}
 	},
 	"overview": {

@@ -66,6 +66,105 @@
 			"legend": "图例",
 			"byTool": "按工具",
 			"byModel": "按模型"
+		},
+		"machines": {
+			"title": "AI 用量 · 所有设备",
+			"subtitle": "费用按 API 标价折算,并非订阅账单。仅同步数字,绝不上传提示词或回复。",
+			"tabs": {
+				"label": "AI 用量视图",
+				"device": "本设备",
+				"all": "所有设备"
+			},
+			"period": {
+				"label": "时间段",
+				"today": "今天",
+				"d7": "7 天",
+				"d30": "30 天",
+				"d90": "90 天"
+			},
+			"filters": {
+				"machine": "设备",
+				"agent": "智能体",
+				"model": "模型",
+				"task": "任务",
+				"all": "全部",
+				"unassigned": "未分配"
+			},
+			"limits": {
+				"title": "额度",
+				"reset": "已重置",
+				"resetsIn": "{time}后重置",
+				"asOf": "更新于 {age} · {source}",
+				"seen": "最后在线 {age}",
+				"none": "暂无额度数据。进行一次交互式 Claude Code 或 Codex 会话后会显示。"
+			},
+			"countdown": {
+				"dh": "{d} 天 {h} 小时",
+				"hm": "{h} 小时 {m} 分钟",
+				"m": "{m} 分钟",
+				"soon": "即将重置"
+			},
+			"age": {
+				"justNow": "刚刚",
+				"m": "{n} 分钟前",
+				"h": "{n} 小时前",
+				"d": "{n} 天前"
+			},
+			"windows": {
+				"session": "5 小时",
+				"weekly": "每周",
+				"model": "{model} 每周"
+			},
+			"sources": {
+				"statusline": "状态栏",
+				"rollout": "会话日志",
+				"probe": "探测",
+				"limit_hit": "达到上限"
+			},
+			"platforms": {
+				"macos": "macOS",
+				"linux": "Linux",
+				"windows": "Windows",
+				"other": "其他"
+			},
+			"remove": {
+				"menu": "设备操作",
+				"action": "移除设备",
+				"title": "移除 {label}?",
+				"body": "{label} 将停止同步,其额度和每日合计会从你的账户中删除。如需重新开始,请在该设备上运行 {command}。",
+				"confirm": "移除",
+				"cancel": "取消",
+				"failed": "无法移除设备:{error}"
+			},
+			"totals": {
+				"cost": "费用(API 折算)",
+				"tokens": "Token",
+				"sessions": "会话",
+				"sessionsHint": "会话按日、模型和任务分别统计,因此跨多项的会话可能被重复计数。"
+			},
+			"chart": {
+				"title": "每日用量",
+				"stackBy": "堆叠方式",
+				"metric": "指标",
+				"byMachine": "按设备",
+				"byAgent": "按智能体",
+				"cost": "费用",
+				"tokens": "Token",
+				"empty": "此时间段内没有用量。"
+			},
+			"table": {
+				"title": "按模型和任务",
+				"model": "模型",
+				"task": "任务",
+				"agent": "智能体"
+			},
+			"empty": {
+				"title": "还没有设备",
+				"body": "在你使用 Claude Code 或 Codex 的电脑上运行 {command}。仅发送 token 数量、费用、模型名称、任务 ID 和额度百分比,绝不发送提示词或回复。"
+			},
+			"loading": "正在加载所有设备的用量",
+			"error": "无法加载用量:{error}",
+			"truncated": "行数过多:仅显示前 20,000 行。请缩小时间段或筛选条件。"
 		}
 	},
 	"overview": {
