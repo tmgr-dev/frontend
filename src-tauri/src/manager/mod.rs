@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod bridge;
 pub mod composite;
 pub mod local;
 pub mod relay;
@@ -79,10 +80,16 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
   // STUB: NoRelay until the chat-relay backend (Liquibase 230) ships and a real Transport exists
   let relay: Arc<dyn relay::port::RelayPort> = Arc::new(relay::port::NoRelay);
   let backend: Arc<dyn ManagerBackend> = match app.try_state::<crate::runner::Runner>() {
-    Some(runner) => Arc::new(composite::CompositeBackend::new(
-      Arc::new(local::RunnerLocal::new(Arc::new(runner.inner().clone()))),
-      relay.clone(),
-    )),
+    Some(runner) => {
+      let handle = app.clone();
+      bridge::spawn(Arc::new(bridge::RunnerSource(runner.inner().clone())), move |message| {
+        let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
+      });
+      Arc::new(composite::CompositeBackend::new(
+        Arc::new(local::RunnerLocal::new(Arc::new(runner.inner().clone()))),
+        relay.clone(),
+      ))
+    }
     None => Arc::new(StubBackend::default()),
   };
   app.manage(ManagerState { backend, relay });

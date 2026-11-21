@@ -24,10 +24,10 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tmgr_ipc::api::{caps, method, AutopilotCommand, AutopilotStatus, ClientMsg, Resize, Scroll};
+use tmgr_ipc::api::{caps, method, AutopilotCommand, AutopilotStatus, ClientMsg, Resize, Scroll, ServerMsg};
 
 use api::{find_session, list_sessions, session_from_value, state_from_value, Detail, RunnerSession, RunnerState, StartRun, TaskRef};
-use conn::{input_frame, write_frame, write_json, Conn, ConnError, Welcome, MAX_INPUT, UPDATE_RUNNER};
+use conn::{input_frame, read_frame, write_frame, write_json, Conn, Frame, ConnError, Welcome, MAX_INPUT, UPDATE_RUNNER};
 use dir::Sock;
 use flag::Flag;
 use pump::{run_attach, run_watch, Coalescer, Shared, TermFrame, WatchEvent};
@@ -83,6 +83,26 @@ struct Inner {
 
 #[derive(Clone)]
 pub struct Runner(Arc<Inner>);
+
+pub struct ChatFeed {
+  stream: Sock,
+}
+
+impl ChatFeed {
+  pub fn next_push(&mut self) -> Result<Option<Value>, String> {
+    loop {
+      match read_frame(&mut self.stream).map_err(|e| sanitize::text(&e.to_string(), 200))? {
+        Some(Frame::Json(v)) => match serde_json::from_value::<ServerMsg>(v) {
+          Ok(ServerMsg::Chat(push)) => return Ok(Some(push)),
+          Ok(ServerMsg::Closed { reason }) => return Err(sanitize::text(&reason, 200)),
+          _ => {}
+        },
+        Some(Frame::Bin(_)) => {}
+        None => return Ok(None),
+      }
+    }
+  }
+}
 
 pub struct SwitchGuard {
   runner: Runner,
@@ -163,6 +183,13 @@ impl Runner {
 
   pub fn chat_call(&self, method: &str, params: Value) -> Result<Value, String> {
     self.connect()?.0.call(method, params).map_err(err)
+  }
+
+  pub fn chat_subscribe(&self) -> Result<ChatFeed, String> {
+    let (mut conn, _) = self.connect()?;
+    conn.call("chat.subscribe", Value::Null).map_err(err)?;
+    let _ = conn.stream.set_read_timeout(None);
+    Ok(ChatFeed { stream: conn.stream })
   }
 
   fn connect(&self) -> Result<(Conn, Welcome), String> {

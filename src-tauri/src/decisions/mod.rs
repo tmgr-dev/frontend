@@ -78,6 +78,7 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>) {
 fn on_change<R: Runtime>(app: &AppHandle<R>, change: &Change, count: usize) {
   OPEN.store(count, Ordering::SeqCst);
   let _ = app.emit_to(LABEL, "decisions://changed", json!({ "count": count }));
+  let _ = app.emit_to(crate::manager::LABEL, "decisions://changed", json!({ "count": count }));
   crate::tray::refresh_current(app);
   phone::on_hub_change(app);
   match change {
