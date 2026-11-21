@@ -127,11 +127,12 @@ pub(super) fn audit_unavailable(e: &Error) -> bool {
 fn kind_of(code: &str) -> Kind {
     match code {
         "forbidden" | "revoked" => Kind::Forbidden,
-        "bad_params" | "unknown_method" | "bad_request" => Kind::Usage,
-        "not_found" => Kind::NotFound,
-        "busy" | "not_running" | "conflict" | "rate_limited" | "too_many_requests" | "limit" => {
-            Kind::Conflict
+        "bad_params" | "unknown_method" | "bad_request" | "invalid_params" | "unknown_profile" => {
+            Kind::Usage
         }
+        "not_found" => Kind::NotFound,
+        "busy" | "not_running" | "conflict" | "rate_limited" | "too_many_requests" | "limit"
+        | "sandbox" | "unauthorized" | "proto_mismatch" | "refused" => Kind::Conflict,
         "not_available" | "audit_unavailable" => Kind::Offline,
         _ => Kind::Link,
     }
@@ -471,6 +472,27 @@ mod tests {
         assert!(audit_unavailable(&refused("audit_unavailable")));
         assert!(!audit_unavailable(&refused("not_available")));
         assert!(!audit_unavailable(&refused("busy")));
+    }
+
+    #[test]
+    fn a_runner_refusal_keeps_its_text_and_is_not_a_lost_link() {
+        for code in [
+            "invalid_params",
+            "unknown_profile",
+            "sandbox",
+            "unauthorized",
+            "proto_mismatch",
+            "refused",
+        ] {
+            let e = check(Reply::Err {
+                code: code.into(),
+                message: "folder is too large".into(),
+            })
+            .unwrap_err();
+            assert_ne!(e.kind, Kind::Link, "{code}");
+            assert_ne!(e.kind, Kind::Forbidden, "{code}");
+            assert_eq!(e.message, "folder is too large");
+        }
     }
 
     fn run(id: &str, name: &str, via: Option<&str>, exited: bool) -> RunView {
