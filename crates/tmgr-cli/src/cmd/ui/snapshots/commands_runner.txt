@@ -44,8 +44,11 @@ session grep | Other | id, pattern, full
 session files | Other | id, full
 session errors | Other | id, full
 session handoff | Other | id, to, task, previous, output
-manager start | Other | agent, cwd, name
+manager start | Other | agent, cwd, name, top, no_top
 manager status | Other | -
+manager machine show | Other | -
+manager machine add | Other | line, label
+manager machine remove | Other | id
 chat join | Other | -
 chat status | Other | -
 time | Time | today, since, by
