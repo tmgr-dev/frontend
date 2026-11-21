@@ -123,6 +123,7 @@ pub(super) const REFUSED_AUDIT: &str = "audit log unavailable";
 pub(super) const REFUSED_VERSION: &str = "version mismatch";
 pub(super) const REFUSED_START: &str = "the follower could not start the worker";
 pub(super) const REFUSED_UPDATE: &str = "update tmgr on the follower to see why";
+pub(super) const REFUSED_OTHER: &str = "refused by the follower";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DialErr {
@@ -176,7 +177,9 @@ pub(super) fn classify(e: &Error) -> DialErr {
         DialErr::Refused(REFUSED_VERSION.into())
     } else if m.contains("worker: refused: error") {
         DialErr::Refused(REFUSED_START.into())
-    } else if m.contains("worker: refused") || m.contains("refused the handshake") {
+    } else if m.contains("worker: refused:") || m.contains("refused the handshake") {
+        DialErr::Refused(REFUSED_OTHER.into())
+    } else if m.contains("worker: refused") {
         DialErr::Refused(REFUSED_UPDATE.into())
     } else {
         DialErr::Offline(e.message.clone())
@@ -2765,6 +2768,10 @@ pub(super) mod tests {
         assert_eq!(
             e(Kind::Link, "ssh failed: tmgr worker: refused"),
             DialErr::Refused(REFUSED_UPDATE.into())
+        );
+        assert_eq!(
+            e(Kind::Link, "ssh failed: tmgr worker: refused: newcode"),
+            DialErr::Refused(REFUSED_OTHER.into())
         );
         assert_eq!(
             e(Kind::Link, "ssh failed: tmgr worker: refused: busy"),

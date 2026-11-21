@@ -242,7 +242,8 @@ impl Conn<'_> {
         if t.pending == 0 {
             return Ok(());
         }
-        self.append_request("runs.list", json!({}), "accepted", "", Some(t.pending))?;
+        let extra = (t.pending > 1).then_some(t.pending - 1);
+        self.append_request("runs.list", json!({}), "accepted", "", extra)?;
         t.pending = 0;
         self.tally.set(t);
         Ok(())
@@ -1468,7 +1469,7 @@ mod tests {
         assert_eq!(lists.len(), 2);
         assert!(lists[0].get("coalesced").is_none());
         assert_eq!(lists[1]["decision"], "accepted");
-        assert_eq!(lists[1]["coalesced"], 2);
+        assert_eq!(lists[1]["coalesced"], 1);
     }
 
     #[test]
@@ -1512,9 +1513,9 @@ mod tests {
             seen,
             vec![
                 ("runs.list".into(), Value::Null),
-                ("runs.list".into(), json!(1)),
+                ("runs.list".into(), Value::Null),
                 ("hello".into(), Value::Null),
-                ("runs.list".into(), json!(1)),
+                ("runs.list".into(), Value::Null),
                 ("nope".into(), Value::Null),
             ]
         );

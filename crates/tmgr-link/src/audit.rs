@@ -290,7 +290,7 @@ impl Audit {
                 let Some(p) = self.prunable(&rotated)? else {
                     return Err(
                         Error::internal("the audit log is full, refusing new requests")
-                            .hint("archive the files in the audit directory, then retry"),
+                            .hint("the oldest audit file is still within the retention period and is pruned once older; do not delete audit files by hand, verify would report tampering"),
                     );
                 };
                 pruned = Some(p);
@@ -480,6 +480,12 @@ impl Audit {
                     }));
                 }
                 pruned_through = Some(cut);
+            } else if prev != GENESIS {
+                return Ok(Err(Tampered {
+                    file: file.clone(),
+                    line: *line,
+                    reason: "hash chain broken: the first entry does not start the chain".into(),
+                }));
             }
         }
         let anchor_fail = |reason: &str| {
