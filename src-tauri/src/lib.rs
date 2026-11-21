@@ -46,6 +46,7 @@ mod skill_library;
 mod skill_scan;
 mod usage;
 mod page_windows;
+mod popover;
 mod task_windows;
 mod tray;
 mod update_relaunch;
@@ -212,6 +213,7 @@ pub fn run() {
     .plugin(tauri_plugin_clipboard_manager::init())
     .manage(tray::TrayStore::default())
     .manage(tray::DndStore::default())
+    .manage(popover::PopoverStore::default())
     .manage(quick_add::QuickAddStore::default())
     .manage(local_db::LocalDbs::default())
     .manage(local_backups::BackupErrors::default())
@@ -239,6 +241,11 @@ pub fn run() {
       usage::usage_task,
       tray::tray_update,
       tray::dnd_update,
+      popover::popover_state,
+      popover::popover_action,
+      popover::popover_quick_add,
+      popover::popover_resize,
+      popover::popover_extras_update,
       native_i18n::native_locale_set,
       update_relaunch::mark_update_relaunch,
       update_relaunch::relaunch_after_update,
@@ -442,6 +449,9 @@ pub fn run() {
           _ => {}
         }
       }
+      if window.label() == popover::LABEL {
+        popover::on_window_event(window.app_handle(), event);
+      }
       if let WindowEvent::Focused(false) = event {
         if window.label() == quick_add::LABEL {
           let _ = window.hide();
@@ -517,6 +527,10 @@ pub fn run() {
 
       if let Err(error) = tray::setup(app.handle()) {
         log::error!("[tray] unavailable: {error}");
+      }
+      #[cfg(any(target_os = "macos", windows))]
+      if let Err(error) = popover::setup(app.handle()) {
+        log::error!("[popover] unavailable: {error}");
       }
       idle::start(app.handle());
       git_track::start(app.handle());

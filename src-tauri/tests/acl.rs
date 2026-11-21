@@ -13,6 +13,11 @@ macro_rules! probes {
 }
 probes!(
   idle_supported,
+  popover_state,
+  popover_action,
+  popover_quick_add,
+  popover_resize,
+  popover_extras_update,
   runner_enabled,
   llm_chat,
   local_access_event,
@@ -143,4 +148,20 @@ fn relay_auth_commands_are_allowed_for_main_only() {
       assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");
     }
   }
+}
+
+#[test]
+fn popover_commands_are_scoped_to_the_popover_and_main_windows() {
+  for cmd in ["popover_state", "popover_action", "popover_quick_add", "popover_resize"] {
+    assert!(call("popover", cmd).is_ok(), "{cmd} on popover");
+    for label in ["main", "task-1", "decisions", "quick-add"] {
+      assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");
+    }
+  }
+  assert!(call("main", "popover_extras_update").is_ok());
+  for label in ["popover", "task-1", "decisions", "quick-add"] {
+    assert!(call(label, "popover_extras_update").unwrap_err().contains("not allowed on window"), "{label}");
+  }
+  assert!(call("popover", "decisions_list").is_ok());
+  assert!(call("popover", "idle_supported").unwrap_err().contains("not allowed on window"));
 }

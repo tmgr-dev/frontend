@@ -4,6 +4,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 use tauri::menu::{CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
+#[cfg(any(target_os = "macos", windows))]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -13,11 +15,30 @@ use crate::native_i18n::{decisions_label, tr, Key};
 const DND_OPTIONS: [(&str, Key); 4] =
   [("off", Key::DndOff), ("1h", Key::Dnd1h), ("3h", Key::Dnd3h), ("tomorrow", Key::DndTomorrow)];
 
-pub struct DndStore(pub Mutex<String>);
+pub struct DndStore(pub Mutex<String>, pub Mutex<Option<i64>>);
 
 impl Default for DndStore {
   fn default() -> Self {
-    Self(Mutex::new("off".to_owned()))
+    Self(Mutex::new("off".to_owned()), Mutex::new(None))
+  }
+}
+
+impl DndStore {
+  pub fn get(&self) -> (String, Option<i64>) {
+    (self.0.lock().unwrap().clone(), *self.1.lock().unwrap())
+  }
+
+  /// Returns whether anything changed. "off" never carries an end time.
+  pub fn set(&self, option: &str, until: Option<i64>) -> bool {
+    let until = if option == "off" { None } else { until };
+    let mut current = self.0.lock().unwrap();
+    let mut current_until = self.1.lock().unwrap();
+    if *current == option && *current_until == until {
+      return false;
+    }
+    *current = option.to_owned();
+    *current_until = until;
+    true
   }
 }
 
@@ -28,8 +49,8 @@ const CHECK_FOR_UPDATES_ID: &str = "tray_check_for_updates";
 const LABEL_MAX: usize = 42;
 const TITLE_MAX: usize = 18;
 /// Caps how large the plugin part of the tray menu can grow, regardless of how many plugins run.
-const MAX_PLUGIN_SECTIONS: usize = 20;
-const MAX_PLUGIN_ITEMS: usize = 10;
+pub(crate) const MAX_PLUGIN_SECTIONS: usize = 20;
+pub(crate) const MAX_PLUGIN_ITEMS: usize = 10;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -46,7 +67,7 @@ pub struct TrayTask {
 }
 
 impl TrayTask {
-  fn key(&self) -> String {
+  pub(crate) fn key(&self) -> String {
     format!("{}:{}", self.workspace_id, self.id)
   }
 }
@@ -185,7 +206,7 @@ fn sanitize_plugin_title(text: &str) -> Option<String> {
 }
 
 /// Same cleanup as `sanitize_plugin_title`, but for a tray section title, item title or plugin name.
-fn sanitize_plugin_label(text: &str) -> Option<String> {
+pub(crate) fn sanitize_plugin_label(text: &str) -> Option<String> {
   sanitize_plugin_text(text, LABEL_MAX)
 }
 
@@ -197,6 +218,42 @@ pub fn tray_title(state: &TrayState, now: i64) -> Option<String> {
     (Some(t), None) => Some(t),
     (None, Some(p)) => Some(p),
     (None, None) => None,
+  }
+}
+
+/// Open decisions as a menu-bar prefix; empty text keeps just the badge.
+pub fn with_badge(title: Option<String>, open: usize) -> Option<String> {
+  if open == 0 {
+    return title;
+  }
+  let badge = format!("● {open}");
+  Some(match title {
+    Some(t) => format!("{badge} {t}"),
+    None => badge,
+  })
+}
+
+fn open_decisions() -> usize {
+  #[cfg(unix)]
+  return crate::decisions::open_count();
+  #[cfg(not(unix))]
+  0
+}
+
+fn display_title(state: &TrayState, now: i64) -> Option<String> {
+  let title = tray_title(state, now);
+  if cfg!(target_os = "macos") {
+    with_badge(title, open_decisions())
+  } else {
+    title
+  }
+}
+
+fn tooltip(open: usize) -> String {
+  match open {
+    0 => "TMGR".to_owned(),
+    1 => "TMGR · 1 decision".to_owned(),
+    n => format!("TMGR · {n} decisions"),
   }
 }
 
@@ -278,7 +335,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
 }
 
 /// Prefixed with the plugin's own name, so a section titled to look like an app item can't be mistaken for one.
-fn plugin_section_label(section: &PluginTraySection) -> String {
+pub(crate) fn plugin_section_label(section: &PluginTraySection) -> String {
   let name = sanitize_plugin_label(&section.plugin_name).unwrap_or_else(|| "Plugin".to_owned());
   let title = sanitize_plugin_label(&section.title).unwrap_or_default();
   truncate(&format!("{name}: {title}"), LABEL_MAX)
@@ -296,15 +353,25 @@ fn tray<R: Runtime>(app: &AppHandle<R>) -> Option<TrayIcon<R>> {
   app.tray_by_id(TRAY_ID)
 }
 
+const POPOVER_TRAY: bool = cfg!(any(target_os = "macos", windows));
+
 fn refresh<R: Runtime>(app: &AppHandle<R>, state: &TrayState) {
-  let Some(tray) = tray(app) else { return };
-  match build_menu(app, state) {
-    Ok(menu) => {
-      let _ = tray.set_menu(Some(menu));
-    }
-    Err(err) => log::error!("[tray] menu build failed: {err}"),
+  if POPOVER_TRAY {
+    crate::popover::emit_model(app, state);
   }
-  let _ = tray.set_title(Some(tray_title(state, now_secs()).unwrap_or_default()));
+  let Some(tray) = tray(app) else { return };
+  if !POPOVER_TRAY {
+    match build_menu(app, state) {
+      Ok(menu) => {
+        let _ = tray.set_menu(Some(menu));
+      }
+      Err(err) => log::error!("[tray] menu build failed: {err}"),
+    }
+  }
+  let _ = tray.set_title(Some(display_title(state, now_secs()).unwrap_or_default()));
+  if cfg!(windows) {
+    let _ = tray.set_tooltip(Some(tooltip(open_decisions())));
+  }
 }
 
 pub fn refresh_current<R: Runtime>(app: &AppHandle<R>) {
@@ -313,7 +380,7 @@ pub fn refresh_current<R: Runtime>(app: &AppHandle<R>) {
   refresh(app, &state);
 }
 
-fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
+pub(crate) fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
   log::info!("[tray] menu {id}");
   if let Some(task_id) = id.strip_prefix("open:") {
     // JS shows the main window only when the task has no window of its own.
@@ -334,7 +401,7 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
     return;
   }
   if let Some(option) = id.strip_prefix("dnd:") {
-    *app.state::<DndStore>().0.lock().unwrap() = option.to_owned();
+    app.state::<DndStore>().set(option, None);
     let state = app.state::<TrayStore>().0.lock().unwrap().clone();
     refresh(app, &state);
     let _ = app.emit_to("main", "tray://dnd", option.to_owned());
@@ -372,13 +439,28 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
 }
 
 pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-  let state = TrayState::default();
-  TrayIconBuilder::with_id(TRAY_ID)
+  let builder = TrayIconBuilder::with_id(TRAY_ID)
     .icon(tauri::include_image!("icons/tray.png"))
     .icon_as_template(true)
-    .tooltip("TMGR")
-    .menu(&build_menu(app, &state)?)
-    .show_menu_on_left_click(true)
+    .tooltip("TMGR");
+  #[cfg(any(target_os = "macos", windows))]
+  let builder = {
+    let menu = MenuBuilder::new(app)
+      .item(&MenuItemBuilder::with_id("open", tr(Key::OpenApp)).build(app)?)
+      .item(&MenuItemBuilder::with_id("quit", tr(Key::Quit)).build(app)?)
+      .build()?;
+    builder
+      .menu(&menu)
+      .show_menu_on_left_click(false)
+      .on_tray_icon_event(|tray, event| {
+        if let TrayIconEvent::Click { button: MouseButton::Left, button_state, rect, .. } = event {
+          crate::popover::on_tray_click(tray.app_handle(), button_state == MouseButtonState::Up, rect);
+        }
+      })
+  };
+  #[cfg(not(any(target_os = "macos", windows)))]
+  let builder = builder.menu(&build_menu(app, &TrayState::default())?).show_menu_on_left_click(true);
+  builder
     .on_menu_event(|app, event| on_menu_event(app, event.id().as_ref()))
     .build(app)?;
 
@@ -389,7 +471,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
       std::thread::sleep(Duration::from_millis(1000));
       crate::widget_state::flush_pending_reload();
       let state = ticker.state::<TrayStore>().0.lock().unwrap().clone();
-      let title = tray_title(&state, now_secs());
+      let title = display_title(&state, now_secs());
       if title != last {
         if let Some(tray) = tray(&ticker) {
           let _ = tray.set_title(Some(title.clone().unwrap_or_default()));
@@ -425,16 +507,17 @@ pub fn normalize_dnd_option(option: &str) -> &str {
     .unwrap_or("off")
 }
 
-/// Pushed from JS the same way `tray_update` is: JS owns the actual until-timestamp, this is only for the checkmark.
+/// Pushed from JS the same way `tray_update` is: JS owns the timing, `until` (ms) only mirrors it for the popover.
 #[tauri::command]
-pub fn dnd_update<R: Runtime>(app: AppHandle<R>, dnd: State<'_, DndStore>, option: String) {
+pub fn dnd_update<R: Runtime>(
+  app: AppHandle<R>,
+  dnd: State<'_, DndStore>,
+  option: String,
+  until: Option<i64>,
+) {
   let option = normalize_dnd_option(&option).to_owned();
-  {
-    let mut current = dnd.0.lock().unwrap();
-    if *current == option {
-      return;
-    }
-    *current = option;
+  if !dnd.set(&option, until) {
+    return;
   }
   let state = app.state::<TrayStore>().0.lock().unwrap().clone();
   refresh(&app, &state);
@@ -522,6 +605,28 @@ mod tests {
     assert_eq!(normalize_dnd_option("tomorrow"), "tomorrow");
     assert_eq!(normalize_dnd_option("bogus"), "off");
     assert_eq!(normalize_dnd_option(""), "off");
+  }
+
+  #[test]
+  fn dnd_until_round_trips_and_off_clears_it() {
+    let store = DndStore::default();
+    assert_eq!(store.get(), ("off".to_owned(), None));
+    assert!(store.set("1h", Some(1_000)));
+    assert_eq!(store.get(), ("1h".to_owned(), Some(1_000)));
+    assert!(!store.set("1h", Some(1_000)));
+    assert!(store.set("1h", Some(2_000)));
+    assert!(store.set("off", Some(5)));
+    assert_eq!(store.get(), ("off".to_owned(), None));
+  }
+
+  #[test]
+  fn badge_prefixes_the_open_decisions_count() {
+    assert_eq!(with_badge(Some("1:00 · TM-1".into()), 0).as_deref(), Some("1:00 · TM-1"));
+    assert_eq!(with_badge(None, 0), None);
+    assert_eq!(with_badge(Some("1:00 · TM-1".into()), 2).as_deref(), Some("● 2 1:00 · TM-1"));
+    assert_eq!(with_badge(None, 2).as_deref(), Some("● 2"));
+    assert_eq!(tooltip(0), "TMGR");
+    assert_eq!(tooltip(2), "TMGR · 2 decisions");
   }
 
   #[test]
