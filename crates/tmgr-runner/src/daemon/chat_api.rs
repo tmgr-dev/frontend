@@ -314,7 +314,14 @@ impl Runner {
                 let i = lock(&s.inner);
                 let m = &i.meta;
                 let auto = m.name_auto || m.name == default_name(m.argv.first().map_or("", |a| a));
-                if !auto || m.manager || m.profile.is_none() {
+                if !auto
+                    || m.manager
+                    || chat::tail::agent_named(
+                        m.profile.as_deref(),
+                        m.argv.first().map_or("", String::as_str),
+                    )
+                    .is_none()
+                {
                     continue;
                 }
                 let from_title = titles

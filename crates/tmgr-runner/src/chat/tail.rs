@@ -50,12 +50,24 @@ struct Saved {
     backfilled: bool,
 }
 
-fn agent_of(profile: Option<&str>) -> Option<Agent> {
-    match profile? {
-        "claude-code" => Some(Agent::Claude),
-        "codex" => Some(Agent::Codex),
-        _ => None,
+pub(crate) fn agent_named(profile: Option<&str>, argv0: &str) -> Option<Agent> {
+    match profile {
+        Some("claude-code") => Some(Agent::Claude),
+        Some("codex") => Some(Agent::Codex),
+        Some(_) => None,
+        None => match Path::new(argv0).file_name()?.to_str()? {
+            "claude" => Some(Agent::Claude),
+            "codex" => Some(Agent::Codex),
+            _ => None,
+        },
     }
+}
+
+fn agent_of(s: &SessionInfo) -> Option<Agent> {
+    agent_named(
+        s.profile.as_deref(),
+        s.argv.first().map_or("", String::as_str),
+    )
 }
 
 fn state_path(dir: &Path, session: &str) -> PathBuf {
@@ -248,7 +260,7 @@ pub fn capture_with(
     let dir = store.dir();
     let mut tails = lock(&chat.tails);
     for s in sessions {
-        let Some(agent) = agent_of(s.profile.as_deref()) else {
+        let Some(agent) = agent_of(s) else {
             continue;
         };
         let exited = s.state.kind == StateKind::Exited;
@@ -417,6 +429,24 @@ mod tests {
             capture_with(&chat, &s, &resolve),
             [(SID.to_string(), "Mine".to_string())]
         );
+    }
+
+    #[test]
+    fn a_raw_claude_command_without_a_profile_still_gets_its_history() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("first"));
+        let mut s = info(SID, "claude-code", "working");
+        s.profile = None;
+        s.argv = vec![
+            "/usr/local/bin/claude".into(),
+            "--permission-mode".into(),
+            "bypassPermissions".into(),
+        ];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &[s], &resolve);
+        assert_eq!(bodies(&chat, SID), ["first"]);
     }
 
     #[test]
