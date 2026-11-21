@@ -17,6 +17,9 @@ pub trait Feed: Send {
 
 pub trait Source: Send + Sync {
   fn open(&self) -> Result<Box<dyn Feed>, String>;
+  fn enabled(&self) -> bool {
+    true
+  }
 }
 
 pub fn parse_push(push: &Value) -> Option<ChatMessage> {
@@ -62,15 +65,24 @@ impl Backoff {
   }
 }
 
-pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), stop: &AtomicBool, sleep: &dyn Fn(Duration)) {
+pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), resync: &dyn Fn(), stop: &AtomicBool, sleep: &dyn Fn(Duration)) {
   let mut seen = Seen::default();
   let mut backoff = Backoff::new();
+  let mut connected_before = false;
   while !stop.load(Ordering::SeqCst) {
-    if let Ok(mut feed) = source.open() {
+    let opened = if source.enabled() { source.open() } else { Err("disabled".to_owned()) };
+    if let Ok(mut feed) = opened {
       backoff.reset();
+      if connected_before {
+        resync();
+      }
+      connected_before = true;
       loop {
         if stop.load(Ordering::SeqCst) {
           return;
+        }
+        if !source.enabled() {
+          break;
         }
         match feed.next_push() {
           Ok(Some(push)) => {
@@ -91,9 +103,9 @@ pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), stop: &AtomicBool, s
   }
 }
 
-pub fn spawn(source: Arc<dyn Source>, emit: impl Fn(ChatMessage) + Send + 'static) {
+pub fn spawn(source: Arc<dyn Source>, emit: impl Fn(ChatMessage) + Send + 'static, resync: impl Fn() + Send + 'static) {
   let spawned = std::thread::Builder::new().name("manager-bridge".into()).spawn(move || {
-    run(&*source, &emit, &AtomicBool::new(false), &std::thread::sleep);
+    run(&*source, &emit, &resync, &AtomicBool::new(false), &std::thread::sleep);
   });
   if let Err(e) = spawned {
     log::error!("[manager] live bridge did not start: {e}");
@@ -105,6 +117,10 @@ pub struct RunnerSource(pub crate::runner::Runner);
 impl Source for RunnerSource {
   fn open(&self) -> Result<Box<dyn Feed>, String> {
     Ok(Box::new(self.0.chat_subscribe()?))
+  }
+
+  fn enabled(&self) -> bool {
+    self.0.enabled()
   }
 }
 
@@ -137,10 +153,17 @@ mod tests {
   struct Fake {
     opens: Mutex<VecDeque<Opened>>,
     stop: Arc<AtomicBool>,
+    on: Arc<AtomicBool>,
+    opened: Mutex<u32>,
   }
 
   impl Source for Fake {
+    fn enabled(&self) -> bool {
+      self.on.load(Ordering::SeqCst)
+    }
+
     fn open(&self) -> Result<Box<dyn Feed>, String> {
+      *self.opened.lock().unwrap() += 1;
       match self.opens.lock().unwrap().pop_front() {
         Some(Ok(items)) => Ok(Box::new(Script(items.into()))),
         Some(Err(e)) => Err(e),
@@ -160,12 +183,51 @@ mod tests {
   }
 
   fn drive(opens: Vec<Result<Vec<Result<Value, String>>, String>>) -> (Vec<String>, Vec<Duration>) {
+    let (got, sleeps, _) = drive_resync(opens);
+    (got, sleeps)
+  }
+
+  fn drive_resync(opens: Vec<Result<Vec<Result<Value, String>>, String>>) -> (Vec<String>, Vec<Duration>, u32) {
     let stop = Arc::new(AtomicBool::new(false));
-    let fake = Fake { opens: Mutex::new(opens.into()), stop: stop.clone() };
+    let fake = Fake { opens: Mutex::new(opens.into()), stop: stop.clone(), on: Arc::new(AtomicBool::new(true)), opened: Mutex::new(0) };
     let got = Mutex::new(Vec::new());
     let sleeps = Mutex::new(Vec::new());
-    run(&fake, &|m| got.lock().unwrap().push(m.id), &stop, &|d| sleeps.lock().unwrap().push(d));
-    (got.into_inner().unwrap(), sleeps.into_inner().unwrap())
+    let resyncs = Mutex::new(0);
+    run(&fake, &|m| got.lock().unwrap().push(m.id), &|| *resyncs.lock().unwrap() += 1, &stop, &|d| sleeps.lock().unwrap().push(d));
+    (got.into_inner().unwrap(), sleeps.into_inner().unwrap(), resyncs.into_inner().unwrap())
+  }
+
+  #[test]
+  fn resync_fires_once_per_successful_reconnect_and_never_for_the_first_connection() {
+    let (_, _, none) = drive_resync(vec![Ok(vec![Ok(push("m_1"))])]);
+    assert_eq!(none, 0);
+    let (_, _, two) = drive_resync(vec![Ok(vec![]), Err("down".into()), Ok(vec![]), Ok(vec![])]);
+    assert_eq!(two, 2);
+  }
+
+  #[test]
+  fn a_disabled_source_is_never_opened_and_a_live_feed_is_dropped_once_disabled() {
+    let stop = Arc::new(AtomicBool::new(false));
+    let on = Arc::new(AtomicBool::new(false));
+    let fake = Fake { opens: Mutex::new(vec![Ok(vec![Ok(push("m_1"))])].into()), stop: stop.clone(), on: on.clone(), opened: Mutex::new(0) };
+    let sleeps = Mutex::new(0);
+    let sleep = |_: Duration| {
+      *sleeps.lock().unwrap() += 1;
+      if *sleeps.lock().unwrap() >= 3 {
+        stop.store(true, Ordering::SeqCst);
+      }
+    };
+    run(&fake, &|_| {}, &|| {}, &stop, &sleep);
+    assert_eq!(*fake.opened.lock().unwrap(), 0);
+    let got = Mutex::new(Vec::new());
+    let stop2 = Arc::new(AtomicBool::new(false));
+    let fake = Fake { opens: Mutex::new(vec![Ok(vec![Ok(push("m_1")), Ok(push("m_2"))])].into()), stop: stop2.clone(), on: on.clone(), opened: Mutex::new(0) };
+    on.store(true, Ordering::SeqCst);
+    run(&fake, &|m| {
+      got.lock().unwrap().push(m.id);
+      on.store(false, Ordering::SeqCst);
+    }, &|| {}, &stop2, &|_| stop2.store(true, Ordering::SeqCst));
+    assert_eq!(*got.lock().unwrap(), ["m_1"]);
   }
 
   #[test]

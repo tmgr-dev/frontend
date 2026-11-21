@@ -18,6 +18,7 @@ probes!(
   local_access_event,
   decisions_list,
   decisions_get,
+  decisions_open_link,
   manager_rooms,
   manager_trust_state,
   manager_reset_identity,
@@ -67,6 +68,8 @@ fn the_manager_window_reaches_only_its_own_commands_and_inline_cards() {
     assert!(call("main", command).unwrap_err().contains("not allowed on window"), "{command}");
   }
   assert!(call("main", "manager_reset_identity").unwrap_err().contains("not allowed on window"));
+  assert!(call("manager", "decisions_open_link").unwrap_err().contains("not allowed on window"));
+  assert!(call("decisions", "decisions_open_link").is_ok());
   assert!(call("manager", "decisions_list").unwrap_err().contains("not allowed on window"));
   assert!(call("manager", "runner_enabled").unwrap_err().contains("not allowed on window"));
   for label in ["main", "task-1", "decisions"] {

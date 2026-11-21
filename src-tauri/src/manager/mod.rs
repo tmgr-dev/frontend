@@ -107,9 +107,16 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
   let backend: Arc<dyn ManagerBackend> = match app.try_state::<crate::runner::Runner>() {
     Some(runner) => {
       let handle = app.clone();
-      bridge::spawn(Arc::new(bridge::RunnerSource(runner.inner().clone())), move |message| {
-        let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
-      });
+      let resync_handle = app.clone();
+      bridge::spawn(
+        Arc::new(bridge::RunnerSource(runner.inner().clone())),
+        move |message| {
+          let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
+        },
+        move || {
+          let _ = tauri::Emitter::emit_to(&resync_handle, LABEL, "manager://resync", ());
+        },
+      );
       Arc::new(composite::CompositeBackend::new(
         Arc::new(local::RunnerLocal::new(Arc::new(runner.inner().clone()))),
         relay.clone(),

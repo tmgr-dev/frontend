@@ -182,10 +182,12 @@ impl Runner {
   }
 
   pub fn chat_call(&self, method: &str, params: Value) -> Result<Value, String> {
+    self.gate()?;
     self.connect()?.0.call(method, params).map_err(err)
   }
 
   pub fn chat_subscribe(&self) -> Result<ChatFeed, String> {
+    self.gate()?;
     let (mut conn, _) = self.connect()?;
     conn.call("chat.subscribe", Value::Null).map_err(err)?;
     let _ = conn.stream.set_read_timeout(None);
@@ -574,6 +576,8 @@ mod tests {
     assert_eq!(r.term_attach(SID, 80, 24, |_| true).unwrap_err(), "disabled");
     assert_eq!(r.term_input(SID, "x").unwrap_err(), "disabled");
     assert_eq!(r.term_ack(SID, 1).unwrap_err(), "disabled");
+    assert_eq!(r.chat_call("chat.rooms", Value::Null).unwrap_err(), "disabled");
+    assert_eq!(r.chat_subscribe().err().unwrap(), "disabled");
     assert_eq!(calls.load(Ordering::SeqCst), 0);
   }
 

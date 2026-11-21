@@ -32,6 +32,9 @@ export const onManagerMessage = (
 ): Promise<UnlistenFn> =>
 	listen<ChatMessage>('manager://message', (event) => handler(event.payload));
 
+export const onManagerResync = (handler: () => void): Promise<UnlistenFn> =>
+	listen('manager://resync', () => handler());
+
 export const managerTrustState = () =>
 	invoke<TrustState>('manager_trust_state');
 

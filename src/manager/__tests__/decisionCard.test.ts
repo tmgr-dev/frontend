@@ -98,10 +98,38 @@ describe('manager wiring', () => {
 		expect(app).toContain(':card-id="message.decision.card_id"');
 	});
 
+	it('renders the real card only for rooms of this machine', () => {
+		const app = read('../App.vue');
+		expect(app).toContain('v-if="activeInfo?.local !== false"');
+		expect(app).toMatch(
+			/<p v-else class="mgr-remote-decision">\s*\{\{ \$t\('manager\.decision\.otherMachine'\) \}\}/,
+		);
+	});
+
 	it('has the locale keys the card uses', () => {
 		const en = JSON.parse(read('../../locales/en/manager.json'));
 		expect(Object.keys(en.decision).sort()).toEqual(
-			['freePlaceholder', 'loading', 'openInDecisions', 'send'].sort(),
+			[
+				'freePlaceholder',
+				'loading',
+				'openInDecisions',
+				'otherMachine',
+				'send',
+			].sort(),
 		);
+		expect(en.decision.otherMachine).toBe('Decision on another machine');
+	});
+
+	it('refetches the active room when the bridge reports a resync', () => {
+		const app = read('../App.vue');
+		expect(app).toContain(
+			'onManagerResync(() => void this.store.refreshActive())',
+		);
+	});
+
+	it('does not grant the manager window the Decisions open-link command', () => {
+		const caps = read('../../../src-tauri/capabilities/manager.json');
+		expect(caps).not.toContain('decisions-open-link');
+		expect(read('../components/DecisionCard.vue')).not.toMatch(/openLink/i);
 	});
 });

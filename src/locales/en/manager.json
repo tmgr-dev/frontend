@@ -20,6 +20,7 @@
 		"done": "Done"
 	},
 	"decision": {
+		"otherMachine": "Decision on another machine",
 		"loading": "Loading the card…",
 		"openInDecisions": "This card needs the Decisions window.",
 		"freePlaceholder": "Or write an answer",
@@ -99,6 +100,10 @@
 			"hint": "Devices that can read your chats.",
 			"keyMismatch": "The relay now reports different keys for a device you trust. That device is not used until you check it.",
 			"joinCodeReused": "A join code was used again after it was spent or expired. Nobody was added; open a new code if you did not expect this.",
+			"roomConflict": "A device claimed a chat room that already belongs to another device. Check your devices before trusting new messages.",
+			"kindConflict": "A device reported a different kind than the one it was added with. Check your devices.",
+			"alertOther": "The relay raised a security alert ({kind}). Check your devices.",
+			"seqGaps": "{n} messages may be missing from {label}",
 			"thisDevice": "this device",
 			"revoke": "Revoke",
 			"revokeLabel": "Revoke {name}",

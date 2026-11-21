@@ -75,6 +75,12 @@ pub struct RoomInfo {
   pub context_tokens: Option<u64>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub last: Option<ChatMessage>,
+  #[serde(default = "yes")]
+  pub local: bool,
+}
+
+fn yes() -> bool {
+  true
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -216,6 +222,7 @@ impl ManagerBackend for StubBackend {
         context_pct: None,
         context_tokens: None,
         last: last(&manager_room()),
+        local: true,
       }];
       let mut sessions: Vec<RoomInfo> = s
         .sessions
@@ -228,6 +235,7 @@ impl ManagerBackend for StubBackend {
           context_pct: Some(*pct),
           context_tokens: Some(u64::from(*pct) * 2000),
           last: last(&session_room(id)),
+          local: true,
         })
         .collect();
       sessions.sort_by(|a, b| {

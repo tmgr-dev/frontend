@@ -60,6 +60,24 @@ const setup = (over: Partial<ManagerApi> = {}) => {
 
 const ids = (list: ChatMessage[]) => list.map((m) => m.id);
 
+describe('refreshActive', () => {
+	it('refetches rooms and the active history, merging new messages', async () => {
+		const { api, store } = setup();
+		await store.init();
+		(api.history as jest.Mock).mockResolvedValueOnce(range(1, 5));
+		await store.refreshActive();
+		expect(api.rooms).toHaveBeenCalledTimes(2);
+		expect(ids(store.messagesByRoom[MGR_KEY])).toEqual(ids(range(1, 5)));
+	});
+
+	it('does nothing for history without an active room', async () => {
+		const { api, store } = setup({ rooms: jest.fn(async () => []) });
+		await store.init();
+		await store.refreshActive();
+		expect(api.history).not.toHaveBeenCalled();
+	});
+});
+
 describe('init and select', () => {
 	it('loads rooms manager-first, selects it and subscribes', async () => {
 		const { api, store } = setup();

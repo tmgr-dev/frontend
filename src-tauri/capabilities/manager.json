@@ -22,7 +22,6 @@
 		"allow-manager-revoke",
 		"allow-manager-reset-identity",
 		"allow-decisions-get",
-		"allow-decisions-answer",
-		"allow-decisions-open-link"
+		"allow-decisions-answer"
 	]
 }

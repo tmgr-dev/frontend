@@ -59,10 +59,15 @@
 					@older="store.loadOlder"
 				>
 					<template #decision="{ message }">
-						<DecisionCard
-							v-if="message.decision?.card_id"
-							:card-id="message.decision.card_id"
-						/>
+						<template v-if="message.decision?.card_id">
+							<DecisionCard
+								v-if="activeInfo?.local !== false"
+								:card-id="message.decision.card_id"
+							/>
+							<p v-else class="mgr-remote-decision">
+								{{ $t('manager.decision.otherMachine') }}
+							</p>
+						</template>
 					</template>
 				</MessageList>
 				<Composer
@@ -171,6 +176,7 @@
 			:devices="trust.trust?.devices ?? []"
 			:key-mismatch="trust.trust?.key_mismatch ?? []"
 			:alerts="trust.trust?.alerts ?? []"
+			:seq-gaps="trust.trust?.seq_gaps ?? []"
 			:busy="trust.busy"
 			:error="trust.error"
 			@revoke="trust.revoke"
@@ -197,6 +203,7 @@
 	import JoinConfirmDialog from './components/trust/JoinConfirmDialog.vue';
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
+	import { onManagerResync } from './api';
 	import { renderBody } from './format';
 	import { AGENT_MODELS, MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
@@ -267,12 +274,21 @@
 				);
 			},
 		},
+		data() {
+			return { unlistenResync: null as (() => void) | null };
+		},
 		mounted() {
 			void this.store.init();
 			void this.trust.init();
 			window.addEventListener('keydown', this.onGlobalKey);
+			void onManagerResync(() => void this.store.refreshActive()).then(
+				(off) => {
+					this.unlistenResync = off;
+				},
+			);
 		},
 		beforeUnmount() {
+			this.unlistenResync?.();
 			window.removeEventListener('keydown', this.onGlobalKey);
 			this.trust.dispose();
 		},
