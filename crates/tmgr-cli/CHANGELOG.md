@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New `tmgr usage machine [status|label NAME|on|off|sync]`: this machine sends its AI usage to your TMGR account for the AI usage page. Per local day, agent, model and task it sends tokens, cost, sessions and events (the task only when the run links to it unambiguously), plus the rate limit windows (percent used, reset time, plan) and the machine name (default: short hostname). Only the name and numbers are sent: never prompts, replies, code, paths or command lines, and an account label that looks like a path or an email is sent as `default`. It is on by default and runs by itself after each agent run and every 15 minutes while the runner is up (at most once per 5 minutes, today and yesterday), reading logs only when `tmgr usage consent` allows it. A limit message in a runner session ("5-hour limit reached", "Weekly limit reached") is recorded as a 100 % limit snapshot and sent at once. `tmgr usage machine off` stops it; removing the machine on the AI usage page makes the next send turn it off, and `tmgr usage machine on` brings it back. Needs the matching server version.
+
 ## 1.0.142
 
 - Manager session: `tmgr manager start` starts one manager agent per runner (Claude Code or Codex, sandboxed, ask mode only; a second one is refused as busy) and `tmgr manager status` shows it. The manager gets the `tmgr-manager` MCP tools `list_sessions`, `read_session`, `send_to_session`, `spawn_session`, `post_message` and `read_room`. Only the read-only ones are pre-approved; sending, spawning and posting still ask you. `spawn_session` is local only: a built-in agent in an already trusted folder, ask or accept-edits, never bypass or without the sandbox, at most 4 per minute. `send_to_session` refuses link sessions, team and queue workers, exited sessions, and sessions in bypass mode or without the sandbox. Text read from other sessions is treated as data, never as instructions.
