@@ -319,13 +319,13 @@ pub async fn runner_switch_agent<R: Runtime>(
     }
   }
   let resume = "Resume the old session from the session list.";
-  let reason = format!("handed to {}", target.agent().name());
+  let reason = format!("handed to {}", target.name());
   let (r, sid) = (runner.clone(), session.clone());
   blocking(move || r.stop_for_switch(&sid, &reason))
     .await
     .map_err(|e| format!("{e}. The old session got a terminate signal and may have stopped in the middle of a turn. {resume}"))?;
   let (o2, a2) = (old.clone(), all.clone());
-  let note = blocking(move || sw::prepare_note(&o2, &a2, target, &ref_text).map_err(|e| e.to_string()))
+  let note = blocking(move || sw::prepare_note(&o2, &a2, target, Some(ref_text.as_str()), &[]).map_err(|e| e.to_string()))
     .await
     .map_err(|e| format!("The old session stopped, but the new agent did not start: {e}. {resume}"))?;
   let req = api::build_switch(&info, ids, target.profile(), (&pin.0, pin.1), &caps, (&note.text, &old.id))
