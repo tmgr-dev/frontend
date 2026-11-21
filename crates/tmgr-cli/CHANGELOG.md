@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.141
+
+- Decisions: `tmgr propose comment|task|pr|tag` and the `propose_action` MCP tool send a write action to the owner as a card. The action runs only after the owner approves it on the desktop, and it runs from the exact payload that was approved or edited; the approval is bound to a SHA-256 of that payload. A rejection returns the reason. An approval returns the url, plus the sha for tags. The desktop runs the action itself: comments and tasks through the signed-in TMGR account, pull requests and tags through `gh`. Needs desktop 0.9.166. Phone approval of these cards comes later.
+- 1.0.140 was never published.
+
 ## 1.0.139
 
 - Decisions: `tmgr ask --code [NAME[:START]=]FILE|-` and the `code` field of `ask_owner` (`{file, text, start}`) show a code block on the card, next to the diffs from `--patch`. The block is at most 64 KiB and is refused, not cut, when larger. Several chosen options: `get_answer` already returns `choices` (every pick with its label and note, `choice` stays the first one); `tmgr decisions answers` and `find_answers` now include `choices` too and print them as a list, which needs a desktop with the same update (an older desktop gives `choice` and `note` only). There is no multi-select flag: the owner may pick several options on any card with 2 or more options.
