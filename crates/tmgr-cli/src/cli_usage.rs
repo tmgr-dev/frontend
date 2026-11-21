@@ -93,6 +93,11 @@ pub enum UsageCommand {
     },
     /// Upload per-task usage to TMGR (opt-in; automatic uploads only after a separate confirmation)
     Sync(SyncArgs),
+    /// Send this machine's daily totals and rate limits to TMGR for the AI usage page (on by default; `off` stops it)
+    #[command(
+        long_about = "Send this machine's AI usage to your TMGR account: per day, agent, model and task the tokens, cost, number of sessions and events, and the rate limit windows (percent used, reset time, plan). The machine is shown under its name (default: the short hostname; `tmgr usage machine label NAME` changes it). Only the name and numbers are sent: never prompts, replies, code, file paths or command lines, and an account label that looks like a path or an email is sent as `default`.\n\nIt runs by itself after each agent run and every 15 minutes while the runner is up, and only reads logs when `tmgr usage consent` allows it. `tmgr usage machine off` stops it; remove the machine on the TMGR AI usage page to delete what was sent."
+    )]
+    Machine(MachineArgs),
     /// Whether tmgr may read the Claude Code and Codex logs on this device: status, allow or deny
     #[command(
         long_about = "Whether tmgr may read the local Claude Code and Codex logs on this device. The choice is stored in the usage data folder and shared with TMGR desktop (AI Usage, Settings -> Privacy).\n\nUntil you choose, commands you run by hand (`tmgr usage`, `limits`, `task`, `scan`, `sync`) still read the logs, while TMGR desktop and background scans (autopilot, automatic sync after an agent run) do not. After `deny` nothing reads them; the commands show the stored data. Kept: counts, tokens, cost, model names, timestamps, session ids, project folders and branches, names of the tools, skills and commands used, edited file types and pull requests. Prompt and reply text is never stored. Nothing leaves this device unless you upload it with `tmgr usage sync`.\n\nWithout it, agent notifications (the Claude Code Stop hook) do not read the session transcript either. The setting also covers the runner (`tmgr runner`, `tmgr attach`, `tmgr questions`). With reading allowed, for sessions it starts the runner reads their logs for titles, questions and status, saves detected questions (your prompt and the reply text) on disk (`tmgr questions`), and may send reply text to Claude (Haiku) to classify questions. Without `allow` the runner reads none of it, even for commands you run by hand (export, summary, fork, `tmgr runner session summary`); this is an exception to the rule above that hand-run commands still read while unset. Sessions then show the plain agent name and no questions are detected; running, waiting and exited keep working. `deny` stops the next read; questions already saved stay until `tmgr usage reset` (or Forget scanned data in TMGR desktop), which deletes them too and keeps the `tmgr questions haiku` setting. If reading is allowed again, questions from sessions whose logs are still there can be detected again."
@@ -110,6 +115,41 @@ pub enum UsageCommand {
     },
     #[command(name = "statusline-hook", hide = true)]
     StatuslineHook(StatuslineHookArgs),
+}
+
+#[derive(Args)]
+#[command(args_conflicts_with_subcommands = true)]
+pub struct MachineArgs {
+    #[command(subcommand)]
+    pub command: Option<MachineCommand>,
+}
+
+#[derive(Subcommand)]
+pub enum MachineCommand {
+    /// Machine id, name, whether sending is on and when it last ran (default)
+    Status,
+    /// Rename this machine (1 to 64 characters)
+    Label {
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+    /// Turn sending on again (also after the machine was removed on the server)
+    On,
+    /// Stop sending; what was sent stays until you remove the machine on the AI usage page
+    Off,
+    /// Send now
+    Sync(MachineSyncArgs),
+}
+
+#[derive(Args)]
+pub struct MachineSyncArgs {
+    #[arg(long, hide = true)]
+    pub auto: bool,
+    /// How many local days to send (default 30; at most 120)
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(1..=120))]
+    pub days: Option<i64>,
+    #[arg(long, hide = true, value_name = "PATH")]
+    pub limit_hit_file: Option<PathBuf>,
 }
 
 #[derive(Args)]

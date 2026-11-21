@@ -48,7 +48,7 @@ Where it goes: the TMGR server this CLI is logged in to. Every member of the tas
 \n\
 Turn it off: `tmgr usage sync auto off` (or `tmgr usage sync off`). Delete what was uploaded: `tmgr usage sync forget`.\n";
 
-fn wait_override() -> Option<Duration> {
+pub(super) fn wait_override() -> Option<Duration> {
     if !cfg!(debug_assertions) {
         return None;
     }
@@ -487,11 +487,15 @@ fn error_code(body: &Value) -> &'static str {
         .unwrap_or("unknown")
 }
 
-struct AutoLock(PathBuf);
+pub(super) struct AutoLock(PathBuf);
 
 impl AutoLock {
     fn take(dir: &Path, task_id: u64) -> Option<AutoLock> {
-        let path = dir.join(format!("sync-auto-{task_id}.lock"));
+        Self::take_named(dir, &format!("sync-auto-{task_id}.lock"))
+    }
+
+    pub(super) fn take_named(dir: &Path, name: &str) -> Option<AutoLock> {
+        let path = dir.join(name);
         for _ in 0..2 {
             match std::fs::OpenOptions::new()
                 .write(true)

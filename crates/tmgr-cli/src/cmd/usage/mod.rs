@@ -1,6 +1,7 @@
 mod accounts;
 mod fmt;
 mod limits;
+mod machine;
 mod pricing;
 mod runs;
 mod statusline;
@@ -232,6 +233,7 @@ pub fn run(ctx: &Ctx, args: &UsageArgs) -> Result<Output> {
         Some(UsageCommand::Accounts { command }) => accounts::run(ctx, command.as_ref()),
         Some(UsageCommand::Pricing { command }) => pricing::run(ctx, command.as_ref()),
         Some(UsageCommand::Sync(sync_args)) => sync::run(ctx, sync_args),
+        Some(UsageCommand::Machine(machine_args)) => machine::run(ctx, machine_args),
         Some(UsageCommand::Consent { command }) => consent(*command),
         Some(UsageCommand::Reset) => reset(ctx),
         Some(UsageCommand::Statusline { command }) => statusline::run(ctx, command),
