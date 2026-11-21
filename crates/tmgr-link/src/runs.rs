@@ -236,10 +236,7 @@ pub(crate) fn run_method(
 }
 
 fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, scope: &Scope) -> Step {
-    if conn
-        .record("runs.list", args.clone(), "accepted", "")
-        .is_err()
-    {
+    if conn.record_list(args.clone()).is_err() {
         return audit_down();
     }
     let Ok(mut runs) = Runs::lock(conn.paths) else {
@@ -286,7 +283,7 @@ fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], store: &crate::st
                 && store.enrollment_of(&o.link, o.generation).as_deref() == Some(conn.enrollment)
         });
         if ours && !runs.recorded(&s.id) {
-            let _ = runs.record(RunRecord {
+            let recorded = runs.record(RunRecord {
                 run: s.id.clone(),
                 link: conn.name.to_string(),
                 enrollment: conn.enrollment.to_string(),
@@ -297,6 +294,9 @@ fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], store: &crate::st
                 created: crate::now_rfc3339(),
                 generation: s.origin.as_ref().map(|o| o.generation),
             });
+            if recorded.is_ok() {
+                let _ = conn.note("worker.run_adopted", json!({"run": s.id}));
+            }
         }
     }
 }
@@ -469,7 +469,7 @@ fn rename(
             if !reach.owned {
                 fact["via"] = json!("remote_control");
             }
-            if conn.audit.append("worker.run_renamed", fact).is_err() {
+            if conn.note("worker.run_renamed", fact).is_err() {
                 return audit_down();
             }
             Step::Reply(proto::ok(id, json!({"id": run, "name": name})))
@@ -625,7 +625,7 @@ fn paste_image(
             if !reach.owned {
                 fact["via"] = json!("remote_control");
             }
-            if conn.audit.append("worker.image_pasted", fact).is_err() {
+            if conn.note("worker.image_pasted", fact).is_err() {
                 return audit_down();
             }
             Step::Reply(proto::ok(
@@ -1105,7 +1105,7 @@ fn attach_open(
     let (why, stats) = attach_loop(conn, st, chan, session.as_mut(), &run, &access);
     session.detach();
     let _ = marker(None);
-    let _ = conn.audit.append(
+    let _ = conn.note(
         "worker.attach_end",
         json!({
             "link": conn.name,
@@ -1179,7 +1179,7 @@ fn attach_loop(
         if access.remote {
             fact["via"] = json!("remote_control");
         }
-        let ok = conn.audit.append("worker.attach_input", fact).is_ok();
+        let ok = conn.note("worker.attach_input", fact).is_ok();
         *pending = (0, 0);
         ok
     };
@@ -1309,7 +1309,7 @@ fn attach_loop(
                         if access.remote && !announced {
                             let fact =
                                 json!({"link": conn.name, "run": run, "via": "remote_control"});
-                            if conn.audit.append("worker.attach_input", fact).is_err() {
+                            if conn.note("worker.attach_input", fact).is_err() {
                                 return end(chan, "audit unavailable", &mut pending, stats);
                             }
                             announced = true;

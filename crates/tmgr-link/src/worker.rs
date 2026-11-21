@@ -7,21 +7,24 @@ use crate::sha256_hex;
 use crate::store::{Paths, Store};
 use crate::taskref::{LocalRefs, TaskResolver};
 use serde_json::{json, Value};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::net::IpAddr;
-use tmgr_core::error::Result;
+use tmgr_core::error::{Error, Result};
 use tmgr_ipc::api::SessionInfo;
 
 pub const MAX_REQUESTS: u32 = 256;
 pub const REQUESTS_PER_MINUTE: u32 = 120;
 pub const MAX_WORKERS: usize = 4;
+pub const COALESCE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct Limits {
     pub max_requests: u32,
     pub per_minute: u32,
     pub max_workers: usize,
+    pub coalesce: std::time::Duration,
 }
 
 impl Default for Limits {
@@ -30,6 +33,7 @@ impl Default for Limits {
             max_requests: MAX_REQUESTS,
             per_minute: REQUESTS_PER_MINUTE,
             max_workers: MAX_WORKERS,
+            coalesce: COALESCE,
         }
     }
 }
@@ -188,6 +192,15 @@ pub(crate) struct Conn<'a> {
     pub(crate) fingerprint: String,
     pub(crate) rt: &'a Runtime<'a>,
     hello_only: bool,
+    coalesce: std::time::Duration,
+    tally: Cell<Tally>,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Tally {
+    last: Option<std::time::Instant>,
+    gen: Option<u64>,
+    pending: u32,
 }
 
 impl Conn<'_> {
@@ -198,17 +211,68 @@ impl Conn<'_> {
         decision: &str,
         reason: &str,
     ) -> Result<()> {
-        self.audit.append(
-            "worker.request",
-            json!({
-                "link": self.name,
-                "fp": self.fingerprint,
-                "method": method,
-                "args": args,
-                "decision": decision,
-                "reason": reason,
-            }),
-        )
+        self.flush()?;
+        self.append_request(method, args, decision, reason, None)
+    }
+
+    pub(crate) fn record_list(&self, args: Value) -> Result<()> {
+        let gen = self.current_gen().ok().and_then(|g| g.ok()).map(|(_, g)| g);
+        let now = std::time::Instant::now();
+        let mut t = self.tally.get();
+        let inside = t.gen == gen
+            && t.last
+                .is_some_and(|at| now.duration_since(at) < self.coalesce);
+        if inside {
+            t.pending += 1;
+            self.tally.set(t);
+            return Ok(());
+        }
+        let skipped = (t.pending > 0).then_some(t.pending);
+        self.append_request("runs.list", args, "accepted", "", skipped)?;
+        self.tally.set(Tally {
+            last: Some(now),
+            gen,
+            pending: 0,
+        });
+        Ok(())
+    }
+
+    fn flush(&self) -> Result<()> {
+        let mut t = self.tally.get();
+        if t.pending == 0 {
+            return Ok(());
+        }
+        self.append_request("runs.list", json!({}), "accepted", "", Some(t.pending))?;
+        t.pending = 0;
+        self.tally.set(t);
+        Ok(())
+    }
+
+    pub(crate) fn note(&self, event: &str, data: Value) -> Result<()> {
+        self.flush()?;
+        self.audit.append(event, data)
+    }
+
+    fn append_request(
+        &self,
+        method: &str,
+        args: Value,
+        decision: &str,
+        reason: &str,
+        coalesced: Option<u32>,
+    ) -> Result<()> {
+        let mut data = json!({
+            "link": self.name,
+            "fp": self.fingerprint,
+            "method": method,
+            "args": args,
+            "decision": decision,
+            "reason": reason,
+        });
+        if let Some(n) = coalesced {
+            data["coalesced"] = json!(n);
+        }
+        self.audit.append("worker.request", data)
     }
 
     pub(crate) fn current(&self) -> Result<std::result::Result<Scope, &'static str>> {
@@ -243,6 +307,19 @@ pub(crate) fn say(chan: &mut dyn Channel, payload: Vec<u8>) -> bool {
     chan.send(&payload).is_ok()
 }
 
+const REFUSALS: [&str; 4] = ["busy", "audit", "not_trusted", "error"];
+
+fn refuse(code: &str) -> Error {
+    crate::forbidden(format!("refused: {code}"))
+}
+
+pub fn refusal_code(e: &Error) -> &'static str {
+    REFUSALS
+        .into_iter()
+        .find(|c| e.message == format!("refused: {c}"))
+        .unwrap_or("error")
+}
+
 pub fn serve(
     paths: &Paths,
     name: &str,
@@ -264,28 +341,29 @@ pub fn serve_with(
     rt: &Runtime,
 ) -> Result<Outcome> {
     grammar::link_name(name)?;
-    let refused = || crate::forbidden("refused");
+    let refused = || refuse("error");
     if !grammar::enrollment_id(enrollment) {
         return Err(refused());
     }
     let ssh_connection = env.ssh_connection.as_deref().ok_or_else(refused)?;
     let client = client_ip(ssh_connection).ok_or_else(refused)?;
     let store = Store::load(paths)?;
-    let leader = store.leaders.get(name).ok_or_else(refused)?;
+    let untrusted = || refuse("not_trusted");
+    let leader = store.leaders.get(name).ok_or_else(untrusted)?;
     let audit = Audit::new(&paths.audit_dir());
     if crate::follower::is_pending(paths, name) {
         let _ = audit.append(
             "worker.refused",
             json!({"link": name, "fp": leader.fingerprint, "reason": "link blocked after a failed rollback"}),
         );
-        return Err(refused());
+        return Err(untrusted());
     }
     if leader.enrollment != enrollment {
         let _ = audit.append(
             "worker.refused",
             json!({"link": name, "fp": leader.fingerprint, "reason": "enrollment mismatch"}),
         );
-        return Err(refused());
+        return Err(untrusted());
     }
     if !leader.scope.from.is_empty() && !leader.scope.from.iter().any(|c| cidr_contains(c, client))
     {
@@ -293,21 +371,21 @@ pub fn serve_with(
             "worker.refused",
             json!({"link": name, "fp": leader.fingerprint, "reason": "client address outside from"}),
         );
-        return Err(refused());
+        return Err(untrusted());
     }
     if let Some(reason) = crate::cycle::worker_refusal(paths, &store, &leader.key) {
         let _ = audit.append(
             "worker.refused",
             json!({"link": name, "fp": leader.fingerprint, "reason": reason}),
         );
-        return Err(refused());
+        return Err(untrusted());
     }
     let Some(_slot) = Slot::acquire(paths, name, limits.max_workers)? else {
         let _ = audit.append(
             "worker.busy",
             json!({"link": name, "fp": leader.fingerprint, "max_workers": limits.max_workers}),
         );
-        return Err(refused());
+        return Err(refuse("busy"));
     };
     let Ok(_registered) = crate::registry::register(paths, name, enrollment) else {
         let _ = audit.append(
@@ -325,6 +403,8 @@ pub fn serve_with(
         fingerprint: leader.fingerprint.clone(),
         rt,
         hello_only: store.jump_for.contains_key(name),
+        coalesce: limits.coalesce,
+        tally: Cell::new(Tally::default()),
     };
     let mut state = State {
         backend: None,
@@ -333,7 +413,7 @@ pub fn serve_with(
     let max_requests = limits.max_requests;
     let mut recent: std::collections::VecDeque<std::time::Instant> = Default::default();
     let original = env.original_command.as_deref();
-    conn.audit.append(
+    conn.note(
         "worker.connect",
         json!({
             "link": name,
@@ -342,7 +422,8 @@ pub fn serve_with(
             "orig_cmd_len": original.map_or(0, <[u8]>::len),
             "orig_cmd_sha256": original.map(sha256_hex),
         }),
-    )?;
+    )
+    .map_err(|_| refuse("audit"))?;
     let mut requests = 0u32;
     loop {
         let frame = match chan.recv() {
@@ -354,7 +435,7 @@ pub fn serve_with(
                     FrameError::Timeout => "timeout",
                     _ => "bad_frame",
                 };
-                let _ = conn.audit.append(
+                let _ = conn.note(
                     "worker.frame_rejected",
                     json!({"link": name, "reason": e.to_string()}),
                 );
@@ -370,7 +451,7 @@ pub fn serve_with(
             recent.pop_front();
         }
         if recent.len() >= limits.per_minute as usize {
-            let _ = conn.audit.append(
+            let _ = conn.note(
                 "worker.rate_limited",
                 json!({"link": name, "fp": conn.fingerprint, "per_minute": limits.per_minute}),
             );
@@ -383,7 +464,7 @@ pub fn serve_with(
         recent.push_back(now);
         requests += 1;
         if requests > max_requests {
-            let _ = conn.audit.append(
+            let _ = conn.note(
                 "worker.request_cap",
                 json!({"link": name, "cap": max_requests}),
             );
@@ -407,6 +488,8 @@ pub fn serve_with(
             Step::Done => break,
         }
     }
+    // SIGKILL or the watchdog exit still loses up to one window of counted reads.
+    let _ = conn.flush();
     Ok(Outcome { requests })
 }
 
@@ -531,10 +614,15 @@ fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) 
 mod tests {
     use super::*;
     use crate::proto::Framed;
+    use crate::runner::{AttachSession, OriginKilled};
     use crate::store::Leader;
+    use std::collections::VecDeque;
     use std::io::Cursor;
+    use std::time::Duration;
+    use tmgr_ipc::api::{Origin, RunCreateReq, State, StateKind};
 
     const ENR: &str = "0123456789abcdef0123456789abcdef";
+    const E2: &str = "fedcba9876543210fedcba9876543210";
 
     fn lim(n: u32) -> Limits {
         Limits {
@@ -1191,5 +1279,347 @@ mod tests {
             events(&f).pop().unwrap()["reason"],
             "link blocked after a failed rollback"
         );
+    }
+
+    struct Listing(Vec<SessionInfo>);
+
+    fn gone() -> BackendError {
+        BackendError::Unavailable("not used in this test".into())
+    }
+
+    impl Backend for Listing {
+        fn list(&mut self) -> std::result::Result<Vec<SessionInfo>, BackendError> {
+            Ok(self.0.clone())
+        }
+        fn create_run(
+            &mut self,
+            _: &RunCreateReq,
+        ) -> std::result::Result<SessionInfo, BackendError> {
+            Err(gone())
+        }
+        fn kill(&mut self, _: &str, _: &str) -> std::result::Result<(), BackendError> {
+            Err(gone())
+        }
+        fn send(&mut self, _: &str, _: &str) -> std::result::Result<(), BackendError> {
+            Err(gone())
+        }
+        fn remove(&mut self, _: &str) -> std::result::Result<(), BackendError> {
+            Err(gone())
+        }
+        fn rename(&mut self, _: &str, _: &str) -> std::result::Result<(), BackendError> {
+            Err(gone())
+        }
+        fn paste_image(
+            &mut self,
+            _: &str,
+            _: &[u8],
+            _: &str,
+            _: bool,
+        ) -> std::result::Result<(), BackendError> {
+            Err(gone())
+        }
+        fn origin_revoke(
+            &mut self,
+            _: &str,
+            _: u64,
+        ) -> std::result::Result<OriginKilled, BackendError> {
+            Err(gone())
+        }
+        fn attach(
+            &mut self,
+            _: &str,
+            _: Option<(u16, u16)>,
+        ) -> std::result::Result<Box<dyn AttachSession>, BackendError> {
+            Err(gone())
+        }
+    }
+
+    fn session(id: &str, link: &str, generation: u64) -> SessionInfo {
+        SessionInfo {
+            manager: false,
+            team: None,
+            agent_session_id: None,
+            limit: None,
+            handoff_from: None,
+            managed: false,
+            id: id.into(),
+            name: String::new(),
+            argv: vec![],
+            cwd: "/".into(),
+            profile: Some("codex".into()),
+            state: State {
+                kind: StateKind::Working,
+                since_ms: 10,
+                detail: None,
+                exit_code: None,
+            },
+            created_ms: 1,
+            cols: 80,
+            rows: 24,
+            shim_pid: 1,
+            child_pid: 2,
+            task: None,
+            bundle_sha256: None,
+            origin: Some(Origin {
+                link: link.into(),
+                generation,
+            }),
+            permission_mode: None,
+            resumed_from: None,
+            human_s: None,
+            no_sandbox: false,
+            checkpoints: None,
+            permission_cards: false,
+        }
+    }
+
+    enum Beat {
+        Wait(Duration),
+        Frame(Value),
+        Bump,
+    }
+
+    struct Paced<'a> {
+        paths: &'a Paths,
+        beats: VecDeque<Beat>,
+    }
+
+    impl Channel for Paced<'_> {
+        fn recv(&mut self) -> std::result::Result<Option<Vec<u8>>, FrameError> {
+            while let Some(beat) = self.beats.pop_front() {
+                match beat {
+                    Beat::Wait(d) => std::thread::sleep(d),
+                    Beat::Bump => Store::update(self.paths, |s| {
+                        s.generations.insert("laptop".into(), 9);
+                        Ok(())
+                    })
+                    .unwrap(),
+                    Beat::Frame(v) => return Ok(Some(serde_json::to_vec(&v).unwrap())),
+                }
+            }
+            Ok(None)
+        }
+        fn send(&mut self, _: &[u8]) -> std::result::Result<(), FrameError> {
+            Ok(())
+        }
+    }
+
+    fn req(id: u64, method: &str) -> Beat {
+        Beat::Frame(json!({"id": id, "method": method, "params": {}}))
+    }
+
+    fn paced(
+        f: &Fx,
+        beats: Vec<Beat>,
+        limits: &Limits,
+        listed: Vec<SessionInfo>,
+    ) -> Result<Outcome> {
+        let connect = move |_: Option<std::time::Instant>| {
+            Ok(Box::new(Listing(listed.clone())) as Box<dyn Backend>)
+        };
+        let rt = Runtime {
+            connect: &connect,
+            resolver: &LocalRefs,
+            titles: &NoTitles,
+        };
+        let mut chan = Paced {
+            paths: &f.paths,
+            beats: beats.into(),
+        };
+        serve_with(&f.paths, "laptop", ENR, &env(), &mut chan, limits, &rt)
+    }
+
+    fn requests(f: &Fx) -> Vec<Value> {
+        events(f)
+            .into_iter()
+            .filter(|e| e["event"] == "worker.request")
+            .collect()
+    }
+
+    fn list_entries(f: &Fx) -> Vec<Value> {
+        requests(f)
+            .into_iter()
+            .filter(|e| e["method"] == "runs.list")
+            .collect()
+    }
+
+    fn window(d: Duration) -> Limits {
+        Limits {
+            coalesce: d,
+            ..Limits::default()
+        }
+    }
+
+    #[test]
+    fn runs_list_polls_in_one_window_are_audited_once_and_the_rest_counted_at_close() {
+        let f = fx();
+        let beats = vec![
+            req(1, "runs.list"),
+            req(2, "runs.list"),
+            req(3, "runs.list"),
+        ];
+        assert_eq!(
+            paced(&f, beats, &window(Duration::from_secs(3600)), vec![])
+                .unwrap()
+                .requests,
+            3
+        );
+        let lists = list_entries(&f);
+        assert_eq!(lists.len(), 2);
+        assert!(lists[0].get("coalesced").is_none());
+        assert_eq!(lists[1]["decision"], "accepted");
+        assert_eq!(lists[1]["coalesced"], 2);
+    }
+
+    #[test]
+    fn the_first_poll_after_the_window_carries_the_skipped_count() {
+        let f = fx();
+        let beats = vec![
+            req(1, "runs.list"),
+            req(2, "runs.list"),
+            req(3, "runs.list"),
+            Beat::Wait(Duration::from_millis(1300)),
+            req(4, "runs.list"),
+        ];
+        paced(&f, beats, &window(Duration::from_secs(1)), vec![]).unwrap();
+        let lists = list_entries(&f);
+        assert_eq!(lists.len(), 2);
+        assert!(lists[0].get("coalesced").is_none());
+        assert_eq!(lists[1]["coalesced"], 2);
+    }
+
+    #[test]
+    fn any_other_audited_entry_flushes_the_skipped_count_first() {
+        let f = fx();
+        let beats = vec![
+            req(1, "runs.list"),
+            req(2, "runs.list"),
+            Beat::Frame(json!({"id": 3, "method": "hello", "params": {"protocol": 1}})),
+            req(4, "runs.list"),
+            req(5, "nope"),
+        ];
+        paced(&f, beats, &window(Duration::from_secs(3600)), vec![]).unwrap();
+        let seen: Vec<(String, Value)> = requests(&f)
+            .iter()
+            .map(|e| {
+                (
+                    e["method"].as_str().unwrap().to_string(),
+                    e.get("coalesced").cloned().unwrap_or(Value::Null),
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("runs.list".into(), Value::Null),
+                ("runs.list".into(), json!(1)),
+                ("hello".into(), Value::Null),
+                ("runs.list".into(), json!(1)),
+                ("nope".into(), Value::Null),
+            ]
+        );
+    }
+
+    #[test]
+    fn hello_and_run_methods_stay_one_entry_per_request() {
+        let f = fx();
+        let beats = vec![
+            Beat::Frame(json!({"id": 1, "method": "hello", "params": {"protocol": 1}})),
+            Beat::Frame(json!({"id": 2, "method": "runs.get", "params": {"run": "nope"}})),
+            Beat::Frame(json!({"id": 3, "method": "hello", "params": {"protocol": 1}})),
+            Beat::Frame(json!({"id": 4, "method": "runs.get", "params": {"run": "nope"}})),
+        ];
+        paced(&f, beats, &window(Duration::from_secs(3600)), vec![]).unwrap();
+        let entries = requests(&f);
+        assert_eq!(entries.len(), 4);
+        assert!(entries.iter().all(|e| e.get("coalesced").is_none()));
+    }
+
+    #[test]
+    fn a_new_store_generation_restarts_the_window() {
+        let f = fx();
+        let beats = vec![
+            req(1, "runs.list"),
+            req(2, "runs.list"),
+            Beat::Bump,
+            req(3, "runs.list"),
+        ];
+        paced(&f, beats, &window(Duration::from_secs(3600)), vec![]).unwrap();
+        let lists = list_entries(&f);
+        assert_eq!(lists.len(), 2);
+        assert_eq!(lists[1]["coalesced"], 1);
+    }
+
+    #[test]
+    fn an_adopted_run_is_audited_once() {
+        let f = fx();
+        let beats = vec![req(1, "runs.list"), req(2, "runs.list")];
+        paced(
+            &f,
+            beats,
+            &Limits::default(),
+            vec![session("run-1", "laptop", 0)],
+        )
+        .unwrap();
+        let adopted: Vec<Value> = events(&f)
+            .into_iter()
+            .filter(|e| e["event"] == "worker.run_adopted")
+            .collect();
+        assert_eq!(adopted.len(), 1);
+        assert_eq!(adopted[0]["run"], "run-1");
+    }
+
+    fn refusal(f: &Fx, name: &str, enrollment: &str, env: &Env, limits: &Limits) -> Error {
+        let mut sink = Vec::new();
+        let mut chan = Framed::new(Cursor::new(vec![]), &mut sink);
+        serve_with(
+            &f.paths,
+            name,
+            enrollment,
+            env,
+            &mut chan,
+            limits,
+            &Runtime::none(),
+        )
+        .unwrap_err()
+    }
+
+    #[test]
+    fn refusals_carry_one_whitelisted_code() {
+        let f = fx();
+        let held = Slot::acquire(&f.paths, "laptop", 1).unwrap().unwrap();
+        let one_slot = Limits {
+            max_workers: 1,
+            ..Limits::default()
+        };
+        assert_eq!(
+            refusal_code(&refusal(&f, "laptop", ENR, &env(), &one_slot)),
+            "busy"
+        );
+        drop(held);
+        std::fs::remove_dir_all(f.paths.audit_dir()).unwrap();
+        std::fs::write(f.paths.audit_dir(), b"not a directory").unwrap();
+        assert_eq!(
+            refusal_code(&refusal(&f, "laptop", ENR, &env(), &Limits::default())),
+            "audit"
+        );
+        std::fs::remove_file(f.paths.audit_dir()).unwrap();
+        assert_eq!(
+            refusal_code(&refusal(&f, "other", ENR, &env(), &Limits::default())),
+            "not_trusted"
+        );
+        assert_eq!(
+            refusal_code(&refusal(&f, "laptop", E2, &env(), &Limits::default())),
+            "not_trusted"
+        );
+        let no_ssh = Env {
+            ssh_connection: None,
+            original_command: None,
+        };
+        assert_eq!(
+            refusal_code(&refusal(&f, "laptop", ENR, &no_ssh, &Limits::default())),
+            "error"
+        );
+        assert_eq!(refusal_code(&crate::forbidden("refused")), "error");
     }
 }
