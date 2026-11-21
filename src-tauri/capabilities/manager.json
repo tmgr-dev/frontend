@@ -1,0 +1,23 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "manager",
+	"description": "Manager chat window: only its own commands, inline Decisions cards, window basics and event listening.",
+	"windows": ["manager"],
+	"permissions": [
+		"core:event:allow-listen",
+		"core:event:allow-unlisten",
+		"core:window:allow-minimize",
+		"core:window:allow-toggle-maximize",
+		"core:window:allow-internal-toggle-maximize",
+		"core:window:allow-close",
+		"core:window:allow-start-dragging",
+		"allow-manager-rooms",
+		"allow-manager-history",
+		"allow-manager-send",
+		"allow-manager-search",
+		"allow-manager-commands",
+		"allow-decisions-get",
+		"allow-decisions-answer",
+		"allow-decisions-open-link"
+	]
+}
