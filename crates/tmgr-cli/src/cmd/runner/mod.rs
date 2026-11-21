@@ -36,6 +36,7 @@ mod gate;
 mod gc;
 mod local;
 pub mod manager;
+mod manager_machine;
 pub(crate) mod marked_queue;
 pub(crate) mod menu;
 mod observe;

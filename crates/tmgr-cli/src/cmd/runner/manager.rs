@@ -22,6 +22,11 @@ pub enum ManagerCmd {
     Start(ManagerStartArgs),
     /// [experimental] Show the running manager session, if any
     Status,
+    /// [experimental] Pair machines for the cross-machine manager RPC
+    Machine {
+        #[command(subcommand)]
+        cmd: super::manager_machine::MachineCmd,
+    },
 }
 
 #[derive(Args)]
@@ -73,6 +78,7 @@ pub(super) fn run(o: &Opts, cmd: &ManagerCmd) -> Result<i32> {
     match cmd {
         ManagerCmd::Start(a) => start(o, a),
         ManagerCmd::Status => status(o),
+        ManagerCmd::Machine { cmd } => super::manager_machine::run(o, cmd),
     }
 }
 
