@@ -5450,6 +5450,12 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     if let Err(e) = humantime::prune_records(&cfg.dir, now_ms() / 1000) {
         log(&format!("human time: prune failed: {e}"));
     }
+    match crate::handoff_store::HandoffStore::open(&cfg.dir) {
+        Ok(store) => {
+            store.prune(now_ms(), crate::handoff_store::RETENTION_MS);
+        }
+        Err(e) => log(&format!("handoff: prune skipped: {e}")),
+    }
     let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
     clock.load_totals(&humantime::read_records(&cfg.dir));
     let saved_config_dirs = load_client_config_dirs(&cfg.dir, &config_dir_forbidden(&cfg));
