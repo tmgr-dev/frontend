@@ -366,7 +366,7 @@ mod tests {
             e.rt.manager_unrestricted(CLIENT_CLI, &body(json!({})))
                 .unwrap_err();
         assert_eq!(err.code, ErrorCode::Forbidden);
-        assert_eq!(err.message, UNSUPPORTED_OS);
+        assert_eq!(err.msg, UNSUPPORTED_OS);
         assert_eq!(e.calls.load(Ordering::SeqCst), 0);
     }
 
