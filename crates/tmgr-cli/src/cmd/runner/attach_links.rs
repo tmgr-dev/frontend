@@ -119,11 +119,18 @@ pub(super) fn parse_scope(hello: &Value) -> Option<LinkScope> {
     Some(LinkScope { repos, agents, max })
 }
 
+pub(super) const REFUSED_AUDIT: &str = "audit log unavailable";
+pub(super) const REFUSED_VERSION: &str = "version mismatch";
+pub(super) const REFUSED_START: &str = "the follower could not start the worker";
+pub(super) const REFUSED_UPDATE: &str = "update tmgr on the follower to see why";
+pub(super) const REFUSED_OTHER: &str = "refused by the follower";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DialErr {
     Offline(String),
     HostKeyChanged,
     NoAccess(String),
+    Busy,
     Refused(String),
     Removed,
     Unavailable(String),
@@ -135,7 +142,8 @@ impl DialErr {
             DialErr::Offline(_) => format!("{link} is offline"),
             DialErr::HostKeyChanged => format!("{link}: the host key changed"),
             DialErr::NoAccess(_) => format!("{link}: no access"),
-            DialErr::Refused(_) => format!("{link} is busy: no free connection slot"),
+            DialErr::Busy => format!("{link} is busy: no free connection slot"),
+            DialErr::Refused(m) => format!("{link} refused: {m}"),
             DialErr::Removed => format!("{link} is no longer linked"),
             DialErr::Unavailable(m) => format!("{link}: {m}"),
         }
@@ -155,8 +163,24 @@ pub(super) fn classify(e: &Error) -> DialErr {
         || m.contains("revoked")
     {
         DialErr::NoAccess(e.message.clone())
-    } else if m.contains("worker: refused") || m.contains("refused the handshake") {
-        DialErr::Refused(e.message.clone())
+    } else if m.contains("worker: refused: busy") || m.contains("refused the handshake: busy") {
+        DialErr::Busy
+    } else if m.contains("worker: refused: not_trusted") {
+        DialErr::NoAccess(e.message.clone())
+    } else if m.contains("worker: refused: audit")
+        || m.contains("refused the handshake: audit_unavailable")
+    {
+        DialErr::Refused(REFUSED_AUDIT.into())
+    } else if m.contains("refused the handshake: protocol_mismatch")
+        || m.contains("another protocol version")
+    {
+        DialErr::Refused(REFUSED_VERSION.into())
+    } else if m.contains("worker: refused: error") {
+        DialErr::Refused(REFUSED_START.into())
+    } else if m.contains("worker: refused:") || m.contains("refused the handshake") {
+        DialErr::Refused(REFUSED_OTHER.into())
+    } else if m.contains("worker: refused") {
+        DialErr::Refused(REFUSED_UPDATE.into())
     } else {
         DialErr::Offline(e.message.clone())
     }
@@ -452,6 +476,7 @@ pub(super) enum LinkState {
     Connecting,
     Online { latency_ms: u64 },
     Busy,
+    Refused(String),
     Offline,
     NoAccess,
     HostKeyChanged,
@@ -1361,6 +1386,7 @@ enum Exit {
     Shutdown,
     Planned,
     Lost,
+    Refused(String),
     Denied,
     Retry,
     Removed,
@@ -1449,16 +1475,13 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
             Err(e) => {
                 quiet = true;
                 let keep_going = match e {
-                    DialErr::Offline(_) | DialErr::Refused(_) => {
-                        let busy = matches!(e, DialErr::Refused(_));
-                        inner.set_state(
-                            link,
-                            if busy {
-                                LinkState::Busy
-                            } else {
-                                LinkState::Offline
-                            },
-                        );
+                    DialErr::Offline(_) | DialErr::Busy | DialErr::Refused(_) => {
+                        let state = match &e {
+                            DialErr::Busy => LinkState::Busy,
+                            DialErr::Refused(why) => LinkState::Refused(why.clone()),
+                            _ => LinkState::Offline,
+                        };
+                        inner.set_state(link, state);
                         let go = pause(inner, link, cmds, Some(backoff));
                         backoff = (backoff * 2).min(t.backoff_max);
                         go
@@ -1519,6 +1542,14 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
             Exit::Retry => quiet = false,
             Exit::Lost => {
                 inner.set_state(link, LinkState::Offline);
+                quiet = true;
+                if !pause(inner, link, cmds, Some(backoff)) {
+                    return;
+                }
+                backoff = (backoff * 2).min(t.backoff_max);
+            }
+            Exit::Refused(why) => {
+                inner.set_state(link, LinkState::Refused(why));
                 quiet = true;
                 if !pause(inner, link, cmds, Some(backoff)) {
                     return;
@@ -1610,6 +1641,7 @@ fn session(
                 inner.set_state(link, LinkState::NoAccess);
                 return Exit::Denied;
             }
+            Err(e) if remote::audit_unavailable(&e) => return Exit::Refused(REFUSED_AUDIT.into()),
             Err(_) => return Exit::Lost,
         }
         match cmds.recv_timeout(t.poll) {
@@ -2149,7 +2181,7 @@ pub(super) mod tests {
     use std::collections::VecDeque;
     use tmgr_ipc::api::{Attr, Color, Line, Span, State, StateKind};
     use tmgr_link::attach::{encode_closed, encode_event, encode_notice, encode_screen};
-    use tmgr_link::proto::{read_frame, write_frame, MAX_FRAME};
+    use tmgr_link::proto::{read_frame, write_frame, Reply, MAX_FRAME};
 
     pub(crate) const A: &str = "s_aaaaaaaaaa";
     pub(crate) const B: &str = "s_bbbbbbbbbb";
@@ -2210,6 +2242,7 @@ pub(super) mod tests {
         pub(crate) dials: Vec<Instant>,
         pub(crate) runs: Vec<Value>,
         pub(crate) list_err: Option<Kind>,
+        pub(crate) audit: bool,
         pub(crate) hang: bool,
         pub(crate) dial_delay: Duration,
         pub(crate) bind: u32,
@@ -2373,6 +2406,7 @@ pub(super) mod tests {
 
     enum Plan {
         Hang,
+        Audit,
         Fail(Kind),
         Failed(Kind, String),
         Ok(Value),
@@ -2385,6 +2419,7 @@ pub(super) mod tests {
                 l.calls.push((method.to_string(), params.clone()));
                 match method {
                     "runs.list" if l.hang => Plan::Hang,
+                    "runs.list" if l.audit => Plan::Audit,
                     "runs.list" => match l.list_err {
                         Some(k) => Plan::Fail(k),
                         None => Plan::Ok(json!({"runs": l.runs})),
@@ -2430,6 +2465,11 @@ pub(super) mod tests {
                     ))
                 }
                 Plan::Fail(k) => Err(Error::new(k, "scripted failure")),
+                Plan::Audit => Err(remote::check(Reply::Err {
+                    code: "audit_unavailable".into(),
+                    message: "the audit log is full".into(),
+                })
+                .unwrap_err()),
                 Plan::Failed(k, m) => Err(Error::new(k, m)),
                 Plan::Ok(v) => Ok(v),
             }
@@ -2725,16 +2765,50 @@ pub(super) mod tests {
             e(Kind::Forbidden, "refused"),
             DialErr::NoAccess(_)
         ));
-        assert!(matches!(
+        assert_eq!(
             e(Kind::Link, "ssh failed: tmgr worker: refused"),
-            DialErr::Refused(_)
-        ));
-        assert!(matches!(
+            DialErr::Refused(REFUSED_UPDATE.into())
+        );
+        assert_eq!(
+            e(Kind::Link, "ssh failed: tmgr worker: refused: newcode"),
+            DialErr::Refused(REFUSED_OTHER.into())
+        );
+        assert_eq!(
+            e(Kind::Link, "ssh failed: tmgr worker: refused: busy"),
+            DialErr::Busy
+        );
+        assert_eq!(
             e(
                 Kind::Link,
                 "the follower refused the handshake: busy: slots"
             ),
-            DialErr::Refused(_)
+            DialErr::Busy
+        );
+        assert_eq!(
+            e(Kind::Link, "ssh failed: tmgr worker: refused: audit"),
+            DialErr::Refused(REFUSED_AUDIT.into())
+        );
+        assert_eq!(
+            e(
+                Kind::Link,
+                "the follower refused the handshake: audit_unavailable: full"
+            ),
+            DialErr::Refused(REFUSED_AUDIT.into())
+        );
+        assert_eq!(
+            e(
+                Kind::Link,
+                "the follower refused the handshake: protocol_mismatch: another protocol version"
+            ),
+            DialErr::Refused(REFUSED_VERSION.into())
+        );
+        assert_eq!(
+            e(Kind::Link, "ssh failed: tmgr worker: refused: error"),
+            DialErr::Refused(REFUSED_START.into())
+        );
+        assert!(matches!(
+            e(Kind::Link, "ssh failed: tmgr worker: refused: not_trusted"),
+            DialErr::NoAccess(_)
         ));
         for text in [
             "the follower did not answer in time",
@@ -2983,9 +3057,7 @@ pub(super) mod tests {
     #[test]
     fn dial_refusals_map_to_states_and_hostkey_stops_until_retry() {
         let mut r = rig(&["spark", "lab"], fast(), |f| {
-            f.with("spark", |l| {
-                l.dial = VecDeque::from([Err(DialErr::Refused("slots".into()))])
-            });
+            f.with("spark", |l| l.dial = VecDeque::from([Err(DialErr::Busy)]));
             f.with("lab", |l| {
                 l.dial = VecDeque::from([Err(DialErr::HostKeyChanged)])
             });
@@ -3009,6 +3081,28 @@ pub(super) mod tests {
         assert_eq!(r.fake.with("lab", |l| l.dials.len()), 1);
         r.hub.retry_all();
         r.online("lab");
+    }
+
+    #[test]
+    fn a_refused_link_shows_its_reason_and_retries() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.with("spark", |l| {
+                l.dial = VecDeque::from([Err(DialErr::Refused(REFUSED_AUDIT.into()))])
+            });
+        });
+        r.state_is("spark", LinkState::Refused(REFUSED_AUDIT.into()));
+        r.online("spark");
+    }
+
+    #[test]
+    fn a_poll_the_follower_refuses_for_its_audit_log_shows_refused_and_recovers() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| l.audit = true);
+        });
+        r.state_is("spark", LinkState::Refused(REFUSED_AUDIT.into()));
+        r.fake.with("spark", |l| l.audit = false);
+        r.online("spark");
     }
 
     #[test]

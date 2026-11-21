@@ -1051,6 +1051,7 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
             let label = match st.machine_of(&p.session) {
                 Some(m) => match st.machine_state(m) {
                     Some(MachineState::Busy) => format!("{m} is busy"),
+                    Some(MachineState::Refused(why)) => format!("{m} refused: {why}"),
                     Some(MachineState::Offline) => format!("{m} is offline"),
                     Some(MachineState::NoAccess) => format!("no access to {m}"),
                     Some(MachineState::HostKeyChanged) => {

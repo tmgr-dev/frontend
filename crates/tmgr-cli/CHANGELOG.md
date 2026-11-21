@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.145
+
+- Fixed: a full link audit log no longer makes the follower refuse every connection, which attach showed as the machine being "busy". Old audit files are now pruned once they are older than 30 days (a `log_pruned` entry keeps `tmgr link audit --verify` passing); a log whose oldest file is younger than that still refuses new requests, and the hint tells you not to delete files by hand.
+- The worker audits repeated read-only `runs.list` polls once per minute with a `coalesced` count instead of one entry per call (about 17k entries a day from an attached leader). Every other request, rejection and failure is still audited one by one, and a run adopted by a link gets its own `worker.run_adopted` entry.
+- `tmgr attach` shows why a machine refuses: "refused: audit log unavailable", "version mismatch" and similar. "busy" now means only that no connection slot is free. A follower running an older tmgr is shown as "refused: update tmgr on the follower to see why". Update the follower (and the leader) to see the real reasons.
+- Downgrading: an older `tmgr link audit --verify` reports an audit log that was pruned as tampered. Update both machines.
+
 ## 1.0.144
 
 - New `tmgr chat join` and `tmgr chat status`: this machine's runner joins your manager chat. `join` reads the join code from a trusted desktop or phone (stdin or a hidden prompt, never the command line) and waits up to 10 minutes for that device to approve; `status` shows the join state, relay device id and number of trusted devices, never keys or tokens. Once joined, the runner relays chat end-to-end encrypted: owner messages from trusted devices reach the sessions on this machine, and session messages go back to your devices. Needs the matching server version (`chat:devices` sign-in scope).

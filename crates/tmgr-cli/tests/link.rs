@@ -708,7 +708,7 @@ fn worker_needs_ssh_connection_and_a_trusted_link() {
         .unwrap();
     assert_eq!(out.status.code(), Some(5));
     assert!(out.stdout.is_empty());
-    assert!(err_text(&out).trim() == "tmgr worker: refused");
+    assert!(err_text(&out).trim() == "tmgr worker: refused: error");
     let out = f
         .tmgr()
         .args(["worker", "--link", "stranger", "--enrollment", ENR])

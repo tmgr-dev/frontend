@@ -371,7 +371,11 @@ pub fn classify_stderr(text: &str, timed_out: bool) -> String {
         return "the follower refused this link key (not trusted there, or from= does not match)"
             .to_string();
     }
-    let first = text.lines().map(str::trim).find(|l| !l.is_empty());
+    let worker = text
+        .lines()
+        .map(str::trim)
+        .find(|l| l.contains("tmgr worker: refused"));
+    let first = worker.or_else(|| text.lines().map(str::trim).find(|l| !l.is_empty()));
     match first {
         Some(l) => format!(
             "ssh failed: {}",
@@ -787,6 +791,14 @@ mod tests {
             false,
         );
         assert!(weird.contains("Connection refused") && !weird.contains('\u{1b}'));
+    }
+
+    #[test]
+    fn a_worker_refusal_line_wins_over_ssh_noise() {
+        let text = "Warning: Permanently added 'spark' (ED25519) to the list of known hosts.\ntmgr worker: refused: busy\n";
+        let msg = classify_stderr(text, false);
+        assert!(msg.contains("tmgr worker: refused: busy"), "{msg}");
+        assert!(!msg.contains("Permanently added"), "{msg}");
     }
 
     #[test]

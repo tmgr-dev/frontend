@@ -49,6 +49,7 @@ pub(super) fn machine_state(state: &LinkState) -> Option<MachineState> {
             latency_ms: *latency_ms,
         },
         LinkState::Busy => MachineState::Busy,
+        LinkState::Refused(why) => MachineState::Refused(why.clone()),
         LinkState::Offline => MachineState::Offline,
         LinkState::NoAccess => MachineState::NoAccess,
         LinkState::HostKeyChanged => MachineState::HostKeyChanged,
@@ -676,6 +677,7 @@ impl Remote {
 #[cfg(test)]
 mod tests {
     use super::super::attach_links::tests::{fast, push, state, Fake, FakeDialer, A, B, C, LOCAL};
+    use super::super::attach_links::REFUSED_AUDIT;
     use super::super::attach_links::{DialErr, Permit};
     use super::*;
     use serde_json::json;
@@ -810,6 +812,14 @@ mod tests {
         f.set_runs("lab", &[C]);
         f.with("spark", |l| l.input = true);
         f.with("lab", |l| l.input = true);
+    }
+
+    #[test]
+    fn a_refused_link_maps_to_a_refused_machine_with_its_reason() {
+        assert_eq!(
+            machine_state(&LinkState::Refused(REFUSED_AUDIT.into())),
+            Some(MachineState::Refused(REFUSED_AUDIT.into()))
+        );
     }
 
     #[test]

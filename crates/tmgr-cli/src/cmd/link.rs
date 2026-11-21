@@ -702,12 +702,14 @@ fn audit(ctx: &Ctx, paths: &Paths, a: &AuditArgs) -> Result<Output> {
             ))
             .hint("run it again after the next entry; a crash between append and anchor causes this")),
             Ok(v) => Ok(Output::new(
-                json!({"ok": true, "entries": v.entries, "files": v.files}),
+                json!({"ok": true, "entries": v.entries, "files": v.files, "pruned_through": v.pruned_through}),
                 format!(
-                    "{} audit chain intact: {} entries in {} file(s)",
+                    "{} audit chain intact: {} entries in {} file(s){}",
                     ctx.style.good("✓"),
                     v.entries,
-                    v.files
+                    v.files,
+                    v.pruned_through
+                        .map_or(String::new(), |n| format!(", older entries pruned through seq {n}"))
                 ),
             )),
             Err(t) => Err(Error::internal(format!(
@@ -755,7 +757,11 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
             };
             ctx.style.accent(&tail)
         };
-        return format!("{when} from {link}  {}  {verdict}", request_what(e));
+        return format!(
+            "{when} from {link}  {}  {verdict}{}",
+            request_what(e),
+            coalesced_note(e)
+        );
     }
     if let Some(line) = remote_line(e, &when, &link) {
         return line;
@@ -768,6 +774,13 @@ fn format_entry(ctx: &Ctx, e: &Value) -> String {
     )
     .trim_end()
     .to_string()
+}
+
+fn coalesced_note(e: &Value) -> String {
+    e.get("coalesced")
+        .and_then(Value::as_u64)
+        .filter(|n| *n > 0)
+        .map_or(String::new(), |n| format!("  +{n} coalesced"))
 }
 
 fn other_fields(e: &Value) -> String {
@@ -848,6 +861,16 @@ fn remote_line(e: &Value, when: &str, link: &str) -> Option<String> {
                 .trim_end()
                 .to_string(),
             )
+        }
+        "log_pruned" => {
+            let through = e.get("through_seq").and_then(Value::as_u64).unwrap_or(0);
+            let files = e
+                .get("files")
+                .and_then(Value::as_array)
+                .map_or(0, |f| f.len());
+            Some(format!(
+                "{when} log_pruned old audit entries removed through seq {through} ({files} file(s))"
+            ))
         }
         "link.scope.closed" => {
             let num = |k: &str| e.get(k).and_then(Value::as_u64).unwrap_or(0);
@@ -934,6 +957,21 @@ mod tests {
         assert!(remote_line(&e, "t", "macbook")
             .unwrap()
             .contains("3 messages"));
+    }
+
+    #[test]
+    fn log_pruned_audit_shows_the_cut_and_the_file_count() {
+        let e = json!({"event": "log_pruned", "through_seq": 120, "through_hash": "ab", "files": ["audit.120.jsonl", "audit.60.jsonl"]});
+        let line = remote_line(&e, "t", "").unwrap();
+        assert!(line.contains("through seq 120"));
+        assert!(line.contains("2 file(s)"));
+    }
+
+    #[test]
+    fn coalesced_requests_show_the_count() {
+        assert_eq!(coalesced_note(&json!({"coalesced": 11})), "  +11 coalesced");
+        assert_eq!(coalesced_note(&json!({"coalesced": 0})), "");
+        assert_eq!(coalesced_note(&json!({})), "");
     }
 
     #[test]

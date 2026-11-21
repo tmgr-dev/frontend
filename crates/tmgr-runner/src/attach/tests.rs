@@ -9390,6 +9390,13 @@ fn snapshot_remote_pane_title_and_placeholder() {
     assert!(out.contains("lab's host key changed - check tmgr link"));
     assert_eq!(v.machine_label("lab"), "lab · host key changed");
     assert!(v.machine_dimmed("lab"));
+    v.machines[1].state = MachineState::Refused("audit log unavailable".into());
+    assert!(draw(&v, &screens(), 140, 22).contains("lab refused: audit log unavailable"));
+    assert_eq!(
+        v.machine_label("lab"),
+        "lab · refused: audit log unavailable"
+    );
+    assert!(v.machine_dimmed("lab"));
 }
 
 #[test]
