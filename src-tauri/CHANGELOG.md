@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.165 — 2026-11-21
+
+- Plugins: cloud plugins now receive task events (`task.created`, `task.updated`, `task.deleted`) from changes made on other clients. A plugin never receives the events of its own writes, including writes it made on a colleague's client.
+
 ## 0.9.164 — 2026-11-21
 
 - Decisions: `tmgr decisions answers` and the agent tool `find_answers` now return every chosen option with its label and note (`choices`), next to the first pick in `choice`. Needs CLI 1.0.139 to read them.
