@@ -337,6 +337,7 @@ mod tests {
             limit: None,
             handoff_from: None,
             managed: false,
+            manager: false,
         }
     }
 

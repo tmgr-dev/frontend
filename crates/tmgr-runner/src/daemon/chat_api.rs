@@ -136,9 +136,11 @@ mod tests {
             version: "test".into(),
             max_sessions: 4,
         };
+        let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         Arc::new(Runner {
             rename_lock: Mutex::new(()),
-            chat: chat::Chat::open(&cfg.dir),
+            chat: chat_store.clone(),
+            mgr: crate::manager::State::new(Box::new(chat_store)),
             cfg,
             secret: String::new(),
             started: Instant::now(),
