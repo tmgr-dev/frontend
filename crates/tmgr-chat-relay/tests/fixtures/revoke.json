@@ -1,0 +1,32 @@
+{
+  "description": "revoke signed by R for T; the json string is the POST /revocations statement",
+  "inputs": {
+    "user_id": 42,
+    "revoker": {
+      "device_id": "00000000-0000-4000-8000-00000000000a",
+      "keys": {
+        "sign_secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+        "kex_secret_hex": "6565656565656565656565656565656565656565656565656565656565656565",
+        "sign_pub": "BG/wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW/AdxT9sCwx+7ni0DG/30lqW4igrmJzvccFEo=",
+        "kex_pub": "BCA5SAYO/Wge2vfxq0nV9jHxEi0uDLRSos5UkEl7Mt8iU3K4C4blpxCmTotNkjGEFKF5R5uWgn8zed4kcWOUkIQ=",
+        "fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233"
+      }
+    },
+    "target": {
+      "device_id": "00000000-0000-4000-8000-00000000000c",
+      "keys": {
+        "sign_secret_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+        "kex_secret_hex": "6767676767676767676767676767676767676767676767676767676767676767",
+        "sign_pub": "BFkat3HrvP1tnLkJTRBlKK3Rpp1EwsH2J/CJ7Fi5xhrfn05qvw0EXAxpOjxorXyXynK+ZN70om/s0mPdmKkngPA=",
+        "kex_pub": "BCOUtFaYS4PqeFn3oPtkddU7T9VSNuz08zGDwdcZ7hBoOmtom0Y6gjZlpAtjc1ZHwpMPPEsdh4fUGZv8LbhJnmE=",
+        "fp": "ad85dabab2dc1296b78aee9eefd9f40e7703927ca3103eccbdb70683f2516234"
+      }
+    },
+    "issued_at_ms": 1800000000000
+  },
+  "outputs": {
+    "statement": "tmgr-chat-revoke:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000c:ad85dabab2dc1296b78aee9eefd9f40e7703927ca3103eccbdb70683f2516234:1800000000000",
+    "sig": "MEUCIQC7SlkIWWcZzpZGxCZDpY7QOJHwrjDGVMHiVUJBbDoUMgIgJZAxWOVn0L+xfC300LYkjjF9o18GqvlfnHnKDfHTsu4=",
+    "revoke_json": "{\"v\":1,\"statement\":\"tmgr-chat-revoke:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000c:ad85dabab2dc1296b78aee9eefd9f40e7703927ca3103eccbdb70683f2516234:1800000000000\",\"sig\":\"MEUCIQC7SlkIWWcZzpZGxCZDpY7QOJHwrjDGVMHiVUJBbDoUMgIgJZAxWOVn0L+xfC300LYkjjF9o18GqvlfnHnKDfHTsu4=\"}"
+  }
+}
