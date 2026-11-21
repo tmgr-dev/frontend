@@ -56,9 +56,11 @@ export const statusTone = (state?: string): StatusTone =>
 	TONES.find((tone) => tone === state) ?? 'idle';
 
 export const shownKind = (message: Pick<ChatMessage, 'kind'>): ShownKind =>
-	message.kind === 'text' || message.kind === 'decision'
-		? message.kind
-		: 'system';
+	message.kind === 'text'
+		? 'text'
+		: message.kind === 'decision'
+			? 'decision'
+			: 'system';
 
 export const groupMessages = (messages: ChatMessage[]): TimelineItem[] => {
 	const items: TimelineItem[] = [];

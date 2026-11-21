@@ -19,7 +19,7 @@
 			</button>
 			<ChatList
 				:rooms="store.rooms"
-				:active-key="store.activeKey"
+				:active-key="store.activeKey ?? undefined"
 				:unread="store.unreadByRoom"
 				@select="store.select"
 			/>
@@ -262,6 +262,10 @@
 			},
 			async addFiles(files: File[]) {
 				for (const file of files) {
+					if (file.size > MAX_FILE_BYTES) {
+						this.store.error = `${file.name} is larger than 25 MiB`;
+						continue;
+					}
 					this.store.addAttachment({
 						name: file.name,
 						type: file.type || 'application/octet-stream',
