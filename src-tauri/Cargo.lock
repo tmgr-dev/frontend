@@ -5455,11 +5455,14 @@ name = "tmgr-chat-relay"
 version = "1.0.143"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "getrandom 0.3.4",
+ "log",
  "p256",
  "serde",
  "serde_json",
  "subtle",
+ "tmgr-ipc",
  "tmgr-phone",
 ]
 
