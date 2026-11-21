@@ -123,6 +123,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
 | `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
 | `profiles_login_check.v1` | `profiles.login_check` |
+| `chat.v1` | `chat.rooms`, `chat.history`, `chat.send`, `chat.search`, `chat.subscribe` |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
@@ -672,13 +673,52 @@ runs in the same folder, a subfolder or a parent folder. It first stores the cur
 deletes what that stored state holds byte for byte; anything else is listed in `left_as_is`.
 Link workers and the desktop get `forbidden`: restore is started on this machine, from the CLI.
 
+### Chat
+
+Capability `chat.v1`. The message envelope (`ChatMessage`, `RoomRef`, `RoomInfo`, the request types and
+the limits) is defined in `tmgr_ipc::chat` and `schema/chat-message.v1.json`. Only `cli` and `desktop`
+may call these methods; every other client gets `forbidden`.
+
+| method | params | result |
+|---|---|---|
+| `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`), then one room per session (`title` = session name, `agent` = profile, `state`, `last`); `context_pct` and `context_tokens` are not filled yet |
+| `chat.history` | `{room, before?, limit?}` (`limit` 1 to 500, default 500) | `[ChatMessage]`, oldest first: the newest `limit` messages whose `id` sorts before `before` |
+| `chat.send` | `{room, body_md, reply_to?, attachments?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
+| `chat.search` | `{query, room?, limit?}` (`query` 1 to 256 characters, `limit` default 50, max 500) | `[ChatMessage]`, newest first: case-insensitive substring match on `body_md` |
+| `chat.subscribe` | none | `null`; the connection then also receives a `chat` push |
+
+Errors: `invalid_params` (bad room, a room of another machine, empty body, bad query), `busy` (the target
+session is not at its prompt), `forbidden`.
+
+`room.machine` must be this runner's machine id: `mx_` and 16 lowercase hex characters, created once in the
+runner directory (`machine.id`, mode 0600). It is never a hostname. Read it from the `room.machine` of the first
+`chat.rooms` entry.
+
+`chat.send` into a session room whose session is running types the body at the agent's prompt as a bracketed
+paste followed by Enter, exactly like `sessions.send` with `at_prompt`, and answers `busy` (and stores nothing)
+when the agent is not at its prompt. A room without a running target (an exited session, or the Manager room
+while no manager session exists) only stores the message.
+
+The `chat` push is `{"type":"chat","message":{ChatMessage}}`, sent for every message appended to any room
+(owner messages, captured agent replies). A client that does not know the type decodes it as an unknown push
+and ignores it. A subscriber that falls behind is closed with `closed: client too slow`.
+
+Replies of Claude Code and Codex sessions are read from the agent's own conversation log about every 3
+seconds and stored as messages from `{kind: session, id: <session id>, machine, agent: <profile>}`: only
+visible assistant text, never tool calls or results. A log that was already larger than 256 KiB when the
+runner first saw it is not replayed. Sessions of other agents are not captured.
+
+Storage is `chat/<room key>.jsonl` in the runner directory (mode 0700, files 0600), one JSON message per
+line, append only. The key is `manager` or `session-<session id>`. At 16 MiB a room file is renamed to
+`<key>.jsonl.1` (one older generation is kept) and a new file starts. Unreadable lines are skipped.
+
 ## 6. Who may call what
 
 `hello.client` is declared by the client. The runner uses it for these rules:
 `sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
 `origin` on `runs.create` is accepted only from, and required of, `worker`
 (section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`;
-`autopilot.start` and `orchestrator.create` only from `cli`; `autopilot.status`, `autopilot.control` and `autopilot.log` from `cli` and `desktop` (the `suspend` command from `cli` only); `trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
+`autopilot.start` and `orchestrator.create` only from `cli`; `chat.*` only from `cli` and `desktop`; `autopilot.status`, `autopilot.control` and `autopilot.log` from `cli` and `desktop` (the `suspend` command from `cli` only); `trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
 "Pre-accepted folder trust", "Trusted folders"). This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user

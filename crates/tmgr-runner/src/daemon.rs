@@ -1,6 +1,7 @@
 use crate::agentwork;
 use crate::autopilot;
 use crate::bundle;
+use crate::chat;
 use crate::client::Client;
 use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
@@ -62,6 +63,7 @@ use tmgr_ipc::proto::{
 };
 use tmgr_ipc::{auth, secret, server};
 
+mod chat_api;
 mod checkpoints;
 
 const MAX_CONNS: usize = 64;
@@ -1771,6 +1773,7 @@ struct Conn {
     attached: AtomicBool,
     client: String,
     pending_rx: Mutex<Option<Receiver<Value>>>,
+    chat_rx: Mutex<Option<Receiver<tmgr_ipc::chat::ChatPush>>>,
 }
 
 impl Conn {
@@ -1786,6 +1789,7 @@ struct Rejects {
 }
 
 struct Runner {
+    chat: chat::Chat,
     rename_lock: Mutex<()>,
     cfg: RunnerConfig,
     secret: String,
@@ -2885,6 +2889,7 @@ impl Runner {
             method::LAYOUT_SET => self.layout_set(p).map(|_| Value::Null),
             method::ATTACH_OPEN => self.attach_open(conn, p),
             method::ATTACH_SET => self.attach_set(conn, p),
+            m if m.starts_with("chat.") => self.chat_dispatch(conn, m, p),
             m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
         }
     }
@@ -5190,6 +5195,7 @@ impl Runner {
             attached: AtomicBool::new(false),
             client: hello.client,
             pending_rx: Mutex::new(None),
+            chat_rx: Mutex::new(None),
         });
         let closed = |reason: &str| {
             let _ = conn.write(&ServerMsg::Closed {
@@ -5219,6 +5225,11 @@ impl Runner {
                         if let Some(rx) = pending {
                             let (rt, conn) = (self.clone(), conn.clone());
                             thread::spawn(move || rt.pusher(&conn, rx));
+                        }
+                        let chat_rx = lock(&conn.chat_rx).take();
+                        if let Some(rx) = chat_rx {
+                            let (rt, conn) = (self.clone(), conn.clone());
+                            thread::spawn(move || rt.chat_pusher(&conn, rx));
                         }
                         if stop {
                             log("stop requested");
@@ -5349,6 +5360,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     clock.load_totals(&humantime::read_records(&cfg.dir));
     let saved_config_dirs = load_client_config_dirs(&cfg.dir, &config_dir_forbidden(&cfg));
     let rt = Arc::new(Runner {
+        chat: chat::Chat::open(&cfg.dir),
         rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
         secret,
@@ -5415,6 +5427,9 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             ticker.autopilot.tick(&ticker.cfg.self_exe);
         }
     });
+
+    let capturer = rt.clone();
+    thread::spawn(move || capturer.chat_capture_loop());
 
     let revoker = rt.clone();
     thread::spawn(move || {
@@ -5938,6 +5953,7 @@ mod tests {
             max_sessions: 4,
         };
         let rt = Runner {
+            chat: chat::Chat::open(&cfg.dir),
             rename_lock: Mutex::new(()),
             cfg,
             secret: String::new(),

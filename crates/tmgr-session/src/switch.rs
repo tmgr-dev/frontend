@@ -155,7 +155,7 @@ fn roots_of(s: &SessionInfo) -> Result<Roots> {
     Ok(Roots::for_home(&home))
 }
 
-fn log_of(s: &SessionInfo, agent: Agent) -> Result<PathBuf> {
+pub fn log_of(s: &SessionInfo, agent: Agent) -> Result<PathBuf> {
     let roots = roots_of(s)?;
     if s.no_sandbox {
         let id = s.agent_session_id.as_deref().filter(|i| is_uuid(i));
