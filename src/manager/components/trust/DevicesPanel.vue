@@ -46,6 +46,32 @@
 					<span :class="['pill', `tr-${d.state}`]">{{
 						$t(`manager.trust.state.${d.state}`)
 					}}</span>
+					<template v-if="d.can_confirm_kind && d.state === 'trusted'">
+						<button
+							type="button"
+							class="btn small"
+							:aria-label="
+								$t('manager.trust.devices.confirmDesktopLabel', {
+									name: d.label,
+								})
+							"
+							:disabled="busy"
+							@click="$emit('confirmKind', d.id, 'desktop')"
+						>
+							{{ $t('manager.trust.devices.confirmDesktop') }}
+						</button>
+						<button
+							type="button"
+							class="btn small"
+							:aria-label="
+								$t('manager.trust.devices.confirmPhoneLabel', { name: d.label })
+							"
+							:disabled="busy"
+							@click="$emit('confirmKind', d.id, 'mobile')"
+						>
+							{{ $t('manager.trust.devices.confirmPhone') }}
+						</button>
+					</template>
 					<button
 						v-if="!d.is_self && d.state !== 'revoked'"
 						type="button"
@@ -95,6 +121,9 @@
 		join_code_reused: 'joinCodeReused',
 		room_conflict: 'roomConflict',
 		kind_conflict: 'kindConflict',
+		kind_unknown: 'kindUnknown',
+		trust_unstable: 'trustUnstable',
+		root_kind_unknown: 'rootKindUnknown',
 	};
 
 	export default defineComponent({
@@ -107,7 +136,7 @@
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
 		},
-		emits: ['revoke', 'reset', 'close'],
+		emits: ['revoke', 'confirmKind', 'reset', 'close'],
 		computed: {
 			alertKinds(): string[] {
 				return [...new Set(this.alerts.map((a) => a.kind))];

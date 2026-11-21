@@ -13,6 +13,7 @@ tmgr-ipc.workspace = true
 tmgr-fuzzy.workspace = true
 tmgr-approval.workspace = true
 tmgr-usage.workspace = true
+tmgr-chat-relay.workspace = true
 tmgr-session.workspace = true
 serde.workspace = true
 serde_json.workspace = true

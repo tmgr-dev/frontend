@@ -8,11 +8,11 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tmgr_chat_relay::api::{self, Directory, Msg, Request};
-use tmgr_chat_relay::fields::{check_device_id, check_fp};
+use tmgr_chat_relay::fields::{check_device_id, check_device_kind, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
-  decode_join_code, encode_join_code, join_mac, parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set, verify_join_mac,
-  verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, RevokeStatement, Trusted,
+  decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
+  trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex};
@@ -36,6 +36,8 @@ const MAX_REVOKES_PER_DEVICE: usize = 50;
 const MAX_ALERTS: usize = 50;
 const ALERT_TTL_MS: u64 = 7 * 24 * 3600 * 1000;
 const AUTO_REVOKE_SILENCE_MS: u64 = 30 * 24 * 3600 * 1000;
+const KINDS_V: u32 = 3;
+pub const OLD_CODE_MSG: &str = "This join code is from an older app version. Update the desktop or mobile app that showed it and generate a new code.";
 const BUSY_PREFIX: &str = "relay is busy, retry in ";
 
 #[cfg(test)]
@@ -98,6 +100,12 @@ struct JoinRec {
   fp: String,
   kind: String,
   requested_at_ms: u64,
+  #[serde(default = "join_v1")]
+  v: u8,
+}
+
+fn join_v1() -> u8 {
+  1
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -136,7 +144,32 @@ struct State {
   #[serde(default)]
   kinds: BTreeMap<String, String>,
   #[serde(default)]
+  kinds_v: u32,
+  #[serde(default)]
+  legacy_unknown: Vec<String>,
+  #[serde(default)]
+  self_intro: bool,
+  #[serde(default)]
+  republish_intros: bool,
+  #[serde(default)]
   bindings: BTreeMap<String, String>,
+}
+
+impl State {
+  fn kind_of(&self, id: &str, fp: &str) -> Option<&str> {
+    self.kinds.get(&kind_key(id, fp)).map(String::as_str)
+  }
+
+  fn kind_of_trusted(&self, id: &str) -> Option<&str> {
+    let d = self.trusted.iter().find(|d| d.id == id)?;
+    self.kind_of(&d.id, &d.fp)
+  }
+
+  fn pinned_for_other_fp(&self, id: &str, fp: &str) -> bool {
+    let prefix = kind_key(id, "");
+    let own = kind_key(id, fp);
+    self.kinds.keys().any(|k| k.starts_with(&prefix) && *k != own)
+  }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -168,10 +201,11 @@ struct Core {
   last_write: u64,
   acked: u64,
   hold_since: BTreeMap<String, u64>,
+  pass_cap: Option<usize>,
 }
 
 fn trust_key(st: &State) -> String {
-  json!([st.base, st.trusted, st.revoked, st.pending_joins, st.pending_revokes, st.declined, st.seq_gaps, st.alerts, st.joined, st.kinds, st.bindings]).to_string()
+  json!([st.base, st.trusted, st.revoked, st.pending_joins, st.pending_revokes, st.declined, st.seq_gaps, st.alerts, st.joined, st.kinds, st.bindings, st.legacy_unknown]).to_string()
 }
 
 fn dev_from(d: &api::Device) -> Dev {
@@ -208,7 +242,7 @@ fn validate_chat(m: &ChatMessage) -> Result<(), String> {
   Ok(())
 }
 
-fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
+fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_base: bool) {
   let no_devices: &[api::Device] = &[];
   let dir_devices = dir.map_or(no_devices, |d| d.devices.as_slice());
   let mut intros: Vec<String> = c.st.intros.clone();
@@ -229,7 +263,30 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
   entries.extend(
     c.st.trusted.iter().chain(c.st.base.iter()).map(|d| DirEntry { device_id: d.id.clone(), sign_pub_b64: d.sign_pub.clone(), kex_pub_b64: d.kex_pub.clone() }),
   );
-  let set = trusted_set(uid, &pins, &c.st.revoked, &intros, &entries);
+  let assumed: BTreeSet<String> =
+    if from_base { c.st.base.iter().map(|d| kind_key(&d.id, &d.fp)).filter(|k| !c.st.kinds.contains_key(k)).collect() } else { BTreeSet::new() };
+  let own = own_key(c);
+  let mut set = trusted_set_by_kind(
+    uid,
+    &pins,
+    &c.st.revoked,
+    &intros,
+    &entries,
+    Some(&KindCtx { known: &c.st.kinds, own: own.as_deref(), assumed: &assumed, max_passes: c.pass_cap }),
+  );
+  if from_base {
+    let before: BTreeSet<String> = c.st.trusted.iter().map(|d| kind_key(&d.id, &d.fp)).collect();
+    set = restrict_to_before(set, &before, &c.st.kinds);
+  }
+  for (id, fp, kind) in &set.kinds {
+    c.st.kinds.insert(kind_key(id, fp), kind.clone());
+  }
+  for (id, _) in &set.conflicts {
+    record_alert_once(c, "kind_conflict", id, now);
+  }
+  for id in &set.unstable {
+    record_alert_once(c, "trust_unstable", id, now);
+  }
   let mut out: Vec<Dev> = Vec::new();
   for t in &set.trusted {
     let in_dir = dir_devices.iter().find(|d| d.device_id == t.device_id && fingerprint(&d.sign_pub, &d.kex_pub) == t.fp);
@@ -258,55 +315,109 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
     .take(MAX_INTROS)
     .collect();
   c.st.trusted = out;
-}
-
-const JOIN_CODE_KIND_REQUIRED: bool = false;
-
-fn code_json(code: &str) -> Result<(String, serde_json::Map<String, Value>), String> {
-  let enc = code.strip_prefix(tmgr_chat_relay::trust::JOIN_PREFIX).ok_or("the join code is not valid")?;
-  let raw = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, enc).map_err(|_| "the join code is not valid")?;
-  match serde_json::from_slice::<Value>(&raw) {
-    Ok(Value::Object(m)) => Ok((tmgr_chat_relay::trust::JOIN_PREFIX.to_owned(), m)),
-    _ => Err("the join code is not valid".into()),
-  }
-}
-
-fn code_encode(prefix: &str, m: &serde_json::Map<String, Value>) -> String {
-  format!("{prefix}{}", base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, Value::Object(m.clone()).to_string()))
-}
-
-fn split_code_kind(code: &str) -> Result<(String, Option<String>), String> {
-  let (prefix, mut m) = code_json(code)?;
-  let kind = m.remove("kind").and_then(|k| k.as_str().map(str::to_owned));
-  Ok((code_encode(&prefix, &m), kind))
-}
-
-fn add_code_kind(code: &str, kind: &str) -> Result<String, String> {
-  let (prefix, mut m) = code_json(code)?;
-  m.insert("kind".into(), Value::String(kind.to_owned()));
-  Ok(code_encode(&prefix, &m))
-}
-
-fn pin_kind(c: &mut Core, id: &str, kind: &str, now: u64) {
-  match c.st.kinds.get(id) {
-    None => {
-      c.st.kinds.insert(id.to_owned(), kind.to_owned());
-    }
-    Some(k) if k == kind => {}
-    Some(_) => record_alert(c, "kind_conflict", id, now),
-  }
-}
-
-fn apply_intro_kinds(c: &mut Core, now: u64) {
-  let signed: Vec<(String, String)> = c
+  let own_id = c.identity.as_ref().map(|i| i.device_id.clone());
+  let unknown: Vec<String> = c
     .st
     .trusted
     .iter()
-    .flat_map(|d| c.st.intros.iter().filter_map(|i| parse_intro(i).ok()).filter(|p| p.parsed.target_id == d.id && p.parsed.target_fp == d.fp).map(|p| (d.id.clone(), p.parsed.target_kind.clone())))
+    .filter(|d| Some(&d.id) != own_id.as_ref() && !c.st.base.iter().any(|b| b.id == d.id) && c.st.kind_of(&d.id, &d.fp).is_none())
+    .map(|d| d.id.clone())
     .collect();
-  for (id, kind) in signed {
-    pin_kind(c, &id, &kind, now);
+  for id in unknown {
+    record_alert_once(c, "kind_unknown", &id, now);
   }
+}
+
+fn own_key(c: &Core) -> Option<String> {
+  let (id, keys) = (c.identity.as_ref()?, c.keys.as_ref()?);
+  Some(kind_key(&id.device_id, &keys.fingerprint()))
+}
+
+fn all_intros(c: &Core) -> Vec<String> {
+  let mut intros = c.st.intros.clone();
+  for i in c.dir.iter().flat_map(|d| d.devices.iter()).flat_map(|d| d.intros.iter()) {
+    if !intros.contains(i) {
+      intros.push(i.clone());
+    }
+  }
+  intros
+}
+
+fn gate_blocked(c: &Core, uid: u64) -> Vec<Dev> {
+  let trusted: Vec<Trusted> = c.st.trusted.iter().map(to_trusted).collect();
+  let markers = v2_self_markers(uid, &trusted, &c.st.kinds, &all_intros(c));
+  let own = own_key(c);
+  let ids = gate_blockers(&trusted, &c.st.kinds, own.as_deref(), &markers);
+  c.st.trusted.iter().filter(|d| ids.contains(&d.id)).cloned().collect()
+}
+
+fn runner_trusted(c: &Core) -> bool {
+  c.st.trusted.iter().any(|d| c.st.kind_of(&d.id, &d.fp) == Some("runner"))
+}
+
+fn pin_kind(c: &mut Core, id: &str, fp: &str, kind: &str, now: u64) -> bool {
+  if check_device_kind(kind).is_err() {
+    return false;
+  }
+  match c.st.kind_of(id, fp) {
+    None => {
+      c.st.kinds.insert(kind_key(id, fp), kind.to_owned());
+      true
+    }
+    Some(k) if k == kind => true,
+    Some(k) => {
+      let lowered = lowers_kind(k, kind);
+      if lowered {
+        c.st.kinds.insert(kind_key(id, fp), kind.to_owned());
+      }
+      record_alert_once(c, "kind_conflict", id, now);
+      lowered
+    }
+  }
+}
+
+fn backfill_self(c: &mut Core, kind: &str) {
+  if let (Some(id), Some(keys)) = (&c.identity, &c.keys) {
+    c.st.kinds.insert(kind_key(&id.device_id, &keys.fingerprint()), kind.to_owned());
+  }
+}
+
+fn migrate_kinds(c: &mut Core, own_kind: &str) {
+  if c.st.kinds_v >= KINDS_V {
+    return;
+  }
+  let old = std::mem::take(&mut c.st.kinds);
+  c.st.kinds_v = KINDS_V;
+  c.st.republish_intros = true;
+  backfill_self(c, own_kind);
+  let own = c.identity.as_ref().map(|i| i.device_id.clone());
+  let devs: Vec<Dev> = c.st.trusted.iter().chain(c.st.base.iter()).cloned().collect();
+  for d in devs.iter().filter(|d| Some(&d.id) != own.as_ref()) {
+    let legacy = old.get(&d.id).or_else(|| old.get(&kind_key(&d.id, &d.fp))).filter(|k| matches!(k.as_str(), "desktop" | "mobile"));
+    match legacy {
+      Some(k) => {
+        c.st.kinds.insert(kind_key(&d.id, &d.fp), k.clone());
+      }
+      None => {
+        let key = kind_key(&d.id, &d.fp);
+        if !c.st.legacy_unknown.contains(&key) {
+          c.st.legacy_unknown.push(key);
+        }
+      }
+    }
+  }
+}
+
+fn unknown_roots(c: &Core, except_fp: Option<&str>) -> Vec<String> {
+  let own = c.identity.as_ref().map(|i| i.device_id.as_str());
+  c.st
+    .base
+    .iter()
+    .filter(|d| {
+      Some(d.id.as_str()) != own && Some(d.fp.as_str()) != except_fp && !c.st.revoked.contains(&d.fp) && c.st.kind_of(&d.id, &d.fp).is_none()
+    })
+    .map(|d| d.id.clone())
+    .collect()
 }
 
 fn stamp_pins(c: &mut Core, now: u64) {
@@ -317,6 +428,17 @@ fn stamp_pins(c: &mut Core, now: u64) {
 
 fn record_alert(c: &mut Core, kind: &str, device_id: &str, now: u64) {
   c.st.alerts.retain(|a| now.saturating_sub(a.at_ms) < ALERT_TTL_MS && !(a.kind == kind && a.device_id == device_id));
+  c.st.alerts.push(TrustAlert { kind: kind.to_owned(), device_id: device_id.to_owned(), at_ms: now });
+  if c.st.alerts.len() > MAX_ALERTS {
+    c.st.alerts.remove(0);
+  }
+}
+
+fn record_alert_once(c: &mut Core, kind: &str, device_id: &str, now: u64) {
+  c.st.alerts.retain(|a| now.saturating_sub(a.at_ms) < ALERT_TTL_MS);
+  if c.st.alerts.iter().any(|a| a.kind == kind && a.device_id == device_id) {
+    return;
+  }
   c.st.alerts.push(TrustAlert { kind: kind.to_owned(), device_id: device_id.to_owned(), at_ms: now });
   if c.st.alerts.len() > MAX_ALERTS {
     c.st.alerts.remove(0);
@@ -337,16 +459,31 @@ fn unseen_for_30_days(c: &Core, device_id: &str, now: u64) -> bool {
   since.is_some_and(|t| now.saturating_sub(t) > AUTO_REVOKE_SILENCE_MS)
 }
 
-fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label: &str) {
+fn apply_revoke(c: &mut Core, uid: u64, now: u64, target_id: &str, target_fp: &str, label: &str) {
   if !c.st.revoked.iter().any(|f| f == target_fp) {
     c.st.revoked.push(target_fp.to_owned());
   }
-  let kind = c.st.trusted.iter().find(|d| d.fp == target_fp).map(|d| d.kind.clone()).unwrap_or_default();
+  let kind = c
+    .st
+    .kind_of(target_id, target_fp)
+    .map(str::to_owned)
+    .or_else(|| c.st.trusted.iter().find(|d| d.fp == target_fp).map(|d| d.kind.clone()))
+    .unwrap_or_default();
+  c.st.kinds.remove(&kind_key(target_id, target_fp));
   c.st.revoked_devs.push(Dev { id: target_id.to_owned(), kind, label: label.to_owned(), fp: target_fp.to_owned(), sign_pub: String::new(), kex_pub: String::new() });
   c.st.pending_revokes.retain(|p| p.target_fp != target_fp);
   c.st.pending_joins.retain(|j| j.fp != target_fp);
+  for id in unknown_roots(c, Some(target_fp)) {
+    record_alert_once(c, "root_kind_unknown", &id, now);
+  }
+  let before: Vec<Dev> = c.st.trusted.clone();
   let dir = c.dir.clone();
-  recompute(c, dir.as_ref(), uid, true);
+  recompute(c, dir.as_ref(), uid, now, true);
+  for d in before {
+    if !c.st.trusted.iter().any(|t| t.id == d.id && t.fp == d.fp) {
+      c.st.kinds.remove(&kind_key(&d.id, &d.fp));
+    }
+  }
 }
 
 fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option<&str>, budget: &mut BTreeMap<String, usize>) {
@@ -372,7 +509,7 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
   let target_label = c.st.trusted.iter().find(|d| d.fp == p.target_fp).map(|d| d.label.clone()).unwrap_or_default();
   let aims_at_us = own_fp.as_deref() == Some(p.target_fp.as_str());
   if p.revoker_fp == p.target_fp || own_fp.as_deref() == Some(p.revoker_fp.as_str()) || (!aims_at_us && unseen_for_30_days(c, &p.target_id, now)) {
-    apply_revoke(c, uid, &p.target_id, &p.target_fp, &target_label);
+    apply_revoke(c, uid, now, &p.target_id, &p.target_fp, &target_label);
   } else {
     c.st.pending_revokes.push(PendingRevoke {
       statement_id: sid,
@@ -418,6 +555,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   pub fn with_kind(mut self, kind: &str) -> Self {
     self.kind = kind.to_owned();
+    let c = self.core.get_mut().unwrap_or_else(|p| p.into_inner());
+    backfill_self(c, kind);
     self
   }
 
@@ -427,7 +566,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn lock(&self) -> MutexGuard<'_, Core> {
-    self.core.lock().unwrap_or_else(|p| p.into_inner())
+    let mut g = self.core.lock().unwrap_or_else(|p| p.into_inner());
+    if g.identity.is_some() && g.st.kinds_v < KINDS_V {
+      migrate_kinds(&mut g, &self.kind);
+    }
+    g
   }
 
   fn now(&self) -> u64 {
@@ -479,6 +622,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn ensure_registered(&self, c: &mut Core) -> Result<(), String> {
+    backfill_self(c, &self.kind);
     if c.identity.is_some() {
       return Ok(());
     }
@@ -498,7 +642,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.identity = Some(identity);
     c.keys = Some(keys);
     c.st = State { base: vec![me.clone()], trusted: vec![me.clone()], joined: true, ..State::default() };
-    c.st.kinds.insert(me.id, self.kind.clone());
+    c.st.kinds_v = KINDS_V;
+    c.st.kinds.insert(kind_key(&me.id, &me.fp), self.kind.clone());
     c.log.clear();
     c.log_dirty = true;
     c.acked = 0;
@@ -521,13 +666,20 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     if !c.st.joined {
       return Ok(());
     }
-    recompute(c, Some(&dir), self.cfg.user_id, false);
+    backfill_self(c, &self.kind);
     let now = self.now();
-    apply_intro_kinds(c, now);
+    recompute(c, Some(&dir), self.cfg.user_id, now, false);
+    for id in unknown_roots(c, None) {
+      record_alert_once(c, "root_kind_unknown", &id, now);
+    }
     stamp_pins(c, now);
     let mut budget = BTreeMap::new();
     for r in &dir.revocations {
       ingest_revoke(c, self.cfg.user_id, now, &r.statement, Some(&r.target_fp), &mut budget);
+    }
+    if (c.st.republish_intros || !c.st.self_intro) && self.publish_intros(c).is_ok() {
+      c.st.republish_intros = false;
+      c.st.self_intro = true;
     }
     Ok(())
   }
@@ -566,32 +718,43 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(())
   }
 
-  fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
+  fn intro_json(&self, c: &Core, version: u8, target: (&str, &str, &str)) -> Result<String, String> {
     let (id, keys) = Self::own(c)?;
-    let now = self.now();
-    let mut reqs = Vec::new();
-    for t in c.st.trusted.iter().filter(|t| t.id != id.device_id) {
-      let Some(kind) = c.st.kinds.get(&t.id) else { continue };
-      let st = IntroStatement {
-        user_id: self.cfg.user_id,
-        introducer_fp: keys.fingerprint(),
-        target_id: t.id.clone(),
-        target_fp: t.fp.clone(),
-        target_kind: kind.clone(),
-        issued_at_ms: now,
-      };
-      let json = sign_intro(keys, &id.device_id, &st).map_err(err)?;
-      reqs.push(api::put_intro(&t.id, &json).map_err(err)?);
+    let st = IntroStatement {
+      version,
+      user_id: self.cfg.user_id,
+      introducer_fp: keys.fingerprint(),
+      target_id: target.0.to_owned(),
+      target_fp: target.1.to_owned(),
+      target_kind: target.2.to_owned(),
+      issued_at_ms: self.now(),
+    };
+    sign_intro(keys, &id.device_id, &st).map_err(err)
+  }
+
+  fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
+    if self.kind == "runner" {
+      return Ok(());
     }
-    for r in reqs {
-      self.call(c, r)?;
+    let (id, keys) = Self::own(c)?;
+    let (own_id, own_fp) = (id.device_id.clone(), keys.fingerprint());
+    let mut signed = Vec::new();
+    for t in c.st.trusted.iter().filter(|t| t.id != own_id) {
+      let Some(kind) = c.st.kind_of(&t.id, &t.fp) else { continue };
+      signed.push((t.id.clone(), self.intro_json(c, 2, (&t.id, &t.fp, kind))?));
+    }
+    signed.push((own_id.clone(), self.intro_json(c, 2, (&own_id, &own_fp, &self.kind))?));
+    for (target, json) in signed {
+      self.call(c, api::put_intro(&target, &json).map_err(err)?)?;
     }
     Ok(())
   }
 
   fn finish_join(&self, c: &mut Core) -> Result<(), String> {
     self.sync_dir(c)?;
-    self.publish_intros(c)
+    self.publish_intros(c)?;
+    c.st.self_intro = true;
+    Ok(())
   }
 
   pub fn open_join_code(&self) -> Result<String, String> {
@@ -602,8 +765,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let mut secret = [0u8; 32];
     getrandom::fill(&mut secret).map_err(err)?;
     let exp_ms = self.now() + JOIN_TTL_MS;
-    let code = JoinCode { user_id: self.cfg.user_id, device_id: id.device_id.clone(), fp: keys.fingerprint(), secret, exp_ms };
-    let text = add_code_kind(&encode_join_code(&code).map_err(err)?, &self.kind)?;
+    let code = JoinCode { version: 2, user_id: self.cfg.user_id, device_id: id.device_id.clone(), fp: keys.fingerprint(), kind: Some(self.kind.clone()), secret, exp_ms };
+    let text = encode_join_code(&code).map_err(err)?;
     c.st.join_code = Some(OpenCode { secret: b64(&secret), exp_ms });
     self.save_now(c)?;
     Ok(text)
@@ -612,11 +775,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   pub fn join_with_code(&self, code: &str) -> Result<(), String> {
     let mut g = self.lock();
     let c = &mut *g;
-    let (stripped, code_kind) = split_code_kind(code.trim())?;
-    if code_kind.is_none() && JOIN_CODE_KIND_REQUIRED {
-      return Err("the join code is not valid".into());
+    let code = decode_join_code(code.trim()).map_err(|_| "the join code is not valid".to_owned())?;
+    if code.version < 2 && self.kind == "runner" {
+      return Err(OLD_CODE_MSG.into());
     }
-    let code = decode_join_code(&stripped).map_err(err)?;
     if code.user_id != self.cfg.user_id || code.is_expired(self.now()) {
       return Err("the join code is not valid".into());
     }
@@ -630,18 +792,23 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       .iter()
       .find(|d| d.device_id == code.device_id && fingerprint(&d.sign_pub, &d.kex_pub) == code.fp)
       .ok_or_else(|| "the device of the join code was not found".to_owned())?;
-    if code_kind.as_deref().is_some_and(|k| k != p.kind) {
+    if code.kind.as_deref().is_some_and(|k| k != p.kind) {
       return Err("the join code does not match the device".into());
     }
     let pdev = dev_from(p);
     let (id, keys) = Self::own(c)?;
     let mac = join_mac(
       &code.secret,
-      &JoinMacInput { user_id: self.cfg.user_id, p_fp: &pdev.fp, n_id: &id.device_id, n_fp: &keys.fingerprint(), n_kind: &self.kind, label: &self.cfg.label },
+      &JoinMacInput { version: code.version, user_id: self.cfg.user_id, p_fp: &pdev.fp, n_id: &id.device_id, n_fp: &keys.fingerprint(), n_kind: &self.kind, label: &self.cfg.label },
     )
     .map_err(err)?;
-    if let Some(k) = &code_kind {
-      pin_kind(c, &pdev.id, k, self.now());
+    if c.st.pinned_for_other_fp(&pdev.id, &pdev.fp) {
+      return Err("the device id was seen with other keys".into());
+    }
+    let key = kind_key(&pdev.id, &pdev.fp);
+    let inserted = code.kind.is_some() && !c.st.kinds.contains_key(&key);
+    if let Some(k) = &code.kind {
+      pin_kind(c, &pdev.id, &pdev.fp, k, self.now());
     }
     c.st.base.push(pdev.clone());
     c.st.trusted.push(pdev.clone());
@@ -650,7 +817,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let msg_id = random_msg_id("join").map_err(err)?;
     let res = self.seal_and_post(c, "join", &msg_id, &payload, std::slice::from_ref(&pdev), true);
     if res.is_err() {
-      c.st.kinds.remove(&pdev.id);
+      if inserted {
+        c.st.kinds.remove(&key);
+      }
       c.st.base.retain(|d| d.id != pdev.id);
       c.st.trusted.retain(|d| d.id != pdev.id);
       c.st.joined = true;
@@ -691,11 +860,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn authorized_author(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) -> bool {
-    let kind = c.st.kinds.get(from).map(String::as_str);
+    let kind = c.st.kind_of_trusted(from).map(str::to_owned);
     match msg.author.kind.as_str() {
-      "owner" => matches!(kind, Some("desktop" | "mobile")),
+      "owner" => matches!(kind.as_deref(), Some("desktop" | "mobile")),
       "manager" | "session" | "system" => {
-        if kind != Some("runner") || msg.author.machine.as_ref().is_some_and(|m| *m != msg.room.machine) {
+        if kind.as_deref() != Some("runner") || msg.author.machine.as_ref().is_some_and(|m| *m != msg.room.machine) {
           return false;
         }
         let machine = &msg.room.machine;
@@ -758,13 +927,22 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         if entry.label != label || c.st.revoked.contains(&opened.from_fp) {
           return None;
         }
-        let input = JoinMacInput { user_id: self.cfg.user_id, p_fp: &own_fp, n_id: &opened.from, n_fp: &opened.from_fp, n_kind: &entry.kind, label: &label };
-        verify_join_mac(&secret, &input, mac).ok()?;
+        let input = |version| JoinMacInput { version, user_id: self.cfg.user_id, p_fp: &own_fp, n_id: &opened.from, n_fp: &opened.from_fp, n_kind: &entry.kind, label: &label };
+        let v = [2u8, 1].into_iter().find(|v| verify_join_mac(&secret, &input(*v), mac).is_ok())?;
         c.st.join_code = None;
         c.st.pending_joins.retain(|j| j.device_id != opened.from);
-        c.st.pending_joins.push(JoinRec { device_id: opened.from.clone(), label, fp: opened.from_fp.clone(), kind: entry.kind.clone(), requested_at_ms: now });
+        c.st.pending_joins.push(JoinRec { device_id: opened.from.clone(), label, fp: opened.from_fp.clone(), kind: entry.kind.clone(), requested_at_ms: now, v });
       }
       "join_ok" if sender_trusted && !c.st.joined && c.st.base.iter().any(|d| d.id == opened.from) => {
+        let root = c.st.base.iter().find(|d| d.id == opened.from)?.clone();
+        let kind = opened.payload.get("kind").and_then(Value::as_str);
+        if kind.is_some_and(|k| check_device_kind(k).is_err()) {
+          return None;
+        }
+        if c.st.pinned_for_other_fp(&root.id, &root.fp) {
+          record_alert_once(c, "kind_conflict", &root.id, now);
+          return None;
+        }
         for fp in opened.payload.get("revoked").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
           if check_fp(fp).is_ok() && !c.st.revoked.iter().any(|r| r == fp) {
             c.st.revoked.push(fp.to_owned());
@@ -772,8 +950,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         }
         let revoked = c.st.revoked.clone();
         c.st.trusted.retain(|d| !revoked.contains(&d.fp));
-        if let Some(k) = opened.payload.get("kind").and_then(Value::as_str) {
-          pin_kind(c, &opened.from, k, now);
+        if let Some(k) = kind {
+          pin_kind(c, &root.id, &root.fp, k, now);
         }
         c.st.joined = true;
         c.joined_now = true;
@@ -955,7 +1133,10 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   fn trust_state(&self) -> Result<TrustState, String> {
     let g = self.lock();
     let own_id = g.identity.as_ref().map(|i| i.device_id.as_str());
-    let dev = |d: &Dev, state| TrustDevice { id: d.id.clone(), kind: g.st.kinds.get(&d.id).unwrap_or(&d.kind).clone(), label: d.label.clone(), fp: d.fp.clone(), state, is_self: Some(d.id.as_str()) == own_id, kind_verified: g.st.kinds.contains_key(&d.id) };
+    let dev = |d: &Dev, state| TrustDevice { id: d.id.clone(), kind: g.st.kind_of(&d.id, &d.fp).unwrap_or(&d.kind).to_owned(), label: d.label.clone(), fp: d.fp.clone(), state, is_self: Some(d.id.as_str()) == own_id,
+      kind_verified: g.st.kind_of(&d.id, &d.fp).is_some(),
+      can_confirm_kind: g.st.kind_of(&d.id, &d.fp).is_none() && g.st.legacy_unknown.contains(&kind_key(&d.id, &d.fp)),
+    };
     let mut devices: Vec<TrustDevice> = g.st.trusted.iter().map(|d| dev(d, DeviceState::Trusted)).collect();
     devices.extend(g.st.revoked_devs.iter().map(|d| dev(d, DeviceState::Revoked)));
     Ok(TrustState {
@@ -988,6 +1169,22 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       self.save_now(c)?;
       return Err("this device was revoked".into());
     }
+    if c.st.revoked_devs.iter().any(|r| r.id == rec.device_id && r.fp != rec.fp)
+      || c.st.pinned_for_other_fp(&rec.device_id, &rec.fp)
+      || c.st.trusted.iter().any(|d| d.id == rec.device_id && d.fp != rec.fp)
+    {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
+      self.save_now(c)?;
+      return Err("this device id belonged to another device".into());
+    }
+    let contradicts = c.st.kinds.iter().any(|(k, v)| k.split_once(':').is_some_and(|(id, fp)| (id == rec.device_id || fp == rec.fp) && *v != rec.kind));
+    if contradicts {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
+      self.save_now(c)?;
+      return Err("this device kind contradicts a known one".into());
+    }
     let dir = self.fetch_dir(c)?;
     let entry = dir
       .devices
@@ -996,19 +1193,22 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       .ok_or_else(|| "the device keys changed, ask it to join again".to_owned())?;
     let mut dev = dev_from(entry);
     dev.kind = rec.kind.clone();
-    let (id, keys) = Self::own(c)?;
-    let st = IntroStatement {
-      user_id: self.cfg.user_id,
-      introducer_fp: keys.fingerprint(),
-      target_id: dev.id.clone(),
-      target_fp: dev.fp.clone(),
-      target_kind: rec.kind.clone(),
-      issued_at_ms: self.now(),
-    };
-    let intro = sign_intro(keys, &id.device_id, &st).map_err(err)?;
+    let blocked = gate_blocked(c, self.cfg.user_id);
+    if rec.kind == "runner" {
+      if rec.v < 2 {
+        return Err("the runner must join with a code from an updated app".into());
+      }
+      if !blocked.is_empty() {
+        let labels: Vec<&str> = blocked.iter().map(|d| d.label.as_str()).collect();
+        return Err(format!("update these devices first: {}", labels.join(", ")));
+      }
+    } else if rec.v < 2 && runner_trusted(c) {
+      return Err("update the app first".into());
+    }
+    let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, &rec.kind))?;
     self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
     c.st.intros.push(intro);
-    pin_kind(c, &dev.id, &rec.kind, self.now());
+    pin_kind(c, &dev.id, &dev.fp, &rec.kind, self.now());
     if !c.st.trusted.iter().any(|d| d.id == dev.id) {
       c.st.trusted.push(dev.clone());
     }
@@ -1021,13 +1221,38 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     self.save_now(c)
   }
 
+  fn confirm_device_kind(&self, device_id: &str, kind: &str) -> Result<(), String> {
+    if !matches!(kind, "desktop" | "mobile") || self.kind == "runner" {
+      return Err("only a desktop or phone kind can be confirmed".into());
+    }
+    let mut g = self.lock();
+    let c = &mut *g;
+    let dev = c.st.trusted.iter().find(|d| d.id == device_id).cloned().ok_or_else(|| "unknown device".to_owned())?;
+    let key = kind_key(&dev.id, &dev.fp);
+    if !c.st.legacy_unknown.contains(&key) || c.st.kind_of(&dev.id, &dev.fp).is_some() {
+      return Err("this device kind cannot be confirmed".into());
+    }
+    c.st.kinds.insert(key.clone(), kind.to_owned());
+    c.st.legacy_unknown.retain(|k| *k != key);
+    c.st.alerts.retain(|a| !(a.kind == "kind_unknown" && a.device_id == dev.id));
+    let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, kind));
+    self.save_now(c)?;
+    let intro = intro?;
+    self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
+    c.st.intros.push(intro);
+    let dir = c.dir.clone();
+    recompute(c, dir.as_ref(), self.cfg.user_id, self.now(), false);
+    self.save_now(c)
+  }
+
   fn decide_revoke(&self, statement_id: &str, accept: bool) -> Result<(), String> {
     let mut g = self.lock();
     let c = &mut *g;
     let p = c.st.pending_revokes.iter().find(|p| p.statement_id == statement_id).cloned().ok_or_else(|| "no such revoke request".to_owned())?;
     if accept {
       self.fetch_dir(c)?;
-      apply_revoke(c, self.cfg.user_id, &p.target_id, &p.target_fp, &p.target_label);
+      backfill_self(c, &self.kind);
+      apply_revoke(c, self.cfg.user_id, self.now(), &p.target_id, &p.target_fp, &p.target_label);
     } else {
       c.st.pending_revokes.retain(|x| x.statement_id != statement_id);
       c.st.declined.push(p.statement_id);
@@ -1051,7 +1276,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let others: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id && d.id != target.id).cloned().collect();
     self.call(c, api::post_revocation(&target.fp, &json).map_err(err)?)?;
     if !already {
-      apply_revoke(c, self.cfg.user_id, &target.id, &target.fp, &target.label);
+      apply_revoke(c, self.cfg.user_id, self.now(), &target.id, &target.fp, &target.label);
     }
     self.save_now(c)?;
     if !others.is_empty() {

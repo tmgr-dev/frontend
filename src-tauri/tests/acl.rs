@@ -30,6 +30,7 @@ probes!(
   manager_join_decide,
   manager_revoke_decide,
   manager_revoke,
+  manager_confirm_device_kind,
   manager_set_relay_auth,
   manager_clear_relay_auth,
   persona_cache_clear_for_user,
@@ -70,7 +71,7 @@ fn the_manager_window_reaches_only_its_own_commands_and_inline_cards() {
   assert!(call("manager", "decisions_get").is_ok());
   assert!(call("manager", "manager_trust_state").is_ok());
   assert!(call("manager", "manager_reset_identity").is_ok());
-  for command in ["manager_join_decide", "manager_revoke_decide", "manager_revoke"] {
+  for command in ["manager_join_decide", "manager_revoke_decide", "manager_revoke", "manager_confirm_device_kind"] {
     assert!(call("manager", command).is_ok(), "{command}");
     assert!(call("main", command).unwrap_err().contains("not allowed on window"), "{command}");
   }

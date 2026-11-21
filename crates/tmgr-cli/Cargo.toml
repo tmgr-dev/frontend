@@ -13,7 +13,7 @@ name = "tmgr"
 path = "src/main.rs"
 
 [features]
-runner = ["dep:tmgr-runner", "dep:tmgr-queue", "dep:shell-words", "dep:libc", "dep:tmgr-local", "dep:rusqlite"]
+runner = ["dep:tmgr-runner", "dep:tmgr-queue", "dep:shell-words", "dep:libc", "dep:tmgr-local", "dep:rusqlite", "dep:tmgr-chat-relay", "dep:reqwest"]
 
 [dependencies]
 clap.workspace = true
@@ -43,6 +43,8 @@ shell-words = { workspace = true, optional = true }
 libc = { workspace = true, optional = true }
 tmgr-local = { path = "../tmgr-local", optional = true }
 rusqlite = { workspace = true, optional = true }
+tmgr-chat-relay = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd.workspace = true

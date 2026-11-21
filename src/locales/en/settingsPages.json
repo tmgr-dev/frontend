@@ -1094,7 +1094,8 @@
 			"notifySend": "Send notifications and phone alarms to your devices",
 			"agentApprovalsWrite": "Sign agent-run approvals with this computer's key",
 			"skillsRead": "Read your shared skills and which personas use them",
-			"skillsWrite": "Create, change and delete your shared skills and attach them to your personas (changes what those agents are told to do)"
+			"skillsWrite": "Create, change and delete your shared skills and attach them to your personas (changes what those agents are told to do)",
+			"chatDevices": "Register chat devices (end-to-end chat relay)"
 		},
 		"workspaceColor": {
 			"red": "Red",

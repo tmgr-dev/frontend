@@ -1026,7 +1026,8 @@
 			"notifySend": "Envoyer des notifications et des alarmes téléphoniques à vos appareils",
 			"agentApprovalsWrite": "Signer les approbations d'exécution d'agent avec la clé de cet ordinateur",
 			"skillsRead": "Lire vos compétences partagées et les personas qui les utilisent",
-			"skillsWrite": "Créer, modifier et supprimer vos compétences partagées et les associer à vos personas (change ce qu'il est demandé à ces agents de faire)"
+			"skillsWrite": "Créer, modifier et supprimer vos compétences partagées et les associer à vos personas (change ce qu'il est demandé à ces agents de faire)",
+			"chatDevices": "Enregistrer des appareils de chat (relais de chat de bout en bout)"
 		},
 		"workspaceColor": {
 			"red": "Rouge",

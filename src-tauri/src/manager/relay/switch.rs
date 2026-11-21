@@ -153,6 +153,9 @@ impl RelayPort for SwitchRelay {
   fn revoke(&self, device_id: &str) -> Result<(), String> {
     self.cur().revoke(device_id)
   }
+  fn confirm_device_kind(&self, device_id: &str, kind: &str) -> Result<(), String> {
+    self.cur().confirm_device_kind(device_id, kind)
+  }
   fn decide_revoke(&self, statement_id: &str, accept: bool) -> Result<(), String> {
     self.cur().decide_revoke(statement_id, accept)
   }

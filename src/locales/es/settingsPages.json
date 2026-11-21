@@ -1026,7 +1026,8 @@
 			"notifySend": "Enviar notificaciones y alarmas a tus dispositivos",
 			"agentApprovalsWrite": "Firmar aprobaciones de ejecuciones de agentes con la clave de este equipo",
 			"skillsRead": "Leer tus habilidades compartidas y qué personas las usan",
-			"skillsWrite": "Crear, cambiar y eliminar tus habilidades compartidas y asociarlas a tus personas (cambia lo que se indica hacer a esos agentes)"
+			"skillsWrite": "Crear, cambiar y eliminar tus habilidades compartidas y asociarlas a tus personas (cambia lo que se indica hacer a esos agentes)",
+			"chatDevices": "Registrar dispositivos de chat (relé de chat de extremo a extremo)"
 		},
 		"workspaceColor": {
 			"red": "Rojo",

@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.168 — 2026-11-21
+
+- Manager chat: a runner (CLI 1.0.144, `tmgr chat join`) can join your chat. The join code this desktop shows now carries its device kind (v2), and a runner is admitted only after every desktop and phone in the chat has updated. A runner never vouches for other devices and cannot author owner messages.
+- Chat trust: devices vouch for each other with signed introductions that name the device kind. When trusted devices disagree on a kind and one says runner, the device is treated as a runner; a desktop versus phone disagreement keeps the known kind and raises an alert. Removing a device only ever removes trust, it never adds any.
+- Devices panel: a device whose kind is unknown stays trusted but cannot vouch or send owner messages until you confirm its kind (desktop or phone) here. Kind conflicts and unstable trust show as alerts.
+- Update all your devices (desktop and mobile apps): devices on older app versions do not see newly added devices until they update. Needs the phone app update 1.21.0 (OTA 18).
+
 ## 0.9.167 — 2026-11-21
 
 - Manager: new Manager window (tray menu or Cmd/Ctrl+Shift+M). A pinned Manager room and a chat per session with context size, markdown, attachments, reply and quote, a `/` command menu, on-device search and Decisions cards inline. Chats sync end-to-end encrypted through the relay between this desktop and your phone; adding or removing a device needs confirmation on an already trusted device. Needs backend 0.0.315 and CLI 1.0.141.

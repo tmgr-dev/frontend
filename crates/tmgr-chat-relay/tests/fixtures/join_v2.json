@@ -1,0 +1,26 @@
+{
+  "inputs": {
+    "code": {
+      "user_id": 42,
+      "device_id": "00000000-0000-4000-8000-00000000000a",
+      "fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233",
+      "secret_hex": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+      "secret_b64": "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo=",
+      "exp_ms": 1800000600000,
+      "kind": "desktop"
+    },
+    "joiner": {
+      "device_id": "00000000-0000-4000-8000-00000000000b",
+      "kind": "mobile",
+      "label": "Phone",
+      "fp": "41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33"
+    }
+  },
+  "outputs": {
+    "code_string": "tmgr-chat-join:v2:eyJ2IjoyLCJ1c2VyX2lkIjo0MiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDBhIiwiZnAiOiJiYjMwMmZhZmQ0M2Q3OTQ5NWYwMmNjOTdhYmZkMmE5YzI0NTkzNGU0YjI5Zjc0NjAwMDY0NGY1OGQ0MjdmMjMzIiwia2luZCI6ImRlc2t0b3AiLCJzZWNyZXQiOiJXbHBhV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xvPSIsImV4cCI6MTgwMDAwMDYwMDAwMH0",
+    "code_base64url": "eyJ2IjoyLCJ1c2VyX2lkIjo0MiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDBhIiwiZnAiOiJiYjMwMmZhZmQ0M2Q3OTQ5NWYwMmNjOTdhYmZkMmE5YzI0NTkzNGU0YjI5Zjc0NjAwMDY0NGY1OGQ0MjdmMjMzIiwia2luZCI6ImRlc2t0b3AiLCJzZWNyZXQiOiJXbHBhV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xvPSIsImV4cCI6MTgwMDAwMDYwMDAwMH0",
+    "mac_transcript": "tmgr-chat-join:v2:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000b:41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33:mobile:63dceb8800b2dd4af9567a1f54f03b7c3dbdc27fac4799091ebfcc4928899ee5",
+    "mac_hex": "a119925bec7a81e47751ec291d54909b1c6901eb5decfd67712cc235dca45d46"
+  },
+  "description": "join code v2 (prefix tmgr-chat-join:v2:, JSON v 2, kind after fp = the approver's kind) and the v2 MAC transcript; MAC key is the 32 decoded secret bytes"
+}

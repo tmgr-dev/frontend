@@ -259,6 +259,7 @@ pub struct RunnerConfig {
     pub quiet_ms: u64,
     pub version: String,
     pub max_sessions: usize,
+    pub relay: Option<chat::relay::pump::TransportFactory>,
 }
 
 impl RunnerConfig {
@@ -270,6 +271,7 @@ impl RunnerConfig {
             quiet_ms: t0::quiet_ms_from_env(),
             version,
             max_sessions: 16,
+            relay: None,
         })
     }
 }
@@ -5527,6 +5529,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         }
     });
 
+    rt.start_relay_pump();
     let capturer = rt.clone();
     thread::spawn(move || capturer.chat_capture_loop());
     let managers = rt.clone();
@@ -6057,6 +6060,7 @@ mod tests {
             quiet_ms: 1000,
             version: "test".into(),
             max_sessions: 4,
+            relay: None,
         };
         let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         let rt = Runner {

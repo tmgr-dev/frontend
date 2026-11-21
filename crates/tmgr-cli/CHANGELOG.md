@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.144
+
+- New `tmgr chat join` and `tmgr chat status`: this machine's runner joins your manager chat. `join` reads the join code from a trusted desktop or phone (stdin or a hidden prompt, never the command line) and waits up to 10 minutes for that device to approve; `status` shows the join state, relay device id and number of trusted devices, never keys or tokens. Once joined, the runner relays chat end-to-end encrypted: owner messages from trusted devices reach the sessions on this machine, and session messages go back to your devices. Needs the matching server version (`chat:devices` sign-in scope).
+- Chat trust: when two trusted devices disagree on a device's kind and one of them says runner, the device is treated as a runner, so it cannot author owner messages or vouch for other devices. A desktop versus phone disagreement still keeps the first kind and raises an alert.
+- `tmgr chat join` now needs a join code from an updated desktop or phone app (v2). A code from an older app version is refused with a message to update that app and generate a new code. A runner can join only after every desktop and phone already in the chat has updated.
+- Update all your devices (desktop and mobile apps) before joining a runner: devices on older app versions do not see newly added devices until they update, and a runner can join only once every desktop and phone is updated. Needs desktop 0.9.168 and phone app 1.21.0 (OTA 18).
+
 ## 1.0.143
 
 - New `tmgr usage machine [status|label NAME|on|off|sync]`: this machine sends its AI usage to your TMGR account for the AI usage page. Per local day, agent, model and task it sends tokens, cost, sessions and events (the task only when the run links to it unambiguously), plus the rate limit windows (percent used, reset time, plan) and the machine name (default: short hostname). Only the name and numbers are sent: never prompts, replies, code, paths or command lines, and an account label that looks like a path or an email is sent as `default`. It is on by default and runs by itself after each agent run and every 15 minutes while the runner is up (at most once per 5 minutes, today and yesterday), reading logs only when `tmgr usage consent` allows it. A limit message in a runner session ("5-hour limit reached", "Weekly limit reached") is recorded as a 100 % limit snapshot and sent at once. `tmgr usage machine off` stops it; removing the machine on the AI usage page makes the next send turn it off, and `tmgr usage machine on` brings it back. Needs the matching server version.

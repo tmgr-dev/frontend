@@ -119,6 +119,7 @@ export interface TrustDevice {
 	fp: string;
 	state: TrustDeviceState;
 	is_self: boolean;
+	can_confirm_kind?: boolean;
 }
 
 export interface PendingJoin {

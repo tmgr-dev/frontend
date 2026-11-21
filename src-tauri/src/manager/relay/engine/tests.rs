@@ -40,12 +40,17 @@ struct Server {
   dir_error: bool,
   posts: usize,
   last_seen: BTreeMap<String, u64>,
+  puts: Vec<(String, String, String)>,
 }
 
 #[derive(Clone, Default)]
 struct Fake(Arc<Mutex<Server>>);
 
 impl Fake {
+  fn puts_by(&self, by: &str, target: &str) -> Vec<u8> {
+    self.0.lock().unwrap().puts.iter().filter(|p| p.0 == by && p.1 == target).map(|p| parse_intro(&p.2).unwrap().parsed.version).collect()
+  }
+
   fn queue_len(&self, to: &str) -> usize {
     self.0.lock().unwrap().msgs.iter().filter(|m| m.to == to).count()
   }
@@ -135,6 +140,7 @@ impl Transport for Fake {
       (Method::Put, ["devices", target, "intros", "self"]) => {
         let by = caller.ok_or("401")?;
         let intro = body["intro"].as_str().unwrap().to_owned();
+        s.puts.push((by.clone(), (*target).to_owned(), intro.clone()));
         let d = s.devices.iter_mut().find(|d| d.id == *target).ok_or("404")?;
         d.intros.retain(|i| i.0 != by);
         d.intros.push((by, intro));
@@ -744,7 +750,7 @@ fn revoke_after_restart_without_directory_keeps_devices_trusted_through_intros()
   {
     let mut g = a2.lock();
     assert!(g.dir.is_none());
-    apply_revoke(&mut g, USER, "00000000-0000-4000-8000-0000000000dd", &tmgr_phone::h("device d"), "D");
+    apply_revoke(&mut g, USER, T0, "00000000-0000-4000-8000-0000000000dd", &tmgr_phone::h("device d"), "D");
   }
   let ts = a2.trust_state().unwrap();
   assert!(ts.devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
@@ -784,7 +790,7 @@ fn joiner_ignores_chat_before_join_ok_and_honours_its_revoked_list() {
   a.poll_once().unwrap();
   {
     let mut g = a.lock();
-    apply_revoke(&mut g, USER, &bid, &fp_of(&b), "Desktop B");
+    apply_revoke(&mut g, USER, T0, &bid, &fp_of(&b), "Desktop B");
   }
   let cid = my_id(&c);
   b.lock().st.trusted.push(c.lock().st.trusted.iter().find(|d| d.id == cid).unwrap().clone());
@@ -831,6 +837,28 @@ fn join_as(fake: &Fake, clock: &Clock, a: &Engine, label: &str, kind: &str) -> E
   n.poll_once().unwrap();
   a.poll_once().unwrap();
   n
+}
+
+fn pin_fp(c: &Core, id: &str) -> Option<String> {
+  c.st.trusted.iter().chain(c.st.base.iter()).find(|d| d.id == id).map(|d| d.fp.clone())
+}
+
+fn kind_pin(e: &Engine, id: &str) -> Option<String> {
+  let g = e.lock();
+  let fp = pin_fp(&g, id)?;
+  g.st.kind_of(id, &fp).map(str::to_owned)
+}
+
+fn set_pin(e: &Engine, id: &str, kind: &str) {
+  let mut g = e.lock();
+  let fp = pin_fp(&g, id).unwrap();
+  g.st.kinds.insert(kind_key(id, &fp), kind.to_owned());
+}
+
+fn drop_pin(e: &Engine, id: &str) {
+  let mut g = e.lock();
+  let prefix = kind_key(id, "");
+  g.st.kinds.retain(|k, _| !k.starts_with(&prefix));
 }
 
 fn alert_kinds(e: &Engine) -> Vec<String> {
@@ -1040,6 +1068,7 @@ fn raw_r_s_signature_on_an_intro_is_rejected() {
   let cid = my_id(&c);
   let (aid, c_dev) = (my_id(&a), c.lock().st.trusted[0].clone());
   let st = IntroStatement {
+    version: 2,
     user_id: USER,
     introducer_fp: fp_of(&a),
     target_id: cid.clone(),
@@ -1391,12 +1420,12 @@ fn directory_only_kind_is_unknown_and_cannot_author_owner_messages() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (a, b) = pair(&fake, &clock);
   let (aid, bid) = (my_id(&a), my_id(&b));
-  a.lock().st.kinds.remove(&bid);
+  drop_pin(&a, &bid);
   a.lock().st.intros.clear();
   fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == bid).unwrap().intros.clear();
   post_chat(&b, &aid, &msg_n(2, "owner"));
   assert!(a.poll_once().unwrap().is_empty());
-  a.lock().st.kinds.insert(bid.clone(), "desktop".into());
+  set_pin(&a, &bid, "desktop");
   post_chat(&b, &aid, &msg_n(3, "owner"));
   assert_eq!(a.poll_once().unwrap().len(), 1);
 }
@@ -1408,19 +1437,23 @@ fn a_conflicting_signed_kind_raises_an_alert_and_is_not_applied() {
   let bid = my_id(&b);
   {
     let mut g = a.lock();
-    pin_kind(&mut g, &bid, "runner", T0);
-    assert_eq!(g.st.kinds.get(&bid).map(String::as_str), Some("desktop"));
+    let fp = pin_fp(&g, &bid).unwrap();
+    assert!(!pin_kind(&mut g, &bid, &fp, "mobile", T0));
+    assert_eq!(g.st.kind_of(&bid, &fp), Some("desktop"));
   }
   assert_eq!(alert_kinds(&a), vec!["kind_conflict".to_owned()]);
 }
 
 fn code_with_kind(a: &Engine, kind: Option<&str>) -> String {
-  let code = a.open_join_code().unwrap();
-  let (stripped, _) = split_code_kind(&code).unwrap();
+  let mut code = decode_join_code(&a.open_join_code().unwrap()).unwrap();
   match kind {
-    Some(k) => add_code_kind(&stripped, k).unwrap(),
-    None => stripped,
+    Some(k) => code.kind = Some(k.to_owned()),
+    None => {
+      code.version = 1;
+      code.kind = None;
+    }
   }
+  encode_join_code(&code).unwrap()
 }
 
 #[test]
@@ -1429,13 +1462,12 @@ fn join_code_kind_must_match_the_directory_and_is_pinned() {
   let a = engine_with(&fake, &clock, "Desktop A");
   a.register().unwrap();
   let aid = my_id(&a);
-  set_kind(&fake, &aid, "runner");
   let b = engine_with(&fake, &clock, "Desktop B");
   assert!(b.join_with_code(&code_with_kind(&a, Some("mobile"))).is_err());
   assert_eq!(b.trust_state().unwrap().devices.len(), 1);
-  assert!(!b.lock().st.kinds.contains_key(&aid));
-  b.join_with_code(&code_with_kind(&a, Some("runner"))).unwrap();
-  assert_eq!(b.lock().st.kinds.get(&aid).map(String::as_str), Some("runner"));
+  assert!(!kind_pin(&b, &aid).is_some());
+  b.join_with_code(&code_with_kind(&a, Some("desktop"))).unwrap();
+  assert_eq!(kind_pin(&b, &aid).as_deref(), Some("desktop"));
 }
 
 #[test]
@@ -1444,7 +1476,7 @@ fn v1_join_code_without_kind_still_joins_with_unknown_kind() {
   let a = engine_with(&fake, &clock, "Desktop A");
   let b = engine_with(&fake, &clock, "Desktop B");
   b.join_with_code(&code_with_kind(&a, None)).unwrap();
-  assert!(!b.lock().st.kinds.contains_key(&my_id(&a)));
+  assert!(!kind_pin(&b, &my_id(&a)).is_some());
 }
 
 fn directory_revoke(fake: &Fake, by: &Engine, target_id: &str, target_fp: &str) {
@@ -1516,7 +1548,7 @@ fn no_intro_is_signed_for_a_device_without_a_signed_kind() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (a, b) = pair(&fake, &clock);
   let bid = my_id(&b);
-  a.lock().st.kinds.remove(&bid);
+  drop_pin(&a, &bid);
   set_kind(&fake, &bid, "desktop");
   fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == bid).unwrap().intros.clear();
   publish_for(&a);
@@ -1544,7 +1576,7 @@ fn trust_state_marks_only_signed_kinds_as_verified() {
   let bid = my_id(&b);
   let verified = |e: &Engine| e.trust_state().unwrap().devices.iter().find(|d| d.id == bid).unwrap().kind_verified;
   assert!(verified(&a));
-  a.lock().st.kinds.remove(&bid);
+  drop_pin(&a, &bid);
   assert!(!verified(&a));
 }
 
@@ -1562,7 +1594,7 @@ fn join_ok_is_persisted_before_it_is_acked() {
   let again = engine_on(&fake, &clock, store, "mx_b");
   let g = again.lock();
   assert!(g.st.joined);
-  assert_eq!(g.st.kinds.get(&my_id(&a)).map(String::as_str), Some("desktop"));
+  assert_eq!(g.st.kind_of(&my_id(&a), &fp_of(&a)), Some("desktop"));
 }
 
 #[test]
@@ -1579,4 +1611,760 @@ fn repeated_revoke_retries_the_broadcast_and_the_directory_delete() {
   assert_eq!(fake.queue_len(&bid), before + 1);
   assert!(!fake.0.lock().unwrap().devices.iter().any(|d| d.id == cid));
   assert_eq!(a.trust_state().unwrap().devices.iter().filter(|d| d.id == cid).count(), 1);
+}
+
+fn put_foreign_intro(fake: &Fake, signer: &Engine, target_id: &str, target_fp: &str, kind: &str) {
+  let st = IntroStatement { version: 2, user_id: USER, introducer_fp: fp_of(signer), target_id: target_id.to_owned(), target_fp: target_fp.to_owned(), target_kind: kind.into(), issued_at_ms: T0 };
+  let sid = my_id(signer);
+  let intro = sign_intro(signer.lock().keys.as_ref().unwrap(), &sid, &st).unwrap();
+  let mut s = fake.0.lock().unwrap();
+  let d = s.devices.iter_mut().find(|d| d.id == target_id).unwrap();
+  d.intros.push((sid, intro));
+}
+
+#[test]
+fn a_runner_signed_intro_adds_no_device_but_a_desktop_signed_one_does() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let x = engine_with(&fake, &clock, "Desktop X");
+  x.register().unwrap();
+  let xid = my_id(&x);
+  let x_fp = x.lock().st.trusted[0].fp.clone();
+  put_foreign_intro(&fake, &r, &xid, &x_fp, "desktop");
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != xid));
+  put_foreign_intro(&fake, &a, &xid, &x_fp, "desktop");
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().devices.iter().any(|d| d.id == xid && d.state == DeviceState::Trusted));
+}
+
+fn put_raw_intro(fake: &Fake, by_id: &str, target_id: &str, intro: &str) {
+  let mut s = fake.0.lock().unwrap();
+  let d = s.devices.iter_mut().find(|d| d.id == target_id).unwrap();
+  d.intros.push((by_id.to_owned(), intro.to_owned()));
+}
+
+fn signed_intro(signer: &Engine, target_id: &str, target_fp: &str, kind: &str) -> String {
+  signed_intro_v(2, signer, target_id, target_fp, kind)
+}
+
+fn signed_intro_v(version: u8, signer: &Engine, target_id: &str, target_fp: &str, kind: &str) -> String {
+  let st = IntroStatement { version, user_id: USER, introducer_fp: fp_of(signer), target_id: target_id.to_owned(), target_fp: target_fp.to_owned(), target_kind: kind.into(), issued_at_ms: T0 };
+  { let sid = my_id(signer); sign_intro(signer.lock().keys.as_ref().unwrap(), &sid, &st).unwrap() }
+}
+
+fn clear_intros(fake: &Fake, e: &Engine) {
+  for d in fake.0.lock().unwrap().devices.iter_mut() {
+    d.intros.clear();
+  }
+  e.lock().st.intros.clear();
+}
+
+#[test]
+fn forged_directory_intros_pin_no_kind() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = join_as(&fake, &clock, &a, "Desktop B", "desktop");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let (aid, bid, b_fp) = (my_id(&a), my_id(&b), fp_of(&b));
+  clear_intros(&fake, &a);
+  drop_pin(&a, &bid);
+  let other_sig = serde_json::from_str::<Value>(&signed_intro(&a, &bid, &b_fp, "mobile")).unwrap()["sig"].clone();
+  let mut v: Value = serde_json::from_str(&signed_intro(&a, &bid, &b_fp, "desktop")).unwrap();
+  v["sig"] = other_sig;
+  put_raw_intro(&fake, &aid, &bid, &v.to_string());
+  let mut v: Value = serde_json::from_str(&signed_intro(&r, &bid, &b_fp, "desktop")).unwrap();
+  v["by"] = json!(aid);
+  put_raw_intro(&fake, &aid, &bid, &v.to_string());
+  a.poll_once().unwrap();
+  assert!(!kind_pin(&a, &bid).is_some());
+}
+
+#[test]
+fn a_runner_intro_listed_first_pins_no_kind_and_the_desktop_one_does() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let x = engine_with(&fake, &clock, "Desktop X");
+  x.register().unwrap();
+  let (xid, x_fp) = (my_id(&x), fp_of(&x));
+  put_raw_intro(&fake, &my_id(&r), &xid, &signed_intro(&r, &xid, &x_fp, "desktop"));
+  a.poll_once().unwrap();
+  assert!(!kind_pin(&a, &xid).is_some());
+  put_raw_intro(&fake, &my_id(&a), &xid, &signed_intro(&a, &xid, &x_fp, "mobile"));
+  a.poll_once().unwrap();
+  assert_eq!(kind_pin(&a, &xid).as_deref(), Some("mobile"));
+}
+
+#[test]
+fn a_state_without_the_own_kind_keeps_introduced_devices_through_a_revoke() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  let (bid, aid) = (my_id(&b), my_id(&a));
+  {
+    let mut g = a.lock();
+    let prefix = kind_key(&aid, "");
+    g.st.kinds.retain(|k, _| !k.starts_with(&prefix));
+    store.save(Slot::State, &serde_json::to_string(&g.st).unwrap()).unwrap();
+  }
+  let a2 = engine_on(&fake, &clock, store, "mx_local");
+  a2.register().unwrap();
+  {
+    let mut g = a2.lock();
+    apply_revoke(&mut g, USER, T0, "00000000-0000-4000-8000-0000000000dd", &tmgr_phone::h("device d"), "D");
+  }
+  assert!(a2.trust_state().unwrap().devices.iter().any(|d| d.id == bid && d.state == DeviceState::Trusted));
+}
+
+#[test]
+fn conflicting_kinds_from_two_desktops_leave_the_kind_unknown_and_alert_in_both_orders() {
+  for flip in [false, true] {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+    let by_a = (my_id(&a), signed_intro(&a, &xid, &x_fp, "desktop"));
+    let by_b = (my_id(&b), signed_intro(&b, &xid, &x_fp, "mobile"));
+    let (first, second) = if flip { (by_b, by_a) } else { (by_a, by_b) };
+    put_raw_intro(&fake, &first.0, &xid, &first.1);
+    put_raw_intro(&fake, &second.0, &xid, &second.1);
+    a.poll_once().unwrap();
+    assert_eq!(kind_pin(&a, &xid), None);
+    assert!(alert_kinds(&a).contains(&"kind_conflict".to_owned()));
+    assert!(alert_kinds(&a).contains(&"kind_unknown".to_owned()));
+  }
+}
+
+fn kind_entries_of(e: &Engine, id: &str) -> Vec<String> {
+  let prefix = kind_key(id, "");
+  e.lock().st.kinds.keys().filter(|k| k.starts_with(&prefix)).cloned().collect()
+}
+
+fn rename_device(fake: &Fake, e: &Engine, to: &str) {
+  let from = my_id(e);
+  fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == from).unwrap().id = to.to_owned();
+  e.lock().identity.as_mut().unwrap().device_id = to.to_owned();
+}
+
+fn registered(fake: &Fake, clock: &Clock, label: &str, kind: &str) -> (Engine, String, String) {
+  let e = engine_with(fake, clock, label).with_kind(kind);
+  e.register().unwrap();
+  let (id, fp) = (my_id(&e), fp_of(&e));
+  (e, id, fp)
+}
+
+#[test]
+fn a_revoked_id_reused_by_a_runner_with_new_keys_inherits_no_kind_and_is_refused() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  assert_eq!(kind_pin(&a, &bid).as_deref(), Some("desktop"));
+  a.revoke(&bid).unwrap();
+  assert!(kind_entries_of(&a, &bid).is_empty());
+  let r = engine_with(&fake, &clock, "Runner").with_kind("runner");
+  r.register().unwrap();
+  rename_device(&fake, &r, &bid);
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  assert!(a.decide_join(&bid, true).is_err());
+  assert!(a.trust_state().unwrap().pending_joins.is_empty());
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != bid || d.state == DeviceState::Revoked));
+  assert!(kind_entries_of(&a, &bid).is_empty());
+  assert!(alert_kinds(&a).contains(&"kind_conflict".to_owned()));
+}
+
+#[test]
+fn a_revoke_with_an_unknown_root_kind_keeps_the_pins_and_alerts() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (_c, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+  let aid = my_id(&a);
+  put_raw_intro(&fake, &aid, &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+  b.poll_once().unwrap();
+  assert!(b.trust_state().unwrap().devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
+  {
+    let mut g = b.lock();
+    let prefix = kind_key(&aid, "");
+    g.st.kinds.retain(|k, _| !k.starts_with(&prefix));
+    g.dir = None;
+    g.st.intros.retain(|i| parse_intro(i).is_ok_and(|p| p.parsed.target_id == cid));
+    apply_revoke(&mut g, USER, T0, "00000000-0000-4000-8000-0000000000dd", &tmgr_phone::h("device d"), "D");
+  }
+  assert!(alert_kinds(&b).contains(&"root_kind_unknown".to_owned()));
+  let devices = b.trust_state().unwrap().devices;
+  assert!(devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
+  assert!(devices.iter().any(|d| d.id == aid && d.state == DeviceState::Trusted));
+}
+
+#[test]
+fn a_join_ok_with_an_unknown_kind_is_rejected() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let mut a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  a.kind = "bogus".into();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  assert!(!b.lock().st.joined);
+  assert!(b.lock().st.kinds.values().all(|k| k != "bogus"));
+}
+
+#[test]
+fn a_repeated_kind_conflict_does_not_touch_the_state_or_the_alert_time() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  put_raw_intro(&fake, &my_id(&a), &xid, &signed_intro(&a, &xid, &x_fp, "desktop"));
+  put_raw_intro(&fake, &my_id(&b), &xid, &signed_intro(&b, &xid, &x_fp, "mobile"));
+  a.poll_once().unwrap();
+  assert!(alert_kinds(&a).contains(&"kind_conflict".to_owned()));
+  let snap = |e: &Engine| {
+    let g = e.lock();
+    (trust_key(&g.st), serde_json::to_string(&g.st).unwrap())
+  };
+  let first = snap(&a);
+  for n in 1..4 {
+    clock.set(T0 + n * 1000);
+    a.poll_once().unwrap();
+    assert_eq!(snap(&a), first);
+  }
+}
+
+#[test]
+fn a_failed_join_keeps_a_kind_that_was_pinned_before_and_drops_one_it_added() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  let (aid, a_fp) = (my_id(&a), fp_of(&a));
+  fake.set_post_error(Some(r#"{"error":"recipient_full"}"#));
+  assert!(b.join_with_code(&code).is_err());
+  assert!(kind_entries_of(&b, &aid).is_empty());
+  b.lock().st.kinds.insert(kind_key(&aid, &a_fp), "desktop".into());
+  assert!(b.join_with_code(&code).is_err());
+  assert_eq!(b.lock().st.kinds.get(&kind_key(&aid, &a_fp)).map(String::as_str), Some("desktop"));
+}
+
+fn legacy_state_with_kinds(store: &Arc<MemKeyStore>, e: &Engine, kinds: Value, intros: Vec<String>) {
+  let g = e.lock();
+  let mut v: Value = serde_json::to_value(&g.st).unwrap();
+  v["kinds"] = kinds;
+  v.as_object_mut().unwrap().remove("kinds_v");
+  v["intros"] = json!(intros);
+  store.save(Slot::State, &v.to_string()).unwrap();
+}
+
+fn trusted_with_kind(e: &Engine, id: &str, kind: &str) -> bool {
+  e.trust_state().unwrap().devices.iter().any(|d| d.id == id && d.state == DeviceState::Trusted && d.kind == kind && d.kind_verified)
+}
+
+#[test]
+fn a_migrated_device_republishes_its_intros_once_with_fresh_timestamps() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_on(&fake, &clock, store.clone(), "mx_local");
+  b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  let (aid, bid) = (my_id(&a), my_id(&b));
+  let own_intros = b.lock().st.intros.clone();
+  legacy_state_with_kinds(&store, &b, json!({ aid.clone(): "desktop", bid.clone(): "desktop" }), own_intros);
+  let issued = |fake: &Fake| -> Vec<u64> { intros_of(fake, &aid).iter().map(|i| parse_intro(i).unwrap()).filter(|i| i.by == bid).map(|i| i.parsed.issued_at_ms).collect() };
+  assert!(issued(&fake).contains(&T0));
+  clock.set(T0 + 1000);
+  let b2 = engine_on(&fake, &clock, store, "mx_local");
+  b2.poll_once().unwrap();
+  assert!(issued(&fake).iter().all(|t| *t >= T0 + 1000));
+  assert!(!issued(&fake).is_empty());
+}
+
+fn kind_race(runner_first: bool) {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  let by_a = signed_intro(&a, &xid, &x_fp, "desktop");
+  let by_b = signed_intro(&b, &xid, &x_fp, "runner");
+  let (first, second) = if runner_first { ((my_id(&b), by_b), (my_id(&a), by_a)) } else { ((my_id(&a), by_a), (my_id(&b), by_b)) };
+  put_raw_intro(&fake, &first.0, &xid, &first.1);
+  put_raw_intro(&fake, &second.0, &xid, &second.1);
+  a.poll_once().unwrap();
+  assert_eq!(kind_pin(&a, &xid).as_deref(), Some("runner"));
+  assert!(alert_kinds(&a).contains(&"kind_conflict".to_owned()));
+}
+
+#[test]
+fn a_runner_intro_wins_a_kind_conflict_when_it_comes_second() {
+  kind_race(false);
+}
+
+#[test]
+fn a_runner_intro_wins_a_kind_conflict_when_it_comes_first() {
+  kind_race(true);
+}
+
+#[test]
+fn a_pin_kind_conflict_pins_runner_and_keeps_desktop_against_mobile() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let b_fp = fp_of(&b);
+  {
+    let mut g = a.lock();
+    assert!(!pin_kind(&mut g, &bid, &b_fp, "mobile", T0));
+    assert_eq!(g.st.kind_of(&bid, &b_fp), Some("desktop"));
+    pin_kind(&mut g, &bid, &b_fp, "runner", T0);
+    assert_eq!(g.st.kind_of(&bid, &b_fp), Some("runner"));
+    assert!(!pin_kind(&mut g, &bid, &b_fp, "desktop", T0));
+    assert_eq!(g.st.kind_of(&bid, &b_fp), Some("runner"));
+  }
+  assert!(alert_kinds(&a).contains(&"kind_conflict".to_owned()));
+}
+
+#[test]
+fn revoking_a_voucher_drops_its_devices_even_when_a_root_kind_is_unknown() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (c_dev, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+  let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  let aid = my_id(&a);
+  put_raw_intro(&fake, &aid, &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+  put_raw_intro(&fake, &cid, &xid, &signed_intro(&c_dev, &xid, &x_fp, "desktop"));
+  b.poll_once().unwrap();
+  assert!(trusted_with_kind(&b, &cid, "desktop"));
+  assert!(trusted_with_kind(&b, &xid, "desktop"));
+  {
+    let mut g = b.lock();
+    let prefix = kind_key(&aid, "");
+    g.st.kinds.retain(|k, _| !k.starts_with(&prefix));
+    g.dir = None;
+    g.st.intros.retain(|i| parse_intro(i).is_ok_and(|p| p.parsed.target_id == cid || p.parsed.target_id == xid));
+    apply_revoke(&mut g, USER, T0, &cid, &c_fp, "C");
+  }
+  assert!(alert_kinds(&b).contains(&"root_kind_unknown".to_owned()));
+  let devices = b.trust_state().unwrap().devices;
+  assert!(devices.iter().all(|d| d.id != xid || d.state != DeviceState::Trusted));
+  assert!(kind_entries_of(&b, &xid).is_empty());
+  assert!(devices.iter().any(|d| d.id == aid && d.state == DeviceState::Trusted));
+}
+
+fn take_intros_by(fake: &Fake, row: &str, by: &str) -> Vec<(String, String)> {
+  let mut s = fake.0.lock().unwrap();
+  let d = s.devices.iter_mut().find(|d| d.id == row).unwrap();
+  let (taken, kept) = d.intros.drain(..).partition(|i| i.0 == by);
+  d.intros = kept;
+  taken
+}
+
+fn restore_intros(fake: &Fake, row: &str, intros: Vec<(String, String)>) {
+  let mut s = fake.0.lock().unwrap();
+  s.devices.iter_mut().find(|d| d.id == row).unwrap().intros.extend(intros);
+}
+
+fn legacy_owner_fleet() -> (Fake, Clock, Arc<MemKeyStore>, Engine, Engine, Engine) {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let x = join_as(&fake, &clock, &a, "Desktop X", "desktop");
+  let y = join_as(&fake, &clock, &a, "Desktop Y", "desktop");
+  (fake, clock, store, a, x, y)
+}
+
+#[test]
+fn m01_a_v2_intro_round_trips_and_a_v1_parser_rejects_it() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (bid, b_fp) = (my_id(&b), fp_of(&b));
+  let v2 = signed_intro(&a, &bid, &b_fp, "desktop");
+  let parsed = parse_intro(&v2).unwrap().parsed;
+  assert_eq!(parsed.version, 2);
+  assert!(parsed.to_statement().unwrap().starts_with("tmgr-chat-intro:v2:"));
+  assert!(IntroStatement { version: 3, ..parsed.clone() }.to_statement().is_err());
+  let mut forged: Value = serde_json::from_str(&v2).unwrap();
+  forged["v"] = json!(1);
+  assert!(parse_intro(&forged.to_string()).is_err());
+}
+
+#[test]
+fn m02_a_v1_intro_pins_no_kind_and_trusts_only_a_target_with_a_known_kind() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  put_raw_intro(&fake, &my_id(&a), &xid, &signed_intro_v(1, &a, &xid, &x_fp, "desktop"));
+  a.poll_once().unwrap();
+  b.poll_once().unwrap();
+  for e in [&a, &b] {
+    assert!(e.trust_state().unwrap().devices.iter().all(|d| d.id != xid || d.state != DeviceState::Trusted));
+    assert_eq!(kind_pin(e, &xid), None);
+  }
+}
+
+#[test]
+fn m03_poisoned_legacy_state_migrates() {
+  let (fake, clock, store, a, x, y) = legacy_owner_fleet();
+  let (aid, xid, yid, y_fp) = (my_id(&a), my_id(&x), my_id(&y), fp_of(&y));
+  let own_v1 = signed_intro_v(1, &a, &xid, &fp_of(&x), "desktop");
+  legacy_state_with_kinds(&store, &a, json!({ aid.clone(): "desktop", xid.clone(): "mobile", yid.clone(): "runner" }), vec![own_v1.clone()]);
+  clear_intros(&fake, &a);
+  put_raw_intro(&fake, &aid, &xid, &own_v1);
+  put_raw_intro(&fake, &aid, &yid, &signed_intro_v(1, &a, &yid, &y_fp, "runner"));
+  clock.set(T0 + 1000);
+  let a2 = engine_on(&fake, &clock, store, "mx_local");
+  {
+    let g = a2.lock();
+    assert_eq!(g.st.kinds_v, KINDS_V);
+    assert_eq!(g.st.kind_of(&xid, &fp_of(&x)), Some("mobile"));
+    assert_eq!(g.st.kind_of(&yid, &y_fp), None);
+    assert!(g.st.legacy_unknown.contains(&kind_key(&yid, &y_fp)));
+    assert!(g.st.intros.contains(&own_v1));
+  }
+  a2.poll_once().unwrap();
+  assert!(alert_kinds(&a2).contains(&"kind_unknown".to_owned()));
+  post_chat(&y, &aid, &msg_n(2, "owner"));
+  assert!(a2.poll_once().unwrap().is_empty());
+  let can_confirm = |e: &Engine| e.trust_state().unwrap().devices.iter().find(|d| d.id == yid).map(|d| (d.state, d.kind_verified, d.can_confirm_kind));
+  assert_eq!(can_confirm(&a2), Some((DeviceState::Trusted, false, true)));
+  assert!(a2.confirm_device_kind(&xid, "desktop").is_err());
+  assert!(a2.confirm_device_kind(&yid, "runner").is_err());
+  assert!(a2.confirm_device_kind("00000000-0000-4000-8000-0000000000aa", "desktop").is_err());
+  a2.confirm_device_kind(&yid, "desktop").unwrap();
+  assert_eq!(kind_pin(&a2, &yid).as_deref(), Some("desktop"));
+  assert_eq!(can_confirm(&a2), Some((DeviceState::Trusted, true, false)));
+  assert!(!alert_kinds(&a2).contains(&"kind_unknown".to_owned()));
+  assert!(fake.puts_by(&aid, &yid).contains(&2));
+  post_chat(&y, &aid, &msg_n(3, "owner"));
+  assert_eq!(a2.poll_once().unwrap().len(), 1);
+  assert!(a2.confirm_device_kind(&yid, "mobile").is_err());
+}
+
+#[test]
+fn a_kind_unknown_device_that_was_not_trusted_at_migration_cannot_be_confirmed() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  put_raw_intro(&fake, &my_id(&a), &xid, &signed_intro(&a, &xid, &x_fp, "desktop"));
+  put_raw_intro(&fake, &my_id(&b), &xid, &signed_intro(&b, &xid, &x_fp, "mobile"));
+  a.poll_once().unwrap();
+  assert_eq!(kind_pin(&a, &xid), None);
+  assert!(a.confirm_device_kind(&xid, "desktop").is_err());
+  assert_eq!(kind_pin(&a, &xid), None);
+}
+
+#[test]
+fn m04_a_replayed_v1_intro_cannot_turn_a_runner_into_a_desktop() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let (aid, bid, rid, r_fp) = (my_id(&a), my_id(&b), my_id(&r), fp_of(&r));
+  b.poll_once().unwrap();
+  assert_eq!(kind_pin(&b, &rid).as_deref(), Some("runner"));
+  put_raw_intro(&fake, &aid, &rid, &signed_intro_v(1, &a, &rid, &r_fp, "desktop"));
+  put_raw_intro(&fake, &bid, &rid, &signed_intro_v(1, &b, &rid, &r_fp, "desktop"));
+  let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  put_foreign_intro(&fake, &r, &xid, &x_fp, "desktop");
+  for e in [&a, &b] {
+    e.poll_once().unwrap();
+    assert_eq!(kind_pin(e, &rid).as_deref(), Some("runner"));
+    assert!(e.trust_state().unwrap().devices.iter().all(|d| d.id != xid));
+  }
+  post_chat(&r, &aid, &msg_n(2, "owner"));
+  assert!(a.poll_once().unwrap().is_empty());
+}
+
+#[test]
+fn m05_a_replayed_intro_for_a_revoked_fp_or_a_reused_id_is_not_counted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (aid, bid) = (my_id(&a), my_id(&b));
+  let old: Vec<String> = intros_of(&fake, &bid);
+  assert!(!old.is_empty());
+  a.revoke(&bid).unwrap();
+  let r = engine_with(&fake, &clock, "Reused").with_kind("desktop");
+  r.register().unwrap();
+  rename_device(&fake, &r, &bid);
+  for i in &old {
+    put_raw_intro(&fake, &aid, &bid, i);
+  }
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != bid || d.state == DeviceState::Revoked));
+  assert!(kind_entries_of(&a, &bid).is_empty());
+}
+
+#[test]
+fn m06_a_demoted_voucher_drops_the_devices_it_vouched_for() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  let (_y, yid, y_fp) = registered(&fake, &clock, "Desktop Y", "desktop");
+  put_raw_intro(&fake, &my_id(&a), &xid, &signed_intro(&a, &xid, &x_fp, "desktop"));
+  put_raw_intro(&fake, &xid, &yid, &signed_intro(&x, &yid, &y_fp, "desktop"));
+  put_raw_intro(&fake, &my_id(&b), &xid, &signed_intro(&b, &xid, &x_fp, "runner"));
+  a.poll_once().unwrap();
+  assert_eq!(kind_pin(&a, &xid).as_deref(), Some("runner"));
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != yid));
+}
+
+#[test]
+fn m07_two_counted_intros_for_one_target_give_runner_and_leave_the_state_alone() {
+  for runner_first in [true, false] {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+    let by_a = (my_id(&a), signed_intro(&a, &xid, &x_fp, "desktop"));
+    let by_b = (my_id(&b), signed_intro(&b, &xid, &x_fp, "runner"));
+    let (first, second) = if runner_first { (by_b, by_a) } else { (by_a, by_b) };
+    put_raw_intro(&fake, &first.0, &xid, &first.1);
+    put_raw_intro(&fake, &second.0, &xid, &second.1);
+    a.poll_once().unwrap();
+    assert_eq!(kind_pin(&a, &xid).as_deref(), Some("runner"));
+    let conflicts = |e: &Engine| alert_kinds(e).iter().filter(|k| *k == "kind_conflict").count();
+    assert_eq!(conflicts(&a), 1);
+    let snap = |e: &Engine| {
+      let g = e.lock();
+      (trust_key(&g.st), serde_json::to_string(&g.st).unwrap())
+    };
+    let first = snap(&a);
+    for n in 1..4 {
+      clock.set(T0 + n * 1000);
+      a.poll_once().unwrap();
+      assert_eq!(snap(&a), first);
+    }
+  }
+}
+
+#[test]
+fn m09_a_phone_approved_before_the_upgrade_keeps_its_kind_and_gets_a_v2_intro() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let m = join_as(&fake, &clock, &a, "Phone", "mobile");
+  let (aid, mid) = (my_id(&a), my_id(&m));
+  let legacy = signed_intro_v(1, &a, &mid, &fp_of(&m), "mobile");
+  legacy_state_with_kinds(&store, &a, json!({ aid.clone(): "desktop", mid.clone(): "mobile" }), vec![legacy.clone()]);
+  clear_intros(&fake, &a);
+  put_raw_intro(&fake, &aid, &mid, &legacy);
+  clock.set(T0 + 1000);
+  let a2 = engine_on(&fake, &clock, store, "mx_local");
+  assert_eq!(a2.lock().st.kind_of(&mid, &fp_of(&m)), Some("mobile"));
+  a2.poll_once().unwrap();
+  post_chat(&m, &aid, &msg_n(2, "owner"));
+  assert_eq!(a2.poll_once().unwrap().len(), 1);
+  let v2: Vec<_> = intros_of(&fake, &mid).iter().map(|i| parse_intro(i).unwrap()).filter(|i| i.by == aid && i.parsed.version == 2 && !i.parsed.is_self(&aid)).collect();
+  assert_eq!(v2.len(), 1);
+  assert_eq!(v2[0].parsed.target_kind, "mobile");
+  assert!(v2[0].parsed.issued_at_ms >= T0 + 1000);
+}
+
+#[test]
+fn m10_a_runner_join_waits_for_every_owner_device_to_show_a_v2_self_intro() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let withheld = take_intros_by(&fake, &bid, &bid);
+  assert_eq!(withheld.len(), 1);
+  let r = engine_with(&fake, &clock, "Runner").with_kind("runner");
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  let rid = my_id(&r);
+  let e = a.decide_join(&rid, true).unwrap_err();
+  assert!(e.contains("update these devices first") && e.contains("Desktop B"), "{e}");
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != rid));
+  restore_intros(&fake, &bid, withheld);
+  a.decide_join(&rid, true).unwrap();
+  r.poll_once().unwrap();
+  assert!(r.lock().st.joined);
+  assert_eq!(kind_pin(&a, &rid).as_deref(), Some("runner"));
+}
+
+#[test]
+fn m11_a_v1_join_is_refused_once_a_runner_is_trusted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let early = engine_with(&fake, &clock, "Desktop E");
+  early.join_with_code(&code_with_kind(&a, None)).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&early), true).unwrap();
+  early.poll_once().unwrap();
+  a.poll_once().unwrap();
+  let _r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let x = engine_with(&fake, &clock, "Desktop X");
+  x.join_with_code(&code_with_kind(&a, None)).unwrap();
+  a.poll_once().unwrap();
+  let xid = my_id(&x);
+  let e = a.decide_join(&xid, true).unwrap_err();
+  assert!(e.contains("update the app"), "{e}");
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != xid));
+  let y = engine_with(&fake, &clock, "Desktop Y");
+  y.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&y), true).unwrap();
+}
+
+#[test]
+fn m13_withheld_self_intros_keep_the_gate_closed_and_change_no_trust() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  take_intros_by(&fake, &bid, &bid);
+  let r = engine_with(&fake, &clock, "Runner").with_kind("runner");
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  let ids = |e: &Engine| e.trust_state().unwrap().devices.iter().map(|d| d.id.clone()).collect::<Vec<_>>();
+  let before = ids(&a);
+  for n in 1..4 {
+    clock.set(T0 + n * 1000);
+    take_intros_by(&fake, &bid, &bid);
+    a.poll_once().unwrap();
+    assert!(a.decide_join(&my_id(&r), true).is_err());
+  }
+  assert_eq!(before, ids(&a));
+}
+
+#[test]
+fn m16_no_v1_intro_is_signed_for_any_target_in_any_gate_state() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, m) = pair(&fake, &clock);
+  let l = join_as(&fake, &clock, &a, "Desktop L", "desktop");
+  let (lid, mid) = (my_id(&l), my_id(&m));
+  let withheld = take_intros_by(&fake, &lid, &lid);
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let rid = my_id(&r);
+  m.poll_once().unwrap();
+  assert_eq!(kind_pin(&m, &rid).as_deref(), Some("runner"));
+  assert_eq!(kind_pin(&m, &lid).as_deref(), Some("desktop"));
+  publish_for(&m);
+  assert_eq!(fake.puts_by(&mid, &rid), [2]);
+  assert!(fake.puts_by(&mid, &lid).iter().all(|v| *v == 2));
+  for i in intros_of(&fake, &rid) {
+    assert_eq!(parse_intro(&i).unwrap().parsed.version, 2);
+  }
+  restore_intros(&fake, &lid, withheld);
+  publish_for(&m);
+  let all = fake.0.lock().unwrap();
+  assert!(all.puts.iter().all(|p| parse_intro(&p.2).unwrap().parsed.version == 2));
+}
+
+#[test]
+fn m17_a_second_runner_joins_after_the_first_is_trusted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+  let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+  for r in [&r1, &r2] {
+    assert!(a.trust_state().unwrap().devices.iter().any(|d| d.id == my_id(r) && d.state == DeviceState::Trusted));
+  }
+}
+
+#[test]
+fn m18_a_cap_below_the_needed_passes_raises_trust_unstable_and_drops_the_moved_device() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  let (_c, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+  put_raw_intro(&fake, &my_id(&a), &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+  a.lock().pass_cap = Some(1);
+  a.poll_once().unwrap();
+  assert!(alert_kinds(&a).contains(&"trust_unstable".to_owned()));
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != cid));
+  a.lock().pass_cap = None;
+  a.poll_once().unwrap();
+  assert!(trusted_with_kind(&a, &cid, "desktop"));
+}
+
+#[test]
+fn a_legacy_state_without_a_runner_gate_can_still_join_runners_after_migration() {
+  let (fake, clock, store, a, _x, _y) = legacy_owner_fleet();
+  let aid = my_id(&a);
+  let kinds: Value = {
+    let g = a.lock();
+    g.st.trusted.iter().map(|d| (d.id.clone(), json!("desktop"))).collect::<serde_json::Map<_, _>>().into()
+  };
+  legacy_state_with_kinds(&store, &a, kinds, vec![]);
+  clock.set(T0 + 1000);
+  let a2 = engine_on(&fake, &clock, store, "mx_local");
+  a2.poll_once().unwrap();
+  assert_eq!(a2.lock().st.kind_of(&aid, &fp_of(&a)), Some("desktop"));
+  assert!(a2.lock().st.legacy_unknown.is_empty());
+  let r = engine_with(&fake, &clock, "Runner").with_kind("runner");
+  r.join_with_code(&a2.open_join_code().unwrap()).unwrap();
+  a2.poll_once().unwrap();
+  a2.decide_join(&my_id(&r), true).unwrap();
+}
+
+#[test]
+fn m1_revoke_from_base_never_trusts_a_device_that_was_untrusted_before() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (_c, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+  let (_d, did, d_fp) = registered(&fake, &clock, "Desktop D", "desktop");
+  let aid = my_id(&a);
+  put_raw_intro(&fake, &aid, &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+  b.poll_once().unwrap();
+  assert!(trusted_with_kind(&b, &cid, "desktop"));
+  {
+    let mut g = b.lock();
+    let prefix = kind_key(&aid, "");
+    g.st.kinds.retain(|k, _| !k.starts_with(&prefix));
+    g.st.intros.retain(|i| parse_intro(i).is_ok_and(|p| p.parsed.target_id != aid));
+  }
+  fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == aid).unwrap().intros.clear();
+  put_raw_intro(&fake, &aid, &did, &signed_intro(&a, &did, &d_fp, "desktop"));
+  b.poll_once().unwrap();
+  let trusted_ids = |e: &Engine| -> Vec<String> {
+    e.trust_state().unwrap().devices.iter().filter(|d| d.state == DeviceState::Trusted).map(|d| d.id.clone()).collect()
+  };
+  let before = trusted_ids(&b);
+  assert!(!before.contains(&did));
+  {
+    let mut g = b.lock();
+    apply_revoke(&mut g, USER, T0, &cid, &c_fp, "C");
+  }
+  let after = trusted_ids(&b);
+  assert!(after.iter().all(|id| before.contains(id)));
+  assert!(!after.contains(&did));
+  assert!(kind_entries_of(&b, &did).is_empty());
+}
+
+#[test]
+fn m4_join_approval_refuses_a_kind_that_contradicts_a_known_one() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let n = engine_with(&fake, &clock, "Runner N").with_kind("runner");
+  let code = a.open_join_code().unwrap();
+  n.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let (nid, n_fp) = (my_id(&n), fp_of(&n));
+  a.lock().st.kinds.insert(kind_key(&nid, &n_fp), "desktop".to_owned());
+  let intros_before = a.lock().st.intros.len();
+  assert!(a.decide_join(&nid, true).is_err());
+  assert_eq!(a.lock().st.intros.len(), intros_before);
+  assert!(!trusted_with_kind(&a, &nid, "runner"));
+  assert!(fake.0.lock().unwrap().devices.iter().find(|d| d.id == nid).unwrap().intros.is_empty());
+}
+
+#[test]
+fn m3_a_device_admitted_only_by_a_demoted_signer_keeps_no_stored_kind() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+  let (_y, yid, y_fp) = registered(&fake, &clock, "Desktop Y", "desktop");
+  let aid = my_id(&a);
+  put_raw_intro(&fake, &aid, &xid, &signed_intro(&a, &xid, &x_fp, "desktop"));
+  b.poll_once().unwrap();
+  assert!(trusted_with_kind(&b, &xid, "desktop"));
+  put_raw_intro(&fake, &xid, &yid, &signed_intro(&x, &yid, &y_fp, "desktop"));
+  put_raw_intro(&fake, &aid, &xid, &signed_intro(&a, &xid, &x_fp, "runner"));
+  b.poll_once().unwrap();
+  assert!(trusted_with_kind(&b, &xid, "runner"));
+  assert!(b.trust_state().unwrap().devices.iter().all(|d| d.id != yid || d.state != DeviceState::Trusted));
+  assert!(kind_entries_of(&b, &yid).is_empty());
 }
