@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.151
+
+- Spawn approval from the phone: when a manager proposes a session with `propose_spawn`, the card now goes into the Manager chat room. A paired phone that has an approved spawn key can sign it. The runner checks the signature and posts "Approved on your phone. Starting the session.". The manager then starts the session with `spawn_session` and the card's `card_id`, using exactly the proposed arguments. A retry returns the same session. A card that is not approved within 5 minutes closes with "Not approved: the card expired". Phone-side signing ships with the mobile app; until then nothing changes for you.
+- Approvals only come from devices that joined as a phone. One device can have at most 4 answers waiting at a time.
+- A manager can have at most 4 open spawn cards (8 in total with the cards you request yourself), so a looping manager cannot use up your budget.
+- New: `tmgr runner manager spawn-keys list`, `approve <device_fp> <spawn_key_fp>` and `revoke <device_fp>` show and manage the phone spawn keys this runner trusts. A revoked key is refused if offered again. A new key from the same phone waits for approval.
+- Known: approvals that have not been used yet are lost when the runner restarts. Approve the card again. A keys file with revoked keys cannot be read by an older runner, so do not downgrade after revoking a key.
+- Restart the runner after updating.
+
 ## 1.0.150
 
 - Fixed: the Manager window and `tmgr attach` chat now show what a Claude Code or Codex session said and what you typed to it, not only its replies. Your prompts appear as "You". The last 30 turns of each session are filled in when the runner first reads the session, so a long-running session no longer looks empty until its next reply.
