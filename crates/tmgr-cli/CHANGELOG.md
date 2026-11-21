@@ -3,6 +3,8 @@
 ## Unreleased
 
 - New: `tmgr manager start --unrestricted` runs the manager without the sandbox and in bypass mode, so it can work on your whole machine. It is for you at the keyboard: it is refused inside an agent session and without a terminal, works only with Claude Code, and needs the follower PIN (`tmgr link pin set`) and a typed confirmation after a warning.
+- Warning: an unrestricted manager runs as you. It can read and change any of your files, use your SSH keys and credentials, and run any command without asking. It can also type into sessions that are in bypass mode or run without the sandbox, which a normal manager cannot.
+- Everything else stays: it still cannot start sessions without the sandbox or other managers, starts bypass sessions only with a card you signed, cannot type into itself, into sessions started for a link, team or queue workers, or exited sessions, and cannot switch the agent of bypass or unsandboxed sessions. Remote managers on other machines never get this permission.
 - It applies to that one manager session only: starting the manager again without the flag gives the sandboxed, ask-mode manager. There is no `--yes`.
 - Text the manager reads from sessions, rooms or files, and messages you or your phone send to it, can steer it. Starting it from the phone is not possible.
 - `tmgr manager status`, `tmgr agents` and `tmgr attach` mark an unrestricted manager as UNRESTRICTED. Restart the runner after updating.
