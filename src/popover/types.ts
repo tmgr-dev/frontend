@@ -80,6 +80,7 @@ export const POPOVER_ACTIONS_FIXED = [
 	'tray_check_for_updates',
 	'resume-last',
 	'open-usage',
+	'open-routines',
 	'open-runner',
 	'close',
 ] as const;

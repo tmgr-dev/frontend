@@ -159,5 +159,29 @@ export const visibleSections = (model: PopoverModel): PopoverSection[] => {
 	return sections;
 };
 
+export const TODAY_CAP = 5;
+
+type TodayExtras = NonNullable<PopoverExtras['today']>;
+
+export const todayEntries = (
+	routines: TodayExtras['routines'],
+	deadlines: TodayExtras['deadlines'],
+	cap = TODAY_CAP,
+) => {
+	const shownRoutines = routines.slice(0, cap);
+	const shownDeadlines = [...deadlines]
+		.sort((a, b) => a.dueAt - b.dueAt)
+		.slice(0, cap - shownRoutines.length);
+	return {
+		routines: shownRoutines,
+		deadlines: shownDeadlines,
+		hidden:
+			routines.length +
+			deadlines.length -
+			shownRoutines.length -
+			shownDeadlines.length,
+	};
+};
+
 export const usageBarPct = (bar: UsageBar): number =>
 	Math.min(100, Math.max(0, Math.round(bar.pct)));

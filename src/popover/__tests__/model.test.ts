@@ -15,6 +15,7 @@ import {
 	runningElapsed,
 	stripTicket,
 	ticketCode,
+	todayEntries,
 	tokensText,
 	usageLevel,
 	visibleSections,
@@ -286,5 +287,45 @@ describe('section visibility', () => {
 		expect(hasUsage({})).toBe(false);
 		expect(hasUsage({ runningCost: 0 })).toBe(true);
 		expect(hasUsage({ week: { pct: 10, resetsAt: null } })).toBe(true);
+	});
+});
+
+describe('todayEntries', () => {
+	const routine = (id: number) => ({ id, title: `r${id}`, done: false });
+	const deadline = (id: number, dueAt: number) => ({
+		id,
+		workspaceId: 1,
+		title: `d${id}`,
+		code: null,
+		dueAt,
+	});
+
+	it('lists routines first, then the nearest deadlines, up to the cap', () => {
+		const result = todayEntries(
+			[routine(1), routine(2)],
+			[deadline(3, 30), deadline(4, 10), deadline(5, 20), deadline(6, 40)],
+		);
+		expect(result.routines.map((r) => r.id)).toEqual([1, 2]);
+		expect(result.deadlines.map((d) => d.id)).toEqual([4, 5, 3]);
+		expect(result.hidden).toBe(1);
+	});
+
+	it('shows only routines when they fill the cap', () => {
+		const routines = [1, 2, 3, 4, 5, 6, 7, 8].map(routine);
+		const result = todayEntries(routines, [deadline(9, 1)]);
+		expect(result.routines).toHaveLength(5);
+		expect(result.deadlines).toEqual([]);
+		expect(result.hidden).toBe(4);
+	});
+
+	it('hides nothing when everything fits', () => {
+		const result = todayEntries([routine(1)], []);
+		expect(result.hidden).toBe(0);
+	});
+
+	it('does not mutate its input', () => {
+		const deadlines = [deadline(1, 9), deadline(2, 1)];
+		todayEntries([], deadlines);
+		expect(deadlines.map((d) => d.id)).toEqual([1, 2]);
 	});
 });

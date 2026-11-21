@@ -451,6 +451,11 @@
 							console.error('popover open-usage failed', error),
 						),
 					),
+					await listen('popover://open-routines', () =>
+						openFromPopover('/routines').catch((error) =>
+							console.error('popover open-routines failed', error),
+						),
+					),
 					await listen('popover://open-runner', () =>
 						openFromPopover('/settings?tab=experimental').catch((error) =>
 							console.error('popover open-runner failed', error),

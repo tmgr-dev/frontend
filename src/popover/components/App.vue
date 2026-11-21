@@ -109,7 +109,7 @@
 							<span>{{ trackedText }}</span>
 						</div>
 						<button
-							v-for="routine in model.extras.today?.routines ?? []"
+							v-for="routine in todayList.routines"
 							:key="`routine-${routine.id}`"
 							type="button"
 							class="row"
@@ -121,7 +121,7 @@
 							<span class="t">{{ routine.title }}</span>
 						</button>
 						<button
-							v-for="deadline in nearestDeadlines"
+							v-for="deadline in todayList.deadlines"
 							:key="`deadline-${deadline.workspaceId}:${deadline.id}`"
 							type="button"
 							class="row"
@@ -130,6 +130,18 @@
 						>
 							<span class="c">{{ deadline.code ?? '' }}</span>
 							<span class="t">{{ deadline.title }}</span>
+						</button>
+						<button
+							type="button"
+							class="row"
+							data-nav
+							@click="run('open-routines')"
+						>
+							<span class="t">{{ $t('popover.today.openRoutines') }}</span>
+							<span v-if="todayList.hidden" class="m">{{
+								$t('popover.today.more', { count: todayList.hidden })
+							}}</span>
+							<span class="chev">›</span>
 						</button>
 					</div>
 				</template>
@@ -318,6 +330,7 @@
 		stripTicket,
 		ticketCode,
 		durationText,
+		todayEntries,
 		tokensText,
 		visibleSections,
 		type PopoverSection,
@@ -369,9 +382,9 @@
 				if (!first) return this.$t('popover.usage.running');
 				return ticketCode(first.title) ?? this.$t('popover.usage.running');
 			},
-			nearestDeadlines() {
-				const deadlines = this.model?.extras.today?.deadlines ?? [];
-				return [...deadlines].sort((a, b) => a.dueAt - b.dueAt).slice(0, 3);
+			todayList() {
+				const today = this.model?.extras.today;
+				return todayEntries(today?.routines ?? [], today?.deadlines ?? []);
 			},
 			trackedText(): string {
 				return durationText(this.model?.extras.today?.trackedSeconds ?? 0);

@@ -27,7 +27,9 @@
 	},
 	"today": {
 		"title": "Today",
-		"tracked": "Tracked"
+		"tracked": "Tracked",
+		"openRoutines": "Go to routines",
+		"more": "+{count} more"
 	},
 	"machines": {
 		"title": "Machines & sessions",
