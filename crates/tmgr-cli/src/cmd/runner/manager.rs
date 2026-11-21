@@ -160,12 +160,6 @@ fn tool_defs() -> Value {
             "name": {"type": "string", "maxLength": 64},
             "permission_mode": {"type": "string", "enum": ["ask", "accept-edits"], "description": "Default ask"}
          }), json!(["profile", "cwd"]))},
-        {"name": tool::SWITCH_AGENT,
-         "description": "Continue a session in another agent with a handoff packet. Starts a new session and stops the old one, which can take up to 15 seconds. Refused for yourself, managers, link sessions, team or queue workers, task-linked sessions and sessions in bypass mode or without the sandbox. Never carries bypass. At most 2 per minute.",
-         "inputSchema": obj(json!({
-            "session": {"type": "string", "description": "Session id"},
-            "to": {"type": "string", "enum": ["claude-code", "codex", "opencode", "agy"]}
-         }), json!(["session", "to"]))},
         {"name": tool::POST_MESSAGE,
          "description": "Post a Markdown message to the owner in the Manager room.",
          "inputSchema": obj(json!({
@@ -177,7 +171,13 @@ fn tool_defs() -> Value {
          "inputSchema": obj(json!({
             "room": {"type": "string", "description": "\"manager\" or a session id"},
             "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Default 50"}
-         }), json!(["room"]))}
+         }), json!(["room"]))},
+        {"name": tool::SWITCH_AGENT,
+         "description": "Continue a session in another agent with a handoff packet. Starts a new session and stops the old one, which can take up to 15 seconds. Refused for yourself, managers, link sessions, team or queue workers, task-linked sessions and sessions in bypass mode or without the sandbox. Never carries bypass. At most 2 per minute.",
+         "inputSchema": obj(json!({
+            "session": {"type": "string", "description": "Session id"},
+            "to": {"type": "string", "enum": ["claude-code", "codex", "opencode", "agy"]}
+         }), json!(["session", "to"]))}
     ])
 }
 
