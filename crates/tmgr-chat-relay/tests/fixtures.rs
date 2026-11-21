@@ -1,19 +1,26 @@
+use p256::ecdsa::Signature;
 use serde_json::{json, Value};
 use tmgr_chat_relay::keys::DeviceKeys;
 use tmgr_chat_relay::trust::{
     decode_join_code, encode_join_code, join_mac, sign_intro, sign_revoke, sign_spawnkey,
     trusted_set, verify_intro, verify_join_mac, verify_revoke, verify_spawnkey, DirEntry,
-    IntroStatement, JoinCode, JoinMacInput, RevokeStatement, SpawnStatement,
+    IntroStatement, JoinCode, JoinMacInput, RevokeStatement, SpawnStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{
     chat_ctx, msg_id_from, open_message, seal_message_unpadded_with, seal_message_with,
     signed_string, Body, Inner, Peer, SealParams,
 };
-use tmgr_phone::{b64, h, hex, open_ctx, public_key, Entropy, Sealed};
+use tmgr_chat_relay::Error;
+use tmgr_phone::{
+    b64, b64_decode, h, hex, open_ctx, public_key, seal_ctx_with, sign, Entropy, Sealed,
+};
 
 const USER: u64 = 42;
 const NOW: u64 = 1_800_000_000_000;
 const SENT_AT: u64 = 1_799_999_990_000;
+const MAX_AGE_MS: u64 = 31 * 24 * 3600 * 1000;
+const MAX_SKEW_MS: u64 = 5 * 60 * 1000;
+const NEG_MSG_ID: &str = "m_00000000000000000000000000000002";
 const IDS: [&str; 5] = [
     "00000000-0000-4000-8000-00000000000a",
     "00000000-0000-4000-8000-00000000000b",
@@ -38,6 +45,10 @@ fn key_json(k: &DeviceKeys) -> Value {
         "kex_pub": k.kex_pub_b64(),
         "fp": k.fingerprint(),
     })
+}
+
+fn pin(id: &str, k: &DeviceKeys) -> Trusted {
+    Trusted::new(id, &k.sign_pub_b64(), &k.kex_pub_b64()).unwrap()
 }
 
 fn text(v: &Value) -> String {
@@ -110,14 +121,17 @@ fn message_fixture(description: &str, kind: &str, msg_id: &str, seq: u64, payloa
         .as_str()
         .unwrap()
         .to_string();
-    let (sender_sign, sender_kex) = (sender.sign_pub_b64(), sender.kex_pub_b64());
-    let opened = open_message(&recipient, USER, IDS[1], IDS[0], msg_id, &body, NOW, |_| {
-        Some(Peer {
-            device_id: IDS[0],
-            sign_pub_b64: &sender_sign,
-            kex_pub_b64: &sender_kex,
-        })
-    })
+    let opened = open_message(
+        &recipient,
+        USER,
+        IDS[1],
+        IDS[0],
+        msg_id,
+        &body,
+        NOW,
+        &[pin(IDS[0], &sender)],
+        |_| None,
+    )
     .unwrap();
     json!({
         "description": description,
@@ -152,6 +166,7 @@ fn message_fixture(description: &str, kind: &str, msg_id: &str, seq: u64, payloa
                 "seq": opened.seq,
                 "sent_at": opened.sent_at,
                 "payload": opened.payload,
+                "trusted": opened.trusted,
             },
         },
     })
@@ -179,9 +194,14 @@ fn blob_fixture() -> Value {
     )
 }
 
-fn intro_statement(signer: &DeviceKeys, target: &DeviceKeys, target_id: &str) -> IntroStatement {
+fn intro_statement(
+    signer: &DeviceKeys,
+    target: &DeviceKeys,
+    target_id: &str,
+    user: u64,
+) -> IntroStatement {
     IntroStatement {
-        user_id: USER,
+        user_id: user,
         introducer_fp: signer.fingerprint(),
         target_id: target_id.into(),
         target_fp: target.fingerprint(),
@@ -192,10 +212,10 @@ fn intro_statement(signer: &DeviceKeys, target: &DeviceKeys, target_id: &str) ->
 
 fn intro_fixture() -> Value {
     let (p, n) = (keys(1), keys(2));
-    let st = intro_statement(&p, &n, IDS[1]);
+    let st = intro_statement(&p, &n, IDS[1], USER);
     let statement = st.to_statement().unwrap();
     let json_str = sign_intro(&p, IDS[0], &st).unwrap();
-    verify_intro(&json_str, &p.sign_pub_b64()).unwrap();
+    verify_intro(&json_str, USER, IDS[0], &p.sign_pub_b64(), &p.kex_pub_b64()).unwrap();
     let sig = serde_json::from_str::<Value>(&json_str).unwrap()["sig"].clone();
     json!({
         "description": "intro signed by P for N; uploaded as the intros string",
@@ -220,7 +240,7 @@ fn revoke_fixture() -> Value {
     };
     let statement = st.to_statement().unwrap();
     let json_str = sign_revoke(&r, &st).unwrap();
-    verify_revoke(&json_str, &r.sign_pub_b64()).unwrap();
+    verify_revoke(&json_str, USER, &r.sign_pub_b64(), &r.kex_pub_b64()).unwrap();
     let sig = serde_json::from_str::<Value>(&json_str).unwrap()["sig"].clone();
     json!({
         "description": "revoke signed by R for T; the json string is the POST /revocations statement",
@@ -234,7 +254,7 @@ fn revoke_fixture() -> Value {
     })
 }
 
-fn join_fixture() -> Value {
+fn join_section(label: &str) -> Value {
     let (p, n) = (keys(1), keys(2));
     let secret = [0x5au8; 32];
     let code = JoinCode {
@@ -253,13 +273,12 @@ fn join_fixture() -> Value {
         n_id: IDS[1],
         n_fp: &nf,
         n_kind: "mobile",
-        label: "Phone",
+        label,
     };
     let mac = join_mac(&secret, &input).unwrap();
     verify_join_mac(&secret, &input, &mac).unwrap();
     let raw = encoded.strip_prefix("tmgr-chat-join:v1:").unwrap();
     json!({
-        "description": "join code, MAC key is the 32 decoded secret bytes",
         "inputs": {
             "code": {
                 "user_id": USER,
@@ -269,7 +288,7 @@ fn join_fixture() -> Value {
                 "secret_b64": b64(&secret),
                 "exp_ms": NOW + 600_000,
             },
-            "joiner": {"device_id": IDS[1], "kind": "mobile", "label": "Phone", "fp": nf},
+            "joiner": {"device_id": IDS[1], "kind": "mobile", "label": label, "fp": nf},
         },
         "outputs": {
             "code_string": encoded,
@@ -277,10 +296,30 @@ fn join_fixture() -> Value {
             "mac_transcript": format!(
                 "tmgr-chat-join:v1:{USER}:{pf}:{}:{nf}:mobile:{}",
                 IDS[1],
-                h("Phone")
+                h(label)
             ),
             "mac_hex": mac,
         },
+    })
+}
+
+fn join_fixture() -> Value {
+    let mut v = join_section("Phone");
+    v["description"] = json!("join code, MAC key is the 32 decoded secret bytes");
+    v
+}
+
+fn unicode_fixture() -> Value {
+    json!({
+        "description": "non-ASCII positive vectors: a chat payload and a join label; hashes are over the UTF-8 bytes, no \\u escapes in the inner string",
+        "chat": message_fixture(
+            "chat with non-ASCII payload",
+            "chat",
+            "m_00000000000000000000000000000003",
+            1,
+            json!({"text": "Привет, мир ✓ 日本語 😀", "n": 1}),
+        ),
+        "join": join_section("Телефон ✓ 日本語"),
     })
 }
 
@@ -297,7 +336,14 @@ fn spawnkey_fixture() -> Value {
     };
     let k = sign_spawnkey(&dev, &spawn_secret, &st).unwrap();
     let payload = serde_json::to_string(&k).unwrap();
-    verify_spawnkey(&payload, IDS[0], &dev.sign_pub_b64(), &dev.kex_pub_b64()).unwrap();
+    verify_spawnkey(
+        &payload,
+        USER,
+        IDS[0],
+        &dev.sign_pub_b64(),
+        &dev.kex_pub_b64(),
+    )
+    .unwrap();
     json!({
         "description": "spawn key statement signed by the device chat sign key and by the spawn key",
         "inputs": {
@@ -333,10 +379,7 @@ fn trust_case(
     intros: Vec<String>,
     directory: &[(&str, &DeviceKeys)],
 ) -> Value {
-    let pin_pairs: Vec<(String, String)> = pins
-        .iter()
-        .map(|(i, k)| (i.to_string(), k.fingerprint()))
-        .collect();
+    let pin_list: Vec<Trusted> = pins.iter().map(|(i, k)| pin(i, k)).collect();
     let revoked_fps: Vec<String> = revoked.iter().map(|k| k.fingerprint()).collect();
     let dir: Vec<DirEntry> = directory
         .iter()
@@ -346,26 +389,27 @@ fn trust_case(
             kex_pub_b64: k.kex_pub_b64(),
         })
         .collect();
-    let expected = trusted_set(&pin_pairs, &revoked_fps, &intros, &dir);
+    let set = trusted_set(USER, &pin_list, &revoked_fps, &intros, &dir);
     json!({
         "name": name,
         "note": note,
         "inputs": {
-            "pins": pin_pairs,
+            "pins": pin_list,
             "revoked": revoked_fps,
             "intros": intros,
             "directory": dir_json(directory),
         },
-        "outputs": {"trusted": expected},
+        "outputs": {"trusted": set.trusted, "mismatches": set.mismatches},
     })
 }
 
 fn intro_by(by: (&str, &DeviceKeys), target: (&str, &DeviceKeys)) -> String {
-    sign_intro(by.1, by.0, &intro_statement(by.1, target.1, target.0)).unwrap()
+    sign_intro(by.1, by.0, &intro_statement(by.1, target.1, target.0, USER)).unwrap()
 }
 
 fn trust_fixture() -> Value {
     let (a, b, c, evil) = (keys(1), keys(2), keys(3), keys(66));
+    let d4 = keys(4);
     let full = [(IDS[0], &a), (IDS[1], &b), (IDS[2], &c)];
     let pin_a = [(IDS[0], &a)];
     let cases = vec![
@@ -374,7 +418,10 @@ fn trust_fixture() -> Value {
             "A pinned; A introduces B; B introduces C; intros listed child first",
             &pin_a,
             &[],
-            vec![intro_by((IDS[1], &b), (IDS[2], &c)), intro_by((IDS[0], &a), (IDS[1], &b))],
+            vec![
+                intro_by((IDS[1], &b), (IDS[2], &c)),
+                intro_by((IDS[0], &a), (IDS[1], &b)),
+            ],
             &full,
         ),
         trust_case(
@@ -382,7 +429,10 @@ fn trust_fixture() -> Value {
             "B revoked; C only had an intro from B, so C drops out",
             &pin_a,
             &[&b],
-            vec![intro_by((IDS[0], &a), (IDS[1], &b)), intro_by((IDS[1], &b), (IDS[2], &c))],
+            vec![
+                intro_by((IDS[0], &a), (IDS[1], &b)),
+                intro_by((IDS[1], &b), (IDS[2], &c)),
+            ],
             &full,
         ),
         trust_case(
@@ -406,19 +456,70 @@ fn trust_fixture() -> Value {
             &full,
         ),
         trust_case(
-            "mismatched_directory_keys",
-            "directory serves other keys for A, so A's pinned fp does not match: A's intros are not verified",
+            "revoked_target_reentry",
+            "B revoked; A signs an intro for the same keys under a new device id: the revoked fp stays out",
+            &pin_a,
+            &[&b],
+            vec![intro_by((IDS[0], &a), (IDS[3], &b))],
+            &[(IDS[0], &a), (IDS[3], &b)],
+        ),
+        trust_case(
+            "pinned_key_mismatch_reported",
+            "directory serves other keys for pinned A: A keeps its pinned keys, its intro for B still verifies, and the mismatch is reported",
             &pin_a,
             &[],
-            vec![intro_by((IDS[0], &a), (IDS[1], &b)), intro_by((IDS[0], &evil), (IDS[3], &keys(4)))],
+            vec![intro_by((IDS[0], &a), (IDS[1], &b))],
             &[(IDS[0], &evil), (IDS[1], &b)],
+        ),
+        trust_case(
+            "intro_signed_by_directory_impostor",
+            "an intro signed with the keys the directory serves for A is not accepted: A's pinned keys verify",
+            &pin_a,
+            &[],
+            vec![intro_by((IDS[0], &evil), (IDS[3], &d4))],
+            &[(IDS[0], &evil), (IDS[3], &d4)],
+        ),
+        trust_case(
+            "intro_target_keys_must_match_fp",
+            "directory serves other keys for N than the intro's N_fp: N is not added",
+            &pin_a,
+            &[],
+            vec![intro_by((IDS[0], &a), (IDS[1], &b))],
+            &[(IDS[0], &a), (IDS[1], &evil)],
+        ),
+        trust_case(
+            "by_mismatch",
+            "intro signed by A but its by field names another id: ignored",
+            &pin_a,
+            &[],
+            vec![sign_intro(&a, IDS[3], &intro_statement(&a, &b, IDS[1], USER)).unwrap()],
+            &full,
+        ),
+        trust_case(
+            "untrusted_introducer",
+            "C is not trusted, so its intro for D does not count",
+            &pin_a,
+            &[],
+            vec![intro_by((IDS[2], &c), (IDS[3], &d4))],
+            &[(IDS[0], &a), (IDS[2], &c), (IDS[3], &d4)],
+        ),
+        trust_case(
+            "wrong_user",
+            "intro statement carries user 43 while the set is computed for user 42: ignored",
+            &pin_a,
+            &[],
+            vec![sign_intro(&a, IDS[0], &intro_statement(&a, &b, IDS[1], 43)).unwrap()],
+            &full,
         ),
         trust_case(
             "withheld_intros_cached",
             "server serves no intros; locally cached intros keep B and C trusted",
             &pin_a,
             &[],
-            vec![intro_by((IDS[0], &a), (IDS[1], &b)), intro_by((IDS[1], &b), (IDS[2], &c))],
+            vec![
+                intro_by((IDS[0], &a), (IDS[1], &b)),
+                intro_by((IDS[1], &b), (IDS[2], &c)),
+            ],
             &full,
         ),
         trust_case(
@@ -439,8 +540,406 @@ fn trust_fixture() -> Value {
         ),
     ];
     json!({
-        "description": "trusted_set fixpoint; every intro is a signed intro json string; result is sorted by (id, fp)",
+        "description": "trusted_set(user_id 42, pins, revoked, intros, directory); every intro is a signed intro json string; trusted is sorted by (device_id, fp); mismatches lists trusted ids whose directory keys give another fp",
+        "user_id": USER,
         "cases": cases,
+    })
+}
+
+struct NegWorld {
+    sender: DeviceKeys,
+    recipient: DeviceKeys,
+    ent: Entropy,
+}
+
+impl NegWorld {
+    fn new() -> NegWorld {
+        NegWorld {
+            sender: keys(1),
+            recipient: keys(2),
+            ent: Entropy {
+                eph_secret: [7u8; 32],
+                nonce: [8u8; 12],
+            },
+        }
+    }
+
+    fn valid_body(&self, kind: &str, id: &str) -> String {
+        let (sp, kp) = (self.recipient.sign_pub_b64(), self.recipient.kex_pub_b64());
+        seal_message_with(
+            &self.sender,
+            &SealParams {
+                user_id: USER,
+                from_device_id: IDS[0],
+                to: Peer {
+                    device_id: IDS[1],
+                    sign_pub_b64: &sp,
+                    kex_pub_b64: &kp,
+                },
+                kind,
+                msg_id: id,
+                sent_at_ms: SENT_AT,
+                seq: 1,
+                payload: json!({"text": "neg"}),
+            },
+            &self.ent,
+        )
+        .unwrap()
+    }
+
+    fn inner(&self, extra: &str) -> String {
+        format!(
+            "{{\"v\":1,\"kind\":\"chat\",\"id\":\"{NEG_MSG_ID}\",\"sent_at\":{SENT_AT},\"seq\":1,{extra}}}"
+        )
+    }
+
+    fn sig(&self, inner: &str) -> Vec<u8> {
+        let s = signed_string(
+            USER,
+            &self.sender.fingerprint(),
+            &self.recipient.fingerprint(),
+            IDS[0],
+            IDS[1],
+            "chat",
+            NEG_MSG_ID,
+            SENT_AT,
+            inner,
+        )
+        .unwrap();
+        b64_decode(&sign(self.sender.sign_secret(), &s).unwrap()).unwrap()
+    }
+
+    fn seal_plain(&self, plain: &str, to: &DeviceKeys) -> String {
+        let ctx = chat_ctx(USER, IDS[0], IDS[1], "chat", NEG_MSG_ID).unwrap();
+        let s = seal_ctx_with(
+            &b64_decode(&to.kex_pub_b64()).unwrap(),
+            &ctx,
+            "chat",
+            NEG_MSG_ID,
+            plain.as_bytes(),
+            &self.ent,
+        )
+        .unwrap();
+        serde_json::to_string(&Body {
+            v: 1,
+            kind: s.kind,
+            id: s.id,
+            from: IDS[0].into(),
+            eph: s.eph,
+            nonce: s.nonce,
+            ct: s.ct,
+        })
+        .unwrap()
+    }
+
+    fn body_for(&self, inner: &str, sig: &[u8]) -> String {
+        let plain = format!(
+            "{{\"body\":{},\"sig\":\"{}\"}}",
+            serde_json::to_string(inner).unwrap(),
+            b64(sig)
+        );
+        self.seal_plain(&plain, &self.recipient)
+    }
+
+    fn signed_body(&self, inner: &str) -> String {
+        self.body_for(inner, &self.sig(inner))
+    }
+}
+
+const PAYLOAD: &str = "\"payload\":{\"text\":\"neg\"}";
+
+fn neg_msg(name: &str, class: &str, body: String, expect: Value) -> Value {
+    json!({"name": name, "class": class, "body": body, "expect": expect})
+}
+
+fn neg_msg_with(name: &str, class: &str, body: String, expect: Value, extra: Value) -> Value {
+    let mut v = neg_msg(name, class, body, expect);
+    for (k, x) in extra.as_object().unwrap() {
+        v[k] = x.clone();
+    }
+    v
+}
+
+fn err(code: Error) -> Value {
+    json!({"error": code.code()})
+}
+
+fn ok_open(trusted: bool) -> Value {
+    json!({"ok": {"seq": 1, "trusted": trusted}})
+}
+
+fn high_s(der: &[u8]) -> Vec<u8> {
+    let sig = Signature::from_der(der).unwrap();
+    let (r, s) = sig.split_scalars();
+    let neg = -*s.as_ref();
+    let hs = Signature::from_scalars(r, p256::NonZeroScalar::new(neg).unwrap()).unwrap();
+    assert!(hs.normalize_s().is_some());
+    hs.to_der().as_bytes().to_vec()
+}
+
+fn raw64(der: &[u8]) -> Vec<u8> {
+    Signature::from_der(der).unwrap().to_bytes().to_vec()
+}
+
+fn b64_alphabet_index(c: char) -> usize {
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        .find(c)
+        .unwrap()
+}
+
+fn negative_fixture() -> Value {
+    let w = NegWorld::new();
+    let inner = w.inner(PAYLOAD);
+    let der = w.sig(&inner);
+    let valid = w.valid_body("chat", NEG_MSG_ID);
+    let mut vectors = vec![];
+
+    vectors.push(neg_msg(
+        "valid_baseline",
+        "positive",
+        valid.clone(),
+        ok_open(true),
+    ));
+
+    vectors.push(neg_msg(
+        "duplicate_key_in_body",
+        "duplicate_keys",
+        valid.replacen("{\"v\":1,", "{\"v\":1,\"v\":1,", 1),
+        err(Error::BadJson),
+    ));
+
+    let plain_dup = format!(
+        "{{\"body\":{},\"sig\":\"{}\",\"sig\":\"{}\"}}",
+        serde_json::to_string(&inner).unwrap(),
+        b64(&der),
+        b64(&der)
+    );
+    vectors.push(neg_msg(
+        "duplicate_key_in_plaintext",
+        "duplicate_keys",
+        w.seal_plain(&plain_dup, &w.recipient),
+        err(Error::BadJson),
+    ));
+
+    vectors.push(neg_msg(
+        "duplicate_key_in_inner",
+        "duplicate_keys",
+        w.signed_body(&w.inner(&format!("\"seq\":1,{PAYLOAD}"))),
+        err(Error::BadJson),
+    ));
+
+    vectors.push(neg_msg(
+        "duplicate_key_in_payload",
+        "duplicate_keys",
+        w.signed_body(&w.inner("\"payload\":{\"a\":1,\"a\":2}")),
+        err(Error::BadJson),
+    ));
+
+    let parsed: Body = serde_json::from_str(&valid).unwrap();
+    let with_eph = |eph: String| {
+        serde_json::to_string(&Body {
+            eph,
+            ..parsed.clone()
+        })
+        .unwrap()
+    };
+    vectors.push(neg_msg(
+        "unpadded_base64_eph",
+        "base64",
+        with_eph(parsed.eph.trim_end_matches('=').to_string()),
+        err(Error::BadFormat),
+    ));
+
+    let mut chars: Vec<char> = parsed.eph.chars().collect();
+    let pad_at = chars.iter().position(|c| *c == '=').unwrap();
+    let last = chars[pad_at - 1];
+    let idx = b64_alphabet_index(last);
+    assert_eq!(idx & 3, 0, "fixture eph tail must have zero trailing bits");
+    chars[pad_at - 1] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        .chars()
+        .nth(idx | 1)
+        .unwrap();
+    vectors.push(neg_msg(
+        "trailing_bits_base64_eph",
+        "base64",
+        with_eph(chars.into_iter().collect()),
+        err(Error::BadFormat),
+    ));
+
+    vectors.push(neg_msg(
+        "whitespace_in_base64_ct",
+        "base64",
+        serde_json::to_string(&Body {
+            ct: format!("{}\n", parsed.ct),
+            ..parsed.clone()
+        })
+        .unwrap(),
+        err(Error::BadFormat),
+    ));
+
+    let exp_inner = format!(
+        "{{\"v\":1,\"kind\":\"chat\",\"id\":\"{NEG_MSG_ID}\",\"sent_at\":1.79999999e12,\"seq\":1,{PAYLOAD}}}"
+    );
+    vectors.push(neg_msg(
+        "exponent_integer_sent_at",
+        "integer",
+        w.signed_body(&exp_inner),
+        err(Error::BadJson),
+    ));
+    let float_seq = w.inner(PAYLOAD).replace("\"seq\":1,", "\"seq\":1.0,");
+    vectors.push(neg_msg(
+        "float_seq",
+        "integer",
+        w.signed_body(&float_seq),
+        err(Error::BadJson),
+    ));
+
+    vectors.push(neg_msg(
+        "lone_surrogate_escape_in_payload",
+        "utf8",
+        w.signed_body(&w.inner("\"payload\":{\"t\":\"\\ud800\"}")),
+        err(Error::BadJson),
+    ));
+
+    let carol = keys(3);
+    vectors.push(neg_msg(
+        "sealed_to_other_recipient",
+        "sealing",
+        w.seal_plain(
+            &format!(
+                "{{\"body\":{},\"sig\":\"{}\"}}",
+                serde_json::to_string(&inner).unwrap(),
+                b64(&der)
+            ),
+            &carol,
+        ),
+        err(Error::OpenFailed),
+    ));
+
+    vectors.push(neg_msg_with(
+        "body_for_different_user",
+        "sealing",
+        valid.clone(),
+        err(Error::OpenFailed),
+        json!({"user_id": 43}),
+    ));
+
+    vectors.push(neg_msg_with(
+        "untrusted_sender_chat",
+        "trust",
+        valid.clone(),
+        err(Error::BadKey),
+        json!({"sender_trusted": false}),
+    ));
+
+    vectors.push(neg_msg_with(
+        "untrusted_sender_join_from_directory",
+        "trust",
+        w.valid_body("join", "j_00000000000000000000000000000001"),
+        ok_open(false),
+        json!({"sender_trusted": false, "msg_id": "j_00000000000000000000000000000001"}),
+    ));
+
+    let high = high_s(&der);
+    for (name, sig) in [
+        ("signature_high_s_der_accepted", high.clone()),
+        ("signature_raw64_low_s_accepted", raw64(&der)),
+        ("signature_raw64_high_s_accepted", raw64(&high)),
+    ] {
+        vectors.push(neg_msg(
+            name,
+            "signature",
+            w.body_for(&inner, &sig),
+            ok_open(true),
+        ));
+    }
+
+    for (name, now, expect) in [
+        (
+            "window_oldest_accepted",
+            SENT_AT + MAX_AGE_MS,
+            ok_open(true),
+        ),
+        (
+            "window_too_old",
+            SENT_AT + MAX_AGE_MS + 1,
+            err(Error::BadWindow),
+        ),
+        (
+            "window_future_edge_accepted",
+            SENT_AT - MAX_SKEW_MS,
+            ok_open(true),
+        ),
+        (
+            "window_too_far_in_future",
+            SENT_AT - MAX_SKEW_MS - 1,
+            err(Error::BadWindow),
+        ),
+    ] {
+        vectors.push(neg_msg_with(
+            name,
+            "window",
+            valid.clone(),
+            expect,
+            json!({"now_ms": now}),
+        ));
+    }
+
+    let (p, n) = (keys(1), keys(2));
+    let good_intro = sign_intro(&p, IDS[0], &intro_statement(&p, &n, IDS[1], USER)).unwrap();
+    let signer =
+        json!({"device_id": IDS[0], "sign_pub": p.sign_pub_b64(), "kex_pub": p.kex_pub_b64()});
+    let other = keys(9);
+    let intro_vec = |name: &str, json_str: &str, user: u64, signer: Value, expect: Value| json!({"name": name, "intro_json": json_str, "user_id": user, "signer": signer, "expect": expect});
+    let intro_vectors = vec![
+        intro_vec(
+            "valid",
+            &good_intro,
+            USER,
+            signer.clone(),
+            json!({"ok": true}),
+        ),
+        intro_vec(
+            "by_mismatch",
+            &sign_intro(&p, IDS[3], &intro_statement(&p, &n, IDS[1], USER)).unwrap(),
+            USER,
+            signer.clone(),
+            err(Error::IdMismatch),
+        ),
+        intro_vec(
+            "wrong_user",
+            &sign_intro(&p, IDS[0], &intro_statement(&p, &n, IDS[1], 43)).unwrap(),
+            USER,
+            signer.clone(),
+            err(Error::IdMismatch),
+        ),
+        intro_vec(
+            "signer_keys_do_not_match_introducer_fp",
+            &good_intro,
+            USER,
+            json!({"device_id": IDS[0], "sign_pub": other.sign_pub_b64(), "kex_pub": other.kex_pub_b64()}),
+            err(Error::BadKey),
+        ),
+        intro_vec(
+            "duplicate_key_in_intro_json",
+            &good_intro.replacen("{\"v\":1,", "{\"v\":1,\"v\":1,", 1),
+            USER,
+            signer.clone(),
+            err(Error::BadJson),
+        ),
+    ];
+
+    json!({
+        "description": "negative and edge vectors; message vectors are opened with context.recipient, context.sender pinned (unless sender_trusted is false) and per-vector overrides user_id, now_ms, msg_id; expect is {error: code} or {ok: ...}",
+        "context": {
+            "user_id": USER,
+            "now_ms": NOW,
+            "msg_id": NEG_MSG_ID,
+            "recipient": {"device_id": IDS[1], "keys": key_json(&w.recipient)},
+            "sender": {"device_id": IDS[0], "keys": key_json(&w.sender)},
+        },
+        "message_vectors": vectors,
+        "intro_vectors": intro_vectors,
     })
 }
 
@@ -448,11 +947,13 @@ fn all() -> Vec<(&'static str, Value)> {
     vec![
         ("chat", chat_fixture()),
         ("blob", blob_fixture()),
+        ("unicode", unicode_fixture()),
         ("intro", intro_fixture()),
         ("revoke", revoke_fixture()),
         ("join", join_fixture()),
         ("spawnkey", spawnkey_fixture()),
         ("trust", trust_fixture()),
+        ("negative", negative_fixture()),
     ]
 }
 
@@ -481,49 +982,191 @@ fn read(name: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(dir_path(name)).unwrap()).unwrap()
 }
 
+fn from_hex(s: &Value) -> Vec<u8> {
+    let s = s.as_str().unwrap();
+    (0..s.len())
+        .step_by(2)
+        .map(|n| u8::from_str_radix(&s[n..n + 2], 16).unwrap())
+        .collect()
+}
+
+fn device_keys(v: &Value) -> DeviceKeys {
+    DeviceKeys::from_secrets(
+        &from_hex(&v["sign_secret_hex"]),
+        &from_hex(&v["kex_secret_hex"]),
+    )
+    .unwrap()
+}
+
+fn open_committed(f: &Value, body_key: &str) {
+    let i = &f["inputs"];
+    let recipient = device_keys(&i["recipient"]["keys"]);
+    let sk = &i["sender"]["keys"];
+    let sender = Trusted::new(
+        i["sender"]["device_id"].as_str().unwrap(),
+        sk["sign_pub"].as_str().unwrap(),
+        sk["kex_pub"].as_str().unwrap(),
+    )
+    .unwrap();
+    let o = open_message(
+        &recipient,
+        i["user_id"].as_u64().unwrap(),
+        i["recipient"]["device_id"].as_str().unwrap(),
+        i["sender"]["device_id"].as_str().unwrap(),
+        i["msg_id"].as_str().unwrap(),
+        f["outputs"][body_key].as_str().unwrap(),
+        i["now_ms"].as_u64().unwrap(),
+        &[sender],
+        |_| None,
+    )
+    .unwrap();
+    assert_eq!(o.seq, i["seq"].as_u64().unwrap());
+    assert_eq!(o.payload, i["payload"]);
+    assert_eq!(o.from_fp, sk["fp"].as_str().unwrap());
+    assert!(o.trusted);
+}
+
 #[test]
-fn committed_chat_and_blob_bodies_open_from_inputs_only() {
+fn committed_message_bodies_open_from_inputs_only() {
     for name in ["chat", "blob"] {
         let f = read(name);
-        let i = &f["inputs"];
-        let hex_bytes = |s: &Value| -> Vec<u8> {
-            let s = s.as_str().unwrap();
-            (0..s.len())
-                .step_by(2)
-                .map(|n| u8::from_str_radix(&s[n..n + 2], 16).unwrap())
-                .collect()
-        };
-        let rk = &i["recipient"]["keys"];
-        let recipient = DeviceKeys::from_secrets(
-            &hex_bytes(&rk["sign_secret_hex"]),
-            &hex_bytes(&rk["kex_secret_hex"]),
-        )
-        .unwrap();
-        let sk = &i["sender"]["keys"];
-        let sign_pub = sk["sign_pub"].as_str().unwrap();
-        let kex_pub = sk["kex_pub"].as_str().unwrap();
         for body_key in ["body", "body_unpadded"] {
-            let o = open_message(
-                &recipient,
-                i["user_id"].as_u64().unwrap(),
-                i["recipient"]["device_id"].as_str().unwrap(),
-                i["sender"]["device_id"].as_str().unwrap(),
-                i["msg_id"].as_str().unwrap(),
-                f["outputs"][body_key].as_str().unwrap(),
-                i["now_ms"].as_u64().unwrap(),
-                |_| {
-                    Some(Peer {
-                        device_id: i["sender"]["device_id"].as_str().unwrap(),
-                        sign_pub_b64: sign_pub,
-                        kex_pub_b64: kex_pub,
-                    })
-                },
-            )
-            .unwrap();
-            assert_eq!(o.seq, i["seq"].as_u64().unwrap());
-            assert_eq!(o.payload, i["payload"]);
-            assert_eq!(o.from_fp, sk["fp"].as_str().unwrap());
+            open_committed(&f, body_key);
         }
         assert_eq!(f["outputs"]["plaintext_len"], 1024);
+    }
+    let u = read("unicode");
+    open_committed(&u["chat"], "body");
+}
+
+#[test]
+fn committed_negative_vectors_behave_as_declared() {
+    let f = read("negative");
+    let c = &f["context"];
+    let recipient = device_keys(&c["recipient"]["keys"]);
+    let sk = &c["sender"]["keys"];
+    let sender_id = c["sender"]["device_id"].as_str().unwrap();
+    let pinned = Trusted::new(
+        sender_id,
+        sk["sign_pub"].as_str().unwrap(),
+        sk["kex_pub"].as_str().unwrap(),
+    )
+    .unwrap();
+    for v in f["message_vectors"].as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let user = v.get("user_id").unwrap_or(&c["user_id"]).as_u64().unwrap();
+        let now = v.get("now_ms").unwrap_or(&c["now_ms"]).as_u64().unwrap();
+        let msg_id = v.get("msg_id").unwrap_or(&c["msg_id"]).as_str().unwrap();
+        let trusted_sender = v
+            .get("sender_trusted")
+            .map_or(true, |b| b.as_bool().unwrap());
+        let pins: Vec<Trusted> = if trusted_sender {
+            vec![pinned.clone()]
+        } else {
+            vec![]
+        };
+        let (sp, kp) = (
+            sk["sign_pub"].as_str().unwrap(),
+            sk["kex_pub"].as_str().unwrap(),
+        );
+        let r = open_message(
+            &recipient,
+            user,
+            c["recipient"]["device_id"].as_str().unwrap(),
+            sender_id,
+            msg_id,
+            v["body"].as_str().unwrap(),
+            now,
+            &pins,
+            |_| {
+                Some(Peer {
+                    device_id: sender_id,
+                    sign_pub_b64: sp,
+                    kex_pub_b64: kp,
+                })
+            },
+        );
+        match (&v["expect"]["error"], &v["expect"]["ok"]) {
+            (Value::String(code), _) => {
+                assert_eq!(r.err().map(|e| e.code()), Some(code.as_str()), "{name}")
+            }
+            (_, ok) => {
+                let o = r.unwrap_or_else(|e| panic!("{name}: {e}"));
+                assert_eq!(o.seq, ok["seq"].as_u64().unwrap(), "{name}");
+                assert_eq!(o.trusted, ok["trusted"].as_bool().unwrap(), "{name}");
+            }
+        }
+    }
+    for v in f["intro_vectors"].as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let s = &v["signer"];
+        let r = verify_intro(
+            v["intro_json"].as_str().unwrap(),
+            v["user_id"].as_u64().unwrap(),
+            s["device_id"].as_str().unwrap(),
+            s["sign_pub"].as_str().unwrap(),
+            s["kex_pub"].as_str().unwrap(),
+        );
+        match v["expect"]["error"].as_str() {
+            Some(code) => assert_eq!(r.err().map(|e| e.code()), Some(code), "{name}"),
+            None => assert!(r.is_ok(), "{name}"),
+        }
+    }
+}
+
+#[test]
+fn committed_trust_cases_recompute() {
+    let f = read("trust");
+    let user = f["user_id"].as_u64().unwrap();
+    for c in f["cases"].as_array().unwrap() {
+        let i = &c["inputs"];
+        let pins: Vec<Trusted> = i["pins"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                Trusted::new(
+                    p["device_id"].as_str().unwrap(),
+                    p["sign_pub"].as_str().unwrap(),
+                    p["kex_pub"].as_str().unwrap(),
+                )
+                .unwrap()
+            })
+            .collect();
+        let revoked: Vec<String> = i["revoked"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect();
+        let intros: Vec<String> = i["intros"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect();
+        let dir: Vec<DirEntry> = i["directory"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| DirEntry {
+                device_id: d["device_id"].as_str().unwrap().into(),
+                sign_pub_b64: d["sign_pub"].as_str().unwrap().into(),
+                kex_pub_b64: d["kex_pub"].as_str().unwrap().into(),
+            })
+            .collect();
+        let set = trusted_set(user, &pins, &revoked, &intros, &dir);
+        assert_eq!(
+            serde_json::to_value(&set.trusted).unwrap(),
+            c["outputs"]["trusted"],
+            "{}",
+            c["name"]
+        );
+        assert_eq!(
+            serde_json::to_value(&set.mismatches).unwrap(),
+            c["outputs"]["mismatches"],
+            "{}",
+            c["name"]
+        );
     }
 }

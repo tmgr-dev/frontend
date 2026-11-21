@@ -57,7 +57,8 @@
       "payload": {
         "text": "hello",
         "n": 1
-      }
+      },
+      "trusted": true
     }
   }
 }
