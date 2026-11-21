@@ -3,6 +3,7 @@ use super::ops::{elevated, login_preflight, run_create_req, run_create_run};
 use super::run_task::{self, Launch, Prepared};
 use super::{bin, connect, rerr, PermissionMode};
 use ratatui::layout::Rect;
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result};
@@ -446,6 +447,116 @@ pub(super) fn task_err(e: Error) -> SpawnErr {
 
 fn guard(in_agent: bool) -> std::result::Result<(), SpawnErr> {
     tmgr_link::privileged::check(in_agent, true).map_err(task_err)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CloudTask {
+    pub key: String,
+    pub title: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) struct RemoteStart {
+    pub params: Value,
+    pub prompt: Option<String>,
+}
+
+const MAX_REMOTE_NAME: usize = 64;
+
+fn one_line(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+pub(super) fn cloud_ref(req: &NewRequest) -> Option<&str> {
+    req.task
+        .as_deref()
+        .filter(|t| !super::remote::is_follower_ref(t))
+}
+
+pub(super) fn cloud_prompt(task: &CloudTask) -> String {
+    let head = format!("Work on {}: {}", one_line(&task.key), one_line(&task.title));
+    match &task.url {
+        Some(url) => format!("{head}\n{}", one_line(url)),
+        None => head,
+    }
+}
+
+pub(super) fn remote_start(
+    req: &NewRequest,
+    cloud: Option<&CloudTask>,
+) -> std::result::Result<RemoteStart, SpawnErr> {
+    let SpawnKind::Agent { profile } = &req.kind else {
+        return Err(SpawnErr {
+            message: "only agent sessions can start on another machine".into(),
+            hint: None,
+        });
+    };
+    let mut params = json!({"agent": profile});
+    if !req.folder.is_empty() {
+        params["repo"] = json!(req.folder);
+    }
+    if let Some(task) = req
+        .task
+        .as_deref()
+        .filter(|t| super::remote::is_follower_ref(t))
+    {
+        params["task"] = json!(task);
+    }
+    let name = req
+        .name
+        .clone()
+        .or_else(|| cloud.map(|c| one_line(&c.key).chars().take(MAX_REMOTE_NAME).collect()));
+    if let Some(name) = name.filter(|n| !n.is_empty()) {
+        params["name"] = json!(name);
+    }
+    if req.bypass {
+        params["mode"] = json!("bypass");
+    }
+    if req.no_sandbox {
+        params["no_sandbox"] = json!(true);
+    }
+    Ok(RemoteStart {
+        params,
+        prompt: cloud.map(cloud_prompt),
+    })
+}
+
+pub(super) fn lookup_cloud_task(reference: &str) -> std::result::Result<CloudTask, SpawnErr> {
+    use clap::Parser;
+    if in_agent() {
+        return Err(SpawnErr {
+            message: "task lookup is refused inside an agent session".into(),
+            hint: None,
+        });
+    }
+    let find = || -> Result<CloudTask> {
+        parse_task_ref(reference)?;
+        let cli = crate::cli::Cli::parse_from(["tmgr"]);
+        let ctx = crate::ctx::Ctx::new(&cli)?;
+        let client = ctx.cloud_client()?;
+        let task = crate::cmd::shared::resolve_task(&ctx, client, reference)?;
+        let code = ctx
+            .workspaces(client)?
+            .into_iter()
+            .find(|w| Some(w.id) == task.workspace_id)
+            .map(|w| w.code);
+        let url = match code {
+            Some(code) => ctx.task_link(&code, task.id)?,
+            None => None,
+        };
+        Ok(CloudTask {
+            key: tmgr_core::view::task_ref(&task),
+            title: tmgr_core::view::display_title(&task.title),
+            url,
+        })
+    };
+    find().map_err(task_err)
 }
 
 pub(super) fn privileged_ask(
@@ -1321,5 +1432,115 @@ mod tests {
             assert_eq!(k.bypass, declared, "{}", k.id);
         }
         assert!(kinds_for(&set).iter().any(|k| k.id == "claude" && k.bypass));
+    }
+
+    fn remote_req(task: Option<&str>) -> NewRequest {
+        NewRequest {
+            host: Some("spark".into()),
+            task: task.map(str::to_string),
+            folder: "/srv/app".into(),
+            ..req(agent("codex"))
+        }
+    }
+
+    fn cloud() -> CloudTask {
+        CloudTask {
+            key: "TM-12".into(),
+            title: "Fix the\u{1b}[31m login\nflow".into(),
+            url: Some("https://tmgr.example/ws/tasks/9".into()),
+        }
+    }
+
+    #[test]
+    fn a_remote_start_without_a_task_sends_agent_and_folder_only() {
+        let got = remote_start(&remote_req(None), None).unwrap();
+        assert_eq!(got.params, json!({"agent": "codex", "repo": "/srv/app"}));
+        assert_eq!(got.prompt, None);
+        let mut bare = remote_req(None);
+        bare.folder.clear();
+        assert_eq!(
+            remote_start(&bare, None).unwrap().params,
+            json!({"agent": "codex"})
+        );
+    }
+
+    #[test]
+    fn a_follower_task_is_sent_as_the_task_and_a_cloud_ref_never_is() {
+        let got = remote_start(&remote_req(Some("w1:7")), None).unwrap();
+        assert_eq!(got.params["task"], "w1:7");
+        assert_eq!(cloud_ref(&remote_req(Some("w1:7"))), None);
+        let req = remote_req(Some("TM-12"));
+        assert_eq!(cloud_ref(&req), Some("TM-12"));
+        let got = remote_start(&req, Some(&cloud())).unwrap();
+        assert!(got.params.get("task").is_none());
+        assert_eq!(got.params["name"], "TM-12");
+        assert_eq!(
+            got.prompt.as_deref(),
+            Some("Work on TM-12: Fix the [31m login flow\nhttps://tmgr.example/ws/tasks/9")
+        );
+    }
+
+    #[test]
+    fn the_cloud_prompt_has_no_control_characters_except_the_one_newline() {
+        let p = cloud_prompt(&cloud());
+        assert_eq!(p.matches('\n').count(), 1);
+        assert!(!p.chars().any(|c| c.is_control() && c != '\n'));
+        assert!(p.starts_with("Work on TM-12: Fix the"));
+        let no_url = CloudTask {
+            url: None,
+            ..cloud()
+        };
+        assert!(!cloud_prompt(&no_url).contains('\n'));
+    }
+
+    #[test]
+    fn a_typed_name_wins_and_a_long_key_is_capped_and_privileges_pass_through() {
+        let mut named = remote_req(Some("TM-12"));
+        named.name = Some("mine".into());
+        named.bypass = true;
+        named.no_sandbox = true;
+        let got = remote_start(&named, Some(&cloud())).unwrap();
+        assert_eq!(got.params["name"], "mine");
+        assert_eq!(got.params["mode"], "bypass");
+        assert_eq!(got.params["no_sandbox"], true);
+        let long = CloudTask {
+            key: "K".repeat(100),
+            ..cloud()
+        };
+        let got = remote_start(&remote_req(Some("TM-1")), Some(&long)).unwrap();
+        assert_eq!(got.params["name"].as_str().unwrap().chars().count(), 64);
+    }
+
+    #[test]
+    fn only_agents_start_on_another_machine() {
+        let mut shell = remote_req(None);
+        shell.kind = SpawnKind::Shell;
+        assert!(remote_start(&shell, None).is_err());
+    }
+
+    #[test]
+    fn a_failed_remote_start_reopens_the_form_on_the_same_machine_with_the_reason() {
+        use tmgr_runner::attach::{Machine, MachineState, ViewState};
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.machines = vec![Machine {
+            name: "spark".into(),
+            state: MachineState::Online { latency_ms: 1 },
+        }];
+        v.open_new_session("/home/x".into(), installed_kinds(), "/home/x".into());
+        let mut base = v.new_session.take().unwrap();
+        base.set_host(1);
+        base.task = "TM-12".into();
+        let req = remote_req(Some("TM-12"));
+        let again = dialog_for(&base, &req)
+            .with_error("bypass-permissions is not allowed on this follower", None);
+        assert_eq!(again.remote(), Some("spark"));
+        assert_eq!(again.task, "TM-12");
+        assert_eq!(again.folder, "/srv/app");
+        assert_eq!(
+            again.error.as_deref(),
+            Some("bypass-permissions is not allowed on this follower")
+        );
+        v.reopen_new_session(again);
+        assert_eq!(v.new_session.unwrap().remote(), Some("spark"));
     }
 }

@@ -8,11 +8,11 @@ use super::attach_goto::{
     can_fork, fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT,
 };
 use super::attach_layouts;
-use super::attach_links::{split_local, LinkMsg};
+use super::attach_links::{split_local, view_id, LinkMsg};
 use super::attach_new::{
-    self, default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label,
-    place_session, prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route,
-    SpawnErr, TaskReview,
+    self, cloud_ref, default_folder, dialog_for, execute_task, in_agent, installed_kinds,
+    kind_label, lookup_cloud_task, place_session, prepare_task, registers_shell, remote_start,
+    route, spawn_size, start_session, NewFlow, RemoteStart, Route, SpawnErr, TaskReview,
 };
 use super::attach_notes;
 use super::attach_past::{self, Go, Shape};
@@ -36,6 +36,7 @@ use super::attach_templates;
 use super::attach_title::{agent_src, title_real_home, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
 use super::menu::{self, dialog_path, load_dialog, save_dialog, DialogMemory};
+use super::remote::RunView;
 use super::run_task::Prepared;
 use super::session_wt::{delete, plan_removal, Ask, Removal};
 use super::watch as watcher;
@@ -226,6 +227,19 @@ enum Msg {
         req: NewRequest,
         target: String,
         prompt: String,
+    },
+    RemotePrepared {
+        flow: Option<u64>,
+        result: std::result::Result<RemoteStart, SpawnErr>,
+        req: NewRequest,
+        target: String,
+    },
+    RemoteStarted {
+        flow: Option<u64>,
+        result: std::result::Result<RunView, String>,
+        req: NewRequest,
+        target: String,
+        prompt: Option<String>,
     },
     LayoutStarted {
         saved: String,
@@ -711,6 +725,19 @@ impl App {
                 target,
                 prompt,
             } => self.on_template_started(result, &req, &target, prompt),
+            Msg::RemotePrepared {
+                flow,
+                result,
+                req,
+                target,
+            } => self.on_remote_prepared(flow, result, req, target),
+            Msg::RemoteStarted {
+                flow,
+                result,
+                req,
+                target,
+                prompt,
+            } => self.on_remote_started(flow, result, req, target, prompt),
             Msg::LayoutStarted {
                 saved,
                 req,
@@ -908,11 +935,15 @@ impl App {
     }
 
     fn on_link(&mut self, msg: LinkMsg) {
+        let state_change = matches!(msg, LinkMsg::State { .. });
         let area = self.area();
         let fx = self
             .remote
             .on_link(msg, &mut self.view, &mut self.cache, area);
         self.dirty |= fx.dirty;
+        if state_change {
+            self.view.set_host_scopes(self.remote.scopes());
+        }
         if fx.changed.is_some() && fx.changed.as_deref() == self.view.focused_session() {
             self.text_dirty = true;
         }
@@ -1925,8 +1956,13 @@ impl App {
                 at.elapsed() > FORK_PASTE_WAIT
                     || self.view.sessions.iter().any(|r| {
                         &r.id == *id
-                            && (r.state.kind == StateKind::Exited
-                                || r.state.kind == StateKind::Waiting && !self.trust_prompt(id))
+                            && paste_ready(
+                                r.state.kind,
+                                self.trust_prompt(id),
+                                self.remote
+                                    .is_remote(id)
+                                    .then(|| self.remote.input_allowed(id)),
+                            )
                     })
             })
             .map(|(id, _)| id.clone())
@@ -1942,6 +1978,22 @@ impl App {
                 .any(|r| r.id == id && r.state.kind == StateKind::Waiting);
             self.dirty = true;
             if let Some(agent) = self.template_ids.remove(&id) {
+                if let Some(link) = self.remote.link_of_id(&id) {
+                    let link = sanitize_text(&link).into_owned();
+                    match self.remote.input_allowed(&id) {
+                        Some(true) if waiting && at.elapsed() <= FORK_PASTE_WAIT => {}
+                        Some(false) => {
+                            self.notify(&format!(
+                                "started on {link}; the prompt was not sent (input is not allowed on this follower)"
+                            ));
+                            continue;
+                        }
+                        _ => {
+                            self.notify(&format!("started on {link}; the prompt was not pasted"));
+                            continue;
+                        }
+                    }
+                }
                 if !waiting || at.elapsed() > FORK_PASTE_WAIT {
                     self.notify("started, the template prompt was not pasted");
                     continue;
@@ -2143,6 +2195,7 @@ impl App {
         };
         let folder = default_folder(process_cwd(pid), start, std::env::current_dir().ok(), &home);
         self.new_flow.drop_review();
+        self.view.set_host_scopes(self.remote.scopes());
         open_with_memory(
             &mut self.view,
             folder,
@@ -2150,6 +2203,7 @@ impl App {
             home,
             self.new_memory.as_deref(),
         );
+        self.view.restore_new_host();
         let tx = self.tx.clone();
         let agent = in_agent();
         thread::spawn(move || {
@@ -2169,6 +2223,9 @@ impl App {
             .focused_session()
             .map(str::to_string)
             .unwrap_or_default();
+        if req.host.is_some() {
+            return self.begin_remote_spawn(Some(base), req, target, None);
+        }
         let content = layout(self.area(), &self.view)
             .panes
             .iter()
@@ -2205,6 +2262,134 @@ impl App {
                 target,
             });
         });
+    }
+
+    fn begin_remote_spawn(
+        &mut self,
+        base: Option<NewSession>,
+        req: NewRequest,
+        target: String,
+        prompt: Option<String>,
+    ) {
+        let link = sanitize_text(req.host.as_deref().unwrap_or_default()).into_owned();
+        self.notify(&format!("starting on {link}..."));
+        let flow = base.map(|b| {
+            self.new_flow
+                .begin(dialog_for(&b, &req), None, Instant::now())
+        });
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let cloud = match cloud_ref(&req).map(lookup_cloud_task) {
+                Some(Ok(task)) => Ok(Some(task)),
+                Some(Err(e)) => Err(e),
+                None => Ok(None),
+            };
+            let result = cloud.and_then(|cloud| {
+                let mut start = remote_start(&req, cloud.as_ref())?;
+                if prompt.is_some() {
+                    start.prompt = prompt;
+                }
+                Ok(start)
+            });
+            let _ = tx.send(Msg::RemotePrepared {
+                flow,
+                result,
+                req,
+                target,
+            });
+        });
+    }
+
+    fn remote_failed(&mut self, flow: Option<u64>, link: &str, why: &str) {
+        let link = sanitize_text(link).into_owned();
+        let why = sanitize_text(why).into_owned();
+        if let Some(dialog) = flow.and_then(|id| self.new_flow.finish(id)) {
+            self.view
+                .reopen_new_session(dialog.with_error(why.clone(), None));
+        }
+        self.notify(&format!("could not start on {link}: {why}"));
+    }
+
+    fn on_remote_prepared(
+        &mut self,
+        flow: Option<u64>,
+        result: std::result::Result<RemoteStart, SpawnErr>,
+        req: NewRequest,
+        target: String,
+    ) {
+        self.dirty = true;
+        let link = req.host.clone().unwrap_or_default();
+        let start = match result {
+            Ok(s) => s,
+            Err(e) => return self.remote_failed(flow, &link, &e.message),
+        };
+        let answer = self.remote.start_run(&link, start.params);
+        let tx = self.tx.clone();
+        let prompt = start.prompt;
+        thread::spawn(move || {
+            let result = answer
+                .recv_timeout(Duration::from_secs(60))
+                .unwrap_or_else(|_| {
+                    Err(format!(
+                        "{link} did not answer; the session may have started, check the sidebar"
+                    ))
+                });
+            let _ = tx.send(Msg::RemoteStarted {
+                flow,
+                result,
+                req,
+                target,
+                prompt,
+            });
+        });
+    }
+
+    fn on_remote_started(
+        &mut self,
+        flow: Option<u64>,
+        result: std::result::Result<RunView, String>,
+        req: NewRequest,
+        target: String,
+        prompt: Option<String>,
+    ) {
+        self.dirty = true;
+        let link = req.host.clone().unwrap_or_default();
+        let run = match result {
+            Ok(run) => run,
+            Err(why) => return self.remote_failed(flow, &link, &why),
+        };
+        let dialog = flow.and_then(|id| self.new_flow.finish(id));
+        let id = view_id(&link, &run.id);
+        let area = self.area();
+        self.remote.sync(&mut self.view, &mut self.cache, area);
+        if !self.view.sessions.iter().any(|r| r.id == id) {
+            match self.remote.row(&id) {
+                Some(row) => self.view.sessions.push(row),
+                None => {
+                    return self.notify(&format!(
+                        "started on {}, check the sidebar",
+                        sanitize_text(&link)
+                    ))
+                }
+            }
+        }
+        let split = place_session(&mut self.view, &target, req.place, &id);
+        if let Some(kind) = dialog.as_ref().and_then(|d| d.kinds.get(d.kind)) {
+            self.view.remember_new_session(&req, &kind.id);
+        }
+        if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
+            self.template_ids.insert(id.clone(), true);
+            self.fork_paste.insert(id, (prompt, Instant::now()));
+        }
+        let name = sanitize_text(&run.name).into_owned();
+        let link = sanitize_text(&link).into_owned();
+        if req.place != Place::Replace && !split {
+            self.notify(&format!(
+                "started {name} on {link}, no room for another pane"
+            ));
+        } else {
+            self.notify(&format!("started {name} on {link}"));
+        }
     }
 
     fn begin_prepare(
@@ -3417,6 +3602,13 @@ impl App {
             Ok(l) => l,
             Err(e) => return self.notify(&e),
         };
+        if let Some(link) = self
+            .view
+            .focused_session()
+            .and_then(|id| self.remote.link_of_id(id))
+        {
+            return self.start_remote_template(&t.name, launch, link);
+        }
         let base = self.template_folder();
         let folder = match attach_templates::resolve_folder(launch.folder.as_deref(), &base) {
             Ok(f) => f,
@@ -3460,6 +3652,51 @@ impl App {
                 prompt,
             });
         });
+    }
+
+    fn start_remote_template(
+        &mut self,
+        name: &str,
+        launch: attach_templates::Launch,
+        link: String,
+    ) {
+        let tmgr_runner::attach::SpawnKind::Agent { .. } = &launch.kind else {
+            return self.notify(&format!(
+                "{} starts a shell or command, which cannot run on {}",
+                sanitize_text(name),
+                sanitize_text(&link)
+            ));
+        };
+        let folder = launch
+            .folder
+            .filter(|f| f.starts_with('/'))
+            .or_else(|| {
+                self.remote
+                    .scopes()
+                    .get(&link)
+                    .and_then(|s| s.repos.first().cloned())
+            })
+            .unwrap_or_default();
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        let req = NewRequest {
+            kind: launch.kind,
+            folder,
+            name: None,
+            place: Place::Right,
+            task: None,
+            worktree: false,
+            checkpoints: None,
+            permission_cards: false,
+            bypass: false,
+            no_sandbox: false,
+            host: Some(link),
+        };
+        let prompt = Some(launch.prompt).filter(|p| !p.trim().is_empty());
+        self.begin_remote_spawn(None, req, target, prompt);
     }
 
     fn begin_watch(&mut self) {
@@ -5154,6 +5391,14 @@ fn run_ladder(cfg: &RunnerConfig, id: &str, remove: bool, ladder: Ladder) {
     }
 }
 
+fn paste_ready(kind: StateKind, trust: bool, remote_input: Option<Option<bool>>) -> bool {
+    match kind {
+        StateKind::Exited => true,
+        StateKind::Waiting if !trust => remote_input.is_none_or(|input| input.is_some()),
+        _ => false,
+    }
+}
+
 fn keeps_fork_paste(from_past: bool, prefill: &str) -> bool {
     !from_past || !prefill.is_empty()
 }
@@ -5853,6 +6098,19 @@ mod tests {
             );
             assert!(!past.busy && killed.is_empty());
         }
+    }
+
+    #[test]
+    fn a_pending_prompt_waits_for_waiting_no_trust_question_and_a_known_input_state() {
+        use StateKind::{Exited, Waiting, Working};
+        assert!(paste_ready(Waiting, false, None));
+        assert!(!paste_ready(Waiting, true, None));
+        assert!(!paste_ready(Working, false, None));
+        assert!(paste_ready(Exited, false, None));
+        assert!(!paste_ready(Waiting, false, Some(None)));
+        assert!(paste_ready(Waiting, false, Some(Some(true))));
+        assert!(paste_ready(Waiting, false, Some(Some(false))));
+        assert!(!paste_ready(Waiting, true, Some(Some(true))));
     }
 
     #[test]

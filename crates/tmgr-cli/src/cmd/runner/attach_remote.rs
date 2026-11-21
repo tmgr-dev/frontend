@@ -1,4 +1,6 @@
-use super::attach_links::{followers, Dialer, Hub, LinkMsg, LinkState, SshDialer, Target};
+use super::attach_links::{
+    followers, Dialer, Hub, LinkMsg, LinkState, SshDialer, StartReply, Target,
+};
 use super::remote_attach::age;
 use ratatui::layout::Rect;
 use std::collections::{HashMap, HashSet};
@@ -9,8 +11,8 @@ use tmgr_ipc::api::{limits, Snapshot};
 use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::store::Paths;
 use tmgr_runner::attach::{
-    prefs_without_ids, AgentTitle, Cmd, Control, LayoutPrefs, Machine, MachineState, ScrollText,
-    SessionRow, ViewState,
+    prefs_without_ids, AgentTitle, Cmd, Control, HostScope, LayoutPrefs, Machine, MachineState,
+    ScrollText, SessionRow, ViewState,
 };
 use tmgr_runner::client::ScreenCache;
 use tmgr_runner::sanitize::sanitize_text;
@@ -294,7 +296,7 @@ impl Remote {
         (rows, changed)
     }
 
-    fn sync(&self, view: &mut ViewState, cache: &mut ScreenCache, area: Rect) -> bool {
+    pub(super) fn sync(&self, view: &mut ViewState, cache: &mut ScreenCache, area: Rect) -> bool {
         let (rows, meta) = self.merge(view, local_rows(&view.sessions));
         if rows == view.sessions {
             return meta;
@@ -526,6 +528,60 @@ impl Remote {
             }
             Target::Unknown => true,
         }
+    }
+
+    pub(super) fn link_of_id(&self, id: &str) -> Option<String> {
+        match self.route(id) {
+            Target::Remote { link, .. } => Some(link),
+            _ => None,
+        }
+    }
+
+    pub(super) fn input_allowed(&self, id: &str) -> Option<bool> {
+        self.inputs.get(id).copied()
+    }
+
+    pub(super) fn scopes(&self) -> HashMap<String, HostScope> {
+        let Some(hub) = &self.hub else {
+            return HashMap::new();
+        };
+        self.states
+            .iter()
+            .filter_map(|(link, _)| {
+                let s = hub.scope(link)?;
+                Some((
+                    link.clone(),
+                    HostScope {
+                        repos: s.repos,
+                        agents: s.agents,
+                    },
+                ))
+            })
+            .collect()
+    }
+
+    pub(super) fn start_run(
+        &self,
+        link: &str,
+        params: serde_json::Value,
+    ) -> mpsc::Receiver<StartReply> {
+        match &self.hub {
+            Some(hub) => hub.start_run(link, params),
+            None => {
+                let (tx, rx) = mpsc::channel();
+                let _ = tx.send(Err("no linked machines (tmgr link)".into()));
+                rx
+            }
+        }
+    }
+
+    pub(super) fn row(&self, id: &str) -> Option<SessionRow> {
+        let link = self.link_of_id(id)?;
+        self.hub
+            .as_ref()?
+            .rows(&link)
+            .into_iter()
+            .find(|r| r.id == id)
     }
 
     pub(super) fn is_remote(&self, id: &str) -> bool {
@@ -868,6 +924,64 @@ mod tests {
         r.settle(Duration::from_millis(100));
         assert_eq!(r.typed("spark", A).len(), 1);
         assert!(r.typed("lab", A).is_empty());
+    }
+
+    #[test]
+    fn a_prompt_bytes_reach_a_writable_stream_and_a_read_only_one_is_known_before_pasting() {
+        let mut r = rig(&["spark", "lab"], |f| {
+            f.set_runs("spark", &[A]);
+            f.set_runs("lab", &[A]);
+            f.with("spark", |l| l.input = true);
+        });
+        r.rows(3);
+        let id = format!("spark/{A}");
+        assert_eq!(r.remote.input_allowed(&id), None);
+        let writable = r.pane("spark", A);
+        let read_only = r.pane("lab", A);
+        assert_eq!(r.remote.input_allowed(&writable), Some(true));
+        assert_eq!(r.remote.input_allowed(&read_only), Some(false));
+        assert_eq!(r.remote.link_of_id(&writable).as_deref(), Some("spark"));
+        assert_eq!(r.remote.link_of_id(LOCAL), None);
+        let bytes = tmgr_runner::attach::paste_bytes("Work on TM-1: x", true);
+        assert_eq!(r.remote.send(&writable, &bytes), Sent::Handled(None));
+        r.until("prompt written", |r| !r.typed("spark", A).is_empty());
+        let typed = r.typed("spark", A);
+        let Outgoing::Input(text) = &typed[0] else {
+            panic!("not input");
+        };
+        assert!(text.contains("Work on TM-1: x") && text.starts_with("\x1b[200~"));
+        r.settle(Duration::from_millis(100));
+        assert!(r.typed("lab", A).is_empty());
+    }
+
+    #[test]
+    fn a_started_run_gets_its_row_at_once_and_routes_to_its_machine() {
+        let mut r = rig(&["spark"], |f| {
+            f.with("spark", |l| {
+                l.start = Some(Ok(crate::cmd::runner::attach_links::tests::run_json(B)))
+            });
+        });
+        r.until("online", |r| {
+            matches!(mstate(&r.view, "spark"), Some(MachineState::Online { .. }))
+        });
+        let run = r
+            .remote
+            .start_run("spark", json!({"agent": "codex"}))
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        let id = format!("spark/{}", run.id);
+        assert!(r.remote.row(&id).is_some());
+        let area = AREA;
+        r.remote.sync(&mut r.view, &mut r.cache, area);
+        assert!(r.view.sessions.iter().any(|s| s.id == id));
+        assert!(r.remote.is_remote(&id));
+        let refused = r
+            .remote
+            .start_run("lab", json!({"agent": "codex"}))
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert!(refused.is_err());
     }
 
     #[test]

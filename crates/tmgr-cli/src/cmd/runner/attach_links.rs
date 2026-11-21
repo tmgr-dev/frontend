@@ -116,11 +116,7 @@ pub(super) fn parse_scope(hello: &Value) -> Option<LinkScope> {
         .get("max")
         .and_then(Value::as_u64)
         .and_then(|n| u32::try_from(n).ok());
-    Some(LinkScope {
-        repos,
-        agents,
-        max,
-    })
+    Some(LinkScope { repos, agents, max })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4195,7 +4191,9 @@ pub(super) mod tests {
     #[test]
     fn a_start_on_an_offline_or_unknown_machine_says_so_and_sends_nothing() {
         let mut r = rig(&["spark"], fast(), |f| {
-            f.with("spark", |l| l.dial.push_back(Err(DialErr::Offline("down".into()))));
+            f.with("spark", |l| {
+                l.dial.push_back(Err(DialErr::Offline("down".into())))
+            });
         });
         r.state_is("spark", LinkState::Offline);
         let got = r
@@ -4216,7 +4214,7 @@ pub(super) mod tests {
 
     #[test]
     fn the_hello_scope_is_kept_per_link_and_cleaned() {
-        let mut r = rig(&["spark", "old"], fast(), |f| {
+        let r = rig(&["spark", "old"], fast(), |f| {
             f.with("spark", |l| {
                 l.hello = Some(json!({"scope": {
                     "repos": ["/srv/app", "rel", "/bad\u{1b}", "/srv/app", "/srv/lib"],

@@ -875,7 +875,10 @@ impl NewSession {
             .kinds
             .get(self.kind)
             .filter(|k| matches!(k.spawn, SpawnKind::Agent { .. }))
-            .ok_or((NewField::Kind, "no agent available on that machine".to_string()))?;
+            .ok_or((
+                NewField::Kind,
+                "no agent available on that machine".to_string(),
+            ))?;
         let name = self.name.trim();
         if name.chars().count() > MAX_NAME {
             return Err((
@@ -1908,7 +1911,11 @@ impl ViewState {
         self.new_session
             .as_mut()
             .map(|ns| std::mem::take(&mut ns.mark_reqs))
-            .filter(|_| self.new_session.as_ref().is_some_and(|n| n.remote().is_none()))
+            .filter(|_| {
+                self.new_session
+                    .as_ref()
+                    .is_some_and(|n| n.remote().is_none())
+            })
             .unwrap_or_default()
     }
 
@@ -2087,7 +2094,10 @@ impl ViewState {
                 }
             }
         }
-        let local = self.new_session.as_ref().is_some_and(|n| n.remote().is_none());
+        let local = self
+            .new_session
+            .as_ref()
+            .is_some_and(|n| n.remote().is_none());
         if self.new_session.is_some() {
             if let Some(p) = pins.filter(|_| local) {
                 if let Some(d) = self.new_folders.as_mut() {
@@ -4693,7 +4703,10 @@ mod tests {
             }
         }
 
-        fn open_with(links: &[&str], scopes: &[(&str, HostScope)]) -> (ViewState, tempfile::TempDir) {
+        fn open_with(
+            links: &[&str],
+            scopes: &[(&str, HostScope)],
+        ) -> (ViewState, tempfile::TempDir) {
             let h = tmp();
             let mut v = ViewState::new(Vec::new(), "r");
             v.priv_gate = Some(test_gate);
@@ -4771,7 +4784,10 @@ mod tests {
         fn the_hello_scope_limits_agents_and_the_picker_lists_its_repos() {
             let (mut v, _h) = open_with(
                 &["spark"],
-                &[("spark", scope(&["/srv/app", "/srv/lib"], &["codex", "aider"]))],
+                &[(
+                    "spark",
+                    scope(&["/srv/app", "/srv/lib"], &["codex", "aider"]),
+                )],
             );
             ns(&mut v).set_host(1);
             let n = ns(&mut v);
@@ -4857,6 +4873,27 @@ mod tests {
             ns(&mut v).set_host(0);
             assert_eq!(ns(&mut v).folder, "/home/x");
             assert!(ns(&mut v).folders.is_some());
+        }
+
+        #[test]
+        fn the_form_draws_the_host_row_and_a_click_selects_the_machine() {
+            let (mut v, _h) = open_with(&["spark"], &[]);
+            let text = draw(&v, 100, 30);
+            assert!(
+                text.contains("Run on") && text.contains("this machine"),
+                "{text}"
+            );
+            let row = row_of(&mut v, NewField::Host);
+            let (labels, sel) = option_labels(ns(&mut v), NewField::Host);
+            let spans = option_spans(&labels, sel, value_avail(row));
+            let (_, off, _) = spans[1];
+            click(&mut v, value_x(row) + off + 1, row.y);
+            assert_eq!(ns(&mut v).remote(), Some("spark"));
+            let text = draw(&v, 100, 30);
+            assert!(
+                !text.contains("Worktree") && !text.contains("Rewind"),
+                "{text}"
+            );
         }
 
         #[test]
