@@ -1,5 +1,6 @@
 import { t } from '@/i18n';
 import type {
+	ActionDecision,
 	Answer,
 	AnswerChoice,
 	CardDelivery,
@@ -8,6 +9,7 @@ import type {
 } from './types';
 
 export interface AnswerDraft {
+	action?: ActionDecision;
 	choice?: string | null;
 	note?: string;
 	freeText?: string;
@@ -30,6 +32,7 @@ export const buildAnswer = (draft: AnswerDraft): Answer => {
 		dismissed: Boolean(draft.dismissed),
 	};
 	if (draft.choice) answer.choice = draft.choice;
+	if (draft.action) answer.action = draft.action;
 	const note = clean(draft.note);
 	if (note && draft.choice) answer.note = note;
 	const free = clean(draft.freeText);

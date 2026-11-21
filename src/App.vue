@@ -138,6 +138,7 @@
 		closePagesImport,
 		pagesImportRequest,
 	} from '@/composable/usePagesMarkdownIo';
+	import { useDecisionActions } from '@/composable/useDecisionActions';
 	import { useDecisionTaskComments } from '@/composable/useDecisionTaskComments';
 	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
 	import {
@@ -224,6 +225,7 @@
 				installNavHistory(router, store);
 				useNavHistoryInputs();
 				useDecisionTaskComments(() => store.getters.isLoggedIn);
+				useDecisionActions(() => store.getters.isLoggedIn);
 			}
 			if (!isDetachedWindow && desktopWindowLabel() !== 'quick-add') {
 				const reloadActiveTasks = () =>

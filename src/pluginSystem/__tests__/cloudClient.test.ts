@@ -1,3 +1,4 @@
+import { SOURCE_INSTANCE_ID } from '@/utils/sourceInstance';
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
 import { cloudPluginClient } from '../cloudClient';
 
@@ -206,4 +207,22 @@ describe('workspace check on responses', () => {
 		expect(JSON.stringify(error)).not.toContain('secret');
 		expect(error.message).not.toContain('secret');
 	});
+});
+
+it('names its source instance on writes only', async () => {
+	const { adapter, seen } = recorder();
+	const client = cloudPluginClient({
+		baseURL: 'https://api.example.com/api/',
+		workspaceId: 56,
+		mint: async () => ({ token: 'plugin', expires_in: 900 }),
+		adapter,
+	});
+	await client.get('tasks');
+	await client.post('tasks', { title: 'x' });
+	await client.patch('tasks/5', { title: 'y' });
+	const header = (method: string) =>
+		seen.find((c) => c.method === method)?.headers.get('X-Source-Instance-Id');
+	expect(header('get')).toBeUndefined();
+	expect(header('post')).toBe(SOURCE_INSTANCE_ID);
+	expect(header('patch')).toBe(SOURCE_INSTANCE_ID);
 });

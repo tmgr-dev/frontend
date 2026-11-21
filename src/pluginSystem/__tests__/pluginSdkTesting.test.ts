@@ -332,3 +332,59 @@ it('gives tasks the key the app gives them', async () => {
 	]);
 	host.dispose();
 });
+
+describe('task contributions in the test host', () => {
+	const contributionCode = `
+tmgr.commands.register('tmgr-dev.badge-test.set', (args) =>
+	(args.clear
+		? tmgr.ui.clearTaskContribution(args.taskId)
+		: tmgr.ui.publishTaskContribution(args.taskId, args.contribution)
+	).then(() => 'ok', (e) => e.name));
+`;
+	const run = (host: any, args: unknown) =>
+		host.runCommand('tmgr-dev.badge-test.set', args);
+
+	it('records the reduced document and removes it when cleared or empty', async () => {
+		const host = await createTestHost({
+			manifest: badgeManifest(['tasks:read'], '^1.14'),
+			code: contributionCode,
+			quickjs,
+		});
+		const contribution = {
+			badges: [{ id: 'a', text: 'late', color: 'red' }],
+		};
+		expect(await run(host, { taskId: 3, contribution })).toBe('ok');
+		expect(host.tmgr.contributions[3]).toEqual({
+			v: 1,
+			badges: [{ id: 'a', text: 'late', tone: 'danger' }],
+			sections: [],
+		});
+		expect(await run(host, { taskId: 3, contribution: {} })).toBe('ok');
+		expect(host.tmgr.contributions).toEqual({});
+		await run(host, { taskId: 4, contribution });
+		await run(host, { taskId: 4, clear: true });
+		expect(host.tmgr.contributions).toEqual({});
+		host.dispose();
+	});
+
+	it('needs tasks:read and engines ^1.14', async () => {
+		const withoutPermission = await createTestHost({
+			manifest: badgeManifest([], '^1.14'),
+			code: contributionCode,
+			quickjs,
+		});
+		expect(await run(withoutPermission, { taskId: 3, contribution: {} })).toBe(
+			'PERMISSION_DENIED',
+		);
+		withoutPermission.dispose();
+		const oldEngine = await createTestHost({
+			manifest: badgeManifest(['tasks:read'], '^1.13'),
+			code: contributionCode,
+			quickjs,
+		});
+		expect(await run(oldEngine, { taskId: 3, contribution: {} })).toBe(
+			'NOT_SUPPORTED',
+		);
+		oldEngine.dispose();
+	});
+});

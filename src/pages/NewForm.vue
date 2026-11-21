@@ -227,6 +227,7 @@
 		watch,
 	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
+	import { SOURCE_INSTANCE_ID } from '@/utils/sourceInstance';
 	const BlockEditor = defineAsyncComponent(
 		() => import('@/components/BlockEditor.vue'),
 	);
@@ -357,7 +358,7 @@
 		!!form.value.id && e.task_id === form.value.id;
 	const subscribedUserId = ref<number | null>(null);
 	const userPusherSubscriptionId = ref<string>('');
-	const instanceId = `new-form-${Date.now()}-${Math.random()
+	const instanceId = `${SOURCE_INSTANCE_ID}.form-${Math.random()
 		.toString(36)
 		.substr(2, 9)}`;
 

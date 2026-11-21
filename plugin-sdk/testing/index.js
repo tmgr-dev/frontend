@@ -340,6 +340,14 @@ const createMockApi = (state, clock) => ({
 			result[id] = state.taskData[`${id}:${key}`] ?? null;
 		return result;
 	},
+	async contributionPut(taskId, doc) {
+		state.contributions[taskId] = doc;
+		return { ok: true };
+	},
+	async contributionDelete(taskId) {
+		delete state.contributions[taskId];
+		return { ok: true };
+	},
 	async listAgentWork(taskId) {
 		return state.agentWork[taskId] ?? [];
 	},
@@ -562,6 +570,7 @@ const createTestHost = async (options = {}) => {
 		comments: {},
 		relations: {},
 		taskData: {},
+		contributions: {},
 		pages: [],
 		pageData: {},
 		nextPageId: 1,
@@ -679,6 +688,7 @@ const createTestHost = async (options = {}) => {
 		register: (kind, id) => registered[kind]?.add(id),
 		log: (level, message) => state.log.push({ at: clock(), level, message }),
 		now: clock,
+		sleep: () => Promise.resolve(),
 		files: {
 			export: async (path, content) => {
 				state.files[path] = content;
