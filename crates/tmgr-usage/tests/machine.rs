@@ -393,11 +393,20 @@ fn auto_throttle_skips_within_five_minutes_unless_a_limit_hit_came() {
 
 #[test]
 fn day_counts_follow_the_mode() {
-    assert_eq!(days_to_send(true, false, None), 2);
-    assert_eq!(days_to_send(true, true, None), 30);
-    assert_eq!(days_to_send(false, false, None), 30);
-    assert_eq!(days_to_send(false, false, Some(7)), 7);
-    assert_eq!(days_to_send(false, false, Some(900)), 120);
+    let today = at("2026-11-21T10:00:00Z").date_naive();
+    let covered = |back: i64| Some(today - Duration::days(back));
+    assert_eq!(days_to_send(true, covered(0), today, None), 2);
+    assert_eq!(days_to_send(true, covered(1), today, None), 2);
+    assert_eq!(days_to_send(true, covered(6), today, None), 7);
+    assert_eq!(days_to_send(true, covered(400), today, None), 120);
+    assert_eq!(
+        days_to_send(true, Some(today + Duration::days(3)), today, None),
+        2
+    );
+    assert_eq!(days_to_send(true, None, today, None), 30);
+    assert_eq!(days_to_send(false, covered(0), today, None), 30);
+    assert_eq!(days_to_send(false, None, today, Some(7)), 7);
+    assert_eq!(days_to_send(false, None, today, Some(900)), 120);
 }
 
 #[test]
@@ -433,6 +442,10 @@ fn settings_round_trip_and_the_id_is_created_once() {
     assert!(s.machine_last_sync().unwrap().is_none());
     s.set_machine_last_sync(now()).unwrap();
     assert_eq!(s.machine_last_sync().unwrap(), Some(now()));
+    assert!(s.machine_covered_day().unwrap().is_none());
+    let day = now().date_naive();
+    s.set_machine_covered_day(day).unwrap();
+    assert_eq!(s.machine_covered_day().unwrap(), Some(day));
 }
 
 fn hit(line: &str, when: DateTime<Utc>) -> Option<LimitSnapshot> {
@@ -479,11 +492,17 @@ fn limit_hit_without_a_window_or_a_time_keeps_what_is_known() {
     let t = at("2026-11-21T10:00:00Z");
     assert!(hit("You've hit your limit · resets 5pm", t).is_none());
     assert!(limit_from_hit("shell", "5-hour limit reached", t, offset(0), None).is_none());
-    assert!(hit("5-hour limit reached", t).unwrap().resets_at.is_none());
+    let five_hours = Some(t + Duration::hours(5));
+    assert_eq!(
+        hit("5-hour limit reached", t).unwrap().resets_at,
+        five_hours
+    );
     let other_zone = hit("5-hour limit reached ∙ resets 3pm (America/Chicago)", t).unwrap();
-    assert!(other_zone.resets_at.is_none());
+    assert_eq!(other_zone.resets_at, five_hours);
     let junk = hit("5-hour limit reached ∙ resets whenever", t).unwrap();
-    assert!(junk.resets_at.is_none());
+    assert_eq!(junk.resets_at, five_hours);
+    let weekly = hit("Weekly limit reached", t).unwrap();
+    assert_eq!(weekly.resets_at, Some(t + Duration::days(7)));
     let c = limit_from_hit(
         "codex",
         "weekly limit reached resets 3pm",

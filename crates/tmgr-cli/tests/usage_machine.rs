@@ -325,6 +325,63 @@ async fn auto_sync_sends_two_days_and_a_limit_hit_bypasses_the_throttle() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn auto_sync_backfills_days_missed_before_reading_was_allowed() {
+    let m = M::new(ok_put()).await;
+    m.login();
+    let old = format!("{}T12:00:00Z", Utc::now().date_naive() - Duration::days(5));
+    m.session_file("-s/old.jsonl", &[assistant("old", &old, "o1", 700)]);
+    m.ok(&["usage", "machine", "sync", "--auto", "-q"]);
+    assert!(m.puts().await[0]["days"].as_array().unwrap().is_empty());
+
+    m.ok(&["usage", "consent", "allow"]);
+    m.store()
+        .set_machine_last_sync(Utc::now() - Duration::hours(1))
+        .unwrap();
+    m.ok(&["usage", "machine", "sync", "--auto", "-q"]);
+    let puts = m.puts().await;
+    assert_eq!(puts.len(), 2);
+    assert_eq!(rows(&puts[1])[0]["input_tokens"], 700);
+
+    m.store()
+        .set_machine_last_sync(Utc::now() - Duration::hours(1))
+        .unwrap();
+    m.ok(&["usage", "machine", "sync", "--auto", "-q"]);
+    let puts = m.puts().await;
+    assert_eq!(puts.len(), 3);
+    assert!(puts[2]["days"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_limit_hit_arriving_during_another_sync_is_kept() {
+    let m = M::new(ok_put()).await;
+    m.login();
+    std::fs::write(m.p("data/machine-sync.lock"), "").unwrap();
+    let hit = m.p("data/limit-hit-2.json");
+    std::fs::write(
+        &hit,
+        json!({"profile": "claude-code", "line": "5-hour limit reached ∙ resets 3pm", "at_ms": Utc::now().timestamp_millis()})
+            .to_string(),
+    )
+    .unwrap();
+    let v = m.json(&[
+        "usage",
+        "machine",
+        "sync",
+        "--auto",
+        "-q",
+        "--limit-hit-file",
+        hit.to_str().unwrap(),
+    ]);
+    assert_eq!(v["data"]["reason"], "running");
+    assert!(m
+        .store()
+        .current_limits(Utc::now())
+        .unwrap()
+        .iter()
+        .any(|l| l.source == LimitSource::LimitHit));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn off_stops_sending_and_on_reenables_once() {
     let m = M::new(ok_put()).await;
     m.login();

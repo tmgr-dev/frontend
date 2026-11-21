@@ -257,6 +257,9 @@ fn sync(ctx: &Ctx, args: &MachineSyncArgs) -> Result<Output> {
         .as_deref()
         .and_then(|p| read_hit(p, now));
     let last = u.store.machine_last_sync().map_err(fail)?;
+    if let Some(hit) = &hit {
+        record_hit(&u, hit);
+    }
     if !u.store.machine_sync_on().map_err(fail)? {
         return if args.auto {
             Ok(skipped("off"))
@@ -280,12 +283,10 @@ fn sync(ctx: &Ctx, args: &MachineSyncArgs) -> Result<Output> {
             Err(Error::conflict("another machine sync is running"))
         };
     };
-    if let Some(hit) = &hit {
-        record_hit(&u, hit);
-    }
-    let days = machine::days_to_send(args.auto, last.is_none(), args.days);
-    let c = Corpus::load(ctx, &mut u, days + 1, false, !args.auto)?;
     let today = Tz::Local.day(now);
+    let covered = u.store.machine_covered_day().map_err(fail)?;
+    let days = machine::days_to_send(args.auto, covered, today, args.days);
+    let c = Corpus::load(ctx, &mut u, days + 1, false, !args.auto)?;
     let tasks = task_ids(&c);
     let events: Vec<_> = c
         .events
@@ -333,6 +334,13 @@ fn sync(ctx: &Ctx, args: &MachineSyncArgs) -> Result<Output> {
         }
     }
     let _ = u.store.set_machine_last_sync(Utc::now());
+    let read = u
+        .store
+        .log_consent()
+        .is_ok_and(|c| c.allows_any(!args.auto));
+    if read && args.days.is_none() {
+        let _ = u.store.set_machine_covered_day(today);
+    }
     let _ = u.store.clear_machine_reenable();
     let first_note = !args.auto
         && u.store

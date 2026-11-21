@@ -26,6 +26,7 @@ const ID_KEY: &str = "machine_id";
 const LABEL_KEY: &str = "machine_label";
 const SYNC_KEY: &str = "machine_sync";
 const LAST_SYNC_KEY: &str = "machine_last_sync";
+const COVERED_DAY_KEY: &str = "machine_covered_day";
 const REENABLE_KEY: &str = "machine_reenable";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -322,10 +323,15 @@ pub fn auto_due(last_sync: Option<DateTime<Utc>>, now: DateTime<Utc>, limit_hit:
     limit_hit || last_sync.is_none_or(|t| now - t >= AUTO_MIN_GAP || now < t)
 }
 
-pub fn days_to_send(auto: bool, first_ever: bool, requested: Option<i64>) -> i64 {
+pub fn days_to_send(
+    auto: bool,
+    covered: Option<NaiveDate>,
+    today: NaiveDate,
+    requested: Option<i64>,
+) -> i64 {
     let n = match requested {
         Some(n) => n,
-        None if auto && !first_ever => AUTO_DAYS,
+        None if auto => covered.map_or(FIRST_DAYS, |c| ((today - c).num_days() + 1).max(AUTO_DAYS)),
         None => FIRST_DAYS,
     };
     n.clamp(1, MAX_DAYS)
@@ -454,6 +460,14 @@ impl Store {
 
     pub fn set_machine_last_sync(&self, at: DateTime<Utc>) -> Result<()> {
         self.set_setting(LAST_SYNC_KEY, &stamp(at))
+    }
+
+    pub fn machine_covered_day(&self) -> Result<Option<NaiveDate>> {
+        Ok(self.setting(COVERED_DAY_KEY)?.and_then(|v| v.parse().ok()))
+    }
+
+    pub fn set_machine_covered_day(&self, day: NaiveDate) -> Result<()> {
+        self.set_setting(COVERED_DAY_KEY, &day.to_string())
     }
 }
 
@@ -597,7 +611,15 @@ pub fn limit_from_hit(
     let window = window_of(line)?;
     let resets_at = parse_reset(line)
         .filter(|r| r.zone.is_none_or(|z| Some(z) == zone_name || z == "UTC" && matches!(tz, Tz::Fixed(o) if o == FixedOffset::east_opt(0).expect("zero offset"))))
-        .and_then(|r| next_reset(&r, at, tz));
+        .and_then(|r| next_reset(&r, at, tz))
+        .or_else(|| {
+            Some(
+                at + match window {
+                    LimitWindow::Weekly => Duration::days(7),
+                    _ => Duration::hours(5),
+                },
+            )
+        });
     Some(LimitSnapshot {
         tool,
         account: "default".into(),
