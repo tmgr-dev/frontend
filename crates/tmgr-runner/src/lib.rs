@@ -51,6 +51,8 @@ pub mod mgr_rpc;
 #[cfg(unix)]
 pub mod objectmodes;
 #[cfg(unix)]
+pub mod objects_exempt;
+#[cfg(unix)]
 pub mod permit_hook;
 #[cfg(unix)]
 pub mod questions;

@@ -4671,6 +4671,71 @@ fn only_the_cli_changes_trusted_folders() {
 }
 
 #[test]
+fn only_the_cli_manages_exempt_folders() {
+    if !sessions_available() {
+        return;
+    }
+    use std::os::unix::fs::MetadataExt;
+    let mut h = Harness::new();
+    h.start(5000);
+    let m = fs::metadata(&h.work).unwrap();
+    let allow = json!({"path": h.work, "dev": m.dev(), "ino": m.ino(), "measured_ms": 1});
+    for client in ["worker", "desktop"] {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        for (method, params) in [
+            ("objects.allow", allow.clone()),
+            ("objects.deny", json!({"path": h.work})),
+            ("objects.list", json!(null)),
+        ] {
+            let e = err_text(c.call(method, params));
+            assert!(e.starts_with("forbidden: "), "{client} {method}: {e}");
+        }
+    }
+    let mut cli = h.client();
+    let added = cli.call("objects.allow", allow).unwrap();
+    assert_eq!(added["stale"], false);
+    let listed = cli.call("objects.list", json!(null)).unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    let gone = cli.call("objects.deny", json!({"path": h.work})).unwrap();
+    assert_eq!(gone["removed"], true);
+}
+
+#[test]
+fn an_exempt_folder_skips_only_the_shared_object_check() {
+    if !sessions_available() {
+        return;
+    }
+    use std::os::unix::fs::MetadataExt;
+    let mut h = Harness::new();
+    h.start(5000);
+    let objects = h.work.join(".git/objects");
+    fs::create_dir_all(objects.join("pack")).unwrap();
+    fs::create_dir_all(objects.join("ab")).unwrap();
+    fs::write(objects.join("ab/cdef"), "x").unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    fs::hard_link(objects.join("ab/cdef"), outside.path().join("link")).unwrap();
+    let refused = err_text(h.client().create_run(h.run_req("fake")));
+    assert!(
+        refused.contains("git object files") && refused.contains("objects allow"),
+        "{refused}"
+    );
+    let m = fs::metadata(&h.work).unwrap();
+    h.client()
+        .call(
+            "objects.allow",
+            json!({"path": h.work, "dev": m.dev(), "ino": m.ino(), "measured_ms": 1}),
+        )
+        .unwrap();
+    let info = h.client().create_run(h.run_req("fake")).unwrap();
+    h.client().kill(&info.id, "kill").unwrap();
+    h.client()
+        .call("objects.deny", json!({"path": h.work}))
+        .unwrap();
+    let again = err_text(h.client().create_run(h.run_req("fake")));
+    assert!(again.contains("git object files"), "{again}");
+}
+
+#[test]
 fn a_yes_to_claudes_trust_question_is_remembered_for_that_folder_only() {
     if !sessions_available() {
         return;

@@ -79,8 +79,9 @@ pub mod caps {
     pub const HANDOFF_V1: &str = "handoff.v1";
     pub const SWITCH_V1: &str = "switch.v1";
     pub const SPAWNAUTH_V1: &str = "spawnauth.v1";
+    pub const OBJECT_EXEMPT_V1: &str = "object_exempt.v1";
 
-    pub const ALL: [&str; 44] = [
+    pub const ALL: [&str; 45] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -125,6 +126,7 @@ pub mod caps {
         HANDOFF_V1,
         SWITCH_V1,
         SPAWNAUTH_V1,
+        OBJECT_EXEMPT_V1,
     ];
 }
 
@@ -157,6 +159,9 @@ pub mod method {
     pub const TRUST_LIST: &str = "trust.list";
     pub const TRUST_ADD: &str = "trust.add";
     pub const TRUST_REMOVE: &str = "trust.remove";
+    pub const OBJECTS_ALLOW: &str = "objects.allow";
+    pub const OBJECTS_DENY: &str = "objects.deny";
+    pub const OBJECTS_LIST: &str = "objects.list";
     pub const AUTOPILOT_START: &str = "autopilot.start";
     pub const AUTOPILOT_STATUS: &str = "autopilot.status";
     pub const AUTOPILOT_CONTROL: &str = "autopilot.control";

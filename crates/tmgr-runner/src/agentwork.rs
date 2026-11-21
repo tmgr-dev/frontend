@@ -43,13 +43,20 @@ pub struct State {
     pub parent_sent: bool,
 }
 
-pub fn audit_note(mode: Option<&str>, no_sandbox: bool) -> Option<String> {
-    (mode == Some("bypass") || no_sandbox).then(|| {
-        format!(
+pub fn audit_note(mode: Option<&str>, no_sandbox: bool, exempt: Option<bool>) -> Option<String> {
+    (mode == Some("bypass") || no_sandbox || exempt.is_some()).then(|| {
+        let mut note = format!(
             "mode: {}, sandbox: {}",
             mode.unwrap_or("-"),
             if no_sandbox { "off" } else { "on" }
-        )
+        );
+        if let Some(from_link) = exempt {
+            note.push_str(&format!(
+                ", object_exempt.used: shared-object check skipped by an exempt folder (start from {})",
+                if from_link { "a link" } else { "this machine" }
+            ));
+        }
+        note
     })
 }
 
@@ -563,13 +570,20 @@ mod tests {
 
     #[test]
     fn the_finish_summary_names_bypass_and_a_missing_sandbox() {
-        assert_eq!(audit_note(Some("ask"), false), None);
+        assert_eq!(audit_note(Some("ask"), false, None), None);
         assert_eq!(
-            audit_note(Some("bypass"), false).as_deref(),
+            audit_note(Some("ask"), false, Some(true)).as_deref(),
+            Some("mode: ask, sandbox: on, object_exempt.used: shared-object check skipped by an exempt folder (start from a link)")
+        );
+        assert!(audit_note(None, false, Some(false))
+            .unwrap()
+            .ends_with("(start from this machine)"));
+        assert_eq!(
+            audit_note(Some("bypass"), false, None).as_deref(),
             Some("mode: bypass, sandbox: on")
         );
         assert_eq!(
-            audit_note(Some("bypass"), true).as_deref(),
+            audit_note(Some("bypass"), true, None).as_deref(),
             Some("mode: bypass, sandbox: off")
         );
         let tmp = tempfile::tempdir().unwrap();
@@ -585,7 +599,7 @@ mod tests {
             workspace_id: -2,
             task_id: 7,
         };
-        let audit = audit_note(Some("bypass"), true);
+        let audit = audit_note(Some("bypass"), true, None);
         begin(&dir, task, "claude-code", None, "s_abc", (false, audit)).unwrap();
         let ended = Some(Exit {
             code: Some(0),

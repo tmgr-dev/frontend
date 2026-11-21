@@ -281,7 +281,7 @@ fn clear_errno() {
     };
 }
 
-fn entries(dir: &File) -> std::io::Result<Vec<(std::ffi::CString, u8)>> {
+pub(crate) fn entries(dir: &File) -> std::io::Result<Vec<(std::ffi::CString, u8)>> {
     let fd = dir.as_raw_fd();
     let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
     if dup < 0 {
@@ -315,7 +315,7 @@ fn entries(dir: &File) -> std::io::Result<Vec<(std::ffi::CString, u8)>> {
     Ok(out)
 }
 
-fn gone(e: &std::io::Error) -> bool {
+pub(crate) fn gone(e: &std::io::Error) -> bool {
     e.kind() == std::io::ErrorKind::NotFound
         || matches!(e.raw_os_error(), Some(n) if n == libc::ELOOP || n == libc::ENOTDIR)
 }
@@ -437,6 +437,7 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
             "git object files are also linked from another place, so a sandboxed session could change them there; \
              run `git gc --prune=now` and `git commit-graph write --reachable` in the repository, \
              or re-clone with `git clone --no-local <repository> <new folder>` (uncommitted changes and stashes are not carried over), \
+             or run `tmgr runner objects allow <folder>` on the follower (needs the PIN), \
              or start with --no-sandbox ({NO_SANDBOX_HOW}); store: {}",
             p.display()
         ))),
@@ -445,7 +446,7 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
             p.display()
         ))),
         Err(Stop::Budget) => Err(refused(format!(
-            "{} is too large to check for shared git object files; start the session in a smaller folder, or with --no-sandbox ({NO_SANDBOX_HOW})",
+            "{} is too large to check for shared git object files; start the session in a smaller folder, run `tmgr runner objects allow <folder>` on the follower (needs the PIN), or start with --no-sandbox ({NO_SANDBOX_HOW})",
             cwd.path.display()
         ))),
     }
@@ -1113,6 +1114,11 @@ mod tests {
         assert!(msg.contains("git clone --no-local"), "{msg}");
         assert!(msg.contains("--no-sandbox"), "{msg}");
         assert!(msg.contains("--allow-no-sandbox on"), "{msg}");
+        assert!(msg.contains("tmgr runner objects allow <folder>"), "{msg}");
+        assert!(
+            msg.find("objects allow") < msg.find(dest.to_str().unwrap()),
+            "{msg}"
+        );
         assert!(linked_files(&dest) > 0);
     }
 
@@ -1375,6 +1381,7 @@ mod tests {
             .unwrap_err()
             .1;
         assert!(msg.contains("too large to check"), "{msg}");
+        assert!(msg.contains("tmgr runner objects allow <folder>"), "{msg}");
         assert!(msg.contains("--no-sandbox"), "{msg}");
         assert!(msg.contains("--allow-no-sandbox on"), "{msg}");
     }

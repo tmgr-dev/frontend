@@ -970,7 +970,8 @@ fn constants_are_pinned() {
             "run_prompt.v1",
             "handoff.v1",
             "switch.v1",
-            "spawnauth.v1"
+            "spawnauth.v1",
+            "object_exempt.v1"
         ]
     );
     let methods = [
@@ -1000,6 +1001,9 @@ fn constants_are_pinned() {
         method::TRUST_LIST,
         method::TRUST_ADD,
         method::TRUST_REMOVE,
+        method::OBJECTS_ALLOW,
+        method::OBJECTS_DENY,
+        method::OBJECTS_LIST,
         method::AUTOPILOT_START,
         method::AUTOPILOT_STATUS,
         method::AUTOPILOT_CONTROL,
@@ -1035,6 +1039,9 @@ fn constants_are_pinned() {
             "trust.list",
             "trust.add",
             "trust.remove",
+            "objects.allow",
+            "objects.deny",
+            "objects.list",
             "autopilot.start",
             "autopilot.status",
             "autopilot.control",
@@ -1044,6 +1051,16 @@ fn constants_are_pinned() {
     );
     assert_eq!(CLIENT_CLI, "cli");
     assert_eq!(CLIENT_WORKER, "worker");
+}
+
+#[test]
+fn an_exempt_folder_without_stale_is_not_stale_and_unknown_fields_are_ignored() {
+    let f: ExemptFolder = serde_json::from_value(
+        json!({"path": "/w", "dev": 1, "ino": 2, "added_ms": 3, "measured_ms": 4, "future": 1}),
+    )
+    .unwrap();
+    assert!(!f.stale);
+    assert_eq!((f.dev, f.ino, f.added_ms, f.measured_ms), (1, 2, 3, 4));
 }
 
 #[test]
@@ -1068,7 +1085,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 44);
+    assert_eq!(w.caps.len(), 45);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1734,7 +1751,7 @@ fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
 fn switch_method_cap_and_shapes() {
     assert_eq!(method::SESSIONS_SWITCH, "sessions.switch");
     assert_eq!(caps::SWITCH_V1, "switch.v1");
-    assert_eq!(caps::ALL[caps::ALL.len() - 2], caps::SWITCH_V1);
+    assert_eq!(caps::ALL[caps::ALL.len() - 3], caps::SWITCH_V1);
     let req = SwitchReq {
         session: "s_aaaaaaaaaa".into(),
         to: "codex".into(),

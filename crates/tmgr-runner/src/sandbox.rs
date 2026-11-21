@@ -2278,6 +2278,40 @@ mod tests {
         assert!(reallow_home > first_deny);
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_homes_deny_follows_every_write_allow_and_only_the_session_home_is_allowed_again() {
+        let f = fx();
+        let p = plan(&f.spec).unwrap().paths;
+        let s = seatbelt_profile(&p).unwrap();
+        let homes = p.home.parent().unwrap();
+        let deny = format!(
+            "(deny file-read* file-write* (subpath {}))",
+            sbpl_quote(homes).unwrap()
+        );
+        let lines: Vec<&str> = s.lines().collect();
+        let at = lines
+            .iter()
+            .position(|l| *l == deny)
+            .expect("homes deny line");
+        let last_write_allow = lines
+            .iter()
+            .rposition(|l| l.starts_with("(allow file-write*"))
+            .unwrap();
+        assert!(at > last_write_allow, "{s}");
+        let home = format!("(subpath {})", sbpl_quote(&p.home).unwrap());
+        let tree = homes.to_str().unwrap();
+        for l in &lines[at..] {
+            if l.starts_with("(allow")
+                && l.contains(tree)
+                && !l.starts_with("(allow file-read-metadata")
+            {
+                assert!(l.contains(&home), "{l}");
+            }
+        }
+        assert!(lines[at..].contains(&format!("(allow file-read* file-write* {home})").as_str()));
+    }
+
     #[test]
     fn open_network_adds_no_network_rules() {
         let f = fx();

@@ -508,6 +508,32 @@ pub struct TrustRemoved {
     pub removed: bool,
 }
 
+/// Params of `objects.allow`: the folder identity and walk time the person confirmed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObjectsAllowParams {
+    pub path: String,
+    pub dev: u64,
+    pub ino: u64,
+    pub measured_ms: u64,
+}
+
+/// A folder exempt from the shared git object check (`objects.allow`, `objects.list`); `stale` is set by `objects.list` only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExemptFolder {
+    pub path: String,
+    pub dev: u64,
+    pub ino: u64,
+    pub added_ms: u64,
+    pub measured_ms: u64,
+    #[serde(default)]
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObjectsDenied {
+    pub removed: bool,
+}
+
 /// One agent permission prompt, from `permissions.list` (`client: "cli"` only).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PermissionCard {

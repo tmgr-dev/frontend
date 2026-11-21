@@ -10,6 +10,7 @@ use crate::humantime;
 use crate::limit;
 use crate::login;
 use crate::objectmodes;
+use crate::objects_exempt;
 use crate::orchestrator;
 use crate::permit::{self, spool, Eval};
 use crate::permit_hook;
@@ -46,11 +47,12 @@ use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
     AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
-    EventMsg, ExePin, ForkParams, LoginCheck, LoginCheckParams, LookupParams,
-    OrchestratorCreateReq, Origin, OriginRevokeParams, OriginRevoked, PathParams, PermissionAnswer,
-    PermissionCard, PermissionChoice, RestoredRun, ResumeParams, RunCreateReq, RunStatus,
-    SessionInfo, SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TeamLink, TeamRole,
-    TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    EventMsg, ExePin, ExemptFolder, ForkParams, LoginCheck, LoginCheckParams, LookupParams,
+    ObjectsAllowParams, ObjectsDenied, OrchestratorCreateReq, Origin, OriginRevokeParams,
+    OriginRevoked, PathParams, PermissionAnswer, PermissionCard, PermissionChoice, RestoredRun,
+    ResumeParams, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
+    StatusInfo, TaskRef, TeamLink, TeamRole, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP,
+    CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -1842,6 +1844,17 @@ fn retry_revocation(dir: &Path, sdir: &Path, s: &Arc<Session>) {
     }
 }
 
+fn exempt_folder(f: objects_exempt::ExemptFolder, stale: bool) -> ExemptFolder {
+    ExemptFolder {
+        path: f.path,
+        dev: f.dev,
+        ino: f.ino,
+        added_ms: f.added_ms,
+        measured_ms: f.measured_ms,
+        stale,
+    }
+}
+
 struct Conn {
     id: u64,
     w: Mutex<UnixStream>,
@@ -2784,6 +2797,41 @@ impl Runner {
                 } else {
                     folders::remove(&self.cfg.homes, &path)
                         .map(|removed| to_json(&TrustRemoved { removed }))
+                        .map_err(|e| api(ErrorCode::Internal, e))
+                }
+            }
+            method::OBJECTS_ALLOW | method::OBJECTS_DENY | method::OBJECTS_LIST => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "exempt folders are managed only from the tmgr CLI",
+                    ));
+                }
+                let homes = &self.cfg.homes;
+                if req.method == method::OBJECTS_LIST {
+                    let all: Vec<ExemptFolder> = objects_exempt::list(homes)
+                        .into_iter()
+                        .map(|f| {
+                            let stale = objects_exempt::is_stale(&f);
+                            exempt_folder(f, stale)
+                        })
+                        .collect();
+                    Ok(to_json(&all))
+                } else if req.method == method::OBJECTS_ALLOW {
+                    let q = params::<ObjectsAllowParams>(p)?;
+                    objects_exempt::add(
+                        homes,
+                        Path::new(&q.path),
+                        (q.dev, q.ino),
+                        q.measured_ms,
+                        now_ms(),
+                    )
+                    .map(|f| to_json(&exempt_folder(f, false)))
+                    .map_err(|e| api(ErrorCode::InvalidParams, e))
+                } else {
+                    let q = params::<PathParams>(p)?;
+                    objects_exempt::remove(homes, &q.path)
+                        .map(|removed| to_json(&ObjectsDenied { removed }))
                         .map_err(|e| api(ErrorCode::Internal, e))
                 }
             }
@@ -4047,7 +4095,10 @@ impl Runner {
             plan.restricted = false;
         }
         let (mode, perm_args) = (plan.mode.clone(), plan.args.clone());
-        let audit = agentwork::audit_note(mode.as_deref(), no_sandbox);
+        let exempt = (!no_sandbox
+            && dir.is_some_and(|d| objects_exempt::is_exempt(&self.cfg.homes, &d.path, d.id())))
+        .then_some(req.origin.is_some());
+        let audit = agentwork::audit_note(mode.as_deref(), no_sandbox, exempt);
         if req.agent_work {
             check_agent_work(&req, mode.as_deref())?;
         } else if req.cloud.is_some() {
@@ -4480,7 +4531,19 @@ impl Runner {
             }
         };
         if extra.no_sandbox.is_none() {
-            clone::check_stores(dir).map_err(|(code, m)| api(code, m))?;
+            if objects_exempt::is_exempt(&self.cfg.homes, &dir.path, dir.id()) {
+                log(&format!(
+                    "object_exempt.used: shared-object check skipped for {} (start from {})",
+                    dir.path.display(),
+                    if origin.is_some() {
+                        "a link"
+                    } else {
+                        "this machine"
+                    }
+                ));
+            } else {
+                clone::check_stores(dir).map_err(|(code, m)| api(code, m))?;
+            }
         }
         let _g = lock(&self.create_lock);
         let mut repo_trust_dropped = false;
