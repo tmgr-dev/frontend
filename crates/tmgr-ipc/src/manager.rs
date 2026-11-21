@@ -80,17 +80,7 @@ impl SpoolResp {
     }
 }
 
-/// Reserved for remote and bypass spawn: parsed so it can be named in a refusal, never honored.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SignedSpawn {
-    pub device: String,
-    pub target_machine: String,
-    pub nonce: String,
-    pub ts_ms: u64,
-    pub alg: String,
-    pub sig: String,
-}
+pub use tmgr_spawn_auth::SignedSpawn;
 
 pub fn valid_req_id(id: &str) -> bool {
     !id.is_empty()
@@ -107,7 +97,7 @@ mod tests {
 
     #[test]
     fn signed_spawn_parses_and_rejects_unknown_fields() {
-        let ok = json!({"device":"d","target_machine":"m","nonce":"n","ts_ms":1,"alg":"es256","sig":"s"});
+        let ok = json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"c","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"});
         assert!(serde_json::from_value::<SignedSpawn>(ok.clone()).is_ok());
         let mut extra = ok;
         extra["x"] = json!(1);

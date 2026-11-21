@@ -17,6 +17,7 @@ subtle.workspace = true
 base64.workspace = true
 sha2.workspace = true
 hmac.workspace = true
+tmgr-spawn-auth.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

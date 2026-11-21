@@ -1252,7 +1252,7 @@ mod tests {
             a[k] = v;
             a
         };
-        let signed = json!({"device":"d","target_machine":"m","nonce":"n","ts_ms":1,"alg":"es256","sig":"s"});
+        let signed = json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"c","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"});
         let e = call(&h, &st, "spawn_session", with("approval", signed)).unwrap_err();
         assert_eq!(e, "remote or bypass spawn is not available yet");
         assert!(
