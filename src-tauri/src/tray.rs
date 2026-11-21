@@ -244,6 +244,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
     menu = menu.item(&MenuItemBuilder::with_id(crate::decisions::TRAY_ID, label).build(app)?);
   }
   menu = menu
+    .item(&MenuItemBuilder::with_id(crate::manager::TRAY_ID, crate::manager::TITLE).build(app)?)
     .item(&dnd_menu.build()?)
     .item(&MenuItemBuilder::with_id("shortcuts", tr(Key::Shortcuts)).build(app)?)
     .item(
@@ -343,6 +344,7 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
     "open" => show_main(app),
     #[cfg(unix)]
     crate::decisions::TRAY_ID => crate::decisions::open_window(app),
+    crate::manager::TRAY_ID => crate::manager::open_window(app),
     "shortcuts" => {
       show_main(app);
       let _ = app.emit("tray://shortcuts", ());

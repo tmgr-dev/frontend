@@ -1,0 +1,61 @@
+<template>
+	<div class="mh2">
+		<Avatar :agent="info.agent" :manager="isManager" />
+		<div class="t">
+			<b
+				>{{ info.title }}
+				<span v-if="isManager" class="lockb"
+					><Icon name="lock" />{{ $t('manager.header.encrypted') }}</span
+				></b
+			>
+			<small v-if="sub">{{ sub }}</small>
+		</div>
+		<button
+			type="button"
+			class="ibd"
+			:aria-label="$t('manager.header.search')"
+			:title="$t('manager.header.search')"
+			@click="$emit('search')"
+		>
+			<Icon name="search" />
+		</button>
+		<span v-if="info.state" class="hxx">
+			<StatePill :state="info.state" />
+			<span v-if="info.context_tokens !== undefined" :class="['ctx', ctxLevel]"
+				><span class="bar"
+					><i :style="{ width: `${info.context_pct ?? 0}%` }"></i></span
+				><em>{{ ctxText }}</em></span
+			>
+		</span>
+	</div>
+</template>
+
+<script lang="ts">
+	import { defineComponent, type PropType } from 'vue';
+	import type { RoomInfo } from '../types';
+	import Avatar from './Avatar.vue';
+	import Icon from './Icon.vue';
+	import StatePill from './StatePill.vue';
+	import { contextFull, contextLevel } from './viewHelpers';
+
+	export default defineComponent({
+		name: 'ManagerChatHeader',
+		components: { Avatar, Icon, StatePill },
+		props: {
+			info: { type: Object as PropType<RoomInfo>, required: true },
+			sub: { type: String, default: '' },
+		},
+		emits: ['search'],
+		computed: {
+			isManager(): boolean {
+				return this.info.room.kind === 'manager';
+			},
+			ctxLevel(): string {
+				return contextLevel(this.info.context_pct);
+			},
+			ctxText(): string {
+				return contextFull(this.info.context_tokens, this.info.context_pct);
+			},
+		},
+	});
+</script>
