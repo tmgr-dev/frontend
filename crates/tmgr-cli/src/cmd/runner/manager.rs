@@ -28,6 +28,11 @@ pub enum ManagerCmd {
         #[command(subcommand)]
         cmd: super::manager_machine::MachineCmd,
     },
+    /// [experimental] Review and revoke the spawn keys of your phones
+    SpawnKeys {
+        #[command(subcommand)]
+        cmd: super::manager_spawn_keys::SpawnKeysCmd,
+    },
 }
 
 #[derive(Args)]
@@ -80,6 +85,7 @@ pub(super) fn run(o: &Opts, cmd: &ManagerCmd) -> Result<i32> {
         ManagerCmd::Start(a) => start(o, a),
         ManagerCmd::Status => status(o),
         ManagerCmd::Machine { cmd } => super::manager_machine::run(o, cmd),
+        ManagerCmd::SpawnKeys { cmd } => super::manager_spawn_keys::run(o, cmd),
     }
 }
 

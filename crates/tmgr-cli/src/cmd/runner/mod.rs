@@ -37,6 +37,7 @@ mod gc;
 mod local;
 pub mod manager;
 mod manager_machine;
+mod manager_spawn_keys;
 pub(crate) mod marked_queue;
 pub(crate) mod menu;
 mod observe;
