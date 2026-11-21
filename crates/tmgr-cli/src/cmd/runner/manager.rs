@@ -434,7 +434,8 @@ mod tests {
             assert_eq!(names(&tools), tool::ALL);
             for t in &tools {
                 assert_eq!(t["inputSchema"]["type"], "object");
-                assert!(t["inputSchema"]["properties"].get("machine").is_none());
+                let has = t["inputSchema"]["properties"].get("machine").is_some();
+                assert_eq!(has, t["name"] == tool::PROPOSE_SPAWN, "{}", t["name"]);
             }
         }
     }
@@ -453,7 +454,10 @@ mod tests {
             assert_eq!(
                 has,
                 tool::MACHINE_SCOPED.contains(&name)
-                    || matches!(name, tool::ASK_SUBMANAGER | tool::READ_SUBMANAGER),
+                    || matches!(
+                        name,
+                        tool::ASK_SUBMANAGER | tool::READ_SUBMANAGER | tool::PROPOSE_SPAWN
+                    ),
                 "{name}"
             );
             let required = schema["required"].as_array().unwrap();
