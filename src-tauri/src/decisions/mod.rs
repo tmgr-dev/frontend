@@ -176,7 +176,7 @@ pub async fn decisions_get<R: Runtime>(app: AppHandle<R>, id: String) -> Result<
 pub async fn decisions_answer<R: Runtime>(app: AppHandle<R>, id: String, answer: AnswerIn) -> Result<CardView, String> {
   let hub = hub_of(&app)?;
   let (event, view) = blocking(move || {
-    let (event, _) = hub.answer(&id, answer)?;
+    let (event, _) = hub.answer_and_run(&id, answer)?;
     Ok((event, hub.get(&id)?))
   })
   .await?;
