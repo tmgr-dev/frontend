@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.154
+
+- Fixed: the Manager window and `tmgr attach` chat showed empty rooms for sessions started with `--no-sandbox`. The runner could not tell which conversation file belonged to such a session. It now finds it through Claude Code's own session file, so the last 30 turns appear and new turns keep arriving. Codex sessions started with `--no-sandbox` still show no history unless they were resumed by id.
+- If reading a session's history fails, the runner now tries again instead of marking the history as done and leaving the room empty.
+- New: sessions get useful names on their own. A session still named `claude` or `codex` takes the title Claude Code gives its conversation, or the name of its folder until a title exists. Sessions in the same folder are numbered (`app`, `app 2`). Names follow the title when it changes. A name you set with `tmgr rename` or in attach is never changed. Codex sessions use the folder name.
+- Changed: `tmgr manager start` without `--cwd` now starts the manager in its own private folder next to the runner's folder, instead of the folder you ran the command from, so a large projects folder no longer blocks it. `--cwd` still picks another folder.
+- Fixed: when the manager's folder is too large to check, the message no longer suggests `--no-sandbox`, which the manager does not accept. It suggests `--cwd <folder>`.
+- Note: the real command for phone spawn keys, mentioned in 1.0.151 as `tmgr runner manager spawn-keys`, is `tmgr manager spawn-keys list`, `approve <device_fp> <spawn_key_fp>` and `revoke <device_fp>`.
+- Restart the runner after updating (`tmgr runner restart`); running sessions do not need to be restarted.
+
 ## 1.0.153
 
 - Remote spawn and switch for the top manager: on a paired machine the top manager can now propose a session with `propose_spawn` and `machine`. The card goes into that machine's Manager chat room, says it was proposed by the top manager on that machine and shows the full prompt. After you approve it on your phone, the top manager starts it with `spawn_session`, the same arguments and the card's `card_id`. Nothing starts without your approval, and the target machine checks it.
