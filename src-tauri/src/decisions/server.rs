@@ -109,7 +109,12 @@ fn recv_alive(n: isize, errno: i32) -> bool {
 fn dispatch(hub: &Arc<Hub>, op: Op, stream: &UnixStream) -> Response {
   let done = |r: Result<Response, String>| r.unwrap_or_else(Response::err);
   match op {
-    Op::Ping => Response { ok: true, version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() },
+    Op::Ping => Response {
+      ok: true,
+      version: Some(env!("CARGO_PKG_VERSION").into()),
+      capabilities: vec![tmgr_ipc::actions::CAP_ACTIONS.to_owned()],
+      ..Default::default()
+    },
     Op::Create { card, inbox } => done(hub.create_with(*card, inbox).map(|created| Response {
       ok: true,
       card_id: Some(created.id),
@@ -197,7 +202,7 @@ mod tests {
     let updated = updates.clone();
     let sink: crate::decisions::hub::Sink = Box::new(move |c, n| match c {
       Change::Created { .. } => seen.lock().unwrap().push(n),
-      Change::Updated => *updated.lock().unwrap() += 1,
+      Change::Updated | Change::Finished(_) => *updated.lock().unwrap() += 1,
     });
     let hub = Arc::new(Hub::new(Store::open(&dir.join("decisions.db")).unwrap(), sink).with_spool(dir.clone()));
     hub.ingest_spool(&dir);
@@ -245,6 +250,7 @@ mod tests {
     let r = rig();
     let c = Client::open_in(&r.dir).unwrap();
     assert_eq!(c.ping().unwrap().version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+    assert_eq!(c.ping().unwrap().capabilities, ["actions"]);
     let id = c.create(card("Ship?")).unwrap();
     assert_eq!(r.hub.get(&id).unwrap().title, "Ship?");
     assert_eq!(r.changes.lock().unwrap().as_slice(), [1]);

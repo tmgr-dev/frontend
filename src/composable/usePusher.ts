@@ -503,6 +503,7 @@ export function usePusher(): UsePusherReturn {
 					action: 'created' | 'updated' | 'deleted';
 					updated_by_user_id: number;
 					source_instance_id?: string;
+					updated_by_plugin?: string | null;
 				}) => {
 					const sub = routed(channelName, data);
 
@@ -513,6 +514,7 @@ export function usePusher(): UsePusherReturn {
 								data.action,
 								data.updated_by_user_id,
 								data.source_instance_id,
+								data.updated_by_plugin,
 							);
 						});
 					}

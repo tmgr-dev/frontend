@@ -3,6 +3,7 @@ import { usePusher } from '@/composable/usePusher';
 import { t } from '@/i18n';
 import $axios from '@/plugins/axios';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
+import { SOURCE_INSTANCE_ID } from '@/utils/sourceInstance';
 import type { AxiosInstance } from 'axios';
 import { watch } from 'vue';
 import type { Store } from 'vuex';
@@ -20,6 +21,7 @@ import { createDataApi } from './dataApi';
 import { createPluginHost, type PluginPackage } from './host';
 import { createLeader } from './leader';
 import type { WorkerEndpoint } from './process';
+import { realtimeTaskEvent } from './realtimeTaskEvent';
 import { installedPluginErrors, pluginState, setPluginHost } from './state';
 import { settingsStore } from './storage';
 import { newRefusalNotices, packageFromPin, webRefusal } from './webSupport';
@@ -128,6 +130,23 @@ export const installWebPlugins = (store: Store<any>) => {
 						page,
 						actor,
 					});
+				},
+				onTaskUpdated: (
+					task,
+					action,
+					_userId,
+					sourceInstanceId,
+					updatedByPlugin,
+				) => {
+					const event = realtimeTaskEvent(
+						workspaceId,
+						task,
+						action,
+						sourceInstanceId,
+						SOURCE_INSTANCE_ID,
+						updatedByPlugin,
+					);
+					if (event) domainEvents.emit(event);
 				},
 			}),
 		};

@@ -25,7 +25,7 @@ pub fn note_client(name: Option<&str>) {
     }
 }
 
-fn client_agent() -> &'static str {
+pub(crate) fn client_agent() -> &'static str {
     agent_name(
         CLIENT
             .lock()
@@ -139,7 +139,7 @@ pub fn defs() -> Vec<Value> {
         }),
         json!({
             "name": "get_answer",
-            "description": "Collect the owner's answer to a card created by ask_owner that came back pending (or was deferred). Waits up to waitSeconds for the next event after the ones already returned in this session: an \"answer\" (final unless deferred=true) or a \"message\" (an interim owner comment: address it, then call reply_owner). When the owner may have ticked several options, choices lists every pick as {id, label, note} (choice is the first one). Pass card_ids (up to 64) to cover several cards with one wait: it returns the first event from any of them, and the event JSON includes its card_id. Returns {\"status\":\"pending\",\"card_id\":...} when nothing new arrived (with card_ids: {\"status\":\"pending\",\"card_ids\":[...]}).",
+            "description": "Collect the owner's answer to a card created by ask_owner that came back pending (or was deferred). Waits up to waitSeconds for the next event after the ones already returned in this session: an \"answer\" (final unless deferred=true) or a \"message\" (an interim owner comment: address it, then call reply_owner). When the owner may have ticked several options, choices lists every pick as {id, label, note} (choice is the first one). Pass card_ids (up to 64) to cover several cards with one wait: it returns the first event from any of them, and the event JSON includes its card_id. For a card from propose_action the final answer carries approved and result. Returns {\"status\":\"pending\",\"card_id\":...} when nothing new arrived (with card_ids: {\"status\":\"pending\",\"card_ids\":[...]}).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -199,6 +199,31 @@ pub fn defs() -> Vec<Value> {
                     "waitSeconds": wait
                 },
                 "required": ["card_id"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "propose_action",
+            "description": "Propose a write action for the owner to approve in the TMGR desktop Decisions inbox: kind comment (comment on a task), task (create a task), pr (GitHub pull request for an already pushed branch) or tag (GitHub release tag). The action runs only if the owner approves it, from the exact payload the owner saw; the owner may edit the text fields first (comment text, task title and description, PR title and body, tag name). If the owner rejects, get_answer returns choice \"reject\" with the reason in note or free_text and nothing runs; if the owner approves, it returns choice \"approve\" with approved (the final payload and edited=true when the owner changed it) and result ({ok, url, sha, error}). This call does not wait: it returns {status, card_id} at once and you collect the outcome with get_answer. It is refused when the desktop app is not running or too old; action cards are never queued. Per kind: comment needs task (TM-12 or a numeric id) and text; task needs workspace (id or code) and title, optional description, category_id, status_id; pr needs title, optional body, branch (default current), base (default the default branch of origin), repo_dir; the branch must already be pushed to github.com origin; tag needs name, optional target (default HEAD, must be on a remote branch), repo_dir. Text limits: title 255 bytes, text 6000 bytes, at most 50 commits; over the limit is refused, not cut.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["comment", "task", "pr", "tag"]},
+                    "task": {"type": "string", "minLength": 1, "maxLength": 100, "description": "comment: task key (TM-12) or numeric id"},
+                    "text": {"type": "string", "minLength": 1, "maxLength": 6000, "description": "comment: the comment text"},
+                    "workspace": {"type": "string", "minLength": 1, "maxLength": 100, "description": "task: workspace id or code"},
+                    "title": {"type": "string", "minLength": 1, "maxLength": 255, "description": "task or pr: title"},
+                    "description": {"type": "string", "maxLength": 6000, "description": "task: description"},
+                    "category_id": {"type": "integer", "minimum": 1, "description": "task: project category id"},
+                    "status_id": {"type": "integer", "minimum": 1, "description": "task: status id"},
+                    "body": {"type": "string", "maxLength": 6000, "description": "pr: description"},
+                    "branch": {"type": "string", "maxLength": 100, "description": "pr: head branch (default: the current branch of repo_dir)"},
+                    "base": {"type": "string", "maxLength": 100, "description": "pr: base branch (default: the default branch of origin)"},
+                    "name": {"type": "string", "minLength": 1, "maxLength": 100, "description": "tag: the tag name"},
+                    "target": {"type": "string", "maxLength": 200, "description": "tag: revision to tag (default HEAD)"},
+                    "repo_dir": {"type": "string", "maxLength": 4096, "description": "pr or tag: git repository (default: the working directory)"}
+                },
+                "required": ["kind"],
                 "additionalProperties": false
             }
         }),

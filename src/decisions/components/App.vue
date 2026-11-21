@@ -758,7 +758,7 @@
 				const action = resolveKey(event, {
 					optionCount: card?.options.length ?? 0,
 					hasRecommended: card ? recommendedOption(card) !== null : false,
-					canAnswer: mode === 'answer',
+					canAnswer: mode === 'answer' && !card?.action,
 					canDismiss: mode !== 'final',
 				});
 				if (!action) return;

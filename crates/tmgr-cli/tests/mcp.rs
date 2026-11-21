@@ -90,7 +90,8 @@ async fn handshake_lists_the_tools_and_negotiates_the_version() {
             "ask_owner",
             "get_answer",
             "find_answers",
-            "reply_owner"
+            "reply_owner",
+            "propose_action"
         ]
     );
     assert_eq!(by_id(&all, 3)["result"], json!({}));

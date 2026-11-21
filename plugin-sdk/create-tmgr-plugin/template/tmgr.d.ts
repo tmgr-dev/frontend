@@ -250,7 +250,7 @@ interface RoutineInstance {
 }
 
 type TmgrEvent =
-	/** `changed` (task.updated only) names the fields the write's request body set. */
+	/** `changed` (task.updated only) names the fields the write's request body set. Writes by other clients in a shared workspace arrive over realtime without `changed`, and never as task.statusChanged (a status move is a task.updated). */
 	| {
 			type: 'task.created' | 'task.updated';
 			workspaceId: number;

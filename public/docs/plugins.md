@@ -144,6 +144,10 @@ payload is `{ type, workspaceId, pageId, slug, title, parentId, version, author:
   report `[]`.
 - A plugin does not receive the events of its own writes; other plugins and the user's writes are delivered.
 
+### Task events in shared workspaces
+
+`task.created`, `task.updated` and `task.deleted` also arrive for writes made by other clients (colleagues, other tabs or windows) over realtime. These events have no `changed` list, and a status move arrives as `task.updated`, never `task.statusChanged`. Writes made in this window or by a plugin produce the local event only. A plugin never receives the events of its own writes, including writes it made on a colleague's client, so the same plugin running for several members does not answer itself in a loop.
+
 ## Text and documents (API 1.7)
 
 Three additions let a plugin show longer text and documents. Set `"engines": { "tmgr": "^1.7" }`; older

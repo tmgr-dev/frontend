@@ -16,6 +16,10 @@ import {
 	shouldReplayWithCurrentToken,
 	wasSentWithCurrentToken,
 } from '@/utils/sessionGuards';
+import {
+	SOURCE_INSTANCE_HEADER,
+	SOURCE_INSTANCE_ID,
+} from '@/utils/sourceInstance';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
@@ -148,6 +152,13 @@ $axios.interceptors.request.use(
 			)
 		) {
 			config.headers['X-Workspace-Id'] = String(workspaceId);
+		}
+		if (
+			config.headers &&
+			config.headers[SOURCE_INSTANCE_HEADER] == null &&
+			(config.method ?? 'get').toLowerCase() !== 'get'
+		) {
+			config.headers[SOURCE_INSTANCE_HEADER] = SOURCE_INSTANCE_ID;
 		}
 		return config;
 	},

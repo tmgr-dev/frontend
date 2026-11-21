@@ -1,3 +1,4 @@
+mod actions;
 mod diff;
 mod hub;
 pub mod phone;
@@ -14,12 +15,13 @@ use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
+use tmgr_ipc::actions::ActionResult;
 use tmgr_ipc::decisions::{decisions_dir, Event, DB};
 
 use diff::DiffGroups;
 use hub::{pid_alive, Change, Hub};
 use server::Server;
-use store::{AnswerIn, CardView, MessageIn, PendingTaskComment, Store};
+use store::{AnswerIn, CardView, MessageIn, PendingAction, PendingTaskComment, Store};
 
 pub const LABEL: &str = "decisions";
 pub const SHORTCUT: &str = "CmdOrCtrl+Shift+D";
@@ -78,8 +80,12 @@ fn on_change<R: Runtime>(app: &AppHandle<R>, change: &Change, count: usize) {
   let _ = app.emit_to(LABEL, "decisions://changed", json!({ "count": count }));
   crate::tray::refresh_current(app);
   phone::on_hub_change(app);
-  if let Change::Created { title, body } = change {
-    crate::plugin_notify::plugin_notify(app.clone(), title.clone(), body.clone(), None);
+  match change {
+    Change::Created { title, body } => {
+      crate::plugin_notify::plugin_notify(app.clone(), title.clone(), body.clone(), None);
+    }
+    Change::Finished(event) => spawn_route(app, event.card_id.clone(), (**event).clone()),
+    Change::Updated => {}
   }
 }
 
@@ -104,8 +110,15 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
   tmgr_ipc::dirs::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
   let store = Store::open(&dir.join(DB))?;
   let handle = app.clone();
+  let gh_dir = dir.clone();
+  let exec: hub::Exec = Arc::new(move |action| match actions::Gh::resolve(&gh_dir) {
+    Ok(gh) => actions::execute(&gh, action),
+    Err(e) => actions::Outcome::failed(e),
+  });
   let hub = Arc::new(
-    Hub::new(store, Box::new(move |change, count| on_change(&handle, change, count))).with_spool(dir.clone()),
+    Hub::new(store, Box::new(move |change, count| on_change(&handle, change, count)))
+      .with_spool(dir.clone())
+      .with_executor(exec),
   );
   OPEN.store(hub.open_count(), Ordering::SeqCst);
   hub.ingest_spool(&dir);
@@ -163,7 +176,7 @@ pub async fn decisions_get<R: Runtime>(app: AppHandle<R>, id: String) -> Result<
 pub async fn decisions_answer<R: Runtime>(app: AppHandle<R>, id: String, answer: AnswerIn) -> Result<CardView, String> {
   let hub = hub_of(&app)?;
   let (event, view) = blocking(move || {
-    let (event, _) = hub.answer(&id, answer)?;
+    let (event, _) = hub.answer_and_run(&id, answer)?;
     Ok((event, hub.get(&id)?))
   })
   .await?;
@@ -263,4 +276,37 @@ pub fn decisions_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> Result
     return Err("only http and https links open".to_owned());
   }
   app.opener().open_url(parsed.as_str(), None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn decisions_pending_actions<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+) -> Result<Vec<PendingAction>, String> {
+  main_window_only(&window, "decisions_pending_actions")?;
+  let hub = hub_of(&app)?;
+  blocking(move || hub.pending_actions()).await
+}
+
+#[tauri::command]
+pub async fn decisions_claim_action<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  run_id: String,
+) -> Result<PendingAction, String> {
+  main_window_only(&window, "decisions_claim_action")?;
+  let hub = hub_of(&app)?;
+  blocking(move || hub.claim_action(&run_id)).await
+}
+
+#[tauri::command]
+pub async fn decisions_finish_action<R: Runtime>(
+  app: AppHandle<R>,
+  window: tauri::Window<R>,
+  run_id: String,
+  result: ActionResult,
+) -> Result<(), String> {
+  main_window_only(&window, "decisions_finish_action")?;
+  let hub = hub_of(&app)?;
+  blocking(move || hub.finish_claimed_action(&run_id, result)).await
 }

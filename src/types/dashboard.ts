@@ -834,6 +834,7 @@ export interface EventHandlers {
 		action: 'created' | 'updated' | 'deleted',
 		updatedByUserId?: number,
 		sourceInstanceId?: string,
+		updatedByPlugin?: string | null,
 	) => void;
 	onTasksReordered?: (statusId: number, sourceInstanceId?: string) => void;
 	onTaskAssignmentChanged?: (event: TaskAssignmentEvent) => void;
