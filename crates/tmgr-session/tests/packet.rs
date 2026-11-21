@@ -38,7 +38,7 @@ fn source(agent: Agent, session: &str) -> PacketSource {
         machine: "machine-1".into(),
         session: session.into(),
         name: "demo".into(),
-        agent,
+        agent: agent.name(),
         profile: Some(format!("{}-default", agent.name())),
         cwd: "/work/demo".into(),
         permission_mode: Some("accept-edits".into()),
@@ -74,7 +74,7 @@ fn opts(target: Agent) -> Opts {
 
 fn to(agent: Agent) -> PacketTo {
     PacketTo {
-        agent,
+        agent: agent.name(),
         profile: format!("{}-default", agent.name()),
     }
 }

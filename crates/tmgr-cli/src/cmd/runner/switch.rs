@@ -43,38 +43,29 @@ fn err(e: SwitchError) -> Error {
     }
 }
 
-pub(super) fn carried_mode(old: &SessionInfo, keep_bypass: bool) -> PermissionMode {
-    match old.permission_mode.as_deref() {
-        Some("accept-edits") => PermissionMode::AcceptEdits,
-        Some("plan") => PermissionMode::Plan,
-        Some("bypass") if keep_bypass => PermissionMode::Bypass,
-        _ => PermissionMode::Ask,
-    }
-}
-
-fn was_flagged(old: &SessionInfo) -> bool {
-    old.permission_mode.as_deref() == Some("bypass") || old.no_sandbox
-}
-
-fn supports(profile: &str, mode: PermissionMode) -> bool {
+fn supports(profile: &str, mode: &str) -> bool {
     let dir = tmgr_runner::profile::user_dir();
     let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
     set.lookup(profile)
-        .is_ok_and(|p| p.permission_args(mode.as_str()).is_ok())
+        .is_ok_and(|p| p.permission_args(mode).is_ok())
 }
 
-fn fitted(old: &SessionInfo, target: Target, keep_bypass: bool) -> Result<(PermissionMode, bool)> {
-    let wanted = carried_mode(old, keep_bypass);
-    if supports(target.profile(), wanted) {
-        return Ok((wanted, false));
-    }
-    if wanted == PermissionMode::Bypass {
-        return Err(
-            Error::usage(format!("{} cannot run in bypass mode", target.profile()))
-                .hint("drop --keep-bypass to continue in ask mode"),
-        );
-    }
-    Ok((PermissionMode::Ask, true))
+fn fitted(
+    old: &SessionInfo,
+    target: Target,
+    keep_bypass: bool,
+) -> Result<(PermissionMode, lib::Carry)> {
+    let carried = lib::carry(old, target, keep_bypass, supports).map_err(|e| match e {
+        SwitchError::Usage(m) => Error::usage(m).hint("drop --keep-bypass to continue in ask mode"),
+        other => err(other),
+    })?;
+    let mode = match carried.mode.as_str() {
+        "accept-edits" => PermissionMode::AcceptEdits,
+        "plan" => PermissionMode::Plan,
+        "bypass" => PermissionMode::Bypass,
+        _ => PermissionMode::Ask,
+    };
+    Ok((mode, carried))
 }
 
 fn cut_bytes(note: &str) -> String {
@@ -152,7 +143,7 @@ enum Route {
 pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     let target = lib::check(&s, a.to.map(Target::from)).map_err(err)?;
-    let (mode, mode_fallback) = fitted(&s, target, a.keep_bypass)?;
+    let (mode, carried) = fitted(&s, target, a.keep_bypass)?;
     let no_sandbox = a.keep_bypass && s.no_sandbox;
     privilege::check_caps(
         &c.welcome().caps,
@@ -248,8 +239,12 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
     }
     .map_err(|e| after_stop(e.to_string()))?;
     let warning = lib::export_all(&started.info.id, &note.exports);
-    let dropped = was_flagged(&s) && !a.keep_bypass;
-    report(o, (&s, target), &started, (warning, dropped, mode_fallback))
+    report(
+        o,
+        (&s, target),
+        &started,
+        (warning, carried.bypass_dropped, carried.fell_back),
+    )
 }
 
 fn report(
@@ -339,34 +334,6 @@ mod tests {
             managed: false,
             manager: false,
         }
-    }
-
-    #[test]
-    fn ordinary_modes_carry_over_silently() {
-        assert_eq!(
-            carried_mode(&old(Some("accept-edits"), false), false).as_str(),
-            "accept-edits"
-        );
-        assert_eq!(
-            carried_mode(&old(Some("plan"), false), false).as_str(),
-            "plan"
-        );
-        assert_eq!(
-            carried_mode(&old(Some("ask"), false), false).as_str(),
-            "ask"
-        );
-        assert_eq!(carried_mode(&old(None, false), true).as_str(), "ask");
-        assert_eq!(carried_mode(&old(Some("odd"), false), true).as_str(), "ask");
-    }
-
-    #[test]
-    fn bypass_carries_only_with_the_explicit_flag() {
-        let b = old(Some("bypass"), false);
-        assert_eq!(carried_mode(&b, false).as_str(), "ask");
-        assert_eq!(carried_mode(&b, true).as_str(), "bypass");
-        assert!(was_flagged(&b));
-        assert!(was_flagged(&old(Some("ask"), true)));
-        assert!(!was_flagged(&old(Some("plan"), false)));
     }
 
     #[test]
