@@ -3429,3 +3429,217 @@ fn m3_a_device_admitted_only_by_a_demoted_signer_keeps_no_stored_kind() {
         .all(|d| d.id != yid || d.state != DeviceState::Trusted));
     assert!(kind_entries_of(&b, &yid).is_empty());
 }
+
+type RpcGot = Vec<(String, String, String, String, Value)>;
+
+#[derive(Clone, Default)]
+struct RpcRec(Arc<Mutex<RpcGot>>);
+
+impl RpcRec {
+    fn n(&self) -> usize {
+        self.0.lock().unwrap().len()
+    }
+}
+
+impl RpcSink for RpcRec {
+    fn deliver_rpc(&self, from: &str, fp: &str, kind: &str, id: &str, payload: Value) {
+        self.0
+            .lock()
+            .unwrap()
+            .push((from.into(), fp.into(), kind.into(), id.into(), payload));
+    }
+}
+
+fn rpc_world() -> (Fake, Clock, Engine, Engine, Engine, RpcRec) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let mut r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+    for e in [&r1, &r2, &a] {
+        e.poll_once().unwrap();
+    }
+    let sink = RpcRec::default();
+    r2.rpc = Some(Arc::new(sink.clone()));
+    (fake, clock, a, r1, r2, sink)
+}
+
+fn rpc_id(kind: &str) -> String {
+    random_msg_id(kind).unwrap()
+}
+
+fn raw_post(from: &Engine, to_id: &str, kind: &str, id: &str, payload: &Value) {
+    let mut g = from.lock();
+    let target: Vec<Dev> =
+        g.st.trusted
+            .iter()
+            .filter(|d| d.id == to_id)
+            .cloned()
+            .collect();
+    assert_eq!(target.len(), 1);
+    from.seal_and_post(&mut g, kind, id, payload, &target, false)
+        .unwrap();
+}
+
+#[test]
+fn rpc_from_a_trusted_runner_is_delivered_to_a_runner_engine() {
+    let (_f, _c, _a, r1, r2, sink) = rpc_world();
+    let id = rpc_id("mgr_req");
+    r1.send_rpc(&my_id(&r2), "mgr_req", &id, &json!({ "op": "x" }))
+        .unwrap();
+    r2.poll_once().unwrap();
+    let got = sink.0.lock().unwrap().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0, my_id(&r1));
+    assert_eq!(got[0].1, fp_of(&r1));
+    assert_eq!(got[0].2, "mgr_req");
+    assert_eq!(got[0].3, id);
+    assert_eq!(got[0].4, json!({ "op": "x" }));
+    let rid = rpc_id("mgr_res");
+    r1.send_rpc(&my_id(&r2), "mgr_res", &rid, &json!({ "ok": true }))
+        .unwrap();
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 2);
+}
+
+#[test]
+fn rpc_from_a_trusted_desktop_is_dropped() {
+    let (_f, _c, a, _r1, r2, sink) = rpc_world();
+    raw_post(&a, &my_id(&r2), "mgr_req", &rpc_id("mgr_req"), &json!({}));
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn rpc_from_an_untrusted_device_is_dropped() {
+    let (fake, clock, _a, r1, r2, sink) = rpc_world();
+    let stranger = engine_with(&fake, &clock, "Stranger").with_kind("runner");
+    stranger.ensure_registered(&mut stranger.lock()).unwrap();
+    let r2id = my_id(&r2);
+    {
+        let mut g = stranger.lock();
+        let dev = r1
+            .lock()
+            .st
+            .trusted
+            .iter()
+            .find(|d| d.id == r2id)
+            .cloned()
+            .unwrap();
+        stranger
+            .seal_and_post(
+                &mut g,
+                "mgr_req",
+                &rpc_id("mgr_req"),
+                &json!({}),
+                &[dev],
+                false,
+            )
+            .unwrap();
+    }
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn rpc_is_dropped_on_a_non_runner_engine_and_without_a_sink() {
+    let (_f, _c, a, r1, r2, sink) = rpc_world();
+    let mut a = a;
+    let a_sink = RpcRec::default();
+    a.rpc = Some(Arc::new(a_sink.clone()));
+    raw_post(&r1, &my_id(&a), "mgr_req", &rpc_id("mgr_req"), &json!({}));
+    a.poll_once().unwrap();
+    assert_eq!(a_sink.n(), 0);
+    let mut r2 = r2;
+    r2.rpc = None;
+    r1.send_rpc(&my_id(&r2), "mgr_req", &rpc_id("mgr_req"), &json!({}))
+        .unwrap();
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn oversize_rpc_is_dropped() {
+    let (_f, _c, _a, r1, r2, sink) = rpc_world();
+    let big = json!({ "x": "a".repeat(limits::MAX_REQ_BYTES) });
+    assert!(r1
+        .send_rpc(&my_id(&r2), "mgr_req", &rpc_id("mgr_req"), &big)
+        .is_err());
+    raw_post(&r1, &my_id(&r2), "mgr_req", &rpc_id("mgr_req"), &big);
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+    let res_ok = json!({ "x": "a".repeat(limits::MAX_REQ_BYTES + 10) });
+    r1.send_rpc(&my_id(&r2), "mgr_res", &rpc_id("mgr_res"), &res_ok)
+        .unwrap();
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 1);
+}
+
+#[test]
+fn duplicate_rpc_id_is_delivered_once() {
+    let (_f, _c, _a, r1, r2, sink) = rpc_world();
+    let id = rpc_id("mgr_req");
+    for _ in 0..2 {
+        raw_post(&r1, &my_id(&r2), "mgr_req", &id, &json!({}));
+    }
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 1);
+}
+
+#[test]
+fn rpc_ids_do_not_enter_the_chat_seen_ring() {
+    let (_f, _c, _a, r1, r2, sink) = rpc_world();
+    let before = r2.lock().st.seen.len();
+    r1.send_rpc(&my_id(&r2), "mgr_req", &rpc_id("mgr_req"), &json!({}))
+        .unwrap();
+    r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 1);
+    assert_eq!(r2.lock().st.seen.len(), before);
+    assert_eq!(r2.lock().st.rpc_seen.len(), 1);
+}
+
+#[test]
+fn send_rpc_refuses_desktops_self_and_bad_input() {
+    let (_f, _c, a, r1, r2, _s) = rpc_world();
+    let id = rpc_id("mgr_req");
+    assert!(r1.send_rpc(&my_id(&a), "mgr_req", &id, &json!({})).is_err());
+    assert!(r1
+        .send_rpc(&my_id(&r1), "mgr_req", &id, &json!({}))
+        .is_err());
+    assert!(r1.send_rpc(&my_id(&r2), "chat", &id, &json!({})).is_err());
+    assert!(r1
+        .send_rpc(&my_id(&r2), "mgr_res", &id, &json!({}))
+        .is_err());
+    assert!(a.send_rpc(&my_id(&r1), "mgr_req", &id, &json!({})).is_err());
+    assert!(r1.send_rpc("nope", "mgr_req", &id, &json!({})).is_err());
+}
+
+#[test]
+fn send_rpc_posts_one_message_to_exactly_that_device() {
+    let (fake, _c, a, r1, r2, _s) = rpc_world();
+    let (qa, q1, q2) = (
+        fake.queue_len(&my_id(&a)),
+        fake.queue_len(&my_id(&r1)),
+        fake.queue_len(&my_id(&r2)),
+    );
+    let (posts, pushes) = (fake.posts(), fake.0.lock().unwrap().pushes.len());
+    r1.send_rpc(&my_id(&r2), "mgr_req", &rpc_id("mgr_req"), &json!({}))
+        .unwrap();
+    assert_eq!(fake.posts(), posts + 1);
+    assert_eq!(fake.queue_len(&my_id(&r2)), q2 + 1);
+    assert_eq!(fake.queue_len(&my_id(&a)), qa);
+    assert_eq!(fake.queue_len(&my_id(&r1)), q1);
+    let s = fake.0.lock().unwrap();
+    assert_eq!(s.pushes.len(), pushes + 1);
+    assert!(!s.pushes.last().unwrap());
+}
+
+#[test]
+fn chat_after_an_rpc_from_the_same_sender_is_still_processed() {
+    let (_f, _c, _a, r1, r2, sink) = rpc_world();
+    r1.send_rpc(&my_id(&r2), "mgr_req", &rpc_id("mgr_req"), &json!({}))
+        .unwrap();
+    post_chat(&r1, &my_id(&r2), &msg_n(5, AuthorKind::Manager));
+    let got = r2.poll_once().unwrap();
+    assert_eq!(sink.n(), 1);
+    assert_eq!(got.len(), 1);
+}
