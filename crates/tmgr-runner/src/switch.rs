@@ -114,7 +114,14 @@ pub fn build_handoff(
     };
     if let Some((_, value)) = store.find_for(&old.id, target.name(), old.state.since_ms) {
         if let Ok(packet) = serde_json::from_value::<HandoffPacket>(value) {
-            return Ok(finish(packet));
+            let same_task = inputs
+                .task_ref
+                .as_ref()
+                .is_none_or(|t| packet.task.task_ref.as_ref() == Some(t));
+            if packet.permission.carried_mode.as_deref() == Some(carry.mode.as_str()) && same_task
+            {
+                return Ok(finish(packet));
+            }
         }
     }
     let src = PacketSource {
@@ -427,6 +434,66 @@ mod tests {
         assert_eq!(a.packet_id, b.packet_id);
         assert_eq!(a.prompt, b.prompt);
         assert!(store.get(&a.packet_id).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_second_switch_after_a_finished_one_builds_a_new_packet() {
+        let (_t, store, chat) = kit();
+        let o = old(None, false);
+        let i = inputs(vec!["line".into()]);
+        let build = |ms: u64, r: u8| {
+            build_handoff(
+                &store,
+                &chat,
+                &o,
+                &i,
+                Target::Codex,
+                &carry_of("ask"),
+                ms,
+                [r; 10],
+            )
+            .unwrap()
+        };
+        let a = build(1000, 1);
+        announce(&chat, &o, "new1", &a.packet, Target::Codex).unwrap();
+        store.mark_finished(&a.packet_id, "new1").unwrap();
+        let b = build(2000, 2);
+        assert_ne!(a.packet_id, b.packet_id);
+        announce(&chat, &o, "new2", &b.packet, Target::Codex).unwrap();
+        let old_room = chat
+            .history(&chat.session_room("old1"), None, None)
+            .unwrap();
+        assert_eq!(old_room.len(), 2);
+        assert!(old_room[1].body_md.contains(&b.packet_id));
+        assert!(old_room[1].body_md.contains("Continues in new2"));
+    }
+
+    #[test]
+    fn a_differing_carried_mode_or_task_does_not_reuse_the_packet() {
+        let (_t, store, chat) = kit();
+        let o = old(None, false);
+        let mut i = inputs(vec!["line".into()]);
+        let build = |i: &Inputs, mode: &str, ms: u64, r: u8| {
+            build_handoff(
+                &store,
+                &chat,
+                &o,
+                i,
+                Target::Codex,
+                &carry_of(mode),
+                ms,
+                [r; 10],
+            )
+            .unwrap()
+        };
+        let a = build(&i, "ask", 1000, 1);
+        let b = build(&i, "plan", 2000, 2);
+        assert_ne!(a.packet_id, b.packet_id);
+        let c = build(&i, "plan", 3000, 3);
+        assert_eq!(b.packet_id, c.packet_id);
+        i.task_ref = Some("TM-1".into());
+        let d = build(&i, "plan", 4000, 4);
+        assert_ne!(c.packet_id, d.packet_id);
     }
 
     #[test]

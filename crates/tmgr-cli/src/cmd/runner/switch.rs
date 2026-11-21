@@ -171,8 +171,11 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
         }
         _ => Route::Plain(plain_check(&c, target, mode, no_sandbox)?),
     };
+    let handoff = c.welcome().caps.iter().any(|h| h == caps::HANDOFF_V1);
     let screen = if lib::has_log(&s) {
         lib::ensure_readable(&s).map_err(err)?;
+        Vec::new()
+    } else if handoff {
         Vec::new()
     } else {
         if !c.welcome().caps.iter().any(|h| h == caps::SESSION_TEXT_V1) {
@@ -225,7 +228,6 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
             format!("the old session stopped, but the new agent did not start: {e}. {resume_hint}"),
         )
     };
-    let handoff = c.welcome().caps.iter().any(|h| h == caps::HANDOFF_V1);
     let (text, exports, prepared) = if handoff {
         let r = c
             .handoff_prepare(HandoffPrepareReq {
