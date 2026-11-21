@@ -67,6 +67,7 @@ mod chat_api;
 mod checkpoints;
 mod handoff;
 mod manager;
+mod spawnauth;
 mod switch;
 
 const MAX_CONNS: usize = 64;
@@ -436,6 +437,8 @@ struct Meta {
     handoff_from: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     manager: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spawn_card: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -519,6 +522,7 @@ struct RunExtra {
     team: Option<TeamLink>,
     agent_session_id: Option<String>,
     manager: bool,
+    spawn_card: Option<String>,
 }
 
 #[derive(Clone)]
@@ -1885,6 +1889,7 @@ struct Runner {
     autopilot: autopilot::Host,
     clock: Mutex<humantime::Clock>,
     mgr: crate::manager::State,
+    spawn_gate: spawnauth::SpawnGate,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -2263,7 +2268,7 @@ fn plan_mode(
 ) -> Result<ModePlan, ApiErr> {
     use tmgr_ipc::api::policy::{decide_mode, Mode, NetworkPolicy, Origin as Orig};
     // A link run's bypass is gated under the trust fence in check_origin, before any spawn.
-    let manual = manual || req.origin.is_some();
+    let manual = manual || req.origin.is_some() || req.spawn_card.is_some();
     let verified = matches!(cloud, Some(Ok(())));
     let restricted = verified && net_enforced;
     if req.permission_mode.as_deref() != Some("bypass") {
@@ -2674,6 +2679,12 @@ impl Runner {
             }
             method::RUNS_CREATE => {
                 let req: RunCreateReq = params(p)?;
+                if req.spawn_card.is_some() {
+                    return Err(api(
+                        ErrorCode::InvalidParams,
+                        "spawn_card is set by the runner only",
+                    ));
+                }
                 if req.origin.is_some() != (conn.client == CLIENT_WORKER) {
                     return Err(api(
                         ErrorCode::Forbidden,
@@ -2981,6 +2992,7 @@ impl Runner {
                 }
                 self.checkpoints_call(req.method.as_str(), p)
             }
+            method::SPAWN_CHALLENGE => self.spawn_challenge_call(conn, p),
             method::SESSIONS_WORKLOG => {
                 let s = self
                     .session(&session_id_param(p)?)
@@ -4238,6 +4250,7 @@ impl Runner {
             agent_session_id: external.as_ref().filter(|e| !e.fork).map(|e| e.id.clone()),
             handoff_from: req.parent_session.clone().filter(|p| valid_parent(p)),
             manager: req.manager,
+            spawn_card: req.spawn_card.clone(),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -4889,6 +4902,7 @@ impl Runner {
             limit: None,
             handoff_from: extra.handoff_from.clone(),
             manager: extra.manager,
+            spawn_card: extra.spawn_card.clone(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -5542,6 +5556,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         autopilot: autopilot::Host::default(),
         clock: Mutex::new(clock),
         mgr: crate::manager::State::new(Box::new(chat_store)),
+        spawn_gate: spawnauth::SpawnGate::default(),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -6152,6 +6167,7 @@ mod tests {
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),
             mgr: crate::manager::State::new(Box::new(chat_store)),
+            spawn_gate: spawnauth::SpawnGate::default(),
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({
             "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),
@@ -6769,6 +6785,17 @@ mod tests {
             sandbox,
             net,
         )
+    }
+
+    #[test]
+    fn a_spawn_card_unlocks_bypass_like_a_manual_run_but_only_with_the_tag() {
+        let (set, _) = ProfileSet::load(None);
+        let prof = set.get("claude-code").unwrap();
+        let mut req = plan_req("bypass", false);
+        assert!(plan_mode(prof, &req, &None, false, true, true).is_err());
+        req.spawn_card = Some("card_1".into());
+        let p = plan_mode(prof, &req, &None, false, true, true).unwrap();
+        assert!(p.bypass);
     }
 
     #[test]

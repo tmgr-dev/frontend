@@ -1639,6 +1639,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
         permission_cards: false,
         finish_marker: req.finish_marker,
         parent_session: None,
+        spawn_card: None,
         prompt: None,
     }
 }

@@ -263,6 +263,7 @@ mod tests {
             switch_lock: Mutex::new(HashSet::new()),
             chat: chat_store.clone(),
             mgr: crate::manager::State::new(Box::new(chat_store)),
+            spawn_gate: spawnauth::SpawnGate::default(),
             cfg,
             secret: String::new(),
             started: Instant::now(),

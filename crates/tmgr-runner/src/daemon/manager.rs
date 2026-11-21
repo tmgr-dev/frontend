@@ -162,6 +162,7 @@ impl core::Host for ManagerHost<'_> {
             "name": spec.name,
             "permission_mode": spec.mode,
             "parent_session": spec.parent,
+            "spawn_card": spec.card,
         }))
         .map_err(|e| e.to_string())?;
         self.rt
@@ -197,17 +198,36 @@ impl core::Host for ManagerHost<'_> {
             })
             .map_err(|e| e.msg)
     }
+
+    fn verify_spawn(
+        &self,
+        approval: &tmgr_ipc::manager::SignedSpawn,
+        proposal: &tmgr_spawn_auth::SpawnProposal,
+    ) -> Result<core::Verdict, String> {
+        self.rt.verify_spawn(approval, proposal)
+    }
+
+    fn spawn_done(&self, card_id: &str, session: &str) {
+        self.rt.spawn_done(card_id, session);
+    }
+
+    fn propose_spawn(
+        &self,
+        proposal: &tmgr_spawn_auth::SpawnProposal,
+    ) -> Result<core::Proposed, String> {
+        self.rt.propose_spawn(proposal)
+    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use serde_json::json;
 
     const MGR: &str = "s_aaaaaaaaaa";
     const OTHER: &str = "s_bbbbbbbbbb";
 
-    fn runner(t: &Path) -> Arc<Runner> {
+    pub(in crate::daemon) fn runner(t: &Path) -> Arc<Runner> {
         Arc::new(Runner {
             rename_lock: Mutex::new(()),
             switch_lock: Mutex::new(HashSet::new()),
@@ -239,10 +259,11 @@ mod tests {
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),
             mgr: core::State::default(),
+            spawn_gate: spawnauth::SpawnGate::default(),
         })
     }
 
-    fn add(rt: &Arc<Runner>, t: &Path, id: &str, manager: bool) {
+    pub(in crate::daemon) fn add(rt: &Arc<Runner>, t: &Path, id: &str, manager: bool) {
         let meta: Meta = serde_json::from_value(json!({
             "id": id, "name": id, "argv": ["claude"], "cwd": t,
             "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,

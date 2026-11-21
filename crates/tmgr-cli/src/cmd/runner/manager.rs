@@ -177,7 +177,18 @@ fn tool_defs() -> Value {
          "inputSchema": obj(json!({
             "session": {"type": "string", "description": "Session id"},
             "to": {"type": "string", "enum": ["claude-code", "codex", "opencode", "agy"]}
-         }), json!(["session", "to"]))}
+         }), json!(["session", "to"]))},
+        {"name": tool::PROPOSE_SPAWN,
+         "description": "Ask the owner to approve a spawn that needs it (permission mode bypass). Local machine only. Returns a card id; the session is not started by this call.",
+         "inputSchema": obj(json!({
+            "profile": {"type": "string", "enum": ["claude-code", "codex", "opencode", "agy"]},
+            "cwd": {"type": "string", "description": "Absolute path of a trusted folder"},
+            "permission_mode": {"type": "string", "enum": ["ask", "accept-edits", "bypass"], "description": "Default ask"},
+            "prompt": {"type": "string", "maxLength": 65536, "description": "First message for the new agent"},
+            "name": {"type": "string", "maxLength": 64},
+            "task": {"type": "string", "maxLength": 128},
+            "machine": {"type": "string", "description": "Only this machine for now"}
+         }), json!(["profile", "cwd"]))}
     ])
 }
 

@@ -248,6 +248,7 @@ fn requests_and_responses() {
         team: None,
         finish_marker: false,
         parent_session: None,
+        spawn_card: None,
         prompt: None,
         clones: Vec::new(),
         profile: "codex".into(),
@@ -968,7 +969,8 @@ fn constants_are_pinned() {
             "manager.v1",
             "run_prompt.v1",
             "handoff.v1",
-            "switch.v1"
+            "switch.v1",
+            "spawnauth.v1"
         ]
     );
     let methods = [
@@ -1066,7 +1068,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 43);
+    assert_eq!(w.caps.len(), 44);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1566,6 +1568,7 @@ fn full_req() -> RunCreateReq {
         team: None,
         finish_marker: false,
         parent_session: None,
+        spawn_card: None,
         prompt: None,
         permission_cards: false,
         profile: "claude".into(),
@@ -1731,7 +1734,7 @@ fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
 fn switch_method_cap_and_shapes() {
     assert_eq!(method::SESSIONS_SWITCH, "sessions.switch");
     assert_eq!(caps::SWITCH_V1, "switch.v1");
-    assert_eq!(caps::ALL.last(), Some(&caps::SWITCH_V1));
+    assert_eq!(caps::ALL[caps::ALL.len() - 2], caps::SWITCH_V1);
     let req = SwitchReq {
         session: "s_aaaaaaaaaa".into(),
         to: "codex".into(),

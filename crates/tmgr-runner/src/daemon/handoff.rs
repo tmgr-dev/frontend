@@ -181,6 +181,7 @@ pub(super) mod tests {
         Arc::new(Runner {
             rename_lock: Mutex::new(()),
             switch_lock: Mutex::new(HashSet::new()),
+            spawn_gate: super::spawnauth::SpawnGate::default(),
             chat: chat_store.clone(),
             mgr: crate::manager::State::new(Box::new(chat_store)),
             cfg,

@@ -934,6 +934,7 @@ fn start_run(
         team: None,
         finish_marker: false,
         parent_session: None,
+        spawn_card: None,
         prompt: None,
         clones: Vec::new(),
         profile: agent.to_string(),

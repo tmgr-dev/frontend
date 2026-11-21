@@ -1374,6 +1374,22 @@ mod tests {
         fn switch(&self, id: &str, to: &str) -> Result<crate::manager::SwitchResult, String> {
             self.inner.switch(id, to)
         }
+        fn verify_spawn(
+            &self,
+            approval: &tmgr_ipc::manager::SignedSpawn,
+            proposal: &tmgr_spawn_auth::SpawnProposal,
+        ) -> Result<crate::manager::Verdict, String> {
+            self.inner.verify_spawn(approval, proposal)
+        }
+        fn spawn_done(&self, card_id: &str, session: &str) {
+            self.inner.spawn_done(card_id, session)
+        }
+        fn propose_spawn(
+            &self,
+            proposal: &tmgr_spawn_auth::SpawnProposal,
+        ) -> Result<crate::manager::Proposed, String> {
+            self.inner.propose_spawn(proposal)
+        }
     }
 
     fn store_dir() -> tempfile::TempDir {

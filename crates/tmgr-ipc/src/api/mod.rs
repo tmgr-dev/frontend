@@ -13,6 +13,7 @@ mod error;
 mod handoff;
 pub mod policy;
 mod screen;
+mod spawnauth;
 mod switch;
 mod types;
 mod worklog;
@@ -23,6 +24,7 @@ pub use checkpoints::*;
 pub use error::ErrorCode;
 pub use handoff::*;
 pub use screen::*;
+pub use spawnauth::*;
 pub use switch::*;
 pub use types::*;
 pub use worklog::*;
@@ -76,8 +78,9 @@ pub mod caps {
     pub const RUN_PROMPT_V1: &str = "run_prompt.v1";
     pub const HANDOFF_V1: &str = "handoff.v1";
     pub const SWITCH_V1: &str = "switch.v1";
+    pub const SPAWNAUTH_V1: &str = "spawnauth.v1";
 
-    pub const ALL: [&str; 43] = [
+    pub const ALL: [&str; 44] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -121,6 +124,7 @@ pub mod caps {
         RUN_PROMPT_V1,
         HANDOFF_V1,
         SWITCH_V1,
+        SPAWNAUTH_V1,
     ];
 }
 
@@ -165,6 +169,7 @@ pub mod method {
     pub const HANDOFF_PREPARE: &str = "handoff.prepare";
     pub const HANDOFF_FINISH: &str = "handoff.finish";
     pub const SESSIONS_SWITCH: &str = "sessions.switch";
+    pub const SPAWN_CHALLENGE: &str = "spawn.challenge";
 }
 
 pub mod limits {

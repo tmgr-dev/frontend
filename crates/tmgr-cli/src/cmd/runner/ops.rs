@@ -274,6 +274,7 @@ pub(super) fn run_create_run(
         team: None,
         finish_marker: false,
         parent_session: None,
+        spawn_card: None,
         prompt: None,
         clones: Vec::new(),
         profile,

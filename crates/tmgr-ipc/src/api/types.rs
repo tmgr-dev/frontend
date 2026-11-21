@@ -124,6 +124,8 @@ pub struct RunCreateReq {
     pub manager: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawn_card: Option<String>,
 }
 
 /// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
@@ -153,6 +155,7 @@ impl OrchestratorCreateReq {
             team: None,
             finish_marker: false,
             parent_session: None,
+            spawn_card: None,
             manager: false,
             prompt: None,
             profile: self.profile.clone(),

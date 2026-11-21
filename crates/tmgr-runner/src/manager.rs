@@ -16,6 +16,7 @@ use tmgr_ipc::manager::{
     limits, tool, valid_req_id, SignedSpawn, SpoolReq, SpoolResp, DATA_NOTICE, MCP_ARG, REQ_DIR,
     RESP_DIR, SERVER_NAME, SPOOL_ROOT, SPOOL_V,
 };
+use tmgr_spawn_auth::{sha256_hex, SpawnMode, SpawnProposal};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
 const PASS_MAX: usize = 8;
@@ -476,7 +477,10 @@ impl State {
         }
     }
 
-    fn allow_in(window: &Mutex<VecDeque<u64>>, max: usize, now_ms: u64) -> bool {
+    fn pruned(
+        window: &Mutex<VecDeque<u64>>,
+        now_ms: u64,
+    ) -> std::sync::MutexGuard<'_, VecDeque<u64>> {
         let mut w = window.lock().unwrap_or_else(|e| e.into_inner());
         while w
             .front()
@@ -484,11 +488,20 @@ impl State {
         {
             w.pop_front();
         }
+        w
+    }
+
+    fn allow_in(window: &Mutex<VecDeque<u64>>, max: usize, now_ms: u64) -> bool {
+        let mut w = State::pruned(window, now_ms);
         if w.len() >= max {
             return false;
         }
         w.push_back(now_ms);
         true
+    }
+
+    fn can_spawn(&self, now_ms: u64) -> bool {
+        State::pruned(&self.spawns, now_ms).len() < limits::SPAWNS_PER_MINUTE
     }
 
     fn allow_spawn(&self, now_ms: u64) -> bool {
@@ -547,6 +560,18 @@ pub struct SpawnSpec {
     pub name: Option<String>,
     pub mode: String,
     pub parent: String,
+    pub card: Option<String>,
+}
+
+pub enum Verdict {
+    Verified,
+    Existing(Box<SessionInfo>),
+}
+
+pub struct Proposed {
+    pub card_id: String,
+    pub exp_ms: u64,
+    pub req_sha256: String,
 }
 
 pub struct SwitchResult {
@@ -565,6 +590,13 @@ pub trait Host {
     fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String>;
     fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String>;
     fn switch(&self, id: &str, to: &str) -> Result<SwitchResult, String>;
+    fn verify_spawn(
+        &self,
+        approval: &SignedSpawn,
+        proposal: &SpawnProposal,
+    ) -> Result<Verdict, String>;
+    fn spawn_done(&self, card_id: &str, session: &str);
+    fn propose_spawn(&self, proposal: &SpawnProposal) -> Result<Proposed, String>;
 }
 
 fn text_arg<'a>(
@@ -678,6 +710,7 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
         }
         tool::SPAWN_SESSION => spawn(host, st, a),
         tool::SWITCH_AGENT => switch(host, st, a),
+        tool::PROPOSE_SPAWN => propose_spawn(host, a),
         tool::POST_MESSAGE => {
             let body = need(a, "body_md", 1, chat::limits::MAX_BODY)?;
             let reply_to = text_arg(a, "reply_to", 1, 64)?;
@@ -730,15 +763,25 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
     }
 }
 
-fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
-    if let Some(v) = a.get("approval") {
-        return Err(
-            if serde_json::from_value::<SignedSpawn>(v.clone()).is_ok() {
-                "remote or bypass spawn is not available yet".to_string()
-            } else {
-                "approval is malformed; remote or bypass spawn is not available yet".to_string()
-            },
-        );
+const REMOTE_SPAWN: &str = "remote spawn is not available yet";
+
+struct SpawnArgs<'a> {
+    profile: &'a str,
+    dir: PathBuf,
+    prompt: Option<&'a str>,
+    name: Option<&'a str>,
+    mode: &'a str,
+    proposal: SpawnProposal,
+}
+
+fn truthy(a: &Value, key: &str) -> bool {
+    a.get(key)
+        .is_some_and(|v| !v.is_null() && *v != Value::Bool(false))
+}
+
+fn spawn_args<'a>(host: &dyn Host, a: &'a Value, bypass_ok: bool) -> Result<SpawnArgs<'a>, String> {
+    if text_arg(a, "machine", 1, 64)?.is_some_and(|m| m != host.machine()) {
+        return Err(REMOTE_SPAWN.into());
     }
     let profile = need(a, "profile", 1, 64)?;
     if !SPAWN_PROFILES.contains(&profile) {
@@ -747,25 +790,102 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
     let cwd = need(a, "cwd", 1, 4096)?;
     let prompt = text_arg(a, "prompt", 1, limits::MAX_SEND_BYTES)?;
     let name = text_arg(a, "name", 1, 64)?;
+    let task = text_arg(a, "task", 1, 128)?;
     let mode = text_arg(a, "permission_mode", 1, 32)?.unwrap_or("ask");
-    if !matches!(mode, "ask" | "accept-edits") {
-        return Err("permission_mode must be ask or accept-edits; bypass is not available".into());
-    }
+    let spawn_mode = match mode {
+        "ask" => SpawnMode::Ask,
+        "accept-edits" => SpawnMode::AcceptEdits,
+        "bypass" if bypass_ok => SpawnMode::Bypass,
+        "bypass" => return Err("permission_mode bypass needs an owner approval".into()),
+        _ if bypass_ok => {
+            return Err("permission_mode must be ask, accept-edits or bypass".into());
+        }
+        _ => {
+            return Err(
+                "permission_mode must be ask or accept-edits; bypass needs an owner approval"
+                    .into(),
+            )
+        }
+    };
     let dir = host.trusted_dir(cwd)?;
-    if !st.allow_spawn(host.now_ms()) {
-        return Err(format!(
-            "at most {} spawns per minute",
-            limits::SPAWNS_PER_MINUTE
-        ));
+    let proposal = SpawnProposal {
+        v: 1,
+        profile: profile.into(),
+        cwd: dir.display().to_string(),
+        mode: spawn_mode,
+        prompt_sha256: prompt.map(|p| sha256_hex(p.as_bytes())),
+        name: name.map(String::from),
+        task: task.map(String::from),
+        target_id: host.machine(),
+    };
+    Ok(SpawnArgs {
+        profile,
+        dir,
+        prompt,
+        name,
+        mode,
+        proposal,
+    })
+}
+
+fn propose_spawn(host: &dyn Host, a: &Value) -> Result<Value, String> {
+    let args = spawn_args(host, a, true)?;
+    args.proposal.validate().map_err(|r| r.to_string())?;
+    let p = host.propose_spawn(&args.proposal)?;
+    Ok(json!({"card_id": p.card_id, "exp_ms": p.exp_ms, "req_sha256": p.req_sha256}))
+}
+
+fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
+    let approval = match a.get("approval") {
+        None => None,
+        Some(v) => Some(
+            serde_json::from_value::<SignedSpawn>(v.clone()).map_err(|_| {
+                "approval is malformed; remote spawn is not available yet without a valid approval"
+                    .to_string()
+            })?,
+        ),
+    };
+    if approval.is_some() {
+        if truthy(a, "no_sandbox") {
+            return Err("a spawn without the sandbox is not allowed, even with an approval".into());
+        }
+        if truthy(a, "manager") {
+            return Err("a manager session cannot be spawned, even with an approval".into());
+        }
+    }
+    let args = spawn_args(host, a, approval.is_some())?;
+    let too_many = || format!("at most {} spawns per minute", limits::SPAWNS_PER_MINUTE);
+    match &approval {
+        None => {
+            if !st.allow_spawn(host.now_ms()) {
+                return Err(too_many());
+            }
+        }
+        Some(signed) => {
+            if !st.can_spawn(host.now_ms()) {
+                return Err(too_many());
+            }
+            match host.verify_spawn(signed, &args.proposal)? {
+                Verdict::Verified => {}
+                Verdict::Existing(info) => return Ok(row(&info, host.me())),
+            }
+            if !st.allow_spawn(host.now_ms()) {
+                return Err(too_many());
+            }
+        }
     }
     let info = host.spawn(SpawnSpec {
-        profile: profile.into(),
-        cwd: dir,
-        name: name.map(String::from),
-        mode: mode.into(),
+        profile: args.profile.into(),
+        cwd: args.dir,
+        name: args.name.map(String::from),
+        mode: args.mode.into(),
         parent: host.me().into(),
+        card: approval.as_ref().map(|s| s.card_id.clone()),
     })?;
-    if let Some(p) = prompt {
+    if let Some(signed) = &approval {
+        host.spawn_done(&signed.card_id, &info.id);
+    }
+    if let Some(p) = args.prompt {
         st.queue_prompt(&info.id, p, host.now_ms());
     }
     Ok(row(&info, host.me()))
@@ -1128,6 +1248,10 @@ mod tests {
         switched: Mutex<Vec<String>>,
         trusted: Vec<String>,
         now: u64,
+        verified: Mutex<Vec<SpawnProposal>>,
+        verdict: Mutex<Result<bool, String>>,
+        done: Mutex<Vec<(String, String)>>,
+        proposed: Mutex<Vec<SpawnProposal>>,
     }
 
     fn info(id: &str) -> SessionInfo {
@@ -1166,6 +1290,10 @@ mod tests {
                 switched: Mutex::default(),
                 trusted: vec!["/tmp/ok".into()],
                 now: 1_000_000,
+                verified: Mutex::default(),
+                verdict: Mutex::new(Ok(true)),
+                done: Mutex::default(),
+                proposed: Mutex::default(),
             }
         }
     }
@@ -1210,6 +1338,28 @@ mod tests {
                 session: info("s_ffffffffff"),
                 packet_id: "h_1".into(),
                 warnings: vec!["w".into()],
+            })
+        }
+        fn verify_spawn(&self, _: &SignedSpawn, p: &SpawnProposal) -> Result<Verdict, String> {
+            self.verified.lock().unwrap().push(p.clone());
+            match self.verdict.lock().unwrap().clone() {
+                Ok(true) => Ok(Verdict::Verified),
+                Ok(false) => Ok(Verdict::Existing(Box::new(info("s_bbbbbbbbbb")))),
+                Err(e) => Err(e),
+            }
+        }
+        fn spawn_done(&self, card: &str, session: &str) {
+            self.done
+                .lock()
+                .unwrap()
+                .push((card.into(), session.into()));
+        }
+        fn propose_spawn(&self, p: &SpawnProposal) -> Result<Proposed, String> {
+            self.proposed.lock().unwrap().push(p.clone());
+            Ok(Proposed {
+                card_id: "card_x".into(),
+                exp_ms: 9,
+                req_sha256: p.req_sha256(),
             })
         }
     }
@@ -1335,8 +1485,10 @@ mod tests {
             a
         };
         let signed = json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"c","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"});
-        let e = call(&h, &st, "spawn_session", with("approval", signed)).unwrap_err();
-        assert_eq!(e, "remote or bypass spawn is not available yet");
+        let v = call(&h, &st, "spawn_session", with("approval", signed)).unwrap();
+        assert_eq!(v["id"], "s_ffffffffff");
+        assert_eq!(h.verified.lock().unwrap().len(), 1);
+        h.spawned.lock().unwrap().clear();
         assert!(
             call(&h, &st, "spawn_session", with("approval", Value::Null))
                 .unwrap_err()
@@ -1376,6 +1528,157 @@ mod tests {
             "claude-code:accept-edits:s_aaaaaaaaaa"
         );
         assert_eq!(h.spawned.lock().unwrap()[0], "claude-code:ask:s_aaaaaaaaaa");
+    }
+
+    fn signed_args(extra: Value) -> Value {
+        let mut a = json!({
+            "profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass",
+            "approval": {"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"card_1","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"}
+        });
+        for (k, v) in extra.as_object().unwrap() {
+            a[k] = v.clone();
+        }
+        a
+    }
+
+    #[test]
+    fn bypass_and_remote_machines_need_an_approval() {
+        let h = Fake::new();
+        let st = State::default();
+        let plain =
+            json!({"profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass"});
+        assert!(call(&h, &st, "spawn_session", plain)
+            .unwrap_err()
+            .contains("approval"));
+        let remote = json!({"profile": "claude-code", "cwd": "/tmp/ok", "machine": "mx_2"});
+        assert_eq!(
+            call(&h, &st, "spawn_session", remote).unwrap_err(),
+            "remote spawn is not available yet"
+        );
+        let remote_signed = signed_args(json!({"machine": "mx_2"}));
+        assert_eq!(
+            call(&h, &st, "spawn_session", remote_signed).unwrap_err(),
+            "remote spawn is not available yet"
+        );
+        let own = json!({"profile": "claude-code", "cwd": "/tmp/ok", "machine": "mx_1"});
+        call(&h, &st, "spawn_session", own).unwrap();
+        assert_eq!(h.verified.lock().unwrap().len(), 0);
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_signed_bypass_spawn_is_verified_against_this_calls_arguments_then_spawned_once() {
+        let h = Fake::new();
+        let st = State::default();
+        let args = signed_args(json!({"prompt": "go", "name": "n", "task": "t"}));
+        let v = call(&h, &st, "spawn_session", args).unwrap();
+        assert_eq!(v["id"], "s_ffffffffff");
+        let p = h.verified.lock().unwrap()[0].clone();
+        assert_eq!(p.mode, SpawnMode::Bypass);
+        assert_eq!(p.cwd, "/tmp/ok");
+        assert_eq!(p.target_id, "mx_1");
+        assert_eq!(p.prompt_sha256.as_deref(), Some(sha256_hex(b"go").as_str()));
+        assert_eq!(
+            (p.name.as_deref(), p.task.as_deref()),
+            (Some("n"), Some("t"))
+        );
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        assert_eq!(
+            h.spawned.lock().unwrap()[0],
+            "claude-code:bypass:s_aaaaaaaaaa"
+        );
+        assert_eq!(
+            h.done.lock().unwrap()[0],
+            ("card_1".to_string(), "s_ffffffffff".to_string())
+        );
+    }
+
+    #[test]
+    fn a_refused_verification_spawns_nothing_and_an_existing_card_session_is_returned() {
+        let h = Fake::new();
+        let st = State::default();
+        *h.verdict.lock().unwrap() = Err("spawn approval expired".into());
+        assert_eq!(
+            call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap_err(),
+            "spawn approval expired"
+        );
+        assert!(h.spawned.lock().unwrap().is_empty());
+        *h.verdict.lock().unwrap() = Ok(false);
+        let v = call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        assert_eq!(v["id"], "s_bbbbbbbbbb");
+        assert!(h.spawned.lock().unwrap().is_empty());
+        assert!(h.done.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn no_sandbox_and_manager_are_refused_before_verification_even_when_signed() {
+        let h = Fake::new();
+        let st = State::default();
+        for k in ["no_sandbox", "manager"] {
+            call(&h, &st, "spawn_session", signed_args(json!({k: true}))).unwrap_err();
+        }
+        assert!(h.verified.lock().unwrap().is_empty());
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn untrusted_folders_and_bad_profiles_are_refused_before_verification() {
+        let h = Fake::new();
+        let st = State::default();
+        call(
+            &h,
+            &st,
+            "spawn_session",
+            signed_args(json!({"cwd": "/etc"})),
+        )
+        .unwrap_err();
+        call(
+            &h,
+            &st,
+            "spawn_session",
+            signed_args(json!({"profile": "x"})),
+        )
+        .unwrap_err();
+        assert!(h.verified.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_spawn_rate_limit_applies_to_signed_spawns_before_verification() {
+        let h = Fake::new();
+        let st = State::default();
+        for _ in 0..limits::SPAWNS_PER_MINUTE {
+            call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        }
+        let e = call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap_err();
+        assert!(e.contains("per minute"));
+        assert_eq!(h.verified.lock().unwrap().len(), limits::SPAWNS_PER_MINUTE);
+    }
+
+    #[test]
+    fn propose_spawn_builds_the_proposal_and_stays_local() {
+        let h = Fake::new();
+        let st = State::default();
+        let v = call(
+            &h,
+            &st,
+            "propose_spawn",
+            json!({"profile": "codex", "cwd": "/tmp/ok", "permission_mode": "bypass", "prompt": "x"}),
+        )
+        .unwrap();
+        assert_eq!(v["card_id"], "card_x");
+        assert_eq!(v["exp_ms"], 9);
+        let p = h.proposed.lock().unwrap()[0].clone();
+        assert_eq!(v["req_sha256"], p.req_sha256());
+        assert_eq!(p.mode, SpawnMode::Bypass);
+        assert!(h.spawned.lock().unwrap().is_empty());
+        let remote = json!({"profile": "codex", "cwd": "/tmp/ok", "machine": "mx_2"});
+        assert_eq!(
+            call(&h, &st, "propose_spawn", remote).unwrap_err(),
+            "remote spawn is not available yet"
+        );
+        let bad = json!({"profile": "codex", "cwd": "/tmp/ok", "permission_mode": "plan"});
+        call(&h, &st, "propose_spawn", bad).unwrap_err();
+        assert_eq!(h.proposed.lock().unwrap().len(), 1);
     }
 
     #[test]

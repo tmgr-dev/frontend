@@ -9,6 +9,8 @@ pub use cards::{
     IssueOutcome, RecoverReport, Rng, ATTEMPT_LIMIT, CARD_TTL_MS, MAX_CARDS, MAX_PENDING,
     PRUNE_AFTER_MS,
 };
+#[cfg(test)]
+pub(crate) use keys::testutil;
 pub use keys::{KeyError, KeyOffer, KeyStoreFile, PendingKey};
 
 use std::sync::Arc;

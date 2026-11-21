@@ -29,8 +29,9 @@ pub mod tool {
     pub const POST_MESSAGE: &str = "post_message";
     pub const READ_ROOM: &str = "read_room";
     pub const SWITCH_AGENT: &str = "switch_agent";
+    pub const PROPOSE_SPAWN: &str = "propose_spawn";
     pub const READ_ONLY: [&str; 3] = [LIST_SESSIONS, READ_SESSION, READ_ROOM];
-    pub const ALL: [&str; 7] = [
+    pub const ALL: [&str; 8] = [
         LIST_SESSIONS,
         READ_SESSION,
         SEND_TO_SESSION,
@@ -38,6 +39,7 @@ pub mod tool {
         POST_MESSAGE,
         READ_ROOM,
         SWITCH_AGENT,
+        PROPOSE_SPAWN,
     ];
 }
 

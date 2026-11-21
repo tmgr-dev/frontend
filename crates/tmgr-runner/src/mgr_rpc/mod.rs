@@ -122,5 +122,21 @@ pub(crate) mod testkit {
         fn switch(&self, _: &str, _: &str) -> Result<crate::manager::SwitchResult, String> {
             panic!("switch must never be reached")
         }
+        fn verify_spawn(
+            &self,
+            _: &tmgr_ipc::manager::SignedSpawn,
+            _: &tmgr_spawn_auth::SpawnProposal,
+        ) -> Result<crate::manager::Verdict, String> {
+            panic!("verify_spawn must never be reached")
+        }
+        fn spawn_done(&self, _: &str, _: &str) {
+            panic!("spawn_done must never be reached")
+        }
+        fn propose_spawn(
+            &self,
+            _: &tmgr_spawn_auth::SpawnProposal,
+        ) -> Result<crate::manager::Proposed, String> {
+            panic!("propose_spawn must never be reached")
+        }
     }
 }
