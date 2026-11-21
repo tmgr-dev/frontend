@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.149
+
+- Fixed: when a follower refuses to start a session, `tmgr attach` on the leader now shows the follower's reason instead of "did not answer; the session may have started", and the link stays up. The refusal for a folder that is too large to check, or that has git object files linked from another place, now says how to continue: use a smaller folder or fix the objects, or start with `--no-sandbox` (needs the PIN; on the follower run `tmgr link scope <leader> --allow-no-sandbox on`). The text is no longer cut at 200 characters.
+- Changed: `tmgr runner run --on` exits with the usage code (2) for a refused start with bad parameters, and with the conflict code (6) for a sandbox, unauthorized, protocol or generic refusal, instead of the link code (9).
+- Known: a sandboxed session in a very large folder, such as a workspace with many repositories, is still refused. Start it with `--no-sandbox` or in a smaller folder.
+
 ## 1.0.148
 
 - Fixed: `tmgr attach` image paste now also works for sessions started with `--no-sandbox`. The follower stores the image in a private folder of its own for that session (outside the user's project), pastes its path, and deletes the folder when the session is removed. Sandboxed sessions work as before. Update the follower (and the leader) to use it.
