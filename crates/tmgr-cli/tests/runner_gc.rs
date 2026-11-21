@@ -646,7 +646,8 @@ async fn a_process_running_a_binary_from_the_copy_keeps_it() {
     let mut rig = Rig::new().await;
     rig.start_runner();
     rig.merged();
-    let bin = rig.copy.join("target/debug/sleeper");
+    // uutils sleep (Ubuntu 26.04) is a multicall binary that picks its applet from its own file name.
+    let bin = rig.copy.join("target/debug/sleep");
     std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
     // Copied by a child: a write fd held here would be inherited by a parallel test's fork (ETXTBSY).
     let copied = Command::new("cp")
@@ -669,6 +670,11 @@ async fn a_process_running_a_binary_from_the_copy_keeps_it() {
         .stdout(Stdio::null())
         .spawn()
         .unwrap();
+    thread::sleep(Duration::from_millis(100));
+    assert!(
+        child.try_wait().unwrap().is_none(),
+        "the copied sleep exited at once"
+    );
     let (out, v) = rig.gc(&[]);
     let _ = child.kill();
     let _ = child.wait();
