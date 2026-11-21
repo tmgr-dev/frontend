@@ -399,6 +399,9 @@ impl Client {
             body_md: body_md.into(),
             reply_to: reply_to.map(str::to_string),
             attachments: Vec::new(),
+            id: None,
+            ts_ms: None,
+            device: None,
         };
         from_value(self.call(wire_chat::method::SEND, to_params(&params)?)?)
     }
