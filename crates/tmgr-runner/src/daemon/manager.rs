@@ -23,7 +23,10 @@ impl Runner {
             match core::take_pending(&home, now_ms()) {
                 Ok(reqs) => {
                     self.mgr.warned.store(false, Ordering::SeqCst);
-                    let host = ManagerHost { rt: self, me: &m.id };
+                    let host = ManagerHost {
+                        rt: self,
+                        me: &m.id,
+                    };
                     for req in reqs {
                         let resp = match core::execute(&host, &self.mgr, &req) {
                             Ok(v) => SpoolResp::ok(&req.id, v),
@@ -93,11 +96,12 @@ impl core::Host for ManagerHost<'_> {
         if !Path::new(cwd).is_absolute() {
             return Err(bad());
         }
-        let dir = bundle::open_path(fs::canonicalize(cwd).map_err(|_| bad())?)
-            .map_err(|_| bad())?;
+        let dir =
+            bundle::open_path(fs::canonicalize(cwd).map_err(|_| bad())?).map_err(|_| bad())?;
         if !folders::is_trusted(&self.rt.cfg.homes, &dir.path, dir.id()) {
             return Err(
-                "cwd is not a trusted folder; the owner must trust it with tmgr runner trust".into(),
+                "cwd is not a trusted folder; the owner must trust it with tmgr runner trust"
+                    .into(),
             );
         }
         Ok(dir.path.clone())
@@ -123,5 +127,159 @@ impl core::Host for ManagerHost<'_> {
             .create_run_as(req, false, None, None, None)
             .map(|(info, ..)| info)
             .map_err(|e| e.msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const MGR: &str = "s_aaaaaaaaaa";
+    const OTHER: &str = "s_bbbbbbbbbb";
+
+    fn runner(t: &Path) -> Arc<Runner> {
+        Arc::new(Runner {
+            rename_lock: Mutex::new(()),
+            chat: Arc::new(crate::chat::Chat::open(&t.join("run"))),
+            cfg: RunnerConfig {
+                dir: t.join("run"),
+                homes: t.join("homes"),
+                self_exe: PathBuf::from("tmgr"),
+                quiet_ms: 1000,
+                version: "test".into(),
+                max_sessions: 4,
+            },
+            secret: String::new(),
+            started: Instant::now(),
+            sessions: Mutex::new(HashMap::new()),
+            hub: Arc::new(Hub::default()),
+            create_lock: Mutex::new(()),
+            key_lock: Mutex::new(()),
+            external_lock: Mutex::new(()),
+            layout_lock: Mutex::new(()),
+            stop: AtomicBool::new(false),
+            conns: Arc::new(AtomicUsize::new(0)),
+            pending: Arc::new(AtomicUsize::new(0)),
+            rejects: Mutex::new(Rejects::default()),
+            client_config_dirs: Mutex::new(Vec::new()),
+            config_dir_warned: AtomicBool::new(false),
+            next_conn: AtomicU64::new(1),
+            autopilot: autopilot::Host::default(),
+            clock: Mutex::new(humantime::Clock::new(0)),
+            mgr: core::State::default(),
+        })
+    }
+
+    fn add(rt: &Arc<Runner>, t: &Path, id: &str, manager: bool) {
+        let meta: Meta = serde_json::from_value(json!({
+            "id": id, "name": id, "argv": ["claude"], "cwd": t,
+            "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,
+            "shim_pid": 1, "child_pid": 2, "manager": manager,
+        }))
+        .unwrap();
+        let sdir = t.join("sessions").join(id);
+        fs::create_dir_all(&sdir).unwrap();
+        let s = rt.new_session(meta, None, &sdir);
+        lock(&rt.sessions).insert(id.to_string(), s);
+    }
+
+    fn plant(home: &Path, tool: &str) -> String {
+        let stem = format!("{}-1-ab", now_ms());
+        let d = core::req_dir(home);
+        fs::create_dir_all(&d).unwrap();
+        fs::write(
+            d.join(format!("{stem}.json")),
+            json!({"v":1,"id":stem,"tool":tool,"args":{}}).to_string(),
+        )
+        .unwrap();
+        stem
+    }
+
+    fn pair() -> (tempfile::TempDir, Arc<Runner>) {
+        let t = tempfile::Builder::new()
+            .prefix("mh")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        add(&rt, t.path(), MGR, true);
+        add(&rt, t.path(), OTHER, false);
+        (t, rt)
+    }
+
+    #[test]
+    fn only_the_recorded_managers_spool_is_read() {
+        let (t, rt) = pair();
+        let homes = t.path().join("homes");
+        let mine = plant(&homes.join(MGR), "list_sessions");
+        let foreign = plant(&homes.join(OTHER), "list_sessions");
+        rt.manager_pass();
+        let answered = homes
+            .join(MGR)
+            .join(format!(".cache/tmgr-manager/resp/{mine}.json"));
+        let v: Value = serde_json::from_slice(&fs::read(answered).unwrap()).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["result"].as_array().unwrap().len(), 2);
+        let theirs = core::req_dir(&homes.join(OTHER)).join(format!("{foreign}.json"));
+        assert!(theirs.exists());
+        assert!(!homes.join(OTHER).join(".cache/tmgr-manager/resp").exists());
+    }
+
+    #[test]
+    fn without_a_manager_no_spool_is_read() {
+        let t = tempfile::Builder::new()
+            .prefix("mh")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        add(&rt, t.path(), OTHER, false);
+        let homes = t.path().join("homes");
+        let stem = plant(&homes.join(OTHER), "list_sessions");
+        assert!(rt.live_manager().is_none());
+        rt.manager_pass();
+        assert!(core::req_dir(&homes.join(OTHER))
+            .join(format!("{stem}.json"))
+            .exists());
+    }
+
+    #[test]
+    fn a_manager_spool_that_is_a_symlink_is_refused_and_answers_nothing() {
+        let (t, rt) = pair();
+        let homes = t.path().join("homes");
+        let elsewhere = t.path().join("elsewhere");
+        fs::create_dir_all(elsewhere.join("req")).unwrap();
+        let stem = format!("{}-1-ab", now_ms());
+        fs::write(
+            elsewhere.join("req").join(format!("{stem}.json")),
+            json!({"v":1,"id":stem,"tool":"list_sessions"}).to_string(),
+        )
+        .unwrap();
+        fs::create_dir_all(homes.join(MGR).join(".cache")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, homes.join(MGR).join(".cache/tmgr-manager"))
+            .unwrap();
+        rt.manager_pass();
+        assert!(elsewhere.join("req").join(format!("{stem}.json")).exists());
+        assert!(!elsewhere.join("resp").exists());
+    }
+
+    #[test]
+    fn a_second_manager_create_is_refused_while_one_lives() {
+        let (_t, rt) = pair();
+        assert_eq!(rt.live_manager().unwrap().id, MGR);
+        let req: RunCreateReq = serde_json::from_value(json!({
+            "profile": "claude-code", "cwd": "/tmp", "manager": true
+        }))
+        .unwrap();
+        let e = rt.create_run(req.clone(), true).unwrap_err();
+        assert_eq!(e.code, ErrorCode::Busy);
+        assert!(rt.check_manager_create("desktop", &req).is_err());
+        let mut other = req;
+        other.profile = "opencode".into();
+        assert_eq!(
+            rt.check_manager_create(CLIENT_CLI, &other)
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidParams
+        );
     }
 }
