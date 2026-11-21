@@ -193,13 +193,15 @@ fn tool_defs(top: bool) -> Value {
             "text": {"type": "string", "minLength": 1, "maxLength": 65536}
          }), json!(["session", "text"]))},
         {"name": tool::SPAWN_SESSION,
-         "description": "Start a new agent session in an already trusted folder, at permission mode ask or accept-edits. Local only: never bypass, never outside the sandbox, at most 4 per minute.",
+         "description": "Start a new agent session in an already trusted folder, at permission mode ask or accept-edits. Local only: never outside the sandbox, at most 4 per minute. Bypass only with card_id of a propose_spawn card the owner approved, and with exactly the arguments of that proposal.",
          "inputSchema": obj(json!({
             "profile": {"type": "string", "enum": ["claude-code", "codex", "opencode", "agy"]},
             "cwd": {"type": "string", "description": "Absolute path of a trusted folder"},
             "prompt": {"type": "string", "maxLength": 65536, "description": "First message for the new agent"},
             "name": {"type": "string", "maxLength": 64},
-            "permission_mode": {"type": "string", "enum": ["ask", "accept-edits"], "description": "Default ask"}
+            "permission_mode": {"type": "string", "enum": ["ask", "accept-edits", "bypass"], "description": "Default ask; bypass needs card_id"},
+            "task": {"type": "string", "maxLength": 128, "description": "Only with card_id, as proposed"},
+            "card_id": {"type": "string", "description": "Approved propose_spawn card"}
          }), json!(["profile", "cwd"]))},
         {"name": tool::POST_MESSAGE,
          "description": "Post a Markdown message to the owner in the Manager room.",
