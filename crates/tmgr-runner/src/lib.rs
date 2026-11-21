@@ -13,6 +13,8 @@ pub mod sandbox;
 pub mod sanitize;
 pub mod screen;
 pub mod seedguard;
+#[cfg(unix)]
+pub mod spawnauth;
 pub mod t0;
 
 #[cfg(unix)]

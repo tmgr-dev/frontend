@@ -1,0 +1,1112 @@
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tmgr_spawn_auth::{
+    is_hex_lower, is_target_id, is_token, Approved, PinnedKey, Refusal, SignedSpawn, SpawnProposal,
+    TrustView,
+};
+
+pub const CARD_TTL_MS: u64 = 5 * 60 * 1000;
+pub const MAX_PENDING: usize = 8;
+pub const ATTEMPT_LIMIT: u32 = 5;
+pub const PRUNE_AFTER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+
+const REASON_EXPIRED: &str = "expired";
+const REASON_ATTEMPTS: &str = "too_many_attempts";
+
+pub type Rng = Arc<dyn Fn() -> [u8; 16] + Send + Sync>;
+
+pub fn os_rng() -> Rng {
+    Arc::new(|| {
+        let mut b = [0u8; 16];
+        getrandom::fill(&mut b).expect("system random source");
+        b
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Identity {
+    user_id: String,
+    target_id: String,
+    target_fp: String,
+}
+
+impl Identity {
+    pub fn new(user_id: &str, target_id: &str, target_fp: &str) -> Option<Self> {
+        (is_token(user_id) && is_target_id(target_id) && is_hex_lower(target_fp, 64)).then(|| {
+            Self {
+                user_id: user_id.into(),
+                target_id: target_id.into(),
+                target_fp: target_fp.into(),
+            }
+        })
+    }
+
+    pub fn user_id(&self) -> &str {
+        &self.user_id
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CardState {
+    Issued {
+        proposal: Box<SpawnProposal>,
+        nonce: String,
+        issued_ms: u64,
+        exp_ms: u64,
+        req_sha256: String,
+        target_id: String,
+        target_fp: String,
+        user_id: String,
+        failed_attempts: u32,
+    },
+    Claimed {
+        claimed_ms: u64,
+    },
+    Spawned {
+        session: String,
+    },
+    Refused {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardResult {
+    Pending { nonce: String, exp_ms: u64 },
+    Interrupted { claimed_ms: u64 },
+    Spawned { session: String },
+    Refused { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Challenge {
+    pub nonce: String,
+    pub issued_ms: u64,
+    pub exp_ms: u64,
+    pub target_id: String,
+    pub target_fp: String,
+    pub req: Vec<u8>,
+    pub req_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IssueOutcome {
+    Challenge(Challenge),
+    Invalid(Refusal),
+    Conflict,
+    Full,
+    Closed(CardResult),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClaimOutcome {
+    Verified(Box<Approved>),
+    Rejected(Refusal),
+    AlreadyClaimed(CardResult),
+    Dead { reason: String },
+    UnknownCard,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardError {
+    BadCardId,
+    Io,
+    Corrupt,
+    NotClaimed,
+    AlreadySpawned,
+}
+
+impl fmt::Display for CardError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            CardError::BadCardId => "invalid card id",
+            CardError::Io => "spawn card store io error",
+            CardError::Corrupt => "spawn card record is corrupt",
+            CardError::NotClaimed => "spawn card is not claimed",
+            CardError::AlreadySpawned => "spawn card already has a different session",
+        })
+    }
+}
+
+impl std::error::Error for CardError {}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct RecoverReport {
+    pub expired: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CardFile {
+    card_id: String,
+    updated_ms: u64,
+    state: CardState,
+}
+
+pub struct CardStore {
+    dir: PathBuf,
+    identity: Identity,
+    rng: Rng,
+}
+
+fn check_id(card_id: &str) -> Result<&str, CardError> {
+    (is_token(card_id) && !card_id.starts_with('.'))
+        .then_some(card_id)
+        .ok_or(CardError::BadCardId)
+}
+
+fn io<T>(r: std::io::Result<T>) -> Result<T, CardError> {
+    r.map_err(|_| CardError::Io)
+}
+
+fn result_of(state: &CardState) -> CardResult {
+    match state {
+        CardState::Issued { nonce, exp_ms, .. } => CardResult::Pending {
+            nonce: nonce.clone(),
+            exp_ms: *exp_ms,
+        },
+        CardState::Claimed { claimed_ms } => CardResult::Interrupted {
+            claimed_ms: *claimed_ms,
+        },
+        CardState::Spawned { session } => CardResult::Spawned {
+            session: session.clone(),
+        },
+        CardState::Refused { reason } => CardResult::Refused {
+            reason: reason.clone(),
+        },
+    }
+}
+
+fn refused(reason: &str) -> CardState {
+    CardState::Refused {
+        reason: reason.into(),
+    }
+}
+
+impl CardStore {
+    pub fn open(runner_dir: &Path, identity: Identity, rng: Rng) -> Result<Self, CardError> {
+        let root = runner_dir.join("spawnauth");
+        io(super::ensure_private_dir(&root))?;
+        let dir = root.join("cards");
+        io(super::ensure_private_dir(&dir))?;
+        Ok(Self { dir, identity, rng })
+    }
+
+    pub fn issue(
+        &self,
+        card_id: &str,
+        proposal: &SpawnProposal,
+        now_ms: u64,
+    ) -> Result<IssueOutcome, CardError> {
+        let id = check_id(card_id)?;
+        if let Err(r) = proposal.validate() {
+            return Ok(IssueOutcome::Invalid(r));
+        }
+        if proposal.target_id != self.identity.target_id {
+            return Ok(IssueOutcome::Invalid(Refusal::Mismatch));
+        }
+        let _lock = self.lock()?;
+        let req_sha256 = proposal.req_sha256();
+        if let Some(file) = self.load(id)? {
+            match file.state {
+                CardState::Issued {
+                    proposal: stored,
+                    nonce,
+                    issued_ms,
+                    exp_ms,
+                    req_sha256: stored_sha,
+                    target_id,
+                    target_fp,
+                    ..
+                } if now_ms <= exp_ms => {
+                    return Ok(if stored_sha == req_sha256 {
+                        IssueOutcome::Challenge(Challenge {
+                            nonce,
+                            issued_ms,
+                            exp_ms,
+                            target_id,
+                            target_fp,
+                            req: stored.canonical_bytes(),
+                            req_sha256: stored_sha,
+                        })
+                    } else {
+                        IssueOutcome::Conflict
+                    });
+                }
+                CardState::Issued { .. } => {}
+                CardState::Refused { ref reason } if reason == REASON_EXPIRED => {}
+                other => return Ok(IssueOutcome::Closed(result_of(&other))),
+            }
+        }
+        let mut pending = 0;
+        for other in self.ids()? {
+            if other == id {
+                continue;
+            }
+            let Ok(Some(file)) = self.load(&other) else {
+                continue;
+            };
+            if let CardState::Issued { exp_ms, .. } = file.state {
+                if now_ms > exp_ms {
+                    self.save(&other, refused(REASON_EXPIRED), exp_ms)?;
+                } else {
+                    pending += 1;
+                }
+            }
+        }
+        if pending >= MAX_PENDING {
+            return Ok(IssueOutcome::Full);
+        }
+        let nonce = super::hex_lower(&(self.rng)());
+        let exp_ms = now_ms.saturating_add(CARD_TTL_MS);
+        self.save(
+            id,
+            CardState::Issued {
+                proposal: Box::new(proposal.clone()),
+                nonce: nonce.clone(),
+                issued_ms: now_ms,
+                exp_ms,
+                req_sha256: req_sha256.clone(),
+                target_id: self.identity.target_id.clone(),
+                target_fp: self.identity.target_fp.clone(),
+                user_id: self.identity.user_id.clone(),
+                failed_attempts: 0,
+            },
+            now_ms,
+        )?;
+        Ok(IssueOutcome::Challenge(Challenge {
+            nonce,
+            issued_ms: now_ms,
+            exp_ms,
+            target_id: self.identity.target_id.clone(),
+            target_fp: self.identity.target_fp.clone(),
+            req: proposal.canonical_bytes(),
+            req_sha256,
+        }))
+    }
+
+    pub fn claim(
+        &self,
+        card_id: &str,
+        wire: &SignedSpawn,
+        key: &PinnedKey,
+        trust: &dyn TrustView,
+        now_ms: u64,
+    ) -> Result<ClaimOutcome, CardError> {
+        let id = check_id(card_id)?;
+        let _lock = self.lock()?;
+        let Some(file) = self.load(id)? else {
+            return Ok(ClaimOutcome::UnknownCard);
+        };
+        let CardState::Issued {
+            proposal,
+            nonce,
+            issued_ms,
+            exp_ms,
+            req_sha256,
+            target_id,
+            target_fp,
+            user_id,
+            failed_attempts,
+        } = file.state
+        else {
+            return Ok(match file.state {
+                CardState::Refused { reason } => ClaimOutcome::Dead { reason },
+                other => ClaimOutcome::AlreadyClaimed(result_of(&other)),
+            });
+        };
+        let record = tmgr_spawn_auth::ChallengeRecord {
+            user_id: user_id.clone(),
+            target_id: target_id.clone(),
+            target_fp: target_fp.clone(),
+            card_id: id.into(),
+            nonce: nonce.clone(),
+            issued_ms,
+            exp_ms,
+            proposal: (*proposal).clone(),
+        };
+        match tmgr_spawn_auth::verify(wire, &record, key, trust, now_ms) {
+            Ok(approved) => {
+                self.save(id, CardState::Claimed { claimed_ms: now_ms }, now_ms)?;
+                Ok(ClaimOutcome::Verified(Box::new(approved)))
+            }
+            Err(refusal) => {
+                if refusal.counts_as_attempt() {
+                    let failed_attempts = failed_attempts + 1;
+                    let next = if failed_attempts >= ATTEMPT_LIMIT {
+                        refused(REASON_ATTEMPTS)
+                    } else {
+                        CardState::Issued {
+                            proposal,
+                            nonce,
+                            issued_ms,
+                            exp_ms,
+                            req_sha256,
+                            target_id,
+                            target_fp,
+                            user_id,
+                            failed_attempts,
+                        }
+                    };
+                    self.save(id, next, now_ms)?;
+                }
+                Ok(ClaimOutcome::Rejected(refusal))
+            }
+        }
+    }
+
+    pub fn mark_spawned(&self, card_id: &str, session: &str, now_ms: u64) -> Result<(), CardError> {
+        let id = check_id(card_id)?;
+        let _lock = self.lock()?;
+        match self.load(id)?.map(|f| f.state) {
+            Some(CardState::Claimed { .. }) => self.save(
+                id,
+                CardState::Spawned {
+                    session: session.into(),
+                },
+                now_ms,
+            ),
+            Some(CardState::Spawned { session: prev }) if prev == session => Ok(()),
+            Some(CardState::Spawned { .. }) => Err(CardError::AlreadySpawned),
+            _ => Err(CardError::NotClaimed),
+        }
+    }
+
+    pub fn result(&self, card_id: &str) -> Result<Option<CardResult>, CardError> {
+        Ok(self.state(card_id)?.as_ref().map(result_of))
+    }
+
+    pub fn state(&self, card_id: &str) -> Result<Option<CardState>, CardError> {
+        let id = check_id(card_id)?;
+        Ok(self.load(id)?.map(|f| f.state))
+    }
+
+    pub fn recover(&self, now_ms: u64) -> Result<RecoverReport, CardError> {
+        let _lock = self.lock()?;
+        for entry in io(std::fs::read_dir(&self.dir))?.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') && name.ends_with(".tmp") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+        let mut report = RecoverReport::default();
+        for id in self.ids()? {
+            let Ok(Some(file)) = self.load(&id) else {
+                continue;
+            };
+            if let CardState::Issued { exp_ms, .. } = file.state {
+                if now_ms <= exp_ms {
+                    continue;
+                }
+                self.save(&id, refused(REASON_EXPIRED), exp_ms)?;
+                report.expired += 1;
+            }
+        }
+        Ok(report)
+    }
+
+    pub fn prune(&self, now_ms: u64) -> Result<usize, CardError> {
+        let _lock = self.lock()?;
+        let mut removed = 0;
+        for id in self.ids()? {
+            let Ok(Some(file)) = self.load(&id) else {
+                continue;
+            };
+            if now_ms > file.updated_ms.saturating_add(PRUNE_AFTER_MS)
+                && std::fs::remove_file(self.path(&id)).is_ok()
+            {
+                removed += 1;
+            }
+        }
+        if removed > 0 {
+            io(super::sync_dir(&self.dir))?;
+        }
+        Ok(removed)
+    }
+
+    fn path(&self, id: &str) -> PathBuf {
+        self.dir.join(format!("{id}.json"))
+    }
+
+    fn lock(&self) -> Result<std::fs::File, CardError> {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::OpenOptionsExt;
+        let f = io(std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .custom_flags(libc::O_NOFOLLOW)
+            .mode(0o600)
+            .open(self.dir.join(".lock")))?;
+        loop {
+            // SAFETY: the fd is owned by `f` and stays open for the call.
+            if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } == 0 {
+                return Ok(f);
+            }
+            if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+                return Err(CardError::Io);
+            }
+        }
+    }
+
+    fn ids(&self) -> Result<Vec<String>, CardError> {
+        let mut ids = Vec::new();
+        for entry in io(std::fs::read_dir(&self.dir))?.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(stem) = name.strip_suffix(".json") {
+                if check_id(stem).is_ok() {
+                    ids.push(stem.to_string());
+                }
+            }
+        }
+        Ok(ids)
+    }
+
+    fn load(&self, id: &str) -> Result<Option<CardFile>, CardError> {
+        use std::io::Read;
+        use std::os::unix::fs::OpenOptionsExt;
+        let f = match std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(self.path(id))
+        {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(CardError::Io),
+        };
+        let mut bytes = Vec::new();
+        io(f.take(MAX_CARD_BYTES + 1).read_to_end(&mut bytes))?;
+        if bytes.len() as u64 > MAX_CARD_BYTES {
+            return Err(CardError::Corrupt);
+        }
+        let file: CardFile = serde_json::from_slice(&bytes).map_err(|_| CardError::Corrupt)?;
+        let consistent = file.card_id == id
+            && match &file.state {
+                CardState::Issued {
+                    proposal,
+                    req_sha256,
+                    target_id,
+                    target_fp,
+                    user_id,
+                    ..
+                } => {
+                    *req_sha256 == proposal.req_sha256()
+                        && proposal.target_id == *target_id
+                        && *target_id == self.identity.target_id
+                        && *target_fp == self.identity.target_fp
+                        && *user_id == self.identity.user_id
+                }
+                _ => true,
+            };
+        consistent
+            .then_some(file)
+            .map(Some)
+            .ok_or(CardError::Corrupt)
+    }
+
+    fn save(&self, id: &str, state: CardState, now_ms: u64) -> Result<(), CardError> {
+        let file = CardFile {
+            card_id: id.into(),
+            updated_ms: now_ms,
+            state,
+        };
+        let bytes = serde_json::to_vec(&file).map_err(|_| CardError::Corrupt)?;
+        io(super::write_durable(&self.path(id), &bytes))
+    }
+}
+
+const MAX_CARD_BYTES: u64 = 64 * 1024;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicU8, Ordering};
+    use std::sync::{Barrier, Mutex};
+    use tmgr_spawn_auth::{b64_decode_strict, TrustStatus};
+
+    const FIXTURE: &str = include_str!("../../../tmgr-spawn-auth/tests/fixtures/spawn-v1.json");
+    const ISSUED: u64 = 1_795_000_000_000;
+    const NOW: u64 = 1_795_000_100_000;
+    const USER: &str = "42";
+    const TARGET_ID: &str = "mx_0123456789abcdef";
+
+    fn target_fp() -> String {
+        "b".repeat(64)
+    }
+
+    struct FakeTrust(Mutex<TrustStatus>);
+
+    impl FakeTrust {
+        fn trusted() -> Self {
+            Self(Mutex::new(TrustStatus::Trusted))
+        }
+    }
+
+    impl TrustView for FakeTrust {
+        fn status(&self, _: &str, _: &str) -> TrustStatus {
+            *self.0.lock().unwrap()
+        }
+    }
+
+    fn fixture() -> serde_json::Value {
+        serde_json::from_str(FIXTURE).unwrap()
+    }
+
+    fn case(name: &str) -> serde_json::Value {
+        fixture()["verify_cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap()
+            .clone()
+    }
+
+    fn wire_of(name: &str) -> SignedSpawn {
+        serde_json::from_value(case(name)["wire"].clone()).unwrap()
+    }
+
+    fn fixture_key() -> PinnedKey {
+        let k = &case("ok_low_s")["pinned_key"];
+        PinnedKey {
+            user_id: k["user_id"].as_str().unwrap().into(),
+            device_id: k["device_id"].as_str().unwrap().into(),
+            device_fp: k["device_fp"].as_str().unwrap().into(),
+            spawn_pub: b64_decode_strict(k["spawn_pub_b64"].as_str().unwrap()).unwrap(),
+        }
+    }
+
+    fn fixture_proposal() -> SpawnProposal {
+        serde_json::from_value(fixture()["proposal"]["fields"].clone()).unwrap()
+    }
+
+    fn proposal(cwd: &str) -> SpawnProposal {
+        SpawnProposal {
+            cwd: cwd.into(),
+            ..fixture_proposal()
+        }
+    }
+
+    fn fixed_rng() -> Rng {
+        Arc::new(|| {
+            [
+                0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
+                0xcd, 0xef,
+            ]
+        })
+    }
+
+    fn counting_rng() -> Rng {
+        let n = Arc::new(AtomicU8::new(0));
+        Arc::new(move || [n.fetch_add(1, Ordering::SeqCst) + 1; 16])
+    }
+
+    fn identity() -> Identity {
+        Identity::new(USER, TARGET_ID, &target_fp()).unwrap()
+    }
+
+    fn store(dir: &Path, rng: Rng) -> CardStore {
+        CardStore::open(dir, identity(), rng).unwrap()
+    }
+
+    fn fixture_store(dir: &Path) -> CardStore {
+        let s = store(dir, fixed_rng());
+        let out = s.issue("card-0001", &fixture_proposal(), ISSUED).unwrap();
+        let IssueOutcome::Challenge(c) = out else {
+            panic!("{out:?}")
+        };
+        assert_eq!(c.nonce, "0123456789abcdef0123456789abcdef");
+        s
+    }
+
+    fn mode(p: &Path) -> u32 {
+        std::fs::metadata(p).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn issue_matches_the_fixture_challenge() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), fixed_rng());
+        let out = s.issue("card-0001", &fixture_proposal(), ISSUED).unwrap();
+        let IssueOutcome::Challenge(c) = out else {
+            panic!("{out:?}")
+        };
+        assert_eq!(c.issued_ms, ISSUED);
+        assert_eq!(c.exp_ms, ISSUED + CARD_TTL_MS);
+        assert_eq!(c.exp_ms, 1_795_000_300_000);
+        assert_eq!(c.req_sha256, case("ok_low_s")["wire"]["req_sha256"]);
+        assert_eq!(c.req, fixture_proposal().canonical_bytes());
+        assert_eq!(c.target_id, TARGET_ID);
+        assert_eq!(c.target_fp, target_fp());
+    }
+
+    #[test]
+    fn real_signatures_low_s_and_high_s_claim_once() {
+        for name in ["ok_low_s", "ok_high_s"] {
+            let t = tempfile::tempdir().unwrap();
+            let s = fixture_store(t.path());
+            let out = s
+                .claim(
+                    "card-0001",
+                    &wire_of(name),
+                    &fixture_key(),
+                    &FakeTrust::trusted(),
+                    NOW,
+                )
+                .unwrap();
+            let ClaimOutcome::Verified(a) = out else {
+                panic!("{name}: {out:?}")
+            };
+            assert_eq!(a.card_id(), "card-0001");
+            assert_eq!(a.proposal(), &fixture_proposal());
+            assert_eq!(
+                s.state("card-0001").unwrap(),
+                Some(CardState::Claimed { claimed_ms: NOW })
+            );
+            let again = s
+                .claim(
+                    "card-0001",
+                    &wire_of(name),
+                    &fixture_key(),
+                    &FakeTrust::trusted(),
+                    NOW,
+                )
+                .unwrap();
+            assert_eq!(
+                again,
+                ClaimOutcome::AlreadyClaimed(CardResult::Interrupted { claimed_ms: NOW })
+            );
+        }
+    }
+
+    #[test]
+    fn concurrent_claims_from_separate_stores_have_one_winner() {
+        let t = tempfile::tempdir().unwrap();
+        drop(fixture_store(t.path()));
+        let n = 8;
+        let barrier = Barrier::new(n);
+        let outcomes: Vec<ClaimOutcome> = std::thread::scope(|sc| {
+            let hs: Vec<_> = (0..n)
+                .map(|_| {
+                    sc.spawn(|| {
+                        let s = store(t.path(), fixed_rng());
+                        let key = fixture_key();
+                        let wire = wire_of("ok_low_s");
+                        let trust = FakeTrust::trusted();
+                        barrier.wait();
+                        s.claim("card-0001", &wire, &key, &trust, NOW).unwrap()
+                    })
+                })
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let won = outcomes
+            .iter()
+            .filter(|o| matches!(o, ClaimOutcome::Verified(_)))
+            .count();
+        let lost = outcomes
+            .iter()
+            .filter(|o| matches!(o, ClaimOutcome::AlreadyClaimed(_)))
+            .count();
+        assert_eq!((won, lost), (1, n - 1), "{outcomes:?}");
+    }
+
+    #[test]
+    fn crash_between_claimed_and_spawned_never_allows_a_second_claim() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        let trust = FakeTrust::trusted();
+        assert!(matches!(
+            s.claim(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                NOW
+            )
+            .unwrap(),
+            ClaimOutcome::Verified(_)
+        ));
+        drop(s);
+        let s = store(t.path(), fixed_rng());
+        s.recover(NOW + 1).unwrap();
+        assert_eq!(
+            s.result("card-0001").unwrap(),
+            Some(CardResult::Interrupted { claimed_ms: NOW })
+        );
+        for name in ["ok_low_s", "ok_high_s"] {
+            let out = s
+                .claim("card-0001", &wire_of(name), &fixture_key(), &trust, NOW + 2)
+                .unwrap();
+            assert!(matches!(out, ClaimOutcome::AlreadyClaimed(_)), "{out:?}");
+        }
+        assert!(matches!(
+            s.issue("card-0001", &fixture_proposal(), NOW + 3).unwrap(),
+            IssueOutcome::Closed(CardResult::Interrupted { .. })
+        ));
+        s.mark_spawned("card-0001", "sess-1", NOW + 4).unwrap();
+        s.mark_spawned("card-0001", "sess-1", NOW + 5).unwrap();
+        assert_eq!(
+            s.mark_spawned("card-0001", "sess-2", NOW + 6),
+            Err(CardError::AlreadySpawned)
+        );
+        let expect = CardResult::Spawned {
+            session: "sess-1".into(),
+        };
+        assert_eq!(s.result("card-0001").unwrap(), Some(expect.clone()));
+        let out = s
+            .claim(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                NOW + 7,
+            )
+            .unwrap();
+        assert_eq!(out, ClaimOutcome::AlreadyClaimed(expect));
+    }
+
+    #[test]
+    fn mark_spawned_needs_a_claim() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        assert_eq!(
+            s.mark_spawned("card-0001", "sess-1", NOW),
+            Err(CardError::NotClaimed)
+        );
+        assert_eq!(
+            s.mark_spawned("nope", "sess-1", NOW),
+            Err(CardError::NotClaimed)
+        );
+    }
+
+    #[test]
+    fn ninth_pending_card_is_refused() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        for i in 0..MAX_PENDING {
+            let out = s
+                .issue(&format!("card-{i}"), &proposal(&format!("/w/{i}")), ISSUED)
+                .unwrap();
+            assert!(matches!(out, IssueOutcome::Challenge(_)), "{i}: {out:?}");
+        }
+        assert_eq!(
+            s.issue("card-9", &proposal("/w/9"), ISSUED + 1).unwrap(),
+            IssueOutcome::Full
+        );
+        assert!(matches!(
+            s.issue("card-3", &proposal("/w/3"), ISSUED + 1).unwrap(),
+            IssueOutcome::Challenge(_)
+        ));
+        let later = ISSUED + CARD_TTL_MS + 1;
+        assert!(matches!(
+            s.issue("card-9", &proposal("/w/9"), later).unwrap(),
+            IssueOutcome::Challenge(_)
+        ));
+        assert_eq!(
+            s.result("card-0").unwrap(),
+            Some(CardResult::Refused {
+                reason: "expired".into()
+            })
+        );
+    }
+
+    #[test]
+    fn pending_ask_repeats_the_nonce_and_expiry_gives_a_new_one() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        let p = proposal("/w/a");
+        let IssueOutcome::Challenge(first) = s.issue("c1", &p, ISSUED).unwrap() else {
+            panic!()
+        };
+        let IssueOutcome::Challenge(again) = s.issue("c1", &p, ISSUED + 10).unwrap() else {
+            panic!()
+        };
+        assert_eq!(first, again);
+        assert_eq!(
+            s.issue("c1", &proposal("/w/other"), ISSUED + 10).unwrap(),
+            IssueOutcome::Conflict
+        );
+        let at_exp = ISSUED + CARD_TTL_MS;
+        let IssueOutcome::Challenge(edge) = s.issue("c1", &p, at_exp).unwrap() else {
+            panic!()
+        };
+        assert_eq!(edge.nonce, first.nonce);
+        let IssueOutcome::Challenge(fresh) = s.issue("c1", &p, at_exp + 1).unwrap() else {
+            panic!()
+        };
+        assert_ne!(fresh.nonce, first.nonce);
+        assert_eq!(fresh.issued_ms, at_exp + 1);
+        assert_eq!(fresh.exp_ms, at_exp + 1 + CARD_TTL_MS);
+        assert_eq!(fresh.nonce.len(), 32);
+    }
+
+    #[test]
+    fn bad_signatures_count_to_five_then_the_card_is_refused() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        let trust = FakeTrust::trusted();
+        let bad = wire_of("bad_sig_signed_other_nonce");
+        for i in 1..ATTEMPT_LIMIT {
+            let out = s
+                .claim("card-0001", &bad, &fixture_key(), &trust, NOW)
+                .unwrap();
+            assert_eq!(out, ClaimOutcome::Rejected(Refusal::BadSig));
+            let Some(CardState::Issued {
+                failed_attempts, ..
+            }) = s.state("card-0001").unwrap()
+            else {
+                panic!()
+            };
+            assert_eq!(failed_attempts, i);
+        }
+        let out = s
+            .claim("card-0001", &bad, &fixture_key(), &trust, NOW)
+            .unwrap();
+        assert_eq!(out, ClaimOutcome::Rejected(Refusal::BadSig));
+        assert_eq!(
+            s.state("card-0001").unwrap(),
+            Some(CardState::Refused {
+                reason: "too_many_attempts".into()
+            })
+        );
+        let out = s
+            .claim(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(
+            out,
+            ClaimOutcome::Dead {
+                reason: "too_many_attempts".into()
+            }
+        );
+    }
+
+    #[test]
+    fn mismatch_expired_and_untrusted_do_not_count_or_burn() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        let trust = FakeTrust::trusted();
+        let mut other_nonce = wire_of("ok_low_s");
+        other_nonce.nonce = "f".repeat(32);
+        let out = s
+            .claim("card-0001", &other_nonce, &fixture_key(), &trust, NOW)
+            .unwrap();
+        assert_eq!(out, ClaimOutcome::Rejected(Refusal::Mismatch));
+        let late = ISSUED + CARD_TTL_MS + 1;
+        let out = s
+            .claim(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                late,
+            )
+            .unwrap();
+        assert_eq!(out, ClaimOutcome::Rejected(Refusal::Expired));
+        *trust.0.lock().unwrap() = TrustStatus::Revoked;
+        let out = s
+            .claim(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(out, ClaimOutcome::Rejected(Refusal::NotTrusted));
+        let Some(CardState::Issued {
+            failed_attempts, ..
+        }) = s.state("card-0001").unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(failed_attempts, 0);
+        *trust.0.lock().unwrap() = TrustStatus::Trusted;
+        assert!(matches!(
+            s.claim(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                NOW
+            )
+            .unwrap(),
+            ClaimOutcome::Verified(_)
+        ));
+    }
+
+    #[test]
+    fn claim_of_an_unknown_card() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), fixed_rng());
+        let out = s
+            .claim(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &FakeTrust::trusted(),
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(out, ClaimOutcome::UnknownCard);
+    }
+
+    #[test]
+    fn invalid_proposals_are_refused_at_issue() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), fixed_rng());
+        let mut p = fixture_proposal();
+        p.cwd = "bad\ncwd".into();
+        assert_eq!(
+            s.issue("c1", &p, ISSUED).unwrap(),
+            IssueOutcome::Invalid(Refusal::BadToken)
+        );
+        let mut p = fixture_proposal();
+        p.target_id = "mx_ffff".into();
+        assert_eq!(
+            s.issue("c1", &p, ISSUED).unwrap(),
+            IssueOutcome::Invalid(Refusal::Mismatch)
+        );
+        assert_eq!(s.state("c1").unwrap(), None);
+    }
+
+    #[test]
+    fn recover_fails_expired_issued_and_keeps_claimed() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        s.issue("old", &proposal("/w/1"), ISSUED).unwrap();
+        s.issue("live", &proposal("/w/2"), ISSUED + CARD_TTL_MS)
+            .unwrap();
+        let s2 = fixture_store(t.path());
+        s2.claim(
+            "card-0001",
+            &wire_of("ok_low_s"),
+            &fixture_key(),
+            &FakeTrust::trusted(),
+            NOW,
+        )
+        .unwrap();
+        let report = s.recover(ISSUED + CARD_TTL_MS + 1).unwrap();
+        assert_eq!(report.expired, 1);
+        assert_eq!(
+            s.state("old").unwrap(),
+            Some(CardState::Refused {
+                reason: "expired".into()
+            })
+        );
+        assert!(matches!(
+            s.state("live").unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+        assert!(matches!(
+            s.state("card-0001").unwrap(),
+            Some(CardState::Claimed { .. })
+        ));
+    }
+
+    #[test]
+    fn prune_removes_cards_older_than_thirty_days() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        s.issue("old", &proposal("/w/1"), ISSUED).unwrap();
+        s.issue("new", &proposal("/w/2"), ISSUED + PRUNE_AFTER_MS)
+            .unwrap();
+        let boundary = ISSUED + CARD_TTL_MS + PRUNE_AFTER_MS;
+        assert_eq!(s.prune(boundary).unwrap(), 0);
+        assert_eq!(s.prune(boundary + 1).unwrap(), 1);
+        assert_eq!(s.state("old").unwrap(), None);
+        assert!(s.state("new").unwrap().is_some());
+    }
+
+    #[test]
+    fn card_ids_that_could_escape_the_directory_are_refused() {
+        let t = tempfile::tempdir().unwrap();
+        let runner = t.path().join("runner");
+        let s = store(&runner, fixed_rng());
+        let trust = FakeTrust::trusted();
+        for id in [
+            "../x",
+            "..",
+            ".",
+            ".hidden",
+            "a/b",
+            "",
+            "a b",
+            "a\0b",
+            &"a".repeat(65),
+        ] {
+            assert_eq!(
+                s.issue(id, &fixture_proposal(), ISSUED),
+                Err(CardError::BadCardId),
+                "{id:?}"
+            );
+            assert_eq!(
+                s.claim(id, &wire_of("ok_low_s"), &fixture_key(), &trust, NOW),
+                Err(CardError::BadCardId)
+            );
+            assert_eq!(s.mark_spawned(id, "s", NOW), Err(CardError::BadCardId));
+            assert_eq!(s.result(id), Err(CardError::BadCardId));
+            assert_eq!(s.state(id), Err(CardError::BadCardId));
+        }
+        let names: Vec<_> = std::fs::read_dir(runner.join("spawnauth/cards"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert!(
+            names.iter().all(|n| n.to_string_lossy().starts_with('.')),
+            "{names:?}"
+        );
+        assert!(!runner.join("spawnauth/x.json").exists());
+    }
+
+    #[test]
+    fn directories_are_private_and_files_are_0600() {
+        let t = tempfile::tempdir().unwrap();
+        let runner = t.path().join("runner");
+        let s = store(&runner, fixed_rng());
+        s.issue("card-0001", &fixture_proposal(), ISSUED).unwrap();
+        assert_eq!(mode(&runner.join("spawnauth")), 0o700);
+        assert_eq!(mode(&runner.join("spawnauth/cards")), 0o700);
+        assert_eq!(mode(&runner.join("spawnauth/cards/card-0001.json")), 0o600);
+        let leftovers: Vec<_> = std::fs::read_dir(runner.join("spawnauth/cards"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[test]
+    fn tampered_card_files_are_reported_corrupt_without_echoing_content() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        let path = t.path().join("spawnauth/cards/card-0001.json");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let tampered = text.replace("/work/app", "/etc");
+        assert_ne!(text, tampered);
+        std::fs::write(&path, tampered).unwrap();
+        let err = s.state("card-0001").unwrap_err();
+        assert_eq!(err, CardError::Corrupt);
+        assert!(!format!("{err} {err:?}").contains("/etc"));
+        std::fs::write(&path, "{not json").unwrap();
+        assert_eq!(s.result("card-0001"), Err(CardError::Corrupt));
+        std::fs::write(
+            &path,
+            text.replace("card-0001\",\"updated", "card-0002\",\"updated"),
+        )
+        .unwrap();
+        assert_eq!(s.result("card-0001"), Err(CardError::Corrupt));
+    }
+}

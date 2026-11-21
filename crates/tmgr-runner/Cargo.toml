@@ -15,6 +15,7 @@ tmgr-approval.workspace = true
 tmgr-usage.workspace = true
 tmgr-chat-relay.workspace = true
 tmgr-session.workspace = true
+tmgr-spawn-auth.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -38,3 +39,4 @@ landlock.workspace = true
 
 [dev-dependencies]
 vte.workspace = true
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "sha256", "std"] }
