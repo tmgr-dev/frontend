@@ -14,35 +14,55 @@ const readToken = () => {
 	}
 };
 
-/** Hands the cloud session to the chat relay in Rust; a no-op without a cloud token. */
-export const syncRelayAuth = async (
-	apiBase: string | undefined,
-	userId?: number,
-): Promise<void> => {
-	if (!isDesktopApp() || !apiBase) return;
-	const envelope = readToken();
-	if (!envelope?.token) return;
-	const id = userId ?? tokenSubject(envelope);
-	if (!id) return;
+let queue: Promise<void> = Promise.resolve();
+
+const enqueue = (job: () => Promise<void>): Promise<void> => {
+	queue = queue.then(job, job);
+	return queue;
+};
+
+const resolveApiBase = (apiBase: string | undefined) => {
+	if (!apiBase) return null;
 	try {
-		await invoke('manager_set_relay_auth', {
-			token: envelope.token,
-			userId: id,
-			apiBase,
-		});
+		const { protocol } = new URL(apiBase);
+		return protocol === 'https:' || protocol === 'http:' ? apiBase : null;
 	} catch {
-		// Older shells lack the command; the error text could carry the token.
+		return null;
 	}
 };
 
-export const clearRelayAuth = async (): Promise<void> => {
-	if (!isDesktopApp()) return;
-	try {
-		await invoke('manager_clear_relay_auth');
-	} catch {
-		// Older shells lack the command.
-	}
-};
+/** Hands the cloud session to the chat relay in Rust; a no-op without a cloud token. */
+export const syncRelayAuth = (
+	apiBase: string | undefined,
+	userId?: number,
+): Promise<void> =>
+	enqueue(async () => {
+		const base = resolveApiBase(apiBase);
+		if (!isDesktopApp() || !base) return;
+		const envelope = readToken();
+		if (!envelope?.token) return;
+		const id = userId ?? tokenSubject(envelope);
+		if (!id) return;
+		try {
+			await invoke('manager_set_relay_auth', {
+				token: envelope.token,
+				userId: id,
+				apiBase: base,
+			});
+		} catch {
+			// Older shells lack the command; the error text could carry the token.
+		}
+	});
+
+export const clearRelayAuth = (): Promise<void> =>
+	enqueue(async () => {
+		if (!isDesktopApp()) return;
+		try {
+			await invoke('manager_clear_relay_auth');
+		} catch {
+			// Older shells lack the command.
+		}
+	});
 
 type Mutation = { type: string; payload?: unknown };
 type RelayStore = {

@@ -205,7 +205,6 @@
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
 	import { onManagerResync } from './api';
 	import { renderBody } from './format';
-	import { syncRelayAuth } from './relayAuth';
 	import { AGENT_MODELS, MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
 	import { roomKey } from './types';
@@ -281,7 +280,6 @@
 		mounted() {
 			void this.store.init();
 			void this.trust.init();
-			void syncRelayAuth(import.meta.env.VITE_API_BASE_URL);
 			window.addEventListener('keydown', this.onGlobalKey);
 			void onManagerResync(() => void this.store.refreshActive()).then(
 				(off) => {
