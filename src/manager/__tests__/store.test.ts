@@ -203,7 +203,7 @@ describe('send', () => {
 		expect(store.draft.text).toBe('');
 		expect(store.draft.attachments).toEqual([]);
 		expect(store.replyTo).toBeNull();
-		expect(store.messagesByRoom[MGR_KEY].at(-1)?.id).toBe('m099');
+		expect(store.messagesByRoom[MGR_KEY].slice(-1)[0]?.id).toBe('m099');
 	});
 
 	it('ignores empty drafts', async () => {
