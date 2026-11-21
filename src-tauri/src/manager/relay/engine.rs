@@ -158,9 +158,11 @@ fn validate_chat(m: &ChatMessage) -> Result<(), String> {
   Ok(())
 }
 
-fn recompute(c: &mut Core, dir: &Directory, uid: u64, from_base: bool) {
+fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
+  let no_devices: &[api::Device] = &[];
+  let dir_devices = dir.map_or(no_devices, |d| d.devices.as_slice());
   let mut intros: Vec<String> = c.st.intros.clone();
-  for i in dir.devices.iter().flat_map(|d| d.intros.iter()) {
+  for i in dir_devices.iter().flat_map(|d| d.intros.iter()) {
     if !intros.contains(i) {
       intros.push(i.clone());
     }
@@ -170,15 +172,17 @@ fn recompute(c: &mut Core, dir: &Directory, uid: u64, from_base: bool) {
   if !from_base {
     pins.extend(c.st.trusted.iter().map(|d| (d.id.clone(), d.fp.clone())));
   }
-  let entries: Vec<DirEntry> = dir
-    .devices
+  let mut entries: Vec<DirEntry> = dir_devices
     .iter()
     .map(|d| DirEntry { device_id: d.device_id.clone(), sign_pub_b64: d.sign_pub.clone(), kex_pub_b64: d.kex_pub.clone() })
     .collect();
+  entries.extend(
+    c.st.trusted.iter().chain(c.st.base.iter()).map(|d| DirEntry { device_id: d.id.clone(), sign_pub_b64: d.sign_pub.clone(), kex_pub_b64: d.kex_pub.clone() }),
+  );
   let set = trusted_set(&pins, &c.st.revoked, &intros, &entries);
   let mut out: Vec<Dev> = Vec::new();
   for (id, fp) in set {
-    let in_dir = dir.devices.iter().find(|d| d.device_id == id && fingerprint(&d.sign_pub, &d.kex_pub) == fp);
+    let in_dir = dir_devices.iter().find(|d| d.device_id == id && fingerprint(&d.sign_pub, &d.kex_pub) == fp);
     let known = c.st.trusted.iter().chain(c.st.base.iter()).find(|d| d.id == id && d.fp == fp).cloned();
     if let Some(mut dev) = known.or_else(|| in_dir.map(dev_from)) {
       if let Some(d) = in_dir {
@@ -188,13 +192,15 @@ fn recompute(c: &mut Core, dir: &Directory, uid: u64, from_base: bool) {
       out.push(dev);
     }
   }
-  c.st.mismatch = out
-    .iter()
-    .filter(|t| dir.devices.iter().any(|d| d.device_id == t.id && fingerprint(&d.sign_pub, &d.kex_pub) != t.fp))
-    .map(|t| t.id.clone())
-    .collect();
-  for id in &c.st.mismatch {
-    log::warn!("[chat-relay] directory keys of device {id} differ from the pinned ones");
+  if dir.is_some() {
+    c.st.mismatch = out
+      .iter()
+      .filter(|t| dir_devices.iter().any(|d| d.device_id == t.id && fingerprint(&d.sign_pub, &d.kex_pub) != t.fp))
+      .map(|t| t.id.clone())
+      .collect();
+    for id in &c.st.mismatch {
+      log::warn!("[chat-relay] directory keys of device {id} differ from the pinned ones");
+    }
   }
   c.st.intros = intros
     .into_iter()
@@ -212,8 +218,8 @@ fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label:
   c.st.revoked_devs.push(Dev { id: target_id.to_owned(), kind, label: label.to_owned(), fp: target_fp.to_owned(), sign_pub: String::new(), kex_pub: String::new() });
   c.st.pending_revokes.retain(|p| p.target_fp != target_fp);
   c.st.pending_joins.retain(|j| j.fp != target_fp);
-  let dir = c.dir.clone().unwrap_or(Directory { devices: vec![], revocations: vec![] });
-  recompute(c, &dir, uid, true);
+  let dir = c.dir.clone();
+  recompute(c, dir.as_ref(), uid, true);
 }
 
 fn ingest_revoke(c: &mut Core, uid: u64, json: &str, expect_fp: Option<&str>, budget: &mut BTreeMap<String, usize>) {
@@ -354,7 +360,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   fn sync_dir(&self, c: &mut Core) -> Result<(), String> {
     let dir = self.fetch_dir(c)?;
-    recompute(c, &dir, self.cfg.user_id, false);
+    if !c.st.joined {
+      return Ok(());
+    }
+    recompute(c, Some(&dir), self.cfg.user_id, false);
     let mut budget = BTreeMap::new();
     for r in &dir.revocations {
       ingest_revoke(c, self.cfg.user_id, &r.statement, Some(&r.target_fp), &mut budget);
@@ -467,7 +476,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.st.joined = false;
     let payload = json!({ "label": self.cfg.label, "mac": mac });
     let msg_id = random_msg_id("join").map_err(err)?;
-    let res = self.seal_and_post(c, "join", &msg_id, &payload, &[pdev], true);
+    let res = self.seal_and_post(c, "join", &msg_id, &payload, std::slice::from_ref(&pdev), true);
+    if res.is_err() {
+      c.st.base.retain(|d| d.id != pdev.id);
+      c.st.trusted.retain(|d| d.id != pdev.id);
+      c.st.joined = true;
+    }
     self.persist(c)?;
     res
   }
@@ -500,9 +514,13 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let sender_trusted = c.st.trusted.iter().any(|d| d.id == opened.from);
     let mut stored = None;
     match opened.kind.as_str() {
-      "chat" if sender_trusted => {
+      "chat" if sender_trusted && c.st.joined => {
         let msg: ChatMessage = serde_json::from_value(opened.payload.clone()).ok()?;
         if validate_chat(&msg).is_err() || msg.id != opened.id || !self.owns(&msg.room) {
+          return None;
+        }
+        let sender_kind = c.st.trusted.iter().find(|d| d.id == opened.from).map(|d| d.kind.as_str());
+        if matches!(msg.author.kind.as_str(), "manager" | "session" | "system") && sender_kind != Some("runner") {
           return None;
         }
         if !c.log.iter().any(|x| x.id == msg.id) {
@@ -517,7 +535,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         let label = opened.payload.get("label")?.as_str()?.to_owned();
         let mac = opened.payload.get("mac")?.as_str()?;
         let entry = dir.devices.iter().find(|d| d.device_id == opened.from)?;
-        if entry.label != label {
+        if entry.label != label || c.st.revoked.contains(&opened.from_fp) {
           return None;
         }
         let input = JoinMacInput { user_id: self.cfg.user_id, p_fp: &keys.fingerprint(), n_id: &opened.from, n_fp: &opened.from_fp, n_kind: &entry.kind, label: &label };
@@ -532,10 +550,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
             c.st.revoked.push(fp.to_owned());
           }
         }
+        let revoked = c.st.revoked.clone();
+        c.st.trusted.retain(|d| !revoked.contains(&d.fp));
         c.st.joined = true;
         c.joined_now = true;
       }
-      "revoke" if sender_trusted => {
+      "revoke" if sender_trusted && c.st.joined => {
         let statement = opened.payload.get("statement")?.as_str()?;
         let sig = opened.payload.get("sig")?.as_str()?;
         let json = json!({ "v": 1, "statement": statement, "sig": sig }).to_string();
@@ -619,6 +639,10 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let mut g = self.lock();
     let c = &mut *g;
     self.ensure_registered(c)?;
+    if let Some(stored) = params.id.as_deref().and_then(|i| c.log.iter().find(|m| m.id == i)) {
+      let same = stored.room == params.room && stored.body_md == params.body_md && stored.reply_to == params.reply_to;
+      return if same { Ok(stored.clone()) } else { Err("conflict".into()) };
+    }
     let (id, _) = Self::own(c)?;
     if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
       return Err("this device is not a trusted member of the chat yet".into());
@@ -627,15 +651,21 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     if targets.is_empty() {
       return Err("there are no other trusted devices to send to".into());
     }
-    let mut rnd = [0u8; 16];
-    getrandom::fill(&mut rnd).map_err(err)?;
+    let msg_id = match params.id {
+      Some(i) => i,
+      None => {
+        let mut rnd = [0u8; 16];
+        getrandom::fill(&mut rnd).map_err(err)?;
+        format!("m_{}", hex(&rnd))
+      }
+    };
     let now = self.now();
     let msg = ChatMessage {
       v: 1,
-      id: format!("m_{}", hex(&rnd)),
+      id: msg_id,
       room: params.room,
       author: crate::manager::backend::Author { kind: "owner".into(), id: "owner".into(), machine: None, agent: None },
-      ts_ms: now,
+      ts_ms: params.ts_ms.unwrap_or(now),
       kind: "text".into(),
       body_md: params.body_md,
       attachments: vec![],
@@ -653,7 +683,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   }
 
   fn owns(&self, room: &RoomRef) -> bool {
-    room.machine != self.cfg.local_machine
+    !self.cfg.local_machine.is_empty() && room.machine != self.cfg.local_machine
   }
 
   fn trust_state(&self) -> Result<TrustState, String> {
@@ -670,7 +700,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         .st
         .pending_joins
         .iter()
-        .map(|j| PendingJoin { device_id: j.device_id.clone(), label: j.label.clone(), fp: j.fp.clone(), requested_at_ms: j.requested_at_ms })
+        .map(|j| PendingJoin { device_id: j.device_id.clone(), label: j.label.clone(), fp: j.fp.clone(), kind: Some(j.kind.clone()), requested_at_ms: j.requested_at_ms })
         .collect(),
       pending_revokes: g.st.pending_revokes.clone(),
       key_mismatch: g.st.mismatch.clone(),
@@ -680,10 +710,15 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   fn decide_join(&self, device_id: &str, accept: bool) -> Result<(), String> {
     let mut g = self.lock();
     let c = &mut *g;
-    let pos = c.st.pending_joins.iter().position(|j| j.device_id == device_id).ok_or_else(|| "no such join request".to_owned())?;
-    let rec = c.st.pending_joins.remove(pos);
+    let rec = c.st.pending_joins.iter().find(|j| j.device_id == device_id).cloned().ok_or_else(|| "no such join request".to_owned())?;
     if !accept {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
       return self.persist(c);
+    }
+    if c.st.revoked.contains(&rec.fp) {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      self.persist(c)?;
+      return Err("this device was revoked".into());
     }
     let dir = self.fetch_dir(c)?;
     let entry = dir
@@ -704,23 +739,26 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let intro = sign_intro(keys, &id.device_id, &st).map_err(err)?;
     self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
     c.st.intros.push(intro);
-    c.st.trusted.push(dev.clone());
+    if !c.st.trusted.iter().any(|d| d.id == dev.id) {
+      c.st.trusted.push(dev.clone());
+    }
     self.persist(c)?;
     let msg_id = random_msg_id("join_ok").map_err(err)?;
     let payload = json!({ "revoked": c.st.revoked });
     self.seal_and_post(c, "join_ok", &msg_id, &payload, &[dev], false)?;
+    c.st.pending_joins.retain(|j| j.device_id != device_id);
     self.persist(c)
   }
 
   fn decide_revoke(&self, statement_id: &str, accept: bool) -> Result<(), String> {
     let mut g = self.lock();
     let c = &mut *g;
-    let pos = c.st.pending_revokes.iter().position(|p| p.statement_id == statement_id).ok_or_else(|| "no such revoke request".to_owned())?;
-    let p = c.st.pending_revokes.remove(pos);
+    let p = c.st.pending_revokes.iter().find(|p| p.statement_id == statement_id).cloned().ok_or_else(|| "no such revoke request".to_owned())?;
     if accept {
       self.fetch_dir(c)?;
       apply_revoke(c, self.cfg.user_id, &p.target_id, &p.target_fp, &p.target_label);
     } else {
+      c.st.pending_revokes.retain(|x| x.statement_id != statement_id);
       c.st.declined.push(p.statement_id);
     }
     self.persist(c)

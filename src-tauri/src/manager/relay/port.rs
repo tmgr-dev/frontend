@@ -28,6 +28,8 @@ pub struct PendingJoin {
   pub device_id: String,
   pub label: String,
   pub fp: String,
+  #[serde(default)]
+  pub kind: Option<String>,
   pub requested_at_ms: u64,
 }
 

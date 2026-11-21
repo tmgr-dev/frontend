@@ -36,6 +36,7 @@ struct Server {
   revocations: Vec<(String, String, String)>,
   next: i64,
   post_error: Option<String>,
+  dir_error: bool,
   posts: usize,
 }
 
@@ -59,6 +60,10 @@ impl Fake {
 
   fn set_post_error(&self, e: Option<&str>) {
     self.0.lock().unwrap().post_error = e.map(str::to_owned);
+  }
+
+  fn set_dir_error(&self, on: bool) {
+    self.0.lock().unwrap().dir_error = on;
   }
 
   fn add_revocation(&self, fp: &str, by: &str, statement: &str) {
@@ -94,6 +99,9 @@ impl Transport for Fake {
       }
       (Method::Get, ["devices"]) => {
         caller.ok_or("401")?;
+        if s.dir_error {
+          return Err("directory down".into());
+        }
         let devices: Vec<Value> = s
           .devices
           .iter()
@@ -655,4 +663,211 @@ fn dedupe_is_per_sender_and_message_id() {
   assert_eq!(fake.queue_len(&bid), 2);
   b.poll_once().unwrap();
   assert_eq!(b.lock().st.seen.iter().filter(|s| s.id == msg.id).count(), 2);
+}
+
+fn engine_on(fake: &Fake, clock: &Clock, store: Arc<MemKeyStore>, local: &str) -> Engine {
+  let c = clock.0.clone();
+  RelayEngine::new(fake.clone(), store, EngineConfig { user_id: USER, label: "Desktop A".into(), local_machine: local.into() })
+    .unwrap()
+    .with_clock(move || c.load(Ordering::SeqCst))
+}
+
+fn fp_of(e: &Engine) -> String {
+  e.lock().keys.as_ref().unwrap().fingerprint()
+}
+
+fn post_chat(from: &Engine, to_id: &str, msg: &ChatMessage) {
+  let payload = serde_json::to_value(msg).unwrap();
+  let mut g = from.lock();
+  let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
+  from.seal_and_post(&mut g, "chat", &msg.id, &payload, &target, false).unwrap();
+}
+
+#[test]
+fn revoke_after_restart_without_directory_keeps_devices_trusted_through_intros() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  let c = engine_with(&fake, &clock, "Desktop C");
+  let code = b.open_join_code().unwrap();
+  c.join_with_code(&code).unwrap();
+  b.poll_once().unwrap();
+  b.decide_join(&my_id(&c), true).unwrap();
+  c.poll_once().unwrap();
+  a.poll_once().unwrap();
+  let cid = my_id(&c);
+  assert!(a.trust_state().unwrap().devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
+  let intros_before = a.lock().st.intros.len();
+  assert!(intros_before > 0);
+
+  let a2 = engine_on(&fake, &clock, store, "mx_local");
+  {
+    let mut g = a2.lock();
+    assert!(g.dir.is_none());
+    apply_revoke(&mut g, USER, "00000000-0000-4000-8000-0000000000dd", &tmgr_phone::h("device d"), "D");
+  }
+  let ts = a2.trust_state().unwrap();
+  assert!(ts.devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
+  assert_eq!(a2.lock().st.intros.len(), intros_before);
+}
+
+#[test]
+fn revoked_fingerprint_cannot_join_again() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.lock().st.revoked.push(fp_of(&b));
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().pending_joins.is_empty());
+
+  let c = engine_with(&fake, &clock, "Desktop C");
+  let code = a.open_join_code().unwrap();
+  c.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let cid = my_id(&c);
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  a.lock().st.revoked.push(fp_of(&c));
+  assert!(a.decide_join(&cid, true).is_err());
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != cid || d.state != DeviceState::Trusted));
+}
+
+#[test]
+fn joiner_ignores_chat_before_join_ok_and_honours_its_revoked_list() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let c = engine_with(&fake, &clock, "Desktop C");
+  let code = a.open_join_code().unwrap();
+  c.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  {
+    let mut g = a.lock();
+    apply_revoke(&mut g, USER, &bid, &fp_of(&b), "Desktop B");
+  }
+  let cid = my_id(&c);
+  b.lock().st.trusted.push(c.lock().st.trusted.iter().find(|d| d.id == cid).unwrap().clone());
+  post_chat(&b, &cid, &same_id_msg());
+  a.decide_join(&cid, true).unwrap();
+  assert!(c.poll_once().unwrap().is_empty());
+  assert!(history(&c).is_empty());
+  assert!(c.trust_state().unwrap().devices.iter().all(|d| d.id != bid || d.state != DeviceState::Trusted));
+}
+
+#[test]
+fn failed_join_post_can_be_retried() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  fake.set_post_error(Some(r#"{"error":"recipient_full"}"#));
+  assert!(b.join_with_code(&code).is_err());
+  assert_eq!(b.trust_state().unwrap().devices.len(), 1);
+  fake.set_post_error(None);
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+}
+
+fn set_kind(fake: &Fake, id: &str, kind: &str) {
+  fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == id).unwrap().kind = kind.into();
+}
+
+#[test]
+fn only_runner_devices_may_author_manager_session_or_system_messages() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (aid, bid) = (my_id(&a), my_id(&b));
+  let mk = |n: u8, kind: &str| {
+    let mut m = same_id_msg();
+    m.id = format!("m_{}", n.to_string().repeat(32).chars().take(32).collect::<String>());
+    m.author.kind = kind.into();
+    m
+  };
+  for (n, k) in [(2, "manager"), (3, "session"), (4, "system")] {
+    post_chat(&a, &bid, &mk(n, k));
+  }
+  assert!(b.poll_once().unwrap().is_empty());
+  post_chat(&a, &bid, &mk(5, "owner"));
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  set_kind(&fake, &aid, "runner");
+  b.poll_once().unwrap();
+  post_chat(&a, &bid, &mk(6, "manager"));
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn owns_is_false_for_the_local_machine_and_when_it_is_unknown() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  assert!(a.owns(&room()));
+  assert!(!a.owns(&RoomRef { kind: RoomKind::Manager, machine: "mx_local".into(), session: None }));
+  let blank = engine_on(&fake, &clock, Arc::new(MemKeyStore::default()), "");
+  assert!(!blank.owns(&room()));
+  assert!(!blank.owns(&RoomRef { kind: RoomKind::Manager, machine: String::new(), session: None }));
+  assert_eq!(send(&blank, "x").unwrap_err(), "unknown room");
+}
+
+#[test]
+fn transient_errors_keep_the_pending_join_and_revoke() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let bid = my_id(&b);
+  assert_eq!(a.trust_state().unwrap().pending_joins[0].kind.as_deref(), Some("desktop"));
+  fake.set_post_error(Some(r#"{"error":"rate_limited","retry_after":3}"#));
+  assert!(a.decide_join(&bid, true).is_err());
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  fake.set_post_error(None);
+  a.decide_join(&bid, true).unwrap();
+  assert!(a.trust_state().unwrap().pending_joins.is_empty());
+  b.poll_once().unwrap();
+  assert!(b.trust_state().unwrap().devices.iter().any(|d| d.id == bid));
+
+  let c = engine_with(&fake, &clock, "Desktop C");
+  let code = a.open_join_code().unwrap();
+  c.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let cid = my_id(&c);
+  a.decide_join(&cid, true).unwrap();
+  b.poll_once().unwrap();
+  a.revoke(&cid).unwrap();
+  b.poll_once().unwrap();
+  let sid = b.trust_state().unwrap().pending_revokes[0].statement_id.clone();
+  fake.set_dir_error(true);
+  assert!(b.decide_revoke(&sid, true).is_err());
+  assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+  fake.set_dir_error(false);
+  b.decide_revoke(&sid, true).unwrap();
+  assert!(b.trust_state().unwrap().pending_revokes.is_empty());
+}
+
+fn send_with(e: &Engine, id: &str, ts: u64, text: &str) -> Result<ChatMessage, String> {
+  e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![], id: Some(id.into()), ts_ms: Some(ts) })
+}
+
+#[test]
+fn send_with_an_id_is_idempotent_and_conflicts_on_different_content() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let id = format!("m_{}", "7".repeat(32));
+  let first = send_with(&a, &id, T0 + 5, "once").unwrap();
+  assert_eq!((first.id.as_str(), first.ts_ms), (id.as_str(), T0 + 5));
+  let posts = fake.posts();
+  let again = send_with(&a, &id, T0 + 99, "once").unwrap();
+  assert_eq!((again.id, again.ts_ms), (first.id, first.ts_ms));
+  assert_eq!(fake.posts(), posts);
+  assert_eq!(send_with(&a, &id, T0 + 5, "other").unwrap_err(), "conflict");
+  assert_eq!(history(&a), ["once"]);
+  assert_eq!(b.poll_once().unwrap().len(), 1);
 }
