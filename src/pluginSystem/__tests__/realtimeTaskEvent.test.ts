@@ -7,6 +7,15 @@ it('drops the echo of a write made on this instance', () => {
 	expect(realtimeTaskEvent(5, { id: 1 }, 'updated', OWN, OWN)).toBeNull();
 });
 
+it('drops the echo of a write made by a form on this instance', () => {
+	expect(
+		realtimeTaskEvent(5, { id: 1 }, 'updated', `${OWN}.form-abc`, OWN),
+	).toBeNull();
+	expect(
+		realtimeTaskEvent(5, { id: 1 }, 'updated', `${OTHER}.form-abc`, OWN),
+	).not.toBeNull();
+});
+
 it('delivers writes from other instances and from clients that sent no id', () => {
 	expect(
 		realtimeTaskEvent(5, { id: 1, title: 'a' }, 'updated', OTHER, OWN),

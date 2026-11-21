@@ -13,7 +13,8 @@ export const realtimeTaskEvent = (
 	sourceInstanceId: string | undefined,
 	ownId: string,
 ): TaskEvent | null => {
-	if (sourceInstanceId === ownId) return null;
+	if (sourceInstanceId === ownId || sourceInstanceId?.startsWith(`${ownId}.`))
+		return null;
 	const taskId = task?.id;
 	if (!task || taskId == null) return null;
 	if (action === 'deleted')
