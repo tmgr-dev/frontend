@@ -49,6 +49,9 @@ manager status | Other | -
 manager machine show | Other | -
 manager machine add | Other | line, label
 manager machine remove | Other | id
+manager spawn-keys list | Other | -
+manager spawn-keys approve | Other | device_fp, spawn_key_fp
+manager spawn-keys revoke | Other | device_fp
 chat join | Other | -
 chat status | Other | -
 time | Time | today, since, by
