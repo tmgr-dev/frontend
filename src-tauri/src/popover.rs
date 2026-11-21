@@ -16,7 +16,9 @@ use crate::tray::{
 
 pub const LABEL: &str = "popover";
 
-const WIDTH: f64 = 400.0;
+const PANEL_WIDTH: f64 = 400.0;
+const POPOVER_PADDING: f64 = 12.0;
+const WIDTH: f64 = PANEL_WIDTH + 2.0 * POPOVER_PADDING;
 const DEFAULT_HEIGHT: f64 = 400.0;
 const MIN_HEIGHT: f64 = 80.0;
 const MAX_HEIGHT: f64 = 900.0;
@@ -88,6 +90,10 @@ pub fn clamp_height(requested: f64, work_height: Option<f64>) -> f64 {
   requested.min(ceiling).max(MIN_HEIGHT)
 }
 
+pub fn max_window_height(work_height: Option<f64>) -> f64 {
+  clamp_height(f64::INFINITY, work_height)
+}
+
 fn clamp_axis(value: f64, low: f64, high: f64) -> f64 {
   if high < low {
     low
@@ -96,9 +102,11 @@ fn clamp_axis(value: f64, low: f64, high: f64) -> f64 {
   }
 }
 
-/// Top-left of the popover (physical on Windows, logical points on macOS where the anchor scale is 1.0): on the screen side the icon's bar is on, centred on the icon, kept inside the work area.
+/// Top-left of the popover window (physical on Windows, logical points on macOS where the anchor scale is 1.0). The window carries a transparent
+/// padding around the visible panel; the panel sits on the screen side the icon's bar is on, centred on the icon, kept inside the work area.
 pub fn position(icon: Area, work: Area, scale: f64, size: (f64, f64), edge: Edge) -> (i32, i32) {
-  let (w, h) = size;
+  let pad = POPOVER_PADDING * scale;
+  let (w, h) = (size.0 - 2.0 * pad, size.1 - 2.0 * pad);
   let gap = GAP * scale;
   let margin = EDGE_MARGIN * scale;
   let (x, y) = match edge {
@@ -107,13 +115,15 @@ pub fn position(icon: Area, work: Area, scale: f64, size: (f64, f64), edge: Edge
     Edge::Left => (icon.right() + gap, icon.cy() - h / 2.0),
     Edge::Right => (icon.x - w - gap, icon.cy() - h / 2.0),
   };
-  let (x_margin, y_margin) = match edge {
-    Edge::Top | Edge::Bottom => (margin, 0.0),
-    Edge::Left | Edge::Right => (0.0, margin),
+  let (x_low, x_high, y_low, y_high) = match edge {
+    Edge::Top => (margin, margin, 0.0, margin),
+    Edge::Bottom => (margin, margin, margin, 0.0),
+    Edge::Left => (0.0, margin, margin, margin),
+    Edge::Right => (margin, 0.0, margin, margin),
   };
-  let x = clamp_axis(x, work.x + x_margin, work.right() - w - x_margin);
-  let y = clamp_axis(y, work.y + y_margin, work.bottom() - h - y_margin);
-  (x.round() as i32, y.round() as i32)
+  let x = clamp_axis(x, work.x + x_low, work.right() - w - x_high);
+  let y = clamp_axis(y, work.y + y_low, work.bottom() - h - y_high);
+  ((x - pad).round() as i32, (y - pad).round() as i32)
 }
 
 #[derive(Debug, PartialEq)]
@@ -227,6 +237,7 @@ pub struct PopoverModel {
   pub open_decisions: usize,
   pub extras: Value,
   pub missed: Vec<Value>,
+  pub max_height: f64,
 }
 
 pub struct Inputs {
@@ -237,6 +248,7 @@ pub struct Inputs {
   pub open_decisions: usize,
   pub extras: Value,
   pub missed: Vec<Value>,
+  pub max_height: f64,
   pub version: String,
   pub platform: &'static str,
   pub now: i64,
@@ -290,6 +302,7 @@ pub fn build_model(state: &TrayState, inputs: Inputs) -> PopoverModel {
     open_decisions: inputs.open_decisions,
     extras: inputs.extras,
     missed: inputs.missed,
+    max_height: inputs.max_height,
   }
 }
 
@@ -391,10 +404,19 @@ fn gather<R: Runtime>(app: &AppHandle<R>) -> Inputs {
     open_decisions: open_decisions(),
     extras,
     missed: crate::toast::missed_records(app),
+    max_height: current_max_height(app),
     version: app.package_info().version.to_string(),
     platform: platform(),
     now: crate::tray::now_secs(),
   }
+}
+
+fn current_max_height<R: Runtime>(app: &AppHandle<R>) -> f64 {
+  let work_height = app
+    .try_state::<PopoverStore>()
+    .and_then(|store| *store.anchor.lock().unwrap())
+    .map(|a| a.work.h / a.scale);
+  max_window_height(work_height)
 }
 
 fn open_decisions() -> usize {
@@ -522,15 +544,29 @@ fn frontmost_pid() -> Option<i32> {
 }
 
 #[cfg(target_os = "macos")]
-fn activate_pid(pid: i32) {
-  use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
-  if let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
-    app.activateWithOptions(NSApplicationActivationOptions::empty());
-  }
+fn activate_pid<R: Runtime>(app: &AppHandle<R>, pid: i32) {
+  let _ = app.run_on_main_thread(move || {
+    use objc2::runtime::NSObjectProtocol;
+    use objc2::{sel, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSApplicationActivationOptions, NSRunningApplication};
+    let Some(target) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) else { return };
+    let cooperative = MainThreadMarker::new().map(NSApplication::sharedApplication).filter(|ns_app| {
+      ns_app.respondsToSelector(sel!(yieldActivationToApplication:)) && target.respondsToSelector(sel!(activateFromApplication:options:))
+    });
+    match cooperative {
+      Some(ns_app) => {
+        ns_app.yieldActivationToApplication(&target);
+        target.activateFromApplication_options(&NSRunningApplication::currentApplication(), NSApplicationActivationOptions::empty());
+      }
+      None => {
+        target.activateWithOptions(NSApplicationActivationOptions::empty());
+      }
+    }
+  });
 }
 
 #[cfg(not(target_os = "macos"))]
-fn activate_pid(_pid: i32) {}
+fn activate_pid<R: Runtime>(_app: &AppHandle<R>, _pid: i32) {}
 
 fn main_is_active<R: Runtime>(app: &AppHandle<R>) -> bool {
   app
@@ -549,7 +585,7 @@ fn restore_previous_app<R: Runtime>(app: &AppHandle<R>, class: ActionClass) {
   let Some(from) = store.previous.lock().unwrap().take() else { return };
   if should_restore_previous_app(from.main_was_active, other_windows_visible(app), class) {
     if let Some(pid) = from.app_pid {
-      activate_pid(pid);
+      activate_pid(app, pid);
     }
   }
 }
@@ -630,7 +666,8 @@ pub(crate) fn action_class(action: &Action) -> ActionClass {
   match action {
     Action::Menu(id) if id.starts_with("switch:") || id.starts_with("stop:") => ActionClass::KeepOpen,
     Action::Close | Action::RoutineDone(_) => ActionClass::HideOnly,
-    Action::Menu(id) if id.starts_with("dnd:") || id == "autostart" || id == "quit" => ActionClass::HideOnly,
+    Action::Menu(id) if id.starts_with("dnd:") || id.starts_with("open:") || id.starts_with("plugin-item:") => ActionClass::HideOnly,
+    Action::Menu(id) if id == "autostart" || id == "quit" => ActionClass::HideOnly,
     _ => ActionClass::HideAndShowMain,
   }
 }
@@ -813,9 +850,10 @@ mod tests {
     let (x, y) = position(anchor.icon, anchor.work, anchor.scale, size, Edge::Top);
     let (x, y) = (f64::from(x), f64::from(y));
     let work = target.work.scaled(k);
-    assert!(x >= work.x && x + WIDTH <= work.right(), "x {x} outside {work:?}");
-    assert!(y >= work.y && y + DEFAULT_HEIGHT <= work.bottom(), "y {y} outside {work:?}");
-    assert!(y >= anchor.icon.bottom());
+    let pad = POPOVER_PADDING;
+    assert!(x + pad >= work.x && x + WIDTH - pad <= work.right(), "x {x} outside {work:?}");
+    assert!(y + pad >= work.y && y + DEFAULT_HEIGHT - pad <= work.bottom(), "y {y} outside {work:?}");
+    assert!(y + pad >= anchor.icon.bottom());
   }
 
   #[test]
@@ -925,8 +963,9 @@ mod tests {
     assert_eq!(edge, Edge::Bottom);
     let size = (WIDTH * anchor.scale, DEFAULT_HEIGHT * anchor.scale);
     let (x, y) = position(anchor.icon, anchor.work, anchor.scale, size, edge);
-    assert!(f64::from(x) >= left.work.x && f64::from(x) + size.0 <= left.work.right());
-    assert!(f64::from(y) >= left.work.y && f64::from(y) + size.1 <= left.work.bottom());
+    let pad = POPOVER_PADDING * anchor.scale;
+    assert!(f64::from(x) + pad >= left.work.x && f64::from(x) + size.0 - pad <= left.work.right());
+    assert!(f64::from(y) + pad >= left.work.y && f64::from(y) + size.1 - pad <= left.work.bottom());
   }
 
   #[test]
@@ -938,6 +977,7 @@ mod tests {
   }
 
   const SIZE: (f64, f64) = (640.0, 800.0);
+  const WIN: (f64, f64) = (344.0, 424.0);
 
   #[test]
   fn mac_popover_opens_below_the_menu_bar_icon_centred() {
@@ -946,43 +986,58 @@ mod tests {
     let icon = area(2000.0, 0.0, 44.0, 50.0);
     let (x, y) = position(icon, work, 2.0, SIZE, Edge::Top);
     assert_eq!(x, 2022 - 320);
-    assert_eq!(y, 50 + 12);
+    assert_eq!(y + 24, 50 + 12);
     assert_eq!(taskbar_edge(monitor, work, icon), Edge::Top);
   }
 
   #[test]
-  fn windows_popover_sits_next_to_the_taskbar_edge() {
-    let icon = area(1500.0, 1040.0, 24.0, 40.0);
-    let bottom = position(icon, area(0.0, 0.0, 1920.0, 1040.0), 1.0, (320.0, 400.0), Edge::Bottom);
-    assert_eq!(bottom, (1512 - 160, 1040 - 400 - 6));
-    let top = position(area(1500.0, 0.0, 24.0, 40.0), area(0.0, 40.0, 1920.0, 1040.0), 1.0, (320.0, 400.0), Edge::Top);
-    assert_eq!(top, (1512 - 160, 46));
-    let left = position(area(0.0, 600.0, 40.0, 40.0), area(40.0, 0.0, 1880.0, 1080.0), 1.0, (320.0, 400.0), Edge::Left);
-    assert_eq!(left, (46, 620 - 200));
-    let right = position(area(1880.0, 600.0, 40.0, 40.0), area(0.0, 0.0, 1880.0, 1080.0), 1.0, (320.0, 400.0), Edge::Right);
-    assert_eq!(right, (1880 - 320 - 6, 620 - 200));
+  fn mac_panel_top_is_the_gap_below_the_icon() {
+    let work = area(0.0, 24.0, 1440.0, 876.0);
+    let icon = area(1000.0, 0.0, 30.0, 24.0);
+    let (x, y) = position(icon, work, 1.0, (WIDTH, 500.0), Edge::Top);
+    assert_eq!(y, 24 + GAP as i32 - POPOVER_PADDING as i32);
+    assert_eq!(x, 1015 - WIDTH as i32 / 2);
   }
 
   #[test]
-  fn popover_is_clamped_inside_the_work_area() {
+  fn windows_popover_sits_next_to_the_taskbar_edge() {
+    let p = POPOVER_PADDING as i32;
+    let icon = area(1500.0, 1040.0, 24.0, 40.0);
+    let bottom = position(icon, area(0.0, 0.0, 1920.0, 1040.0), 1.0, WIN, Edge::Bottom);
+    assert_eq!(bottom, (1512 - 160 - p, 1040 - 400 - 6 - p));
+    let top = position(area(1500.0, 0.0, 24.0, 40.0), area(0.0, 40.0, 1920.0, 1040.0), 1.0, WIN, Edge::Top);
+    assert_eq!(top, (1512 - 160 - p, 46 - p));
+    let left = position(area(0.0, 600.0, 40.0, 40.0), area(40.0, 0.0, 1880.0, 1080.0), 1.0, WIN, Edge::Left);
+    assert_eq!(left, (46 - p, 620 - 200 - p));
+    let right = position(area(1880.0, 600.0, 40.0, 40.0), area(0.0, 0.0, 1880.0, 1080.0), 1.0, WIN, Edge::Right);
+    assert_eq!(right, (1880 - 320 - 6 - p, 620 - 200 - p));
+  }
+
+  #[test]
+  fn popover_panel_keeps_the_margin_from_every_work_area_edge() {
+    let p = POPOVER_PADDING as i32;
     let work = area(0.0, 0.0, 1920.0, 1040.0);
-    let far_right = position(area(1900.0, 1040.0, 20.0, 40.0), work, 1.0, (320.0, 400.0), Edge::Bottom);
-    assert_eq!(far_right.0, 1920 - 320 - 8);
-    let far_left = position(area(0.0, 1040.0, 20.0, 40.0), work, 1.0, (320.0, 400.0), Edge::Bottom);
-    assert_eq!(far_left.0, 8);
-    let tall = position(area(1000.0, 1040.0, 20.0, 40.0), work, 1.0, (320.0, 2000.0), Edge::Bottom);
-    assert_eq!(tall.1, 0);
-    let low_vertical = position(area(1880.0, 1070.0, 40.0, 40.0), work, 1.0, (320.0, 400.0), Edge::Right);
-    assert_eq!(low_vertical.1, 1040 - 400 - 8);
+    let far_right = position(area(1900.0, 1040.0, 20.0, 40.0), work, 1.0, WIN, Edge::Bottom);
+    assert_eq!(far_right.0 + p, 1920 - 320 - 8);
+    let far_left = position(area(0.0, 1040.0, 20.0, 40.0), work, 1.0, WIN, Edge::Bottom);
+    assert_eq!(far_left.0 + p, 8);
+    let tall = position(area(1000.0, 1040.0, 20.0, 40.0), work, 1.0, (WIN.0, 2000.0), Edge::Bottom);
+    assert_eq!(tall.1 + p, 8);
+    let tall_top = position(area(1000.0, 0.0, 20.0, 24.0), work, 1.0, (WIN.0, 2000.0), Edge::Top);
+    assert_eq!(tall_top.1 + p, 0);
+    let low_vertical = position(area(1880.0, 1070.0, 40.0, 40.0), work, 1.0, WIN, Edge::Right);
+    assert_eq!(low_vertical.1 + p, 1040 - 400 - 8);
+    let high_left = position(area(0.0, 10.0, 40.0, 40.0), work, 1.0, WIN, Edge::Left);
+    assert_eq!(high_left.1 + p, 8);
   }
 
   #[test]
   fn scale_widens_the_gap_and_margin() {
     let work = area(0.0, 0.0, 4000.0, 2000.0);
     let (_, y) = position(area(100.0, 0.0, 40.0, 50.0), work, 2.0, SIZE, Edge::Top);
-    assert_eq!(y, 62);
+    assert_eq!(y + 24, 62);
     let (x, _) = position(area(0.0, 0.0, 40.0, 50.0), work, 2.0, SIZE, Edge::Top);
-    assert_eq!(x, 16);
+    assert_eq!(x + 24, 16);
   }
 
   #[test]
@@ -1126,6 +1181,7 @@ mod tests {
       open_decisions: 3,
       extras: json!({}),
       missed: Vec::new(),
+      max_height: 900.0,
       version: "1.2.3".into(),
       platform: "macos",
       now: 500,
@@ -1172,11 +1228,11 @@ mod tests {
     let keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
     for key in [
       "platform", "version", "now", "running", "recent", "pluginSections", "dnd", "autostart", "updaterEnabled",
-      "decisionsAvailable", "openDecisions", "extras", "missed",
+      "decisionsAvailable", "openDecisions", "extras", "missed", "maxHeight",
     ] {
       assert!(keys.contains(&key), "{key} missing");
     }
-    assert_eq!(keys.len(), 13);
+    assert_eq!(keys.len(), 14);
     assert_eq!(value["running"][0]["workspaceId"], 1);
     assert_eq!(value["running"][0]["commonTime"], 0);
     assert_eq!(value["pluginSections"][0]["pluginName"], "Board");
@@ -1209,10 +1265,10 @@ mod tests {
   #[test]
   fn actions_that_show_main_are_not_hide_only() {
     let s = state();
-    for id in ["open:1:10", "open", "shortcuts", "decisions", "manager", "open-usage", "open-runner", "open-routines", "plugin-item:p1"] {
+    for id in ["open", "shortcuts", "decisions", "manager", "open-usage", "open-runner", "open-routines"] {
       assert_eq!(action_class(&classify(id, &s, true).unwrap()), ActionClass::HideAndShowMain, "{id}");
     }
-    for id in ["close", "dnd:1h", "autostart", "quit", "routine-done:42"] {
+    for id in ["close", "dnd:1h", "autostart", "quit", "routine-done:42", "open:1:10", "plugin-item:p1"] {
       assert_eq!(action_class(&classify(id, &s, true).unwrap()), ActionClass::HideOnly, "{id}");
     }
   }
@@ -1232,6 +1288,21 @@ mod tests {
     for (main_was_active, other_visible, class, expected) in table {
       assert_eq!(should_restore_previous_app(main_was_active, other_visible, class), expected, "{main_was_active} {other_visible} {class:?}");
     }
+  }
+
+  #[test]
+  fn max_window_height_follows_the_work_area() {
+    assert_eq!(max_window_height(None), MAX_HEIGHT);
+    assert_eq!(max_window_height(Some(2000.0)), MAX_HEIGHT);
+    assert_eq!(max_window_height(Some(700.0)), 700.0 - 2.0 * EDGE_MARGIN);
+    assert_eq!(max_window_height(Some(20.0)), MIN_HEIGHT);
+  }
+
+  #[test]
+  fn model_carries_the_max_height() {
+    let model = build_model(&state(), Inputs { max_height: 612.0, ..inputs() });
+    assert_eq!(model.max_height, 612.0);
+    assert_eq!(serde_json::to_value(&model).unwrap()["maxHeight"], 612.0);
   }
 
   #[test]
