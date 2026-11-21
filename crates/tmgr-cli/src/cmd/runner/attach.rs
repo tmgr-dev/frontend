@@ -381,7 +381,11 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
     list.iter()
         .map(|s| SessionRow {
             id: s.id.clone(),
-            name: s.name.clone(),
+            name: if super::manager::is_unrestricted(s) {
+                format!("UNRESTRICTED manager: no sandbox, bypass | {}", s.name)
+            } else {
+                s.name.clone()
+            },
             state: s.state.clone(),
             age: short_age(now, s.state.since_ms),
             you: s.human_s,
@@ -5927,6 +5931,17 @@ mod tests {
             ..info("s1")
         }])
         .remove(0)
+    }
+
+    #[test]
+    fn an_unrestricted_manager_row_carries_a_visible_marker() {
+        let mut m = info("m1");
+        m.manager = true;
+        assert_eq!(rows(std::slice::from_ref(&m))[0].name, "m1");
+        m.no_sandbox = true;
+        assert!(rows(&[m])[0]
+            .name
+            .starts_with("UNRESTRICTED manager: no sandbox, bypass"));
     }
 
     #[test]

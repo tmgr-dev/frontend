@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- New: `tmgr manager start --unrestricted` runs the manager without the sandbox and in bypass mode, so it can work on your whole machine. It is for you at the keyboard: it is refused inside an agent session and without a terminal, works only with Claude Code, and needs the follower PIN (`tmgr link pin set`) and a typed confirmation after a warning.
+- It applies to that one manager session only: starting the manager again without the flag gives the sandboxed, ask-mode manager. There is no `--yes`.
+- Text the manager reads from sessions, rooms or files, and messages you or your phone send to it, can steer it. Starting it from the phone is not possible.
+- `tmgr manager status`, `tmgr agents` and `tmgr attach` mark an unrestricted manager as UNRESTRICTED. Restart the runner after updating.
+
 ## 1.0.154
 
 - Fixed: the Manager window and `tmgr attach` chat showed empty rooms for sessions started with `--no-sandbox`. The runner could not tell which conversation file belonged to such a session. It now finds it through Claude Code's own session file, so the last 30 turns appear and new turns keep arriving. Codex sessions started with `--no-sandbox` still show no history unless they were resumed by id.

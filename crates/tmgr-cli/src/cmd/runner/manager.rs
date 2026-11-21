@@ -3,12 +3,15 @@ use crate::cli::VERSION;
 use crate::cmd::mcp::{arg_err, err, negotiate, ok, read_line, text_result};
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::{json, Value};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use tmgr_core::error::{Error, Result};
-use tmgr_ipc::api::{caps, StateKind};
+use tmgr_core::error::{Error, Kind, Result};
+use tmgr_ipc::api::{caps, ManagerUnrestrictedReq, SessionInfo, StateKind};
 use tmgr_ipc::manager::tool;
+use tmgr_link::pin;
+use tmgr_link::privileged;
+use tmgr_link::store::Paths;
 use tmgr_runner::daemon;
 use tmgr_runner::manager::{prompt_bytes, submit, CALL_WAIT, SPAWN_WAIT};
 use tmgr_runner::mgr_rpc::top::{apply_top, is_top};
@@ -66,6 +69,101 @@ pub struct ManagerStartArgs {
     /// Stop being the top manager (default: leave the setting as it is)
     #[arg(long)]
     pub no_top: bool,
+    /// Run the manager without the sandbox and in bypass mode, after the follower PIN (terminal only)
+    #[arg(long)]
+    pub unrestricted: bool,
+}
+
+const UNRESTRICTED_WORD: &str = "unrestricted";
+
+pub(super) fn is_unrestricted(s: &SessionInfo) -> bool {
+    s.manager && s.no_sandbox
+}
+
+fn unrestricted_args_gate(in_agent: bool, interactive: bool, agent: ManagerAgent) -> Result<()> {
+    if matches!(agent, ManagerAgent::Codex) {
+        return Err(Error::usage(
+            "an unrestricted manager runs only with claude-code",
+        ));
+    }
+    privileged::check(in_agent, interactive)
+}
+
+fn unrestricted_caps(have: &[String]) -> Result<()> {
+    let ok = [
+        caps::MANAGER_V1,
+        caps::MANAGER_UNRESTRICTED_V1,
+        caps::NO_SANDBOX_V1,
+    ]
+    .iter()
+    .all(|c| have.iter().any(|h| h == c));
+    if ok {
+        Ok(())
+    } else {
+        Err(
+            Error::usage("the running runner does not support an unrestricted manager")
+                .hint(format!("{} runner restart", super::bin())),
+        )
+    }
+}
+
+fn unrestricted_warning() -> &'static str {
+    "warning: an unrestricted manager\n\
+     - no sandbox: it runs with your real home folder, SSH keys and credentials.\n\
+     - bypass mode: it runs commands without asking.\n\
+     - it runs as you and can read and change any of your files.\n\
+     - it can type into sessions that are in bypass mode or run without the sandbox.\n\
+     - text it reads from sessions, rooms or files, and messages you or your phone send to it, can steer it.\n\
+     - this applies to this manager session only: a restart without --unrestricted is sandboxed and asks again."
+}
+
+fn require_pin_set() -> Result<()> {
+    let paths = Paths::from_env()?;
+    if pin::status(&paths)?.set {
+        Ok(())
+    } else {
+        Err(Error::new(
+            Kind::Forbidden,
+            "no follower PIN is set, so an unrestricted manager cannot start",
+        )
+        .hint("set one first: tmgr link pin set"))
+    }
+}
+
+fn start_unrestricted(o: &Opts, a: &ManagerStartArgs, cwd: &Path) -> Result<i32> {
+    let tty = std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal()
+        && std::io::stderr().is_terminal();
+    unrestricted_args_gate(privileged::in_agent_session(), tty, a.agent)?;
+    let cfg = runner_config()?;
+    daemon::start_background(&cfg).map_err(rerr)?;
+    let mut c = connect(&cfg)?;
+    unrestricted_caps(&c.welcome().caps)?;
+    eprintln!("{}", unrestricted_warning());
+    privileged::confirm_typed_stdio(
+        UNRESTRICTED_WORD,
+        &super::privilege::prompt(UNRESTRICTED_WORD),
+    )?;
+    require_pin_set()?;
+    let entered = rpassword::prompt_password("Follower PIN (input hidden): ")?;
+    apply_top(&cfg.dir, a.top_choice())
+        .map_err(|e| Error::usage(format!("cannot update the top manager flag: {e}")))?;
+    let mut req = super::ops::run_create_run(
+        a.agent.id().to_string(),
+        cwd.display().to_string(),
+        Some(a.name.clone()),
+        None,
+        super::ops::terminal_size(),
+        false,
+    );
+    req.manager = true;
+    let info = c
+        .create_unrestricted_manager(ManagerUnrestrictedReq {
+            run: req,
+            pin: entered,
+        })
+        .map_err(rerr)?;
+    finish_start(o, &mut c, &cfg.dir, info, true)
 }
 
 impl ManagerStartArgs {
@@ -120,6 +218,9 @@ fn start_cwd(runner_dir: &std::path::Path, cwd: Option<&std::path::Path>) -> Res
 fn start(o: &Opts, a: &ManagerStartArgs) -> Result<i32> {
     let cfg = runner_config()?;
     let cwd = start_cwd(&cfg.dir, a.cwd.as_deref())?;
+    if a.unrestricted {
+        return start_unrestricted(o, a, &cwd);
+    }
     apply_top(&cfg.dir, a.top_choice())
         .map_err(|e| Error::usage(format!("cannot update the top manager flag: {e}")))?;
     daemon::start_background(&cfg).map_err(rerr)?;
@@ -140,8 +241,17 @@ fn start(o: &Opts, a: &ManagerStartArgs) -> Result<i32> {
     );
     req.manager = true;
     let info = c.create_run(req).map_err(rerr)?;
-    let typed =
-        String::from_utf8(prompt_bytes(&first_prompt(is_top(&cfg.dir)))).unwrap_or_default();
+    finish_start(o, &mut c, &cfg.dir, info, false)
+}
+
+fn finish_start(
+    o: &Opts,
+    c: &mut tmgr_runner::client::Client,
+    dir: &Path,
+    info: SessionInfo,
+    unrestricted: bool,
+) -> Result<i32> {
+    let typed = String::from_utf8(prompt_bytes(&first_prompt(is_top(dir)))).unwrap_or_default();
     let end = Instant::now() + PROMPT_WAIT;
     let mut delivered = false;
     while Instant::now() < end {
@@ -157,14 +267,20 @@ fn start(o: &Opts, a: &ManagerStartArgs) -> Result<i32> {
         );
     }
     let bin = super::bin();
-    Ok(emit(
-        o,
-        json!({"id": info.id, "name": info.name, "prompt_sent": delivered}),
+    let mut data = json!({"id": info.id, "name": info.name, "prompt_sent": delivered});
+    let text = if unrestricted {
+        data["unrestricted"] = json!(true);
+        format!(
+            "unrestricted manager {} started (no sandbox, bypass); attach with: {bin} attach {}",
+            info.id, info.id
+        )
+    } else {
         format!(
             "manager {} started; attach with: {bin} attach {}",
             info.id, info.id
-        ),
-    ))
+        )
+    };
+    Ok(emit(o, data, text))
 }
 
 fn status(o: &Opts) -> Result<i32> {
@@ -176,18 +292,30 @@ fn status(o: &Opts) -> Result<i32> {
         .into_iter()
         .find(|s| s.manager && s.state.kind != StateKind::Exited);
     Ok(match live {
-        Some(s) => emit(
-            o,
-            json!({"running": true, "id": s.id, "name": s.name, "agent": s.profile, "state": s.state.kind}),
-            format!(
-                "manager {} ({}) is {:?}",
-                s.id,
-                s.profile.as_deref().unwrap_or("?"),
-                s.state.kind
-            ),
-        ),
+        Some(s) => {
+            let unrestricted = is_unrestricted(&s);
+            emit(
+                o,
+                json!({"running": true, "id": s.id, "name": s.name, "agent": s.profile, "state": s.state.kind, "unrestricted": unrestricted}),
+                status_line(&s),
+            )
+        }
         None => emit(o, json!({"running": false}), "no manager is running"),
     })
+}
+
+fn status_line(s: &SessionInfo) -> String {
+    let base = format!(
+        "manager {} ({}) is {:?}",
+        s.id,
+        s.profile.as_deref().unwrap_or("?"),
+        s.state.kind
+    );
+    if is_unrestricted(s) {
+        format!("{base} \u{2014} UNRESTRICTED (no sandbox, bypass)")
+    } else {
+        base
+    }
 }
 
 fn first_prompt(top: bool) -> String {
@@ -459,6 +587,74 @@ mod tests {
         }
         use clap::Parser;
         W::try_parse_from(std::iter::once("t").chain(extra.iter().copied())).map(|w| w.a)
+    }
+
+    #[test]
+    fn unrestricted_parses_and_defaults_off() {
+        assert!(!start_args(&[]).unwrap().unrestricted);
+        assert!(start_args(&["--unrestricted"]).unwrap().unrestricted);
+        assert!(start_args(&["--unrestricted", "--yes"]).is_err());
+    }
+
+    #[test]
+    fn unrestricted_refuses_codex_then_agent_sessions_then_non_terminals() {
+        let codex = unrestricted_args_gate(false, true, ManagerAgent::Codex).unwrap_err();
+        assert!(codex.message.contains("only with claude-code"));
+        let in_agent = unrestricted_args_gate(true, true, ManagerAgent::ClaudeCode).unwrap_err();
+        assert_eq!(in_agent.exit_code(), 5);
+        assert!(in_agent.message.contains("agent session"));
+        let no_tty = unrestricted_args_gate(false, false, ManagerAgent::ClaudeCode).unwrap_err();
+        assert!(no_tty.message.contains("interactive terminal"));
+        assert!(unrestricted_args_gate(false, true, ManagerAgent::ClaudeCode).is_ok());
+    }
+
+    #[test]
+    fn unrestricted_needs_all_three_caps() {
+        let all: Vec<String> = [
+            caps::MANAGER_V1,
+            caps::MANAGER_UNRESTRICTED_V1,
+            caps::NO_SANDBOX_V1,
+        ]
+        .map(String::from)
+        .to_vec();
+        assert!(unrestricted_caps(&all).is_ok());
+        for skip in 0..3 {
+            let mut some = all.clone();
+            some.remove(skip);
+            let e = unrestricted_caps(&some).unwrap_err();
+            assert!(e
+                .message
+                .contains("does not support an unrestricted manager"));
+            assert!(e.hint.as_deref().unwrap_or("").contains("runner restart"));
+        }
+    }
+
+    #[test]
+    fn the_unrestricted_warning_names_the_sandbox_bypass_and_messages() {
+        let w = unrestricted_warning();
+        assert!(w.contains("no sandbox"));
+        assert!(w.contains("bypass"));
+        assert!(w.contains("your phone"));
+        assert!(w.contains("messages"));
+    }
+
+    #[test]
+    fn only_a_manager_without_the_sandbox_is_unrestricted() {
+        let mut s: SessionInfo = serde_json::from_value(json!({
+            "id": "s_mmmmmmmmmm", "name": "manager", "argv": ["/bin/sh"], "cwd": "/w",
+            "profile": "claude-code", "state": {"kind": "working", "since_ms": 1},
+            "created_ms": 1, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2,
+        }))
+        .unwrap();
+        assert!(!is_unrestricted(&s));
+        s.manager = true;
+        assert!(!is_unrestricted(&s));
+        assert!(!status_line(&s).contains("UNRESTRICTED"));
+        s.no_sandbox = true;
+        assert!(is_unrestricted(&s));
+        assert!(status_line(&s).contains("UNRESTRICTED (no sandbox, bypass)"));
+        s.manager = false;
+        assert!(!is_unrestricted(&s));
     }
 
     #[test]

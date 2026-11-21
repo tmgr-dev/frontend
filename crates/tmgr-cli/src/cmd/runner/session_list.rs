@@ -38,6 +38,7 @@ pub(super) struct Row {
     pub(super) folder_gone: bool,
     #[serde(skip)]
     pub(super) bypassed: bool,
+    unrestricted: bool,
 }
 
 impl Row {
@@ -60,6 +61,7 @@ impl Row {
             sandboxed: false,
             folder_gone,
             bypassed: false,
+            unrestricted: false,
         }
     }
 
@@ -88,6 +90,7 @@ impl Row {
             sandboxed: !s.no_sandbox,
             folder_gone: !is_dir(&s.cwd),
             bypassed: s.permission_mode.as_deref() == Some("bypass"),
+            unrestricted: super::manager::is_unrestricted(s),
         }
     }
 
@@ -97,6 +100,14 @@ impl Row {
 
     pub(super) fn title(&self) -> Option<&str> {
         self.title.as_deref()
+    }
+
+    fn marked_text(&self) -> String {
+        if self.unrestricted {
+            format!("[UNRESTRICTED] {}", self.text())
+        } else {
+            self.text()
+        }
     }
 
     pub(super) fn text(&self) -> String {
@@ -327,7 +338,7 @@ fn render(rows: &[Row], hints: &[String]) -> String {
                     Live::No => "-",
                 }
                 .to_string(),
-                r.text(),
+                r.marked_text(),
             ]);
         }
         lines.push(crate::out::table(&table));
@@ -358,6 +369,7 @@ mod tests {
             sandboxed: false,
             folder_gone: false,
             bypassed: false,
+            unrestricted: false,
         }
     }
 
@@ -410,6 +422,30 @@ mod tests {
         let rows = vec![Row::runner(&info), row("external", id, None)];
         let ids: Vec<String> = dedupe(rows).into_iter().map(|r| r.id).collect();
         assert_eq!(ids, ["s_aaaaaaaaaa"]);
+    }
+
+    fn manager_info(manager: bool, no_sandbox: bool) -> SessionInfo {
+        serde_json::from_value(json!({
+            "id": "s_mmmmmmmmmm", "name": "manager", "argv": ["/bin/sh"], "cwd": "/w",
+            "profile": "claude-code", "state": {"kind": "working", "since_ms": 1},
+            "created_ms": 1, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2,
+            "manager": manager, "no_sandbox": no_sandbox,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn an_unrestricted_manager_row_is_marked_in_text_and_json() {
+        for (manager, no_sandbox, marked) in [
+            (true, true, true),
+            (true, false, false),
+            (false, true, false),
+            (false, false, false),
+        ] {
+            let r = Row::runner(&manager_info(manager, no_sandbox));
+            assert_eq!(serde_json::to_value(&r).unwrap()["unrestricted"], marked);
+            assert_eq!(render(&[r], &[]).contains("[UNRESTRICTED]"), marked);
+        }
     }
 
     #[test]
