@@ -31,6 +31,7 @@ pub trait JoinPort {
     fn peers(&self) -> std::result::Result<usize, String>;
     fn is_joined(&self) -> bool;
     fn join(&self, code: &str) -> std::result::Result<(), String>;
+    fn pending_matches(&self, code: &str) -> bool;
     fn reset_pending_join(&self) -> std::result::Result<(), String>;
     fn poll(&self) -> std::result::Result<(), String>;
 }
@@ -51,6 +52,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> JoinPort for RelayEngine<T, K, S> {
 
     fn join(&self, code: &str) -> std::result::Result<(), String> {
         self.join_with_code(code)
+    }
+
+    fn pending_matches(&self, code: &str) -> bool {
+        self.pending_join_matches(code)
     }
 
     fn reset_pending_join(&self) -> std::result::Result<(), String> {
@@ -77,7 +82,7 @@ pub fn drive(
     if peers > 0 && port.is_joined() {
         return Ok(Outcome::AlreadyJoined);
     }
-    let fresh = !code.trim().is_empty();
+    let fresh = !code.trim().is_empty() && !port.pending_matches(code);
     if peers > 0 && fresh {
         port.reset_pending_join()?;
     }
@@ -172,6 +177,7 @@ mod tests {
         join_result: std::result::Result<(), String>,
         polls: RefCell<Vec<std::result::Result<(), String>>>,
         join_ok_after: Cell<Option<usize>>,
+        pending: RefCell<Option<String>>,
     }
 
     impl Mock {
@@ -184,6 +190,7 @@ mod tests {
                 join_result: Ok(()),
                 polls: RefCell::new(polls),
                 join_ok_after: Cell::new(None),
+                pending: RefCell::new(None),
             }
         }
     }
@@ -197,12 +204,17 @@ mod tests {
         }
         fn join(&self, code: &str) -> std::result::Result<(), String> {
             self.join_calls.borrow_mut().push(code.to_owned());
+            *self.pending.borrow_mut() = Some(code.to_owned());
             self.peers.set(1);
             self.joined.set(false);
             self.join_result.clone()
         }
+        fn pending_matches(&self, code: &str) -> bool {
+            !self.joined.get() && self.pending.borrow().as_deref() == Some(code)
+        }
         fn reset_pending_join(&self) -> std::result::Result<(), String> {
             self.resets.set(self.resets.get() + 1);
+            *self.pending.borrow_mut() = None;
             self.peers.set(0);
             Ok(())
         }
@@ -251,6 +263,17 @@ mod tests {
         assert_eq!(drive(&m, "new", &no_sleep), Ok(Outcome::Joined));
         assert_eq!(m.resets.get(), 2);
         assert_eq!(*m.join_calls.borrow(), ["old", "new"]);
+    }
+
+    #[test]
+    fn retrying_the_same_code_after_a_timeout_resumes_the_pending_join() {
+        let m = Mock::new(0, true, vec![]);
+        assert_eq!(drive(&m, "code", &no_sleep), Err(TIMEOUT.into()));
+        m.join_ok_after.set(Some(0));
+        m.polls.borrow_mut().push(Ok(()));
+        assert_eq!(drive(&m, "code", &no_sleep), Ok(Outcome::Joined));
+        assert_eq!(*m.join_calls.borrow(), ["code"]);
+        assert_eq!(m.resets.get(), 0);
     }
 
     #[test]

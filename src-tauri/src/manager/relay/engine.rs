@@ -11,7 +11,7 @@ use tmgr_chat_relay::api::{self, Directory, Msg, Request};
 use tmgr_chat_relay::fields::{check_device_id, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
-  decode_join_code, encode_join_code, join_mac, parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set_by_kind, may_vouch, verify_join_mac,
+  decode_join_code, encode_join_code, join_mac, parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set_by_kind, verify_join_mac,
   verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, RevokeStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
@@ -208,7 +208,7 @@ fn validate_chat(m: &ChatMessage) -> Result<(), String> {
   Ok(())
 }
 
-fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
+fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_base: bool) {
   let no_devices: &[api::Device] = &[];
   let dir_devices = dir.map_or(no_devices, |d| d.devices.as_slice());
   let mut intros: Vec<String> = c.st.intros.clone();
@@ -230,6 +230,9 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
     c.st.trusted.iter().chain(c.st.base.iter()).map(|d| DirEntry { device_id: d.id.clone(), sign_pub_b64: d.sign_pub.clone(), kex_pub_b64: d.kex_pub.clone() }),
   );
   let set = trusted_set_by_kind(uid, &pins, &c.st.revoked, &intros, &entries, Some(&c.st.kinds));
+  for (id, kind) in &set.kinds {
+    pin_kind(c, id, kind, now);
+  }
   let mut out: Vec<Dev> = Vec::new();
   for t in &set.trusted {
     let in_dir = dir_devices.iter().find(|d| d.device_id == t.device_id && fingerprint(&d.sign_pub, &d.kex_pub) == t.fp);
@@ -297,28 +300,9 @@ fn pin_kind(c: &mut Core, id: &str, kind: &str, now: u64) {
   }
 }
 
-fn apply_intro_kinds(c: &mut Core, now: u64) {
-  loop {
-    let before = c.st.kinds.len();
-    let signed: Vec<(String, String)> = c
-      .st
-      .trusted
-      .iter()
-      .flat_map(|d| {
-        c.st
-          .intros
-          .iter()
-          .filter_map(|i| parse_intro(i).ok())
-          .filter(|p| p.parsed.target_id == d.id && p.parsed.target_fp == d.fp && may_vouch(c.st.kinds.get(&p.by).map(String::as_str)))
-          .map(|p| (d.id.clone(), p.parsed.target_kind.clone()))
-      })
-      .collect();
-    for (id, kind) in signed {
-      pin_kind(c, &id, &kind, now);
-    }
-    if c.st.kinds.len() == before {
-      break;
-    }
+fn backfill_self(c: &mut Core, kind: &str) {
+  if let Some(id) = &c.identity {
+    c.st.kinds.entry(id.device_id.clone()).or_insert_with(|| kind.to_owned());
   }
 }
 
@@ -350,7 +334,7 @@ fn unseen_for_30_days(c: &Core, device_id: &str, now: u64) -> bool {
   since.is_some_and(|t| now.saturating_sub(t) > AUTO_REVOKE_SILENCE_MS)
 }
 
-fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label: &str) {
+fn apply_revoke(c: &mut Core, uid: u64, now: u64, target_id: &str, target_fp: &str, label: &str) {
   if !c.st.revoked.iter().any(|f| f == target_fp) {
     c.st.revoked.push(target_fp.to_owned());
   }
@@ -359,7 +343,15 @@ fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label:
   c.st.pending_revokes.retain(|p| p.target_fp != target_fp);
   c.st.pending_joins.retain(|j| j.fp != target_fp);
   let dir = c.dir.clone();
-  recompute(c, dir.as_ref(), uid, true);
+  let before: Vec<String> = c.st.trusted.iter().map(|d| d.id.clone()).collect();
+  recompute(c, dir.as_ref(), uid, now, true);
+  let dropped = before.iter().any(|id| id != target_id && !c.st.trusted.iter().any(|d| &d.id == id));
+  if dropped {
+    let unknown: Vec<String> = c.st.base.iter().filter(|d| !c.st.kinds.contains_key(&d.id)).map(|d| d.id.clone()).collect();
+    for id in unknown {
+      record_alert(c, "root_kind_unknown", &id, now);
+    }
+  }
 }
 
 fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option<&str>, budget: &mut BTreeMap<String, usize>) {
@@ -385,7 +377,7 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
   let target_label = c.st.trusted.iter().find(|d| d.fp == p.target_fp).map(|d| d.label.clone()).unwrap_or_default();
   let aims_at_us = own_fp.as_deref() == Some(p.target_fp.as_str());
   if p.revoker_fp == p.target_fp || own_fp.as_deref() == Some(p.revoker_fp.as_str()) || (!aims_at_us && unseen_for_30_days(c, &p.target_id, now)) {
-    apply_revoke(c, uid, &p.target_id, &p.target_fp, &target_label);
+    apply_revoke(c, uid, now, &p.target_id, &p.target_fp, &target_label);
   } else {
     c.st.pending_revokes.push(PendingRevoke {
       statement_id: sid,
@@ -492,6 +484,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn ensure_registered(&self, c: &mut Core) -> Result<(), String> {
+    backfill_self(c, &self.kind);
     if c.identity.is_some() {
       return Ok(());
     }
@@ -534,9 +527,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     if !c.st.joined {
       return Ok(());
     }
-    recompute(c, Some(&dir), self.cfg.user_id, false);
+    backfill_self(c, &self.kind);
     let now = self.now();
-    apply_intro_kinds(c, now);
+    recompute(c, Some(&dir), self.cfg.user_id, now, false);
     stamp_pins(c, now);
     let mut budget = BTreeMap::new();
     for r in &dir.revocations {
@@ -1040,7 +1033,8 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let p = c.st.pending_revokes.iter().find(|p| p.statement_id == statement_id).cloned().ok_or_else(|| "no such revoke request".to_owned())?;
     if accept {
       self.fetch_dir(c)?;
-      apply_revoke(c, self.cfg.user_id, &p.target_id, &p.target_fp, &p.target_label);
+      backfill_self(c, &self.kind);
+      apply_revoke(c, self.cfg.user_id, self.now(), &p.target_id, &p.target_fp, &p.target_label);
     } else {
       c.st.pending_revokes.retain(|x| x.statement_id != statement_id);
       c.st.declined.push(p.statement_id);
@@ -1064,7 +1058,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let others: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id && d.id != target.id).cloned().collect();
     self.call(c, api::post_revocation(&target.fp, &json).map_err(err)?)?;
     if !already {
-      apply_revoke(c, self.cfg.user_id, &target.id, &target.fp, &target.label);
+      apply_revoke(c, self.cfg.user_id, self.now(), &target.id, &target.fp, &target.label);
     }
     self.save_now(c)?;
     if !others.is_empty() {

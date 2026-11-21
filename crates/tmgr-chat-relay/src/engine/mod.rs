@@ -148,6 +148,8 @@ struct State {
     kinds: BTreeMap<String, String>,
     #[serde(default)]
     bindings: BTreeMap<String, String>,
+    #[serde(default)]
+    pending_code: Option<String>,
 }
 
 #[derive(Default)]
@@ -214,7 +216,7 @@ fn intro_matches(i: &str, uid: u64) -> bool {
     parse_intro(i).is_ok_and(|p| p.parsed.user_id == uid)
 }
 
-fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
+fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_base: bool) {
     let no_devices: &[api::Device] = &[];
     let dir_devices = dir.map_or(no_devices, |d| d.devices.as_slice());
     let mut intros: Vec<String> = c.st.intros.clone();
@@ -254,6 +256,9 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
         &entries,
         Some(&c.st.kinds),
     );
+    for (id, kind) in &set.kinds {
+        pin_kind(c, id, kind, now);
+    }
     let mut out: Vec<Dev> = Vec::new();
     for t in &set.trusted {
         let in_dir = dir_devices
@@ -332,6 +337,23 @@ fn add_code_kind(code: &str, kind: &str) -> Result<String, String> {
     Ok(code_encode(&prefix, &m))
 }
 
+fn backfill_self(c: &mut Core, kind: &str) {
+    if let Some(id) = &c.identity {
+        c.st.kinds
+            .entry(id.device_id.clone())
+            .or_insert_with(|| kind.to_owned());
+    }
+}
+
+fn code_id(code: &JoinCode) -> String {
+    h(&format!(
+        "{}:{}:{}",
+        code.device_id,
+        code.fp,
+        b64(&code.secret)
+    ))
+}
+
 fn pin_kind(c: &mut Core, id: &str, kind: &str, now: u64) {
     match c.st.kinds.get(id) {
         None => {
@@ -339,33 +361,6 @@ fn pin_kind(c: &mut Core, id: &str, kind: &str, now: u64) {
         }
         Some(k) if k == kind => {}
         Some(_) => record_alert(c, "kind_conflict", id, now),
-    }
-}
-
-fn apply_intro_kinds(c: &mut Core, now: u64) {
-    loop {
-        let before = c.st.kinds.len();
-        let signed: Vec<(String, String)> =
-            c.st.trusted
-                .iter()
-                .flat_map(|d| {
-                    c.st.intros
-                        .iter()
-                        .filter_map(|i| parse_intro(i).ok())
-                        .filter(|p| {
-                            p.parsed.target_id == d.id
-                                && p.parsed.target_fp == d.fp
-                                && may_vouch(c.st.kinds.get(&p.by).map(String::as_str))
-                        })
-                        .map(|p| (d.id.clone(), p.parsed.target_kind.clone()))
-                })
-                .collect();
-        for (id, kind) in signed {
-            pin_kind(c, &id, &kind, now);
-        }
-        if c.st.kinds.len() == before {
-            break;
-        }
     }
 }
 
@@ -418,7 +413,7 @@ fn unseen_for_30_days(c: &Core, device_id: &str, now: u64) -> bool {
     since.is_some_and(|t| now.saturating_sub(t) > AUTO_REVOKE_SILENCE_MS)
 }
 
-fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label: &str) {
+fn apply_revoke(c: &mut Core, uid: u64, now: u64, target_id: &str, target_fp: &str, label: &str) {
     if !c.st.revoked.iter().any(|f| f == target_fp) {
         c.st.revoked.push(target_fp.to_owned());
     }
@@ -439,7 +434,22 @@ fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label:
     c.st.pending_revokes.retain(|p| p.target_fp != target_fp);
     c.st.pending_joins.retain(|j| j.fp != target_fp);
     let dir = c.dir.clone();
-    recompute(c, dir.as_ref(), uid, true);
+    let before: Vec<String> = c.st.trusted.iter().map(|d| d.id.clone()).collect();
+    recompute(c, dir.as_ref(), uid, now, true);
+    let dropped = before
+        .iter()
+        .any(|id| id != target_id && !c.st.trusted.iter().any(|d| &d.id == id));
+    if dropped {
+        let unknown: Vec<String> =
+            c.st.base
+                .iter()
+                .filter(|d| !c.st.kinds.contains_key(&d.id))
+                .map(|d| d.id.clone())
+                .collect();
+        for id in unknown {
+            record_alert(c, "root_kind_unknown", &id, now);
+        }
+    }
 }
 
 fn ingest_revoke(
@@ -482,7 +492,7 @@ fn ingest_revoke(
         || own_fp.as_deref() == Some(p.revoker_fp.as_str())
         || (!aims_at_us && unseen_for_30_days(c, &p.target_id, now))
     {
-        apply_revoke(c, uid, &p.target_id, &p.target_fp, &target_label);
+        apply_revoke(c, uid, now, &p.target_id, &p.target_fp, &target_label);
     } else {
         c.st.pending_revokes.push(PendingRevoke {
             statement_id: sid,
@@ -546,6 +556,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     pub fn with_kind(mut self, kind: &str) -> Self {
         self.kind = kind.to_owned();
+        let c = self.core.get_mut().unwrap_or_else(|p| p.into_inner());
+        if kind == "runner" {
+            c.st.join_code = None;
+        }
+        backfill_self(c, kind);
         self
     }
 
@@ -607,6 +622,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     fn ensure_registered(&self, c: &mut Core) -> Result<(), String> {
         if c.identity.is_some() {
+            backfill_self(c, &self.kind);
             return Ok(());
         }
         let keys = DeviceKeys::generate().map_err(err)?;
@@ -667,9 +683,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         if !c.st.joined {
             return Ok(());
         }
-        recompute(c, Some(&dir), self.cfg.user_id, false);
+        backfill_self(c, &self.kind);
         let now = self.now();
-        apply_intro_kinds(c, now);
+        recompute(c, Some(&dir), self.cfg.user_id, now, false);
         stamp_pins(c, now);
         let mut budget = BTreeMap::new();
         for r in &dir.revocations {
@@ -855,6 +871,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             c.st.base.retain(|d| d.id != pdev.id);
             c.st.trusted.retain(|d| d.id != pdev.id);
             c.st.joined = true;
+        } else {
+            c.st.pending_code = Some(code_id(&code));
         }
         self.save_now(c)?;
         res
@@ -1042,6 +1060,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     pin_kind(c, &opened.from, k, now);
                 }
                 c.st.joined = true;
+                c.st.pending_code = None;
                 c.joined_now = true;
             }
             "revoke" if sender_trusted && c.st.joined => {
@@ -1158,6 +1177,17 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         self.save_now(c)
     }
 
+    pub fn pending_join_matches(&self, code: &str) -> bool {
+        let Ok((stripped, _)) = split_code_kind(code.trim()) else {
+            return false;
+        };
+        let Ok(code) = decode_join_code(&stripped) else {
+            return false;
+        };
+        let g = self.lock();
+        !g.st.joined && g.st.pending_code.as_deref() == Some(code_id(&code).as_str())
+    }
+
     pub fn reset_pending_join(&self) -> Result<(), String> {
         let mut g = self.lock();
         let c = &mut *g;
@@ -1177,6 +1207,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             c.st.trusted.retain(|d| d.id != id);
         }
         c.st.joined = true;
+        c.st.pending_code = None;
         self.save_now(c)
     }
 
@@ -1236,6 +1267,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn decide_join(&self, device_id: &str, accept: bool) -> Result<(), String> {
+        if self.kind == "runner" {
+            return Err("a runner cannot approve joins".into());
+        }
         let mut g = self.lock();
         let c = &mut *g;
         let rec =
@@ -1299,9 +1333,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .ok_or_else(|| "no such revoke request".to_owned())?;
         if accept {
             self.fetch_dir(c)?;
+            backfill_self(c, &self.kind);
             apply_revoke(
                 c,
                 self.cfg.user_id,
+                self.now(),
                 &p.target_id,
                 &p.target_fp,
                 &p.target_label,
@@ -1350,7 +1386,15 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .collect();
         self.call(c, api::post_revocation(&target.fp, &json).map_err(err)?)?;
         if !already {
-            apply_revoke(c, self.cfg.user_id, &target.id, &target.fp, &target.label);
+            let now = self.now();
+            apply_revoke(
+                c,
+                self.cfg.user_id,
+                now,
+                &target.id,
+                &target.fp,
+                &target.label,
+            );
         }
         self.save_now(c)?;
         if !others.is_empty() {

@@ -463,6 +463,7 @@ pub struct KeyMismatch {
 pub struct TrustSet {
     pub trusted: Vec<Trusted>,
     pub mismatches: Vec<KeyMismatch>,
+    pub kinds: Vec<(String, String)>,
 }
 
 pub fn trusted_set(
@@ -507,17 +508,20 @@ pub fn trusted_set_by_kind(
         .filter_map(|s| parse_intro(s).ok())
         .filter(|i| i.parsed.user_id == user_id)
         .collect();
-    let mut failed = vec![false; parsed.len()];
+    let mut done = vec![false; parsed.len()];
+    let mut learned: Vec<(String, String)> = Vec::new();
     loop {
         let mut changed = false;
         for (n, intro) in parsed.iter().enumerate() {
             let st = &intro.parsed;
-            if failed[n]
-                || is_revoked(&st.target_fp)
-                || trusted.iter().any(|t| t.device_id == st.target_id)
-            {
+            if done[n] || is_revoked(&st.target_fp) {
                 continue;
             }
+            let target_pinned = match trusted.iter().find(|t| t.device_id == st.target_id) {
+                Some(t) if t.fp == st.target_fp => true,
+                Some(_) => continue,
+                None => false,
+            };
             if known
                 .as_ref()
                 .is_some_and(|k| !may_vouch(k.get(&intro.by).map(String::as_str)))
@@ -530,29 +534,36 @@ pub fn trusted_set_by_kind(
             else {
                 continue;
             };
-            let Some(entry) = directory.iter().find(|d| {
-                d.device_id == st.target_id
-                    && fingerprint(&d.sign_pub_b64, &d.kex_pub_b64) == st.target_fp
-            }) else {
-                continue;
+            let entry = if target_pinned {
+                None
+            } else {
+                let Some(entry) = directory.iter().find(|d| {
+                    d.device_id == st.target_id
+                        && fingerprint(&d.sign_pub_b64, &d.kex_pub_b64) == st.target_fp
+                }) else {
+                    continue;
+                };
+                Some(entry)
             };
             let verified = b64_decode(&introducer.sign_pub)
                 .and_then(|key| verify_der(&key, &intro.statement, &intro.sig))
                 .is_ok();
+            done[n] = true;
             if !verified {
-                failed[n] = true;
                 continue;
             }
-            let added = Trusted {
-                device_id: st.target_id.clone(),
-                fp: st.target_fp.clone(),
-                sign_pub: entry.sign_pub_b64.clone(),
-                kex_pub: entry.kex_pub_b64.clone(),
-            };
-            trusted.push(added);
+            if let Some(entry) = entry {
+                trusted.push(Trusted {
+                    device_id: st.target_id.clone(),
+                    fp: st.target_fp.clone(),
+                    sign_pub: entry.sign_pub_b64.clone(),
+                    kex_pub: entry.kex_pub_b64.clone(),
+                });
+            }
             if let Some(k) = known.as_mut() {
                 k.entry(st.target_id.clone())
                     .or_insert_with(|| st.target_kind.clone());
+                learned.push((st.target_id.clone(), st.target_kind.clone()));
             }
             changed = true;
         }
@@ -581,6 +592,7 @@ pub fn trusted_set_by_kind(
     TrustSet {
         trusted,
         mismatches,
+        kinds: learned,
     }
 }
 
