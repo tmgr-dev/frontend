@@ -67,8 +67,9 @@ pub mod caps {
     pub const CHECKPOINTS_V1: &str = "checkpoints.v1";
     pub const PERMISSION_CARDS_V1: &str = "permission_cards.v1";
     pub const PROFILES_LOGIN_CHECK_V1: &str = "profiles_login_check.v1";
+    pub const MANAGER_V1: &str = "manager.v1";
 
-    pub const ALL: [&str; 38] = [
+    pub const ALL: [&str; 39] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -107,6 +108,7 @@ pub mod caps {
         TEAM_WORKERS_V1,
         TEAM_MULTI_V1,
         PROFILES_LOGIN_CHECK_V1,
+        MANAGER_V1,
     ];
 }
 

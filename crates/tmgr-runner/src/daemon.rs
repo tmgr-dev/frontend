@@ -737,6 +737,7 @@ impl Session {
         let i = lock(&self.inner);
         let m = &i.meta;
         SessionInfo {
+            manager: false,
             team: m.team.clone(),
             agent_session_id: m.agent_session_id.clone(),
             limit: m.limit.clone(),

@@ -5703,6 +5703,7 @@ mod tests {
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
+            manager: false,
             agent_session_id: None,
             limit: None,
             handoff_from: None,
