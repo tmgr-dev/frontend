@@ -1129,6 +1129,7 @@ fn old_links_files_parse_as_off_and_new_links_start_off() {
     assert_eq!(v["data"]["scope"]["remote_control"], false);
     assert_eq!(v["data"]["scope"]["include_bypass"], false);
     assert_eq!(v["data"]["scope"]["allow_bypass"], false);
+    assert_eq!(v["data"]["scope"]["allow_no_sandbox"], false);
 }
 
 #[test]
@@ -1253,4 +1254,124 @@ fn turning_only_include_bypass_off_stops_bypass_attaches_and_spares_the_rest() {
     assert!(plain.try_wait().unwrap().is_none());
     plain.kill().unwrap();
     plain.wait().unwrap();
+}
+
+#[test]
+fn enabling_allow_bypass_or_allow_no_sandbox_is_refused_in_an_agent_session_with_exit_5() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let before = links_bytes(&f);
+    for flag in ["--allow-bypass", "--allow-no-sandbox"] {
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(["link", "scope", "laptop", flag, "on", "--yes"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{flag}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{flag}");
+    }
+}
+
+#[test]
+fn enabling_allow_bypass_or_allow_no_sandbox_without_a_terminal_exits_10_and_changes_nothing() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            ..f.scope()
+        },
+    );
+    let before = links_bytes(&f);
+    for flag in ["--allow-bypass", "--allow-no-sandbox"] {
+        let out = f
+            .tmgr()
+            .args(["link", "scope", "laptop", flag, "on", "--yes"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(10), "{flag}: {}", err_text(&out));
+        assert_eq!(links_bytes(&f), before, "{flag}");
+    }
+}
+
+#[test]
+fn turning_allow_bypass_and_allow_no_sandbox_off_works_from_an_agent_session() {
+    let f = fx();
+    f.trust_leader(
+        "laptop",
+        Scope {
+            remote_control: true,
+            allow_bypass: true,
+            allow_no_sandbox: true,
+            ..f.scope()
+        },
+    );
+    for flag in ["--allow-bypass", "--allow-no-sandbox"] {
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(["link", "scope", "laptop", flag, "off"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{flag}: {}", err_text(&out));
+    }
+    let s = Store::load(&f.paths).unwrap().leaders["laptop"]
+        .scope
+        .clone();
+    assert!(s.remote_control && !s.allow_bypass && !s.allow_no_sandbox);
+}
+
+#[test]
+fn pin_set_and_reset_are_refused_in_an_agent_session_and_without_a_terminal() {
+    let f = fx();
+    for sub in ["set", "reset"] {
+        let out = f
+            .tmgr()
+            .env("TMGR_SESSION_ID", "s_x")
+            .args(["link", "pin", sub])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(5), "{sub}: {}", err_text(&out));
+        let out = f.tmgr().args(["link", "pin", sub]).output().unwrap();
+        assert_eq!(out.status.code(), Some(10), "{sub}: {}", err_text(&out));
+    }
+    assert!(!f.paths.pin_file().exists());
+}
+
+#[test]
+fn pin_status_works_anywhere_and_never_shows_the_hash() {
+    let f = fx();
+    let run = |agent: bool| {
+        let mut c = f.tmgr();
+        if agent {
+            c.env("TMGR_SESSION_ID", "s_x");
+        }
+        let out = c
+            .args(["link", "pin", "status", "--json"])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let v: Value = serde_json::from_str(&run(true)).unwrap();
+    assert_eq!(v["data"]["set"], false);
+    tmgr_link::pin::set(&f.paths, "owner-pin-1").unwrap();
+    let text = run(false);
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["data"]["set"], true);
+    assert_eq!(v["data"]["locked"], false);
+    assert!(!text.contains("argon2") && !text.contains("owner-pin-1"));
+    for _ in 0..5 {
+        tmgr_link::pin::verify(&f.paths, "wrong-pin-x").unwrap();
+    }
+    let v: Value = serde_json::from_str(&run(true)).unwrap();
+    assert_eq!(v["data"]["locked"], true);
+    assert_eq!(v["data"]["tries_left"], 0);
 }
