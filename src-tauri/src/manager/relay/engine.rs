@@ -171,7 +171,7 @@ struct Core {
 }
 
 fn trust_key(st: &State) -> String {
-  json!([st.base, st.trusted, st.revoked, st.pending_joins, st.pending_revokes, st.declined, st.seq_gaps, st.alerts]).to_string()
+  json!([st.base, st.trusted, st.revoked, st.pending_joins, st.pending_revokes, st.declined, st.seq_gaps, st.alerts, st.joined, st.kinds, st.bindings]).to_string()
 }
 
 fn dev_from(d: &api::Device) -> Dev {
@@ -323,9 +323,18 @@ fn record_alert(c: &mut Core, kind: &str, device_id: &str, now: u64) {
   }
 }
 
+fn parse_seen(v: &Value) -> Option<u64> {
+  match v {
+    Value::Number(n) => n.as_u64().map(|t| if t < 100_000_000_000 { t * 1000 } else { t }),
+    Value::String(s) => chrono::DateTime::parse_from_rfc3339(s).ok().and_then(|d| u64::try_from(d.timestamp_millis()).ok()),
+    _ => None,
+  }
+}
+
 fn unseen_for_30_days(c: &Core, device_id: &str, now: u64) -> bool {
-  let since = c.st.last_seen.get(device_id).or_else(|| c.st.pinned_at.get(device_id));
-  since.is_some_and(|t| now.saturating_sub(*t) > AUTO_REVOKE_SILENCE_MS)
+  let dir_seen = c.dir.as_ref().and_then(|d| d.devices.iter().find(|x| x.device_id == device_id)).and_then(|d| parse_seen(&d.last_seen_at));
+  let since = [c.st.last_seen.get(device_id).copied(), c.st.pinned_at.get(device_id).copied(), dir_seen].into_iter().flatten().max();
+  since.is_some_and(|t| now.saturating_sub(t) > AUTO_REVOKE_SILENCE_MS)
 }
 
 fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label: &str) {
@@ -361,7 +370,8 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
   }
   let own_fp = c.keys.as_ref().map(|k| k.fingerprint());
   let target_label = c.st.trusted.iter().find(|d| d.fp == p.target_fp).map(|d| d.label.clone()).unwrap_or_default();
-  if p.revoker_fp == p.target_fp || own_fp.as_deref() == Some(p.revoker_fp.as_str()) || unseen_for_30_days(c, &p.target_id, now) {
+  let aims_at_us = own_fp.as_deref() == Some(p.target_fp.as_str());
+  if p.revoker_fp == p.target_fp || own_fp.as_deref() == Some(p.revoker_fp.as_str()) || (!aims_at_us && unseen_for_30_days(c, &p.target_id, now)) {
     apply_revoke(c, uid, &p.target_id, &p.target_fp, &target_label);
   } else {
     c.st.pending_revokes.push(PendingRevoke {
@@ -561,12 +571,13 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let now = self.now();
     let mut reqs = Vec::new();
     for t in c.st.trusted.iter().filter(|t| t.id != id.device_id) {
+      let Some(kind) = c.st.kinds.get(&t.id) else { continue };
       let st = IntroStatement {
         user_id: self.cfg.user_id,
         introducer_fp: keys.fingerprint(),
         target_id: t.id.clone(),
         target_fp: t.fp.clone(),
-        target_kind: t.kind.clone(),
+        target_kind: kind.clone(),
         issued_at_ms: now,
       };
       let json = sign_intro(keys, &id.device_id, &st).map_err(err)?;
@@ -683,7 +694,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let kind = c.st.kinds.get(from).map(String::as_str);
     match msg.author.kind.as_str() {
       "owner" => matches!(kind, Some("desktop" | "mobile")),
-      "agent" | "manager" | "session" | "system" => {
+      "manager" | "session" | "system" => {
         if kind != Some("runner") || msg.author.machine.as_ref().is_some_and(|m| *m != msg.room.machine) {
           return false;
         }
@@ -705,7 +716,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           }
         }
       }
-      _ => true,
+      _ => {
+        record_alert(c, "unknown_author_kind", from, now);
+        false
+      }
     }
   }
 
@@ -941,7 +955,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   fn trust_state(&self) -> Result<TrustState, String> {
     let g = self.lock();
     let own_id = g.identity.as_ref().map(|i| i.device_id.as_str());
-    let dev = |d: &Dev, state| TrustDevice { id: d.id.clone(), kind: g.st.kinds.get(&d.id).unwrap_or(&d.kind).clone(), label: d.label.clone(), fp: d.fp.clone(), state, is_self: Some(d.id.as_str()) == own_id };
+    let dev = |d: &Dev, state| TrustDevice { id: d.id.clone(), kind: g.st.kinds.get(&d.id).unwrap_or(&d.kind).clone(), label: d.label.clone(), fp: d.fp.clone(), state, is_self: Some(d.id.as_str()) == own_id, kind_verified: g.st.kinds.contains_key(&d.id) };
     let mut devices: Vec<TrustDevice> = g.st.trusted.iter().map(|d| dev(d, DeviceState::Trusted)).collect();
     devices.extend(g.st.revoked_devs.iter().map(|d| dev(d, DeviceState::Revoked)));
     Ok(TrustState {
@@ -1026,13 +1040,19 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let c = &mut *g;
     self.ensure_registered(c)?;
     let (id, keys) = Self::own(c)?;
-    let target = c.st.trusted.iter().find(|d| d.id == device_id && d.id != id.device_id).cloned().ok_or_else(|| "unknown device".to_owned())?;
+    let live = c.st.trusted.iter().find(|d| d.id == device_id && d.id != id.device_id).cloned();
+    let already = live.is_none();
+    let target = live
+      .or_else(|| c.st.revoked_devs.iter().find(|d| d.id == device_id && d.id != id.device_id).cloned())
+      .ok_or_else(|| "unknown device".to_owned())?;
     let st = RevokeStatement { user_id: self.cfg.user_id, revoker_fp: keys.fingerprint(), target_id: target.id.clone(), target_fp: target.fp.clone(), issued_at_ms: self.now() };
     let json = sign_revoke(keys, &st).map_err(err)?;
     let parsed = parse_revoke(&json).map_err(err)?;
     let others: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id && d.id != target.id).cloned().collect();
     self.call(c, api::post_revocation(&target.fp, &json).map_err(err)?)?;
-    apply_revoke(c, self.cfg.user_id, &target.id, &target.fp, &target.label);
+    if !already {
+      apply_revoke(c, self.cfg.user_id, &target.id, &target.fp, &target.label);
+    }
     self.save_now(c)?;
     if !others.is_empty() {
       let msg_id = random_msg_id("revoke").map_err(err)?;

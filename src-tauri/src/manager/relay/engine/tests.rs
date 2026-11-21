@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -38,6 +39,7 @@ struct Server {
   post_error: Option<String>,
   dir_error: bool,
   posts: usize,
+  last_seen: BTreeMap<String, u64>,
 }
 
 #[derive(Clone, Default)]
@@ -60,6 +62,10 @@ impl Fake {
 
   fn set_post_error(&self, e: Option<&str>) {
     self.0.lock().unwrap().post_error = e.map(str::to_owned);
+  }
+
+  fn set_last_seen(&self, id: &str, ms: u64) {
+    self.0.lock().unwrap().last_seen.insert(id.into(), ms);
   }
 
   fn set_dir_error(&self, on: bool) {
@@ -121,7 +127,7 @@ impl Transport for Fake {
         let devices: Vec<Value> = s
           .devices
           .iter()
-          .map(|d| json!({ "device_id": d.id, "kind": d.kind, "label": d.label, "sign_pub": d.sign_pub, "kex_pub": d.kex_pub, "intros": d.intros.iter().map(|i| i.1.clone()).collect::<Vec<_>>() }))
+          .map(|d| json!({ "device_id": d.id, "kind": d.kind, "label": d.label, "sign_pub": d.sign_pub, "kex_pub": d.kex_pub, "intros": d.intros.iter().map(|i| i.1.clone()).collect::<Vec<_>>(), "last_seen_at": s.last_seen.get(&d.id) }))
           .collect();
         let revs: Vec<Value> = s.revocations.iter().map(|r| json!({ "target_fp": r.0, "statement": r.2 })).collect();
         wrap(json!({ "devices": devices, "revocations": revs }))
@@ -1439,4 +1445,138 @@ fn v1_join_code_without_kind_still_joins_with_unknown_kind() {
   let b = engine_with(&fake, &clock, "Desktop B");
   b.join_with_code(&code_with_kind(&a, None)).unwrap();
   assert!(!b.lock().st.kinds.contains_key(&my_id(&a)));
+}
+
+fn directory_revoke(fake: &Fake, by: &Engine, target_id: &str, target_fp: &str) {
+  let g = by.lock();
+  let keys = g.keys.as_ref().unwrap();
+  let st = RevokeStatement { user_id: USER, revoker_fp: keys.fingerprint(), target_id: target_id.into(), target_fp: target_fp.into(), issued_at_ms: T0 };
+  fake.add_revocation(target_fp, &my_id_of(&g), &sign_revoke(keys, &st).unwrap());
+}
+
+#[test]
+fn unknown_author_kind_is_dropped_and_alerted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let aid = my_id(&a);
+  post_chat(&r, &aid, &msg_n(2, "bogus"));
+  assert!(a.poll_once().unwrap().is_empty());
+  assert!(alert_kinds(&a).contains(&"unknown_author_kind".to_owned()));
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  post_chat(&a, &my_id(&b), &msg_n(2, "bogus"));
+  assert!(b.poll_once().unwrap().is_empty());
+  assert!(alert_kinds(&b).contains(&"unknown_author_kind".to_owned()));
+}
+
+#[test]
+fn revoke_aimed_at_the_receiving_device_stays_pending() {
+  let (fake, clock, a, _b, c) = silence_setup();
+  let cid = my_id(&c);
+  clock.set(T0 + 31 * DAY);
+  directory_revoke(&fake, &a, &cid, &fp_of(&c));
+  c.poll_once().unwrap();
+  let ts = c.trust_state().unwrap();
+  assert_eq!(ts.pending_revokes.len(), 1);
+  assert!(ts.devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
+}
+
+#[test]
+fn quiet_device_active_in_the_directory_stays_pending() {
+  let (fake, clock, a, b, c) = silence_setup();
+  let cid = my_id(&c);
+  clock.set(T0 + 31 * DAY);
+  fake.set_last_seen(&cid, T0 + 30 * DAY);
+  directory_revoke(&fake, &a, &cid, &fp_of(&c));
+  b.poll_once().unwrap();
+  assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+  assert!(!is_revoked(&b, &cid));
+}
+
+#[test]
+fn directory_last_seen_accepts_seconds_millis_and_rfc3339() {
+  assert_eq!(parse_seen(&json!(1_800_000_000)), Some(1_800_000_000_000));
+  assert_eq!(parse_seen(&json!(1_800_000_000_123u64)), Some(1_800_000_000_123));
+  assert_eq!(parse_seen(&json!("2027-01-15T08:00:00Z")), Some(1800000000000));
+  assert_eq!(parse_seen(&Value::Null), None);
+}
+
+fn publish_for(a: &Engine) {
+  let mut g = a.lock();
+  a.publish_intros(&mut g).unwrap();
+}
+
+fn intros_of(fake: &Fake, id: &str) -> Vec<String> {
+  fake.0.lock().unwrap().devices.iter().find(|d| d.id == id).unwrap().intros.iter().map(|i| i.1.clone()).collect()
+}
+
+#[test]
+fn no_intro_is_signed_for_a_device_without_a_signed_kind() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  a.lock().st.kinds.remove(&bid);
+  set_kind(&fake, &bid, "desktop");
+  fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == bid).unwrap().intros.clear();
+  publish_for(&a);
+  assert!(intros_of(&fake, &bid).is_empty());
+}
+
+#[test]
+fn directory_kind_never_ends_up_in_a_signed_intro() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  set_kind(&fake, &bid, "runner");
+  a.lock().st.trusted.iter_mut().find(|d| d.id == bid).unwrap().kind = "runner".into();
+  fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == bid).unwrap().intros.clear();
+  publish_for(&a);
+  let intros = intros_of(&fake, &bid);
+  assert_eq!(intros.len(), 1);
+  assert_eq!(parse_intro(&intros[0]).unwrap().parsed.target_kind, "desktop");
+}
+
+#[test]
+fn trust_state_marks_only_signed_kinds_as_verified() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let verified = |e: &Engine| e.trust_state().unwrap().devices.iter().find(|d| d.id == bid).unwrap().kind_verified;
+  assert!(verified(&a));
+  a.lock().st.kinds.remove(&bid);
+  assert!(!verified(&a));
+}
+
+#[test]
+fn join_ok_is_persisted_before_it_is_acked() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let store = Arc::new(MemKeyStore::default());
+  let b = engine_on(&fake, &clock, store.clone(), "mx_b");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  let again = engine_on(&fake, &clock, store, "mx_b");
+  let g = again.lock();
+  assert!(g.st.joined);
+  assert_eq!(g.st.kinds.get(&my_id(&a)).map(String::as_str), Some("desktop"));
+}
+
+#[test]
+fn repeated_revoke_retries_the_broadcast_and_the_directory_delete() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  let (bid, cid) = (my_id(&b), my_id(&c));
+  let before = fake.queue_len(&bid);
+  fake.set_post_error(Some("boom"));
+  assert!(a.revoke(&cid).is_err());
+  assert!(is_revoked(&a, &cid));
+  fake.set_post_error(None);
+  a.revoke(&cid).unwrap();
+  assert_eq!(fake.queue_len(&bid), before + 1);
+  assert!(!fake.0.lock().unwrap().devices.iter().any(|d| d.id == cid));
+  assert_eq!(a.trust_state().unwrap().devices.iter().filter(|d| d.id == cid).count(), 1);
 }

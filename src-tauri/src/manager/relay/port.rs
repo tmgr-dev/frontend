@@ -21,6 +21,8 @@ pub struct TrustDevice {
   pub fp: String,
   pub state: DeviceState,
   pub is_self: bool,
+  #[serde(default)]
+  pub kind_verified: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
