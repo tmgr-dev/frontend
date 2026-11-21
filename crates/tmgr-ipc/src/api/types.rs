@@ -120,6 +120,10 @@ pub struct RunCreateReq {
     pub finish_marker: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_session: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub manager: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
 }
 
 /// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
@@ -149,6 +153,8 @@ impl OrchestratorCreateReq {
             team: None,
             finish_marker: false,
             parent_session: None,
+            manager: false,
+            prompt: None,
             profile: self.profile.clone(),
             task: None,
             cwd: self.cwd.clone(),
@@ -329,6 +335,8 @@ pub struct SessionInfo {
     pub handoff_from: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub managed: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub manager: bool,
 }
 
 /// The agent printed its usage-limit message and the message stayed on screen.

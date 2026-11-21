@@ -862,9 +862,11 @@ fn start_run(
         return deny(conn, method, args, id, r.code, &r.reason);
     }
     let mut req = RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         clones: Vec::new(),
         profile: agent.to_string(),
         task,

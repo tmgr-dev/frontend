@@ -91,7 +91,7 @@ pub enum RunnerCommands {
     Resume(ResumeArgs),
     /// [experimental] Give a session a new name (the id stays the same)
     Rename(RenameArgs),
-    /// [experimental] Stop an agent session and continue the same task in the other agent (Claude Code or Codex), with a note of what was done
+    /// [experimental] Stop an agent session and continue its work in another agent (Claude Code, Codex, opencode or agy), with a note of what was done; the permission mode is kept
     #[command(name = "switch-agent")]
     SwitchAgent(SwitchArgs),
     /// [experimental] Work with a session's transcript
@@ -560,9 +560,12 @@ pub struct RenameArgs {
 pub struct SwitchArgs {
     /// Session id or name
     pub session: String,
-    /// Agent to continue in (default: the other one)
+    /// Agent to continue in (default for Claude Code and Codex: the other one; required for opencode and agy sessions)
     #[arg(long, value_enum)]
     pub to: Option<switch::SwitchTarget>,
+    /// Carry bypass mode and no-sandbox over to the new session (asks you to type a confirmation, like `run --mode bypass`)
+    #[arg(long)]
+    pub keep_bypass: bool,
     /// Do not ask for confirmation
     #[arg(short, long)]
     pub yes: bool,

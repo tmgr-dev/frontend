@@ -1,4 +1,5 @@
 use crate::api::{ErrorCode, EventMsg, ScreenPush};
+use crate::chat::ChatPush;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -141,6 +142,7 @@ pub enum ServerMsg {
     Response(Response),
     Screen(Value),
     Event(Value),
+    Chat(Value),
     Closed {
         reason: String,
     },
@@ -152,6 +154,13 @@ impl ServerMsg {
     pub fn event(&self) -> Option<EventMsg> {
         match self {
             ServerMsg::Event(v) => serde_json::from_value(v.clone()).ok(),
+            _ => None,
+        }
+    }
+
+    pub fn chat(&self) -> Option<ChatPush> {
+        match self {
+            ServerMsg::Chat(v) => serde_json::from_value(v.clone()).ok(),
             _ => None,
         }
     }
@@ -260,6 +269,58 @@ mod tests {
         let new: Hello =
             serde_json::from_value(json!({"proto": 1, "config_dir": "/x/tmgr"})).unwrap();
         assert_eq!(new.config_dir.as_deref(), Some("/x/tmgr"));
+    }
+
+    #[test]
+    fn a_chat_push_has_the_flat_shape_and_old_clients_decode_it_as_unknown() {
+        use crate::chat::{Author, AuthorKind, ChatMessage, ChatPush, MessageKind, RoomRef};
+        let message = ChatMessage {
+            v: 1,
+            id: crate::chat::message_id_at(1, [0; 10]),
+            room: RoomRef::manager("mx_0123456789abcdef"),
+            author: Author {
+                kind: AuthorKind::Owner,
+                id: "owner".into(),
+                machine: None,
+                device: None,
+                agent: None,
+            },
+            ts_ms: 1,
+            kind: MessageKind::Text,
+            body_md: "hi".into(),
+            attachments: Vec::new(),
+            reply_to: None,
+            decision: None,
+        };
+        let msg = ServerMsg::Chat(
+            serde_json::to_value(ChatPush {
+                message: message.clone(),
+            })
+            .unwrap(),
+        );
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v["type"], "chat");
+        assert_eq!(v["message"]["body_md"], "hi");
+        assert_eq!(
+            serde_json::from_value::<ServerMsg>(v.clone())
+                .unwrap()
+                .chat()
+                .unwrap()
+                .message,
+            message
+        );
+
+        #[derive(Deserialize)]
+        #[serde(tag = "type", rename_all = "snake_case")]
+        enum Old {
+            Closed,
+            #[serde(other)]
+            Unknown,
+        }
+        assert!(matches!(
+            serde_json::from_value::<Old>(v).unwrap(),
+            Old::Unknown
+        ));
     }
 
     #[test]

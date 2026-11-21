@@ -82,6 +82,7 @@ impl Fake {
 
 fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
     SessionInfo {
+        manager: false,
         team: None,
         agent_session_id: None,
         limit: None,
@@ -1984,6 +1985,7 @@ fn a_slow_handshake_and_a_slow_list_still_answer_inside_the_deadline() {
 
 fn local(id: &str, edit: impl FnOnce(&mut SessionInfo)) -> SessionInfo {
     let mut s = SessionInfo {
+        manager: false,
         team: None,
         agent_session_id: None,
         limit: None,

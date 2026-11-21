@@ -7,7 +7,7 @@ pub fn stop(client: &mut Client, s: &SessionInfo, target: Target) -> Result<(), 
     if s.state.kind == StateKind::Exited {
         return Ok(());
     }
-    let reason = format!("handed to {}", target.agent().name());
+    let reason = format!("handed to {}", target.name());
     let io = |e: std::io::Error| SwitchError::Internal(e.to_string());
     client
         .kill_with_reason(&s.id, "int", Some(&reason))

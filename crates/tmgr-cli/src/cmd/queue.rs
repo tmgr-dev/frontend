@@ -1607,6 +1607,7 @@ impl RunnerRuns {
 
 fn run_create_req(req: &StartRequest) -> RunCreateReq {
     RunCreateReq {
+        manager: false,
         team: req.team.clone(),
         clones: req.clones.clone(),
         profile: req.profile.clone(),
@@ -1638,6 +1639,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
         permission_cards: false,
         finish_marker: req.finish_marker,
         parent_session: None,
+        prompt: None,
     }
 }
 
