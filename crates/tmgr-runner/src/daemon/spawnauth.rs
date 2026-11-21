@@ -404,6 +404,7 @@ impl Runner {
                 }),
             }),
             session_meta: None,
+            user_turn: false,
         };
         let msg_id = match self.chat.append(msg) {
             Ok(m) => Some(m.id),
