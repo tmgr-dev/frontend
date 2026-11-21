@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.174 — 2026-11-21
+
+- Manager window: Chat devices now has "Add device" (shows a join code as a QR and text that works once and expires in 10 minutes, so a phone can scan it and you approve it here) and "Enter code from phone" (paste the code the phone shows).
+- Manager window: a phone's join request and its approval now show up right away instead of only after another action.
+- Manager window: a device that is waiting for approval is shown as Pending and can try a different code. It refuses its own code, and closing the dialog burns an unused code.
+
 ## 0.9.172 — 2026-11-21
 
 - Manager window: clicking a session in the list now opens it (before, only the Manager chat could be selected).
