@@ -8,7 +8,7 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tmgr_chat_relay::api::{self, Directory, Msg, Request};
-use tmgr_chat_relay::fields::check_fp;
+use tmgr_chat_relay::fields::{check_device_id, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
   decode_join_code, encode_join_code, join_mac, parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set, verify_join_mac,
@@ -27,12 +27,29 @@ const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_LOG: usize = 2000;
 const MAX_INTROS: usize = 200;
+const MAX_REVOKES_PER_DEVICE: usize = 50;
+const BUSY_PREFIX: &str = "relay is busy, retry in ";
 
 #[cfg(test)]
 mod tests;
 
 fn err<E: Display>(e: E) -> String {
   e.to_string()
+}
+
+/// Transport errors are the response body of a failed call; for a 429 with Retry-After the transport adds `"retry_after": <secs>`.
+fn post_error(e: String) -> String {
+  let v: Value = serde_json::from_str(&e).unwrap_or(Value::Null);
+  match (v["error"].as_str(), v["retry_after"].as_u64()) {
+    (Some("user_full"), _) => "relay storage is full".into(),
+    (Some("recipient_full"), _) => "the recipient's relay queue is full".into(),
+    (_, Some(secs)) => format!("{BUSY_PREFIX}{secs}s"),
+    _ => e,
+  }
+}
+
+pub fn retry_after_secs(e: &str) -> Option<u64> {
+  e.strip_prefix(BUSY_PREFIX)?.strip_suffix('s')?.parse().ok()
 }
 
 #[derive(Clone, Debug)]
@@ -199,14 +216,20 @@ fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label:
   recompute(c, &dir, uid, true);
 }
 
-fn ingest_revoke(c: &mut Core, uid: u64, json: &str, expect_fp: Option<&str>) {
+fn ingest_revoke(c: &mut Core, uid: u64, json: &str, expect_fp: Option<&str>, budget: &mut BTreeMap<String, usize>) {
   let Ok(r) = parse_revoke(json) else { return };
   let p = &r.parsed;
   if p.user_id != uid || expect_fp.is_some_and(|f| f != p.target_fp) {
     return;
   }
   let Some(revoker) = c.st.trusted.iter().find(|d| d.fp == p.revoker_fp).cloned() else { return };
-  if verify_revoke(json, &revoker.sign_pub).is_err() || c.st.revoked.contains(&p.target_fp) {
+  // TODO(TM-1019): verify DER-only with tmgr_phone::verify_der; verify_revoke still accepts a raw 64-byte r||s
+  if verify_revoke(json, &revoker.sign_pub).is_err() {
+    return;
+  }
+  let used = budget.entry(p.revoker_fp.clone()).or_default();
+  *used += 1;
+  if *used > MAX_REVOKES_PER_DEVICE || c.st.revoked.contains(&p.target_fp) {
     return;
   }
   let sid = h(&r.statement);
@@ -332,8 +355,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   fn sync_dir(&self, c: &mut Core) -> Result<(), String> {
     let dir = self.fetch_dir(c)?;
     recompute(c, &dir, self.cfg.user_id, false);
+    let mut budget = BTreeMap::new();
     for r in &dir.revocations {
-      ingest_revoke(c, self.cfg.user_id, &r.statement, Some(&r.target_fp));
+      ingest_revoke(c, self.cfg.user_id, &r.statement, Some(&r.target_fp), &mut budget);
     }
     Ok(())
   }
@@ -343,6 +367,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let now = self.now();
     let mut items: Vec<(String, String, u64)> = Vec::new();
     for t in targets {
+      check_device_id(&t.id).map_err(|_| "invalid recipient device id".to_owned())?;
       let seq = c.st.seq_out.get(&t.id).copied().unwrap_or(0) + 1;
       let body = seal_message(
         keys,
@@ -363,7 +388,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     for chunk in items.chunks(api::MAX_ITEMS) {
       let refs: Vec<(&str, &str)> = chunk.iter().map(|(to, body, _)| (to.as_str(), body.as_str())).collect();
       let req = api::post_messages(msg_id, push, &refs).map_err(err)?;
-      api::parse_posted(&self.call(c, req)?).map_err(err)?;
+      api::parse_posted(&self.call(c, req).map_err(post_error)?).map_err(err)?;
       for (to, _, seq) in chunk {
         c.st.seq_out.insert(to.clone(), *seq);
       }
@@ -514,7 +539,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         let statement = opened.payload.get("statement")?.as_str()?;
         let sig = opened.payload.get("sig")?.as_str()?;
         let json = json!({ "v": 1, "statement": statement, "sig": sig }).to_string();
-        ingest_revoke(c, self.cfg.user_id, &json, None);
+        ingest_revoke(c, self.cfg.user_id, &json, None, &mut BTreeMap::new());
       }
       _ => return None,
     }

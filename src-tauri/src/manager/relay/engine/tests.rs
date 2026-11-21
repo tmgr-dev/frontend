@@ -33,8 +33,10 @@ struct FMsg {
 struct Server {
   devices: Vec<FDevice>,
   msgs: Vec<FMsg>,
-  revocations: Vec<(String, String)>,
+  revocations: Vec<(String, String, String)>,
   next: i64,
+  post_error: Option<String>,
+  posts: usize,
 }
 
 #[derive(Clone, Default)]
@@ -49,6 +51,18 @@ impl Fake {
     let s = self.0.lock().unwrap();
     let m = s.msgs.iter().find(|m| m.to == to).unwrap();
     (m.msg_id.clone(), m.from.clone(), m.body.clone())
+  }
+
+  fn posts(&self) -> usize {
+    self.0.lock().unwrap().posts
+  }
+
+  fn set_post_error(&self, e: Option<&str>) {
+    self.0.lock().unwrap().post_error = e.map(str::to_owned);
+  }
+
+  fn add_revocation(&self, fp: &str, by: &str, statement: &str) {
+    self.0.lock().unwrap().revocations.push((fp.into(), by.into(), statement.into()));
   }
 
   fn inject(&self, to: &str, msg_id: &str, from: &str, body: &str) {
@@ -85,7 +99,7 @@ impl Transport for Fake {
           .iter()
           .map(|d| json!({ "device_id": d.id, "kind": d.kind, "label": d.label, "sign_pub": d.sign_pub, "kex_pub": d.kex_pub, "intros": d.intros.iter().map(|i| i.1.clone()).collect::<Vec<_>>() }))
           .collect();
-        let revs: Vec<Value> = s.revocations.iter().map(|r| json!({ "target_fp": r.0, "statement": r.1 })).collect();
+        let revs: Vec<Value> = s.revocations.iter().map(|r| json!({ "target_fp": r.0, "statement": r.2 })).collect();
         wrap(json!({ "devices": devices, "revocations": revs }))
       }
       (Method::Put, ["devices", target, "intros", "self"]) => {
@@ -103,6 +117,10 @@ impl Transport for Fake {
       }
       (Method::Post, ["messages"]) => {
         let from = caller.ok_or("401")?;
+        s.posts += 1;
+        if let Some(e) = s.post_error.clone() {
+          return Err(e);
+        }
         let msg_id = body["msg_id"].as_str().unwrap().to_owned();
         let items = body["items"].as_array().unwrap().clone();
         if items.iter().any(|i| !s.devices.iter().any(|d| d.id == i["to"].as_str().unwrap())) {
@@ -111,7 +129,7 @@ impl Transport for Fake {
         let (mut stored, mut duplicates) = (0, 0);
         for i in items {
           let to = i["to"].as_str().unwrap().to_owned();
-          if s.msgs.iter().any(|m| m.to == to && m.msg_id == msg_id) {
+          if s.msgs.iter().any(|m| m.to == to && m.from == from && m.msg_id == msg_id) {
             duplicates += 1;
             continue;
           }
@@ -140,10 +158,10 @@ impl Transport for Fake {
         wrap(json!({ "deleted": 0 }))
       }
       (Method::Post, ["revocations"]) => {
-        caller.ok_or("401")?;
+        let by = caller.ok_or("401")?;
         let fp = body["target_fp"].as_str().unwrap().to_owned();
-        if !s.revocations.iter().any(|r| r.0 == fp) {
-          s.revocations.push((fp, body["statement"].as_str().unwrap().to_owned()));
+        if !s.revocations.iter().any(|r| r.0 == fp && r.1 == by) {
+          s.revocations.push((fp, by, body["statement"].as_str().unwrap().to_owned()));
         }
         Ok(String::new())
       }
@@ -479,4 +497,162 @@ fn chat_validation_rejects_bad_ids_and_rooms() {
   m.id = format!("m_{}", "a".repeat(32));
   m.room.session = Some("s".into());
   assert!(validate_chat(&m).is_err());
+}
+
+fn trio(fake: &Fake, clock: &Clock) -> (Engine, Engine, Engine) {
+  let (a, b) = pair(fake, clock);
+  let c = engine_with(fake, clock, "Desktop C");
+  let code = a.open_join_code().unwrap();
+  c.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&c), true).unwrap();
+  c.poll_once().unwrap();
+  b.poll_once().unwrap();
+  (a, b, c)
+}
+
+fn assert_der_low_s(sig: &str) {
+  let raw = tmgr_phone::b64_decode(sig).unwrap();
+  assert_eq!(tmgr_phone::b64(&raw), sig);
+  assert_ne!(raw.len(), 64);
+  let parsed = p256::ecdsa::Signature::from_der(&raw).unwrap();
+  assert!(parsed.normalize_s().is_none());
+}
+
+#[test]
+fn emitted_signatures_are_padded_base64_der_low_s() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b, c) = trio(&fake, &clock);
+  a.revoke(&my_id(&c)).unwrap();
+  let s = fake.0.lock().unwrap();
+  assert!(!s.revocations.is_empty());
+  for (_, _, json) in &s.revocations {
+    assert_der_low_s(serde_json::from_str::<Value>(json).unwrap()["sig"].as_str().unwrap());
+  }
+  let intros: Vec<&String> = s.devices.iter().flat_map(|d| d.intros.iter().map(|i| &i.1)).collect();
+  assert!(!intros.is_empty());
+  for i in intros {
+    assert_der_low_s(serde_json::from_str::<Value>(i).unwrap()["sig"].as_str().unwrap());
+  }
+}
+
+#[test]
+fn directory_revocations_are_verified_one_by_one() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  let cid = my_id(&c);
+  let c_fp = c.lock().keys.as_ref().unwrap().fingerprint();
+  let (aid, bid) = (my_id(&a), my_id(&b));
+  fake.add_revocation(&c_fp, "00000000-0000-4000-8000-0000000000ff", "junk");
+  a.revoke(&cid).unwrap();
+  let real = fake.0.lock().unwrap().revocations.last().unwrap().2.clone();
+  fake.add_revocation(&tmgr_phone::h("other"), &aid, &real);
+  fake.0.lock().unwrap().msgs.retain(|m| m.to != bid);
+  b.poll_once().unwrap();
+  let ts = b.trust_state().unwrap();
+  assert_eq!(ts.pending_revokes.len(), 1);
+  assert_eq!(ts.pending_revokes[0].target_id, cid);
+}
+
+#[test]
+fn at_most_fifty_directory_revocations_per_revoking_device_are_considered() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let aid = my_id(&a);
+  {
+    let g = a.lock();
+    let keys = g.keys.as_ref().unwrap();
+    for i in 0..51 {
+      let fp = tmgr_phone::h(&format!("target {i}"));
+      let st = RevokeStatement {
+        user_id: USER,
+        revoker_fp: keys.fingerprint(),
+        target_id: format!("00000000-0000-4000-8000-{i:012x}"),
+        target_fp: fp.clone(),
+        issued_at_ms: T0,
+      };
+      fake.add_revocation(&fp, &aid, &sign_revoke(keys, &st).unwrap());
+    }
+  }
+  b.poll_once().unwrap();
+  assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 50);
+}
+
+fn same_id_msg() -> ChatMessage {
+  ChatMessage {
+    v: 1,
+    id: format!("m_{}", "1".repeat(32)),
+    room: room(),
+    author: Author { kind: "owner".into(), id: "owner".into(), machine: None, agent: None },
+    ts_ms: T0,
+    kind: "text".into(),
+    body_md: "same id".into(),
+    attachments: vec![],
+    reply_to: None,
+    decision: None,
+  }
+}
+
+#[test]
+fn bad_recipient_id_is_rejected_before_any_request() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  {
+    let mut g = a.lock();
+    let mut bad = g.st.trusted.iter().find(|d| d.id != my_id_of(&g)).unwrap().clone();
+    bad.id = "not-a-uuid".into();
+    g.st.trusted.push(bad);
+  }
+  let posts = fake.posts();
+  assert_eq!(send(&a, "x").unwrap_err(), "invalid recipient device id");
+  assert_eq!(fake.posts(), posts);
+  assert!(history(&a).is_empty());
+}
+
+fn my_id_of(c: &Core) -> String {
+  c.identity.as_ref().unwrap().device_id.clone()
+}
+
+#[test]
+fn full_user_storage_stops_with_a_clear_error() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  fake.set_post_error(Some(r#"{"error":"user_full"}"#));
+  let posts = fake.posts();
+  assert_eq!(send(&a, "x").unwrap_err(), "relay storage is full");
+  assert_eq!(fake.posts(), posts + 1);
+  assert!(history(&a).is_empty());
+  assert!(a.lock().st.seq_out.get(&my_id(&b)).is_none_or(|s| *s == 1));
+}
+
+#[test]
+fn rate_limited_post_reports_retry_after_without_looping() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  fake.set_post_error(Some(r#"{"error":"rate_limited","retry_after":7}"#));
+  let posts = fake.posts();
+  let e = send(&a, "x").unwrap_err();
+  assert_eq!(retry_after_secs(&e), Some(7));
+  assert_eq!(fake.posts(), posts + 1);
+  assert!(history(&a).is_empty());
+  fake.set_post_error(None);
+  send(&a, "x").unwrap();
+  assert_eq!(history(&a), ["x"]);
+}
+
+#[test]
+fn dedupe_is_per_sender_and_message_id() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  let bid = my_id(&b);
+  let msg = same_id_msg();
+  let payload = serde_json::to_value(&msg).unwrap();
+  for e in [&a, &c] {
+    let mut g = e.lock();
+    let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == bid).cloned().collect();
+    e.seal_and_post(&mut g, "chat", &msg.id, &payload, &target, false).unwrap();
+  }
+  assert_eq!(fake.queue_len(&bid), 2);
+  b.poll_once().unwrap();
+  assert_eq!(b.lock().st.seen.iter().filter(|s| s.id == msg.id).count(), 2);
 }
