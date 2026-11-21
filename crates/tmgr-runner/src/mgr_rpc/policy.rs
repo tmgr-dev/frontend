@@ -142,6 +142,7 @@ mod tests {
             (Op::Read, true),
             (Op::Ask, false),
             (Op::Send, false),
+            (Op::Room, false),
             (Op::SpawnChallenge, false),
             (Op::Spawn, false),
             (Op::Switch, false),

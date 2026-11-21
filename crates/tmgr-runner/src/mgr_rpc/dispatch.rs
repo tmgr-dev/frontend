@@ -15,6 +15,7 @@ pub const SEEN_FILE: &str = "mgr-rpc-seen.json";
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
 const RATE_WINDOW_MS: u64 = 60_000;
 const MAX_REFUSAL: usize = 200;
+const ROOM_DEFAULT_LIMIT: u32 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditRecord {
@@ -86,9 +87,21 @@ struct Meta {
 
 enum Args {
     List,
-    Read { session: String, lines: Option<u32> },
-    Send { session: String, text: String },
-    Ask { text: String },
+    Read {
+        session: String,
+        lines: Option<u32>,
+    },
+    Send {
+        session: String,
+        text: String,
+    },
+    Ask {
+        text: String,
+    },
+    Room {
+        since: Option<String>,
+        limit: Option<u32>,
+    },
 }
 
 type Refusal = (ErrorCode, String);
@@ -421,6 +434,26 @@ impl Dispatcher {
                     json!({"session": session, "text": text}),
                 )
             }
+            Args::Room { since, limit } => {
+                let room = RoomRef::manager(&self.machine);
+                let all = self
+                    .state
+                    .chat
+                    .history(&room, chat::limits::MAX_HISTORY)
+                    .map_err(refused)?;
+                let start = since
+                    .as_deref()
+                    .and_then(|s| all.iter().position(|m| m.id == s))
+                    .map_or(0, |i| i + 1);
+                let limit = limit.unwrap_or(ROOM_DEFAULT_LIMIT) as usize;
+                let from = all.len().saturating_sub(limit).max(start);
+                Ok(Value::Array(
+                    all[from..]
+                        .iter()
+                        .map(|m| serde_json::to_value(m).unwrap_or(Value::Null))
+                        .collect(),
+                ))
+            }
             Args::Ask { text } => {
                 let msg = ChatMessage {
                     v: chat::CHAT_V,
@@ -598,6 +631,21 @@ fn parse_args(op: Op, a: &Value, from: &str) -> Option<Args> {
             session: session()?,
             text: text_in(m.get("text")?, mlimits::MAX_SEND_BYTES)?,
         }),
+        Op::Room if only(&["since", "limit"]) => {
+            let since = match m.get("since") {
+                None => None,
+                Some(v) => Some(text_in(v, 64)?),
+            };
+            let limit = match m.get("limit") {
+                None => None,
+                Some(v) => Some(
+                    v.as_u64()
+                        .filter(|n| (1..=u64::from(mlimits::MAX_ROOM_LIMIT)).contains(n))?
+                        as u32,
+                ),
+            };
+            Some(Args::Room { since, limit })
+        }
         Op::Ask if only(&["text"]) => Some(Args::Ask {
             text: text_in(
                 m.get("text")?,
@@ -653,6 +701,7 @@ mod tests {
             "read",
             "send",
             "ask",
+            "room",
             "spawn_challenge",
             "spawn",
             "switch",
@@ -958,6 +1007,103 @@ mod tests {
                 assert_eq!(code(&res), ErrorCode::Unavailable, "{op} {i}");
             }
         }
+    }
+
+    fn post_to(r: &Rig, room: RoomRef, text: &str) -> String {
+        let id = chat::new_message_id();
+        r.d.state()
+            .chat
+            .post(ChatMessage {
+                v: chat::CHAT_V,
+                id: id.clone(),
+                room,
+                author: Author {
+                    kind: AuthorKind::Manager,
+                    id: "manager".into(),
+                    machine: Some(ME.into()),
+                    device: None,
+                    agent: None,
+                },
+                ts_ms: 1,
+                kind: MessageKind::Text,
+                body_md: text.into(),
+                attachments: Vec::new(),
+                reply_to: None,
+                decision: None,
+                session_meta: None,
+            })
+            .unwrap();
+        id
+    }
+
+    #[test]
+    fn room_is_denied_by_the_default_policy_and_allowed_when_listed() {
+        let r = rig();
+        let default = Policy::parse(&format!("accept_from = [\"{PEER}\"]")).unwrap();
+        let res = r.call(&default, "rm1", "room", json!({}));
+        assert_eq!(code(&res), ErrorCode::OpDenied);
+        let res = r.call(&policy(&["room"]), "rm2", "room", json!({}));
+        assert!(data(&res).as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn room_args_are_strict() {
+        let r = rig();
+        let p = policy(&["room"]);
+        let over = mlimits::MAX_ROOM_LIMIT + 1;
+        for (i, args) in [
+            json!({"x": 1}),
+            json!({"limit": 0}),
+            json!({"limit": over}),
+            json!({"limit": "5"}),
+            json!({"since": 5}),
+            json!({"since": ""}),
+            json!({"since": "a".repeat(65)}),
+            json!(null),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let res = r.call(&p, &format!("rb{i}"), "room", args.clone());
+            assert_eq!(code(&res), ErrorCode::BadRequest, "{args}");
+        }
+    }
+
+    #[test]
+    fn room_returns_only_the_manager_room_newest_first_limited_and_after_since() {
+        let r = rig();
+        let p = policy(&["room"]);
+        let ids: Vec<String> = (0..5)
+            .map(|i| post_to(&r, RoomRef::manager(ME), &format!("m{i}")))
+            .collect();
+        post_to(&r, RoomRef::session(ME, WORKER), "secret session text");
+        post_to(&r, RoomRef::manager(PEER), "foreign room");
+        let all = r.call(&p, "ra", "room", json!({}));
+        let bodies = |v: &Value| -> Vec<String> {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m["body_md"].as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(bodies(data(&all)), ["m0", "m1", "m2", "m3", "m4"]);
+        let last2 = r.call(&p, "rb", "room", json!({"limit": 2}));
+        assert_eq!(bodies(data(&last2)), ["m3", "m4"]);
+        let since = r.call(&p, "rc", "room", json!({"since": ids[1]}));
+        assert_eq!(bodies(data(&since)), ["m2", "m3", "m4"]);
+        let both = r.call(&p, "rd", "room", json!({"since": ids[1], "limit": 1}));
+        assert_eq!(bodies(data(&both)), ["m4"]);
+        let unknown = r.call(&p, "re", "room", json!({"since": "nope"}));
+        assert_eq!(bodies(data(&unknown)), ["m0", "m1", "m2", "m3", "m4"]);
+    }
+
+    #[test]
+    fn an_unknown_op_is_refused_cleanly_and_leaves_no_trace() {
+        let r = rig();
+        let res = r.call(&open(), "z1", "zzz", json!({}));
+        assert_eq!(code(&res), ErrorCode::BadRequest);
+        let senders = r.d.senders.lock().unwrap();
+        assert!(senders.get(PEER).is_none_or(|s| s.seen.is_empty()));
     }
 
     #[test]

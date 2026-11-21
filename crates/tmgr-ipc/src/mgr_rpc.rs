@@ -25,17 +25,19 @@ pub enum Op {
     Read,
     Send,
     Ask,
+    Room,
     SpawnChallenge,
     Spawn,
     Switch,
 }
 
 impl Op {
-    pub const ALL: [Op; 7] = [
+    pub const ALL: [Op; 8] = [
         Op::List,
         Op::Read,
         Op::Send,
         Op::Ask,
+        Op::Room,
         Op::SpawnChallenge,
         Op::Spawn,
         Op::Switch,
@@ -47,6 +49,7 @@ impl Op {
             Op::Read => "read",
             Op::Send => "send",
             Op::Ask => "ask",
+            Op::Room => "room",
             Op::SpawnChallenge => "spawn_challenge",
             Op::Spawn => "spawn",
             Op::Switch => "switch",
