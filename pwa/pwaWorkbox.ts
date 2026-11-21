@@ -23,6 +23,7 @@ export const pwaWorkbox = {
 	globIgnores: [
 		'**/assets/**/{exo-2,jetbrains-mono,quicksand,instrument-serif}-*.woff2',
 		'docs/**/*.html',
+		'pair.html',
 	],
 	directoryIndex: null,
 	navigateFallbackDenylist: [
@@ -31,6 +32,8 @@ export const pwaWorkbox = {
 		/^\/(login|register)(\/|\?|$)/i,
 		/^\/desktop-auth(\/|\?|$)/i,
 		/^\/admin(\/|\?|$)/i,
+		/^\/pair/,
+		/^\/\.well-known\//,
 		/\.(txt|md|json|ts|xml)(\?|$)/i,
 	],
 	importScripts: ['clear-private-api-cache.js'],

@@ -56,6 +56,21 @@ server {
         try_files $uri =404;
     }
 
+    location = /.well-known/apple-app-site-association {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=3600";
+        try_files $uri =404;
+    }
+
+    # Pairing page: static, tracker-free; the URL fragment is a one-time secret. Never fall back to the SPA.
+    location ^~ /pair {
+        try_files /pair.html =404;
+        add_header Cache-Control "no-store" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'sha256-q6IS4R7e/kNp62+rAEFVK0evsN9cqSi2uxBzUKB90OA='; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+    }
+    location = /pair.html { return 404; }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

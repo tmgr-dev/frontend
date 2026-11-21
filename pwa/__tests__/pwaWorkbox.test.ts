@@ -31,6 +31,10 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 		'/docs/plugin-sdk/tmgr.d.ts',
 		'/docs/plugin-sdk/permissions.json',
 		'/sitemap.xml?x=1',
+		'/pair',
+		'/pair/',
+		'/pair?x=1',
+		'/.well-known/apple-app-site-association',
 	])('denies %s', (path) => {
 		expect(denied(path)).toBe(true);
 	});
@@ -51,6 +55,7 @@ describe('pwaWorkbox navigateFallbackDenylist', () => {
 		'/tmgrdev/login',
 		'/docs/agents',
 		'/tmgrdev/pages/v1.2-notes',
+		'/tmgrdev/pair',
 	])('allows %s', (path) => {
 		expect(denied(path)).toBe(false);
 	});
@@ -96,6 +101,12 @@ describe('pwaWorkbox precache', () => {
 	it('is wired into manifestTransforms and globs cover assets', () => {
 		expect(pwaWorkbox.manifestTransforms).toHaveLength(1);
 		expect(pwaWorkbox.globPatterns.join(' ')).toMatch(/js.*css.*html/);
+	});
+});
+
+describe('pwaWorkbox pairing page', () => {
+	it('keeps pair.html out of the precache', () => {
+		expect(pwaWorkbox.globIgnores).toContain('pair.html');
 	});
 });
 
