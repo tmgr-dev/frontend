@@ -4,6 +4,7 @@ pub mod egress;
 pub mod exe;
 pub mod limit;
 pub mod login;
+pub mod manager;
 pub mod orchestrator;
 pub mod permit;
 pub mod profile;
