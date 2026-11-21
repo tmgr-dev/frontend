@@ -241,10 +241,17 @@ pub struct JoinCodeView {
   expires_at_ms: u64,
 }
 
+fn qr_data_url(text: &str) -> Result<String, String> {
+  use base64::Engine;
+  let code = qrcode::QrCode::new(text.as_bytes()).map_err(|_| "could not draw the QR code".to_owned())?;
+  let svg = code.render::<qrcode::render::svg::Color>().min_dimensions(320, 320).quiet_zone(true).build();
+  Ok(format!("data:image/svg+xml;base64,{}", base64::engine::general_purpose::STANDARD.encode(svg)))
+}
+
 fn join_code_view(relay: &dyn relay::port::RelayPort) -> Result<JoinCodeView, String> {
   let code = relay.open_join_code()?;
   let expires_at_ms = tmgr_chat_relay::trust::decode_join_code(&code).map_err(|_| "could not read the join code".to_owned())?.exp_ms;
-  let qr = crate::decisions::phone::qr_data_url(&code)?;
+  let qr = qr_data_url(&code)?;
   Ok(JoinCodeView { code, qr, expires_at_ms })
 }
 

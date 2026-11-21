@@ -1,7 +1,6 @@
 mod apply;
 mod audit;
 mod pairing;
-pub(crate) use pairing::qr_data_url;
 mod pins;
 mod poller;
 mod projection;
