@@ -25,7 +25,7 @@ mod push;
 mod qmenu;
 mod render;
 mod signal;
-mod status;
+pub(crate) mod status;
 mod summary;
 mod templates;
 mod theme;

@@ -53,6 +53,16 @@
       "type": "object",
       "required": ["card_id"],
       "properties": { "card_id": { "$ref": "#/$defs/token" } }
+    },
+    "session_meta": {
+      "description": "Runner-filled state of the session that wrote the message. Every field is optional.",
+      "type": "object",
+      "properties": {
+        "context_pct": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "context_tokens": { "type": "integer", "minimum": 0 },
+        "agent": { "$ref": "#/$defs/token" },
+        "model": { "type": "string", "pattern": "^[!-~]{1,128}$" }
+      }
     }
   },
   "$defs": {

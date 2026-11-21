@@ -202,6 +202,7 @@ impl Chat {
             attachments,
             reply_to,
             decision: None,
+            session_meta: None,
         };
         self.append(msg)
     }
@@ -241,6 +242,7 @@ impl Chat {
             attachments: Vec::new(),
             reply_to: None,
             decision: None,
+            session_meta: None,
         };
         if let Err(e) = self.append(msg) {
             crate::daemon::log(&format!("chat: note not stored: {e}"));
@@ -284,6 +286,7 @@ impl Chat {
             attachments: m.attachments,
             reply_to: m.reply_to,
             decision: None,
+            session_meta: None,
         };
         msg.validate().map_err(Invalid)?;
         {
@@ -396,14 +399,15 @@ impl Chat {
             if room.validate().is_err() {
                 continue;
             }
+            let meta = lock(&self.tails).get(&s.id).map(|t| t.meta.clone());
             out.push(RoomInfo {
                 last: last(&room),
                 room,
                 title: s.name.clone(),
                 agent: s.profile.clone(),
                 state: Some(state_name(s.state.kind).into()),
-                context_pct: None,
-                context_tokens: None,
+                context_pct: meta.as_ref().and_then(|m| m.context_pct),
+                context_tokens: meta.and_then(|m| m.context_tokens),
             });
         }
         out

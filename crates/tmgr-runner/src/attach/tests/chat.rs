@@ -63,6 +63,7 @@ fn msg(n: u64, room: RoomRef, author: AuthorKind, kind: MessageKind, body: &str)
         attachments: Vec::new(),
         reply_to: None,
         decision: None,
+        session_meta: None,
     }
 }
 

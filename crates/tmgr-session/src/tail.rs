@@ -11,6 +11,14 @@ pub const WINDOW: usize = 1 << 20;
 pub struct Replies {
     pub texts: Vec<String>,
     pub offset: u64,
+    pub usage: Usage,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Usage {
+    pub model: Option<String>,
+    pub context_tokens: Option<u64>,
+    pub context_window: Option<u64>,
 }
 
 pub fn len(path: &Path) -> Result<u64, String> {
@@ -37,6 +45,7 @@ pub fn read_new(path: &Path, agent: Agent, offset: u64, window: usize) -> Result
                 return Ok(Replies {
                     texts: Vec::new(),
                     offset,
+                    usage: Usage::default(),
                 });
             }
             if want <= MAX_LINE {
@@ -46,18 +55,75 @@ pub fn read_new(path: &Path, agent: Agent, offset: u64, window: usize) -> Result
             return Ok(Replies {
                 texts: Vec::new(),
                 offset: offset + buf.len() as u64,
+                usage: Usage::default(),
             });
         };
-        let texts = buf[..end]
+        let mut texts = Vec::new();
+        let mut usage = Usage::default();
+        for v in buf[..end]
             .split(|b| *b == b'\n')
             .filter(|l| l.len() <= MAX_LINE)
             .filter_map(|l| serde_json::from_slice::<Value>(l).ok())
-            .filter_map(|v| reply(agent, &v))
-            .collect();
+        {
+            meter(agent, &v, &mut usage);
+            texts.extend(reply(agent, &v));
+        }
         return Ok(Replies {
             texts,
             offset: offset + end as u64 + 1,
+            usage,
         });
+    }
+}
+
+pub fn meter(agent: Agent, v: &Value, usage: &mut Usage) {
+    match agent {
+        Agent::Claude => {
+            let m = &v["message"];
+            let model = m["model"].as_str().unwrap_or("");
+            if v["type"].as_str() != Some("assistant")
+                || v["isSidechain"].as_bool() == Some(true)
+                || model.is_empty()
+                || model.starts_with('<')
+            {
+                return;
+            }
+            usage.model = Some(model.to_string());
+            let tokens: u64 = [
+                "input_tokens",
+                "cache_read_input_tokens",
+                "cache_creation_input_tokens",
+            ]
+            .iter()
+            .filter_map(|k| m["usage"][k].as_u64())
+            .sum();
+            if tokens > 0 {
+                usage.context_tokens = Some(tokens);
+                usage.context_window = None;
+            }
+        }
+        Agent::Codex => {
+            let p = &v["payload"];
+            match (v["type"].as_str(), p["type"].as_str()) {
+                (Some("turn_context"), _) => {
+                    if let Some(model) = p["model"].as_str().filter(|m| !m.is_empty()) {
+                        usage.model = Some(model.to_string());
+                    }
+                }
+                (Some("event_msg"), Some("token_count")) => {
+                    let info = &p["info"];
+                    if let Some(tokens) = info["last_token_usage"]["input_tokens"]
+                        .as_u64()
+                        .filter(|t| *t > 0)
+                    {
+                        usage.context_tokens = Some(tokens);
+                        usage.context_window =
+                            info["model_context_window"].as_u64().filter(|w| *w > 0);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -149,6 +215,52 @@ mod tests {
                 &json!({"type": "event_msg", "payload": {"type": "agent_message", "message": "dup"}})
             ),
             None
+        );
+    }
+
+    #[test]
+    fn claude_usage_comes_from_the_last_main_assistant_line() {
+        let main = |model: &str, input: u64| {
+            json!({"type": "assistant", "message": {"model": model, "content": [],
+            "usage": {"input_tokens": input, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 10}}})
+        };
+        let side = json!({"type": "assistant", "isSidechain": true, "message": {"model": "side", "usage": {"input_tokens": 9}}});
+        let synthetic = json!({"type": "assistant", "message": {"model": "<synthetic>", "usage": {"input_tokens": 9}}});
+        let mut u = Usage::default();
+        for v in [main("claude-a", 5), main("claude-b", 90), side, synthetic] {
+            meter(Agent::Claude, &v, &mut u);
+        }
+        assert_eq!(
+            u,
+            Usage {
+                model: Some("claude-b".into()),
+                context_tokens: Some(1100),
+                context_window: None,
+            }
+        );
+    }
+
+    #[test]
+    fn codex_usage_comes_from_turn_context_and_token_count() {
+        let mut u = Usage::default();
+        let lines = [
+            json!({"type": "turn_context", "payload": {"model": "gpt-x"}}),
+            json!({"type": "event_msg", "payload": {"type": "token_count", "info": null}}),
+            json!({"type": "event_msg", "payload": {"type": "token_count", "info": {
+                "total_token_usage": {"input_tokens": 999999},
+                "last_token_usage": {"input_tokens": 33450, "cached_input_tokens": 33280},
+                "model_context_window": 258400}}}),
+        ];
+        for v in &lines {
+            meter(Agent::Codex, v, &mut u);
+        }
+        assert_eq!(
+            u,
+            Usage {
+                model: Some("gpt-x".into()),
+                context_tokens: Some(33450),
+                context_window: Some(258400),
+            }
         );
     }
 

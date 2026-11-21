@@ -685,9 +685,15 @@ Capability `chat.v1`. The message envelope (`ChatMessage`, `RoomRef`, `RoomInfo`
 the limits) is defined in `tmgr_ipc::chat` and `schema/chat-message.v1.json`. Only `cli` and `desktop`
 may call these methods; every other client gets `forbidden`.
 
+A message the runner captures from a session transcript (author `session`) carries `session_meta`: `agent`
+(the profile), `model` (the model id from the transcript, printable ASCII, at most 128 characters),
+`context_tokens` (the input tokens of the last turn) and `context_pct` (0 to 100: tokens over the context
+window the agent reported, or over 200 000, or 1 000 000 above that, when it reports none). Every field is
+optional; readers ignore the object when it is absent.
+
 | method | params | result |
 |---|---|---|
-| `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`), then one room per session (`title` = session name, `agent` = profile, `state`, `last`); `context_pct` and `context_tokens` are not filled yet |
+| `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`), then one room per session (`title` = session name, `agent` = profile, `state`, `last`, and `context_pct` and `context_tokens` once the session's transcript reported usage since the runner started) |
 | `chat.history` | `{room, before?, limit?}` (`limit` 1 to 500, default 500) | `[ChatMessage]`, oldest first: the newest `limit` messages stored before the message with id `before` (store order, which is append order); an unknown `before` gives `[]` |
 | `chat.send` | `{room, body_md, reply_to?, attachments?, id?, ts_ms?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
 | `chat.search` | `{query, room?, limit?}` (`query` 1 to 256 characters, `limit` default 50, max 500) | `[ChatMessage]`, newest first: case-insensitive substring match on `body_md` |
