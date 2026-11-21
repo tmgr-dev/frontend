@@ -99,6 +99,7 @@ const standaloneDevPages = [
 	'/runner-terminal.html',
 	'/decisions.html',
 	'/decisions-phones.html',
+	'/manager.html',
 ];
 
 const runnerTerminalDevCsp = (): Plugin => ({
@@ -213,6 +214,7 @@ export default defineConfig({
 					new URL('./runner-terminal.html', import.meta.url),
 				),
 				decisions: fileURLToPath(new URL('./decisions.html', import.meta.url)),
+				manager: fileURLToPath(new URL('./manager.html', import.meta.url)),
 				'decisions-phones': fileURLToPath(
 					new URL('./decisions-phones.html', import.meta.url),
 				),

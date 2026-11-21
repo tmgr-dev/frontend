@@ -6,6 +6,7 @@ mod app_links;
 mod capture;
 #[cfg(unix)]
 mod decisions;
+mod manager;
 mod downloads;
 mod embeds;
 mod git_track;
@@ -410,7 +411,14 @@ pub fn run() {
       #[cfg(unix)]
       decisions::phone::phones_cancel,
       #[cfg(unix)]
-      decisions::phone::phones_revoke
+      decisions::phone::phones_revoke,
+      manager::manager_chats,
+      manager::manager_messages,
+      manager::manager_send,
+      manager::manager_commands,
+      manager::manager_search,
+      manager::manager_mark_read,
+      manager::manager_open_window
     ])
     .on_window_event(|window, event| {
       runner::commands::on_window_event(window, event);
@@ -514,6 +522,7 @@ pub fn run() {
       if let Err(error) = decisions::setup(app.handle()) {
         log::error!("[decisions] failed to start: {error}");
       }
+      manager::setup(app.handle());
       Ok(())
     })
     .build(tauri::generate_context!())
