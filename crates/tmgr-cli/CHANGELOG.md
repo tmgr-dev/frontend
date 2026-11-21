@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.150
+
+- Fixed: the Manager window and `tmgr attach` chat now show what a Claude Code or Codex session said and what you typed to it, not only its replies. Your prompts appear as "You". The last 30 turns of each session are filled in when the runner first reads the session, so a long-running session no longer looks empty until its next reply.
+- Sessions that were already running get that history once, the first time the updated runner reads them. Restart the runner after updating (`tmgr runner restart`); running sessions do not need to be restarted.
+- Messages you send from chat are not shown twice. A prompt that another program types into a session (the manager, `tmgr runner send`) also shows as "You".
+- Known: a prompt that starts with `<` is treated as system text and is not shown.
+
 ## 1.0.149
 
 - Fixed: when a follower refuses to start a session, `tmgr attach` on the leader now shows the follower's reason instead of "did not answer; the session may have started", and the link stays up. The refusal for a folder that is too large to check, or that has git object files linked from another place, now says how to continue: use a smaller folder or fix the objects, or start with `--no-sandbox` (needs the PIN; on the follower run `tmgr link scope <leader> --allow-no-sandbox on`). The text is no longer cut at 200 characters.
