@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.137
+
+- Remote control: start a session on a linked machine. `tmgr attach` on the leader has a new "Run on" field in "+ New session" (and when starting a template): pick a follower and the session starts there, with the agent and repo picker limited to what that follower's scope allows. `tmgr run --on <host>` now works without a task REF (and takes `--name`). The leader sends the new `runs.start` link method; the follower checks it against the link scope (repos, agents, max running sessions) and always refuses bypass and no-sandbox runs. The prompt is typed through the remote attach input, so it is only sent when the follower allows attach input; otherwise the session starts and the leader says the prompt was not sent. A start that times out is never retried and says it may have started. An older follower answers that it does not know the method, shown as "update the follower CLI". Needs the new CLI on both machines.
+
 ## 1.0.135
 
 - Remote control: `tmgr attach` on the leader now shows the live agent title of follower sessions on tabs and in the sidebar, as for local sessions. The follower computes it from the agent's own transcript (same rules as local titles, only for sessions still named after their agent, and only when the follower's own log-reading consent allows it) and sends it as an optional `title` field of `runs.list`; the text is cleaned and capped at 64 characters. A name you set explicitly still wins. Older leaders ignore the field and older followers send none, so those sessions keep the default name. `tmgr agents --host` JSON output carries the new `title` and `title_auto` fields. Needs the new CLI on both machines.
