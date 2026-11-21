@@ -67,6 +67,7 @@ pub(super) fn fork_step(launch: &Launch) -> ForkStep {
             bypass: launch.bypass,
             no_sandbox: launch.no_sandbox,
             host: None,
+            pin: None,
         })),
         (None, false) => ForkStep::Unsupported,
     }

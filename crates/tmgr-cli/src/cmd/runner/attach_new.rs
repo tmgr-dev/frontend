@@ -2,6 +2,7 @@ use super::attach_shell::{can_split, shell_argv, size_hint};
 use super::ops::{elevated, login_preflight, run_create_req, run_create_run};
 use super::run_task::{self, Launch, Prepared};
 use super::{bin, connect, rerr, PermissionMode};
+use crate::os_auth::Outcome;
 use ratatui::layout::Rect;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -459,10 +460,23 @@ pub(super) struct CloudTask {
     pub url: Option<String>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub(super) struct RemoteStart {
     pub params: Value,
     pub prompt: Option<String>,
+}
+
+impl std::fmt::Debug for RemoteStart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut params = self.params.clone();
+        if let Some(pin) = params.get_mut("pin") {
+            *pin = json!("<redacted>");
+        }
+        f.debug_struct("RemoteStart")
+            .field("params", &params)
+            .field("prompt", &self.prompt)
+            .finish()
+    }
 }
 
 const MAX_REMOTE_NAME: usize = 64;
@@ -524,10 +538,49 @@ pub(super) fn remote_start(
     if req.no_sandbox {
         params["no_sandbox"] = json!(true);
     }
+    if req.bypass || req.no_sandbox {
+        if let Some(pin) = &req.pin {
+            params["pin"] = json!(pin.expose());
+        }
+    }
     Ok(RemoteStart {
         params,
         prompt: cloud.map(cloud_prompt),
     })
+}
+
+fn remote_gate(
+    req: &NewRequest,
+    in_agent: bool,
+    auth: &mut dyn FnMut(&str) -> Result<Outcome>,
+) -> std::result::Result<(), SpawnErr> {
+    if !req.bypass && !req.no_sandbox {
+        return Ok(());
+    }
+    privilege_guard(req, in_agent)?;
+    let word = if req.no_sandbox {
+        "no-sandbox"
+    } else {
+        "bypass"
+    };
+    let host = one_line(req.host.as_deref().unwrap_or_default());
+    match auth(&format!("start a {word} session on {host}")).map_err(task_err)? {
+        Outcome::Approved | Outcome::Unavailable => Ok(()),
+        Outcome::Denied => Err(SpawnErr {
+            message: "local authentication was cancelled".into(),
+            hint: None,
+        }),
+    }
+}
+
+pub(super) fn prepare_remote(
+    req: &NewRequest,
+    cloud: Option<&CloudTask>,
+    in_agent: bool,
+    auth: &mut dyn FnMut(&str) -> Result<Outcome>,
+) -> std::result::Result<RemoteStart, SpawnErr> {
+    remote_gate(req, in_agent, auth)?;
+    remote_start(req, cloud)
 }
 
 pub(super) fn lookup_cloud_task(reference: &str) -> std::result::Result<CloudTask, SpawnErr> {
@@ -721,6 +774,7 @@ mod tests {
             bypass: false,
             no_sandbox: false,
             host: None,
+            pin: None,
         }
     }
 
@@ -1440,6 +1494,7 @@ mod tests {
     fn remote_req(task: Option<&str>) -> NewRequest {
         NewRequest {
             host: Some("spark".into()),
+            pin: None,
             task: task.map(str::to_string),
             folder: "/srv/app".into(),
             ..req(agent("codex"))
@@ -1543,6 +1598,127 @@ mod tests {
             again.error.as_deref(),
             Some("bypass-permissions is not allowed on this follower")
         );
+        v.reopen_new_session(again);
+        assert_eq!(v.new_session.unwrap().remote(), Some("spark"));
+    }
+
+    fn pinned_req(bypass: bool, no_sandbox: bool) -> NewRequest {
+        NewRequest {
+            bypass,
+            no_sandbox,
+            pin: tmgr_runner::attach::FollowerPin::new("s3cret".into()),
+            ..remote_req(None)
+        }
+    }
+
+    #[test]
+    fn the_pin_is_sent_only_with_a_privileged_start_and_never_in_debug() {
+        let got = remote_start(&pinned_req(true, false), None).unwrap();
+        assert_eq!(got.params["pin"], "s3cret");
+        assert_eq!(got.params["mode"], "bypass");
+        assert!(!format!("{got:?}").contains("s3cret"));
+        let got = remote_start(&pinned_req(false, true), None).unwrap();
+        assert_eq!(got.params["pin"], "s3cret");
+        assert_eq!(got.params["no_sandbox"], true);
+        let plain = remote_start(&pinned_req(false, false), None).unwrap();
+        assert!(plain.params.get("pin").is_none());
+        let unset = NewRequest {
+            pin: None,
+            ..pinned_req(true, false)
+        };
+        assert!(remote_start(&unset, None)
+            .unwrap()
+            .params
+            .get("pin")
+            .is_none());
+    }
+
+    fn auth_with(
+        outcome: Outcome,
+        seen: &mut Vec<String>,
+    ) -> impl FnMut(&str) -> Result<Outcome> + '_ {
+        move |reason| {
+            seen.push(reason.to_string());
+            Ok(outcome)
+        }
+    }
+
+    #[test]
+    fn a_denied_local_authentication_builds_no_start() {
+        let mut seen = Vec::new();
+        let e = prepare_remote(
+            &pinned_req(true, false),
+            None,
+            false,
+            &mut auth_with(Outcome::Denied, &mut seen),
+        )
+        .unwrap_err();
+        assert_eq!(e.message, "local authentication was cancelled");
+        assert_eq!(seen, ["start a bypass session on spark"]);
+    }
+
+    #[test]
+    fn an_approved_or_unavailable_authentication_builds_the_start() {
+        for outcome in [Outcome::Approved, Outcome::Unavailable] {
+            let mut seen = Vec::new();
+            let got = prepare_remote(
+                &pinned_req(false, true),
+                None,
+                false,
+                &mut auth_with(outcome, &mut seen),
+            )
+            .unwrap();
+            assert_eq!(got.params["pin"], "s3cret");
+            assert_eq!(seen, ["start a no-sandbox session on spark"]);
+        }
+    }
+
+    #[test]
+    fn a_privileged_remote_start_is_refused_inside_an_agent_session_without_asking() {
+        let mut seen = Vec::new();
+        let e = prepare_remote(
+            &pinned_req(true, false),
+            None,
+            true,
+            &mut auth_with(Outcome::Approved, &mut seen),
+        )
+        .unwrap_err();
+        assert!(e.message.contains("agent session"), "{}", e.message);
+        assert!(seen.is_empty());
+    }
+
+    #[test]
+    fn an_unprivileged_remote_start_never_asks_for_authentication() {
+        let mut seen = Vec::new();
+        let got = prepare_remote(
+            &remote_req(None),
+            None,
+            true,
+            &mut auth_with(Outcome::Denied, &mut seen),
+        );
+        assert!(got.is_ok());
+        assert!(seen.is_empty());
+    }
+
+    #[test]
+    fn a_follower_pin_refusal_reopens_the_form_on_the_same_machine_with_the_reason() {
+        use tmgr_runner::attach::{Machine, MachineState, ViewState};
+        let mut v = ViewState::new(Vec::new(), "r");
+        v.machines = vec![Machine {
+            name: "spark".into(),
+            state: MachineState::Online { latency_ms: 1 },
+        }];
+        v.open_new_session("/home/x".into(), installed_kinds(), "/home/x".into());
+        let mut base = v.new_session.take().unwrap();
+        base.set_host(1);
+        let req = pinned_req(true, false);
+        let why = "wrong follower PIN (3 tries left)";
+        let mut flow = NewFlow::default();
+        let id = flow.begin(dialog_for(&base, &req), None, Instant::now());
+        let again = flow.finish(id).unwrap().with_error(why, None);
+        assert_eq!(again.remote(), Some("spark"));
+        assert_eq!(again.folder, "/srv/app");
+        assert_eq!(again.error.as_deref(), Some(why));
         v.reopen_new_session(again);
         assert_eq!(v.new_session.unwrap().remote(), Some("spark"));
     }
