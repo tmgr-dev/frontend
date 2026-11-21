@@ -82,6 +82,25 @@ export interface SlashCommand {
 	dangerous: boolean;
 }
 
+export interface AuditEntry {
+	ts_ms: number;
+	action: string;
+	detail: string;
+	needs_approval: boolean;
+}
+
+export const SPAWN_AGENTS = ['claude', 'codex', 'opencode', 'agy'] as const;
+export type SpawnAgent = (typeof SPAWN_AGENTS)[number];
+
+export interface SpawnRequest {
+	agent: SpawnAgent;
+	machine: string;
+	folder: string;
+	name: string;
+	task: string;
+	prompt: string;
+}
+
 export const roomKey = (room: RoomRef): string =>
 	room.kind === 'manager'
 		? `manager:${room.machine}`

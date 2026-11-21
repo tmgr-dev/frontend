@@ -5,6 +5,13 @@
 				<b>{{ $t('manager.list.label') }}</b>
 				<button
 					type="button"
+					class="btn pri sm"
+					@click="store.openNewSession()"
+				>
+					{{ $t('manager.list.newSession') }}
+				</button>
+				<button
+					type="button"
 					class="ibd"
 					:aria-label="$t('manager.trust.devices.open')"
 					:title="$t('manager.trust.devices.open')"
@@ -29,6 +36,7 @@
 				v-if="activeInfo"
 				:info="activeInfo"
 				@search="store.openSearch(store.activeKey ?? undefined)"
+				@switch="store.openSwitch()"
 			/>
 			<SearchPanel
 				v-if="store.search.open"
@@ -82,9 +90,44 @@
 				{{ store.error }}
 			</p>
 		</section>
+		<DetailPanel
+			:tab="store.panel.tab"
+			:rooms="store.rooms"
+			:info="activeInfo"
+			:active-key="store.activeKey ?? undefined"
+			:messages="messages"
+			:audit="store.panel.audit"
+			:audit-error="store.panel.auditError"
+			:trust="trust.trust"
+			@tab="store.setTab"
+			@select="store.selectFromHierarchy"
+			@devices="trust.openPanel()"
+		/>
 		<input ref="file" type="file" multiple hidden @change="onFiles" />
+		<NewSessionDialog
+			v-if="store.newSession.open"
+			:form="store.newSession.form"
+			:machines="store.machines"
+			:busy="store.newSession.busy"
+			:error="store.newSession.error"
+			@submit="store.submitNewSession()"
+			@cancel="store.closeNewSession()"
+		/>
+		<SwitchAgentDialog
+			v-else-if="store.switcher.open"
+			:agent="store.switcher.agent"
+			:model="store.switcher.model"
+			:models="AGENT_MODELS[store.switcher.agent]"
+			:current="activeInfo?.agent"
+			:busy="store.switcher.busy"
+			:error="store.switcher.error"
+			@pick="store.pickSwitchAgent"
+			@update:model="store.switcher.model = $event"
+			@submit="store.submitSwitch()"
+			@cancel="store.closeSwitch()"
+		/>
 		<JoinConfirmDialog
-			v-if="trust.current?.type === 'join'"
+			v-else-if="trust.current?.type === 'join'"
 			:label="trust.current.join.label"
 			:kind="trust.current.join.kind"
 			:fp="trust.current.join.fp"
@@ -142,18 +185,21 @@
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
 	import DecisionCard from './components/DecisionCard.vue';
+	import DetailPanel from './components/DetailPanel.vue';
 	import Icon from './components/Icon.vue';
 	import MessageList from './components/MessageList.vue';
+	import NewSessionDialog from './components/NewSessionDialog.vue';
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
+	import SwitchAgentDialog from './components/SwitchAgentDialog.vue';
 	import DevicesPanel from './components/trust/DevicesPanel.vue';
 	import JoinConfirmDialog from './components/trust/JoinConfirmDialog.vue';
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
 	import { renderBody } from './format';
-	import { MAX_FILE_BYTES, useManagerStore } from './store';
+	import { AGENT_MODELS, MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
-	import { roomKey, type ChatMessage } from './types';
+	import { roomKey } from './types';
 
 	const sha256Hex = async (file: File): Promise<string> => {
 		const digest = await crypto.subtle.digest(
@@ -172,17 +218,24 @@
 			ChatList,
 			Composer,
 			DecisionCard,
+			DetailPanel,
 			DevicesPanel,
 			Icon,
 			JoinConfirmDialog,
 			MessageList,
+			NewSessionDialog,
 			ResetIdentityDialog,
 			RevokeConfirmDialog,
 			SearchPanel,
 			SlashMenu,
+			SwitchAgentDialog,
 		},
 		setup() {
-			return { store: useManagerStore(), trust: useTrustStore() };
+			return {
+				store: useManagerStore(),
+				trust: useTrustStore(),
+				AGENT_MODELS,
+			};
 		},
 		computed: {
 			revokeDevice() {

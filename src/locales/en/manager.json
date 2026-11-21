@@ -4,11 +4,13 @@
 		"pinned": "Pinned",
 		"sessions": "Sessions",
 		"noMessages": "No messages yet",
-		"you": "You: "
+		"you": "You: ",
+		"newSession": "New session"
 	},
 	"header": {
 		"search": "Search in chat",
-		"encrypted": "End-to-end encrypted"
+		"encrypted": "End-to-end encrypted",
+		"switchAgent": "Switch agent"
 	},
 	"state": {
 		"working": "Working",
@@ -108,5 +110,57 @@
 			"pending": "Pending",
 			"revoked": "Revoked"
 		}
+	},
+	"panel": {
+		"tabs": {
+			"session": "Session",
+			"hierarchy": "Hierarchy",
+			"audit": "Audit log",
+			"encryption": "Encryption"
+		},
+		"unknownAgent": "Unknown agent",
+		"agent": "Agent",
+		"machine": "Machine",
+		"context": "Context",
+		"lastMessages": "Last messages",
+		"writeToAct": "To make it act, write in its chat.",
+		"pickSession": "Select a session to see its details.",
+		"noSessions": "No sessions yet.",
+		"needsApproval": "needs approval",
+		"auto": "auto",
+		"auditEmpty": "Nothing recorded yet",
+		"auditHint": "Every manager action is logged on this device.",
+		"samePairing": "Same pairing keys as Decisions",
+		"serverSees": "What the TMGR server sees",
+		"serverSeesBody": "Encrypted blobs it cannot read, when messages are sent and their size, and which paired devices exchange them. It never sees message text or session names.",
+		"providerSees": "What the AI provider sees",
+		"providerSeesBody": "The Manager is an AI agent. The provider that runs it does see the text the Manager processes, including session output it reads for you.",
+		"pairedDevices": "Paired devices",
+		"keyFingerprint": "Key fingerprint",
+		"manageDevices": "Manage devices"
+	},
+	"newSession": {
+		"title": "New session",
+		"agent": "Agent",
+		"machine": "Machine",
+		"folder": "Folder on the machine",
+		"task": "Task (optional)",
+		"name": "Name",
+		"prompt": "First prompt",
+		"promptPlaceholder": "What should it do first?",
+		"start": "Start session"
+	},
+	"switchAgent": {
+		"title": "Switch agent",
+		"agent": "Agent",
+		"model": "Model",
+		"runningNow": "Running now",
+		"cliOnly": "CLI only",
+		"cliNote": "{agent} sessions are managed from the tmgr CLI by design.",
+		"whatHappens": "What happens on switch",
+		"historyStays": "Chat history stays. It lives in TMGR, not in the agent.",
+		"handoff": "The new agent gets a handoff packet with the goal and a summary of the last messages.",
+		"stopped": "The current session is stopped.",
+		"submit": "Switch to {agent} · {model}"
 	}
 }

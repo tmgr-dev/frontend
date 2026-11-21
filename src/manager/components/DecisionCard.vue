@@ -1,10 +1,18 @@
 <template>
-	<div class="dcard" :data-card="cardId">
+	<div
+		:class="['dcard', { perm: isPermission, done: mode === 'final' }]"
+		:data-card="cardId"
+	>
 		<p v-if="!state.card && !state.error" class="dc-note">
 			{{ $t('manager.decision.loading') }}
 		</p>
 		<template v-if="state.card">
-			<div class="dc-title">{{ state.card.title }}</div>
+			<div class="dc-title">
+				<Icon
+					v-if="isPermission"
+					:name="mode === 'final' ? 'check' : 'hand'"
+				/>{{ state.card.title }}
+			</div>
 			<div v-if="state.card.question" class="dc-q">
 				{{ state.card.question }}
 			</div>
@@ -61,9 +69,11 @@
 		createDecisionCardLoader,
 		freeTextAnswer,
 	} from '../decisionCard';
+	import Icon from './Icon.vue';
 
 	export default defineComponent({
 		name: 'ManagerDecisionCard',
+		components: { Icon },
 		props: { cardId: { type: String, required: true } },
 		setup(props) {
 			return createDecisionCardLoader(
@@ -75,6 +85,9 @@
 			return { free: '', unlisten: null as null | (() => void), gone: false };
 		},
 		computed: {
+			isPermission(): boolean {
+				return this.state.card?.kind === 'permission';
+			},
 			mode() {
 				return this.state.card ? answerState(this.state.card) : 'answer';
 			},
