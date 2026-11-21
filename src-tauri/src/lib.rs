@@ -394,6 +394,12 @@ pub fn run() {
       #[cfg(unix)]
       decisions::decisions_pending_task_comments,
       #[cfg(unix)]
+      decisions::decisions_pending_actions,
+      #[cfg(unix)]
+      decisions::decisions_claim_action,
+      #[cfg(unix)]
+      decisions::decisions_finish_action,
+      #[cfg(unix)]
       decisions::decisions_mark_task_comment,
       #[cfg(unix)]
       decisions::decisions_skip_task_comment,

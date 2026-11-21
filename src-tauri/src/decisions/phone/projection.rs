@@ -123,7 +123,9 @@ pub struct Projected {
 }
 
 pub fn eligible(view: &CardView) -> bool {
-  matches!(view.state.as_str(), "open" | "deferred") && matches!(view.reply_via.as_str(), "mcp" | "cli" | "hook")
+  view.action.is_none()
+    && matches!(view.state.as_str(), "open" | "deferred")
+    && matches!(view.reply_via.as_str(), "mcp" | "cli" | "hook")
 }
 
 pub fn capabilities(view: &CardView) -> (bool, bool) {
