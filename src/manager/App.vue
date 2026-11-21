@@ -3,6 +3,15 @@
 		<aside class="side">
 			<div class="top">
 				<b>{{ $t('manager.list.label') }}</b>
+				<button
+					type="button"
+					class="ibd"
+					:aria-label="$t('manager.trust.devices.open')"
+					:title="$t('manager.trust.devices.open')"
+					@click="trust.openPanel()"
+				>
+					<Icon name="gear" />
+				</button>
 			</div>
 			<button type="button" class="sidesrch" @click="store.openSearch()">
 				<span>{{ $t('manager.search.scopeAll') }}</span>
@@ -73,6 +82,53 @@
 			</p>
 		</section>
 		<input ref="file" type="file" multiple hidden @change="onFiles" />
+		<JoinConfirmDialog
+			v-if="trust.current?.type === 'join'"
+			:label="trust.current.join.label"
+			:kind="trust.current.join.kind"
+			:fp="trust.current.join.fp"
+			:busy="trust.busy"
+			:error="trust.error"
+			@approve="trust.decideJoin(true)"
+			@reject="trust.decideJoin(false)"
+		/>
+		<RevokeConfirmDialog
+			v-else-if="trust.current?.type === 'revoke'"
+			:revoker-label="trust.current.revoke.revoker_label"
+			:revoker-fp="trust.current.revoke.revoker_fp"
+			:target-label="trust.current.revoke.target_label"
+			:target-fp="trust.current.revoke.target_fp"
+			:busy="trust.busy"
+			:error="trust.error"
+			@approve="trust.decideRevoke(true)"
+			@reject="trust.decideRevoke(false)"
+		/>
+		<RevokeConfirmDialog
+			v-else-if="revokeDevice"
+			:target-label="revokeDevice.label"
+			:target-fp="revokeDevice.fp"
+			:busy="trust.busy"
+			:error="trust.error"
+			@approve="trust.confirmRevoke()"
+			@reject="trust.cancelRevoke()"
+		/>
+		<ResetIdentityDialog
+			v-else-if="trust.resetOpen"
+			v-model="trust.resetText"
+			:busy="trust.busy"
+			:error="trust.error"
+			@confirm="trust.resetIdentity()"
+			@cancel="trust.cancelReset()"
+		/>
+		<DevicesPanel
+			v-else-if="trust.panelOpen"
+			:devices="trust.trust?.devices ?? []"
+			:busy="trust.busy"
+			:error="trust.error"
+			@revoke="trust.revoke"
+			@reset="trust.openReset()"
+			@close="trust.closePanel()"
+		/>
 	</div>
 </template>
 
@@ -81,11 +137,17 @@
 	import ChatHeader from './components/ChatHeader.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
+	import Icon from './components/Icon.vue';
 	import MessageList from './components/MessageList.vue';
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
+	import DevicesPanel from './components/trust/DevicesPanel.vue';
+	import JoinConfirmDialog from './components/trust/JoinConfirmDialog.vue';
+	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
+	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
 	import { renderBody } from './format';
 	import { MAX_FILE_BYTES, useManagerStore } from './store';
+	import { useTrustStore } from './trustStore';
 	import { roomKey, type ChatMessage } from './types';
 
 	const sha256Hex = async (file: File): Promise<string> => {
@@ -104,14 +166,26 @@
 			ChatHeader,
 			ChatList,
 			Composer,
+			DevicesPanel,
+			Icon,
+			JoinConfirmDialog,
 			MessageList,
+			ResetIdentityDialog,
+			RevokeConfirmDialog,
 			SearchPanel,
 			SlashMenu,
 		},
 		setup() {
-			return { store: useManagerStore() };
+			return { store: useManagerStore(), trust: useTrustStore() };
 		},
 		computed: {
+			revokeDevice() {
+				return (
+					this.trust.trust?.devices.find(
+						(d) => d.id === this.trust.revokeTarget,
+					) ?? null
+				);
+			},
 			activeInfo() {
 				return this.store.rooms.find(
 					(r) => roomKey(r.room) === this.store.activeKey,
@@ -135,10 +209,12 @@
 		},
 		mounted() {
 			void this.store.init();
+			void this.trust.init();
 			window.addEventListener('keydown', this.onGlobalKey);
 		},
 		beforeUnmount() {
 			window.removeEventListener('keydown', this.onGlobalKey);
+			this.trust.dispose();
 		},
 		methods: {
 			onGlobalKey(e: KeyboardEvent) {

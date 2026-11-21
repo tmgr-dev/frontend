@@ -116,6 +116,9 @@ export const ICONS: Record<
 	lock: {
 		body: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
 	},
+	gear: {
+		body: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
+	},
 	check: { body: '<path d="M5 12l5 5 9-10"/>', sw: 2.5 },
 	x: { body: '<path d="M6 6l12 12M18 6L6 18"/>', sw: 2.5 },
 	bolt: { body: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>', fill: true },

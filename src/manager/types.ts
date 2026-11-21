@@ -89,3 +89,41 @@ export const roomKey = (room: RoomRef): string =>
 
 export const MAX_BODY_BYTES = 64 * 1024;
 export const MAX_ATTACHMENTS = 16;
+
+export type TrustDeviceState = 'trusted' | 'pending' | 'revoked';
+
+export interface TrustDevice {
+	id: string;
+	kind: string;
+	label: string;
+	fp: string;
+	state: TrustDeviceState;
+	is_self: boolean;
+}
+
+export interface PendingJoin {
+	device_id: string;
+	label: string;
+	fp: string;
+	requested_at_ms: number;
+	kind?: string;
+}
+
+export interface PendingRevoke {
+	id: string;
+	revoker_label: string;
+	revoker_fp: string;
+	target_id: string;
+	target_label: string;
+	target_fp: string;
+}
+
+export interface TrustState {
+	registered: boolean;
+	self_fp: string;
+	devices: TrustDevice[];
+	pending_joins: PendingJoin[];
+	pending_revokes?: PendingRevoke[];
+}
+
+export const RESET_PHRASE = 'RESET';

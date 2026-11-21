@@ -51,5 +51,55 @@
 		"emptyHint": "Type a word to search.",
 		"noMatches": "No matches",
 		"noMatchesHint": "Nothing on this device matches."
+	},
+	"trust": {
+		"device": "Device",
+		"kind": "Type",
+		"unknownKind": "Unknown",
+		"fingerprint": "Fingerprint",
+		"cancel": "Cancel",
+		"close": "Close",
+		"join": {
+			"title": "Approve a new device?",
+			"body": "A new device wants to read your chats. Only approve it if you just set it up yourself.",
+			"compare": "Compare this fingerprint with the one shown on the other device. If they differ, reject.",
+			"approve": "Approve",
+			"reject": "Reject"
+		},
+		"revoke": {
+			"titleIncoming": "Another device was revoked",
+			"titleOutgoing": "Revoke this device?",
+			"bodyIncoming": "{revoker} wants to revoke {target}.",
+			"bodyOutgoing": "You are about to revoke {target}.",
+			"revoker": "Revoked by",
+			"target": "Device to revoke",
+			"effect": "That device will stop receiving your chats and can never be trusted again.",
+			"cascade": "Devices that were only introduced by it will also drop out and need to be approved again.",
+			"approve": "Revoke device",
+			"reject": "Keep device"
+		},
+		"reset": {
+			"title": "Reset chat identity?",
+			"body": "This device becomes the only trusted device for your chats.",
+			"newKeys": "This device gets new chat keys.",
+			"rejoin": "Every other device must join again.",
+			"typeToConfirm": "Type {phrase} to confirm",
+			"confirm": "Reset identity"
+		},
+		"devices": {
+			"title": "Chat devices",
+			"hint": "Devices that can read your chats.",
+			"thisDevice": "this device",
+			"revoke": "Revoke",
+			"revokeLabel": "Revoke {name}",
+			"reset": "Reset chat identity",
+			"empty": "No devices yet.",
+			"open": "Chat devices"
+		},
+		"state": {
+			"trusted": "Trusted",
+			"pending": "Pending",
+			"revoked": "Revoked"
+		}
 	}
 }
