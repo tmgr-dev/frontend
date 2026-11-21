@@ -11,11 +11,12 @@ pub use cards::{
 };
 #[cfg(test)]
 pub(crate) use keys::testutil;
-pub use keys::{KeyError, KeyOffer, KeyStoreFile, PendingKey};
+pub use keys::{KeyError, KeyInfo, KeyOffer, KeyStoreFile, PendingKey};
 
 use std::sync::Arc;
 use tmgr_spawn_auth::{
-    OfferOutcome, PinnedKey, Refusal, SignedSpawn, SpawnProposal, TrustStatus, TrustView,
+    OfferOutcome, PinnedKey, Refusal, RevokedKey, SignedSpawn, SpawnProposal, TrustStatus,
+    TrustView,
 };
 
 pub trait TrustSource: Send + Sync {
@@ -190,6 +191,14 @@ impl SpawnAuth {
         now_ms: u64,
     ) -> Result<tmgr_spawn_auth::DeviceFp, KeyError> {
         self.keys.approve(fp_prefix, spawn_key_prefix, now_ms)
+    }
+
+    pub fn revoke_key(&self, fp_prefix: &str) -> Result<RevokedKey, KeyError> {
+        self.keys.revoke(fp_prefix)
+    }
+
+    pub fn list_keys(&self) -> Result<Vec<KeyInfo>, KeyError> {
+        self.keys.list()
     }
 
     pub fn pending_keys(&self) -> Result<Vec<PendingKey>, KeyError> {
@@ -559,5 +568,28 @@ mod tests {
         std::fs::write(&tmp, "x").unwrap();
         auth.recover(NOW).unwrap();
         assert!(!tmp.exists());
+    }
+
+    #[test]
+    fn a_revoked_key_no_longer_verifies_and_cannot_come_back() {
+        let t = tempfile::tempdir().unwrap();
+        let (auth, _) = setup(t.path());
+        let o = offer(3, T0);
+        let fp = fp_of(&o);
+        auth.offer_key(o.clone(), NOW).unwrap();
+        auth.approve_key(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
+        let c = challenge(&auth, "card-1");
+        let wire = signed(&c, "card-1", &fp);
+        auth.revoke_key(&fp[..8]).unwrap();
+        assert_eq!(auth.pinned_key(&fp).unwrap(), None);
+        let out = auth.claim("card-1", &wire, NOW).unwrap();
+        assert_eq!(out, ClaimOutcome::Rejected(Refusal::UnknownKey));
+        assert_eq!(auth.offer_key(o, NOW).unwrap(), OfferOutcome::Revoked);
+        assert!(auth.list_keys().unwrap().is_empty());
+        assert_eq!(
+            auth.offer_key(offer(4, T0 + 1), NOW).unwrap(),
+            OfferOutcome::Added
+        );
+        assert_eq!(auth.list_keys().unwrap().len(), 1);
     }
 }

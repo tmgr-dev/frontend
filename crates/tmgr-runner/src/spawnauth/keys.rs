@@ -4,13 +4,14 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use tmgr_spawn_auth::{
     ApproveError, DeviceFp, DeviceKeys, KeyBook, KeyState, OfferOutcome, PinnedKey, Refusal,
-    SpawnKeyStatement, TrustStatus, TrustView,
+    RevokeError, RevokedKey, SpawnKeyStatement, TrustStatus, TrustView,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeyError {
     Refused(Refusal),
     Approve(ApproveError),
+    Revoke(RevokeError),
     Io,
     Corrupt,
 }
@@ -33,6 +34,15 @@ impl fmt::Display for KeyError {
             }
             KeyError::Approve(ApproveError::TooSoon) => {
                 f.write_str("the spawn key was just replaced; wait a minute and check it again")
+            }
+            KeyError::Revoke(RevokeError::PrefixTooShort) => {
+                f.write_str("fingerprint prefix is too short")
+            }
+            KeyError::Revoke(RevokeError::NotFound) => {
+                f.write_str("no spawn key matches the prefix")
+            }
+            KeyError::Revoke(RevokeError::Ambiguous) => {
+                f.write_str("fingerprint prefix matches several spawn keys")
             }
             KeyError::Io => f.write_str("spawn key store io error"),
             KeyError::Corrupt => f.write_str("spawn key file is corrupt"),
@@ -61,6 +71,16 @@ pub struct PendingKey {
     pub issued_at_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyInfo {
+    pub device_fp: DeviceFp,
+    pub device_id: String,
+    pub spawn_key_fp: String,
+    pub state: KeyState,
+    pub issued_at_ms: u64,
+    pub replaced_at_ms: Option<u64>,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Stored {
@@ -76,6 +96,8 @@ struct Stored {
 struct KeysFile {
     v: u32,
     keys: BTreeMap<String, Stored>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    revoked: Vec<String>,
 }
 
 struct Loaded {
@@ -178,6 +200,33 @@ impl KeyStoreFile {
         Ok(fp)
     }
 
+    pub fn revoke(&self, fp_prefix: &str) -> Result<RevokedKey, KeyError> {
+        let _lock = self.lock()?;
+        let (mut loaded, _) = self.load(None)?;
+        let revoked = loaded.book.revoke(fp_prefix).map_err(KeyError::Revoke)?;
+        loaded.offers.remove(&revoked.device_fp);
+        self.persist(&loaded)?;
+        Ok(revoked)
+    }
+
+    pub fn list(&self) -> Result<Vec<KeyInfo>, KeyError> {
+        let _lock = self.lock()?;
+        let (loaded, _) = self.load(None)?;
+        Ok(loaded
+            .book
+            .all()
+            .into_iter()
+            .map(|v| KeyInfo {
+                device_fp: v.statement.device_fp().into(),
+                device_id: v.statement.device_id().into(),
+                spawn_key_fp: v.statement.spawn_key_fp(),
+                state: v.state,
+                issued_at_ms: v.statement.issued_at_ms(),
+                replaced_at_ms: v.replaced_at_ms,
+            })
+            .collect())
+    }
+
     pub fn with_pinned<R>(
         &self,
         device_fp: &str,
@@ -251,6 +300,9 @@ impl KeyStoreFile {
             return Err(KeyError::Corrupt);
         }
         let mut cleared = false;
+        for spawn_key_fp in file.revoked {
+            loaded.book.restore_revoked(spawn_key_fp);
+        }
         for (fp, st) in file.keys {
             let Ok(stmt) = verify_offer(&self.user_id, &st.offer, &IntegrityOnly, u64::MAX) else {
                 continue;
@@ -285,7 +337,18 @@ impl KeyStoreFile {
                 (fp.clone(), stored)
             })
             .collect();
-        let bytes = serde_json::to_vec(&KeysFile { v: 1, keys }).map_err(|_| KeyError::Corrupt)?;
+        let revoked = loaded
+            .book
+            .revoked()
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        let bytes = serde_json::to_vec(&KeysFile {
+            v: 1,
+            keys,
+            revoked,
+        })
+        .map_err(|_| KeyError::Corrupt)?;
         super::write_durable(&self.path, &bytes).map_err(|_| KeyError::Io)
     }
 }
@@ -869,5 +932,98 @@ mod tests {
         );
         ks.approve(&fp[..8], &spawn_fp(4)[..16], NOW + 60_000)
             .unwrap();
+    }
+
+    #[test]
+    fn revoke_unpins_tombstones_and_survives_reopen() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let ks = open(t.path(), &trust);
+        let o = offer(3, T0);
+        let fp = fp_of(&o);
+        ks.offer(o.clone(), &trust, NOW).unwrap();
+        ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
+        let r = ks.revoke(&fp[..8]).unwrap();
+        assert_eq!(r.device_fp, fp);
+        assert_eq!(r.spawn_key_fp, spawn_fp(3));
+        assert_eq!(ks.pinned_key(&fp).unwrap(), None);
+        assert_eq!(ks.state(&fp).unwrap(), None);
+        assert_eq!(
+            ks.offer(o.clone(), &trust, NOW).unwrap(),
+            OfferOutcome::Revoked
+        );
+        drop(ks);
+        let ks = open(t.path(), &trust);
+        assert_eq!(ks.state(&fp).unwrap(), None);
+        assert_eq!(ks.offer(o, &trust, NOW).unwrap(), OfferOutcome::Revoked);
+        assert!(ks.list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_new_key_after_revoke_is_pending() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let ks = open(t.path(), &trust);
+        let o = offer(3, T0);
+        let fp = fp_of(&o);
+        ks.offer(o, &trust, NOW).unwrap();
+        ks.revoke(&fp[..8]).unwrap();
+        assert_eq!(
+            ks.offer(offer(4, T0 + 1), &trust, NOW).unwrap(),
+            OfferOutcome::Added
+        );
+        assert_eq!(ks.state(&fp).unwrap(), Some(KeyState::Pending));
+        assert_eq!(ks.pinned_key(&fp).unwrap(), None);
+    }
+
+    #[test]
+    fn revoke_errors_are_typed() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let ks = open(t.path(), &trust);
+        let o = offer(3, T0);
+        let fp = fp_of(&o);
+        ks.offer(o, &trust, NOW).unwrap();
+        assert_eq!(
+            ks.revoke("abc"),
+            Err(KeyError::Revoke(RevokeError::PrefixTooShort))
+        );
+        assert_eq!(
+            ks.revoke("ffffffff"),
+            Err(KeyError::Revoke(RevokeError::NotFound))
+        );
+        assert_eq!(ks.state(&fp).unwrap(), Some(KeyState::Pending));
+    }
+
+    #[test]
+    fn list_shows_pending_and_approved_with_details() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let ks = open(t.path(), &trust);
+        assert!(ks.list().unwrap().is_empty());
+        let o = offer(3, T0);
+        let fp = fp_of(&o);
+        ks.offer(o, &trust, NOW).unwrap();
+        let l = ks.list().unwrap();
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].device_fp, fp);
+        assert_eq!(l[0].device_id, DEVICE_ID);
+        assert_eq!(l[0].spawn_key_fp, spawn_fp(3));
+        assert_eq!(l[0].state, KeyState::Pending);
+        assert_eq!(l[0].issued_at_ms, T0);
+        assert_eq!(l[0].replaced_at_ms, None);
+        ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
+        assert_eq!(ks.list().unwrap()[0].state, KeyState::Approved);
+    }
+
+    #[test]
+    fn a_file_without_tombstones_still_loads() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let ks = open(t.path(), &trust);
+        ks.offer(offer(3, T0), &trust, NOW).unwrap();
+        let text = std::fs::read_to_string(path(t.path())).unwrap();
+        assert!(!text.contains("revoked"));
+        assert_eq!(ks.list().unwrap().len(), 1);
     }
 }
