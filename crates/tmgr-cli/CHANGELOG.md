@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.147
 
 - Top manager: `tmgr runner manager start --top` makes this machine's manager the top manager, which can reach the managers on your other machines; `--no-top` turns it off, and without either flag the setting stays as it was. Every other manager behaves exactly as before and does not get the new tools.
 - Pairing machines: `tmgr runner manager machine show` prints this machine's line, `machine add '<line>' --label NAME` adds another machine and `machine remove <mx_id>` removes it. Pair on both machines (each one adds the other's line), then add the caller's machine id to `accept_from` in `manager-remote.toml` on the machine that should answer. Nothing edits that file for you.
@@ -8,6 +8,17 @@
 - `ask` and `room` (which `ask_submanager` and `read_submanager` use) are off on a sub manager by default. To allow them, set `allow = ["list", "read", "ask", "room"]` in `manager-remote.toml` on that machine. A refusal names the op and this fix.
 - Restart the runner after updating so it picks up the new tools.
 - `tmgr attach` chat on a top manager lists the Manager room of every paired machine, grouped by machine under "This machine" and one header per remote machine, and refreshes the open remote room every 15 seconds. Reading needs `room`, and writing needs `ask`, allowed in `manager-remote.toml` on that machine.
+- Groundwork for starting sessions with approval from your phone. It cannot be used end to end yet: the phone app does not send its spawn key yet, and this version has no way to approve a pending key.
+- The runner can now check spawn approvals that your phone signs (protocol `spawnauth.v1`). A session started with a valid approval may use bypass mode. Every approval works only once and expires. It is tied to the exact agent profile, folder, mode and prompt that were signed. Approvals from a device that is no longer trusted, a reused approval and an expired one are refused.
+- The approved folder is pinned when it is checked. If it is replaced or moved before the session opens it, the start is refused with "approved folder changed".
+- The trusted-folder rule, the built-in profile list and the rate limit still apply to signed starts.
+- These starts are still refused even when signed:
+  - starts on another machine ("remote spawn is not available yet");
+  - starts without the sandbox;
+  - manager sessions.
+- New manager tool `propose_spawn`: the manager asks for a session on this machine, and you approve it on your phone. It is limited to 10 proposals per minute, separate from the desktop and CLI limit.
+- The runner accepts a phone's spawn key over the encrypted manager chat. The key comes only from a trusted device in the chat and is checked against that device's pinned keys. It stays pending and is never trusted automatically. Approving a pending key on this machine and the phone side that sends the key come in later versions.
+- Changed: a `spawn_session` call without an approval that names another machine is now refused. Before, the machine was ignored and the session started locally. The message for a refused bypass start has also changed.
 
 ## 1.0.146
 
