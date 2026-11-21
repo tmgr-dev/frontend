@@ -1,6 +1,9 @@
 use super::*;
 use tmgr_ipc::api::{ManagerUnrestrictedReq, NoSandbox};
 
+// Off macOS an unsandboxed session has no control-plane fence, so the manager limits would not hold.
+const UNSUPPORTED_OS: &str = "an unrestricted manager is available only on macOS";
+
 const PIN_INTERVAL: Duration = Duration::from_secs(2);
 
 pub(super) struct PinGrant(());
@@ -74,6 +77,9 @@ impl Runner {
         client: &str,
         p: &Value,
     ) -> Result<SessionInfo, ApiErr> {
+        if !cfg!(target_os = "macos") {
+            return Err(refuse(ErrorCode::Forbidden, UNSUPPORTED_OS));
+        }
         let (run, grant) = self.authorize_unrestricted(client, p)?;
         let (info, ..) = self.create_run_as(run, true, None, None, None, Some(&grant))?;
         log(&format!(
@@ -349,6 +355,18 @@ mod tests {
             e.rt.manager_unrestricted("desktop", &body(json!({})))
                 .unwrap_err();
         assert_eq!(err.code, ErrorCode::Forbidden);
+        assert_eq!(e.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn the_wire_method_is_refused_off_macos_before_the_checker() {
+        let e = ok_env();
+        let err =
+            e.rt.manager_unrestricted(CLIENT_CLI, &body(json!({})))
+                .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Forbidden);
+        assert_eq!(err.message, UNSUPPORTED_OS);
         assert_eq!(e.calls.load(Ordering::SeqCst), 0);
     }
 

@@ -114,7 +114,8 @@ fn unrestricted_warning() -> &'static str {
      - it runs as you and can read and change any of your files.\n\
      - it can type into sessions that are in bypass mode or run without the sandbox.\n\
      - text it reads from sessions, rooms or files, and messages you or your phone send to it, can steer it.\n\
-     - this applies to this manager session only: a restart without --unrestricted is sandboxed and asks again."
+     - the remaining manager limits cover only its tmgr tools: from its shell it can run any program, start agents itself and change files other sessions use.\n\
+     - the mode lasts for this manager session only, but changes it makes to your files, settings or shell can outlive it."
 }
 
 fn require_pin_set() -> Result<()> {
@@ -131,6 +132,11 @@ fn require_pin_set() -> Result<()> {
 }
 
 fn start_unrestricted(o: &Opts, a: &ManagerStartArgs, cwd: &Path) -> Result<i32> {
+    if !cfg!(target_os = "macos") {
+        return Err(Error::usage(
+            "an unrestricted manager is available only on macOS",
+        ));
+    }
     let tty = std::io::stdin().is_terminal()
         && std::io::stdout().is_terminal()
         && std::io::stderr().is_terminal();
