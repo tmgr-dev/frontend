@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr runner switch-agent`: continue in opencode or agy too (`--to opencode|agy`, required when the old session runs one of them; the note is then built from the session's screen text and the git state). Sessions without a task can be switched. The permission mode (ask, accept-edits, plan) now carries over; bypass and no-sandbox carry over only with `--keep-bypass` and the typed confirmation of `run --mode bypass`, otherwise the new session starts in ask mode. If the new agent has no such mode it starts in ask mode and says so. Plain runs accept a first `prompt` on `runs.create` (cap `run_prompt.v1`), so a runner restart is needed.
+
 ## 1.0.139
 
 - Decisions: `tmgr ask --code [NAME[:START]=]FILE|-` and the `code` field of `ask_owner` (`{file, text, start}`) show a code block on the card, next to the diffs from `--patch`. The block is at most 64 KiB and is refused, not cut, when larger. Several chosen options: `get_answer` already returns `choices` (every pick with its label and note, `choice` stays the first one); `tmgr decisions answers` and `find_answers` now include `choices` too and print them as a list, which needs a desktop with the same update (an older desktop gives `choice` and `note` only). There is no multi-select flag: the owner may pick several options on any card with 2 or more options.

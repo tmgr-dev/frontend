@@ -69,8 +69,9 @@ pub mod caps {
     pub const PROFILES_LOGIN_CHECK_V1: &str = "profiles_login_check.v1";
     pub const CHAT_V1: &str = "chat.v1";
     pub const MANAGER_V1: &str = "manager.v1";
+    pub const RUN_PROMPT_V1: &str = "run_prompt.v1";
 
-    pub const ALL: [&str; 40] = [
+    pub const ALL: [&str; 41] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -111,6 +112,7 @@ pub mod caps {
         PROFILES_LOGIN_CHECK_V1,
         CHAT_V1,
         MANAGER_V1,
+        RUN_PROMPT_V1,
     ];
 }
 
@@ -160,6 +162,7 @@ pub mod limits {
     pub const MAX_INPUT: usize = 64 << 10;
     pub const MAX_PUSH: usize = 256 << 10;
     pub const MAX_BUNDLE: usize = 1 << 20;
+    pub const MAX_RUN_PROMPT: usize = 100_000;
     pub const MAX_TEXT_LINES: u32 = 10_000;
     pub const MAX_AUTOPILOT_LOG: u32 = 1_000;
     pub const MAX_KILL_REASON: usize = 200;

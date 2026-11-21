@@ -122,6 +122,8 @@ pub struct RunCreateReq {
     pub parent_session: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub manager: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
 }
 
 /// A manual run outside the OS sandbox (`client: "cli"` only): the agent gets the real home and the caller's environment.
@@ -152,6 +154,7 @@ impl OrchestratorCreateReq {
             finish_marker: false,
             parent_session: None,
             manager: false,
+            prompt: None,
             profile: self.profile.clone(),
             task: None,
             cwd: self.cwd.clone(),

@@ -248,6 +248,7 @@ fn requests_and_responses() {
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         clones: Vec::new(),
         profile: "codex".into(),
         task: Some(TASK),
@@ -964,7 +965,8 @@ fn constants_are_pinned() {
             "team.multi.v1",
             "profiles_login_check.v1",
             "chat.v1",
-            "manager.v1"
+            "manager.v1",
+            "run_prompt.v1"
         ]
     );
     let methods = [
@@ -1562,6 +1564,7 @@ fn full_req() -> RunCreateReq {
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         permission_cards: false,
         profile: "claude".into(),
         task: Some(TaskRef {

@@ -34,7 +34,7 @@ halt | Agents | session, kill
 rm | Agents | session
 resume | Other | session, fork, mode, no_sandbox, no_attach
 rename | Agents | session, name
-switch-agent | Other | session, to
+switch-agent | Other | session, to, keep_bypass
 session summary | Other | session, plain
 session export | Other | session, md, page, remove_findings
 session list | Other | agent, search, limit

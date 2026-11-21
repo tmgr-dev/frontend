@@ -2893,6 +2893,7 @@ mod tests {
             team: None,
             finish_marker: false,
             parent_session: None,
+            prompt: None,
             clones: Vec::new(),
             profile: start.profile.clone(),
             task: Some(task),

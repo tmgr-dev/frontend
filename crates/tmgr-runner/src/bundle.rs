@@ -532,7 +532,7 @@ pub const MAX_INLINE_PROMPT: usize = 4000;
 const MAX_SHORT_TITLE: usize = 500;
 const MAX_OWNER_LABEL: usize = 120;
 
-fn clean(text: &str) -> String {
+pub(crate) fn clean(text: &str) -> String {
     text.replace("\r\n", "\n")
         .chars()
         .filter(|c| {
@@ -905,6 +905,7 @@ mod tests {
             team: None,
             finish_marker: false,
             parent_session: None,
+            prompt: None,
             clones: Vec::new(),
             profile: "p".into(),
             task: Some(task),
