@@ -16,6 +16,11 @@
 		"allow-manager-send",
 		"allow-manager-search",
 		"allow-manager-commands",
+		"allow-manager-trust-state",
+		"allow-manager-join-decide",
+		"allow-manager-revoke-decide",
+		"allow-manager-revoke",
+		"allow-manager-reset-identity",
 		"allow-decisions-get",
 		"allow-decisions-answer",
 		"allow-decisions-open-link"

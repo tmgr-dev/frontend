@@ -18,6 +18,7 @@ pub const TITLE: &str = "Manager";
 
 pub struct ManagerState {
   backend: Arc<dyn ManagerBackend>,
+  relay: Arc<dyn relay::port::RelayPort>,
 }
 
 fn backend_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<dyn ManagerBackend>, String> {
@@ -75,14 +76,16 @@ fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub fn setup<R: Runtime>(app: &AppHandle<R>) {
+  // STUB: NoRelay until the chat-relay backend (Liquibase 230) ships and a real Transport exists
+  let relay: Arc<dyn relay::port::RelayPort> = Arc::new(relay::port::NoRelay);
   let backend: Arc<dyn ManagerBackend> = match app.try_state::<crate::runner::Runner>() {
     Some(runner) => Arc::new(composite::CompositeBackend::new(
       Arc::new(local::RunnerLocal::new(Arc::new(runner.inner().clone()))),
-      Arc::new(relay::port::NoRelay),
+      relay.clone(),
     )),
     None => Arc::new(StubBackend::default()),
   };
-  app.manage(ManagerState { backend });
+  app.manage(ManagerState { backend, relay });
   ensure_shortcut(app);
 }
 
@@ -114,4 +117,50 @@ pub async fn manager_search<R: Runtime>(app: AppHandle<R>, params: SearchParams)
 pub async fn manager_commands<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> Result<Vec<SlashCommand>, String> {
   let backend = backend_of(&app)?;
   blocking(move || backend.commands(&room)).await
+}
+
+fn relay_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<dyn relay::port::RelayPort>, String> {
+  app.try_state::<ManagerState>().map(|m| m.relay.clone()).ok_or_else(|| "the manager chat is not running".to_owned())
+}
+
+fn trust_changed<R: Runtime>(app: &AppHandle<R>) {
+  let _ = tauri::Emitter::emit_to(app, LABEL, "manager://trust", ());
+}
+
+#[tauri::command]
+pub async fn manager_trust_state<R: Runtime>(app: AppHandle<R>) -> Result<relay::port::TrustState, String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.trust_state()).await
+}
+
+#[tauri::command]
+pub async fn manager_join_decide<R: Runtime>(app: AppHandle<R>, device_id: String, accept: bool) -> Result<(), String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.decide_join(&device_id, accept)).await?;
+  trust_changed(&app);
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn manager_revoke_decide<R: Runtime>(app: AppHandle<R>, id: String, accept: bool) -> Result<(), String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.decide_revoke(&id, accept)).await?;
+  trust_changed(&app);
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn manager_revoke<R: Runtime>(app: AppHandle<R>, device_id: String) -> Result<(), String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.revoke(&device_id)).await?;
+  trust_changed(&app);
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn manager_reset_identity<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.reset_identity()).await?;
+  trust_changed(&app);
+  Ok(())
 }

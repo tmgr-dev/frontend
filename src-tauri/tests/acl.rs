@@ -19,6 +19,8 @@ probes!(
   decisions_list,
   decisions_get,
   manager_rooms,
+  manager_trust_state,
+  manager_reset_identity,
   persona_cache_clear_for_user,
   persona_llm_clear_for_user,
   skill_library_read,
@@ -55,6 +57,9 @@ fn call(label: &str, cmd: &str) -> Result<(), String> {
 fn the_manager_window_reaches_only_its_own_commands_and_inline_cards() {
   assert!(call("manager", "manager_rooms").is_ok());
   assert!(call("manager", "decisions_get").is_ok());
+  assert!(call("manager", "manager_trust_state").is_ok());
+  assert!(call("manager", "manager_reset_identity").is_ok());
+  assert!(call("main", "manager_reset_identity").unwrap_err().contains("not allowed on window"));
   assert!(call("manager", "decisions_list").unwrap_err().contains("not allowed on window"));
   assert!(call("manager", "runner_enabled").unwrap_err().contains("not allowed on window"));
   for label in ["main", "task-1", "decisions"] {
