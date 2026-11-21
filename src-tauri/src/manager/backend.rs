@@ -40,8 +40,20 @@ pub struct Attachment {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SpawnCardWire {
+  pub summary: String,
+  pub request: String,
+  pub nonce: String,
+  pub exp_ms: u64,
+  pub target_id: String,
+  pub target_fp: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DecisionRef {
   pub card_id: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub spawn: Option<SpawnCardWire>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -345,6 +357,16 @@ mod tests {
 
   fn hist(room: RoomRef, before: Option<String>, limit: u32) -> HistoryParams {
     HistoryParams { room, before, limit: Some(limit) }
+  }
+
+  #[test]
+  fn decision_ref_keeps_spawn_through_a_round_trip() {
+    let json = r#"{"card_id":"card_0123456789abcdef0123456789abcdef","spawn":{"summary":"s","request":"{}","nonce":"n","exp_ms":5,"target_id":"mx_a","target_fp":"fp"}}"#;
+    let parsed: DecisionRef = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.spawn.as_ref().unwrap().exp_ms, 5);
+    assert_eq!(serde_json::to_string(&parsed).unwrap(), json);
+    let plain: DecisionRef = serde_json::from_str(r#"{"card_id":"c"}"#).unwrap();
+    assert_eq!(serde_json::to_string(&plain).unwrap(), r#"{"card_id":"c"}"#);
   }
 
   #[test]
