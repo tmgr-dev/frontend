@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.165 — 2026-11-21
+
+- Decisions: an agent can ask before it posts a comment, creates a task, opens a pull request or pushes a tag (`tmgr propose`, agent tool `propose_action`). The window shows exactly what will happen; you can edit the text, approve or reject with a reason. Only the approved content runs, from this desktop, and the agent gets the link or the reason back. Needs CLI 1.0.140. Phone approval of these cards comes later.
+
 ## 0.9.164 — 2026-11-21
 
 - Decisions: `tmgr decisions answers` and the agent tool `find_answers` now return every chosen option with its label and note (`choices`), next to the first pick in `choice`. Needs CLI 1.0.139 to read them.
