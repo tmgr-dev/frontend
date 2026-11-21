@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.153
+
+- Remote spawn and switch for the top manager: on a paired machine the top manager can now propose a session with `propose_spawn` and `machine`. The card goes into that machine's Manager chat room, says it was proposed by the top manager on that machine and shows the full prompt. After you approve it on your phone, the top manager starts it with `spawn_session`, the same arguments and the card's `card_id`. Nothing starts without your approval, and the target machine checks it.
+- `switch_agent` with `machine` switches a session on that machine, but only a session started from the top manager's own approved card.
+- Every remote operation still needs the target machine to allow it in `manager-remote.toml` (`spawn_challenge`, `spawn`, `switch`). The default allows only `list` and `read`. The allow list applies to every paired machine, not to one sender.
+- A remote prompt is limited to 1000 bytes and may not contain control, zero-width or text-direction characters. A remote spawn never takes an approval in the request, never runs without the sandbox and never starts a manager session.
+- `spawn_session` now says "this card has expired or is closed; propose the spawn again" for a card that can no longer start, and keeps "this card is not approved yet" for a card still waiting for you. If a session fails to start after approval, the card says why.
+- Known: a remote card can no longer be used after the target runner restarts; ask for a new card. While a remote spawn or switch runs, the target machine answers other manager requests after it finishes.
+- Update both machines and restart their runners.
+
 ## 1.0.152
 
 - New: `tmgr runner objects allow <folder>` lets a sandboxed session start in a very large folder, such as a workspace with many repositories, which was refused with "too large to check for shared git object files". It skips only that one check, and only for exactly that folder. Everything else in the sandbox stays on.
