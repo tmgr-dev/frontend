@@ -2889,9 +2889,11 @@ mod tests {
         bundle.title = case["title"].as_str().unwrap().into();
         bundle.body = case["description"].as_str().unwrap().into();
         RunCreateReq {
+            manager: false,
             team: None,
             finish_marker: false,
             parent_session: None,
+            prompt: None,
             clones: Vec::new(),
             profile: start.profile.clone(),
             task: Some(task),

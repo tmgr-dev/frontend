@@ -4,6 +4,7 @@ pub mod egress;
 pub mod exe;
 pub mod limit;
 pub mod login;
+pub mod manager;
 pub mod orchestrator;
 pub mod permit;
 pub mod profile;
@@ -20,6 +21,8 @@ pub mod agentwork;
 pub mod autopilot;
 #[cfg(unix)]
 pub mod bundle;
+#[cfg(unix)]
+pub mod chat;
 #[cfg(unix)]
 pub mod checkpoint;
 #[cfg(unix)]

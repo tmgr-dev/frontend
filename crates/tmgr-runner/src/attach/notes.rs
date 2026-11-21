@@ -170,7 +170,7 @@ impl NotesState {
     }
 }
 
-fn split_keys(data: &[u8]) -> Vec<Vec<u8>> {
+pub(super) fn split_keys(data: &[u8]) -> Vec<Vec<u8>> {
     let mut keys = Vec::new();
     let mut i = 0;
     while i < data.len() {

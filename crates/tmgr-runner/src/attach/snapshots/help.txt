@@ -8,6 +8,7 @@
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │
                         │             │ c / i / L / T new / prompts / layouts / templates / notes    │                                     │
+                        │             │ j             chat with the Manager and session rooms        │                                     │
                         │             │ H             resume or fork a past session                  │                                     │
                         │             │ Tab           focus next pane (Shift-Tab previous)           │                                     │
                         │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
@@ -26,6 +27,5 @@
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
                         │             │ ? again closes this box                                      │                                     │
-                        │             │                                                              │                                     │
  + New session     tmpl ╰─────────────│                                                              │─────────────────────────────────────╯
  tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯           drag copies  Ctrl-] ? help

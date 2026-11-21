@@ -244,7 +244,7 @@ pub fn codex_config(
     Ok(doc.to_string().into_bytes())
 }
 
-fn table_entry<'a>(parent: &'a mut Table, key: &str) -> Option<&'a mut Table> {
+pub(crate) fn table_entry<'a>(parent: &'a mut Table, key: &str) -> Option<&'a mut Table> {
     if !parent.contains_key(key) {
         let mut t = Table::new();
         t.set_implicit(true);

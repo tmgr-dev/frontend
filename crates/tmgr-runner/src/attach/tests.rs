@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use tmgr_ipc::api::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
 use tmgr_ipc::api::{MouseEncoding, MouseLevel, MouseMode, State, StateKind};
 
+mod chat;
 mod checkpoints;
 
 fn forward(b: &[u8]) -> Action {
@@ -2277,10 +2278,10 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_36_rows() {
+fn help_shows_the_mouse_section_at_37_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 36);
+    let text = draw(&v, &screens(), 140, 37);
     assert!(text.contains("pick a tab, a session or a pane"));
     assert!(text.contains("select + copy"));
     assert!(text.contains("? again closes this box"));

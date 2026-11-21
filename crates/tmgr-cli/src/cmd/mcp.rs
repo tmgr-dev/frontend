@@ -319,11 +319,11 @@ pub fn negotiate(requested: Option<&str>) -> &'static str {
         .unwrap_or(SUPPORTED[0])
 }
 
-fn ok(id: &Value, result: Value) -> Value {
+pub(crate) fn ok(id: &Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
 
-fn err(id: &Value, code: i64, message: &str) -> Value {
+pub(crate) fn err(id: &Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
 }
 
@@ -365,7 +365,7 @@ fn send(out: &Out, v: &Value) {
     }
 }
 
-fn read_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> Option<bool> {
+pub(crate) fn read_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> Option<bool> {
     buf.clear();
     let n = reader
         .by_ref()

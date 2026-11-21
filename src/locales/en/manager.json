@@ -1,0 +1,55 @@
+{
+	"list": {
+		"label": "Chats",
+		"pinned": "Pinned",
+		"sessions": "Sessions",
+		"noMessages": "No messages yet",
+		"you": "You: "
+	},
+	"header": {
+		"search": "Search in chat",
+		"encrypted": "End-to-end encrypted"
+	},
+	"state": {
+		"working": "Working",
+		"waiting": "Waiting for you",
+		"failed": "Failed",
+		"idle": "Idle",
+		"done": "Done"
+	},
+	"messages": {
+		"label": "Messages",
+		"reply": "Reply",
+		"copy": "Copy",
+		"empty": "Nothing here yet",
+		"emptyHint": "No messages in this chat.",
+		"you": "You",
+		"manager": "Manager",
+		"system": "System",
+		"today": "Today",
+		"yesterday": "Yesterday"
+	},
+	"composer": {
+		"placeholder": "Message the Manager, or type / for commands",
+		"send": "Send",
+		"attach": "Attach a file",
+		"removeAttachment": "Remove {name}",
+		"replyingTo": "Replying to {who}",
+		"cancelReply": "Cancel reply"
+	},
+	"slash": {
+		"label": "Commands",
+		"dangerous": "asks you first"
+	},
+	"search": {
+		"placeholder": "Search messages",
+		"clear": "Clear search",
+		"scopeAll": "All chats",
+		"scopeChat": "In {chat}",
+		"results": "{count} result | {count} results",
+		"emptyTitle": "Search all your chats",
+		"emptyHint": "Type a word to search.",
+		"noMatches": "No matches",
+		"noMatchesHint": "Nothing on this device matches."
+	}
+}

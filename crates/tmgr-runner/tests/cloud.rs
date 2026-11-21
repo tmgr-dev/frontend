@@ -77,9 +77,11 @@ fn req() -> RunCreateReq {
         },
     };
     RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         clones: Vec::new(),
         profile: "claude-code".into(),
         task: Some(TASK),

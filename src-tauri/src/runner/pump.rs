@@ -272,7 +272,7 @@ pub fn run_attach<R: Read>(reader: &mut R, sid: &str, shared: &Shared) {
         }
       }
       ServerMsg::Closed { reason } => break closed_reason(&reason),
-      ServerMsg::Response(_) | ServerMsg::Unknown => {}
+      ServerMsg::Response(_) | ServerMsg::Chat(_) | ServerMsg::Unknown => {}
     }
   };
   if !shared.stopped.swap(true, Ordering::SeqCst) {
@@ -300,7 +300,7 @@ pub fn run_watch<R: Read>(reader: &mut R, sink: &dyn Fn(WatchEvent) -> bool, co:
         co.push(&ev.session, state_from_ipc(&ev.state, Detail::ExitOnly), ev.task.map(TaskRef::from));
       }
       ServerMsg::Closed { reason } => break closed_reason(&reason),
-      ServerMsg::Screen(_) | ServerMsg::Response(_) | ServerMsg::Unknown => {}
+      ServerMsg::Screen(_) | ServerMsg::Response(_) | ServerMsg::Chat(_) | ServerMsg::Unknown => {}
     }
   };
   if !stop.swap(true, Ordering::SeqCst) {

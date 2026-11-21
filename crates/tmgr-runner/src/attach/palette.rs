@@ -93,6 +93,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::Permissions => "permission approve allow deny card prompt",
         Cmd::Subagents => "agents tasks background peek",
         Cmd::Notes => "note write memo scratch todo markdown task",
+        Cmd::Chat => "message talk manager room conversation reply send",
         Cmd::Watch => "tests rerun build watch cargo npm monitor",
         Cmd::Templates => "recipe preset review pr ci tests explain start agent prompt",
         Cmd::Layouts => "workspace arrangement tabs save restore switch",

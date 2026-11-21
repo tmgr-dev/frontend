@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io;
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -15,6 +16,7 @@ use tmgr_ipc::api::{
     RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
     Welcome, WorkSummary, CLIENT_CLI,
 };
+use tmgr_ipc::chat as wire_chat;
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
 use tmgr_ipc::proto::{Attention, ClientMsg, Focus, Request, Resize, Scroll, ServerMsg};
@@ -369,6 +371,63 @@ impl Client {
             .map(drop)
     }
 
+    pub fn chat_rooms(&mut self) -> io::Result<Vec<wire_chat::RoomInfo>> {
+        from_value(self.call(wire_chat::method::ROOMS, Value::Null)?)
+    }
+
+    pub fn chat_history(
+        &mut self,
+        room: &wire_chat::RoomRef,
+        before: Option<&str>,
+        limit: Option<u32>,
+    ) -> io::Result<Vec<wire_chat::ChatMessage>> {
+        let params = wire_chat::HistoryParams {
+            room: room.clone(),
+            before: before.map(str::to_string),
+            limit,
+        };
+        from_value(self.call(wire_chat::method::HISTORY, to_params(&params)?)?)
+    }
+
+    pub fn chat_send(
+        &mut self,
+        room: &wire_chat::RoomRef,
+        body_md: &str,
+        reply_to: Option<&str>,
+    ) -> io::Result<wire_chat::ChatMessage> {
+        let params = wire_chat::SendParams {
+            room: room.clone(),
+            body_md: body_md.into(),
+            reply_to: reply_to.map(str::to_string),
+            attachments: Vec::new(),
+            id: None,
+            ts_ms: None,
+        };
+        from_value(self.call(wire_chat::method::SEND, to_params(&params)?)?)
+    }
+
+    pub fn chat_search(
+        &mut self,
+        query: &str,
+        room: Option<&wire_chat::RoomRef>,
+        limit: Option<u32>,
+    ) -> io::Result<Vec<wire_chat::ChatMessage>> {
+        let params = wire_chat::SearchParams {
+            query: query.into(),
+            room: room.cloned(),
+            limit,
+        };
+        from_value(self.call(wire_chat::method::SEARCH, to_params(&params)?)?)
+    }
+
+    /// Turns this connection into a chat push stream; open another `Client` for further calls.
+    pub fn chat_subscribe(mut self) -> io::Result<ChatStream> {
+        self.call(wire_chat::method::SUBSCRIBE, Value::Null)?;
+        Ok(ChatStream {
+            stream: self.stream,
+        })
+    }
+
     /// Turns this connection into an attach stream; open another `Client` for further calls.
     pub fn attach(mut self, ids: &[String]) -> io::Result<AttachStream> {
         self.call(method::ATTACH_OPEN, to_params(&attach_params(ids))?)?;
@@ -384,6 +443,40 @@ impl Client {
             },
             writer,
         })
+    }
+}
+
+pub struct ChatStream {
+    stream: UnixStream,
+}
+
+pub struct ChatCloser(UnixStream);
+
+impl ChatCloser {
+    pub fn close(&self) {
+        let _ = self.0.shutdown(Shutdown::Both);
+    }
+}
+
+impl ChatStream {
+    pub fn closer(&self) -> io::Result<ChatCloser> {
+        Ok(ChatCloser(self.stream.try_clone()?))
+    }
+
+    pub fn recv(&mut self) -> io::Result<Option<wire_chat::ChatMessage>> {
+        loop {
+            match read_frame(&mut &self.stream)? {
+                None => return Ok(None),
+                Some(Frame::Json(v)) => match from_value::<ServerMsg>(v)? {
+                    ServerMsg::Chat(push) => {
+                        return from_value::<wire_chat::ChatPush>(push).map(|p| Some(p.message))
+                    }
+                    ServerMsg::Closed { .. } => return Ok(None),
+                    _ => {}
+                },
+                Some(Frame::Bin(_)) => return Err(bad("unexpected binary frame")),
+            }
+        }
     }
 }
 
@@ -572,5 +665,29 @@ impl ScreenCache {
 
     pub fn remove(&mut self, id: &str) {
         self.screens.remove(id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_chat_stream_yields_chat_pushes_and_skips_unknown_ones() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let mut w = &a;
+        write_json(&mut w, &json!({"type": "future_thing", "x": 1})).unwrap();
+        let message = json!({
+            "v": 1, "id": "m_0190a1b2c3d4aabbccddeeff00112233",
+            "room": {"kind": "manager", "machine": "mx_0123456789abcdef"},
+            "author": {"kind": "owner", "id": "owner"},
+            "ts_ms": 1, "kind": "text", "body_md": "hello"
+        });
+        write_json(&mut w, &json!({"type": "chat", "message": message})).unwrap();
+        write_json(&mut w, &json!({"type": "closed", "reason": "bye"})).unwrap();
+        let mut stream = ChatStream { stream: b };
+        assert_eq!(stream.recv().unwrap().unwrap().body_md, "hello");
+        assert!(stream.recv().unwrap().is_none());
     }
 }

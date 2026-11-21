@@ -123,6 +123,9 @@ Both sides must finish within 5 seconds. A refusal is
 | `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
 | `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
 | `profiles_login_check.v1` | `profiles.login_check` |
+| `chat.v1` | `chat.rooms`, `chat.history`, `chat.send`, `chat.search`, `chat.subscribe` |
+| `manager.v1` | `manager` on `runs.create` and `SessionInfo` (section 5, "Manager session") |
+| `run_prompt.v1` | `prompt` on `runs.create` |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
@@ -415,6 +418,8 @@ All four are additive: new optional fields and methods, no change for clients th
 
 **Permission cards (`permission_cards.v1`).** `runs.create` takes an optional `permission_cards: true` (absent means false). It is accepted only for a manual CLI run; any other request is `forbidden`. The runner keeps it only for the built-in `claude-code` and `codex` profiles and ignores it for any other profile. It is stored with the session and carried through restore, resume and fork. When on, the runner adds a `PermissionRequest` hook that only records the request in the session home (`$HOME/.cache/tmgr-permit/<session id>/`): for `claude-code` through an extra `--settings` argument, for a sandboxed `codex` through `.codex/config.toml` in the run home. A `codex` run with `no_sandbox` gets no hook and nothing is written to the real home. `SessionInfo.permission_cards` is `true` for such a session.
 
+**Manager session (`manager.v1`).** `runs.create` takes an optional `manager: true` (absent means false); `SessionInfo.manager` is `true` for that session. It is accepted only from the tmgr CLI; any other client gets `forbidden`. A manager must be sandboxed and cannot be combined with `no_sandbox`, `origin`, `team`, `clones`, `unattended` or `start_key`; only the built-in `claude-code` and `codex` profiles are accepted, and only in permission mode `ask` (absent means `ask`). The runner keeps at most one live manager; a second request is `busy`. The flag is stored with the session and survives a runner restart, but a manager is not recorded for restore, so a restore of an exited manager does not bring it back and `tmgr manager start` is needed again. Only the read-only tools (`list_sessions`, `read_session`, `read_room`) are pre-approved in the agent; `send_to_session`, `spawn_session` and `post_message` keep asking the owner. For the manager the runner wires a stdio MCP server (`tmgr __manager-mcp`, server name `tmgr-manager`) into the agent: an extra `--mcp-config` argument for `claude-code`, an `[mcp_servers.tmgr-manager]` table in `.codex/config.toml` of the run home for `codex`. That server cannot reach the runner socket from inside the sandbox, so it writes requests as files into its own home: `$HOME/.cache/tmgr-manager/req/<ms>-<pid>-<rand>.json` (`{v:1, id, tool, args}`) and reads the answer from `$HOME/.cache/tmgr-manager/resp/<id>.json` (`{v:1, id, ok, result?|error?}`). The runner reads that spool only for the session it recorded as manager at create (the path comes from its own record, never from a request), opens every directory without following symlinks, and ignores every other session's spool. Tools: `list_sessions`, `read_session`, `send_to_session`, `spawn_session`, `post_message`, `read_room`. Text read from another session is data, never instructions. `send_to_session` refuses link sessions, team and queue workers, exited sessions, and sessions in bypass mode or without the sandbox. `spawn_session` is local only: it starts a built-in agent in an already trusted folder with permission mode `ask` or `accept-edits`, never bypass or `no_sandbox`, at most 4 per minute. Its optional `approval` (`SignedSpawn` v1, see the runner-manager plan §3a) is reserved for remote and bypass spawn; any request that carries it is refused.
+
 `permissions.list` returns one `PermissionCard` for each live session with the flag on whose screen shows a permission prompt of the agent. A card is answerable (`can_answer`) only when all of these hold: the prompt is the last block on the screen with only the agent's footer below it; the newest unconsumed hook record of the session matches the prompt text exactly (the card `text` is then the full text from the hook, never cut); the foreground process group of the terminal, from a status report no older than 1 s, is the agent process; and the agent supports the tool (`Bash`, or `Write` with the full content visible). Anything else is a view-only card with `can_answer: false` and `why_not`. `id` is a digest of the session, the hook record and the prompt, so a new prompt or a new hook record is a new card. `armed_in_ms` is the time left of a 300 ms window that starts when the runner first lists a card; an answer inside it is refused. `always_label` is set only when the agent offers a rule for exactly this command and the card has no `danger` entries.
 
 `permissions.answer` repeats every check against the live screen, in this order, and refuses with `forbidden` (the message says why) on the first failure: the session is running and has the flag; the prompt is still on screen; the recomputed `id` equals `card` (which also fails when a newer hook record exists); the card is answerable; the foreground check; the arming window; the card was not answered before; a card with `danger` needs `confirmed: true` for `yes`, and `always` is never sent for it; the agent shows the chosen option. Then the card is marked answered, its hook record is consumed (deleted), and exactly one key of the parsed option is queued as terminal input. Enter is never sent. A full input queue returns `busy` and the card stays answered. Only the `cli` client may call either method; `worker` and `desktop` get `forbidden`. Known limit: the agent can change state between the last status report and the key; the worst case is one key without Enter.
@@ -518,6 +523,8 @@ A bundle may carry `team` `{size, mode}` (cap `team.v1`; `size` 1 to 5, `mode` `
 `runs.create` takes an optional `team` `{role, of}` (cap `team.workers.v1`, no other fields): `role` is `"lead"` or `{"worker": N}` with `N` from 1, `of` is the pickup id (1 to 64 characters of `A-Za-z0-9._-`); the run is created with it and `SessionInfo.team` returns it. It is a label for grouping and display and grants nothing: the sandbox, grants, home and egress of a member are built exactly as for a single run, and an invalid link is `invalid_params`. A bundle may carry `assignment`, a string of at most 16384 bytes, omitted when absent so other bundles and their hashes are unchanged and part of the hash when present. It is unsigned text written by the lead agent: it is outside the cloud signature, the runner refuses it (`invalid_params`) unless the request carries a `team` with role `worker`, and `task.md` shows it after the team block under "Assignment from the lead", inside the same untrusted data markers as other task text (`<<<` is escaped), never among the owner sections.
 
 `runs.create` takes an optional `finish_marker` (boolean, omitted when false): the queue sets it for a single-agent run that ends when the agent writes an empty `.tmgr/done` in its folder, and the runner adds a "When you are done" block to `task.md` and a one-line note to the prompt. It is ignored for a run with a `team`.
+
+`runs.create` takes an optional `prompt` (text, at most 100000 bytes, control characters other than newline and tab removed): the first prompt of a plain run, passed to the agent the way a task prompt is. A prompt that starts with `-` is refused, so it is never read as a flag. It needs `client: "cli"` or `"desktop"`, is ignored when the session is resumed, and is refused together with `task`, `bundle`, `origin`, `team`, `cloud`, `external_resume`, `clones`, `start_key`, `agent_work` or `unattended`. `parent_session` (CLI and desktop only) names an exited session of the same task, or of no task when the new run has none.
 
 `author.kind` is `human`, `agent` or `other`; `author.id`, `persona` and
 `launch.model` are optional and are omitted, never `null`. `v` is `1`. Unknown
@@ -672,13 +679,63 @@ runs in the same folder, a subfolder or a parent folder. It first stores the cur
 deletes what that stored state holds byte for byte; anything else is listed in `left_as_is`.
 Link workers and the desktop get `forbidden`: restore is started on this machine, from the CLI.
 
+### Chat
+
+Capability `chat.v1`. The message envelope (`ChatMessage`, `RoomRef`, `RoomInfo`, the request types and
+the limits) is defined in `tmgr_ipc::chat` and `schema/chat-message.v1.json`. Only `cli` and `desktop`
+may call these methods; every other client gets `forbidden`.
+
+| method | params | result |
+|---|---|---|
+| `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`), then one room per session (`title` = session name, `agent` = profile, `state`, `last`); `context_pct` and `context_tokens` are not filled yet |
+| `chat.history` | `{room, before?, limit?}` (`limit` 1 to 500, default 500) | `[ChatMessage]`, oldest first: the newest `limit` messages stored before the message with id `before` (store order, which is append order); an unknown `before` gives `[]` |
+| `chat.send` | `{room, body_md, reply_to?, attachments?, id?, ts_ms?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
+| `chat.search` | `{query, room?, limit?}` (`query` 1 to 256 characters, `limit` default 50, max 500) | `[ChatMessage]`, newest first: case-insensitive substring match on `body_md` |
+| `chat.subscribe` | none | `null`; the connection then also receives a `chat` push |
+
+Errors: `invalid_params` (bad room, a room of another machine, empty body, bad query, `id` without `ts_ms`, bad `id`), `not_found` (an ingest into a session room this runner does not know), `conflict` (an ingest id that already holds different content), `busy` (the target
+session is not at its prompt), `forbidden`.
+
+`room.machine` must be this runner's machine id: `mx_` and 16 lowercase hex characters, created once in the
+runner directory (`machine.id`, mode 0600). It is never a hostname. Read it from the `room.machine` of the first
+`chat.rooms` entry.
+
+With `id` (a valid `m_<32hex>`, and then `ts_ms` is required) `chat.send` ingests an owner message written on
+another device. The id and `ts_ms` are kept, the author is always `{kind: owner, id: owner}`. A `device` sent over IPC is ignored: only the in-process relay pump sets
+`author.device`, from the sender device it verified, and the message is always stored first. The room must belong to this machine; the Manager room always exists, a
+session room exists when the session is known or the room already has a file (`not_found` otherwise). The same id with
+the same stored message (every field) is a no-op that returns the stored message and delivers nothing; the same id with
+other content is `conflict` and never overwrites. The message is delivered only when `now - ts_ms` is at most 10 minutes and
+`ts_ms` is at most 5 minutes ahead of `now`; otherwise a system message ("Not delivered: older than 10 minutes." or a
+clock-skew note) is stored after it. A live target that is not at its prompt gets the system message "Not delivered: the
+session was busy." and nothing is queued; ingest never answers `busy`. Without a live target the message is only stored.
+In process the relay pump calls `Chat::ingest`.
+
+`chat.send` without `id` into a session room whose session is running types the body at the agent's prompt as a bracketed
+paste followed by Enter, exactly like `sessions.send` with `at_prompt`, and answers `busy` (and stores nothing)
+when the agent is not at its prompt. A room without a running target (an exited session, or the Manager room
+while no manager session exists) only stores the message.
+
+The `chat` push is `{"type":"chat","message":{ChatMessage}}`, sent for every message appended to any room
+(owner messages, captured agent replies). A client that does not know the type decodes it as an unknown push
+and ignores it. A subscriber that falls behind is closed with `closed: client too slow`.
+
+Replies of Claude Code and Codex sessions are read from the agent's own conversation log about every 3
+seconds and stored as messages from `{kind: session, id: <session id>, machine, agent: <profile>}`: only
+visible assistant text, never tool calls or results. A log that was already larger than 256 KiB when the
+runner first saw it is not replayed. Sessions of other agents are not captured.
+
+Storage is `chat/<room key>.jsonl` in the runner directory (mode 0700, files 0600), one JSON message per
+line, append only. The key is `manager` or `session-<session id>`. At 16 MiB a room file is renamed to
+`<key>.jsonl.1` (one older generation is kept) and a new file starts. Unreadable lines are skipped.
+
 ## 6. Who may call what
 
 `hello.client` is declared by the client. The runner uses it for these rules:
 `sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
 `origin` on `runs.create` is accepted only from, and required of, `worker`
 (section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`;
-`autopilot.start` and `orchestrator.create` only from `cli`; `autopilot.status`, `autopilot.control` and `autopilot.log` from `cli` and `desktop` (the `suspend` command from `cli` only); `trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
+`autopilot.start` and `orchestrator.create` only from `cli`; `chat.*` only from `cli` and `desktop`; `autopilot.status`, `autopilot.control` and `autopilot.log` from `cli` and `desktop` (the `suspend` command from `cli` only); `trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
 "Pre-accepted folder trust", "Trusted folders"). This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user

@@ -137,6 +137,7 @@ fn origin() -> Origin {
 
 fn session_info() -> SessionInfo {
     SessionInfo {
+        manager: false,
         team: None,
         agent_session_id: None,
         limit: None,
@@ -243,9 +244,11 @@ fn handshake_messages() {
 #[test]
 fn requests_and_responses() {
     let run = RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         clones: Vec::new(),
         profile: "codex".into(),
         task: Some(TASK),
@@ -639,6 +642,7 @@ fn method_params_and_results() {
     golden(
         "session_info_notask",
         &SessionInfo {
+            manager: false,
             team: None,
             agent_session_id: None,
             limit: None,
@@ -959,7 +963,10 @@ fn constants_are_pinned() {
             "permission_cards.v1",
             "team.workers.v1",
             "team.multi.v1",
-            "profiles_login_check.v1"
+            "profiles_login_check.v1",
+            "chat.v1",
+            "manager.v1",
+            "run_prompt.v1"
         ]
     );
     let methods = [
@@ -1057,7 +1064,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 38);
+    assert_eq!(w.caps.len(), 41);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1553,9 +1560,11 @@ fn finish_marker_defaults_to_false_and_is_omitted_when_false() {
 
 fn full_req() -> RunCreateReq {
     RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         permission_cards: false,
         profile: "claude".into(),
         task: Some(TaskRef {
@@ -1592,6 +1601,7 @@ fn full_req() -> RunCreateReq {
 
 fn full_info() -> SessionInfo {
     SessionInfo {
+        manager: false,
         team: None,
         agent_session_id: None,
         limit: None,

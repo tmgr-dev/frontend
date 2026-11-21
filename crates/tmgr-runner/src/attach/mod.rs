@@ -1,6 +1,7 @@
 mod actions;
 mod attention;
 mod broadcast;
+mod chat;
 mod checkpoints;
 mod chip;
 mod clean;
@@ -40,6 +41,9 @@ mod tests;
 pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
+pub use chat::{
+    ChatAction, ChatPhase, ChatState, RoomEntry, BUSY_STATUS, HISTORY_LIMIT, NEEDS_NEWER,
+};
 pub use checkpoints::{
     badge as checkpoints_badge, friendly_error as checkpoints_error, CpAction, CpFetch, CpMsg,
     CpState, BUSY_MESSAGE, OFF_MESSAGE,

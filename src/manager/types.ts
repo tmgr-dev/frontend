@@ -1,0 +1,91 @@
+// Mirrors chat.v1 from track A (crates/tmgr-ipc/src/chat.rs, schema/chat-message.v1.json, branch feat/tm-1018-manager).
+// Replace with A's merged types when they land. SlashCommand is desktop-local (A has no commands method yet).
+
+export type RoomKind = 'manager' | 'session';
+
+export interface RoomRef {
+	kind: RoomKind;
+	machine: string;
+	session?: string;
+}
+
+export type AuthorKind = 'owner' | 'manager' | 'session' | 'system';
+
+export interface Author {
+	kind: AuthorKind;
+	id: string;
+	machine?: string;
+	device?: string;
+	agent?: string;
+}
+
+export type MessageKind = 'text' | 'decision' | 'system' | (string & {});
+
+export interface Attachment {
+	name: string;
+	mime: string;
+	size: number;
+	sha256: string;
+}
+
+export interface DecisionRef {
+	card_id: string;
+}
+
+export interface ChatMessage {
+	v: 1;
+	id: string;
+	room: RoomRef;
+	author: Author;
+	ts_ms: number;
+	kind: MessageKind;
+	body_md: string;
+	attachments?: Attachment[];
+	reply_to?: string;
+	decision?: DecisionRef;
+}
+
+export interface RoomInfo {
+	room: RoomRef;
+	title: string;
+	agent?: string;
+	state?: string;
+	context_pct?: number;
+	context_tokens?: number;
+	last?: ChatMessage;
+}
+
+export interface HistoryParams {
+	room: RoomRef;
+	before?: string;
+	limit?: number;
+}
+
+export interface SendParams {
+	room: RoomRef;
+	body_md: string;
+	reply_to?: string;
+	attachments?: Attachment[];
+}
+
+export interface SearchParams {
+	query: string;
+	room?: RoomRef;
+	limit?: number;
+}
+
+export interface SlashCommand {
+	name: string;
+	description: string;
+	args?: string;
+	group: string;
+	dangerous: boolean;
+}
+
+export const roomKey = (room: RoomRef): string =>
+	room.kind === 'manager'
+		? `manager:${room.machine}`
+		: `session:${room.machine}:${room.session ?? ''}`;
+
+export const MAX_BODY_BYTES = 64 * 1024;
+export const MAX_ATTACHMENTS = 16;

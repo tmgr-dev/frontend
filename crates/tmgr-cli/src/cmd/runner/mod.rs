@@ -1,5 +1,6 @@
 pub(crate) mod allow;
 mod attach;
+mod attach_chat;
 mod attach_checkpoints;
 mod attach_chip;
 mod attach_clip;
@@ -34,6 +35,7 @@ pub(crate) mod cloud;
 mod gate;
 mod gc;
 mod local;
+pub mod manager;
 pub(crate) mod marked_queue;
 pub(crate) mod menu;
 mod observe;
@@ -91,13 +93,18 @@ pub enum RunnerCommands {
     Resume(ResumeArgs),
     /// [experimental] Give a session a new name (the id stays the same)
     Rename(RenameArgs),
-    /// [experimental] Stop an agent session and continue the same task in the other agent (Claude Code or Codex), with a note of what was done
+    /// [experimental] Stop an agent session and continue its work in another agent (Claude Code, Codex, opencode or agy), with a note of what was done; the permission mode is kept
     #[command(name = "switch-agent")]
     SwitchAgent(SwitchArgs),
     /// [experimental] Work with a session's transcript
     Session {
         #[command(subcommand)]
         command: SessionCmd,
+    },
+    /// [experimental] Start or inspect the manager agent that oversees the other sessions on this machine
+    Manager {
+        #[command(subcommand)]
+        command: manager::ManagerCmd,
     },
 }
 
@@ -560,9 +567,12 @@ pub struct RenameArgs {
 pub struct SwitchArgs {
     /// Session id or name
     pub session: String,
-    /// Agent to continue in (default: the other one)
+    /// Agent to continue in (default for Claude Code and Codex: the other one; required for opencode and agy sessions)
     #[arg(long, value_enum)]
     pub to: Option<switch::SwitchTarget>,
+    /// Carry bypass mode and no-sandbox over to the new session (asks you to type a confirmation, like `run --mode bypass`)
+    #[arg(long)]
+    pub keep_bypass: bool,
     /// Do not ask for confirmation
     #[arg(short, long)]
     pub yes: bool,
@@ -612,6 +622,7 @@ pub fn internal_entry() -> Option<i32> {
         Some("__permission-hook") if args.len() == 2 => {
             Some(tmgr_runner::permit_hook::hook_main(&args[1]))
         }
+        Some("__manager-mcp") if args.len() == 1 => Some(manager::mcp_main()),
         Some("__sandbox-exec") => Some(tmgr_runner::sandbox::exec_helper(&args[1..])),
         Some("__agent-work") if args.len() == 1 => Some(local::agent_work_main()),
         _ => None,

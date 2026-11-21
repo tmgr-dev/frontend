@@ -1,3 +1,4 @@
+use super::attach_chat::{self, ChatSub};
 use super::attach_checkpoints;
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{clipboard_image, Clipboard, SystemClipboard};
@@ -154,7 +155,7 @@ impl Drop for Guard {
 }
 
 #[allow(clippy::large_enum_variant)]
-enum Msg {
+pub(super) enum Msg {
     Stdin(Vec<u8>),
     StdinClosed,
     Server(ServerMsg),
@@ -179,6 +180,18 @@ enum Msg {
     Summary(Generated),
     Exported(std::result::Result<String, String>),
     NotesSent(std::result::Result<String, String>),
+    ChatRooms(std::result::Result<Vec<tmgr_ipc::chat::RoomInfo>, String>),
+    ChatHistory {
+        room: tmgr_ipc::chat::RoomRef,
+        before: Option<String>,
+        result: std::result::Result<Vec<tmgr_ipc::chat::ChatMessage>, String>,
+    },
+    ChatSent {
+        room: tmgr_ipc::chat::RoomRef,
+        result: std::result::Result<tmgr_ipc::chat::ChatMessage, (bool, String)>,
+    },
+    ChatPush(Box<tmgr_ipc::chat::ChatMessage>),
+    ChatDown(String),
     Pushed(std::result::Result<(), String>),
     Posted(std::result::Result<String, String>, Box<SummaryDraft>),
     Chips(HashMap<String, TaskChip>),
@@ -389,6 +402,8 @@ struct App {
     scroll_mode: bool,
     writer: AttachWriter,
     human_time: bool,
+    chat_cap: bool,
+    chat_sub: Option<ChatSub>,
     window_focused: bool,
     focus_seen: bool,
     last_user: Instant,
@@ -645,6 +660,45 @@ impl App {
                 };
                 self.view.notes_sent(ok, &text);
                 self.notify(&text);
+            }
+            Msg::ChatRooms(result) => {
+                self.dirty = true;
+                let action = self.view.chat.as_mut().and_then(|c| match result {
+                    Ok(rooms) => c.set_rooms(rooms),
+                    Err(e) => {
+                        c.rooms_failed(&e);
+                        None
+                    }
+                });
+                self.chat_actions(action.into_iter().collect());
+            }
+            Msg::ChatHistory {
+                room,
+                before,
+                result,
+            } => {
+                self.dirty = true;
+                if let Some(c) = self.view.chat.as_mut() {
+                    c.history(&room, before.as_deref(), result);
+                }
+            }
+            Msg::ChatSent { room, result } => {
+                self.dirty = true;
+                if let Some(c) = self.view.chat.as_mut() {
+                    c.sent(&room, result);
+                }
+            }
+            Msg::ChatPush(message) => {
+                self.dirty = true;
+                if let Some(c) = self.view.chat.as_mut() {
+                    c.push(*message);
+                }
+            }
+            Msg::ChatDown(e) => {
+                self.dirty = true;
+                if self.view.chat.is_some() {
+                    self.notify(&format!("chat live updates stopped: {e}"));
+                }
             }
             Msg::Pushed(result) => {
                 if let Err(e) = result {
@@ -1428,6 +1482,44 @@ impl App {
                 thread::spawn(move || {
                     let _ = tx.send(Msg::NotesSent(attach_notes::post_real(&task, &text)));
                 });
+            }
+        }
+    }
+
+    fn close_chat(&mut self) {
+        self.view.chat = None;
+        if let Some(sub) = self.chat_sub.take() {
+            sub.stop();
+        }
+    }
+
+    fn chat_command(&mut self) {
+        self.dirty = true;
+        if self.view.chat.is_some() {
+            return self.close_chat();
+        }
+        if !self.chat_cap {
+            self.view
+                .open_chat(tmgr_runner::attach::ChatState::unsupported());
+            return;
+        }
+        self.view.open_chat(tmgr_runner::attach::ChatState::new());
+        self.chat_sub = Some(ChatSub::start(&self.cfg, self.tx.clone()));
+        attach_chat::load_rooms(self.cfg.clone(), self.tx.clone());
+    }
+
+    fn chat_actions(&mut self, actions: Vec<tmgr_runner::attach::ChatAction>) {
+        use tmgr_runner::attach::ChatAction;
+        self.dirty = true;
+        for action in actions {
+            match action {
+                ChatAction::Load { room, before } => {
+                    attach_chat::load_history(self.cfg.clone(), self.tx.clone(), room, before);
+                }
+                ChatAction::Send { room, body } => {
+                    attach_chat::send(self.cfg.clone(), self.tx.clone(), room, body);
+                }
+                ChatAction::Close => self.close_chat(),
             }
         }
     }
@@ -2567,6 +2659,14 @@ impl App {
                 if let Some(action) = self.view.insert_notes_text(&data) {
                     self.notes_action(action);
                 }
+                self.dirty = true;
+            }
+            (Route::Chat, Action::Forward(data)) => {
+                let actions = self.view.edit_chat(&data);
+                self.chat_actions(actions);
+            }
+            (Route::Chat, Action::Paste { data, .. } | Action::Drop(data)) => {
+                self.view.insert_chat_text(&data);
                 self.dirty = true;
             }
             (Route::Summary, Action::Forward(data) | Action::Paste { data, .. }) => {
@@ -4394,6 +4494,9 @@ impl App {
                             }
                         }
                     }
+                    if cmd != Cmd::Chat {
+                        self.close_chat();
+                    }
                     if cmd != Cmd::Git {
                         self.view.git_open = false;
                     }
@@ -4453,6 +4556,7 @@ impl App {
                         Cmd::Summary => self.summary_command(),
                         Cmd::Export => self.export_command(),
                         Cmd::Notes => self.notes_command(),
+                        Cmd::Chat => self.chat_command(),
                         Cmd::Resume => {
                             if let Some(id) = self.view.focused_session().map(str::to_string) {
                                 self.request_resume(&id);
@@ -5023,6 +5127,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .caps
         .iter()
         .any(|c| c == caps::HUMAN_TIME_V1);
+    let chat_cap = attach_client
+        .welcome()
+        .caps
+        .iter()
+        .any(|c| c == caps::CHAT_V1);
     let (reader, writer) = attach_client
         .attach(&split_local(view.panes()))
         .map_err(rerr)?
@@ -5211,6 +5320,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         scroll_mode: false,
         writer,
         human_time,
+        chat_cap,
+        chat_sub: None,
         window_focused: true,
         focus_seen: false,
         last_user: Instant::now(),
@@ -5703,6 +5814,7 @@ mod tests {
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
+            manager: false,
             agent_session_id: None,
             limit: None,
             handoff_from: None,

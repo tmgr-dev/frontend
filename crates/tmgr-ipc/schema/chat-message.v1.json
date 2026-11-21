@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schema/chat-message.v1.json",
+  "title": "TMGR manager chat message (chat.v1)",
+  "type": "object",
+  "required": ["v", "id", "room", "author", "ts_ms", "kind", "body_md"],
+  "properties": {
+    "v": { "const": 1 },
+    "id": { "type": "string", "pattern": "^m_[0-9a-f]{32}$" },
+    "room": {
+      "type": "object",
+      "required": ["kind", "machine"],
+      "properties": {
+        "kind": { "enum": ["manager", "session"] },
+        "machine": { "$ref": "#/$defs/token" },
+        "session": { "$ref": "#/$defs/token" }
+      }
+    },
+    "author": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["owner", "manager", "session", "system"] },
+        "id": { "$ref": "#/$defs/token" },
+        "machine": { "$ref": "#/$defs/token" },
+        "device": { "$ref": "#/$defs/token" },
+        "agent": { "$ref": "#/$defs/token" }
+      }
+    },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "kind": {
+      "description": "Readers render an unknown kind like system.",
+      "type": "string",
+      "examples": ["text", "decision", "system"]
+    },
+    "body_md": { "type": "string", "maxLength": 65536 },
+    "attachments": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["name", "mime", "size", "sha256"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "mime": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "reply_to": { "type": "string", "pattern": "^m_[0-9a-f]{32}$" },
+    "decision": {
+      "type": "object",
+      "required": ["card_id"],
+      "properties": { "card_id": { "$ref": "#/$defs/token" } }
+    }
+  },
+  "$defs": {
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" }
+  }
+}

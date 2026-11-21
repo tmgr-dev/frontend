@@ -1,6 +1,7 @@
 use crate::agentwork;
 use crate::autopilot;
 use crate::bundle;
+use crate::chat;
 use crate::client::Client;
 use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
@@ -62,7 +63,9 @@ use tmgr_ipc::proto::{
 };
 use tmgr_ipc::{auth, secret, server};
 
+mod chat_api;
 mod checkpoints;
+mod manager;
 
 const MAX_CONNS: usize = 64;
 const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -427,6 +430,8 @@ struct Meta {
     limit: Option<tmgr_ipc::api::LimitHit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     handoff_from: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    manager: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -457,6 +462,7 @@ struct RunExtra {
     permission_cards: bool,
     team: Option<TeamLink>,
     agent_session_id: Option<String>,
+    manager: bool,
 }
 
 #[derive(Clone)]
@@ -737,6 +743,7 @@ impl Session {
         let i = lock(&self.inner);
         let m = &i.meta;
         SessionInfo {
+            manager: m.manager,
             team: m.team.clone(),
             agent_session_id: m.agent_session_id.clone(),
             limit: m.limit.clone(),
@@ -1771,6 +1778,7 @@ struct Conn {
     attached: AtomicBool,
     client: String,
     pending_rx: Mutex<Option<Receiver<Value>>>,
+    chat_rx: Mutex<Option<Receiver<tmgr_ipc::chat::ChatPush>>>,
 }
 
 impl Conn {
@@ -1786,6 +1794,7 @@ struct Rejects {
 }
 
 struct Runner {
+    chat: Arc<chat::Chat>,
     rename_lock: Mutex<()>,
     cfg: RunnerConfig,
     secret: String,
@@ -1805,6 +1814,7 @@ struct Runner {
     next_conn: AtomicU64,
     autopilot: autopilot::Host,
     clock: Mutex<humantime::Clock>,
+    mgr: crate::manager::State,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -2425,8 +2435,40 @@ fn parent_verdict(
     if !exited {
         return Err("parent_session is still running");
     }
-    if task.is_none() || parent_task != task {
+    if parent_task != task {
         return Err("parent_session belongs to another task");
+    }
+    Ok(())
+}
+
+fn prompt_verdict(req: &RunCreateReq, from_cli: bool) -> Result<(), &'static str> {
+    let Some(prompt) = req.prompt.as_deref() else {
+        return Ok(());
+    };
+    if !from_cli {
+        return Err("prompt is accepted only from the tmgr CLI and the desktop");
+    }
+    if prompt.trim().is_empty() || prompt.len() > tmgr_ipc::api::limits::MAX_RUN_PROMPT {
+        return Err("prompt must be 1 to 100000 bytes of text");
+    }
+    if prompt.starts_with('-') {
+        return Err("prompt must not start with -");
+    }
+    if req.bundle.is_some()
+        || req.bundle_sha256.is_some()
+        || req.task.is_some()
+        || req.origin.is_some()
+        || req.team.is_some()
+        || req.cloud.is_some()
+        || req.external_resume.is_some()
+        || req.unattended
+        || req.agent_work
+        || req.start_key.is_some()
+        || !req.clones.is_empty()
+    {
+        return Err(
+            "prompt is only for a plain run without a task, bundle, link, team or cloud approval",
+        );
     }
     Ok(())
 }
@@ -2575,6 +2617,11 @@ impl Runner {
                     }
                     self.check_parent(parent, req.task)?;
                 }
+                prompt_verdict(
+                    &req,
+                    conn.client == CLIENT_CLI || conn.client == CLIENT_DESKTOP,
+                )
+                .map_err(|m| api(ErrorCode::InvalidParams, m))?;
                 if req.trust_cwd.is_some() {
                     if conn.client != CLIENT_CLI {
                         return Err(api(
@@ -2611,6 +2658,7 @@ impl Runner {
                         ));
                     }
                 }
+                self.check_manager_create(&conn.client, &req)?;
                 let manual = is_manual_run(&conn.client, &req);
                 if req.permission_cards && !manual {
                     return Err(api(
@@ -2885,6 +2933,7 @@ impl Runner {
             method::LAYOUT_SET => self.layout_set(p).map(|_| Value::Null),
             method::ATTACH_OPEN => self.attach_open(conn, p),
             method::ATTACH_SET => self.attach_set(conn, p),
+            m if m.starts_with("chat.") => self.chat_dispatch(conn, m, p),
             m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
         }
     }
@@ -3819,6 +3868,11 @@ impl Runner {
         resume_ctx: Option<ResumeCtx>,
     ) -> Result<(SessionInfo, bool, bool, &'static str), ApiErr> {
         check_external_resume(&req, manual, restore_from, resume_ctx.as_ref())?;
+        let _only_manager = req.manager.then(|| lock(&self.mgr.create));
+        if req.manager {
+            crate::manager::check_create(&req, true, self.live_manager().is_some())
+                .map_err(|(c, m)| api(c, m))?;
+        }
         if req.no_sandbox.is_some() && !manual {
             return Err(api(
                 ErrorCode::Forbidden,
@@ -3881,6 +3935,12 @@ impl Runner {
         let dir = checked.as_ref().map(|c| &c.dir).or(pinned.as_ref());
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         let prof = known_profile(&set, &req.profile)?;
+        if req.manager && prof.source != profile::Source::Builtin {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "manager supports only the built-in claude-code and codex profiles",
+            ));
+        }
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         let id_approved = check_resume_pin(prof.resume.as_ref().map(resume_rec), pinned_resume)?;
         let cloud = cloud_verdict(&req);
@@ -4103,6 +4163,7 @@ impl Runner {
             team: req.team.clone(),
             agent_session_id: external.as_ref().filter(|e| !e.fork).map(|e| e.id.clone()),
             handoff_from: req.parent_session.clone().filter(|p| valid_parent(p)),
+            manager: req.manager,
         };
         if plan.restricted {
             extra.egress = Some(
@@ -4144,12 +4205,28 @@ impl Runner {
             argv.push("--settings".to_string());
             argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
         }
+        if req.manager && prof.id == "claude-code" {
+            argv.push("--mcp-config".to_string());
+            argv.push(crate::manager::claude_mcp_config(&self.cfg.self_exe));
+            argv.push("--allowedTools".to_string());
+            argv.push(crate::manager::claude_allowed_tools());
+        }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
             let args = prof.prompt_args(&bundle::prompt_with(
                 b,
                 req.team.as_ref(),
                 req.finish_marker && req.team.is_none(),
             ));
+            extra.prompt_at = prof
+                .prompt
+                .args
+                .iter()
+                .position(|a| a == "{prompt}")
+                .filter(|_| !args.is_empty())
+                .map(|i| argv.len() + i);
+            argv.extend(args);
+        } else if let (false, Some(p)) = (resumed, req.prompt.as_deref()) {
+            let args = prof.prompt_args(&crate::bundle::clean(p));
             extra.prompt_at = prof
                 .prompt
                 .args
@@ -4193,7 +4270,7 @@ impl Runner {
                 info.id
             ));
         }
-        if let Some(cwd_pin) = pin.filter(|_| !multi) {
+        if let Some(cwd_pin) = pin.filter(|_| !multi && !req.manager) {
             let intent = restore::Intent {
                 v: 1,
                 session: info.id.clone(),
@@ -4600,6 +4677,12 @@ impl Runner {
                 })
                 .map_err(|e| api(ErrorCode::Sandbox, e))?;
             }
+            if extra.manager && prof.is_some_and(|p| p.id == "codex") {
+                login::edit_in_home(home, Path::new(".codex/config.toml"), |existing| {
+                    crate::manager::codex_mcp_config(existing, &self.cfg.self_exe)
+                })
+                .map_err(|e| api(ErrorCode::Sandbox, e))?;
+            }
             for note in login::apply_secret_files(&secret_files, home)
                 .map_err(|e| api(ErrorCode::Sandbox, e))?
             {
@@ -4731,6 +4814,7 @@ impl Runner {
             agent_session_id: extra.agent_session_id.clone(),
             limit: None,
             handoff_from: extra.handoff_from.clone(),
+            manager: extra.manager,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -5190,6 +5274,7 @@ impl Runner {
             attached: AtomicBool::new(false),
             client: hello.client,
             pending_rx: Mutex::new(None),
+            chat_rx: Mutex::new(None),
         });
         let closed = |reason: &str| {
             let _ = conn.write(&ServerMsg::Closed {
@@ -5219,6 +5304,11 @@ impl Runner {
                         if let Some(rx) = pending {
                             let (rt, conn) = (self.clone(), conn.clone());
                             thread::spawn(move || rt.pusher(&conn, rx));
+                        }
+                        let chat_rx = lock(&conn.chat_rx).take();
+                        if let Some(rx) = chat_rx {
+                            let (rt, conn) = (self.clone(), conn.clone());
+                            thread::spawn(move || rt.chat_pusher(&conn, rx));
                         }
                         if stop {
                             log("stop requested");
@@ -5348,7 +5438,9 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
     clock.load_totals(&humantime::read_records(&cfg.dir));
     let saved_config_dirs = load_client_config_dirs(&cfg.dir, &config_dir_forbidden(&cfg));
+    let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
     let rt = Arc::new(Runner {
+        chat: chat_store.clone(),
         rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
         secret,
@@ -5368,6 +5460,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
         clock: Mutex::new(clock),
+        mgr: crate::manager::State::new(Box::new(chat_store)),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -5413,6 +5506,16 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             }
             ticker.stop_orphaned_workers(false);
             ticker.autopilot.tick(&ticker.cfg.self_exe);
+        }
+    });
+
+    let capturer = rt.clone();
+    thread::spawn(move || capturer.chat_capture_loop());
+    let managers = rt.clone();
+    thread::spawn(move || {
+        while !managers.stop.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(200));
+            managers.manager_pass();
         }
     });
 
@@ -5937,7 +6040,9 @@ mod tests {
             version: "test".into(),
             max_sessions: 4,
         };
+        let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         let rt = Runner {
+            chat: chat_store.clone(),
             rename_lock: Mutex::new(()),
             cfg,
             secret: String::new(),
@@ -5957,6 +6062,7 @@ mod tests {
             next_conn: AtomicU64::new(1),
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),
+            mgr: crate::manager::State::new(Box::new(chat_store)),
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({
             "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),
@@ -6002,8 +6108,52 @@ mod tests {
         Instant::now() + SEND_SETTLE
     }
 
+    fn plain_req() -> RunCreateReq {
+        RunCreateReq {
+            prompt: Some("note".into()),
+            ..tmgr_ipc::api::OrchestratorCreateReq {
+                profile: "codex".into(),
+                cwd: "/w".into(),
+                start_key: "k".into(),
+                name: None,
+                exe_pin: None,
+            }
+            .as_run()
+        }
+    }
+
     #[test]
-    fn a_parent_must_be_a_known_exited_session_of_the_same_task() {
+    fn a_prompt_is_for_plain_runs_from_the_cli_or_desktop_only() {
+        let mut r = plain_req();
+        r.start_key = None;
+        r.unattended = false;
+        assert!(prompt_verdict(&r, true).is_ok());
+        assert!(prompt_verdict(&r, false).is_err());
+        let mut none = r.clone();
+        none.prompt = None;
+        assert!(prompt_verdict(&none, false).is_ok());
+        let mut big = r.clone();
+        big.prompt = Some("x".repeat(tmgr_ipc::api::limits::MAX_RUN_PROMPT + 1));
+        assert!(prompt_verdict(&big, true).is_err());
+        let mut blank = r.clone();
+        blank.prompt = Some("  \n".into());
+        assert!(prompt_verdict(&blank, true).is_err());
+        let mut flag = r.clone();
+        flag.prompt = Some("--dangerously-skip-permissions".into());
+        assert!(prompt_verdict(&flag, true).is_err());
+        let mut task = r.clone();
+        task.task = Some(TaskRef {
+            workspace_id: -1,
+            task_id: 1,
+        });
+        assert!(prompt_verdict(&task, true).is_err());
+        let mut unattended = r.clone();
+        unattended.unattended = true;
+        assert!(prompt_verdict(&unattended, true).is_err());
+    }
+
+    #[test]
+    fn a_parent_must_be_a_known_exited_session_of_the_same_task_or_both_without_one() {
         let t = |n| {
             Some(TaskRef {
                 workspace_id: -1,
@@ -6014,7 +6164,11 @@ mod tests {
         assert!(parent_verdict("s_a", None, t(1)).is_err());
         assert!(parent_verdict("s_a", Some((false, t(1))), t(1)).is_err());
         assert!(parent_verdict("s_a", Some((true, t(2))), t(1)).is_err());
-        assert!(parent_verdict("s_a", Some((true, None)), None).is_err());
+        assert!(parent_verdict("s_a", Some((true, None)), None).is_ok());
+        assert!(parent_verdict("s_a", Some((true, None)), t(1)).is_err());
+        assert!(parent_verdict("s_a", Some((true, t(1))), None).is_err());
+        assert!(parent_verdict("s_a", Some((false, None)), None).is_err());
+        assert!(parent_verdict("s_a", None, None).is_err());
         assert!(parent_verdict("../x", Some((true, t(1))), t(1)).is_err());
     }
 

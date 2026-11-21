@@ -136,6 +136,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Session {
             command: super::SessionCmd::Read(_),
         } => unreachable!("handled before the session starts"),
+        RunnerCommands::Manager { command } => super::manager::run(o, command),
     }
 }
 
@@ -268,9 +269,11 @@ pub(super) fn run_create_run(
     trust: bool,
 ) -> RunCreateReq {
     RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
+        prompt: None,
         clones: Vec::new(),
         profile,
         task: None,
