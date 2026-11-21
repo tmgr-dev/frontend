@@ -5465,6 +5465,7 @@ dependencies = [
  "subtle",
  "tmgr-ipc",
  "tmgr-phone",
+ "tmgr-spawn-auth",
 ]
 
 [[package]]
