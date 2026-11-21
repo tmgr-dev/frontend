@@ -893,3 +893,55 @@ html.dark .manager .qt {
 	outline: 2px solid var(--ring);
 	outline-offset: 1px;
 }
+.manager.app-shell {
+	display: grid;
+	grid-template-columns: 300px 1fr;
+	height: 100vh;
+	min-height: 0;
+}
+.manager .side .top {
+	padding: 14px 14px 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.manager .side .top b {
+	font-size: 15px;
+	font-weight: 800;
+	flex: 1;
+}
+.manager .sidesrch {
+	margin: 0 12px 6px;
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	background: var(--raised);
+	box-shadow: var(--shadow-sm);
+	border-radius: var(--r-md);
+	padding: 7px 10px;
+	color: var(--subtle);
+	font-size: 13px;
+	width: calc(100% - 24px);
+}
+.manager .sidesrch kbd {
+	margin-left: auto;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	background: var(--sunken);
+	padding: 1px 6px;
+	border-radius: 5px;
+}
+.manager .mgr-error {
+	margin: 0 24px 8px;
+	color: var(--fix-fg);
+	font-size: 12.5px;
+}
+.manager .decision-ref {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	color: var(--subtle);
+}
+html:has(.manager.app-shell),
+body:has(.manager.app-shell) {
+	margin: 0;
+}

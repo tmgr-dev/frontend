@@ -275,11 +275,11 @@ impl ManagerBackend for StubBackend {
       let mut hits: Vec<ChatMessage> = s
         .messages
         .iter()
-        .filter(|m| params.room.as_ref().map_or(true, |r| r == &m.room))
+        .filter(|m| params.room.as_ref().is_none_or(|r| r == &m.room))
         .filter(|m| m.body_md.to_lowercase().contains(&needle) || m.attachments.iter().any(|a| a.name.to_lowercase().contains(&needle)))
         .cloned()
         .collect();
-      hits.sort_by(|a, b| b.ts_ms.cmp(&a.ts_ms));
+      hits.sort_by_key(|m| std::cmp::Reverse(m.ts_ms));
       hits.truncate(limit);
       hits
     }))
