@@ -70,6 +70,22 @@ impl Fake {
     self.0.lock().unwrap().revocations.push((fp.into(), by.into(), statement.into()));
   }
 
+  fn reverse_queue(&self, to: &str) {
+    let mut s = self.0.lock().unwrap();
+    let mut cursors: Vec<i64> = s.msgs.iter().filter(|m| m.to == to).map(|m| m.cursor).collect();
+    cursors.reverse();
+    for (m, c) in s.msgs.iter_mut().filter(|m| m.to == to).zip(cursors) {
+      m.cursor = c;
+    }
+    s.msgs.sort_by_key(|m| m.cursor);
+  }
+
+  fn drop_nth(&self, to: &str, n: usize) {
+    let mut s = self.0.lock().unwrap();
+    let idx = s.msgs.iter().enumerate().filter(|(_, m)| m.to == to).map(|(i, _)| i).nth(n).unwrap();
+    s.msgs.remove(idx);
+  }
+
   fn inject(&self, to: &str, msg_id: &str, from: &str, body: &str) {
     let mut s = self.0.lock().unwrap();
     s.next += 1;
@@ -219,15 +235,15 @@ fn room() -> RoomRef {
   RoomRef { kind: RoomKind::Manager, machine: "mx_remote".into(), session: None }
 }
 
-fn send(e: &Engine, text: &str) -> Result<ChatMessage, String> {
+fn send<K: KeyStore>(e: &RelayEngine<Fake, K>, text: &str) -> Result<ChatMessage, String> {
   e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![], id: None, ts_ms: None })
 }
 
-fn history(e: &Engine) -> Vec<String> {
+fn history<K: KeyStore>(e: &RelayEngine<Fake, K>) -> Vec<String> {
   e.history(&HistoryParams { room: room(), before: None, limit: None }).unwrap().into_iter().map(|m| m.body_md).collect()
 }
 
-fn my_id(e: &Engine) -> String {
+fn my_id<K: KeyStore>(e: &RelayEngine<Fake, K>) -> String {
   e.lock().identity.as_ref().unwrap().device_id.clone()
 }
 
@@ -435,6 +451,8 @@ fn stale_and_replayed_messages_are_dropped() {
 
   clock.set(T0 + 1000);
   send(&a, "fresh").unwrap();
+  assert!(b.poll_once().unwrap().is_empty());
+  clock.set(T0 + 62_000);
   assert_eq!(b.poll_once().unwrap().len(), 1);
   assert_eq!(history(&b), ["fresh"]);
 }
@@ -663,6 +681,16 @@ fn dedupe_is_per_sender_and_message_id() {
   assert_eq!(fake.queue_len(&bid), 2);
   b.poll_once().unwrap();
   assert_eq!(b.lock().st.seen.iter().filter(|s| s.id == msg.id).count(), 2);
+  assert_eq!(b.lock().log.iter().filter(|e| e.msg.id == msg.id).count(), 2);
+  assert_eq!(history(&b), ["same id", "same id"]);
+  fake.reverse_queue(&bid);
+  for e in [&a, &c] {
+    let mut g = e.lock();
+    let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == bid).cloned().collect();
+    e.seal_and_post(&mut g, "chat", &msg.id, &payload, &target, false).unwrap();
+  }
+  b.poll_once().unwrap();
+  assert_eq!(history(&b).len(), 2);
 }
 
 fn engine_on(fake: &Fake, clock: &Clock, store: Arc<MemKeyStore>, local: &str) -> Engine {
@@ -870,4 +898,275 @@ fn send_with_an_id_is_idempotent_and_conflicts_on_different_content() {
   assert_eq!(send_with(&a, &id, T0 + 5, "other").unwrap_err(), "conflict");
   assert_eq!(history(&a), ["once"]);
   assert_eq!(b.poll_once().unwrap().len(), 1);
+}
+
+fn counted(fake: &Fake, clock: &Clock, label: &str) -> (RelayEngine<Fake, Arc<CountingStore>>, Arc<CountingStore>) {
+  let store = Arc::new(CountingStore::default());
+  let c = clock.0.clone();
+  let e = RelayEngine::new(fake.clone(), store.clone(), EngineConfig { user_id: USER, label: label.into(), local_machine: "mx_local".into() })
+    .unwrap()
+    .with_clock(move || c.load(Ordering::SeqCst));
+  (e, store)
+}
+
+#[derive(Default)]
+struct CountingStore {
+  inner: MemKeyStore,
+  saves: Mutex<Vec<Slot>>,
+}
+
+impl CountingStore {
+  fn count(&self, slot: Slot) -> usize {
+    self.saves.lock().unwrap().iter().filter(|s| **s == slot).count()
+  }
+}
+
+impl KeyStore for Arc<CountingStore> {
+  fn load(&self, slot: Slot) -> Result<Option<String>, String> {
+    self.inner.load(slot)
+  }
+  fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
+    self.saves.lock().unwrap().push(slot);
+    self.inner.save(slot, value)
+  }
+  fn clear(&self) -> Result<(), String> {
+    self.inner.clear()
+  }
+}
+
+fn raw_sig(der_b64: &str) -> String {
+  let der = tmgr_phone::b64_decode(der_b64).unwrap();
+  tmgr_phone::b64(&p256::ecdsa::Signature::from_der(&der).unwrap().to_bytes())
+}
+
+fn with_sig(json: &str, sig: &str) -> String {
+  let mut v: Value = serde_json::from_str(json).unwrap();
+  v["sig"] = json!(sig);
+  v.to_string()
+}
+
+#[test]
+fn raw_r_s_signature_on_a_directory_revoke_is_rejected() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  let (aid, cid) = (my_id(&a), my_id(&c));
+  let st = {
+    let g = a.lock();
+    let target = g.st.trusted.iter().find(|d| d.id == cid).unwrap().clone();
+    RevokeStatement { user_id: USER, revoker_fp: g.keys.as_ref().unwrap().fingerprint(), target_id: cid.clone(), target_fp: target.fp, issued_at_ms: T0 }
+  };
+  let der = sign_revoke(a.lock().keys.as_ref().unwrap(), &st).unwrap();
+  let sig = serde_json::from_str::<Value>(&der).unwrap()["sig"].as_str().unwrap().to_owned();
+  fake.add_revocation(&st.target_fp, &aid, &with_sig(&der, &raw_sig(&sig)));
+  b.poll_once().unwrap();
+  assert!(b.trust_state().unwrap().pending_revokes.is_empty());
+  fake.0.lock().unwrap().revocations.clear();
+  fake.add_revocation(&st.target_fp, &aid, &der);
+  b.poll_once().unwrap();
+  assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+}
+
+#[test]
+fn raw_r_s_signature_on_an_intro_is_rejected() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let c = engine_with(&fake, &clock, "Desktop C");
+  c.register().unwrap();
+  let cid = my_id(&c);
+  let (aid, c_dev) = (my_id(&a), c.lock().st.trusted[0].clone());
+  let st = IntroStatement {
+    user_id: USER,
+    introducer_fp: fp_of(&a),
+    target_id: cid.clone(),
+    target_fp: c_dev.fp.clone(),
+    target_kind: "desktop".into(),
+    issued_at_ms: T0,
+  };
+  let der = sign_intro(a.lock().keys.as_ref().unwrap(), &aid, &st).unwrap();
+  let sig = serde_json::from_str::<Value>(&der).unwrap()["sig"].as_str().unwrap().to_owned();
+  let put = |intro: &str| {
+    let mut s = fake.0.lock().unwrap();
+    let d = s.devices.iter_mut().find(|d| d.id == cid).unwrap();
+    d.intros = vec![(aid.clone(), intro.to_owned())];
+  };
+  put(&with_sig(&der, &raw_sig(&sig)));
+  b.poll_once().unwrap();
+  assert!(b.trust_state().unwrap().devices.iter().all(|d| d.id != cid));
+  put(&der);
+  b.poll_once().unwrap();
+  assert!(b.trust_state().unwrap().devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
+}
+
+fn forge_chat(from: &Engine, to: &Engine, msg: &ChatMessage, raw: bool) -> (String, String) {
+  let (fid, tid) = (my_id(from), my_id(to));
+  let g = from.lock();
+  let keys = g.keys.as_ref().unwrap();
+  let to_dev = g.st.trusted.iter().find(|d| d.id == tid).unwrap().clone();
+  let inner = json!({ "v": 1, "kind": "chat", "id": msg.id, "sent_at": T0, "seq": 2, "payload": serde_json::to_value(msg).unwrap() }).to_string();
+  let signed = tmgr_chat_relay::wire::signed_string(USER, &keys.fingerprint(), &to_dev.fp, &fid, &tid, "chat", &msg.id, T0, &inner).unwrap();
+  let mut sig = tmgr_phone::sign(keys.sign_secret(), &signed).unwrap();
+  if raw {
+    sig = raw_sig(&sig);
+  }
+  let plain = json!({ "body": inner, "sig": sig }).to_string();
+  let ctx = tmgr_chat_relay::wire::chat_ctx(USER, &fid, &tid, "chat", &msg.id).unwrap();
+  let ent = tmgr_phone::Entropy { eph_secret: [9u8; 32], nonce: [3u8; 12] };
+  let s = tmgr_phone::seal_ctx_with(&tmgr_phone::b64_decode(&to_dev.kex_pub).unwrap(), &ctx, "chat", &msg.id, plain.as_bytes(), &ent).unwrap();
+  let body = json!({ "v": 1, "kind": s.kind, "id": s.id, "from": fid, "eph": s.eph, "nonce": s.nonce, "ct": s.ct }).to_string();
+  (fid, body)
+}
+
+#[test]
+fn raw_r_s_signature_on_a_message_is_rejected() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let msg = same_id_msg();
+  let (from, body) = forge_chat(&a, &b, &msg, true);
+  fake.inject(&bid, &msg.id, &from, &body);
+  assert!(b.poll_once().unwrap().is_empty());
+  assert!(history(&b).is_empty());
+  let mut ok = msg.clone();
+  ok.id = format!("m_{}", "2".repeat(32));
+  let (from, body) = forge_chat(&a, &b, &ok, false);
+  fake.inject(&bid, &ok.id, &from, &body);
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+}
+
+fn three_chats(fake: &Fake, a: &Engine, b: &Engine) -> String {
+  let bid = my_id(b);
+  for t in ["one", "two", "three"] {
+    send(a, t).unwrap();
+  }
+  assert_eq!(fake.queue_len(&bid), 3);
+  bid
+}
+
+#[test]
+fn out_of_order_messages_are_processed_in_seq_order_without_gaps() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = three_chats(&fake, &a, &b);
+  fake.reverse_queue(&bid);
+  assert_eq!(b.poll_once().unwrap().len(), 3);
+  assert!(b.trust_state().unwrap().seq_gaps.is_empty());
+  let seqs: Vec<u64> = b.lock().st.seq_in.values().copied().collect();
+  assert_eq!(seqs, [4]);
+}
+
+#[test]
+fn a_missing_message_is_held_briefly_then_reported_as_a_gap() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = three_chats(&fake, &a, &b);
+  fake.drop_nth(&bid, 1);
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  assert!(b.trust_state().unwrap().seq_gaps.is_empty());
+  assert_eq!(fake.queue_len(&bid), 2);
+  clock.set(T0 + 30_000);
+  assert!(b.poll_once().unwrap().is_empty());
+  clock.set(T0 + 61_000);
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  let mut shown = history(&b);
+  shown.sort();
+  assert_eq!(shown, ["one", "three"]);
+  let gaps = b.trust_state().unwrap().seq_gaps;
+  assert_eq!(gaps, [SeqGap { from_device: my_id(&a), expected: 3, got: 4 }]);
+  assert_eq!(fake.queue_len(&bid), 0);
+}
+
+#[test]
+fn reset_identity_tells_trusted_devices_to_drop_the_old_identity() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (old_id, old_fp) = (my_id(&a), fp_of(&a));
+  let posts = fake.posts();
+  a.reset_identity().unwrap();
+  assert_eq!(fake.posts(), posts + 1);
+  b.poll_once().unwrap();
+  let ts = b.trust_state().unwrap();
+  assert!(ts.pending_revokes.is_empty());
+  assert!(ts.devices.iter().any(|d| d.id == old_id && d.state == DeviceState::Revoked));
+  assert!(b.lock().st.revoked.contains(&old_fp));
+}
+
+#[test]
+fn reset_identity_wipes_even_when_the_revoke_cannot_be_sent() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  let old = my_id(&a);
+  fake.set_post_error(Some("boom"));
+  let e = a.reset_identity().unwrap_err();
+  assert!(e.contains("not told"), "{e}");
+  assert_ne!(my_id(&a), old);
+  assert_eq!(a.trust_state().unwrap().devices.len(), 1);
+}
+
+#[test]
+fn polls_do_not_rewrite_the_log_more_than_once_per_30_seconds() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _) = pair(&fake, &clock);
+  let (b, store) = counted(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  let (logs, states) = (store.count(Slot::Log), store.count(Slot::State));
+  let bid = my_id(&b);
+  for i in 1..=5u64 {
+    clock.set(T0 + i * 1000);
+    send(&a, &format!("m{i}")).unwrap();
+    assert_eq!(b.poll_once().unwrap().len(), 1);
+  }
+  assert_eq!(store.count(Slot::Log), logs);
+  assert_eq!(store.count(Slot::State), states);
+  assert_eq!(fake.queue_len(&bid), 5);
+  clock.set(T0 + 31_000);
+  b.poll_once().unwrap();
+  assert_eq!(store.count(Slot::Log), logs + 1);
+  assert_eq!(fake.queue_len(&bid), 0);
+  b.poll_once().unwrap();
+  assert_eq!(store.count(Slot::Log), logs + 1);
+}
+
+#[test]
+fn unwritten_messages_stay_on_the_server_until_stored() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _) = pair(&fake, &clock);
+  let (b, store) = counted(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  clock.set(T0 + 1000);
+  send(&a, "pending write").unwrap();
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  let restarted = RelayEngine::new(fake.clone(), store, EngineConfig { user_id: USER, label: "Desktop B".into(), local_machine: "mx_local".into() })
+    .unwrap()
+    .with_clock({
+      let c = clock.0.clone();
+      move || c.load(Ordering::SeqCst)
+    });
+  assert_eq!(restarted.poll_once().unwrap().len(), 1);
+  assert_eq!(history(&restarted), ["pending write"]);
+}
+
+#[test]
+fn seen_is_capped_at_5000_dropping_the_oldest() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  {
+    let mut g = b.lock();
+    for i in 0..5100 {
+      g.st.seen.push(Seen { from: "x".into(), id: format!("old{i}"), at: T0 });
+    }
+  }
+  send(&a, "fresh").unwrap();
+  b.poll_once().unwrap();
+  let g = b.lock();
+  assert_eq!(g.st.seen.len(), 5000);
+  assert!(g.st.seen.last().unwrap().id.starts_with("m_"));
+  assert!(g.st.seen.iter().all(|s| s.id != "old0"));
 }

@@ -43,6 +43,13 @@ pub struct PendingRevoke {
   pub target_fp: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SeqGap {
+  pub from_device: String,
+  pub expected: u64,
+  pub got: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct TrustState {
   pub registered: bool,
@@ -53,6 +60,8 @@ pub struct TrustState {
   pub pending_revokes: Vec<PendingRevoke>,
   #[serde(default)]
   pub key_mismatch: Vec<String>,
+  #[serde(default)]
+  pub seq_gaps: Vec<SeqGap>,
 }
 
 #[allow(dead_code)]
