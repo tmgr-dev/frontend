@@ -780,6 +780,12 @@ fn agents(o: &Opts) -> Result<i32> {
                 if let (Some(origin), Some(m)) = (origins.get(&s.id), v.as_object_mut()) {
                     m.insert("origin".into(), json!(origin));
                 }
+                if let Some(m) = v.as_object_mut() {
+                    m.insert(
+                        "unrestricted".into(),
+                        json!(super::manager::is_unrestricted(s)),
+                    );
+                }
                 v
             })
             .collect();
@@ -823,7 +829,7 @@ fn agents(o: &Opts) -> Result<i32> {
         let since = span(now.saturating_sub(s.state.since_ms) / 1000);
         let mut row = vec![
             badge(s).to_string(),
-            tmgr_core::text::sanitize_line(&s.name),
+            agents_name(s),
             format!("{} {since}", state_label(s)),
             clean(&s.id),
             command_line(s),
@@ -866,6 +872,15 @@ fn agents(o: &Opts) -> Result<i32> {
     }
     hint();
     Ok(0)
+}
+
+fn agents_name(s: &SessionInfo) -> String {
+    let name = tmgr_core::text::sanitize_line(&s.name);
+    if super::manager::is_unrestricted(s) {
+        format!("[UNRESTRICTED] {name}")
+    } else {
+        name
+    }
 }
 
 fn newest(sessions: &[SessionInfo], f: impl Fn(&SessionInfo) -> bool) -> Option<&SessionInfo> {
@@ -1233,6 +1248,16 @@ mod tests {
             "via": via,
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn agents_marks_only_an_unsandboxed_manager_as_unrestricted() {
+        let mut s = restored(None, false).session;
+        assert_eq!(agents_name(&s), "work [2J");
+        s.no_sandbox = true;
+        assert_eq!(agents_name(&s), "work [2J");
+        s.manager = true;
+        assert_eq!(agents_name(&s), "[UNRESTRICTED] work [2J");
     }
 
     #[test]
