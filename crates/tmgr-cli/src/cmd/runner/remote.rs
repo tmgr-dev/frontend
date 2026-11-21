@@ -641,8 +641,9 @@ mod tests {
             out: Result<Outcome>,
         ) -> (Result<()>, usize, Option<String>) {
             let mut argv = vec!["run", "--on", "s", "--agent", "x", "--mode", "bypass"];
-            argv.extend_from_slice(extra);
-            let a = parse(&argv).unwrap();
+            argv.extend(extra.iter().filter(|e| **e != "--yes"));
+            let mut a = parse(&argv).unwrap();
+            a.yes = extra.contains(&"--yes");
             let mut asked = 0;
             let mut out = Some(out);
             let mut typed_word = None;
