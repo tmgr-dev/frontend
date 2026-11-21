@@ -9,6 +9,7 @@ import type {
 	SearchParams,
 	SendParams,
 	SlashCommand,
+	SpawnCardStatus,
 	SpawnRequest,
 	TrustState,
 } from './types';
@@ -26,6 +27,9 @@ export const managerSearch = (params: SearchParams) =>
 
 export const managerCommands = (room: RoomRef) =>
 	invoke<SlashCommand[]>('manager_commands', { room });
+
+export const spawnCard = (cardId: string) =>
+	invoke<SpawnCardStatus>('manager_spawn_card', { cardId });
 
 export const onManagerMessage = (
 	handler: (message: ChatMessage) => void,

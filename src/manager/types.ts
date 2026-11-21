@@ -28,8 +28,18 @@ export interface Attachment {
 	sha256: string;
 }
 
+export interface SpawnCardWire {
+	summary: string;
+	request: string;
+	nonce: string;
+	exp_ms: number;
+	target_id: string;
+	target_fp: string;
+}
+
 export interface DecisionRef {
 	card_id: string;
+	spawn?: SpawnCardWire;
 }
 
 export interface ChatMessage {
@@ -166,3 +176,17 @@ export interface TrustState {
 }
 
 export const RESET_PHRASE = 'RESET';
+
+export type SpawnCardState =
+	| 'issued'
+	| 'approved'
+	| 'claimed'
+	| 'spawned'
+	| 'refused';
+
+export interface SpawnCardStatus {
+	state: SpawnCardState;
+	exp_ms?: number;
+	session?: string;
+	reason?: string;
+}

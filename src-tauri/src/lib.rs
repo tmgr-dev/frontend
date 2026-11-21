@@ -441,6 +441,7 @@ pub fn run() {
       manager::manager_send,
       manager::manager_search,
       manager::manager_commands,
+      manager::manager_spawn_card,
       manager::manager_trust_state,
       manager::manager_join_decide,
       manager::manager_revoke_decide,

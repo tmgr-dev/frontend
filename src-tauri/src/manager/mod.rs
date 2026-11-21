@@ -274,3 +274,32 @@ pub async fn manager_join_with_code<R: Runtime>(app: AppHandle<R>, code: String)
   trust_changed(&app);
   Ok(())
 }
+
+fn valid_card_id(id: &str) -> bool {
+  id.strip_prefix("card_").is_some_and(|hex| hex.len() == 32 && hex.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')))
+}
+
+#[tauri::command]
+pub async fn manager_spawn_card<R: Runtime>(app: AppHandle<R>, card_id: String) -> Result<serde_json::Value, String> {
+  if !valid_card_id(&card_id) {
+    return Err("invalid card id".to_owned());
+  }
+  let runner = app.try_state::<crate::runner::Runner>().ok_or_else(|| "the runner is not available".to_owned())?.inner().clone();
+  blocking(move || runner.chat_call("spawn.card", serde_json::json!({ "card_id": card_id }))).await
+}
+
+#[cfg(test)]
+mod tests {
+  use super::valid_card_id;
+
+  #[test]
+  fn card_id_needs_prefix_and_32_lowercase_hex() {
+    assert!(valid_card_id("card_0123456789abcdef0123456789abcdef"));
+    assert!(!valid_card_id("card_0123456789ABCDEF0123456789abcdef"));
+    assert!(!valid_card_id("card_0123456789abcdef0123456789abcde"));
+    assert!(!valid_card_id("card_0123456789abcdef0123456789abcdef0"));
+    assert!(!valid_card_id("0123456789abcdef0123456789abcdef"));
+    assert!(!valid_card_id("card_0123456789abcdef0123456789abcdeg"));
+    assert!(!valid_card_id(""));
+  }
+}

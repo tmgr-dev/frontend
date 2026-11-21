@@ -537,9 +537,7 @@ html.dark .manager .qt {
 	right: 0;
 	top: -12px;
 	background: var(--raised);
-	box-shadow:
-		var(--shadow-md),
-		0 0 0 1px var(--line-strong);
+	box-shadow: var(--shadow-md), 0 0 0 1px var(--line-strong);
 	border-radius: var(--r-sm);
 	padding: 2px;
 	z-index: 3;
@@ -705,9 +703,7 @@ html.dark .manager .qt {
 .manager .pop {
 	background: var(--raised);
 	border-radius: var(--r-md);
-	box-shadow:
-		var(--shadow-md),
-		0 0 0 1px var(--line-strong);
+	box-shadow: var(--shadow-md), 0 0 0 1px var(--line-strong);
 	padding: 4px;
 	overflow: auto;
 }
@@ -1581,4 +1577,29 @@ body:has(.manager.app-shell) {
 }
 .manager .dcard.done .dc-title > svg {
 	color: var(--done);
+}
+.manager .dcard.spawn.ok {
+	border-color: var(--done);
+}
+.manager .dcard.spawn.fail {
+	border-color: var(--line);
+	background: var(--sunken);
+}
+.manager .sp-lines {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 2px 10px;
+	margin: 0;
+	font-size: 13px;
+}
+.manager .sp-lines dt {
+	color: var(--muted);
+}
+.manager .sp-lines dd {
+	margin: 0;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.manager .sp-warn {
+	color: var(--fix-fg);
 }

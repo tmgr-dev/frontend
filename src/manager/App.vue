@@ -65,8 +65,13 @@
 				>
 					<template #decision="{ message }">
 						<template v-if="message.decision?.card_id">
+							<SpawnApprovalCard
+								v-if="message.decision.spawn"
+								:card-id="message.decision.card_id"
+								:spawn="message.decision.spawn"
+							/>
 							<DecisionCard
-								v-if="activeInfo?.local !== false"
+								v-else-if="activeInfo?.local !== false"
 								:card-id="message.decision.card_id"
 							/>
 							<p v-else class="mgr-remote-decision">
@@ -233,6 +238,7 @@
 	import NewSessionDialog from './components/NewSessionDialog.vue';
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
+	import SpawnApprovalCard from './components/SpawnApprovalCard.vue';
 	import SwitchAgentDialog from './components/SwitchAgentDialog.vue';
 	import ConfirmKindDialog from './components/trust/ConfirmKindDialog.vue';
 	import DevicesPanel from './components/trust/DevicesPanel.vue';
@@ -263,6 +269,7 @@
 			Composer,
 			ConfirmKindDialog,
 			DecisionCard,
+			SpawnApprovalCard,
 			DetailPanel,
 			DevicesPanel,
 			PairDeviceDialog,
@@ -305,7 +312,7 @@
 			},
 			messages() {
 				return this.store.activeKey
-					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
+					? this.store.messagesByRoom[this.store.activeKey] ?? []
 					: [];
 			},
 			bodyHtml(): Record<string, string> {
