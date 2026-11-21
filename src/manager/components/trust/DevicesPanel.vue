@@ -89,8 +89,33 @@
 					{{ $t('manager.trust.devices.empty') }}
 				</li>
 			</ul>
+			<p v-if="joining" role="status">
+				{{ $t('manager.trust.devices.waiting') }}
+			</p>
+			<p v-else-if="!canJoin">{{ $t('manager.trust.devices.joinedHint') }}</p>
 			<p v-if="error" class="mgr-error" role="alert">{{ error }}</p>
 			<div class="trust-actions">
+				<button
+					v-if="canJoin"
+					type="button"
+					class="btn"
+					:disabled="busy"
+					@click="$emit('enterCode')"
+				>
+					{{
+						joining
+							? $t('manager.trust.devices.anotherCode')
+							: $t('manager.trust.devices.enterCode')
+					}}
+				</button>
+				<button
+					type="button"
+					class="btn primary"
+					:disabled="busy || joining"
+					@click="$emit('addDevice')"
+				>
+					{{ $t('manager.trust.devices.addDevice') }}
+				</button>
 				<button
 					type="button"
 					class="btn danger"
@@ -133,10 +158,19 @@
 			keyMismatch: { type: Array as PropType<string[]>, default: () => [] },
 			alerts: { type: Array as PropType<TrustAlert[]>, default: () => [] },
 			seqGaps: { type: Array as PropType<SeqGap[]>, default: () => [] },
+			canJoin: { type: Boolean, default: true },
+			joining: { type: Boolean, default: false },
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
 		},
-		emits: ['revoke', 'confirmKind', 'reset', 'close'],
+		emits: [
+			'revoke',
+			'confirmKind',
+			'reset',
+			'close',
+			'addDevice',
+			'enterCode',
+		],
 		computed: {
 			alertKinds(): string[] {
 				return [...new Set(this.alerts.map((a) => a.kind))];

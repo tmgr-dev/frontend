@@ -186,17 +186,35 @@
 			@confirm="trust.resetIdentity()"
 			@cancel="trust.cancelReset()"
 		/>
+		<PairDeviceDialog
+			v-else-if="trust.pair.mode"
+			v-model="trust.pair.text"
+			:mode="trust.pair.mode"
+			:code="trust.pair.code"
+			:qr="trust.pair.qr"
+			:seconds-left="trust.pair.secondsLeft"
+			:expired="trust.pair.expired"
+			:busy="trust.busy"
+			:error="trust.error"
+			@submit="trust.submitCode()"
+			@renew="trust.openAddDevice()"
+			@close="trust.closePair()"
+		/>
 		<DevicesPanel
 			v-else-if="trust.panelOpen"
 			:devices="trust.trust?.devices ?? []"
 			:key-mismatch="trust.trust?.key_mismatch ?? []"
 			:alerts="trust.trust?.alerts ?? []"
 			:seq-gaps="trust.trust?.seq_gaps ?? []"
+			:can-join="trust.trust?.can_join_with_code ?? false"
+			:joining="trust.trust?.joining ?? false"
 			:busy="trust.busy"
 			:error="trust.error"
 			@revoke="trust.revoke"
 			@confirm-kind="trust.askConfirmKind"
 			@reset="trust.openReset()"
+			@add-device="trust.openAddDevice()"
+			@enter-code="trust.openEnterCode()"
 			@close="trust.closePanel()"
 		/>
 	</div>
@@ -204,6 +222,7 @@
 
 <script lang="ts">
 	import { defineComponent } from 'vue';
+	import { onManagerResync } from './api';
 	import ChatHeader from './components/ChatHeader.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
@@ -218,9 +237,9 @@
 	import ConfirmKindDialog from './components/trust/ConfirmKindDialog.vue';
 	import DevicesPanel from './components/trust/DevicesPanel.vue';
 	import JoinConfirmDialog from './components/trust/JoinConfirmDialog.vue';
+	import PairDeviceDialog from './components/trust/PairDeviceDialog.vue';
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
-	import { onManagerResync } from './api';
 	import { renderBody } from './format';
 	import { AGENT_MODELS, MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
@@ -246,6 +265,7 @@
 			DecisionCard,
 			DetailPanel,
 			DevicesPanel,
+			PairDeviceDialog,
 			Icon,
 			JoinConfirmDialog,
 			MessageList,

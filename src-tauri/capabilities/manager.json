@@ -22,6 +22,9 @@
 		"allow-manager-revoke",
 		"allow-manager-confirm-device-kind",
 		"allow-manager-reset-identity",
+		"allow-manager-open-join-code",
+		"allow-manager-close-join-code",
+		"allow-manager-join-with-code",
 		"allow-decisions-get",
 		"allow-decisions-answer"
 	]

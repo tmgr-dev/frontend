@@ -75,6 +75,10 @@ pub struct TrustState {
   pub seq_gaps: Vec<SeqGap>,
   #[serde(default)]
   pub alerts: Vec<TrustAlert>,
+  #[serde(default)]
+  pub joining: bool,
+  #[serde(default)]
+  pub can_join_with_code: bool,
 }
 
 #[allow(dead_code)]
@@ -92,6 +96,15 @@ pub trait RelayPort: Send + Sync {
   }
   fn decide_revoke(&self, _statement_id: &str, _accept: bool) -> Result<(), String> {
     Err("chat sync is not set up".into())
+  }
+  fn open_join_code(&self) -> Result<String, String> {
+    Err("chat sync is not set up".into())
+  }
+  fn join_with_code(&self, _code: &str) -> Result<(), String> {
+    Err("chat sync is not set up".into())
+  }
+  fn close_join_code(&self, _expires_at_ms: u64) -> Result<(), String> {
+    Ok(())
   }
   fn reset_identity(&self) -> Result<(), String>;
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String>;

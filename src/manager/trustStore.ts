@@ -14,6 +14,9 @@ export interface ManagerTrustApi {
 	revoke: (deviceId: string) => Promise<void>;
 	confirmDeviceKind: (deviceId: string, kind: ConfirmableKind) => Promise<void>;
 	resetIdentity: () => Promise<void>;
+	openJoinCode: () => Promise<realApi.JoinCodeView>;
+	closeJoinCode: (expiresAtMs: number) => Promise<void>;
+	joinWithCode: (code: string) => Promise<void>;
 	onTrust: typeof realApi.onManagerTrust;
 }
 
@@ -25,8 +28,31 @@ export type TrustItem =
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+export type PairMode = 'show' | 'enter';
+
+const emptyPair = () => ({
+	mode: null as PairMode | null,
+	code: '',
+	qr: '',
+	expiresAtMs: 0,
+	secondsLeft: 0,
+	expired: false,
+	text: '',
+});
+
 export const createTrustStore = (api: ManagerTrustApi) => {
 	let unlisten: (() => void) | null = null;
+	let ticker: ReturnType<typeof setInterval> | null = null;
+	let pairToken = 0;
+
+	const burn = (expiresAtMs: number) => {
+		if (expiresAtMs > 0) void api.closeJoinCode(expiresAtMs).catch(() => {});
+	};
+
+	const stopTicker = () => {
+		if (ticker) clearInterval(ticker);
+		ticker = null;
+	};
 
 	const store = reactive({
 		trust: null as TrustState | null,
@@ -38,6 +64,7 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 		resetOpen: false,
 		resetText: '',
 		deferred: [] as string[],
+		pair: emptyPair(),
 
 		get queue(): TrustItem[] {
 			const t = store.trust;
@@ -65,6 +92,8 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 		async refresh() {
 			try {
 				store.trust = await api.state();
+				if (store.pair.mode === 'show' && store.trust.pending_joins.length > 0)
+					store.closePair();
 			} catch (e) {
 				store.error = errorText(e);
 			}
@@ -80,6 +109,7 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 		},
 
 		dispose() {
+			store.closePair();
 			unlisten?.();
 			unlisten = null;
 		},
@@ -133,7 +163,60 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 			store.panelOpen = true;
 		},
 		closePanel() {
+			store.closePair();
 			store.panelOpen = false;
+		},
+
+		tickPair() {
+			const left = Math.ceil((store.pair.expiresAtMs - Date.now()) / 1000);
+			if (left > 0) {
+				store.pair.secondsLeft = left;
+				return;
+			}
+			stopTicker();
+			store.pair = { ...emptyPair(), mode: 'show', expired: true };
+		},
+		async openAddDevice() {
+			stopTicker();
+			const token = ++pairToken;
+			store.pair = { ...emptyPair(), mode: 'show' };
+			store.error = '';
+			let view: realApi.JoinCodeView | null = null;
+			await store.run(async () => {
+				view = await api.openJoinCode();
+			});
+			if (!view) return;
+			const v = view as realApi.JoinCodeView;
+			if (token !== pairToken) {
+				burn(v.expires_at_ms);
+				return;
+			}
+			store.pair.code = v.code;
+			store.pair.qr = v.qr;
+			store.pair.expiresAtMs = v.expires_at_ms;
+			store.tickPair();
+			if (store.pair.code) ticker = setInterval(() => store.tickPair(), 1000);
+		},
+		openEnterCode() {
+			stopTicker();
+			pairToken++;
+			store.pair = { ...emptyPair(), mode: 'enter' };
+			store.error = '';
+		},
+		closePair() {
+			if (store.pair.code) burn(store.pair.expiresAtMs);
+			stopTicker();
+			pairToken++;
+			store.pair = emptyPair();
+			store.error = '';
+		},
+		async submitCode() {
+			const text = store.pair.text.replace(/\s+/g, '');
+			if (store.pair.mode !== 'enter' || !text) return;
+			if (await store.run(() => api.joinWithCode(text))) {
+				store.closePair();
+				await store.refresh();
+			}
 		},
 
 		revoke(deviceId: string) {
@@ -201,6 +284,9 @@ export const useTrustStore = (): TrustStore => {
 		revoke: realApi.managerRevoke,
 		confirmDeviceKind: realApi.managerConfirmDeviceKind,
 		resetIdentity: realApi.managerResetIdentity,
+		openJoinCode: realApi.managerOpenJoinCode,
+		closeJoinCode: realApi.managerCloseJoinCode,
+		joinWithCode: realApi.managerJoinWithCode,
 		onTrust: realApi.onManagerTrust,
 	});
 	return singleton;

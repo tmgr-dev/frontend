@@ -30,6 +30,9 @@ probes!(
   manager_rooms,
   manager_trust_state,
   manager_reset_identity,
+  manager_open_join_code,
+  manager_close_join_code,
+  manager_join_with_code,
   manager_join_decide,
   manager_revoke_decide,
   manager_revoke,
@@ -77,6 +80,12 @@ fn the_manager_window_reaches_only_its_own_commands_and_inline_cards() {
   for command in ["manager_join_decide", "manager_revoke_decide", "manager_revoke", "manager_confirm_device_kind"] {
     assert!(call("manager", command).is_ok(), "{command}");
     assert!(call("main", command).unwrap_err().contains("not allowed on window"), "{command}");
+  }
+  for command in ["manager_open_join_code", "manager_close_join_code", "manager_join_with_code"] {
+    assert!(call("manager", command).is_ok(), "{command}");
+    for label in ["main", "task-1", "decisions"] {
+      assert!(call(label, command).unwrap_err().contains("not allowed on window"), "{command} {label}");
+    }
   }
   assert!(call("main", "manager_reset_identity").unwrap_err().contains("not allowed on window"));
   assert!(call("manager", "decisions_open_link").unwrap_err().contains("not allowed on window"));

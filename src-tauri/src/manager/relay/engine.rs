@@ -23,6 +23,7 @@ use crate::manager::backend::{
   ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, MAX_ATTACHMENTS, MAX_BODY, MAX_HISTORY, MAX_QUERY,
 };
 
+const WAITING_MSG: &str = "this device is waiting for another device to approve it";
 const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_LOG: usize = 2000;
@@ -761,6 +762,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let mut g = self.lock();
     let c = &mut *g;
     self.ensure_registered(c)?;
+    if !c.st.joined {
+      return Err(WAITING_MSG.into());
+    }
     let (id, keys) = Self::own(c)?;
     let mut secret = [0u8; 32];
     getrandom::fill(&mut secret).map_err(err)?;
@@ -770,6 +774,16 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.st.join_code = Some(OpenCode { secret: b64(&secret), exp_ms });
     self.save_now(c)?;
     Ok(text)
+  }
+
+  pub fn close_join_code(&self, expires_at_ms: u64) -> Result<(), String> {
+    let mut g = self.lock();
+    let c = &mut *g;
+    if c.st.join_code.as_ref().is_some_and(|j| j.exp_ms == expires_at_ms) {
+      c.st.join_code = None;
+      self.save_now(c)?;
+    }
+    Ok(())
   }
 
   pub fn join_with_code(&self, code: &str) -> Result<(), String> {
@@ -783,7 +797,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       return Err("the join code is not valid".into());
     }
     self.ensure_registered(c)?;
-    if c.st.trusted.len() > 1 {
+    if c.st.joined && c.st.trusted.len() > 1 {
       return Err("this device already has trusted devices".into());
     }
     let dir = self.fetch_dir(c)?;
@@ -797,6 +811,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     }
     let pdev = dev_from(p);
     let (id, keys) = Self::own(c)?;
+    let own_id = id.device_id.clone();
+    if code.device_id == own_id {
+      return Err("this is the code of this device, enter the code shown on the other device".into());
+    }
     let mac = join_mac(
       &code.secret,
       &JoinMacInput { version: code.version, user_id: self.cfg.user_id, p_fp: &pdev.fp, n_id: &id.device_id, n_fp: &keys.fingerprint(), n_kind: &self.kind, label: &self.cfg.label },
@@ -804,6 +822,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     .map_err(err)?;
     if c.st.pinned_for_other_fp(&pdev.id, &pdev.fp) {
       return Err("the device id was seen with other keys".into());
+    }
+    if !c.st.joined {
+      c.st.base.retain(|d| d.id == own_id);
+      c.st.trusted.retain(|d| d.id == own_id);
     }
     let key = kind_key(&pdev.id, &pdev.fp);
     let inserted = code.kind.is_some() && !c.st.kinds.contains_key(&key);
@@ -1137,7 +1159,9 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       kind_verified: g.st.kind_of(&d.id, &d.fp).is_some(),
       can_confirm_kind: g.st.kind_of(&d.id, &d.fp).is_none() && g.st.legacy_unknown.contains(&kind_key(&d.id, &d.fp)),
     };
-    let mut devices: Vec<TrustDevice> = g.st.trusted.iter().map(|d| dev(d, DeviceState::Trusted)).collect();
+    let joined = g.st.joined;
+    let mut devices: Vec<TrustDevice> =
+      g.st.trusted.iter().map(|d| dev(d, if joined || Some(d.id.as_str()) == own_id { DeviceState::Trusted } else { DeviceState::Pending })).collect();
     devices.extend(g.st.revoked_devs.iter().map(|d| dev(d, DeviceState::Revoked)));
     Ok(TrustState {
       registered: g.identity.is_some(),
@@ -1153,6 +1177,8 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       key_mismatch: g.st.mismatch.clone(),
       seq_gaps: g.st.seq_gaps.clone(),
       alerts: g.st.alerts.iter().filter(|a| self.now().saturating_sub(a.at_ms) < ALERT_TTL_MS).cloned().collect(),
+      joining: g.identity.is_some() && !joined,
+      can_join_with_code: g.identity.is_none() || !joined || g.st.trusted.len() <= 1,
     })
   }
 
@@ -1287,6 +1313,18 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     }
     self.call(c, api::delete_device(&target.id).map_err(err)?)?;
     Ok(())
+  }
+
+  fn open_join_code(&self) -> Result<String, String> {
+    RelayEngine::open_join_code(self)
+  }
+
+  fn join_with_code(&self, code: &str) -> Result<(), String> {
+    RelayEngine::join_with_code(self, code)
+  }
+
+  fn close_join_code(&self, expires_at_ms: u64) -> Result<(), String> {
+    RelayEngine::close_join_code(self, expires_at_ms)
   }
 
   fn reset_identity(&self) -> Result<(), String> {

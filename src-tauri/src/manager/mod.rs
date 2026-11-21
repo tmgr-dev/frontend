@@ -108,9 +108,14 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
   };
   if switch.enabled() {
     let handle = app.clone();
-    relay::switch::spawn_poll(&switch, move |message| {
-      let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
-    });
+    let trust_handle = app.clone();
+    relay::switch::spawn_poll(
+      &switch,
+      move |message| {
+        let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
+      },
+      move || trust_changed(&trust_handle),
+    );
   }
   app.manage(ManagerState { backend, relay, switch });
   ensure_shortcut(app);
@@ -225,6 +230,40 @@ pub async fn manager_revoke<R: Runtime>(app: AppHandle<R>, device_id: String) ->
 pub async fn manager_reset_identity<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
   let relay = relay_of(&app)?;
   blocking(move || relay.reset_identity()).await?;
+  trust_changed(&app);
+  Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct JoinCodeView {
+  code: String,
+  qr: String,
+  expires_at_ms: u64,
+}
+
+fn join_code_view(relay: &dyn relay::port::RelayPort) -> Result<JoinCodeView, String> {
+  let code = relay.open_join_code()?;
+  let expires_at_ms = tmgr_chat_relay::trust::decode_join_code(&code).map_err(|_| "could not read the join code".to_owned())?.exp_ms;
+  let qr = crate::decisions::phone::qr_data_url(&code)?;
+  Ok(JoinCodeView { code, qr, expires_at_ms })
+}
+
+#[tauri::command]
+pub async fn manager_open_join_code<R: Runtime>(app: AppHandle<R>) -> Result<JoinCodeView, String> {
+  let relay = relay_of(&app)?;
+  blocking(move || join_code_view(relay.as_ref())).await
+}
+
+#[tauri::command]
+pub async fn manager_close_join_code<R: Runtime>(app: AppHandle<R>, expires_at_ms: u64) -> Result<(), String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.close_join_code(expires_at_ms)).await
+}
+
+#[tauri::command]
+pub async fn manager_join_with_code<R: Runtime>(app: AppHandle<R>, code: String) -> Result<(), String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.join_with_code(&code)).await?;
   trust_changed(&app);
   Ok(())
 }

@@ -160,6 +160,8 @@ export interface TrustState {
 	pending_revokes?: PendingRevoke[];
 	alerts?: TrustAlert[];
 	seq_gaps?: SeqGap[];
+	joining?: boolean;
+	can_join_with_code?: boolean;
 }
 
 export const RESET_PHRASE = 'RESET';

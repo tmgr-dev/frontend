@@ -1078,6 +1078,20 @@ body:has(.manager.app-shell) {
 	background: var(--sunken);
 	color: var(--ink);
 }
+.manager .trust-qr {
+	display: block;
+	width: 220px;
+	height: 220px;
+	margin: 0 auto 8px;
+	background: #fff;
+	border-radius: 8px;
+}
+
+.manager .trust-countdown {
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
 .manager .trust-actions {
 	display: flex;
 	justify-content: flex-end;

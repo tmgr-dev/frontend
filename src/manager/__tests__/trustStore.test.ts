@@ -35,6 +35,13 @@ const setup = (initial: TrustState, over: Partial<ManagerTrustApi> = {}) => {
 		revoke: jest.fn(async () => {}),
 		confirmDeviceKind: jest.fn(async () => {}),
 		resetIdentity: jest.fn(async () => {}),
+		openJoinCode: jest.fn(async () => ({
+			code: 'tmgr-chat-join:v2:abc',
+			qr: 'data:image/svg+xml;base64,AAAA',
+			expires_at_ms: Date.now() + 600_000,
+		})),
+		closeJoinCode: jest.fn(async () => {}),
+		joinWithCode: jest.fn(async () => {}),
 		onTrust: jest.fn(async (h) => {
 			push = h;
 			return () => {};
@@ -180,5 +187,123 @@ describe('trust store', () => {
 		await store.submitConfirmKind();
 		expect(store.error).toBe('this device kind cannot be confirmed');
 		expect(store.confirmKindTarget).not.toBeNull();
+	});
+
+	describe('pairing', () => {
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
+		it('shows a code with a countdown and wipes it on close', async () => {
+			jest.useFakeTimers();
+			const { api, store } = setup(base());
+			await store.openAddDevice();
+			expect(api.openJoinCode).toHaveBeenCalledTimes(1);
+			expect(store.pair).toMatchObject({
+				mode: 'show',
+				code: 'tmgr-chat-join:v2:abc',
+				secondsLeft: 600,
+			});
+			jest.advanceTimersByTime(5000);
+			expect(store.pair.secondsLeft).toBe(595);
+			const exp = store.pair.expiresAtMs;
+			store.closePair();
+			expect(store.pair).toMatchObject({ mode: null, code: '', qr: '' });
+			expect(api.closeJoinCode).toHaveBeenCalledWith(exp);
+			expect(jest.getTimerCount()).toBe(0);
+		});
+
+		it('wipes the code at expiry and says it expired', async () => {
+			jest.useFakeTimers();
+			const { store } = setup(base());
+			await store.openAddDevice();
+			jest.advanceTimersByTime(600_000);
+			expect(store.pair).toMatchObject({
+				mode: 'show',
+				code: '',
+				qr: '',
+				expired: true,
+			});
+			expect(jest.getTimerCount()).toBe(0);
+		});
+
+		it('drops a code that arrives after the dialog was closed', async () => {
+			let release: (v: {
+				code: string;
+				qr: string;
+				expires_at_ms: number;
+			}) => void = () => {};
+			const { api, store } = setup(base(), {
+				openJoinCode: jest.fn(
+					() =>
+						new Promise((r) => {
+							release = r;
+						}),
+				),
+			});
+			const opening = store.openAddDevice();
+			store.closePair();
+			release({ code: 'late', qr: 'late', expires_at_ms: Date.now() + 60_000 });
+			await opening;
+			expect(store.pair.code).toBe('');
+			expect(store.pair.mode).toBeNull();
+			expect(api.closeJoinCode).toHaveBeenCalledTimes(1);
+		});
+
+		it('closes and wipes the code once a join request arrives', async () => {
+			jest.useFakeTimers();
+			const { set, store } = setup(base());
+			await store.openAddDevice();
+			set(base({ pending_joins: [join('d1')] }));
+			await store.refresh();
+			expect(store.pair.mode).toBeNull();
+			expect(store.pair.code).toBe('');
+		});
+
+		it('wipes the code when the panel closes', async () => {
+			jest.useFakeTimers();
+			const { store } = setup(base());
+			store.openPanel();
+			await store.openAddDevice();
+			store.closePanel();
+			expect(store.pair.code).toBe('');
+		});
+
+		it('joins with the pasted code, trimmed, then wipes it', async () => {
+			const { api, store } = setup(base());
+			store.openEnterCode();
+			store.pair.text = '  tmgr-chat-join:\nv2:xyz \n';
+			await store.submitCode();
+			expect(api.joinWithCode).toHaveBeenCalledWith('tmgr-chat-join:v2:xyz');
+			expect(store.pair).toMatchObject({ mode: null, text: '' });
+		});
+
+		it('keeps the field and shows the error when the join is refused', async () => {
+			const { store } = setup(base(), {
+				joinWithCode: jest.fn(async () => {
+					throw 'the join code is not valid';
+				}),
+			});
+			store.openEnterCode();
+			store.pair.text = 'nope';
+			await store.submitCode();
+			expect(store.error).toBe('the join code is not valid');
+			expect(store.pair.mode).toBe('enter');
+		});
+
+		it('does not burn anything when closing the enter dialog', () => {
+			const { api, store } = setup(base());
+			store.openEnterCode();
+			store.closePair();
+			expect(api.closeJoinCode).not.toHaveBeenCalled();
+		});
+
+		it('does not call the api for an empty field', async () => {
+			const { api, store } = setup(base());
+			store.openEnterCode();
+			store.pair.text = '   ';
+			await store.submitCode();
+			expect(api.joinWithCode).not.toHaveBeenCalled();
+		});
 	});
 });

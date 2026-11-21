@@ -55,6 +55,21 @@ export const managerConfirmDeviceKind = (
 export const managerResetIdentity = () =>
 	invoke<void>('manager_reset_identity');
 
+export interface JoinCodeView {
+	code: string;
+	qr: string;
+	expires_at_ms: number;
+}
+
+export const managerOpenJoinCode = () =>
+	invoke<JoinCodeView>('manager_open_join_code');
+
+export const managerCloseJoinCode = (expiresAtMs: number) =>
+	invoke<void>('manager_close_join_code', { expiresAtMs });
+
+export const managerJoinWithCode = (code: string) =>
+	invoke<void>('manager_join_with_code', { code });
+
 export const onManagerTrust = (handler: () => void): Promise<UnlistenFn> =>
 	listen('manager://trust', () => handler());
 

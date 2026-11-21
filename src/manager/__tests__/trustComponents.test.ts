@@ -209,7 +209,7 @@ describe('trust components', () => {
 		const html = await render('DevicesPanel', { devices, alerts, seqGaps });
 		expect(html).toContain('claimed a chat room');
 		expect(html.match(/disagree about what kind of device/g)).toHaveLength(1);
-		expect(html).toContain('join code was used again');
+		expect(html).toContain('already used, closed or expired');
 		expect(html).toContain('security alert (weird)');
 		expect(html).toContain('Re-join this device with a fresh join code');
 		expect(html.match(/has no confirmed kind/g)).toHaveLength(1);
@@ -227,9 +227,68 @@ describe('trust components', () => {
 	it('DevicesPanel shows a one-line alert when a spent join code was reused', async () => {
 		const alerts = [{ kind: 'join_code_reused', device_id: 'd9', at_ms: 1 }];
 		const on = await render('DevicesPanel', { devices, alerts });
-		expect(on).toContain('join code was used again');
+		expect(on).toContain('already used, closed or expired');
 		expect(on).toContain('role="alert"');
 		const off = await render('DevicesPanel', { devices });
-		expect(off).not.toContain('join code was used again');
+		expect(off).not.toContain('already used, closed or expired');
+	});
+
+	it('PairDeviceDialog shows the QR, the code and the countdown', async () => {
+		const html = await render('PairDeviceDialog', {
+			mode: 'show',
+			code: 'tmgr-chat-join:v2:abc',
+			qr: 'data:image/svg+xml;base64,AAAA',
+			secondsLeft: 125,
+		});
+		expect(html).toContain('role="dialog"');
+		expect(html).toContain('src="data:image/svg+xml;base64,AAAA"');
+		expect(html).toContain('value="tmgr-chat-join:v2:abc"');
+		expect(html).toContain('readonly');
+		expect(html).toContain('Expires in 2:05');
+		expect(html).toContain('Copy code');
+	});
+
+	it('PairDeviceDialog shows no code once expired and offers a new one', async () => {
+		const html = await render('PairDeviceDialog', {
+			mode: 'show',
+			code: '',
+			qr: '',
+			expired: true,
+		});
+		expect(html).not.toContain('<img');
+		expect(html).toContain('The code expired');
+		expect(html).toContain('New code');
+	});
+
+	it('PairDeviceDialog enter mode has a paste field, Join and the error', async () => {
+		const html = await render('PairDeviceDialog', {
+			mode: 'enter',
+			modelValue: '',
+			error: 'the join code is not valid',
+		});
+		expect(html).toContain('Join code');
+		expect(html).toContain('the join code is not valid');
+		expect(html).toMatch(/<button[^>]*disabled[^>]*>\s*Join\s*<\/button>/);
+	});
+
+	it('DevicesPanel offers Add device and Enter code from phone', async () => {
+		const html = await render('DevicesPanel', { devices });
+		expect(html).toContain('Add device');
+		expect(html).toContain('Enter code from phone');
+	});
+
+	it('DevicesPanel hides the paste button once the device trusts others', async () => {
+		const html = await render('DevicesPanel', { devices, canJoin: false });
+		expect(html).not.toContain('Enter code from phone');
+		expect(html).toContain('already trusts other devices');
+	});
+
+	it('DevicesPanel says it is waiting and offers a different code', async () => {
+		const html = await render('DevicesPanel', { devices, joining: true });
+		expect(html).toContain('Waiting for the other device');
+		expect(html).toContain('Use a different code');
+		expect(html).toMatch(
+			/<button[^>]*disabled[^>]*>\s*Add device\s*<\/button>/,
+		);
 	});
 });

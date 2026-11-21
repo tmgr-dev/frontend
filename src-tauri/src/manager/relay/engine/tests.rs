@@ -2368,3 +2368,103 @@ fn m3_a_device_admitted_only_by_a_demoted_signer_keeps_no_stored_kind() {
   assert!(b.trust_state().unwrap().devices.iter().all(|d| d.id != yid || d.state != DeviceState::Trusted));
   assert!(kind_entries_of(&b, &yid).is_empty());
 }
+
+#[test]
+fn join_code_view_carries_the_code_a_qr_and_the_ten_minute_expiry() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let view = crate::manager::join_code_view(&a).unwrap();
+  assert!(view.code.starts_with("tmgr-chat-join:v2:"));
+  assert!(view.qr.starts_with("data:image/svg+xml;base64,"));
+  assert_eq!(view.expires_at_ms, T0 + 10 * 60 * 1000);
+}
+
+#[test]
+fn a_code_from_the_view_pairs_a_second_device_through_the_port() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Phone B");
+  let view = crate::manager::join_code_view(&a).unwrap();
+  RelayPort::join_with_code(&b, &format!("  {}\n", view.code)).unwrap();
+  a.poll_once().unwrap();
+  let bid = my_id(&b);
+  a.decide_join(&bid, true).unwrap();
+  b.poll_once().unwrap();
+  assert_eq!(b.trust_state().unwrap().devices.iter().filter(|d| d.state == DeviceState::Trusted).count(), 2);
+}
+
+#[test]
+fn join_with_a_bad_code_fails_without_echoing_it() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let err = RelayPort::join_with_code(&b, "tmgr-chat-join:v2:SECRETSECRET").unwrap_err();
+  assert_eq!(err, "the join code is not valid");
+}
+
+#[test]
+fn without_a_relay_the_join_commands_say_chat_sync_is_not_set_up() {
+  assert_eq!(crate::manager::relay::port::NoRelay.open_join_code().unwrap_err(), "chat sync is not set up");
+  assert_eq!(crate::manager::relay::port::NoRelay.join_with_code("x").unwrap_err(), "chat sync is not set up");
+}
+
+#[test]
+fn a_device_waiting_for_approval_shows_the_phone_as_pending_and_can_try_another_code() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a1 = engine_with(&fake, &clock, "Phone 1");
+  let a2 = engine_with(&fake, &clock, "Phone 2");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let first = a1.open_join_code().unwrap();
+  b.join_with_code(&first).unwrap();
+  let waiting = b.trust_state().unwrap();
+  assert!(waiting.joining && waiting.can_join_with_code);
+  assert!(waiting.devices.iter().any(|d| !d.is_self && d.state == DeviceState::Pending));
+  assert!(b.open_join_code().unwrap_err().contains("waiting"));
+  let second = a2.open_join_code().unwrap();
+  b.join_with_code(&second).unwrap();
+  let state = b.trust_state().unwrap();
+  assert_eq!(state.devices.len(), 2);
+  assert!(state.devices.iter().any(|d| d.label == "Phone 2"));
+  a2.poll_once().unwrap();
+  let bid = my_id(&b);
+  a2.decide_join(&bid, true).unwrap();
+  b.poll_once().unwrap();
+  let done = b.trust_state().unwrap();
+  assert!(!done.joining && !done.can_join_with_code);
+  assert!(done.devices.iter().all(|d| d.state == DeviceState::Trusted));
+}
+
+#[test]
+fn a_device_refuses_its_own_join_code() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let code = a.open_join_code().unwrap();
+  let err = a.join_with_code(&code).unwrap_err();
+  assert!(err.contains("this device"));
+  assert_eq!(a.trust_state().unwrap().devices.len(), 1);
+}
+
+#[test]
+fn a_closed_join_code_cannot_be_used_and_raises_the_reuse_alert() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Phone B");
+  let code = a.open_join_code().unwrap();
+  a.close_join_code(T0 + 10 * 60 * 1000).unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let state = a.trust_state().unwrap();
+  assert!(state.pending_joins.is_empty());
+  assert!(state.alerts.iter().any(|x| x.kind == "join_code_reused"));
+}
+
+#[test]
+fn closing_with_another_expiry_leaves_the_open_code_alone() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Phone B");
+  let code = a.open_join_code().unwrap();
+  a.close_join_code(T0 + 1).unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+}

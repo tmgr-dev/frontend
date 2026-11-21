@@ -159,6 +159,15 @@ impl RelayPort for SwitchRelay {
   fn decide_revoke(&self, statement_id: &str, accept: bool) -> Result<(), String> {
     self.cur().decide_revoke(statement_id, accept)
   }
+  fn open_join_code(&self) -> Result<String, String> {
+    self.cur().open_join_code()
+  }
+  fn join_with_code(&self, code: &str) -> Result<(), String> {
+    self.cur().join_with_code(code)
+  }
+  fn close_join_code(&self, expires_at_ms: u64) -> Result<(), String> {
+    self.cur().close_join_code(expires_at_ms)
+  }
   fn reset_identity(&self) -> Result<(), String> {
     self.cur().reset_identity()
   }
@@ -215,9 +224,39 @@ pub fn run_poll(src: &dyn Pollee, emit: &dyn Fn(ChatMessage), sleep: &dyn Fn(Dur
   }
 }
 
-pub fn spawn_poll(switch: &Arc<SwitchRelay>, emit: impl Fn(ChatMessage) + Send + 'static) {
+struct TrustWatch<P, S, N> {
+  inner: P,
+  snapshot: S,
+  notify: N,
+  last: Mutex<Option<TrustState>>,
+}
+
+impl<P: Pollee, S: Fn() -> Option<TrustState>, N: Fn()> Pollee for TrustWatch<P, S, N> {
+  fn alive(&self) -> bool {
+    self.inner.alive()
+  }
+  fn active(&self) -> bool {
+    self.inner.active()
+  }
+  fn poll(&self) -> Result<Vec<ChatMessage>, String> {
+    let polled = self.inner.poll();
+    if let Some(now) = (self.snapshot)() {
+      let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+      if last.as_ref() != Some(&now) {
+        *last = Some(now);
+        drop(last);
+        (self.notify)();
+      }
+    }
+    polled
+  }
+}
+
+pub fn spawn_poll(switch: &Arc<SwitchRelay>, emit: impl Fn(ChatMessage) + Send + 'static, on_trust: impl Fn() + Send + 'static) {
   let weak = Arc::downgrade(switch);
-  let spawned = std::thread::Builder::new().name("manager-relay-poll".into()).spawn(move || run_poll(&weak, &emit, &std::thread::sleep));
+  let snap = weak.clone();
+  let watch = TrustWatch { inner: weak, snapshot: move || snap.upgrade()?.trust_state().ok(), notify: on_trust, last: Mutex::new(None) };
+  let spawned = std::thread::Builder::new().name("manager-relay-poll".into()).spawn(move || run_poll(&watch, &emit, &std::thread::sleep));
   if let Err(e) = spawned {
     log::error!("[manager] relay polling did not start: {e}");
   }
@@ -479,6 +518,26 @@ mod tests {
     let emitted = RefCell::new(vec![]);
     run_poll(fake, &|m| emitted.borrow_mut().push(m.id), &|d| sleeps.borrow_mut().push(d));
     (sleeps.into_inner(), emitted.into_inner())
+  }
+
+  #[test]
+  fn trust_watch_notifies_only_when_the_trust_state_changes() {
+    let fake = Fake::new(4, true, vec![]);
+    let states = RefCell::new(vec![TrustState::default(), TrustState::default(), TrustState { joining: true, ..TrustState::default() }]);
+    let notified = Cell::new(0);
+    let watch = TrustWatch {
+      inner: fake,
+      snapshot: || {
+        let mut s = states.borrow_mut();
+        if s.is_empty() { None } else { Some(s.remove(0)) }
+      },
+      notify: || notified.set(notified.get() + 1),
+      last: Mutex::new(None),
+    };
+    for _ in 0..4 {
+      watch.poll().unwrap();
+    }
+    assert_eq!(notified.get(), 2);
   }
 
   fn secs(v: &[u64]) -> Vec<Duration> {
