@@ -27,6 +27,7 @@ const OUT_QUEUE: usize = 256;
 const MAX_NAME: usize = 64;
 const MAX_DETAIL: usize = 512;
 const MAX_WHY: usize = 200;
+const MAX_START_WHY: usize = 500;
 pub(super) const PASTE_CHUNK: usize = 512 * 1024;
 
 #[derive(Clone, Copy, Debug)]
@@ -1820,7 +1821,7 @@ fn start_why(link: &str, e: &Error) -> String {
             "{link} runs an older tmgr CLI; update it on the follower to start sessions there"
         );
     }
-    cap(&e.message, MAX_WHY)
+    cap(&e.message, MAX_START_WHY)
 }
 
 fn remote_why(link: &str, e: &Error) -> String {
@@ -4332,5 +4333,12 @@ pub(super) mod tests {
         );
         assert_eq!(r.hub.scope("old"), None);
         r.hub.shutdown();
+    }
+
+    #[test]
+    fn a_long_start_refusal_keeps_its_steps() {
+        let tail = "or start with --no-sandbox; tmgr link scope <leader> --allow-no-sandbox on";
+        let e = Error::new(Kind::Usage, format!("{} {tail}", "x".repeat(300)));
+        assert!(start_why("studio", &e).ends_with(tail));
     }
 }

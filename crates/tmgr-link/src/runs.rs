@@ -57,7 +57,7 @@ fn backend_reply(id: Option<u64>, e: &BackendError) -> Vec<u8> {
             } else {
                 "refused"
             };
-            proto::error(id, code, &tmgr_core::text::truncate_chars(message, 200).0)
+            proto::error(id, code, &tmgr_core::text::truncate_chars(message, 500).0)
         }
         BackendError::Protocol(_) => {
             proto::error(id, "internal", "the runner sent an unexpected reply")

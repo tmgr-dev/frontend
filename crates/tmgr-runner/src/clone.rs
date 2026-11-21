@@ -355,6 +355,8 @@ fn shares_files(dir: File, depth: u32) -> std::io::Result<bool> {
 
 const WALK_ENTRIES: usize = 1_000_000;
 const WALK_DEPTH: u32 = 64;
+const NO_SANDBOX_HOW: &str =
+    "needs the PIN; on a follower: `tmgr link scope <leader> --allow-no-sandbox on`";
 
 enum Stop {
     Shared(PathBuf),
@@ -432,10 +434,9 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
     match walk_stores(own, &cwd.path, 0, &mut left) {
         Ok(()) => Ok(()),
         Err(Stop::Shared(p)) => Err(refused(format!(
-            "{} has object files that are also linked from another place, so a sandboxed session could change them there; \
-             run `git gc --prune=now` and then `git commit-graph write --reachable` in it (this does not clear a pack marked with a .keep file); \
-             if it is still refused, re-clone the repository with `git clone --no-local <repository> <new folder>` (uncommitted changes and stashes are not carried over). \
-             tmgr leaves the folder as it is",
+            "git object files under {} are also linked from another place, so a sandboxed session could change them there; \
+             run `git gc --prune=now` and `git commit-graph write --reachable` in it, or re-clone with `git clone --no-local <repository> <new folder>`; \
+             or start with --no-sandbox ({NO_SANDBOX_HOW})",
             p.display()
         ))),
         Err(Stop::Unchecked(p)) => Err(refused(format!(
@@ -443,7 +444,7 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
             p.display()
         ))),
         Err(Stop::Budget) => Err(refused(format!(
-            "{} is too large to check for shared git object files; start the session in a smaller folder",
+            "{} is too large to check for shared git object files; start the session in a smaller folder, or with --no-sandbox ({NO_SANDBOX_HOW})",
             cwd.path.display()
         ))),
     }
@@ -1362,5 +1363,16 @@ mod tests {
         if !readable {
             assert!(result.unwrap_err().1.contains("cannot be checked"));
         }
+    }
+
+    #[test]
+    fn a_folder_over_the_budget_names_the_no_sandbox_way_out() {
+        let (_tmp, _root, repo) = fixture();
+        let msg = check_stores_within(&open_path(repo).unwrap(), 0)
+            .unwrap_err()
+            .1;
+        assert!(msg.contains("too large to check"), "{msg}");
+        assert!(msg.contains("--no-sandbox"), "{msg}");
+        assert!(msg.contains("--allow-no-sandbox on"), "{msg}");
     }
 }
