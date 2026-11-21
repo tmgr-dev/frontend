@@ -4077,6 +4077,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tmgr-chat-relay"
+version = "1.0.139"
+dependencies = [
+ "getrandom 0.3.4",
+ "p256",
+ "serde",
+ "serde_json",
+ "tmgr-phone",
+]
+
+[[package]]
 name = "tmgr-cli"
 version = "1.0.140"
 dependencies = [
