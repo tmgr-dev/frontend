@@ -44,6 +44,8 @@ session grep | Other | id, pattern, full
 session files | Other | id, full
 session errors | Other | id, full
 session handoff | Other | id, to, task, previous, output
+manager start | Other | agent, cwd, name
+manager status | Other | -
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds

@@ -231,9 +231,13 @@ impl ChatMessage {
         if !valid_token(&self.author.id) {
             return Err("invalid author id".into());
         }
-        for t in [&self.author.machine, &self.author.device, &self.author.agent]
-            .into_iter()
-            .flatten()
+        for t in [
+            &self.author.machine,
+            &self.author.device,
+            &self.author.agent,
+        ]
+        .into_iter()
+        .flatten()
         {
             if !valid_token(t) {
                 return Err("invalid author machine, device or agent".into());
@@ -246,7 +250,10 @@ impl ChatMessage {
             return Err("too many attachments".into());
         }
         for a in &self.attachments {
-            if a.name.is_empty() || a.name.len() > limits::MAX_NAME || a.name.contains(['/', '\\', '\0']) {
+            if a.name.is_empty()
+                || a.name.len() > limits::MAX_NAME
+                || a.name.contains(['/', '\\', '\0'])
+            {
                 return Err("invalid attachment name".into());
             }
             if a.mime.is_empty() || a.mime.len() > limits::MAX_NAME {
@@ -256,11 +263,17 @@ impl ChatMessage {
                 return Err("attachment sha256 must be 64 lowercase hex characters".into());
             }
         }
-        if self.reply_to.as_deref().is_some_and(|r| !valid_message_id(r)) {
+        if self
+            .reply_to
+            .as_deref()
+            .is_some_and(|r| !valid_message_id(r))
+        {
             return Err("invalid reply_to".into());
         }
         match (&self.kind, &self.decision) {
-            (MessageKind::Decision, None) => Err("a decision message needs decision.card_id".into()),
+            (MessageKind::Decision, None) => {
+                Err("a decision message needs decision.card_id".into())
+            }
             (_, Some(d)) if !valid_token(&d.card_id) => Err("invalid decision card id".into()),
             _ => Ok(()),
         }
@@ -343,13 +356,27 @@ mod tests {
         props.sort();
         assert_eq!(
             props,
-            ["attachments", "author", "body_md", "decision", "id", "kind", "reply_to", "room", "ts_ms", "v"]
+            [
+                "attachments",
+                "author",
+                "body_md",
+                "decision",
+                "id",
+                "kind",
+                "reply_to",
+                "room",
+                "ts_ms",
+                "v"
+            ]
         );
         for e in examples() {
             let m: ChatMessage = serde_json::from_value(e).unwrap();
             let v = serde_json::to_value(&m).unwrap();
             for k in v.as_object().unwrap().keys() {
-                assert!(schema["properties"].get(k).is_some(), "{k} missing in schema");
+                assert!(
+                    schema["properties"].get(k).is_some(),
+                    "{k} missing in schema"
+                );
             }
         }
     }
@@ -371,7 +398,11 @@ mod tests {
         m.room.session = Some("s_x".into());
         assert!(m.validate().is_err());
         let mut m = base.clone();
-        m.room = RoomRef { kind: RoomKind::Session, machine: "mx".into(), session: None };
+        m.room = RoomRef {
+            kind: RoomKind::Session,
+            machine: "mx".into(),
+            session: None,
+        };
         assert!(m.validate().is_err());
         let mut m = base.clone();
         m.kind = MessageKind::Decision;

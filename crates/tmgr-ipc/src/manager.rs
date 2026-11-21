@@ -27,6 +27,7 @@ pub mod tool {
     pub const SPAWN_SESSION: &str = "spawn_session";
     pub const POST_MESSAGE: &str = "post_message";
     pub const READ_ROOM: &str = "read_room";
+    pub const READ_ONLY: [&str; 3] = [LIST_SESSIONS, READ_SESSION, READ_ROOM];
     pub const ALL: [&str; 6] = [
         LIST_SESSIONS,
         READ_SESSION,
