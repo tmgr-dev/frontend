@@ -31,12 +31,26 @@ pub struct PendingJoin {
   pub requested_at_ms: u64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PendingRevoke {
+  pub statement_id: String,
+  pub revoker_label: String,
+  pub revoker_fp: String,
+  pub target_id: String,
+  pub target_label: String,
+  pub target_fp: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct TrustState {
   pub registered: bool,
   pub self_fp: Option<String>,
   pub devices: Vec<TrustDevice>,
   pub pending_joins: Vec<PendingJoin>,
+  #[serde(default)]
+  pub pending_revokes: Vec<PendingRevoke>,
+  #[serde(default)]
+  pub key_mismatch: Vec<String>,
 }
 
 pub trait RelayPort: Send + Sync {
@@ -48,6 +62,9 @@ pub trait RelayPort: Send + Sync {
   fn trust_state(&self) -> Result<TrustState, String>;
   fn decide_join(&self, device_id: &str, accept: bool) -> Result<(), String>;
   fn revoke(&self, device_id: &str) -> Result<(), String>;
+  fn decide_revoke(&self, _statement_id: &str, _accept: bool) -> Result<(), String> {
+    Err("chat sync is not set up".into())
+  }
   fn reset_identity(&self) -> Result<(), String>;
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String>;
 }
