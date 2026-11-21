@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.146
+
+- You can now start a bypass-permissions and/or no-sandbox session on a linked follower from the leader: `tmgr run --on <link> --agent <agent> --mode bypass` / `--no-sandbox`, or the bypass and no-sandbox toggles in the attach new-session dialog. **Warning:** a bypass session runs every tool without asking you, and a no-sandbox session has full access to the follower's files, network and everything your user account there can reach. Anyone who controls the leader and knows the PIN can do this on the follower.
+- Three checks guard every such start:
+  - The follower must opt in per leader: `tmgr link scope <leader> --remote-control on --allow-bypass on --allow-no-sandbox on`. Both new flags are off by default, and links created by older versions read as off. Turning them on needs a terminal, the typed confirmations and the full-access warning, and is refused inside an agent session. Turning them off works anywhere.
+  - The leader asks for Touch ID or your Mac password in a system dialog (tmgr never sees the password), or for a typed confirmation where that is unavailable. `--yes` is never accepted, and the start is refused inside an agent session.
+  - The follower checks a PIN that you set there with `tmgr link pin set` (at least 6 characters). Only a salted argon2id hash is stored. After 5 wrong tries the PIN is locked until you run `tmgr link pin reset` on the follower; `tmgr link pin status` shows the state. The PIN travels only inside the encrypted link and is never written to the audit log, which records only the outcome.
+- The follower's runner checks the opt-in again on its own, and a link can never pass its own environment into a no-sandbox session.
+- Typing into a remote bypass session from the leader still needs `--include-bypass on` on the follower.
+- Turning an opt-in off stops new privileged starts but does not stop sessions that are already running; halt them from `tmgr attach`.
+- Both machines need this version. An older follower refuses these starts with its old "not allowed on this follower" reason.
+- New manager tool `switch_agent` (daemon `sessions.switch`): the manager can continue a session in another agent (claude-code, codex, opencode, agy). The runner builds a handoff packet, starts the new session and stops the old one, which can take up to 15 seconds. It needs a trusted folder and is refused for the manager itself, other managers, link sessions, team or queue workers, task-linked sessions, and sessions in bypass mode or without the sandbox. It never carries bypass over, and it is limited to 2 per minute.
+
 ## 1.0.145
 
 - Fixed: a full link audit log no longer makes the follower refuse every connection, which attach showed as the machine being "busy". Old audit files are now pruned once they are older than 30 days (a `log_pruned` entry keeps `tmgr link audit --verify` passing); a log whose oldest file is younger than that still refuses new requests, and the hint tells you not to delete files by hand.

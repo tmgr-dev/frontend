@@ -1,5 +1,5 @@
 use crate::cli_link::{
-    AddArgs, AuditArgs, InitArgs, LinkCommand, RevokeArgs, ScopeArgs, Switch, TrustArgs,
+    AddArgs, AuditArgs, InitArgs, LinkCommand, PinCommand, RevokeArgs, ScopeArgs, Switch, TrustArgs,
 };
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
@@ -32,6 +32,57 @@ pub fn run(ctx: &Ctx, cmd: &LinkCommand) -> Result<Output> {
         LinkCommand::Remove { name } => remove(&paths, name),
         LinkCommand::Test { name } => test(ctx, &paths, name),
         LinkCommand::Audit(a) => audit(ctx, &paths, a),
+        LinkCommand::Pin(c) => pin(&paths, c),
+    }
+}
+
+fn pin_json(st: &tmgr_link::pin::Status) -> Value {
+    json!({
+        "set": st.set,
+        "locked": st.locked,
+        "failures": st.failures,
+        "tries_left": tmgr_link::pin::MAX_FAILURES.saturating_sub(st.failures),
+    })
+}
+
+fn pin_line(st: &tmgr_link::pin::Status) -> String {
+    match (st.set, st.locked) {
+        (false, _) => "follower PIN: not set".to_string(),
+        (true, true) => "follower PIN: set, LOCKED (unlock with tmgr link pin reset)".to_string(),
+        (true, false) => format!("follower PIN: set ({} wrong tries so far)", st.failures),
+    }
+}
+
+fn pin(paths: &Paths, cmd: &PinCommand) -> Result<Output> {
+    match cmd {
+        PinCommand::Status => {
+            let st = tmgr_link::pin::status(paths)?;
+            Ok(Output::new(pin_json(&st), pin_line(&st)))
+        }
+        PinCommand::Set => {
+            privileged::guard()?;
+            let first = rpassword::prompt_password("New follower PIN (input hidden): ")?;
+            let second = rpassword::prompt_password("Repeat the PIN: ")?;
+            if first != second {
+                return Err(Error::usage("the two PINs differ, nothing was changed"));
+            }
+            tmgr_link::pin::set(paths, &first)?;
+            Audit::new(&paths.audit_dir()).append("link.pin.set", json!({}))?;
+            Ok(Output::new(
+                json!({"set": true}),
+                "✓ follower PIN set".to_string(),
+            ))
+        }
+        PinCommand::Reset => {
+            privileged::guard()?;
+            privileged::confirm_typed_stdio("reset", "Type reset to clear the PIN's wrong tries:")?;
+            tmgr_link::pin::reset(paths)?;
+            Audit::new(&paths.audit_dir()).append("link.pin.reset", json!({}))?;
+            Ok(Output::new(
+                json!({"reset": true}),
+                "✓ follower PIN unlocked".to_string(),
+            ))
+        }
     }
 }
 
@@ -185,7 +236,7 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
 }
 
 fn scope_json(s: &Scope) -> Value {
-    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "remote_control": s.remote_control, "include_bypass": s.include_bypass, "allow_bypass": false})
+    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "remote_control": s.remote_control, "include_bypass": s.include_bypass, "allow_bypass": s.allow_bypass, "allow_no_sandbox": s.allow_no_sandbox})
 }
 
 fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
@@ -217,6 +268,8 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
             allow_attach_input: a.allow_attach_input.then_some(true),
             remote_control: None,
             include_bypass: None,
+            allow_bypass: None,
+            allow_no_sandbox: None,
         },
     };
     let plan = follower::plan_trust(paths, &input, &bin, check)?;
@@ -281,7 +334,9 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
 fn list(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     let store = Store::load(paths)?;
     let own = leader::identity(paths)?;
+    let pin_state = tmgr_link::pin::status(paths).ok();
     let data = json!({
+        "pin": pin_state.as_ref().map(pin_json),
         "identity": own.as_ref().map(|(_, fp)| json!({"fingerprint": fp})),
         "leaders": store.leaders.iter().map(|(n, l)| json!({
             "name": n, "role": "leader", "fingerprint": l.fingerprint, "added": l.added, "scope": scope_json(&l.scope),
@@ -295,6 +350,12 @@ fn list(ctx: &Ctx, paths: &Paths) -> Result<Output> {
         })).collect::<Vec<_>>(),
     });
     let mut parts: Vec<String> = Vec::new();
+    if let Some(st) = pin_state
+        .as_ref()
+        .filter(|st| st.set || !store.leaders.is_empty())
+    {
+        parts.push(pin_line(st));
+    }
     if !store.leaders.is_empty() {
         let mut rows = vec![vec![
             "NAME".to_string(),
@@ -379,6 +440,8 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         allow_attach_input: a.allow_attach_input,
         remote_control: a.remote_control.map(Switch::is_on),
         include_bypass: a.include_bypass.map(Switch::is_on),
+        allow_bypass: a.allow_bypass.map(Switch::is_on),
+        allow_no_sandbox: a.allow_no_sandbox.map(Switch::is_on),
     };
     let plan = follower::plan_scope(paths, &a.name, &input)?;
     let changes = a.repos.is_some()
@@ -388,7 +451,9 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         || a.from.is_some()
         || a.allow_attach_input.is_some()
         || a.remote_control.is_some()
-        || a.include_bypass.is_some();
+        || a.include_bypass.is_some()
+        || a.allow_bypass.is_some()
+        || a.allow_no_sandbox.is_some();
     if !changes {
         return Ok(Output::new(
             json!({"link": plan.name, "scope": scope_json(&plan.new)}),
@@ -397,6 +462,17 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     }
     if plan.widening {
         privileged::guard()?;
+        if (input.allow_bypass == Some(true) || input.allow_no_sandbox == Some(true))
+            && !plan.new.remote_control
+        {
+            return Err(Error::usage(
+                "--allow-bypass and --allow-no-sandbox need remote control on",
+            )
+            .hint(format!(
+                "tmgr link scope {} --remote-control on --allow-bypass on",
+                plan.name
+            )));
+        }
         eprintln!("was: {}\nnew: {}", plan.old.summary(), plan.new.summary());
         privileged::confirm_typed_stdio(
             &plan.name,
@@ -447,6 +523,9 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     if plan.new.include_bypass && !plan.new.remote_control {
         human.push_str("\nnote: include-bypass has no effect until remote control is on");
     }
+    if plan.new.allow_bypass || plan.new.allow_no_sandbox {
+        human.push_str("\nevery privileged start also needs the follower PIN: tmgr link pin set");
+    }
     if let Some(t) = &closed {
         human.push_str(&format!(
             "\nclosed {} open remote attach(es), {} still running",
@@ -485,6 +564,18 @@ fn full_access_warnings(old: &Scope, new: &Scope) -> Vec<String> {
         if !new.remote_control {
             out.push("It has no effect until remote control is on.".to_string());
         }
+    }
+    if new.allow_bypass && !old.allow_bypass {
+        out.push(
+            "Allow-bypass lets this leader start sessions where the agent runs every tool without asking."
+                .to_string(),
+        );
+    }
+    if new.allow_no_sandbox && !old.allow_no_sandbox {
+        out.push(
+            "Allow-no-sandbox lets this leader start sessions where the agent has full access to this machine's files, network and keychain-accessible data as your user."
+                .to_string(),
+        );
     }
     out
 }
@@ -1018,5 +1109,27 @@ mod tests {
         assert!(full_access_warnings(&off, &alone)
             .join(" ")
             .contains("no effect until remote control is on"));
+    }
+
+    #[test]
+    fn enabling_allow_bypass_or_allow_no_sandbox_warns_in_plain_words() {
+        let remote = Scope {
+            remote_control: true,
+            ..Default::default()
+        };
+        let bypass = Scope {
+            allow_bypass: true,
+            ..remote.clone()
+        };
+        let text = full_access_warnings(&remote, &bypass).join(" ");
+        assert!(text.contains("every tool without asking"));
+        assert!(!text.contains("keychain"));
+        let sandbox = Scope {
+            allow_no_sandbox: true,
+            ..remote.clone()
+        };
+        let text = full_access_warnings(&remote, &sandbox).join(" ");
+        assert!(text.contains("files, network and keychain-accessible data as your user"));
+        assert!(full_access_warnings(&sandbox, &remote).is_empty());
     }
 }

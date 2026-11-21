@@ -3085,3 +3085,182 @@ fn input_on_a_run_made_by_start_is_refused_without_the_attach_input_scope() {
     l.finish();
     assert!(fake.0.lock().unwrap().sends.is_empty());
 }
+
+const PIN: &str = "owner-pin-1";
+
+fn privileged_world(remote: bool, bypass: bool, no_sandbox: bool) -> World {
+    let w = world();
+    w.set_scope("laptop", |s| {
+        s.remote_control = remote;
+        s.allow_bypass = bypass;
+        s.allow_no_sandbox = no_sandbox;
+    });
+    tmgr_link::pin::set(&w.paths, PIN).unwrap();
+    w
+}
+
+fn failures(w: &World) -> u32 {
+    tmgr_link::pin::status(&w.paths).unwrap().failures
+}
+
+#[test]
+fn a_refused_opt_in_with_a_valid_pin_is_refused_and_consumes_no_try() {
+    let w = privileged_world(true, false, false);
+    let fake = Fake::default();
+    let items = [
+        start(&w, json!({"mode":"bypass","pin":PIN})),
+        start(&w, json!({"no_sandbox":true,"pin":PIN})),
+    ];
+    let r = session(&w, "laptop", E1, &fake, &items);
+    assert_eq!(
+        r[0]["message"],
+        "bypass-permissions is not allowed on this follower"
+    );
+    assert_eq!(
+        r[1]["message"],
+        "running without the sandbox is not allowed on this follower"
+    );
+    assert_eq!(fake.called("runs.create"), 0);
+    assert_eq!(failures(&w), 0);
+    let ev = w.audit();
+    for e in requests(&ev, "runs.start") {
+        assert!(e["args"].get("pin").is_none(), "{e}");
+    }
+}
+
+#[test]
+fn a_wrong_pin_counts_down_and_the_fifth_try_locks_even_for_the_right_one() {
+    let w = privileged_world(true, true, false);
+    let fake = Fake::default();
+    let mut items: Vec<Value> = (0..5)
+        .map(|_| start(&w, json!({"mode":"bypass","pin":"wrong-pin"})))
+        .collect();
+    items.push(start(&w, json!({"mode":"bypass","pin":PIN})));
+    let r = session(&w, "laptop", E1, &fake, &items);
+    for (i, left) in [4, 3, 2, 1].iter().enumerate() {
+        assert_eq!(
+            r[i]["message"],
+            format!("wrong follower PIN ({left} tries left)")
+        );
+    }
+    let locked = "the follower PIN is locked after 5 wrong tries; unlock it there with `tmgr link pin reset`";
+    assert_eq!(r[4]["message"], locked);
+    assert_eq!(r[5]["message"], locked);
+    assert_eq!(fake.called("runs.create"), 0);
+    let ev = w.audit();
+    let words: Vec<&str> = requests(&ev, "runs.start")
+        .iter()
+        .filter(|e| e["decision"] == "rejected")
+        .map(|e| e["args"]["pin"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        words,
+        ["wrong", "wrong", "wrong", "wrong", "locked", "locked"]
+    );
+    assert!(!serde_json::to_string(&ev).unwrap().contains("wrong-pin"));
+}
+
+#[test]
+fn a_missing_or_unset_pin_is_refused_with_its_own_reason() {
+    let w = privileged_world(true, true, false);
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[start(&w, json!({"mode":"bypass"}))],
+    );
+    assert_eq!(r[0]["message"], "a privileged start needs the follower PIN");
+    let ev = w.audit();
+    let reqs = requests(&ev, "runs.start");
+    assert_eq!(reqs.last().unwrap()["args"]["pin"], "missing");
+
+    let w = world();
+    w.set_scope("laptop", |s| {
+        s.remote_control = true;
+        s.allow_bypass = true;
+    });
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[start(&w, json!({"mode":"bypass","pin":PIN}))],
+    );
+    assert_eq!(
+        r[0]["message"],
+        "no PIN is set on this follower; set one there with `tmgr link pin set`"
+    );
+    assert_eq!(fake.called("runs.create"), 0);
+}
+
+#[test]
+fn a_correct_pin_starts_a_bypass_run_and_the_runner_gets_bypass() {
+    let w = privileged_world(true, true, false);
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[start(&w, json!({"mode":"bypass","pin":PIN}))],
+    );
+    assert!(r[0]["result"]["id"].is_string(), "{:?}", r[0]);
+    {
+        let s = fake.0.lock().unwrap();
+        let req = &s.creates[0];
+        assert_eq!(req.permission_mode.as_deref(), Some("bypass"));
+        assert!(req.no_sandbox.is_none());
+        assert!(req.origin.is_some());
+    }
+    let ev = w.audit();
+    let accepted = requests(&ev, "runs.start");
+    let args = &accepted.last().unwrap()["args"];
+    assert_eq!(args["mode"], "bypass");
+    assert_eq!(args["pin"], "ok");
+    let created = ev
+        .iter()
+        .find(|e| e["event"] == "worker.run_created")
+        .unwrap();
+    assert_eq!(created["mode"], "bypass");
+    assert!(!serde_json::to_string(&ev).unwrap().contains(PIN));
+}
+
+#[test]
+fn a_correct_pin_starts_a_no_sandbox_run_with_an_empty_env() {
+    let w = privileged_world(true, false, true);
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[start(&w, json!({"no_sandbox":true,"pin":PIN}))],
+    );
+    assert!(r[0]["result"]["id"].is_string(), "{:?}", r[0]);
+    let s = fake.0.lock().unwrap();
+    let req = &s.creates[0];
+    assert_eq!(req.no_sandbox, Some(tmgr_ipc::api::NoSandbox::default()));
+    assert!(req.permission_mode.is_none());
+}
+
+#[test]
+fn the_pin_is_checked_once_per_request_and_a_plain_start_never_touches_it() {
+    let w = privileged_world(true, true, true);
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[
+            start(&w, json!({"mode":"bypass","pin":"wrong-pin"})),
+            start(&w, json!({})),
+        ],
+    );
+    assert_eq!(failures(&w), 1);
+    assert!(r[1]["result"]["id"].is_string());
+    let s = fake.0.lock().unwrap();
+    assert!(s.creates[0].permission_mode.is_none() && s.creates[0].no_sandbox.is_none());
+}
