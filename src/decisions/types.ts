@@ -94,7 +94,13 @@ export interface AnswerChoice {
 	note?: string;
 }
 
+export interface ActionDecision {
+	sha256: string;
+	edit?: Record<string, string>;
+}
+
 export interface Answer {
+	action?: ActionDecision;
 	choice?: string;
 	choices?: AnswerChoice[];
 	note?: string;
@@ -124,7 +130,62 @@ export interface CardDelivery {
 	at_ms: number;
 }
 
+export type ActionKind = 'comment' | 'task' | 'pr' | 'tag';
+
+export type ActionRunState =
+	'executing' | 'done' | 'failed' | 'partial' | 'unknown';
+
+export interface ActionResult {
+	ok: boolean;
+	url?: string | null;
+	sha?: string | null;
+	error?: string | null;
+}
+
+export interface ActionRun {
+	run_id: string;
+	state: ActionRunState;
+	result?: ActionResult | null;
+}
+
+export interface ActionCommit {
+	sha: string;
+	subject: string;
+}
+
+export interface ActionPayload {
+	origin?: string;
+	user_id?: number;
+	task_id?: number;
+	task_label?: string;
+	text?: string;
+	workspace_id?: number;
+	category_id?: number | null;
+	status_id?: number | null;
+	title?: string;
+	description?: string;
+	repo?: string;
+	branch?: string;
+	base?: string;
+	base_sha?: string;
+	head_sha?: string;
+	body?: string;
+	commits?: ActionCommit[];
+	name?: string;
+	target_sha?: string;
+}
+
+export interface CardAction {
+	kind: ActionKind;
+	payload: ActionPayload;
+	sha256: string;
+	editable: string[];
+	run?: ActionRun | null;
+	approved?: { payload: ActionPayload; sha256: string; edited: boolean } | null;
+}
+
 export interface CardView {
+	action?: CardAction | null;
 	id: string;
 	created_ms: number;
 	state: CardState;

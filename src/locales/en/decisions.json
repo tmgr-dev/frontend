@@ -208,5 +208,42 @@
 		"revokeQuestion": "Revoke {name}?",
 		"revoke": "Revoke",
 		"keep": "Keep"
+	},
+	"action": {
+		"header": {
+			"comment": "Post a comment on {task}",
+			"task": "Create a task",
+			"pr": "Open a pull request in {repo}: {branch} → {base}",
+			"tag": "Create tag {name} in {repo} at {sha}"
+		},
+		"field": {
+			"text": "Comment",
+			"title": "Title",
+			"description": "Description",
+			"workspace_id": "Workspace id",
+			"category_id": "Category id",
+			"status_id": "Status id",
+			"body": "Description",
+			"head_sha": "Head",
+			"base_sha": "Base",
+			"name": "Tag name",
+			"target_sha": "Target commit",
+			"commits": "Commits"
+		},
+		"edited": "Edited",
+		"reset": "Reset",
+		"approve": "Approve",
+		"reject": "Reject",
+		"cancel": "Cancel",
+		"reasonPlaceholder": "Why? The agent receives this reason.",
+		"prNote": "GitHub opens the PR from the branch; TMGR checks the branch head before and after.",
+		"rejected": "Rejected",
+		"run": {
+			"executing": "Running…",
+			"done": "Done",
+			"failed": "Failed",
+			"partial": "Created with a problem — review it",
+			"unknown": "Outcome unknown"
+		}
 	}
 }
