@@ -443,8 +443,60 @@ struct LearnTrust {
     path: Vec<String>,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+struct LinkWants {
+    bypass: bool,
+    no_sandbox: bool,
+}
+
+fn link_wants(req: &RunCreateReq) -> LinkWants {
+    LinkWants {
+        bypass: req.permission_mode.as_deref() == Some("bypass"),
+        no_sandbox: req.no_sandbox.is_some(),
+    }
+}
+
+fn check_link_privileges(scope: &trust::LinkScope, want: LinkWants) -> Result<(), ApiErr> {
+    let denied = |m: &str| Err(api(ErrorCode::Forbidden, m));
+    if want.bypass && !(scope.remote_control && scope.allow_bypass) {
+        return denied(
+            "bypass from a link needs `tmgr link scope <leader> --allow-bypass on` on this machine",
+        );
+    }
+    if want.no_sandbox && !(scope.remote_control && scope.allow_no_sandbox) {
+        return denied(
+            "no-sandbox from a link needs `tmgr link scope <leader> --allow-no-sandbox on` on this machine",
+        );
+    }
+    Ok(())
+}
+
+fn check_no_sandbox_admission(req: &RunCreateReq, manual: bool) -> Result<(), ApiErr> {
+    let Some(ns) = &req.no_sandbox else {
+        return Ok(());
+    };
+    if req.origin.is_some() {
+        return if ns.env.is_empty() {
+            Ok(())
+        } else {
+            Err(api(
+                ErrorCode::Forbidden,
+                "a link run cannot pass its own environment",
+            ))
+        };
+    }
+    if manual {
+        return Ok(());
+    }
+    Err(api(
+        ErrorCode::Forbidden,
+        "no_sandbox is accepted only for a manual run from the tmgr CLI",
+    ))
+}
+
 #[derive(Clone, Default)]
 struct RunExtra {
+    link_wants: LinkWants,
     permission_mode: Option<String>,
     clone_of: Option<String>,
     objects: Vec<clone::Objects>,
@@ -2207,6 +2259,8 @@ fn plan_mode(
     net_enforced: bool,
 ) -> Result<ModePlan, ApiErr> {
     use tmgr_ipc::api::policy::{decide_mode, Mode, NetworkPolicy, Origin as Orig};
+    // A link run's bypass is gated under the trust fence in check_origin, before any spawn.
+    let manual = manual || req.origin.is_some();
     let verified = matches!(cloud, Some(Ok(())));
     let restricted = verified && net_enforced;
     if req.permission_mode.as_deref() != Some("bypass") {
@@ -2238,7 +2292,7 @@ fn plan_mode(
             )
         })?
         .to_vec();
-    let origin = if req.unattended {
+    let origin = if req.unattended && req.origin.is_none() {
         Orig::Auto
     } else {
         Orig::Manual
@@ -3194,6 +3248,7 @@ impl Runner {
         model: Option<&str>,
         req: &CreateReq,
         dir: Option<&bundle::Dir>,
+        want: LinkWants,
     ) -> Result<(), ApiErr> {
         let denied = |m: &str| api(ErrorCode::Forbidden, m);
         if self
@@ -3210,6 +3265,7 @@ impl Runner {
             return Err(denied("link changed; re-request"));
         }
         let scope = &trust.scope;
+        check_link_privileges(scope, want)?;
         let profile = req.profile.as_deref().unwrap_or("");
         if !scope.agents.iter().any(|a| a == profile) {
             return Err(denied("agent profile is outside the link's scope"));
@@ -3888,12 +3944,7 @@ impl Runner {
             crate::manager::check_create(&req, true, self.live_manager().is_some())
                 .map_err(|(c, m)| api(c, m))?;
         }
-        if req.no_sandbox.is_some() && !manual {
-            return Err(api(
-                ErrorCode::Forbidden,
-                "no_sandbox is accepted only for a manual run from the tmgr CLI",
-            ));
-        }
+        check_no_sandbox_admission(&req, manual)?;
         let external = req.external_resume.clone();
         let _external = external
             .as_ref()
@@ -4153,6 +4204,7 @@ impl Runner {
             && permit_hook::supported_profile(&prof.id);
         let forking = fork.is_some() || external.as_ref().is_some_and(|e| e.fork);
         let mut extra = RunExtra {
+            link_wants: link_wants(&req),
             trust,
             trust_note,
             learn_trust,
@@ -4412,7 +4464,7 @@ impl Runner {
             None => None,
         };
         if let Some((o, model)) = origin {
-            self.check_origin(o, model, &req, Some(dir))?;
+            self.check_origin(o, model, &req, Some(dir), extra.link_wants)?;
         }
         {
             let sessions = lock(&self.sessions);
@@ -6742,6 +6794,151 @@ mod tests {
         let ok = plan("bypass", false, Some(Ok(())), true, true).unwrap();
         assert!(ok.bypass && ok.restricted && ok.mode.as_deref() == Some("bypass"));
         assert_eq!(ok.args, ["--permission-mode", "bypassPermissions"]);
+    }
+
+    fn link_req(mode: Option<&str>, no_sandbox: Option<&[(&str, &str)]>) -> RunCreateReq {
+        let mut req = plan_req(mode.unwrap_or("ask"), false);
+        req.agent_work = false;
+        req.origin = Some(Origin {
+            link: "laptop".into(),
+            generation: 1,
+        });
+        req.no_sandbox = no_sandbox.map(|env| tmgr_ipc::api::NoSandbox {
+            env: env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        });
+        req
+    }
+
+    fn scope(rc: bool, bypass: bool, no_sandbox: bool) -> trust::LinkScope {
+        trust::LinkScope {
+            remote_control: rc,
+            allow_bypass: bypass,
+            allow_no_sandbox: no_sandbox,
+            ..trust::LinkScope::default()
+        }
+    }
+
+    const WANT_BYPASS: LinkWants = LinkWants {
+        bypass: true,
+        no_sandbox: false,
+    };
+    const WANT_NO_SANDBOX: LinkWants = LinkWants {
+        bypass: false,
+        no_sandbox: true,
+    };
+
+    #[test]
+    fn a_link_bypass_needs_remote_control_and_the_bypass_opt_in() {
+        for s in [
+            scope(false, false, false),
+            scope(true, false, true),
+            scope(false, true, false),
+        ] {
+            let e = check_link_privileges(&s, WANT_BYPASS).err().unwrap();
+            assert!(matches!(e.code, ErrorCode::Forbidden));
+            assert!(e.msg.contains("--allow-bypass on"), "{}", e.msg);
+        }
+        assert!(check_link_privileges(&scope(true, true, false), WANT_BYPASS).is_ok());
+    }
+
+    #[test]
+    fn a_link_no_sandbox_needs_remote_control_and_the_no_sandbox_opt_in() {
+        for s in [
+            scope(false, false, false),
+            scope(true, true, false),
+            scope(false, false, true),
+        ] {
+            let e = check_link_privileges(&s, WANT_NO_SANDBOX).err().unwrap();
+            assert!(matches!(e.code, ErrorCode::Forbidden));
+            assert!(e.msg.contains("--allow-no-sandbox on"), "{}", e.msg);
+        }
+        assert!(check_link_privileges(&scope(true, false, true), WANT_NO_SANDBOX).is_ok());
+    }
+
+    #[test]
+    fn an_unprivileged_link_run_needs_no_opt_in() {
+        assert!(check_link_privileges(&scope(false, false, false), LinkWants::default()).is_ok());
+    }
+
+    #[test]
+    fn the_bypass_opt_in_does_not_grant_no_sandbox_and_back() {
+        let both = LinkWants {
+            bypass: true,
+            no_sandbox: true,
+        };
+        assert!(check_link_privileges(&scope(true, true, false), both).is_err());
+        assert!(check_link_privileges(&scope(true, false, true), both).is_err());
+        assert!(check_link_privileges(&scope(true, true, true), both).is_ok());
+    }
+
+    #[test]
+    fn link_wants_follow_the_requested_mode_and_no_sandbox() {
+        assert_eq!(link_wants(&link_req(None, None)), LinkWants::default());
+        assert_eq!(link_wants(&link_req(Some("bypass"), None)), WANT_BYPASS);
+        assert_eq!(link_wants(&link_req(None, Some(&[]))), WANT_NO_SANDBOX);
+    }
+
+    #[test]
+    fn a_link_run_may_ask_for_no_sandbox_only_with_an_empty_env() {
+        assert!(check_no_sandbox_admission(&link_req(None, Some(&[])), false).is_ok());
+        let e = check_no_sandbox_admission(&link_req(None, Some(&[("PATH", "/x")])), false)
+            .err()
+            .unwrap();
+        assert!(matches!(e.code, ErrorCode::Forbidden));
+        assert!(
+            e.msg.contains("cannot pass its own environment"),
+            "{}",
+            e.msg
+        );
+    }
+
+    #[test]
+    fn no_sandbox_without_an_origin_stays_manual_only() {
+        let mut req = link_req(None, Some(&[]));
+        req.origin = None;
+        let e = check_no_sandbox_admission(&req, false).err().unwrap();
+        assert!(e.msg.contains("only for a manual run"), "{}", e.msg);
+        assert!(check_no_sandbox_admission(&req, true).is_ok());
+        assert!(check_no_sandbox_admission(&link_req(None, None), false).is_ok());
+    }
+
+    #[test]
+    fn a_link_run_plans_bypass_like_a_manual_one_and_other_clients_still_cannot() {
+        let (set, _) = ProfileSet::load(None);
+        let prof = set.get("claude-code").unwrap();
+        let link = link_req(Some("bypass"), None);
+        let p = plan_mode(prof, &link, &None, false, true, true).unwrap();
+        assert!(p.bypass && p.mode.as_deref() == Some("bypass"));
+        let mut unattended = link.clone();
+        unattended.unattended = true;
+        let p = plan_mode(prof, &unattended, &None, false, true, false).unwrap();
+        assert!(p.bypass && !p.restricted);
+        let mut plain = link;
+        plain.origin = None;
+        let e = plan_mode(prof, &plain, &None, false, true, true)
+            .err()
+            .unwrap();
+        assert!(matches!(e.code, ErrorCode::Forbidden), "{}", e.msg);
+    }
+
+    #[test]
+    fn an_empty_caller_env_gives_a_link_no_sandbox_run_the_runners_base_env() {
+        let base = vec![("PATH".to_string(), "/usr/bin".to_string())];
+        let env = sandbox::unsandboxed_env(
+            &std::collections::BTreeMap::new(),
+            &base,
+            Path::new("/home/u"),
+            "s_abcdefghij",
+            false,
+        )
+        .unwrap();
+        let env: BTreeMap<_, _> = env.into_iter().collect();
+        assert_eq!(env["PATH"], "/usr/bin");
+        assert_eq!(env["HOME"], "/home/u");
+        assert_eq!(env["TMGR_SESSION_ID"], "s_abcdefghij");
     }
 
     #[test]
