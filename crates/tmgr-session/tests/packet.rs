@@ -50,7 +50,7 @@ fn source(agent: Agent, session: &str) -> PacketSource {
 
 fn opts(target: Agent) -> Opts {
     Opts {
-        target,
+        target: target.name(),
         task: Some("TM-1".into()),
         previous: vec!["old-session (claude)".into()],
         git: Some(GitState {

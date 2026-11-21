@@ -282,7 +282,7 @@ pub fn build_packet(
 ) -> Result<HandoffPacket, PacketError> {
     let current = sessions.last().ok_or(PacketError::NoSession)?;
     let note_opts = Opts {
-        target: to.agent,
+        target: to.agent.name(),
         ..opts.clone()
     };
     let mut prior: Vec<String> = opts.previous.iter().map(|p| clean(p, 80)).collect();
