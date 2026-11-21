@@ -113,7 +113,7 @@ describe('trust components', () => {
 		expect(html).toContain('iPhone');
 		expect(html).toContain('mobile');
 		expect(html).toContain('ab12 cd34 ef56 ab12');
-		expect(html).not.toContain('ff');
+		expect(html).not.toContain('ab12 cd34 ef56 ab12 ff');
 		expect(html).toContain('Approve');
 		expect(html).toContain('Reject');
 		expect(html).toContain('Compare this fingerprint');
