@@ -65,6 +65,7 @@ export interface RoomInfo {
 	context_tokens?: number;
 	last?: ChatMessage;
 	local?: boolean;
+	unrestricted?: boolean;
 }
 
 export interface HistoryParams {

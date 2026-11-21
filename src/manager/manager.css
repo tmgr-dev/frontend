@@ -172,6 +172,18 @@ html.dark .manager {
 	padding: 2px 8px 2px 6px;
 	border-radius: 99px;
 }
+.manager .unrb {
+	display: inline-flex;
+	gap: 4px;
+	align-items: center;
+	margin-left: 6px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--fix-fg);
+	background: var(--fix-bg);
+	padding: 2px 8px 2px 6px;
+	border-radius: 99px;
+}
 .manager .ctx {
 	display: inline-flex;
 	align-items: center;

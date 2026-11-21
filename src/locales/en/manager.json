@@ -11,7 +11,9 @@
 	"header": {
 		"search": "Search in chat",
 		"encrypted": "End-to-end encrypted",
-		"switchAgent": "Switch agent"
+		"switchAgent": "Switch agent",
+		"unrestricted": "Unrestricted",
+		"unrestrictedHint": "No sandbox, bypass mode: this manager can run any command as you and type into bypass sessions."
 	},
 	"state": {
 		"working": "Working",

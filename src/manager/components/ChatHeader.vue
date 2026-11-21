@@ -6,6 +6,12 @@
 				>{{ info.title }}
 				<span v-if="isManager" class="lockb"
 					><Icon name="lock" />{{ $t('manager.header.encrypted') }}</span
+				>
+				<span
+					v-if="info.unrestricted"
+					class="unrb"
+					:title="$t('manager.header.unrestrictedHint')"
+					><Icon name="bolt" />{{ $t('manager.header.unrestricted') }}</span
 				></b
 			>
 			<small v-if="sub">{{ sub }}</small>

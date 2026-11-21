@@ -190,6 +190,16 @@ describe('manager components', () => {
 		expect(html).toContain('aria-label="Search in chat"');
 	});
 
+	it('ChatHeader shows the Unrestricted badge only for unrestricted rooms', async () => {
+		const on = await render('ChatHeader', {
+			info: { ...rooms[0], unrestricted: true },
+		});
+		expect(on).toContain('Unrestricted');
+		expect(on).toContain('type into bypass sessions');
+		const off = await render('ChatHeader', { info: rooms[0] });
+		expect(off).not.toContain('Unrestricted');
+	});
+
 	it('MessageList shows the default empty hint without a custom one', async () => {
 		const html = await render('MessageList', { messages: [] });
 		expect(html).toContain('No messages in this chat.');
