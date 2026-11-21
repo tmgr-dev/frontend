@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.171 — 2026-11-21
+
+- Tray popover: the Today block shows up to 5 entries with a "Go to routines" button. AI usage now lists Claude and Codex with their 5-hour and weekly windows, plan and reset times, and the popover is taller (it scrolls on small screens).
+- Tray popover: "Switch to" and Stop keep the popover open so you see the timer change, and TMGR no longer jumps to the front when the popover closes. The popover's odd outer edge is gone (no system shadow or border around the window).
+- Tray: the menu bar icon is now the TMGR logo.
+- Toasts: every toast has a close button and disappears after 10 seconds with a visible countdown that pauses while the pointer is over it. Expired decisions stay in the tray popover. The idle-timer prompt stays until you answer it.
+
 ## 0.9.170 — 2026-11-21
 
 - Tray: the popover now opens on the screen where you clicked the icon (it used to jump to the main screen on multi-monitor Macs), and it is wider (400 px).
