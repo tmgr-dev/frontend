@@ -77,23 +77,27 @@ pub struct RoomInfo {
   pub last: Option<ChatMessage>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistoryParams {
   pub room: RoomRef,
   pub before: Option<String>,
   pub limit: Option<u32>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SendParams {
   pub room: RoomRef,
   pub body_md: String,
   pub reply_to: Option<String>,
-  #[serde(default)]
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub attachments: Vec<Attachment>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub id: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ts_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchParams {
   pub query: String,
   pub room: Option<RoomRef>,
@@ -328,7 +332,7 @@ mod tests {
   use super::*;
 
   fn send(room: RoomRef, body: &str) -> SendParams {
-    SendParams { room, body_md: body.into(), reply_to: None, attachments: vec![] }
+    SendParams { room, body_md: body.into(), reply_to: None, attachments: vec![], id: None, ts_ms: None }
   }
 
   fn hist(room: RoomRef, before: Option<String>, limit: u32) -> HistoryParams {

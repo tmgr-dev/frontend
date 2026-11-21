@@ -1,4 +1,8 @@
 pub mod backend;
+#[allow(dead_code)]
+pub mod composite;
+#[allow(dead_code)]
+pub mod local;
 pub mod relay;
 
 use std::sync::Arc;
@@ -73,6 +77,7 @@ fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub fn setup<R: Runtime>(app: &AppHandle<R>) {
+  // STUB: Runner exposes no public call(); wire CompositeBackend(RunnerLocal) once `impl ChatCall for Runner` lands in runner/mod.rs
   app.manage(ManagerState { backend: Arc::new(StubBackend::default()) });
   ensure_shortcut(app);
 }
