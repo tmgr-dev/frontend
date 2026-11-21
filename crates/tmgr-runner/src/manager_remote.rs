@@ -185,7 +185,7 @@ fn map_call(tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
             let out = json!({"text": text(&a, "text", tmgr_ipc::chat::limits::MAX_BODY)?});
             Ok((Op::Ask, out))
         }
-        _ => {
+        tool::READ_SUBMANAGER => {
             only(&a, &["since", "limit"])?;
             let mut out = json!({});
             if a.contains_key("since") {
@@ -196,6 +196,7 @@ fn map_call(tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
             }
             Ok((Op::Room, out))
         }
+        _ => Err(NOT_AVAILABLE.into()),
     }
 }
 
