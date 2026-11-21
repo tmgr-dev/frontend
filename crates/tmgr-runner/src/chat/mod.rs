@@ -289,7 +289,7 @@ impl Chat {
         {
             let _g = lock(&self.write);
             match store.get(&msg.room, &msg.id).map_err(Invalid)? {
-                Some(old) if old.author.kind == msg.author.kind && old.body_md == msg.body_md => {
+                Some(old) if old == msg => {
                     return Ok(Ingested {
                         message: old,
                         delivered: false,
@@ -709,6 +709,15 @@ mod tests {
         let e = c
             .ingest(
                 incoming(room.clone(), 1, NOW, "other"),
+                NOW,
+                no_session,
+                |_| Delivery::Delivered,
+            )
+            .unwrap_err();
+        assert!(matches!(e, IngestError::Conflict(_)));
+        let e = c
+            .ingest(
+                incoming(room.clone(), 1, NOW - 1, "same"),
                 NOW,
                 no_session,
                 |_| Delivery::Delivered,
