@@ -12,6 +12,7 @@ import {
 	syncDndToTray,
 } from '@/utils/dnd';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
+import { SOURCE_INSTANCE_ID } from '@/utils/sourceInstance';
 import type { AxiosInstance } from 'axios';
 import { h, watch } from 'vue';
 import type { Store } from 'vuex';
@@ -44,6 +45,7 @@ import { folderPackagesFrom, type FolderPlugin } from './folder';
 import { createPluginHost, storageIdOf, type PluginPackage } from './host';
 import { bundleToPackage, type Release } from './market';
 import type { WorkerEndpoint } from './process';
+import { realtimeTaskEvent } from './realtimeTaskEvent';
 import { syncStoredSafeMode } from './safeMode';
 import {
 	folderPluginErrors,
@@ -801,6 +803,16 @@ export const installPlugins = async (
 							page,
 							actor,
 						});
+					},
+					onTaskUpdated: (task, action, _userId, sourceInstanceId) => {
+						const event = realtimeTaskEvent(
+							workspace.id,
+							task,
+							action,
+							sourceInstanceId,
+							SOURCE_INSTANCE_ID,
+						);
+						if (event) domainEvents.emit(event);
 					},
 				}),
 			};
