@@ -75,6 +75,29 @@ export const createDataApi = (
 				`${what} is not available in shared workspaces yet`,
 			);
 	};
+	const requireCloud = (what: string) => {
+		if (!cloud)
+			throw new PluginError(
+				'NOT_SUPPORTED',
+				`${what} are only available in shared workspaces`,
+			);
+	};
+	const contributionPath = (taskId: number) =>
+		`plugins/${encodeURIComponent(pluginId)}/tasks/${taskId}/contribution`;
+	const contributionCall = async (request: Promise<unknown>) => {
+		try {
+			await request;
+		} catch (error: any) {
+			const status = error?.response?.status;
+			if (status === 429)
+				throw new PluginError('RATE_LIMITED', 'too many contribution writes');
+			if (status === 413 || status === 422)
+				throw new PluginError('INVALID_PARAMS', 'contribution was rejected');
+			if (status === 404)
+				throw new PluginError('HOST_ERROR', 'task or plugin not found');
+			throw error;
+		}
+	};
 	/** 409 page_conflict carries the current page; 403 section_forbidden and 413 get their own wording. */
 	const pageCall = async <T>(request: Promise<{ data: any }>): Promise<T> => {
 		try {
@@ -373,6 +396,18 @@ export const createDataApi = (
 				)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
 				{ headers },
 			));
+		},
+		contributionPut: async (taskId, doc) => {
+			requireCloud('task contributions');
+			await contributionCall(
+				http.put(contributionPath(taskId), doc, { headers }),
+			);
+		},
+		contributionDelete: async (taskId) => {
+			requireCloud('task contributions');
+			await contributionCall(
+				http.delete(contributionPath(taskId), { headers }),
+			);
 		},
 		taskDataGetMany: async (taskIds, key) => {
 			notInSharedWorkspaces('per-task plugin data');

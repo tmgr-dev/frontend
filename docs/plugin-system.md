@@ -361,6 +361,8 @@ Rules:
 | `tmgr.ui.setTrayItem(id, item)` | A submenu in the menu bar icon. `null` removes it. | `tray` (needs machine consent in shared workspaces) | `id` in `contributes.trayItems`, at most 5; at most 10 entries; titles are shortened, see below. |
 | `tmgr.ui.setTrayTitle(text)` | Text next to the menu bar icon. | `tray` | Only the plugin chosen in Settings; at most 12 characters, one line. |
 | `tmgr.ui.dnd()` | Reads whether Do Not Disturb is active. | none | Read-only. |
+| `tmgr.ui.publishTaskContribution(taskId, contribution)` | Badges and sections for the user's phone on one task. An empty result removes it. | `tasks:read` (API 1.14, no consent) | Shared workspaces only; limits and rate, see "Migrating from 1.13 to 1.14". |
+| `tmgr.ui.clearTaskContribution(taskId)` | Removes this plugin's contribution to the task. | `tasks:read` (API 1.14) | Same as publishing an empty one. |
 | `tmgr.ui.setViewBadge(viewId, badge)` | A counter on the plugin's own sidebar item. `null` clears it. | `views:badge` (API 1.4, no consent) | One applied change per view per second, see below. |
 
 ### `setTrayItem`: long titles
@@ -562,3 +564,38 @@ Either way:
 
 1. Update `tmgr.d.ts` from the SDK template.
 2. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.13 to 1.14
+
+Nothing changes for existing plugins. To show something on the user's phone next to a task:
+
+1. Set `"engines": { "tmgr": "^1.14" }` (a plugin on an older minor gets `NOT_SUPPORTED` from these calls).
+2. Declare `tasks:read`.
+3. Call `tmgr.ui.publishTaskContribution(taskId, { name?, badges?, sections? })`, and
+   `tmgr.ui.clearTaskContribution(taskId)` to remove it.
+
+What it does:
+
+- The phone app shows the contribution on the task screen (one card per section) and the badges on the board
+  card and the list row. The label `name` falls back to the plugin id.
+- It is personal to the signed-in user: other members of the workspace do not see it. It works in shared
+  (cloud) workspaces only; a local workspace rejects with `NOT_SUPPORTED`.
+- Each publish replaces the previous document for that task. Publishing an empty one removes it.
+- Badges: up to 3, `{ id, text, tone? }` with `id` of `[a-z0-9_-]` up to 40 characters, `text` up to 24, `tone`
+  one of `default`, `muted`, `success`, `warning`, `danger`. The card-badge form `{ id, text, color }` also
+  works (`gray` is `muted`, `green` `success`, `yellow` and `orange` `warning`, `red` `danger`, `blue` and
+  `purple` `default`).
+- Sections: up to 4, `{ id, title, tree }`. The tree uses these page nodes: `stack`, `heading`, `text`,
+  `divider`, `keyValue` (values are turned into strings), `badge`, `progress`, `stat`, `list`, `markdown`,
+  `taskLink`. Other nodes are dropped.
+- Limits are applied for you by dropping or shortening, without an error: tree depth 6, 80 nodes per section,
+  strings cut to their maximum, control characters removed, and the whole document at most 8 KiB (sections are
+  dropped from the end until it fits).
+- Publish when the data changes, not on every tick. Calls for one task are collected for about 500 ms and the
+  last one wins. The server allows 10 writes per second per plugin; on HTTP 429 the host retries after 1, 2
+  and 4 seconds, then the call rejects with `RATE_LIMITED`.
+
+Either way:
+
+1. Update `tmgr.d.ts` from the SDK template.
+2. Copy `plugin-sdk/testing` again; `tmgr.contributions[taskId]` holds what the test host received.

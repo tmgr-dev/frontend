@@ -3,6 +3,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createBroker = exports.truncateGraphemes = exports.PLUGIN_EVENTS = exports.PluginError = void 0;
+const contribution_1 = require("./contribution.generated.js");
 class PluginError extends Error {
     constructor(code, message, 
     /** For `page_conflict`: the page as it is now, handed to the plugin as `error.current`. */
@@ -310,6 +311,8 @@ const taskFields = (patch) => {
 };
 const MAX_VALUE_BYTES = 256 * 1024;
 const MAX_TASK_DATA_VALUE_BYTES = 64 * 1024;
+const CONTRIBUTION_DEBOUNCE_MS = 500;
+const CONTRIBUTION_BACKOFF_MS = [1000, 2000, 4000];
 const byteLength = (value) => new TextEncoder().encode(value).byteLength;
 const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
 const EXPORT_SEGMENT = /^[\p{L}\p{N} ._()-]{1,100}$/u;
@@ -413,6 +416,54 @@ const createBroker = (deps) => {
     const reads = bucket(50, 100, deps.now);
     const writes = bucket(10, 20, deps.now);
     let pendingConnection = false;
+    const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const contributions = new Map();
+    const contributionSends = new Map();
+    const sendContribution = async (taskId, doc) => {
+        for (let attempt = 0;; attempt++) {
+            try {
+                return await ((0, contribution_1.isEmptyContribution)(doc)
+                    ? api.contributionDelete(taskId)
+                    : api.contributionPut(taskId, doc));
+            }
+            catch (error) {
+                if (!(error instanceof PluginError && error.code === 'RATE_LIMITED') ||
+                    attempt >= CONTRIBUTION_BACKOFF_MS.length)
+                    throw error;
+                await sleep(CONTRIBUTION_BACKOFF_MS[attempt]);
+            }
+        }
+    };
+    const publishContribution = (taskId, doc) => {
+        const queued = contributions.get(taskId);
+        if (queued) {
+            queued.doc = doc;
+            return queued.done;
+        }
+        const entry = { doc, done: Promise.resolve() };
+        entry.done = (async () => {
+            await sleep(CONTRIBUTION_DEBOUNCE_MS);
+            contributions.delete(taskId);
+            const previous = contributionSends.get(taskId);
+            const send = (previous ?? Promise.resolve())
+                .catch(() => undefined)
+                .then(() => sendContribution(taskId, entry.doc));
+            contributionSends.set(taskId, send);
+            try {
+                await send;
+            }
+            finally {
+                if (contributionSends.get(taskId) === send)
+                    contributionSends.delete(taskId);
+            }
+        })();
+        contributions.set(taskId, entry);
+        return entry.done;
+    };
+    const contributionAllowed = () => {
+        if (manifest.apiMinor < 14)
+            throw new PluginError('NOT_SUPPORTED', 'task contributions need engines.tmgr ^1.14');
+    };
     /** `relationTypeWithTask` is a local implementation detail; only relations:read may see it. */
     const stripRelations = (task) => {
         if (granted.has('relations:read') || !task || typeof task !== 'object')
@@ -1112,6 +1163,22 @@ const createBroker = (deps) => {
                 if (typeof p.viewId !== 'string' || !declared.page.has(p.viewId))
                     invalid('viewId must be a view declared by this plugin');
                 deps.setViewBadge(p.viewId, viewBadge(p.badge));
+            },
+        },
+        'ui.publishTaskContribution': {
+            permission: 'tasks:read',
+            write: true,
+            run: (p) => {
+                contributionAllowed();
+                return publishContribution(id(p.taskId, 'taskId'), (0, contribution_1.reduceContribution)(p.contribution));
+            },
+        },
+        'ui.clearTaskContribution': {
+            permission: 'tasks:read',
+            write: true,
+            run: (p) => {
+                contributionAllowed();
+                return publishContribution(id(p.taskId, 'taskId'), (0, contribution_1.reduceContribution)(null));
             },
         },
         'ui.refresh': {

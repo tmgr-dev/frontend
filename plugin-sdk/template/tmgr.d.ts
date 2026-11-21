@@ -1128,6 +1128,39 @@ declare const tmgr: {
 				tone?: 'default' | 'info' | 'warning' | 'danger';
 			} | null,
 		): Promise<void>;
+		/**
+		 * API 1.14, needs `engines.tmgr` `^1.14` and tasks:read. Publishes what this plugin wants the user's
+		 * phone to show on a task: up to 3 badges (board card and list row) and up to 4 sections (task
+		 * screen). Personal to the signed-in user, replaces the previous document for this task, and
+		 * works in shared workspaces only (a local workspace rejects with NOT_SUPPORTED).
+		 *
+		 * Badges take `{ id, text, tone? }` (id `[a-z0-9_-]` up to 40 characters, text up to 24) or the
+		 * `{ id, text, color }` form of card badges. Section trees use the same nodes as pages, reduced to:
+		 * stack, heading, text, divider, keyValue (values become strings), badge, progress, stat, list,
+		 * markdown and taskLink. Anything else, and anything over the limits (tree depth 6, 80 nodes per
+		 * section, 8 KiB for the whole document), is dropped without an error. An empty result removes
+		 * the contribution.
+		 *
+		 * Publish when the data changes, not on every tick: calls for one task are debounced (about 500 ms,
+		 * last call wins) and a 429 from the server is retried with backoff before the call rejects with
+		 * RATE_LIMITED. Resolves once the server has the document.
+		 */
+		publishTaskContribution(
+			taskId: number,
+			contribution: {
+				name?: string;
+				badges?: {
+					id: string;
+					text: string;
+					tone?: 'default' | 'muted' | 'success' | 'warning' | 'danger';
+					color?:
+						'gray' | 'green' | 'yellow' | 'orange' | 'red' | 'blue' | 'purple';
+				}[];
+				sections?: { id: string; title: string; tree: TmgrNode }[];
+			},
+		): Promise<void>;
+		/** API 1.14, needs tasks:read. Removes this plugin's contribution to the task (same as publishing an empty one). */
+		clearTaskContribution(taskId: number): Promise<void>;
 		/** Ask the host to draw badges, a page or a section again. */
 		refresh(kind: 'badges' | 'page' | 'section', id: string): Promise<void>;
 	};

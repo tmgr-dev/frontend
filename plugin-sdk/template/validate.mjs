@@ -56,6 +56,8 @@ export const CALL_PERMISSIONS = {
   'tmgr.ui.setTrayItem': 'tray',
   'tmgr.ui.setTrayTitle': 'tray',
   'tmgr.ui.setViewBadge': 'views:badge',
+  'tmgr.ui.publishTaskContribution': 'tasks:read',
+  'tmgr.ui.clearTaskContribution': 'tasks:read',
   'tmgr.agentWork.list': 'agent_work:read',
   'tmgr.agentWork.start': 'agent_work:write',
   'tmgr.agentWork.update': 'agent_work:write',

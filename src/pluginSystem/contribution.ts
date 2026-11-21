@@ -1,0 +1,256 @@
+export type ContributionTone =
+	'default' | 'muted' | 'success' | 'warning' | 'danger';
+
+export type ContributionNode =
+	| {
+			type: 'stack';
+			direction?: 'column' | 'row';
+			children: ContributionNode[];
+	  }
+	| { type: 'heading'; text: string; level?: 1 | 2 | 3 }
+	| { type: 'text'; text: string; tone?: ContributionTone }
+	| { type: 'divider' }
+	| { type: 'keyValue'; items: { key: string; value: string }[] }
+	| { type: 'badge'; text: string; tone?: ContributionTone }
+	| {
+			type: 'progress';
+			value: number;
+			label?: string;
+			tone?: ContributionTone;
+	  }
+	| { type: 'stat'; label: string; value: string; tone?: ContributionTone }
+	| { type: 'list'; items: ContributionNode[] }
+	| { type: 'markdown'; text: string }
+	| { type: 'taskLink'; taskId: number; text: string };
+
+export interface ContributionDoc {
+	v: 1;
+	name?: string;
+	badges: { id: string; text: string; tone?: ContributionTone }[];
+	sections: { id: string; title: string; tree: ContributionNode }[];
+}
+
+export const MAX_CONTRIBUTION_BYTES = 8192;
+const MAX_BADGES = 3;
+const MAX_SECTIONS = 4;
+const MAX_DEPTH = 6;
+const MAX_NODES = 80;
+const MAX_CHILDREN = 40;
+const MAX_LIST_ITEMS = 50;
+const MAX_KEY_VALUE_ITEMS = 20;
+const ID = /^[a-z0-9_-]{1,40}$/;
+const TONES: ContributionTone[] = [
+	'default',
+	'muted',
+	'success',
+	'warning',
+	'danger',
+];
+const COLOR_TONES: Record<string, ContributionTone> = {
+	gray: 'muted',
+	green: 'success',
+	yellow: 'warning',
+	orange: 'warning',
+	red: 'danger',
+	blue: 'default',
+	purple: 'default',
+};
+
+const isObject = (value: unknown): value is Record<string, any> =>
+	!!value && typeof value === 'object' && !Array.isArray(value);
+
+const cut = (value: string, max: number) => {
+	if (value.length <= max) return value;
+	const code = value.charCodeAt(max - 1);
+	return value.slice(0, code >= 0xd800 && code <= 0xdbff ? max - 1 : max);
+};
+
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
+const CONTROL_KEEP_BREAKS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+
+const plain = (value: unknown, max: number): string | null => {
+	const source =
+		typeof value === 'string'
+			? value
+			: typeof value === 'number' && Number.isFinite(value)
+				? String(value)
+				: null;
+	if (source === null) return null;
+	const result = cut(source.replace(CONTROL, ''), max);
+	return result === '' ? null : result;
+};
+
+const multiline = (value: unknown, max: number): string | null => {
+	if (typeof value !== 'string') return null;
+	const result = cut(value.replace(CONTROL_KEEP_BREAKS, ''), max);
+	return result === '' ? null : result;
+};
+
+const toneOf = (raw: Record<string, any>): ContributionTone | undefined => {
+	if (TONES.includes(raw.tone)) return raw.tone;
+	if (typeof raw.color === 'string' && raw.color in COLOR_TONES)
+		return COLOR_TONES[raw.color];
+	return undefined;
+};
+
+const withTone = (raw: Record<string, any>) => {
+	const tone = toneOf(raw);
+	return tone ? { tone } : {};
+};
+
+const valueText = (raw: unknown): string | null => {
+	if (isObject(raw)) {
+		const source =
+			raw.type === 'stat'
+				? raw.value
+				: raw.type === 'text'
+					? raw.text
+					: raw.text;
+		return plain(source, 200);
+	}
+	return plain(raw, 200);
+};
+
+const reduceTree = (root: unknown): ContributionNode | null => {
+	let budget = MAX_NODES;
+	const node = (raw: unknown, depth: number): ContributionNode | null => {
+		if (depth > MAX_DEPTH || budget <= 0) return null;
+		if (typeof raw === 'string' || typeof raw === 'number') {
+			const text = multiline(String(raw), 2000);
+			if (text === null) return null;
+			budget -= 1;
+			return { type: 'text', text };
+		}
+		if (!isObject(raw)) return null;
+		budget -= 1;
+		const children = (items: unknown, max: number) => {
+			const out: ContributionNode[] = [];
+			if (!Array.isArray(items)) return out;
+			for (const item of items.slice(0, max)) {
+				const child = node(item, depth + 1);
+				if (child) out.push(child);
+			}
+			return out;
+		};
+		switch (raw.type) {
+			case 'stack': {
+				const kids = children(raw.children, MAX_CHILDREN);
+				return kids.length === 0
+					? null
+					: {
+							type: 'stack',
+							direction: raw.direction === 'row' ? 'row' : 'column',
+							children: kids,
+						};
+			}
+			case 'heading': {
+				const text = plain(raw.text, 120);
+				return text === null
+					? null
+					: {
+							type: 'heading',
+							text,
+							level: [1, 2, 3].includes(raw.level) ? raw.level : 2,
+						};
+			}
+			case 'text': {
+				const text = multiline(raw.text, 2000);
+				return text === null ? null : { type: 'text', text, ...withTone(raw) };
+			}
+			case 'divider':
+				return { type: 'divider' };
+			case 'keyValue': {
+				const items: { key: string; value: string }[] = [];
+				for (const item of Array.isArray(raw.items)
+					? raw.items.slice(0, MAX_KEY_VALUE_ITEMS)
+					: []) {
+					const key = plain(item?.key, 60);
+					const value = valueText(item?.value);
+					if (key !== null && value !== null) items.push({ key, value });
+				}
+				return items.length === 0 ? null : { type: 'keyValue', items };
+			}
+			case 'badge': {
+				const text = plain(raw.text, 24);
+				return text === null ? null : { type: 'badge', text, ...withTone(raw) };
+			}
+			case 'progress': {
+				if (typeof raw.value !== 'number' || !Number.isFinite(raw.value))
+					return null;
+				const label = plain(raw.label, 60);
+				return {
+					type: 'progress',
+					value: Math.max(0, Math.min(10, raw.value)),
+					...(label !== null ? { label } : {}),
+					...withTone(raw),
+				};
+			}
+			case 'stat': {
+				const label = plain(raw.label, 60);
+				const value = plain(raw.value, 40);
+				return label === null || value === null
+					? null
+					: { type: 'stat', label, value, ...withTone(raw) };
+			}
+			case 'list': {
+				const items = children(raw.items, MAX_LIST_ITEMS);
+				return items.length === 0 ? null : { type: 'list', items };
+			}
+			case 'markdown': {
+				const text = multiline(raw.text, 4000);
+				return text === null ? null : { type: 'markdown', text };
+			}
+			case 'taskLink': {
+				const text = plain(raw.text, 120);
+				return Number.isSafeInteger(raw.taskId) &&
+					raw.taskId > 0 &&
+					text !== null
+					? { type: 'taskLink', taskId: raw.taskId, text }
+					: null;
+			}
+			default:
+				return null;
+		}
+	};
+	return node(root, 1);
+};
+
+const byteLength = (value: unknown) =>
+	new TextEncoder().encode(JSON.stringify(value)).length;
+
+export const reduceContribution = (input: unknown): ContributionDoc => {
+	const raw = isObject(input) ? input : {};
+	const doc: ContributionDoc = { v: 1, badges: [], sections: [] };
+	const name = plain(raw.name, 60);
+	if (name !== null) doc.name = name;
+
+	const badgeIds = new Set<string>();
+	for (const badge of Array.isArray(raw.badges) ? raw.badges : []) {
+		if (doc.badges.length >= MAX_BADGES) break;
+		if (!isObject(badge) || typeof badge.id !== 'string') continue;
+		const text = plain(badge.text, 24);
+		if (!ID.test(badge.id) || badgeIds.has(badge.id) || text === null) continue;
+		badgeIds.add(badge.id);
+		doc.badges.push({ id: badge.id, text, ...withTone(badge) });
+	}
+
+	const sectionIds = new Set<string>();
+	for (const section of Array.isArray(raw.sections) ? raw.sections : []) {
+		if (doc.sections.length >= MAX_SECTIONS) break;
+		if (!isObject(section) || typeof section.id !== 'string') continue;
+		const title = plain(section.title, 60);
+		if (!ID.test(section.id) || sectionIds.has(section.id) || title === null)
+			continue;
+		const tree = reduceTree(section.tree);
+		if (tree === null) continue;
+		sectionIds.add(section.id);
+		doc.sections.push({ id: section.id, title, tree });
+	}
+
+	while (doc.sections.length > 0 && byteLength(doc) > MAX_CONTRIBUTION_BYTES)
+		doc.sections.pop();
+	return doc;
+};
+
+export const isEmptyContribution = (doc: ContributionDoc) =>
+	doc.badges.length === 0 && doc.sections.length === 0;

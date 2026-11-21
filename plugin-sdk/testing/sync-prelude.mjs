@@ -28,7 +28,7 @@ const transpile = (fileName) => {
     },
   });
   return outputText.replace(
-    /require\("\.\/(protocol|manifest|broker)"\)/g,
+    /require\("\.\/(protocol|manifest|broker|contribution)"\)/g,
     'require("./$1.generated.js")',
   );
 };
@@ -64,6 +64,10 @@ const outputs = new Map([
   [
     join(here, 'broker.generated.js'),
     header('src/pluginSystem/broker.ts') + transpile('broker.ts'),
+  ],
+  [
+    join(here, 'contribution.generated.js'),
+    header('src/pluginSystem/contribution.ts') + transpile('contribution.ts'),
   ],
   [
     join(here, 'sandbox.generated.js'),

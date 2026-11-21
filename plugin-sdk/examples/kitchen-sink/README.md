@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-An example plugin (not built in) that touches every plugin API v1.13 feature, for manual acceptance
+An example plugin (not built in) that touches every plugin API v1.14 feature, for manual acceptance
 testing of the desktop app. Not a template to build a real plugin from — see `plugin-sdk/template/` for
 that.
 
@@ -37,6 +37,7 @@ sample-task and badge/alarm flows. Everything below is for a human, in the real 
      only appears once `taskData` has been set, i.e. after this command has run for that task.
    - The board's quick filters gain a **"Touched by Kitchen Sink"** filter (from `contributes.boardFilters`),
      which matches tasks with the KS badge.
+   - In a shared workspace the phone also gets a contribution for the task (API 1.14 `publishTaskContribution`); a local workspace logs that it was not published.
 6. The menu bar (status bar) shows an item like "N KS tasks"; clicking it re-runs "Create sample task".
 7. The "Kitchen Sink view" item in the sidebar's Plugins section shows a counter with the number of active
    sample tasks (API 1.4 `setViewBadge`); it is set again on every tray refresh and cleared when the plugin

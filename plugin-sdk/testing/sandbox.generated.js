@@ -178,6 +178,9 @@ exports.PRELUDE = `(() => {
 			notify: (message, options) => call('ui.notify', Object.assign({ message }, options || {})),
 			dnd: () => call('ui.dnd'),
 			refresh: (kind, id) => call('ui.refresh', { kind, id }),
+			publishTaskContribution: (taskId, contribution) =>
+				call('ui.publishTaskContribution', { taskId, contribution: contribution || {} }),
+			clearTaskContribution: (taskId) => call('ui.clearTaskContribution', { taskId }),
 		}),
 	});
 	globalThis.__dispatch = (kind, id, argsJson) => {

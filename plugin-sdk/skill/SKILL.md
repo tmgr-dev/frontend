@@ -6,7 +6,7 @@ description: Use when the user asks to make, change, test or debug a TMGR plugin
 # TMGR plugin
 
 A plugin is a folder: `manifest.json`, `main.js`, optional `ui/*.html` pages. It runs in the TMGR desktop app
-sandbox (QuickJS) and talks to the app through the global `tmgr`. Target API 1.13: `engines.tmgr` `^1.13`.
+sandbox (QuickJS) and talks to the app through the global `tmgr`. Target API 1.14: `engines.tmgr` `^1.14`.
 
 References:
 - Guide: https://tmgr.dev/docs/plugins.md
@@ -51,6 +51,7 @@ References:
 
 ## Rules
 
+- Phone: `tmgr.ui.publishTaskContribution(taskId, { name?, badges?, sections? })` (`^1.14`, `tasks:read`, shared workspaces only) shows badges and sections on the user's phone; publish on change, not every tick.
 - UI is data: `tmgr.ui.providePage(viewId, async () => tree)` returns nodes such as `stack`, `heading`, `list`, `button`, `card`, `markdown`. Pages in `ui/` use `window.tmgr`.
 - Register every command from `contributes.commands` with `tmgr.commands.register(id, handler)`.
 - Keep state in `tmgr.storage`, `tmgr.taskData` or `tmgr.pageData`.

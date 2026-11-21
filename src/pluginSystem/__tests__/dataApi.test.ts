@@ -687,3 +687,50 @@ describe('routines', () => {
 		expect(seen.join('\n')).not.toContain('workspace_id');
 	});
 });
+
+it('puts and deletes a contribution under the plugin id in shared workspaces only', async () => {
+	const { http, seen } = recording(() => undefined);
+	const cloud = createDataApi(http, 'tmgr.test', 'tmgr.test', 'Test', true, 5);
+	const doc = { v: 1 as const, badges: [], sections: [] };
+	await cloud.contributionPut(9, doc);
+	await cloud.contributionDelete(9);
+	expect(seen).toEqual([
+		`PUT plugins/tmgr.test/tasks/9/contribution tmgr.test ${JSON.stringify(
+			doc,
+		)}`,
+		'DELETE plugins/tmgr.test/tasks/9/contribution tmgr.test',
+	]);
+	const local = createDataApi(http, 'tmgr.test');
+	await expect(local.contributionPut(9, doc)).rejects.toMatchObject({
+		code: 'NOT_SUPPORTED',
+	});
+	await expect(local.contributionDelete(9)).rejects.toMatchObject({
+		code: 'NOT_SUPPORTED',
+	});
+});
+
+it('maps contribution HTTP errors to plugin errors', async () => {
+	const failing = (status: number) =>
+		createDataApi(
+			axios.create({
+				adapter: async (config) => {
+					throw Object.assign(new Error('x'), { config, response: { status } });
+				},
+			}),
+			'tmgr.test',
+			'tmgr.test',
+			'Test',
+			true,
+			5,
+		);
+	const doc = { v: 1 as const, badges: [], sections: [] };
+	await expect(failing(429).contributionPut(1, doc)).rejects.toMatchObject({
+		code: 'RATE_LIMITED',
+	});
+	await expect(failing(422).contributionPut(1, doc)).rejects.toMatchObject({
+		code: 'INVALID_PARAMS',
+	});
+	await expect(failing(404).contributionDelete(1)).rejects.toMatchObject({
+		code: 'HOST_ERROR',
+	});
+});
