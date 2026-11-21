@@ -241,8 +241,7 @@ fn write_durable_with(
         let _ = std::fs::remove_file(&tmp);
         return res;
     }
-    let _ = sync(dir);
-    Ok(())
+    sync(dir)
 }
 
 pub(crate) fn hex_lower(bytes: &[u8]) -> String {
@@ -500,11 +499,11 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_directory_fsync_after_the_rename_is_not_an_error() {
+    fn a_failing_directory_fsync_after_the_rename_is_an_error() {
         let t = tempfile::tempdir().unwrap();
         let target = t.path().join("f.json");
         let res = write_durable_with(&target, b"new", |_| Err(std::io::Error::other("fsync")));
-        assert!(res.is_ok());
+        assert!(res.is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
     }
 
