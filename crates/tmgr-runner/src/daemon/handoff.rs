@@ -7,7 +7,7 @@ use tmgr_session::packet::HandoffPacket;
 const SCREEN_LINES: u32 = 400;
 const PACKET_FILE: &str = "handoff.json";
 
-fn switch_err(e: SwitchError) -> ApiErr {
+pub(super) fn switch_err(e: SwitchError) -> ApiErr {
     match e {
         SwitchError::Usage(m) => api(ErrorCode::InvalidParams, m),
         SwitchError::NotFound(m) => api(ErrorCode::NotFound, m),
@@ -16,7 +16,7 @@ fn switch_err(e: SwitchError) -> ApiErr {
     }
 }
 
-fn supports(profile: &str, mode: &str) -> bool {
+pub(super) fn supports(profile: &str, mode: &str) -> bool {
     let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
     set.lookup(profile)
         .is_ok_and(|p| p.permission_args(mode).is_ok())
@@ -92,6 +92,44 @@ impl Runner {
         })
     }
 
+    pub(super) fn finish_handoff(
+        &self,
+        store: &HandoffStore,
+        new_session: &str,
+        value: &Value,
+        packet: &HandoffPacket,
+        target: Target,
+    ) -> Vec<String> {
+        let old = self.handoff_session(&packet.from.session).map(|s| s.info());
+        let mut warnings: Vec<String> = Vec::new();
+        let home = self.cfg.homes.join(new_session);
+        match &old {
+            Ok(old) => {
+                let sessions: Vec<SessionInfo> = self.all().iter().map(|x| x.info()).collect();
+                match sw::prepare_inputs(old, &sessions, target, None, &[]) {
+                    Ok(inputs) => warnings.extend(sw::export_all_at(&home, &inputs.exports)),
+                    Err(e) => warnings.push(e.to_string()),
+                }
+            }
+            Err(e) => warnings.push(format!("the old session is unavailable: {}", e.msg)),
+        }
+        let copied = serde_json::to_vec_pretty(value)
+            .map_err(|e| e.to_string())
+            .and_then(|b| write_atomic(&home.join(PACKET_FILE), &b).map_err(|e| e.to_string()));
+        if let Err(e) = copied {
+            warnings.push(format!("the handoff packet could not be copied: {e}"));
+        }
+        if let Ok(old) = &old {
+            if let Err(e) = sw::announce(&self.chat, old, new_session, packet, target) {
+                warnings.push(format!("the chat note was not written: {e}"));
+            }
+        }
+        if let Err(e) = store.mark_finished(&packet.id, new_session) {
+            warnings.push(format!("the handoff packet was not marked finished: {e}"));
+        }
+        warnings
+    }
+
     fn handoff_finish(&self, req: HandoffFinishReq) -> Result<HandoffFinishResp, ApiErr> {
         self.handoff_session(&req.new_session)?;
         let store = HandoffStore::open(&self.cfg.dir)
@@ -110,32 +148,7 @@ impl Runner {
         }
         let target = Target::of_profile(Some(&packet.to.profile))
             .ok_or_else(|| api(ErrorCode::Internal, "the packet names an unknown target"))?;
-        let old = self.handoff_session(&packet.from.session).map(|s| s.info());
-        let mut warnings: Vec<String> = Vec::new();
-        let home = self.cfg.homes.join(&req.new_session);
-        match &old {
-            Ok(old) => {
-                let sessions: Vec<SessionInfo> = self.all().iter().map(|x| x.info()).collect();
-                match sw::prepare_inputs(old, &sessions, target, None, &[]) {
-                    Ok(inputs) => warnings.extend(sw::export_all_at(&home, &inputs.exports)),
-                    Err(e) => warnings.push(e.to_string()),
-                }
-            }
-            Err(e) => warnings.push(format!("the old session is unavailable: {}", e.msg)),
-        }
-        let bytes = serde_json::to_vec_pretty(&value)
-            .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
-        if let Err(e) = write_atomic(&home.join(PACKET_FILE), &bytes) {
-            warnings.push(format!("the handoff packet could not be copied: {e}"));
-        }
-        if let Ok(old) = &old {
-            if let Err(e) = sw::announce(&self.chat, old, &req.new_session, &packet, target) {
-                warnings.push(format!("the chat note was not written: {e}"));
-            }
-        }
-        if let Err(e) = store.mark_finished(&req.packet_id, &req.new_session) {
-            warnings.push(format!("the handoff packet was not marked finished: {e}"));
-        }
+        let warnings = self.finish_handoff(&store, &req.new_session, &value, &packet, target);
         Ok(HandoffFinishResp {
             warning: (!warnings.is_empty()).then(|| warnings.join("; ")),
         })
@@ -143,7 +156,7 @@ impl Runner {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixStream;
@@ -151,7 +164,7 @@ mod tests {
     const OLD: &str = "s_aaaaaaaaaa";
     const NEW: &str = "s_bbbbbbbbbb";
 
-    fn runner(dir: &Path) -> Arc<Runner> {
+    pub(in crate::daemon) fn runner(dir: &Path) -> Arc<Runner> {
         fs::set_permissions(dir, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
         let cfg = RunnerConfig {
             dir: dir.join("run"),
@@ -165,6 +178,7 @@ mod tests {
         let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         Arc::new(Runner {
             rename_lock: Mutex::new(()),
+            switch_lock: Mutex::new(HashSet::new()),
             chat: chat_store.clone(),
             mgr: crate::manager::State::new(Box::new(chat_store)),
             cfg,

@@ -29,7 +29,7 @@ use crate::worklog;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
@@ -67,6 +67,7 @@ mod chat_api;
 mod checkpoints;
 mod handoff;
 mod manager;
+mod switch;
 
 const MAX_CONNS: usize = 64;
 const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1812,6 +1813,7 @@ struct Rejects {
 struct Runner {
     chat: Arc<chat::Chat>,
     rename_lock: Mutex<()>,
+    switch_lock: Mutex<HashSet<String>>,
     cfg: RunnerConfig,
     secret: String,
     started: Instant,
@@ -5467,6 +5469,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     let rt = Arc::new(Runner {
         chat: chat_store.clone(),
         rename_lock: Mutex::new(()),
+        switch_lock: Mutex::new(HashSet::new()),
         cfg: cfg.clone(),
         secret,
         started: Instant::now(),
@@ -6076,6 +6079,7 @@ mod tests {
         let rt = Runner {
             chat: chat_store.clone(),
             rename_lock: Mutex::new(()),
+        switch_lock: Mutex::new(HashSet::new()),
             cfg,
             secret: String::new(),
             started: Instant::now(),

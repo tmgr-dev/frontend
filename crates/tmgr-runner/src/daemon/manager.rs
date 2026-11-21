@@ -141,6 +141,7 @@ mod tests {
     fn runner(t: &Path) -> Arc<Runner> {
         Arc::new(Runner {
             rename_lock: Mutex::new(()),
+            switch_lock: Mutex::new(HashSet::new()),
             chat: Arc::new(crate::chat::Chat::open(&t.join("run"))),
             cfg: RunnerConfig {
                 dir: t.join("run"),
