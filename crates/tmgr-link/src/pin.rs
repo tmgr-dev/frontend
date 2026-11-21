@@ -77,7 +77,6 @@ pub fn reset(paths: &Paths) -> Result<()> {
 }
 
 pub fn status(paths: &Paths) -> Result<Status> {
-    let _lock = guard(paths)?;
     Ok(match load(paths)? {
         None => Status {
             set: false,
