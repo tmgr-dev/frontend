@@ -963,7 +963,11 @@ mod tests {
 
         fn with_me(e: &'a Env, me: &'a str) -> Self {
             TestHost {
-                inner: super::manager::ManagerHost { rt: &e.rt, me },
+                inner: super::manager::ManagerHost {
+                    rt: &e.rt,
+                    me,
+                    unrestricted: false,
+                },
                 work: e.work.clone(),
                 spawned: Mutex::default(),
                 fail: AtomicU8::new(0),

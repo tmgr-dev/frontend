@@ -987,6 +987,7 @@ mod tests {
             version: "0".into(),
             max_sessions: 1,
             relay: None,
+            pin_check: None,
         };
         let s = session("claude-code", false, None);
         let job = fork_job(&cfg, &s, fork_source(&s).unwrap());

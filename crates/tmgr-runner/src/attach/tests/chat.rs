@@ -29,6 +29,7 @@ fn info(room: RoomRef, title: &str, agent: Option<&str>, pct: Option<u8>) -> Roo
         context_pct: pct,
         context_tokens: None,
         last: None,
+        unrestricted: false,
     }
 }
 

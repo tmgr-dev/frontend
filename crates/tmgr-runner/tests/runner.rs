@@ -1317,6 +1317,7 @@ fn the_runner_and_its_shims_do_not_inherit_the_starting_shell_environment() {
         version: "test".into(),
         max_sessions: 16,
         relay: None,
+        pin_check: None,
     };
     std::env::set_var("SHELL_EXPORTED_TOKEN_FOR_TEST", "s3cr3t-shell-value");
     std::env::set_var("TMGR_NOTIFY_TOKEN", "s3cr3t-notify-value");
@@ -1360,6 +1361,7 @@ fn start_background_is_idempotent() {
         version: "test".into(),
         max_sessions: 16,
         relay: None,
+        pin_check: None,
     };
     let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
     let again = tmgr_runner::daemon::start_background(&cfg);
@@ -1423,6 +1425,7 @@ fn start_background_replaces_a_squatted_runner_address() {
         version: "test".into(),
         max_sessions: 16,
         relay: None,
+        pin_check: None,
     };
     let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
     let status = h.client().status().unwrap();

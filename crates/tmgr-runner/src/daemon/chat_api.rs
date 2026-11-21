@@ -115,6 +115,7 @@ impl Runner {
                     let host = ManagerHost {
                         rt: &rt,
                         me: manager.as_ref().map_or("-", |m| m.id.as_str()),
+                        unrestricted: false,
                     };
                     if !serve_tick(&transport, &dispatcher, &dir, &host) {
                         thread::sleep(RPC_TICK);
@@ -148,7 +149,13 @@ impl Runner {
         match method {
             chat_method::ROOMS => {
                 let sessions: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
-                let mut rooms = self.chat.rooms(&sessions);
+                let mut rooms = self.chat.rooms(
+                    &sessions,
+                    self.live_manager()
+                        .filter(|m| super::manager::is_unrestricted(m))
+                        .as_ref()
+                        .map(|m| m.id.as_str()),
+                );
                 rooms.extend(chat_remote::rooms(&self.remote_link()));
                 Ok(to_json(&rooms))
             }
@@ -373,6 +380,7 @@ mod tests {
             version: "test".into(),
             max_sessions: 4,
             relay: None,
+            pin_check: None,
         };
         let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         Arc::new(Runner {

@@ -29,6 +29,7 @@ pub struct SandboxSpec {
     pub grants: Grants,
     pub cwd_id: Option<(u64, u64)>,
     pub network: Network,
+    pub spool: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -706,6 +707,7 @@ pub struct ControlPlane {
     pub fenced: Vec<PathBuf>,
     pub hidden: Vec<PathBuf>,
     pub write_protected: Vec<PathBuf>,
+    pub allowed: Vec<PathBuf>,
 }
 
 pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPlane {
@@ -739,10 +741,16 @@ pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPla
     let mut write_protected = Vec::new();
     push_unique(&mut write_protected, spec.self_exe.clone());
     push_unique(&mut write_protected, canon_lossy(&spec.self_exe));
+    let mut allowed = Vec::new();
+    if let Some(spool) = &spec.spool {
+        push_unique(&mut allowed, spool.clone());
+        push_unique(&mut allowed, canon_lossy(spool));
+    }
     ControlPlane {
         fenced,
         hidden,
         write_protected,
+        allowed,
     }
 }
 
@@ -762,6 +770,12 @@ pub fn control_plane_profile(c: &ControlPlane) -> Result<String, String> {
         s.push_str(&format!(
             "(deny file-write* (literal {}))\n",
             sbpl_quote(f)?
+        ));
+    }
+    for d in &c.allowed {
+        s.push_str(&format!(
+            "(allow file-read* file-write* (subpath {}))\n",
+            sbpl_quote(d)?
         ));
     }
     Ok(s)
@@ -1710,6 +1724,7 @@ mod tests {
             grants: Default::default(),
             cwd_id: None,
             network: Network::Open,
+            spool: None,
         };
         Fx { _t: t, spec }
     }
@@ -1842,6 +1857,51 @@ mod tests {
         }
         assert_eq!(profile.matches("file-read").count(), c.hidden.len());
         assert!(!profile.contains("/dev/tty"));
+    }
+
+    #[test]
+    fn the_spool_is_allowed_after_every_deny_and_only_with_a_spool() {
+        let mut f = fx();
+        let plain = control_plane_profile(&control_plane(&f.spec, &[])).unwrap();
+        assert!(!plain.contains("(allow file-read*"));
+        let spool = f.spec.home.join(".cache/tmgr-manager");
+        f.spec.spool = Some(spool.clone());
+        let profile = control_plane_profile(&control_plane(&f.spec, &[])).unwrap();
+        let allow = format!(
+            "(allow file-read* file-write* (subpath {}))",
+            sbpl_quote(&spool).unwrap()
+        );
+        let at = profile.find(&allow).expect("allow rule");
+        assert_eq!(profile.matches("(allow file-read*").count(), 1);
+        assert!(profile.rfind("(deny ").unwrap() < at);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_real_fence_lets_the_spool_through_and_nothing_else_under_homes() {
+        let mut f = fx();
+        let home = f.spec.home.clone();
+        fs::create_dir_all(&home).unwrap();
+        let spool = crate::manager::prepare_spool(&home).unwrap();
+        f.spec.spool = Some(spool.clone());
+        let profile = control_plane_profile(&control_plane(&f.spec, &[])).unwrap();
+        let run = |script: String| {
+            std::process::Command::new("/usr/bin/sandbox-exec")
+                .args(["-p", &profile, "--", "/bin/sh", "-c", &script])
+                .status()
+                .unwrap()
+                .success()
+        };
+        if !run("exit 0".into()) {
+            return;
+        }
+        let req = spool.join("req");
+        assert!(run(format!(
+            "echo x > '{0}/t' && cat '{0}/t' > /dev/null",
+            req.display()
+        )));
+        assert!(!run(format!("echo x > '{}/other'", home.display())));
+        assert!(!run(format!("ls '{}' > /dev/null", home.display())));
     }
 
     #[test]

@@ -437,6 +437,7 @@ fn read_only_grant_denies_metadata_changes() {
             },
             cwd_id: None,
             network: Network::Open,
+            spool: None,
         };
         let l = prepare(&spec).expect("prepare");
         let o = Command::new(&l.argv[0])

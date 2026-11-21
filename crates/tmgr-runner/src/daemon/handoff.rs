@@ -176,6 +176,7 @@ pub(super) mod tests {
             version: "test".into(),
             max_sessions: 4,
             relay: None,
+            pin_check: None,
         };
         let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         Arc::new(Runner {

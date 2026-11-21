@@ -526,7 +526,7 @@ mod tests {
             .remove(0);
         assert_eq!(m.session_meta.as_ref(), Some(&want));
         m.validate().unwrap();
-        let room = chat.rooms(&s).remove(1);
+        let room = chat.rooms(&s, None).remove(1);
         assert_eq!(room.context_pct, Some(20));
         assert_eq!(room.context_tokens, Some(40_000));
     }

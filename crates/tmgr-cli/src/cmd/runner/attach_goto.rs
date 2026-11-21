@@ -158,6 +158,7 @@ mod tests {
             version: "0".into(),
             max_sessions: 1,
             relay: None,
+            pin_check: None,
         };
         let job = QuestionJob {
             id: "s_abcdefghjk".into(),

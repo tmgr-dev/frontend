@@ -72,6 +72,7 @@ mod manager;
 mod spawnauth;
 mod spawnkeys;
 mod switch;
+mod unrestricted;
 
 const MAX_CONNS: usize = 64;
 const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -257,6 +258,16 @@ fn profile_protected_paths() -> Result<Vec<PathBuf>, ApiErr> {
     Ok(out)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinVerdict {
+    Ok,
+    Wrong { left: u32 },
+    Locked,
+    Unset,
+}
+
+pub type PinCheck = Arc<dyn Fn(&str) -> Result<PinVerdict, String> + Send + Sync>;
+
 #[derive(Clone)]
 pub struct RunnerConfig {
     pub dir: PathBuf,
@@ -266,6 +277,7 @@ pub struct RunnerConfig {
     pub version: String,
     pub max_sessions: usize,
     pub relay: Option<chat::relay::pump::TransportFactory>,
+    pub pin_check: Option<PinCheck>,
 }
 
 impl RunnerConfig {
@@ -278,6 +290,7 @@ impl RunnerConfig {
             version,
             max_sessions: 16,
             relay: None,
+            pin_check: None,
         })
     }
 }
@@ -446,6 +459,8 @@ struct Meta {
     spawned_by: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     name_auto: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    unrestricted: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -530,6 +545,7 @@ struct RunExtra {
     agent_session_id: Option<String>,
     manager: bool,
     spawn_card: Option<String>,
+    unrestricted: bool,
 }
 
 #[derive(Clone)]
@@ -2154,7 +2170,7 @@ fn valid_start_key(k: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b':' | b'-'))
 }
 
-type PinCheck = (String, Result<PathBuf, ApiErr>);
+type ExeCheck = (String, Result<PathBuf, ApiErr>);
 
 fn check_pin_fields(pin: &ExePin) -> Result<(), ApiErr> {
     if !Path::new(&pin.path).is_absolute() {
@@ -2783,6 +2799,9 @@ impl Runner {
                 }
                 self.create_run(req, manual).map(|i| to_json(&i))
             }
+            method::MANAGER_UNRESTRICTED => self
+                .manager_unrestricted(&conn.client, p)
+                .map(|i| to_json(&i)),
             method::ORCHESTRATOR_CREATE => {
                 if conn.client != CLIENT_CLI {
                     return Err(api(
@@ -3509,6 +3528,7 @@ impl Runner {
                         Some(old),
                         pinned_resume,
                         None,
+                        None,
                     )
                 }),
             restore::Status::Running => Err(api(ErrorCode::Busy, "the session is still running")),
@@ -3765,6 +3785,7 @@ impl Runner {
                     codex,
                 }),
             }),
+            None,
         )?;
         log(&format!("session {} forked from {} ({via})", info.id, q.id));
         Ok(RestoredRun {
@@ -3882,6 +3903,7 @@ impl Runner {
                 text: prior,
                 fork: None,
             }),
+            None,
         )?;
         Ok((info, resumed, via))
     }
@@ -3931,7 +3953,7 @@ impl Runner {
         req: RunCreateReq,
         manual: bool,
     ) -> Result<SessionInfo, ApiErr> {
-        self.create_run_as(req, manual, None, None, None)
+        self.create_run_as(req, manual, None, None, None, None)
             .map(|(info, _, _, _)| info)
     }
 
@@ -4014,7 +4036,7 @@ impl Runner {
         )
     }
 
-    fn precheck_pin(&self, req: &RunCreateReq) -> Result<Option<PinCheck>, ApiErr> {
+    fn precheck_pin(&self, req: &RunCreateReq) -> Result<Option<ExeCheck>, ApiErr> {
         check_argv_sha256(req)?;
         let Some(pin) = &req.exe_pin else {
             return Ok(None);
@@ -4039,12 +4061,24 @@ impl Runner {
         restore_from: Option<&str>,
         pinned_resume: Option<&Option<restore::ResumeRec>>,
         resume_ctx: Option<ResumeCtx>,
+        grant: Option<&unrestricted::PinGrant>,
     ) -> Result<(SessionInfo, bool, bool, &'static str), ApiErr> {
         check_external_resume(&req, manual, restore_from, resume_ctx.as_ref())?;
+        if grant.is_some() && !req.manager {
+            return Err(api(
+                ErrorCode::Internal,
+                "an unrestricted start is only for a manager",
+            ));
+        }
         let _only_manager = req.manager.then(|| lock(&self.mgr.create));
         if req.manager {
-            crate::manager::check_create(&req, true, self.live_manager().is_some())
-                .map_err(|(c, m)| api(c, m))?;
+            crate::manager::check_create(
+                &req,
+                true,
+                self.live_manager().is_some(),
+                grant.is_some(),
+            )
+            .map_err(|(c, m)| api(c, m))?;
         }
         check_no_sandbox_admission(&req, manual)?;
         let external = req.external_resume.clone();
@@ -4336,6 +4370,7 @@ impl Runner {
             handoff_from: req.parent_session.clone().filter(|p| valid_parent(p)),
             manager: req.manager,
             spawn_card: req.spawn_card.clone(),
+            unrestricted: grant.is_some(),
         };
         if plan.restricted {
             extra.egress = Some(
@@ -4378,6 +4413,9 @@ impl Runner {
             argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
         }
         if req.manager && prof.id == "claude-code" {
+            if grant.is_some() {
+                argv.push("--strict-mcp-config".to_string());
+            }
             argv.push("--mcp-config".to_string());
             argv.push(crate::manager::claude_mcp_config(&self.cfg.self_exe));
             argv.push("--allowedTools".to_string());
@@ -4729,6 +4767,21 @@ impl Runner {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
+        let mut run_argv = req.argv.clone();
+        let spool = if extra.unrestricted {
+            let root = crate::manager::prepare_spool(home).map_err(internal)?;
+            let at = run_argv
+                .iter()
+                .position(|a| a == "--mcp-config")
+                .map(|i| i + 1)
+                .filter(|i| *i < run_argv.len())
+                .ok_or_else(|| api(ErrorCode::Internal, "the manager has no MCP config"))?;
+            run_argv[at] = crate::manager::with_spool_env(&run_argv[at], &root, id)
+                .ok_or_else(|| api(ErrorCode::Internal, "the manager MCP config is unreadable"))?;
+            Some(root)
+        } else {
+            None
+        };
         if let Some(f) = &extra.fork {
             fork_consent(f.codex)?;
             copy_transcript(&f.from_home, &f.rel, home).map_err(|e| {
@@ -4805,7 +4858,7 @@ impl Runner {
         };
         let spec = SandboxSpec {
             session_id: id.to_string(),
-            argv: req.argv.clone(),
+            argv: run_argv,
             cwd: cwd.to_path_buf(),
             home: home.to_path_buf(),
             real_home,
@@ -4818,6 +4871,7 @@ impl Runner {
             network: proxy.as_ref().map_or(sandbox::Network::Open, |p| {
                 sandbox::Network::Restricted { proxy_port: p.port }
             }),
+            spool,
         };
         let launch = match unsandboxed {
             Some(caller) => sandbox::unsandboxed_env(
@@ -5012,6 +5066,7 @@ impl Runner {
             spawn_card: extra.spawn_card.clone(),
             spawned_by: None,
             name_auto: false,
+            unrestricted: extra.unrestricted,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -6258,6 +6313,7 @@ mod tests {
             version: "test".into(),
             max_sessions: 4,
             relay: None,
+            pin_check: None,
         };
         let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         let rt = Runner {

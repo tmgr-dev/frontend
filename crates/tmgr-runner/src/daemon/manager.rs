@@ -16,7 +16,7 @@ impl Runner {
         client: &str,
         req: &RunCreateReq,
     ) -> Result<(), ApiErr> {
-        core::check_create(req, client == CLIENT_CLI, false).map_err(|(c, m)| api(c, m))
+        core::check_create(req, client == CLIENT_CLI, false, false).map_err(|(c, m)| api(c, m))
     }
 
     pub(super) fn manager_pass(self: &Arc<Self>) {
@@ -28,6 +28,7 @@ impl Runner {
                     let host = ManagerHost {
                         rt: self,
                         me: &m.id,
+                        unrestricted: is_unrestricted(&m),
                     };
                     let link = crate::manager_remote::Live {
                         dir: &self.cfg.dir,
@@ -71,12 +72,17 @@ impl Runner {
     fn answer_remote_async(self: &Arc<Self>, manager: &str, home: PathBuf, req: SpoolReq) {
         let rt = Arc::clone(self);
         let id = manager.to_string();
+        let unrestricted = self.session(manager).is_some_and(|s| is_unrestricted(&s));
         let req_id = req.id.clone();
         let thread_home = home.clone();
         let spawned = std::thread::Builder::new()
             .name("manager-call".into())
             .spawn(move || {
-                let host = ManagerHost { rt: &rt, me: &id };
+                let host = ManagerHost {
+                    rt: &rt,
+                    me: &id,
+                    unrestricted,
+                };
                 let link = crate::manager_remote::Live {
                     dir: &rt.cfg.dir,
                     chat: &rt.chat,
@@ -111,6 +117,14 @@ fn goes_off_thread(host: &ManagerHost, req: &SpoolReq) -> bool {
     }
 }
 
+pub(super) fn is_unrestricted(s: &Session) -> bool {
+    let g = lock(&s.inner);
+    g.meta.manager
+        && g.meta.unrestricted
+        && g.meta.no_sandbox
+        && g.meta.permission_mode.as_deref() == Some("bypass")
+}
+
 fn guarded(req_id: &str, run: impl FnOnce() -> Result<Value, String>) -> SpoolResp {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         Ok(Ok(v)) => SpoolResp::ok(req_id, v),
@@ -141,6 +155,7 @@ fn spawn_req(spec: &core::SpawnSpec) -> Result<RunCreateReq, String> {
 pub(super) struct ManagerHost<'a> {
     pub(super) rt: &'a Arc<Runner>,
     pub(super) me: &'a str,
+    pub(super) unrestricted: bool,
 }
 
 impl core::Host for ManagerHost<'_> {
@@ -212,7 +227,7 @@ impl core::Host for ManagerHost<'_> {
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         builtin(&set, &spec.profile)?;
         self.rt
-            .create_run_as(spawn_req(&spec)?, false, None, None, None)
+            .create_run_as(spawn_req(&spec)?, false, None, None, None, None)
             .map(|(info, ..)| info)
             .map_err(|e| e.msg)
     }
@@ -299,6 +314,10 @@ impl core::Host for ManagerHost<'_> {
     fn spawned_for(&self, session: &str, from: &str) -> bool {
         self.rt.spawned_for(session, from)
     }
+
+    fn unrestricted(&self) -> bool {
+        self.unrestricted
+    }
 }
 
 #[cfg(test)]
@@ -311,6 +330,10 @@ pub(super) mod tests {
     const OTHER: &str = "s_bbbbbbbbbb";
 
     pub(in crate::daemon) fn runner(t: &Path) -> Arc<Runner> {
+        runner_with(t, None)
+    }
+
+    pub(in crate::daemon) fn runner_with(t: &Path, pin_check: Option<PinCheck>) -> Arc<Runner> {
         Arc::new(Runner {
             rename_lock: Mutex::new(()),
             switch_lock: Mutex::new(HashSet::new()),
@@ -323,6 +346,7 @@ pub(super) mod tests {
                 version: "test".into(),
                 max_sessions: 4,
                 relay: None,
+                pin_check,
             },
             secret: String::new(),
             started: Instant::now(),
@@ -347,12 +371,19 @@ pub(super) mod tests {
     }
 
     pub(in crate::daemon) fn add(rt: &Arc<Runner>, t: &Path, id: &str, manager: bool) {
-        let meta: Meta = serde_json::from_value(json!({
+        add_meta(rt, t, id, json!({"manager": manager}));
+    }
+
+    pub(in crate::daemon) fn add_meta(rt: &Arc<Runner>, t: &Path, id: &str, extra: Value) {
+        let mut meta = json!({
             "id": id, "name": id, "argv": ["claude"], "cwd": t,
             "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,
-            "shim_pid": 1, "child_pid": 2, "manager": manager,
-        }))
-        .unwrap();
+            "shim_pid": 1, "child_pid": 2,
+        });
+        meta.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let meta: Meta = serde_json::from_value(meta).unwrap();
         let sdir = t.join("sessions").join(id);
         fs::create_dir_all(&sdir).unwrap();
         let s = rt.new_session(meta, None, &sdir);
@@ -455,7 +486,11 @@ pub(super) mod tests {
     fn calls_naming_a_foreign_machine_go_through_the_remote_router_off_the_spool_thread() {
         let (t, rt) = pair();
         let home = t.path().join("homes").join(MGR);
-        let host = ManagerHost { rt: &rt, me: MGR };
+        let host = ManagerHost {
+            rt: &rt,
+            me: MGR,
+            unrestricted: false,
+        };
         let own = core::Host::machine(&host);
         let req = |tool: &str, machine: &str| SpoolReq {
             v: 1,
@@ -532,7 +567,11 @@ pub(super) mod tests {
         )
         .unwrap();
         folders::add(&homes, t.path(), None, 0).unwrap();
-        let host = ManagerHost { rt: &rt, me: MGR };
+        let host = ManagerHost {
+            rt: &rt,
+            me: MGR,
+            unrestricted: false,
+        };
         let e = core::Host::switch(&host, OTHER, "codex")
             .err()
             .unwrap_or_default();
@@ -614,7 +653,11 @@ pub(super) mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::create_dir_all(t.path().join("homes")).unwrap();
         folders::add(&t.path().join("homes"), &dir, None, 1).unwrap();
-        let host = ManagerHost { rt: &rt, me: MGR };
+        let host = ManagerHost {
+            rt: &rt,
+            me: MGR,
+            unrestricted: false,
+        };
         let trusted = host.trusted_dir(dir.to_str().unwrap()).unwrap();
         let meta = fs::metadata(&dir).unwrap();
         assert_eq!((trusted.pin.dev, trusted.pin.ino), (meta.dev(), meta.ino()));
@@ -637,7 +680,11 @@ pub(super) mod tests {
     #[test]
     fn precheck_refuses_what_the_run_plan_would_refuse() {
         let (t, rt) = pair();
-        let host = ManagerHost { rt: &rt, me: MGR };
+        let host = ManagerHost {
+            rt: &rt,
+            me: MGR,
+            unrestricted: false,
+        };
         let spec = |profile: &str, mode: &str, card: Option<&str>| core::SpawnSpec {
             profile: profile.into(),
             cwd: t.path().to_path_buf(),
@@ -662,5 +709,118 @@ pub(super) mod tests {
         assert!(host
             .precheck_spawn(&spec("claude-code", "bypass", None))
             .is_err());
+    }
+
+    const RISKY: &str = "s_cccccccccc";
+
+    fn unrestricted_pair(flags: Value) -> (tempfile::TempDir, Arc<Runner>) {
+        let t = tempfile::Builder::new()
+            .prefix("mu")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        let mut meta = json!({"manager": true});
+        meta.as_object_mut()
+            .unwrap()
+            .extend(flags.as_object().unwrap().clone());
+        add_meta(&rt, t.path(), MGR, meta);
+        add_meta(
+            &rt,
+            t.path(),
+            RISKY,
+            json!({"permission_mode": "bypass", "no_sandbox": true}),
+        );
+        (t, rt)
+    }
+
+    fn send_through_the_spool(t: &Path, rt: &Arc<Runner>) -> String {
+        let home = t.join("homes").join(MGR);
+        let stem = format!("{}-1-ab", now_ms());
+        let d = core::req_dir(&home);
+        fs::create_dir_all(&d).unwrap();
+        fs::write(
+            d.join(format!("{stem}.json")),
+            json!({"v":1,"id":stem,"tool":"send_to_session","args":{"session": RISKY, "text": "hi"}})
+                .to_string(),
+        )
+        .unwrap();
+        rt.manager_pass();
+        reply(t, &stem)["error"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    fn unrestricted_flags() -> Value {
+        json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"})
+    }
+
+    #[test]
+    fn an_unrestricted_managers_spool_may_write_to_a_bypass_session() {
+        let (t, rt) = unrestricted_pair(unrestricted_flags());
+        assert!(is_unrestricted(&rt.live_manager().unwrap()));
+        let e = send_through_the_spool(t.path(), &rt);
+        assert!(!e.contains("bypass mode or without"), "{e}");
+    }
+
+    #[test]
+    fn a_manager_missing_any_unrestricted_marker_may_not() {
+        for flags in [
+            json!({}),
+            json!({"unrestricted": true, "no_sandbox": true}),
+            json!({"unrestricted": true, "permission_mode": "bypass"}),
+            json!({"no_sandbox": true, "permission_mode": "bypass"}),
+        ] {
+            let (t, rt) = unrestricted_pair(flags.clone());
+            assert!(!is_unrestricted(&rt.live_manager().unwrap()), "{flags}");
+            let e = send_through_the_spool(t.path(), &rt);
+            assert!(e.contains("bypass mode or without"), "{flags}: {e}");
+        }
+    }
+
+    #[test]
+    fn the_mgr_rpc_host_never_writes_to_a_bypass_session_even_under_an_unrestricted_manager() {
+        let (_t, rt) = unrestricted_pair(unrestricted_flags());
+        let manager = rt.live_manager().unwrap();
+        assert!(is_unrestricted(&manager));
+        let host = ManagerHost {
+            rt: &rt,
+            me: manager.id.as_str(),
+            unrestricted: false,
+        };
+        let req = SpoolReq {
+            v: 1,
+            id: "1-1-a".into(),
+            tool: "send_to_session".into(),
+            args: json!({"session": RISKY, "text": "hi"}),
+        };
+        let e = core::execute(&host, &rt.mgr, &req).unwrap_err();
+        assert!(e.contains("bypass mode or without"), "{e}");
+    }
+
+    #[test]
+    fn runs_create_still_refuses_a_manager_without_the_sandbox_or_in_bypass() {
+        let t = tempfile::Builder::new()
+            .prefix("mr")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        for extra in [
+            json!({"no_sandbox": {}}),
+            json!({"permission_mode": "bypass"}),
+            json!({"no_sandbox": {}, "permission_mode": "bypass"}),
+        ] {
+            let mut req = json!({"profile": "claude-code", "cwd": t.path(), "manager": true});
+            req.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let req: RunCreateReq = serde_json::from_value(req).unwrap();
+            assert!(
+                rt.check_manager_create(CLIENT_CLI, &req).is_err(),
+                "{extra}"
+            );
+            let e = rt.create_run(req, true).unwrap_err();
+            assert_eq!(e.code, ErrorCode::InvalidParams, "{extra}: {}", e.msg);
+        }
     }
 }

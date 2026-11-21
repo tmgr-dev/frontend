@@ -142,6 +142,7 @@ impl Fx {
             },
             cwd_id: None,
             network: Network::Open,
+            spool: None,
         };
         let l = prepare(&spec).expect("prepare");
         let o = Command::new(&l.argv[0])
@@ -214,6 +215,7 @@ impl Fx {
             },
             cwd_id: None,
             network,
+            spool: None,
         };
         let l = prepare(&spec).expect("prepare");
         let o = Command::new(&l.argv[0])
@@ -248,6 +250,7 @@ impl Fx {
             },
             cwd_id: None,
             network: Default::default(),
+            spool: None,
         };
         let l = prepare(&spec).expect("prepare");
         let pair = native_pty_system().openpty(pty_size()).unwrap();

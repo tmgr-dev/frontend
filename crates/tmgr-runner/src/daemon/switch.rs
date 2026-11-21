@@ -308,7 +308,7 @@ impl Runner {
         .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
         self.check_parent(&old.id, None)?;
         prompt_verdict(&req, true).map_err(|m| api(ErrorCode::InvalidParams, m))?;
-        self.create_run_as(req, false, None, None, None)
+        self.create_run_as(req, false, None, None, None, None)
             .map(|(info, ..)| info)
     }
 }

@@ -23,6 +23,7 @@ pub fn rooms(link: &dyn Link) -> Vec<RoomInfo> {
             context_pct: None,
             context_tokens: None,
             last: None,
+            unrestricted: false,
         })
         .collect()
 }

@@ -165,6 +165,17 @@ fn serve() -> Result<i32> {
         return Err(Error::internal(format!("runner: {err}")));
     }
     cfg.relay = Some(crate::cmd::chat::transport::factory());
+    cfg.pin_check = Some(std::sync::Arc::new(|pin| {
+        let paths = tmgr_link::store::Paths::from_env().map_err(|e| e.to_string())?;
+        tmgr_link::pin::verify(&paths, pin)
+            .map(|v| match v {
+                tmgr_link::pin::Verdict::Ok => daemon::PinVerdict::Ok,
+                tmgr_link::pin::Verdict::Wrong { left } => daemon::PinVerdict::Wrong { left },
+                tmgr_link::pin::Verdict::Locked => daemon::PinVerdict::Locked,
+                tmgr_link::pin::Verdict::Unset => daemon::PinVerdict::Unset,
+            })
+            .map_err(|e| e.to_string())
+    }));
     daemon::serve(cfg).map_err(|e| Error::internal(format!("runner: {e}")))?;
     Ok(0)
 }

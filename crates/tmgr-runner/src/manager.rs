@@ -28,6 +28,7 @@ pub const POLL: Duration = Duration::from_millis(100);
 pub const CALL_WAIT: Duration = Duration::from_secs(30);
 pub const SPAWN_WAIT: Duration = Duration::from_secs(60);
 pub const SPAWN_PROFILES: [&str; 4] = ["claude-code", "codex", "opencode", "agy"];
+pub const SPOOL_ENV: &str = "TMGR_MANAGER_SPOOL";
 pub const MANAGER_PROFILES: [&str; 2] = ["claude-code", "codex"];
 
 fn cstr(s: &str) -> std::io::Result<CString> {
@@ -185,6 +186,49 @@ fn clock_ms() -> u64 {
 }
 
 pub fn submit(home: &Path, tool: &str, args: Value, wait: Duration) -> Result<Value, String> {
+    let io = |e: std::io::Error| format!("manager spool: {e}");
+    let (id, body) = encode(tool, args)?;
+    let reqs = walk(home, &[REQ_DIR], true).map_err(io)?;
+    let resps = walk(home, &[RESP_DIR], true).map_err(io)?;
+    submit_to(&reqs, &resps, (&id, &body), wait)
+}
+
+/// Client side of an unrestricted manager: opens the spool root itself and never touches the home above it.
+pub fn submit_in_spool(
+    spool: &Path,
+    tool: &str,
+    args: Value,
+    wait: Duration,
+) -> Result<Value, String> {
+    let io = |e: std::io::Error| format!("manager spool: {e}");
+    let (id, body) = encode(tool, args)?;
+    let reqs = walk_in(spool, REQ_DIR).map_err(io)?;
+    let resps = walk_in(spool, RESP_DIR).map_err(io)?;
+    submit_to(&reqs, &resps, (&id, &body), wait)
+}
+
+fn walk_in(spool: &Path, below: &str) -> std::io::Result<File> {
+    let root = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(spool)?;
+    openat_nofollow(
+        root.as_raw_fd(),
+        OsStr::new(below),
+        libc::O_RDONLY | libc::O_DIRECTORY,
+    )
+}
+
+/// Creates the spool of an unrestricted manager before it starts and returns its canonical root.
+pub fn prepare_spool(home: &Path) -> std::io::Result<PathBuf> {
+    walk(home, &[REQ_DIR], true)?;
+    walk(home, &[RESP_DIR], true)?;
+    Ok(SPOOL_ROOT
+        .iter()
+        .fold(std::fs::canonicalize(home)?, |p, c| p.join(c)))
+}
+
+fn encode(tool: &str, args: Value) -> Result<(String, Vec<u8>), String> {
     let id = new_id(clock_ms());
     let body = serde_json::to_vec(&SpoolReq {
         v: SPOOL_V,
@@ -196,16 +240,23 @@ pub fn submit(home: &Path, tool: &str, args: Value, wait: Duration) -> Result<Va
     if body.len() > limits::MAX_REQ_BYTES {
         return Err("request is too large".into());
     }
+    Ok((id, body))
+}
+
+fn submit_to(
+    reqs: &File,
+    resps: &File,
+    (id, body): (&str, &[u8]),
+    wait: Duration,
+) -> Result<Value, String> {
     let io = |e: std::io::Error| format!("manager spool: {e}");
-    let reqs = walk(home, &[REQ_DIR], true).map_err(io)?;
-    let resps = walk(home, &[RESP_DIR], true).map_err(io)?;
     let name = format!("{id}.json");
-    write_at(&reqs, &name, &body).map_err(io)?;
+    write_at(reqs, &name, body).map_err(io)?;
     let end = Instant::now() + wait;
     loop {
-        match read_at(&resps, &name, limits::MAX_RESP_BYTES) {
+        match read_at(resps, &name, limits::MAX_RESP_BYTES) {
             Ok(bytes) => {
-                unlink_at(&resps, &name);
+                unlink_at(resps, &name);
                 let r: SpoolResp = serde_json::from_slice(&bytes)
                     .map_err(|_| "the runner answered with an unreadable response".to_string())?;
                 if r.id != id {
@@ -221,7 +272,7 @@ pub fn submit(home: &Path, tool: &str, args: Value, wait: Duration) -> Result<Va
             Err(e) => return Err(io(e)),
         }
         if Instant::now() >= end {
-            unlink_at(&reqs, &name);
+            unlink_at(reqs, &name);
             return Err("timed out waiting for the runner".into());
         }
         std::thread::sleep(POLL);
@@ -320,6 +371,22 @@ pub fn claude_mcp_config(self_exe: &Path) -> String {
     .to_string()
 }
 
+pub fn with_spool_env(config: &str, spool: &Path, session: &str) -> Option<String> {
+    let mut v: Value = serde_json::from_str(config).ok()?;
+    let server = v
+        .get_mut("mcpServers")?
+        .get_mut(SERVER_NAME)?
+        .as_object_mut()?;
+    server.insert(
+        "env".into(),
+        json!({
+            SPOOL_ENV: spool.to_string_lossy(),
+            "TMGR_SESSION_ID": session,
+        }),
+    );
+    Some(v.to_string())
+}
+
 pub fn codex_mcp_config(existing: Option<&[u8]>, self_exe: &Path) -> Result<Vec<u8>, String> {
     let text = match existing {
         None => String::new(),
@@ -353,6 +420,7 @@ pub fn check_create(
     req: &RunCreateReq,
     from_cli: bool,
     other_live_manager: bool,
+    unrestricted: bool,
 ) -> Result<(), (ErrorCode, String)> {
     if !req.manager {
         return Ok(());
@@ -364,10 +432,10 @@ pub fn check_create(
             "manager is accepted only from the tmgr CLI",
         );
     }
-    if req.no_sandbox.is_some() {
+    if req.no_sandbox.is_some() && !unrestricted {
         return refuse(
             ErrorCode::InvalidParams,
-            "a manager cannot run without the sandbox",
+            "a manager cannot run without the sandbox; `tmgr manager start --unrestricted` runs it without the sandbox after the follower PIN",
         );
     }
     if req.origin.is_some()
@@ -383,10 +451,21 @@ pub fn check_create(
             "a manager cannot be combined with origin, team, clones, unattended, start_key, clone_of or agent_work",
         );
     }
-    if !matches!(req.permission_mode.as_deref(), None | Some("ask")) || req.bundle.is_some() {
+    let mode_ok = match req.permission_mode.as_deref() {
+        None | Some("ask") => true,
+        Some("bypass") => unrestricted,
+        Some(_) => false,
+    };
+    if !mode_ok || req.bundle.is_some() {
         return refuse(
             ErrorCode::InvalidParams,
             "a manager runs only in ask mode and without a bundle",
+        );
+    }
+    if unrestricted && req.profile != "claude-code" {
+        return refuse(
+            ErrorCode::InvalidParams,
+            "an unrestricted manager runs only with claude-code",
         );
     }
     if !MANAGER_PROFILES.contains(&req.profile.as_str()) {
@@ -456,6 +535,7 @@ pub struct State {
     prompts: Mutex<Vec<Prompt>>,
     pub create: Mutex<()>,
     pub warned: AtomicBool,
+    pub pin_last: Mutex<Option<Instant>>,
     pub chat: Box<dyn ChatPort>,
 }
 
@@ -473,6 +553,7 @@ impl State {
             prompts: Mutex::new(Vec::new()),
             create: Mutex::new(()),
             warned: AtomicBool::new(false),
+            pin_last: Mutex::new(None),
             chat,
         }
     }
@@ -634,6 +715,9 @@ pub trait Host {
     fn proposer(&self) -> Option<String>;
     fn remote_caller(&self) -> Option<&str>;
     fn spawned_for(&self, session: &str, from: &str) -> bool;
+    fn unrestricted(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -749,7 +833,9 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
             if s.team.is_some() || s.managed {
                 return Err("worker sessions of a team or queue cannot be written to".into());
             }
-            if s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox {
+            if !host.unrestricted()
+                && (s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox)
+            {
                 return Err(
                     "sessions in bypass mode or without the sandbox cannot be written to".into(),
                 );
@@ -1099,45 +1185,169 @@ mod tests {
 
     #[test]
     fn create_refusals() {
-        assert!(check_create(&base_req(), true, false).is_ok());
+        assert!(check_create(&base_req(), true, false, false).is_ok());
         assert_eq!(
-            code(check_create(&base_req(), false, false)),
+            code(check_create(&base_req(), false, false, false)),
             ErrorCode::Forbidden
         );
         let mut r = base_req();
         r.no_sandbox = Some(Default::default());
         assert_eq!(
-            code(check_create(&r, true, false)),
+            code(check_create(&r, true, false, false)),
             ErrorCode::InvalidParams
         );
         let mut r = base_req();
         r.unattended = true;
         assert_eq!(
-            code(check_create(&r, true, false)),
+            code(check_create(&r, true, false, false)),
             ErrorCode::InvalidParams
         );
         for mode in ["bypass", "accept-edits"] {
             let mut r = base_req();
             r.permission_mode = Some(mode.into());
             assert_eq!(
-                code(check_create(&r, true, false)),
+                code(check_create(&r, true, false, false)),
                 ErrorCode::InvalidParams,
                 "{mode}"
             );
         }
         let mut r = base_req();
         r.permission_mode = Some("ask".into());
-        assert!(check_create(&r, true, false).is_ok());
+        assert!(check_create(&r, true, false, false).is_ok());
         let mut r = base_req();
         r.profile = "opencode".into();
-        let e = check_create(&r, true, false).unwrap_err();
+        let e = check_create(&r, true, false, false).unwrap_err();
         assert_eq!(e.0, ErrorCode::InvalidParams);
         assert!(e.1.contains("claude-code and codex"));
-        assert_eq!(code(check_create(&base_req(), true, true)), ErrorCode::Busy);
+        assert_eq!(
+            code(check_create(&base_req(), true, true, false)),
+            ErrorCode::Busy
+        );
         let mut r = base_req();
         r.manager = false;
         r.no_sandbox = Some(Default::default());
-        assert!(check_create(&r, false, true).is_ok());
+        assert!(check_create(&r, false, true, false).is_ok());
+    }
+
+    fn unrestricted_req() -> RunCreateReq {
+        let mut r = base_req();
+        r.no_sandbox = Some(Default::default());
+        r.permission_mode = Some("bypass".into());
+        r
+    }
+
+    #[test]
+    fn an_unrestricted_manager_may_skip_the_sandbox_and_bypass() {
+        assert!(check_create(&unrestricted_req(), true, false, true).is_ok());
+        assert_eq!(
+            code(check_create(&unrestricted_req(), true, false, false)),
+            ErrorCode::InvalidParams
+        );
+        let mut r = base_req();
+        r.permission_mode = Some("bypass".into());
+        assert!(check_create(&r, true, false, false).is_err());
+        assert!(check_create(&r, true, false, true).is_ok());
+    }
+
+    #[test]
+    fn an_unrestricted_manager_keeps_every_other_refusal() {
+        let mut r = unrestricted_req();
+        r.profile = "codex".into();
+        let e = check_create(&r, true, false, true).unwrap_err();
+        assert!(e.1.contains("only with claude-code"), "{}", e.1);
+        let mut r = unrestricted_req();
+        r.bundle = Some(
+            serde_json::from_value(json!({
+                "v": 1, "task": {"workspace_id": 1, "task_id": 2}, "title": "t", "body": "b",
+                "author": {"kind": "human"}, "comments": [], "pages": [],
+                "launch": {"profile": "claude-code", "cwd": "/tmp"},
+            }))
+            .unwrap(),
+        );
+        assert_eq!(
+            code(check_create(&r, true, false, true)),
+            ErrorCode::InvalidParams
+        );
+        assert_eq!(
+            code(check_create(&unrestricted_req(), false, false, true)),
+            ErrorCode::Forbidden
+        );
+        assert_eq!(
+            code(check_create(&unrestricted_req(), true, true, true)),
+            ErrorCode::Busy
+        );
+        let mut r = unrestricted_req();
+        r.permission_mode = Some("accept-edits".into());
+        assert_eq!(
+            code(check_create(&r, true, false, true)),
+            ErrorCode::InvalidParams
+        );
+    }
+
+    #[test]
+    fn the_refusal_for_no_sandbox_names_the_unrestricted_command() {
+        let mut r = base_req();
+        r.no_sandbox = Some(Default::default());
+        let e = check_create(&r, true, false, false).unwrap_err();
+        assert!(e.1.contains("tmgr manager start --unrestricted"), "{}", e.1);
+    }
+
+    #[test]
+    fn a_session_round_trips_through_a_spool_opened_by_its_root() {
+        let t = tmp();
+        let home = t.path().canonicalize().unwrap();
+        let root = prepare_spool(&home).unwrap();
+        assert_eq!(root, home.join(SPOOL_ROOT[0]).join(SPOOL_ROOT[1]));
+        let (h2, stop) = (home.clone(), Arc::new(AtomicBool::new(false)));
+        let s2 = stop.clone();
+        let responder = std::thread::spawn(move || {
+            while !s2.load(std::sync::atomic::Ordering::SeqCst) {
+                for r in take_pending(&h2, clock_ms()).unwrap() {
+                    respond(&h2, &SpoolResp::ok(&r.id, json!({"echo": r.args}))).unwrap();
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        let got = submit_in_spool(
+            &root,
+            "list_sessions",
+            json!({"k": 1}),
+            Duration::from_secs(5),
+        );
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        responder.join().unwrap();
+        assert_eq!(got.unwrap(), json!({"echo": {"k": 1}}));
+    }
+
+    #[test]
+    fn submit_in_spool_refuses_a_symlinked_root_or_req_dir() {
+        let t = tmp();
+        let home = t.path().canonicalize().unwrap();
+        let root = prepare_spool(&home).unwrap();
+        let link = home.join("link");
+        symlink(&root, &link).unwrap();
+        let e = submit_in_spool(&link, "list_sessions", json!({}), Duration::from_millis(50));
+        assert!(e.is_err());
+        let elsewhere = home.join("elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+        std::fs::remove_dir(root.join(REQ_DIR)).unwrap();
+        symlink(&elsewhere, root.join(REQ_DIR)).unwrap();
+        let e = submit_in_spool(&root, "list_sessions", json!({}), Duration::from_millis(50));
+        assert!(e.is_err());
+        assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn the_spool_env_lands_in_the_mcp_server_entry() {
+        let cfg = claude_mcp_config(Path::new("/opt/tmgr"));
+        let out =
+            with_spool_env(&cfg, Path::new("/r/homes/s_a/.cache/tmgr-manager"), "s_a").unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let server = &v["mcpServers"][SERVER_NAME];
+        assert_eq!(server["env"][SPOOL_ENV], "/r/homes/s_a/.cache/tmgr-manager");
+        assert_eq!(server["env"]["TMGR_SESSION_ID"], "s_a");
+        assert_eq!(server["command"], "/opt/tmgr");
+        assert!(!cfg.contains(SPOOL_ENV));
     }
 
     #[test]
@@ -1396,6 +1606,7 @@ mod tests {
         failed: Mutex<Vec<(String, String)>>,
         gone: Mutex<std::collections::HashSet<String>>,
         asked: Mutex<Vec<(Option<String>, Option<String>)>>,
+        unrestricted: bool,
     }
 
     fn info(id: &str) -> SessionInfo {
@@ -1453,6 +1664,7 @@ mod tests {
                 me: "s_aaaaaaaaaa",
                 switch_fails: false,
                 asked: Mutex::default(),
+                unrestricted: false,
             }
         }
 
@@ -1601,6 +1813,9 @@ mod tests {
                 .iter()
                 .any(|(s, p)| s == session && p == &format!("remote:{from}"))
         }
+        fn unrestricted(&self) -> bool {
+            self.unrestricted
+        }
     }
 
     fn call(h: &Fake, st: &State, tool: &str, args: Value) -> Result<Value, String> {
@@ -1711,6 +1926,79 @@ mod tests {
             h.sent.lock().unwrap()[0],
             ("s_bbbbbbbbbb".to_string(), "hi".to_string())
         );
+    }
+
+    fn send_to(h: &Fake, id: &str) -> Result<Value, String> {
+        call(
+            h,
+            &State::default(),
+            "send_to_session",
+            json!({"session": id, "text": "hi"}),
+        )
+    }
+
+    fn with_risky_sessions() -> Fake {
+        let mut h = Fake::new();
+        let mut bypass = info("s_hhhhhhhhhh");
+        bypass.permission_mode = Some("bypass".into());
+        let mut open = info("s_iiiiiiiiii");
+        open.no_sandbox = true;
+        h.list.extend([bypass, open]);
+        h
+    }
+
+    #[test]
+    fn a_restricted_host_cannot_write_to_bypass_or_unsandboxed_sessions() {
+        let h = with_risky_sessions();
+        for id in ["s_hhhhhhhhhh", "s_iiiiiiiiii"] {
+            let e = send_to(&h, id).unwrap_err();
+            assert!(e.contains("bypass mode or without the sandbox"), "{e}");
+        }
+        assert!(h.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unrestricted_host_may_write_to_bypass_and_unsandboxed_sessions() {
+        let mut h = with_risky_sessions();
+        h.unrestricted = true;
+        for id in ["s_hhhhhhhhhh", "s_iiiiiiiiii"] {
+            send_to(&h, id).unwrap();
+        }
+        assert_eq!(h.sent.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn an_unrestricted_host_keeps_the_self_origin_team_and_exited_refusals() {
+        let mut h = with_risky_sessions();
+        h.unrestricted = true;
+        let mut managed = info("s_jjjjjjjjjj");
+        managed.managed = true;
+        h.list.push(managed);
+        for id in [
+            "s_aaaaaaaaaa",
+            "s_cccccccccc",
+            "s_dddddddddd",
+            "s_eeeeeeeeee",
+            "s_gggggggggg",
+            "s_jjjjjjjjjj",
+        ] {
+            assert!(send_to(&h, id).is_err(), "{id}");
+        }
+        assert!(h.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unrestricted_host_does_not_widen_switch() {
+        let mut h = with_risky_sessions();
+        h.unrestricted = true;
+        let e = call(
+            &h,
+            &State::default(),
+            "switch_agent",
+            json!({"session": "s_hhhhhhhhhh", "to": "codex"}),
+        )
+        .unwrap_err();
+        assert!(e.contains("cannot be switched"), "{e}");
     }
 
     #[test]

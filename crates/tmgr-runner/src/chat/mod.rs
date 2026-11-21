@@ -462,7 +462,7 @@ impl Chat {
         self.store()?.search(query, room, limit)
     }
 
-    pub fn rooms(&self, sessions: &[SessionInfo]) -> Vec<RoomInfo> {
+    pub fn rooms(&self, sessions: &[SessionInfo], unrestricted: Option<&str>) -> Vec<RoomInfo> {
         let last = |room: &RoomRef| self.store.as_ref().and_then(|s| s.last(room));
         let manager = self.manager_room();
         let mut out = vec![RoomInfo {
@@ -473,6 +473,7 @@ impl Chat {
             state: None,
             context_pct: None,
             context_tokens: None,
+            unrestricted: unrestricted.is_some(),
         }];
         let mut sessions: Vec<&SessionInfo> = sessions.iter().collect();
         sessions.sort_by(|a, b| {
@@ -494,6 +495,7 @@ impl Chat {
                 state: Some(state_name(s.state.kind).into()),
                 context_pct: meta.as_ref().and_then(|m| m.context_pct),
                 context_tokens: meta.and_then(|m| m.context_tokens),
+                unrestricted: unrestricted == Some(s.id.as_str()),
             });
         }
         out
@@ -629,6 +631,30 @@ mod tests {
         let b = Chat::open(t.path());
         assert_eq!(b.machine(), a.machine());
         assert_eq!(b.history(&room, None, None).unwrap()[0].body_md, "hello");
+    }
+
+    fn session_info(id: &str) -> SessionInfo {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "name": id, "argv": [], "cwd": "/w", "profile": "claude-code",
+            "state": {"kind": "waiting", "since_ms": 1, "detail": null, "exit_code": null},
+            "created_ms": 5, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn only_the_unrestricted_managers_rooms_carry_the_flag() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let sessions = [session_info("s_aaaaaaaaaa"), session_info("s_bbbbbbbbbb")];
+        let flags = |rooms: Vec<RoomInfo>| rooms.iter().map(|r| r.unrestricted).collect::<Vec<_>>();
+        assert_eq!(flags(c.rooms(&sessions, None)), [false, false, false]);
+        assert_eq!(
+            flags(c.rooms(&sessions, Some("s_bbbbbbbbbb"))),
+            [true, false, true]
+        );
+        let plain = serde_json::to_value(&c.rooms(&sessions, None)[0]).unwrap();
+        assert!(plain.get("unrestricted").is_none());
     }
 
     #[test]
