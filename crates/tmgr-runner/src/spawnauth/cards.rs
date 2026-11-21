@@ -13,6 +13,7 @@ pub const ATTEMPT_LIMIT: u32 = 5;
 pub const PRUNE_AFTER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 pub const MAX_CARDS: usize = 512;
 
+const EVICT_MIN_AGE_MS: u64 = 60 * 60 * 1000;
 const REASON_EXPIRED: &str = "expired";
 const REASON_ATTEMPTS: &str = "too_many_attempts";
 
@@ -276,7 +277,8 @@ impl CardStore {
         }
         if others.len() >= MAX_CARDS {
             self.prune_locked(now_ms)?;
-            if self.ids()?.iter().filter(|o| *o != id).count() >= MAX_CARDS {
+            let left = self.ids()?.iter().filter(|o| *o != id).count();
+            if left >= MAX_CARDS && !self.evict_locked(id, left + 1 - MAX_CARDS, now_ms)? {
                 return Ok(IssueOutcome::Full);
             }
         }
@@ -434,6 +436,38 @@ impl CardStore {
     pub fn prune(&self, now_ms: u64) -> Result<usize, CardError> {
         let _lock = self.lock()?;
         self.prune_locked(now_ms)
+    }
+
+    fn evict_locked(&self, keep: &str, need: usize, now_ms: u64) -> Result<bool, CardError> {
+        let mut expired = Vec::new();
+        let mut done = Vec::new();
+        for id in self.ids()? {
+            let Ok(Some(file)) = self.load(&id) else {
+                continue;
+            };
+            if id == keep || now_ms < file.updated_ms.saturating_add(EVICT_MIN_AGE_MS) {
+                continue;
+            }
+            match file.state {
+                CardState::Refused { reason } if reason == REASON_EXPIRED => {
+                    expired.push((file.updated_ms, id))
+                }
+                CardState::Refused { .. } | CardState::Spawned { .. } => {
+                    done.push((file.updated_ms, id))
+                }
+                CardState::Issued { .. } | CardState::Claimed { .. } => {}
+            }
+        }
+        if expired.len() + done.len() < need {
+            return Ok(false);
+        }
+        expired.sort();
+        done.sort();
+        for (_, id) in expired.into_iter().chain(done).take(need) {
+            io(std::fs::remove_file(self.path(&id)))?;
+        }
+        io(super::sync_dir(&self.dir))?;
+        Ok(true)
     }
 
     fn prune_locked(&self, now_ms: u64) -> Result<usize, CardError> {
@@ -1154,6 +1188,100 @@ mod tests {
         let out = s.issue("fresh", &proposal("/w/1"), later).unwrap();
         assert!(matches!(out, IssueOutcome::Challenge(_)), "{out:?}");
         assert_eq!(s.state("old-0").unwrap(), None);
+    }
+
+    fn write_refused(dir: &Path, id: &str, reason: &str, updated_ms: u64) {
+        let json = format!(
+            r#"{{"card_id":"{id}","updated_ms":{updated_ms},"state":{{"kind":"refused","reason":"{reason}"}}}}"#
+        );
+        std::fs::write(dir.join(format!("spawnauth/cards/{id}.json")), json).unwrap();
+    }
+
+    const HOUR: u64 = 3_600_000;
+
+    #[test]
+    fn full_store_of_old_expired_cards_accepts_a_new_issue() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        for i in 0..MAX_CARDS {
+            write_refused(t.path(), &format!("dead-{i}"), "expired", ISSUED + i as u64);
+        }
+        let out = s
+            .issue("fresh", &proposal("/w/1"), ISSUED + 600 + HOUR)
+            .unwrap();
+        assert!(matches!(out, IssueOutcome::Challenge(_)), "{out:?}");
+        assert_eq!(s.state("dead-0").unwrap(), None);
+        assert!(s.state("dead-511").unwrap().is_some());
+    }
+
+    #[test]
+    fn full_store_of_fresh_expired_cards_is_still_full() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        for i in 0..MAX_CARDS {
+            write_refused(t.path(), &format!("dead-{i}"), "expired", ISSUED);
+        }
+        assert_eq!(
+            s.issue("fresh", &proposal("/w/1"), ISSUED + HOUR - 1)
+                .unwrap(),
+            IssueOutcome::Full
+        );
+        assert!(s.state("dead-0").unwrap().is_some());
+    }
+
+    #[test]
+    fn full_store_evicts_expired_refusals_before_other_terminal_cards() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        for i in 0..MAX_CARDS - 1 {
+            write_card(t.path(), &format!("done-{i}"), ISSUED);
+        }
+        write_refused(t.path(), "dead", "expired", ISSUED + 1_000);
+        let out = s
+            .issue("fresh", &proposal("/w/1"), ISSUED + 2 * HOUR)
+            .unwrap();
+        assert!(matches!(out, IssueOutcome::Challenge(_)), "{out:?}");
+        assert_eq!(s.state("dead").unwrap(), None);
+        assert!(s.state("done-0").unwrap().is_some());
+    }
+
+    #[test]
+    fn full_store_falls_back_to_other_old_terminal_cards_and_spares_fresh_ones() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        for i in 0..MAX_CARDS {
+            write_card(t.path(), &format!("done-{i}"), ISSUED);
+        }
+        write_refused(t.path(), "attempts", "too_many_attempts", ISSUED);
+        assert_eq!(
+            s.issue("fresh", &proposal("/w/1"), ISSUED + HOUR - 1)
+                .unwrap(),
+            IssueOutcome::Full
+        );
+        let out = s.issue("fresh", &proposal("/w/1"), ISSUED + HOUR).unwrap();
+        assert!(matches!(out, IssueOutcome::Challenge(_)), "{out:?}");
+    }
+
+    #[test]
+    fn an_evicted_id_can_be_reissued_with_a_new_nonce() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        let first = match s.issue("same", &proposal("/w/1"), ISSUED).unwrap() {
+            IssueOutcome::Challenge(c) => c,
+            other => panic!("{other:?}"),
+        };
+        let later = ISSUED + CARD_TTL_MS + HOUR + 1;
+        for i in 0..MAX_CARDS - 1 {
+            write_refused(t.path(), &format!("dead-{i}"), "expired", later);
+        }
+        s.issue("other", &proposal("/w/2"), later).unwrap();
+        assert_eq!(s.state("same").unwrap(), None);
+        std::fs::remove_file(t.path().join("spawnauth/cards/dead-0.json")).unwrap();
+        let second = match s.issue("same", &proposal("/w/1"), later + 1).unwrap() {
+            IssueOutcome::Challenge(c) => c,
+            other => panic!("{other:?}"),
+        };
+        assert_ne!(first.nonce, second.nonce);
     }
 
     #[test]

@@ -864,7 +864,7 @@ fn supersedes_cases() -> Vec<(&'static str, SpawnKeyStatement, SpawnKeyStatement
 
 enum KbOp {
     Offer(SpawnKeyStatement, u64, &'static str),
-    Approve(String, String, u64, &'static str),
+    Approve(String, String, usize, u64, &'static str),
     Pinned(&'static str, String, Option<Vec<u8>>),
 }
 
@@ -875,6 +875,7 @@ fn offer_name(o: OfferOutcome) -> &'static str {
         OfferOutcome::Unchanged => "unchanged",
         OfferOutcome::Stale => "stale",
         OfferOutcome::Conflict => "conflict",
+        OfferOutcome::Full => "full",
     }
 }
 
@@ -894,14 +895,11 @@ fn keybook_scenarios() -> Vec<(&'static str, Vec<KbOp>)> {
     let newer = signed_statement("42", 5, 4, ISSUED + 1);
     let fp = first.device_fp().to_string();
     let prefix = fp[..8].to_string();
-    let (s3, s4) = (
-        first.spawn_key_fp()[..8].to_string(),
-        newer.spawn_key_fp()[..8].to_string(),
-    );
+    let (s3, s4) = (first.spawn_key_fp(), newer.spawn_key_fp());
     let (k3, k4) = (pub_bytes(&key(3)), pub_bytes(&key(4)));
     let t = ISSUED + 1_000;
-    let ap = |p: &str, k: &str, now: u64, want: &'static str| {
-        KbOp::Approve(p.to_string(), k.to_string(), now, want)
+    let ap = |p: &str, k: &str, len: usize, now: u64, want: &'static str| {
+        KbOp::Approve(p.to_string(), k.to_string(), len, now, want)
     };
     let v = vec![
         (
@@ -909,7 +907,7 @@ fn keybook_scenarios() -> Vec<(&'static str, Vec<KbOp>)> {
             vec![
                 KbOp::Offer(first.clone(), t, "added"),
                 KbOp::Pinned("42", fp.clone(), None),
-                ap(&prefix, &s3, t, "ok"),
+                ap(&prefix, &s3, 16, t, "ok"),
                 KbOp::Pinned("42", fp.clone(), Some(k3.clone())),
                 KbOp::Pinned("43", fp.clone(), None),
             ],
@@ -918,13 +916,13 @@ fn keybook_scenarios() -> Vec<(&'static str, Vec<KbOp>)> {
             "replacement_drops_approval_and_waits_sixty_seconds",
             vec![
                 KbOp::Offer(first.clone(), t, "added"),
-                ap(&prefix, &s3, t, "ok"),
+                ap(&prefix, &s3, 16, t, "ok"),
                 KbOp::Offer(newer.clone(), t + 10, "replaced"),
                 KbOp::Pinned("42", fp.clone(), None),
-                ap(&prefix, &s4, t + 10, "too_soon"),
-                ap(&prefix, &s4, t + 10 + 59_999, "too_soon"),
-                ap(&prefix, &s3, t + 10 + 60_000, "key_mismatch"),
-                ap(&prefix, &s4, t + 10 + 60_000, "ok"),
+                ap(&prefix, &s4, 16, t + 10, "too_soon"),
+                ap(&prefix, &s4, 16, t + 10 + 59_999, "too_soon"),
+                ap(&prefix, &s3, 16, t + 10 + 60_000, "key_mismatch"),
+                ap(&prefix, &s4, 16, t + 10 + 60_000, "ok"),
                 KbOp::Pinned("42", fp.clone(), Some(k4)),
             ],
         ),
@@ -932,23 +930,32 @@ fn keybook_scenarios() -> Vec<(&'static str, Vec<KbOp>)> {
             "approval_must_name_the_pending_spawn_key",
             vec![
                 KbOp::Offer(first.clone(), t, "added"),
-                ap(&prefix, &s4, t, "key_mismatch"),
-                ap(&prefix, &s3[..7], t, "prefix_too_short"),
+                ap(&prefix, &s4, 16, t, "key_mismatch"),
+                ap(&prefix, &s3, 15, t, "prefix_too_short"),
                 KbOp::Pinned("42", fp.clone(), None),
-                ap(&prefix, &s3, t, "ok"),
+                ap(&prefix, &s3, 64, t, "ok"),
+            ],
+        ),
+        (
+            "replacing_a_pending_entry_also_waits_sixty_seconds",
+            vec![
+                KbOp::Offer(first.clone(), t, "added"),
+                KbOp::Offer(newer.clone(), t + 10, "replaced"),
+                ap(&prefix, &s4, 16, t + 10 + 59_999, "too_soon"),
+                ap(&prefix, &s4, 16, t + 10 + 60_000, "ok"),
             ],
         ),
         (
             "refusals_keep_the_approved_key",
             vec![
                 KbOp::Offer(newer.clone(), t, "added"),
-                ap(&prefix, &s4, t, "ok"),
+                ap(&prefix, &s4, 16, t, "ok"),
                 KbOp::Offer(newer.clone(), t, "unchanged"),
                 KbOp::Offer(first.clone(), t, "stale"),
                 KbOp::Offer(signed_statement("42", 5, 3, ISSUED + 1), t, "conflict"),
-                ap(&fp[..7], &s4, t, "prefix_too_short"),
-                ap("00000000", &s4, t, "not_found"),
-                ap(&prefix, &s4, t, "not_found"),
+                ap(&fp[..7], &s4, 16, t, "prefix_too_short"),
+                ap("00000000", &s4, 16, t, "not_found"),
+                ap(&prefix, &s4, 16, t, "not_found"),
                 KbOp::Pinned("42", fp, Some(pub_bytes(&key(4)))),
             ],
         ),
@@ -960,8 +967,12 @@ fn keybook_scenarios() -> Vec<(&'static str, Vec<KbOp>)> {
                 KbOp::Offer(st, now, want) => {
                     assert_eq!(offer_name(book.offer(st.clone(), *now)), *want, "{name}")
                 }
-                KbOp::Approve(p, k, now, want) => {
-                    assert_eq!(approve_name(&book.approve(p, k, *now)), *want, "{name}")
+                KbOp::Approve(p, k, len, now, want) => {
+                    assert_eq!(
+                        approve_name(&book.approve(p, &k[..*len], *now)),
+                        *want,
+                        "{name}"
+                    )
                 }
                 KbOp::Pinned(user, fp, want) => assert_eq!(
                     book.pinned_key(user, fp).map(|k| k.spawn_pub),
@@ -984,8 +995,8 @@ fn keybook_json() -> Vec<Value> {
                     KbOp::Offer(st, now, want) => json!({
                         "op": "offer", "statement": statement_json(st), "now_ms": now, "expect": want,
                     }),
-                    KbOp::Approve(p, k, now, want) => json!({
-                        "op": "approve", "fp_prefix": p, "spawn_key_prefix": k, "now_ms": now, "expect": want,
+                    KbOp::Approve(p, k, len, now, want) => json!({
+                        "op": "approve", "fp_prefix": p, "spawn_fingerprint": k, "fingerprint_prefix_len": len, "now_ms": now, "expect": want,
                     }),
                     KbOp::Pinned(user, fp, want) => json!({
                         "op": "pinned_key", "user_id": user, "device_fp": fp,
@@ -1264,7 +1275,7 @@ fn generate() -> Value {
             "`wire_json_cases[]`: the raw wire JSON text must be accepted (`ok`) or refused (`refused`) by the parser: unknown fields, duplicate keys, non-integer numbers (a text with '.' or exponent, even 1.0), negative numbers (including -0), and ts_ms/exp_ms above 2^53-1 are refused; a port must inspect raw number tokens because JSON.parse loses the difference. ",
             "STATEMENT: `statement_cases[]`: a tmgr-spawn-key:v1 statement must carry two valid signatures (device chat sign key `sig`, spawn key `spawn_sig`), and the device must be trusted; `device_kex_pub_b64` is the device kex key used for that case (it feeds the device_fp). Check order: size (<= 512 bytes), prefix and field split (exactly five ':'-separated fields after the prefix, tokens, issued_at_ms canonical decimal <= 2^53-1), base64 of spawn_pub (strict), mismatch (user, device_id, device_fp recomputed from the sign and kex keys), clock_skew (issued_at_ms not more than 5 min after now_ms), key (spawn, sign and kex keys each 65-byte uncompressed on-curve, kex strict base64, spawn key must differ from both the sign key and the kex key, else unknown_key), trust, signatures (device sig first, then spawn sig). `expect` as above. ",
             "SUPERSEDES: `supersedes_cases[]`: a new statement supersedes the stored one only when same user and device_fp and issued_at_ms is strictly greater. With an equal issued_at_ms and a different key supersedes is false and the caller must REFUSE the new statement; a byte-identical statement is a no-op. ",
-            "KEYBOOK: `keybook_cases[]` replay ops on one empty in-memory key book: `offer` at `now_ms` (expect added, replaced, unchanged, stale or conflict; a first key or a strictly newer statement for the same user and device_fp becomes pending and drops any older entry including its approval; replacing an approved entry, or one already replaced, records now_ms; identical is unchanged; older is stale; equal issued_at_ms with another key, or another user for the same device_fp, is conflict), `approve` by device_fp prefix plus `spawn_key_prefix` at `now_ms` (both at least 8 chars else prefix_too_short; device_fp prefix must match exactly one pending entry: none is not_found, several is ambiguous; spawn_key_prefix must be a prefix of lowercase-hex sha256 of that entry's spawn_pub bytes else key_mismatch; an entry replaced less than 60000 ms before now_ms is too_soon), `pinned_key` (a key only for an approved entry of that user; pending keys are never pinned and must never reach verify).",
+            "KEYBOOK: `keybook_cases[]` replay ops on one empty in-memory key book: `offer` at `now_ms` (expect added, replaced, unchanged, stale, conflict or full (a book holds at most 64 devices; a new device_fp beyond that is full); a first key or a strictly newer statement for the same user and device_fp becomes pending and drops any older entry including its approval; any replacement, approved or pending, records now_ms; identical is unchanged; older is stale; equal issued_at_ms with another key, or another user for the same device_fp, is conflict), `approve` by device_fp prefix plus the first `fingerprint_prefix_len` chars of `spawn_fingerprint` as the spawn-key prefix, at `now_ms` (fp prefix at least 8 chars and the spawn-key prefix at least 16 chars (64 bits; the full 64 is accepted) else prefix_too_short; device_fp prefix must match exactly one pending entry: none is not_found, several is ambiguous; the spawn-key prefix must be a prefix of lowercase-hex sha256 of that entry's spawn_pub bytes else key_mismatch; an entry replaced less than 60000 ms before now_ms is too_soon; a replacement time later than now_ms is clamped to now_ms), The owner must type the spawn-key fingerprint shown on the PHONE (lowercase hex SHA-256 of the 65 uncompressed spawn-key bytes), never copy it from the machine's pending list, because the check exists to compare what the phone shows with what this machine holds. `pinned_key` (a key only for an approved entry of that user; pending keys are never pinned and must never reach verify).",
         ),
         "test_keys": {
             "test_spawn_secret_hex": hex::encode([3u8; 32]),

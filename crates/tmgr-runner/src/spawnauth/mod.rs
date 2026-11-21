@@ -1,3 +1,4 @@
+//! Lock order: keys lock, then cards lock; the `with_pinned` closure must not call back into the key store (flock does not nest).
 //! Local filesystem only (flock); same-user threat model (files are not MAC'd); pruning drops terminal cards after 30 days so card ids must be unique; rate limiting is owned by 3C.
 
 mod cards;
@@ -51,6 +52,7 @@ pub struct SpawnAuth {
 }
 
 impl SpawnAuth {
+    /// Removes leftover keys.json temp files; a corrupt keys.json fails closed and needs operator repair.
     pub fn open(
         runner_dir: &std::path::Path,
         identity: Identity,
@@ -115,13 +117,23 @@ impl SpawnAuth {
         wire: &SignedSpawn,
         now_ms: u64,
     ) -> Result<ClaimOutcome, CardError> {
-        match self.cards.result(card_id)? {
+        let terminal = match self.cards.result(card_id)? {
             None => return Ok(ClaimOutcome::UnknownCard),
-            Some(CardResult::Refused { reason }) => return Ok(ClaimOutcome::Dead { reason }),
+            Some(CardResult::Refused { reason }) => Some(ClaimOutcome::Dead { reason }),
             Some(done @ (CardResult::Spawned { .. } | CardResult::Interrupted { .. })) => {
-                return Ok(ClaimOutcome::AlreadyClaimed(done))
+                Some(ClaimOutcome::AlreadyClaimed(done))
             }
-            Some(CardResult::Pending { .. }) => {}
+            Some(CardResult::Pending { .. }) => None,
+        };
+        if let Some(outcome) = terminal {
+            let known = self
+                .keys
+                .state(&wire.device_fp)
+                .map_err(|_| CardError::Io)?;
+            return Ok(match known {
+                Some(_) => outcome,
+                None => ClaimOutcome::Rejected(Refusal::UnknownKey),
+            });
         }
         self.keys
             .with_pinned(&wire.device_fp, |key| match key {
@@ -195,6 +207,14 @@ pub(crate) fn sync_dir(dir: &Path) -> std::io::Result<()> {
 }
 
 pub(crate) fn write_durable(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_durable_with(path, bytes, sync_dir)
+}
+
+fn write_durable_with(
+    path: &Path,
+    bytes: &[u8],
+    sync: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
     let dir = path
         .parent()
         .ok_or_else(|| std::io::Error::other("no parent"))?;
@@ -221,7 +241,8 @@ pub(crate) fn write_durable(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&tmp);
         return res;
     }
-    sync_dir(dir)
+    let _ = sync(dir);
+    Ok(())
 }
 
 pub(crate) fn hex_lower(bytes: &[u8]) -> String {
@@ -307,7 +328,7 @@ mod tests {
         let o = offer(3, T0);
         let fp = fp_of(&o);
         assert_eq!(auth.offer_key(o, NOW).unwrap(), OfferOutcome::Added);
-        auth.approve_key(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        auth.approve_key(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         let c = challenge(&auth, "card-1");
         let wire = signed(&c, "card-1", &fp);
         let out = auth.claim("card-1", &wire, NOW).unwrap();
@@ -354,7 +375,7 @@ mod tests {
         let o = offer(3, T0);
         let fp = fp_of(&o);
         auth.offer_key(o, NOW).unwrap();
-        auth.approve_key(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        auth.approve_key(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         let c = challenge(&auth, "card-1");
         let wire = signed(&c, "card-1", &fp);
         *source.0.lock().unwrap() = TrustStatus::Revoked;
@@ -390,7 +411,7 @@ mod tests {
         let fp = fp_of(&o);
         auth.offer_key(o, NOW).unwrap();
         assert_eq!(
-            auth.approve_key(&fp[..8], &spawn_fp(4)[..8], NOW),
+            auth.approve_key(&fp[..8], &spawn_fp(4)[..16], NOW),
             Err(KeyError::Approve(
                 tmgr_spawn_auth::ApproveError::KeyMismatch
             ))
@@ -406,7 +427,7 @@ mod tests {
         let o = offer(3, T0);
         let fp = fp_of(&o);
         auth.offer_key(o, NOW).unwrap();
-        auth.approve_key(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        auth.approve_key(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         let c = challenge(&auth, "card-1");
         let wire = signed(&c, "card-1", &fp);
         auth.offer_key(offer(4, T0 + 1), NOW).unwrap();
@@ -415,39 +436,87 @@ mod tests {
     }
 
     #[test]
-    fn terminal_cards_answer_before_any_key_lookup() {
+    fn terminal_cards_answer_before_the_key_lookup_for_known_devices_only() {
         let t = tempfile::tempdir().unwrap();
         let (auth, _) = setup(t.path());
         let o = offer(3, T0);
         let fp = fp_of(&o);
         auth.offer_key(o, NOW).unwrap();
-        auth.approve_key(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        auth.approve_key(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
+        let pending_dev = offer_with(&kex_key(Some(1)), "dev-2", &secret(3), T0);
+        let pending_fp = fp_of(&pending_dev);
+        auth.offer_key(pending_dev, NOW).unwrap();
         let c = challenge(&auth, "card-1");
         auth.claim("card-1", &signed(&c, "card-1", &fp), NOW)
             .unwrap();
-        let stranger = signed(&c, "card-1", &"c".repeat(64));
+        let known_pending = signed(&c, "card-1", &pending_fp);
         assert!(matches!(
-            auth.claim("card-1", &stranger, NOW).unwrap(),
+            auth.claim("card-1", &known_pending, NOW).unwrap(),
             ClaimOutcome::AlreadyClaimed(CardResult::Interrupted { .. })
         ));
+        let stranger = signed(&c, "card-1", &"c".repeat(64));
+        assert_eq!(
+            auth.claim("card-1", &stranger, NOW).unwrap(),
+            ClaimOutcome::Rejected(Refusal::UnknownKey)
+        );
         auth.cards().mark_spawned("card-1", "sess-1", NOW).unwrap();
         assert!(matches!(
-            auth.claim("card-1", &stranger, NOW).unwrap(),
+            auth.claim("card-1", &known_pending, NOW).unwrap(),
             ClaimOutcome::AlreadyClaimed(CardResult::Spawned { .. })
         ));
+        assert_eq!(
+            auth.claim("card-1", &stranger, NOW).unwrap(),
+            ClaimOutcome::Rejected(Refusal::UnknownKey)
+        );
         let c2 = challenge(&auth, "card-2");
         auth.recover(T0 + CARD_TTL_MS + 1).unwrap();
         assert_eq!(
-            auth.claim("card-2", &signed(&c2, "card-2", &"c".repeat(64)), NOW)
+            auth.claim("card-2", &signed(&c2, "card-2", &pending_fp), NOW)
                 .unwrap(),
             ClaimOutcome::Dead {
                 reason: "expired".into()
             }
         );
         assert_eq!(
+            auth.claim("card-2", &signed(&c2, "card-2", &"c".repeat(64)), NOW)
+                .unwrap(),
+            ClaimOutcome::Rejected(Refusal::UnknownKey)
+        );
+        assert_eq!(
             auth.claim("card-3", &stranger, NOW).unwrap(),
             ClaimOutcome::UnknownCard
         );
+    }
+
+    #[test]
+    fn open_removes_leftover_key_temp_files_without_recover() {
+        let t = tempfile::tempdir().unwrap();
+        let (_auth, _) = setup(t.path());
+        let tmp = t.path().join("spawnauth/.keys.json.00ff00ff00ff00ff.tmp");
+        std::fs::write(&tmp, "x").unwrap();
+        drop(_auth);
+        let _ = setup(t.path());
+        assert!(!tmp.exists());
+    }
+
+    #[test]
+    fn a_failing_directory_fsync_after_the_rename_is_not_an_error() {
+        let t = tempfile::tempdir().unwrap();
+        let target = t.path().join("f.json");
+        let res = write_durable_with(&target, b"new", |_| Err(std::io::Error::other("fsync")));
+        assert!(res.is_ok());
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+    }
+
+    #[test]
+    fn a_failure_before_the_rename_is_an_error_and_leaves_no_temp_file() {
+        let t = tempfile::tempdir().unwrap();
+        let target = t.path().join("f.json");
+        std::fs::create_dir(&target).unwrap();
+        let res = write_durable_with(&target, b"new", |_| Ok(()));
+        assert!(res.is_err());
+        let leftovers = std::fs::read_dir(t.path()).unwrap().count();
+        assert_eq!(leftovers, 1);
     }
 
     #[test]

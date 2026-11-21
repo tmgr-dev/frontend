@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 pub type DeviceFp = String;
 
 const MIN_PREFIX_LEN: usize = 8;
+const MIN_SPAWN_KEY_PREFIX_LEN: usize = 16;
+const MAX_ENTRIES: usize = 64;
 const REPLACE_COOLDOWN_MS: u64 = 60_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +22,8 @@ pub enum OfferOutcome {
     Unchanged,
     Stale,
     Conflict,
+    /// The book already holds `MAX_ENTRIES` devices; a new device_fp is not recorded.
+    Full,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,12 +52,11 @@ impl KeyBook {
         let fp = statement.device_fp().to_string();
         let mut replaced_at_ms = None;
         let outcome = match self.entries.get(&fp) {
+            None if self.entries.len() >= MAX_ENTRIES => return OfferOutcome::Full,
             None => OfferOutcome::Added,
             Some(e) if e.statement == statement => return OfferOutcome::Unchanged,
             Some(e) if crate::supersedes(&statement, &e.statement) => {
-                if e.state == KeyState::Approved || e.replaced_at_ms.is_some() {
-                    replaced_at_ms = Some(now_ms);
-                }
+                replaced_at_ms = Some(now_ms);
                 OfferOutcome::Replaced
             }
             Some(e)
@@ -97,7 +100,7 @@ impl KeyBook {
         spawn_key_prefix: &str,
         now_ms: u64,
     ) -> Result<DeviceFp, ApproveError> {
-        if fp_prefix.len() < MIN_PREFIX_LEN || spawn_key_prefix.len() < MIN_PREFIX_LEN {
+        if fp_prefix.len() < MIN_PREFIX_LEN || spawn_key_prefix.len() < MIN_SPAWN_KEY_PREFIX_LEN {
             return Err(ApproveError::PrefixTooShort);
         }
         let mut hits = self
@@ -112,6 +115,8 @@ impl KeyBook {
             return Err(ApproveError::KeyMismatch);
         }
         if let Some(at) = entry.replaced_at_ms {
+            let at = at.min(now_ms);
+            entry.replaced_at_ms = Some(at);
             if now_ms < at.saturating_add(REPLACE_COOLDOWN_MS) {
                 return Err(ApproveError::TooSoon);
             }
@@ -189,7 +194,7 @@ mod tests {
     fn approve_pins_the_key_for_its_user_only() {
         let mut b = KeyBook::default();
         b.offer(st("42", &fp('a'), 1, 10), N);
-        assert_eq!(b.approve(&fp('a')[..8], &sk(1)[..8], N), Ok(fp('a')));
+        assert_eq!(b.approve(&fp('a')[..8], &sk(1)[..16], N), Ok(fp('a')));
         assert_eq!(b.state(&fp('a')), Some(KeyState::Approved));
         let k = b.pinned_key("42", &fp('a')).unwrap();
         assert_eq!(k.user_id, "42");
@@ -206,15 +211,15 @@ mod tests {
         let mut b = KeyBook::default();
         b.offer(st("42", &fp('a'), 1, 10), N);
         assert_eq!(
-            b.approve(&fp('a')[..8], &sk(2)[..8], N),
+            b.approve(&fp('a')[..8], &sk(2)[..16], N),
             Err(ApproveError::KeyMismatch)
         );
         assert_eq!(
-            b.approve(&fp('a')[..8], "ZZZZZZZZ", N),
+            b.approve(&fp('a')[..8], "ZZZZZZZZZZZZZZZZ", N),
             Err(ApproveError::KeyMismatch)
         );
         assert_eq!(
-            b.approve(&fp('a')[..8], &sk(1)[..7], N),
+            b.approve(&fp('a')[..8], &sk(1)[..15], N),
             Err(ApproveError::PrefixTooShort)
         );
         assert_eq!(b.state(&fp('a')), Some(KeyState::Pending));
@@ -335,12 +340,55 @@ mod tests {
     }
 
     #[test]
-    fn replacing_a_never_approved_entry_has_no_cooldown() {
+    fn replacing_a_never_approved_entry_also_cools_down() {
         let mut b = KeyBook::default();
         b.offer(st("42", &fp('a'), 1, 10), N);
         b.offer(st("42", &fp('a'), 2, 11), N);
-        assert_eq!(b.replaced_at_ms(&fp('a')), None);
-        assert!(b.approve("aaaaaaaa", &sk(2), N).is_ok());
+        assert_eq!(b.replaced_at_ms(&fp('a')), Some(N));
+        assert_eq!(
+            b.approve("aaaaaaaa", &sk(2), N + 59_999),
+            Err(ApproveError::TooSoon)
+        );
+        assert!(b.approve("aaaaaaaa", &sk(2), N + 60_000).is_ok());
+    }
+
+    #[test]
+    fn spawn_key_prefix_needs_sixteen_chars_and_the_full_hash_is_accepted() {
+        let mut b = KeyBook::default();
+        b.offer(st("42", &fp('a'), 1, 10), N);
+        assert_eq!(
+            b.approve("aaaaaaaa", &sk(1)[..15], N),
+            Err(ApproveError::PrefixTooShort)
+        );
+        assert_eq!(b.approve("aaaaaaaa", &sk(1), N), Ok(fp('a')));
+    }
+
+    #[test]
+    fn cooldown_never_outlasts_sixty_seconds_of_the_callers_clock() {
+        let mut b = KeyBook::default();
+        b.restore(
+            st("42", &fp('a'), 2, 11),
+            KeyState::Pending,
+            Some(N + 10_000_000),
+        );
+        assert_eq!(b.approve("aaaaaaaa", &sk(2), N), Err(ApproveError::TooSoon));
+        assert_eq!(b.replaced_at_ms(&fp('a')), Some(N));
+        assert!(b.approve("aaaaaaaa", &sk(2), N + 60_000).is_ok());
+    }
+
+    #[test]
+    fn the_sixty_fifth_distinct_device_is_refused_but_known_ones_still_update() {
+        let mut b = KeyBook::default();
+        let fpn = |i: usize| format!("{i:064x}");
+        for i in 0..MAX_ENTRIES {
+            assert_eq!(b.offer(st("42", &fpn(i), 1, 10), N), OfferOutcome::Added);
+        }
+        assert_eq!(
+            b.offer(st("42", &fpn(MAX_ENTRIES), 1, 10), N),
+            OfferOutcome::Full
+        );
+        assert_eq!(b.state(&fpn(MAX_ENTRIES)), None);
+        assert_eq!(b.offer(st("42", &fpn(0), 2, 11), N), OfferOutcome::Replaced);
     }
 
     #[test]

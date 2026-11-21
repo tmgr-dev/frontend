@@ -131,6 +131,7 @@ impl KeyStoreFile {
             user_id: user_id.into(),
         };
         let _lock = store.lock()?;
+        store.remove_temp_files()?;
         let (loaded, revoked_cleared) = store.load(Some(trust))?;
         if revoked_cleared {
             store.persist(&loaded)?;
@@ -164,10 +165,15 @@ impl KeyStoreFile {
     ) -> Result<DeviceFp, KeyError> {
         let _lock = self.lock()?;
         let (mut loaded, _) = self.load(None)?;
-        let fp = loaded
-            .book
-            .approve(fp_prefix, spawn_key_prefix, now_ms)
-            .map_err(KeyError::Approve)?;
+        let fp = match loaded.book.approve(fp_prefix, spawn_key_prefix, now_ms) {
+            Ok(fp) => fp,
+            Err(e) => {
+                if e == ApproveError::TooSoon {
+                    let _ = self.persist(&loaded);
+                }
+                return Err(KeyError::Approve(e));
+            }
+        };
         self.persist(&loaded)?;
         Ok(fp)
     }
@@ -209,6 +215,10 @@ impl KeyStoreFile {
 
     pub fn recover(&self) -> Result<(), KeyError> {
         let _lock = self.lock()?;
+        self.remove_temp_files()
+    }
+
+    fn remove_temp_files(&self) -> Result<(), KeyError> {
         let dir = self.path.parent().ok_or(KeyError::Io)?;
         let name = self
             .path
@@ -458,7 +468,7 @@ mod tests {
         assert_eq!(pending[0].device_fp, fp);
         assert_eq!(pending[0].spawn_key_fp, spawn_fp_of(&o));
         assert_eq!(
-            ks.approve(&fp[..8], &spawn_fp_of(&o)[..8], NOW).unwrap(),
+            ks.approve(&fp[..8], &spawn_fp_of(&o)[..16], NOW).unwrap(),
             fp
         );
         let k = ks.pinned_key(&fp).unwrap().unwrap();
@@ -502,7 +512,7 @@ mod tests {
         let first = offer(3, T0);
         let fp = fp_of(&first);
         ks.offer(first, &trust, NOW).unwrap();
-        ks.approve(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         let second = offer(4, T0 + 1);
         assert_eq!(
             ks.offer(second, &trust, NOW).unwrap(),
@@ -513,10 +523,10 @@ mod tests {
         let ks = open(t.path(), &trust);
         assert_eq!(ks.state(&fp).unwrap(), Some(KeyState::Pending));
         assert_eq!(
-            ks.approve(&fp[..8], &spawn_fp(4)[..8], NOW + 59_999),
+            ks.approve(&fp[..8], &spawn_fp(4)[..16], NOW + 59_999),
             Err(KeyError::Approve(ApproveError::TooSoon))
         );
-        ks.approve(&fp[..8], &spawn_fp(4)[..8], LATER).unwrap();
+        ks.approve(&fp[..8], &spawn_fp(4)[..16], LATER).unwrap();
         let want = secret(4)
             .verifying_key()
             .to_encoded_point(false)
@@ -540,7 +550,7 @@ mod tests {
         ks.offer(shown, &trust, NOW).unwrap();
         ks.offer(offer(4, T0 + 1), &trust, NOW).unwrap();
         assert_eq!(
-            ks.approve(&fp[..8], &spawn_fp(3)[..8], LATER),
+            ks.approve(&fp[..8], &spawn_fp(3)[..16], LATER),
             Err(KeyError::Approve(ApproveError::KeyMismatch))
         );
         assert_eq!(ks.state(&fp).unwrap(), Some(KeyState::Pending));
@@ -588,7 +598,7 @@ mod tests {
         let o = offer(3, T0);
         let fp = fp_of(&o);
         ks.offer(o.clone(), &trust, NOW).unwrap();
-        ks.approve(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         drop(ks);
 
         let evil = pub_b64(&secret(8));
@@ -617,7 +627,8 @@ mod tests {
         let ks = open(t.path(), &trust);
         let o = offer(3, T0);
         ks.offer(o.clone(), &trust, NOW).unwrap();
-        ks.approve(&fp_of(&o)[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        ks.approve(&fp_of(&o)[..8], &spawn_fp(3)[..16], NOW)
+            .unwrap();
         let ks = KeyStoreFile::open(&path(t.path()), "43", &trust).unwrap();
         assert_eq!(ks.state(&fp_of(&o)).unwrap(), None);
     }
@@ -630,7 +641,7 @@ mod tests {
         let o = offer(3, T0);
         let fp = fp_of(&o);
         ks.offer(o, &trust, NOW).unwrap();
-        ks.approve(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         drop(ks);
 
         let revoked = FakeTrust::new(TrustStatus::Revoked);
@@ -652,7 +663,7 @@ mod tests {
         let o = offer(3, T0);
         let fp = fp_of(&o);
         ks.offer(o, &trust, NOW).unwrap();
-        ks.approve(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         drop(ks);
 
         for status in [TrustStatus::Unknown, TrustStatus::NotTrusted] {
@@ -679,15 +690,15 @@ mod tests {
         ks.offer(b, &trust, NOW).unwrap();
         let sf = spawn_fp(3);
         assert_eq!(
-            ks.approve("dac2df92", &sf[..8], NOW),
+            ks.approve("dac2df92", &sf[..16], NOW),
             Err(KeyError::Approve(ApproveError::Ambiguous))
         );
         assert_eq!(
-            ks.approve(&fa[..7], &sf[..8], NOW),
+            ks.approve(&fa[..7], &sf[..16], NOW),
             Err(KeyError::Approve(ApproveError::PrefixTooShort))
         );
         assert_eq!(ks.state(&fa).unwrap(), Some(KeyState::Pending));
-        assert_eq!(ks.approve(&fa[..12], &sf[..8], NOW).unwrap(), fa);
+        assert_eq!(ks.approve(&fa[..12], &sf[..16], NOW).unwrap(), fa);
         assert_eq!(ks.state(&fb).unwrap(), Some(KeyState::Pending));
     }
 
@@ -699,7 +710,7 @@ mod tests {
         let o = offer(3, T0);
         let fp = fp_of(&o);
         ks.offer(o.clone(), &trust, NOW).unwrap();
-        ks.approve(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         assert_eq!(ks.offer(o, &trust, NOW).unwrap(), OfferOutcome::Unchanged);
         assert!(ks.pinned_key(&fp).unwrap().is_some());
     }
@@ -723,7 +734,7 @@ mod tests {
         let first = offer(3, T0);
         let fp = fp_of(&first);
         a.offer(first, &trust, NOW).unwrap();
-        a.approve(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        a.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         let other = offer_with(&kex_key(Some(1)), "dev-2", &secret(3), T0);
         let other_fp = fp_of(&other);
         assert_eq!(b.offer(other, &trust, NOW).unwrap(), OfferOutcome::Added);
@@ -743,7 +754,7 @@ mod tests {
         let fp = fp_of(&o);
         a.offer(o, &trust, NOW).unwrap();
         assert_eq!(b.pinned_key(&fp).unwrap(), None);
-        a.approve(&fp[..8], &spawn_fp(3)[..8], NOW).unwrap();
+        a.approve(&fp[..8], &spawn_fp(3)[..16], NOW).unwrap();
         assert!(b.pinned_key(&fp).unwrap().is_some());
         let _revoking = open(t.path(), &FakeTrust::new(TrustStatus::Revoked));
         assert_eq!(b.pinned_key(&fp).unwrap(), None);
@@ -776,7 +787,7 @@ mod tests {
         ks.offer(o, &trust, NOW).unwrap();
         let dir = t.path().join("spawnauth");
         set_mode(&dir, 0o500);
-        let res = ks.approve(&fp[..8], &spawn_fp(3)[..8], NOW);
+        let res = ks.approve(&fp[..8], &spawn_fp(3)[..16], NOW);
         set_mode(&dir, 0o700);
         assert_eq!(res, Err(KeyError::Io));
         assert_eq!(ks.state(&fp).unwrap(), Some(KeyState::Pending));
@@ -811,5 +822,52 @@ mod tests {
         assert!(!dir.join(".keys.json.00ff00ff00ff00ff.tmp").exists());
         assert!(dir.join("keep.tmp").exists());
         assert!(path(t.path()).exists());
+    }
+
+    #[test]
+    fn open_removes_leftover_temp_files() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        drop(open(t.path(), &trust));
+        let tmp = t.path().join("spawnauth/.keys.json.00ff00ff00ff00ff.tmp");
+        std::fs::write(&tmp, "x").unwrap();
+        drop(open(t.path(), &trust));
+        assert!(!tmp.exists());
+    }
+
+    #[test]
+    fn the_sixty_fifth_device_is_refused_and_not_persisted() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let ks = open(t.path(), &trust);
+        for i in 0..64 {
+            let o = offer_with(&kex_key(Some(i)), "dev", &secret(3), T0);
+            assert_eq!(ks.offer(o, &trust, NOW).unwrap(), OfferOutcome::Added);
+        }
+        let extra = offer_with(&kex_key(Some(64)), "dev", &secret(3), T0);
+        assert_eq!(
+            ks.offer(extra.clone(), &trust, NOW).unwrap(),
+            OfferOutcome::Full
+        );
+        assert_eq!(ks.state(&fp_of(&extra)).unwrap(), None);
+        assert_eq!(ks.pending().unwrap().len(), 64);
+    }
+
+    #[test]
+    fn a_cooldown_from_a_skewed_clock_is_clamped_and_persisted() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let ks = open(t.path(), &trust);
+        let o = offer(3, T0);
+        let fp = fp_of(&o);
+        ks.offer(o, &trust, NOW).unwrap();
+        ks.offer(offer(4, T0 + 1), &trust, NOW + 10_000_000)
+            .unwrap();
+        assert_eq!(
+            ks.approve(&fp[..8], &spawn_fp(4)[..16], NOW),
+            Err(KeyError::Approve(ApproveError::TooSoon))
+        );
+        ks.approve(&fp[..8], &spawn_fp(4)[..16], NOW + 60_000)
+            .unwrap();
     }
 }
