@@ -64,6 +64,15 @@ describe('syncRelayAuth', () => {
 		expect(invoke).not.toHaveBeenCalled();
 	});
 
+	it.each(['/api/', 'api', 'ftp://x/api/', ''])(
+		'does not set for an unresolvable api base %p',
+		async (base) => {
+			localStorage.setItem('token', envelope());
+			await syncRelayAuth(base, 7);
+			expect(invoke).not.toHaveBeenCalled();
+		},
+	);
+
 	it('does nothing without a token (local or signed-out)', async () => {
 		await syncRelayAuth(API, 7);
 		expect(invoke).not.toHaveBeenCalled();
@@ -104,6 +113,39 @@ describe('clearRelayAuth', () => {
 		asDesktop(true);
 		invoke.mockRejectedValue(new Error('x'));
 		await expect(clearRelayAuth()).resolves.toBeUndefined();
+	});
+});
+
+describe('invoke ordering', () => {
+	it('a clear is never overtaken by an earlier slower set', async () => {
+		localStorage.setItem('token', envelope());
+		const order: string[] = [];
+		let release: () => void = () => undefined;
+		invoke.mockImplementationOnce(async (cmd: string) => {
+			await new Promise<void>((r) => (release = r));
+			order.push(cmd);
+		});
+		invoke.mockImplementation(async (cmd: string) => void order.push(cmd));
+		const set = syncRelayAuth(API, 7);
+		const clear = clearRelayAuth();
+		const set2 = syncRelayAuth(API, 7);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(order).toEqual([]);
+		release();
+		await Promise.all([set, clear, set2]);
+		expect(order).toEqual([
+			'manager_set_relay_auth',
+			'manager_clear_relay_auth',
+			'manager_set_relay_auth',
+		]);
+	});
+
+	it('keeps serving later jobs after a failed one', async () => {
+		localStorage.setItem('token', envelope());
+		invoke.mockRejectedValueOnce(new Error('x'));
+		await syncRelayAuth(API, 7);
+		await clearRelayAuth();
+		expect(invoke).toHaveBeenLastCalledWith('manager_clear_relay_auth');
 	});
 });
 
@@ -183,5 +225,15 @@ describe('installRelayAuthSync', () => {
 			'manager_set_relay_auth',
 			expect.objectContaining({ token: 'other', userId: 8 }),
 		);
+	});
+});
+
+describe('manager window', () => {
+	it('does not push relay auth itself', () => {
+		const src = require('fs').readFileSync(
+			require('path').join(__dirname, '../App.vue'),
+			'utf8',
+		);
+		expect(src).not.toMatch(/relayAuth|syncRelayAuth/);
 	});
 });
