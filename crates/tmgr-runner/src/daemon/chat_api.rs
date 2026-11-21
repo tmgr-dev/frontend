@@ -314,7 +314,7 @@ impl Runner {
                 let i = lock(&s.inner);
                 let m = &i.meta;
                 let auto = m.name_auto || m.name == default_name(m.argv.first().map_or("", |a| a));
-                if !auto || m.manager {
+                if !auto || m.manager || m.profile.is_none() {
                     continue;
                 }
                 let from_title = titles

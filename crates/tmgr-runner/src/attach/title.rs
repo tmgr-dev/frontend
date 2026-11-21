@@ -304,6 +304,7 @@ pub struct TitleScan {
     skipping: bool,
     custom: Option<String>,
     auto: Option<String>,
+    caught_up: bool,
 }
 
 impl TitleScan {
@@ -319,7 +320,12 @@ impl TitleScan {
             skipping: false,
             custom: None,
             auto: None,
+            caught_up: false,
         }
+    }
+
+    pub fn caught_up(&self) -> bool {
+        self.caught_up
     }
 
     pub fn is_for(&self, path: &Path, id: Option<&str>) -> bool {
@@ -335,8 +341,10 @@ impl TitleScan {
     }
 
     pub fn poll(&mut self) {
+        self.caught_up = false;
         for _ in 0..MAX_PASSES {
             if !self.pass() {
+                self.caught_up = true;
                 return;
             }
         }

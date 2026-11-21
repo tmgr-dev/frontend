@@ -1,10 +1,11 @@
 use super::{lock, Chat};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
@@ -18,6 +19,20 @@ const RESOLVE_EVERY: Duration = Duration::from_secs(30);
 const BACKFILL_BYTES: u64 = 4 << 20;
 const BACKFILL_TURNS: usize = 30;
 const PID_FILE_SLACK_MS: u64 = 2000;
+const BACKFILL_TRIES: u32 = 3;
+const NO_LOG_WARN_MS: u64 = 120_000;
+
+fn tried() -> &'static Mutex<HashMap<String, u32>> {
+    static T: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
+    T.get_or_init(Mutex::default)
+}
+
+fn warn_once(key: String, msg: &str) {
+    static W: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    if lock(W.get_or_init(Mutex::default)).insert(key) {
+        crate::daemon::log(msg);
+    }
+}
 
 pub struct Tail {
     path: PathBuf,
@@ -271,12 +286,23 @@ pub fn capture_with(
                         meta: SessionMeta::default(),
                     };
                     if let Some((end, legacy)) = backfill_from {
-                        if !backfill(chat, s, agent, &mut t, end, legacy) {
-                            crate::daemon::log(&format!(
-                                "chat: history of session {} not read, will retry",
-                                s.id
-                            ));
-                            continue;
+                        if backfill(chat, s, agent, &mut t, end, legacy) {
+                            lock(tried()).remove(&s.id);
+                        } else {
+                            let n = {
+                                let mut m = lock(tried());
+                                let n = m.entry(s.id.clone()).or_insert(0);
+                                *n += 1;
+                                *n
+                            };
+                            warn_once(
+                                format!("backfill-{}", s.id),
+                                &format!("chat: history of session {} not read, will retry", s.id),
+                            );
+                            if n < BACKFILL_TRIES {
+                                continue;
+                            }
+                            lock(tried()).remove(&s.id);
                         }
                     }
                     save(dir, &s.id, &t);
@@ -286,6 +312,11 @@ pub fn capture_with(
                 }
             } else if let Some(t) = tails.get_mut(&s.id) {
                 t.resolve_at = Instant::now() + RESOLVE_EVERY;
+            } else if super::now_ms().saturating_sub(s.created_ms) > NO_LOG_WARN_MS {
+                warn_once(
+                    format!("nolog-{}", s.id),
+                    &format!("chat: no conversation file found for session {}", s.id),
+                );
             }
         }
         let Some(t) = tails.get_mut(&s.id) else {
@@ -293,7 +324,7 @@ pub fn capture_with(
         };
         if let Some(scan) = t.title.as_mut() {
             scan.poll();
-            if let Some(found) = scan.title("") {
+            if let Some(found) = scan.title("").filter(|_| scan.caught_up()) {
                 titles.push((s.id.clone(), found.text));
             }
         }
