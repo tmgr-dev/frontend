@@ -25,6 +25,7 @@ pub mod limits {
     pub const MAX_ID: usize = 64;
     pub const MAX_HISTORY: u32 = 500;
     pub const MAX_QUERY: usize = 256;
+    pub const MAX_MODEL: usize = 128;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +43,37 @@ pub struct ChatMessage {
     pub reply_to: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision: Option<DecisionRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_meta: Option<SessionMeta>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionMeta {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_pct: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl SessionMeta {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.context_pct.is_some_and(|p| p > 100) {
+            return Err("session_meta.context_pct must be 0 to 100".into());
+        }
+        if self.agent.as_deref().is_some_and(|a| !valid_token(a)) {
+            return Err("invalid session_meta.agent".into());
+        }
+        if self.model.as_deref().is_some_and(|m| {
+            m.is_empty() || m.len() > limits::MAX_MODEL || !m.bytes().all(|b| b.is_ascii_graphic())
+        }) {
+            return Err("invalid session_meta.model".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -274,6 +306,9 @@ impl ChatMessage {
         {
             return Err("invalid reply_to".into());
         }
+        if let Some(meta) = &self.session_meta {
+            meta.validate()?;
+        }
         match (&self.kind, &self.decision) {
             (MessageKind::Decision, None) => {
                 Err("a decision message needs decision.card_id".into())
@@ -309,6 +344,7 @@ mod tests {
                 "room": {"kind": "session", "machine": "mx_7f3a", "session": "s_abcdefghij"},
                 "author": {"kind": "session", "id": "s_abcdefghij", "machine": "mx_7f3a", "agent": "codex"},
                 "ts_ms": 1795000000100u64, "kind": "text", "body_md": "Done, tests green.",
+                "session_meta": {"context_pct": 42, "context_tokens": 84000, "agent": "codex", "model": "gpt-5-codex"},
                 "reply_to": "m_0190a1b2c3d4aabbccddeeff00112233",
                 "attachments": [{"name": "diff.patch", "mime": "text/x-diff", "size": 120,
                     "sha256": "a".repeat(64)}]
@@ -369,6 +405,7 @@ mod tests {
                 "kind",
                 "reply_to",
                 "room",
+                "session_meta",
                 "ts_ms",
                 "v"
             ]
@@ -425,6 +462,44 @@ mod tests {
             sha256: "a".repeat(64),
         });
         assert!(m.validate().is_err());
+    }
+
+    #[test]
+    fn invalid_session_meta_is_refused() {
+        let base: ChatMessage = serde_json::from_value(examples().remove(1)).unwrap();
+        let bad = [
+            SessionMeta {
+                context_pct: Some(101),
+                ..SessionMeta::default()
+            },
+            SessionMeta {
+                agent: Some("../x".into()),
+                ..SessionMeta::default()
+            },
+            SessionMeta {
+                model: Some(String::new()),
+                ..SessionMeta::default()
+            },
+            SessionMeta {
+                model: Some("a b".into()),
+                ..SessionMeta::default()
+            },
+            SessionMeta {
+                model: Some("m".repeat(limits::MAX_MODEL + 1)),
+                ..SessionMeta::default()
+            },
+        ];
+        for meta in bad {
+            let mut m = base.clone();
+            m.session_meta = Some(meta);
+            assert!(m.validate().is_err());
+        }
+        let mut m = base;
+        m.session_meta = Some(SessionMeta {
+            model: Some("claude-opus-4-1[1m]".into()),
+            ..SessionMeta::default()
+        });
+        m.validate().unwrap();
     }
 
     #[test]

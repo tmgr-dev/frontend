@@ -278,6 +278,7 @@ mod tests {
             attachments: Vec::new(),
             reply_to: None,
             decision: None,
+            session_meta: None,
         }
     }
 

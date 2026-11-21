@@ -257,7 +257,7 @@ pub(crate) fn mode_label(mode: &str) -> String {
     }
 }
 
-fn ctx_percent(tokens: u64) -> u8 {
+pub(crate) fn ctx_percent(tokens: u64) -> u8 {
     const SMALL: u64 = 200_000;
     const LARGE: u64 = 1_000_000;
     let window = if tokens > SMALL { LARGE } else { SMALL };

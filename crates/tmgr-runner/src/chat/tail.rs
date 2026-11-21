@@ -6,7 +6,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{SessionInfo, StateKind};
-use tmgr_ipc::chat::{limits, Author, AuthorKind};
+use tmgr_ipc::chat::{limits, Author, AuthorKind, ChatMessage, MessageKind, SessionMeta, CHAT_V};
 use tmgr_session::{switch, tail, Agent};
 
 const RESOLVE_EVERY: Duration = Duration::from_secs(30);
@@ -16,6 +16,7 @@ pub struct Tail {
     path: PathBuf,
     offset: u64,
     resolve_at: Instant,
+    pub(super) meta: SessionMeta,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -74,6 +75,24 @@ fn clip(text: String) -> String {
     text[..end].to_string()
 }
 
+fn update_meta(meta: &mut SessionMeta, profile: Option<&str>, usage: &tail::Usage) {
+    meta.agent = profile.map(str::to_string);
+    if let Some(model) = usage
+        .model
+        .as_deref()
+        .filter(|m| m.len() <= limits::MAX_MODEL && m.bytes().all(|b| b.is_ascii_graphic()))
+    {
+        meta.model = Some(model.to_string());
+    }
+    if let Some(tokens) = usage.context_tokens {
+        meta.context_tokens = Some(tokens);
+        meta.context_pct = Some(match usage.context_window {
+            Some(window) => ((tokens * 100 + window / 2) / window).min(100) as u8,
+            None => crate::attach::status::ctx_percent(tokens),
+        });
+    }
+}
+
 pub fn capture(chat: &Chat, sessions: &[SessionInfo]) {
     capture_with(chat, sessions, &|s, a| switch::log_of(s, a).ok());
 }
@@ -119,6 +138,7 @@ pub fn capture_with(
                         path,
                         offset,
                         resolve_at: Instant::now() + RESOLVE_EVERY,
+                        meta: SessionMeta::default(),
                     };
                     save(dir, &s.id, &t);
                     tails.insert(s.id.clone(), t);
@@ -142,12 +162,23 @@ pub fn capture_with(
             device: None,
             agent: s.profile.clone(),
         };
+        update_meta(&mut t.meta, s.profile.as_deref(), &batch.usage);
         let mut failed = false;
         for text in batch.texts {
-            if chat
-                .post(room.clone(), author.clone(), clip(text), None, Vec::new())
-                .is_err()
-            {
+            let msg = ChatMessage {
+                v: CHAT_V,
+                id: chat.mint_id(),
+                room: room.clone(),
+                author: author.clone(),
+                ts_ms: super::now_ms(),
+                kind: MessageKind::Text,
+                body_md: clip(text),
+                attachments: Vec::new(),
+                reply_to: None,
+                decision: None,
+                session_meta: Some(t.meta.clone()),
+            };
+            if chat.append(msg).is_err() {
                 failed = true;
                 break;
             }
@@ -227,6 +258,53 @@ mod tests {
         assert_eq!(m.author.machine.as_deref(), Some(chat.machine()));
         assert_eq!(m.author.agent.as_deref(), Some("claude-code"));
         m.validate().unwrap();
+    }
+
+    #[test]
+    fn session_messages_and_rooms_carry_the_session_meta() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        let turn = |text: &str, input: u64| {
+            json!({"type": "assistant", "message": {"model": "claude-opus-4-1", "usage": {"input_tokens": input},
+                "content": [{"type": "text", "text": text}]}})
+            .to_string()
+                + "\n"
+        };
+        append(&log, &turn("first", 40_000));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        let want = SessionMeta {
+            context_pct: Some(20),
+            context_tokens: Some(40_000),
+            agent: Some("claude-code".into()),
+            model: Some("claude-opus-4-1".into()),
+        };
+        let m = chat
+            .history(&chat.session_room(SID), None, None)
+            .unwrap()
+            .remove(0);
+        assert_eq!(m.session_meta.as_ref(), Some(&want));
+        m.validate().unwrap();
+        let room = chat.rooms(&s).remove(1);
+        assert_eq!(room.context_pct, Some(20));
+        assert_eq!(room.context_tokens, Some(40_000));
+    }
+
+    #[test]
+    fn codex_context_uses_the_reported_window() {
+        let mut meta = SessionMeta::default();
+        let usage = tail::Usage {
+            model: Some("gpt-x".into()),
+            context_tokens: Some(64_600),
+            context_window: Some(258_400),
+        };
+        update_meta(&mut meta, Some("codex"), &usage);
+        assert_eq!(meta.context_pct, Some(25));
+        update_meta(&mut meta, Some("codex"), &tail::Usage::default());
+        assert_eq!(meta.context_pct, Some(25));
+        assert_eq!(meta.model.as_deref(), Some("gpt-x"));
     }
 
     #[test]

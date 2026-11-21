@@ -681,6 +681,7 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                 attachments: Vec::new(),
                 reply_to: reply_to.map(String::from),
                 decision: None,
+                session_meta: None,
             };
             msg.validate()?;
             let sent = st.chat.post(msg)?;
