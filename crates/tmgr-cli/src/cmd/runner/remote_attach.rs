@@ -231,6 +231,7 @@ impl App {
                     | Cmd::Watch
                     | Cmd::Reconnect
                     | Cmd::Notes
+                    | Cmd::Chat
                     | Cmd::Filter,
                 ) => self.notify("not available over a remote attach"),
                 Action::Cmd(cmd) => {

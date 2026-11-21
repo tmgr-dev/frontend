@@ -23,7 +23,10 @@ impl Runner {
             match core::take_pending(&home, now_ms()) {
                 Ok(reqs) => {
                     self.mgr.warned.store(false, Ordering::SeqCst);
-                    let host = ManagerHost { rt: self, me: &m.id };
+                    let host = ManagerHost {
+                        rt: self,
+                        me: &m.id,
+                    };
                     for req in reqs {
                         let resp = match core::execute(&host, &self.mgr, &req) {
                             Ok(v) => SpoolResp::ok(&req.id, v),
@@ -93,11 +96,12 @@ impl core::Host for ManagerHost<'_> {
         if !Path::new(cwd).is_absolute() {
             return Err(bad());
         }
-        let dir = bundle::open_path(fs::canonicalize(cwd).map_err(|_| bad())?)
-            .map_err(|_| bad())?;
+        let dir =
+            bundle::open_path(fs::canonicalize(cwd).map_err(|_| bad())?).map_err(|_| bad())?;
         if !folders::is_trusted(&self.rt.cfg.homes, &dir.path, dir.id()) {
             return Err(
-                "cwd is not a trusted folder; the owner must trust it with tmgr runner trust".into(),
+                "cwd is not a trusted folder; the owner must trust it with tmgr runner trust"
+                    .into(),
             );
         }
         Ok(dir.path.clone())

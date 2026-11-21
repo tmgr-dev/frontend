@@ -250,6 +250,13 @@ pub const ACTIONS: &[ActionDef] = &[
         true,
     ),
     def(
+        Cmd::Chat,
+        b"j",
+        "j",
+        "Chat with the Manager and session rooms",
+        true,
+    ),
+    def(
         Cmd::Watch,
         b"W",
         "W",
