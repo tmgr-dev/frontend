@@ -257,7 +257,6 @@ pub fn run_attach<R: Read>(reader: &mut R, sid: &str, shared: &Shared) {
       Err(e) => break sanitize::text(&e.to_string(), 200),
     };
     match msg {
-      ServerMsg::Chat(_) => {}
       ServerMsg::Screen(v) => {
         if let Ok(push) = serde_json::from_value::<ScreenPush>(v) {
           if push.session == sid {
@@ -292,7 +291,6 @@ pub fn run_watch<R: Read>(reader: &mut R, sink: &dyn Fn(WatchEvent) -> bool, co:
       Err(e) => break sanitize::text(&e.to_string(), 200),
     };
     match msg {
-      ServerMsg::Chat(_) => {}
       ServerMsg::Event(v) => {
         let Ok(ev) = serde_json::from_value::<EventMsg>(v) else { continue };
         if !super::conn::valid_session_id(&ev.session) {
