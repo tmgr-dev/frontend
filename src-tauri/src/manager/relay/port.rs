@@ -53,6 +53,7 @@ pub struct TrustState {
   pub key_mismatch: Vec<String>,
 }
 
+#[allow(dead_code)]
 pub trait RelayPort: Send + Sync {
   fn rooms(&self) -> Result<Vec<RoomInfo>, String>;
   fn history(&self, params: &HistoryParams) -> Result<Vec<ChatMessage>, String>;

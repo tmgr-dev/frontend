@@ -212,7 +212,7 @@ fn room() -> RoomRef {
 }
 
 fn send(e: &Engine, text: &str) -> Result<ChatMessage, String> {
-  e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![] })
+  e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![], id: None, ts_ms: None })
 }
 
 fn history(e: &Engine) -> Vec<String> {
@@ -457,7 +457,7 @@ fn directory_key_mismatch_is_reported_and_pinned_keys_are_kept() {
     d.kex_pub = evil.kex_pub_b64();
   }
   b.poll_once().unwrap();
-  assert_eq!(b.trust_state().unwrap().key_mismatch, [aid.clone()]);
+  assert_eq!(b.trust_state().unwrap().key_mismatch, std::slice::from_ref(&aid));
   let pinned = b.lock().st.trusted.iter().find(|d| d.id == aid).unwrap().fp.clone();
   assert_eq!(pinned, a.trust_state().unwrap().self_fp.unwrap());
 }
