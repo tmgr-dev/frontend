@@ -30,7 +30,7 @@ it('delivers writes from other instances and from clients that sent no id', () =
 	).toMatchObject({ type: 'task.created', taskId: 2 });
 });
 
-it('maps a deletion without the task and sets no actor or changed list', () => {
+it('maps a deletion without the task and sets no actor for a person or a changed list', () => {
 	const event = realtimeTaskEvent(5, { id: 3 }, 'deleted', OTHER, OWN);
 	expect(event).toEqual({ type: 'task.deleted', workspaceId: 5, taskId: 3 });
 	expect(
@@ -41,4 +41,21 @@ it('maps a deletion without the task and sets no actor or changed list', () => {
 it('ignores a payload without a task id', () => {
 	expect(realtimeTaskEvent(5, undefined, 'updated', OTHER, OWN)).toBeNull();
 	expect(realtimeTaskEvent(5, {}, 'created', OTHER, OWN)).toBeNull();
+});
+
+it('names the plugin whose token made a remote write, so that plugin skips it on every client', () => {
+	expect(
+		realtimeTaskEvent(5, { id: 1 }, 'updated', OTHER, OWN, 'tagger'),
+	).toMatchObject({ type: 'task.updated', actor: 'plugin:tagger' });
+	expect(
+		realtimeTaskEvent(5, { id: 1 }, 'deleted', OTHER, OWN, 'tagger'),
+	).toEqual({
+		type: 'task.deleted',
+		workspaceId: 5,
+		taskId: 1,
+		actor: 'plugin:tagger',
+	});
+	expect(
+		realtimeTaskEvent(5, { id: 1 }, 'updated', OTHER, OWN, null),
+	).not.toHaveProperty('actor');
 });

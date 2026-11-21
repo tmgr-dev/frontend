@@ -131,13 +131,20 @@ export const installWebPlugins = (store: Store<any>) => {
 						actor,
 					});
 				},
-				onTaskUpdated: (task, action, _userId, sourceInstanceId) => {
+				onTaskUpdated: (
+					task,
+					action,
+					_userId,
+					sourceInstanceId,
+					updatedByPlugin,
+				) => {
 					const event = realtimeTaskEvent(
 						workspaceId,
 						task,
 						action,
 						sourceInstanceId,
 						SOURCE_INSTANCE_ID,
+						updatedByPlugin,
 					);
 					if (event) domainEvents.emit(event);
 				},

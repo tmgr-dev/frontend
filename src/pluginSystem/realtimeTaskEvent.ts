@@ -12,17 +12,20 @@ export const realtimeTaskEvent = (
 	action: 'created' | 'updated' | 'deleted',
 	sourceInstanceId: string | undefined,
 	ownId: string,
+	updatedByPlugin?: string | null,
 ): TaskEvent | null => {
 	if (sourceInstanceId === ownId || sourceInstanceId?.startsWith(`${ownId}.`))
 		return null;
 	const taskId = task?.id;
 	if (!task || taskId == null) return null;
+	const actor = updatedByPlugin ? { actor: `plugin:${updatedByPlugin}` } : {};
 	if (action === 'deleted')
-		return { type: 'task.deleted', workspaceId, taskId };
+		return { type: 'task.deleted', workspaceId, taskId, ...actor };
 	return {
 		type: action === 'created' ? 'task.created' : 'task.updated',
 		workspaceId,
 		taskId,
 		task,
+		...actor,
 	};
 };

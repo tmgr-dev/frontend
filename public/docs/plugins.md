@@ -146,7 +146,7 @@ payload is `{ type, workspaceId, pageId, slug, title, parentId, version, author:
 
 ### Task events in shared workspaces
 
-`task.created`, `task.updated` and `task.deleted` also arrive for writes made by other clients (colleagues, other tabs or windows) over realtime. These events have no `changed` list, and a status move arrives as `task.updated`, never `task.statusChanged`. Writes made in this window or by a plugin produce the local event only.
+`task.created`, `task.updated` and `task.deleted` also arrive for writes made by other clients (colleagues, other tabs or windows) over realtime. These events have no `changed` list, and a status move arrives as `task.updated`, never `task.statusChanged`. Writes made in this window or by a plugin produce the local event only. A plugin never receives the events of its own writes, including writes it made on a colleague's client, so the same plugin running for several members does not answer itself in a loop.
 
 ## Text and documents (API 1.7)
 

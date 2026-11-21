@@ -804,13 +804,20 @@ export const installPlugins = async (
 							actor,
 						});
 					},
-					onTaskUpdated: (task, action, _userId, sourceInstanceId) => {
+					onTaskUpdated: (
+						task,
+						action,
+						_userId,
+						sourceInstanceId,
+						updatedByPlugin,
+					) => {
 						const event = realtimeTaskEvent(
 							workspace.id,
 							task,
 							action,
 							sourceInstanceId,
 							SOURCE_INSTANCE_ID,
+							updatedByPlugin,
 						);
 						if (event) domainEvents.emit(event);
 					},
