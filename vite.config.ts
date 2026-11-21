@@ -100,6 +100,7 @@ const standaloneDevPages = [
 	'/decisions.html',
 	'/decisions-phones.html',
 	'/manager.html',
+	'/popover.html',
 ];
 
 const runnerTerminalDevCsp = (): Plugin => ({
@@ -218,6 +219,7 @@ export default defineConfig({
 				'decisions-phones': fileURLToPath(
 					new URL('./decisions-phones.html', import.meta.url),
 				),
+				popover: fileURLToPath(new URL('./popover.html', import.meta.url)),
 			},
 			output: {
 				// Vite 8 builds with rolldown: the object form of manualChunks is gone and the
