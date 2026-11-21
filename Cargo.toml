@@ -50,6 +50,7 @@ tmgr-approval = { path = "crates/tmgr-approval" }
 tmgr-fuzzy = { path = "crates/tmgr-fuzzy" }
 tmgr-phone = { path = "crates/tmgr-phone" }
 tmgr-chat-relay = { path = "crates/tmgr-chat-relay" }
+tmgr-spawn-auth = { path = "crates/tmgr-spawn-auth" }
 portable-pty = "0.9"
 vt100 = "0.16"
 vte = "0.15"
