@@ -16,6 +16,7 @@ pub mod method {
     pub const SEND: &str = "chat.send";
     pub const SEARCH: &str = "chat.search";
     pub const SUBSCRIBE: &str = "chat.subscribe";
+    pub const RELAY_SELF: &str = "chat.relay_self";
 }
 
 pub mod limits {
@@ -172,6 +173,13 @@ pub struct SendParams {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ts_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelaySelf {
+    pub id: String,
+    pub device_id: String,
+    pub fp: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

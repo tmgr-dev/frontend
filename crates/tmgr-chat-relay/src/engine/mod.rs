@@ -1405,6 +1405,14 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         Ok(())
     }
 
+    pub fn own_device(&self) -> Option<(String, String)> {
+        let g = self.lock();
+        Some((
+            g.identity.as_ref()?.device_id.clone(),
+            g.keys.as_ref()?.fingerprint(),
+        ))
+    }
+
     pub fn owns(&self, room: &RoomRef) -> bool {
         if self.cfg.local_machine.is_empty() {
             return false;

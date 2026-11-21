@@ -3643,3 +3643,12 @@ fn chat_after_an_rpc_from_the_same_sender_is_still_processed() {
     assert_eq!(sink.n(), 1);
     assert_eq!(got.len(), 1);
 }
+
+#[test]
+fn own_device_is_none_before_setup_and_the_public_id_and_fp_after() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let e = engine_with(&fake, &clock, "Runner").with_kind("runner");
+    assert_eq!(e.own_device(), None);
+    e.register().unwrap();
+    assert_eq!(e.own_device(), Some((my_id(&e), fp_of(&e))));
+}

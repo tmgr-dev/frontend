@@ -231,6 +231,7 @@ pub struct Setup {
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
     pub rpc: Arc<RpcInbox>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
+    pub on_device: Arc<dyn Fn(Option<(String, String)>) + Send + Sync>,
 }
 
 type Engine = RelayEngine<DynTransport, RelayDir, RelaySink>;
@@ -312,6 +313,7 @@ fn serve(engine: Arc<Engine>, setup: &Setup) {
         let engine = engine.clone();
         Arc::new(move |device, kind, id, payload| engine.send_rpc(device, kind, id, payload))
     };
+    (setup.on_device)(engine.own_device());
     let rpc_server = (setup.serve_rpc)(rpc_send);
     crate::daemon::log("chat relay: pump started");
     run_poll(&*engine, &*stop, &sleeper(stop.clone()));
@@ -321,6 +323,7 @@ fn serve(engine: Arc<Engine>, setup: &Setup) {
     {
         let _ = h.join();
     }
+    (setup.on_device)(None);
 }
 
 pub fn spawn(setup: Setup) -> std::io::Result<JoinHandle<()>> {

@@ -123,7 +123,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `team.workers.v1` | `team` on `runs.create` and `SessionInfo`; `assignment` in a run bundle (section 5, "Run bundles") |
 | `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
 | `profiles_login_check.v1` | `profiles.login_check` |
-| `chat.v1` | `chat.rooms`, `chat.history`, `chat.send`, `chat.search`, `chat.subscribe` |
+| `chat.v1` | `chat.rooms`, `chat.history`, `chat.send`, `chat.search`, `chat.subscribe`, `chat.relay_self` |
 | `manager.v1` | `manager` on `runs.create` and `SessionInfo` (section 5, "Manager session") |
 | `run_prompt.v1` | `prompt` on `runs.create` |
 | `spawnauth.v1` | method `spawn.challenge` (CLI and desktop only) |
@@ -699,6 +699,7 @@ optional; readers ignore the object when it is absent.
 | `chat.send` | `{room, body_md, reply_to?, attachments?, id?, ts_ms?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
 | `chat.search` | `{query, room?, limit?}` (`query` 1 to 256 characters, `limit` default 50, max 500) | `[ChatMessage]`, newest first: case-insensitive substring match on `body_md` |
 | `chat.subscribe` | none | `null`; the connection then also receives a `chat` push |
+| `chat.relay_self` | none | `{id, device_id, fp}`: this runner's machine id and its public relay device id and fingerprint (no keys); `not_found` when the relay is not configured or not ready |
 
 Errors: `invalid_params` (bad room, a room of another machine, empty body, bad query, `id` without `ts_ms`, bad `id`), `not_found` (an ingest into a session room this runner does not know), `conflict` (an ingest id that already holds different content), `busy` (the target
 session is not at its prompt), `forbidden`.

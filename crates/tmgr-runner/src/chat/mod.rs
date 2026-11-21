@@ -9,14 +9,16 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::Store;
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
     message_id_at, valid_message_id, Attachment, Author, AuthorKind, ChatMessage, ChatPush,
-    MessageKind, RoomInfo, RoomRef, CHAT_V,
+    MessageKind, RelaySelf, RoomInfo, RoomRef, CHAT_V,
 };
+
+use crate::mgr_rpc::relay::RpcClient;
 
 const MACHINE_FILE: &str = "machine.id";
 const SUBSCRIBER_QUEUE: usize = 256;
@@ -126,6 +128,8 @@ pub struct Chat {
     subs: Mutex<Vec<SyncSender<ChatPush>>>,
     seq: AtomicU16,
     tails: Mutex<HashMap<String, tail::Tail>>,
+    rpc_client: Mutex<Option<Arc<RpcClient>>>,
+    relay_device: Mutex<Option<(String, String)>>,
 }
 
 impl Chat {
@@ -146,11 +150,35 @@ impl Chat {
             subs: Mutex::new(Vec::new()),
             seq: AtomicU16::new(0),
             tails: Mutex::new(HashMap::new()),
+            rpc_client: Mutex::new(None),
+            relay_device: Mutex::new(None),
         }
     }
 
     pub fn machine(&self) -> &str {
         &self.machine
+    }
+
+    pub fn set_rpc_client(&self, client: Option<Arc<RpcClient>>) {
+        *lock(&self.rpc_client) = client;
+    }
+
+    pub fn rpc_client(&self) -> Option<Arc<RpcClient>> {
+        lock(&self.rpc_client).clone()
+    }
+
+    pub fn set_relay_device(&self, device: Option<(String, String)>) {
+        *lock(&self.relay_device) = device;
+    }
+
+    pub fn relay_self(&self) -> Option<RelaySelf> {
+        lock(&self.relay_device)
+            .clone()
+            .map(|(device_id, fp)| RelaySelf {
+                id: self.machine.clone(),
+                device_id,
+                fp,
+            })
     }
 
     pub fn manager_room(&self) -> RoomRef {
@@ -475,6 +503,41 @@ pub fn prompt_bytes(body: &str) -> Vec<u8> {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    fn client_for(dir: &Path) -> std::sync::Arc<crate::mgr_rpc::relay::RpcClient> {
+        use crate::mgr_rpc::relay::{MachinesCache, RpcClient, RpcInbox};
+        std::sync::Arc::new(RpcClient::new(
+            std::sync::Arc::new(RpcInbox::new()),
+            std::sync::Arc::new(MachinesCache::new(dir)),
+            std::sync::Arc::new(|_, _, _, _| Ok(())),
+            std::sync::Arc::new(|| 0),
+        ))
+    }
+
+    #[test]
+    fn the_rpc_client_slot_starts_empty_and_can_be_set_and_cleared() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(t.path());
+        assert!(chat.rpc_client().is_none());
+        let c = client_for(t.path());
+        chat.set_rpc_client(Some(c.clone()));
+        assert!(std::sync::Arc::ptr_eq(&chat.rpc_client().unwrap(), &c));
+        chat.set_rpc_client(None);
+        assert!(chat.rpc_client().is_none());
+    }
+
+    #[test]
+    fn relay_self_is_none_until_published_and_carries_the_machine_id() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(t.path());
+        assert!(chat.relay_self().is_none());
+        chat.set_relay_device(Some(("dev".into(), "fp".into())));
+        let me = chat.relay_self().unwrap();
+        assert_eq!(me.id, chat.machine());
+        assert_eq!((me.device_id.as_str(), me.fp.as_str()), ("dev", "fp"));
+        chat.set_relay_device(None);
+        assert!(chat.relay_self().is_none());
+    }
 
     #[test]
     fn the_machine_id_is_created_once_private_and_stable() {

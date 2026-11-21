@@ -2,7 +2,9 @@ use super::manager::ManagerHost;
 use super::*;
 use crate::chat::{self, tail};
 use crate::mgr_rpc::dispatch::SEEN_FILE;
-use crate::mgr_rpc::relay::{serve_tick, MachinesCache, RelayTransport, RpcInbox, RpcSend};
+use crate::mgr_rpc::relay::{
+    serve_tick, MachinesCache, RelayTransport, RpcClient, RpcInbox, RpcSend,
+};
 use crate::mgr_rpc::{Dispatcher, FileAudit};
 use std::sync::mpsc::RecvTimeoutError as ChatRecv;
 use tmgr_ipc::chat::{method as chat_method, ChatPush, HistoryParams, SearchParams, SendParams};
@@ -47,7 +49,7 @@ impl Runner {
         };
         let (ingest_rt, sub_rt, stop_rt) = (self.clone(), self.clone(), self.clone());
         let rpc = Arc::new(RpcInbox::new());
-        let (serve_rt, serve_inbox) = (self.clone(), rpc.clone());
+        let (serve_rt, serve_inbox, device_rt) = (self.clone(), rpc.clone(), self.clone());
         let setup = chat::relay::pump::Setup {
             dir: self.cfg.dir.clone(),
             machine: self.chat.machine().to_owned(),
@@ -65,6 +67,7 @@ impl Runner {
             stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
             rpc,
             serve_rpc: Arc::new(move |send| serve_rt.spawn_rpc_server(serve_inbox.clone(), send)),
+            on_device: Arc::new(move |d| device_rt.chat.set_relay_device(d)),
         };
         if let Err(e) = chat::relay::pump::spawn(setup) {
             log(&format!("chat relay: pump did not start: {e}"));
@@ -78,13 +81,20 @@ impl Runner {
     ) -> Option<thread::JoinHandle<()>> {
         let dir = self.cfg.dir.clone();
         let audit = Arc::new(FileAudit::new(&dir));
+        let machines = Arc::new(MachinesCache::new(&dir));
         let transport = RelayTransport::new(
-            inbox,
-            Arc::new(MachinesCache::new(&dir)),
+            inbox.clone(),
+            machines.clone(),
             audit.clone(),
             Arc::new(now_ms),
-            send,
+            send.clone(),
         );
+        self.chat.set_rpc_client(Some(Arc::new(RpcClient::new(
+            inbox,
+            machines,
+            send,
+            Arc::new(now_ms),
+        ))));
         let dispatcher = Dispatcher::with_store(
             self.chat.machine(),
             crate::manager::State::new(Box::new(self.chat.clone())),
@@ -106,6 +116,7 @@ impl Runner {
                         thread::sleep(RPC_TICK);
                     }
                 }
+                rt.chat.set_rpc_client(None);
             })
             .map_err(|e| log(&format!("manager rpc: serve thread did not start: {e}")))
             .ok()
@@ -192,6 +203,14 @@ impl Runner {
                     )
                     .map(|m| to_json(&m))
                     .map_err(bad)
+            }
+            chat_method::RELAY_SELF => {
+                self.chat.relay_self().map(|r| to_json(&r)).ok_or_else(|| {
+                    api(
+                        ErrorCode::NotFound,
+                        "the chat relay is not configured or not ready on this runner",
+                    )
+                })
             }
             chat_method::SUBSCRIBE => {
                 let mut slot = lock(&conn.chat_rx);

@@ -15,6 +15,7 @@ use tmgr_chat_relay::wire::random_msg_id;
 use tmgr_ipc::mgr_rpc::{ErrorCode, Op, RpcReq, RpcRes, KIND_REQ, KIND_RES, MGR_RPC_V};
 
 const INBOX_CAP: usize = 64;
+pub const REMOTE_CALL_WAIT: Duration = Duration::from_secs(25);
 
 pub type RpcSend = Arc<dyn Fn(&str, &str, &str, &Value) -> Result<(), String> + Send + Sync>;
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
@@ -64,6 +65,11 @@ impl RpcInbox {
             .unwrap_or_else(|e| e.into_inner())
             .try_recv()
             .ok()
+    }
+
+    fn drain_res(&self) {
+        let rx = self.res_rx.lock().unwrap_or_else(|e| e.into_inner());
+        while rx.try_recv().is_ok() {}
     }
 
     fn recv_res(&self, wait: Duration) -> Option<RpcItem> {
@@ -233,6 +239,7 @@ impl RpcClient {
         timeout: Duration,
     ) -> Result<RpcRes, String> {
         let _one_at_a_time = self.gate.lock().unwrap_or_else(|e| e.into_inner());
+        self.inbox.drain_res();
         let deadline = Instant::now() + timeout;
         let known = self.machines.current();
         let (device, fp) = known.device_for(machine).ok_or("unknown machine")?;
@@ -483,6 +490,7 @@ mod tests {
 
     struct ClientRig {
         client: RpcClient,
+        inbox: Arc<RpcInbox>,
         sent: Sent,
         _dir: tempfile::TempDir,
     }
@@ -507,6 +515,7 @@ mod tests {
         );
         ClientRig {
             client,
+            inbox: r.inbox,
             sent,
             _dir: r.dir,
         }
@@ -538,6 +547,46 @@ mod tests {
         let req: RpcReq = serde_json::from_value(payload.clone()).unwrap();
         assert_eq!((req.op, req.ts_ms, req.chain.len()), (Op::List, T0, 0));
         assert_eq!(res.rpc, req.rpc);
+    }
+
+    #[test]
+    fn a_remote_call_gives_up_before_the_local_tool_call_does() {
+        assert!(REMOTE_CALL_WAIT < crate::manager::CALL_WAIT);
+    }
+
+    #[test]
+    fn a_full_inbox_of_stale_responses_does_not_starve_the_next_call() {
+        let c = client_rig(|inbox, req| {
+            let rpc = req["rpc"].as_str().unwrap();
+            inbox.deliver_rpc(DEV_A, FP_A, KIND_RES, "h_new", answer(rpc));
+        });
+        for i in 0..INBOX_CAP {
+            c.inbox
+                .deliver_rpc(DEV_A, FP_A, KIND_RES, "h_old", answer(&format!("late-{i}")));
+        }
+        let res = c
+            .client
+            .call(PEER, Op::List, json!({}), Duration::from_millis(500))
+            .unwrap();
+        assert!(res.ok);
+        assert_eq!(c.inbox.dropped(), 0);
+    }
+
+    #[test]
+    fn a_late_answer_to_an_earlier_call_is_not_returned_to_the_next_one() {
+        let c = client_rig(|inbox, req| {
+            let rpc = req["rpc"].as_str().unwrap();
+            inbox.deliver_rpc(DEV_A, FP_A, KIND_RES, "h_new", answer(rpc));
+        });
+        c.inbox
+            .deliver_rpc(DEV_A, FP_A, KIND_RES, "h_old", answer("c_earlier"));
+        let res = c
+            .client
+            .call(PEER, Op::List, json!({}), Duration::from_millis(500))
+            .unwrap();
+        let sent = c.sent.lock().unwrap();
+        assert_eq!(res.rpc, sent[0].3["rpc"].as_str().unwrap());
+        assert!(c.inbox.recv_res(Duration::from_millis(10)).is_none());
     }
 
     #[test]

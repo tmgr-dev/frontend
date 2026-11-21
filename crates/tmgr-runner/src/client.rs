@@ -384,6 +384,10 @@ impl Client {
         from_value(self.call(wire_chat::method::ROOMS, Value::Null)?)
     }
 
+    pub fn chat_relay_self(&mut self) -> io::Result<wire_chat::RelaySelf> {
+        from_value(self.call(wire_chat::method::RELAY_SELF, Value::Null)?)
+    }
+
     pub fn chat_history(
         &mut self,
         room: &wire_chat::RoomRef,
