@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.138
+
+- `tmgr attach`: mouse selection now works on sessions of a linked machine. Dragging on a remote pane highlights the text and copies it to your clipboard, as on a local pane (double click selects a word, triple click a line). In 1.0.136 the drag never started on remote panes.
+
 ## 1.0.137
 
 - Remote control: start a session on a linked machine. `tmgr attach` on the leader has a new "Run on" field in "+ New session" (and when starting a template): pick a follower and the session starts there, with the agent and repo picker limited to what that follower's scope allows. `tmgr run --on <host>` now works without a task REF (and takes `--name`). The leader sends the new `runs.start` link method; the follower checks it against the link scope (repos, agents, max running sessions) and always refuses bypass and no-sandbox runs. The prompt is typed through the remote attach input, so it is only sent when the follower allows attach input; otherwise the session starts and the leader says the prompt was not sent. A start that times out is never retried and says it may have started. An older follower answers that it does not know the method, shown as "update the follower CLI". Needs the new CLI on both machines.
