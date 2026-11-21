@@ -959,7 +959,8 @@ fn constants_are_pinned() {
             "permission_cards.v1",
             "team.workers.v1",
             "team.multi.v1",
-            "profiles_login_check.v1"
+            "profiles_login_check.v1",
+            "chat.v1"
         ]
     );
     let methods = [
@@ -1057,7 +1058,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 38);
+    assert_eq!(w.caps.len(), 39);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
