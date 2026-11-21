@@ -64,7 +64,9 @@
             "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
             "exp_ms": { "type": "integer", "minimum": 0 },
             "target_id": { "$ref": "#/$defs/token" },
-            "target_fp": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            "target_fp": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "proposed_by": { "type": "string", "maxLength": 256 },
+            "prompt": { "type": "string", "maxLength": 1000 }
           }
         }
       }

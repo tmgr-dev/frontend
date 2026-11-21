@@ -51,6 +51,8 @@ pub(crate) mod testkit {
         pub proposed: Mutex<Vec<Proposal>>,
         pub approved: Mutex<HashMap<String, (Option<String>, SignedSpawn)>>,
         pub spawned_for: Mutex<Vec<(String, String)>>,
+        pub failed: Mutex<Vec<(String, String)>>,
+        pub explode: std::sync::atomic::AtomicBool,
         pub now: AtomicU64,
         pub line_len: usize,
     }
@@ -105,6 +107,8 @@ pub(crate) mod testkit {
                 proposed: Mutex::default(),
                 approved: Mutex::default(),
                 spawned_for: Mutex::default(),
+                failed: Mutex::default(),
+                explode: std::sync::atomic::AtomicBool::new(false),
                 now: AtomicU64::new(T0),
                 line_len: 5,
             }
@@ -126,6 +130,7 @@ pub(crate) mod testkit {
             self.now.load(Ordering::SeqCst)
         }
         fn sessions(&self) -> Vec<SessionInfo> {
+            assert!(!self.explode.load(Ordering::SeqCst), "boom");
             self.list.lock().unwrap().clone()
         }
         fn text(&self, _: &str, lines: u32) -> Result<Vec<String>, String> {
@@ -196,13 +201,25 @@ pub(crate) mod testkit {
                 req_sha256: p.req_sha256(),
             })
         }
+        fn spawn_failed(&self, card: &str, reason: &str) {
+            self.failed
+                .lock()
+                .unwrap()
+                .push((card.into(), reason.into()));
+        }
         fn approved_spawn(
             &self,
             card: &str,
             proposer: Option<&str>,
-        ) -> Option<tmgr_spawn_auth::SignedSpawn> {
-            let (by, signed) = self.approved.lock().unwrap().get(card).cloned()?;
-            (proposer.is_some() && proposer == by.as_deref()).then_some(signed)
+        ) -> Result<tmgr_spawn_auth::SignedSpawn, crate::manager::CardMiss> {
+            let Some((by, signed)) = self.approved.lock().unwrap().get(card).cloned() else {
+                return Err(crate::manager::CardMiss::Pending);
+            };
+            if proposer.is_some() && proposer == by.as_deref() {
+                Ok(signed)
+            } else {
+                Err(crate::manager::CardMiss::Gone)
+            }
         }
         fn proposer(&self) -> Option<String> {
             Some(MANAGER.into())

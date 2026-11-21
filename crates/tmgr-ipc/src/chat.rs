@@ -150,6 +150,10 @@ pub struct SpawnCard {
     pub exp_ms: u64,
     pub target_id: String,
     pub target_fp: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
 }
 
 impl SpawnCard {
@@ -171,6 +175,11 @@ impl SpawnCard {
         }
         if self.summary.len() > limits::MAX_SPAWN_SUMMARY {
             return Err("spawn summary too long".into());
+        }
+        if self.proposed_by.as_ref().is_some_and(|p| p.len() > 256)
+            || self.prompt.as_ref().is_some_and(|p| p.len() > 1000)
+        {
+            return Err("spawn card detail too long".into());
         }
         Ok(())
     }
@@ -617,6 +626,25 @@ mod tests {
         assert!(mutate(&|c| c["target_id"] = json!("bad id")).is_err());
         assert!(mutate(&|_| ()).is_ok());
         assert!(mutate(&|c| c["request"] = json!("x".repeat(16 * 1024))).is_ok());
+    }
+
+    #[test]
+    fn a_spawn_card_may_carry_the_proposer_and_the_prompt_and_limits_them() {
+        let mut c = spawn_card();
+        c["proposed_by"] = json!("top manager on laptop");
+        c["prompt"] = json!("go");
+        let e = spawn_message(c.clone());
+        let m: ChatMessage = serde_json::from_value(e.clone()).unwrap();
+        m.validate().unwrap();
+        assert_eq!(serde_json::to_value(&m).unwrap(), e);
+        let mut long = c.clone();
+        long["prompt"] = json!("x".repeat(1001));
+        let m: ChatMessage = serde_json::from_value(spawn_message(long)).unwrap();
+        assert!(m.validate().is_err());
+        let mut long = c;
+        long["proposed_by"] = json!("x".repeat(257));
+        let m: ChatMessage = serde_json::from_value(spawn_message(long)).unwrap();
+        assert!(m.validate().is_err());
     }
 
     #[test]

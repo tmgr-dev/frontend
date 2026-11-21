@@ -228,6 +228,10 @@ impl core::Host for ManagerHost<'_> {
                 "cwd is not a trusted folder; the owner switches it from the CLI or the app".into(),
             );
         }
+        let by = self
+            .rt
+            .session(id)
+            .and_then(|s| lock(&s.inner).meta.spawned_by.clone());
         self.rt
             .switch_session(
                 id,
@@ -237,10 +241,15 @@ impl core::Host for ManagerHost<'_> {
                     manual: false,
                 },
             )
-            .map(|o| core::SwitchResult {
-                session: o.new_session,
-                packet_id: o.packet_id,
-                warnings: o.warnings,
+            .map(|o| {
+                if let Some(by) = &by {
+                    self.rt.set_spawned_by(&o.new_session.id, by);
+                }
+                core::SwitchResult {
+                    session: o.new_session,
+                    packet_id: o.packet_id,
+                    warnings: o.warnings,
+                }
             })
             .map_err(|e| e.msg)
     }
@@ -267,11 +276,15 @@ impl core::Host for ManagerHost<'_> {
         self.rt.propose_spawn_by(proposal, proposer, prompt)
     }
 
+    fn spawn_failed(&self, card_id: &str, reason: &str) {
+        self.rt.spawn_failed(card_id, reason);
+    }
+
     fn approved_spawn(
         &self,
         card_id: &str,
         proposer: Option<&str>,
-    ) -> Option<tmgr_spawn_auth::SignedSpawn> {
+    ) -> Result<tmgr_spawn_auth::SignedSpawn, core::CardMiss> {
         self.rt.approved_spawn(card_id, proposer)
     }
 
@@ -283,8 +296,8 @@ impl core::Host for ManagerHost<'_> {
         None
     }
 
-    fn spawned_for(&self, session: &str, proposer: &str) -> bool {
-        self.rt.spawned_for(session, proposer)
+    fn spawned_for(&self, session: &str, from: &str) -> bool {
+        self.rt.spawned_for(session, from)
     }
 }
 
@@ -480,7 +493,7 @@ pub(super) mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         let v: Value = serde_json::from_slice(&fs::read(resp).unwrap()).unwrap();
-        assert!(v["error"].as_str().unwrap().contains("not available"));
+        assert_eq!(v["error"], "not available");
     }
 
     #[test]

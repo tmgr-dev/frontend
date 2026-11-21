@@ -442,6 +442,8 @@ struct Meta {
     manager: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     spawn_card: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spawned_by: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -5001,6 +5003,7 @@ impl Runner {
             handoff_from: extra.handoff_from.clone(),
             manager: extra.manager,
             spawn_card: extra.spawn_card.clone(),
+            spawned_by: None,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);

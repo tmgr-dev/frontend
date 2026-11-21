@@ -5,7 +5,7 @@ use crate::mgr_rpc::relay::REMOTE_CALL_WAIT;
 use crate::mgr_rpc::top::is_top;
 use serde_json::{json, Map, Value};
 use std::path::Path;
-use tmgr_ipc::manager::{limits, tool, SpoolReq};
+use tmgr_ipc::manager::{limits, remote_prompt_ok, tool, SpoolReq, REMOTE_PROMPT_CHARS};
 use tmgr_ipc::mgr_rpc::{valid_machine_id, ErrorCode, Op, RpcRes};
 
 pub trait Link {
@@ -212,8 +212,6 @@ fn map_call(tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
     }
 }
 
-const REMOTE_PROMPT_MAX: usize = 1000;
-
 fn spawn_args(a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
     for k in ["approval", "no_sandbox", "manager"] {
         if a.contains_key(k) {
@@ -237,7 +235,7 @@ fn spawn_args(a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
         "cwd": text(a, "cwd", 4096)?,
     });
     for (k, max) in [
-        ("prompt", REMOTE_PROMPT_MAX),
+        ("prompt", limits::REMOTE_PROMPT_MAX),
         ("name", 64),
         ("task", 128),
         ("permission_mode", 32),
@@ -245,6 +243,9 @@ fn spawn_args(a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
         if a.contains_key(k) {
             out[k] = json!(text(a, k, max)?);
         }
+    }
+    if out["prompt"].as_str().is_some_and(|p| !remote_prompt_ok(p)) {
+        return Err(REMOTE_PROMPT_CHARS.into());
     }
     if claim {
         out["card_id"] = json!(text(a, "card_id", 128).map_err(|_| {
@@ -715,6 +716,36 @@ mod tests {
     }
 
     #[test]
+    fn a_remote_prompt_with_unsafe_characters_is_refused_before_anything_is_sent() {
+        let net = Net::top();
+        for bad in [
+            "a\r\nb",
+            "a\u{2028}b",
+            "a\u{2029}b",
+            "a\u{85}b",
+            "a\u{1b}b",
+            "a\u{202e}b",
+            "a\u{200b}b",
+        ] {
+            for (t, extra) in [
+                (tool::PROPOSE_SPAWN, json!({"prompt": bad})),
+                (tool::SPAWN_SESSION, json!({"card_id": "c", "prompt": bad})),
+            ] {
+                let e = run(&net, t, spawn_case("", extra)).unwrap_err();
+                assert!(e.contains("characters"), "{t} {bad:?}: {e}");
+            }
+        }
+        assert!(sent(&net).is_empty());
+        run(
+            &net,
+            tool::PROPOSE_SPAWN,
+            spawn_case("", json!({"prompt": "a\tb\nc"})),
+        )
+        .unwrap();
+        assert_eq!(sent(&net).len(), 1);
+    }
+
+    #[test]
     fn a_missing_card_id_says_what_to_do() {
         let net = Net::top();
         let e = run(&net, tool::SPAWN_SESSION, spawn_case("", json!({}))).unwrap_err();
@@ -734,18 +765,30 @@ mod tests {
     #[test]
     fn own_machine_spawn_and_switch_stay_local_and_a_sub_cannot_go_remote() {
         let net = Net::top();
+        let host = Fake::new();
         for (t, a) in [
             (
                 tool::PROPOSE_SPAWN,
-                json!({"machine": ME, "profile": "codex", "cwd": "/x"}),
+                json!({"machine": ME, "profile": "codex", "cwd": "/tmp/ok"}),
             ),
             (
                 tool::SWITCH_AGENT,
                 json!({"machine": ME, "session": WORKER, "to": "codex"}),
             ),
         ] {
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&net, t, a)));
+            let req = SpoolReq {
+                v: 1,
+                id: "i".into(),
+                tool: t.into(),
+                args: a,
+            };
+            execute(&net, &host, &State::default(), &req).unwrap();
         }
+        assert_eq!(host.proposed.lock().unwrap().len(), 1);
+        assert_eq!(
+            *host.switched.lock().unwrap(),
+            vec![format!("{WORKER}:codex")]
+        );
         assert!(sent(&net).is_empty());
         let net = Net::sub();
         for t in [tool::PROPOSE_SPAWN, tool::SPAWN_SESSION, tool::SWITCH_AGENT] {

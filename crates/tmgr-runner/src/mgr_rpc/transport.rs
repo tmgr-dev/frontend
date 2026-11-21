@@ -3,6 +3,7 @@ use super::policy::Policy;
 use crate::manager::Host;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
+use tmgr_ipc::mgr_rpc::{ErrorCode, RpcReq, RpcRes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Inbound {
@@ -72,7 +73,16 @@ pub fn serve_one(
     let Some(inbound) = transport.recv() else {
         return false;
     };
-    if let Some(res) = dispatcher.handle(policy, host, &inbound.from, &inbound.payload) {
+    let handled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        dispatcher.handle(policy, host, &inbound.from, &inbound.payload)
+    }));
+    let res = handled.unwrap_or_else(|_| {
+        crate::daemon::log("manager rpc: a request panicked and was answered with an error");
+        serde_json::from_slice::<RpcReq>(&inbound.payload)
+            .ok()
+            .map(|r| RpcRes::err(&r.rpc, ErrorCode::Unavailable, "internal error"))
+    });
+    if let Some(res) = res {
         if let Ok(bytes) = serde_json::to_vec(&res) {
             let _ = transport.send(&inbound.from, bytes);
         }
@@ -87,7 +97,6 @@ mod tests {
     use super::*;
     use crate::manager::{MemoryChat, State};
     use serde_json::json;
-    use tmgr_ipc::mgr_rpc::RpcRes;
 
     fn dispatcher() -> Dispatcher {
         Dispatcher::new(
@@ -115,6 +124,33 @@ mod tests {
         assert!(res.ok);
         assert_eq!(res.rpc, "net-1");
         assert!(top.recv().is_none());
+    }
+
+    #[test]
+    fn a_panicking_request_gets_an_error_and_the_loop_keeps_serving() {
+        let net = MemoryNet::new();
+        let top = net.endpoint(PEER);
+        let sub = net.endpoint(ME);
+        let policy = Policy::parse(&format!("accept_from = [\"{PEER}\"]")).unwrap();
+        let d = dispatcher();
+        let host = Fake::new();
+        host.explode
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let req = |rpc: &str| json!({"v":1,"rpc":rpc,"op":"list","args":{},"chain":[],"ts_ms":T0});
+        top.send(ME, serde_json::to_vec(&req("boom-1")).unwrap())
+            .unwrap();
+        assert!(serve_one(&sub, &d, &policy, &host));
+        let res: RpcRes = serde_json::from_slice(&top.recv().unwrap().payload).unwrap();
+        assert_eq!(res.rpc, "boom-1");
+        assert_eq!(res.error.unwrap().code, ErrorCode::Unavailable);
+        host.explode
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        top.send(ME, serde_json::to_vec(&req("fine-2")).unwrap())
+            .unwrap();
+        assert!(serve_one(&sub, &d, &policy, &host));
+        let res: RpcRes = serde_json::from_slice(&top.recv().unwrap().payload).unwrap();
+        assert!(res.ok);
+        assert_eq!(res.rpc, "fine-2");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use super::policy::{read_private, Policy};
 use crate::manager::{
-    execute, Host, Proposed, SpawnSpec, State, SwitchResult, TrustedDir, Verdict, REMOTE_PROMPT_MAX,
+    execute, CardMiss, Host, Proposed, SpawnSpec, State, SwitchResult, TrustedDir, Verdict,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -589,7 +589,14 @@ impl Host for RpcHost<'_> {
     ) -> Result<Proposed, String> {
         self.inner.propose_spawn(proposal, proposer, prompt)
     }
-    fn approved_spawn(&self, card_id: &str, proposer: Option<&str>) -> Option<SignedSpawn> {
+    fn spawn_failed(&self, card_id: &str, reason: &str) {
+        self.inner.spawn_failed(card_id, reason)
+    }
+    fn approved_spawn(
+        &self,
+        card_id: &str,
+        proposer: Option<&str>,
+    ) -> Result<SignedSpawn, CardMiss> {
         self.inner.approved_spawn(card_id, proposer)
     }
     fn proposer(&self) -> Option<String> {
@@ -598,8 +605,8 @@ impl Host for RpcHost<'_> {
     fn remote_caller(&self) -> Option<&str> {
         Some(self.from)
     }
-    fn spawned_for(&self, session: &str, proposer: &str) -> bool {
-        self.inner.spawned_for(session, proposer)
+    fn spawned_for(&self, session: &str, from: &str) -> bool {
+        self.inner.spawned_for(session, from)
     }
 }
 
@@ -799,7 +806,7 @@ fn spawn_object(m: &serde_json::Map<String, Value>) -> Option<Value> {
         "profile" | "name" => 64,
         "cwd" => 4096,
         "permission_mode" => 32,
-        "prompt" => REMOTE_PROMPT_MAX,
+        "prompt" => tmgr_ipc::manager::limits::REMOTE_PROMPT_MAX,
         _ => 128,
     };
     m.get("profile")?;
@@ -1168,7 +1175,8 @@ mod tests {
     #[test]
     fn spawn_challenge_spawn_and_switch_are_denied_by_the_default_policy() {
         let r = rig();
-        let default = policy(&["list", "read"]);
+        let default = Policy::parse(&format!("accept_from = [\"{PEER}\"]")).unwrap();
+        assert!(r.call(&default, "d-list", "list", json!({})).ok);
         for (op, args) in [
             (
                 "spawn_challenge",
@@ -1932,11 +1940,14 @@ mod tests {
         ) -> Result<crate::manager::Proposed, String> {
             self.inner.propose_spawn(proposal, proposer, prompt)
         }
+        fn spawn_failed(&self, card_id: &str, reason: &str) {
+            self.inner.spawn_failed(card_id, reason)
+        }
         fn approved_spawn(
             &self,
             card_id: &str,
             proposer: Option<&str>,
-        ) -> Option<tmgr_spawn_auth::SignedSpawn> {
+        ) -> Result<tmgr_spawn_auth::SignedSpawn, CardMiss> {
             self.inner.approved_spawn(card_id, proposer)
         }
         fn proposer(&self) -> Option<String> {

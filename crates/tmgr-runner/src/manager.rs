@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use tmgr_ipc::api::{CwdPin, ErrorCode, RunCreateReq, SessionInfo, StateKind};
 use tmgr_ipc::chat::{self, Author, AuthorKind, ChatMessage, MessageKind, RoomRef};
 use tmgr_ipc::manager::{
-    limits, tool, valid_req_id, SignedSpawn, SpoolReq, SpoolResp, DATA_NOTICE, MCP_ARG, REQ_DIR,
-    RESP_DIR, SERVER_NAME, SPOOL_ROOT, SPOOL_V,
+    limits, remote_prompt_ok, tool, valid_req_id, SignedSpawn, SpoolReq, SpoolResp, DATA_NOTICE,
+    MCP_ARG, REMOTE_PROMPT_CHARS, REQ_DIR, RESP_DIR, SERVER_NAME, SPOOL_ROOT, SPOOL_V,
 };
 use tmgr_spawn_auth::{sha256_hex, SpawnMode, SpawnProposal};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
@@ -625,10 +625,30 @@ pub trait Host {
         proposer: Option<&str>,
         prompt: Option<&str>,
     ) -> Result<Proposed, String>;
-    fn approved_spawn(&self, card_id: &str, proposer: Option<&str>) -> Option<SignedSpawn>;
+    fn spawn_failed(&self, card_id: &str, reason: &str);
+    fn approved_spawn(
+        &self,
+        card_id: &str,
+        proposer: Option<&str>,
+    ) -> Result<SignedSpawn, CardMiss>;
     fn proposer(&self) -> Option<String>;
     fn remote_caller(&self) -> Option<&str>;
-    fn spawned_for(&self, session: &str, proposer: &str) -> bool;
+    fn spawned_for(&self, session: &str, from: &str) -> bool;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardMiss {
+    Pending,
+    Gone,
+}
+
+impl CardMiss {
+    fn message(self) -> &'static str {
+        match self {
+            CardMiss::Pending => "this card is not approved yet",
+            CardMiss::Gone => "this card has expired or is closed; propose the spawn again",
+        }
+    }
 }
 
 fn text_arg<'a>(
@@ -798,7 +818,6 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
 
 const REMOTE_SPAWN: &str = "remote spawn is not available yet";
 const REMOTE_CWD: &str = "cwd is not a trusted folder on this machine";
-pub const REMOTE_PROMPT_MAX: usize = 1000;
 
 const DOWNGRADED: &str =
     "the session started in a lower permission mode than approved and is not in bypass";
@@ -828,11 +847,14 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnAr
     let cwd = need(a, "cwd", 1, 4096)?;
     let remote = host.remote_caller().is_some();
     let prompt_max = if remote {
-        REMOTE_PROMPT_MAX
+        limits::REMOTE_PROMPT_MAX
     } else {
         limits::MAX_SEND_BYTES
     };
     let prompt = text_arg(a, "prompt", 1, prompt_max)?;
+    if remote && prompt.is_some_and(|p| !remote_prompt_ok(p)) {
+        return Err(REMOTE_PROMPT_CHARS.into());
+    }
     let name = text_arg(a, "name", 1, 64)?;
     let task = if signed {
         text_arg(a, "task", 1, 128)?
@@ -915,7 +937,7 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
             None => {
                 approval = Some(
                     host.approved_spawn(card, proposer.as_deref())
-                        .ok_or("this card is not approved yet")?,
+                        .map_err(|miss| miss.message())?,
                 );
             }
         }
@@ -958,7 +980,16 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
             }
         }
     }
-    let info = host.spawn(spec)?;
+    let info = match host.spawn(spec) {
+        Ok(info) => info,
+        Err(e) => {
+            st.release_spawn(slot);
+            if let Some(signed) = &approval {
+                host.spawn_failed(&signed.card_id, &e);
+            }
+            return Err(e);
+        }
+    };
     if let Some(p) = args.prompt {
         st.queue_prompt(&info.id, p, host.now_ms());
     }
@@ -981,10 +1012,6 @@ fn switch(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
     if !SPAWN_PROFILES.contains(&to) {
         return Err("to must be a built-in claude-code, codex, opencode or agy".into());
     }
-    if id == host.me() {
-        return Err("a manager cannot switch itself".into());
-    }
-    let s = find(host, id)?;
     if let Some(from) = host.remote_caller() {
         if !host.spawned_for(id, from) {
             return Err(
@@ -993,6 +1020,10 @@ fn switch(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
             );
         }
     }
+    if id == host.me() {
+        return Err("a manager cannot switch itself".into());
+    }
+    let s = find(host, id)?;
     let owner = "the owner switches those from the CLI or the app";
     if s.manager {
         return Err(format!("manager sessions cannot be switched; {owner}"));
@@ -1360,6 +1391,10 @@ mod tests {
         remote: Option<String>,
         spawned_by: Mutex<Vec<(String, String)>>,
         switch_fails: bool,
+        spawn_fails: bool,
+        me: &'static str,
+        failed: Mutex<Vec<(String, String)>>,
+        gone: Mutex<std::collections::HashSet<String>>,
         asked: Mutex<Vec<(Option<String>, Option<String>)>>,
     }
 
@@ -1412,6 +1447,10 @@ mod tests {
                 events: Mutex::default(),
                 remote: None,
                 spawned_by: Mutex::default(),
+                failed: Mutex::default(),
+                gone: Mutex::default(),
+                spawn_fails: false,
+                me: "s_aaaaaaaaaa",
                 switch_fails: false,
                 asked: Mutex::default(),
             }
@@ -1426,7 +1465,7 @@ mod tests {
 
     impl Host for Fake {
         fn me(&self) -> &str {
-            "s_aaaaaaaaaa"
+            self.me
         }
         fn machine(&self) -> String {
             "mx_1".into()
@@ -1459,6 +1498,9 @@ mod tests {
             self.precheck.lock().unwrap().clone()
         }
         fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String> {
+            if self.spawn_fails {
+                return Err("agent not found".into());
+            }
             self.spawned.lock().unwrap().push(format!(
                 "{}:{}:{}",
                 spec.profile,
@@ -1530,8 +1572,18 @@ mod tests {
                 req_sha256: p.req_sha256(),
             })
         }
-        fn approved_spawn(&self, card: &str, _: Option<&str>) -> Option<SignedSpawn> {
-            self.approved.lock().unwrap().get(card).cloned()
+        fn spawn_failed(&self, card: &str, reason: &str) {
+            self.failed
+                .lock()
+                .unwrap()
+                .push((card.into(), reason.into()));
+        }
+        fn approved_spawn(&self, card: &str, _: Option<&str>) -> Result<SignedSpawn, CardMiss> {
+            match self.approved.lock().unwrap().get(card).cloned() {
+                Some(signed) => Ok(signed),
+                None if self.gone.lock().unwrap().contains(card) => Err(CardMiss::Gone),
+                None => Err(CardMiss::Pending),
+            }
         }
         fn proposer(&self) -> Option<String> {
             self.remote
@@ -1542,12 +1594,12 @@ mod tests {
         fn remote_caller(&self) -> Option<&str> {
             self.remote.as_deref()
         }
-        fn spawned_for(&self, session: &str, proposer: &str) -> bool {
+        fn spawned_for(&self, session: &str, from: &str) -> bool {
             self.spawned_by
                 .lock()
                 .unwrap()
                 .iter()
-                .any(|(s, p)| s == session && p == &format!("remote:{proposer}"))
+                .any(|(s, p)| s == session && p == &format!("remote:{from}"))
         }
     }
 
@@ -2082,6 +2134,10 @@ mod tests {
         serde_json::from_value(json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"card_9","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"})).unwrap()
     }
 
+    fn remote_args_local() -> Value {
+        json!({"profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass", "card_id": "card_9"})
+    }
+
     fn remote_args() -> Value {
         json!({"profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass", "card_id": "card_9", "prompt": "go"})
     }
@@ -2147,26 +2203,71 @@ mod tests {
             h.asked.lock().unwrap()[0],
             (Some("remote:mx_peer".to_string()), Some("go".to_string()))
         );
-        args["prompt"] = json!("x".repeat(REMOTE_PROMPT_MAX + 1));
+        args["prompt"] = json!("x".repeat(limits::REMOTE_PROMPT_MAX + 1));
         assert!(call(&h, &st, "propose_spawn", args.clone())
             .unwrap_err()
             .contains("prompt must be"));
-        args["prompt"] = json!("x".repeat(REMOTE_PROMPT_MAX));
+        args["prompt"] = json!("x".repeat(limits::REMOTE_PROMPT_MAX));
         call(&h, &st, "propose_spawn", args).unwrap();
     }
 
     #[test]
-    fn a_local_spawn_without_a_live_manager_has_no_parent() {
+    fn a_local_spawn_is_parented_to_the_manager_and_without_one_has_no_parent() {
         let h = Fake::new();
         let st = State::default();
-        call(
-            &h,
-            &st,
-            "spawn_session",
-            json!({"profile": "codex", "cwd": "/tmp/ok"}),
-        )
-        .unwrap();
+        let args = json!({"profile": "codex", "cwd": "/tmp/ok"});
+        call(&h, &st, "spawn_session", args.clone()).unwrap();
         assert_eq!(h.spawned.lock().unwrap()[0], "codex:ask:s_aaaaaaaaaa");
+        let mut orphan = Fake::new();
+        orphan.me = "-";
+        call(&orphan, &st, "spawn_session", args).unwrap();
+        assert_eq!(orphan.spawned.lock().unwrap()[0], "codex:ask:none");
+    }
+
+    #[test]
+    fn a_failed_spawn_after_verification_returns_the_slot_and_tells_the_card() {
+        let mut h = Fake::new();
+        h.spawn_fails = true;
+        let st = State::default();
+        h.approved
+            .lock()
+            .unwrap()
+            .insert("card_9".into(), remote_signed());
+        for _ in 0..limits::SPAWNS_PER_MINUTE + 2 {
+            assert_eq!(
+                call(&h, &st, "spawn_session", remote_args_local()).unwrap_err(),
+                "agent not found"
+            );
+        }
+        assert_eq!(
+            h.failed.lock().unwrap().len(),
+            limits::SPAWNS_PER_MINUTE + 2
+        );
+        assert_eq!(
+            h.failed.lock().unwrap()[0],
+            ("card_9".to_string(), "agent not found".to_string())
+        );
+        let unsigned = json!({"profile": "codex", "cwd": "/tmp/ok"});
+        let before = h.failed.lock().unwrap().len();
+        assert!(call(&h, &st, "spawn_session", unsigned).is_err());
+        assert_eq!(h.failed.lock().unwrap().len(), before);
+    }
+
+    #[test]
+    fn a_missing_card_says_pending_only_while_it_can_still_be_approved() {
+        let h = Fake::new();
+        let st = State::default();
+        let args = json!({"profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass", "card_id": "card_9"});
+        assert_eq!(
+            call(&h, &st, "spawn_session", args.clone()).unwrap_err(),
+            "this card is not approved yet"
+        );
+        h.gone.lock().unwrap().insert("card_9".into());
+        assert_eq!(
+            call(&h, &st, "spawn_session", args).unwrap_err(),
+            "this card has expired or is closed; propose the spawn again"
+        );
+        assert!(h.spawned.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2187,6 +2288,52 @@ mod tests {
             .push(("s_bbbbbbbbbb".into(), "remote:mx_peer".into()));
         call(&h, &st, "switch_agent", switch_args("s_bbbbbbbbbb")).unwrap();
         assert_eq!(h.switched.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_remote_switch_gives_one_refusal_whatever_the_target_is() {
+        let h = Fake::remote("mx_peer");
+        let st = State::default();
+        let mut errs = Vec::new();
+        for id in [
+            "s_aaaaaaaaaa",
+            "s_bbbbbbbbbb",
+            "s_zzzzzzzzzz",
+            "s_eeeeeeeeee",
+        ] {
+            errs.push(call(&h, &st, "switch_agent", switch_args(id)).unwrap_err());
+        }
+        assert!(errs.iter().all(|e| e == &errs[0]), "{errs:?}");
+        assert!(errs[0].contains("approved spawn cards"));
+    }
+
+    #[test]
+    fn a_remote_prompt_with_control_separator_or_invisible_characters_is_refused() {
+        let h = Fake::remote("mx_peer");
+        let st = State::default();
+        let mut args = remote_args();
+        args.as_object_mut().unwrap().remove("card_id");
+        for bad in [
+            "a\r\nb",
+            "a\rb",
+            "a\u{2028}b",
+            "a\u{2029}b",
+            "a\u{85}b",
+            "a\u{1b}[31mb",
+            "a\u{202e}b",
+            "a\u{200b}b",
+        ] {
+            args["prompt"] = json!(bad);
+            let e = call(&h, &st, "propose_spawn", args.clone()).unwrap_err();
+            assert!(e.contains("characters"), "{bad:?}: {e}");
+        }
+        assert!(h.proposed.lock().unwrap().is_empty());
+        args["prompt"] = json!("tab\tand\nnewline");
+        call(&h, &st, "propose_spawn", args).unwrap();
+        let local = Fake::new();
+        let mut args = json!({"profile": "codex", "cwd": "/tmp/ok"});
+        args["prompt"] = json!("a\rb");
+        call(&local, &st, "propose_spawn", args).unwrap();
     }
 
     #[test]

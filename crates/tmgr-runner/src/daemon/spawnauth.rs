@@ -1,6 +1,6 @@
 use super::*;
 use crate::chat::relay::store::RelayDir;
-use crate::manager::{Proposed, Verdict};
+use crate::manager::{CardMiss, Proposed, Verdict};
 use crate::spawnauth::{
     CardBudget, CardError, CardResult, CardState, CheckOutcome, ClaimOutcome, Identity,
     IssueOutcome, KeyOffer, SpawnAuth, TrustSource,
@@ -79,6 +79,13 @@ impl Budget {
             Budget::Human => CardBudget::Human,
             Budget::Manager => CardBudget::Manager,
         }
+    }
+}
+
+fn card_belongs_to(bound: Option<&str>, proposer: Option<&str>) -> bool {
+    match bound {
+        Some(b) if b.starts_with(REMOTE_PREFIX) => Some(b) == proposer,
+        _ => !proposer.is_some_and(|p| p.starts_with(REMOTE_PREFIX)),
     }
 }
 
@@ -304,11 +311,7 @@ impl Runner {
         let bound = lock(&self.spawn_gate.cards)
             .get(card)
             .and_then(|c| c.proposer.clone());
-        let foreign = match bound.as_deref() {
-            Some(b) => Some(b) != proposer,
-            None => proposer.is_some_and(|p| p.starts_with(REMOTE_PREFIX)),
-        };
-        if foreign {
+        if !card_belongs_to(bound.as_deref(), proposer) {
             return Err(WRONG_PROPOSER.into());
         }
         let now = now_ms();
@@ -348,6 +351,13 @@ impl Runner {
     }
 
     pub(super) fn spawn_done(&self, card_id: &str, session: &str) {
+        let spawner = lock(&self.spawn_gate.cards)
+            .get(card_id)
+            .and_then(|c| c.proposer.clone())
+            .filter(|p| p.starts_with(REMOTE_PREFIX));
+        if let Some(by) = spawner {
+            self.set_spawned_by(session, &by);
+        }
         let Ok(auth) = self.spawn_gate.auth(self) else {
             return;
         };
@@ -367,6 +377,22 @@ impl Runner {
         if first {
             self.card_reply(card_id, &format!("Started session {session}"));
         }
+    }
+
+    pub(super) fn set_spawned_by(&self, session: &str, by: &str) {
+        if let Some(s) = self.session(session) {
+            lock(&s.inner).meta.spawned_by = Some(by.to_owned());
+            s.persist();
+        }
+    }
+
+    pub(super) fn spawn_failed(&self, card_id: &str, reason: &str) {
+        let first = reason.lines().next().unwrap_or_default().trim();
+        let first = clip(first.trim_end_matches('.').to_owned(), 200);
+        self.card_reply(
+            card_id,
+            &format!("The session did not start: {first}. Ask for a new card."),
+        );
     }
 
     fn card_session(&self, card_id: &str) -> Option<SessionInfo> {
@@ -390,6 +416,7 @@ impl Runner {
             .and_then(|b| String::from_utf8(b).ok())
             .unwrap_or_default();
         let summary = card_summary(proposal);
+        let remote = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX));
         let machine = self.chat.machine().to_owned();
         let msg = ChatMessage {
             v: CHAT_V,
@@ -416,6 +443,10 @@ impl Runner {
                     exp_ms: c.exp_ms,
                     target_id: c.target_id.clone(),
                     target_fp: c.target_fp.clone(),
+                    proposed_by: remote.map(|from| {
+                        clip(format!("top manager on {}", self.proposer_name(from)), 256)
+                    }),
+                    prompt: remote.and(prompt).map(String::from),
                 }),
             }),
             session_meta: None,
@@ -451,10 +482,7 @@ impl Runner {
         );
     }
 
-    fn card_body(&self, summary: &str, proposer: Option<&str>, prompt: Option<&str>) -> String {
-        let Some(from) = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX)) else {
-            return summary.to_owned();
-        };
+    fn proposer_name(&self, from: &str) -> String {
         let machines = crate::mgr_rpc::Machines::load(&self.cfg.dir);
         let label = machines
             .rows()
@@ -462,17 +490,30 @@ impl Runner {
             .find(|(id, _)| *id == from)
             .map(|(_, l)| l)
             .filter(|l| !l.is_empty());
-        let mut body = match label {
-            Some(l) => format!("Proposed by the top manager on {l} ({from})."),
-            None => format!("Proposed by the top manager on {from}."),
+        match label {
+            Some(l) => format!("{l} ({from})"),
+            None => from.to_owned(),
+        }
+    }
+
+    fn card_body(&self, summary: &str, proposer: Option<&str>, prompt: Option<&str>) -> String {
+        let Some(from) = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX)) else {
+            return summary.to_owned();
         };
+        let mut body = format!(
+            "Proposed by the top manager on {}.",
+            self.proposer_name(from)
+        );
         body.push_str("\n\n");
         body.push_str(summary);
         if let Some(p) = prompt {
-            body.push('\n');
-            for line in p.lines() {
-                body.push_str(&format!("\n> {line}"));
-            }
+            let longest = p
+                .split(|c| c != '`')
+                .map(str::len)
+                .max()
+                .unwrap_or_default();
+            let fence = "`".repeat((longest + 1).max(3));
+            body.push_str(&format!("\n\n{fence}\n{p}\n{fence}"));
         }
         body
     }
@@ -491,12 +532,29 @@ impl Runner {
         &self,
         card_id: &str,
         proposer: Option<&str>,
-    ) -> Option<SignedSpawn> {
-        let proposer = proposer.filter(|p| *p != "-")?;
-        lock(&self.spawn_gate.cards)
-            .get(card_id)
-            .filter(|c| c.proposer.as_deref() == Some(proposer))
-            .and_then(|c| c.approval.clone())
+    ) -> Result<SignedSpawn, CardMiss> {
+        let (approval, exp_ms) = {
+            let cards = lock(&self.spawn_gate.cards);
+            let card = cards.get(card_id).ok_or(CardMiss::Gone)?;
+            if !card_belongs_to(card.proposer.as_deref(), proposer) {
+                return Err(CardMiss::Gone);
+            }
+            (card.approval.clone(), card.exp_ms)
+        };
+        if let Some(approval) = approval {
+            return Ok(approval);
+        }
+        let issued = self.spawn_gate.auth(self).is_ok_and(|auth| {
+            matches!(
+                auth.cards().state(card_id),
+                Ok(Some(CardState::Issued { .. }))
+            )
+        });
+        if issued && now_ms() <= exp_ms {
+            Err(CardMiss::Pending)
+        } else {
+            Err(CardMiss::Gone)
+        }
     }
 
     fn card_is_approved(&self, card_id: &str) -> bool {
@@ -506,16 +564,14 @@ impl Runner {
     }
 
     pub(super) fn spawned_for(&self, session: &str, from: &str) -> bool {
-        let Some(card) = self
-            .session(session)
-            .and_then(|s| lock(&s.inner).meta.spawn_card.clone())
-        else {
-            return false;
-        };
-        lock(&self.spawn_gate.cards)
-            .get(&card)
-            .and_then(|c| c.proposer.as_deref())
-            .is_some_and(|p| p.strip_prefix(REMOTE_PREFIX) == Some(from))
+        self.session(session).is_some_and(|s| {
+            lock(&s.inner)
+                .meta
+                .spawned_by
+                .as_deref()
+                .and_then(|p| p.strip_prefix(REMOTE_PREFIX))
+                == Some(from)
+        })
     }
 
     pub(super) fn accept_spawnok(&self, signed: &SignedSpawn, now: u64) {
@@ -566,7 +622,6 @@ impl Runner {
                 );
             }
             Some(session) if tmgr_ipc::proto::valid_session_id(session) => {
-                self.card_reply(card, "Approved on your phone. Starting the session.");
                 self.mgr.queue_prompt(
                     session,
                     &format!(
@@ -574,10 +629,11 @@ impl Runner {
                     ),
                     now,
                 );
+                self.card_reply(card, "Approved on your phone. Starting the session.");
             }
             _ => self.card_reply(
                 card,
-                "Approved, but this card can no longer be used; ask for a new card.",
+                "Approved on your phone. The manager can start it now.",
             ),
         }
     }
@@ -902,8 +958,12 @@ mod tests {
 
     impl<'a> TestHost<'a> {
         fn new(e: &'a Env) -> Self {
+            Self::with_me(e, MGR)
+        }
+
+        fn with_me(e: &'a Env, me: &'a str) -> Self {
             TestHost {
-                inner: super::manager::ManagerHost { rt: &e.rt, me: MGR },
+                inner: super::manager::ManagerHost { rt: &e.rt, me },
                 work: e.work.clone(),
                 spawned: Mutex::default(),
                 fail: AtomicU8::new(0),
@@ -988,7 +1048,10 @@ mod tests {
         ) -> Result<core::Proposed, String> {
             self.inner.propose_spawn(p, by, prompt)
         }
-        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Option<SignedSpawn> {
+        fn spawn_failed(&self, c: &str, reason: &str) {
+            self.inner.spawn_failed(c, reason)
+        }
+        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Result<SignedSpawn, CardMiss> {
             self.inner.approved_spawn(c, by)
         }
         fn proposer(&self) -> Option<String> {
@@ -1488,7 +1551,7 @@ mod tests {
         let inbox = e.rt.start_spawnok_intake();
         inbox.deliver_spawnok("phone", &e.fp, &signed);
         wait_for("the approval", || {
-            e.rt.approved_spawn(&card, Some(MGR)).is_some()
+            e.rt.approved_spawn(&card, Some(MGR)).is_ok() && !replies(&e, &msg.id).is_empty()
         });
         assert_eq!(
             replies(&e, &msg.id),
@@ -1529,6 +1592,7 @@ mod tests {
     }
 
     const PEER: &str = "mx_00000000000000bb";
+    const GONE: &str = "this card has expired or is closed; propose the spawn again";
 
     struct As<'a, 'b> {
         inner: &'a TestHost<'b>,
@@ -1593,7 +1657,10 @@ mod tests {
         ) -> Result<core::Proposed, String> {
             self.inner.propose_spawn(p, by, prompt)
         }
-        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Option<SignedSpawn> {
+        fn spawn_failed(&self, c: &str, reason: &str) {
+            self.inner.spawn_failed(c, reason)
+        }
+        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Result<SignedSpawn, CardMiss> {
             self.inner.approved_spawn(c, by)
         }
         fn proposer(&self) -> Option<String> {
@@ -1650,11 +1717,22 @@ mod tests {
             body.starts_with(&format!("Proposed by the top manager on {PEER}.\n\nStart ")),
             "{body}"
         );
-        assert!(body.ends_with("\n> first line\n> \n> third line"), "{body}");
+        assert!(
+            body.ends_with("\n\n```\nfirst line\n\nthird line\n```"),
+            "{body}"
+        );
+        let spawn = card_msg(&e, &card).decision.unwrap().spawn.unwrap();
+        assert_eq!(
+            spawn.proposed_by.as_deref(),
+            Some(format!("top manager on {PEER}").as_str())
+        );
+        assert_eq!(spawn.prompt.as_deref(), Some("first line\n\nthird line"));
         let local = propose(&h, &e, "bypass", "a");
         assert!(card_msg(&e, &local)
             .body_md
             .starts_with("Start claude-code in "));
+        let local_spawn = card_msg(&e, &local).decision.unwrap().spawn.unwrap();
+        assert_eq!((local_spawn.proposed_by, local_spawn.prompt), (None, None));
 
         let machines = serde_json::json!({"machines": [{
             "id": PEER, "label": "Workstation",
@@ -1668,6 +1746,32 @@ mod tests {
         assert!(card_msg(&e, &labelled).body_md.starts_with(&format!(
             "Proposed by the top manager on Workstation ({PEER})."
         )));
+        let spawn = card_msg(&e, &labelled).decision.unwrap().spawn.unwrap();
+        assert_eq!(
+            spawn.proposed_by.unwrap(),
+            format!("top manager on Workstation ({PEER})")
+        );
+    }
+
+    #[test]
+    fn the_quoted_prompt_fence_is_longer_than_any_backtick_run_in_it() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let remote = As::remote(&h);
+        for (prompt, fence) in [
+            ("no ticks", "```"),
+            ("a ` b `` c", "```"),
+            ("a ``` b", "````"),
+            ("a ````` b\n```", "``````"),
+        ] {
+            let card = propose_as(&remote, &e, prompt);
+            let body = card_msg(&e, &card).body_md;
+            assert!(
+                body.ends_with(&format!("\n\n{fence}\n{prompt}\n{fence}")),
+                "{body}"
+            );
+        }
     }
 
     #[test]
@@ -1693,19 +1797,17 @@ mod tests {
         let msg = approve_on_phone(&e, &card);
         assert_eq!(
             replies(&e, &msg.id),
-            vec!["Approved, but this card can no longer be used; ask for a new card."]
+            vec!["Approved on your phone. The manager can start it now."]
         );
         assert!(manager_prompts(&e).is_empty());
         let args = card_args(&e, &card);
         assert_eq!(
-            run(&h, &e, "spawn_session", args.clone()).unwrap_err(),
-            "this card is not approved yet"
-        );
-        assert_eq!(
-            run_as(&As::remote(&h), &e, "spawn_session", args).unwrap_err(),
-            "this card is not approved yet"
+            run_as(&As::remote(&h), &e, "spawn_session", args.clone()).unwrap_err(),
+            GONE
         );
         assert!(h.spawned.lock().unwrap().is_empty());
+        run(&h, &e, "spawn_session", args).unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
     }
 
     #[test]
@@ -1717,18 +1819,16 @@ mod tests {
         let remote_card = propose_as(&remote, &e, "go");
         approve_on_phone(&e, &remote_card);
         let remote_by = format!("remote:{PEER}");
-        assert!(e
-            .rt
-            .approved_spawn(&remote_card, Some(&remote_by))
-            .is_some());
+        assert!(e.rt.approved_spawn(&remote_card, Some(&remote_by)).is_ok());
         for other in [
             Some(MGR),
             Some("remote:mx_00000000000000cc"),
             Some("-"),
             None,
         ] {
-            assert!(
-                e.rt.approved_spawn(&remote_card, other).is_none(),
+            assert_eq!(
+                e.rt.approved_spawn(&remote_card, other).unwrap_err(),
+                CardMiss::Gone,
                 "{other:?}"
             );
         }
@@ -1745,7 +1845,7 @@ mod tests {
         let local_card = propose(&h, &e, "bypass", "a");
         approve_on_phone(&e, &local_card);
         let err = run_as(&remote, &e, "spawn_session", card_args(&e, &local_card)).unwrap_err();
-        assert_eq!(err, "this card is not approved yet");
+        assert_eq!(err, GONE);
         assert!(h.spawned.lock().unwrap().is_empty());
         let wire: SignedSpawn = serde_json::from_value(approval(&e, &local_card)).unwrap();
         let proposal = SpawnProposal {
@@ -1814,10 +1914,10 @@ mod tests {
         assert_eq!(got.state, "refused");
         assert_eq!(got.reason.as_deref(), Some("expired"));
         e.rt.accept_spawnok(&signed, exp + 3);
-        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_none());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_err());
         assert_eq!(replies(&e, &msg.id).len(), 1);
         let err = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err();
-        assert_eq!(err, "this card is not approved yet");
+        assert_eq!(err, GONE);
         assert!(h.spawned.lock().unwrap().is_empty());
     }
 
@@ -1829,7 +1929,7 @@ mod tests {
         let card = propose(&h, &e, "bypass", "a");
         let msg = card_msg(&e, &card);
         e.rt.accept_spawnok(&phone_answer(&e, &msg), now_ms());
-        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_some());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_ok());
         let exp = msg
             .decision
             .as_ref()
@@ -1839,9 +1939,137 @@ mod tests {
             .unwrap()
             .exp_ms;
         e.rt.card_tick(exp + 1);
-        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_none());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_err());
         assert!(run(&h, &e, "spawn_session", card_args(&e, &card)).is_err());
         assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_card_says_pending_only_while_it_is_live_and_the_callers() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let pending = "this card is not approved yet";
+        assert_eq!(
+            run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err(),
+            pending
+        );
+        assert_eq!(
+            run_as(&As::remote(&h), &e, "spawn_session", card_args(&e, &card)).unwrap_err(),
+            GONE
+        );
+        lock(&e.rt.spawn_gate.cards).get_mut(&card).unwrap().exp_ms = 1;
+        assert_eq!(
+            run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err(),
+            GONE
+        );
+        assert_eq!(
+            run(&h, &e, "spawn_session", card_args(&e, "card_unknown")).unwrap_err(),
+            GONE
+        );
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_local_card_is_usable_by_any_local_manager_and_a_remote_card_is_not() {
+        let e = env();
+        with_dirs(&e);
+        let a = TestHost::new(&e);
+        let other_id = "s_bbbbbbbbbb";
+        let b = TestHost::with_me(&e, other_id);
+        let card = propose(&a, &e, "bypass", "a");
+        let msg = approve_on_phone(&e, &card);
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec!["Approved on your phone. Starting the session."]
+        );
+        run(&b, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(b.spawned.lock().unwrap().len(), 1);
+
+        let remote = As::remote(&a);
+        let remote_card = propose_as(&remote, &e, "go");
+        approve_on_phone(&e, &remote_card);
+        for local in [&a, &b] {
+            let err = run(local, &e, "spawn_session", card_args(&e, &remote_card)).unwrap_err();
+            assert_eq!(err, GONE);
+        }
+        assert!(a.spawned.lock().unwrap().is_empty());
+        run_as(&remote, &e, "spawn_session", card_args(&e, &remote_card)).unwrap();
+    }
+
+    #[test]
+    fn a_card_that_lost_its_runner_state_is_still_usable_locally_and_never_remotely() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let remote = As::remote(&h);
+        let local_card = propose(&h, &e, "bypass", "a");
+        lock(&e.rt.spawn_gate.cards).remove(&local_card);
+        approve_on_phone(&e, &local_card);
+        assert_eq!(
+            room_msgs(&e).last().unwrap().body_md,
+            "Approved on your phone. The manager can start it now."
+        );
+        assert!(manager_prompts(&e).is_empty());
+        run(&h, &e, "spawn_session", card_args(&e, &local_card)).unwrap();
+
+        let remote_card = propose_as(&remote, &e, "go");
+        lock(&e.rt.spawn_gate.cards).remove(&remote_card);
+        approve_on_phone(&e, &remote_card);
+        let err = run_as(&remote, &e, "spawn_session", card_args(&e, &remote_card)).unwrap_err();
+        assert_eq!(err, GONE);
+    }
+
+    #[test]
+    fn a_spawn_that_fails_after_the_approval_tells_the_card_to_ask_again() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = approve_on_phone(&e, &card);
+        h.fail(Fail::BeforeCreate);
+        assert_eq!(
+            run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err(),
+            "agent did not start"
+        );
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec![
+                "Approved on your phone. Starting the session.",
+                "The session did not start: agent did not start. Ask for a new card."
+            ]
+        );
+    }
+
+    #[test]
+    fn who_spawned_a_session_is_stored_with_it_and_survives_the_card() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let remote = As::remote(&h);
+        let card = propose_as(&remote, &e, "go");
+        approve_on_phone(&e, &card);
+        let first = run_as(&remote, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        let session = first["id"].as_str().unwrap();
+        let by = lock(&e.rt.session(session).unwrap().inner)
+            .meta
+            .spawned_by
+            .clone();
+        assert_eq!(by, Some(format!("remote:{PEER}")));
+        lock(&e.rt.spawn_gate.cards).clear();
+        assert!(e.rt.spawned_for(session, PEER));
+        assert!(!e.rt.spawned_for(session, "mx_00000000000000cc"));
+
+        let local_card = propose(&h, &e, "bypass", "a");
+        approve_on_phone(&e, &local_card);
+        let local = run(&h, &e, "spawn_session", card_args(&e, &local_card)).unwrap();
+        let id = local["id"].as_str().unwrap();
+        assert!(lock(&e.rt.session(id).unwrap().inner)
+            .meta
+            .spawned_by
+            .is_none());
+        assert!(!e.rt.spawned_for(id, PEER));
     }
 
     #[test]
@@ -1865,7 +2093,7 @@ mod tests {
         unknown.card_id = "card_unknown".into();
         for wire in [bad_sig, other_target, other_req, other_key, unknown] {
             e.rt.accept_spawnok(&wire, now_ms());
-            assert!(e.rt.approved_spawn(&wire.card_id, Some(MGR)).is_none());
+            assert!(e.rt.approved_spawn(&wire.card_id, Some(MGR)).is_err());
         }
         assert!(replies(&e, &msg.id).is_empty());
         assert!(manager_prompts(&e).is_empty());
@@ -1879,7 +2107,7 @@ mod tests {
             })
         ));
         e.rt.accept_spawnok(&good, now_ms());
-        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_some());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_ok());
     }
 
     #[test]
@@ -1917,7 +2145,7 @@ mod tests {
             sig: sign(&secret(3), &msg),
         };
         e.rt.accept_spawnok(&wire, now_ms());
-        assert!(e.rt.approved_spawn("card_human", Some(MGR)).is_none());
+        assert!(e.rt.approved_spawn("card_human", Some(MGR)).is_err());
     }
 
     #[test]
