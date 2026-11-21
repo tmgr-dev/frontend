@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Runtime, State, WindowEvent};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, Runtime, State, WindowEvent};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::tray::{
@@ -16,7 +16,7 @@ use crate::tray::{
 
 pub const LABEL: &str = "popover";
 
-const WIDTH: f64 = 320.0;
+const WIDTH: f64 = 400.0;
 const DEFAULT_HEIGHT: f64 = 400.0;
 const MIN_HEIGHT: f64 = 80.0;
 const MAX_HEIGHT: f64 = 900.0;
@@ -293,6 +293,63 @@ struct Anchor {
   monitor: Area,
   work: Area,
   scale: f64,
+  logical: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Coords {
+  MacLogical,
+  Physical,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct MonitorInfo {
+  monitor: Area,
+  work: Area,
+  scale: f64,
+}
+
+impl Area {
+  fn contains(&self, x: f64, y: f64) -> bool {
+    x >= self.x && x < self.right() && y >= self.y && y < self.bottom()
+  }
+  fn scaled(&self, k: f64) -> Area {
+    Area::new(self.x * k, self.y * k, self.w * k, self.h * k)
+  }
+}
+
+fn logical_anchor(icon: Area, m: &MonitorInfo) -> Anchor {
+  let k = 1.0 / m.scale;
+  Anchor { icon: icon.scaled(k), monitor: m.monitor.scaled(k), work: m.work.scaled(k), scale: 1.0, logical: true }
+}
+
+/// Picks the monitor under the tray icon. On macOS the icon rect is logical points times the tray window's own scale, so it is
+/// tested per monitor in that monitor's logical space; `cursor_logical` breaks ties between mixed-scale candidates.
+fn resolve_anchor(
+  icon: Area,
+  monitors: &[MonitorInfo],
+  primary: Option<MonitorInfo>,
+  mode: Coords,
+  cursor_logical: Option<(f64, f64)>,
+) -> Option<Anchor> {
+  match mode {
+    Coords::Physical => {
+      let m = monitors.iter().find(|m| m.monitor.contains(icon.cx(), icon.cy())).or(primary.as_ref())?;
+      Some(Anchor { icon, monitor: m.monitor, work: m.work, scale: m.scale, logical: false })
+    }
+    Coords::MacLogical => {
+      let candidates: Vec<&MonitorInfo> = monitors
+        .iter()
+        .filter(|m| {
+          let k = 1.0 / m.scale;
+          m.monitor.scaled(k).contains(icon.cx() * k, icon.cy() * k)
+        })
+        .collect();
+      let by_cursor = cursor_logical.and_then(|(x, y)| candidates.iter().find(|m| m.monitor.scaled(1.0 / m.scale).contains(x, y)));
+      let m = by_cursor.copied().or(candidates.first().copied()).or(primary.as_ref())?;
+      Some(logical_anchor(icon, m))
+    }
+  }
 }
 
 #[derive(Default)]
@@ -384,15 +441,9 @@ fn rect_area(rect: &tauri::Rect) -> Area {
   Area::new(position.x, position.y, size.width, size.height)
 }
 
-fn anchor_for<R: Runtime>(app: &AppHandle<R>, icon: Area) -> Option<Anchor> {
-  let monitor = app
-    .monitor_from_point(icon.cx(), icon.cy())
-    .ok()
-    .flatten()
-    .or_else(|| app.primary_monitor().ok().flatten())?;
+fn monitor_info(monitor: &tauri::Monitor) -> MonitorInfo {
   let (pos, size, work) = (monitor.position(), monitor.size(), monitor.work_area());
-  Some(Anchor {
-    icon,
+  MonitorInfo {
     monitor: Area::new(f64::from(pos.x), f64::from(pos.y), f64::from(size.width), f64::from(size.height)),
     work: Area::new(
       f64::from(work.position.x),
@@ -401,7 +452,15 @@ fn anchor_for<R: Runtime>(app: &AppHandle<R>, icon: Area) -> Option<Anchor> {
       f64::from(work.size.height),
     ),
     scale: monitor.scale_factor(),
-  })
+  }
+}
+
+fn anchor_for<R: Runtime>(app: &AppHandle<R>, icon: Area) -> Option<Anchor> {
+  let monitors: Vec<MonitorInfo> = app.available_monitors().unwrap_or_default().iter().map(monitor_info).collect();
+  let primary = app.primary_monitor().ok().flatten().map(|m| monitor_info(&m));
+  let mode = if cfg!(target_os = "macos") { Coords::MacLogical } else { Coords::Physical };
+  let cursor_logical = primary.and_then(|p| app.cursor_position().ok().map(|c| (c.x / p.scale, c.y / p.scale)));
+  resolve_anchor(icon, &monitors, primary, mode, cursor_logical)
 }
 
 fn place<R: Runtime>(app: &AppHandle<R>, window: &tauri::WebviewWindow<R>) {
@@ -415,7 +474,11 @@ fn place<R: Runtime>(app: &AppHandle<R>, window: &tauri::WebviewWindow<R>) {
     taskbar_edge(anchor.monitor, anchor.work, anchor.icon)
   };
   let (x, y) = position(anchor.icon, anchor.work, anchor.scale, size, edge);
-  let _ = window.set_position(PhysicalPosition::new(x, y));
+  let _ = if anchor.logical {
+    window.set_position(LogicalPosition::new(x, y))
+  } else {
+    window.set_position(PhysicalPosition::new(x, y))
+  };
 }
 
 fn reveal<R: Runtime>(app: &AppHandle<R>, window: &tauri::WebviewWindow<R>) {
@@ -616,6 +679,133 @@ mod tests {
 
   fn task(workspace_id: i64, id: i64) -> TrayTask {
     TrayTask { id, title: format!("T{id}"), common_time: 0, start_time: 0, workspace_id }
+  }
+
+  fn mon(lx: f64, ly: f64, lw: f64, lh: f64, scale: f64) -> MonitorInfo {
+    let bar = 25.0;
+    MonitorInfo {
+      monitor: area(lx * scale, ly * scale, lw * scale, lh * scale),
+      work: area(lx * scale, (ly + bar) * scale, lw * scale, (lh - bar) * scale),
+      scale,
+    }
+  }
+
+  fn tray_icon(lx: f64, ly: f64, tray_scale: f64) -> Area {
+    area(lx * tray_scale, ly * tray_scale, 30.0 * tray_scale, 25.0 * tray_scale)
+  }
+
+  fn old_choice(icon: Area, monitors: &[MonitorInfo], primary: MonitorInfo) -> MonitorInfo {
+    monitors.iter().copied().find(|m| m.monitor.contains(icon.cx(), icon.cy())).unwrap_or(primary)
+  }
+
+  fn mac_pick(icon: Area, monitors: &[MonitorInfo], cursor: (f64, f64)) -> Anchor {
+    resolve_anchor(icon, monitors, Some(monitors[0]), Coords::MacLogical, Some(cursor)).unwrap()
+  }
+
+  fn assert_below_icon_inside(anchor: Anchor, target: &MonitorInfo) {
+    assert!(anchor.logical);
+    assert_eq!(anchor.scale, 1.0);
+    let k = 1.0 / target.scale;
+    assert_eq!(anchor.monitor, target.monitor.scaled(k));
+    let size = (WIDTH, DEFAULT_HEIGHT);
+    let (x, y) = position(anchor.icon, anchor.work, anchor.scale, size, Edge::Top);
+    let (x, y) = (f64::from(x), f64::from(y));
+    let work = target.work.scaled(k);
+    assert!(x >= work.x && x + WIDTH <= work.right(), "x {x} outside {work:?}");
+    assert!(y >= work.y && y + DEFAULT_HEIGHT <= work.bottom(), "y {y} outside {work:?}");
+    assert!(y >= anchor.icon.bottom());
+  }
+
+  #[test]
+  fn mac_icon_on_retina_primary_stays_on_primary() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let anchor = mac_pick(tray_icon(600.0, 0.0, 2.0), &monitors, (610.0, 5.0));
+    assert_below_icon_inside(anchor, &monitors[0]);
+  }
+
+  #[test]
+  fn mac_icon_on_scale1_second_monitor_right_of_retina_primary() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let icon = tray_icon(1800.0, 0.0, 1.0);
+    assert_eq!(old_choice(icon, &monitors, monitors[0]), monitors[0]);
+    let anchor = mac_pick(icon, &monitors, (1810.0, 5.0));
+    assert_below_icon_inside(anchor, &monitors[1]);
+    assert_eq!(anchor.icon.x, 1800.0);
+  }
+
+  #[test]
+  fn mac_icon_on_retina_second_monitor_with_scale1_primary() {
+    let monitors = [mon(0.0, 0.0, 1920.0, 1080.0, 1.0), mon(1920.0, 0.0, 1440.0, 900.0, 2.0)];
+    let icon = tray_icon(2500.0, 0.0, 2.0);
+    let anchor = mac_pick(icon, &monitors, (2510.0, 5.0));
+    assert_below_icon_inside(anchor, &monitors[1]);
+  }
+
+  #[test]
+  fn mac_second_monitor_left_of_primary_negative_x() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(-1920.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let icon = tray_icon(-500.0, 0.0, 1.0);
+    let anchor = mac_pick(icon, &monitors, (-490.0, 5.0));
+    assert_below_icon_inside(anchor, &monitors[1]);
+  }
+
+  #[test]
+  fn mac_second_monitor_above_primary_negative_y() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(0.0, -1080.0, 1920.0, 1080.0, 1.0)];
+    let icon = tray_icon(900.0, -1080.0, 1.0);
+    let anchor = mac_pick(icon, &monitors, (910.0, -1075.0));
+    assert_below_icon_inside(anchor, &monitors[1]);
+  }
+
+  #[test]
+  fn mac_both_monitors_retina_second_to_the_right() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1512.0, 982.0, 2.0)];
+    let icon = tray_icon(2800.0, 0.0, 2.0);
+    let anchor = mac_pick(icon, &monitors, (2810.0, 5.0));
+    assert_below_icon_inside(anchor, &monitors[1]);
+  }
+
+  #[test]
+  fn mac_ambiguous_scales_are_settled_by_the_cursor() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let icon = tray_icon(1800.0, 0.0, 1.0);
+    let on_second = mac_pick(icon, &monitors, (1810.0, 5.0));
+    assert_eq!(on_second.monitor, monitors[1].monitor);
+    let on_primary = mac_pick(area(1800.0, 0.0, 60.0, 50.0), &monitors, (915.0, 5.0));
+    assert_eq!(on_primary.monitor, monitors[0].monitor.scaled(0.5));
+  }
+
+  #[test]
+  fn mac_point_outside_every_monitor_falls_back_to_primary() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let anchor = resolve_anchor(tray_icon(9000.0, 5000.0, 1.0), &monitors, Some(monitors[0]), Coords::MacLogical, None).unwrap();
+    assert_eq!(anchor.monitor, monitors[0].monitor.scaled(0.5));
+    assert!(resolve_anchor(tray_icon(9000.0, 5000.0, 1.0), &[], None, Coords::MacLogical, None).is_none());
+  }
+
+  #[test]
+  fn windows_physical_mode_uses_the_monitor_containing_the_icon() {
+    let primary = MonitorInfo { monitor: area(0.0, 0.0, 2560.0, 1440.0), work: area(0.0, 0.0, 2560.0, 1400.0), scale: 1.5 };
+    let left = MonitorInfo { monitor: area(-1920.0, -200.0, 1920.0, 1080.0), work: area(-1920.0, -200.0, 1920.0, 1040.0), scale: 1.0 };
+    let icon = area(-400.0, 820.0, 24.0, 40.0);
+    let anchor = resolve_anchor(icon, &[primary, left], Some(primary), Coords::Physical, None).unwrap();
+    assert!(!anchor.logical);
+    assert_eq!(anchor.scale, 1.0);
+    assert_eq!(anchor.monitor, left.monitor);
+    let edge = taskbar_edge(anchor.monitor, anchor.work, anchor.icon);
+    assert_eq!(edge, Edge::Bottom);
+    let size = (WIDTH * anchor.scale, DEFAULT_HEIGHT * anchor.scale);
+    let (x, y) = position(anchor.icon, anchor.work, anchor.scale, size, edge);
+    assert!(f64::from(x) >= left.work.x && f64::from(x) + size.0 <= left.work.right());
+    assert!(f64::from(y) >= left.work.y && f64::from(y) + size.1 <= left.work.bottom());
+  }
+
+  #[test]
+  fn windows_physical_point_outside_falls_back_to_primary() {
+    let primary = MonitorInfo { monitor: area(0.0, 0.0, 1920.0, 1080.0), work: area(0.0, 0.0, 1920.0, 1040.0), scale: 1.25 };
+    let anchor = resolve_anchor(area(5000.0, 5000.0, 24.0, 40.0), &[primary], Some(primary), Coords::Physical, None).unwrap();
+    assert_eq!(anchor.monitor, primary.monitor);
+    assert_eq!(anchor.scale, 1.25);
   }
 
   const SIZE: (f64, f64) = (640.0, 800.0);
