@@ -1,0 +1,12 @@
+╭ Chat ────────────────────────────────────────────────────────────────────────────────────────────╮
+│  Manager                     │Loading...                                                         │
+│  working                     │                                                                   │
+│  api-fix                     │                                                                   │
+│  claude-code · 42% · working │                                                                   │
+│  docs                        │                                                                   │
+│  codex · working             │                                                                   │
+│                              │                                                                   │
+│                              │Session is busy, try again when it is at its prompt                │
+│                              │> ping                                                             │
+╰ Esc close · Up/Down room · PgUp older · Enter send ──────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1            drag copies  Ctrl-] ? help

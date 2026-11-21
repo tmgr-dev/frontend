@@ -1,0 +1,10 @@
+╭ Chat ────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Chat needs a newer runner                                                                        │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+╰ Esc close · Up/Down room · PgUp older · Enter send ──────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1            drag copies  Ctrl-] ? help

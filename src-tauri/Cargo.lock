@@ -5465,7 +5465,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-ipc"
-version = "1.0.141"
+version = "1.0.142"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -5479,7 +5479,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-phone"
-version = "1.0.141"
+version = "1.0.142"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -5495,7 +5495,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-session"
-version = "1.0.141"
+version = "1.0.142"
 dependencies = [
  "libc",
  "regex",
@@ -5506,7 +5506,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-usage"
-version = "1.0.141"
+version = "1.0.142"
 dependencies = [
  "chrono",
  "libc",

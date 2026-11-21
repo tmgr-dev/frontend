@@ -175,6 +175,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.notes.is_some() {
         super::notes::draw_notes(buf, area, st);
     }
+    if st.chat.is_some() {
+        super::chat::draw_chat(buf, area, st);
+    }
     if st.summary.is_some() {
         super::summary::draw_summary(buf, area, st);
     }
@@ -1343,6 +1346,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
             Cmd::Notes,
         ]),
         "new / prompts / layouts / templates / notes",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Chat]),
+        "chat with the Manager and session rooms",
     ),
     (
         HelpKey::Cmds(&[Cmd::ResumePast]),

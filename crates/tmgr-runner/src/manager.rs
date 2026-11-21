@@ -121,6 +121,35 @@ fn read_at(dir: &File, name: &str, cap: usize) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+fn list_at(dir: &File) -> std::io::Result<Vec<String>> {
+    let fd = unsafe { libc::dup(dir.as_raw_fd()) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let d = unsafe { libc::fdopendir(fd) };
+    if d.is_null() {
+        let e = std::io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(e);
+    }
+    unsafe { libc::rewinddir(d) };
+    let mut out = Vec::new();
+    loop {
+        let ent = unsafe { libc::readdir(d) };
+        if ent.is_null() {
+            break;
+        }
+        let name = unsafe { std::ffi::CStr::from_ptr((*ent).d_name.as_ptr()) };
+        if let Ok(n) = name.to_str() {
+            if n != "." && n != ".." {
+                out.push(n.to_owned());
+            }
+        }
+    }
+    unsafe { libc::closedir(d) };
+    Ok(out)
+}
+
 fn unlink_at(dir: &File, name: &str) {
     if let Ok(c) = cstr(name) {
         unsafe { libc::unlinkat(dir.as_raw_fd(), c.as_ptr(), 0) };
@@ -206,18 +235,14 @@ pub fn take_pending(home: &Path, now_ms: u64) -> std::io::Result<Vec<SpoolReq>> 
         Err(e) => return Err(e),
     };
     let mut names: Vec<((u64, u64), String)> = Vec::new();
-    for (seen, e) in std::fs::read_dir(req_dir(home))?.enumerate() {
-        if seen >= SCAN_MAX {
-            break;
-        }
-        let Ok(file) = e?.file_name().into_string() else {
-            continue;
-        };
-        let Some(stem) = file.strip_suffix(".json") else {
-            continue;
-        };
-        if let Some(key) = stem_key(stem) {
-            names.push((key, stem.to_string()));
+    for file in list_at(&dir)? {
+        let stem = file.strip_suffix(".json");
+        match stem.and_then(stem_key) {
+            Some(key) if names.len() < SCAN_MAX => {
+                names.push((key, stem.unwrap_or_default().to_string()))
+            }
+            Some(_) => {}
+            None => unlink_at(&dir, &file),
         }
     }
     names.sort();
@@ -357,10 +382,10 @@ pub fn check_create(
             "a manager cannot be combined with origin, team, clones, unattended, start_key, clone_of or agent_work",
         );
     }
-    if req.permission_mode.as_deref() == Some("bypass") || req.bundle.is_some() {
+    if !matches!(req.permission_mode.as_deref(), None | Some("ask")) || req.bundle.is_some() {
         return refuse(
             ErrorCode::InvalidParams,
-            "a manager cannot run in bypass mode or with a bundle",
+            "a manager runs only in ask mode and without a bundle",
         );
     }
     if !MANAGER_PROFILES.contains(&req.profile.as_str()) {
@@ -623,6 +648,11 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
             if s.team.is_some() || s.managed {
                 return Err("worker sessions of a team or queue cannot be written to".into());
             }
+            if s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox {
+                return Err(
+                    "sessions in bypass mode or without the sandbox cannot be written to".into(),
+                );
+            }
             if s.state.kind == StateKind::Exited {
                 return Err("the session has exited".into());
             }
@@ -764,12 +794,18 @@ mod tests {
             code(check_create(&r, true, false)),
             ErrorCode::InvalidParams
         );
+        for mode in ["bypass", "accept-edits"] {
+            let mut r = base_req();
+            r.permission_mode = Some(mode.into());
+            assert_eq!(
+                code(check_create(&r, true, false)),
+                ErrorCode::InvalidParams,
+                "{mode}"
+            );
+        }
         let mut r = base_req();
-        r.permission_mode = Some("bypass".into());
-        assert_eq!(
-            code(check_create(&r, true, false)),
-            ErrorCode::InvalidParams
-        );
+        r.permission_mode = Some("ask".into());
+        assert!(check_create(&r, true, false).is_ok());
         let mut r = base_req();
         r.profile = "opencode".into();
         let e = check_create(&r, true, false).unwrap_err();
@@ -889,7 +925,7 @@ mod tests {
             .unwrap()
             .map(|e| e.unwrap().file_name().into_string().unwrap())
             .collect();
-        assert_eq!(left, vec!["junk.json".to_string()]);
+        assert!(left.is_empty(), "{left:?}");
     }
 
     #[test]
@@ -1149,7 +1185,12 @@ mod tests {
 
     #[test]
     fn send_refusals() {
-        let h = Fake::new();
+        let mut h = Fake::new();
+        let mut bypass = info("s_hhhhhhhhhh");
+        bypass.permission_mode = Some("bypass".into());
+        let mut open = info("s_iiiiiiiiii");
+        open.no_sandbox = true;
+        h.list.extend([bypass, open]);
         let st = State::default();
         for id in [
             "s_aaaaaaaaaa",
@@ -1157,6 +1198,8 @@ mod tests {
             "s_dddddddddd",
             "s_eeeeeeeeee",
             "s_gggggggggg",
+            "s_hhhhhhhhhh",
+            "s_iiiiiiiiii",
         ] {
             assert!(
                 call(

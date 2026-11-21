@@ -2451,6 +2451,9 @@ fn prompt_verdict(req: &RunCreateReq, from_cli: bool) -> Result<(), &'static str
     if prompt.trim().is_empty() || prompt.len() > tmgr_ipc::api::limits::MAX_RUN_PROMPT {
         return Err("prompt must be 1 to 100000 bytes of text");
     }
+    if prompt.starts_with('-') {
+        return Err("prompt must not start with -");
+    }
     if req.bundle.is_some()
         || req.bundle_sha256.is_some()
         || req.task.is_some()
@@ -6135,6 +6138,9 @@ mod tests {
         let mut blank = r.clone();
         blank.prompt = Some("  \n".into());
         assert!(prompt_verdict(&blank, true).is_err());
+        let mut flag = r.clone();
+        flag.prompt = Some("--dangerously-skip-permissions".into());
+        assert!(prompt_verdict(&flag, true).is_err());
         let mut task = r.clone();
         task.task = Some(TaskRef {
             workspace_id: -1,
