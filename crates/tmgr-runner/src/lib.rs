@@ -58,6 +58,8 @@ pub mod switch;
 #[cfg(unix)]
 pub mod trust;
 #[cfg(unix)]
+pub mod usage_sync;
+#[cfg(unix)]
 pub mod wire;
 #[cfg(unix)]
 pub mod worklog;

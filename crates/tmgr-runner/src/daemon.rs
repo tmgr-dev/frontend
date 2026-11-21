@@ -1022,6 +1022,7 @@ impl Session {
 
     fn watch_limit(&self, exit: Option<Option<i32>>) {
         let mut hit = None;
+        let mut hit_at = 0;
         {
             let mut i = lock(&self.inner);
             if i.meta.limit.is_some() {
@@ -1042,11 +1043,23 @@ impl Session {
                 (None, _) | (Some(_), Some(_)) => i.limit_first = None,
             }
             if let Some(line) = &hit {
+                hit_at = now_ms();
                 i.meta.limit = Some(tmgr_ipc::api::LimitHit {
                     line: line.clone(),
-                    at_ms: now_ms(),
+                    at_ms: hit_at,
                 });
             }
+        }
+        if let Some(line) = &hit {
+            let profile = lock(&self.inner).meta.profile.clone().unwrap_or_default();
+            crate::usage_sync::spawn(
+                &self.helper,
+                Some(&crate::usage_sync::Hit {
+                    profile: &profile,
+                    line,
+                    at_ms: hit_at,
+                }),
+            );
         }
         if hit.is_some() {
             self.persist();
@@ -5485,6 +5498,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     let ticker = rt.clone();
     thread::spawn(move || {
         let mut settings_at: Option<Instant> = None;
+        let mut machine_sync_at = Instant::now();
         while !ticker.stop.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(250));
             let idle = if settings_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(5)) {
@@ -5506,6 +5520,10 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             }
             ticker.stop_orphaned_workers(false);
             ticker.autopilot.tick(&ticker.cfg.self_exe);
+            if machine_sync_at.elapsed() >= crate::usage_sync::EVERY {
+                machine_sync_at = Instant::now();
+                crate::usage_sync::spawn(&ticker.cfg.self_exe, None);
+            }
         }
     });
 

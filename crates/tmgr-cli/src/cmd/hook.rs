@@ -490,6 +490,7 @@ fn upload_after_finish(task_id: Option<u64>, spawn: &dyn Fn(&[String])) {
     if let Some(id) = task_id {
         spawn(&runfinish::auto_upload_args(id));
     }
+    spawn(&runfinish::machine_sync_args());
 }
 
 const START_TOLERANCE_S: i64 = 2;
@@ -906,11 +907,18 @@ mod tests {
         let calls = std::cell::RefCell::new(Vec::new());
         let spawn = |a: &[String]| calls.borrow_mut().push(a.to_vec());
         upload_after_finish(None, &spawn);
-        assert!(calls.borrow().is_empty());
+        assert_eq!(
+            calls.borrow().as_slice(),
+            [vec!["usage", "machine", "sync", "--auto", "-q"]]
+        );
+        calls.borrow_mut().clear();
         upload_after_finish(Some(8974), &spawn);
         assert_eq!(
             calls.borrow().as_slice(),
-            [vec!["usage", "sync", "--auto", "--task-id", "8974", "-q"]]
+            [
+                vec!["usage", "sync", "--auto", "--task-id", "8974", "-q"],
+                vec!["usage", "machine", "sync", "--auto", "-q"]
+            ]
         );
     }
 }

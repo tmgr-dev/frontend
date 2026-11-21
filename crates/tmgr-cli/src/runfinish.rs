@@ -99,6 +99,13 @@ pub fn auto_upload_args(task_id: u64) -> Vec<String> {
         .collect()
 }
 
+pub fn machine_sync_args() -> Vec<String> {
+    ["usage", "machine", "sync", "--auto", "-q"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
 pub fn spawn_detached(args: &[String]) {
     let Ok(exe) = std::env::current_exe() else {
         return;
@@ -286,6 +293,14 @@ mod tests {
         ] {
             assert_eq!(parse_origin(url).as_deref(), want, "{url}");
         }
+    }
+
+    #[test]
+    fn the_machine_sync_command_line_is_fixed() {
+        assert_eq!(
+            machine_sync_args(),
+            ["usage", "machine", "sync", "--auto", "-q"]
+        );
     }
 
     #[test]

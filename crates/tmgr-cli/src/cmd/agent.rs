@@ -289,6 +289,7 @@ fn after_finish(ctx: &Ctx, client: &tmgr_core::api::Client, view: &RunView, know
     if let Some(task_id) = view.task_id.or(known.map(|r| r.task_id)) {
         runfinish::spawn_detached(&runfinish::auto_upload_args(task_id));
     }
+    runfinish::spawn_detached(&runfinish::machine_sync_args());
     if !ctx.cfg.hook_git_commits() {
         return;
     }
