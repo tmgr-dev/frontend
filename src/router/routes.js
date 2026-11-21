@@ -702,6 +702,15 @@ const routes = [
 		beforeEnter: async () => (await import('@/usage/guard')).desktopOnly(),
 	},
 	{
+		path: '/ai-usage/machines',
+		component: () => import('@/pages/AiUsageMachines.vue'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: false,
+		},
+		name: 'AiUsageMachines',
+	},
+	{
 		path: '/meetings',
 		component: () => import('@/pages/Meetings.vue'),
 		meta: {

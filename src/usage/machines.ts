@@ -4,7 +4,7 @@ import type {
 	Machine,
 	MachineLimit,
 } from '@/actions/tmgr/aiUsageMachines';
-import { t } from '@/i18n';
+import { t, te } from '@/i18n';
 
 export type Period = 'today' | '7d' | '30d' | '90d';
 export type LimitLevel = 'ok' | 'warn' | 'critical';
@@ -80,8 +80,7 @@ export const rowTokens = (r: DailyRow): number =>
 
 export const isUnassigned = (r: DailyRow): boolean => !(num(r.task_id) > 0);
 
-export const taskLabel = (r: DailyRow): string =>
-	r.task_key || `#${r.task_id}`;
+export const taskLabel = (r: DailyRow): string => r.task_key || `#${r.task_id}`;
 
 export interface FilterOptions {
 	machines: { id: string; label: string }[];
@@ -145,8 +144,7 @@ const AGENT_NAMES: Record<string, string> = {
 	codex: 'Codex',
 };
 
-export const agentName = (agent: string): string =>
-	AGENT_NAMES[agent] ?? agent;
+export const agentName = (agent: string): string => AGENT_NAMES[agent] ?? agent;
 
 export const windowLabel = (window: string): string => {
 	if (window === 'session') return t('agents.usage.machines.windows.session');
@@ -268,4 +266,76 @@ export const ageText = (iso: string | null, now: Date): string => {
 	if (seconds < 86400)
 		return t('agents.usage.machines.age.h', { n: Math.floor(seconds / 3600) });
 	return t('agents.usage.machines.age.d', { n: Math.floor(seconds / 86400) });
+};
+
+export interface LimitRowView {
+	key: string;
+	label: string;
+	account: string;
+	pct: number;
+	level: LimitLevel;
+	reset: boolean;
+	countdown: string;
+	asOf: string;
+}
+
+const windowRank = (window: string): number =>
+	window === 'session' ? 0 : window === 'weekly' ? 1 : 2;
+
+export const limitRows = (limits: MachineLimit[], now: Date): LimitRowView[] =>
+	[...limits]
+		.sort(
+			(a, b) =>
+				a.agent.localeCompare(b.agent) ||
+				a.account.localeCompare(b.account) ||
+				windowRank(a.window) - windowRank(b.window) ||
+				a.window.localeCompare(b.window),
+		)
+		.map((l) => {
+			const state = limitState(l, now);
+			const sourceKey = `agents.usage.machines.sources.${l.source}`;
+			return {
+				key: `${l.agent}/${l.account}/${l.window}`,
+				label: `${agentName(l.agent)} · ${windowLabel(l.window)}`,
+				account: l.account,
+				...state,
+				countdown: state.reset ? '' : countdownText(l.resets_at, now),
+				asOf: t('agents.usage.machines.limits.asOf', {
+					age: ageText(l.observed_at, now),
+					source: te(sourceKey) ? t(sourceKey) : l.source,
+				}),
+			};
+		});
+
+export interface ModelTaskRow extends Totals {
+	key: string;
+	agent: string;
+	model: string;
+	task: string | null;
+}
+
+export const groupByModelTask = (rows: DailyRow[]): ModelTaskRow[] => {
+	const groups = new Map<string, ModelTaskRow>();
+	for (const r of rows) {
+		const task = isUnassigned(r) ? null : taskLabel(r);
+		const key = `${r.agent}|${r.model}|${task ?? ''}`;
+		const g = groups.get(key) ?? {
+			key,
+			agent: r.agent,
+			model: r.model,
+			task,
+			tokens: 0,
+			cost: 0,
+			sessions: 0,
+			events: 0,
+		};
+		g.tokens += rowTokens(r);
+		g.cost += num(r.cost_usd);
+		g.sessions += num(r.sessions);
+		g.events += num(r.events);
+		groups.set(key, g);
+	}
+	return [...groups.values()].sort(
+		(a, b) => b.cost - a.cost || b.tokens - a.tokens,
+	);
 };

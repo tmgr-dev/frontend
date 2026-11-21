@@ -7,6 +7,8 @@ import {
 	countdownText,
 	dailyQuery,
 	filterOptions,
+	groupByModelTask,
+	limitRows,
 	limitState,
 	localDate,
 	periodRange,
@@ -277,5 +279,73 @@ describe('names', () => {
 		expect(windowLabel('session')).toBe('5-hour');
 		expect(windowLabel('weekly')).toBe('Weekly');
 		expect(windowLabel('model:opus')).toBe('opus weekly');
+	});
+});
+
+describe('limitRows', () => {
+	const lim = (over: Record<string, unknown>) => ({
+		agent: 'claude-code',
+		account: 'default',
+		window: 'weekly',
+		used_pct: 50,
+		resets_at: '2026-11-23T16:00:00Z',
+		plan: null,
+		observed_at: '2026-11-21T11:55:00Z',
+		source: 'statusline',
+		...over,
+	});
+
+	it('orders session before weekly and builds labels', () => {
+		const rows = limitRows(
+			[
+				lim({ window: 'model:opus' }),
+				lim({ window: 'weekly' }),
+				lim({ window: 'session', resets_at: '2026-11-21T15:12:00Z' }),
+			],
+			NOW,
+		);
+		expect(rows.map((r) => r.label)).toEqual([
+			'Claude Code · 5-hour',
+			'Claude Code · Weekly',
+			'Claude Code · opus weekly',
+		]);
+		expect(rows[0].countdown).toBe('3 h 12 m');
+		expect(rows[1].countdown).toBe('2 d 4 h');
+		expect(rows[0].asOf).toBe('updated 5 m ago · status line');
+	});
+
+	it('shows reset rows at zero without a countdown', () => {
+		const [row] = limitRows(
+			[lim({ used_pct: 99, resets_at: '2026-11-21T11:00:00Z' })],
+			NOW,
+		);
+		expect(row).toMatchObject({
+			pct: 0,
+			reset: true,
+			level: 'ok',
+			countdown: '',
+		});
+	});
+
+	it('carries the level and falls back to the raw source', () => {
+		const [row] = limitRows([lim({ used_pct: 96, source: 'x-new' })], NOW);
+		expect(row.level).toBe('critical');
+		expect(row.asOf).toContain('x-new');
+	});
+});
+
+describe('groupByModelTask', () => {
+	it('merges rows per agent, model and task and sorts by cost', () => {
+		const groups = groupByModelTask([
+			row({ cost_usd: 1, task_id: 7, task_key: 'TM-7' }),
+			row({ cost_usd: 2, task_id: 7, task_key: 'TM-7', day: '2026-11-19' }),
+			row({ cost_usd: 5, task_id: null }),
+			row({ cost_usd: 0.5, task_id: 0, model: 'sonnet' }),
+		]);
+		expect(groups.map((g) => [g.model, g.task, g.cost, g.sessions])).toEqual([
+			['opus', null, 5, 2],
+			['opus', 'TM-7', 3, 4],
+			['sonnet', null, 0.5, 2],
+		]);
 	});
 });
