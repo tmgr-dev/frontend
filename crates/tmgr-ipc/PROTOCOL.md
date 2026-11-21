@@ -719,6 +719,16 @@ clock-skew note) is stored after it. A live target that is not at its prompt get
 session was busy." and nothing is queued; ingest never answers `busy`. Without a live target the message is only stored.
 In process the relay pump calls `Chat::ingest`.
 
+Remote Manager rooms (top manager only, `manager-top` set): `chat.rooms` appends one Manager room per paired machine
+(`room.machine` = that machine's id, `title` = its label or id, no `last`). `chat.history` of such a room asks the
+machine's `room` op (`limit` 1 to 200, default 200; `before` is not supported and gives `[]`; messages of other rooms or
+invalid ones are dropped). `chat.send` asks its `ask` op with `body_md` and returns a local echo (author
+`{kind: manager, id: manager, machine: <this machine>}`, the id the remote machine stored); attachments are refused.
+Both go through the manager-remote allow list of the remote machine: a refusal reads `machine <id> refused <op>: allow
+"<op>" in manager-remote.toml on that machine`. Other errors are `invalid_params` with `unknown machine <id>; known: ...`,
+`relay not ready` or the remote error text. On a runner that is not top, and for a session room of another machine, a room of another
+machine is still `invalid_params` ("the room belongs to another machine" on a non-top).
+
 `chat.send` without `id` into a session room whose session is running types the body at the agent's prompt as a bracketed
 paste followed by Enter, exactly like `sessions.send` with `at_prompt`, and answers `busy` (and stores nothing)
 when the agent is not at its prompt. A room without a running target (an exited session, or the Manager room

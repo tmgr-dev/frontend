@@ -27,6 +27,8 @@ pub mod bundle;
 #[cfg(unix)]
 pub mod chat;
 #[cfg(unix)]
+pub mod chat_remote;
+#[cfg(unix)]
 pub mod checkpoint;
 #[cfg(unix)]
 pub mod client;

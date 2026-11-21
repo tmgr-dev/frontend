@@ -1,6 +1,8 @@
 use super::manager::ManagerHost;
 use super::*;
 use crate::chat::{self, tail};
+use crate::chat_remote;
+use crate::manager_remote::Live;
 use crate::mgr_rpc::dispatch::SEEN_FILE;
 use crate::mgr_rpc::relay::{
     serve_tick, MachinesCache, RelayTransport, RpcClient, RpcInbox, RpcSend,
@@ -122,6 +124,13 @@ impl Runner {
             .ok()
     }
 
+    fn remote_link(&self) -> Live<'_> {
+        Live {
+            dir: &self.cfg.dir,
+            chat: &self.chat,
+        }
+    }
+
     pub(super) fn chat_dispatch(
         &self,
         conn: &Arc<Conn>,
@@ -137,10 +146,23 @@ impl Runner {
         match method {
             chat_method::ROOMS => {
                 let sessions: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
-                Ok(to_json(&self.chat.rooms(&sessions)))
+                let mut rooms = self.chat.rooms(&sessions);
+                rooms.extend(chat_remote::rooms(&self.remote_link()));
+                Ok(to_json(&rooms))
             }
             chat_method::HISTORY => {
                 let q: HistoryParams = params(p)?;
+                if q.room.machine != self.chat.machine() {
+                    q.room.validate().map_err(bad)?;
+                    return chat_remote::history(
+                        &self.remote_link(),
+                        &q.room,
+                        q.before.as_deref(),
+                        q.limit,
+                    )
+                    .map(|m| to_json(&m))
+                    .map_err(bad);
+                }
                 self.chat
                     .history(&q.room, q.before.as_deref(), q.limit)
                     .map(|m| to_json(&m))
@@ -160,7 +182,15 @@ impl Runner {
                 }
                 q.room.validate().map_err(bad)?;
                 if q.room.machine != self.chat.machine() {
-                    return Err(bad("the room belongs to another machine".into()));
+                    return chat_remote::send(
+                        &self.remote_link(),
+                        self.chat.machine(),
+                        &q.room,
+                        &q.body_md,
+                        q.attachments.len(),
+                    )
+                    .map(|m| to_json(&m))
+                    .map_err(bad);
                 }
                 if let Some(id) = q.id {
                     let ts_ms = q
@@ -341,6 +371,96 @@ mod tests {
             id: None,
             ts_ms: None,
         })
+    }
+
+    const PEER: &str = "mx_00000000000000bb";
+
+    fn make_top_with_peer(rt: &Runner) {
+        let dir = &rt.cfg.dir;
+        crate::mgr_rpc::top::apply_top(dir, Some(true)).unwrap();
+        let machines = format!(
+            r#"{{"machines":[{{"id":"{PEER}","label":"laptop","device_id":"66666666-7777-8888-9999-aaaaaaaaaaaa","fp":"{}"}}]}}"#,
+            "b".repeat(64)
+        );
+        let p = dir.join(crate::mgr_rpc::machines::MACHINES_FILE);
+        std::fs::write(&p, machines).unwrap();
+        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
+    }
+
+    fn history_params(room: RoomRef) -> Value {
+        to_json(&HistoryParams {
+            room,
+            before: None,
+            limit: None,
+        })
+    }
+
+    fn send_to(room: RoomRef) -> Value {
+        to_json(&SendParams {
+            room,
+            body_md: "hi".into(),
+            reply_to: None,
+            attachments: Vec::new(),
+            id: None,
+            ts_ms: None,
+        })
+    }
+
+    #[test]
+    fn a_non_top_keeps_refusing_rooms_of_other_machines() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let (c, _peer) = conn(CLIENT_CLI);
+        let e = call(&rt, &c, chat_method::SEND, send_to(RoomRef::manager(PEER))).unwrap_err();
+        assert_eq!(e.msg, "the room belongs to another machine");
+        let e = call(
+            &rt,
+            &c,
+            chat_method::HISTORY,
+            history_params(RoomRef::manager(PEER)),
+        )
+        .unwrap_err();
+        assert_eq!(e.msg, "the room belongs to another machine");
+        let rooms: Vec<tmgr_ipc::chat::RoomInfo> =
+            serde_json::from_value(call(&rt, &c, chat_method::ROOMS, Value::Null).unwrap())
+                .unwrap();
+        assert!(rooms.iter().all(|r| r.room.machine == rt.chat.machine()));
+    }
+
+    #[test]
+    fn a_top_lists_a_manager_room_per_paired_machine() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        make_top_with_peer(&rt);
+        let (c, _peer) = conn(CLIENT_CLI);
+        let rooms: Vec<tmgr_ipc::chat::RoomInfo> =
+            serde_json::from_value(call(&rt, &c, chat_method::ROOMS, Value::Null).unwrap())
+                .unwrap();
+        assert_eq!(rooms[0].room, rt.chat.manager_room());
+        let last = rooms.last().unwrap();
+        assert_eq!(last.room, RoomRef::manager(PEER));
+        assert_eq!(last.title, "laptop");
+    }
+
+    #[test]
+    fn a_top_reaches_the_relay_for_a_paired_machine_and_refuses_the_rest() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        make_top_with_peer(&rt);
+        let (c, _peer) = conn(CLIENT_CLI);
+        let stranger = RoomRef::manager("mx_00000000000000cc");
+        let session = RoomRef::session(PEER, "s1");
+        let cases = [
+            (RoomRef::manager(PEER), "relay not ready"),
+            (stranger, "unknown machine mx_00000000000000cc"),
+            (session, "session rooms of other machines are not available"),
+        ];
+        for (room, want) in cases {
+            let e = call(&rt, &c, chat_method::SEND, send_to(room.clone())).unwrap_err();
+            assert!(e.msg.starts_with(want), "{}", e.msg);
+            let e = call(&rt, &c, chat_method::HISTORY, history_params(room)).unwrap_err();
+            assert!(e.msg.starts_with(want), "{}", e.msg);
+        }
     }
 
     #[test]
