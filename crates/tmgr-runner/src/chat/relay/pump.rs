@@ -7,7 +7,8 @@ use std::time::Duration;
 use serde_json::Value;
 use tmgr_chat_relay::api::Request;
 use tmgr_chat_relay::engine::{
-    retry_after_secs, ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Slot, Transport,
+    retry_after_secs, ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Slot, SpawnKeySink,
+    Transport,
 };
 use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind};
 
@@ -232,6 +233,7 @@ pub struct Setup {
     pub subscribe: Arc<dyn Fn() -> Receiver<ChatPush> + Send + Sync>,
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
     pub rpc: Arc<RpcInbox>,
+    pub spawnkey: Arc<dyn SpawnKeySink>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
     pub on_device: OnDevice,
 }
@@ -258,7 +260,8 @@ fn build(setup: &Setup) -> Result<Option<Engine>, String> {
         Some(
             e.with_kind("runner")
                 .with_room_scope(RoomScope::Local)
-                .with_rpc_sink(setup.rpc.clone()),
+                .with_rpc_sink(setup.rpc.clone())
+                .with_spawnkey_sink(setup.spawnkey.clone()),
         )
     })
 }

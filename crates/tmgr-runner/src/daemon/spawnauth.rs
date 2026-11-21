@@ -7,10 +7,11 @@ use crate::spawnauth::{
 };
 use std::collections::VecDeque;
 use tmgr_chat_relay::api::Request as RelayRequest;
+use tmgr_chat_relay::engine::SpawnKeySink;
 use tmgr_chat_relay::engine::{
     ChatSink, DeviceState, EngineConfig, RelayEngine, Transport, TrustState,
 };
-use tmgr_chat_relay::trust::{verify_spawnkey, SpawnKey};
+use tmgr_chat_relay::trust::SpawnKey;
 use tmgr_ipc::api::{SpawnChallengeParams, SpawnChallengeResult};
 use tmgr_spawn_auth::{b64_encode, OfferOutcome, Refusal, SignedSpawn, SpawnProposal, TrustStatus};
 
@@ -292,43 +293,86 @@ impl Runner {
     }
 }
 
-#[allow(dead_code)] // the relay engine does not deliver spawnkey messages yet
-pub(crate) trait DeviceDirectory {
-    fn sign_and_kex(&self, device_id: &str) -> Option<(String, String)>;
-}
-
-#[allow(dead_code)] // see DeviceDirectory
 pub(crate) fn ingest_spawnkey(
     auth: &SpawnAuth,
-    directory: &dyn DeviceDirectory,
-    user_id: u64,
     device_id: &str,
-    statement_json: &str,
+    sign_pub_b64: &str,
+    kex_pub_b64: &str,
+    key: &SpawnKey,
     now: u64,
 ) -> Result<OfferOutcome, &'static str> {
-    let (sign_pub_b64, kex_pub_b64) = directory.sign_and_kex(device_id).ok_or("unknown device")?;
-    verify_spawnkey(
-        statement_json,
-        user_id,
-        device_id,
-        &sign_pub_b64,
-        &kex_pub_b64,
-    )
-    .map_err(|_| "spawn key statement rejected")?;
-    let key: SpawnKey =
-        serde_json::from_str(statement_json).map_err(|_| "spawn key statement rejected")?;
     auth.offer_key(
         KeyOffer {
-            statement: key.statement,
-            sig: key.sig,
-            spawn_sig: key.spawn_sig,
+            statement: key.statement.clone(),
+            sig: key.sig.clone(),
+            spawn_sig: key.spawn_sig.clone(),
             device_id: device_id.to_owned(),
-            sign_pub_b64,
-            kex_pub_b64,
+            sign_pub_b64: sign_pub_b64.to_owned(),
+            kex_pub_b64: kex_pub_b64.to_owned(),
         },
         now,
     )
     .map_err(|_| "spawn key rejected")
+}
+
+const KEY_INBOX_CAP: usize = 16;
+const KEY_TICK: Duration = Duration::from_millis(500);
+
+struct KeyItem {
+    device_id: String,
+    sign_pub: String,
+    kex_pub: String,
+    key: SpawnKey,
+}
+
+pub(super) struct SpawnKeyInbox {
+    tx: std::sync::mpsc::SyncSender<KeyItem>,
+}
+
+impl SpawnKeySink for SpawnKeyInbox {
+    fn deliver_spawnkey(&self, from: &str, _: &str, sign_pub: &str, kex_pub: &str, key: &SpawnKey) {
+        let _ = self.tx.try_send(KeyItem {
+            device_id: from.to_owned(),
+            sign_pub: sign_pub.to_owned(),
+            kex_pub: kex_pub.to_owned(),
+            key: key.clone(),
+        });
+    }
+}
+
+impl Runner {
+    pub(super) fn start_spawnkey_intake(self: &Arc<Self>) -> Arc<SpawnKeyInbox> {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<KeyItem>(KEY_INBOX_CAP);
+        let rt = self.clone();
+        let spawned = thread::Builder::new()
+            .name("spawnkey-intake".into())
+            .spawn(move || {
+                while !rt.stop.load(Ordering::SeqCst) {
+                    let Ok(item) = rx.recv_timeout(KEY_TICK) else {
+                        continue;
+                    };
+                    let Ok(auth) = rt.spawn_gate.auth(&rt) else {
+                        continue;
+                    };
+                    if ingest_spawnkey(
+                        &auth,
+                        &item.device_id,
+                        &item.sign_pub,
+                        &item.kex_pub,
+                        &item.key,
+                        now_ms(),
+                    )
+                    .is_err()
+                    {
+                        log("spawn approval: a spawn key statement was not accepted");
+                    }
+                }
+            });
+        if spawned.is_err() {
+            log("spawn approval: the spawn key intake did not start");
+        }
+        Arc::new(SpawnKeyInbox { tx })
+    }
 }
 
 #[cfg(test)]
@@ -983,14 +1027,6 @@ mod tests {
         assert!(identity_of(42, "mx_0123456789abcdef", &no_fp).is_none());
     }
 
-    struct Directory(Option<(String, String)>);
-
-    impl DeviceDirectory for Directory {
-        fn sign_and_kex(&self, _: &str) -> Option<(String, String)> {
-            self.0.clone()
-        }
-    }
-
     fn statement_json(o: &KeyOffer) -> String {
         serde_json::to_string(&SpawnKey {
             statement: o.statement.clone(),
@@ -1009,25 +1045,51 @@ mod tests {
     }
 
     #[test]
-    fn a_valid_spawnkey_statement_lands_as_pending_and_a_bad_one_is_rejected() {
+    fn a_spawnkey_statement_lands_as_pending_and_only_a_newer_one_replaces_it() {
+        let (_t, auth) = fresh_auth();
+        let now = now_ms();
+        let ingest = |o: &KeyOffer| {
+            ingest_spawnkey(
+                &auth,
+                PHONE,
+                &o.sign_pub_b64,
+                &o.kex_pub_b64,
+                &serde_json::from_str(&statement_json(o)).unwrap(),
+                now,
+            )
+        };
+        let first = offer_with(&kex_key(None), PHONE, &secret(3), now - 2_000);
+        assert_eq!(ingest(&first).unwrap(), OfferOutcome::Added);
+        assert_eq!(auth.pending_keys().unwrap().len(), 1);
+        assert!(auth.pinned_key(&fp_of(&first)).unwrap().is_none());
+
+        let older = offer_with(&kex_key(None), PHONE, &secret(4), now - 3_000);
+        assert_eq!(ingest(&older).unwrap(), OfferOutcome::Stale);
+        assert_eq!(auth.pending_keys().unwrap()[0].spawn_key_fp, spawn_fp(3));
+
+        let newer = offer_with(&kex_key(None), PHONE, &secret(6), now - 1_000);
+        assert_eq!(ingest(&newer).unwrap(), OfferOutcome::Replaced);
+        let pending = auth.pending_keys().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].spawn_key_fp, spawn_fp(6));
+        assert!(auth.pinned_key(&fp_of(&first)).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_tampered_spawnkey_statement_is_rejected() {
         let (_t, auth) = fresh_auth();
         let o = offer_with(&kex_key(None), PHONE, &secret(3), now_ms() - 1_000);
-        let dir = Directory(Some((o.sign_pub_b64.clone(), o.kex_pub_b64.clone())));
-        let json = statement_json(&o);
-        let out = ingest_spawnkey(&auth, &dir, 42, PHONE, &json, now_ms()).unwrap();
-        assert_eq!(out, OfferOutcome::Added);
-        assert_eq!(auth.pending_keys().unwrap().len(), 1);
-        assert!(auth.pinned_key(&fp_of(&o)).unwrap().is_none());
-
-        let (_t2, auth2) = fresh_auth();
-        let mut bad = o.clone();
-        bad.spawn_sig = o.sig.clone();
-        let rejected = ingest_spawnkey(&auth2, &dir, 42, PHONE, &statement_json(&bad), now_ms());
-        assert!(rejected.is_err());
-        let wrong_user = ingest_spawnkey(&auth2, &dir, 43, PHONE, &json, now_ms());
-        assert!(wrong_user.is_err());
-        let unknown = ingest_spawnkey(&auth2, &Directory(None), 42, PHONE, &json, now_ms());
-        assert!(unknown.is_err());
-        assert!(auth2.pending_keys().unwrap().is_empty());
+        let mut key: SpawnKey = serde_json::from_str(&statement_json(&o)).unwrap();
+        key.spawn_sig = key.sig.clone();
+        let out = ingest_spawnkey(
+            &auth,
+            PHONE,
+            &o.sign_pub_b64,
+            &o.kex_pub_b64,
+            &key,
+            now_ms(),
+        );
+        assert!(out.is_err());
+        assert!(auth.pending_keys().unwrap().is_empty());
     }
 }

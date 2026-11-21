@@ -68,6 +68,7 @@ impl Runner {
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
             stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
             rpc,
+            spawnkey: self.start_spawnkey_intake(),
             serve_rpc: Arc::new(move |send| serve_rt.spawn_rpc_server(serve_inbox.clone(), send)),
             on_device: Arc::new(move |d| device_rt.chat.set_relay_device(d)),
         };

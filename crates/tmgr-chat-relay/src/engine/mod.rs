@@ -17,12 +17,12 @@ use crate::keys::{fingerprint, DeviceKeys};
 use crate::trust::{
     decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, may_vouch,
     parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke, trusted_set_by_kind,
-    v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode,
-    JoinMacInput, KindCtx, RevokeStatement, Trusted,
+    v2_self_markers, verify_join_mac, verify_revoke, verify_spawnkey, DirEntry, IntroStatement,
+    JoinCode, JoinMacInput, KindCtx, RevokeStatement, SpawnKey, Trusted,
 };
 use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 
-pub use ports::{ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, Transport};
+pub use ports::{ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, SpawnKeySink, Transport};
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
 };
@@ -680,6 +680,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore, S: ChatSink> {
     now: Box<dyn Fn() -> u64 + Send + Sync>,
     scope: RoomScope,
     rpc: Option<Arc<dyn RpcSink>>,
+    spawnkey: Option<Arc<dyn SpawnKeySink>>,
     core: Mutex<Core>,
 }
 
@@ -718,6 +719,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             now,
             scope: RoomScope::default(),
             rpc: None,
+            spawnkey: None,
             core: Mutex::new(core),
         })
     }
@@ -734,6 +736,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     pub fn with_rpc_sink(mut self, sink: Arc<dyn RpcSink>) -> Self {
         self.rpc = Some(sink);
+        self
+    }
+
+    pub fn with_spawnkey_sink(mut self, sink: Arc<dyn SpawnKeySink>) -> Self {
+        self.spawnkey = Some(sink);
         self
     }
 
@@ -1331,6 +1338,28 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 let sig = opened.payload.get("sig")?.as_str()?;
                 let json = json!({ "v": 1, "statement": statement, "sig": sig }).to_string();
                 ingest_revoke(c, self.cfg.user_id, now, &json, None, &mut BTreeMap::new());
+            }
+            "spawnkey" if sender_trusted && c.st.joined => {
+                let sink = self.spawnkey.as_ref()?;
+                let own = c.identity.as_ref().map(|i| i.device_id.as_str());
+                let dev = c.st.trusted.iter().find(|d| d.id == opened.from)?;
+                if Some(dev.id.as_str()) == own
+                    || dev.fp != opened.from_fp
+                    || c.st.revoked.contains(&dev.fp)
+                {
+                    return None;
+                }
+                let json = serde_json::to_string(&opened.payload).ok()?;
+                verify_spawnkey(
+                    &json,
+                    self.cfg.user_id,
+                    &dev.id,
+                    &dev.sign_pub,
+                    &dev.kex_pub,
+                )
+                .ok()?;
+                let key: SpawnKey = serde_json::from_str(&json).ok()?;
+                sink.deliver_spawnkey(&dev.id, &dev.fp, &dev.sign_pub, &dev.kex_pub, &key);
             }
             _ => return None,
         }

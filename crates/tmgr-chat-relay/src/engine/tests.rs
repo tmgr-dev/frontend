@@ -9,6 +9,7 @@ use tmgr_ipc::chat::{new_message_id, Author, MessageKind};
 
 use super::*;
 use crate::api::Method;
+use crate::trust::{sign_spawnkey, SpawnStatement};
 
 const T0: u64 = 1_800_000_000_000;
 const USER: u64 = 42;
@@ -3651,4 +3652,171 @@ fn own_device_is_none_before_setup_and_the_public_id_and_fp_after() {
     assert_eq!(e.own_device(), None);
     e.register().unwrap();
     assert_eq!(e.own_device(), Some((my_id(&e), fp_of(&e))));
+}
+
+#[derive(Clone, Default)]
+struct KeyRec(Arc<Mutex<Vec<(String, String, SpawnKey)>>>);
+
+impl KeyRec {
+    fn n(&self) -> usize {
+        self.0.lock().unwrap().len()
+    }
+}
+
+impl SpawnKeySink for KeyRec {
+    fn deliver_spawnkey(&self, from: &str, fp: &str, _: &str, _: &str, key: &SpawnKey) {
+        self.0
+            .lock()
+            .unwrap()
+            .push((from.into(), fp.into(), key.clone()));
+    }
+}
+
+fn spawnkey_world() -> (Fake, Clock, Engine, Engine, KeyRec) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let mut r = join_as(&fake, &clock, &a, "Runner", "runner");
+    r.poll_once().unwrap();
+    let sink = KeyRec::default();
+    r.spawnkey = Some(Arc::new(sink.clone()));
+    (fake, clock, a, r, sink)
+}
+
+fn spawnkey_payload(signer: &Engine, user: u64, device_id: &str, issued: u64) -> Value {
+    let g = signer.lock();
+    let dev = g.keys.as_ref().unwrap();
+    let spawn_secret = [77u8; 32];
+    let st = SpawnStatement {
+        user_id: user,
+        device_fp: dev.fingerprint(),
+        device_id: device_id.into(),
+        spawn_pub_b64: b64(&tmgr_phone::public_key(&spawn_secret).unwrap()),
+        issued_at_ms: issued,
+    };
+    serde_json::to_value(sign_spawnkey(dev, &spawn_secret, &st).unwrap()).unwrap()
+}
+
+fn post_spawnkey(from: &Engine, to: &Engine, payload: &Value) {
+    raw_post(from, &my_id(to), "spawnkey", &rpc_id("spawnkey"), payload);
+    to.poll_once().unwrap();
+}
+
+#[test]
+fn spawnkey_from_a_trusted_joined_sender_reaches_the_sink() {
+    let (_f, _c, a, r, sink) = spawnkey_world();
+    let payload = spawnkey_payload(&a, USER, &my_id(&a), 5);
+    post_spawnkey(&a, &r, &payload);
+    let got = sink.0.lock().unwrap().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0, my_id(&a));
+    assert_eq!(got[0].1, fp_of(&a));
+    assert_eq!(serde_json::to_value(&got[0].2).unwrap(), payload);
+}
+
+#[test]
+fn spawnkey_with_a_bad_statement_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnkey_world();
+    let aid = my_id(&a);
+    let good = spawnkey_payload(&a, USER, &aid, 5);
+    let swap = |from: &str, to: &str| {
+        let mut p = good.clone();
+        p[to] = good[from].clone();
+        p
+    };
+    post_spawnkey(&a, &r, &swap("spawn_sig", "sig"));
+    post_spawnkey(&a, &r, &swap("sig", "spawn_sig"));
+    post_spawnkey(&a, &r, &spawnkey_payload(&a, USER + 1, &aid, 5));
+    post_spawnkey(&a, &r, &spawnkey_payload(&a, USER, &my_id(&r), 5));
+    for junk in [json!({}), json!("x"), json!(null), json!({"statement": 1})] {
+        post_spawnkey(&a, &r, &junk);
+    }
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnkey_from_an_untrusted_device_is_dropped() {
+    let (fake, clock, _a, r, sink) = spawnkey_world();
+    let stranger = engine_with(&fake, &clock, "Stranger");
+    stranger.ensure_registered(&mut stranger.lock()).unwrap();
+    let rid = my_id(&r);
+    let dev = {
+        let g = r.lock();
+        g.st.trusted.iter().find(|d| d.id == rid).cloned().unwrap()
+    };
+    let payload = spawnkey_payload(&stranger, USER, &my_id(&stranger), 5);
+    stranger
+        .seal_and_post(
+            &mut stranger.lock(),
+            "spawnkey",
+            &rpc_id("spawnkey"),
+            &payload,
+            &[dev],
+            false,
+        )
+        .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnkey_from_a_revoked_sender_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnkey_world();
+    let aid = my_id(&a);
+    let payload = spawnkey_payload(&a, USER, &aid, 5);
+    let fp = fp_of(&a);
+    {
+        let mut g = r.lock();
+        g.st.revoked.push(fp.clone());
+        g.st.trusted.retain(|d| d.fp != fp);
+    }
+    let target: Vec<Dev> = {
+        let g = a.lock();
+        let dev = g.st.trusted.iter().find(|d| d.id == my_id(&r)).cloned();
+        dev.into_iter().collect()
+    };
+    a.seal_and_post(
+        &mut a.lock(),
+        "spawnkey",
+        &rpc_id("spawnkey"),
+        &payload,
+        &target,
+        false,
+    )
+    .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnkey_before_joining_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnkey_world();
+    r.lock().st.joined = false;
+    post_spawnkey(&a, &r, &spawnkey_payload(&a, USER, &my_id(&a), 5));
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnkey_from_the_own_device_is_dropped() {
+    let (_f, _c, _a, r, sink) = spawnkey_world();
+    let rid = my_id(&r);
+    let payload = spawnkey_payload(&r, USER, &rid, 5);
+    let me: Vec<Dev> = r
+        .lock()
+        .st
+        .trusted
+        .iter()
+        .filter(|d| d.id == rid)
+        .cloned()
+        .collect();
+    r.seal_and_post(
+        &mut r.lock(),
+        "spawnkey",
+        &rpc_id("spawnkey"),
+        &payload,
+        &me,
+        false,
+    )
+    .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
 }

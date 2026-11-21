@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use tmgr_ipc::chat::ChatMessage;
 
 use crate::api::Request;
+use crate::trust::SpawnKey;
 
 pub trait Transport: Send + Sync {
     fn call(&self, req: &Request, device_token: Option<&str>) -> Result<String, String>;
@@ -74,5 +75,18 @@ pub trait RpcSink: Send + Sync {
         kind: &str,
         msg_id: &str,
         payload: serde_json::Value,
+    );
+}
+
+/// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
+/// The statement is already verified against the sender's pinned keys.
+pub trait SpawnKeySink: Send + Sync {
+    fn deliver_spawnkey(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        sign_pub_b64: &str,
+        kex_pub_b64: &str,
+        key: &SpawnKey,
     );
 }
