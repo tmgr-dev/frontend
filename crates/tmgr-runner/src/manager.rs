@@ -288,6 +288,9 @@ pub fn take_pending(home: &Path, now_ms: u64) -> std::io::Result<Vec<SpoolReq>> 
     };
     let mut names: Vec<((u64, u64), String)> = Vec::new();
     for file in list_at(&dir)? {
+        if file.starts_with('.') && file.ends_with(".tmp") {
+            continue;
+        }
         let stem = file.strip_suffix(".json");
         match stem.and_then(stem_key) {
             Some(key) if names.len() < SCAN_MAX => {
@@ -1317,6 +1320,17 @@ mod tests {
         stop.store(true, std::sync::atomic::Ordering::SeqCst);
         responder.join().unwrap();
         assert_eq!(got.unwrap(), json!({"echo": {"k": 1}}));
+    }
+
+    #[test]
+    fn a_pass_leaves_a_request_being_written_alone() {
+        let t = tmp();
+        let home = t.path().canonicalize().unwrap();
+        let root = prepare_spool(&home).unwrap();
+        let tmp_req = root.join(REQ_DIR).join(".r_1.json.tmp");
+        std::fs::write(&tmp_req, b"{").unwrap();
+        assert!(take_pending(&home, clock_ms()).unwrap().is_empty());
+        assert!(tmp_req.exists());
     }
 
     #[test]
