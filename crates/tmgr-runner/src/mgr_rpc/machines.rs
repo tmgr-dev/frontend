@@ -16,6 +16,7 @@ pub struct Machines {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Machine {
     id: String,
+    label: String,
     device_id: String,
     fp: String,
 }
@@ -56,6 +57,7 @@ impl Machines {
             }
             list.push(Machine {
                 id: r.id,
+                label: r.label,
                 device_id: r.device_id,
                 fp: r.fp,
             });
@@ -83,6 +85,13 @@ impl Machines {
             .iter()
             .find(|m| m.device_id == device_id && m.fp == fp)
             .map(|m| m.id.as_str())
+    }
+
+    pub fn rows(&self) -> Vec<(&str, &str)> {
+        self.list
+            .iter()
+            .map(|m| (m.id.as_str(), m.label.as_str()))
+            .collect()
     }
 
     pub fn device_for(&self, machine: &str) -> Option<(&str, &str)> {
@@ -141,6 +150,13 @@ mod tests {
             m.machine_for("00000000-0000-0000-0000-000000000000", FP_A),
             None
         );
+    }
+
+    #[test]
+    fn rows_list_id_and_label_in_file_order() {
+        let m = Machines::parse(&good()).unwrap();
+        assert_eq!(m.rows(), vec![(A, "box"), (B, "box")]);
+        assert!(Machines::default().rows().is_empty());
     }
 
     #[test]

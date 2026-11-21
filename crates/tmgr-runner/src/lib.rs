@@ -5,6 +5,7 @@ pub mod exe;
 pub mod limit;
 pub mod login;
 pub mod manager;
+pub mod manager_remote;
 pub mod orchestrator;
 pub mod permit;
 pub mod profile;

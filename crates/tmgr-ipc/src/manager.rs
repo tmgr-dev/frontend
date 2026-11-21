@@ -30,6 +30,12 @@ pub mod tool {
     pub const READ_ROOM: &str = "read_room";
     pub const SWITCH_AGENT: &str = "switch_agent";
     pub const PROPOSE_SPAWN: &str = "propose_spawn";
+    pub const LIST_MACHINES: &str = "list_machines";
+    pub const ASK_SUBMANAGER: &str = "ask_submanager";
+    pub const READ_SUBMANAGER: &str = "read_submanager";
+    pub const CAPS: &str = "__caps";
+    pub const TOP_ONLY: [&str; 3] = [LIST_MACHINES, ASK_SUBMANAGER, READ_SUBMANAGER];
+    pub const MACHINE_SCOPED: [&str; 3] = [LIST_SESSIONS, READ_SESSION, SEND_TO_SESSION];
     pub const READ_ONLY: [&str; 3] = [LIST_SESSIONS, READ_SESSION, READ_ROOM];
     pub const ALL: [&str; 8] = [
         LIST_SESSIONS,
@@ -107,6 +113,29 @@ mod tests {
         let mut extra = ok;
         extra["x"] = json!(1);
         assert!(serde_json::from_value::<SignedSpawn>(extra).is_err());
+    }
+
+    #[test]
+    fn the_top_only_tools_are_separate_from_the_local_ones() {
+        assert_eq!(
+            tool::TOP_ONLY,
+            [
+                tool::LIST_MACHINES,
+                tool::ASK_SUBMANAGER,
+                tool::READ_SUBMANAGER
+            ]
+        );
+        assert_eq!(
+            tool::MACHINE_SCOPED,
+            [
+                tool::LIST_SESSIONS,
+                tool::READ_SESSION,
+                tool::SEND_TO_SESSION
+            ]
+        );
+        for t in tool::TOP_ONLY.iter().chain(&[tool::CAPS]) {
+            assert!(!tool::ALL.contains(t), "{t}");
+        }
     }
 
     #[test]

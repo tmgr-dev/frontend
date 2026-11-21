@@ -29,15 +29,20 @@ impl Runner {
                         rt: self,
                         me: &m.id,
                     };
+                    let link = crate::manager_remote::Live {
+                        dir: &self.cfg.dir,
+                        chat: &self.chat,
+                    };
                     for req in reqs {
                         if req.tool == tool::SWITCH_AGENT {
                             self.answer_switch_async(&m.id, home.clone(), req);
                             continue;
                         }
-                        let resp = match core::execute(&host, &self.mgr, &req) {
-                            Ok(v) => SpoolResp::ok(&req.id, v),
-                            Err(e) => SpoolResp::err(&req.id, e),
-                        };
+                        let resp =
+                            match crate::manager_remote::execute(&link, &host, &self.mgr, &req) {
+                                Ok(v) => SpoolResp::ok(&req.id, v),
+                                Err(e) => SpoolResp::err(&req.id, e),
+                            };
                         if let Err(e) = core::respond(&home, &resp) {
                             log(&format!("manager {}: response not written: {e}", m.id));
                         }
@@ -340,6 +345,33 @@ pub(super) mod tests {
         let theirs = core::req_dir(&homes.join(OTHER)).join(format!("{foreign}.json"));
         assert!(theirs.exists());
         assert!(!homes.join(OTHER).join(".cache/tmgr-manager/resp").exists());
+    }
+
+    fn reply(t: &Path, stem: &str) -> Value {
+        let p = t
+            .join("homes")
+            .join(MGR)
+            .join(format!(".cache/tmgr-manager/resp/{stem}.json"));
+        serde_json::from_slice(&fs::read(p).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn the_remote_tools_are_refused_for_a_sub_and_answered_for_the_top() {
+        let (t, rt) = pair();
+        let home = t.path().join("homes").join(MGR);
+        let ask = |tool: &str| {
+            let stem = plant(&home, tool);
+            rt.manager_pass();
+            reply(t.path(), &stem)
+        };
+        assert_eq!(ask("list_machines")["error"], "not available");
+        assert_eq!(ask("__caps")["result"], json!({"top": false}));
+
+        crate::mgr_rpc::top::apply_top(&t.path().join("run"), Some(true)).unwrap();
+        assert_eq!(ask("__caps")["result"], json!({"top": true}));
+        let v = ask("list_machines");
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["result"], json!({"machines": [], "relay_ready": false}));
     }
 
     #[test]

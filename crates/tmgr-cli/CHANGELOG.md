@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Top manager: `tmgr runner manager start --top` makes this machine's manager the top manager, which can reach the managers on your other machines; `--no-top` turns it off, and without either flag the setting stays as it was. Every other manager behaves exactly as before and does not get the new tools.
+- Pairing machines: `tmgr runner manager machine show` prints this machine's line, `machine add '<line>' --label NAME` adds another machine and `machine remove <mx_id>` removes it. Pair on both machines (each one adds the other's line), then add the caller's machine id to `accept_from` in `manager-remote.toml` on the machine that should answer. Nothing edits that file for you.
+- New tools for the top manager: `list_machines` (id, label and whether the relay is ready; it does not say whether a machine is online), `ask_submanager` and `read_submanager`, plus an optional `machine` argument on `list_sessions`, `read_session` and `send_to_session`. Text that comes back from another machine is marked as data, never instructions, and the top manager is told to send or ask on another machine only when you asked.
+- `ask` and `room` (which `ask_submanager` and `read_submanager` use) are off on a sub manager by default. To allow them, set `allow = ["list", "read", "ask", "room"]` in `manager-remote.toml` on that machine. A refusal names the op and this fix.
+- Restart the runner after updating so it picks up the new tools.
+
 ## 1.0.146
 
 - You can now start a bypass-permissions and/or no-sandbox session on a linked follower from the leader: `tmgr run --on <link> --agent <agent> --mode bypass` / `--no-sandbox`, or the bypass and no-sandbox toggles in the attach new-session dialog. **Warning:** a bypass session runs every tool without asking you, and a no-sandbox session has full access to the follower's files, network and everything your user account there can reach. Anyone who controls the leader and knows the PIN can do this on the follower.
