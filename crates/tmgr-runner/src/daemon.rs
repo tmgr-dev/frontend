@@ -65,6 +65,7 @@ use tmgr_ipc::{auth, secret, server};
 
 mod chat_api;
 mod checkpoints;
+mod handoff;
 mod manager;
 
 const MAX_CONNS: usize = 64;
@@ -2948,6 +2949,9 @@ impl Runner {
             method::LAYOUT_SET => self.layout_set(p).map(|_| Value::Null),
             method::ATTACH_OPEN => self.attach_open(conn, p),
             method::ATTACH_SET => self.attach_set(conn, p),
+            m @ (method::HANDOFF_PREPARE | method::HANDOFF_FINISH) => {
+                self.handoff_dispatch(conn, m, p)
+            }
             m if m.starts_with("chat.") => self.chat_dispatch(conn, m, p),
             m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
         }
