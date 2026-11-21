@@ -132,8 +132,10 @@ mod tests {
     }
   }
 
+  type Opened = Result<Vec<Result<Value, String>>, String>;
+
   struct Fake {
-    opens: Mutex<VecDeque<Result<Vec<Result<Value, String>>, String>>>,
+    opens: Mutex<VecDeque<Opened>>,
     stop: Arc<AtomicBool>,
   }
 
