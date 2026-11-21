@@ -4303,7 +4303,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-spawn-auth"
-version = "1.0.144"
+version = "1.0.145"
 dependencies = [
  "base64 0.22.1",
  "hex",
