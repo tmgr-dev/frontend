@@ -18,6 +18,8 @@ probes!(
   popover_quick_add,
   popover_resize,
   popover_extras_update,
+  toast_push,
+  toast_action,
   runner_enabled,
   llm_chat,
   local_access_event,
@@ -165,4 +167,14 @@ fn popover_commands_are_scoped_to_the_popover_and_main_windows() {
   }
   assert!(call("popover", "decisions_list").is_ok());
   assert!(call("popover", "idle_supported").unwrap_err().contains("not allowed on window"));
+}
+
+#[test]
+fn toast_push_is_for_the_main_window_and_toast_action_for_the_toast_window() {
+  assert!(call("main", "toast_push").is_ok());
+  for label in ["toast", "popover"] {
+    assert!(call(label, "toast_push").unwrap_err().contains("not allowed on window"), "toast_push on {label}");
+  }
+  assert!(call("toast", "toast_action").is_ok());
+  assert!(call("main", "toast_action").unwrap_err().contains("not allowed on window"));
 }

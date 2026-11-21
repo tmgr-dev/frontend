@@ -101,6 +101,15 @@ export const orderOptions = <T extends { recommended: boolean }>(
 ): T[] =>
 	[...options].sort((a, b) => Number(b.recommended) - Number(a.recommended));
 
+export const nextResize = (
+	measured: number,
+	max: number,
+	last: number,
+): number | null => {
+	const height = Math.min(Math.ceil(measured), max);
+	return height === last ? null : height;
+};
+
 export const taskKey = (workspaceId: number, id: number): string =>
 	`${workspaceId}:${id}`;
 

@@ -85,15 +85,35 @@ fn on_change<R: Runtime>(app: &AppHandle<R>, change: &Change, count: usize) {
   phone::on_hub_change(app);
   match change {
     Change::Created { id, title, body, meta, options } => {
-      let toast = crate::toast::decision_toast(id, title, meta.clone(), options);
+      let seen = hub_of(app)
+        .ok()
+        .and_then(|hub| hub.get(id).ok())
+        .map(|card| card.updated_ms.unwrap_or(card.created_ms));
+      let toast = crate::toast::decision_toast(id, title, meta.clone(), options, seen);
       crate::toast::push_with_fallback(app, toast, (title.clone(), body.clone()));
     }
     Change::Finished(event) => {
       crate::toast::decision_answered(app, &event.card_id);
       spawn_route(app, event.card_id.clone(), (**event).clone());
     }
-    Change::Updated => {}
+    Change::Updated => sync_toasts(app),
   }
+}
+
+fn sync_toasts<R: Runtime>(app: &AppHandle<R>) {
+  if !crate::toast::has_decision_toasts(app) {
+    return;
+  }
+  let Ok(cards) = hub_of(app).and_then(|hub| hub.list()) else { return };
+  let open = cards
+    .into_iter()
+    .filter(|c| c.state == "open")
+    .map(|c| {
+      let options = c.options.iter().map(|o| (o.id.clone(), o.label.clone(), o.recommended)).collect();
+      (c.id.clone(), (c.updated_ms.unwrap_or(c.created_ms), options))
+    })
+    .collect();
+  crate::toast::sync_decisions(app, &open);
 }
 
 fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {

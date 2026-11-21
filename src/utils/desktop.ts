@@ -21,6 +21,10 @@ export const desktopPlatform = (
 	return null;
 };
 
+export const supportsToastWindow = (
+	platform: DesktopPlatform | null = desktopPlatform(),
+): boolean => platform === 'macos' || platform === 'windows';
+
 export const isMacLike = (platform: DesktopPlatform | null): boolean =>
 	platform === 'macos' || platform === null;
 

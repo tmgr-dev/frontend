@@ -1,6 +1,6 @@
 import type { PopoverExtras } from '@/popover/types';
 import type { RunnerSession } from '@/runner/api';
-import { isDesktopApp } from '@/utils/desktop';
+import { isDesktopApp, supportsToastWindow } from '@/utils/desktop';
 import { isDndActive } from '@/utils/dnd';
 
 export const LIMIT_THRESHOLD = 95;
@@ -44,22 +44,24 @@ export const limitKey = (window: string, resetsAt: number | null): string =>
 
 export const limitToasts = (
 	usage: PopoverExtras['usage'] | undefined,
-	seen: Set<string>,
+	seen: ReadonlySet<string>,
 	nowSeconds: number,
-): ToastPayload[] => {
-	const toasts: ToastPayload[] = [];
+): { key: string; toast: ToastPayload }[] => {
+	const toasts: { key: string; toast: ToastPayload }[] = [];
 	for (const window of ['fiveHour', 'week'] as const) {
 		const bar = usage?.[window];
 		if (!bar || bar.pct < LIMIT_THRESHOLD) continue;
 		const key = limitKey(window, bar.resetsAt);
 		if (seen.has(key)) continue;
-		seen.add(key);
 		toasts.push({
-			id: `limit:${key}`,
-			kind: 'limit',
-			title: `Claude limit ${Math.round(bar.pct)}%`,
-			body: `${WINDOW_LABELS[window]} window ${resetText(bar.resetsAt, nowSeconds)}.`,
-			actions: [{ id: 'ok', label: 'OK', primary: true }],
+			key,
+			toast: {
+				id: `limit:${key}`,
+				kind: 'limit',
+				title: `Claude limit ${Math.round(bar.pct)}%`,
+				body: `${WINDOW_LABELS[window]} window ${resetText(bar.resetsAt, nowSeconds)}.`,
+				actions: [{ id: 'ok', label: 'OK', primary: true }],
+			},
 		});
 	}
 	return toasts;
@@ -97,12 +99,14 @@ export const agentFinishedToasts = (
 	return { toasts, next };
 };
 
-export const pushToast = async (toast: ToastPayload): Promise<void> => {
-	if (!isDesktopApp() || isDndActive()) return;
+export const pushToast = async (toast: ToastPayload): Promise<boolean> => {
+	if (!isDesktopApp() || !supportsToastWindow() || isDndActive()) return false;
 	try {
 		const { invoke } = await import('@tauri-apps/api/core');
 		await invoke('toast_push', { toast });
+		return true;
 	} catch (error) {
 		console.error('toast_push failed', error);
+		return false;
 	}
 };

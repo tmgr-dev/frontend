@@ -106,6 +106,10 @@ pub fn idle_supported() -> bool {
   cfg!(any(target_os = "macos", windows))
 }
 
+fn should_dismiss_idle(timer_running: bool, returned: bool) -> bool {
+  !timer_running || returned
+}
+
 pub fn start<R: Runtime>(app: &AppHandle<R>) {
   let threshold = std::env::var("TMGR_IDLE_SECONDS")
     .ok()
@@ -124,10 +128,13 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) {
         let _ = app.emit("idle://away-started", json!({ "awaySince": since }));
         crate::toast::push_idle(&app, since, now);
       }
+      let returned_now = returned.is_some();
       if let Some(event) = returned {
         log::info!("[idle] back after {}s away", event.away_seconds);
-        crate::toast::dismiss(&app, crate::toast::IDLE_ID);
         let _ = app.emit("idle://returned", event);
+      }
+      if should_dismiss_idle(running, returned_now) {
+        crate::toast::dismiss(&app, crate::toast::IDLE_ID);
       }
     }
   });
@@ -142,6 +149,13 @@ mod tests {
       .step_by(POLL_SECS as usize)
       .filter_map(|now| t.tick(now, idle_at(now), running))
       .collect()
+  }
+
+  #[test]
+  fn the_idle_toast_goes_away_when_the_user_returns_or_no_timer_runs() {
+    assert!(should_dismiss_idle(false, false));
+    assert!(should_dismiss_idle(true, true));
+    assert!(!should_dismiss_idle(true, false));
   }
 
   #[test]

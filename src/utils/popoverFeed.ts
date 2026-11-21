@@ -14,7 +14,7 @@ import type { PopoverExtras } from '@/popover/types';
 import { isRunnerSupported, runnerSessions } from '@/runner/api';
 import { usageOverview } from '@/usage/api';
 import { pickDefaultStatusId } from '@/utils/defaultStatus';
-import { isDesktopApp } from '@/utils/desktop';
+import { isDesktopApp, supportsToastWindow } from '@/utils/desktop';
 import { limitToasts, pushToast } from '@/utils/toastTriggers';
 import { format } from 'date-fns';
 import {
@@ -145,7 +145,9 @@ export const startPopoverFeed = ({
 	store,
 	recent,
 }: PopoverFeedOptions): PopoverFeed => {
-	if (!isDesktopApp()) return { refresh: () => {}, stop: () => {} };
+	if (!isDesktopApp() || !supportsToastWindow()) {
+		return { refresh: () => {}, stop: () => {} };
+	}
 
 	let stopped = false;
 	let running = false;
@@ -173,9 +175,13 @@ export const startPopoverFeed = ({
 			const extras = await gatherExtras(store, recent);
 			if (!stopped) {
 				await push(extras);
-				limitToasts(extras.usage, seenLimits, Date.now() / 1000).forEach(
-					(toast) => void pushToast(toast),
-				);
+				for (const { key, toast } of limitToasts(
+					extras.usage,
+					seenLimits,
+					Date.now() / 1000,
+				)) {
+					if (await pushToast(toast)) seenLimits.add(key);
+				}
 			}
 		} catch (error) {
 			console.error('popover feed update failed', error);

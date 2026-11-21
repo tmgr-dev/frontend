@@ -542,6 +542,7 @@ pub fn run() {
       if let Err(error) = popover::setup(app.handle()) {
         log::error!("[popover] unavailable: {error}");
       }
+      #[cfg(any(target_os = "macos", windows))]
       if let Err(error) = toast::setup(app.handle()) {
         log::error!("[toast] unavailable: {error}");
       }

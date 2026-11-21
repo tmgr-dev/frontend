@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -70,6 +71,10 @@ pub struct Toast {
 impl Toast {
   fn decision_id(&self) -> Option<String> {
     self.data.as_ref()?.get("decisionId")?.as_str().map(str::to_owned)
+  }
+
+  fn seen_ms(&self) -> Option<i64> {
+    self.data.as_ref()?.get("seenMs")?.as_i64()
   }
 }
 
@@ -171,6 +176,21 @@ impl Inner {
       Missed { id: toast.id, kind: toast.kind, title: toast.title, body: toast.body, at: now_ms / 1000, decision_id },
     );
     self.missed.truncate(MISSED_CAP);
+  }
+
+  fn sync_decisions(&mut self, open: &HashMap<String, (i64, Vec<DecisionOption>)>) -> bool {
+    let before = (self.queue.clone(), self.missed.len());
+    self.queue.retain(|e| e.toast.decision_id().is_none_or(|id| open.contains_key(&id)));
+    self.missed.retain(|m| m.decision_id.as_ref().is_none_or(|id| open.contains_key(id)));
+    for entry in &mut self.queue {
+      let Some((seen, options)) = entry.toast.decision_id().and_then(|id| open.get(&id)) else { continue };
+      if entry.toast.seen_ms() == Some(*seen) {
+        continue;
+      }
+      let decision = entry.toast.decision_id().unwrap_or_default();
+      entry.toast = decision_toast(&decision, &entry.toast.body, entry.toast.meta.clone(), options, Some(*seen));
+    }
+    before != (self.queue.clone(), self.missed.len())
   }
 
   fn expire(&mut self, now_ms: i64) -> bool {
@@ -331,6 +351,20 @@ pub fn dismiss<R: Runtime>(app: &AppHandle<R>, id: &str) {
   }
 }
 
+pub fn has_decision_toasts<R: Runtime>(app: &AppHandle<R>) -> bool {
+  let Some(store) = app.try_state::<ToastStore>() else { return false };
+  let state = store.state.lock().unwrap();
+  state.queue.iter().any(|e| e.toast.decision_id().is_some())
+}
+
+pub fn sync_decisions<R: Runtime>(app: &AppHandle<R>, open: &HashMap<String, (i64, Vec<DecisionOption>)>) {
+  let Some(store) = app.try_state::<ToastStore>() else { return };
+  if store.state.lock().unwrap().sync_decisions(open) {
+    render(app);
+    refresh_popover(app);
+  }
+}
+
 pub fn decision_answered<R: Runtime>(app: &AppHandle<R>, decision_id: &str) {
   let Some(store) = app.try_state::<ToastStore>() else { return };
   if store.state.lock().unwrap().remove_decision(decision_id) {
@@ -355,6 +389,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     .visible(false)
     .focused(false)
     .focusable(false)
+    .accept_first_mouse(true)
     .background_throttling(BackgroundThrottlingPolicy::Disabled)
     .on_navigation(crate::is_app_url);
   #[cfg(target_os = "macos")]
@@ -371,8 +406,20 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
   Ok(())
 }
 
-pub fn decision_toast(id: &str, title: &str, meta: Option<String>, options: &[(String, String, bool)]) -> Toast {
-  let mut picked: Vec<&(String, String, bool)> = options.iter().take(3).collect();
+pub type DecisionOption = (String, String, bool);
+
+fn capped(toast: Toast) -> Toast {
+  clean(toast.clone()).unwrap_or(toast)
+}
+
+pub fn decision_toast(
+  id: &str,
+  title: &str,
+  meta: Option<String>,
+  options: &[DecisionOption],
+  seen_ms: Option<i64>,
+) -> Toast {
+  let mut picked: Vec<&DecisionOption> = options.iter().take(3).collect();
   if let Some(rec) = options.iter().find(|o| o.2) {
     if !picked.iter().any(|o| o.0 == rec.0) {
       picked.pop();
@@ -390,7 +437,7 @@ pub fn decision_toast(id: &str, title: &str, meta: Option<String>, options: &[(S
   if actions.is_empty() {
     actions.push(ToastAction { id: "open-decisions".to_owned(), label: "Open".to_owned(), primary: true });
   }
-  Toast {
+  capped(Toast {
     id: format!("decision:{id}"),
     kind: Kind::Decision,
     title: "Decision needed".to_owned(),
@@ -398,8 +445,8 @@ pub fn decision_toast(id: &str, title: &str, meta: Option<String>, options: &[(S
     meta,
     actions,
     ttl_ms: None,
-    data: Some(json!({ "decisionId": id })),
-  }
+    data: Some(json!({ "decisionId": id, "seenMs": seen_ms })),
+  })
 }
 
 pub fn ticket_of(title: &str) -> Option<&str> {
@@ -424,7 +471,7 @@ pub fn idle_toast(task_title: &str, elapsed_secs: i64, idle_secs: i64, away_sinc
   let label = ticket_of(task_title).unwrap_or(task_title);
   let label = if others > 0 { format!("{label} +{others}") } else { label.to_owned() };
   let minutes = idle_secs.max(0) / 60;
-  Toast {
+  capped(Toast {
     id: IDLE_ID.to_owned(),
     kind: Kind::Idle,
     title: "Timer still running".to_owned(),
@@ -437,7 +484,7 @@ pub fn idle_toast(task_title: &str, elapsed_secs: i64, idle_secs: i64, away_sinc
     ],
     ttl_ms: None,
     data: Some(json!({ "awaySince": away_since })),
-  }
+  })
 }
 
 pub fn push_idle<R: Runtime>(app: &AppHandle<R>, away_since: i64, now: i64) {
@@ -525,7 +572,7 @@ pub fn toast_action<R: Runtime>(
   match route {
     #[cfg(unix)]
     Route::Answer(decision, choice) => {
-      let answer = crate::decisions::AnswerIn { choice: Some(choice), ..Default::default() };
+      let answer = crate::decisions::AnswerIn { choice: Some(choice), seen_ms: toast.seen_ms(), ..Default::default() };
       tauri::async_runtime::spawn(async move {
         if let Err(e) = crate::decisions::decisions_answer(app, decision, answer).await {
           log::warn!("[toast] decision answer failed: {e}");
@@ -680,26 +727,63 @@ mod tests {
       .into_iter()
       .map(|(i, l, r)| (i.to_owned(), l.to_owned(), r))
       .collect();
-    let t = decision_toast("c1", "Tag it?", Some("agent".to_owned()), &options);
+    let t = decision_toast("c1", "Tag it?", Some("agent".to_owned()), &options, Some(42));
     assert_eq!(t.id, "decision:c1");
     let ids: Vec<_> = t.actions.iter().map(|a| a.id.as_str()).collect();
     assert_eq!(ids, ["answer:a", "answer:b", "answer:d"]);
     assert!(t.actions[2].primary);
     assert_eq!(t.actions[2].label, "D ★");
-    assert_eq!(t.data, Some(json!({"decisionId": "c1"})));
-    assert_eq!(decision_toast("c2", "Q", None, &[]).actions[0].id, "open-decisions");
+    assert_eq!(t.data, Some(json!({"decisionId": "c1", "seenMs": 42})));
+    assert_eq!(t.seen_ms(), Some(42));
+    assert_eq!(decision_toast("c2", "Q", None, &[], None).actions[0].id, "open-decisions");
   }
 
   #[test]
   fn action_routing_validates_the_action_id() {
-    let t = decision_toast("c1", "Q", None, &[("go".to_owned(), "Go".to_owned(), true)]);
+    let t = decision_toast("c1", "Q", None, &[("go".to_owned(), "Go".to_owned(), true)], None);
     assert_eq!(route(&t, "answer:go"), Ok(Route::Answer("c1".to_owned(), "go".to_owned())));
     assert!(route(&t, "answer:nope").is_err());
     let idle = idle_toast("TM-1 x", 60, 60, 0, 0);
     assert_eq!(route(&idle, "stop"), Ok(Route::Main));
     assert!(route(&idle, "answer:go").is_err());
-    let open = decision_toast("c3", "Q", None, &[]);
+    let open = decision_toast("c3", "Q", None, &[], None);
     assert_eq!(route(&open, "open-decisions"), Ok(Route::OpenDecisions));
+  }
+
+  #[test]
+  fn rust_built_toasts_respect_the_length_caps() {
+    let long = "x".repeat(1_000);
+    let options = vec![("a".to_owned(), "L".repeat(200), true)];
+    let d = decision_toast(&"i".repeat(300), &long, Some(long.clone()), &options, None);
+    assert_eq!(d.id.chars().count(), 128);
+    assert_eq!(d.body.chars().count(), 300);
+    assert_eq!(d.meta.as_deref().map(|m| m.chars().count()), Some(120));
+    assert_eq!(d.actions[0].label.chars().count(), 40);
+    let i = idle_toast(&long, 60, 60, 0, 0);
+    assert!(i.body.chars().count() <= 300);
+  }
+
+  #[test]
+  fn decision_toasts_follow_the_card() {
+    let opt = |id: &str| (id.to_owned(), id.to_uppercase(), false);
+    let mut s = Inner::default();
+    s.enqueue(decision_toast("c1", "Q1", None, &[opt("a")], Some(1)), 0);
+    s.enqueue(decision_toast("c2", "Q2", None, &[opt("a")], Some(1)), 0);
+    s.enqueue(toast("idle", Kind::Idle), 0);
+    s.defer(decision_toast("c3", "Q3", None, &[], Some(1)), 0);
+    let mut open = HashMap::new();
+    open.insert("c1".to_owned(), (1, vec![opt("a")]));
+    open.insert("c2".to_owned(), (2, vec![opt("x"), opt("y")]));
+    assert!(s.sync_decisions(&open));
+    let ids: Vec<_> = s.queue.iter().map(|e| e.toast.id.as_str()).collect();
+    assert_eq!(ids, ["idle", "decision:c2", "decision:c1"]);
+    assert!(s.missed.is_empty());
+    let c2 = &s.queue[1].toast;
+    assert_eq!(c2.seen_ms(), Some(2));
+    assert_eq!(c2.body, "Q2");
+    let actions: Vec<_> = c2.actions.iter().map(|a| a.id.as_str()).collect();
+    assert_eq!(actions, ["answer:x", "answer:y"]);
+    assert!(!s.sync_decisions(&open));
   }
 
   #[test]

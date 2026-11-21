@@ -313,6 +313,7 @@
 		actionIds,
 		moneyText,
 		nextIndex,
+		nextResize,
 		pendingDecisions,
 		stripTicket,
 		ticketCode,
@@ -400,7 +401,10 @@
 			}
 			void Promise.all([
 				onPopoverModel((model) => this.apply(model)),
-				onPopoverShown(() => this.reload()),
+				onPopoverShown(() => {
+					this.lastHeight = 0;
+					this.reload();
+				}),
 				onDecisionsChanged(() => void this.refreshDecisions()),
 			]).then((fns) => {
 				this.unlisten = fns;
@@ -422,6 +426,7 @@
 			apply(model: PopoverModel) {
 				this.model = model;
 				this.clockOffset = model.now - Date.now() / 1000;
+				void this.$nextTick(() => this.resize());
 				if (model.decisionsAvailable) {
 					void this.refreshDecisions();
 				} else {
@@ -537,11 +542,12 @@
 			resize() {
 				const root = this.$refs.root as HTMLElement | undefined;
 				if (!root) return;
-				const height = Math.min(
-					Math.ceil(root.getBoundingClientRect().height),
+				const height = nextResize(
+					root.getBoundingClientRect().height,
 					MAX_HEIGHT,
+					this.lastHeight,
 				);
-				if (height === this.lastHeight) return;
+				if (height === null) return;
 				this.lastHeight = height;
 				popoverResize(height).catch(() => undefined);
 			},

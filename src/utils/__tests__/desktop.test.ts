@@ -6,6 +6,7 @@ import {
 	supportsPluginWindows,
 	supportsScreenCapture,
 	supportsSelectionCapture,
+	supportsToastWindow,
 	thisComputerName,
 	trayName,
 } from '../desktop';
@@ -47,6 +48,13 @@ describe('desktopPlatform', () => {
 });
 
 describe('platform copy and capabilities', () => {
+	it('shows the toast window on macOS and Windows only', () => {
+		expect(supportsToastWindow('macos')).toBe(true);
+		expect(supportsToastWindow('windows')).toBe(true);
+		expect(supportsToastWindow('linux')).toBe(false);
+		expect(supportsToastWindow(null)).toBe(false);
+	});
+
 	it('names the tray per platform', () => {
 		expect(trayName('macos')).toBe('menu bar');
 		expect(trayName('windows')).toBe('system tray');

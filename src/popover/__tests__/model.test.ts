@@ -8,6 +8,7 @@ import {
 	isAnswerable,
 	moneyText,
 	nextIndex,
+	nextResize,
 	orderOptions,
 	pendingDecisions,
 	resetText,
@@ -156,6 +157,19 @@ describe('ticketCode', () => {
 	])('returns null for %s', (title) => {
 		expect(ticketCode(title)).toBeNull();
 		expect(stripTicket(title)).toBe(title);
+	});
+});
+
+describe('nextResize', () => {
+	it('skips an unchanged height and re-sends after a reset to zero', () => {
+		expect(nextResize(300.2, 600, 0)).toBe(301);
+		expect(nextResize(300.2, 600, 301)).toBeNull();
+		expect(nextResize(300.2, 600, 0)).toBe(301);
+	});
+
+	it('caps at the maximum', () => {
+		expect(nextResize(900, 600, 0)).toBe(600);
+		expect(nextResize(900, 600, 600)).toBeNull();
 	});
 });
 

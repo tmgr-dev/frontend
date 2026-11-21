@@ -3,11 +3,21 @@ import {
 	agentFinishedToasts,
 	limitKey,
 	limitToasts,
+	pushToast,
 	resetText,
 } from '../toastTriggers';
 
-jest.mock('@/utils/desktop', () => ({ isDesktopApp: () => false }));
-jest.mock('@/utils/dnd', () => ({ isDndActive: () => false }));
+const mockEnv = { desktop: false, toasts: true, dnd: false };
+const mockInvoke = jest.fn();
+
+jest.mock('@/utils/desktop', () => ({
+	isDesktopApp: () => mockEnv.desktop,
+	supportsToastWindow: () => mockEnv.toasts,
+}));
+jest.mock('@/utils/dnd', () => ({ isDndActive: () => mockEnv.dnd }));
+jest.mock('@tauri-apps/api/core', () => ({
+	invoke: (...args: unknown[]) => mockInvoke(...args),
+}));
 
 const session = (
 	id: string,
@@ -32,12 +42,22 @@ describe('limit toasts', () => {
 		};
 		const first = limitToasts(usage, seen, 1_000);
 		expect(first).toHaveLength(1);
-		expect(first[0].id).toBe(`limit:${limitKey('fiveHour', 1_000 + 18 * 60)}`);
-		expect(first[0].body).toBe('5h window resets in 18 min.');
+		expect(first[0].key).toBe(limitKey('fiveHour', 1_000 + 18 * 60));
+		expect(first[0].toast.id).toBe(`limit:${first[0].key}`);
+		expect(first[0].toast.body).toBe('5h window resets in 18 min.');
+		seen.add(first[0].key);
 		expect(limitToasts(usage, seen, 1_100)).toHaveLength(0);
 		const nextWindow = { fiveHour: { pct: 97, resetsAt: 30_000 } };
 		expect(limitToasts(nextWindow, seen, 1_200)).toHaveLength(1);
 		expect(limitToasts(undefined, seen, 0)).toEqual([]);
+	});
+
+	it('keeps offering a limit until it is remembered', () => {
+		const usage = { fiveHour: { pct: 99, resetsAt: 5_000 } };
+		const seen = new Set<string>();
+		expect(limitToasts(usage, seen, 1_000)).toHaveLength(1);
+		expect(limitToasts(usage, seen, 1_060)).toHaveLength(1);
+		expect(seen.size).toBe(0);
 	});
 
 	it('reads the reset time', () => {
@@ -78,5 +98,46 @@ describe('agent finished toasts', () => {
 			0,
 		);
 		expect(toasts).toEqual([]);
+	});
+});
+
+describe('pushToast', () => {
+	const toast = {
+		id: 'a',
+		kind: 'agent' as const,
+		title: 't',
+		body: 'b',
+		actions: [],
+	};
+
+	beforeEach(() => {
+		Object.assign(mockEnv, { desktop: true, toasts: true, dnd: false });
+		mockInvoke.mockReset();
+		mockInvoke.mockResolvedValue(undefined);
+	});
+
+	afterAll(() => {
+		Object.assign(mockEnv, { desktop: false, toasts: true, dnd: false });
+	});
+
+	it('reports true only when the toast was handed to the app', async () => {
+		await expect(pushToast(toast)).resolves.toBe(true);
+		expect(mockInvoke).toHaveBeenCalledWith('toast_push', { toast });
+	});
+
+	it('drops the toast under do-not-disturb, outside the desktop app and without a toast window', async () => {
+		mockEnv.dnd = true;
+		await expect(pushToast(toast)).resolves.toBe(false);
+		Object.assign(mockEnv, { dnd: false, toasts: false });
+		await expect(pushToast(toast)).resolves.toBe(false);
+		Object.assign(mockEnv, { toasts: true, desktop: false });
+		await expect(pushToast(toast)).resolves.toBe(false);
+		expect(mockInvoke).not.toHaveBeenCalled();
+	});
+
+	it('reports false when the command fails', async () => {
+		jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		mockInvoke.mockRejectedValue(new Error('no'));
+		await expect(pushToast(toast)).resolves.toBe(false);
 	});
 });
