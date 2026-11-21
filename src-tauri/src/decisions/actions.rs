@@ -40,16 +40,9 @@ pub struct Gh {
 impl Gh {
   pub fn resolve(cwd: &Path) -> Result<Gh, String> {
     let home = std::env::var_os("HOME").filter(|h| !h.is_empty()).ok_or_else(|| "HOME is not set".to_owned())?;
-    let mut dirs: Vec<PathBuf> =
-      vec![PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin"), PathBuf::from("/usr/bin")];
-    dirs.insert(0, PathBuf::from(&home).join(".local/bin"));
-    if let Some(p) = std::env::var_os("PATH") {
-      dirs.extend(std::env::split_paths(&p));
-    }
-    let bin = dirs
-      .into_iter()
-      .filter(|d| d.is_absolute())
-      .map(|d| d.join("gh"))
+    let bin = GH_PATH
+      .split(':')
+      .map(|d| Path::new(d).join("gh"))
       .find(|c| c.is_file())
       .ok_or_else(|| "the GitHub CLI (gh) was not found; install it and run gh auth login".to_owned())?;
     Ok(Gh { bin, home, path: GH_PATH.to_owned(), cwd: cwd.to_owned() })
