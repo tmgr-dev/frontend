@@ -137,6 +137,7 @@ fn origin() -> Origin {
 
 fn session_info() -> SessionInfo {
     SessionInfo {
+        manager: false,
         team: None,
         agent_session_id: None,
         limit: None,
@@ -243,6 +244,7 @@ fn handshake_messages() {
 #[test]
 fn requests_and_responses() {
     let run = RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
@@ -639,6 +641,7 @@ fn method_params_and_results() {
     golden(
         "session_info_notask",
         &SessionInfo {
+            manager: false,
             team: None,
             agent_session_id: None,
             limit: None,
@@ -960,7 +963,8 @@ fn constants_are_pinned() {
             "team.workers.v1",
             "team.multi.v1",
             "profiles_login_check.v1",
-            "chat.v1"
+            "chat.v1",
+            "manager.v1"
         ]
     );
     let methods = [
@@ -1554,6 +1558,7 @@ fn finish_marker_defaults_to_false_and_is_omitted_when_false() {
 
 fn full_req() -> RunCreateReq {
     RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
@@ -1593,6 +1598,7 @@ fn full_req() -> RunCreateReq {
 
 fn full_info() -> SessionInfo {
     SessionInfo {
+        manager: false,
         team: None,
         agent_session_id: None,
         limit: None,

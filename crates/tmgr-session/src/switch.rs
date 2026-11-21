@@ -299,6 +299,7 @@ mod tests {
 
     fn info(id: &str, profile: &str) -> SessionInfo {
         SessionInfo {
+            manager: false,
             id: id.into(),
             name: "n".into(),
             argv: vec![],

@@ -65,6 +65,7 @@ use tmgr_ipc::{auth, secret, server};
 
 mod chat_api;
 mod checkpoints;
+mod manager;
 
 const MAX_CONNS: usize = 64;
 const SHIM_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -429,6 +430,8 @@ struct Meta {
     limit: Option<tmgr_ipc::api::LimitHit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     handoff_from: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    manager: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -459,6 +462,7 @@ struct RunExtra {
     permission_cards: bool,
     team: Option<TeamLink>,
     agent_session_id: Option<String>,
+    manager: bool,
 }
 
 #[derive(Clone)]
@@ -739,6 +743,7 @@ impl Session {
         let i = lock(&self.inner);
         let m = &i.meta;
         SessionInfo {
+            manager: m.manager,
             team: m.team.clone(),
             agent_session_id: m.agent_session_id.clone(),
             limit: m.limit.clone(),
@@ -1809,6 +1814,7 @@ struct Runner {
     next_conn: AtomicU64,
     autopilot: autopilot::Host,
     clock: Mutex<humantime::Clock>,
+    mgr: crate::manager::State,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -2615,6 +2621,7 @@ impl Runner {
                         ));
                     }
                 }
+                self.check_manager_create(&conn.client, &req)?;
                 let manual = is_manual_run(&conn.client, &req);
                 if req.permission_cards && !manual {
                     return Err(api(
@@ -3824,6 +3831,11 @@ impl Runner {
         resume_ctx: Option<ResumeCtx>,
     ) -> Result<(SessionInfo, bool, bool, &'static str), ApiErr> {
         check_external_resume(&req, manual, restore_from, resume_ctx.as_ref())?;
+        let _only_manager = req.manager.then(|| lock(&self.mgr.create));
+        if req.manager {
+            crate::manager::check_create(&req, true, self.live_manager().is_some())
+                .map_err(|(c, m)| api(c, m))?;
+        }
         if req.no_sandbox.is_some() && !manual {
             return Err(api(
                 ErrorCode::Forbidden,
@@ -3886,6 +3898,12 @@ impl Runner {
         let dir = checked.as_ref().map(|c| &c.dir).or(pinned.as_ref());
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         let prof = known_profile(&set, &req.profile)?;
+        if req.manager && prof.source != profile::Source::Builtin {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "manager supports only the built-in claude-code and codex profiles",
+            ));
+        }
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         let id_approved = check_resume_pin(prof.resume.as_ref().map(resume_rec), pinned_resume)?;
         let cloud = cloud_verdict(&req);
@@ -4108,6 +4126,7 @@ impl Runner {
             team: req.team.clone(),
             agent_session_id: external.as_ref().filter(|e| !e.fork).map(|e| e.id.clone()),
             handoff_from: req.parent_session.clone().filter(|p| valid_parent(p)),
+            manager: req.manager,
         };
         if plan.restricted {
             extra.egress = Some(
@@ -4148,6 +4167,10 @@ impl Runner {
         if permission_cards && prof.id == "claude-code" {
             argv.push("--settings".to_string());
             argv.push(permit_hook::claude_settings(&self.cfg.self_exe));
+        }
+        if req.manager && prof.id == "claude-code" {
+            argv.push("--mcp-config".to_string());
+            argv.push(crate::manager::claude_mcp_config(&self.cfg.self_exe));
         }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
             let args = prof.prompt_args(&bundle::prompt_with(
@@ -4198,7 +4221,7 @@ impl Runner {
                 info.id
             ));
         }
-        if let Some(cwd_pin) = pin.filter(|_| !multi) {
+        if let Some(cwd_pin) = pin.filter(|_| !multi && !req.manager) {
             let intent = restore::Intent {
                 v: 1,
                 session: info.id.clone(),
@@ -4605,6 +4628,12 @@ impl Runner {
                 })
                 .map_err(|e| api(ErrorCode::Sandbox, e))?;
             }
+            if extra.manager && prof.is_some_and(|p| p.id == "codex") {
+                login::edit_in_home(home, Path::new(".codex/config.toml"), |existing| {
+                    crate::manager::codex_mcp_config(existing, &self.cfg.self_exe)
+                })
+                .map_err(|e| api(ErrorCode::Sandbox, e))?;
+            }
             for note in login::apply_secret_files(&secret_files, home)
                 .map_err(|e| api(ErrorCode::Sandbox, e))?
             {
@@ -4736,6 +4765,7 @@ impl Runner {
             agent_session_id: extra.agent_session_id.clone(),
             limit: None,
             handoff_from: extra.handoff_from.clone(),
+            manager: extra.manager,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -5380,6 +5410,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
         clock: Mutex::new(clock),
+        mgr: crate::manager::State::default(),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -5430,6 +5461,13 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
 
     let capturer = rt.clone();
     thread::spawn(move || capturer.chat_capture_loop());
+    let managers = rt.clone();
+    thread::spawn(move || {
+        while !managers.stop.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(200));
+            managers.manager_pass();
+        }
+    });
 
     let revoker = rt.clone();
     thread::spawn(move || {
@@ -5973,6 +6011,7 @@ mod tests {
             next_conn: AtomicU64::new(1),
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),
+            mgr: crate::manager::State::default(),
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({
             "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),

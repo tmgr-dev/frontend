@@ -206,6 +206,7 @@ impl Harness {
 
     fn run_req(&self, profile: &str) -> RunCreateReq {
         RunCreateReq {
+            manager: false,
             team: None,
             finish_marker: false,
             parent_session: None,

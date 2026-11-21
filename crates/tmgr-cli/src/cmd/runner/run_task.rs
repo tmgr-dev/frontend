@@ -322,6 +322,7 @@ fn create_request(
     let (cols, rows) = l.size;
     let sha = bundle.sha256();
     RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,

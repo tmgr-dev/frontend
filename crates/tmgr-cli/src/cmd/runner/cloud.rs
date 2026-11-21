@@ -1045,6 +1045,7 @@ struct RunPlan<'a> {
 
 fn run_request(p: &RunPlan) -> RunCreateReq {
     RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,
@@ -3312,6 +3313,7 @@ mod tests {
         let request = |c: &Candidate| {
             let bundle = bundle_of(&rule, c, "/tmp/clone", &Default::default());
             let mut r = RunCreateReq {
+                manager: false,
                 team: None,
                 finish_marker: false,
                 parent_session: None,

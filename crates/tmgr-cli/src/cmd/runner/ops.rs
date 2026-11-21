@@ -268,6 +268,7 @@ pub(super) fn run_create_run(
     trust: bool,
 ) -> RunCreateReq {
     RunCreateReq {
+        manager: false,
         team: None,
         finish_marker: false,
         parent_session: None,

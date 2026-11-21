@@ -1607,6 +1607,7 @@ impl RunnerRuns {
 
 fn run_create_req(req: &StartRequest) -> RunCreateReq {
     RunCreateReq {
+        manager: false,
         team: req.team.clone(),
         clones: req.clones.clone(),
         profile: req.profile.clone(),
