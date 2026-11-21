@@ -48,6 +48,7 @@ mod usage;
 mod page_windows;
 mod popover;
 mod task_windows;
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 mod toast;
 mod toast_fullscreen;
 mod tray;
