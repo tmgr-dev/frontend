@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.174 — 2026-11-21
+
+- Manager window: a spawn card from the manager shows what it wants to start and its state: waiting for approval on your phone, approved, started (with the session id), or closed with the reason. Approval happens on the phone only; the desktop has no approve button. Cards show only in rooms of this machine.
+- Manager window: a session chat now shows what you typed into the session, labelled "You" and drawn like your own messages, next to what the agent said (needs tmgr 1.0.150 or later).
+
 ## 0.9.173 — 2026-11-21
 
 - Manager window: Chat devices now has "Add device" (shows a join code as a QR and text that works once and expires in 10 minutes, so a phone can scan it and you approve it here) and "Enter code from phone" (paste the code the phone shows).
