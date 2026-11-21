@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.148
+
+- Fixed: `tmgr attach` image paste now also works for sessions started with `--no-sandbox`. The follower stores the image in a private folder of its own for that session (outside the user's project), pastes its path, and deletes the folder when the session is removed. Sandboxed sessions work as before. Update the follower (and the leader) to use it.
+
 ## 1.0.147
 
 - Top manager: `tmgr runner manager start --top` makes this machine's manager the top manager, which can reach the managers on your other machines; `--no-top` turns it off, and without either flag the setting stays as it was. Every other manager behaves exactly as before and does not get the new tools.
