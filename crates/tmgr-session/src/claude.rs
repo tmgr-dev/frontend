@@ -1,5 +1,5 @@
 use crate::lines::for_each_line;
-use crate::model::{Agent, Builder, Session, ToolCall};
+use crate::model::{todos_of, Agent, Builder, Session, ToolCall};
 use serde_json::Value;
 use std::io::BufRead;
 
@@ -99,6 +99,9 @@ fn assistant(b: &mut Builder, v: &Value) {
                 let input = &block["input"];
                 if name == "TodoWrite" {
                     b.session.plan = todo_plan(input);
+                    if let Some(t) = todos_of(&input["todos"], "content", "status") {
+                        b.session.todos = t;
+                    }
                 }
                 b.tool(id, tool_call(name, input));
             }

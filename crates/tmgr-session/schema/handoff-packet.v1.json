@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "handoff.v1",
+  "type": "object",
+  "required": ["v", "id", "created_ms", "from", "to", "task", "cwd", "messages", "todos", "permission", "summary", "files", "prior"],
+  "properties": {
+    "v": { "const": 1 },
+    "id": { "type": "string", "pattern": "^h_[0-9a-f]{32}$" },
+    "created_ms": { "type": "integer" },
+    "from": {
+      "type": "object",
+      "required": ["machine", "session", "agent", "name"],
+      "properties": {
+        "machine": { "type": "string" },
+        "session": { "type": "string" },
+        "agent": { "type": "string" },
+        "profile": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "to": {
+      "type": "object",
+      "required": ["agent", "profile"],
+      "properties": {
+        "agent": { "type": "string" },
+        "profile": { "type": "string" }
+      }
+    },
+    "task": {
+      "type": "object",
+      "properties": { "ref": { "type": "string" } }
+    },
+    "cwd": { "type": "string" },
+    "git": {
+      "type": "object",
+      "required": ["status", "diff_stat", "log"],
+      "properties": {
+        "status": { "type": "string" },
+        "diff_stat": { "type": "string" },
+        "log": { "type": "string" }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["role", "text"],
+        "properties": {
+          "role": { "type": "string" },
+          "text": { "type": "string", "maxLength": 2048 },
+          "ts_ms": { "type": "integer" }
+        }
+      }
+    },
+    "todos": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["text", "state"],
+        "properties": {
+          "text": { "type": "string" },
+          "state": { "type": "string" }
+        }
+      }
+    },
+    "permission": {
+      "type": "object",
+      "required": ["no_sandbox", "fell_back", "bypass_dropped"],
+      "properties": {
+        "mode": { "type": "string" },
+        "no_sandbox": { "type": "boolean" },
+        "carried_mode": { "type": "string" },
+        "fell_back": { "type": "boolean" },
+        "bypass_dropped": { "type": "boolean" }
+      }
+    },
+    "summary": { "type": "string" },
+    "summary_override": { "type": "string" },
+    "files": {
+      "type": "object",
+      "required": ["read", "edited", "rules", "logs"],
+      "properties": {
+        "read": { "type": "array", "maxItems": 200, "items": { "type": "string" } },
+        "edited": { "type": "array", "maxItems": 200, "items": { "type": "string" } },
+        "rules": { "type": "array", "maxItems": 200, "items": { "type": "string" } },
+        "logs": { "type": "array", "maxItems": 200, "items": { "type": "string" } }
+      }
+    },
+    "prior": { "type": "array", "items": { "type": "string" } }
+  }
+}

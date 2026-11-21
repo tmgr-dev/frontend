@@ -1,5 +1,5 @@
 use crate::lines::for_each_line;
-use crate::model::{Agent, Builder, Session, ToolCall};
+use crate::model::{todos_of, Agent, Builder, Session, ToolCall};
 use regex::Regex;
 use serde_json::Value;
 use std::io::BufRead;
@@ -59,6 +59,9 @@ fn item(b: &mut Builder, p: &Value) {
                 .unwrap_or(Value::Null);
             if name == "update_plan" {
                 b.session.plan = plan(&args);
+                if let Some(t) = todos_of(&args["plan"], "step", "status") {
+                    b.session.todos = t;
+                }
             }
             let command = command_of(&args);
             b.tool(call_id(p), shell_call(name, command));
