@@ -1,5 +1,7 @@
 use super::policy::{read_private, Policy};
-use crate::manager::{execute, Host, State};
+use crate::manager::{
+    execute, Host, Proposed, SpawnSpec, State, SwitchResult, TrustedDir, Verdict, REMOTE_PROMPT_MAX,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -8,8 +10,11 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tmgr_ipc::chat::{self, Author, AuthorKind, ChatMessage, MessageKind, RoomRef};
-use tmgr_ipc::manager::{limits as mlimits, tool, valid_req_id, SpoolReq, DATA_NOTICE, SPOOL_V};
+use tmgr_ipc::manager::{
+    limits as mlimits, tool, valid_req_id, SignedSpawn, SpoolReq, DATA_NOTICE, SPOOL_V,
+};
 use tmgr_ipc::mgr_rpc::{limits, valid_machine_id, ErrorCode, Op, RpcReq, RpcRes, MGR_RPC_V};
+use tmgr_spawn_auth::SpawnProposal;
 
 pub const SEEN_FILE: &str = "mgr-rpc-seen.json";
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
@@ -24,6 +29,7 @@ pub struct AuditRecord {
     pub rpc: Option<String>,
     pub op: Option<Op>,
     pub session: Option<String>,
+    pub card_id: Option<String>,
     pub outcome: String,
 }
 
@@ -83,6 +89,7 @@ struct Meta {
     rpc: Option<String>,
     op: Option<Op>,
     session: Option<String>,
+    card_id: Option<String>,
 }
 
 enum Args {
@@ -102,6 +109,12 @@ enum Args {
         since: Option<String>,
         limit: Option<u32>,
     },
+    SpawnChallenge(Value),
+    Spawn(Value),
+    Switch {
+        session: String,
+        to: String,
+    },
 }
 
 type Refusal = (ErrorCode, String);
@@ -118,7 +131,7 @@ enum Admit {
 
 pub struct Dispatcher {
     machine: String,
-    state: State,
+    state: Arc<State>,
     audit: Arc<dyn Audit>,
     senders: Mutex<HashMap<String, SenderState>>,
     store: Option<PathBuf>,
@@ -129,12 +142,12 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     pub fn new(machine: &str, state: State, audit: Arc<dyn Audit>) -> Dispatcher {
-        Dispatcher::with_store(machine, state, audit, None, 0)
+        Dispatcher::with_store(machine, Arc::new(state), audit, None, 0)
     }
 
     pub fn with_store(
         machine: &str,
-        state: State,
+        state: Arc<State>,
         audit: Arc<dyn Audit>,
         store: Option<PathBuf>,
         now_ms: u64,
@@ -219,6 +232,7 @@ impl Dispatcher {
                 rpc: None,
                 op: None,
                 session: None,
+                card_id: None,
                 outcome: ErrorCode::NotAllowed.as_str().into(),
             });
             return None;
@@ -235,6 +249,7 @@ impl Dispatcher {
             rpc: meta.rpc,
             op: meta.op,
             session: meta.session,
+            card_id: meta.card_id,
             outcome: outcome.into(),
         });
         res
@@ -257,7 +272,16 @@ impl Dispatcher {
         let res = cap_size(
             rpc,
             match self.exec(host, from, rpc, args) {
-                Ok(data) => RpcRes::ok(rpc, wrap(data)),
+                Ok(data) => {
+                    match req.op {
+                        Op::SpawnChallenge => {
+                            meta.card_id = data["card_id"].as_str().map(String::from);
+                        }
+                        Op::Spawn => meta.session = data["id"].as_str().map(String::from),
+                        _ => {}
+                    }
+                    RpcRes::ok(rpc, wrap(data))
+                }
                 Err((code, msg)) => RpcRes::err(rpc, code, msg),
             },
         );
@@ -313,6 +337,12 @@ impl Dispatcher {
             .get("session")
             .and_then(Value::as_str)
             .filter(|s| tmgr_ipc::proto::valid_session_id(s))
+            .map(String::from);
+        meta.card_id = req
+            .args
+            .get("card_id")
+            .and_then(Value::as_str)
+            .filter(|c| c.len() <= 128 && c.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
             .map(String::from);
         let rpc = req.rpc.as_str();
         let fail = |code, msg: &str| Some(Admit::Reply(RpcRes::err(rpc, code, msg)));
@@ -375,9 +405,9 @@ impl Dispatcher {
     }
 
     fn exec(&self, host: &dyn Host, from: &str, rpc: &str, args: Args) -> Result<Value, Refusal> {
-        let call = |name: &str, args: Value| {
+        let run = |h: &dyn Host, name: &str, args: Value| {
             execute(
-                host,
+                h,
                 &self.state,
                 &SpoolReq {
                     v: SPOOL_V,
@@ -388,7 +418,20 @@ impl Dispatcher {
             )
             .map_err(refused)
         };
+        let call = |name: &str, args: Value| run(host, name, args);
+        let remote = RpcHost {
+            inner: host,
+            from,
+            proposer: format!("remote:{from}"),
+        };
         match args {
+            Args::SpawnChallenge(a) => run(&remote, tool::PROPOSE_SPAWN, a),
+            Args::Spawn(a) => run(&remote, tool::SPAWN_SESSION, a),
+            Args::Switch { session, to } => run(
+                &remote,
+                tool::SWITCH_AGENT,
+                json!({"session": session, "to": to}),
+            ),
             Args::List => {
                 let local: HashSet<String> = host
                     .sessions()
@@ -484,7 +527,80 @@ impl Dispatcher {
 }
 
 fn durable(op: Op) -> bool {
-    matches!(op, Op::Send | Op::Ask)
+    matches!(
+        op,
+        Op::Send | Op::Ask | Op::SpawnChallenge | Op::Spawn | Op::Switch
+    )
+}
+
+struct RpcHost<'a> {
+    inner: &'a dyn Host,
+    from: &'a str,
+    proposer: String,
+}
+
+impl Host for RpcHost<'_> {
+    fn me(&self) -> &str {
+        self.inner.me()
+    }
+    fn machine(&self) -> String {
+        self.inner.machine()
+    }
+    fn now_ms(&self) -> u64 {
+        self.inner.now_ms()
+    }
+    fn sessions(&self) -> Vec<tmgr_ipc::api::SessionInfo> {
+        self.inner.sessions()
+    }
+    fn text(&self, id: &str, lines: u32) -> Result<Vec<String>, String> {
+        self.inner.text(id, lines)
+    }
+    fn send(&self, id: &str, text: &str) -> Result<(), String> {
+        self.inner.send(id, text)
+    }
+    fn trusted_dir(&self, cwd: &str) -> Result<TrustedDir, String> {
+        self.inner.trusted_dir(cwd)
+    }
+    fn precheck_spawn(&self, spec: &SpawnSpec) -> Result<(), String> {
+        self.inner.precheck_spawn(spec)
+    }
+    fn spawn(&self, spec: SpawnSpec) -> Result<tmgr_ipc::api::SessionInfo, String> {
+        self.inner.spawn(spec)
+    }
+    fn switch(&self, id: &str, to: &str) -> Result<SwitchResult, String> {
+        self.inner.switch(id, to)
+    }
+    fn verify_spawn(
+        &self,
+        approval: &SignedSpawn,
+        proposal: &SpawnProposal,
+        proposer: Option<&str>,
+    ) -> Result<Verdict, String> {
+        self.inner.verify_spawn(approval, proposal, proposer)
+    }
+    fn spawn_done(&self, card_id: &str, session: &str) {
+        self.inner.spawn_done(card_id, session)
+    }
+    fn propose_spawn(
+        &self,
+        proposal: &SpawnProposal,
+        proposer: Option<&str>,
+        prompt: Option<&str>,
+    ) -> Result<Proposed, String> {
+        self.inner.propose_spawn(proposal, proposer, prompt)
+    }
+    fn approved_spawn(&self, card_id: &str, proposer: Option<&str>) -> Option<SignedSpawn> {
+        self.inner.approved_spawn(card_id, proposer)
+    }
+    fn proposer(&self) -> Option<String> {
+        Some(self.proposer.clone())
+    }
+    fn remote_caller(&self) -> Option<&str> {
+        Some(self.from)
+    }
+    fn spawned_for(&self, session: &str, proposer: &str) -> bool {
+        self.inner.spawned_for(session, proposer)
+    }
 }
 
 fn expiry(now: u64, ts_ms: u64) -> u64 {
@@ -496,12 +612,6 @@ fn prepare(policy: &Policy, from: &str, req: &RpcReq) -> Result<Args, Box<RpcRes
     let err = |code, msg: &str| Box::new(RpcRes::err(rpc, code, msg));
     if !policy.allows(req.op) {
         return Err(err(ErrorCode::OpDenied, "operation is not allowed"));
-    }
-    if matches!(req.op, Op::SpawnChallenge | Op::Spawn | Op::Switch) {
-        return Err(err(
-            ErrorCode::Unavailable,
-            "operation is not available yet",
-        ));
     }
     parse_args(req.op, &req.args, from)
         .ok_or_else(|| err(ErrorCode::BadRequest, "invalid arguments"))
@@ -653,8 +763,51 @@ fn parse_args(op: Op, a: &Value, from: &str) -> Option<Args> {
                 chat::limits::MAX_BODY.saturating_sub(provenance(from).len()),
             )?,
         }),
+        Op::SpawnChallenge if only(&SPAWN_KEYS) => Some(Args::SpawnChallenge(spawn_object(m)?)),
+        Op::Spawn if only(&SPAWN_KEYS_WITH_CARD) => {
+            m.get("card_id")?;
+            Some(Args::Spawn(spawn_object(m)?))
+        }
+        Op::Switch if only(&["session", "to"]) => Some(Args::Switch {
+            session: session()?,
+            to: text_in(m.get("to")?, 64)?,
+        }),
         _ => None,
     }
+}
+
+const SPAWN_KEYS: [&str; 6] = [
+    "profile",
+    "cwd",
+    "permission_mode",
+    "prompt",
+    "name",
+    "task",
+];
+const SPAWN_KEYS_WITH_CARD: [&str; 7] = [
+    "profile",
+    "cwd",
+    "permission_mode",
+    "prompt",
+    "name",
+    "task",
+    "card_id",
+];
+
+fn spawn_object(m: &serde_json::Map<String, Value>) -> Option<Value> {
+    let max = |k: &str| match k {
+        "profile" | "name" => 64,
+        "cwd" => 4096,
+        "permission_mode" => 32,
+        "prompt" => REMOTE_PROMPT_MAX,
+        _ => 128,
+    };
+    m.get("profile")?;
+    m.get("cwd")?;
+    for (k, v) in m {
+        text_in(v, max(k))?;
+    }
+    Some(Value::Object(m.clone()))
 }
 
 #[cfg(test)]
@@ -992,22 +1145,257 @@ mod tests {
         }
     }
 
+    fn card_signed(card: &str) -> SignedSpawn {
+        serde_json::from_value(json!({"v":1,"user_id":"7","device_fp":"d","target_id":ME,"target_fp":"f","card_id":card,"nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"})).unwrap()
+    }
+
+    fn spawn_args(card: &str) -> Value {
+        json!({"profile": "claude-code", "cwd": "/tmp/ok", "prompt": "go", "card_id": card})
+    }
+
+    fn approve(r: &Rig, card: &str, by: Option<&str>) {
+        r.host
+            .approved
+            .lock()
+            .unwrap()
+            .insert(card.into(), (by.map(String::from), card_signed(card)));
+    }
+
+    fn remote_peer() -> String {
+        format!("remote:{PEER}")
+    }
+
     #[test]
-    fn spawn_challenge_spawn_and_switch_are_unavailable_even_when_allowed() {
+    fn spawn_challenge_spawn_and_switch_are_denied_by_the_default_policy() {
         let r = rig();
-        for op in ["spawn_challenge", "spawn", "switch"] {
-            for (i, args) in [
-                json!({}),
-                json!({"profile":"claude-code","cwd":"/tmp","permission_mode":"bypass"}),
-                json!({"approval":{"device":"d","target_machine":"m","nonce":"n","ts_ms":1,"alg":"es256","sig":"s"}}),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let res = r.call(&open(), &format!("{op}-{i}"), op, args);
-                assert_eq!(code(&res), ErrorCode::Unavailable, "{op} {i}");
-            }
+        let default = policy(&["list", "read"]);
+        for (op, args) in [
+            (
+                "spawn_challenge",
+                json!({"profile": "codex", "cwd": "/tmp/ok"}),
+            ),
+            ("spawn", spawn_args("card_1")),
+            ("switch", json!({"session": WORKER, "to": "codex"})),
+        ] {
+            let res = r.call(&default, &format!("d-{op}"), op, args);
+            assert_eq!(code(&res), ErrorCode::OpDenied, "{op}");
         }
+        assert!(r.host.proposed.lock().unwrap().is_empty());
+        assert!(r.host.spawned.lock().unwrap().is_empty());
+        assert!(r.host.switched.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn spawn_challenge_proposes_as_the_remote_caller_and_audits_the_card() {
+        let r = rig();
+        let res = r.call(
+            &open(),
+            "c1",
+            "spawn_challenge",
+            json!({"profile": "claude-code", "cwd": "/tmp/ok", "prompt": "go", "name": "n"}),
+        );
+        assert_eq!(data(&res)["card_id"], "card_1");
+        assert_eq!(
+            r.host.proposed.lock().unwrap()[0],
+            (
+                "card_1".to_string(),
+                Some(remote_peer()),
+                Some("go".to_string())
+            )
+        );
+        let rec = r.audit.records().pop().unwrap();
+        assert_eq!(rec.op, Some(Op::SpawnChallenge));
+        assert_eq!(rec.card_id.as_deref(), Some("card_1"));
+        assert_eq!(rec.outcome, "ok");
+        let untrusted = r.call(
+            &open(),
+            "c2",
+            "spawn_challenge",
+            json!({"profile": "claude-code", "cwd": "/etc"}),
+        );
+        assert_eq!(code(&untrusted), ErrorCode::Refused);
+        assert_eq!(
+            untrusted.error.unwrap().message,
+            "cwd is not a trusted folder on this machine"
+        );
+    }
+
+    #[test]
+    fn spawn_arguments_are_strict() {
+        let r = rig();
+        let with = |k: &str, v: Value| {
+            let mut a = spawn_args("card_1");
+            a[k] = v;
+            a
+        };
+        let mut no_card = spawn_args("card_1");
+        no_card.as_object_mut().unwrap().remove("card_id");
+        let cases = [
+            no_card,
+            with("card_id", Value::Null),
+            with("card_id", json!(7)),
+            with("approval", json!({"v": 1})),
+            with("approval", Value::Null),
+            with("no_sandbox", json!(true)),
+            with("manager", json!(true)),
+            with("machine", json!(PEER)),
+            with("extra", json!("x")),
+            with("prompt", json!("x".repeat(1001))),
+            json!({"card_id": "card_1"}),
+        ];
+        for (i, args) in cases.into_iter().enumerate() {
+            let res = r.call(&open(), &format!("s{i}"), "spawn", args);
+            assert_eq!(code(&res), ErrorCode::BadRequest, "{i}");
+        }
+        let ok = with("prompt", json!("x".repeat(1000)));
+        approve(&r, "card_1", Some(&remote_peer()));
+        assert!(r.call(&open(), "s-ok", "spawn", ok).ok);
+        assert_eq!(r.host.spawned.lock().unwrap().len(), 1);
+        for (i, args) in [
+            json!({"profile": "codex", "cwd": "/tmp/ok", "card_id": "card_1"}),
+            json!({"profile": "codex", "cwd": "/tmp/ok", "approval": {}}),
+            json!({"profile": "codex", "cwd": "/tmp/ok", "no_sandbox": true}),
+            json!({"profile": "codex", "cwd": "/tmp/ok", "machine": ME}),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let res = r.call(&open(), &format!("c{i}"), "spawn_challenge", args);
+            assert_eq!(code(&res), ErrorCode::BadRequest, "challenge {i}");
+        }
+        for (i, args) in [
+            json!({"session": WORKER}),
+            json!({"session": WORKER, "to": "codex", "machine": ME}),
+            json!({"session": "nope", "to": "codex"}),
+            json!({"session": WORKER, "to": ""}),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let res = r.call(&open(), &format!("w{i}"), "switch", args);
+            assert_eq!(code(&res), ErrorCode::BadRequest, "switch {i}");
+        }
+    }
+
+    #[test]
+    fn a_spawn_needs_a_card_approved_for_this_caller() {
+        let r = rig();
+        let res = r.call(&open(), "u1", "spawn", spawn_args("card_1"));
+        assert_eq!(code(&res), ErrorCode::Refused);
+        assert!(res.error.unwrap().message.contains("not approved yet"));
+        approve(&r, "card_1", Some(MANAGER));
+        approve(&r, "card_2", Some("remote:mx_00000000000000cc"));
+        approve(&r, "card_3", None);
+        for (i, card) in ["card_1", "card_2", "card_3"].into_iter().enumerate() {
+            let res = r.call(&open(), &format!("u{}", i + 2), "spawn", spawn_args(card));
+            assert_eq!(code(&res), ErrorCode::Refused, "{card}");
+        }
+        assert!(r.host.spawned.lock().unwrap().is_empty());
+        assert!(r.host.verified.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_happy_path_proposes_then_spawns_once_without_a_local_parent() {
+        let r = rig();
+        let card = data(&r.call(
+            &open(),
+            "h1",
+            "spawn_challenge",
+            json!({"profile": "claude-code", "cwd": "/tmp/ok", "prompt": "go"}),
+        ))["card_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        approve(&r, &card, Some(&remote_peer()));
+        let res = r.call(&open(), "h2", "spawn", spawn_args(&card));
+        assert_eq!(data(&res)["id"], NEW);
+        let spawned = r.host.spawned.lock().unwrap();
+        assert_eq!(spawned.len(), 1);
+        assert_eq!(spawned[0].parent, None);
+        assert_eq!(spawned[0].card.as_deref(), Some(card.as_str()));
+        drop(spawned);
+        assert_eq!(
+            r.host.verified.lock().unwrap()[0],
+            (card.clone(), Some(remote_peer()))
+        );
+        assert_eq!(
+            r.host.done.lock().unwrap()[0],
+            (card.clone(), NEW.to_string())
+        );
+        let rec = r.audit.records().pop().unwrap();
+        assert_eq!(rec.op, Some(Op::Spawn));
+        assert_eq!(rec.session.as_deref(), Some(NEW));
+        assert_eq!(rec.card_id.as_deref(), Some(card.as_str()));
+    }
+
+    #[test]
+    fn a_replayed_spawn_returns_the_stored_answer_and_spawns_once() {
+        let r = rig();
+        approve(&r, "card_1", Some(&remote_peer()));
+        let payload = body("dup", "spawn", spawn_args("card_1"), T0);
+        let first = r.call_at(&open(), PEER, &payload).unwrap();
+        assert!(first.ok);
+        let again = r.call_at(&open(), PEER, &payload).unwrap();
+        assert_eq!(first, again);
+        assert_eq!(r.host.spawned.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_remote_switch_reaches_only_sessions_from_the_callers_cards() {
+        let r = rig();
+        let args = json!({"session": WORKER, "to": "codex"});
+        let res = r.call(&open(), "w1", "switch", args.clone());
+        assert_eq!(code(&res), ErrorCode::Refused);
+        assert!(r.host.switched.lock().unwrap().is_empty());
+        r.host
+            .spawned_for
+            .lock()
+            .unwrap()
+            .push((WORKER.into(), "remote:mx_00000000000000cc".into()));
+        assert_eq!(
+            code(&r.call(&open(), "w2", "switch", args.clone())),
+            ErrorCode::Refused
+        );
+        r.host
+            .spawned_for
+            .lock()
+            .unwrap()
+            .push((WORKER.into(), remote_peer()));
+        let res = r.call(&open(), "w3", "switch", args);
+        assert_eq!(data(&res)["new_session"], NEW);
+        assert_eq!(
+            r.host.switched.lock().unwrap()[0],
+            format!("{WORKER}:codex")
+        );
+    }
+
+    #[test]
+    fn an_unreadable_store_refuses_the_new_durable_ops() {
+        let d = store_dir();
+        let path = d.path().join(SEEN_FILE);
+        std::fs::write(&path, b"not json").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let host = Fake::new();
+        let dispatcher = stored_dispatcher(&path, T0);
+        for (i, (op, args)) in [
+            (
+                "spawn_challenge",
+                json!({"profile": "codex", "cwd": "/tmp/ok"}),
+            ),
+            ("spawn", spawn_args("card_1")),
+            ("switch", json!({"session": WORKER, "to": "codex"})),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let res = dispatcher
+                .handle(&open(), &host, PEER, &body(&format!("b{i}"), op, args, T0))
+                .unwrap();
+            assert_eq!(code(&res), ErrorCode::Unavailable, "{op}");
+        }
+        assert!(host.proposed.lock().unwrap().is_empty());
+        assert!(host.spawned.lock().unwrap().is_empty());
+        assert!(host.switched.lock().unwrap().is_empty());
     }
 
     fn post_to(r: &Rig, room: RoomRef, text: &str) -> String {
@@ -1529,8 +1917,9 @@ mod tests {
             &self,
             approval: &tmgr_ipc::manager::SignedSpawn,
             proposal: &tmgr_spawn_auth::SpawnProposal,
+            proposer: Option<&str>,
         ) -> Result<crate::manager::Verdict, String> {
-            self.inner.verify_spawn(approval, proposal)
+            self.inner.verify_spawn(approval, proposal, proposer)
         }
         fn spawn_done(&self, card_id: &str, session: &str) {
             self.inner.spawn_done(card_id, session)
@@ -1538,11 +1927,26 @@ mod tests {
         fn propose_spawn(
             &self,
             proposal: &tmgr_spawn_auth::SpawnProposal,
+            proposer: Option<&str>,
+            prompt: Option<&str>,
         ) -> Result<crate::manager::Proposed, String> {
-            self.inner.propose_spawn(proposal)
+            self.inner.propose_spawn(proposal, proposer, prompt)
         }
-        fn approved_spawn(&self, card_id: &str) -> Option<tmgr_spawn_auth::SignedSpawn> {
-            self.inner.approved_spawn(card_id)
+        fn approved_spawn(
+            &self,
+            card_id: &str,
+            proposer: Option<&str>,
+        ) -> Option<tmgr_spawn_auth::SignedSpawn> {
+            self.inner.approved_spawn(card_id, proposer)
+        }
+        fn proposer(&self) -> Option<String> {
+            self.inner.proposer()
+        }
+        fn remote_caller(&self) -> Option<&str> {
+            self.inner.remote_caller()
+        }
+        fn spawned_for(&self, session: &str, from: &str) -> bool {
+            self.inner.spawned_for(session, from)
         }
     }
 
@@ -1556,7 +1960,7 @@ mod tests {
     fn stored_dispatcher(path: &Path, now: u64) -> Dispatcher {
         Dispatcher::with_store(
             ME,
-            State::new(Box::new(MemoryChat::default())),
+            Arc::new(State::new(Box::new(MemoryChat::default()))),
             Arc::new(MemoryAudit::default()),
             Some(path.to_path_buf()),
             now,

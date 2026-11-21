@@ -29,6 +29,8 @@ const OK_INBOX_CAP: usize = 16;
 const OK_PER_DEVICE: usize = 4;
 const OK_TICK: Duration = Duration::from_millis(500);
 const SUMMARY_MAX: usize = 1024;
+const REMOTE_PREFIX: &str = "remote:";
+const WRONG_PROPOSER: &str = "this card was proposed by someone else; ask again with a new card";
 
 #[derive(Default)]
 pub(super) struct SpawnGate {
@@ -268,13 +270,14 @@ impl Runner {
 
     #[cfg(test)]
     pub(super) fn propose_spawn(&self, proposal: &SpawnProposal) -> Result<Proposed, String> {
-        self.propose_spawn_by(proposal, None)
+        self.propose_spawn_by(proposal, None, None)
     }
 
     pub(super) fn propose_spawn_by(
         &self,
         proposal: &SpawnProposal,
         proposer: Option<&str>,
+        prompt: Option<&str>,
     ) -> Result<Proposed, String> {
         let mut raw = [0u8; 16];
         getrandom::fill(&mut raw).map_err(|_| "no random source".to_string())?;
@@ -282,7 +285,7 @@ impl Runner {
         let c = self
             .spawn_challenge_within(&card_id, proposal, Budget::Manager)
             .map_err(|e| e.msg)?;
-        self.announce_card(&card_id, proposal, &c, proposer);
+        self.announce_card(&card_id, proposal, &c, proposer, prompt);
         Ok(Proposed {
             card_id,
             exp_ms: c.exp_ms,
@@ -294,9 +297,20 @@ impl Runner {
         &self,
         wire: &SignedSpawn,
         proposal: &SpawnProposal,
+        proposer: Option<&str>,
     ) -> Result<Verdict, String> {
         let auth = self.spawn_gate.auth(self)?;
         let card = wire.card_id.as_str();
+        let bound = lock(&self.spawn_gate.cards)
+            .get(card)
+            .and_then(|c| c.proposer.clone());
+        let foreign = match bound.as_deref() {
+            Some(b) => Some(b) != proposer,
+            None => proposer.is_some_and(|p| p.starts_with(REMOTE_PREFIX)),
+        };
+        if foreign {
+            return Err(WRONG_PROPOSER.into());
+        }
         let now = now_ms();
         let mismatch = || Refusal::Mismatch.to_string();
         let stored = auth.cards().state(card).map_err(card_error)?;
@@ -370,6 +384,7 @@ impl Runner {
         proposal: &SpawnProposal,
         c: &SpawnChallengeResult,
         proposer: Option<&str>,
+        prompt: Option<&str>,
     ) {
         let request = tmgr_spawn_auth::b64_decode_strict(&c.req)
             .and_then(|b| String::from_utf8(b).ok())
@@ -389,7 +404,7 @@ impl Runner {
             },
             ts_ms: now_ms(),
             kind: MessageKind::Decision,
-            body_md: summary.clone(),
+            body_md: self.card_body(&summary, proposer, prompt),
             attachments: Vec::new(),
             reply_to: None,
             decision: Some(DecisionRef {
@@ -436,6 +451,32 @@ impl Runner {
         );
     }
 
+    fn card_body(&self, summary: &str, proposer: Option<&str>, prompt: Option<&str>) -> String {
+        let Some(from) = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX)) else {
+            return summary.to_owned();
+        };
+        let machines = crate::mgr_rpc::Machines::load(&self.cfg.dir);
+        let label = machines
+            .rows()
+            .into_iter()
+            .find(|(id, _)| *id == from)
+            .map(|(_, l)| l)
+            .filter(|l| !l.is_empty());
+        let mut body = match label {
+            Some(l) => format!("Proposed by the top manager on {l} ({from})."),
+            None => format!("Proposed by the top manager on {from}."),
+        };
+        body.push_str("\n\n");
+        body.push_str(summary);
+        if let Some(p) = prompt {
+            body.push('\n');
+            for line in p.lines() {
+                body.push_str(&format!("\n> {line}"));
+            }
+        }
+        body
+    }
+
     fn card_reply(&self, card_id: &str, text: &str) {
         let reply_to = lock(&self.spawn_gate.cards)
             .get(card_id)
@@ -446,10 +487,35 @@ impl Runner {
         }
     }
 
-    pub(super) fn approved_spawn(&self, card_id: &str) -> Option<SignedSpawn> {
+    pub(super) fn approved_spawn(
+        &self,
+        card_id: &str,
+        proposer: Option<&str>,
+    ) -> Option<SignedSpawn> {
+        let proposer = proposer.filter(|p| *p != "-")?;
         lock(&self.spawn_gate.cards)
             .get(card_id)
+            .filter(|c| c.proposer.as_deref() == Some(proposer))
             .and_then(|c| c.approval.clone())
+    }
+
+    fn card_is_approved(&self, card_id: &str) -> bool {
+        lock(&self.spawn_gate.cards)
+            .get(card_id)
+            .is_some_and(|c| c.approval.is_some())
+    }
+
+    pub(super) fn spawned_for(&self, session: &str, from: &str) -> bool {
+        let Some(card) = self
+            .session(session)
+            .and_then(|s| lock(&s.inner).meta.spawn_card.clone())
+        else {
+            return false;
+        };
+        lock(&self.spawn_gate.cards)
+            .get(&card)
+            .and_then(|c| c.proposer.as_deref())
+            .is_some_and(|p| p.strip_prefix(REMOTE_PREFIX) == Some(from))
     }
 
     pub(super) fn accept_spawnok(&self, signed: &SignedSpawn, now: u64) {
@@ -492,15 +558,27 @@ impl Runner {
             entry.approval = Some(signed.clone());
             entry.proposer.clone()
         };
-        self.card_reply(card, "Approved on your phone. Starting the session.");
-        if let Some(session) = proposer {
-            self.mgr.queue_prompt(
-                &session,
-                &format!(
-                    "Spawn card {card} was approved. Call spawn_session with card_id \"{card}\" and the same arguments."
-                ),
-                now,
-            );
+        match proposer.as_deref() {
+            Some(p) if p.starts_with(REMOTE_PREFIX) => {
+                self.card_reply(
+                    card,
+                    "Approved on your phone. The top manager can start it now.",
+                );
+            }
+            Some(session) if tmgr_ipc::proto::valid_session_id(session) => {
+                self.card_reply(card, "Approved on your phone. Starting the session.");
+                self.mgr.queue_prompt(
+                    session,
+                    &format!(
+                        "Spawn card {card} was approved. Call spawn_session with card_id \"{card}\" and the same arguments."
+                    ),
+                    now,
+                );
+            }
+            _ => self.card_reply(
+                card,
+                "Approved, but this card can no longer be used; ask for a new card.",
+            ),
         }
     }
 
@@ -567,7 +645,7 @@ impl Runner {
             },
             CardState::Issued { exp_ms, .. } => SpawnCardResult {
                 exp_ms: Some(exp_ms),
-                ..none(if self.approved_spawn(&q.card_id).is_some() {
+                ..none(if self.card_is_approved(&q.card_id) {
                     "approved"
                 } else {
                     "issued"
@@ -895,17 +973,32 @@ mod tests {
             &self,
             a: &SignedSpawn,
             p: &SpawnProposal,
+            by: Option<&str>,
         ) -> Result<core::Verdict, String> {
-            self.inner.verify_spawn(a, p)
+            self.inner.verify_spawn(a, p, by)
         }
         fn spawn_done(&self, c: &str, s: &str) {
             self.inner.spawn_done(c, s)
         }
-        fn propose_spawn(&self, p: &SpawnProposal) -> Result<core::Proposed, String> {
-            self.inner.propose_spawn(p)
+        fn propose_spawn(
+            &self,
+            p: &SpawnProposal,
+            by: Option<&str>,
+            prompt: Option<&str>,
+        ) -> Result<core::Proposed, String> {
+            self.inner.propose_spawn(p, by, prompt)
         }
-        fn approved_spawn(&self, c: &str) -> Option<SignedSpawn> {
-            self.inner.approved_spawn(c)
+        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Option<SignedSpawn> {
+            self.inner.approved_spawn(c, by)
+        }
+        fn proposer(&self) -> Option<String> {
+            self.inner.proposer()
+        }
+        fn remote_caller(&self) -> Option<&str> {
+            None
+        }
+        fn spawned_for(&self, session: &str, from: &str) -> bool {
+            self.inner.spawned_for(session, from)
         }
         fn switch(&self, id: &str, to: &str) -> Result<core::SwitchResult, String> {
             self.inner.switch(id, to)
@@ -1394,7 +1487,9 @@ mod tests {
         let signed = phone_answer(&e, &msg);
         let inbox = e.rt.start_spawnok_intake();
         inbox.deliver_spawnok("phone", &e.fp, &signed);
-        wait_for("the approval", || e.rt.approved_spawn(&card).is_some());
+        wait_for("the approval", || {
+            e.rt.approved_spawn(&card, Some(MGR)).is_some()
+        });
         assert_eq!(
             replies(&e, &msg.id),
             vec!["Approved on your phone. Starting the session."]
@@ -1433,6 +1528,265 @@ mod tests {
         e.rt.stop.store(true, Ordering::SeqCst);
     }
 
+    const PEER: &str = "mx_00000000000000bb";
+
+    struct As<'a, 'b> {
+        inner: &'a TestHost<'b>,
+        proposer: Option<String>,
+        remote: Option<&'static str>,
+    }
+
+    impl<'a, 'b> As<'a, 'b> {
+        fn remote(inner: &'a TestHost<'b>) -> Self {
+            As {
+                inner,
+                proposer: Some(format!("remote:{PEER}")),
+                remote: Some(PEER),
+            }
+        }
+    }
+
+    impl Host for As<'_, '_> {
+        fn me(&self) -> &str {
+            self.inner.me()
+        }
+        fn machine(&self) -> String {
+            self.inner.machine()
+        }
+        fn now_ms(&self) -> u64 {
+            now_ms()
+        }
+        fn sessions(&self) -> Vec<SessionInfo> {
+            self.inner.sessions()
+        }
+        fn text(&self, id: &str, lines: u32) -> Result<Vec<String>, String> {
+            self.inner.text(id, lines)
+        }
+        fn send(&self, id: &str, text: &str) -> Result<(), String> {
+            self.inner.send(id, text)
+        }
+        fn trusted_dir(&self, cwd: &str) -> Result<core::TrustedDir, String> {
+            self.inner.trusted_dir(cwd)
+        }
+        fn precheck_spawn(&self, spec: &SpawnSpec) -> Result<(), String> {
+            self.inner.precheck_spawn(spec)
+        }
+        fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String> {
+            self.inner.spawn(spec)
+        }
+        fn verify_spawn(
+            &self,
+            a: &SignedSpawn,
+            p: &SpawnProposal,
+            by: Option<&str>,
+        ) -> Result<core::Verdict, String> {
+            self.inner.verify_spawn(a, p, by)
+        }
+        fn spawn_done(&self, c: &str, s: &str) {
+            self.inner.spawn_done(c, s)
+        }
+        fn propose_spawn(
+            &self,
+            p: &SpawnProposal,
+            by: Option<&str>,
+            prompt: Option<&str>,
+        ) -> Result<core::Proposed, String> {
+            self.inner.propose_spawn(p, by, prompt)
+        }
+        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Option<SignedSpawn> {
+            self.inner.approved_spawn(c, by)
+        }
+        fn proposer(&self) -> Option<String> {
+            self.proposer.clone()
+        }
+        fn remote_caller(&self) -> Option<&str> {
+            self.remote
+        }
+        fn spawned_for(&self, session: &str, from: &str) -> bool {
+            self.inner.spawned_for(session, from)
+        }
+        fn switch(&self, id: &str, to: &str) -> Result<core::SwitchResult, String> {
+            self.inner.switch(id, to)
+        }
+    }
+
+    fn run_as(h: &dyn Host, e: &Env, tool: &str, args: Value) -> Result<Value, String> {
+        let req = SpoolReq {
+            v: 1,
+            id: "x".into(),
+            tool: tool.into(),
+            args,
+        };
+        core::execute(h, &e.rt.mgr, &req)
+    }
+
+    fn propose_as(h: &dyn Host, e: &Env, prompt: &str) -> String {
+        let args = serde_json::json!({
+            "profile": "claude-code", "cwd": e.work.join("a"), "permission_mode": "bypass",
+            "prompt": prompt
+        });
+        run_as(h, e, "propose_spawn", args).unwrap()["card_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    fn approve_on_phone(e: &Env, card: &str) -> ChatMessage {
+        let msg = card_msg(e, card);
+        let signed = phone_answer(e, &msg);
+        e.rt.accept_spawnok(&signed, now_ms());
+        msg
+    }
+
+    #[test]
+    fn a_remote_card_names_the_top_manager_and_quotes_the_whole_prompt() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let remote = As::remote(&h);
+        let card = propose_as(&remote, &e, "first line\n\nthird line");
+        let body = card_msg(&e, &card).body_md;
+        assert!(
+            body.starts_with(&format!("Proposed by the top manager on {PEER}.\n\nStart ")),
+            "{body}"
+        );
+        assert!(body.ends_with("\n> first line\n> \n> third line"), "{body}");
+        let local = propose(&h, &e, "bypass", "a");
+        assert!(card_msg(&e, &local)
+            .body_md
+            .starts_with("Start claude-code in "));
+
+        let machines = serde_json::json!({"machines": [{
+            "id": PEER, "label": "Workstation",
+            "device_id": "11111111-2222-3333-4444-555555555555",
+            "fp": "a".repeat(64)
+        }]});
+        let file = e.rt.cfg.dir.join(crate::mgr_rpc::machines::MACHINES_FILE);
+        fs::write(&file, machines.to_string()).unwrap();
+        fs::set_permissions(&file, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
+        let labelled = propose_as(&remote, &e, "go");
+        assert!(card_msg(&e, &labelled).body_md.starts_with(&format!(
+            "Proposed by the top manager on Workstation ({PEER})."
+        )));
+    }
+
+    #[test]
+    fn the_approval_reply_depends_on_who_proposed() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let remote = As::remote(&h);
+        let card = propose_as(&remote, &e, "go");
+        let msg = approve_on_phone(&e, &card);
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec!["Approved on your phone. The top manager can start it now."]
+        );
+        assert!(manager_prompts(&e).is_empty());
+
+        let orphan = As {
+            inner: &h,
+            proposer: None,
+            remote: None,
+        };
+        let card = propose_as(&orphan, &e, "go");
+        let msg = approve_on_phone(&e, &card);
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec!["Approved, but this card can no longer be used; ask for a new card."]
+        );
+        assert!(manager_prompts(&e).is_empty());
+        let args = card_args(&e, &card);
+        assert_eq!(
+            run(&h, &e, "spawn_session", args.clone()).unwrap_err(),
+            "this card is not approved yet"
+        );
+        assert_eq!(
+            run_as(&As::remote(&h), &e, "spawn_session", args).unwrap_err(),
+            "this card is not approved yet"
+        );
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_card_can_only_be_used_by_the_proposer_that_asked_for_it() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let remote = As::remote(&h);
+        let remote_card = propose_as(&remote, &e, "go");
+        approve_on_phone(&e, &remote_card);
+        let remote_by = format!("remote:{PEER}");
+        assert!(e
+            .rt
+            .approved_spawn(&remote_card, Some(&remote_by))
+            .is_some());
+        for other in [
+            Some(MGR),
+            Some("remote:mx_00000000000000cc"),
+            Some("-"),
+            None,
+        ] {
+            assert!(
+                e.rt.approved_spawn(&remote_card, other).is_none(),
+                "{other:?}"
+            );
+        }
+        let inline = spawn_args(&e, "bypass", "a", &remote_card);
+        assert!(run(&h, &e, "spawn_session", inline)
+            .unwrap_err()
+            .contains("proposed by someone else"));
+        assert!(h.spawned.lock().unwrap().is_empty());
+        assert!(matches!(
+            e.auth.cards().state(&remote_card).unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+
+        let local_card = propose(&h, &e, "bypass", "a");
+        approve_on_phone(&e, &local_card);
+        let err = run_as(&remote, &e, "spawn_session", card_args(&e, &local_card)).unwrap_err();
+        assert_eq!(err, "this card is not approved yet");
+        assert!(h.spawned.lock().unwrap().is_empty());
+        let wire: SignedSpawn = serde_json::from_value(approval(&e, &local_card)).unwrap();
+        let proposal = SpawnProposal {
+            v: 1,
+            profile: "claude-code".into(),
+            cwd: e.work.join("a").display().to_string(),
+            mode: tmgr_spawn_auth::SpawnMode::Bypass,
+            prompt_sha256: Some(tmgr_spawn_auth::sha256_hex(b"go")),
+            name: None,
+            task: None,
+            target_id: h.machine(),
+        };
+        let Err(err) = e.rt.verify_spawn(&wire, &proposal, Some(&remote_by)) else {
+            panic!("a foreign proposer must be refused");
+        };
+        assert!(err.contains("proposed by someone else"));
+    }
+
+    #[test]
+    fn a_remote_spawn_after_the_phone_approval_starts_one_orphan_session_tied_to_the_caller() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let remote = As::remote(&h);
+        let card = propose_as(&remote, &e, "go");
+        approve_on_phone(&e, &card);
+        let mut changed = card_args(&e, &card);
+        changed["cwd"] = serde_json::json!(e.work.join("b"));
+        assert!(run_as(&remote, &e, "spawn_session", changed).is_err());
+        assert!(h.spawned.lock().unwrap().is_empty());
+        let first = run_as(&remote, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        let session = first["id"].as_str().unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        assert!(e.rt.spawned_for(session, PEER));
+        assert!(!e.rt.spawned_for(session, "mx_00000000000000cc"));
+        assert!(!e.rt.spawned_for(MGR, PEER));
+        let again = run_as(&remote, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(again["id"], first["id"]);
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+    }
+
     #[test]
     fn an_expired_card_is_refused_and_announced_once_and_a_late_answer_is_dropped() {
         let e = env();
@@ -1460,7 +1814,7 @@ mod tests {
         assert_eq!(got.state, "refused");
         assert_eq!(got.reason.as_deref(), Some("expired"));
         e.rt.accept_spawnok(&signed, exp + 3);
-        assert!(e.rt.approved_spawn(&card).is_none());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_none());
         assert_eq!(replies(&e, &msg.id).len(), 1);
         let err = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err();
         assert_eq!(err, "this card is not approved yet");
@@ -1475,7 +1829,7 @@ mod tests {
         let card = propose(&h, &e, "bypass", "a");
         let msg = card_msg(&e, &card);
         e.rt.accept_spawnok(&phone_answer(&e, &msg), now_ms());
-        assert!(e.rt.approved_spawn(&card).is_some());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_some());
         let exp = msg
             .decision
             .as_ref()
@@ -1485,7 +1839,7 @@ mod tests {
             .unwrap()
             .exp_ms;
         e.rt.card_tick(exp + 1);
-        assert!(e.rt.approved_spawn(&card).is_none());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_none());
         assert!(run(&h, &e, "spawn_session", card_args(&e, &card)).is_err());
         assert!(h.spawned.lock().unwrap().is_empty());
     }
@@ -1511,7 +1865,7 @@ mod tests {
         unknown.card_id = "card_unknown".into();
         for wire in [bad_sig, other_target, other_req, other_key, unknown] {
             e.rt.accept_spawnok(&wire, now_ms());
-            assert!(e.rt.approved_spawn(&wire.card_id).is_none());
+            assert!(e.rt.approved_spawn(&wire.card_id, Some(MGR)).is_none());
         }
         assert!(replies(&e, &msg.id).is_empty());
         assert!(manager_prompts(&e).is_empty());
@@ -1525,7 +1879,7 @@ mod tests {
             })
         ));
         e.rt.accept_spawnok(&good, now_ms());
-        assert!(e.rt.approved_spawn(&card).is_some());
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_some());
     }
 
     #[test]
@@ -1563,7 +1917,7 @@ mod tests {
             sig: sign(&secret(3), &msg),
         };
         e.rt.accept_spawnok(&wire, now_ms());
-        assert!(e.rt.approved_spawn("card_human").is_none());
+        assert!(e.rt.approved_spawn("card_human", Some(MGR)).is_none());
     }
 
     #[test]
@@ -1714,7 +2068,7 @@ mod tests {
             "nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"
         }))
         .unwrap();
-        assert!(rt.verify_spawn(&wire, &proposal).is_err());
+        assert!(rt.verify_spawn(&wire, &proposal, None).is_err());
     }
 
     #[test]

@@ -101,7 +101,7 @@ impl Runner {
         ))));
         let dispatcher = Dispatcher::with_store(
             self.chat.machine(),
-            crate::manager::State::new(Box::new(self.chat.clone())),
+            self.mgr.clone(),
             audit,
             Some(dir.join(SEEN_FILE)),
             now_ms(),
@@ -317,7 +317,7 @@ mod tests {
             rename_lock: Mutex::new(()),
             switch_lock: Mutex::new(HashSet::new()),
             chat: chat_store.clone(),
-            mgr: crate::manager::State::new(Box::new(chat_store)),
+            mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
             spawn_gate: spawnauth::SpawnGate::default(),
             cfg,
             secret: String::new(),

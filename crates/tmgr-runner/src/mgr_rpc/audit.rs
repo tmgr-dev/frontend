@@ -72,15 +72,18 @@ impl Audit for FileAudit {
             }
             g.strangers.insert(rec.from.clone(), now);
         }
-        let mut line = json!({
+        let mut entry = json!({
             "ts_ms": rec.ts_ms,
             "from": rec.from,
             "rpc": rec.rpc,
             "op": rec.op.map(|o| o.as_str()),
             "session": rec.session,
             "outcome": rec.outcome,
-        })
-        .to_string();
+        });
+        if let Some(card) = rec.card_id {
+            entry["card_id"] = json!(card);
+        }
+        let mut line = entry.to_string();
         line.push('\n');
         let len = line.len() as u64;
         if g.file.is_none() {
@@ -127,6 +130,7 @@ mod tests {
             rpc: rpc.map(String::from),
             op: rpc.map(|_| Op::Send),
             session: rpc.map(|_| "s_bbbbbbbbbb".to_string()),
+            card_id: None,
             outcome: outcome.into(),
         }
     }

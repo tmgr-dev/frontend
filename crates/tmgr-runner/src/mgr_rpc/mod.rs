@@ -18,9 +18,11 @@ pub use transport::{serve_one, Inbound, MemoryNet, Transport};
 pub(crate) mod testkit {
     use crate::manager::{Host, SpawnSpec};
     use serde_json::json;
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Mutex;
     use tmgr_ipc::api::{Origin, SessionInfo, StateKind, TeamLink, TeamRole};
+    use tmgr_ipc::manager::SignedSpawn;
 
     pub const ME: &str = "mx_00000000000000aa";
     pub const PEER: &str = "mx_00000000000000bb";
@@ -35,9 +37,20 @@ pub(crate) mod testkit {
     pub const OTHER_MANAGER: &str = "s_gggggggggg";
     pub const UNSANDBOXED: &str = "s_hhhhhhhhhh";
 
+    pub type Proposal = (String, Option<String>, Option<String>);
+
+    pub const NEW: &str = "s_nnnnnnnnnn";
+
     pub struct Fake {
         pub list: Mutex<Vec<SessionInfo>>,
         pub sent: Mutex<Vec<(String, String)>>,
+        pub spawned: Mutex<Vec<SpawnSpec>>,
+        pub switched: Mutex<Vec<String>>,
+        pub verified: Mutex<Vec<(String, Option<String>)>>,
+        pub done: Mutex<Vec<(String, String)>>,
+        pub proposed: Mutex<Vec<Proposal>>,
+        pub approved: Mutex<HashMap<String, (Option<String>, SignedSpawn)>>,
+        pub spawned_for: Mutex<Vec<(String, String)>>,
         pub now: AtomicU64,
         pub line_len: usize,
     }
@@ -85,6 +98,13 @@ pub(crate) mod testkit {
                     raw,
                 ]),
                 sent: Mutex::default(),
+                spawned: Mutex::default(),
+                switched: Mutex::default(),
+                verified: Mutex::default(),
+                done: Mutex::default(),
+                proposed: Mutex::default(),
+                approved: Mutex::default(),
+                spawned_for: Mutex::default(),
                 now: AtomicU64::new(T0),
                 line_len: 5,
             }
@@ -115,36 +135,86 @@ pub(crate) mod testkit {
             self.sent.lock().unwrap().push((id.into(), text.into()));
             Ok(())
         }
-        fn trusted_dir(&self, _: &str) -> Result<crate::manager::TrustedDir, String> {
-            panic!("trusted_dir must never be reached")
+        fn trusted_dir(&self, cwd: &str) -> Result<crate::manager::TrustedDir, String> {
+            if cwd == "/tmp/ok" {
+                Ok(crate::manager::TrustedDir {
+                    path: "/tmp/ok".into(),
+                    pin: tmgr_ipc::api::CwdPin { dev: 1, ino: 2 },
+                })
+            } else {
+                Err("cwd is not a trusted folder".into())
+            }
         }
         fn precheck_spawn(&self, _: &SpawnSpec) -> Result<(), String> {
-            panic!("precheck_spawn must never be reached")
+            Ok(())
         }
-        fn spawn(&self, _: SpawnSpec) -> Result<SessionInfo, String> {
-            panic!("spawn must never be reached")
+        fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String> {
+            self.spawned.lock().unwrap().push(spec);
+            Ok(info(NEW))
         }
-        fn switch(&self, _: &str, _: &str) -> Result<crate::manager::SwitchResult, String> {
-            panic!("switch must never be reached")
+        fn switch(&self, id: &str, to: &str) -> Result<crate::manager::SwitchResult, String> {
+            self.switched.lock().unwrap().push(format!("{id}:{to}"));
+            Ok(crate::manager::SwitchResult {
+                session: info(NEW),
+                packet_id: "h_1".into(),
+                warnings: Vec::new(),
+            })
         }
         fn verify_spawn(
             &self,
-            _: &tmgr_ipc::manager::SignedSpawn,
+            approval: &tmgr_ipc::manager::SignedSpawn,
             _: &tmgr_spawn_auth::SpawnProposal,
+            proposer: Option<&str>,
         ) -> Result<crate::manager::Verdict, String> {
-            panic!("verify_spawn must never be reached")
+            self.verified
+                .lock()
+                .unwrap()
+                .push((approval.card_id.clone(), proposer.map(String::from)));
+            Ok(crate::manager::Verdict::Verified)
         }
-        fn spawn_done(&self, _: &str, _: &str) {
-            panic!("spawn_done must never be reached")
+        fn spawn_done(&self, card: &str, session: &str) {
+            self.done
+                .lock()
+                .unwrap()
+                .push((card.into(), session.into()));
         }
         fn propose_spawn(
             &self,
-            _: &tmgr_spawn_auth::SpawnProposal,
+            p: &tmgr_spawn_auth::SpawnProposal,
+            proposer: Option<&str>,
+            prompt: Option<&str>,
         ) -> Result<crate::manager::Proposed, String> {
-            panic!("propose_spawn must never be reached")
+            let card = format!("card_{}", self.proposed.lock().unwrap().len() + 1);
+            self.proposed.lock().unwrap().push((
+                card.clone(),
+                proposer.map(String::from),
+                prompt.map(String::from),
+            ));
+            Ok(crate::manager::Proposed {
+                card_id: card,
+                exp_ms: 9,
+                req_sha256: p.req_sha256(),
+            })
         }
-        fn approved_spawn(&self, _: &str) -> Option<tmgr_spawn_auth::SignedSpawn> {
-            panic!("approved_spawn must never be reached")
+        fn approved_spawn(
+            &self,
+            card: &str,
+            proposer: Option<&str>,
+        ) -> Option<tmgr_spawn_auth::SignedSpawn> {
+            let (by, signed) = self.approved.lock().unwrap().get(card).cloned()?;
+            (proposer.is_some() && proposer == by.as_deref()).then_some(signed)
+        }
+        fn proposer(&self) -> Option<String> {
+            Some(MANAGER.into())
+        }
+        fn remote_caller(&self) -> Option<&str> {
+            None
+        }
+        fn spawned_for(&self, session: &str, from: &str) -> bool {
+            self.spawned_for
+                .lock()
+                .unwrap()
+                .contains(&(session.to_string(), format!("remote:{from}")))
         }
     }
 }

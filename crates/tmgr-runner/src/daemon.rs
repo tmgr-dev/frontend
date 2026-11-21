@@ -1916,7 +1916,7 @@ struct Runner {
     next_conn: AtomicU64,
     autopilot: autopilot::Host,
     clock: Mutex<humantime::Clock>,
-    mgr: crate::manager::State,
+    mgr: Arc<crate::manager::State>,
     spawn_gate: spawnauth::SpawnGate,
 }
 
@@ -5654,7 +5654,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
         clock: Mutex::new(clock),
-        mgr: crate::manager::State::new(Box::new(chat_store)),
+        mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
         spawn_gate: spawnauth::SpawnGate::default(),
     });
     log(&format!("runner {} starting", cfg.version));
@@ -6267,7 +6267,7 @@ mod tests {
             next_conn: AtomicU64::new(1),
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),
-            mgr: crate::manager::State::new(Box::new(chat_store)),
+            mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
             spawn_gate: spawnauth::SpawnGate::default(),
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({

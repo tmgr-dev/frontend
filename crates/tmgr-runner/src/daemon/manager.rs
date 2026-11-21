@@ -34,8 +34,8 @@ impl Runner {
                         chat: &self.chat,
                     };
                     for req in reqs {
-                        if req.tool == tool::SWITCH_AGENT {
-                            self.answer_switch_async(&m.id, home.clone(), req);
+                        if goes_off_thread(&host, &req) {
+                            self.answer_remote_async(&m.id, home.clone(), req);
                             continue;
                         }
                         let resp =
@@ -68,25 +68,29 @@ impl Runner {
 }
 
 impl Runner {
-    fn answer_switch_async(self: &Arc<Self>, manager: &str, home: PathBuf, req: SpoolReq) {
+    fn answer_remote_async(self: &Arc<Self>, manager: &str, home: PathBuf, req: SpoolReq) {
         let rt = Arc::clone(self);
         let id = manager.to_string();
         let req_id = req.id.clone();
         let thread_home = home.clone();
         let spawned = std::thread::Builder::new()
-            .name("manager-switch".into())
+            .name("manager-call".into())
             .spawn(move || {
                 let host = ManagerHost { rt: &rt, me: &id };
-                let resp = guarded(&req.id, || core::execute(&host, &rt.mgr, &req));
+                let link = crate::manager_remote::Live {
+                    dir: &rt.cfg.dir,
+                    chat: &rt.chat,
+                };
+                let resp = guarded(&req.id, || {
+                    crate::manager_remote::execute(&link, &host, &rt.mgr, &req)
+                });
                 if let Err(e) = core::respond(&thread_home, &resp) {
                     log(&format!("manager {id}: response not written: {e}"));
                 }
             });
         if let Err(e) = spawned {
-            log(&format!(
-                "manager {manager}: switch thread not started: {e}"
-            ));
-            let resp = SpoolResp::err(&req_id, "the switch could not be started");
+            log(&format!("manager {manager}: call thread not started: {e}"));
+            let resp = SpoolResp::err(&req_id, "the call could not be started");
             if let Err(e) = core::respond(&home, &resp) {
                 log(&format!("manager {manager}: response not written: {e}"));
             }
@@ -94,11 +98,24 @@ impl Runner {
     }
 }
 
+fn goes_off_thread(host: &ManagerHost, req: &SpoolReq) -> bool {
+    use core::Host;
+    match req.tool.as_str() {
+        tool::SWITCH_AGENT => true,
+        tool::SPAWN_SESSION | tool::PROPOSE_SPAWN => req
+            .args
+            .get("machine")
+            .and_then(Value::as_str)
+            .is_some_and(|m| m != host.machine()),
+        _ => false,
+    }
+}
+
 fn guarded(req_id: &str, run: impl FnOnce() -> Result<Value, String>) -> SpoolResp {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         Ok(Ok(v)) => SpoolResp::ok(req_id, v),
         Ok(Err(e)) => SpoolResp::err(req_id, e),
-        Err(_) => SpoolResp::err(req_id, "the switch failed unexpectedly"),
+        Err(_) => SpoolResp::err(req_id, "the call failed unexpectedly"),
     }
 }
 
@@ -232,8 +249,9 @@ impl core::Host for ManagerHost<'_> {
         &self,
         approval: &tmgr_ipc::manager::SignedSpawn,
         proposal: &tmgr_spawn_auth::SpawnProposal,
+        proposer: Option<&str>,
     ) -> Result<core::Verdict, String> {
-        self.rt.verify_spawn(approval, proposal)
+        self.rt.verify_spawn(approval, proposal, proposer)
     }
 
     fn spawn_done(&self, card_id: &str, session: &str) {
@@ -243,12 +261,30 @@ impl core::Host for ManagerHost<'_> {
     fn propose_spawn(
         &self,
         proposal: &tmgr_spawn_auth::SpawnProposal,
+        proposer: Option<&str>,
+        prompt: Option<&str>,
     ) -> Result<core::Proposed, String> {
-        self.rt.propose_spawn_by(proposal, Some(self.me))
+        self.rt.propose_spawn_by(proposal, proposer, prompt)
     }
 
-    fn approved_spawn(&self, card_id: &str) -> Option<tmgr_spawn_auth::SignedSpawn> {
-        self.rt.approved_spawn(card_id)
+    fn approved_spawn(
+        &self,
+        card_id: &str,
+        proposer: Option<&str>,
+    ) -> Option<tmgr_spawn_auth::SignedSpawn> {
+        self.rt.approved_spawn(card_id, proposer)
+    }
+
+    fn proposer(&self) -> Option<String> {
+        (self.me != "-").then(|| self.me.to_string())
+    }
+
+    fn remote_caller(&self) -> Option<&str> {
+        None
+    }
+
+    fn spawned_for(&self, session: &str, proposer: &str) -> bool {
+        self.rt.spawned_for(session, proposer)
     }
 }
 
@@ -292,7 +328,7 @@ pub(super) mod tests {
             next_conn: AtomicU64::new(1),
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),
-            mgr: core::State::default(),
+            mgr: Arc::new(core::State::default()),
             spawn_gate: spawnauth::SpawnGate::default(),
         })
     }
@@ -400,6 +436,51 @@ pub(super) mod tests {
         let v: Value = serde_json::from_slice(&fs::read(resp).unwrap()).unwrap();
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("itself"));
+    }
+
+    #[test]
+    fn calls_naming_a_foreign_machine_go_through_the_remote_router_off_the_spool_thread() {
+        let (t, rt) = pair();
+        let home = t.path().join("homes").join(MGR);
+        let host = ManagerHost { rt: &rt, me: MGR };
+        let own = core::Host::machine(&host);
+        let req = |tool: &str, machine: &str| SpoolReq {
+            v: 1,
+            id: "1-1-a".into(),
+            tool: tool.into(),
+            args: json!({"machine": machine}),
+        };
+        assert!(goes_off_thread(&host, &req("switch_agent", &own)));
+        assert!(goes_off_thread(
+            &host,
+            &req("spawn_session", "mx_00000000000000bb")
+        ));
+        assert!(goes_off_thread(
+            &host,
+            &req("propose_spawn", "mx_00000000000000bb")
+        ));
+        assert!(!goes_off_thread(&host, &req("spawn_session", &own)));
+        assert!(!goes_off_thread(
+            &host,
+            &req("list_sessions", "mx_00000000000000bb")
+        ));
+        let stem = format!("{}-1-ab", now_ms());
+        let d = core::req_dir(&home);
+        fs::create_dir_all(&d).unwrap();
+        fs::write(
+            d.join(format!("{stem}.json")),
+            json!({"v":1,"id":stem,"tool":"propose_spawn","args":{"machine":"mx_00000000000000bb","profile":"codex","cwd":"/tmp"}})
+                .to_string(),
+        )
+        .unwrap();
+        rt.manager_pass();
+        let resp = home.join(format!(".cache/tmgr-manager/resp/{stem}.json"));
+        let end = Instant::now() + Duration::from_secs(5);
+        while !resp.exists() && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let v: Value = serde_json::from_slice(&fs::read(resp).unwrap()).unwrap();
+        assert!(v["error"].as_str().unwrap().contains("not available"));
     }
 
     #[test]
@@ -529,7 +610,7 @@ pub(super) mod tests {
             cwd: dir.clone(),
             name: None,
             mode: "ask".into(),
-            parent: MGR.into(),
+            parent: Some(MGR.into()),
             card: None,
             pin: Some(pin),
         };
@@ -549,7 +630,7 @@ pub(super) mod tests {
             cwd: t.path().to_path_buf(),
             name: None,
             mode: mode.into(),
-            parent: MGR.into(),
+            parent: Some(MGR.into()),
             card: card.map(String::from),
             pin: None,
         };

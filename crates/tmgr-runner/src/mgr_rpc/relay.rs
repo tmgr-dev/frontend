@@ -184,6 +184,7 @@ impl Transport for RelayTransport {
                     rpc: None,
                     op: None,
                     session: None,
+                    card_id: None,
                     outcome: ErrorCode::NotAllowed.as_str().into(),
                 });
                 continue;
