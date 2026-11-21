@@ -59,6 +59,26 @@ pub struct NewRequest {
     pub bypass: bool,
     pub no_sandbox: bool,
     pub host: Option<String>,
+    pub pin: Option<FollowerPin>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct FollowerPin(String);
+
+impl FollowerPin {
+    pub fn new(pin: String) -> Option<Self> {
+        (!pin.is_empty()).then_some(Self(pin))
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for FollowerPin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FollowerPin(<redacted>)")
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -86,13 +106,26 @@ pub struct Remembered {
     pub checkpoints: Option<bool>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TypedPrompt {
     before: Vec<String>,
     ask: PrivAsk,
     typed: String,
     cleared: bool,
+    mask: bool,
+    empty: bool,
     seen: Cell<Option<Instant>>,
+}
+
+impl std::fmt::Debug for TypedPrompt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TypedPrompt")
+            .field("before", &self.before)
+            .field("ask", &self.ask)
+            .field("typed", &"<redacted>")
+            .field("mask", &self.mask)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -140,8 +173,50 @@ impl TypedPrompt {
             ask,
             typed: String::new(),
             cleared: false,
+            mask: false,
+            empty: false,
             seen: Cell::new(None),
         }
+    }
+
+    fn pin(host: &str) -> TypedPrompt {
+        let mut p = TypedPrompt::new(
+            Vec::new(),
+            PrivAsk {
+                word: "",
+                prompt: format!("Follower PIN for {}:", strip_control(&sanitize_text(host))),
+                warnings: Vec::new(),
+            },
+        );
+        p.mask = true;
+        p
+    }
+
+    fn shown(&self) -> String {
+        if self.mask {
+            "\u{2022}".repeat(self.typed.chars().count())
+        } else {
+            strip_control(&self.typed)
+        }
+    }
+
+    fn edit_pin(&mut self, data: &[u8]) -> PromptKey {
+        if data.first() == Some(&0x1b) {
+            return PromptKey::Editing;
+        }
+        self.empty = false;
+        for c in String::from_utf8_lossy(data).chars() {
+            match c {
+                '\r' | '\n' => return PromptKey::Enter(!self.typed.is_empty()),
+                '\x7f' | '\x08' => {
+                    self.typed.pop();
+                }
+                '\x15' => self.typed.clear(),
+                c if !c.is_control() && self.typed.chars().count() < MAX_PIN => self.typed.push(c),
+                _ => {}
+            }
+        }
+        PromptKey::Editing
     }
 
     fn refuse_batch(&mut self) {
@@ -152,6 +227,9 @@ impl TypedPrompt {
     fn edit(&mut self, data: &[u8]) -> PromptKey {
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
             return PromptKey::Cancel;
+        }
+        if self.mask {
+            return self.edit_pin(data);
         }
         if !self.seen.get().is_some_and(|t| t.elapsed() >= PROMPT_DELAY) {
             return PromptKey::Editing;
@@ -199,6 +277,7 @@ const MAX_ENTRIES: usize = 500;
 const MAX_WIDTH: u16 = 72;
 const LABEL_W: u16 = 12;
 const MAX_TYPED: usize = 32;
+const MAX_PIN: usize = 128;
 const PROMPT_DELAY: Duration = Duration::from_millis(300);
 const START_LABEL: &str = "[ Start ]";
 
@@ -833,7 +912,7 @@ impl NewSession {
 
     fn try_submit(&mut self) -> Option<NewRequest> {
         let req = self.submit().ok()?;
-        if req.host.is_some() || (!req.bypass && !req.no_sandbox) {
+        if !req.bypass && !req.no_sandbox {
             return Some(req);
         }
         let asked = match self.priv_gate {
@@ -910,6 +989,7 @@ impl NewSession {
             bypass,
             no_sandbox,
             host: Some(link.to_string()),
+            pin: None,
         })
     }
 
@@ -997,6 +1077,7 @@ impl NewSession {
             task,
             checkpoints: Some(self.checkpoints),
             host: None,
+            pin: None,
         })
     }
 }
@@ -1333,7 +1414,12 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     if let Some(p) = &ns.priv_prompt {
-        draw_typed(buf, inner, p, area.width, "Enter confirms, Esc goes back");
+        let hint = if p.mask {
+            "Enter sends, Esc goes back"
+        } else {
+            "Enter confirms, Esc goes back"
+        };
+        draw_typed(buf, inner, p, area.width, hint);
         return;
     }
     let rows = field_rows(ns, inner);
@@ -1594,13 +1680,15 @@ fn draw_typed(buf: &mut Buffer, inner: Rect, p: &TypedPrompt, area_width: u16, h
             buf,
             inner.x,
             y,
-            &format!("> {}", strip_control(&p.typed)),
+            &format!("> {}", p.shown()),
             Style::new(),
             inner.width,
         );
     }
     if y.saturating_add(1) < inner.bottom() {
-        let (text, style) = if p.cleared {
+        let (text, style) = if p.empty {
+            ("The PIN cannot be empty.", Style::new().fg(colors().bad))
+        } else if p.cleared {
             (
                 "Type one key at a time; input was cleared.",
                 Style::new().fg(colors().bad),
@@ -1616,7 +1704,7 @@ fn typed_cursor(p: &TypedPrompt, inner: Rect, area_width: u16) -> (u16, u16) {
     let y = inner
         .y
         .saturating_add(u16::try_from(prompt_lines(p, area_width).len()).unwrap_or(u16::MAX));
-    let x = inner.x.saturating_add(2 + p.typed.width() as u16);
+    let x = inner.x.saturating_add(2 + p.shown().width() as u16);
     (
         x.min(inner.right().saturating_sub(1)),
         y.min(inner.bottom().saturating_sub(1)),
@@ -1860,7 +1948,7 @@ impl ViewState {
             .as_mut()
             .and_then(|n| n.priv_prompt.as_mut().map(|p| &mut p.prompt))
             .or(self.past_prompt.as_mut())
-            .filter(|_| forwards > 1)
+            .filter(|p| forwards > 1 && !p.mask)
         else {
             return false;
         };
@@ -2121,6 +2209,22 @@ impl ViewState {
         match p.edit(data) {
             PromptKey::Editing => {}
             PromptKey::Cancel => ns.priv_prompt = None,
+            PromptKey::Enter(ok) if p.mask => {
+                if !ok {
+                    p.empty = true;
+                    return NewEdit::Editing;
+                }
+                let Some(mut p) = ns.priv_prompt.take() else {
+                    return NewEdit::Editing;
+                };
+                p.req.pin = FollowerPin::new(std::mem::take(&mut p.prompt.typed));
+                self.new_session = None;
+                return NewEdit::Submit(p.req);
+            }
+            PromptKey::Enter(true) if p.req.host.is_some() => {
+                let host = p.req.host.clone().unwrap_or_default();
+                p.prompt = TypedPrompt::pin(&host);
+            }
             PromptKey::Enter(matched) => {
                 let Some(p) = ns.priv_prompt.take() else {
                     return NewEdit::Editing;
@@ -2436,6 +2540,7 @@ mod tests {
             bypass: false,
             no_sandbox: false,
             host: None,
+            pin: None,
         };
         v.remember_new_session(&req, "shell");
         let p = v.prefs();
@@ -4827,7 +4932,6 @@ mod tests {
             ns(&mut v).set_host(1);
             ns(&mut v).folder = "/not/on/this/machine/".into();
             ns(&mut v).task = "TM-12".into();
-            ns(&mut v).bypass = true;
             ns(&mut v).focus = NewField::Start;
             let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
                 panic!("not submitted");
@@ -4835,10 +4939,85 @@ mod tests {
             assert_eq!(req.host.as_deref(), Some("spark"));
             assert_eq!(req.folder, "/not/on/this/machine");
             assert_eq!(req.task.as_deref(), Some("TM-12"));
-            assert!(req.bypass);
+            assert!(!req.bypass && req.pin.is_none());
             assert!(!req.worktree && !req.permission_cards);
             assert_eq!(req.checkpoints, None);
             assert!(matches!(req.kind, SpawnKind::Agent { .. }));
+        }
+
+        fn remote_privileged(bypass: bool, no_sandbox: bool) -> (ViewState, tempfile::TempDir) {
+            let (mut v, h) = open_with(&["spark"], &[]);
+            ns(&mut v).set_host(1);
+            ns(&mut v).folder = "/srv/app".into();
+            privileged(&mut v, bypass, no_sandbox);
+            ns(&mut v).focus = NewField::Start;
+            (v, h)
+        }
+
+        #[test]
+        fn a_remote_privileged_submit_asks_the_typed_word_first() {
+            let (mut v, _h) = remote_privileged(true, false);
+            assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+            assert!(ns(&mut v).priv_prompt_open());
+            assert_eq!(keys(&mut v, "bypas"), NewEdit::Editing);
+            assert_eq!(keys(&mut v, "x\r"), NewEdit::Editing);
+            assert!(!ns(&mut v).bypass);
+        }
+
+        #[test]
+        fn the_pin_step_follows_the_word_only_for_a_remote_privileged_start() {
+            let (mut v, _h) = remote_privileged(false, true);
+            v.edit_new_session(b"\r");
+            assert_eq!(keys(&mut v, "no-sandbox\r"), NewEdit::Editing);
+            assert!(ns(&mut v).priv_prompt_open());
+            let shown = draw(&v, 100, 30);
+            assert!(shown.contains("Follower PIN for spark"), "{shown}");
+            let NewEdit::Submit(req) = keys(&mut v, "1234\r") else {
+                panic!("not submitted");
+            };
+            assert_eq!(req.pin.as_ref().map(FollowerPin::expose), Some("1234"));
+            assert!(req.no_sandbox && req.host.as_deref() == Some("spark"));
+            assert!(v.new_session.is_none());
+
+            let h = tmp();
+            let mut local = open("/", h.path());
+            privileged(&mut local, true, false);
+            local.edit_new_session(b"\r");
+            let NewEdit::Submit(req) = keys(&mut local, "bypass\r") else {
+                panic!("not submitted");
+            };
+            assert!(req.pin.is_none());
+        }
+
+        #[test]
+        fn the_pin_is_masked_never_shown_and_redacted_in_debug() {
+            let (mut v, _h) = remote_privileged(true, false);
+            v.edit_new_session(b"\r");
+            keys(&mut v, "bypass\r");
+            keys(&mut v, "s3cret");
+            let shown = draw(&v, 100, 30);
+            assert!(
+                shown.contains("\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"),
+                "{shown}"
+            );
+            assert!(!shown.contains("s3cret"), "{shown}");
+            assert!(!format!("{:?}", ns(&mut v)).contains("s3cret"));
+            let NewEdit::Submit(req) = keys(&mut v, "\r") else {
+                panic!("not submitted");
+            };
+            assert!(!format!("{req:?}").contains("s3cret"));
+        }
+
+        #[test]
+        fn an_empty_pin_is_refused_and_escape_cancels_the_step() {
+            let (mut v, _h) = remote_privileged(true, false);
+            v.edit_new_session(b"\r");
+            keys(&mut v, "bypass\r");
+            assert_eq!(keys(&mut v, "\r"), NewEdit::Editing);
+            assert!(ns(&mut v).priv_prompt_open());
+            assert!(draw(&v, 100, 30).contains("cannot be empty"));
+            assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Editing);
+            assert!(!ns(&mut v).priv_prompt_open());
         }
 
         #[test]
