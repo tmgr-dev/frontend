@@ -11,6 +11,7 @@
 - Typing into a remote bypass session from the leader still needs `--include-bypass on` on the follower.
 - Turning an opt-in off stops new privileged starts but does not stop sessions that are already running; halt them from `tmgr attach`.
 - Both machines need this version. An older follower refuses these starts with its old "not allowed on this follower" reason.
+- New manager tool `switch_agent` (daemon `sessions.switch`): the manager can continue a session in another agent (claude-code, codex, opencode, agy). The runner builds a handoff packet, starts the new session and stops the old one, which can take up to 15 seconds. It needs a trusted folder and is refused for the manager itself, other managers, link sessions, team or queue workers, task-linked sessions, and sessions in bypass mode or without the sandbox. It never carries bypass over, and it is limited to 2 per minute.
 
 ## 1.0.145
 
