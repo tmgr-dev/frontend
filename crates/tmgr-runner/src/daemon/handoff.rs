@@ -51,6 +51,7 @@ impl Runner {
 
     fn handoff_prepare(&self, req: HandoffPrepareReq) -> Result<HandoffPrepareResp, ApiErr> {
         let s = self.handoff_session(&req.session)?;
+        let _guard = self.switch_guard(&req.session)?;
         let old = s.info();
         let target = Target::of_profile(Some(&req.to)).ok_or_else(|| {
             api(
@@ -148,6 +149,7 @@ impl Runner {
         }
         let target = Target::of_profile(Some(&packet.to.profile))
             .ok_or_else(|| api(ErrorCode::Internal, "the packet names an unknown target"))?;
+        let _guard = self.switch_guard(&packet.from.session)?;
         let warnings = self.finish_handoff(&store, &req.new_session, &value, &packet, target);
         Ok(HandoffFinishResp {
             warning: (!warnings.is_empty()).then(|| warnings.join("; ")),

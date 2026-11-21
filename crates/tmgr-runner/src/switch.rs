@@ -118,8 +118,7 @@ pub fn build_handoff(
                 .task_ref
                 .as_ref()
                 .is_none_or(|t| packet.task.task_ref.as_ref() == Some(t));
-            if packet.permission.carried_mode.as_deref() == Some(carry.mode.as_str()) && same_task
-            {
+            if packet.permission.carried_mode.as_deref() == Some(carry.mode.as_str()) && same_task {
                 return Ok(finish(packet));
             }
         }

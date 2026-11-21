@@ -6080,7 +6080,7 @@ mod tests {
         let rt = Runner {
             chat: chat_store.clone(),
             rename_lock: Mutex::new(()),
-        switch_lock: Mutex::new(HashSet::new()),
+            switch_lock: Mutex::new(HashSet::new()),
             cfg,
             secret: String::new(),
             started: Instant::now(),

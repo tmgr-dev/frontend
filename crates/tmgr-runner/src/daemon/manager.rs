@@ -66,15 +66,14 @@ impl Runner {
     fn answer_switch_async(self: &Arc<Self>, manager: &str, home: PathBuf, req: SpoolReq) {
         let rt = Arc::clone(self);
         let id = manager.to_string();
+        let req_id = req.id.clone();
+        let thread_home = home.clone();
         let spawned = std::thread::Builder::new()
             .name("manager-switch".into())
             .spawn(move || {
                 let host = ManagerHost { rt: &rt, me: &id };
-                let resp = match core::execute(&host, &rt.mgr, &req) {
-                    Ok(v) => SpoolResp::ok(&req.id, v),
-                    Err(e) => SpoolResp::err(&req.id, e),
-                };
-                if let Err(e) = core::respond(&home, &resp) {
+                let resp = guarded(&req.id, || core::execute(&host, &rt.mgr, &req));
+                if let Err(e) = core::respond(&thread_home, &resp) {
                     log(&format!("manager {id}: response not written: {e}"));
                 }
             });
@@ -82,7 +81,19 @@ impl Runner {
             log(&format!(
                 "manager {manager}: switch thread not started: {e}"
             ));
+            let resp = SpoolResp::err(&req_id, "the switch could not be started");
+            if let Err(e) = core::respond(&home, &resp) {
+                log(&format!("manager {manager}: response not written: {e}"));
+            }
         }
+    }
+}
+
+fn guarded(req_id: &str, run: impl FnOnce() -> Result<Value, String>) -> SpoolResp {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
+        Ok(Ok(v)) => SpoolResp::ok(req_id, v),
+        Ok(Err(e)) => SpoolResp::err(req_id, e),
+        Err(_) => SpoolResp::err(req_id, "the switch failed unexpectedly"),
     }
 }
 
@@ -161,6 +172,15 @@ impl core::Host for ManagerHost<'_> {
 
     fn switch(&self, id: &str, to: &str) -> Result<core::SwitchResult, String> {
         let target = Target::of_profile(Some(to)).ok_or("to must be a built-in agent")?;
+        let old = self.rt.session(id).ok_or("no such session")?.info();
+        let trusted = self.trusted_dir(&old.cwd).map_err(|e| {
+            format!("{e}; the owner switches sessions of untrusted folders from the CLI or the app")
+        })?;
+        if fs::canonicalize(&old.cwd).ok().as_deref() != Some(trusted.as_path()) {
+            return Err(
+                "cwd is not a trusted folder; the owner switches it from the CLI or the app".into(),
+            );
+        }
         self.rt
             .switch_session(
                 id,
@@ -298,6 +318,58 @@ mod tests {
         let v: Value = serde_json::from_slice(&fs::read(resp).unwrap()).unwrap();
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("itself"));
+    }
+
+    #[test]
+    fn a_switch_of_an_untrusted_cwd_is_refused_and_starts_nothing() {
+        let (t, rt) = pair();
+        let home = t.path().join("homes").join(MGR);
+        let stem = plant(&home, "switch_agent");
+        let d = core::req_dir(&home);
+        fs::write(
+            d.join(format!("{stem}.json")),
+            json!({"v":1,"id":stem,"tool":"switch_agent","args":{"session": OTHER, "to": "codex"}})
+                .to_string(),
+        )
+        .unwrap();
+        rt.manager_pass();
+        let resp = home.join(format!(".cache/tmgr-manager/resp/{stem}.json"));
+        let end = Instant::now() + Duration::from_secs(5);
+        while !resp.exists() && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let v: Value = serde_json::from_slice(&fs::read(resp).unwrap()).unwrap();
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("trusted folder"));
+        assert_eq!(rt.all().len(), 2);
+    }
+
+    #[test]
+    fn a_trusted_cwd_passes_the_trust_check() {
+        let (t, rt) = pair();
+        let homes = t.path().join("homes");
+        fs::create_dir_all(&homes).unwrap();
+        fs::set_permissions(&homes, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+        fs::set_permissions(
+            t.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
+        folders::add(&homes, t.path(), None, 0).unwrap();
+        let host = ManagerHost { rt: &rt, me: MGR };
+        let e = core::Host::switch(&host, OTHER, "codex")
+            .err()
+            .unwrap_or_default();
+        assert!(!e.contains("trusted folder"), "{e}");
+    }
+
+    #[test]
+    fn a_panic_in_the_switch_becomes_an_error_response() {
+        let r = guarded("rid", || panic!("boom"));
+        assert!(!r.ok);
+        assert_eq!(r.id, "rid");
+        assert!(r.error.unwrap().contains("unexpectedly"));
+        assert!(guarded("rid", || Ok(json!(1))).ok);
     }
 
     #[test]

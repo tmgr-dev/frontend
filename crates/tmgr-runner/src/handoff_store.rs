@@ -51,6 +51,16 @@ impl HandoffStore {
         write_atomic(&self.done_path(id)?, new_session.as_bytes())
     }
 
+    pub fn is_successor(&self, session: &str) -> bool {
+        let Ok(rd) = fs::read_dir(&self.dir) else {
+            return false;
+        };
+        rd.flatten().any(|e| {
+            e.file_name().to_str().is_some_and(|n| n.ends_with(".done"))
+                && fs::read_to_string(e.path()).is_ok_and(|c| c == session)
+        })
+    }
+
     fn is_finished(&self, id: &str) -> bool {
         self.done_path(id)
             .is_ok_and(|p| fs::symlink_metadata(p).is_ok())

@@ -27,7 +27,7 @@ struct Plan {
     carry: Carry,
 }
 
-struct SwitchGuard<'a> {
+pub(super) struct SwitchGuard<'a> {
     rt: &'a Runner,
     id: String,
 }
@@ -85,8 +85,11 @@ impl Runner {
     ) -> Result<SwitchOut, ApiErr> {
         let _guard = self.switch_guard(old_id)?;
         let plan = self.switch_preflight(old_id, to, opts)?;
-        self.stop_and_wait(&plan.session, plan.target, INT_WAIT, TERM_WAIT)?;
+        let ran = self.stop_and_wait(&plan.session, plan.target, INT_WAIT, TERM_WAIT)?;
         let old = plan.session.info();
+        if !ran {
+            self.require_packet(&old, plan.target)?;
+        }
         let screen = if sw::has_log(&old) {
             Vec::new()
         } else {
@@ -110,7 +113,12 @@ impl Runner {
             random,
         )
         .map_err(switch_err)?;
-        let new_session = match self.started_from(&old.id, handoff.packet.created_ms) {
+        let new_session = match self.started_from(
+            &store,
+            &old.id,
+            plan.target.profile(),
+            handoff.packet.created_ms,
+        ) {
             Some(existing) => existing,
             None => self.start_switched(&old, &plan, &handoff.prompt)?,
         };
@@ -139,7 +147,7 @@ impl Runner {
         })
     }
 
-    fn switch_guard(&self, id: &str) -> Result<SwitchGuard<'_>, ApiErr> {
+    pub(super) fn switch_guard(&self, id: &str) -> Result<SwitchGuard<'_>, ApiErr> {
         if !lock(&self.switch_lock).insert(id.to_string()) {
             return Err(api(
                 ErrorCode::Busy,
@@ -192,16 +200,7 @@ impl Runner {
             return Err(refuse("the working directory of the session is gone"));
         }
         if session.is_exited() {
-            let store = HandoffStore::open(&self.cfg.dir)
-                .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
-            if store
-                .find_for(&old.id, target.name(), old.state.since_ms)
-                .is_none()
-            {
-                return Err(refuse(
-                    "the session has already exited and has no unfinished handoff to resume",
-                ));
-            }
+            self.require_packet(&old, target)?;
         }
         if sw::has_log(&old) {
             sw::ensure_readable(&old).map_err(switch_err)?;
@@ -228,15 +227,29 @@ impl Runner {
         })
     }
 
+    fn require_packet(&self, old: &SessionInfo, target: Target) -> Result<(), ApiErr> {
+        let store = HandoffStore::open(&self.cfg.dir)
+            .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
+        if store
+            .find_for(&old.id, target.name(), old.state.since_ms)
+            .is_none()
+        {
+            return Err(refuse(
+                "the session has already exited and has no unfinished handoff to resume",
+            ));
+        }
+        Ok(())
+    }
+
     fn stop_and_wait(
         &self,
         s: &Arc<Session>,
         target: Target,
         int_wait: Duration,
         term_wait: Duration,
-    ) -> Result<(), ApiErr> {
+    ) -> Result<bool, ApiErr> {
         if s.is_exited() {
-            return Ok(());
+            return Ok(false);
         }
         if !s.has_shim() {
             return Err(switch_err(SwitchError::Conflict(format!(
@@ -250,12 +263,12 @@ impl Runner {
             let end = Instant::now() + wait;
             while Instant::now() < end {
                 if s.is_exited() {
-                    return Ok(());
+                    return Ok(true);
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
             if s.is_exited() {
-                return Ok(());
+                return Ok(true);
             }
         }
         Err(switch_err(SwitchError::Conflict(format!(
@@ -264,11 +277,19 @@ impl Runner {
         ))))
     }
 
-    fn started_from(&self, old_id: &str, after_ms: u64) -> Option<SessionInfo> {
-        self.all()
-            .iter()
-            .map(|s| s.info())
-            .find(|i| i.handoff_from.as_deref() == Some(old_id) && i.created_ms >= after_ms)
+    fn started_from(
+        &self,
+        store: &HandoffStore,
+        old_id: &str,
+        target: &str,
+        after_ms: u64,
+    ) -> Option<SessionInfo> {
+        self.all().iter().map(|s| s.info()).find(|i| {
+            i.handoff_from.as_deref() == Some(old_id)
+                && i.created_ms >= after_ms
+                && i.profile.as_deref() == Some(target)
+                && !store.is_successor(&i.id)
+        })
     }
 
     fn start_switched(
@@ -571,8 +592,70 @@ mod tests {
             "codex",
             serde_json::json!({"handoff_from": OLD, "created_ms": 100}),
         );
-        assert!(rt.started_from(OLD, 100).is_some());
-        assert!(rt.started_from(OLD, 101).is_none());
-        assert!(rt.started_from("s_cccccccccc", 0).is_none());
+        let store = HandoffStore::open(&rt.cfg.dir).unwrap();
+        assert!(rt.started_from(&store, OLD, "codex", 100).is_some());
+        assert!(rt.started_from(&store, OLD, "codex", 101).is_none());
+        assert!(rt
+            .started_from(&store, "s_cccccccccc", "codex", 0)
+            .is_none());
+    }
+
+    #[test]
+    fn started_from_ignores_a_child_of_another_profile() {
+        let (t, rt) = kit("opencode", serde_json::json!({}));
+        add(
+            &rt,
+            t.path(),
+            "s_bbbbbbbbbb",
+            "opencode",
+            serde_json::json!({"handoff_from": OLD, "created_ms": 100}),
+        );
+        let store = HandoffStore::open(&rt.cfg.dir).unwrap();
+        assert!(rt.started_from(&store, OLD, "codex", 0).is_none());
+    }
+
+    #[test]
+    fn started_from_ignores_a_child_that_finished_another_packet() {
+        let (t, rt) = kit("opencode", serde_json::json!({}));
+        add(
+            &rt,
+            t.path(),
+            "s_bbbbbbbbbb",
+            "codex",
+            serde_json::json!({"handoff_from": OLD, "created_ms": 100}),
+        );
+        let store = HandoffStore::open(&rt.cfg.dir).unwrap();
+        store
+            .mark_finished(&format!("h_{}", "2".repeat(32)), "s_bbbbbbbbbb")
+            .unwrap();
+        assert!(rt.started_from(&store, OLD, "codex", 0).is_none());
+    }
+
+    #[test]
+    fn stop_reports_whether_the_session_was_running() {
+        let (_t, rt) = kit("opencode", serde_json::json!({}));
+        exit(&rt, OLD, 0);
+        let s = rt.session(OLD).unwrap();
+        let ran = rt
+            .stop_and_wait(&s, Target::Codex, Duration::ZERO, Duration::ZERO)
+            .unwrap();
+        assert!(!ran);
+    }
+
+    #[test]
+    fn handoff_methods_are_busy_while_a_switch_of_the_session_runs() {
+        let (_t, rt) = kit("opencode", serde_json::json!({}));
+        let _held = rt.switch_guard(OLD).unwrap();
+        let e = rt
+            .dispatch(
+                &conn(CLIENT_CLI),
+                &Request {
+                    id: 1,
+                    method: method::HANDOFF_PREPARE.into(),
+                    params: serde_json::json!({"session": OLD, "to": "codex"}),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::Busy);
     }
 }
