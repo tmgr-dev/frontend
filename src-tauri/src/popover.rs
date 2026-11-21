@@ -82,6 +82,12 @@ pub fn taskbar_edge(monitor: Area, work: Area, icon: Area) -> Edge {
   }
 }
 
+/// Requested panel height kept inside the app maximum and the work area (logical units), margin included.
+pub fn clamp_height(requested: f64, work_height: Option<f64>) -> f64 {
+  let ceiling = work_height.map_or(MAX_HEIGHT, |h| (h - 2.0 * EDGE_MARGIN).min(MAX_HEIGHT));
+  requested.min(ceiling).max(MIN_HEIGHT)
+}
+
 fn clamp_axis(value: f64, low: f64, high: f64) -> f64 {
   if high < low {
     low
@@ -734,7 +740,8 @@ pub fn popover_resize<R: Runtime>(app: AppHandle<R>, height: f64) -> Result<(), 
   }
   let Some(window) = app.get_webview_window(LABEL) else { return Err("popover window missing".to_owned()) };
   let store = app.state::<PopoverStore>();
-  let height = height.clamp(MIN_HEIGHT, MAX_HEIGHT);
+  let work_height = (*store.anchor.lock().unwrap()).map(|a| a.work.h / a.scale);
+  let height = clamp_height(height, work_height);
   *store.height.lock().unwrap() = Some(height);
   window.set_size(LogicalSize::new(WIDTH, height)).map_err(|e| e.to_string())?;
   if store.pending.swap(false, Ordering::SeqCst) {
@@ -1225,5 +1232,15 @@ mod tests {
     for (main_was_active, other_visible, class, expected) in table {
       assert_eq!(should_restore_previous_app(main_was_active, other_visible, class), expected, "{main_was_active} {other_visible} {class:?}");
     }
+  }
+
+  #[test]
+  fn height_is_capped_by_the_app_maximum_and_the_work_area() {
+    assert_eq!(clamp_height(2000.0, None), MAX_HEIGHT);
+    assert_eq!(clamp_height(2000.0, Some(1200.0)), MAX_HEIGHT);
+    assert_eq!(clamp_height(2000.0, Some(600.0)), 600.0 - 2.0 * EDGE_MARGIN);
+    assert_eq!(clamp_height(300.0, Some(600.0)), 300.0);
+    assert_eq!(clamp_height(10.0, Some(600.0)), MIN_HEIGHT);
+    assert_eq!(clamp_height(500.0, Some(50.0)), MIN_HEIGHT);
   }
 }
