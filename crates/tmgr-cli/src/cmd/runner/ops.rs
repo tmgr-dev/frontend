@@ -1,4 +1,6 @@
-use super::{attach, connect, emit, is_down, rerr, runner_config, Opts, RunArgs, RunnerCmd};
+use super::{
+    attach, connect, emit, is_down, rerr, runner_config, ObjectsCmd, Opts, RunArgs, RunnerCmd,
+};
 use super::{
     observe, remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RenameArgs, ResumeArgs,
     RmArgs, RunnerCommands, SendArgs,
@@ -35,6 +37,12 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Trust(a) => super::trusted::trust(o, &a.dir),
             RunnerCmd::Untrust(a) => super::trusted::untrust(o, &a.dir),
             RunnerCmd::Trusted => super::trusted::list(o),
+            RunnerCmd::Objects { command } => match command {
+                ObjectsCmd::Allow(a) => super::objects::allow(o, &a.dir),
+                ObjectsCmd::Deny(a) => super::objects::deny(o, &a.dir),
+                ObjectsCmd::List => super::objects::list(o),
+                ObjectsCmd::Check(a) => super::objects::check(o, &a.dir),
+            },
             RunnerCmd::Allow(a) => super::allow::allow(
                 o,
                 &a.workspace,

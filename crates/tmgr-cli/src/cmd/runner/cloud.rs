@@ -1394,7 +1394,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         Some((&info.id, &profile)),
         &clone_records,
     )?;
-    if let Some(note) = tmgr_runner::agentwork::audit_note(Some(mode), a.no_sandbox) {
+    if let Some(note) = tmgr_runner::agentwork::audit_note(Some(mode), a.no_sandbox, None) {
         set_key(&ws.code, task_id, "audit", Some(json!(note)))?;
     }
     super::checkpoints::enable_new(&mut rc, &info.id, a.checkpoints_flag())?;

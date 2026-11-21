@@ -93,6 +93,24 @@ tmgr runner trusted
 
 The list shows each folder, how it was added and when.
 
+## Skip the shared-object check for a folder {#objects}
+
+Before a sandboxed agent starts, the runner refuses a folder that holds a git object file linked from another place, because the agent could write through that link. Walking a very large folder, such as a workspace with many repositories, can take minutes and is refused. If you know the folder is safe, you can exempt exactly that folder. Only this one check is skipped; the sandbox and every other rule stay on.
+
+```sh
+tmgr runner objects allow ~/work
+```
+
+The command needs a terminal and the follower PIN of this machine; with no PIN set it refuses and says how to set one. It is refused inside an agent session. It walks the whole folder first, without a size limit, and refuses if any file is linked from outside the folder; it lists the first 10. If the folder is clean, you type a word to confirm. Links made later, for example with `git clone <inside> <outside>` or `cp -al`, are not re-checked when a session starts; use `git clone --no-local`. The change is written to the link audit log first.
+
+```sh
+tmgr runner objects list
+tmgr runner objects check ~/work
+tmgr runner objects deny ~/work
+```
+
+`list` shows each folder, whether it is stale (replaced or moved since it was added, so no longer exempt), how long the walk took and when it was added. `check` walks a folder and reports links from outside, without changing anything and without the PIN. `deny` takes the exemption back; sessions that are already running keep the exemption they started with.
+
 ## Clean up finished task copies {#gc}
 
 Each task started with `tmgr run <task>` or by the queue works in its own copy of the project. When the pull request is merged or closed and nothing runs in the copy, it can go. To see what would be removed, and how much space you would get back, without deleting anything:

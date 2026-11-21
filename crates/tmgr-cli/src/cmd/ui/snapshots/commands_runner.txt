@@ -8,6 +8,10 @@ runner uninstall-service | Runner | -
 runner trust | Runner | dir
 runner untrust | Runner | dir
 runner trusted | Runner | -
+runner objects allow | Runner | dir
+runner objects deny | Runner | dir
+runner objects list | Runner | -
+runner objects check | Runner | dir
 runner allow | Runner | workspace, lifetime, require_signed_rules, require_signed_persona
 runner disallow | Runner | workspace
 runner allowed | Runner | -

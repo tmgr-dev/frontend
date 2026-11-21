@@ -40,6 +40,7 @@ mod manager_machine;
 mod manager_spawn_keys;
 pub(crate) mod marked_queue;
 pub(crate) mod menu;
+mod objects;
 mod observe;
 mod ops;
 mod privilege;
@@ -185,6 +186,11 @@ pub enum RunnerCmd {
     Untrust(FolderArgs),
     /// [experimental] List the trusted folders
     Trusted,
+    /// [experimental] Folders exempt from the shared git object check (allow needs the follower PIN)
+    Objects {
+        #[command(subcommand)]
+        command: ObjectsCmd,
+    },
     /// [experimental] Let this machine start agents on tasks of a cloud workspace that you approved in the web app (terminal only, asks you to type the workspace code)
     Allow(AllowArgs),
     /// [experimental] Stop letting this machine start agents on tasks of a cloud workspace
@@ -253,6 +259,18 @@ pub struct AllowArgs {
     /// Start a run only if its approval covers a persona (kept until disallow)
     #[arg(long)]
     pub require_signed_persona: bool,
+}
+
+#[derive(Subcommand)]
+pub enum ObjectsCmd {
+    /// [experimental] Skip the shared-object check for exactly this folder (terminal only, needs the follower PIN, walks the folder first and refuses if any file is linked from outside it)
+    Allow(FolderArgs),
+    /// [experimental] Stop skipping the shared-object check for a folder (running sessions keep the exemption they started with)
+    Deny(FolderArgs),
+    /// [experimental] List the exempt folders
+    List,
+    /// [experimental] Walk a folder and report files linked from outside it, without changing anything
+    Check(FolderArgs),
 }
 
 #[derive(Args)]

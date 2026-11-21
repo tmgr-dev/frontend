@@ -1339,6 +1339,7 @@ mod tests {
             tmgr_runner::agentwork::audit_note(
                 got.permission_mode.as_deref(),
                 got.no_sandbox.is_some(),
+                None,
             )
         };
         assert_eq!(
