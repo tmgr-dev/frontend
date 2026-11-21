@@ -60,20 +60,35 @@ impl SpawnProposal {
     }
 }
 
+const REFUSED_CODE_POINTS: [(u32, u32); 18] = [
+    (0x0000, 0x001f),
+    (0x007f, 0x009f),
+    (0x00ad, 0x00ad),
+    (0x034f, 0x034f),
+    (0x061c, 0x061c),
+    (0x115f, 0x1160),
+    (0x180e, 0x180e),
+    (0x200b, 0x200f),
+    (0x2028, 0x202e),
+    (0x2060, 0x2064),
+    (0x2066, 0x2069),
+    (0x206a, 0x206f),
+    (0x3164, 0x3164),
+    (0xfe00, 0xfe0f),
+    (0xfeff, 0xfeff),
+    (0xffa0, 0xffa0),
+    (0xfff9, 0xfffb),
+    (0xe0000, 0xe007f),
+];
+
 fn is_text(s: &str, max_bytes: usize) -> bool {
     !s.is_empty()
         && s.len() <= max_bytes
         && !s.chars().any(|c| {
-            c.is_control()
-                || matches!(
-                    c,
-                    '\u{061c}'
-                        | '\u{200b}'..='\u{200f}'
-                        | '\u{2028}'..='\u{202e}'
-                        | '\u{2060}'
-                        | '\u{2066}'..='\u{2069}'
-                        | '\u{feff}'
-                )
+            let cp = c as u32;
+            REFUSED_CODE_POINTS
+                .iter()
+                .any(|(lo, hi)| (*lo..=*hi).contains(&cp))
         })
 }
 
@@ -179,6 +194,63 @@ mod tests {
             let mut p = sample();
             e(&mut p);
             assert_eq!(p.validate(), Err(Refusal::BadToken), "{name}");
+        }
+    }
+
+    #[test]
+    fn refused_code_point_table_edges() {
+        let ranges: [(u32, u32); 24] = [
+            (0x0000, 0x001f),
+            (0x007f, 0x009f),
+            (0x00ad, 0x00ad),
+            (0x034f, 0x034f),
+            (0x061c, 0x061c),
+            (0x115f, 0x1160),
+            (0x180e, 0x180e),
+            (0x200b, 0x200f),
+            (0x2028, 0x202e),
+            (0x2060, 0x2064),
+            (0x2066, 0x2069),
+            (0x206a, 0x206f),
+            (0x3164, 0x3164),
+            (0xfe00, 0xfe0f),
+            (0xfeff, 0xfeff),
+            (0xffa0, 0xffa0),
+            (0xfff9, 0xfffb),
+            (0xe0000, 0xe007f),
+            (0x0020, 0x0020),
+            (0x00a0, 0x00a0),
+            (0x2065, 0x2065),
+            (0x2027, 0x2027),
+            (0xe0080, 0xe0080),
+            (0x10ffff, 0x10ffff),
+        ];
+        let refused = &ranges[..18];
+        let in_table = |c: u32| refused.iter().any(|(lo, hi)| (*lo..=*hi).contains(&c));
+        for (lo, hi) in ranges {
+            for cp in [lo, hi] {
+                let ch = char::from_u32(cp).unwrap();
+                let mut p = sample();
+                p.name = Some(format!("a{ch}b"));
+                let want = if in_table(cp) {
+                    Err(Refusal::BadToken)
+                } else {
+                    Ok(())
+                };
+                assert_eq!(p.validate(), want, "U+{cp:04X}");
+            }
+            for cp in [lo.wrapping_sub(1), hi + 1] {
+                if let Some(ch) = char::from_u32(cp) {
+                    let mut p = sample();
+                    p.name = Some(format!("a{ch}b"));
+                    let want = if in_table(cp) {
+                        Err(Refusal::BadToken)
+                    } else {
+                        Ok(())
+                    };
+                    assert_eq!(p.validate(), want, "U+{cp:04X}");
+                }
+            }
         }
     }
 

@@ -1,6 +1,8 @@
 use crate::error::Refusal;
-use crate::proposal::SpawnProposal;
-use crate::tokens::{b64_decode_strict, is_hex_lower, is_target_id, is_token, parse_p256_key};
+use crate::proposal::{sha256_hex, SpawnProposal};
+use crate::tokens::{
+    b64_decode_strict, is_hex_lower, is_target_id, is_token, parse_p256_key, MAX_SAFE_INT,
+};
 use crate::wire::SignedSpawn;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
@@ -9,10 +11,17 @@ pub const MAX_TTL_MS: u64 = 5 * 60 * 1000;
 pub const MAX_SKEW_MS: u64 = 5 * 60 * 1000;
 pub(crate) const MAX_SIG_B64_LEN: usize = 96;
 
-/// Any lookup error must mean not trusted: `is_trusted` false, `is_revoked` true.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrustStatus {
+    Trusted,
+    NotTrusted,
+    Revoked,
+    Unknown,
+}
+
+/// A failed lookup must return `Unknown`; only `Trusted` is accepted.
 pub trait TrustView {
-    fn is_trusted(&self, device_id: &str, fp: &str) -> bool;
-    fn is_revoked(&self, fp: &str) -> bool;
+    fn status(&self, device_id: &str, fp: &str) -> TrustStatus;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +36,7 @@ pub struct ChallengeRecord {
     pub proposal: SpawnProposal,
 }
 
+/// Only approved keys may be passed to `verify`; a pending key must never reach it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinnedKey {
     pub user_id: String,
@@ -67,6 +77,13 @@ impl Approved {
     }
     pub fn proposal(&self) -> &SpawnProposal {
         &self.proposal
+    }
+    pub fn check_prompt(&self, prompt: Option<&[u8]>) -> Result<(), Refusal> {
+        match (self.proposal.prompt_sha256.as_deref(), prompt) {
+            (None, None) => Ok(()),
+            (Some(h), Some(p)) if sha256_hex(p) == h => Ok(()),
+            _ => Err(Refusal::Mismatch),
+        }
     }
     pub fn into_proposal(self) -> SpawnProposal {
         self.proposal
@@ -115,6 +132,9 @@ pub fn verify(
     if sig.alg != "es256" {
         return Err(Refusal::UnsupportedAlg);
     }
+    if sig.ts_ms > MAX_SAFE_INT || sig.exp_ms > MAX_SAFE_INT || record.exp_ms > MAX_SAFE_INT {
+        return Err(Refusal::BadToken);
+    }
     if record.exp_ms <= record.issued_ms
         || record.exp_ms > record.issued_ms.saturating_add(MAX_TTL_MS)
     {
@@ -140,7 +160,7 @@ pub fn verify(
     }
     record.proposal.validate()?;
     let verifying = parse_p256_key(&key.spawn_pub).ok_or(Refusal::UnknownKey)?;
-    if !trust.is_trusted(&key.device_id, &key.device_fp) || trust.is_revoked(&key.device_fp) {
+    if trust.status(&key.device_id, &key.device_fp) != TrustStatus::Trusted {
         return Err(Refusal::NotTrusted);
     }
     let message = signed_string(record, key, sig.ts_ms);
@@ -181,23 +201,18 @@ mod tests {
     use std::cell::RefCell;
 
     struct Trust {
-        trusted: bool,
-        revoked: bool,
+        status: TrustStatus,
         seen: RefCell<Vec<(String, String)>>,
     }
     impl TrustView for Trust {
-        fn is_trusted(&self, device_id: &str, fp: &str) -> bool {
+        fn status(&self, device_id: &str, fp: &str) -> TrustStatus {
             self.seen.borrow_mut().push((device_id.into(), fp.into()));
-            self.trusted
-        }
-        fn is_revoked(&self, _: &str) -> bool {
-            self.revoked
+            self.status
         }
     }
-    fn trust(trusted: bool, revoked: bool) -> Trust {
+    fn trust(status: TrustStatus) -> Trust {
         Trust {
-            trusted,
-            revoked,
+            status,
             seen: RefCell::default(),
         }
     }
@@ -271,7 +286,7 @@ mod tests {
     #[test]
     fn happy_path_returns_the_recorded_proposal() {
         let (w, r, k) = fixture();
-        let a = verify(&w, &r, &k, &trust(true, false), NOW).unwrap();
+        let a = verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW).unwrap();
         assert_eq!(a.card_id(), "card-1");
         assert_eq!(a.user_id(), "42");
         assert_eq!(a.proposal(), &r.proposal);
@@ -282,17 +297,67 @@ mod tests {
     #[test]
     fn trust_is_asked_with_device_id_and_fp_every_call() {
         let (w, r, k) = fixture();
-        let t = trust(true, false);
+        let t = trust(TrustStatus::Trusted);
         verify(&w, &r, &k, &t, NOW).unwrap();
         assert_eq!(t.seen.borrow()[0], ("dev-1".to_string(), "d".repeat(64)));
         assert_eq!(
-            verify(&w, &r, &k, &trust(false, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::NotTrusted), NOW),
             Err(Refusal::NotTrusted)
         );
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, true), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Revoked), NOW),
             Err(Refusal::NotTrusted)
         );
+    }
+
+    #[test]
+    fn only_trusted_status_is_accepted() {
+        let (w, r, k) = fixture();
+        for st in [
+            TrustStatus::NotTrusted,
+            TrustStatus::Revoked,
+            TrustStatus::Unknown,
+        ] {
+            assert_eq!(
+                verify(&w, &r, &k, &trust(st), NOW),
+                Err(Refusal::NotTrusted),
+                "{st:?}"
+            );
+        }
+    }
+
+    fn approved_with(prompt_sha256: Option<String>) -> Approved {
+        let (_, mut r, k) = fixture();
+        r.proposal.prompt_sha256 = prompt_sha256;
+        let w = wire_for(&r, &k, 1_000_500);
+        verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW).unwrap()
+    }
+
+    #[test]
+    fn check_prompt_binds_the_prompt_hash() {
+        let none = approved_with(None);
+        assert_eq!(none.check_prompt(None), Ok(()));
+        assert_eq!(none.check_prompt(Some(b"x")), Err(Refusal::Mismatch));
+        assert_eq!(none.check_prompt(Some(b"")), Err(Refusal::Mismatch));
+        let some = approved_with(Some(crate::proposal::sha256_hex(b"fix it")));
+        assert_eq!(some.check_prompt(Some(b"fix it")), Ok(()));
+        assert_eq!(some.check_prompt(Some(b"fix it ")), Err(Refusal::Mismatch));
+        assert_eq!(some.check_prompt(Some(b"")), Err(Refusal::Mismatch));
+        assert_eq!(some.check_prompt(None), Err(Refusal::Mismatch));
+    }
+
+    #[test]
+    fn ts_and_exp_above_js_safe_integer_are_bad_token() {
+        let (w, r, k) = fixture();
+        let t = trust(TrustStatus::Trusted);
+        let mut x = w.clone();
+        x.ts_ms = 1 << 53;
+        assert_eq!(verify(&x, &r, &k, &t, NOW), Err(Refusal::BadToken));
+        let mut r2 = r.clone();
+        r2.exp_ms = 1 << 53;
+        let mut x = w.clone();
+        x.exp_ms = 1 << 53;
+        assert_eq!(verify(&x, &r2, &k, &t, NOW), Err(Refusal::BadToken));
     }
 
     #[test]
@@ -300,7 +365,7 @@ mod tests {
         let (w, mut r, k) = fixture();
         r.proposal.mode = SpawnMode::Ask;
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
             Err(Refusal::Mismatch)
         );
     }
@@ -311,7 +376,7 @@ mod tests {
         r.proposal.target_id = "mx_ffff".into();
         let w = wire_for(&r, &k, 1_000_500);
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
             Err(Refusal::Mismatch)
         );
     }
@@ -322,7 +387,7 @@ mod tests {
         r.proposal.cwd = "/a\u{1}b".into();
         let w = wire_for(&r, &k, 1_000_500);
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
             Err(Refusal::BadToken)
         );
     }
@@ -332,7 +397,7 @@ mod tests {
         let (w, r, mut k) = fixture();
         k.user_id = "43".into();
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
             Err(Refusal::Mismatch)
         );
     }
@@ -344,13 +409,13 @@ mod tests {
         r.exp_ms = r.issued_ms + MAX_TTL_MS;
         let w = wire_for(&r, &k, NOW);
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
             Err(Refusal::ClockSkew)
         );
         r.issued_ms = NOW + MAX_SKEW_MS;
         r.exp_ms = r.issued_ms + MAX_TTL_MS;
         let w = wire_for(&r, &k, NOW);
-        assert!(verify(&w, &r, &k, &trust(true, false), NOW).is_ok());
+        assert!(verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW).is_ok());
     }
 
     #[test]
@@ -359,13 +424,13 @@ mod tests {
         r.exp_ms = r.issued_ms;
         let w = wire_for(&r, &k, 1_000_500);
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
             Err(Refusal::BadTtl)
         );
         r.exp_ms = r.issued_ms - 1;
         let w = wire_for(&r, &k, 1_000_500);
         assert_eq!(
-            verify(&w, &r, &k, &trust(true, false), NOW),
+            verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
             Err(Refusal::BadTtl)
         );
     }
@@ -411,7 +476,7 @@ mod tests {
             e(&mut r, &mut k);
             let w = wire_for(&r, &k, 1_000_500);
             assert_eq!(
-                verify(&w, &r, &k, &trust(true, false), NOW),
+                verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW),
                 Err(Refusal::BadToken),
                 "{name}"
             );
@@ -421,7 +486,7 @@ mod tests {
     #[test]
     fn spawn_key_must_be_uncompressed_on_curve() {
         let (w, r, mut k) = fixture();
-        let t = trust(true, false);
+        let t = trust(TrustStatus::Trusted);
         k.spawn_pub = sk(3)
             .verifying_key()
             .to_encoded_point(true)
@@ -444,13 +509,13 @@ mod tests {
             Signature::from_scalars(s.r().to_bytes(), (-*s.s().as_ref()).to_bytes()).unwrap();
         assert!(high.normalize_s().is_some());
         w.sig = b64_encode(high.to_der().as_bytes());
-        assert!(verify(&w, &r, &k, &trust(true, false), NOW).is_ok());
+        assert!(verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW).is_ok());
     }
 
     #[test]
     fn version_alg_time_checks() {
         let (w, r, k) = fixture();
-        let t = trust(true, false);
+        let t = trust(TrustStatus::Trusted);
         let mut x = w.clone();
         x.v = 2;
         assert_eq!(
@@ -473,7 +538,7 @@ mod tests {
     fn ts_skew_boundaries() {
         let (w, r, k) = fixture();
         let ts = w.ts_ms;
-        let t = trust(true, false);
+        let t = trust(TrustStatus::Trusted);
         assert_eq!(
             verify(&w, &r, &k, &t, ts.saturating_sub(MAX_SKEW_MS + 1)),
             Err(Refusal::ClockSkew)
@@ -485,7 +550,7 @@ mod tests {
     fn display_never_echoes_wire_text() {
         let (mut w, r, k) = fixture();
         w.card_id = "SECRET-WIRE-TEXT".into();
-        let e = verify(&w, &r, &k, &trust(true, false), NOW).unwrap_err();
+        let e = verify(&w, &r, &k, &trust(TrustStatus::Trusted), NOW).unwrap_err();
         assert!(!e.to_string().contains("SECRET"));
         assert!(!format!("{e:?}").contains("SECRET"));
     }

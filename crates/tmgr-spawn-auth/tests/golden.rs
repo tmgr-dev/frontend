@@ -36,18 +36,39 @@ fn der_b64(s: &Signature) -> String {
 }
 
 struct Trust {
-    trusted: bool,
+    trust: TrustStatus,
     trusted_device_id: String,
-    revoked: bool,
 }
 
 impl TrustView for Trust {
-    fn is_trusted(&self, device_id: &str, _: &str) -> bool {
-        self.trusted && device_id == self.trusted_device_id
+    fn status(&self, device_id: &str, _: &str) -> TrustStatus {
+        if self.trust == TrustStatus::Trusted && device_id != self.trusted_device_id {
+            TrustStatus::NotTrusted
+        } else {
+            self.trust
+        }
     }
-    fn is_revoked(&self, _: &str) -> bool {
-        self.revoked
+}
+
+fn trust_name(t: TrustStatus) -> &'static str {
+    match t {
+        TrustStatus::Trusted => "trusted",
+        TrustStatus::NotTrusted => "not_trusted",
+        TrustStatus::Revoked => "revoked",
+        TrustStatus::Unknown => "unknown",
     }
+}
+
+fn trust_from(name: &str) -> TrustStatus {
+    [
+        TrustStatus::Trusted,
+        TrustStatus::NotTrusted,
+        TrustStatus::Revoked,
+        TrustStatus::Unknown,
+    ]
+    .into_iter()
+    .find(|t| trust_name(*t) == name)
+    .unwrap()
 }
 
 const DEVICE_ID: &str = "device-uuid-1";
@@ -59,9 +80,8 @@ struct Case {
     record: ChallengeRecord,
     key: PinnedKey,
     now_ms: u64,
-    trusted: bool,
+    trust: TrustStatus,
     trusted_device_id: String,
-    revoked: bool,
     expect: &'static str,
 }
 
@@ -142,9 +162,8 @@ fn url_safe_variant(std: &str) -> String {
 
 fn run_case(c: &Case) -> &'static str {
     let t = Trust {
-        trusted: c.trusted,
+        trust: c.trust,
         trusted_device_id: c.trusted_device_id.clone(),
-        revoked: c.revoked,
     };
     match verify(&c.wire, &c.record, &c.key, &t, c.now_ms) {
         Ok(_) => "ok",
@@ -162,9 +181,8 @@ fn cases() -> Vec<Case> {
         record,
         key: k.clone(),
         now_ms: NOW,
-        trusted: true,
+        trust: TrustStatus::Trusted,
         trusted_device_id: DEVICE_ID.into(),
-        revoked: false,
         expect,
     };
     let custom = |name, edit: fn(&mut ChallengeRecord, &mut PinnedKey), expect| {
@@ -426,7 +444,11 @@ fn cases() -> Vec<Case> {
             "bad_sig",
         ),
         sig_edit("bad_sig_base64_inner_space", inner_space, "bad_sig"),
-        sig_edit("bad_sig_over_96_chars", format!("{std_sig}AAAA"), "bad_sig"),
+        sig_edit(
+            "bad_sig_over_96_chars_valid_base64",
+            b64_encode(&[0x30; 75]),
+            "bad_sig",
+        ),
     ];
 
     let mut url = mk(
@@ -492,7 +514,7 @@ fn cases() -> Vec<Case> {
     });
 
     let mut untrusted = mk("device_not_trusted", good.clone(), r.clone(), "not_trusted");
-    untrusted.trusted = false;
+    untrusted.trust = TrustStatus::NotTrusted;
     v.push(untrusted);
     let mut other_id = mk(
         "trusted_under_other_device_id",
@@ -503,8 +525,16 @@ fn cases() -> Vec<Case> {
     other_id.trusted_device_id = "device-uuid-2".into();
     v.push(other_id);
     let mut revoked = mk("device_revoked", good.clone(), r.clone(), "not_trusted");
-    revoked.revoked = true;
+    revoked.trust = TrustStatus::Revoked;
     v.push(revoked);
+    let mut unknown = mk(
+        "device_trust_unknown",
+        good.clone(),
+        r.clone(),
+        "not_trusted",
+    );
+    unknown.trust = TrustStatus::Unknown;
+    v.push(unknown);
 
     let spawn_key_case = |name, bytes: Vec<u8>| {
         let mut c = mk(name, good.clone(), r.clone(), "unknown_key");
@@ -544,8 +574,8 @@ struct StatementCase {
     spawn_sig: String,
     device_id: &'static str,
     now_ms: u64,
-    trusted: bool,
-    revoked: bool,
+    trust: TrustStatus,
+    kex_pub: Option<String>,
     expect: &'static str,
 }
 
@@ -553,12 +583,11 @@ fn run_statement(c: &StatementCase, sign_pub: &str, kex_pub: &str) -> &'static s
     let d = DeviceKeys {
         device_id: c.device_id,
         sign_pub_b64: sign_pub,
-        kex_pub_b64: kex_pub,
+        kex_pub_b64: c.kex_pub.as_deref().unwrap_or(kex_pub),
     };
     let t = Trust {
-        trusted: c.trusted,
+        trust: c.trust,
         trusted_device_id: DEVICE_ID.into(),
-        revoked: c.revoked,
     };
     match verify_spawn_key_statement(
         c.user_id,
@@ -592,8 +621,8 @@ fn statement_cases() -> (Value, Vec<StatementCase>) {
         spawn_sig,
         device_id: DEVICE_ID,
         now_ms: NOW,
-        trusted: true,
-        revoked: false,
+        trust: TrustStatus::Trusted,
+        kex_pub: None,
         expect,
     };
     let both = |s: &str| (sig(&dev, s), sig(&spawn, s));
@@ -684,10 +713,28 @@ fn statement_cases() -> (Value, Vec<StatementCase>) {
             "spawn_sig_over_96_chars",
             stmt.clone(),
             a.clone(),
-            format!("{b}AAAA"),
+            b64_encode(&[0x30; 75]),
             "bad_sig",
         ),
     ];
+    let kex_case = |name, kex_b64: String| {
+        let fp = device_fp(&sign_pub, &kex_b64);
+        let s = build_spawn_key_statement("42", &fp, DEVICE_ID, &spawn_pub, ISSUED);
+        let (x, y) = both(&s);
+        let mut c = mk(name, s, x, y, "unknown_key");
+        c.kex_pub = Some(kex_b64);
+        c
+    };
+    v.push(kex_case(
+        "kex_key_compressed",
+        b64_encode(kex.verifying_key().to_encoded_point(true).as_bytes()),
+    ));
+    v.push(kex_case("kex_key_off_curve", b64_encode(&[4; 65])));
+    v.push(kex_case(
+        "kex_key_64_bytes",
+        b64_encode(&pub_bytes(&kex)[..64]),
+    ));
+    v.push(kex_case("kex_key_equals_spawn_key", spawn_pub.clone()));
     let mut other_device = mk(
         "wrong_device_id",
         stmt.clone(),
@@ -704,11 +751,20 @@ fn statement_cases() -> (Value, Vec<StatementCase>) {
         b.clone(),
         "not_trusted",
     );
-    untrusted.trusted = false;
+    untrusted.trust = TrustStatus::NotTrusted;
     v.push(untrusted);
-    let mut revoked = mk("device_revoked", stmt.clone(), a, b, "not_trusted");
-    revoked.revoked = true;
+    let mut revoked = mk(
+        "device_revoked",
+        stmt.clone(),
+        a.clone(),
+        b.clone(),
+        "not_trusted",
+    );
+    revoked.trust = TrustStatus::Revoked;
     v.push(revoked);
+    let mut unknown = mk("device_trust_unknown", stmt.clone(), a, b, "not_trusted");
+    unknown.trust = TrustStatus::Unknown;
+    v.push(unknown);
 
     for c in &v {
         assert_eq!(
@@ -732,49 +788,70 @@ fn statement_cases() -> (Value, Vec<StatementCase>) {
     (head, v)
 }
 
-fn statement_of(user: &str, fp: &str, issued: u64, pub_bytes: Vec<u8>) -> SpawnKeyStatement {
-    SpawnKeyStatement {
-        user_id: user.into(),
-        device_fp: fp.into(),
-        device_id: DEVICE_ID.into(),
-        spawn_pub: pub_bytes,
-        issued_at_ms: issued,
-    }
+fn signed_statement(user: &str, dev_seed: u8, spawn_seed: u8, issued: u64) -> SpawnKeyStatement {
+    let (dev, spawn) = (key(dev_seed), key(spawn_seed));
+    let (sign_pub, kex_pub, spawn_pub) = (pub_b64(&dev), pub_b64(&key(7)), pub_b64(&spawn));
+    let fp = device_fp(&sign_pub, &kex_pub);
+    let stmt = build_spawn_key_statement(user, &fp, DEVICE_ID, &spawn_pub, issued);
+    let d = DeviceKeys {
+        device_id: DEVICE_ID,
+        sign_pub_b64: &sign_pub,
+        kex_pub_b64: &kex_pub,
+    };
+    let t = Trust {
+        trust: TrustStatus::Trusted,
+        trusted_device_id: DEVICE_ID.into(),
+    };
+    verify_spawn_key_statement(
+        user,
+        &stmt,
+        &der_b64(&sign_low(&dev, &stmt)),
+        &der_b64(&sign_low(&spawn, &stmt)),
+        &d,
+        &t,
+        NOW,
+    )
+    .unwrap()
+}
+
+fn statement_json(s: &SpawnKeyStatement) -> Value {
+    json!({
+        "user_id": s.user_id(), "device_fp": s.device_fp(), "device_id": s.device_id(),
+        "spawn_pub_b64": b64_encode(s.spawn_pub()), "issued_at_ms": s.issued_at_ms(),
+    })
 }
 
 fn supersedes_cases() -> Vec<(&'static str, SpawnKeyStatement, SpawnKeyStatement, bool)> {
-    let fp = "a".repeat(64);
-    let (k1, k2) = (pub_bytes(&key(3)), pub_bytes(&key(4)));
-    let old = statement_of("42", &fp, ISSUED, k1.clone());
+    let old = signed_statement("42", 5, 3, ISSUED);
     let v = vec![
         (
             "strictly_newer_other_key",
-            statement_of("42", &fp, ISSUED + 1, k2.clone()),
+            signed_statement("42", 5, 4, ISSUED + 1),
             old.clone(),
             true,
         ),
         (
             "older_replayed_over_newer",
             old.clone(),
-            statement_of("42", &fp, ISSUED + 1, k2.clone()),
+            signed_statement("42", 5, 4, ISSUED + 1),
             false,
         ),
         ("equal_time_same_key", old.clone(), old.clone(), false),
         (
             "equal_time_different_key",
-            statement_of("42", &fp, ISSUED, k2.clone()),
+            signed_statement("42", 5, 4, ISSUED),
             old.clone(),
             false,
         ),
         (
             "newer_but_other_device",
-            statement_of("42", &"b".repeat(64), ISSUED + 1, k2.clone()),
+            signed_statement("42", 6, 4, ISSUED + 1),
             old.clone(),
             false,
         ),
         (
             "newer_but_other_user",
-            statement_of("43", &fp, ISSUED + 1, k2),
+            signed_statement("43", 5, 4, ISSUED + 1),
             old,
             false,
         ),
@@ -783,6 +860,119 @@ fn supersedes_cases() -> Vec<(&'static str, SpawnKeyStatement, SpawnKeyStatement
         assert_eq!(supersedes(new, old), *want, "supersedes case {name}");
     }
     v
+}
+
+enum KbOp {
+    Offer(SpawnKeyStatement, &'static str),
+    Approve(String, &'static str),
+    Pinned(&'static str, String, Option<Vec<u8>>),
+}
+
+fn offer_name(o: OfferOutcome) -> &'static str {
+    match o {
+        OfferOutcome::Added => "added",
+        OfferOutcome::Replaced => "replaced",
+        OfferOutcome::Unchanged => "unchanged",
+        OfferOutcome::Stale => "stale",
+        OfferOutcome::Conflict => "conflict",
+    }
+}
+
+fn approve_name(r: &Result<DeviceFp, ApproveError>) -> &'static str {
+    match r {
+        Ok(_) => "ok",
+        Err(ApproveError::PrefixTooShort) => "prefix_too_short",
+        Err(ApproveError::NotFound) => "not_found",
+        Err(ApproveError::Ambiguous) => "ambiguous",
+    }
+}
+
+fn keybook_scenarios() -> Vec<(&'static str, Vec<KbOp>)> {
+    let first = signed_statement("42", 5, 3, ISSUED);
+    let newer = signed_statement("42", 5, 4, ISSUED + 1);
+    let fp = first.device_fp().to_string();
+    let prefix = fp[..8].to_string();
+    let (k3, k4) = (pub_bytes(&key(3)), pub_bytes(&key(4)));
+    let v = vec![
+        (
+            "pending_is_not_pinned_until_approved",
+            vec![
+                KbOp::Offer(first.clone(), "added"),
+                KbOp::Pinned("42", fp.clone(), None),
+                KbOp::Approve(prefix.clone(), "ok"),
+                KbOp::Pinned("42", fp.clone(), Some(k3.clone())),
+                KbOp::Pinned("43", fp.clone(), None),
+            ],
+        ),
+        (
+            "replacement_drops_approval",
+            vec![
+                KbOp::Offer(first.clone(), "added"),
+                KbOp::Approve(prefix.clone(), "ok"),
+                KbOp::Offer(newer.clone(), "replaced"),
+                KbOp::Pinned("42", fp.clone(), None),
+                KbOp::Approve(prefix.clone(), "ok"),
+                KbOp::Pinned("42", fp.clone(), Some(k4)),
+            ],
+        ),
+        (
+            "refusals_keep_the_approved_key",
+            vec![
+                KbOp::Offer(newer.clone(), "added"),
+                KbOp::Approve(prefix.clone(), "ok"),
+                KbOp::Offer(newer.clone(), "unchanged"),
+                KbOp::Offer(first.clone(), "stale"),
+                KbOp::Offer(signed_statement("42", 5, 3, ISSUED + 1), "conflict"),
+                KbOp::Approve(fp[..7].to_string(), "prefix_too_short"),
+                KbOp::Approve("00000000".into(), "not_found"),
+                KbOp::Approve(prefix, "not_found"),
+                KbOp::Pinned("42", fp, Some(pub_bytes(&key(4)))),
+            ],
+        ),
+    ];
+    for (name, ops) in &v {
+        let mut book = KeyBook::default();
+        for op in ops {
+            match op {
+                KbOp::Offer(st, want) => {
+                    assert_eq!(offer_name(book.offer(st.clone())), *want, "{name}")
+                }
+                KbOp::Approve(p, want) => {
+                    assert_eq!(approve_name(&book.approve(p)), *want, "{name}")
+                }
+                KbOp::Pinned(user, fp, want) => assert_eq!(
+                    book.pinned_key(user, fp).map(|k| k.spawn_pub),
+                    *want,
+                    "{name}"
+                ),
+            }
+        }
+    }
+    v
+}
+
+fn keybook_json() -> Vec<Value> {
+    keybook_scenarios()
+        .iter()
+        .map(|(name, ops)| {
+            let ops: Vec<Value> = ops
+                .iter()
+                .map(|op| match op {
+                    KbOp::Offer(st, want) => {
+                        json!({ "op": "offer", "statement": statement_json(st), "expect": want })
+                    }
+                    KbOp::Approve(p, want) => {
+                        json!({ "op": "approve", "fp_prefix": p, "expect": want })
+                    }
+                    KbOp::Pinned(user, fp, want) => json!({
+                        "op": "pinned_key", "user_id": user, "device_fp": fp,
+                        "expect_spawn_pub_b64": want.as_ref().map(|b| b64_encode(b)),
+                    }),
+                })
+                .collect();
+            json!({ "name": name, "ops": ops })
+        })
+        .collect()
 }
 
 fn canonical_proposals() -> Vec<(&'static str, SpawnProposal)> {
@@ -796,7 +986,47 @@ fn canonical_proposals() -> Vec<(&'static str, SpawnProposal)> {
     let mut bare = proposal();
     bare.prompt_sha256 = None;
     bare.name = None;
-    vec![
+    let refused: [(&'static str, char); 28] = [
+        ("name_refused_u00ad_soft_hyphen", '\u{ad}'),
+        ("name_refused_u034f_grapheme_joiner", '\u{34f}'),
+        ("name_refused_u061c_arabic_letter_mark", '\u{61c}'),
+        ("name_refused_u115f_hangul_choseong_filler", '\u{115f}'),
+        ("name_refused_u1160_hangul_jungseong_filler", '\u{1160}'),
+        ("name_refused_u180e_mongolian_vowel_separator", '\u{180e}'),
+        ("name_refused_u200b_range_start", '\u{200b}'),
+        ("name_refused_u200d_zwj", '\u{200d}'),
+        ("name_refused_u200e_lrm", '\u{200e}'),
+        ("name_refused_u200f_range_end", '\u{200f}'),
+        ("name_refused_u202a_embedding", '\u{202a}'),
+        ("name_refused_u2060_word_joiner", '\u{2060}'),
+        ("name_refused_u2064_invisible_plus", '\u{2064}'),
+        ("name_refused_u2066_isolate", '\u{2066}'),
+        ("name_refused_u2069_pop_isolate", '\u{2069}'),
+        ("name_refused_u206a_deprecated_format", '\u{206a}'),
+        ("name_refused_u206f_deprecated_format", '\u{206f}'),
+        ("name_refused_u3164_hangul_filler", '\u{3164}'),
+        ("name_refused_ufe00_variation_selector", '\u{fe00}'),
+        ("name_refused_ufe0f_variation_selector_16", '\u{fe0f}'),
+        ("name_refused_ufeff_bom", '\u{feff}'),
+        ("name_refused_uffa0_halfwidth_hangul_filler", '\u{ffa0}'),
+        ("name_refused_ufff9_interlinear_start", '\u{fff9}'),
+        ("name_refused_ufffb_interlinear_end", '\u{fffb}'),
+        ("name_refused_ue0000_tag_range_start", '\u{e0000}'),
+        ("name_refused_ue0041_tag_letter_a", '\u{e0041}'),
+        ("name_refused_ue007f_tag_range_end", '\u{e007f}'),
+        ("name_refused_u0080_c1_start", '\u{80}'),
+    ];
+    let accepted: [(&'static str, char); 8] = [
+        ("name_accepted_u00ae_registered", '\u{ae}'),
+        ("name_accepted_u2065_unassigned_gap", '\u{2065}'),
+        ("name_accepted_u2027_hyphenation_point", '\u{2027}'),
+        ("name_accepted_ufe10_after_variation_selectors", '\u{fe10}'),
+        ("name_accepted_uffa1_after_hangul_filler", '\u{ffa1}'),
+        ("name_accepted_ufff8_before_interlinear", '\u{fff8}'),
+        ("name_accepted_ufffc_object_replacement", '\u{fffc}'),
+        ("name_accepted_ue0080_after_tags", '\u{e0080}'),
+    ];
+    let mut out = vec![
         ("sample", proposal()),
         ("all_optional_fields", full),
         ("no_optional_fields", bare),
@@ -819,7 +1049,19 @@ fn canonical_proposals() -> Vec<(&'static str, SpawnProposal)> {
             "name_cyrillic",
             with_name("\u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}"),
         ),
-    ]
+        (
+            "name_zwj_emoji_sequence_refused",
+            with_name("\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}"),
+        ),
+        (
+            "name_emoji_pair_without_zwj",
+            with_name("\u{1f468}\u{1f469}"),
+        ),
+    ];
+    for (name, c) in refused.into_iter().chain(accepted) {
+        out.push((name, with_name(&format!("a{c}b"))));
+    }
+    out
 }
 
 fn proposal_validates(p: &SpawnProposal) -> &'static str {
@@ -918,6 +1160,7 @@ fn wire_json_cases() -> Vec<(&'static str, String, &'static str)> {
 }
 
 fn generate() -> Value {
+    let kex_pub_default = pub_b64(&key(7));
     let (record, pinned) = base_record();
     let p = proposal();
     let canonical = p.canonical_bytes();
@@ -931,9 +1174,8 @@ fn generate() -> Value {
             json!({
                 "name": c.name,
                 "now_ms": c.now_ms,
-                "device_trusted": c.trusted,
+                "trust": trust_name(c.trust),
                 "trusted_device_id": c.trusted_device_id,
-                "device_revoked": c.revoked,
                 "record": {
                     "user_id": c.record.user_id, "target_id": c.record.target_id,
                     "target_fp": c.record.target_fp, "card_id": c.record.card_id,
@@ -957,8 +1199,8 @@ fn generate() -> Value {
             json!({
                 "name": c.name, "expected_user_id": c.user_id, "device_id": c.device_id,
                 "now_ms": c.now_ms,
-                "device_trusted": c.trusted, "trusted_device_id": DEVICE_ID,
-                "device_revoked": c.revoked,
+                "trust": trust_name(c.trust), "trusted_device_id": DEVICE_ID,
+                "device_kex_pub_b64": c.kex_pub.as_deref().unwrap_or(&kex_pub_default),
                 "statement": c.statement, "sig": c.sig, "spawn_sig": c.spawn_sig,
                 "expect": c.expect,
             })
@@ -967,13 +1209,7 @@ fn generate() -> Value {
     let supersedes: Vec<Value> = supersedes_cases()
         .iter()
         .map(|(name, new, old, want)| {
-            let side = |s: &SpawnKeyStatement| {
-                json!({
-                    "user_id": s.user_id, "device_fp": s.device_fp,
-                    "spawn_pub_b64": b64_encode(&s.spawn_pub), "issued_at_ms": s.issued_at_ms,
-                })
-            };
-            json!({ "name": name, "new": side(new), "old": side(old), "expect": want })
+            json!({ "name": name, "new": statement_json(new), "old": statement_json(old), "expect": want })
         })
         .collect();
     let canonical_cases: Vec<Value> = canonical_proposals()
@@ -995,7 +1231,18 @@ fn generate() -> Value {
         .map(|(name, json, expect)| json!({ "name": name, "json": json, "expect": expect }))
         .collect();
     json!({
-        "doc": "SignedSpawn v1 golden vectors, regenerated by `cargo test -p tmgr-spawn-auth -- --ignored regenerate`. All keys are TEST-ONLY (test_* fields). Secrets are 32 bytes of one repeated byte; P-256; public keys are 65-byte uncompressed SEC1 (0x04 prefix; compressed or other lengths are refused), base64 STANDARD padded. Signatures are DER ECDSA P-256 over SHA-256 of the UTF-8 message, base64 STANDARD padded and canonical (re-encoding must reproduce the string), at most 96 chars; raw r||s, base64url and unpadded forms are refused. A verifier must accept high-S. `proposal.fields` serialize to `proposal.canonical_utf8` in exactly the declared field order, no spaces, None omitted, serde_json escaping (quote, backslash, and control chars below U+0020 are escaped: \\b \\t \\n \\f \\r short forms, others as lowercase \\u00xx; '/', DEL, C1, U+2028 and all non-ASCII stay raw UTF-8); `req_sha256` is lowercase hex SHA-256 of those bytes; `canonical_cases[]` pins this escaping and `validate` says whether SpawnProposal::validate accepts the fields (no C0/C1/bidi/zero-width/U+2028/U+2029 characters, cwd <= 4096 bytes, name/task <= 128 bytes, profile a token, prompt_sha256 64 lowercase hex, target_id mx_ + lowercase hex, v == 1). `signed.message` is the exact signed string. `verify_cases[]`: given record (the machine's stored challenge, with its proposal; req_sha256 is recomputed from the proposal, never stored), pinned_key, wire (the SignedSpawn JSON), now_ms and the trust view (a device is trusted only when device_trusted is true and pinned_key.device_id == trusted_device_id; device_revoked is by device_fp), verify must return `expect` (`ok` or a refusal code: mismatch, unsupported_version, unsupported_alg, bad_ttl, expired, clock_skew, bad_token, unknown_key, not_trusted, bad_sig). Check order: field mismatch (including proposal.target_id == record.target_id and the recomputed req_sha256), version, alg, ttl (0 < exp_ms - issued_ms <= 5 min), expiry, skew (issued_ms and ts_ms within 5 min of now_ms), tokens (fps are 64 lowercase hex, target_id mx_[0-9a-f]+, nonce 32 lowercase hex, other ids tokens [A-Za-z0-9._-]{1,64}, proposal valid), key, trust, signature. `wire_json_cases[]`: the raw wire JSON text must be accepted (`ok`) or refused (`refused`) by the parser: unknown fields, duplicate keys, non-integer numbers (a text with '.' or exponent, even 1.0), negative numbers (including -0), and ts_ms/exp_ms above 2^53-1 are refused; a port must inspect raw number tokens because JSON.parse loses the difference. `statement_cases[]`: a tmgr-spawn-key:v1 statement (at most 512 bytes, exactly five ':'-separated fields after the prefix, issued_at_ms canonical decimal <= 2^53-1 and not more than 5 min after now_ms) must carry two valid signatures (device chat sign key `sig`, spawn key `spawn_sig`), the spawn key must differ from the device sign key, and the device must be trusted and not revoked; `expect` as above. `supersedes_cases[]`: a new statement replaces the stored one only when same user and device_fp and issued_at_ms is strictly greater.",
+        "doc": concat!(
+            "SignedSpawn v1 golden vectors, regenerated by `cargo test -p tmgr-spawn-auth -- --ignored regenerate`. All keys are TEST-ONLY (test_* fields). Secrets are 32 bytes of one repeated byte; P-256; public keys are 65-byte uncompressed SEC1 (0x04 prefix, on the curve; compressed or other lengths are refused), base64 STANDARD padded. Signatures are DER ECDSA P-256 over SHA-256 of the UTF-8 message, base64 STANDARD padded and canonical (re-encoding must reproduce the string); raw r||s, base64url and unpadded forms are refused. A verifier must accept high-S. ",
+            "CAPS: a signature string longer than 96 chars is refused as bad_sig and a key statement longer than 512 bytes as bad_token; these are DoS caps checked before any decoding (a valid DER signature is at most 96 chars and a valid statement is under 400 bytes, so no honest input reaches them); the over-cap cases use well-formed base64 / a correctly signed statement so only the cap can reject them. ",
+            "JSON READING (TypeScript port): parse the raw text with a strict JSON reader, not JSON.parse. Every number token must match ^(0|[1-9][0-9]*)$ and then pass Number.isSafeInteger (so no '.', exponent, sign, -0, leading zero or value above 2^53-1); `v` must be a canonical integer; duplicate keys and unknown fields are refused; missing fields are refused. The phone hashes the `req` bytes exactly as received from the machine (never re-serialized) and compares with the proposal it displays. ",
+            "PROPOSAL: `proposal.fields` serialize to `proposal.canonical_utf8` in exactly the declared field order, no spaces, None omitted, serde_json escaping (quote, backslash, and control chars below U+0020 are escaped: \\b \\t \\n \\f \\r short forms, others as lowercase \\u00xx; '/', DEL, C1, U+2028 and all non-ASCII stay raw UTF-8); `req_sha256` is lowercase hex SHA-256 of those bytes; `canonical_cases[]` pins this escaping and `validate` says whether SpawnProposal::validate accepts the fields (cwd/name/task must be non-empty and contain no refused code point; cwd <= 4096 bytes, name/task <= 128 bytes; profile a token; prompt_sha256 64 lowercase hex; target_id mx_ + lowercase hex; v == 1). ",
+            "REFUSED CODE POINTS in cwd, name and task (one explicit table, inclusive ranges): all Cc (U+0000-001F, U+007F-009F), U+00AD, U+034F, U+061C, U+115F, U+1160, U+180E, U+200B-200F, U+2028-202E, U+2060-2064, U+2066-2069, U+206A-206F, U+3164, U+FE00-FE0F, U+FEFF, U+FFA0, U+FFF9-FFFB, U+E0000-E007F. Everything else is accepted (Cyrillic, astral emoji, U+2065, U+00AE and so on). U+200D (ZWJ) is refused, so ZWJ emoji sequences are refused; emoji without ZWJ and without U+FE0F are accepted. A port must iterate Unicode scalar values (code points), not UTF-16 units. ",
+            "`signed.message` is the exact signed string. VERIFY: `verify_cases[]`: given record (the machine's stored challenge, with its proposal; req_sha256 is recomputed from the proposal, never stored), pinned_key, wire (the SignedSpawn JSON), now_ms and the trust view (`trust` is the status the lookup returns for the device: trusted, not_trusted, revoked or unknown; a device is trusted only when trust is `trusted` and pinned_key.device_id == trusted_device_id, otherwise the status is not_trusted; a failed lookup must be reported as unknown; only trusted is accepted and everything else is refused as not_trusted), verify must return `expect` (`ok` or a refusal code: mismatch, unsupported_version, unsupported_alg, bad_ttl, expired, clock_skew, bad_token, unknown_key, not_trusted, bad_sig). Check order: field mismatch (including proposal.target_id == record.target_id and the recomputed req_sha256), version, alg, safe integers (sig.ts_ms, sig.exp_ms and record.exp_ms must be <= 2^53-1, else bad_token), ttl (0 < exp_ms - issued_ms <= 5 min), expiry, skew (issued_ms and ts_ms within 5 min of now_ms), tokens (fps are 64 lowercase hex, target_id mx_[0-9a-f]+, nonce 32 lowercase hex, other ids tokens [A-Za-z0-9._-]{1,64}, proposal valid), key, trust, signature. ts_ms is only bound by the 5 minute skew around now_ms, not by the challenge window (see ok_ts_in_future_exactly_5_min). After a successful verify the caller checks the spawn prompt bytes against proposal.prompt_sha256: equal SHA-256, or both absent; anything else is mismatch. ",
+            "`wire_json_cases[]`: the raw wire JSON text must be accepted (`ok`) or refused (`refused`) by the parser: unknown fields, duplicate keys, non-integer numbers (a text with '.' or exponent, even 1.0), negative numbers (including -0), and ts_ms/exp_ms above 2^53-1 are refused; a port must inspect raw number tokens because JSON.parse loses the difference. ",
+            "STATEMENT: `statement_cases[]`: a tmgr-spawn-key:v1 statement must carry two valid signatures (device chat sign key `sig`, spawn key `spawn_sig`), and the device must be trusted; `device_kex_pub_b64` is the device kex key used for that case (it feeds the device_fp). Check order: size (<= 512 bytes), prefix and field split (exactly five ':'-separated fields after the prefix, tokens, issued_at_ms canonical decimal <= 2^53-1), base64 of spawn_pub (strict), mismatch (user, device_id, device_fp recomputed from the sign and kex keys), clock_skew (issued_at_ms not more than 5 min after now_ms), key (spawn, sign and kex keys each 65-byte uncompressed on-curve, kex strict base64, spawn key must differ from both the sign key and the kex key, else unknown_key), trust, signatures (device sig first, then spawn sig). `expect` as above. ",
+            "SUPERSEDES: `supersedes_cases[]`: a new statement supersedes the stored one only when same user and device_fp and issued_at_ms is strictly greater. With an equal issued_at_ms and a different key supersedes is false and the caller must REFUSE the new statement; a byte-identical statement is a no-op. ",
+            "KEYBOOK: `keybook_cases[]` replay ops on one empty in-memory key book: `offer` (expect added, replaced, unchanged, stale or conflict; a first key or a strictly newer statement for the same user and device_fp becomes pending and drops any older entry including its approval; identical is unchanged; older is stale; equal issued_at_ms with another key, or another user for the same device_fp, is conflict), `approve` by device_fp prefix (at least 8 lowercase hex chars else prefix_too_short; must match exactly one pending entry: none is not_found, several is ambiguous), `pinned_key` (a key only for an approved entry of that user; pending keys are never pinned and must never reach verify).",
+        ),
         "test_keys": {
             "test_spawn_secret_hex": hex::encode([3u8; 32]),
             "test_spawn_pub_b64": pub_b64(&key(3)),
@@ -1028,6 +1275,7 @@ fn generate() -> Value {
         "verify_cases": verify_cases,
         "statement_cases": statement_cases,
         "supersedes_cases": supersedes,
+        "keybook_cases": keybook_json(),
     })
 }
 
@@ -1076,9 +1324,8 @@ fn fixture_cases_verify() {
             record,
             key: pinned,
             now_ms: n(c, "now_ms"),
-            trusted: c["device_trusted"].as_bool().unwrap(),
+            trust: trust_from(c["trust"].as_str().unwrap()),
             trusted_device_id: s(c, "trusted_device_id"),
-            revoked: c["device_revoked"].as_bool().unwrap(),
             expect: "",
         };
         assert_eq!(
