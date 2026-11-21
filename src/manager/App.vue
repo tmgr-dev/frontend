@@ -39,6 +39,7 @@
 					:body-html="bodyHtml"
 					@reply="store.setReply"
 					@copy="copy"
+					@older="store.loadOlder"
 				>
 					<template #decision="{ message }">
 						<div class="decision-ref">
@@ -84,8 +85,8 @@
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
 	import { renderBody } from './format';
-	import { useManagerStore } from './store';
-	import { roomKey } from './types';
+	import { MAX_FILE_BYTES, useManagerStore } from './store';
+	import { roomKey, type ChatMessage } from './types';
 
 	const sha256Hex = async (file: File): Promise<string> => {
 		const digest = await crypto.subtle.digest(

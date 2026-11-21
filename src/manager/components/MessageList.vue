@@ -1,5 +1,10 @@
 <template>
-	<div class="scroll" role="log" :aria-label="$t('manager.messages.label')">
+	<div
+		class="scroll"
+		role="log"
+		:aria-label="$t('manager.messages.label')"
+		@scroll.passive="onScroll"
+	>
 		<div class="inner">
 			<div v-if="messages.length === 0" class="empty">
 				<Icon name="term" /><b>{{ $t('manager.messages.empty') }}</b
@@ -49,7 +54,12 @@
 			},
 			now: { type: Number, default: () => Date.now() },
 		},
-		emits: ['reply', 'copy'],
+		emits: ['reply', 'copy', 'older'],
+		methods: {
+			onScroll(e: Event) {
+				if ((e.target as HTMLElement).scrollTop < 40) this.$emit('older');
+			},
+		},
 		computed: {
 			rows(): Row[] {
 				const byId = new Map(this.messages.map((m) => [m.id, m]));

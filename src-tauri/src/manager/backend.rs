@@ -122,6 +122,15 @@ pub trait ManagerBackend: Send + Sync {
   fn commands(&self, room: &RoomRef) -> Result<Vec<SlashCommand>, String>;
 }
 
+fn valid_attachment(a: &Attachment) -> Result<(), String> {
+  let name_ok = !a.name.is_empty() && a.name.len() <= 255 && !a.name.contains(['/', '\\', '\0']);
+  let sha_ok = a.sha256.len() == 64 && a.sha256.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'));
+  if !name_ok || a.mime.is_empty() || a.mime.len() > 255 || !sha_ok {
+    return Err("invalid attachment".into());
+  }
+  Ok(())
+}
+
 const MACHINE: &str = "mx_stub";
 
 fn manager_room() -> RoomRef {
@@ -252,6 +261,7 @@ impl ManagerBackend for StubBackend {
     if params.attachments.len() > MAX_ATTACHMENTS {
       return Err("too many attachments".into());
     }
+    params.attachments.iter().try_for_each(valid_attachment)?;
     self.with(|s| {
       if !known(s, &params.room) {
         return Err("unknown room".into());
@@ -354,6 +364,9 @@ mod tests {
     let mut many = send(manager_room(), "x");
     many.attachments = vec![Attachment { name: "a".into(), mime: "text/plain".into(), size: 1, sha256: "0".repeat(64) }; 17];
     assert!(backend.send(many).is_err());
+    let mut bad = send(manager_room(), "x");
+    bad.attachments = vec![Attachment { name: "../a".into(), mime: "text/plain".into(), size: 1, sha256: "0".repeat(64) }];
+    assert!(backend.send(bad).is_err());
   }
 
   #[test]

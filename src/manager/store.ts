@@ -28,7 +28,7 @@ export interface FileLike {
 }
 
 const PAGE = 50;
-const MAX_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_JUMP_PAGES = 20;
 
 const byTime = (a: ChatMessage, b: ChatMessage) =>
@@ -203,11 +203,13 @@ export const createManagerStore = (api: ManagerApi) => {
 					reply_to: store.replyTo?.id,
 					attachments: [...store.draft.attachments],
 				});
-				store.draft.text = '';
-				store.draft.attachments = [];
-				store.replyTo = null;
+				if (store.activeKey === key && store.draft.text === text) {
+					store.draft.text = '';
+					store.draft.attachments = [];
+					store.replyTo = null;
+					store.closeSlash();
+				}
 				store.error = null;
-				store.closeSlash();
 				store.ingest(sent);
 			} catch (e) {
 				store.error = errorText(e);
