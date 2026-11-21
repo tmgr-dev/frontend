@@ -6,7 +6,7 @@ use clap::ValueEnum;
 use serde_json::json;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::limits::MAX_RUN_PROMPT;
-use tmgr_ipc::api::{caps, SessionInfo};
+use tmgr_ipc::api::{caps, HandoffFinishReq, HandoffPrepareReq, SessionInfo};
 use tmgr_runner::daemon;
 use tmgr_runner::switch::{self as lib, SwitchError, Target};
 
@@ -225,26 +225,47 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
             format!("the old session stopped, but the new agent did not start: {e}. {resume_hint}"),
         )
     };
-    let note = lib::prepare_note(&s, &sessions, target, reference.as_deref(), &screen)
-        .map_err(|e| after_stop(e.to_string()))?;
+    let handoff = c.welcome().caps.iter().any(|h| h == caps::HANDOFF_V1);
+    let (text, exports, prepared) = if handoff {
+        let r = c
+            .handoff_prepare(HandoffPrepareReq {
+                session: s.id.clone(),
+                to: target.profile().to_string(),
+                keep_bypass: a.keep_bypass,
+                task_ref: reference.clone(),
+            })
+            .map_err(|e| after_stop(e.to_string()))?;
+        (r.prompt.clone(), Vec::new(), Some(r))
+    } else {
+        let note = lib::prepare_note(&s, &sessions, target, reference.as_deref(), &screen)
+            .map_err(|e| after_stop(e.to_string()))?;
+        (note.text, note.exports, None)
+    };
     let started = match route {
-        Route::Task(plan) => start_switch(*plan, &launch, (&s.id, &note.text)),
-        Route::Plain(plain) => start_plain(
-            &s,
-            target,
-            (mode, no_sandbox),
-            plain,
-            (launch.size, &note.text),
-        ),
+        Route::Task(plan) => start_switch(*plan, &launch, (&s.id, &text)),
+        Route::Plain(plain) => {
+            start_plain(&s, target, (mode, no_sandbox), plain, (launch.size, &text))
+        }
     }
     .map_err(|e| after_stop(e.to_string()))?;
-    let warning = lib::export_all(&started.info.id, &note.exports);
-    report(
-        o,
-        (&s, target),
-        &started,
-        (warning, carried.bypass_dropped, carried.fell_back),
-    )
+    let (warning, dropped, fell_back) = match prepared {
+        Some(r) => {
+            let warning = c
+                .handoff_finish(HandoffFinishReq {
+                    packet_id: r.packet_id,
+                    new_session: started.info.id.clone(),
+                })
+                .map(|f| f.warning)
+                .unwrap_or_else(|e| Some(format!("the handoff was not recorded in chat: {e}")));
+            (warning, r.bypass_dropped, r.fell_back)
+        }
+        None => (
+            lib::export_all(&started.info.id, &exports),
+            carried.bypass_dropped,
+            carried.fell_back,
+        ),
+    };
+    report(o, (&s, target), &started, (warning, dropped, fell_back))
 }
 
 fn report(
@@ -298,43 +319,6 @@ fn report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tmgr_ipc::api::{State, StateKind};
-
-    fn old(mode: Option<&str>, no_sandbox: bool) -> SessionInfo {
-        SessionInfo {
-            id: "a".into(),
-            name: "n".into(),
-            argv: vec![],
-            cwd: "/w".into(),
-            profile: Some("claude-code".into()),
-            state: State {
-                kind: StateKind::Exited,
-                since_ms: 0,
-                detail: None,
-                exit_code: Some(0),
-            },
-            created_ms: 0,
-            cols: 80,
-            rows: 24,
-            shim_pid: 1,
-            child_pid: 2,
-            task: None,
-            bundle_sha256: None,
-            origin: None,
-            permission_mode: mode.map(str::to_string),
-            resumed_from: None,
-            human_s: None,
-            no_sandbox,
-            checkpoints: None,
-            permission_cards: false,
-            team: None,
-            agent_session_id: None,
-            limit: None,
-            handoff_from: None,
-            managed: false,
-            manager: false,
-        }
-    }
 
     #[test]
     fn a_long_note_is_cut_on_a_character_boundary_within_the_byte_limit() {

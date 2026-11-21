@@ -168,6 +168,11 @@ mod tests {
 
     fn store() -> (tempfile::TempDir, HandoffStore) {
         let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            t.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
         let s = HandoffStore::open(t.path()).unwrap();
         (t, s)
     }

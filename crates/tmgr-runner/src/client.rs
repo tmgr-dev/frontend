@@ -11,10 +11,11 @@ use tmgr_ipc::api::{
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
     CandidateInfo, CheckpointDiff, CheckpointDiffParams, CheckpointEnableParams, CheckpointList,
     CheckpointRestoreParams, CheckpointRestored, CreateReq, DiffAgainst, EventMsg, ForkParams,
-    IdParams, KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq,
-    PermissionAnswer, PermissionCard, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
-    RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
-    Welcome, WorkSummary, CLIENT_CLI,
+    HandoffFinishReq, HandoffFinishResp, HandoffPrepareReq, HandoffPrepareResp, IdParams,
+    KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq, PermissionAnswer,
+    PermissionCard, RenameParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus, ScreenPush,
+    SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary,
+    CLIENT_CLI,
 };
 use tmgr_ipc::chat as wire_chat;
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -300,6 +301,14 @@ impl Client {
             lines,
         };
         from_value(self.call(method::SESSIONS_TEXT, to_params(&params)?)?)
+    }
+
+    pub fn handoff_prepare(&mut self, req: HandoffPrepareReq) -> io::Result<HandoffPrepareResp> {
+        from_value(self.call(method::HANDOFF_PREPARE, to_params(&req)?)?)
+    }
+
+    pub fn handoff_finish(&mut self, req: HandoffFinishReq) -> io::Result<HandoffFinishResp> {
+        from_value(self.call(method::HANDOFF_FINISH, to_params(&req)?)?)
     }
 
     pub fn remove(&mut self, id: &str) -> io::Result<()> {

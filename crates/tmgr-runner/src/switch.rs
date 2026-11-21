@@ -309,6 +309,11 @@ mod tests {
 
     fn kit() -> (tempfile::TempDir, HandoffStore, Chat) {
         let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            t.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
         let store = HandoffStore::open(t.path()).unwrap();
         let chat = Chat::open(t.path());
         (t, store, chat)

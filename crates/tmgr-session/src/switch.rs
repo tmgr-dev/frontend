@@ -366,10 +366,14 @@ pub fn prepare_note(
 
 pub fn export_all(new_session: &str, exports: &[(Agent, PathBuf)]) -> Option<String> {
     let home = homes_dir().ok()?.join(new_session);
+    export_all_at(&home, exports)
+}
+
+pub fn export_all_at(home: &Path, exports: &[(Agent, PathBuf)]) -> Option<String> {
     let mut failed: Vec<String> = Vec::new();
     let mut skipped = 0;
     for (agent, path) in exports {
-        match export_counted(path, *agent, &home) {
+        match export_counted(path, *agent, home) {
             Ok((_, n)) => skipped += n,
             Err(e) => failed.push(e),
         }

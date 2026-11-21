@@ -966,7 +966,8 @@ fn constants_are_pinned() {
             "profiles_login_check.v1",
             "chat.v1",
             "manager.v1",
-            "run_prompt.v1"
+            "run_prompt.v1",
+            "handoff.v1"
         ]
     );
     let methods = [
