@@ -35,6 +35,7 @@ pub(super) struct Timing {
     pub call: Duration,
     pub open: Duration,
     pub halt: Duration,
+    pub start: Duration,
     pub paste: Duration,
     pub backoff_min: Duration,
     pub backoff_max: Duration,
@@ -56,6 +57,7 @@ impl Default for Timing {
             call: Duration::from_secs(10),
             open: Duration::from_secs(20),
             halt: Duration::from_secs(20),
+            start: Duration::from_secs(30),
             paste: Duration::from_secs(30),
             backoff_min: Duration::from_secs(1),
             backoff_max: Duration::from_secs(30),
@@ -70,6 +72,55 @@ impl Default for Timing {
             screen_gap: Duration::from_millis(33),
         }
     }
+}
+
+const MAX_SCOPE_ITEMS: usize = 50;
+const MAX_SCOPE_PATH: usize = 512;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct LinkScope {
+    pub repos: Vec<String>,
+    pub agents: Vec<String>,
+    pub max: Option<u32>,
+}
+
+pub(super) fn parse_scope(hello: &Value) -> Option<LinkScope> {
+    let scope = hello.get("scope")?.as_object()?;
+    let list = |key: &str| {
+        scope
+            .get(key)
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let mut repos: Vec<String> = Vec::new();
+    for r in list("repos") {
+        let ok = r.starts_with('/')
+            && r.chars().count() <= MAX_SCOPE_PATH
+            && !r.chars().any(char::is_control)
+            && !repos.iter().any(|x| x == r);
+        if ok && repos.len() < MAX_SCOPE_ITEMS {
+            repos.push(r.to_string());
+        }
+    }
+    let mut agents: Vec<String> = Vec::new();
+    for a in list("agents") {
+        if tmgr_link::grammar::agent_name(a).is_ok()
+            && !agents.iter().any(|x| x == a)
+            && agents.len() < MAX_SCOPE_ITEMS
+        {
+            agents.push(a.to_string());
+        }
+    }
+    let max = scope
+        .get("max")
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok());
+    Some(LinkScope {
+        repos,
+        agents,
+        max,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +190,9 @@ pub(super) trait Dialer: Send + Sync + 'static {
 
 pub(super) trait LinkConn: Send {
     fn call(&mut self, method: &str, params: Value, timeout: Duration) -> Result<Value>;
+    fn hello(&self) -> Option<Value> {
+        None
+    }
     fn into_stream(self: Box<Self>) -> Result<(Pair, Kill)>;
 }
 
@@ -300,9 +354,9 @@ impl Dialer for SshDialer {
         let key = self.fresh_key()?;
         let mut client =
             Client::dial_with_key(&self.paths, link, &key).map_err(|e| classify(&e))?;
-        client.hello().map_err(|e| classify(&e))?;
+        let hello = client.hello().map_err(|e| classify(&e))?;
         client.disarm();
-        Ok(Box::new(SshConn(client)))
+        Ok(Box::new(SshConn(client, hello)))
     }
 
     fn binding(&self, link: &str) -> Binding {
@@ -327,11 +381,15 @@ impl Dialer for SshDialer {
     }
 }
 
-struct SshConn(Client);
+struct SshConn(Client, Value);
 
 impl LinkConn for SshConn {
     fn call(&mut self, method: &str, params: Value, timeout: Duration) -> Result<Value> {
         remote::check(self.0.call_within(method, params, timeout)?)
+    }
+
+    fn hello(&self) -> Option<Value> {
+        Some(self.1.clone())
     }
 
     fn into_stream(mut self: Box<Self>) -> Result<(Pair, Kill)> {
@@ -548,6 +606,14 @@ impl RemoteState {
         self.links
             .get(link)
             .is_some_and(|e| !e.removed && e.runs.iter().any(|r| r.id == run))
+    }
+
+    pub(super) fn add_run(&mut self, link: &str, run: RunView) -> Option<Vec<RunView>> {
+        let entry = self.links.get_mut(link).filter(|e| !e.removed)?;
+        if !entry.runs.iter().any(|r| r.id == run.id) && entry.runs.len() < MAX_RUNS_PER_LINK {
+            entry.runs.push(run);
+        }
+        Some(entry.runs.clone())
     }
 
     pub(super) fn ingest_runs(&mut self, link: &str, runs: Vec<RunView>) -> Vec<RunView> {
@@ -833,7 +899,15 @@ enum Job {
     },
 }
 
+pub(super) type StartReply = std::result::Result<RunView, String>;
+
+struct StartReq {
+    params: Value,
+    reply: Sender<StartReply>,
+}
+
 enum Cmd {
+    Start(StartReq, Option<Binding>),
     Halt(String, Option<Binding>),
     Act(Job, Option<Binding>),
     Retry,
@@ -860,6 +934,7 @@ struct Inner {
     streams: Mutex<HashMap<String, Stream>>,
     cooldown: Mutex<HashMap<String, Instant>>,
     bound: Mutex<HashMap<String, Binding>>,
+    scopes: Mutex<HashMap<String, LinkScope>>,
     key_notice: AtomicBool,
     pasting: AtomicBool,
 }
@@ -1008,6 +1083,7 @@ impl Hub {
             streams: Mutex::new(HashMap::new()),
             cooldown: Mutex::new(HashMap::new()),
             bound: Mutex::new(HashMap::new()),
+            scopes: Mutex::new(HashMap::new()),
             key_notice: AtomicBool::new(false),
             pasting: AtomicBool::new(false),
         });
@@ -1065,6 +1141,34 @@ impl Hub {
             .ok_or("unknown machine")?
             .send(make(lock(&self.inner.bound).get(link).cloned()))
             .map_err(|_| "the link is shutting down")
+    }
+
+    pub(super) fn scope(&self, link: &str) -> Option<LinkScope> {
+        lock(&self.inner.scopes).get(link).cloned()
+    }
+
+    pub(super) fn start_run(&self, link: &str, params: Value) -> Receiver<StartReply> {
+        let (reply, answer) = mpsc::channel();
+        let refuse = |why: String| {
+            let _ = reply.send(Err(why));
+        };
+        let Some(ctl) = self.ctl.get(link) else {
+            refuse(format!("{link} is not a linked machine"));
+            return answer;
+        };
+        if !self.inner.online(link) {
+            refuse(format!("{link} is offline"));
+            return answer;
+        }
+        let stamp = lock(&self.inner.bound).get(link).cloned();
+        let req = StartReq {
+            params,
+            reply: reply.clone(),
+        };
+        if ctl.send(Cmd::Start(req, stamp)).is_err() {
+            refuse("the link is shutting down".into());
+        }
+        answer
     }
 
     pub(super) fn halt(&self, link: &str, run: &str) -> std::result::Result<(), &'static str> {
@@ -1302,6 +1406,9 @@ fn pause(inner: &Inner, link: &str, cmds: &Receiver<Cmd>, wait: Option<Duration>
         };
         match got {
             Err(RecvTimeoutError::Timeout) | Ok(Cmd::Retry) => return true,
+            Ok(Cmd::Start(req, _)) => {
+                let _ = req.reply.send(Err(format!("{link} is offline")));
+            }
             Ok(Cmd::Halt(run, _)) => {
                 halt_refused(inner, link, &run, "the machine is not reachable")
             }
@@ -1399,6 +1506,10 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
             }
         };
         lock(&inner.bound).insert(link.to_string(), bound.clone());
+        match conn.hello().as_ref().and_then(parse_scope) {
+            Some(scope) => lock(&inner.scopes).insert(link.to_string(), scope),
+            None => lock(&inner.scopes).remove(link),
+        };
         lock(&inner.state).restore_link(link);
         backoff = t.backoff_min;
         match session(inner, link, conn, cmds, &bound) {
@@ -1507,6 +1618,14 @@ fn session(
         }
         match cmds.recv_timeout(t.poll) {
             Err(RecvTimeoutError::Timeout) => {}
+            Ok(Cmd::Start(req, stamp)) => {
+                if let Some(exit) =
+                    start_order(inner, link, conn.as_mut(), bound, req, stamp, &mut requests)
+                {
+                    return exit;
+                }
+                requests += 1;
+            }
             Ok(Cmd::Halt(run, stamp)) => {
                 let job = Order::Halt(run);
                 if let Some(exit) =
@@ -1597,6 +1716,83 @@ fn order(
             Some(Exit::Rebind)
         }
     }
+}
+
+fn start_order(
+    inner: &Inner,
+    link: &str,
+    conn: &mut dyn LinkConn,
+    bound: &Binding,
+    req: StartReq,
+    stamp: Option<Binding>,
+    requests: &mut u32,
+) -> Option<Exit> {
+    let refuse = |why: &str| {
+        let _ = req.reply.send(Err(why.to_string()));
+    };
+    if stamp.as_ref() != Some(bound) {
+        refuse("the link changed, try again");
+        return None;
+    }
+    match rebound(inner, link, bound) {
+        Rebound::Same => {}
+        Rebound::Unknown => {
+            refuse("cannot verify the link, try again");
+            return None;
+        }
+        Rebound::Gone => {
+            refuse("the machine is no longer linked");
+            return Some(Exit::Removed);
+        }
+        Rebound::Changed => {
+            refuse("the link changed, try again");
+            inner.lose_link(link);
+            return Some(Exit::Rebind);
+        }
+    }
+    *requests += 1;
+    match conn.call("runs.start", req.params.clone(), inner.timing.start) {
+        Ok(v) => {
+            let started = serde_json::from_value::<RunView>(v)
+                .ok()
+                .filter(|r| valid_session_id(&r.id))
+                .map(shorten);
+            let Some(view) = started else {
+                refuse(&format!(
+                    "{link} sent an unexpected reply; the session may have started, check the sidebar"
+                ));
+                return None;
+            };
+            let runs = lock(&inner.state).add_run(link, view.clone());
+            if let Some(runs) = runs {
+                inner.emit(LinkMsg::Runs {
+                    link: link.to_string(),
+                    runs,
+                });
+            }
+            let _ = req.reply.send(Ok(view));
+            None
+        }
+        Err(e) if e.kind == Kind::Link => {
+            refuse(&format!(
+                "{link} did not answer; the session may have started, check the sidebar"
+            ));
+            Some(Exit::Lost)
+        }
+        Err(e) => {
+            refuse(&start_why(link, &e));
+            None
+        }
+    }
+}
+
+fn start_why(link: &str, e: &Error) -> String {
+    if e.kind == Kind::Usage && e.message.to_ascii_lowercase().contains("unknown method") {
+        return format!(
+            "{link} runs an older tmgr CLI; update it on the follower to start sessions there"
+        );
+    }
+    cap(&e.message, MAX_WHY)
 }
 
 fn remote_why(link: &str, e: &Error) -> String {
@@ -2026,6 +2222,9 @@ pub(super) mod tests {
         pub(crate) killed: Arc<AtomicBool>,
         pub(crate) halt_err: Option<Kind>,
         pub(crate) act_err: Option<Kind>,
+        pub(crate) start: Option<std::result::Result<Value, (Kind, String)>>,
+        pub(crate) start_hang: bool,
+        pub(crate) hello: Option<Value>,
         pub(crate) paste_delay: Duration,
         pub(crate) input: bool,
         pub(crate) calls: Vec<(String, Value)>,
@@ -2179,6 +2378,7 @@ pub(super) mod tests {
     enum Plan {
         Hang,
         Fail(Kind),
+        Failed(Kind, String),
         Ok(Value),
     }
 
@@ -2196,6 +2396,15 @@ pub(super) mod tests {
                     "runs.halt" => match l.halt_err {
                         Some(k) => Plan::Fail(k),
                         None => Plan::Ok(json!({})),
+                    },
+                    "runs.start" if l.start_hang => Plan::Hang,
+                    "runs.start" => match l.start.clone() {
+                        Some(Ok(v)) => {
+                            l.runs.push(v.clone());
+                            Plan::Ok(v)
+                        }
+                        Some(Err((k, m))) => Plan::Failed(k, m),
+                        None => Plan::Failed(Kind::Usage, "unknown method".into()),
                     },
                     "runs.rename" | "runs.paste_image" => match l.act_err {
                         Some(k) => Plan::Fail(k),
@@ -2225,8 +2434,13 @@ pub(super) mod tests {
                     ))
                 }
                 Plan::Fail(k) => Err(Error::new(k, "scripted failure")),
+                Plan::Failed(k, m) => Err(Error::new(k, m)),
                 Plan::Ok(v) => Ok(v),
             }
+        }
+
+        fn hello(&self) -> Option<Value> {
+            self.fake.with(&self.link, |l| l.hello.clone())
         }
 
         fn into_stream(self: Box<Self>) -> Result<(Pair, Kill)> {
@@ -2258,6 +2472,7 @@ pub(super) mod tests {
             call: Duration::from_millis(100),
             open: Duration::from_millis(500),
             halt: Duration::from_millis(500),
+            start: Duration::from_millis(500),
             paste: Duration::from_millis(500),
             backoff_min: Duration::from_millis(30),
             backoff_max: Duration::from_millis(120),
@@ -3884,5 +4099,146 @@ pub(super) mod tests {
             format!("{:?}", reference.snapshot(&id))
         );
         assert!(cache.snapshot(&id).is_some());
+    }
+
+    #[test]
+    fn a_started_run_is_listed_at_once_and_carries_the_request() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.with("spark", |l| l.start = Some(Ok(run_json(B))));
+        });
+        r.online("spark");
+        let params = json!({"agent": "codex", "repo": "/srv/app", "name": "job"});
+        let view = r
+            .hub
+            .start_run("spark", params.clone())
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(view.id, B);
+        assert_eq!(r.fake.calls("spark", "runs.start"), vec![params]);
+        let id = view_id("spark", B);
+        assert_eq!(
+            r.hub.target_of(&id),
+            Target::Remote {
+                link: "spark".into(),
+                run: B.into()
+            }
+        );
+        assert_eq!(r.hub.rows("spark")[0].id, id);
+        r.runs("spark", 1);
+        r.hub.shutdown();
+    }
+
+    #[test]
+    fn a_refused_start_returns_the_followers_reason_and_leaves_the_link_up() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.with("spark", |l| {
+                l.start = Some(Err((
+                    Kind::Forbidden,
+                    "bypass-permissions is not allowed on this follower".into(),
+                )))
+            });
+        });
+        r.online("spark");
+        let got = r
+            .hub
+            .start_run("spark", json!({"agent": "codex"}))
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(
+            got.unwrap_err(),
+            "bypass-permissions is not allowed on this follower"
+        );
+        r.runs("spark", 0);
+        assert!(r.hub.rows("spark").is_empty());
+        r.hub.shutdown();
+    }
+
+    #[test]
+    fn an_old_follower_gets_the_update_message() {
+        let mut r = rig(&["spark"], fast(), |_| {});
+        r.online("spark");
+        let got = r
+            .hub
+            .start_run("spark", json!({"agent": "codex"}))
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(
+            got.unwrap_err(),
+            "spark runs an older tmgr CLI; update it on the follower to start sessions there"
+        );
+        r.hub.shutdown();
+    }
+
+    #[test]
+    fn a_start_that_gets_no_answer_says_it_may_have_started_and_is_never_sent_twice() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.with("spark", |l| l.start_hang = true);
+        });
+        r.online("spark");
+        let got = r
+            .hub
+            .start_run("spark", json!({"agent": "codex"}))
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(
+            got.unwrap_err(),
+            "spark did not answer; the session may have started, check the sidebar"
+        );
+        r.state_is("spark", LinkState::Offline);
+        r.online("spark");
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(r.fake.calls("spark", "runs.start").len(), 1);
+        r.hub.shutdown();
+    }
+
+    #[test]
+    fn a_start_on_an_offline_or_unknown_machine_says_so_and_sends_nothing() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.with("spark", |l| l.dial.push_back(Err(DialErr::Offline("down".into()))));
+        });
+        r.state_is("spark", LinkState::Offline);
+        let got = r
+            .hub
+            .start_run("spark", json!({"agent": "codex"}))
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(got.unwrap_err(), "spark is offline");
+        let ghost = r
+            .hub
+            .start_run("ghost", json!({"agent": "codex"}))
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert!(ghost.is_err());
+        assert!(r.fake.calls("spark", "runs.start").is_empty());
+        r.hub.shutdown();
+    }
+
+    #[test]
+    fn the_hello_scope_is_kept_per_link_and_cleaned() {
+        let mut r = rig(&["spark", "old"], fast(), |f| {
+            f.with("spark", |l| {
+                l.hello = Some(json!({"scope": {
+                    "repos": ["/srv/app", "rel", "/bad\u{1b}", "/srv/app", "/srv/lib"],
+                    "agents": ["codex", "Bad Agent", "claude-code"],
+                    "max": 3,
+                }}))
+            });
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !(r.hub.inner.online("spark") && r.hub.inner.online("old")) {
+            assert!(Instant::now() < deadline, "links did not come up");
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            r.hub.scope("spark"),
+            Some(LinkScope {
+                repos: vec!["/srv/app".into(), "/srv/lib".into()],
+                agents: vec!["codex".into(), "claude-code".into()],
+                max: Some(3),
+            })
+        );
+        assert_eq!(r.hub.scope("old"), None);
+        r.hub.shutdown();
     }
 }
