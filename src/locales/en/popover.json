@@ -1,0 +1,65 @@
+{
+	"window": {
+		"label": "TMGR tray menu"
+	},
+	"header": {
+		"workspace": "Workspace",
+		"open": "Open TMGR"
+	},
+	"quickAdd": {
+		"label": "Quick add task",
+		"placeholder": "Add a task and press Enter"
+	},
+	"running": {
+		"empty": "No timer running",
+		"resume": "Resume {target}",
+		"stop": "Stop timer"
+	},
+	"decisions": {
+		"title": "Decisions",
+		"empty": "No open decisions"
+	},
+	"missed": {
+		"title": "Missed notifications"
+	},
+	"switch": {
+		"title": "Switch to"
+	},
+	"today": {
+		"title": "Today",
+		"tracked": "Tracked"
+	},
+	"machines": {
+		"title": "Machines & sessions",
+		"sessions": "{count} sessions",
+		"state": {
+			"online": "online",
+			"busy": "busy",
+			"offline": "offline"
+		}
+	},
+	"dnd": {
+		"title": "Do Not Disturb",
+		"off": "Off",
+		"1h": "1h",
+		"3h": "3h",
+		"tomorrow": "Tomorrow"
+	},
+	"shortcuts": "Shortcuts…",
+	"autostart": "Launch at Login",
+	"updates": "Check for updates",
+	"manager": "Manager",
+	"usage": {
+		"title": "AI usage",
+		"fiveHour": "Claude · 5h window",
+		"week": "Claude · week",
+		"resets": "resets {time}",
+		"today": "Today",
+		"tokens": "tok",
+		"running": "Running",
+		"open": "Open AI usage…"
+	},
+	"footer": {
+		"quit": "Quit TMGR"
+	}
+}
