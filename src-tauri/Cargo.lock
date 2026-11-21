@@ -5437,6 +5437,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "tempfile",
+ "tmgr-chat-relay",
  "tmgr-ipc",
  "tmgr-phone",
  "tmgr-session",
@@ -5447,6 +5448,19 @@ dependencies = [
  "url",
  "windows-sys 0.61.2",
  "zip",
+]
+
+[[package]]
+name = "tmgr-chat-relay"
+version = "1.0.139"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "p256",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tmgr-phone",
 ]
 
 [[package]]

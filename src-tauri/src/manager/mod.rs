@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod relay;
 
 use std::sync::Arc;
 
