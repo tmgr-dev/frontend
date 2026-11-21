@@ -841,17 +841,20 @@ fn negative_fixture() -> Value {
     ));
 
     let high = high_s(&der);
-    for (name, sig) in [
-        ("signature_high_s_der_accepted", high.clone()),
-        ("signature_raw64_low_s_accepted", raw64(&der)),
-        ("signature_raw64_high_s_accepted", raw64(&high)),
+    for (name, sig, expect) in [
+        ("signature_high_s_der_accepted", high.clone(), ok_open(true)),
+        (
+            "signature_raw64_low_s_rejected",
+            raw64(&der),
+            err(Error::BadSignature),
+        ),
+        (
+            "signature_raw64_high_s_rejected",
+            raw64(&high),
+            err(Error::BadSignature),
+        ),
     ] {
-        vectors.push(neg_msg(
-            name,
-            "signature",
-            w.body_for(&inner, &sig),
-            ok_open(true),
-        ));
+        vectors.push(neg_msg(name, "signature", w.body_for(&inner, &sig), expect));
     }
 
     for (name, now, expect) in [

@@ -30,6 +30,15 @@ pub fn verify(sign_pub: &[u8], message: &str, sig_b64: &str) -> Result<()> {
         .map_err(|_| Error::BadSignature)
 }
 
+pub fn verify_der(sign_pub: &[u8], message: &str, sig_b64: &str) -> Result<()> {
+    let key = VerifyingKey::from(parse_public(sign_pub)?);
+    let raw = b64_decode(sig_b64).map_err(|_| Error::BadSignature)?;
+    let sig = Signature::from_der(&raw).map_err(|_| Error::BadSignature)?;
+    let sig = sig.normalize_s().unwrap_or(sig);
+    key.verify(message.as_bytes(), &sig)
+        .map_err(|_| Error::BadSignature)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,5 +52,17 @@ mod tests {
             assert!(parsed.normalize_s().is_none());
             verify(&public_key(&secret).unwrap(), &format!("message {i}"), &sig).unwrap();
         }
+    }
+
+    #[test]
+    fn verify_der_rejects_raw_signatures() {
+        let secret = [9u8; 32];
+        let public = public_key(&secret).unwrap();
+        let sig = sign(&secret, "m").unwrap();
+        let der = b64_decode(&sig).unwrap();
+        let raw = b64(&Signature::from_der(&der).unwrap().to_bytes());
+        verify_der(&public, "m", &sig).unwrap();
+        assert!(verify(&public, "m", &raw).is_ok());
+        assert_eq!(verify_der(&public, "m", &raw), Err(Error::BadSignature));
     }
 }
