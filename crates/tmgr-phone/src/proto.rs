@@ -8,6 +8,8 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 pub const MAX_TEXT_CHARS: usize = 1000;
+pub const MAX_NOTE_CHARS: usize = 500;
+pub const MAX_CHOICES: usize = 9;
 pub const ISSUED_BACK_MS: i64 = 24 * 60 * 60 * 1000;
 pub const ISSUED_AHEAD_MS: i64 = 5 * 60 * 1000;
 
@@ -100,6 +102,13 @@ impl Action {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct Choice {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct AnswerBody {
     pub card_id: String,
     pub card_digest: String,
@@ -109,6 +118,8 @@ pub struct AnswerBody {
     pub action: Action,
     pub choice: Option<String>,
     pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choices: Option<Vec<Choice>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -196,6 +207,36 @@ pub fn check_text(text: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn choices_hash(c: &[Choice]) -> String {
+    h(&c.iter()
+        .map(|x| format!("{}.{}", h(&x.id), h(x.note.as_deref().unwrap_or(""))))
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+pub fn check_choices(a: &AnswerBody) -> Result<()> {
+    let Some(choices) = &a.choices else {
+        return Ok(());
+    };
+    let first = choices.first().ok_or(Error::BadChoices)?;
+    if choices.len() > MAX_CHOICES
+        || a.action != Action::Answer
+        || a.choice.as_deref() != Some(first.id.as_str())
+    {
+        return Err(Error::BadChoices);
+    }
+    for (i, c) in choices.iter().enumerate() {
+        let note_ok = c
+            .note
+            .as_deref()
+            .is_none_or(|n| !n.trim().is_empty() && n.chars().count() <= MAX_NOTE_CHARS);
+        if c.id.is_empty() || !note_ok || choices[..i].iter().any(|o| o.id == c.id) {
+            return Err(Error::BadChoices);
+        }
+    }
+    Ok(())
+}
+
 pub fn hello_signed(c: &HelloCtx, body: &str) -> String {
     format!(
         "tmgr-phone-hello:v1:{}:{}:{}:{}:{}",
@@ -259,8 +300,9 @@ pub fn snapshot_signed(p: &Pairing, seq: i64, generated_at: i64, body: &str) -> 
 }
 
 pub fn answer_signed(p: &Pairing, a: &AnswerBody) -> String {
-    format!(
-        "tmgr-decision-answer:v1:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+    let version = if a.choices.is_some() { "v2" } else { "v1" };
+    let mut s = format!(
+        "tmgr-decision-answer:{version}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
         p.mailbox,
         p.desktop_fp,
         p.phone_fp,
@@ -272,7 +314,12 @@ pub fn answer_signed(p: &Pairing, a: &AnswerBody) -> String {
         a.action.as_str(),
         h(a.choice.as_deref().unwrap_or("")),
         h(a.text.as_deref().unwrap_or(""))
-    )
+    );
+    if let Some(c) = &a.choices {
+        s.push(':');
+        s.push_str(&choices_hash(c));
+    }
+    s
 }
 
 pub fn ack_signed(p: &Pairing, answer_id: &str, result: AckResult, body: &str) -> String {
@@ -550,6 +597,7 @@ pub fn seal_answer_with(
     if !valid_answer_id(&body.answer_id) {
         return Err(Error::BadFormat);
     }
+    check_choices(body)?;
     let text = to_body(body)?;
     let signed = answer_signed(p, body);
     seal_signed(
@@ -599,6 +647,7 @@ pub fn open_answer(
     if !valid_answer_id(&body.answer_id) {
         return Err(Error::BadFormat);
     }
+    check_choices(&body)?;
     Ok(body)
 }
 

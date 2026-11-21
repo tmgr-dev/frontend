@@ -10,6 +10,7 @@ pub enum Error {
     BadMac,
     BadWindow,
     TextTooLong,
+    BadChoices,
     Random,
 }
 
@@ -26,6 +27,7 @@ impl Error {
             Error::BadMac => "bad_mac",
             Error::BadWindow => "bad_window",
             Error::TextTooLong => "text_too_long",
+            Error::BadChoices => "bad_choices",
             Error::Random => "random",
         }
     }

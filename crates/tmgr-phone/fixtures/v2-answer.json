@@ -1,0 +1,15 @@
+{
+  "mailbox": "0b9f6c1e-3d52-4c47-9a6e-5f1d2a7c8e90",
+  "desktop": {
+    "kex_secret_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "fp": "effcef1050d5e05f4c43506fd1e5ee3d1a2aaeb24ab2e0d28131871b8e28bfa0"
+  },
+  "phone": {
+    "sign_pub": "BFGnWAgziY6hsYPL1zUKQJkHjG7xweGOlwzXaDA18l59ARBSJxKwtafP8IFoVIaYSpTmgx7axG5zYPqdg0p6gaE=",
+    "fp": "011e9a5356edebaf8a02cf1a45f61c3ba1815a7f3b1c3f8d229eaa427332524c"
+  },
+  "body": "{\"card_id\":\"card-7\",\"card_digest\":\"f6047a7d0524bb40e352536d5e297d62a3f58f5b03c4cdeb3a7a02d779594f3d\",\"session\":\"runner:abc\",\"answer_id\":\"00112233445566778899aabbccddeeff\",\"issued_at\":1790000000000,\"action\":\"answer\",\"choice\":\"a\",\"text\":\"и ещё комментарий\",\"choices\":[{\"id\":\"a\",\"note\":\"Да, но после релиза 🚀\"},{\"id\":\"c\"}]}",
+  "choices_hash": "1dc144c9eec392d70476632eed2c2efdeaaa6e864ecd117708ec82ea468f1d2e",
+  "signed": "tmgr-decision-answer:v2:0b9f6c1e-3d52-4c47-9a6e-5f1d2a7c8e90:effcef1050d5e05f4c43506fd1e5ee3d1a2aaeb24ab2e0d28131871b8e28bfa0:011e9a5356edebaf8a02cf1a45f61c3ba1815a7f3b1c3f8d229eaa427332524c:card-7:f6047a7d0524bb40e352536d5e297d62a3f58f5b03c4cdeb3a7a02d779594f3d:e75e22bb01207df91cb3942b7ea512ca26e7e86d98b0b4573e59989750559c13:00112233445566778899aabbccddeeff:1790000000000:answer:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb:42be9796100f0d1504703c38384358870441ea02734e299ebc01e2b6018dd019:1dc144c9eec392d70476632eed2c2efdeaaa6e864ecd117708ec82ea468f1d2e",
+  "sealed": "{\"v\":1,\"kind\":\"answer\",\"id\":\"00112233445566778899aabbccddeeff\",\"eph\":\"BHE1+k/ZOgnc6Yu/aBtL/PUOfA1jVOYq+wv/KjQpYXhl7UwfAt25Aj7lalV+UV1qncZsEfIglg3llDNN9Yh3ZyQ=\",\"nonce\":\"CQkJCQkJCQkJCQkJ\",\"ct\":\"4QWkIIe7rLyFu3/2QM3FdOrjYOft7AH+KgVwchz8FTvdqV9XACIllduu+7K4hzAT5cGj9mnGwqPdoCNuKAhBVYnxLsMAjDlO5EMR2GPrW0himtWRghxGH8KY8bL5yg+luAmLHSrUeJopai+HdnO1jKTphzSUo5s2Zbu5lmrKdU2gNA4HdHJE1qyhFktaooPLJIiJyzFZ8l7V6az7KvsBxi7S2DM5+Hrz7gLYOIhK3tYSCoUptgwbojsOYrmsYXcnteUh8W6k7ozl+hN2ZDyECPrnxfUFDj47PlW77enIOrW1725nwuw/OQujz2KSqzoVx5CJKxKjz4NToNEtWWNKZPqInyEZ9CDpD1NbNYpMkCi9ePI2JOBlrTlovrfOX/FR2JqXCOe61V/hHmiEGR6NMrkTTa5c+adwTwMp7LbDsfDuNUaeEvEHXH6eROJpormogyJf+zkmdwtA6lppD6dTOnHYyYAL1G7PVNLkwZ33bIsD/1feejBm+UUfV4YAy8Q0iCyxhzBpyOZChS6dZy8VCj8a0hf/lMZMyGe1YeQvqJzVITkAg/Px/6ogul1KlPRvOR4fGBiXQEzst2NB+NINxf/eiUbvbvywKWe0TTeSjZb4Ju2656/BfB0l9NLe3HWWvqXGbnuFJvJ4umKQbB8sAjU/nx7SRvg8UkuUY6HhYLHUf8LEtEffYaKO7Cp9fkyneQ==\"}"
+}

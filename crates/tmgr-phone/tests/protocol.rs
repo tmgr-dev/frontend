@@ -80,6 +80,7 @@ fn answer_body() -> AnswerBody {
         action: Action::Answer,
         choice: Some("yes".into()),
         text: Some("go ahead".into()),
+        choices: None,
     }
 }
 
@@ -949,4 +950,248 @@ fn an_old_phone_verifies_a_snapshot_that_carries_live() {
     );
     assert_eq!(c.projection, V2_PROJECTION);
     assert_eq!(c.digest, digest(&c.projection));
+}
+
+fn choice(id: &str, note: Option<&str>) -> Choice {
+    Choice {
+        id: id.into(),
+        note: note.map(Into::into),
+    }
+}
+
+fn v2_body() -> AnswerBody {
+    AnswerBody {
+        choice: Some("a".into()),
+        choices: Some(vec![
+            choice("a", Some("Да, но после релиза 🚀")),
+            choice("c", None),
+        ]),
+        ..answer_body()
+    }
+}
+
+fn seal_open(a: &AnswerBody) -> Result<AnswerBody> {
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let sealed = seal_answer_with(&d.kex_pub, &pr, &unhex(&p.sign_secret), a, &ent(3))?;
+    open_answer(&unhex(&d.kex_secret), &pr, &p.sign_pub, &sealed)
+}
+
+fn forged(sign_body: &AnswerBody, sent: &AnswerBody) -> Result<AnswerBody> {
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let sig = sign(&unhex(&p.sign_secret), &answer_signed(&pr, sign_body)).unwrap();
+    let inner = json!({"body": serde_json::to_string(sent).unwrap(), "sig": sig});
+    let sealed = seal_with(
+        &d.kex_pub,
+        MAILBOX,
+        Dir::P2d,
+        Kind::Answer,
+        &sent.answer_id,
+        inner.to_string().as_bytes(),
+        &ent(3),
+    )
+    .unwrap();
+    let sealed = serde_json::to_string(&sealed).unwrap();
+    open_answer(&unhex(&d.kex_secret), &pr, &p.sign_pub, &sealed)
+}
+
+#[test]
+fn v1_body_serializes_without_choices_and_keeps_its_signed_string() {
+    let a = answer_body();
+    assert_eq!(
+        serde_json::to_string(&a).unwrap(),
+        "{\"card_id\":\"card-7\",\"card_digest\":\"".to_string()
+            + &digest(CARD_PROJECTION)
+            + "\",\"session\":\"runner:abc\",\"answer_id\":\"00112233445566778899aabbccddeeff\",\"issued_at\":1790000000000,\"action\":\"answer\",\"choice\":\"yes\",\"text\":\"go ahead\"}"
+    );
+    let (d, p) = (desktop(), phone());
+    assert!(answer_signed(&pairing(&d, &p), &a).starts_with("tmgr-decision-answer:v1:"));
+}
+
+#[test]
+fn v2_answer_round_trips_and_signs_choices_hash() {
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let a = v2_body();
+    let signed = answer_signed(&pr, &a);
+    assert!(signed.starts_with("tmgr-decision-answer:v2:"));
+    assert!(signed.ends_with(&format!(":{}", choices_hash(a.choices.as_ref().unwrap()))));
+    assert_eq!(seal_open(&a).unwrap(), a);
+}
+
+#[test]
+fn v2_tampering_fails_verification() {
+    let a = v2_body();
+    let mut note = a.clone();
+    note.choices.as_mut().unwrap()[0].note = Some("Нет".into());
+    let mut id = a.clone();
+    id.choices.as_mut().unwrap()[1].id = "d".into();
+    let mut order = a.clone();
+    order.choices.as_mut().unwrap().reverse();
+    order.choice = Some("c".into());
+    for sent in [note, id, order] {
+        assert_eq!(forged(&a, &sent), Err(Error::BadSignature));
+    }
+    let stripped = AnswerBody {
+        choices: None,
+        ..a.clone()
+    };
+    assert_eq!(forged(&a, &stripped), Err(Error::BadSignature));
+    let v1 = answer_body();
+    let added = AnswerBody {
+        choices: Some(vec![choice("yes", None)]),
+        ..v1.clone()
+    };
+    assert_eq!(forged(&v1, &added), Err(Error::BadSignature));
+}
+
+#[test]
+fn check_choices_enforces_limits() {
+    let ok = v2_body();
+    assert_eq!(check_choices(&ok), Ok(()));
+    assert_eq!(check_choices(&answer_body()), Ok(()));
+    let bad = |f: &dyn Fn(&mut AnswerBody)| {
+        let mut a = ok.clone();
+        f(&mut a);
+        assert_eq!(check_choices(&a), Err(Error::BadChoices));
+        assert_eq!(seal_open(&a), Err(Error::BadChoices));
+        assert_eq!(forged(&a, &a), Err(Error::BadChoices));
+    };
+    bad(&|a| a.choices = Some(vec![]));
+    bad(&|a| {
+        a.choices = Some((0..10).map(|i| choice(&format!("o{i}"), None)).collect());
+        a.choice = Some("o0".into());
+    });
+    bad(&|a| a.choices.as_mut().unwrap()[1].id = "a".into());
+    bad(&|a| a.choices.as_mut().unwrap()[1].id = String::new());
+    bad(&|a| a.choices.as_mut().unwrap()[0].note = Some("  \n".into()));
+    bad(&|a| a.choices.as_mut().unwrap()[0].note = Some("x".repeat(501)));
+    bad(&|a| a.action = Action::Defer);
+    bad(&|a| a.choice = Some("c".into()));
+    bad(&|a| a.choice = None);
+    let mut edge = ok.clone();
+    edge.choices.as_mut().unwrap()[0].note = Some("я".repeat(500));
+    assert_eq!(check_choices(&edge), Ok(()));
+}
+
+#[test]
+fn an_old_desktop_rejects_a_v2_answer() {
+    #[derive(serde::Deserialize)]
+    struct OldAnswer {
+        card_id: String,
+        card_digest: String,
+        session: String,
+        answer_id: String,
+        issued_at: i64,
+        action: Action,
+        choice: Option<String>,
+        text: Option<String>,
+    }
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let a = v2_body();
+    let sealed = seal_answer(&d.kex_pub, &pr, &unhex(&p.sign_secret), &a).unwrap();
+    let opened = open(
+        &unhex(&d.kex_secret),
+        MAILBOX,
+        Dir::P2d,
+        &sealed,
+        &[Kind::Answer],
+    )
+    .unwrap();
+    let inner: Value = serde_json::from_slice(&opened.plaintext).unwrap();
+    let old: OldAnswer = serde_json::from_str(inner["body"].as_str().unwrap()).unwrap();
+    let v1_signed = format!(
+        "tmgr-decision-answer:v1:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+        pr.mailbox,
+        pr.desktop_fp,
+        pr.phone_fp,
+        old.card_id,
+        old.card_digest,
+        h(&old.session),
+        old.answer_id,
+        old.issued_at,
+        old.action.as_str(),
+        h(old.choice.as_deref().unwrap_or("")),
+        h(old.text.as_deref().unwrap_or(""))
+    );
+    assert_eq!(
+        verify(&p.sign_pub, &v1_signed, inner["sig"].as_str().unwrap()),
+        Err(Error::BadSignature)
+    );
+}
+
+const V2_ANSWER_FIXTURE_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/v2-answer.json");
+const V3_PROJECTION_FIXTURE_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/v3-projection.json");
+const V3_PROJECTION: &str = "{\"p\":3,\"kind\":\"question\",\"title\":\"Ship it?\",\"multi\":true,\"notes\":true,\"code\":{\"file\":\"src/main.rs\",\"start\":10,\"lines\":[\"fn main() {\",\"    run();\",\"}\"]},\"code_cut\":false,\"diff\":{\"file\":\"src/main.rs\",\"lines\":[{\"kind\":\"hunk\",\"text\":\"@@ -1,3 +1,3 @@\"},{\"kind\":\"ctx\",\"text\":\"fn main() {\"},{\"kind\":\"del\",\"text\":\"    old();\"},{\"kind\":\"add\",\"text\":\"    run();\"},{\"kind\":\"ctx\",\"text\":\"}\"}]},\"diff_cut\":false,\"rev\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+
+fn v2_answer_fixture_text() -> String {
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let mut a = v2_body();
+    a.card_digest = digest(V3_PROJECTION);
+    a.text = Some("и ещё комментарий".into());
+    let text = serde_json::to_string(&a).unwrap();
+    let sealed = seal_answer_with(&d.kex_pub, &pr, &unhex(&p.sign_secret), &a, &ent(9)).unwrap();
+    let mut t = serde_json::to_string_pretty(&json!({
+        "mailbox": MAILBOX,
+        "desktop": {"kex_secret_hex": d.kex_secret, "fp": d.fp},
+        "phone": {"sign_pub": b64(&p.sign_pub), "fp": p.fp},
+        "body": text,
+        "choices_hash": choices_hash(a.choices.as_ref().unwrap()),
+        "signed": answer_signed(&pr, &a),
+        "sealed": sealed,
+    }))
+    .unwrap();
+    t.push('\n');
+    t
+}
+
+fn v3_projection_fixture_text() -> String {
+    let mut t = serde_json::to_string_pretty(&json!({
+        "projection": V3_PROJECTION,
+        "digest": digest(V3_PROJECTION),
+    }))
+    .unwrap();
+    t.push('\n');
+    t
+}
+
+#[test]
+fn v2_answer_fixture_is_current() {
+    let on_disk = std::fs::read_to_string(V2_ANSWER_FIXTURE_PATH).expect("run write_v2_fixtures");
+    assert_eq!(on_disk, v2_answer_fixture_text());
+}
+
+#[test]
+fn v3_projection_fixture_is_current() {
+    let on_disk =
+        std::fs::read_to_string(V3_PROJECTION_FIXTURE_PATH).expect("run write_v2_fixtures");
+    assert_eq!(on_disk, v3_projection_fixture_text());
+}
+
+#[test]
+fn v2_answer_fixture_opens() {
+    let f: Value = serde_json::from_str(&v2_answer_fixture_text()).unwrap();
+    let (d, p) = (desktop(), phone());
+    let pr = pairing(&d, &p);
+    let opened = open_answer(
+        &unhex(s(&f["desktop"], "kex_secret_hex")),
+        &pr,
+        &b64_decode(s(&f["phone"], "sign_pub")).unwrap(),
+        s(&f, "sealed"),
+    )
+    .unwrap();
+    assert_eq!(serde_json::to_string(&opened).unwrap(), s(&f, "body"));
+    assert_eq!(opened.card_digest, digest(V3_PROJECTION));
+}
+
+#[test]
+#[ignore]
+fn write_v2_fixtures() {
+    std::fs::write(V2_ANSWER_FIXTURE_PATH, v2_answer_fixture_text()).unwrap();
+    std::fs::write(V3_PROJECTION_FIXTURE_PATH, v3_projection_fixture_text()).unwrap();
 }
