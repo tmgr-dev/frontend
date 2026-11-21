@@ -163,6 +163,12 @@ usage sync auto status | Usage | -
 usage sync off | Usage | -
 usage sync status | Usage | -
 usage sync forget | Usage | task
+usage machine | Usage | -
+usage machine status | Usage | -
+usage machine label | Usage | name
+usage machine on | Usage | -
+usage machine off | Usage | -
+usage machine sync | Usage | days
 usage consent | Usage | -
 usage consent status | Usage | -
 usage consent allow | Usage | -

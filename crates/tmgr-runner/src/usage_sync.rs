@@ -41,7 +41,11 @@ pub fn spawn(exe: &Path, hit: Option<&Hit<'_>>) {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-    let _ = cmd.spawn();
+    if let Ok(mut child) = cmd.spawn() {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
 }
 
 #[cfg(test)]

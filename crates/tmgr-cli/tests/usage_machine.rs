@@ -299,7 +299,7 @@ async fn auto_sync_sends_two_days_and_a_limit_hit_bypasses_the_throttle() {
     m.ok(&["usage", "machine", "sync", "--auto", "-q"]);
     let first = m.puts().await;
     assert_eq!(first.len(), 1);
-    assert!(first[0]["days"].as_array().unwrap().len() >= 1);
+    assert!(!first[0]["days"].as_array().unwrap().is_empty());
 
     m.ok(&[
         "usage",
