@@ -1,10 +1,11 @@
 use crate::error::Refusal;
-use crate::tokens::{b64_decode_strict, is_hex_lower, is_token};
+use crate::tokens::{b64_decode_strict, is_hex_lower, is_token, parse_p256_key, MAX_SAFE_INT};
+use crate::verify::MAX_SKEW_MS;
 use crate::verify::{verify_der_b64, TrustView};
-use p256::ecdsa::VerifyingKey;
 use sha2::{Digest, Sha256};
 
 const PREFIX: &str = "tmgr-spawn-key:v1:";
+const MAX_STATEMENT_BYTES: usize = 512;
 
 pub struct DeviceKeys<'a> {
     pub device_id: &'a str,
@@ -43,13 +44,19 @@ pub fn verify_spawn_key_statement(
     spawn_sig_b64: &str,
     device: &DeviceKeys<'_>,
     trust: &dyn TrustView,
+    now_ms: u64,
 ) -> Result<SpawnKeyStatement, Refusal> {
+    if statement.len() > MAX_STATEMENT_BYTES {
+        return Err(Refusal::BadToken);
+    }
     let body = statement.strip_prefix(PREFIX).ok_or(Refusal::BadToken)?;
-    let parts: Vec<&str> = body.split(':').collect();
+    let parts: Vec<&str> = body.splitn(6, ':').collect();
     let [user_id, fp, device_id, spawn_pub_b64, issued] = parts[..] else {
         return Err(Refusal::BadToken);
     };
-    let issued_at_ms = parse_canonical_u64(issued).ok_or(Refusal::BadToken)?;
+    let issued_at_ms = parse_canonical_u64(issued)
+        .filter(|n| *n <= MAX_SAFE_INT)
+        .ok_or(Refusal::BadToken)?;
     if !is_token(user_id) || !is_token(device_id) || !is_hex_lower(fp, 64) {
         return Err(Refusal::BadToken);
     }
@@ -60,10 +67,17 @@ pub fn verify_spawn_key_statement(
     {
         return Err(Refusal::Mismatch);
     }
-    let spawn_key = VerifyingKey::from_sec1_bytes(&spawn_pub).map_err(|_| Refusal::UnknownKey)?;
+    if issued_at_ms > now_ms.saturating_add(MAX_SKEW_MS) {
+        return Err(Refusal::ClockSkew);
+    }
+    let spawn_key = parse_p256_key(&spawn_pub).ok_or(Refusal::UnknownKey)?;
     let sign_pub = b64_decode_strict(device.sign_pub_b64).ok_or(Refusal::UnknownKey)?;
-    let device_key = VerifyingKey::from_sec1_bytes(&sign_pub).map_err(|_| Refusal::UnknownKey)?;
-    if !trust.is_trusted(fp) || trust.is_revoked(fp) {
+    let device_key = parse_p256_key(&sign_pub).ok_or(Refusal::UnknownKey)?;
+    b64_decode_strict(device.kex_pub_b64).ok_or(Refusal::UnknownKey)?;
+    if spawn_pub == sign_pub {
+        return Err(Refusal::UnknownKey);
+    }
+    if !trust.is_trusted(device_id, fp) || trust.is_revoked(fp) {
         return Err(Refusal::NotTrusted);
     }
     verify_der_b64(&device_key, statement, sig_b64)?;
@@ -75,6 +89,12 @@ pub fn verify_spawn_key_statement(
         spawn_pub,
         issued_at_ms,
     })
+}
+
+pub fn supersedes(new: &SpawnKeyStatement, old: &SpawnKeyStatement) -> bool {
+    new.user_id == old.user_id
+        && new.device_fp == old.device_fp
+        && new.issued_at_ms > old.issued_at_ms
 }
 
 fn parse_canonical_u64(s: &str) -> Option<u64> {
@@ -91,13 +111,15 @@ mod tests {
 
     struct Trust(bool, bool);
     impl TrustView for Trust {
-        fn is_trusted(&self, _: &str) -> bool {
-            self.0
+        fn is_trusted(&self, device_id: &str, _: &str) -> bool {
+            self.0 && device_id == "dev-1"
         }
         fn is_revoked(&self, _: &str) -> bool {
             self.1
         }
     }
+
+    const NOW: u64 = 1_000;
 
     fn pubb64(k: &SigningKey) -> String {
         b64_encode(k.verifying_key().to_encoded_point(false).as_bytes())
@@ -116,13 +138,14 @@ mod tests {
         stmt: String,
     }
 
-    fn fx() -> Fx {
+    fn fx_with(spawn_pub_b64: Option<String>, issued: u64) -> Fx {
         let dev = SigningKey::from_slice(&[5; 32]).unwrap();
         let spawn = SigningKey::from_slice(&[6; 32]).unwrap();
         let kex = SigningKey::from_slice(&[7; 32]).unwrap();
         let (sign_pub, kex_pub) = (pubb64(&dev), pubb64(&kex));
         let fp = device_fp(&sign_pub, &kex_pub);
-        let stmt = build_spawn_key_statement("u1", &fp, "dev-1", &pubb64(&spawn), 42);
+        let sp = spawn_pub_b64.unwrap_or_else(|| pubb64(&spawn));
+        let stmt = build_spawn_key_statement("42", &fp, "dev-1", &sp, issued);
         Fx {
             dev,
             spawn,
@@ -132,6 +155,26 @@ mod tests {
         }
     }
 
+    fn fx() -> Fx {
+        fx_with(None, 42)
+    }
+
+    fn run_with(
+        f: &Fx,
+        stmt: &str,
+        sig: &str,
+        ssig: &str,
+        t: Trust,
+        kex: &str,
+    ) -> Result<SpawnKeyStatement, Refusal> {
+        let d = DeviceKeys {
+            device_id: "dev-1",
+            sign_pub_b64: &f.sign_pub,
+            kex_pub_b64: kex,
+        };
+        verify_spawn_key_statement("42", stmt, sig, ssig, &d, &t, NOW)
+    }
+
     fn run(
         f: &Fx,
         stmt: &str,
@@ -139,25 +182,18 @@ mod tests {
         ssig: &str,
         t: Trust,
     ) -> Result<SpawnKeyStatement, Refusal> {
-        let d = DeviceKeys {
-            device_id: "dev-1",
-            sign_pub_b64: &f.sign_pub,
-            kex_pub_b64: &f.kex_pub,
-        };
-        verify_spawn_key_statement("u1", stmt, sig, ssig, &d, &t)
+        run_with(f, stmt, sig, ssig, t, &f.kex_pub)
+    }
+
+    fn both(f: &Fx, stmt: &str) -> (String, String) {
+        (sign(&f.dev, stmt), sign(&f.spawn, stmt))
     }
 
     #[test]
     fn accepts_doubly_signed_statement() {
         let f = fx();
-        let r = run(
-            &f,
-            &f.stmt,
-            &sign(&f.dev, &f.stmt),
-            &sign(&f.spawn, &f.stmt),
-            Trust(true, false),
-        )
-        .unwrap();
+        let (a, b) = both(&f, &f.stmt);
+        let r = run(&f, &f.stmt, &a, &b, Trust(true, false)).unwrap();
         assert_eq!(r.issued_at_ms, 42);
         assert_eq!(r.spawn_pub.len(), 65);
     }
@@ -180,7 +216,7 @@ mod tests {
     #[test]
     fn trust_user_and_format_checks() {
         let f = fx();
-        let (a, b) = (sign(&f.dev, &f.stmt), sign(&f.spawn, &f.stmt));
+        let (a, b) = both(&f, &f.stmt);
         assert_eq!(
             run(&f, &f.stmt, &a, &b, Trust(false, false)),
             Err(Refusal::NotTrusted)
@@ -189,32 +225,129 @@ mod tests {
             run(&f, &f.stmt, &a, &b, Trust(true, true)),
             Err(Refusal::NotTrusted)
         );
-        let other_user = f.stmt.replacen(":u1:", ":u2:", 1);
-        assert_eq!(
-            run(
-                &f,
-                &other_user,
-                &sign(&f.dev, &other_user),
-                &sign(&f.spawn, &other_user),
-                Trust(true, false)
+        let bad: [(&str, String, Refusal); 4] = [
+            (
+                "other_user",
+                f.stmt.replacen(":42:", ":43:", 1),
+                Refusal::Mismatch,
             ),
-            Err(Refusal::Mismatch)
-        );
-        let padded = f.stmt.replace(":42", ":042");
-        assert_eq!(
-            run(
-                &f,
-                &padded,
-                &sign(&f.dev, &padded),
-                &sign(&f.spawn, &padded),
-                Trust(true, false)
+            (
+                "leading_zero",
+                f.stmt.replace(":42", ":042"),
+                Refusal::BadToken,
             ),
-            Err(Refusal::BadToken)
-        );
+            (
+                "plus_sign",
+                f.stmt.replace(":42", ":+42"),
+                Refusal::BadToken,
+            ),
+            ("extra_segment", format!("{}:x", f.stmt), Refusal::BadToken),
+        ];
+        for (name, s, want) in bad {
+            let (sa, sb) = both(&f, &s);
+            assert_eq!(
+                run(&f, &s, &sa, &sb, Trust(true, false)),
+                Err(want),
+                "{name}"
+            );
+        }
         assert_eq!(
             run(&f, "nope", &a, &b, Trust(true, false)),
             Err(Refusal::BadToken)
         );
+    }
+
+    #[test]
+    fn future_dated_statement_is_clock_skew() {
+        let at_limit = fx_with(None, NOW + MAX_SKEW_MS);
+        let (a, b) = both(&at_limit, &at_limit.stmt);
+        assert!(run(&at_limit, &at_limit.stmt, &a, &b, Trust(true, false)).is_ok());
+        let future = fx_with(None, NOW + MAX_SKEW_MS + 1);
+        let (a, b) = both(&future, &future.stmt);
+        assert_eq!(
+            run(&future, &future.stmt, &a, &b, Trust(true, false)),
+            Err(Refusal::ClockSkew)
+        );
+    }
+
+    #[test]
+    fn issued_above_js_safe_integer_is_bad_token() {
+        let f = fx_with(None, 1 << 53);
+        let (a, b) = both(&f, &f.stmt);
+        assert_eq!(
+            run(&f, &f.stmt, &a, &b, Trust(true, false)),
+            Err(Refusal::BadToken)
+        );
+    }
+
+    #[test]
+    fn oversized_inputs_are_refused() {
+        let f = fx();
+        let (a, b) = both(&f, &f.stmt);
+        let long = "A".repeat(97);
+        assert_eq!(
+            run(&f, &f.stmt, &long, &b, Trust(true, false)),
+            Err(Refusal::BadSig)
+        );
+        assert_eq!(
+            run(&f, &f.stmt, &a, &long, Trust(true, false)),
+            Err(Refusal::BadSig)
+        );
+        let huge = format!("{}{}", f.stmt, "0".repeat(600));
+        assert_eq!(
+            run(&f, &huge, &a, &b, Trust(true, false)),
+            Err(Refusal::BadToken)
+        );
+    }
+
+    #[test]
+    fn spawn_key_must_be_uncompressed_and_distinct_from_sign_key() {
+        let spawn = SigningKey::from_slice(&[6; 32]).unwrap();
+        let compressed = b64_encode(spawn.verifying_key().to_encoded_point(true).as_bytes());
+        let f = fx_with(Some(compressed), 42);
+        let (a, b) = both(&f, &f.stmt);
+        assert_eq!(
+            run(&f, &f.stmt, &a, &b, Trust(true, false)),
+            Err(Refusal::UnknownKey)
+        );
+        let f = fx_with(None, 42);
+        let same = fx_with(Some(f.sign_pub.clone()), 42);
+        let (a, b) = (sign(&f.dev, &same.stmt), sign(&f.dev, &same.stmt));
+        assert_eq!(
+            run(&same, &same.stmt, &a, &b, Trust(true, false)),
+            Err(Refusal::UnknownKey)
+        );
+    }
+
+    #[test]
+    fn kex_key_must_decode_strictly() {
+        let f = fx();
+        let sloppy = format!("{}\n", f.kex_pub);
+        let fp = device_fp(&f.sign_pub, &sloppy);
+        let stmt = build_spawn_key_statement("42", &fp, "dev-1", &pubb64(&f.spawn), 42);
+        let (a, b) = both(&f, &stmt);
+        assert_eq!(
+            run_with(&f, &stmt, &a, &b, Trust(true, false), &sloppy),
+            Err(Refusal::UnknownKey)
+        );
+    }
+
+    #[test]
+    fn only_strictly_newer_statements_supersede() {
+        let f = fx();
+        let (a, b) = both(&f, &f.stmt);
+        let old = run(&f, &f.stmt, &a, &b, Trust(true, false)).unwrap();
+        let mut newer = old.clone();
+        newer.issued_at_ms += 1;
+        assert!(supersedes(&newer, &old));
+        assert!(!supersedes(&old, &newer));
+        let mut same_time_other_key = old.clone();
+        same_time_other_key.spawn_pub[1] ^= 1;
+        assert!(!supersedes(&same_time_other_key, &old));
+        assert!(!supersedes(&old, &old));
+        let mut other_device = newer.clone();
+        other_device.device_fp = "e".repeat(64);
+        assert!(!supersedes(&other_device, &old));
     }
 
     #[test]

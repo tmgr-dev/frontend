@@ -1,5 +1,10 @@
+use crate::error::Refusal;
+use crate::tokens::{is_hex_lower, is_target_id, is_token};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+const MAX_CWD_BYTES: usize = 4096;
+const MAX_LABEL_BYTES: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -26,6 +31,26 @@ pub struct SpawnProposal {
 }
 
 impl SpawnProposal {
+    pub fn validate(&self) -> Result<(), Refusal> {
+        let ok = self.v == 1
+            && is_token(&self.profile)
+            && is_text(&self.cwd, MAX_CWD_BYTES)
+            && self
+                .name
+                .as_deref()
+                .is_none_or(|s| is_text(s, MAX_LABEL_BYTES))
+            && self
+                .task
+                .as_deref()
+                .is_none_or(|s| is_text(s, MAX_LABEL_BYTES))
+            && self
+                .prompt_sha256
+                .as_deref()
+                .is_none_or(|h| is_hex_lower(h, 64))
+            && is_target_id(&self.target_id);
+        ok.then_some(()).ok_or(Refusal::BadToken)
+    }
+
     pub fn canonical_bytes(&self) -> Vec<u8> {
         serde_json::to_vec(self).expect("proposal serializes")
     }
@@ -33,6 +58,23 @@ impl SpawnProposal {
     pub fn req_sha256(&self) -> String {
         sha256_hex(&self.canonical_bytes())
     }
+}
+
+fn is_text(s: &str, max_bytes: usize) -> bool {
+    !s.is_empty()
+        && s.len() <= max_bytes
+        && !s.chars().any(|c| {
+            c.is_control()
+                || matches!(
+                    c,
+                    '\u{061c}'
+                        | '\u{200b}'..='\u{200f}'
+                        | '\u{2028}'..='\u{202e}'
+                        | '\u{2060}'
+                        | '\u{2066}'..='\u{2069}'
+                        | '\u{feff}'
+                )
+        })
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -85,6 +127,59 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn validate_accepts_sample() {
+        assert_eq!(sample().validate(), Ok(()));
+        let mut p = sample();
+        p.prompt_sha256 = Some("a".repeat(64));
+        p.task = Some("TM-1017".into());
+        assert_eq!(p.validate(), Ok(()));
+    }
+
+    #[test]
+    fn validate_refuses_bad_fields() {
+        type Edit = (&'static str, fn(&mut SpawnProposal));
+        let edits: Vec<Edit> = vec![
+            ("version", |p| p.v = 2),
+            ("profile_space", |p| p.profile = "a b".into()),
+            ("profile_empty", |p| p.profile = String::new()),
+            ("cwd_empty", |p| p.cwd = String::new()),
+            ("cwd_c0", |p| p.cwd = "/a\u{1}b".into()),
+            ("cwd_newline", |p| p.cwd = "/a\nb".into()),
+            ("cwd_del", |p| p.cwd = "/a\u{7f}b".into()),
+            ("cwd_c1", |p| p.cwd = "/a\u{85}b".into()),
+            ("cwd_bidi_override", |p| p.cwd = "/a\u{202e}b".into()),
+            ("cwd_bidi_isolate", |p| p.cwd = "/a\u{2066}b".into()),
+            ("cwd_lrm", |p| p.cwd = "/a\u{200e}b".into()),
+            ("cwd_too_long", |p| p.cwd = format!("/{}", "a".repeat(4096))),
+            ("name_zero_width_space", |p| {
+                p.name = Some("a\u{200b}b".into())
+            }),
+            ("name_zero_width_joiner", |p| {
+                p.name = Some("a\u{200d}b".into())
+            }),
+            ("name_word_joiner", |p| p.name = Some("a\u{2060}b".into())),
+            ("name_bom", |p| p.name = Some("a\u{feff}b".into())),
+            ("name_line_separator", |p| {
+                p.name = Some("a\u{2028}b".into())
+            }),
+            ("name_too_long", |p| p.name = Some("a".repeat(129))),
+            ("task_tab", |p| p.task = Some("a\tb".into())),
+            ("task_too_long", |p| p.task = Some("a".repeat(129))),
+            ("prompt_hash_uppercase", |p| {
+                p.prompt_sha256 = Some("A".repeat(64))
+            }),
+            ("prompt_hash_63", |p| p.prompt_sha256 = Some("a".repeat(63))),
+            ("target_id_not_token", |p| p.target_id = "t:1".into()),
+            ("target_id_not_mx_hex", |p| p.target_id = "mx_XYZ".into()),
+        ];
+        for (name, e) in edits {
+            let mut p = sample();
+            e(&mut p);
+            assert_eq!(p.validate(), Err(Refusal::BadToken), "{name}");
+        }
     }
 
     #[test]

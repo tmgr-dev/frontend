@@ -15,6 +15,10 @@ pub enum Refusal {
 }
 
 impl Refusal {
+    pub fn counts_as_attempt(self) -> bool {
+        self == Refusal::BadSig
+    }
+
     pub fn code(self) -> &'static str {
         match self {
             Refusal::Expired => "expired",
@@ -50,3 +54,26 @@ impl fmt::Display for Refusal {
 }
 
 impl std::error::Error for Refusal {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_bad_sig_counts_as_attempt() {
+        for r in [
+            Refusal::Expired,
+            Refusal::ClockSkew,
+            Refusal::BadTtl,
+            Refusal::UnknownKey,
+            Refusal::NotTrusted,
+            Refusal::Mismatch,
+            Refusal::BadToken,
+            Refusal::UnsupportedVersion,
+            Refusal::UnsupportedAlg,
+        ] {
+            assert!(!r.counts_as_attempt(), "{r:?}");
+        }
+        assert!(Refusal::BadSig.counts_as_attempt());
+    }
+}
