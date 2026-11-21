@@ -743,7 +743,8 @@ fn leader_talks_to_the_worker_over_a_pipe_pair() {
             "runs.halt",
             "attach.open",
             "runs.rename",
-            "runs.paste_image"
+            "runs.paste_image",
+            "runs.start"
         ])
     );
 
