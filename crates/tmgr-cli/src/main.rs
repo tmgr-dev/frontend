@@ -6,6 +6,7 @@ mod cmd;
 mod ctx;
 mod gitx;
 mod interact;
+#[cfg(feature = "runner")]
 mod os_auth;
 mod out;
 mod paths;
