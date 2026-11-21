@@ -151,6 +151,7 @@ pub struct ViewState {
     pub cp: super::checkpoints::CpState,
     pub export: Option<super::export::ExportState>,
     pub notes: Option<super::notes::NotesState>,
+    pub chat: Option<super::chat::ChatState>,
     pub summary: Option<super::summary::SummaryDraft>,
     pub summary_queue: std::collections::VecDeque<super::summary::SummaryDraft>,
     pub prompts: Vec<Prompt>,
@@ -445,6 +446,7 @@ impl ViewState {
             cp: Default::default(),
             export: None,
             notes: None,
+            chat: None,
             summary: None,
             summary_queue: std::collections::VecDeque::new(),
             prompts: Vec::new(),
@@ -1543,7 +1545,7 @@ impl ViewState {
                     self.open_templates();
                 }
             }
-            Cmd::Watch | Cmd::Notes | Cmd::Reconnect | Cmd::Restart | Cmd::Fork => {}
+            Cmd::Watch | Cmd::Notes | Cmd::Chat | Cmd::Reconnect | Cmd::Restart | Cmd::Fork => {}
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
@@ -1991,6 +1993,7 @@ impl ViewState {
             || self.summary.is_some()
             || self.export.is_some()
             || self.notes.is_some()
+            || self.chat.is_some()
             || self.qmenu.is_some()
             || self.perm_overlay_open()
             || self.peek.is_some()
@@ -2016,6 +2019,9 @@ impl ViewState {
         }
         if self.summary.is_some() {
             return self.summary_mouse(area, ev, out);
+        }
+        if self.chat.is_some() {
+            return self.chat_mouse(ev, out);
         }
         if self.notes.is_some() {
             return self.notes_mouse(area, ev, out);

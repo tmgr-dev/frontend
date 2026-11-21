@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io;
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -449,7 +450,19 @@ pub struct ChatStream {
     stream: UnixStream,
 }
 
+pub struct ChatCloser(UnixStream);
+
+impl ChatCloser {
+    pub fn close(&self) {
+        let _ = self.0.shutdown(Shutdown::Both);
+    }
+}
+
 impl ChatStream {
+    pub fn closer(&self) -> io::Result<ChatCloser> {
+        Ok(ChatCloser(self.stream.try_clone()?))
+    }
+
     pub fn recv(&mut self) -> io::Result<Option<wire_chat::ChatMessage>> {
         loop {
             match read_frame(&mut &self.stream)? {

@@ -56,6 +56,7 @@ pub enum Cmd {
     Summary,
     Export,
     Notes,
+    Chat,
     Prompts,
     Search,
     CopyMode,

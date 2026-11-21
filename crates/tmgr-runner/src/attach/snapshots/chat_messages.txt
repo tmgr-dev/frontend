@@ -1,0 +1,24 @@
+╭ Chat ────────────────────────────────────────────────────────────────────────────────────────────╮
+│  Manager                     │Owner  22:14                                                       │
+│  working                     │start the api-fix run                                              │
+│  api-fix                     │                                                                   │
+│  claude-code · 42% · working │Manager  22:15                                                     │
+│  docs                        │On it.                                                             │
+│  codex · working             │                                                                   │
+│                              │codex  22:16                                                       │
+│                              │word word word word word word word word word word word word word   │
+│                              │word word word word word word word word word word word word word   │
+│                              │word word word word                                                │
+│                              │                                                                   │
+│                              │System  22:17                                                      │
+│                              │session s_aaaaaaaaaa exited                                        │
+│                              │                                                                   │
+│                              │System  22:18                                                      │
+│                              │future kind                                                        │
+│                              │                                                                   │
+│                              │                                                                   │
+│                              │                                                                   │
+│                              │                                                                   │
+│                              │>                                                                  │
+╰ Esc close · Up/Down room · PgUp older · Enter send ──────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1            drag copies  Ctrl-] ? help
