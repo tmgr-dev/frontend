@@ -14,9 +14,10 @@ use crate::api::{self, Directory, Msg, Request};
 use crate::fields::{check_device_id, check_device_kind, check_fp};
 use crate::keys::{fingerprint, DeviceKeys};
 use crate::trust::{
-    decode_join_code, encode_join_code, join_mac, kind_key, lowers_kind, may_vouch, parse_intro,
-    parse_revoke, sign_intro, sign_revoke, trusted_set_by_kind, verify_intro, verify_join_mac,
-    verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, RevokeStatement, Trusted,
+    decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, may_vouch,
+    parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set_by_kind, v2_self_markers,
+    verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx,
+    RevokeStatement, Trusted,
 };
 use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 
@@ -40,7 +41,8 @@ const MAX_REVOKES_PER_DEVICE: usize = 50;
 const MAX_ALERTS: usize = 50;
 const ALERT_TTL_MS: u64 = 7 * 24 * 3600 * 1000;
 const AUTO_REVOKE_SILENCE_MS: u64 = 30 * 24 * 3600 * 1000;
-const KINDS_V: u32 = 2;
+const KINDS_V: u32 = 3;
+pub const OLD_CODE_MSG: &str = "This join code is from an older app version. Update the desktop or mobile app that showed it and generate a new code.";
 const BUSY_PREFIX: &str = "relay is busy, retry in ";
 
 #[cfg(test)]
@@ -110,6 +112,12 @@ struct JoinRec {
     fp: String,
     kind: String,
     requested_at_ms: u64,
+    #[serde(default = "join_v1")]
+    v: u8,
+}
+
+fn join_v1() -> u8 {
+    1
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -150,7 +158,9 @@ struct State {
     #[serde(default)]
     kinds_v: u32,
     #[serde(default)]
-    kinds_migrated_at: u64,
+    legacy_unknown: Vec<String>,
+    #[serde(default)]
+    self_intro: bool,
     #[serde(default)]
     republish_intros: bool,
     #[serde(default)]
@@ -199,6 +209,7 @@ struct Core {
     last_write: u64,
     acked: u64,
     hold_since: BTreeMap<String, u64>,
+    pass_cap: Option<usize>,
 }
 
 fn trust_key(st: &State) -> String {
@@ -213,7 +224,8 @@ fn trust_key(st: &State) -> String {
         st.alerts,
         st.joined,
         st.kinds,
-        st.bindings
+        st.bindings,
+        st.legacy_unknown
     ])
     .to_string()
 }
@@ -242,16 +254,7 @@ fn intro_matches(i: &str, uid: u64) -> bool {
     parse_intro(i).is_ok_and(|p| p.parsed.user_id == uid)
 }
 
-fn is_stale_own_intro(st: &State, own_id: Option<&str>, intro: &str) -> bool {
-    st.kinds_migrated_at > 0
-        && parse_intro(intro).is_ok_and(|p| {
-            Some(p.by.as_str()) == own_id && p.parsed.issued_at_ms < st.kinds_migrated_at
-        })
-}
-
 fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_base: bool) {
-    backfill_own_intro_kinds(c, uid);
-    let own_id = c.identity.as_ref().map(|i| i.device_id.clone());
     let no_devices: &[api::Device] = &[];
     let dir_devices = dir.map_or(no_devices, |d| d.devices.as_slice());
     let mut intros: Vec<String> = c.st.intros.clone();
@@ -260,7 +263,7 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_bas
             intros.push(i.clone());
         }
     }
-    intros.retain(|i| intro_matches(i, uid) && !is_stale_own_intro(&c.st, own_id.as_deref(), i));
+    intros.retain(|i| intro_matches(i, uid));
     let mut pins: Vec<Trusted> = c.st.base.iter().map(to_trusted).collect();
     if !from_base {
         pins.extend(c.st.trusted.iter().map(to_trusted));
@@ -291,9 +294,27 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_bas
                 .or_insert_with(|| "desktop".to_owned());
         }
     }
-    let set = trusted_set_by_kind(uid, &pins, &c.st.revoked, &intros, &entries, Some(&known));
+    let own = own_key(c);
+    let set = trusted_set_by_kind(
+        uid,
+        &pins,
+        &c.st.revoked,
+        &intros,
+        &entries,
+        Some(&KindCtx {
+            known: &known,
+            own: own.as_deref(),
+            max_passes: c.pass_cap,
+        }),
+    );
     for (id, fp, kind) in &set.kinds {
-        pin_kind(c, id, fp, kind, now);
+        c.st.kinds.insert(kind_key(id, fp), kind.clone());
+    }
+    for (id, _) in &set.conflicts {
+        record_alert_once(c, "kind_conflict", id, now);
+    }
+    for id in &set.unstable {
+        record_alert_once(c, "trust_unstable", id, now);
     }
     let mut out: Vec<Dev> = Vec::new();
     for t in &set.trusted {
@@ -335,42 +356,58 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_bas
         .take(MAX_INTROS)
         .collect();
     c.st.trusted = out;
-}
-
-const JOIN_CODE_KIND_REQUIRED: bool = false;
-
-fn code_json(code: &str) -> Result<(String, serde_json::Map<String, Value>), String> {
-    let enc = code
-        .strip_prefix(crate::trust::JOIN_PREFIX)
-        .ok_or("the join code is not valid")?;
-    let raw = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, enc)
-        .map_err(|_| "the join code is not valid")?;
-    match serde_json::from_slice::<Value>(&raw) {
-        Ok(Value::Object(m)) => Ok((crate::trust::JOIN_PREFIX.to_owned(), m)),
-        _ => Err("the join code is not valid".into()),
+    let own_id = c.identity.as_ref().map(|i| i.device_id.clone());
+    let unknown: Vec<String> =
+        c.st.trusted
+            .iter()
+            .filter(|d| {
+                Some(&d.id) != own_id.as_ref()
+                    && !c.st.base.iter().any(|b| b.id == d.id)
+                    && c.st.kind_of(&d.id, &d.fp).is_none()
+            })
+            .map(|d| d.id.clone())
+            .collect();
+    for id in unknown {
+        record_alert_once(c, "kind_unknown", &id, now);
     }
 }
 
-fn code_encode(prefix: &str, m: &serde_json::Map<String, Value>) -> String {
-    format!(
-        "{prefix}{}",
-        base64::Engine::encode(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            Value::Object(m.clone()).to_string()
-        )
-    )
+fn own_key(c: &Core) -> Option<String> {
+    let (id, keys) = (c.identity.as_ref()?, c.keys.as_ref()?);
+    Some(kind_key(&id.device_id, &keys.fingerprint()))
 }
 
-fn split_code_kind(code: &str) -> Result<(String, Option<String>), String> {
-    let (prefix, mut m) = code_json(code)?;
-    let kind = m.remove("kind").and_then(|k| k.as_str().map(str::to_owned));
-    Ok((code_encode(&prefix, &m), kind))
+fn all_intros(c: &Core) -> Vec<String> {
+    let mut intros = c.st.intros.clone();
+    for i in c
+        .dir
+        .iter()
+        .flat_map(|d| d.devices.iter())
+        .flat_map(|d| d.intros.iter())
+    {
+        if !intros.contains(i) {
+            intros.push(i.clone());
+        }
+    }
+    intros
 }
 
-fn add_code_kind(code: &str, kind: &str) -> Result<String, String> {
-    let (prefix, mut m) = code_json(code)?;
-    m.insert("kind".into(), Value::String(kind.to_owned()));
-    Ok(code_encode(&prefix, &m))
+fn gate_blocked(c: &Core, uid: u64) -> Vec<Dev> {
+    let trusted: Vec<Trusted> = c.st.trusted.iter().map(to_trusted).collect();
+    let markers = v2_self_markers(uid, &trusted, &c.st.kinds, &all_intros(c));
+    let own = own_key(c);
+    let ids = gate_blockers(&trusted, &c.st.kinds, own.as_deref(), &markers);
+    c.st.trusted
+        .iter()
+        .filter(|d| ids.contains(&d.id))
+        .cloned()
+        .collect()
+}
+
+fn runner_trusted(c: &Core) -> bool {
+    c.st.trusted
+        .iter()
+        .any(|d| c.st.kind_of(&d.id, &d.fp) == Some("runner"))
 }
 
 fn backfill_self(c: &mut Core, kind: &str) {
@@ -382,69 +419,37 @@ fn backfill_self(c: &mut Core, kind: &str) {
     }
 }
 
-fn migrate_kinds(c: &mut Core, own_kind: &str, now: u64) {
+fn migrate_kinds(c: &mut Core, own_kind: &str) {
     if c.st.kinds_v >= KINDS_V {
         return;
     }
     let old = std::mem::take(&mut c.st.kinds);
     c.st.kinds_v = KINDS_V;
-    c.st.kinds_migrated_at = now;
     c.st.republish_intros = true;
-    let own_id = c.identity.as_ref().map(|i| i.device_id.clone());
-    let mut intros = std::mem::take(&mut c.st.intros);
-    intros.retain(|i| !is_stale_own_intro(&c.st, own_id.as_deref(), i));
-    c.st.intros = intros;
     backfill_self(c, own_kind);
     let own = c.identity.as_ref().map(|i| i.device_id.clone());
-    let roots: Vec<Dev> = c.st.base.clone();
-    for d in roots.iter().filter(|d| Some(&d.id) != own.as_ref()) {
-        if let Some(k) = old.get(&d.id).filter(|k| check_device_kind(k).is_ok()) {
-            c.st.kinds.insert(kind_key(&d.id, &d.fp), k.clone());
-        }
-    }
-}
-
-fn backfill_own_intro_kinds(c: &mut Core, uid: u64) {
-    let (Some(id), Some(keys)) = (&c.identity, &c.keys) else {
-        return;
-    };
-    let missing: Vec<(String, String)> =
+    let devs: Vec<Dev> =
         c.st.trusted
             .iter()
-            .filter(|d| {
-                d.id != id.device_id
-                    && !c.st.revoked.contains(&d.fp)
-                    && c.st.kind_of(&d.id, &d.fp).is_none()
-            })
-            .map(|d| (d.id.clone(), d.fp.clone()))
+            .chain(c.st.base.iter())
+            .cloned()
             .collect();
-    if missing.is_empty() {
-        return;
-    }
-    let (sign_pub, kex_pub) = (keys.sign_pub_b64(), keys.kex_pub_b64());
-    let mut learned: BTreeMap<String, String> = BTreeMap::new();
-    for i in &c.st.intros {
-        if is_stale_own_intro(&c.st, Some(&id.device_id), i) {
-            continue;
-        }
-        let Ok(v) = verify_intro(i, uid, &id.device_id, &sign_pub, &kex_pub) else {
-            continue;
-        };
-        let st = v.parsed;
-        if check_device_kind(&st.target_kind).is_ok()
-            && missing.contains(&(st.target_id.clone(), st.target_fp.clone()))
-        {
-            let key = kind_key(&st.target_id, &st.target_fp);
-            if learned
-                .get(&key)
-                .is_none_or(|have| lowers_kind(have, &st.target_kind))
-            {
-                learned.insert(key, st.target_kind);
+    for d in devs.iter().filter(|d| Some(&d.id) != own.as_ref()) {
+        let legacy = old
+            .get(&d.id)
+            .or_else(|| old.get(&kind_key(&d.id, &d.fp)))
+            .filter(|k| matches!(k.as_str(), "desktop" | "mobile"));
+        match legacy {
+            Some(k) => {
+                c.st.kinds.insert(kind_key(&d.id, &d.fp), k.clone());
+            }
+            None => {
+                let key = kind_key(&d.id, &d.fp);
+                if !c.st.legacy_unknown.contains(&key) {
+                    c.st.legacy_unknown.push(key);
+                }
             }
         }
-    }
-    for (key, kind) in learned {
-        c.st.kinds.entry(key).or_insert(kind);
     }
 }
 
@@ -586,7 +591,6 @@ fn apply_revoke(c: &mut Core, uid: u64, now: u64, target_id: &str, target_fp: &s
     });
     c.st.pending_revokes.retain(|p| p.target_fp != target_fp);
     c.st.pending_joins.retain(|j| j.fp != target_fp);
-    backfill_own_intro_kinds(c, uid);
     for id in unknown_roots(c, Some(target_fp)) {
         record_alert_once(c, "root_kind_unknown", &id, now);
     }
@@ -725,7 +729,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     fn lock(&self) -> MutexGuard<'_, Core> {
         let mut g = self.core.lock().unwrap_or_else(|p| p.into_inner());
         if g.identity.is_some() && g.st.kinds_v < KINDS_V {
-            migrate_kinds(&mut g, &self.kind, self.now());
+            migrate_kinds(&mut g, &self.kind);
         }
         g
     }
@@ -855,8 +859,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 &mut budget,
             );
         }
-        if c.st.republish_intros && self.publish_intros(c).is_ok() {
+        if (c.st.republish_intros || !c.st.self_intro) && self.publish_intros(c).is_ok() {
             c.st.republish_intros = false;
+            c.st.self_intro = true;
         }
         Ok(())
     }
@@ -910,37 +915,53 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         Ok(())
     }
 
+    fn intro_json(
+        &self,
+        c: &Core,
+        version: u8,
+        target: (&str, &str, &str),
+    ) -> Result<String, String> {
+        let (id, keys) = Self::own(c)?;
+        let st = IntroStatement {
+            version,
+            user_id: self.cfg.user_id,
+            introducer_fp: keys.fingerprint(),
+            target_id: target.0.to_owned(),
+            target_fp: target.1.to_owned(),
+            target_kind: target.2.to_owned(),
+            issued_at_ms: self.now(),
+        };
+        sign_intro(keys, &id.device_id, &st).map_err(err)
+    }
+
     fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
         if self.kind == "runner" {
             return Ok(());
         }
         let (id, keys) = Self::own(c)?;
-        let now = self.now();
-        let mut reqs = Vec::new();
-        for t in c.st.trusted.iter().filter(|t| t.id != id.device_id) {
+        let (own_id, own_fp) = (id.device_id.clone(), keys.fingerprint());
+        let mut signed = Vec::new();
+        for t in c.st.trusted.iter().filter(|t| t.id != own_id) {
             let Some(kind) = c.st.kind_of(&t.id, &t.fp) else {
                 continue;
             };
-            let st = IntroStatement {
-                user_id: self.cfg.user_id,
-                introducer_fp: keys.fingerprint(),
-                target_id: t.id.clone(),
-                target_fp: t.fp.clone(),
-                target_kind: kind.to_owned(),
-                issued_at_ms: now,
-            };
-            let json = sign_intro(keys, &id.device_id, &st).map_err(err)?;
-            reqs.push(api::put_intro(&t.id, &json).map_err(err)?);
+            signed.push((t.id.clone(), self.intro_json(c, 2, (&t.id, &t.fp, kind))?));
         }
-        for r in reqs {
-            self.call(c, r)?;
+        signed.push((
+            own_id.clone(),
+            self.intro_json(c, 2, (&own_id, &own_fp, &self.kind))?,
+        ));
+        for (target, json) in signed {
+            self.call(c, api::put_intro(&target, &json).map_err(err)?)?;
         }
         Ok(())
     }
 
     fn finish_join(&self, c: &mut Core) -> Result<(), String> {
         self.sync_dir(c)?;
-        self.publish_intros(c)
+        self.publish_intros(c)?;
+        c.st.self_intro = true;
+        Ok(())
     }
 
     pub fn open_join_code(&self) -> Result<String, String> {
@@ -955,13 +976,15 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         getrandom::fill(&mut secret).map_err(err)?;
         let exp_ms = self.now() + JOIN_TTL_MS;
         let code = JoinCode {
+            version: 2,
             user_id: self.cfg.user_id,
             device_id: id.device_id.clone(),
             fp: keys.fingerprint(),
+            kind: Some(self.kind.clone()),
             secret,
             exp_ms,
         };
-        let text = add_code_kind(&encode_join_code(&code).map_err(err)?, &self.kind)?;
+        let text = encode_join_code(&code).map_err(err)?;
         c.st.join_code = Some(OpenCode {
             secret: b64(&secret),
             exp_ms,
@@ -973,17 +996,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     pub fn join_with_code(&self, code: &str) -> Result<(), String> {
         let mut g = self.lock();
         let c = &mut *g;
-        let (stripped, code_kind) = split_code_kind(code.trim())?;
-        if code_kind.is_none() && JOIN_CODE_KIND_REQUIRED {
-            return Err("the join code is not valid".into());
+        let code =
+            decode_join_code(code.trim()).map_err(|_| "the join code is not valid".to_owned())?;
+        if code.version < 2 && self.kind == "runner" {
+            return Err(OLD_CODE_MSG.into());
         }
-        if code_kind
-            .as_deref()
-            .is_some_and(|k| check_device_kind(k).is_err())
-        {
-            return Err("the join code is not valid".into());
-        }
-        let code = decode_join_code(&stripped).map_err(err)?;
         if code.user_id != self.cfg.user_id || code.is_expired(self.now()) {
             return Err("the join code is not valid".into());
         }
@@ -999,7 +1016,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 d.device_id == code.device_id && fingerprint(&d.sign_pub, &d.kex_pub) == code.fp
             })
             .ok_or_else(|| "the device of the join code was not found".to_owned())?;
-        if code_kind.as_deref().is_some_and(|k| k != p.kind) {
+        if code.kind.as_deref().is_some_and(|k| k != p.kind) {
             return Err("the join code does not match the device".into());
         }
         let pdev = dev_from(p);
@@ -1007,6 +1024,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         let mac = join_mac(
             &code.secret,
             &JoinMacInput {
+                version: code.version,
                 user_id: self.cfg.user_id,
                 p_fp: &pdev.fp,
                 n_id: &id.device_id,
@@ -1020,8 +1038,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             return Err("the device id was seen with other keys".into());
         }
         let key = kind_key(&pdev.id, &pdev.fp);
-        let inserted = code_kind.is_some() && !c.st.kinds.contains_key(&key);
-        if let Some(k) = &code_kind {
+        let inserted = code.kind.is_some() && !c.st.kinds.contains_key(&key);
+        if let Some(k) = &code.kind {
             pin_kind(c, &pdev.id, &pdev.fp, k, self.now());
         }
         c.st.base.push(pdev.clone());
@@ -1191,7 +1209,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 if entry.label != label || c.st.revoked.contains(&opened.from_fp) {
                     return None;
                 }
-                let input = JoinMacInput {
+                let input = |version| JoinMacInput {
+                    version,
                     user_id: self.cfg.user_id,
                     p_fp: &own_fp,
                     n_id: &opened.from,
@@ -1199,7 +1218,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     n_kind: &entry.kind,
                     label: &label,
                 };
-                verify_join_mac(&secret, &input, mac).ok()?;
+                let v = [2u8, 1]
+                    .into_iter()
+                    .find(|v| verify_join_mac(&secret, &input(*v), mac).is_ok())?;
                 c.st.join_code = None;
                 c.st.pending_joins.retain(|j| j.device_id != opened.from);
                 c.st.pending_joins.push(JoinRec {
@@ -1208,6 +1229,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     fp: opened.from_fp.clone(),
                     kind: entry.kind.clone(),
                     requested_at_ms: now,
+                    v,
                 });
             }
             "join_ok"
@@ -1360,10 +1382,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn pending_join_matches(&self, code: &str) -> bool {
-        let Ok((stripped, _)) = split_code_kind(code.trim()) else {
-            return false;
-        };
-        let Ok(code) = decode_join_code(&stripped) else {
+        let Ok(code) = decode_join_code(code.trim()) else {
             return false;
         };
         let g = self.lock();
@@ -1408,6 +1427,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             state,
             is_self: Some(d.id.as_str()) == own_id,
             kind_verified: g.st.kind_of(&d.id, &d.fp).is_some(),
+            can_confirm_kind: g.st.kind_of(&d.id, &d.fp).is_none()
+                && g.st.legacy_unknown.contains(&kind_key(&d.id, &d.fp)),
         };
         let mut devices: Vec<TrustDevice> =
             g.st.trusted
@@ -1494,16 +1515,19 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             .ok_or_else(|| "the device keys changed, ask it to join again".to_owned())?;
         let mut dev = dev_from(entry);
         dev.kind = rec.kind.clone();
-        let (id, keys) = Self::own(c)?;
-        let st = IntroStatement {
-            user_id: self.cfg.user_id,
-            introducer_fp: keys.fingerprint(),
-            target_id: dev.id.clone(),
-            target_fp: dev.fp.clone(),
-            target_kind: rec.kind.clone(),
-            issued_at_ms: self.now(),
-        };
-        let intro = sign_intro(keys, &id.device_id, &st).map_err(err)?;
+        let blocked = gate_blocked(c, self.cfg.user_id);
+        if rec.kind == "runner" {
+            if rec.v < 2 {
+                return Err("the runner must join with a code from an updated app".into());
+            }
+            if !blocked.is_empty() {
+                let labels: Vec<&str> = blocked.iter().map(|d| d.label.as_str()).collect();
+                return Err(format!("update these devices first: {}", labels.join(", ")));
+            }
+        } else if rec.v < 2 && runner_trusted(c) {
+            return Err("update the app first".into());
+        }
+        let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, &rec.kind))?;
         self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
         c.st.intros.push(intro);
         pin_kind(c, &dev.id, &dev.fp, &rec.kind, self.now());
@@ -1516,6 +1540,36 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         let payload = json!({ "revoked": c.st.revoked, "kind": self.kind });
         self.seal_and_post(c, "join_ok", &msg_id, &payload, &[dev], false)?;
         c.st.pending_joins.retain(|j| j.device_id != device_id);
+        self.save_now(c)
+    }
+
+    pub fn confirm_device_kind(&self, device_id: &str, kind: &str) -> Result<(), String> {
+        if !matches!(kind, "desktop" | "mobile") || self.kind == "runner" {
+            return Err("only a desktop or phone kind can be confirmed".into());
+        }
+        let mut g = self.lock();
+        let c = &mut *g;
+        let dev =
+            c.st.trusted
+                .iter()
+                .find(|d| d.id == device_id)
+                .cloned()
+                .ok_or_else(|| "unknown device".to_owned())?;
+        let key = kind_key(&dev.id, &dev.fp);
+        if !c.st.legacy_unknown.contains(&key) || c.st.kind_of(&dev.id, &dev.fp).is_some() {
+            return Err("this device kind cannot be confirmed".into());
+        }
+        c.st.kinds.insert(key.clone(), kind.to_owned());
+        c.st.legacy_unknown.retain(|k| *k != key);
+        c.st.alerts
+            .retain(|a| !(a.kind == "kind_unknown" && a.device_id == dev.id));
+        let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, kind));
+        self.save_now(c)?;
+        let intro = intro?;
+        self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
+        c.st.intros.push(intro);
+        let dir = c.dir.clone();
+        recompute(c, dir.as_ref(), self.cfg.user_id, self.now(), false);
         self.save_now(c)
     }
 

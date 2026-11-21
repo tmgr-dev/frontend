@@ -1,5 +1,6 @@
 use std::io::{self, BufRead};
-use tmgr_chat_relay::trust::{decode_join_code, JoinCode, JOIN_PREFIX};
+use tmgr_chat_relay::engine::OLD_CODE_MSG;
+use tmgr_chat_relay::trust::{decode_join_code, JoinCode, JOIN_PREFIX, JOIN_PREFIX_V2};
 use tmgr_core::error::{Error, Result};
 
 const PIPE_HINT: &str = "pipe the code in (echo ... | tmgr chat join) or type it at the prompt";
@@ -29,7 +30,10 @@ pub fn read_join_text(
     prompt: impl FnMut() -> io::Result<String>,
 ) -> Result<String> {
     let line = read_line(stdin, is_tty, prompt)?;
-    if !line.starts_with(JOIN_PREFIX) {
+    if line.starts_with(JOIN_PREFIX) {
+        return Err(Error::usage(OLD_CODE_MSG));
+    }
+    if !line.starts_with(JOIN_PREFIX_V2) {
         return Err(Error::usage("that is not a valid join code").hint("copy the whole code"));
     }
     Ok(line)
@@ -41,8 +45,12 @@ pub fn read_join_code(
     prompt: impl FnMut() -> io::Result<String>,
 ) -> Result<JoinCode> {
     let line = read_line(stdin, is_tty, prompt)?;
-    decode_join_code(&line)
-        .map_err(|_| Error::usage("that is not a valid join code").hint("copy the whole code"))
+    let code = decode_join_code(&line)
+        .map_err(|_| Error::usage("that is not a valid join code").hint("copy the whole code"))?;
+    if code.version < 2 {
+        return Err(Error::usage(OLD_CODE_MSG));
+    }
+    Ok(code)
 }
 
 pub fn reject_argv_code(_: &str) -> std::result::Result<String, String> {
@@ -59,6 +67,8 @@ mod tests {
 
     fn code() -> JoinCode {
         JoinCode {
+            version: 2,
+            kind: Some("desktop".into()),
             user_id: 42,
             device_id: "00000000-0000-4000-8000-00000000000a".into(),
             fp: "ab".repeat(32),
@@ -101,11 +111,30 @@ mod tests {
 
     #[test]
     fn join_text_keeps_the_raw_code_and_checks_only_the_prefix() {
-        let raw = format!("{JOIN_PREFIX}anything-with-a-kind-field");
+        let raw = format!("{JOIN_PREFIX_V2}anything-with-a-kind-field");
         let got = read_join_text(Cursor::new(format!(" {raw}\n")), false, no_prompt).unwrap();
         assert_eq!(got, raw);
         let err = read_join_text(Cursor::new("SECRETSECRET\n"), false, no_prompt).unwrap_err();
         assert!(!format!("{err}").contains("SECRETSECRET"));
+    }
+
+    #[test]
+    fn m12_a_v1_code_is_rejected_with_an_update_message() {
+        let v1 = JoinCode {
+            version: 1,
+            kind: None,
+            ..code()
+        };
+        let enc = encode_join_code(&v1).unwrap();
+        let err = read_join_code(Cursor::new(format!("{enc}\n")), false, no_prompt).unwrap_err();
+        assert!(err.to_string().contains(OLD_CODE_MSG));
+        let err = read_join_text(Cursor::new(format!("{enc}\n")), false, no_prompt).unwrap_err();
+        assert_eq!(
+            OLD_CODE_MSG,
+            "This join code is from an older app version. Update the desktop or mobile app that showed it and generate a new code."
+        );
+        assert!(err.to_string().contains(OLD_CODE_MSG));
+        assert!(!err.to_string().contains(&enc));
     }
 
     #[test]

@@ -16,6 +16,13 @@ STANDARD padded, secrets are test keys only.
   valid for `body_unpadded`). `keys` holds `sign_secret_hex`, `kex_secret_hex`, `sign_pub`, `kex_pub`, `fp`.
 - `intro.json`: inputs `user_id`, `introducer`, `target` (with `kind`), `issued_at_ms`; outputs `statement`,
   `sig`, `intro_json`.
+- `intro_v2.json`: inputs `user_id`, `introducer` (with `kind`), `target` (with `kind`), `issued_at_ms`; outputs `intro` and
+  `self_intro`, each `{statement, sig, intro_json}`. Statement tag `tmgr-chat-intro:v2:`, envelope `"v":2`, signed exactly
+  like v1. The self-intro has the introducer as target (same id and fp, kind = its own kind); it is only the upgrade marker
+  and its kind is never taken. A v2 statement re-tagged as v1 must fail verification.
+- `join_v2.json`: same shape as `join.json`. The code is `tmgr-chat-join:v2:` + base64url JSON
+  `{"v":2,"user_id","device_id","fp","kind","secret","exp"}` (`kind` = the approver's kind, desktop or mobile) and the MAC
+  transcript starts `tmgr-chat-join:v2:`; v2 and v1 MACs of the same fields differ.
 - `revoke.json`: inputs `user_id`, `revoker`, `target`, `issued_at_ms`; outputs `statement`, `sig`,
   `revoke_json` (the string for `POST /revocations`).
 - `join.json`: inputs `code` (`secret_hex` is the MAC key, `secret_b64` is what the code carries) and `joiner`;

@@ -201,6 +201,7 @@ fn intro_statement(
     user: u64,
 ) -> IntroStatement {
     IntroStatement {
+        version: 1,
         user_id: user,
         introducer_fp: signer.fingerprint(),
         target_id: target_id.into(),
@@ -226,6 +227,49 @@ fn intro_fixture() -> Value {
             "issued_at_ms": NOW,
         },
         "outputs": {"statement": statement, "sig": sig, "intro_json": json_str},
+    })
+}
+
+fn intro_v2_fixture() -> Value {
+    let (p, n) = (keys(1), keys(2));
+    let st = IntroStatement {
+        version: 2,
+        ..intro_statement(&p, &n, IDS[1], USER)
+    };
+    let me = IntroStatement {
+        version: 2,
+        user_id: USER,
+        introducer_fp: p.fingerprint(),
+        target_id: IDS[0].into(),
+        target_fp: p.fingerprint(),
+        target_kind: "desktop".into(),
+        issued_at_ms: NOW,
+    };
+    let section = |st: &IntroStatement, by: &DeviceKeys| {
+        let json_str = sign_intro(by, IDS[0], st).unwrap();
+        verify_intro(
+            &json_str,
+            USER,
+            IDS[0],
+            &by.sign_pub_b64(),
+            &by.kex_pub_b64(),
+        )
+        .unwrap();
+        let sig = serde_json::from_str::<Value>(&json_str).unwrap()["sig"].clone();
+        json!({"statement": st.to_statement().unwrap(), "sig": sig, "intro_json": json_str})
+    };
+    json!({
+        "description": "intro v2 signed by P for N (statement tag v2, envelope v 2), and P's self-intro (target is P itself; used only as the upgrade marker, its kind is never taken)",
+        "inputs": {
+            "user_id": USER,
+            "introducer": {"device_id": IDS[0], "kind": "desktop", "keys": key_json(&p)},
+            "target": {"device_id": IDS[1], "kind": "mobile", "keys": key_json(&n)},
+            "issued_at_ms": NOW,
+        },
+        "outputs": {
+            "intro": section(&st, &p),
+            "self_intro": section(&me, &p),
+        },
     })
 }
 
@@ -255,12 +299,18 @@ fn revoke_fixture() -> Value {
 }
 
 fn join_section(label: &str) -> Value {
+    join_section_v(label, 1)
+}
+
+fn join_section_v(label: &str, version: u8) -> Value {
     let (p, n) = (keys(1), keys(2));
     let secret = [0x5au8; 32];
     let code = JoinCode {
+        version,
         user_id: USER,
         device_id: IDS[0].into(),
         fp: p.fingerprint(),
+        kind: (version == 2).then(|| "desktop".to_owned()),
         secret,
         exp_ms: NOW + 600_000,
     };
@@ -268,6 +318,7 @@ fn join_section(label: &str) -> Value {
     assert_eq!(decode_join_code(&encoded).unwrap(), code);
     let (pf, nf) = (p.fingerprint(), n.fingerprint());
     let input = JoinMacInput {
+        version,
         user_id: USER,
         p_fp: &pf,
         n_id: IDS[1],
@@ -277,24 +328,30 @@ fn join_section(label: &str) -> Value {
     };
     let mac = join_mac(&secret, &input).unwrap();
     verify_join_mac(&secret, &input, &mac).unwrap();
-    let raw = encoded.strip_prefix("tmgr-chat-join:v1:").unwrap();
+    let raw = encoded
+        .strip_prefix(&format!("tmgr-chat-join:v{version}:"))
+        .unwrap();
+    let mut code_json = json!({
+        "user_id": USER,
+        "device_id": IDS[0],
+        "fp": pf,
+        "secret_hex": hex(&secret),
+        "secret_b64": b64(&secret),
+        "exp_ms": NOW + 600_000,
+    });
+    if version == 2 {
+        code_json["kind"] = json!("desktop");
+    }
     json!({
         "inputs": {
-            "code": {
-                "user_id": USER,
-                "device_id": IDS[0],
-                "fp": pf,
-                "secret_hex": hex(&secret),
-                "secret_b64": b64(&secret),
-                "exp_ms": NOW + 600_000,
-            },
+            "code": code_json,
             "joiner": {"device_id": IDS[1], "kind": "mobile", "label": label, "fp": nf},
         },
         "outputs": {
             "code_string": encoded,
             "code_base64url": raw,
             "mac_transcript": format!(
-                "tmgr-chat-join:v1:{USER}:{pf}:{}:{nf}:mobile:{}",
+                "tmgr-chat-join:v{version}:{USER}:{pf}:{}:{nf}:mobile:{}",
                 IDS[1],
                 h(label)
             ),
@@ -306,6 +363,12 @@ fn join_section(label: &str) -> Value {
 fn join_fixture() -> Value {
     let mut v = join_section("Phone");
     v["description"] = json!("join code, MAC key is the 32 decoded secret bytes");
+    v
+}
+
+fn join_v2_fixture() -> Value {
+    let mut v = join_section_v("Phone", 2);
+    v["description"] = json!("join code v2 (prefix tmgr-chat-join:v2:, JSON v 2, kind after fp = the approver's kind) and the v2 MAC transcript; MAC key is the 32 decoded secret bytes");
     v
 }
 
@@ -952,8 +1015,10 @@ fn all() -> Vec<(&'static str, Value)> {
         ("blob", blob_fixture()),
         ("unicode", unicode_fixture()),
         ("intro", intro_fixture()),
+        ("intro_v2", intro_v2_fixture()),
         ("revoke", revoke_fixture()),
         ("join", join_fixture()),
+        ("join_v2", join_v2_fixture()),
         ("spawnkey", spawnkey_fixture()),
         ("trust", trust_fixture()),
         ("negative", negative_fixture()),
@@ -1170,4 +1235,58 @@ fn committed_trust_cases_recompute() {
             c["name"]
         );
     }
+}
+
+#[test]
+fn committed_v2_vectors_verify_from_inputs_only() {
+    let f = read("intro_v2");
+    let i = &f["inputs"];
+    let by = device_keys(&i["introducer"]["keys"]);
+    for key in ["intro", "self_intro"] {
+        let o = &f["outputs"][key];
+        let v = verify_intro(
+            o["intro_json"].as_str().unwrap(),
+            i["user_id"].as_u64().unwrap(),
+            i["introducer"]["device_id"].as_str().unwrap(),
+            &by.sign_pub_b64(),
+            &by.kex_pub_b64(),
+        )
+        .unwrap();
+        assert_eq!(v.parsed.version, 2);
+        assert_eq!(v.statement, o["statement"].as_str().unwrap());
+        let swapped = o["intro_json"]
+            .as_str()
+            .unwrap()
+            .replace("tmgr-chat-intro:v2:", "tmgr-chat-intro:v1:");
+        assert!(verify_intro(
+            &swapped,
+            USER,
+            IDS[0],
+            &by.sign_pub_b64(),
+            &by.kex_pub_b64()
+        )
+        .is_err());
+    }
+    let j = read("join_v2");
+    let code = decode_join_code(j["outputs"]["code_string"].as_str().unwrap()).unwrap();
+    assert_eq!((code.version, code.kind.as_deref()), (2, Some("desktop")));
+    let jc = &j["inputs"]["joiner"];
+    let secret: [u8; 32] = from_hex(&j["inputs"]["code"]["secret_hex"])
+        .try_into()
+        .unwrap();
+    let input = JoinMacInput {
+        version: 2,
+        user_id: USER,
+        p_fp: &code.fp,
+        n_id: jc["device_id"].as_str().unwrap(),
+        n_fp: jc["fp"].as_str().unwrap(),
+        n_kind: jc["kind"].as_str().unwrap(),
+        label: jc["label"].as_str().unwrap(),
+    };
+    verify_join_mac(&secret, &input, j["outputs"]["mac_hex"].as_str().unwrap()).unwrap();
+    let v1 = JoinMacInput {
+        version: 1,
+        ..input
+    };
+    assert!(verify_join_mac(&secret, &v1, j["outputs"]["mac_hex"].as_str().unwrap()).is_err());
 }

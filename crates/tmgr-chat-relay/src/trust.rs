@@ -4,11 +4,12 @@ use crate::{Error, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use subtle::ConstantTimeEq;
 use tmgr_phone::{b64, b64_decode, h, pair_mac, sign, verify_der};
 
 pub const JOIN_PREFIX: &str = "tmgr-chat-join:v1:";
+pub const JOIN_PREFIX_V2: &str = "tmgr-chat-join:v2:";
 
 fn parts<'a>(s: &'a str, tag: &str, count: usize) -> Result<Vec<&'a str>> {
     let p: Vec<&str> = s.split(':').collect();
@@ -29,6 +30,7 @@ fn check_pub(pub_b64: &str) -> Result<()> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IntroStatement {
+    pub version: u8,
     pub user_id: u64,
     pub introducer_fp: String,
     pub target_id: String,
@@ -39,12 +41,16 @@ pub struct IntroStatement {
 
 impl IntroStatement {
     pub fn to_statement(&self) -> Result<String> {
+        if !matches!(self.version, 1 | 2) {
+            return Err(Error::BadFormat);
+        }
         check_fp(&self.introducer_fp)?;
         check_device_id(&self.target_id)?;
         check_fp(&self.target_fp)?;
         check_device_kind(&self.target_kind)?;
         Ok(format!(
-            "tmgr-chat-intro:v1:{}:{}:{}:{}:{}:{}",
+            "tmgr-chat-intro:v{}:{}:{}:{}:{}:{}:{}",
+            self.version,
             self.user_id,
             self.introducer_fp,
             self.target_id,
@@ -55,8 +61,14 @@ impl IntroStatement {
     }
 
     pub fn parse(s: &str) -> Result<IntroStatement> {
-        let p = parts(s, "tmgr-chat-intro", 8)?;
+        let p: Vec<&str> = s.split(':').collect();
+        let version = match (p.len(), p.first().copied(), p.get(1).copied()) {
+            (8, Some("tmgr-chat-intro"), Some("v1")) => 1,
+            (8, Some("tmgr-chat-intro"), Some("v2")) => 2,
+            _ => return Err(Error::BadFormat),
+        };
         let st = IntroStatement {
+            version,
             user_id: parse_decimal(p[2])?,
             introducer_fp: p[3].to_string(),
             target_id: p[4].to_string(),
@@ -66,6 +78,10 @@ impl IntroStatement {
         };
         st.to_statement()?;
         Ok(st)
+    }
+
+    pub fn is_self(&self, by: &str) -> bool {
+        self.target_id == by && self.target_fp == self.introducer_fp
     }
 }
 
@@ -93,7 +109,7 @@ pub fn sign_intro(signer: &DeviceKeys, signer_id: &str, st: &IntroStatement) -> 
     let statement = st.to_statement()?;
     let sig = sign(signer.sign_secret(), &statement)?;
     serde_json::to_string(&IntroJson {
-        v: 1,
+        v: u32::from(st.version),
         by: signer_id.to_string(),
         statement,
         sig,
@@ -103,11 +119,11 @@ pub fn sign_intro(signer: &DeviceKeys, signer_id: &str, st: &IntroStatement) -> 
 
 pub fn parse_intro(json: &str) -> Result<Intro> {
     let j: IntroJson = parse_strict(json)?;
-    if j.v != 1 {
-        return Err(Error::BadFormat);
-    }
     check_device_id(&j.by)?;
     let parsed = IntroStatement::parse(&j.statement)?;
+    if j.v != u32::from(parsed.version) {
+        return Err(Error::BadFormat);
+    }
     Ok(Intro {
         by: j.by,
         statement: j.statement,
@@ -314,9 +330,11 @@ pub fn verify_spawnkey(
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct JoinCode {
+    pub version: u8,
     pub user_id: u64,
     pub device_id: String,
     pub fp: String,
+    pub kind: Option<String>,
     pub secret: [u8; 32],
     pub exp_ms: u64,
 }
@@ -324,9 +342,11 @@ pub struct JoinCode {
 impl std::fmt::Debug for JoinCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JoinCode")
+            .field("version", &self.version)
             .field("user_id", &self.user_id)
             .field("device_id", &self.device_id)
             .field("fp", &self.fp)
+            .field("kind", &self.kind)
             .field("secret", &"<redacted>")
             .field("exp_ms", &self.exp_ms)
             .finish()
@@ -339,6 +359,8 @@ struct JoinJson {
     user_id: u64,
     device_id: String,
     fp: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
     secret: String,
     exp: u64,
 }
@@ -349,43 +371,74 @@ impl JoinCode {
     }
 }
 
+fn check_code_kind(kind: &str) -> Result<()> {
+    if matches!(kind, "desktop" | "mobile") {
+        Ok(())
+    } else {
+        Err(Error::BadFormat)
+    }
+}
+
 pub fn encode_join_code(code: &JoinCode) -> Result<String> {
     check_device_id(&code.device_id)?;
     check_fp(&code.fp)?;
+    let (prefix, kind) = match (code.version, &code.kind) {
+        (1, None) => (JOIN_PREFIX, None),
+        (2, Some(k)) => {
+            check_code_kind(k)?;
+            (JOIN_PREFIX_V2, Some(k.clone()))
+        }
+        _ => return Err(Error::BadFormat),
+    };
     let json = serde_json::to_string(&JoinJson {
-        v: 1,
+        v: u32::from(code.version),
         user_id: code.user_id,
         device_id: code.device_id.clone(),
         fp: code.fp.clone(),
+        kind,
         secret: b64(&code.secret),
         exp: code.exp_ms,
     })
     .map_err(|_| Error::BadJson)?;
-    Ok(format!("{JOIN_PREFIX}{}", URL_SAFE_NO_PAD.encode(json)))
+    Ok(format!("{prefix}{}", URL_SAFE_NO_PAD.encode(json)))
 }
 
 pub fn decode_join_code(s: &str) -> Result<JoinCode> {
-    let enc = s.strip_prefix(JOIN_PREFIX).ok_or(Error::BadFormat)?;
+    let (version, enc) = match (s.strip_prefix(JOIN_PREFIX), s.strip_prefix(JOIN_PREFIX_V2)) {
+        (Some(e), _) => (1u8, e),
+        (_, Some(e)) => (2u8, e),
+        _ => return Err(Error::BadFormat),
+    };
     let raw = URL_SAFE_NO_PAD.decode(enc).map_err(|_| Error::BadFormat)?;
     let j: JoinJson = parse_strict(std::str::from_utf8(&raw).map_err(|_| Error::BadJson)?)?;
-    if j.v != 1 {
+    if j.v != u32::from(version) {
         return Err(Error::BadFormat);
     }
     check_device_id(&j.device_id)?;
     check_fp(&j.fp)?;
+    let kind = if version == 2 {
+        let k = j.kind.ok_or(Error::BadFormat)?;
+        check_code_kind(&k)?;
+        Some(k)
+    } else {
+        None
+    };
     let secret: [u8; 32] = b64_decode(&j.secret)?
         .try_into()
         .map_err(|_| Error::BadFormat)?;
     Ok(JoinCode {
+        version,
         user_id: j.user_id,
         device_id: j.device_id,
         fp: j.fp,
+        kind,
         secret,
         exp_ms: j.exp,
     })
 }
 
 pub struct JoinMacInput<'a> {
+    pub version: u8,
     pub user_id: u64,
     pub p_fp: &'a str,
     pub n_id: &'a str,
@@ -395,12 +448,16 @@ pub struct JoinMacInput<'a> {
 }
 
 fn join_transcript(i: &JoinMacInput) -> Result<String> {
+    if !matches!(i.version, 1 | 2) {
+        return Err(Error::BadFormat);
+    }
     check_fp(i.p_fp)?;
     check_device_id(i.n_id)?;
     check_fp(i.n_fp)?;
     check_device_kind(i.n_kind)?;
     Ok(format!(
-        "tmgr-chat-join:v1:{}:{}:{}:{}:{}:{}",
+        "tmgr-chat-join:v{}:{}:{}:{}:{}:{}:{}",
+        i.version,
         i.user_id,
         i.p_fp,
         i.n_id,
@@ -464,6 +521,15 @@ pub struct TrustSet {
     pub trusted: Vec<Trusted>,
     pub mismatches: Vec<KeyMismatch>,
     pub kinds: Vec<(String, String, String)>,
+    pub conflicts: Vec<(String, String)>,
+    pub unstable: Vec<String>,
+    pub passes: usize,
+}
+
+pub struct KindCtx<'a> {
+    pub known: &'a BTreeMap<String, String>,
+    pub own: Option<&'a str>,
+    pub max_passes: Option<usize>,
 }
 
 pub fn kind_key(device_id: &str, fp: &str) -> String {
@@ -488,25 +554,86 @@ pub fn may_vouch(kind: Option<&str>) -> bool {
     matches!(kind, Some("desktop" | "mobile"))
 }
 
-/// With `kinds` (`device_id:fp` -> signed kind) only desktop and mobile devices may vouch; a runner key is readable by agents.
-pub fn trusted_set_by_kind(
+fn parse_intros(user_id: u64, intros: &[String]) -> Vec<Intro> {
+    let mut seen = HashSet::new();
+    intros
+        .iter()
+        .filter(|s| seen.insert(s.as_str()))
+        .filter_map(|s| parse_intro(s).ok())
+        .filter(|i| i.parsed.user_id == user_id)
+        .collect()
+}
+
+fn find_trusted<'a>(trusted: &'a [Trusted], id: &str, fp: &str) -> Option<&'a Trusted> {
+    trusted.iter().find(|t| t.device_id == id && t.fp == fp)
+}
+
+fn signed_by(signer: &Trusted, intro: &Intro) -> bool {
+    b64_decode(&signer.sign_pub)
+        .and_then(|key| verify_der(&key, &intro.statement, &intro.sig))
+        .is_ok()
+}
+
+fn self_markers_of(
+    parsed: &[Intro],
+    trusted: &[Trusted],
+    kinds: &BTreeMap<String, String>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for i in parsed {
+        let st = &i.parsed;
+        if st.version != 2 || !st.is_self(&i.by) {
+            continue;
+        }
+        let Some(signer) = find_trusted(trusted, &i.by, &st.introducer_fp) else {
+            continue;
+        };
+        let key = kind_key(&signer.device_id, &signer.fp);
+        if may_vouch(kinds.get(&key).map(String::as_str)) && signed_by(signer, i) {
+            out.insert(key);
+        }
+    }
+    out
+}
+
+/// Keys (`device_id:fp`) of devices whose signed v2 self-intro is counted: the signer is trusted and may vouch.
+pub fn v2_self_markers(
     user_id: u64,
-    pins: &[Trusted],
-    revoked: &[String],
+    trusted: &[Trusted],
+    kinds: &BTreeMap<String, String>,
     intros: &[String],
-    directory: &[DirEntry],
-    kinds: Option<&std::collections::BTreeMap<String, String>>,
-) -> TrustSet {
-    let mut known = kinds.map(|k| {
-        k.iter()
-            .filter(|(_, v)| crate::fields::check_device_kind(v).is_ok())
-            .map(|(a, b)| (a.clone(), b.clone()))
-            .collect::<std::collections::BTreeMap<_, _>>()
-    });
-    let is_revoked = |fp: &str| revoked.iter().any(|r| r == fp);
+) -> BTreeSet<String> {
+    self_markers_of(&parse_intros(user_id, intros), trusted, kinds)
+}
+
+/// Devices that keep the runner gate closed: desktop/mobile devices without a counted v2 self-intro and devices of unknown kind. Runners and `own` never block.
+pub fn gate_blockers(
+    trusted: &[Trusted],
+    kinds: &BTreeMap<String, String>,
+    own: Option<&str>,
+    markers: &BTreeSet<String>,
+) -> Vec<String> {
+    trusted
+        .iter()
+        .filter(|t| {
+            let key = kind_key(&t.device_id, &t.fp);
+            if Some(key.as_str()) == own {
+                return false;
+            }
+            match kinds.get(&key).map(String::as_str) {
+                Some("runner") => false,
+                Some("desktop" | "mobile") => !markers.contains(&key),
+                _ => true,
+            }
+        })
+        .map(|t| t.device_id.clone())
+        .collect()
+}
+
+fn start_set(pins: &[Trusted], revoked: &[String]) -> Vec<Trusted> {
     let mut trusted: Vec<Trusted> = Vec::new();
     for p in pins {
-        if is_revoked(&p.fp)
+        if revoked.contains(&p.fp)
             || p.fp != fingerprint(&p.sign_pub, &p.kex_pub)
             || trusted.iter().any(|t| t.device_id == p.device_id)
         {
@@ -514,34 +641,61 @@ pub fn trusted_set_by_kind(
         }
         trusted.push(p.clone());
     }
-    let mut seen = HashSet::new();
-    let parsed: Vec<Intro> = intros
-        .iter()
-        .filter(|s| seen.insert(s.as_str()))
-        .filter_map(|s| parse_intro(s).ok())
-        .filter(|i| i.parsed.user_id == user_id)
-        .collect();
-    let mut done = vec![false; parsed.len()];
-    let mut learned: Vec<(String, String, String)> = Vec::new();
+    trusted
+}
+
+struct Pass {
+    trusted: Vec<Trusted>,
+    candidates: Vec<(String, String, String)>,
+}
+
+struct PassInput<'a> {
+    revoked: &'a [String],
+    parsed: &'a [Intro],
+    directory: &'a [DirEntry],
+}
+
+fn run_pass(
+    inp: &PassInput,
+    start: &[Trusted],
+    known: Option<&BTreeMap<String, String>>,
+    allow_v1: bool,
+) -> Pass {
+    let is_revoked = |fp: &str| inp.revoked.iter().any(|r| r == fp);
+    let mut trusted = start.to_vec();
+    let mut candidates: Vec<(String, String, String)> = Vec::new();
+    let mut done = vec![false; inp.parsed.len()];
     loop {
         let mut changed = false;
-        for (n, intro) in parsed.iter().enumerate() {
+        for (n, intro) in inp.parsed.iter().enumerate() {
             let st = &intro.parsed;
             if done[n] || is_revoked(&st.target_fp) {
                 continue;
+            }
+            if let Some(k) = known {
+                if st.is_self(&intro.by) {
+                    done[n] = true;
+                    continue;
+                }
+                if st.version == 1
+                    && (!allow_v1
+                        || !may_vouch(
+                            k.get(&kind_key(&st.target_id, &st.target_fp))
+                                .map(String::as_str),
+                        ))
+                {
+                    continue;
+                }
             }
             let target_pinned = match trusted.iter().find(|t| t.device_id == st.target_id) {
                 Some(t) if t.fp == st.target_fp => true,
                 Some(_) => continue,
                 None => false,
             };
-            let Some(introducer) = trusted
-                .iter()
-                .find(|t| t.device_id == intro.by && t.fp == st.introducer_fp)
-            else {
+            let Some(introducer) = find_trusted(&trusted, &intro.by, &st.introducer_fp) else {
                 continue;
             };
-            if known.as_ref().is_some_and(|k| {
+            if known.is_some_and(|k| {
                 !may_vouch(
                     k.get(&kind_key(&introducer.device_id, &introducer.fp))
                         .map(String::as_str),
@@ -552,7 +706,7 @@ pub fn trusted_set_by_kind(
             let entry = if target_pinned {
                 None
             } else {
-                let Some(entry) = directory.iter().find(|d| {
+                let Some(entry) = inp.directory.iter().find(|d| {
                     d.device_id == st.target_id
                         && fingerprint(&d.sign_pub_b64, &d.kex_pub_b64) == st.target_fp
                 }) else {
@@ -560,9 +714,7 @@ pub fn trusted_set_by_kind(
                 };
                 Some(entry)
             };
-            let verified = b64_decode(&introducer.sign_pub)
-                .and_then(|key| verify_der(&key, &intro.statement, &intro.sig))
-                .is_ok();
+            let verified = signed_by(introducer, intro);
             done[n] = true;
             if !verified {
                 continue;
@@ -575,18 +727,15 @@ pub fn trusted_set_by_kind(
                     kex_pub: entry.kex_pub_b64.clone(),
                 });
             }
-            if let Some(k) = known.as_mut() {
-                let key = kind_key(&st.target_id, &st.target_fp);
-                if k.get(&key)
-                    .is_none_or(|have| lowers_kind(have, &st.target_kind))
-                {
-                    k.insert(key, st.target_kind.clone());
-                }
-                learned.push((
+            if known.is_some() && st.version == 2 {
+                let c = (
                     st.target_id.clone(),
                     st.target_fp.clone(),
                     st.target_kind.clone(),
-                ));
+                );
+                if !candidates.contains(&c) {
+                    candidates.push(c);
+                }
             }
             changed = true;
         }
@@ -595,6 +744,80 @@ pub fn trusted_set_by_kind(
         }
     }
     trusted.sort();
+    Pass {
+        trusted,
+        candidates,
+    }
+}
+
+struct Merge {
+    kinds: BTreeMap<String, String>,
+    conflicts: Vec<(String, String)>,
+    changed: Vec<String>,
+}
+
+fn merge_kinds(
+    known: &BTreeMap<String, String>,
+    candidates: &[(String, String, String)],
+    own: Option<&str>,
+) -> Merge {
+    let mut kinds = known.clone();
+    let mut conflicts = Vec::new();
+    let mut changed = Vec::new();
+    let keys: BTreeSet<(String, String)> = candidates
+        .iter()
+        .map(|(id, fp, _)| (id.clone(), fp.clone()))
+        .collect();
+    for (id, fp) in keys {
+        let key = kind_key(&id, &fp);
+        if Some(key.as_str()) == own {
+            continue;
+        }
+        let existing = known.get(&key).cloned();
+        let mut all: BTreeSet<&str> = candidates
+            .iter()
+            .filter(|(i, f, _)| *i == id && *f == fp)
+            .map(|(_, _, k)| k.as_str())
+            .collect();
+        if let Some(e) = &existing {
+            all.insert(e.as_str());
+        }
+        let conflict = all.len() > 1;
+        let result: Option<String> = if all.contains("runner") {
+            Some("runner".to_owned())
+        } else if all.len() == 1 {
+            all.iter().next().map(|k| (*k).to_owned())
+        } else {
+            existing.clone()
+        };
+        if conflict {
+            conflicts.push((id.clone(), fp.clone()));
+        }
+        if let Some(r) = result {
+            if existing.as_deref() != Some(r.as_str()) {
+                kinds.insert(key.clone(), r);
+                changed.push(key);
+            }
+        }
+    }
+    Merge {
+        kinds,
+        conflicts,
+        changed,
+    }
+}
+
+fn vouch_changed(
+    old: &BTreeMap<String, String>,
+    new: &BTreeMap<String, String>,
+    keys: &[String],
+) -> bool {
+    keys.iter().any(|k| {
+        may_vouch(old.get(k).map(String::as_str)) != may_vouch(new.get(k).map(String::as_str))
+    })
+}
+
+fn mismatches_of(trusted: &[Trusted], directory: &[DirEntry]) -> Vec<KeyMismatch> {
     let mut mismatches: Vec<KeyMismatch> = trusted
         .iter()
         .flat_map(|t| {
@@ -612,10 +835,103 @@ pub fn trusted_set_by_kind(
         })
         .collect();
     mismatches.sort();
+    mismatches
+}
+
+/// With `kinds`, only desktop and mobile devices may vouch, and kinds come from counted v2 intros merged after each pass (runner wins; desktop vs mobile keeps the known value). The pass reruns from the start set while a merge changes who may vouch.
+pub fn trusted_set_by_kind(
+    user_id: u64,
+    pins: &[Trusted],
+    revoked: &[String],
+    intros: &[String],
+    directory: &[DirEntry],
+    kinds: Option<&KindCtx>,
+) -> TrustSet {
+    let parsed = parse_intros(user_id, intros);
+    let inp = PassInput {
+        revoked,
+        parsed: &parsed,
+        directory,
+    };
+    let start = start_set(pins, revoked);
+    let Some(ctx) = kinds else {
+        let pass = run_pass(&inp, &start, None, true);
+        return TrustSet {
+            mismatches: mismatches_of(&pass.trusted, directory),
+            trusted: pass.trusted,
+            kinds: Vec::new(),
+            conflicts: Vec::new(),
+            unstable: Vec::new(),
+            passes: 1,
+        };
+    };
+    let original: BTreeMap<String, String> = ctx
+        .known
+        .iter()
+        .filter(|(_, v)| check_device_kind(v).is_ok())
+        .map(|(a, b)| (a.clone(), b.clone()))
+        .collect();
+    let mut known = original.clone();
+    let population: BTreeSet<String> = original
+        .keys()
+        .cloned()
+        .chain(start.iter().map(|t| kind_key(&t.device_id, &t.fp)))
+        .chain(
+            parsed
+                .iter()
+                .map(|i| kind_key(&i.parsed.target_id, &i.parsed.target_fp)),
+        )
+        .collect();
+    let cap = ctx.max_passes.unwrap_or(2 * population.len() + 1);
+    let mut conflicts: Vec<(String, String)> = Vec::new();
+    let mut passes = 0;
+    let (mut trusted, mut unstable);
+    loop {
+        passes += 1;
+        let mut pass = run_pass(&inp, &start, Some(&known), true);
+        let markers = self_markers_of(&parsed, &pass.trusted, &known);
+        if gate_blockers(&pass.trusted, &known, ctx.own, &markers).is_empty() {
+            pass = run_pass(&inp, &start, Some(&known), false);
+        }
+        let merge = merge_kinds(&known, &pass.candidates, ctx.own);
+        for c in merge.conflicts {
+            if !conflicts.contains(&c) {
+                conflicts.push(c);
+            }
+        }
+        let rerun = vouch_changed(&known, &merge.kinds, &merge.changed);
+        known = merge.kinds;
+        trusted = pass.trusted;
+        unstable = Vec::new();
+        if !rerun {
+            break;
+        }
+        if passes >= cap {
+            let moved: Vec<&String> = merge.changed.iter().collect();
+            trusted.retain(|t| !moved.contains(&&kind_key(&t.device_id, &t.fp)));
+            unstable = merge
+                .changed
+                .iter()
+                .filter_map(|k| k.split(':').next().map(str::to_owned))
+                .collect();
+            break;
+        }
+    }
+    let learned = known
+        .iter()
+        .filter(|(k, v)| original.get(*k) != Some(*v))
+        .filter_map(|(k, v)| {
+            let (id, fp) = k.split_once(':')?;
+            Some((id.to_owned(), fp.to_owned(), v.clone()))
+        })
+        .collect();
     TrustSet {
+        mismatches: mismatches_of(&trusted, directory),
         trusted,
-        mismatches,
         kinds: learned,
+        conflicts,
+        unstable,
+        passes,
     }
 }
 
@@ -654,6 +970,7 @@ mod tests {
         user: u64,
     ) -> IntroStatement {
         IntroStatement {
+            version: 1,
             user_id: user,
             introducer_fp: by.fingerprint(),
             target_id: target_id.into(),
@@ -683,6 +1000,7 @@ mod tests {
     fn intro_statement_format_and_round_trip() {
         let k = key(1);
         let st = IntroStatement {
+            version: 1,
             user_id: U,
             introducer_fp: k.fingerprint(),
             target_id: IDS[1].into(),
@@ -757,7 +1075,7 @@ mod tests {
         IntroStatement::parse(&good).unwrap();
         for bad in [
             format!("{good}:extra"),
-            format!("tmgr-chat-intro:v2:42:{fp}:{}:{fp}:mobile:7", IDS[0]),
+            format!("tmgr-chat-intro:v3:42:{fp}:{}:{fp}:mobile:7", IDS[0]),
             format!("tmgr-chat-intro:v1:042:{fp}:{}:{fp}:mobile:7", IDS[0]),
             format!("tmgr-chat-intro:v1:42:{fp}:{}:{fp}:phone:7", IDS[0]),
             format!("tmgr-chat-intro:v1:42:{fp}:x:{fp}:mobile:7"),
@@ -837,6 +1155,8 @@ mod tests {
     #[test]
     fn join_code_round_trip_and_strictness() {
         let code = JoinCode {
+            version: 1,
+            kind: None,
             user_id: U,
             device_id: IDS[0].into(),
             fp: key(1).fingerprint(),
@@ -866,6 +1186,8 @@ mod tests {
     #[test]
     fn join_code_debug_redacts_secret() {
         let code = JoinCode {
+            version: 1,
+            kind: None,
             user_id: U,
             device_id: IDS[0].into(),
             fp: key(1).fingerprint(),
@@ -883,6 +1205,7 @@ mod tests {
         let secret = [9u8; 32];
         let (pf, nf) = (key(1).fingerprint(), key(2).fingerprint());
         let base = JoinMacInput {
+            version: 1,
             user_id: U,
             p_fp: &pf,
             n_id: IDS[1],
@@ -1158,5 +1481,336 @@ mod tests {
         intros.push(intro((IDS[0], &a), (IDS[2], &c)));
         let set = run(&[pin(IDS[0], &a)], &[], &intros, &d);
         assert_eq!(ids(&set), [IDS[0], IDS[2]]);
+    }
+
+    fn intro_k(
+        version: u8,
+        by: (&str, &DeviceKeys),
+        target: (&str, &DeviceKeys),
+        kind: &str,
+    ) -> String {
+        let st = IntroStatement {
+            version,
+            user_id: U,
+            introducer_fp: by.1.fingerprint(),
+            target_id: target.0.into(),
+            target_fp: target.1.fingerprint(),
+            target_kind: kind.into(),
+            issued_at_ms: 1_800_000_000_000,
+        };
+        sign_intro(by.1, by.0, &st).unwrap()
+    }
+
+    fn kmap(entries: &[(&str, &DeviceKeys, &str)]) -> BTreeMap<String, String> {
+        entries
+            .iter()
+            .map(|(id, k, kind)| (kind_key(id, &k.fingerprint()), (*kind).to_owned()))
+            .collect()
+    }
+
+    fn by_kind(
+        pins: &[Trusted],
+        intros: &[String],
+        d: &[DirEntry],
+        known: &BTreeMap<String, String>,
+        cap: Option<usize>,
+    ) -> TrustSet {
+        trusted_set_by_kind(
+            U,
+            pins,
+            &[],
+            intros,
+            d,
+            Some(&KindCtx {
+                known,
+                own: None,
+                max_passes: cap,
+            }),
+        )
+    }
+
+    fn learned(set: &TrustSet, id: &str) -> Option<String> {
+        set.kinds
+            .iter()
+            .find(|(i, _, _)| i == id)
+            .map(|(_, _, k)| k.clone())
+    }
+
+    #[test]
+    fn m01_v2_intro_round_trips_and_the_version_is_signed() {
+        let (a, x) = (key(1), key(2));
+        let json = intro_k(2, (IDS[0], &a), (IDS[1], &x), "mobile");
+        let v = verify_intro(&json, U, IDS[0], &a.sign_pub_b64(), &a.kex_pub_b64()).unwrap();
+        assert_eq!(v.parsed.version, 2);
+        assert_eq!(
+            v.statement,
+            format!(
+                "tmgr-chat-intro:v2:42:{}:{}:{}:mobile:1800000000000",
+                a.fingerprint(),
+                IDS[1],
+                x.fingerprint()
+            )
+        );
+        assert!(json.starts_with("{\"v\":2,"));
+        assert!(parts(&v.statement, "tmgr-chat-intro", 8).is_err());
+        let retagged = json.replace("tmgr-chat-intro:v2:", "tmgr-chat-intro:v1:");
+        assert!(verify_intro(&retagged, U, IDS[0], &a.sign_pub_b64(), &a.kex_pub_b64()).is_err());
+        let wrong_env = json.replacen("{\"v\":2,", "{\"v\":1,", 1);
+        assert!(parse_intro(&wrong_env).is_err());
+    }
+
+    #[test]
+    fn m02_v1_intro_counts_only_for_a_target_with_a_known_owner_kind() {
+        let (a, x) = (key(1), key(2));
+        let d = dir(&[(IDS[1], &x)]);
+        let v1 = intro_k(1, (IDS[0], &a), (IDS[1], &x), "desktop");
+        let pins = [pin(IDS[0], &a)];
+        let none = by_kind(
+            &pins,
+            std::slice::from_ref(&v1),
+            &d,
+            &kmap(&[(IDS[0], &a, "desktop")]),
+            None,
+        );
+        assert_eq!(ids(&none), [IDS[0]]);
+        assert!(none.kinds.is_empty());
+        let known = kmap(&[(IDS[0], &a, "desktop"), (IDS[1], &x, "mobile")]);
+        let some = by_kind(&pins, std::slice::from_ref(&v1), &d, &known, None);
+        assert_eq!(ids(&some), [IDS[0], IDS[1]]);
+        assert!(some.kinds.is_empty());
+        let runner = kmap(&[(IDS[0], &a, "desktop"), (IDS[1], &x, "runner")]);
+        assert_eq!(ids(&by_kind(&pins, &[v1], &d, &runner, None)), [IDS[0]]);
+    }
+
+    #[test]
+    fn v1_intros_are_ignored_once_every_owner_device_has_a_v2_self_intro() {
+        let (a, x, y) = (key(1), key(2), key(3));
+        let d = dir(&[(IDS[1], &x), (IDS[2], &y)]);
+        let pins = [pin(IDS[0], &a), pin(IDS[1], &x)];
+        let known = kmap(&[
+            (IDS[0], &a, "desktop"),
+            (IDS[1], &x, "desktop"),
+            (IDS[2], &y, "desktop"),
+        ]);
+        let v1 = intro_k(1, (IDS[0], &a), (IDS[2], &y), "desktop");
+        let marker = intro_k(2, (IDS[1], &x), (IDS[1], &x), "desktop");
+        let marker_y = intro_k(2, (IDS[2], &y), (IDS[2], &y), "desktop");
+        let own = kind_key(IDS[0], &a.fingerprint());
+        let run = |intros: &[String]| {
+            trusted_set_by_kind(
+                U,
+                &pins,
+                &[],
+                intros,
+                &d,
+                Some(&KindCtx {
+                    known: &known,
+                    own: Some(&own),
+                    max_passes: None,
+                }),
+            )
+        };
+        let closed = run(&[v1.clone(), marker.clone()]);
+        assert!(ids(&closed).contains(&IDS[2].to_owned()));
+        let open = run(&[v1, marker, marker_y]);
+        assert!(!ids(&open).contains(&IDS[2].to_owned()));
+    }
+
+    #[test]
+    fn a_self_intro_yields_no_kind_and_no_trust() {
+        let (a, x) = (key(1), key(2));
+        let d = dir(&[(IDS[1], &x)]);
+        let me = intro_k(2, (IDS[0], &a), (IDS[0], &a), "runner");
+        let set = by_kind(
+            &[pin(IDS[0], &a)],
+            std::slice::from_ref(&me),
+            &d,
+            &kmap(&[(IDS[0], &a, "desktop")]),
+            None,
+        );
+        assert!(set.kinds.is_empty() && set.conflicts.is_empty());
+        let trusted = [pin(IDS[0], &a)];
+        let markers = v2_self_markers(U, &trusted, &kmap(&[(IDS[0], &a, "desktop")]), &[me]);
+        assert!(markers.contains(&kind_key(IDS[0], &a.fingerprint())));
+    }
+
+    #[test]
+    fn m05_replayed_intros_for_a_revoked_fp_or_new_keys_do_not_count() {
+        let (a, x, x2) = (key(1), key(2), key(7));
+        let old = intro_k(2, (IDS[0], &a), (IDS[1], &x), "desktop");
+        let pins = [pin(IDS[0], &a)];
+        let known = kmap(&[(IDS[0], &a, "desktop")]);
+        let revoked = trusted_set_by_kind(
+            U,
+            &pins,
+            &[x.fingerprint()],
+            std::slice::from_ref(&old),
+            &dir(&[(IDS[1], &x)]),
+            Some(&KindCtx {
+                known: &known,
+                own: None,
+                max_passes: None,
+            }),
+        );
+        assert_eq!(ids(&revoked), [IDS[0]]);
+        let rekeyed = by_kind(&pins, &[old], &dir(&[(IDS[1], &x2)]), &known, None);
+        assert_eq!(ids(&rekeyed), [IDS[0]]);
+        assert!(rekeyed.kinds.is_empty());
+    }
+
+    fn orders(items: &[String]) -> Vec<Vec<String>> {
+        let n = items.len();
+        let mut out = Vec::new();
+        let mut idx: Vec<usize> = (0..n).collect();
+        fn go(k: usize, idx: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+            if k == idx.len() {
+                out.push(idx.clone());
+                return;
+            }
+            for i in k..idx.len() {
+                idx.swap(k, i);
+                go(k + 1, idx, out);
+                idx.swap(k, i);
+            }
+        }
+        let mut perms = Vec::new();
+        go(0, &mut idx, &mut perms);
+        for p in perms {
+            out.push(p.into_iter().map(|i| items[i].clone()).collect());
+        }
+        out
+    }
+
+    #[test]
+    fn m06_a_late_demotion_drops_what_the_demoted_device_vouched_for() {
+        let (a, b, x, y) = (key(1), key(2), key(3), key(4));
+        let d = dir(&[(IDS[2], &x), (IDS[3], &y)]);
+        let pins = [pin(IDS[0], &a), pin(IDS[1], &b)];
+        let items = [
+            intro_k(2, (IDS[0], &a), (IDS[2], &x), "desktop"),
+            intro_k(2, (IDS[2], &x), (IDS[3], &y), "desktop"),
+            intro_k(2, (IDS[1], &b), (IDS[2], &x), "runner"),
+        ];
+        for known_x in [false, true] {
+            let mut known = kmap(&[(IDS[0], &a, "desktop"), (IDS[1], &b, "desktop")]);
+            if known_x {
+                known.extend(kmap(&[(IDS[2], &x, "desktop")]));
+            }
+            for order in orders(&items) {
+                let set = by_kind(&pins, &order, &d, &known, None);
+                assert!(ids(&set).contains(&IDS[2].to_owned()));
+                assert!(!ids(&set).contains(&IDS[3].to_owned()), "{known_x}");
+                assert_eq!(learned(&set, IDS[2]).as_deref(), Some("runner"));
+            }
+        }
+    }
+
+    #[test]
+    fn m07_runner_and_desktop_intros_for_one_target_give_runner_in_both_orders() {
+        let (a, b, x) = (key(1), key(2), key(3));
+        let d = dir(&[(IDS[2], &x)]);
+        let pins = [pin(IDS[0], &a), pin(IDS[1], &b)];
+        let known = kmap(&[(IDS[0], &a, "desktop"), (IDS[1], &b, "desktop")]);
+        let by_a = intro_k(2, (IDS[0], &a), (IDS[2], &x), "desktop");
+        let by_b = intro_k(2, (IDS[1], &b), (IDS[2], &x), "runner");
+        for order in [[by_a.clone(), by_b.clone()], [by_b, by_a]] {
+            let set = by_kind(&pins, &order, &d, &known, None);
+            assert_eq!(learned(&set, IDS[2]).as_deref(), Some("runner"));
+            assert_eq!(set.conflicts.len(), 1);
+        }
+    }
+
+    #[test]
+    fn disagreeing_owner_kinds_without_a_known_value_leave_the_kind_unknown() {
+        let (a, b, x) = (key(1), key(2), key(3));
+        let d = dir(&[(IDS[2], &x)]);
+        let pins = [pin(IDS[0], &a), pin(IDS[1], &b)];
+        let mut known = kmap(&[(IDS[0], &a, "desktop"), (IDS[1], &b, "desktop")]);
+        let items = [
+            intro_k(2, (IDS[0], &a), (IDS[2], &x), "desktop"),
+            intro_k(2, (IDS[1], &b), (IDS[2], &x), "mobile"),
+        ];
+        for order in orders(&items) {
+            let set = by_kind(&pins, &order, &d, &known, None);
+            assert!(ids(&set).contains(&IDS[2].to_owned()));
+            assert_eq!(learned(&set, IDS[2]), None);
+            assert_eq!(set.conflicts.len(), 1);
+        }
+        known.extend(kmap(&[(IDS[2], &x, "mobile")]));
+        let set = by_kind(&pins, &items, &d, &known, None);
+        assert_eq!(learned(&set, IDS[2]), None);
+        assert_eq!(set.conflicts.len(), 1);
+    }
+
+    #[test]
+    fn m18_a_chain_settles_within_the_bound_and_a_lower_cap_flags_trust_unstable() {
+        let keys: Vec<DeviceKeys> = (1..=5).map(key).collect();
+        let d: Vec<DirEntry> = (1..5)
+            .map(|i| dir(&[(IDS[i], &keys[i])]).remove(0))
+            .collect();
+        let pins = [pin(IDS[0], &keys[0])];
+        let items: Vec<String> = (0..4)
+            .map(|i| intro_k(2, (IDS[i], &keys[i]), (IDS[i + 1], &keys[i + 1]), "desktop"))
+            .collect();
+        let known = kmap(&[(IDS[0], &keys[0], "desktop")]);
+        let set = by_kind(&pins, &items, &d, &known, None);
+        assert_eq!(set.trusted.len(), 5);
+        assert!(set.unstable.is_empty());
+        assert!(set.passes <= 2 * 6 + 1);
+        let capped = by_kind(&pins, &items, &d, &known, Some(1));
+        assert_eq!(capped.passes, 1);
+        assert!(!capped.unstable.is_empty());
+        assert!(capped
+            .trusted
+            .iter()
+            .all(|t| !capped.unstable.contains(&t.device_id)));
+    }
+
+    #[test]
+    fn join_code_v2_carries_the_kind_and_v1_is_still_decoded() {
+        let mut code = JoinCode {
+            version: 2,
+            kind: Some("mobile".into()),
+            user_id: U,
+            device_id: IDS[0].into(),
+            fp: "ab".repeat(32),
+            secret: [3u8; 32],
+            exp_ms: 9,
+        };
+        let enc = encode_join_code(&code).unwrap();
+        assert!(enc.starts_with(JOIN_PREFIX_V2));
+        assert_eq!(decode_join_code(&enc).unwrap(), code);
+        code.kind = Some("runner".into());
+        assert!(encode_join_code(&code).is_err());
+        code.kind = None;
+        assert!(encode_join_code(&code).is_err());
+        code.version = 1;
+        let v1 = encode_join_code(&code).unwrap();
+        assert!(v1.starts_with(JOIN_PREFIX));
+        assert_eq!(decode_join_code(&v1).unwrap().version, 1);
+        let body = URL_SAFE_NO_PAD.encode(
+            r#"{"v":2,"user_id":42,"device_id":"00000000-0000-4000-8000-00000000000a","fp":"abababababababababababababababababababababababababababababababab","kind":"runner","secret":"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM=","exp":9}"#,
+        );
+        assert!(decode_join_code(&format!("{JOIN_PREFIX_V2}{body}")).is_err());
+        assert!(decode_join_code(&format!("{JOIN_PREFIX}{body}")).is_err());
+    }
+
+    #[test]
+    fn join_mac_transcript_is_versioned() {
+        let secret = [5u8; 32];
+        let (pf, nf) = ("a".repeat(64), "b".repeat(64));
+        let mk = |version| JoinMacInput {
+            version,
+            user_id: U,
+            p_fp: &pf,
+            n_id: IDS[1],
+            n_fp: &nf,
+            n_kind: "runner",
+            label: "Runner",
+        };
+        let m2 = join_mac(&secret, &mk(2)).unwrap();
+        assert!(verify_join_mac(&secret, &mk(2), &m2).is_ok());
+        assert!(verify_join_mac(&secret, &mk(1), &m2).is_err());
+        assert!(join_mac(&secret, &mk(3)).is_err());
     }
 }

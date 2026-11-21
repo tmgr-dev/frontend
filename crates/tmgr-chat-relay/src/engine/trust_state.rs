@@ -18,6 +18,8 @@ pub struct TrustDevice {
     pub is_self: bool,
     #[serde(default)]
     pub kind_verified: bool,
+    #[serde(default)]
+    pub can_confirm_kind: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
