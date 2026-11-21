@@ -1,6 +1,9 @@
 use crate::git;
 use crate::handoff::{build, build_screen, Opts as NoteOpts};
 use crate::locate::{export_counted, find, load, newest, Roots};
+use crate::packet::{
+    build_packet, build_packet_screen, ChatMessage, HandoffPacket, PacketSource, PacketTo,
+};
 use crate::{Agent, Session};
 use std::path::{Path, PathBuf};
 use tmgr_ipc::api::SessionInfo;
@@ -255,41 +258,49 @@ pub fn ensure_readable(s: &SessionInfo) -> Result<()> {
     load(agent, &path).map(drop).map_err(SwitchError::Internal)
 }
 
-pub fn prepare_note(
+#[derive(Debug)]
+pub struct Inputs {
+    pub sessions: Vec<Session>,
+    pub opts: NoteOpts,
+    pub exports: Vec<(Agent, PathBuf)>,
+    pub screen: Vec<String>,
+    pub source: &'static str,
+    pub task_ref: Option<String>,
+}
+
+pub fn prepare_inputs(
     s: &SessionInfo,
     sessions: &[SessionInfo],
     target: Target,
     task_ref: Option<&str>,
     screen: &[String],
-) -> Result<Note> {
+) -> Result<Inputs> {
     let source_target = Target::of_profile(s.profile.as_deref())
         .ok_or_else(|| SwitchError::Usage(UNSUPPORTED.into()))?;
+    let cwd = Path::new(&s.cwd);
+    let task_ref = task_ref.map(str::to_string);
     let Some(source) = source_target.agent() else {
-        let cwd = Path::new(&s.cwd);
-        let text = build_screen(
-            source_target.name(),
-            &s.id,
-            screen,
-            &NoteOpts {
+        return Ok(Inputs {
+            sessions: Vec::new(),
+            opts: NoteOpts {
                 target: target.name(),
-                task: task_ref.map(str::to_string),
+                task: task_ref.clone(),
                 previous: Vec::new(),
                 git: git::collect(cwd),
                 rules_files: rules_files(cwd, target, source_target),
                 lookup_hint: None,
             },
-            &s.cwd,
-        );
-        return Ok(Note {
-            text,
             exports: Vec::new(),
-            task_ref: task_ref.map(str::to_string),
+            screen: screen.to_vec(),
+            source: source_target.name(),
+            task_ref,
         });
     };
     let own_log = log_of(s, source)?;
     let session = load(source, &own_log).map_err(SwitchError::Internal)?;
     let mut previous = Vec::new();
     let mut exports: Vec<(Agent, PathBuf)> = Vec::new();
+    let mut loaded: Vec<Session> = Vec::new();
     for p in ancestors(sessions, s) {
         let Ok(agent) = agent_of(p) else { continue };
         let Ok(path) = log_of(p, agent) else { continue };
@@ -298,33 +309,71 @@ pub fn prepare_note(
         };
         previous.push(format!("{} ({})", prev.id, agent.name()));
         exports.push((agent, path));
+        loaded.push(prev);
     }
     exports.push((source, own_log));
-    let cwd = Path::new(&s.cwd);
-    let text = build(
-        &session,
-        &NoteOpts {
+    let lookup = lookup_hint(&session);
+    loaded.push(session);
+    Ok(Inputs {
+        sessions: loaded,
+        opts: NoteOpts {
             target: target.name(),
-            task: task_ref.map(str::to_string),
+            task: task_ref.clone(),
             previous,
             git: git::collect(cwd),
             rules_files: rules_files(cwd, target, source_target),
-            lookup_hint: Some(lookup_hint(&session)),
+            lookup_hint: Some(lookup),
         },
-    );
+        exports,
+        screen: Vec::new(),
+        source: source_target.name(),
+        task_ref,
+    })
+}
+
+pub fn packet_for(
+    inputs: &Inputs,
+    src: &PacketSource,
+    chat: &[ChatMessage],
+    to: &PacketTo,
+) -> Result<HandoffPacket> {
+    let built = if inputs.sessions.is_empty() {
+        build_packet_screen(src, &inputs.screen, chat, to, &inputs.opts)
+    } else {
+        build_packet(src, &inputs.sessions, chat, to, &inputs.opts)
+    };
+    built.map_err(|e| SwitchError::Internal(e.to_string()))
+}
+
+pub fn prepare_note(
+    s: &SessionInfo,
+    sessions: &[SessionInfo],
+    target: Target,
+    task_ref: Option<&str>,
+    screen: &[String],
+) -> Result<Note> {
+    let inputs = prepare_inputs(s, sessions, target, task_ref, screen)?;
+    let text = match inputs.sessions.last() {
+        Some(session) => build(session, &inputs.opts),
+        None => build_screen(inputs.source, &s.id, &inputs.screen, &inputs.opts, &s.cwd),
+    };
     Ok(Note {
         text,
-        exports,
-        task_ref: task_ref.map(str::to_string),
+        exports: inputs.exports,
+        task_ref: inputs.task_ref,
     })
 }
 
 pub fn export_all(new_session: &str, exports: &[(Agent, PathBuf)]) -> Option<String> {
     let home = homes_dir().ok()?.join(new_session);
+    export_all_at(&home, exports)
+}
+
+pub fn export_all_at(home: &Path, exports: &[(Agent, PathBuf)]) -> Option<String> {
     let mut failed: Vec<String> = Vec::new();
     let mut skipped = 0;
     for (agent, path) in exports {
-        match export_counted(path, *agent, &home) {
+        match export_counted(path, *agent, home) {
             Ok((_, n)) => skipped += n,
             Err(e) => failed.push(e),
         }
@@ -508,5 +557,73 @@ mod tests {
         a.handoff_from = Some("m".into());
         let all = vec![m, a.clone()];
         assert!(ancestors(&all, &a).is_empty());
+    }
+
+    fn screen_source() -> PacketSource {
+        PacketSource {
+            machine: "m".into(),
+            session: "old".into(),
+            name: "n".into(),
+            agent: "opencode",
+            profile: Some("opencode".into()),
+            cwd: "/w".into(),
+            permission_mode: None,
+            no_sandbox: false,
+            carried_mode: Some("ask".into()),
+            fell_back: false,
+            bypass_dropped: false,
+            logs: vec![],
+            summary_override: None,
+            created_ms: 5,
+            random: [7; 10],
+            limits: crate::packet::Limits::default(),
+        }
+    }
+
+    #[test]
+    fn a_screen_source_yields_inputs_without_sessions_and_the_same_note() {
+        let s = info("old", "opencode");
+        let screen = vec!["building".to_string(), "done".to_string()];
+        let inputs = prepare_inputs(&s, &[], Target::Codex, Some("#7"), &screen).unwrap();
+        assert!(inputs.sessions.is_empty());
+        assert_eq!(inputs.source, "opencode");
+        assert_eq!(inputs.opts.target, "codex");
+        assert_eq!(inputs.screen, screen);
+        assert!(inputs.exports.is_empty());
+        let note = prepare_note(&s, &[], Target::Codex, Some("#7"), &screen).unwrap();
+        let again = build_screen("opencode", "old", &screen, &inputs.opts, "/w");
+        assert_eq!(note.text, again);
+        assert_eq!(note.task_ref.as_deref(), Some("#7"));
+    }
+
+    #[test]
+    fn packet_for_uses_the_screen_builder_without_a_log_and_the_log_builder_with_one() {
+        let s = info("old", "opencode");
+        let screen = vec!["screen-marker-line".to_string()];
+        let inputs = prepare_inputs(&s, &[], Target::Codex, None, &screen).unwrap();
+        let to = PacketTo {
+            agent: "codex",
+            profile: "codex".into(),
+        };
+        let p = packet_for(&inputs, &screen_source(), &[], &to).unwrap();
+        assert_eq!(p.from.agent, "opencode");
+        assert_eq!(p.to.agent, "codex");
+        assert!(p.summary.contains("screen-marker-line"));
+        assert!(p.todos.is_empty());
+
+        let session = crate::claude::parse(
+            std::io::BufReader::new(&include_bytes!("../tests/fixtures/claude.jsonl")[..]),
+            "fallback",
+        );
+        let with_log = Inputs {
+            sessions: vec![session],
+            screen: Vec::new(),
+            ..inputs
+        };
+        let mut src = screen_source();
+        src.agent = "claude";
+        let p = packet_for(&with_log, &src, &[], &to).unwrap();
+        assert!(!p.summary.contains("screen-marker-line"));
+        assert!(!p.messages.is_empty());
     }
 }

@@ -1,7 +1,7 @@
 use crate::git::GitState;
 use crate::handoff::{build, build_screen, Opts};
 use crate::mask::mask;
-use crate::model::{Agent, Session, Todo};
+use crate::model::{Session, Todo};
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::{self, Write};
@@ -48,7 +48,7 @@ pub struct PacketSource {
     pub machine: String,
     pub session: String,
     pub name: String,
-    pub agent: Agent,
+    pub agent: &'static str,
     pub profile: Option<String>,
     pub cwd: String,
     pub permission_mode: Option<String>,
@@ -65,7 +65,7 @@ pub struct PacketSource {
 
 #[derive(Debug, Clone)]
 pub struct PacketTo {
-    pub agent: Agent,
+    pub agent: &'static str,
     pub profile: String,
 }
 
@@ -385,7 +385,7 @@ pub fn build_packet(
 ) -> Result<HandoffPacket, PacketError> {
     let current = sessions.last().ok_or(PacketError::NoSession)?;
     let note_opts = Opts {
-        target: to.agent.name(),
+        target: to.agent,
         ..opts.clone()
     };
     let mut prior: Vec<String> = opts.previous.iter().map(|p| clean(p, 80)).collect();
@@ -429,7 +429,7 @@ pub fn build_packet_screen(
     opts: &Opts,
 ) -> Result<HandoffPacket, PacketError> {
     let note_opts = Opts {
-        target: to.agent.name(),
+        target: to.agent,
         ..opts.clone()
     };
     let prior = opts.previous.iter().map(|p| clean(p, 80)).collect();
@@ -438,13 +438,7 @@ pub fn build_packet_screen(
         to,
         opts,
         Parts {
-            summary: build_screen(
-                src.agent.name(),
-                &src.session,
-                screen_lines,
-                &note_opts,
-                &src.cwd,
-            ),
+            summary: build_screen(src.agent, &src.session, screen_lines, &note_opts, &src.cwd),
             todos: Vec::new(),
             read: Vec::new(),
             edited: Vec::new(),
@@ -477,12 +471,12 @@ fn assemble(
         from: Origin {
             machine: clean(&src.machine, 128),
             session: clean(&src.session, 128),
-            agent: src.agent.name().to_string(),
+            agent: src.agent.to_string(),
             profile: src.profile.as_deref().map(|s| clean(s, 128)),
             name: clean(&src.name, 200),
         },
         to: Target {
-            agent: to.agent.name().to_string(),
+            agent: to.agent.to_string(),
             profile: clean(&to.profile, 128),
         },
         task: TaskInfo {

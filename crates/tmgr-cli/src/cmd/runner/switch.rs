@@ -6,7 +6,7 @@ use clap::ValueEnum;
 use serde_json::json;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::limits::MAX_RUN_PROMPT;
-use tmgr_ipc::api::{caps, SessionInfo};
+use tmgr_ipc::api::{caps, HandoffFinishReq, HandoffPrepareReq, SessionInfo};
 use tmgr_runner::daemon;
 use tmgr_runner::switch::{self as lib, SwitchError, Target};
 
@@ -43,38 +43,29 @@ fn err(e: SwitchError) -> Error {
     }
 }
 
-pub(super) fn carried_mode(old: &SessionInfo, keep_bypass: bool) -> PermissionMode {
-    match old.permission_mode.as_deref() {
-        Some("accept-edits") => PermissionMode::AcceptEdits,
-        Some("plan") => PermissionMode::Plan,
-        Some("bypass") if keep_bypass => PermissionMode::Bypass,
-        _ => PermissionMode::Ask,
-    }
-}
-
-fn was_flagged(old: &SessionInfo) -> bool {
-    old.permission_mode.as_deref() == Some("bypass") || old.no_sandbox
-}
-
-fn supports(profile: &str, mode: PermissionMode) -> bool {
+fn supports(profile: &str, mode: &str) -> bool {
     let dir = tmgr_runner::profile::user_dir();
     let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
     set.lookup(profile)
-        .is_ok_and(|p| p.permission_args(mode.as_str()).is_ok())
+        .is_ok_and(|p| p.permission_args(mode).is_ok())
 }
 
-fn fitted(old: &SessionInfo, target: Target, keep_bypass: bool) -> Result<(PermissionMode, bool)> {
-    let wanted = carried_mode(old, keep_bypass);
-    if supports(target.profile(), wanted) {
-        return Ok((wanted, false));
-    }
-    if wanted == PermissionMode::Bypass {
-        return Err(
-            Error::usage(format!("{} cannot run in bypass mode", target.profile()))
-                .hint("drop --keep-bypass to continue in ask mode"),
-        );
-    }
-    Ok((PermissionMode::Ask, true))
+fn fitted(
+    old: &SessionInfo,
+    target: Target,
+    keep_bypass: bool,
+) -> Result<(PermissionMode, lib::Carry)> {
+    let carried = lib::carry(old, target, keep_bypass, supports).map_err(|e| match e {
+        SwitchError::Usage(m) => Error::usage(m).hint("drop --keep-bypass to continue in ask mode"),
+        other => err(other),
+    })?;
+    let mode = match carried.mode.as_str() {
+        "accept-edits" => PermissionMode::AcceptEdits,
+        "plan" => PermissionMode::Plan,
+        "bypass" => PermissionMode::Bypass,
+        _ => PermissionMode::Ask,
+    };
+    Ok((mode, carried))
 }
 
 fn cut_bytes(note: &str) -> String {
@@ -152,7 +143,7 @@ enum Route {
 pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     let target = lib::check(&s, a.to.map(Target::from)).map_err(err)?;
-    let (mode, mode_fallback) = fitted(&s, target, a.keep_bypass)?;
+    let (mode, carried) = fitted(&s, target, a.keep_bypass)?;
     let no_sandbox = a.keep_bypass && s.no_sandbox;
     privilege::check_caps(
         &c.welcome().caps,
@@ -180,8 +171,11 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
         }
         _ => Route::Plain(plain_check(&c, target, mode, no_sandbox)?),
     };
+    let handoff = c.welcome().caps.iter().any(|h| h == caps::HANDOFF_V1);
     let screen = if lib::has_log(&s) {
         lib::ensure_readable(&s).map_err(err)?;
+        Vec::new()
+    } else if handoff {
         Vec::new()
     } else {
         if !c.welcome().caps.iter().any(|h| h == caps::SESSION_TEXT_V1) {
@@ -234,22 +228,46 @@ pub(super) fn switch(o: &Opts, a: &super::SwitchArgs) -> Result<i32> {
             format!("the old session stopped, but the new agent did not start: {e}. {resume_hint}"),
         )
     };
-    let note = lib::prepare_note(&s, &sessions, target, reference.as_deref(), &screen)
-        .map_err(|e| after_stop(e.to_string()))?;
+    let (text, exports, prepared) = if handoff {
+        let r = c
+            .handoff_prepare(HandoffPrepareReq {
+                session: s.id.clone(),
+                to: target.profile().to_string(),
+                keep_bypass: a.keep_bypass,
+                task_ref: reference.clone(),
+            })
+            .map_err(|e| after_stop(e.to_string()))?;
+        (r.prompt.clone(), Vec::new(), Some(r))
+    } else {
+        let note = lib::prepare_note(&s, &sessions, target, reference.as_deref(), &screen)
+            .map_err(|e| after_stop(e.to_string()))?;
+        (note.text, note.exports, None)
+    };
     let started = match route {
-        Route::Task(plan) => start_switch(*plan, &launch, (&s.id, &note.text)),
-        Route::Plain(plain) => start_plain(
-            &s,
-            target,
-            (mode, no_sandbox),
-            plain,
-            (launch.size, &note.text),
-        ),
+        Route::Task(plan) => start_switch(*plan, &launch, (&s.id, &text)),
+        Route::Plain(plain) => {
+            start_plain(&s, target, (mode, no_sandbox), plain, (launch.size, &text))
+        }
     }
     .map_err(|e| after_stop(e.to_string()))?;
-    let warning = lib::export_all(&started.info.id, &note.exports);
-    let dropped = was_flagged(&s) && !a.keep_bypass;
-    report(o, (&s, target), &started, (warning, dropped, mode_fallback))
+    let (warning, dropped, fell_back) = match prepared {
+        Some(r) => {
+            let warning = c
+                .handoff_finish(HandoffFinishReq {
+                    packet_id: r.packet_id,
+                    new_session: started.info.id.clone(),
+                })
+                .map(|f| f.warning)
+                .unwrap_or_else(|e| Some(format!("the handoff was not recorded in chat: {e}")));
+            (warning, r.bypass_dropped, r.fell_back)
+        }
+        None => (
+            lib::export_all(&started.info.id, &exports),
+            carried.bypass_dropped,
+            carried.fell_back,
+        ),
+    };
+    report(o, (&s, target), &started, (warning, dropped, fell_back))
 }
 
 fn report(
@@ -303,71 +321,6 @@ fn report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tmgr_ipc::api::{State, StateKind};
-
-    fn old(mode: Option<&str>, no_sandbox: bool) -> SessionInfo {
-        SessionInfo {
-            id: "a".into(),
-            name: "n".into(),
-            argv: vec![],
-            cwd: "/w".into(),
-            profile: Some("claude-code".into()),
-            state: State {
-                kind: StateKind::Exited,
-                since_ms: 0,
-                detail: None,
-                exit_code: Some(0),
-            },
-            created_ms: 0,
-            cols: 80,
-            rows: 24,
-            shim_pid: 1,
-            child_pid: 2,
-            task: None,
-            bundle_sha256: None,
-            origin: None,
-            permission_mode: mode.map(str::to_string),
-            resumed_from: None,
-            human_s: None,
-            no_sandbox,
-            checkpoints: None,
-            permission_cards: false,
-            team: None,
-            agent_session_id: None,
-            limit: None,
-            handoff_from: None,
-            managed: false,
-            manager: false,
-        }
-    }
-
-    #[test]
-    fn ordinary_modes_carry_over_silently() {
-        assert_eq!(
-            carried_mode(&old(Some("accept-edits"), false), false).as_str(),
-            "accept-edits"
-        );
-        assert_eq!(
-            carried_mode(&old(Some("plan"), false), false).as_str(),
-            "plan"
-        );
-        assert_eq!(
-            carried_mode(&old(Some("ask"), false), false).as_str(),
-            "ask"
-        );
-        assert_eq!(carried_mode(&old(None, false), true).as_str(), "ask");
-        assert_eq!(carried_mode(&old(Some("odd"), false), true).as_str(), "ask");
-    }
-
-    #[test]
-    fn bypass_carries_only_with_the_explicit_flag() {
-        let b = old(Some("bypass"), false);
-        assert_eq!(carried_mode(&b, false).as_str(), "ask");
-        assert_eq!(carried_mode(&b, true).as_str(), "bypass");
-        assert!(was_flagged(&b));
-        assert!(was_flagged(&old(Some("ask"), true)));
-        assert!(!was_flagged(&old(Some("plan"), false)));
-    }
 
     #[test]
     fn a_long_note_is_cut_on_a_character_boundary_within_the_byte_limit() {

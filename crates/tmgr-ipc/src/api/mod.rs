@@ -10,6 +10,7 @@ mod autopilot;
 mod bundle;
 mod checkpoints;
 mod error;
+mod handoff;
 pub mod policy;
 mod screen;
 mod types;
@@ -19,6 +20,7 @@ pub use autopilot::*;
 pub use bundle::*;
 pub use checkpoints::*;
 pub use error::ErrorCode;
+pub use handoff::*;
 pub use screen::*;
 pub use types::*;
 pub use worklog::*;
@@ -70,8 +72,9 @@ pub mod caps {
     pub const CHAT_V1: &str = "chat.v1";
     pub const MANAGER_V1: &str = "manager.v1";
     pub const RUN_PROMPT_V1: &str = "run_prompt.v1";
+    pub const HANDOFF_V1: &str = "handoff.v1";
 
-    pub const ALL: [&str; 41] = [
+    pub const ALL: [&str; 42] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -113,6 +116,7 @@ pub mod caps {
         CHAT_V1,
         MANAGER_V1,
         RUN_PROMPT_V1,
+        HANDOFF_V1,
     ];
 }
 
@@ -154,6 +158,8 @@ pub mod method {
     pub const CHECKPOINTS_LIST: &str = "checkpoints.list";
     pub const CHECKPOINTS_DIFF: &str = "checkpoints.diff";
     pub const CHECKPOINTS_RESTORE: &str = "checkpoints.restore";
+    pub const HANDOFF_PREPARE: &str = "handoff.prepare";
+    pub const HANDOFF_FINISH: &str = "handoff.finish";
 }
 
 pub mod limits {

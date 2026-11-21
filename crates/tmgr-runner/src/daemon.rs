@@ -65,6 +65,7 @@ use tmgr_ipc::{auth, secret, server};
 
 mod chat_api;
 mod checkpoints;
+mod handoff;
 mod manager;
 
 const MAX_CONNS: usize = 64;
@@ -2948,6 +2949,9 @@ impl Runner {
             method::LAYOUT_SET => self.layout_set(p).map(|_| Value::Null),
             method::ATTACH_OPEN => self.attach_open(conn, p),
             method::ATTACH_SET => self.attach_set(conn, p),
+            m @ (method::HANDOFF_PREPARE | method::HANDOFF_FINISH) => {
+                self.handoff_dispatch(conn, m, p)
+            }
             m if m.starts_with("chat.") => self.chat_dispatch(conn, m, p),
             m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
         }
@@ -5449,6 +5453,12 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     let secret = load_client_secret(&cfg.dir)?;
     if let Err(e) = humantime::prune_records(&cfg.dir, now_ms() / 1000) {
         log(&format!("human time: prune failed: {e}"));
+    }
+    match crate::handoff_store::HandoffStore::open(&cfg.dir) {
+        Ok(store) => {
+            store.prune(now_ms(), crate::handoff_store::RETENTION_MS);
+        }
+        Err(e) => log(&format!("handoff: prune skipped: {e}")),
     }
     let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
     clock.load_totals(&humantime::read_records(&cfg.dir));
