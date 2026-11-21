@@ -313,7 +313,7 @@ mod tests {
         #[derive(Deserialize)]
         #[serde(tag = "type", rename_all = "snake_case")]
         enum Old {
-            Event(Value),
+            Closed,
             #[serde(other)]
             Unknown,
         }
