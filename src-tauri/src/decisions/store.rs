@@ -8,12 +8,16 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tmgr_phone::AckResult;
+use tmgr_ipc::actions::{ActionDecision, ActionIn, OPT_APPROVE, OPT_REJECT};
 use tmgr_ipc::loopback;
 use tmgr_ipc::decisions::{
   new_card_id, valid_card_id, CardIn, CardPatch, Check, ChoiceOut, CodeIn, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
   PatchIn, PendingDelivery, Secret, Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
   OUTCOME_SIMILAR, OUTCOME_UPDATED,
 };
+
+mod action_runs;
+pub use action_runs::{ActionView, PendingAction};
 
 pub const TITLE_MAX: usize = 300;
 pub const TEXT_MAX: usize = 64 * 1024;
@@ -93,6 +97,8 @@ pub struct AnswerIn {
   pub dismissed: bool,
   #[serde(default)]
   pub seen_ms: Option<i64>,
+  #[serde(default)]
+  pub action: Option<ActionDecision>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -154,6 +160,8 @@ pub struct CardView {
   pub answer: Option<Event>,
   pub messages: Vec<MessageView>,
   pub unpicked: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub action: Option<ActionView>,
   #[serde(skip)]
   pub rev: String,
   #[serde(skip)]
@@ -402,6 +410,20 @@ fn sanitize(mut c: CardIn) -> Result<CardIn, String> {
   c.links.pr = safe_ref(c.links.pr.take());
   c.replaces = cap_opt(c.replaces.take(), 64);
   c.key = cap_opt(c.key.take(), KEY_MAX);
+  if let Some(a) = &c.action {
+    a.validate()?;
+    if c.replaces.is_some() {
+      return Err("an action card cannot replace another card".into());
+    }
+    if c.reply_via == "hook" {
+      return Err("an action card cannot come from a terminal session".into());
+    }
+    c.supersede = false;
+    c.options = vec![
+      Opt { id: OPT_APPROVE.into(), label: "Approve".into(), recommended: false },
+      Opt { id: OPT_REJECT.into(), label: "Reject".into(), recommended: false },
+    ];
+  }
   Ok(c)
 }
 
@@ -847,6 +869,13 @@ impl Store {
            detail TEXT NOT NULL, at_ms INTEGER NOT NULL, PRIMARY KEY(card_id, seq));
          CREATE TABLE IF NOT EXISTS task_comments(
            card_id TEXT NOT NULL, seq INTEGER NOT NULL, posted_ms INTEGER NOT NULL, skipped TEXT, PRIMARY KEY(card_id, seq));
+         CREATE TABLE IF NOT EXISTS action_runs(
+           run_id TEXT PRIMARY KEY, card_id TEXT NOT NULL, kind TEXT NOT NULL, final_sha TEXT NOT NULL, payload TEXT NOT NULL,
+           state TEXT NOT NULL, claimed_ms INTEGER, created_ms INTEGER NOT NULL, result TEXT, finished_ms INTEGER);
+         CREATE INDEX IF NOT EXISTS action_runs_card ON action_runs(card_id);
+         CREATE TABLE IF NOT EXISTS action_approvals(
+           card_id TEXT PRIMARY KEY, kind TEXT NOT NULL, agent TEXT NOT NULL, proposed_sha TEXT NOT NULL, final_sha TEXT NOT NULL,
+           edited INTEGER NOT NULL, outcome TEXT NOT NULL, via TEXT NOT NULL, decided_ms INTEGER NOT NULL);
          UPDATE deliveries SET state='undelivered', detail='desktop restarted' WHERE state='queued';",
       )
       .map_err(sql_err)?;
@@ -891,7 +920,9 @@ impl Store {
         .map_err(sql_err)?;
     }
     tx.commit().map_err(sql_err)?;
-    Ok(Store { conn })
+    let store = Store { conn };
+    store.sweep_executing()?;
+    Ok(store)
   }
 
   pub fn check(card: &CardIn) -> Result<(), String> {
@@ -1006,8 +1037,17 @@ impl Store {
       let card = serde_json::from_str(&existing.card).map_err(json_err)?;
       return Ok(Created { id: canon, fresh: false, changed: false, outcome, card, similar: Vec::new() });
     }
+    if let Some(ActionIn::Pr(p)) = &card.action {
+      let spec = card
+        .diffs
+        .iter()
+        .find(|d| d.base.as_deref() == Some(p.base_sha.as_str()) && d.head.as_deref() == Some(p.head_sha.as_str()))
+        .ok_or_else(|| "a PR card needs a diff pinned to base_sha and head_sha".to_owned())?;
+      super::actions::verify_pr_commits(p, Path::new(&spec.repo))?;
+    }
     let patches = std::mem::take(&mut card.patches);
-    let target = self.resend_target(&card)?.filter(|(t, _)| t.state != "closed");
+    let target =
+      if card.action.is_some() { None } else { self.resend_target(&card)?.filter(|(t, _)| t.state != "closed") };
     if let Some((target, old)) = target {
       let tx = self.conn.transaction().map_err(sql_err)?;
       tx.execute("INSERT INTO aliases(alias, card_id) VALUES(?1, ?2)", params![id, target.id]).map_err(sql_err)?;
@@ -1099,11 +1139,12 @@ impl Store {
     };
     let Some(row) = canon.map(|c| self.raw(&c)).transpose()?.flatten() else { return Ok(None) };
     let old: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
-    Ok((old.reply_via != "hook").then_some((row, old)))
+    Ok((old.reply_via != "hook" && old.action.is_none()).then_some((row, old)))
   }
 
   fn similar(&self, card: &CardIn, carries_patches: bool) -> Result<Vec<Found>, String> {
     if card.force_new != Some(false)
+      || card.action.is_some()
       || card.reply_via == "hook"
       || matches!(card.kind.as_str(), "review" | "release" | "check")
       || card.diff.is_some()
@@ -1124,7 +1165,7 @@ impl Store {
     let mut hits = Vec::new();
     for r in rows {
       let old: CardIn = serde_json::from_str(&r.card).map_err(json_err)?;
-      if old.reply_via == "hook" || old.diff.is_some() || !old.diffs.is_empty() || !self.patch_info(&r.id)?.is_empty() {
+      if old.reply_via == "hook" || old.action.is_some() || old.diff.is_some() || !old.diffs.is_empty() || !self.patch_info(&r.id)?.is_empty() {
         continue;
       }
       if let Some(score) = similarity(card, &old) {
@@ -1279,6 +1320,7 @@ impl Store {
       .map_err(sql_err)?;
     let rev = self.revision(&r, &messages)?;
     let unpicked = self.unpicked(&r, &c, answer.as_ref(), now)?;
+    let action = self.action_view(&r.id, &c)?;
     Ok(CardView {
       id: r.id,
       created_ms: r.created_ms,
@@ -1307,6 +1349,7 @@ impl Store {
       answer,
       messages,
       unpicked,
+      action,
       rev,
       code: c.code,
       first_patch,
@@ -1558,6 +1601,12 @@ impl Store {
         return Err("the card changed since you opened it; review it and answer again".into());
       }
     }
+    if card.action.is_some() {
+      return self.answer_action(id, card, a);
+    }
+    if a.action.is_some() {
+      return Err("this card has no action".into());
+    }
     let tx = self.conn.unchecked_transaction().map_err(sql_err)?;
     let done = self.write_answer(&tx, id, card, a, None)?;
     tx.commit().map_err(sql_err)?;
@@ -1743,6 +1792,9 @@ impl Store {
       return record(self, PhoneOutcome::rejected(AckResult::Closed, winner, label));
     }
     let card: CardIn = serde_json::from_str(&row.card).map_err(json_err)?;
+    if card.action.is_some() {
+      return reject(self, AckResult::NotEligible);
+    }
     let view = self.view(row, now_ms())?;
     let target = delivery_target(&self.conn, &r.card_id).unwrap_or_default();
     let chat = r.action == tmgr_phone::Action::Chat;
@@ -1876,7 +1928,9 @@ impl Store {
     if let Some(p) = patch {
       let raw = self.raw(id)?.ok_or_else(|| "unknown card".to_owned())?;
       let old: CardIn = serde_json::from_str(&raw.card).map_err(json_err)?;
-      if !is_live(&raw.state) {
+      if old.action.is_some() {
+        status = Some("refused: an action card cannot be changed".to_owned());
+      } else if !is_live(&raw.state) {
         status = Some("refused: the card is already answered or closed, so it was not changed".to_owned());
       } else if old.reply_via == "hook" {
         status = Some("refused: this card comes from a terminal session and cannot be updated".to_owned());
