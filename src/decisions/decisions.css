@@ -830,6 +830,20 @@ kbd {
 	font-weight: 600;
 	margin-bottom: 4px;
 }
+.final-choices {
+	list-style: none;
+	margin: 0 0 4px;
+	padding: 0;
+}
+.final-choice {
+	color: var(--fg);
+	font-weight: 500;
+}
+.final-choice-note {
+	color: var(--fg-subtle);
+	margin: 2px 0 6px;
+	white-space: pre-wrap;
+}
 
 .right {
 	display: flex;

@@ -88,8 +88,15 @@ export interface LineComment {
 	text: string;
 }
 
+export interface AnswerChoice {
+	id: string;
+	label: string;
+	note?: string;
+}
+
 export interface Answer {
 	choice?: string;
+	choices?: AnswerChoice[];
 	note?: string;
 	free_text?: string;
 	line_comments: LineComment[];

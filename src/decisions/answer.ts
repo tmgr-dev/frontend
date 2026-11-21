@@ -1,5 +1,11 @@
 import { t } from '@/i18n';
-import type { Answer, CardDelivery, CardView, LineComment } from './types';
+import type {
+	Answer,
+	AnswerChoice,
+	CardDelivery,
+	CardView,
+	LineComment,
+} from './types';
 
 export interface AnswerDraft {
 	choice?: string | null;
@@ -60,12 +66,31 @@ export const cardMode = (card: CardView): CardMode => {
 export const answerSummary = (card: CardView, answer: Answer): string => {
 	if (answer.dismissed) return t('decisions.answer.dismissed');
 	if (answer.deferred) return t('decisions.answer.deferred');
+	if (answer.choices?.length) {
+		const labels = answer.choices.map((c) => c.label).join(', ');
+		return answer.choices.some((c) => c.note)
+			? t('decisions.answer.withNote', { text: labels })
+			: labels;
+	}
 	const option = card.options.find((o) => o.id === answer.choice);
 	const text =
 		option?.label ?? answer.free_text ?? t('decisions.answer.answered');
 	return answer.note && option
 		? t('decisions.answer.withNote', { text })
 		: text;
+};
+
+export const answerChoices = (card: CardView): AnswerChoice[] =>
+	card.answer?.choices ?? [];
+
+export const answerDetail = (card: CardView): string => {
+	const { answer, options } = card;
+	if (!answer) return '';
+	if (answer.choices?.length) return answer.free_text ?? '';
+	const option = options.find((o) => o.id === answer.choice);
+	return [option?.label, answer.note, answer.free_text]
+		.filter(Boolean)
+		.join(' — ');
 };
 
 export const answerToast = (card: CardView, answer: Answer): string => {

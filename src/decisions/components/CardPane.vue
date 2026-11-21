@@ -78,6 +78,14 @@
 
 		<div v-if="mode === 'final'" class="notice final">
 			<div class="what">{{ finalTitle }}</div>
+			<ul v-if="finalChoices.length" class="final-choices">
+				<li v-for="choice in finalChoices" :key="choice.id">
+					<span class="final-choice">{{ choice.label }}</span>
+					<div v-if="choice.note" class="final-choice-note">
+						{{ choice.note }}
+					</div>
+				</li>
+			</ul>
 			<div v-if="finalDetail">{{ finalDetail }}</div>
 		</div>
 
@@ -191,6 +199,8 @@
 	import { autosizeTextarea } from '@/utils/commentComposer';
 	import { defineComponent, type PropType } from 'vue';
 	import {
+		answerChoices,
+		answerDetail,
 		cardMode,
 		deliveryLabel,
 		listenLabel,
@@ -209,7 +219,7 @@
 	import { isSubmitKey } from '../keys';
 	import { clickedHttpLink, renderMarkdown } from '../markdown';
 	import { reconcileSelection } from '../selection';
-	import type { CardOption, CardView } from '../types';
+	import type { AnswerChoice, CardOption, CardView } from '../types';
 
 	const PICK_DELAY_MS = 180;
 	const FREE_MAX_HEIGHT = 240;
@@ -274,14 +284,13 @@
 				if (answer?.deferred) return t('decisions.card.deferred');
 				return t('decisions.card.answered');
 			},
+			finalChoices(): AnswerChoice[] {
+				return answerChoices(this.card);
+			},
 			finalDetail(): string {
-				const { state, answer, closed_reason: reason, options } = this.card;
+				const { state, closed_reason: reason } = this.card;
 				if (state === 'closed') return reason ?? '';
-				if (!answer) return '';
-				const option = options.find((o) => o.id === answer.choice);
-				return [option?.label, answer.note, answer.free_text]
-					.filter(Boolean)
-					.join(' — ');
+				return answerDetail(this.card);
 			},
 		},
 		watch: {
