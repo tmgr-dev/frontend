@@ -1,16 +1,20 @@
 use super::{lock, Chat};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{SessionInfo, StateKind};
-use tmgr_ipc::chat::{limits, Author, AuthorKind, ChatMessage, MessageKind, SessionMeta, CHAT_V};
+use tmgr_ipc::chat::{
+    limits, Author, AuthorKind, ChatMessage, MessageKind, RoomRef, SessionMeta, CHAT_V,
+};
 use tmgr_session::{switch, tail, Agent};
 
 const RESOLVE_EVERY: Duration = Duration::from_secs(30);
-const BACKFILL_MAX: u64 = 256 << 10;
+const BACKFILL_BYTES: u64 = 4 << 20;
+const BACKFILL_TURNS: usize = 30;
 
 pub struct Tail {
     path: PathBuf,
@@ -23,6 +27,8 @@ pub struct Tail {
 struct Saved {
     path: PathBuf,
     offset: u64,
+    #[serde(default)]
+    backfilled: bool,
 }
 
 fn agent_of(profile: Option<&str>) -> Option<Agent> {
@@ -45,6 +51,7 @@ fn save(dir: &Path, session: &str, t: &Tail) {
     let saved = Saved {
         path: t.path.clone(),
         offset: t.offset,
+        backfilled: true,
     };
     let path = state_path(dir, session);
     let tmp = path.with_extension("json.tmp");
@@ -93,6 +100,75 @@ fn update_meta(meta: &mut SessionMeta, profile: Option<&str>, usage: &tail::Usag
     }
 }
 
+fn post(
+    chat: &Chat,
+    room: &RoomRef,
+    s: &SessionInfo,
+    meta: &SessionMeta,
+    turn: tail::Turn,
+) -> Result<(), String> {
+    let text = clip(turn.text);
+    if turn.user && chat.take_sent(&s.id, &text) {
+        return Ok(());
+    }
+    let ts_ms = turn
+        .ts
+        .as_deref()
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .and_then(|t| u64::try_from(t.timestamp_millis()).ok())
+        .unwrap_or_else(super::now_ms);
+    chat.append(ChatMessage {
+        v: CHAT_V,
+        id: chat.mint_id(),
+        room: room.clone(),
+        author: Author {
+            kind: AuthorKind::Session,
+            id: s.id.clone(),
+            machine: Some(chat.machine().to_string()),
+            device: None,
+            agent: s.profile.clone(),
+        },
+        ts_ms,
+        kind: MessageKind::Text,
+        body_md: text,
+        attachments: Vec::new(),
+        reply_to: None,
+        decision: None,
+        session_meta: Some(meta.clone()),
+        user_turn: turn.user,
+    })
+    .map(|_| ())
+}
+
+fn backfill(chat: &Chat, s: &SessionInfo, agent: Agent, t: &mut Tail, end: u64, legacy: bool) {
+    let room = chat.session_room(&s.id);
+    let Ok(start) = tail::backfill_start(&t.path, end, BACKFILL_BYTES) else {
+        return;
+    };
+    let window = usize::try_from(end - start).unwrap_or(usize::MAX).max(1);
+    let Ok(batch) = tail::read_new(&t.path, agent, start, window) else {
+        return;
+    };
+    update_meta(&mut t.meta, s.profile.as_deref(), &batch.usage);
+    let known: HashSet<String> = chat
+        .history(&room, None, Some(200))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|m| m.author.kind == AuthorKind::Session)
+        .map(|m| m.body_md)
+        .collect();
+    let skip = batch.turns.len().saturating_sub(BACKFILL_TURNS);
+    for turn in batch.turns.into_iter().skip(skip) {
+        if known.contains(&clip(turn.text.clone())) {
+            continue;
+        }
+        if post(chat, &room, s, &t.meta, turn).is_err() {
+            return;
+        }
+    }
+    t.offset = if legacy { end } else { batch.offset };
+}
+
 pub fn capture(chat: &Chat, sessions: &[SessionInfo]) {
     capture_with(chat, sessions, &|s, a| switch::log_of(s, a).ok());
 }
@@ -126,20 +202,27 @@ pub fn capture_with(
             if let Some(path) = resolve(s, agent) {
                 let changed = tails.get(&s.id).is_none_or(|t| t.path != path);
                 if changed {
-                    let offset = match load(dir, &s.id) {
-                        Some(saved) if saved.path == path => saved.offset,
-                        Some(_) => 0,
-                        None => match tail::len(&path) {
-                            Ok(n) if n > BACKFILL_MAX => n,
-                            _ => 0,
-                        },
+                    let (offset, backfill_from) = match load(dir, &s.id) {
+                        Some(saved) if saved.path == path && saved.backfilled => {
+                            (saved.offset, None)
+                        }
+                        Some(saved) if saved.path == path => {
+                            (saved.offset, Some((saved.offset, true)))
+                        }
+                        _ => {
+                            let end = tail::len(&path).unwrap_or(0);
+                            (end, Some((end, false)))
+                        }
                     };
-                    let t = Tail {
+                    let mut t = Tail {
                         path,
                         offset,
                         resolve_at: Instant::now() + RESOLVE_EVERY,
                         meta: SessionMeta::default(),
                     };
+                    if let Some((end, legacy)) = backfill_from {
+                        backfill(chat, s, agent, &mut t, end, legacy);
+                    }
                     save(dir, &s.id, &t);
                     tails.insert(s.id.clone(), t);
                 } else if let Some(t) = tails.get_mut(&s.id) {
@@ -155,30 +238,10 @@ pub fn capture_with(
         let Ok(batch) = tail::read_new(&t.path, agent, t.offset, tail::WINDOW) else {
             continue;
         };
-        let author = Author {
-            kind: AuthorKind::Session,
-            id: s.id.clone(),
-            machine: Some(chat.machine().to_string()),
-            device: None,
-            agent: s.profile.clone(),
-        };
         update_meta(&mut t.meta, s.profile.as_deref(), &batch.usage);
         let mut failed = false;
-        for text in batch.texts {
-            let msg = ChatMessage {
-                v: CHAT_V,
-                id: chat.mint_id(),
-                room: room.clone(),
-                author: author.clone(),
-                ts_ms: super::now_ms(),
-                kind: MessageKind::Text,
-                body_md: clip(text),
-                attachments: Vec::new(),
-                reply_to: None,
-                decision: None,
-                session_meta: Some(t.meta.clone()),
-            };
-            if chat.append(msg).is_err() {
+        for turn in batch.turns {
+            if post(chat, &room, s, &t.meta, turn).is_err() {
                 failed = true;
                 break;
             }
@@ -322,24 +385,156 @@ mod tests {
         assert_eq!(bodies(&again, SID), ["one", "two"]);
     }
 
+    fn user_line(text: &str) -> String {
+        json!({"type": "user", "message": {"role": "user", "content": text}}).to_string() + "\n"
+    }
+
+    fn kinds(chat: &Chat, id: &str) -> Vec<(bool, String)> {
+        chat.history(&chat.session_room(id), None, None)
+            .unwrap()
+            .into_iter()
+            .map(|m| (m.user_turn, m.body_md))
+            .collect()
+    }
+
     #[test]
-    fn a_big_existing_log_is_not_replayed_but_new_turns_are() {
+    fn user_prompts_are_captured_as_user_turns_in_order() {
         let t = tempfile::tempdir().unwrap();
         let chat = Chat::open(&t.path().join("run"));
         let log = t.path().join("log.jsonl");
-        append(&log, &line(&"old ".repeat(80_000)));
-        let s = [info(SID, "codex", "working")];
+        append(&log, &(user_line("question") + &line("answer")));
+        let s = [info(SID, "claude-code", "working")];
+        capture_with(&chat, &s, &|_, _| Some(log.clone()));
+        assert_eq!(
+            kinds(&chat, SID),
+            [
+                (true, "question".to_string()),
+                (false, "answer".to_string())
+            ]
+        );
+        let m = chat
+            .history(&chat.session_room(SID), None, None)
+            .unwrap()
+            .remove(0);
+        assert_eq!(m.author.kind, AuthorKind::Session);
+        m.validate().unwrap();
+    }
+
+    #[test]
+    fn a_big_existing_log_backfills_only_the_last_turns() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        for _ in 0..16 {
+            append(&log, &line(&"old ".repeat(80_000)));
+        }
+        for i in 0..40 {
+            append(
+                &log,
+                &(user_line(&format!("q{i}")) + &line(&format!("a{i}"))),
+            );
+        }
+        let s = [info(SID, "claude-code", "working")];
         let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
         capture_with(&chat, &s, &resolve);
+        let got = kinds(&chat, SID);
+        assert_eq!(got.len(), BACKFILL_TURNS);
+        assert_eq!(got.last().unwrap().1, "a39");
+        assert_eq!(got[0].1, "q25");
+        assert!(got.iter().all(|(_, b)| !b.starts_with("old")));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(kinds(&chat, SID).len(), BACKFILL_TURNS);
+        append(&log, &line("fresh"));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(bodies(&chat, SID).last().unwrap(), "fresh");
+    }
+
+    #[test]
+    fn a_log_over_the_window_starts_at_a_line_boundary() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line(&"x".repeat((BACKFILL_BYTES as usize) + 10)));
+        append(&log, &(user_line("recent q") + &line("recent a")));
+        capture_with(&chat, &[info(SID, "codex", "working")], &|_, _| {
+            Some(log.clone())
+        });
         assert!(bodies(&chat, SID).is_empty());
-        let codex =
-            json!({"type": "response_item", "payload": {"type": "message", "role": "assistant",
-            "content": [{"type": "output_text", "text": "fresh"}]}})
+        let codex_user =
+            json!({"type": "response_item", "payload": {"type": "message", "role": "user",
+            "content": [{"type": "input_text", "text": "codex q"}]}})
             .to_string()
                 + "\n";
-        append(&log, &codex);
+        let codex_log = t.path().join("codex.jsonl");
+        append(&codex_log, &codex_user);
+        let other = "s_zyxwvutsrq";
+        capture_with(&chat, &[info(other, "codex", "working")], &|_, _| {
+            Some(codex_log.clone())
+        });
+        assert_eq!(kinds(&chat, other), [(true, "codex q".to_string())]);
+    }
+
+    #[test]
+    fn an_old_saved_state_without_backfill_gets_history_once_without_duplicates() {
+        let t = tempfile::tempdir().unwrap();
+        let run = t.path().join("run");
+        let log = t.path().join("log.jsonl");
+        append(&log, &(user_line("q1") + &line("a1")));
+        let end = tail::len(&log).unwrap();
+        append(&log, &line("a2"));
+        let chat = Chat::open(&run);
+        let dir = chat.store.as_ref().unwrap().dir().to_path_buf();
+        fs::write(
+            state_path(&dir, SID),
+            serde_json::to_vec(&json!({"path": log, "offset": end})).unwrap(),
+        )
+        .unwrap();
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
         capture_with(&chat, &s, &resolve);
-        assert_eq!(bodies(&chat, SID), ["fresh"]);
+        assert_eq!(
+            kinds(&chat, SID),
+            [
+                (true, "q1".to_string()),
+                (false, "a1".to_string()),
+                (false, "a2".to_string())
+            ]
+        );
+        let again = Chat::open(&run);
+        capture_with(&again, &s, &resolve);
+        assert_eq!(kinds(&again, SID).len(), 3);
+    }
+
+    #[test]
+    fn a_changed_transcript_path_backfills_instead_of_replaying_from_zero() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let first = t.path().join("first.jsonl");
+        let second = t.path().join("second.jsonl");
+        append(&first, &line("one"));
+        append(&second, &line(&"old ".repeat(2_000_000)));
+        append(&second, &line("two"));
+        let s = [info(SID, "claude-code", "working")];
+        capture_with(&chat, &s, &|_, _| Some(first.clone()));
+        let tails_path = chat.store.as_ref().unwrap().dir().to_path_buf();
+        lock(&chat.tails).get_mut(SID).unwrap().resolve_at = Instant::now();
+        capture_with(&chat, &s, &|_, _| Some(second.clone()));
+        assert_eq!(bodies(&chat, SID), ["one", "two"]);
+        assert!(load(&tails_path, SID).unwrap().path == second);
+    }
+
+    #[test]
+    fn a_prompt_sent_from_chat_is_not_echoed_as_a_second_message() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        chat.remember_sent(SID, "run it\n");
+        append(&log, &(user_line("run it") + &user_line("run it")));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(kinds(&chat, SID), [(true, "run it".to_string())]);
     }
 
     #[test]

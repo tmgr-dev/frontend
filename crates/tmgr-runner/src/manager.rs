@@ -748,6 +748,7 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                 reply_to: reply_to.map(String::from),
                 decision: None,
                 session_meta: None,
+                user_turn: false,
             };
             msg.validate()?;
             let sent = st.chat.post(msg)?;

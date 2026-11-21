@@ -583,6 +583,7 @@ fn author_style(m: &ChatMessage) -> Style {
     }
     match m.author.kind {
         AuthorKind::Owner => Style::new().fg(c.strong).add_modifier(Modifier::BOLD),
+        _ if m.user_turn => Style::new().fg(c.strong).add_modifier(Modifier::BOLD),
         AuthorKind::Manager => Style::new().fg(c.accent).add_modifier(Modifier::BOLD),
         _ => Style::new().fg(c.waiting).add_modifier(Modifier::BOLD),
     }
@@ -594,6 +595,8 @@ pub(super) fn message_rows(chat: &ChatState, msgs: &[ChatMessage], width: usize)
         let sys = system_like(m);
         let label = if sys {
             "System".to_string()
+        } else if m.user_turn {
+            "You".to_string()
         } else {
             author_label(&m.author)
         };

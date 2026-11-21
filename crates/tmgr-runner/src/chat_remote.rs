@@ -117,6 +117,7 @@ pub fn send(
         reply_to: None,
         decision: None,
         session_meta: None,
+        user_turn: false,
     })
 }
 
@@ -208,6 +209,7 @@ mod tests {
             reply_to: None,
             decision: None,
             session_meta: None,
+            user_turn: false,
         }
     }
 

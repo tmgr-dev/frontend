@@ -9,9 +9,16 @@ pub const WINDOW: usize = 1 << 20;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Replies {
-    pub texts: Vec<String>,
+    pub turns: Vec<Turn>,
     pub offset: u64,
     pub usage: Usage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Turn {
+    pub user: bool,
+    pub text: String,
+    pub ts: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -26,6 +33,23 @@ pub fn len(path: &Path) -> Result<u64, String> {
         .metadata()
         .map(|m| m.len())
         .map_err(|e| e.to_string())
+}
+
+pub fn backfill_start(path: &Path, end: u64, max: u64) -> Result<u64, String> {
+    if end <= max {
+        return Ok(0);
+    }
+    let from = end - max;
+    let mut f = open_regular(path)?;
+    f.seek(SeekFrom::Start(from)).map_err(|e| e.to_string())?;
+    let mut buf = Vec::new();
+    f.take(max)
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
+    Ok(match buf.iter().position(|b| *b == b'\n') {
+        Some(i) => from + i as u64 + 1,
+        None => end,
+    })
 }
 
 pub fn read_new(path: &Path, agent: Agent, offset: u64, window: usize) -> Result<Replies, String> {
@@ -43,7 +67,7 @@ pub fn read_new(path: &Path, agent: Agent, offset: u64, window: usize) -> Result
         let Some(end) = buf.iter().rposition(|b| *b == b'\n') else {
             if buf.len() < want || buf.is_empty() {
                 return Ok(Replies {
-                    texts: Vec::new(),
+                    turns: Vec::new(),
                     offset,
                     usage: Usage::default(),
                 });
@@ -53,12 +77,12 @@ pub fn read_new(path: &Path, agent: Agent, offset: u64, window: usize) -> Result
                 continue;
             }
             return Ok(Replies {
-                texts: Vec::new(),
+                turns: Vec::new(),
                 offset: offset + buf.len() as u64,
                 usage: Usage::default(),
             });
         };
-        let mut texts = Vec::new();
+        let mut turns = Vec::new();
         let mut usage = Usage::default();
         for v in buf[..end]
             .split(|b| *b == b'\n')
@@ -66,10 +90,10 @@ pub fn read_new(path: &Path, agent: Agent, offset: u64, window: usize) -> Result
             .filter_map(|l| serde_json::from_slice::<Value>(l).ok())
         {
             meter(agent, &v, &mut usage);
-            texts.extend(reply(agent, &v));
+            turns.extend(turn(agent, &v));
         }
         return Ok(Replies {
-            texts,
+            turns,
             offset: offset + end as u64 + 1,
             usage,
         });
@@ -127,39 +151,88 @@ pub fn meter(agent: Agent, v: &Value, usage: &mut Usage) {
     }
 }
 
-pub fn reply(agent: Agent, v: &Value) -> Option<String> {
-    let text = match agent {
+fn injected(text: &str) -> bool {
+    text.starts_with('<') || text.starts_with("[Request interrupted")
+}
+
+pub fn turn(agent: Agent, v: &Value) -> Option<Turn> {
+    let (user, text) = match agent {
         Agent::Claude => {
-            if v["type"].as_str() != Some("assistant")
-                || v["isSidechain"].as_bool() == Some(true)
-                || v["message"]["model"].as_str() == Some("<synthetic>")
-            {
+            if v["isSidechain"].as_bool() == Some(true) {
                 return None;
             }
-            v["message"]["content"]
-                .as_array()?
-                .iter()
-                .filter(|b| b["type"].as_str() == Some("text"))
-                .filter_map(|b| b["text"].as_str())
-                .collect::<String>()
+            match v["type"].as_str()? {
+                "assistant" => {
+                    if v["message"]["model"].as_str() == Some("<synthetic>") {
+                        return None;
+                    }
+                    let text = v["message"]["content"]
+                        .as_array()?
+                        .iter()
+                        .filter(|b| b["type"].as_str() == Some("text"))
+                        .filter_map(|b| b["text"].as_str())
+                        .collect::<String>();
+                    (false, text)
+                }
+                "user" => {
+                    if ["isMeta", "isCompactSummary", "isVisibleInTranscriptOnly"]
+                        .iter()
+                        .any(|k| v[*k].as_bool() == Some(true))
+                    {
+                        return None;
+                    }
+                    let content = &v["message"]["content"];
+                    let text = match content {
+                        Value::String(s) => s.clone(),
+                        Value::Array(blocks) => {
+                            if blocks
+                                .iter()
+                                .any(|b| b["type"].as_str() == Some("tool_result"))
+                            {
+                                return None;
+                            }
+                            blocks
+                                .iter()
+                                .filter(|b| b["type"].as_str() == Some("text"))
+                                .filter_map(|b| b["text"].as_str())
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        }
+                        _ => return None,
+                    };
+                    (true, text)
+                }
+                _ => return None,
+            }
         }
         Agent::Codex => {
             let p = &v["payload"];
-            if v["type"].as_str() != Some("response_item")
-                || p["type"].as_str() != Some("message")
-                || p["role"].as_str() != Some("assistant")
+            if v["type"].as_str() != Some("response_item") || p["type"].as_str() != Some("message")
             {
                 return None;
             }
-            p["content"]
+            let user = match p["role"].as_str()? {
+                "assistant" => false,
+                "user" => true,
+                _ => return None,
+            };
+            let text = p["content"]
                 .as_array()?
                 .iter()
                 .filter_map(|c| c["text"].as_str())
-                .collect::<String>()
+                .collect::<String>();
+            (user, text)
         }
     };
     let text = text.trim();
-    (!text.is_empty()).then(|| text.to_string())
+    if text.is_empty() || (user && (injected(text) || text.starts_with("# AGENTS.md"))) {
+        return None;
+    }
+    Some(Turn {
+        user,
+        text: text.to_string(),
+        ts: v["timestamp"].as_str().map(str::to_string),
+    })
 }
 
 #[cfg(test)]
@@ -179,6 +252,88 @@ mod tests {
             .open(path)
             .unwrap();
         f.write_all(s.as_bytes()).unwrap();
+    }
+
+    fn texts(r: &Replies) -> Vec<String> {
+        r.turns.iter().map(|t| t.text.clone()).collect()
+    }
+
+    fn reply(agent: Agent, v: &Value) -> Option<String> {
+        turn(agent, v).filter(|t| !t.user).map(|t| t.text)
+    }
+
+    fn user_text(agent: Agent, v: &Value) -> Option<String> {
+        turn(agent, v).filter(|t| t.user).map(|t| t.text)
+    }
+
+    #[test]
+    fn claude_user_prompts_count_but_injected_lines_do_not() {
+        let plain = json!({"type": "user", "timestamp": "2026-01-02T03:04:05Z", "message": {"role": "user", "content": " fix the bug \n"}});
+        let blocks = json!({"type": "user", "message": {"content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}});
+        assert_eq!(
+            user_text(Agent::Claude, &plain).as_deref(),
+            Some("fix the bug")
+        );
+        assert_eq!(
+            turn(Agent::Claude, &plain).unwrap().ts.as_deref(),
+            Some("2026-01-02T03:04:05Z")
+        );
+        assert_eq!(user_text(Agent::Claude, &blocks).as_deref(), Some("a\nb"));
+        let skipped = [
+            json!({"type": "user", "isMeta": true, "message": {"content": "meta"}}),
+            json!({"type": "user", "isCompactSummary": true, "message": {"content": "This session is being continued"}}),
+            json!({"type": "user", "isSidechain": true, "message": {"content": "side"}}),
+            json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "x", "content": "out"}, {"type": "text", "text": "t"}]}}),
+            json!({"type": "user", "message": {"content": "<task-notification>done</task-notification>"}}),
+            json!({"type": "user", "message": {"content": "<local-command-stdout>x</local-command-stdout>"}}),
+            json!({"type": "user", "message": {"content": "[Request interrupted by user]"}}),
+        ];
+        for v in &skipped {
+            assert_eq!(turn(Agent::Claude, v), None, "{v}");
+        }
+    }
+
+    #[test]
+    fn codex_user_messages_count_but_context_and_events_do_not() {
+        let user = |text: &str| json!({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}});
+        assert_eq!(
+            user_text(Agent::Codex, &user("run tests")).as_deref(),
+            Some("run tests")
+        );
+        assert_eq!(
+            turn(
+                Agent::Codex,
+                &user("<environment_context>x</environment_context>")
+            ),
+            None
+        );
+        assert_eq!(
+            turn(Agent::Codex, &user("# AGENTS.md instructions for /x")),
+            None
+        );
+        let event = json!({"type": "event_msg", "payload": {"type": "user_message", "message": "run tests"}});
+        assert_eq!(turn(Agent::Codex, &event), None);
+    }
+
+    #[test]
+    fn backfill_start_lands_on_a_line_boundary_inside_the_window() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("log.jsonl");
+        let lines: Vec<String> = (0..10).map(|i| claude_line(&format!("m{i}"))).collect();
+        append(&p, &(lines.join("\n") + "\n"));
+        let end = len(&p).unwrap();
+        assert_eq!(backfill_start(&p, end, end).unwrap(), 0);
+        let max = (lines[0].len() as u64 + 1) * 3 + 5;
+        let start = backfill_start(&p, end, max).unwrap();
+        assert!(end - start <= max);
+        assert_eq!(
+            texts(&read_new(&p, Agent::Claude, start, WINDOW).unwrap()),
+            ["m7", "m8", "m9"]
+        );
+        let long = t.path().join("long.jsonl");
+        append(&long, &(claude_line(&"x".repeat(500)) + "\n"));
+        let n = len(&long).unwrap();
+        assert_eq!(backfill_start(&long, n, 100).unwrap(), n);
     }
 
     #[test]
@@ -273,22 +428,22 @@ mod tests {
             &format!("{}\n{}\n", claude_line("one"), claude_line("two")),
         );
         let a = read_new(&p, Agent::Claude, 0, WINDOW).unwrap();
-        assert_eq!(a.texts, ["one", "two"]);
+        assert_eq!(texts(&a), ["one", "two"]);
         assert_eq!(a.offset, len(&p).unwrap());
 
         let partial = claude_line("three");
         append(&p, &partial[..10]);
         let b = read_new(&p, Agent::Claude, a.offset, WINDOW).unwrap();
-        assert!(b.texts.is_empty());
+        assert!(b.turns.is_empty());
         assert_eq!(b.offset, a.offset);
 
         append(&p, &format!("{}\n", &partial[10..]));
         let c = read_new(&p, Agent::Claude, b.offset, WINDOW).unwrap();
-        assert_eq!(c.texts, ["three"]);
+        assert_eq!(texts(&c), ["three"]);
         assert_eq!(
             read_new(&p, Agent::Claude, c.offset, WINDOW)
                 .unwrap()
-                .texts
+                .turns
                 .len(),
             0
         );
@@ -304,7 +459,7 @@ mod tests {
         let mut got = Vec::new();
         for _ in 0..20 {
             let r = read_new(&p, Agent::Claude, offset, lines[0].len() * 2 + 4).unwrap();
-            got.extend(r.texts);
+            got.extend(texts(&r));
             offset = r.offset;
         }
         assert_eq!(got, ["m0", "m1", "m2", "m3", "m4", "m5"]);
@@ -316,10 +471,10 @@ mod tests {
         let p = t.path().join("log.jsonl");
         append(&p, &format!("garbage\n{}\n", claude_line("ok")));
         let r = read_new(&p, Agent::Claude, 0, WINDOW).unwrap();
-        assert_eq!(r.texts, ["ok"]);
+        assert_eq!(texts(&r), ["ok"]);
         std::fs::write(&p, format!("{}\n", claude_line("fresh"))).unwrap();
         assert_eq!(
-            read_new(&p, Agent::Claude, 10_000, WINDOW).unwrap().texts,
+            texts(&read_new(&p, Agent::Claude, 10_000, WINDOW).unwrap()),
             ["fresh"]
         );
     }

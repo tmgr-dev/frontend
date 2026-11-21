@@ -2,7 +2,7 @@ pub mod relay;
 pub mod store;
 pub mod tail;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use store::Store;
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
@@ -121,6 +121,9 @@ pub struct Ingested {
     pub duplicate: bool,
 }
 
+const SENT_TTL: Duration = Duration::from_secs(600);
+const SENT_MAX: usize = 32;
+
 pub struct Chat {
     machine: String,
     store: Option<Store>,
@@ -128,6 +131,7 @@ pub struct Chat {
     subs: Mutex<Vec<SyncSender<ChatPush>>>,
     seq: AtomicU16,
     tails: Mutex<HashMap<String, tail::Tail>>,
+    sent: Mutex<VecDeque<(String, String, Instant)>>,
     rpc_client: Mutex<Option<Arc<RpcClient>>>,
     relay_device: Mutex<Option<(String, String)>>,
 }
@@ -150,6 +154,7 @@ impl Chat {
             subs: Mutex::new(Vec::new()),
             seq: AtomicU16::new(0),
             tails: Mutex::new(HashMap::new()),
+            sent: Mutex::new(VecDeque::new()),
             rpc_client: Mutex::new(None),
             relay_device: Mutex::new(None),
         }
@@ -232,6 +237,7 @@ impl Chat {
             reply_to,
             decision: None,
             session_meta: None,
+            user_turn: false,
         };
         self.append(msg)
     }
@@ -322,6 +328,7 @@ impl Chat {
             reply_to: m.reply_to,
             decision: None,
             session_meta: None,
+            user_turn: false,
         };
         msg.validate().map_err(Invalid)?;
         {
@@ -359,7 +366,12 @@ impl Chat {
             });
         }
         let delivered = match deliver(&msg.body_md) {
-            Delivery::Delivered => true,
+            Delivery::Delivered => {
+                if let Some(session) = msg.room.session.as_deref() {
+                    self.remember_sent(session, &msg.body_md);
+                }
+                true
+            }
             Delivery::NoTarget => false,
             Delivery::Busy => {
                 self.note(&msg.room, "Not delivered: the session was busy.");
@@ -371,6 +383,29 @@ impl Chat {
             delivered,
             duplicate: false,
         })
+    }
+
+    fn remember_sent(&self, session: &str, body: &str) {
+        let mut sent = lock(&self.sent);
+        let now = Instant::now();
+        sent.retain(|(_, _, at)| now.duration_since(*at) < SENT_TTL);
+        if sent.len() >= SENT_MAX {
+            sent.pop_front();
+        }
+        sent.push_back((session.to_string(), body.trim().to_string(), now));
+    }
+
+    pub(super) fn take_sent(&self, session: &str, text: &str) -> bool {
+        let mut sent = lock(&self.sent);
+        let now = Instant::now();
+        sent.retain(|(_, _, at)| now.duration_since(*at) < SENT_TTL);
+        match sent.iter().position(|(s, t, _)| s == session && t == text) {
+            Some(i) => {
+                sent.remove(i);
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn owner() -> Author {
@@ -488,6 +523,7 @@ fn system_message(room: &RoomRef, id: String, ts_ms: u64, text: &str) -> ChatMes
         reply_to: None,
         decision: None,
         session_meta: None,
+        user_turn: false,
     }
 }
 

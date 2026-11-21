@@ -64,6 +64,7 @@ fn msg(n: u64, room: RoomRef, author: AuthorKind, kind: MessageKind, body: &str)
         reply_to: None,
         decision: None,
         session_meta: None,
+        user_turn: false,
     }
 }
 

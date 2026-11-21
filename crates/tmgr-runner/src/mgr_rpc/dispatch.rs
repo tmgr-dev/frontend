@@ -473,6 +473,7 @@ impl Dispatcher {
                     reply_to: None,
                     decision: None,
                     session_meta: None,
+                    user_turn: false,
                 };
                 msg.validate().map_err(refused)?;
                 let sent = self.state.chat.post(msg).map_err(refused)?;
@@ -1031,6 +1032,7 @@ mod tests {
                 reply_to: None,
                 decision: None,
                 session_meta: None,
+                user_turn: false,
             })
             .unwrap();
         id

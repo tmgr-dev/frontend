@@ -74,6 +74,7 @@ fn chat_history(chat: &Chat, old: &SessionInfo) -> Vec<ChatMessage> {
         .map(|m| ChatMessage {
             role: match m.author.kind {
                 AuthorKind::Owner => "owner",
+                AuthorKind::Session if m.user_turn => "owner",
                 AuthorKind::Manager => "manager",
                 AuthorKind::Session => "assistant",
                 AuthorKind::System => "system",

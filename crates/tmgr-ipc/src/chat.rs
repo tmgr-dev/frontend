@@ -46,6 +46,8 @@ pub struct ChatMessage {
     pub decision: Option<DecisionRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_meta: Option<SessionMeta>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub user_turn: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
