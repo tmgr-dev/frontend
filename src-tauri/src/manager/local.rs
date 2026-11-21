@@ -182,3 +182,9 @@ mod tests {
     assert!(l.rooms().unwrap_err().contains("bad reply"));
   }
 }
+
+impl ChatCall for crate::runner::Runner {
+  fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+    self.chat_call(method, params)
+  }
+}

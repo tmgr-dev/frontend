@@ -161,6 +161,10 @@ impl Runner {
     Ok(())
   }
 
+  pub fn chat_call(&self, method: &str, params: Value) -> Result<Value, String> {
+    self.connect()?.0.call(method, params).map_err(err)
+  }
+
   fn connect(&self) -> Result<(Conn, Welcome), String> {
     (self.0.connector)().map_err(err)
   }
