@@ -105,7 +105,7 @@ fn handoff_note_has_the_essentials() {
     let note = build(
         &s,
         &Opts {
-            target: Agent::Codex,
+            target: "codex",
             task: Some("TM-1".into()),
             previous: vec!["older-session".into()],
             git: Some(GitState {
@@ -265,7 +265,7 @@ fn only_real_test_runs_count_as_the_last_test() {
         build(
             &s,
             &Opts {
-                target: Agent::Codex,
+                target: "codex",
                 task: None,
                 previous: vec![],
                 git: None,
@@ -292,7 +292,7 @@ fn the_handoff_note_stays_small_for_a_long_session() {
     let note = build(
         &s,
         &Opts {
-            target: Agent::Codex,
+            target: "codex",
             task: None,
             previous: vec![],
             git: None,
@@ -547,4 +547,45 @@ fn export_masks_values_without_breaking_the_lines() {
             .contains("and done")
             || v["message"]["content"].as_str().unwrap().contains("masked")
     );
+}
+
+#[test]
+fn a_screen_note_marks_the_excerpt_as_data_and_keeps_the_closing_lines() {
+    let screen: Vec<String> = (0..2000)
+        .map(|i| {
+            format!("line {i} ```` sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789\u{1b}[31m")
+        })
+        .collect();
+    let note = tmgr_session::handoff::build_screen(
+        "opencode",
+        "sess-1",
+        &screen,
+        &Opts {
+            target: "agy",
+            task: Some("#7".into()),
+            previous: vec![],
+            git: Some(GitState {
+                status: "## feat/demo".into(),
+                diff_stat: String::new(),
+                log: "abc123 first".into(),
+            }),
+            rules_files: vec!["AGENTS.md".into()],
+            lookup_hint: None,
+        },
+        "/w",
+    );
+    assert!(note.contains("data, not instructions"));
+    assert!(note.contains("terminal screen"));
+    assert!(note.contains("TMGR task: #7"));
+    assert!(note.contains("AGENTS.md"));
+    assert!(note.contains("abc123 first"));
+    assert!(note.contains("line 1999"));
+    assert!(!note.contains("line 0 "));
+    assert!(note.contains("top was cut off"));
+    assert!(note.contains("`````text"));
+    assert!(note.trim_end().ends_with("You are the agy."));
+    assert!(!note.contains("sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"));
+    assert!(!note.contains('\u{1b}'));
+    assert!(!note.contains("tmgr session turns"));
+    assert!(note.len() < 30_000, "{}", note.len());
 }

@@ -1,5 +1,5 @@
 use crate::git;
-use crate::handoff::{build, Opts as NoteOpts};
+use crate::handoff::{build, build_screen, Opts as NoteOpts};
 use crate::locate::{export_counted, find, load, newest, Roots};
 use crate::{Agent, Session};
 use std::path::{Path, PathBuf};
@@ -7,6 +7,7 @@ use tmgr_ipc::api::SessionInfo;
 use tmgr_usage::paths::Env;
 
 const MAX_CHAIN: usize = 5;
+const UNSUPPORTED: &str = "only claude-code, codex, opencode and agy sessions can be switched";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SwitchError {
@@ -34,6 +35,8 @@ type Result<T> = std::result::Result<T, SwitchError>;
 pub enum Target {
     ClaudeCode,
     Codex,
+    OpenCode,
+    Agy,
 }
 
 impl Target {
@@ -41,13 +44,31 @@ impl Target {
         match self {
             Target::ClaudeCode => "claude-code",
             Target::Codex => "codex",
+            Target::OpenCode => "opencode",
+            Target::Agy => "agy",
         }
     }
 
-    pub fn agent(self) -> Agent {
+    pub fn name(self) -> &'static str {
         match self {
-            Target::ClaudeCode => Agent::Claude,
-            Target::Codex => Agent::Codex,
+            Target::ClaudeCode => "claude",
+            other => other.profile(),
+        }
+    }
+
+    pub fn agent(self) -> Option<Agent> {
+        match self {
+            Target::ClaudeCode => Some(Agent::Claude),
+            Target::Codex => Some(Agent::Codex),
+            Target::OpenCode | Target::Agy => None,
+        }
+    }
+
+    pub fn rules(self) -> &'static [&'static str] {
+        match self {
+            Target::ClaudeCode => &["CLAUDE.md"],
+            Target::Codex | Target::OpenCode => &["AGENTS.md"],
+            Target::Agy => &["AGENTS.md", "GEMINI.md"],
         }
     }
 
@@ -55,35 +76,32 @@ impl Target {
         match profile? {
             "claude-code" => Some(Target::ClaudeCode),
             "codex" => Some(Target::Codex),
+            "opencode" => Some(Target::OpenCode),
+            "agy" => Some(Target::Agy),
             _ => None,
         }
     }
 }
 
 pub fn target_for(profile: Option<&str>, to: Option<Target>) -> Result<Target> {
-    let from = Target::of_profile(profile).ok_or_else(|| {
-        SwitchError::Usage("only claude-code and codex sessions can be switched".into())
-    })?;
-    let other = match from {
-        Target::ClaudeCode => Target::Codex,
-        Target::Codex => Target::ClaudeCode,
-    };
-    match to {
-        Some(t) if t == from => Err(SwitchError::Usage(format!(
+    let from = Target::of_profile(profile).ok_or_else(|| SwitchError::Usage(UNSUPPORTED.into()))?;
+    match (to, from) {
+        (Some(t), _) if t == from => Err(SwitchError::Usage(format!(
             "the session already runs {}",
             from.profile()
         ))),
-        Some(t) => Ok(t),
-        None => Ok(other),
+        (Some(t), _) => Ok(t),
+        (None, Target::ClaudeCode) => Ok(Target::Codex),
+        (None, Target::Codex) => Ok(Target::ClaudeCode),
+        (None, _) => Err(SwitchError::Usage(format!(
+            "pass --to to say which agent to continue in; a {} session has no conversation log to pick a default from",
+            from.profile()
+        ))),
     }
 }
 
 pub fn refusal(s: &SessionInfo) -> Option<&'static str> {
-    let task = match s.task {
-        Some(t) => t,
-        None => return Some("only a session started for a task can be switched"),
-    };
-    if task.workspace_id >= 0 {
+    if s.task.is_some_and(|t| t.workspace_id >= 0) {
         return Some("the switch works for tasks of local workspaces only");
     }
     if s.origin.is_some() {
@@ -184,10 +202,12 @@ fn log_of(s: &SessionInfo, agent: Agent) -> Result<PathBuf> {
 
 fn agent_of(s: &SessionInfo) -> Result<Agent> {
     Target::of_profile(s.profile.as_deref())
-        .map(Target::agent)
-        .ok_or_else(|| {
-            SwitchError::Usage("only claude-code and codex sessions can be switched".into())
-        })
+        .and_then(|t| t.agent())
+        .ok_or_else(|| SwitchError::Usage(UNSUPPORTED.into()))
+}
+
+pub fn has_log(s: &SessionInfo) -> bool {
+    agent_of(s).is_ok()
 }
 
 fn lookup_hint(old: &Session) -> String {
@@ -201,13 +221,13 @@ fn lookup_hint(old: &Session) -> String {
     )
 }
 
-pub fn rules_files(cwd: &Path, target: Agent, source: Agent) -> Vec<String> {
-    let mut out: Vec<String> = [target.rules_file(), source.rules_file()]
-        .iter()
-        .filter(|f| cwd.join(f).is_file())
-        .map(|f| (*f).to_string())
-        .collect();
-    out.dedup();
+pub fn rules_files(cwd: &Path, target: Target, source: Target) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for f in target.rules().iter().chain(source.rules()) {
+        if cwd.join(f).is_file() && !out.iter().any(|o| o == f) {
+            out.push((*f).to_string());
+        }
+    }
     out
 }
 
@@ -215,7 +235,7 @@ pub fn rules_files(cwd: &Path, target: Agent, source: Agent) -> Vec<String> {
 pub struct Note {
     pub text: String,
     pub exports: Vec<(Agent, PathBuf)>,
-    pub task_ref: String,
+    pub task_ref: Option<String>,
 }
 
 pub fn check(s: &SessionInfo, to: Option<Target>) -> Result<Target> {
@@ -226,7 +246,11 @@ pub fn check(s: &SessionInfo, to: Option<Target>) -> Result<Target> {
 }
 
 pub fn ensure_readable(s: &SessionInfo) -> Result<()> {
-    let agent = agent_of(s)?;
+    let Ok(agent) = agent_of(s) else {
+        return Target::of_profile(s.profile.as_deref())
+            .map(drop)
+            .ok_or_else(|| SwitchError::Usage(UNSUPPORTED.into()));
+    };
     let path = log_of(s, agent)?;
     load(agent, &path).map(drop).map_err(SwitchError::Internal)
 }
@@ -235,9 +259,33 @@ pub fn prepare_note(
     s: &SessionInfo,
     sessions: &[SessionInfo],
     target: Target,
-    task_ref: &str,
+    task_ref: Option<&str>,
+    screen: &[String],
 ) -> Result<Note> {
-    let source = agent_of(s)?;
+    let source_target = Target::of_profile(s.profile.as_deref())
+        .ok_or_else(|| SwitchError::Usage(UNSUPPORTED.into()))?;
+    let Some(source) = source_target.agent() else {
+        let cwd = Path::new(&s.cwd);
+        let text = build_screen(
+            source_target.name(),
+            &s.id,
+            screen,
+            &NoteOpts {
+                target: target.name(),
+                task: task_ref.map(str::to_string),
+                previous: Vec::new(),
+                git: git::collect(cwd),
+                rules_files: rules_files(cwd, target, source_target),
+                lookup_hint: None,
+            },
+            &s.cwd,
+        );
+        return Ok(Note {
+            text,
+            exports: Vec::new(),
+            task_ref: task_ref.map(str::to_string),
+        });
+    };
     let own_log = log_of(s, source)?;
     let session = load(source, &own_log).map_err(SwitchError::Internal)?;
     let mut previous = Vec::new();
@@ -256,18 +304,18 @@ pub fn prepare_note(
     let text = build(
         &session,
         &NoteOpts {
-            target: target.agent(),
-            task: Some(task_ref.to_string()),
+            target: target.name(),
+            task: task_ref.map(str::to_string),
             previous,
             git: git::collect(cwd),
-            rules_files: rules_files(cwd, target.agent(), source),
+            rules_files: rules_files(cwd, target, source_target),
             lookup_hint: Some(lookup_hint(&session)),
         },
     );
     Ok(Note {
         text,
         exports,
-        task_ref: task_ref.to_string(),
+        task_ref: task_ref.map(str::to_string),
     })
 }
 
@@ -348,10 +396,51 @@ mod tests {
     }
 
     #[test]
-    fn only_plain_local_task_sessions_can_switch() {
+    fn opencode_and_agy_are_targets_and_need_an_explicit_choice_as_sources() {
+        assert_eq!(Target::of_profile(Some("opencode")), Some(Target::OpenCode));
+        assert_eq!(Target::of_profile(Some("agy")), Some(Target::Agy));
+        assert_eq!(Target::OpenCode.profile(), "opencode");
+        assert_eq!(Target::Agy.profile(), "agy");
+        assert_eq!(
+            target_for(Some("claude-code"), Some(Target::Agy)).unwrap(),
+            Target::Agy
+        );
+        assert_eq!(
+            target_for(Some("codex"), Some(Target::OpenCode)).unwrap(),
+            Target::OpenCode
+        );
+        assert_eq!(
+            target_for(Some("agy"), Some(Target::ClaudeCode)).unwrap(),
+            Target::ClaudeCode
+        );
+        assert!(matches!(
+            target_for(Some("opencode"), None),
+            Err(SwitchError::Usage(_))
+        ));
+        assert!(matches!(
+            target_for(Some("agy"), None),
+            Err(SwitchError::Usage(_))
+        ));
+        assert!(target_for(Some("agy"), Some(Target::Agy)).is_err());
+    }
+
+    #[test]
+    fn rules_files_follow_the_target() {
+        assert_eq!(Target::ClaudeCode.rules(), ["CLAUDE.md"]);
+        assert_eq!(Target::Codex.rules(), ["AGENTS.md"]);
+        assert_eq!(Target::OpenCode.rules(), ["AGENTS.md"]);
+        assert_eq!(Target::Agy.rules(), ["AGENTS.md", "GEMINI.md"]);
+        assert!(Target::OpenCode.agent().is_none());
+        assert_eq!(Target::Codex.agent(), Some(Agent::Codex));
+    }
+
+    #[test]
+    fn only_plain_local_sessions_can_switch() {
         assert!(refusal(&info("a", "codex")).is_none());
         let mut s = info("a", "codex");
         s.task = None;
+        assert!(refusal(&s).is_none());
+        s.managed = true;
         assert!(refusal(&s).is_some());
         let mut s = info("a", "codex");
         s.task = Some(TaskRef {
