@@ -8,6 +8,7 @@ use tmgr_core::error::{Error, Result};
 pub const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 pub const ROTATE_AT: u64 = 10 << 20;
 pub const MAX_FILES: usize = 10;
+pub const MIN_RETAIN: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
 const MAX_LINE: usize = 8 * 1024;
 const MAX_STR: usize = 256;
 
@@ -15,6 +16,8 @@ pub struct Audit {
     dir: PathBuf,
     rotate_at: u64,
     max_files: usize,
+    min_retain: std::time::Duration,
+    clock_skew: chrono::Duration,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,6 +32,7 @@ pub struct Verified {
     pub entries: u64,
     pub files: usize,
     pub incomplete: bool,
+    pub pruned_through: Option<u64>,
 }
 
 struct Anchor {
@@ -82,6 +86,8 @@ impl Audit {
             dir: dir.to_path_buf(),
             rotate_at: ROTATE_AT,
             max_files: MAX_FILES,
+            min_retain: MIN_RETAIN,
+            clock_skew: chrono::Duration::zero(),
         }
     }
 
@@ -94,7 +100,24 @@ impl Audit {
             dir: dir.to_path_buf(),
             rotate_at,
             max_files,
+            min_retain: MIN_RETAIN,
+            clock_skew: chrono::Duration::zero(),
         }
+    }
+
+    pub fn with_retention(mut self, min_retain: std::time::Duration) -> Audit {
+        self.min_retain = min_retain;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_clock_skew(mut self, skew: chrono::Duration) -> Audit {
+        self.clock_skew = skew;
+        self
+    }
+
+    fn now(&self) -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc::now() + self.clock_skew
     }
 
     fn anchor_path(&self) -> PathBuf {
@@ -132,6 +155,10 @@ impl Audit {
     }
 
     fn tip_of(path: &Path) -> Result<Option<Tip>> {
+        Ok(Self::last_entry(path)?.map(|(t, _)| t))
+    }
+
+    fn last_entry(path: &Path) -> Result<Option<(Tip, Value)>> {
         let bytes = match std::fs::read(path) {
             Ok(b) => b,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -150,10 +177,43 @@ impl Audit {
         let line = &body[start..];
         let v: Value = serde_json::from_slice(line).map_err(|_| damaged())?;
         let seq = v.get("seq").and_then(Value::as_u64).ok_or_else(damaged)?;
-        Ok(Some(Tip {
-            seq,
-            hash: sha256_hex(line),
-        }))
+        Ok(Some((
+            Tip {
+                seq,
+                hash: sha256_hex(line),
+            },
+            v,
+        )))
+    }
+
+    fn prunable(&self, rotated: &[(u64, PathBuf)]) -> Result<Option<(Tip, Vec<String>)>> {
+        let need = (rotated.len() + 2).saturating_sub(self.max_files);
+        let retain = chrono::Duration::from_std(self.min_retain).unwrap_or(chrono::Duration::MAX);
+        let cutoff = self.now().checked_sub_signed(retain);
+        let mut newest: Option<Tip> = None;
+        let mut names = Vec::new();
+        for (_, path) in rotated.iter().take(need) {
+            let Some((tip, v)) = Self::last_entry(path)? else {
+                return Ok(None);
+            };
+            let old = cutoff.is_some_and(|cutoff| {
+                v.get("ts")
+                    .and_then(Value::as_str)
+                    .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+                    .is_some_and(|t| t < cutoff)
+            });
+            if !old {
+                return Ok(None);
+            }
+            names.push(
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("?")
+                    .to_string(),
+            );
+            newest = Some(tip);
+        }
+        Ok(newest.map(|t| (t, names)))
     }
 
     fn tip(&self) -> Result<Tip> {
@@ -219,19 +279,46 @@ impl Audit {
         broken_at: Option<u64>,
     ) -> Result<Tip> {
         let cur = self.current();
+        let mut tip = Tip {
+            seq: tip.seq,
+            hash: tip.hash.clone(),
+        };
         if std::fs::metadata(&cur).is_ok_and(|m| m.len() >= self.rotate_at) {
-            if self.rotated()?.len() + 2 > self.max_files {
-                return Err(
-                    Error::internal("the audit log is full, refusing new requests")
-                        .hint("archive the files in the audit directory, then retry"),
-                );
+            let rotated = self.rotated()?;
+            let mut pruned = None;
+            if rotated.len() + 2 > self.max_files {
+                let Some(p) = self.prunable(&rotated)? else {
+                    return Err(
+                        Error::internal("the audit log is full, refusing new requests")
+                            .hint("archive the files in the audit directory, then retry"),
+                    );
+                };
+                pruned = Some(p);
             }
             std::fs::rename(&cur, self.dir.join(format!("audit.{}.jsonl", tip.seq)))?;
+            if let Some((through, names)) = pruned {
+                tip = self.write_entry(
+                    &tip,
+                    "log_pruned",
+                    json!({"through_seq": through.seq, "through_hash": through.hash, "files": names}),
+                    broken_at,
+                )?;
+                for name in &names {
+                    // a failed delete is retried by the next rotation; the chain stays valid
+                    let _ = std::fs::remove_file(self.dir.join(name));
+                }
+            }
         }
+        let tip = &tip;
         let mut entry = Map::new();
         entry.insert("v".into(), json!(1));
         entry.insert("seq".into(), json!(tip.seq + 1));
-        entry.insert("ts".into(), json!(crate::now_rfc3339()));
+        entry.insert(
+            "ts".into(),
+            json!(self
+                .now()
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
+        );
         entry.insert("prev".into(), json!(tip.hash));
         entry.insert("event".into(), json!(event));
         if let Value::Object(m) = clean(&fields, 0) {
@@ -306,6 +393,7 @@ impl Audit {
                     entries: 0,
                     files: 0,
                     incomplete: false,
+                    pruned_through: None,
                 }))
             }
             Err(e) => return Err(e.into()),
@@ -316,13 +404,19 @@ impl Audit {
         let mut prev_seq = 0u64;
         let mut entries = 0u64;
         let mut before_hash = GENESIS.to_string();
+        let mut first: Option<(String, usize, u64, String)> = None;
+        let mut pruned_marks: Vec<(u64, String)> = Vec::new();
         for path in &files {
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("?")
                 .to_string();
-            let bytes = std::fs::read(path)?;
+            let bytes = match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e.into()),
+            };
             if bytes.is_empty() {
                 continue;
             }
@@ -346,6 +440,11 @@ impl Audit {
                 let (Some(seq), Some(prev)) = (seq, prev) else {
                     return fail(n, "entry is missing seq or prev");
                 };
+                if first.is_none() {
+                    first = Some((name.clone(), n, seq, prev.to_string()));
+                    prev_seq = seq.saturating_sub(1);
+                    prev_hash = prev.to_string();
+                }
                 if seq != prev_seq + 1 {
                     return fail(n, "sequence gap: entries were removed or reordered");
                 }
@@ -356,6 +455,31 @@ impl Audit {
                 prev_hash = sha256_hex(raw);
                 prev_seq = seq;
                 entries += 1;
+                if v.get("event").and_then(Value::as_str) == Some("log_pruned") {
+                    if let (Some(s), Some(h)) = (
+                        v.get("through_seq").and_then(Value::as_u64),
+                        v.get("through_hash").and_then(Value::as_str),
+                    ) {
+                        pruned_marks.push((s, h.to_string()));
+                    }
+                }
+            }
+        }
+        let mut pruned_through = None;
+        if let Some((file, line, seq, prev)) = &first {
+            if *seq > 1 {
+                let cut = seq - 1;
+                let recorded = pruned_marks
+                    .iter()
+                    .any(|(s, h)| *s > cut || (*s == cut && h == prev));
+                if !recorded {
+                    return Ok(Err(Tampered {
+                        file: file.clone(),
+                        line: *line,
+                        reason: "entries were removed before the first retained file".into(),
+                    }));
+                }
+                pruned_through = Some(cut);
             }
         }
         let anchor_fail = |reason: &str| {
@@ -397,13 +521,18 @@ impl Audit {
             entries,
             files: files.len(),
             incomplete,
+            pruned_through,
         }))
     }
 
     pub fn tail(&self, n: usize) -> Result<Vec<Value>> {
         let mut out: Vec<Value> = Vec::new();
         for path in self.chain_files()?.into_iter().rev() {
-            let text = std::fs::read_to_string(&path)?;
+            let text = match std::fs::read_to_string(&path) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e.into()),
+            };
             let mut lines: Vec<Value> = text
                 .lines()
                 .filter_map(|l| serde_json::from_str(l).ok())
@@ -468,7 +597,8 @@ mod tests {
             Ok(Verified {
                 entries: 5,
                 files: 1,
-                incomplete: false
+                incomplete: false,
+                pruned_through: None
             })
         );
         let first: Value = serde_json::from_str(&lines(&a)[0]).unwrap();
@@ -488,7 +618,8 @@ mod tests {
             Ok(Verified {
                 entries: 0,
                 files: 0,
-                incomplete: false
+                incomplete: false,
+                pruned_through: None
             })
         );
     }
@@ -600,7 +731,7 @@ mod tests {
     }
 
     #[test]
-    fn a_full_log_refuses_new_entries_and_keeps_the_old_ones() {
+    fn a_full_log_younger_than_the_retention_refuses_new_entries() {
         let d = crate::testutil::private_tempdir();
         let a = Audit::with_limits(d.path(), 300, 3);
         let mut refused = false;
@@ -615,6 +746,109 @@ mod tests {
         let v = a.verify().unwrap().unwrap();
         assert!(v.entries > 3);
         assert!(a.append("e", json!({})).is_err());
+    }
+
+    fn full_of_old_entries(dir: &Path) {
+        let old = Audit::with_limits(dir, 300, 3).with_clock_skew(chrono::Duration::days(-60));
+        for i in 0..40 {
+            if old.append("e", json!({"i": i.to_string()})).is_err() {
+                return;
+            }
+        }
+        panic!("the log never filled");
+    }
+
+    fn pruned_audit(dir: &Path) -> Audit {
+        full_of_old_entries(dir);
+        let a = Audit::with_limits(dir, 300, 3);
+        a.append("fresh", json!({})).unwrap();
+        a
+    }
+
+    #[test]
+    fn a_full_log_with_old_files_prunes_records_it_and_keeps_accepting() {
+        let d = crate::testutil::private_tempdir();
+        let a = pruned_audit(d.path());
+        let v = a.verify().unwrap().unwrap();
+        let cut = v.pruned_through.expect("pruned");
+        assert!(cut >= 1);
+        let first: Value = serde_json::from_str(&lines(&a)[0]).unwrap();
+        assert_eq!(first["event"], "log_pruned");
+        assert_eq!(first["through_seq"], cut);
+        assert_eq!(first["through_hash"].as_str().unwrap().len(), 64);
+        assert!(!first["files"].as_array().unwrap().is_empty());
+        let t = a.tail(1).unwrap().remove(0);
+        assert_eq!(t["event"], "fresh");
+        a.append("again", json!({})).unwrap();
+        assert!(a.verify().unwrap().is_ok());
+    }
+
+    #[test]
+    fn deleting_another_rotated_file_after_a_prune_is_detected() {
+        let d = crate::testutil::private_tempdir();
+        let a = pruned_audit(d.path());
+        let rotated = a.rotated().unwrap();
+        assert!(!rotated.is_empty());
+        std::fs::remove_file(&rotated[0].1).unwrap();
+        assert!(a.verify().unwrap().is_err());
+    }
+
+    #[test]
+    fn editing_the_log_pruned_entry_is_detected() {
+        for (key, value) in [("through_seq", json!(1)), ("through_hash", json!("ab"))] {
+            let d = crate::testutil::private_tempdir();
+            let a = pruned_audit(d.path());
+            a.append("more", json!({})).unwrap();
+            let mut l = lines(&a);
+            let mut e: Value = serde_json::from_str(&l[0]).unwrap();
+            e[key] = value;
+            l[0] = serde_json::to_string(&e).unwrap();
+            write_lines(&a, &l);
+            assert!(a.verify().unwrap().is_err(), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_crash_between_the_prune_record_and_the_deletes_still_verifies() {
+        let d = crate::testutil::private_tempdir();
+        full_of_old_entries(d.path());
+        let probe = Audit::with_limits(d.path(), 300, 3);
+        let saved: Vec<(PathBuf, Vec<u8>)> = probe
+            .rotated()
+            .unwrap()
+            .into_iter()
+            .map(|(_, p)| {
+                let b = std::fs::read(&p).unwrap();
+                (p, b)
+            })
+            .collect();
+        probe.append("fresh", json!({})).unwrap();
+        for (p, b) in &saved {
+            std::fs::write(p, b).unwrap();
+        }
+        let v = probe.verify().unwrap().unwrap();
+        assert_eq!(v.pruned_through, None);
+        assert!(probe.rotated().unwrap().len() >= 3);
+        let mut pruned = None;
+        for i in 0..60 {
+            probe.append("e", json!({"i": i.to_string()})).unwrap();
+            pruned = probe.verify().unwrap().unwrap().pruned_through;
+            if pruned.is_some() {
+                break;
+            }
+        }
+        assert!(pruned.is_some());
+    }
+
+    #[test]
+    fn tail_skips_a_rotated_file_deleted_underneath_it() {
+        let d = crate::testutil::private_tempdir();
+        let a = Audit::with_rotation(d.path(), 600);
+        for i in 0..8 {
+            a.append("e", json!({"i": i})).unwrap();
+        }
+        std::os::unix::fs::symlink(d.path().join("gone"), d.path().join("audit.1.jsonl")).unwrap();
+        assert_eq!(a.tail(3).unwrap().len(), 3);
     }
 
     #[test]
