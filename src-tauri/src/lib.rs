@@ -412,12 +412,11 @@ pub fn run() {
       decisions::phone::phones_cancel,
       #[cfg(unix)]
       decisions::phone::phones_revoke,
-      manager::manager_chats,
-      manager::manager_messages,
+      manager::manager_rooms,
+      manager::manager_history,
       manager::manager_send,
-      manager::manager_commands,
       manager::manager_search,
-      manager::manager_mark_read,
+      manager::manager_commands,
       manager::manager_open_window
     ])
     .on_window_event(|window, event| {

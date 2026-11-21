@@ -6,7 +6,7 @@ use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use backend::{Chat, Draft, ManagerBackend, Message, SearchHit, SearchQuery, SlashCommand, StubBackend};
+use backend::{ChatMessage, HistoryParams, ManagerBackend, RoomInfo, RoomRef, SearchParams, SendParams, SlashCommand, StubBackend};
 
 pub const LABEL: &str = "manager";
 pub const SHORTCUT: &str = "CmdOrCtrl+Shift+M";
@@ -77,46 +77,33 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
 }
 
 #[tauri::command]
-pub async fn manager_chats<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Chat>, String> {
+pub async fn manager_rooms<R: Runtime>(app: AppHandle<R>) -> Result<Vec<RoomInfo>, String> {
   let backend = backend_of(&app)?;
-  blocking(move || backend.chats()).await
+  blocking(move || backend.rooms()).await
 }
 
 #[tauri::command]
-pub async fn manager_messages<R: Runtime>(
-  app: AppHandle<R>,
-  chat_id: String,
-  before: Option<String>,
-  limit: Option<usize>,
-) -> Result<Vec<Message>, String> {
+pub async fn manager_history<R: Runtime>(app: AppHandle<R>, params: HistoryParams) -> Result<Vec<ChatMessage>, String> {
   let backend = backend_of(&app)?;
-  blocking(move || backend.messages(&chat_id, before.as_deref(), limit.unwrap_or(50).min(200))).await
+  blocking(move || backend.history(params)).await
 }
 
 #[tauri::command]
-pub async fn manager_send<R: Runtime>(app: AppHandle<R>, chat_id: String, draft: Draft) -> Result<Message, String> {
+pub async fn manager_send<R: Runtime>(app: AppHandle<R>, params: SendParams) -> Result<ChatMessage, String> {
   let backend = backend_of(&app)?;
-  let message = blocking(move || backend.send(&chat_id, draft)).await?;
-  let _ = tauri::Emitter::emit_to(&app, LABEL, "manager://changed", &message.chat_id);
-  Ok(message)
+  blocking(move || backend.send(params)).await
 }
 
 #[tauri::command]
-pub async fn manager_commands<R: Runtime>(app: AppHandle<R>, chat_id: String) -> Result<Vec<SlashCommand>, String> {
+pub async fn manager_search<R: Runtime>(app: AppHandle<R>, params: SearchParams) -> Result<Vec<ChatMessage>, String> {
   let backend = backend_of(&app)?;
-  blocking(move || backend.commands(&chat_id)).await
+  blocking(move || backend.search(params)).await
 }
 
 #[tauri::command]
-pub async fn manager_search<R: Runtime>(app: AppHandle<R>, query: SearchQuery) -> Result<Vec<SearchHit>, String> {
+pub async fn manager_commands<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> Result<Vec<SlashCommand>, String> {
   let backend = backend_of(&app)?;
-  blocking(move || backend.search(query)).await
-}
-
-#[tauri::command]
-pub async fn manager_mark_read<R: Runtime>(app: AppHandle<R>, chat_id: String) -> Result<(), String> {
-  let backend = backend_of(&app)?;
-  blocking(move || backend.mark_read(&chat_id)).await
+  blocking(move || backend.commands(&room)).await
 }
 
 #[tauri::command]

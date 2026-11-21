@@ -1,70 +1,106 @@
 //! The seam between the Manager window and its data source.
-//! STUB: `StubBackend` is the only implementation until track A (runner IPC) and B (relay) land.
+//! STUB: `StubBackend` is the only implementation until the runner IPC client (track A, chat.v1) is wired in.
+//! The wire types mirror crates/tmgr-ipc/src/chat.rs on branch feat/tm-1018-manager.
 
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ChatKind {
-  Room,
+#[serde(rename_all = "snake_case")]
+pub enum RoomKind {
+  Manager,
   Session,
-  Machine,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Chat {
-  pub id: String,
-  pub kind: ChatKind,
-  pub title: String,
-  pub agent: Option<String>,
-  pub machine: Option<String>,
-  pub ctx_tokens: Option<u32>,
-  pub status: Option<String>,
-  pub unread: u32,
-  pub pinned: bool,
-  pub last_preview: Option<String>,
-  pub last_ts: Option<i64>,
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoomRef {
+  pub kind: RoomKind,
+  pub machine: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub session: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Author {
   pub kind: String,
   pub id: String,
-  pub label: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub machine: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub agent: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Attachment {
-  pub id: String,
   pub name: String,
   pub mime: String,
   pub size: u64,
+  pub sha256: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Message {
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DecisionRef {
+  pub card_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChatMessage {
+  pub v: u32,
   pub id: String,
-  pub chat_id: String,
+  pub room: RoomRef,
   pub author: Author,
-  pub ts: i64,
-  pub body_md: String,
-  pub attachments: Vec<Attachment>,
-  pub reply_to: Option<String>,
+  pub ts_ms: u64,
   pub kind: String,
-  pub decision_id: Option<String>,
+  pub body_md: String,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub attachments: Vec<Attachment>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub reply_to: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub decision: Option<DecisionRef>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoomInfo {
+  pub room: RoomRef,
+  pub title: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub agent: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub state: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub context_pct: Option<u8>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub context_tokens: Option<u64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub last: Option<ChatMessage>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct Draft {
+pub struct HistoryParams {
+  pub room: RoomRef,
+  pub before: Option<String>,
+  pub limit: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SendParams {
+  pub room: RoomRef,
   pub body_md: String,
   pub reply_to: Option<String>,
   #[serde(default)]
   pub attachments: Vec<Attachment>,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize)]
+pub struct SearchParams {
+  pub query: String,
+  pub room: Option<RoomRef>,
+  pub limit: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct SlashCommand {
   pub name: String,
   pub description: String,
@@ -73,27 +109,46 @@ pub struct SlashCommand {
   pub dangerous: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct SearchQuery {
-  pub text: String,
-  pub chat_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, PartialEq)]
-pub struct SearchHit {
-  pub chat_id: String,
-  pub message_id: String,
-  pub ts: i64,
-  pub snippet: String,
-}
+pub const MAX_BODY: usize = 64 << 10;
+pub const MAX_ATTACHMENTS: usize = 16;
+pub const MAX_HISTORY: u32 = 500;
+pub const MAX_QUERY: usize = 256;
 
 pub trait ManagerBackend: Send + Sync {
-  fn chats(&self) -> Result<Vec<Chat>, String>;
-  fn messages(&self, chat_id: &str, before: Option<&str>, limit: usize) -> Result<Vec<Message>, String>;
-  fn send(&self, chat_id: &str, draft: Draft) -> Result<Message, String>;
-  fn commands(&self, chat_id: &str) -> Result<Vec<SlashCommand>, String>;
-  fn search(&self, query: SearchQuery) -> Result<Vec<SearchHit>, String>;
-  fn mark_read(&self, chat_id: &str) -> Result<(), String>;
+  fn rooms(&self) -> Result<Vec<RoomInfo>, String>;
+  fn history(&self, params: HistoryParams) -> Result<Vec<ChatMessage>, String>;
+  fn send(&self, params: SendParams) -> Result<ChatMessage, String>;
+  fn search(&self, params: SearchParams) -> Result<Vec<ChatMessage>, String>;
+  fn commands(&self, room: &RoomRef) -> Result<Vec<SlashCommand>, String>;
+}
+
+const MACHINE: &str = "mx_stub";
+
+fn manager_room() -> RoomRef {
+  RoomRef { kind: RoomKind::Manager, machine: MACHINE.into(), session: None }
+}
+
+fn session_room(id: &str) -> RoomRef {
+  RoomRef { kind: RoomKind::Session, machine: MACHINE.into(), session: Some(id.into()) }
+}
+
+fn author(kind: &str, id: &str, agent: Option<&str>) -> Author {
+  Author { kind: kind.into(), id: id.into(), machine: Some(MACHINE.into()), agent: agent.map(Into::into) }
+}
+
+fn message(n: u64, room: RoomRef, who: Author, body: &str) -> ChatMessage {
+  ChatMessage {
+    v: 1,
+    id: format!("m_{n:032x}"),
+    room,
+    author: who,
+    ts_ms: n * 1000,
+    kind: "text".into(),
+    body_md: body.into(),
+    attachments: vec![],
+    reply_to: None,
+    decision: None,
+  }
 }
 
 pub struct StubBackend {
@@ -101,56 +156,24 @@ pub struct StubBackend {
 }
 
 struct State {
-  chats: Vec<Chat>,
-  messages: Vec<Message>,
+  sessions: Vec<(String, String, String, u8)>,
+  messages: Vec<ChatMessage>,
   next: u64,
-}
-
-fn author(kind: &str, id: &str, label: &str) -> Author {
-  Author { kind: kind.into(), id: id.into(), label: label.into() }
-}
-
-fn text(id: &str, chat: &str, who: Author, ts: i64, body: &str) -> Message {
-  Message {
-    id: id.into(),
-    chat_id: chat.into(),
-    author: who,
-    ts,
-    body_md: body.into(),
-    attachments: vec![],
-    reply_to: None,
-    kind: "text".into(),
-    decision_id: None,
-  }
 }
 
 impl Default for StubBackend {
   fn default() -> Self {
-    let chat = |id: &str, kind, title: &str, agent: Option<&str>, ctx: Option<u32>, status: Option<&str>, unread, pinned| Chat {
-      id: id.into(),
-      kind,
-      title: title.into(),
-      agent: agent.map(Into::into),
-      machine: Some("mac".into()),
-      ctx_tokens: ctx,
-      status: status.map(Into::into),
-      unread,
-      pinned,
-      last_preview: None,
-      last_ts: None,
-    };
-    let chats = vec![
-      chat("claude-backend", ChatKind::Session, "Cursor pagination for /tasks", Some("claude"), Some(142_000), Some("working"), 0, false),
-      chat("manager", ChatKind::Room, "Manager", None, None, None, 2, true),
-      chat("codex-studio", ChatKind::Session, "Offline queue conflict rules", Some("codex"), Some(64_000), Some("working"), 0, false),
+    let sessions = vec![
+      ("claude-backend".into(), "Cursor pagination for /tasks".into(), "claude".into(), 71),
+      ("codex-studio".into(), "Offline queue conflict rules".into(), "codex".into(), 32),
     ];
-    let mgr = author("manager", "manager", "Manager");
+    let mgr = author("manager", "manager", Some("claude"));
     let messages = vec![
-      text("m1", "manager", mgr.clone(), 1_000, "Morning. Backend work on **TM-1021** is `working`, tests green."),
-      text("m2", "manager", mgr, 2_000, "Frontend is waiting for the next-page token name."),
-      text("m3", "claude-backend", author("session", "claude-backend", "Claude Code"), 3_000, "Editing `TaskPage.java`."),
+      message(1, manager_room(), mgr.clone(), "Morning. Backend work on **TM-1021** is `working`, tests green."),
+      message(2, manager_room(), mgr, "Frontend is waiting for the next-page token name."),
+      message(3, session_room("claude-backend"), author("session", "claude-backend", Some("claude")), "Editing `TaskPage.java`."),
     ];
-    Self { state: Mutex::new(State { chats, messages, next: 100 }) }
+    Self { state: Mutex::new(State { sessions, messages, next: 100 }) }
   }
 }
 
@@ -160,65 +183,109 @@ impl StubBackend {
   }
 }
 
-fn sort_chats(chats: &mut [Chat]) {
-  chats.sort_by(|a, b| b.pinned.cmp(&a.pinned).then(b.last_ts.cmp(&a.last_ts)).then(a.title.cmp(&b.title)));
+fn known(state: &State, room: &RoomRef) -> bool {
+  match (room.kind, room.session.as_deref()) {
+    (RoomKind::Manager, None) => room.machine == MACHINE,
+    (RoomKind::Session, Some(id)) => room.machine == MACHINE && state.sessions.iter().any(|s| s.0 == id),
+    _ => false,
+  }
 }
 
 impl ManagerBackend for StubBackend {
-  fn chats(&self) -> Result<Vec<Chat>, String> {
+  fn rooms(&self) -> Result<Vec<RoomInfo>, String> {
     Ok(self.with(|s| {
-      let mut out = s.chats.clone();
-      for chat in &mut out {
-        if let Some(last) = s.messages.iter().filter(|m| m.chat_id == chat.id).max_by_key(|m| m.ts) {
-          chat.last_preview = Some(last.body_md.clone());
-          chat.last_ts = Some(last.ts);
-        }
-      }
-      sort_chats(&mut out);
-      out
+      let last = |room: &RoomRef| s.messages.iter().filter(|m| &m.room == room).max_by_key(|m| m.ts_ms).cloned();
+      let mut rooms = vec![RoomInfo {
+        room: manager_room(),
+        title: "Manager".into(),
+        agent: Some("claude".into()),
+        state: None,
+        context_pct: None,
+        context_tokens: None,
+        last: last(&manager_room()),
+      }];
+      let mut sessions: Vec<RoomInfo> = s
+        .sessions
+        .iter()
+        .map(|(id, title, agent, pct)| RoomInfo {
+          room: session_room(id),
+          title: title.clone(),
+          agent: Some(agent.clone()),
+          state: Some("working".into()),
+          context_pct: Some(*pct),
+          context_tokens: Some(u64::from(*pct) * 2000),
+          last: last(&session_room(id)),
+        })
+        .collect();
+      sessions.sort_by(|a, b| {
+        b.last.as_ref().map(|m| m.ts_ms).cmp(&a.last.as_ref().map(|m| m.ts_ms)).then(a.title.cmp(&b.title))
+      });
+      rooms.extend(sessions);
+      rooms
     }))
   }
 
-  fn messages(&self, chat_id: &str, before: Option<&str>, limit: usize) -> Result<Vec<Message>, String> {
-    Ok(self.with(|s| {
-      let mut all: Vec<Message> = s.messages.iter().filter(|m| m.chat_id == chat_id).cloned().collect();
-      all.sort_by_key(|m| m.ts);
-      if let Some(before) = before {
+  fn history(&self, params: HistoryParams) -> Result<Vec<ChatMessage>, String> {
+    let limit = params.limit.unwrap_or(50).min(MAX_HISTORY) as usize;
+    self.with(|s| {
+      if !known(s, &params.room) {
+        return Err("unknown room".into());
+      }
+      let mut all: Vec<ChatMessage> = s.messages.iter().filter(|m| m.room == params.room).cloned().collect();
+      all.sort_by(|a, b| a.id.cmp(&b.id));
+      if let Some(before) = params.before.as_deref() {
         let cut = all.iter().position(|m| m.id == before).unwrap_or(all.len());
         all.truncate(cut);
       }
       let skip = all.len().saturating_sub(limit);
-      all.split_off(skip)
-    }))
-  }
-
-  fn send(&self, chat_id: &str, draft: Draft) -> Result<Message, String> {
-    if draft.body_md.trim().is_empty() && draft.attachments.is_empty() {
-      return Err("empty message".into());
-    }
-    self.with(|s| {
-      if !s.chats.iter().any(|c| c.id == chat_id) {
-        return Err(format!("unknown chat {chat_id}"));
-      }
-      s.next += 1;
-      let ts = s.messages.iter().map(|m| m.ts).max().unwrap_or(0) + 1;
-      let message = Message {
-        id: format!("m{}", s.next),
-        chat_id: chat_id.into(),
-        author: author("owner", "owner", "You"),
-        ts,
-        body_md: draft.body_md,
-        attachments: draft.attachments,
-        reply_to: draft.reply_to,
-        kind: "text".into(),
-        decision_id: None,
-      };
-      s.messages.push(message.clone());
-      Ok(message)
+      Ok(all.split_off(skip))
     })
   }
 
-  fn commands(&self, chat_id: &str) -> Result<Vec<SlashCommand>, String> {
+  fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
+    if params.body_md.trim().is_empty() && params.attachments.is_empty() {
+      return Err("empty message".into());
+    }
+    if params.body_md.len() > MAX_BODY {
+      return Err("body_md is too large".into());
+    }
+    if params.attachments.len() > MAX_ATTACHMENTS {
+      return Err("too many attachments".into());
+    }
+    self.with(|s| {
+      if !known(s, &params.room) {
+        return Err("unknown room".into());
+      }
+      s.next += 1;
+      let mut sent = message(s.next, params.room, author("owner", "owner", None), &params.body_md);
+      sent.attachments = params.attachments;
+      sent.reply_to = params.reply_to;
+      s.messages.push(sent.clone());
+      Ok(sent)
+    })
+  }
+
+  fn search(&self, params: SearchParams) -> Result<Vec<ChatMessage>, String> {
+    let needle = params.query.trim().to_lowercase();
+    if needle.is_empty() || params.query.len() > MAX_QUERY {
+      return Ok(vec![]);
+    }
+    let limit = params.limit.unwrap_or(50).min(MAX_HISTORY) as usize;
+    Ok(self.with(|s| {
+      let mut hits: Vec<ChatMessage> = s
+        .messages
+        .iter()
+        .filter(|m| params.room.as_ref().map_or(true, |r| r == &m.room))
+        .filter(|m| m.body_md.to_lowercase().contains(&needle) || m.attachments.iter().any(|a| a.name.to_lowercase().contains(&needle)))
+        .cloned()
+        .collect();
+      hits.sort_by(|a, b| b.ts_ms.cmp(&a.ts_ms));
+      hits.truncate(limit);
+      hits
+    }))
+  }
+
+  fn commands(&self, room: &RoomRef) -> Result<Vec<SlashCommand>, String> {
     let cmd = |name: &str, description: &str, args: Option<&str>, group: &str, dangerous| SlashCommand {
       name: name.into(),
       description: description.into(),
@@ -226,47 +293,23 @@ impl ManagerBackend for StubBackend {
       group: group.into(),
       dangerous,
     };
-    let agent = self.with(|s| s.chats.iter().find(|c| c.id == chat_id).map(|c| (c.kind, c.agent.clone())));
-    match agent {
-      None => Err(format!("unknown chat {chat_id}")),
-      Some((ChatKind::Room, _)) => Ok(vec![
-        cmd("/summary", "Morning summary of all sessions", None, "TMGR", false),
-        cmd("/ask", "Ask a session a question", Some("@session <question>"), "TMGR", false),
-        cmd("/stop", "Stop a session", Some("@session"), "TMGR", true),
-      ]),
-      Some((_, _)) => Ok(vec![
-        cmd("/compact", "Compact the conversation", Some("[instructions]"), "Agent built-ins", false),
-        cmd("/clear", "Clear conversation history", None, "Agent built-ins", true),
-        cmd("/model", "Switch model", Some("<name>"), "Agent built-ins", false),
-      ]),
-    }
-  }
-
-  fn search(&self, query: SearchQuery) -> Result<Vec<SearchHit>, String> {
-    let needle = query.text.trim().to_lowercase();
-    if needle.is_empty() {
-      return Ok(vec![]);
-    }
-    Ok(self.with(|s| {
-      let mut hits: Vec<SearchHit> = s
-        .messages
-        .iter()
-        .filter(|m| query.chat_id.as_deref().map_or(true, |id| id == m.chat_id))
-        .filter(|m| m.body_md.to_lowercase().contains(&needle))
-        .map(|m| SearchHit { chat_id: m.chat_id.clone(), message_id: m.id.clone(), ts: m.ts, snippet: m.body_md.clone() })
-        .collect();
-      hits.sort_by(|a, b| b.ts.cmp(&a.ts));
-      hits
-    }))
-  }
-
-  fn mark_read(&self, chat_id: &str) -> Result<(), String> {
     self.with(|s| {
-      if let Some(chat) = s.chats.iter_mut().find(|c| c.id == chat_id) {
-        chat.unread = 0;
+      if !known(s, room) {
+        return Err("unknown room".into());
       }
-    });
-    Ok(())
+      Ok(match room.kind {
+        RoomKind::Manager => vec![
+          cmd("/summary", "Morning summary of all sessions", None, "TMGR", false),
+          cmd("/ask", "Ask a session a question", Some("@session <question>"), "TMGR", false),
+          cmd("/stop", "Stop a session", Some("@session"), "TMGR", true),
+        ],
+        RoomKind::Session => vec![
+          cmd("/compact", "Compact the conversation", Some("[instructions]"), "Agent built-ins", false),
+          cmd("/clear", "Clear conversation history", None, "Agent built-ins", true),
+          cmd("/model", "Switch model", Some("<name>"), "Agent built-ins", false),
+        ],
+      })
+    })
   }
 }
 
@@ -274,77 +317,69 @@ impl ManagerBackend for StubBackend {
 mod tests {
   use super::*;
 
-  fn draft(body: &str) -> Draft {
-    Draft { body_md: body.into(), reply_to: None, attachments: vec![] }
+  fn send(room: RoomRef, body: &str) -> SendParams {
+    SendParams { room, body_md: body.into(), reply_to: None, attachments: vec![] }
+  }
+
+  fn hist(room: RoomRef, before: Option<String>, limit: u32) -> HistoryParams {
+    HistoryParams { room, before, limit: Some(limit) }
   }
 
   #[test]
-  fn manager_room_is_pinned_first() {
-    let chats = StubBackend::default().chats().unwrap();
-    assert_eq!(chats[0].id, "manager");
-    assert!(chats[0].pinned);
-    assert_eq!(chats[0].kind, ChatKind::Room);
+  fn manager_room_comes_first() {
+    let rooms = StubBackend::default().rooms().unwrap();
+    assert_eq!(rooms[0].room.kind, RoomKind::Manager);
+    assert_eq!(rooms[1].room.session.as_deref(), Some("claude-backend"));
+    assert!(rooms[1].context_tokens.is_some());
   }
 
   #[test]
-  fn sessions_are_ordered_by_latest_message() {
-    let chats = StubBackend::default().chats().unwrap();
-    assert_eq!(chats[1].id, "claude-backend");
-  }
-
-  #[test]
-  fn send_appends_an_owner_message_with_reply() {
+  fn send_stores_an_owner_message_with_reply() {
     let backend = StubBackend::default();
-    let mut d = draft("hello");
-    d.reply_to = Some("m1".into());
-    let sent = backend.send("manager", d).unwrap();
+    let mut p = send(manager_room(), "hello");
+    p.reply_to = Some(format!("m_{:032x}", 1));
+    let sent = backend.send(p).unwrap();
     assert_eq!(sent.author.kind, "owner");
-    assert_eq!(sent.reply_to.as_deref(), Some("m1"));
-    let all = backend.messages("manager", None, 50).unwrap();
+    assert!(sent.reply_to.is_some());
+    let all = backend.history(hist(manager_room(), None, 50)).unwrap();
     assert_eq!(all.last().unwrap().id, sent.id);
   }
 
   #[test]
-  fn send_rejects_empty_and_unknown_chat() {
+  fn send_rejects_empty_oversized_and_unknown_room() {
     let backend = StubBackend::default();
-    assert!(backend.send("manager", draft("  ")).is_err());
-    assert!(backend.send("nope", draft("x")).is_err());
+    assert!(backend.send(send(manager_room(), "  ")).is_err());
+    assert!(backend.send(send(manager_room(), &"x".repeat(MAX_BODY + 1))).is_err());
+    assert!(backend.send(send(session_room("nope"), "x")).is_err());
+    let mut many = send(manager_room(), "x");
+    many.attachments = vec![Attachment { name: "a".into(), mime: "text/plain".into(), size: 1, sha256: "0".repeat(64) }; 17];
+    assert!(backend.send(many).is_err());
   }
 
   #[test]
-  fn messages_page_backwards_from_a_cursor() {
+  fn history_pages_backwards_from_a_cursor() {
     let backend = StubBackend::default();
-    backend.send("manager", draft("third")).unwrap();
-    let page = backend.messages("manager", None, 2).unwrap();
+    backend.send(send(manager_room(), "third")).unwrap();
+    let page = backend.history(hist(manager_room(), None, 2)).unwrap();
     assert_eq!(page.len(), 2);
-    let older = backend.messages("manager", Some(&page[0].id), 10).unwrap();
+    let older = backend.history(hist(manager_room(), Some(page[0].id.clone()), 10)).unwrap();
     assert_eq!(older.len(), 1);
-    assert_eq!(older[0].id, "m1");
   }
 
   #[test]
-  fn commands_depend_on_the_chat() {
+  fn commands_depend_on_the_room() {
     let backend = StubBackend::default();
-    assert!(backend.commands("manager").unwrap().iter().any(|c| c.name == "/summary"));
-    assert!(backend.commands("claude-backend").unwrap().iter().any(|c| c.name == "/compact"));
-    assert!(backend.commands("nope").is_err());
+    assert!(backend.commands(&manager_room()).unwrap().iter().any(|c| c.name == "/summary"));
+    assert!(backend.commands(&session_room("claude-backend")).unwrap().iter().any(|c| c.name == "/compact"));
+    assert!(backend.commands(&session_room("nope")).is_err());
   }
 
   #[test]
   fn search_is_case_insensitive_and_scoped() {
     let backend = StubBackend::default();
-    let all = backend.search(SearchQuery { text: "TM-1021".into(), chat_id: None }).unwrap();
-    assert_eq!(all.len(), 1);
-    let scoped = backend.search(SearchQuery { text: "editing".into(), chat_id: Some("manager".into()) }).unwrap();
-    assert!(scoped.is_empty());
-    assert!(backend.search(SearchQuery { text: " ".into(), chat_id: None }).unwrap().is_empty());
-  }
-
-  #[test]
-  fn mark_read_clears_unread() {
-    let backend = StubBackend::default();
-    backend.mark_read("manager").unwrap();
-    let chats = backend.chats().unwrap();
-    assert_eq!(chats.iter().find(|c| c.id == "manager").unwrap().unread, 0);
+    let q = |text: &str, room| SearchParams { query: text.into(), room, limit: None };
+    assert_eq!(backend.search(q("TM-1021", None)).unwrap().len(), 1);
+    assert!(backend.search(q("editing", Some(manager_room()))).unwrap().is_empty());
+    assert!(backend.search(q(" ", None)).unwrap().is_empty());
   }
 }

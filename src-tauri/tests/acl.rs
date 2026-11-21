@@ -18,7 +18,7 @@ probes!(
   local_access_event,
   decisions_list,
   decisions_get,
-  manager_chats,
+  manager_rooms,
   persona_cache_clear_for_user,
   persona_llm_clear_for_user,
   skill_library_read,
@@ -53,12 +53,12 @@ fn call(label: &str, cmd: &str) -> Result<(), String> {
 
 #[test]
 fn the_manager_window_reaches_only_its_own_commands_and_inline_cards() {
-  assert!(call("manager", "manager_chats").is_ok());
+  assert!(call("manager", "manager_rooms").is_ok());
   assert!(call("manager", "decisions_get").is_ok());
   assert!(call("manager", "decisions_list").unwrap_err().contains("not allowed on window"));
   assert!(call("manager", "runner_enabled").unwrap_err().contains("not allowed on window"));
   for label in ["main", "task-1", "decisions"] {
-    assert!(call(label, "manager_chats").unwrap_err().contains("not allowed on window"), "{label}");
+    assert!(call(label, "manager_rooms").unwrap_err().contains("not allowed on window"), "{label}");
   }
 }
 
