@@ -1495,3 +1495,119 @@ kbd {
 		animation: none;
 	}
 }
+.action {
+	background: var(--bg-raised);
+	border-radius: 12px;
+	box-shadow: 0 0 0 1px var(--line-strong);
+	padding: 14px 16px;
+	margin-bottom: 12px;
+}
+.action-h {
+	margin: 0 0 10px;
+	font-size: 15px;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+.arow {
+	margin-bottom: 10px;
+}
+.alabel {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	font-size: 12px;
+	color: var(--fg-muted);
+	margin-bottom: 3px;
+}
+.aedited {
+	color: var(--brand);
+	font-weight: 600;
+}
+.areset {
+	border: 0;
+	background: none;
+	color: var(--brand);
+	cursor: pointer;
+	font: inherit;
+	padding: 0;
+}
+.avalue {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-size: 13.5px;
+}
+.avalue.mono,
+.acommits code {
+	font-family: var(--font-mono, monospace);
+	font-size: 12.5px;
+}
+.ainput {
+	width: 100%;
+	box-sizing: border-box;
+	border: 0;
+	border-radius: 8px;
+	padding: 8px 10px;
+	background: var(--bg);
+	color: var(--fg);
+	box-shadow: 0 0 0 1px var(--line-strong);
+	font: 13.5px var(--font-sans);
+	resize: vertical;
+}
+.ainput:focus {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--ring);
+}
+.acommits {
+	margin: 0;
+	padding-left: 18px;
+	font-size: 13px;
+}
+.abar {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+.areject {
+	width: 100%;
+}
+.arun {
+	border-radius: 8px;
+	padding: 10px 12px;
+	margin-top: 10px;
+	background: var(--bg-active);
+	font-size: 13.5px;
+	overflow-wrap: anywhere;
+}
+.arun.s-done {
+	background: var(--done-bg);
+	color: var(--done-fg);
+}
+.arun.s-failed,
+.arun.s-partial,
+.arun.s-unknown {
+	background: var(--fix-bg);
+	color: var(--fix-fg);
+}
+.arun-t {
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.arun-l,
+.arun-e {
+	margin-top: 4px;
+}
+.aspin {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	border: 2px solid currentColor;
+	border-top-color: transparent;
+	animation: aspin 0.8s linear infinite;
+}
+@keyframes aspin {
+	to {
+		transform: rotate(360deg);
+	}
+}

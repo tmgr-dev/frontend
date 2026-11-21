@@ -73,6 +73,14 @@
 			</div>
 		</div>
 
+		<ActionPanel
+			v-if="card.action"
+			:key="card.id + ':' + card.updated_ms"
+			:card="card"
+			@answer="$emit('answer', $event)"
+			@open-link="openLink"
+		/>
+
 		<div v-if="delivery" class="notice">{{ delivery }}</div>
 		<div v-if="unpicked" class="notice unpicked">{{ unpicked }}</div>
 
@@ -89,7 +97,7 @@
 			<div v-if="finalDetail">{{ finalDetail }}</div>
 		</div>
 
-		<template v-else>
+		<template v-else-if="!card.action">
 			<div v-if="card.question" class="q">{{ card.question }}</div>
 
 			<div v-if="mode === 'dismiss-only'" class="notice">
@@ -219,6 +227,7 @@
 	import { isSubmitKey } from '../keys';
 	import { clickedHttpLink, renderMarkdown } from '../markdown';
 	import { reconcileSelection } from '../selection';
+	import ActionPanel from './ActionPanel.vue';
 	import type { AnswerChoice, CardOption, CardView } from '../types';
 
 	const PICK_DELAY_MS = 180;
@@ -226,6 +235,7 @@
 
 	export default defineComponent({
 		name: 'CardPane',
+		components: { ActionPanel },
 		props: {
 			card: { type: Object as PropType<CardView>, required: true },
 			position: { type: Number, required: true },
@@ -352,7 +362,7 @@
 			},
 			pick(index: number, withNote: boolean) {
 				const option = this.card.options[index];
-				if (!option || this.mode !== 'answer') return;
+				if (!option || this.mode !== 'answer' || this.card.action) return;
 				this.selected = option.id;
 				this.selectionCleared = false;
 				this.picked = true;
