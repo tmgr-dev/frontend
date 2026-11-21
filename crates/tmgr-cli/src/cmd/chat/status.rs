@@ -83,6 +83,7 @@ mod tests {
             state,
             is_self,
             kind_verified: true,
+            can_confirm_kind: false,
         }
     }
 

@@ -11,8 +11,8 @@ use tmgr_chat_relay::api::{self, Directory, Msg, Request};
 use tmgr_chat_relay::fields::{check_device_id, check_device_kind, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
-  decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set_by_kind,
-  v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, Trusted,
+  decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
+  trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex};
@@ -263,14 +263,21 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_bas
   entries.extend(
     c.st.trusted.iter().chain(c.st.base.iter()).map(|d| DirEntry { device_id: d.id.clone(), sign_pub_b64: d.sign_pub.clone(), kex_pub_b64: d.kex_pub.clone() }),
   );
-  let mut known = c.st.kinds.clone();
-  if from_base {
-    for d in &c.st.base {
-      known.entry(kind_key(&d.id, &d.fp)).or_insert_with(|| "desktop".to_owned());
-    }
-  }
+  let assumed: BTreeSet<String> =
+    if from_base { c.st.base.iter().map(|d| kind_key(&d.id, &d.fp)).filter(|k| !c.st.kinds.contains_key(k)).collect() } else { BTreeSet::new() };
   let own = own_key(c);
-  let set = trusted_set_by_kind(uid, &pins, &c.st.revoked, &intros, &entries, Some(&KindCtx { known: &known, own: own.as_deref(), max_passes: c.pass_cap }));
+  let mut set = trusted_set_by_kind(
+    uid,
+    &pins,
+    &c.st.revoked,
+    &intros,
+    &entries,
+    Some(&KindCtx { known: &c.st.kinds, own: own.as_deref(), assumed: &assumed, max_passes: c.pass_cap }),
+  );
+  if from_base {
+    let before: BTreeSet<String> = c.st.trusted.iter().map(|d| kind_key(&d.id, &d.fp)).collect();
+    set = restrict_to_before(set, &before, &c.st.kinds);
+  }
   for (id, fp, kind) in &set.kinds {
     c.st.kinds.insert(kind_key(id, fp), kind.clone());
   }
@@ -1170,6 +1177,13 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
       self.save_now(c)?;
       return Err("this device id belonged to another device".into());
+    }
+    let contradicts = c.st.kinds.iter().any(|(k, v)| k.split_once(':').is_some_and(|(id, fp)| (id == rec.device_id || fp == rec.fp) && *v != rec.kind));
+    if contradicts {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
+      self.save_now(c)?;
+      return Err("this device kind contradicts a known one".into());
     }
     let dir = self.fetch_dir(c)?;
     let entry = dir
