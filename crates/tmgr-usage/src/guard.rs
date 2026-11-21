@@ -61,6 +61,7 @@ fn origin(snap: &LimitSnapshot) -> &'static str {
         (LimitSource::Probe, Tool::Codex) => "app_server",
         (LimitSource::Statusline, _) => "statusline",
         (LimitSource::Rollout, _) => "rollout",
+        (LimitSource::LimitHit, _) => "limit_hit",
     }
 }
 

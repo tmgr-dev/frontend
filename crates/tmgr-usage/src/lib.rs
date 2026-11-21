@@ -10,6 +10,7 @@ pub mod facts;
 pub mod guard;
 pub mod limits;
 pub mod link;
+pub mod machine;
 pub mod model;
 pub mod paths;
 pub mod pricing;

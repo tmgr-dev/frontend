@@ -35,6 +35,7 @@ pub enum LimitSource {
     Rollout,
     Statusline,
     Probe,
+    LimitHit,
 }
 
 impl LimitSource {
@@ -43,6 +44,7 @@ impl LimitSource {
             LimitSource::Rollout => "rollout",
             LimitSource::Statusline => "statusline",
             LimitSource::Probe => "probe",
+            LimitSource::LimitHit => "limit_hit",
         }
     }
 
@@ -51,6 +53,7 @@ impl LimitSource {
             "rollout" => Some(LimitSource::Rollout),
             "statusline" => Some(LimitSource::Statusline),
             "probe" => Some(LimitSource::Probe),
+            "limit_hit" => Some(LimitSource::LimitHit),
             _ => None,
         }
     }
