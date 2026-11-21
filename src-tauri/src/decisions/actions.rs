@@ -95,16 +95,23 @@ fn tag(gh: &Gh, p: &TagPayload) -> Outcome {
   }
 }
 
+fn branch_sha(gh: &Gh, repo: &str, name: &str) -> Result<Option<String>, String> {
+  let text = gh.api(&[format!("repos/{repo}/git/ref/heads/{name}")]).map_err(|e| format!("could not read {name}: {e}"))?;
+  let v: serde_json::Value =
+    serde_json::from_str(&text).map_err(|_| format!("GitHub answered with something unreadable when reading {name}"))?;
+  Ok(v["object"]["sha"].as_str().map(str::to_owned))
+}
+
 fn pr(gh: &Gh, p: &PrPayload) -> Outcome {
-  let head: serde_json::Value = match gh.api(&[format!("repos/{}/git/ref/heads/{}", p.repo, p.branch)]) {
-    Ok(t) => match serde_json::from_str(&t) {
-      Ok(v) => v,
-      Err(_) => return Outcome::failed("GitHub answered with something unreadable when reading the branch"),
-    },
-    Err(e) => return Outcome::failed(format!("could not read the branch: {e}")),
-  };
-  if head["object"]["sha"].as_str() != Some(p.head_sha.as_str()) {
-    return Outcome::failed("branch moved since approval");
+  match branch_sha(gh, &p.repo, &p.branch) {
+    Ok(sha) if sha.as_deref() == Some(p.head_sha.as_str()) => {}
+    Ok(_) => return Outcome::failed("branch moved since approval"),
+    Err(e) => return Outcome::failed(e),
+  }
+  match branch_sha(gh, &p.repo, &p.base) {
+    Ok(sha) if sha.as_deref() == Some(p.base_sha.as_str()) => {}
+    Ok(_) => return Outcome::failed("base moved since approval"),
+    Err(e) => return Outcome::failed(e),
   }
   let mut args = strs(&["-X", "POST"]);
   args.push(format!("repos/{}/pulls", p.repo));
@@ -122,14 +129,21 @@ fn pr(gh: &Gh, p: &PrPayload) -> Outcome {
   let Some(url) = created["html_url"].as_str().map(str::to_owned) else {
     return Outcome::failed("GitHub did not return the PR address; check whether the PR exists");
   };
-  if created["head"]["sha"].as_str() != Some(p.head_sha.as_str()) {
+  let moved = if created["head"]["sha"].as_str() != Some(p.head_sha.as_str()) {
+    Some("head moved during creation; review the PR")
+  } else if created["base"]["sha"].as_str() != Some(p.base_sha.as_str()) {
+    Some("base moved during creation; review the PR")
+  } else {
+    None
+  };
+  if let Some(error) = moved {
     return Outcome {
       state: STATE_PARTIAL,
       result: ActionResult {
         ok: false,
         url: Some(url),
         sha: None,
-        error: Some("head moved during creation; review the PR".into()),
+        error: Some(error.into()),
       },
     };
   }
@@ -186,7 +200,7 @@ mod tests {
   impl Fake {
     fn new() -> Fake {
       let dir = tempfile::tempdir().unwrap();
-      let script = "#!/bin/sh\nd=\"$(dirname \"$0\")\"\n{ printf '%s\\n' \"$@\"; echo ---; } >> \"$d/argv.log\"\nenv > \"$d/env.log\"\npwd > \"$d/cwd.log\"\ncase \"$*\" in\n  *git/ref/heads*) cat \"$d/get.json\" ;;\n  *git/refs*) if [ -f \"$d/tag.fail\" ]; then echo 'Reference already exists' >&2; exit 1; fi; echo '{}' ;;\n  *pulls*) cat \"$d/pr.json\" ;;\nesac\n";
+      let script = "#!/bin/sh\nd=\"$(dirname \"$0\")\"\n{ printf '%s\\n' \"$@\"; echo ---; } >> \"$d/argv.log\"\nenv > \"$d/env.log\"\npwd > \"$d/cwd.log\"\ncase \"$*\" in\n  *git/ref/heads/master*) cat \"$d/base.json\" ;;\n  *git/ref/heads*) cat \"$d/get.json\" ;;\n  *git/refs*) if [ -f \"$d/tag.fail\" ]; then echo 'Reference already exists' >&2; exit 1; fi; echo '{}' ;;\n  *pulls*) cat \"$d/pr.json\" ;;\nesac\n";
       let bin = dir.path().join("gh");
       fs::write(&bin, script).unwrap();
       fs::set_permissions(&bin, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
@@ -269,12 +283,13 @@ mod tests {
   }
 
   #[test]
-  fn pr_checks_the_branch_then_posts_with_literal_fields() {
+  fn pr_checks_both_branches_then_posts_with_literal_fields() {
     let f = Fake::new();
     f.put("get.json", &format!(r#"{{"object":{{"sha":"{B}"}}}}"#));
+    f.put("base.json", &format!(r#"{{"object":{{"sha":"{A}"}}}}"#));
     f.put(
       "pr.json",
-      &format!(r#"{{"html_url":"https://github.com/tmgr-dev/frontend/pull/9","head":{{"sha":"{B}"}}}}"#),
+      &format!(r#"{{"html_url":"https://github.com/tmgr-dev/frontend/pull/9","head":{{"sha":"{B}"}},"base":{{"sha":"{A}"}}}}"#),
     );
     let out = execute(&f.gh, &ActionIn::Pr(pr_payload()));
     assert_eq!(out.state, STATE_DONE);
@@ -287,8 +302,9 @@ mod tests {
       .map(|c| c.lines().map(str::to_owned).collect())
       .collect();
     assert_eq!(calls[0], ["api", "--hostname", "github.com", "repos/tmgr-dev/frontend/git/ref/heads/tm-1012"]);
+    assert_eq!(calls[1], ["api", "--hostname", "github.com", "repos/tmgr-dev/frontend/git/ref/heads/master"]);
     assert_eq!(
-      calls[1],
+      calls[2],
       [
         "api",
         "--hostname",
@@ -319,9 +335,36 @@ mod tests {
   }
 
   #[test]
+  fn a_moved_base_stops_before_creating_the_pr() {
+    let f = Fake::new();
+    f.put("get.json", &format!(r#"{{"object":{{"sha":"{B}"}}}}"#));
+    f.put("base.json", &format!(r#"{{"object":{{"sha":"{B}"}}}}"#));
+    let out = execute(&f.gh, &ActionIn::Pr(pr_payload()));
+    assert_eq!(out.state, STATE_FAILED);
+    assert_eq!(out.result.error.as_deref(), Some("base moved since approval"));
+    assert_eq!(f.read("argv.log").matches("---").count(), 2);
+  }
+
+  #[test]
+  fn a_base_that_moved_during_creation_is_partial_with_the_url() {
+    let f = Fake::new();
+    f.put("get.json", &format!(r#"{{"object":{{"sha":"{B}"}}}}"#));
+    f.put("base.json", &format!(r#"{{"object":{{"sha":"{A}"}}}}"#));
+    f.put(
+      "pr.json",
+      &format!(r#"{{"html_url":"https://github.com/tmgr-dev/frontend/pull/9","head":{{"sha":"{B}"}},"base":{{"sha":"{B}"}}}}"#),
+    );
+    let out = execute(&f.gh, &ActionIn::Pr(pr_payload()));
+    assert_eq!(out.state, STATE_PARTIAL);
+    assert_eq!(out.result.url.as_deref(), Some("https://github.com/tmgr-dev/frontend/pull/9"));
+    assert_eq!(out.result.error.as_deref(), Some("base moved during creation; review the PR"));
+  }
+
+  #[test]
   fn a_head_that_moved_during_creation_is_partial_with_the_url() {
     let f = Fake::new();
     f.put("get.json", &format!(r#"{{"object":{{"sha":"{B}"}}}}"#));
+    f.put("base.json", &format!(r#"{{"object":{{"sha":"{A}"}}}}"#));
     f.put(
       "pr.json",
       &format!(r#"{{"html_url":"https://github.com/tmgr-dev/frontend/pull/9","head":{{"sha":"{A}"}}}}"#),
