@@ -84,7 +84,7 @@
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
 		},
-		emits: ['approve', 'reject'],
+		emits: ['approve', 'reject', 'dismiss'],
 		computed: {
 			revokerGrouped(): string {
 				return groupFp(this.revokerFp);
@@ -99,7 +99,7 @@
 		methods: {
 			onKey(e: KeyboardEvent) {
 				dialogKeydown(this.$refs.dialog as HTMLElement, e, () =>
-					this.$emit('reject'),
+					this.$emit('dismiss'),
 				);
 			},
 		},

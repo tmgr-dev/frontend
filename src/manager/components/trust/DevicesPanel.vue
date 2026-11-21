@@ -10,6 +10,9 @@
 		>
 			<h2 id="trust-devices-title">{{ $t('manager.trust.devices.title') }}</h2>
 			<p>{{ $t('manager.trust.devices.hint') }}</p>
+			<p v-if="keyMismatch.length > 0" class="mgr-error" role="alert">
+				{{ $t('manager.trust.devices.keyMismatch') }}
+			</p>
 			<ul class="trust-devices">
 				<li v-for="d in devices" :key="d.id" class="trust-device">
 					<div class="t">
@@ -76,6 +79,7 @@
 		name: 'ManagerDevicesPanel',
 		props: {
 			devices: { type: Array as PropType<TrustDevice[]>, required: true },
+			keyMismatch: { type: Array as PropType<string[]>, default: () => [] },
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
 		},

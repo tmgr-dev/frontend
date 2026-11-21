@@ -110,7 +110,7 @@ export interface PendingJoin {
 }
 
 export interface PendingRevoke {
-	id: string;
+	statement_id: string;
 	revoker_label: string;
 	revoker_fp: string;
 	target_id: string;
@@ -123,6 +123,7 @@ export interface TrustState {
 	self_fp: string;
 	devices: TrustDevice[];
 	pending_joins: PendingJoin[];
+	key_mismatch?: string[];
 	pending_revokes?: PendingRevoke[];
 }
 

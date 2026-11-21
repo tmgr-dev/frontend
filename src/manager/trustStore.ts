@@ -33,16 +33,19 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 		revokeTarget: null as string | null,
 		resetOpen: false,
 		resetText: '',
+		deferred: [] as string[],
 
 		get queue(): TrustItem[] {
 			const t = store.trust;
 			if (!t) return [];
 			return [
 				...t.pending_joins.map((join) => ({ type: 'join' as const, join })),
-				...(t.pending_revokes ?? []).map((revoke) => ({
-					type: 'revoke' as const,
-					revoke,
-				})),
+				...(t.pending_revokes ?? [])
+					.filter((r) => !store.deferred.includes(r.statement_id))
+					.map((revoke) => ({
+						type: 'revoke' as const,
+						revoke,
+					})),
 			];
 		},
 		get current(): TrustItem | null {
@@ -107,13 +110,19 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 		async decideRevoke(accept: boolean) {
 			const item = store.current;
 			if (item?.type !== 'revoke') return;
-			const id = item.revoke.id;
+			const id = item.revoke.statement_id;
 			const ok = await store.run(() => api.revokeDecide(id, accept));
 			if (!ok || !store.trust) return;
 			store.trust.pending_revokes = (store.trust.pending_revokes ?? []).filter(
-				(r) => r.id !== id,
+				(r) => r.statement_id !== id,
 			);
 			await store.refresh();
+		},
+
+		deferRevoke() {
+			const item = store.current;
+			if (item?.type === 'revoke')
+				store.deferred.push(item.revoke.statement_id);
 		},
 
 		openPanel() {

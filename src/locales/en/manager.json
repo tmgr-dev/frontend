@@ -89,6 +89,7 @@
 		"devices": {
 			"title": "Chat devices",
 			"hint": "Devices that can read your chats.",
+			"keyMismatch": "The relay now reports different keys for a device you trust. That device is not used until you check it.",
 			"thisDevice": "this device",
 			"revoke": "Revoke",
 			"revokeLabel": "Revoke {name}",

@@ -17,7 +17,7 @@ const join = (id: string) => ({
 });
 
 const revoke = (id: string) => ({
-	id,
+	statement_id: id,
 	revoker_label: 'Phone',
 	revoker_fp: 'ab12cd34',
 	target_id: 't1',

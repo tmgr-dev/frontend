@@ -102,6 +102,7 @@
 			:error="trust.error"
 			@approve="trust.decideRevoke(true)"
 			@reject="trust.decideRevoke(false)"
+			@dismiss="trust.deferRevoke()"
 		/>
 		<RevokeConfirmDialog
 			v-else-if="revokeDevice"
@@ -111,6 +112,7 @@
 			:error="trust.error"
 			@approve="trust.confirmRevoke()"
 			@reject="trust.cancelRevoke()"
+			@dismiss="trust.cancelRevoke()"
 		/>
 		<ResetIdentityDialog
 			v-else-if="trust.resetOpen"
@@ -123,6 +125,7 @@
 		<DevicesPanel
 			v-else-if="trust.panelOpen"
 			:devices="trust.trust?.devices ?? []"
+			:key-mismatch="trust.trust?.key_mismatch ?? []"
 			:busy="trust.busy"
 			:error="trust.error"
 			@revoke="trust.revoke"

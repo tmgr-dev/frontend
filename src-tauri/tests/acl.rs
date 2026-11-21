@@ -21,6 +21,9 @@ probes!(
   manager_rooms,
   manager_trust_state,
   manager_reset_identity,
+  manager_join_decide,
+  manager_revoke_decide,
+  manager_revoke,
   persona_cache_clear_for_user,
   persona_llm_clear_for_user,
   skill_library_read,
@@ -59,6 +62,10 @@ fn the_manager_window_reaches_only_its_own_commands_and_inline_cards() {
   assert!(call("manager", "decisions_get").is_ok());
   assert!(call("manager", "manager_trust_state").is_ok());
   assert!(call("manager", "manager_reset_identity").is_ok());
+  for command in ["manager_join_decide", "manager_revoke_decide", "manager_revoke"] {
+    assert!(call("manager", command).is_ok(), "{command}");
+    assert!(call("main", command).unwrap_err().contains("not allowed on window"), "{command}");
+  }
   assert!(call("main", "manager_reset_identity").unwrap_err().contains("not allowed on window"));
   assert!(call("manager", "decisions_list").unwrap_err().contains("not allowed on window"));
   assert!(call("manager", "runner_enabled").unwrap_err().contains("not allowed on window"));
