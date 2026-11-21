@@ -137,7 +137,10 @@ mod tests {
         assert_eq!(m.machine_for(DEV_B, FP_B), Some(B));
         assert_eq!(m.device_for(A), Some((DEV_A, FP_A)));
         assert_eq!(m.device_for("mx_ffffffffffffffff"), None);
-        assert_eq!(m.machine_for("00000000-0000-0000-0000-000000000000", FP_A), None);
+        assert_eq!(
+            m.machine_for("00000000-0000-0000-0000-000000000000", FP_A),
+            None
+        );
     }
 
     #[test]
@@ -232,6 +235,9 @@ mod tests {
 
     #[test]
     fn an_empty_list_is_valid() {
-        assert_eq!(Machines::parse(r#"{"machines":[]}"#).unwrap(), Machines::default());
+        assert_eq!(
+            Machines::parse(r#"{"machines":[]}"#).unwrap(),
+            Machines::default()
+        );
     }
 }

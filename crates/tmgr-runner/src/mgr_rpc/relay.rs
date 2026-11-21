@@ -4,8 +4,8 @@ use super::policy::Policy;
 use super::transport::{serve_one, Inbound, Transport};
 use crate::manager::Host;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
 use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -76,7 +76,14 @@ impl RpcInbox {
 }
 
 impl RpcSink for RpcInbox {
-    fn deliver_rpc(&self, from_device: &str, from_fp: &str, kind: &str, msg_id: &str, payload: Value) {
+    fn deliver_rpc(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        kind: &str,
+        msg_id: &str,
+        payload: Value,
+    ) {
         let tx = match kind {
             KIND_REQ => &self.req_tx,
             KIND_RES => &self.res_tx,
@@ -432,17 +439,14 @@ mod tests {
     fn with_no_policy_file_everything_is_dropped() {
         let r = rig(None);
         for op in ["list", "read", "send", "ask"] {
-            let req = json!({"v":1,"rpc":format!("r-{op}"),"op":op,"args":{},"chain":[],"ts_ms":T0});
+            let req =
+                json!({"v":1,"rpc":format!("r-{op}"),"op":op,"args":{},"chain":[],"ts_ms":T0});
             r.deliver(DEV_A, FP_A, KIND_REQ, req);
             assert!(r.tick());
         }
         assert!(r.sent.lock().unwrap().is_empty());
         assert!(r.host.sent.lock().unwrap().is_empty());
-        assert!(r
-            .audit
-            .records()
-            .iter()
-            .all(|l| l.outcome == "not_allowed"));
+        assert!(r.audit.records().iter().all(|l| l.outcome == "not_allowed"));
     }
 
     #[test]
@@ -470,7 +474,10 @@ mod tests {
     #[test]
     fn sending_to_an_unknown_machine_fails() {
         let r = rig(None);
-        assert!(r.transport.send("mx_ffffffffffffffff", b"{}".to_vec()).is_err());
+        assert!(r
+            .transport
+            .send("mx_ffffffffffffffff", b"{}".to_vec())
+            .is_err());
         assert!(r.sent.lock().unwrap().is_empty());
     }
 
@@ -552,7 +559,12 @@ mod tests {
         let c = client_rig(|_, _| {});
         let err = c
             .client
-            .call("mx_ffffffffffffffff", Op::List, json!({}), Duration::from_millis(10))
+            .call(
+                "mx_ffffffffffffffff",
+                Op::List,
+                json!({}),
+                Duration::from_millis(10),
+            )
             .unwrap_err();
         assert!(err.contains("unknown machine"));
         assert!(c.sent.lock().unwrap().is_empty());

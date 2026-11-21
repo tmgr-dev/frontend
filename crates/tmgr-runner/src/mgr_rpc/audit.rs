@@ -147,7 +147,12 @@ mod tests {
         assert_eq!(mode & 0o777, 0o600);
         let l = lines(&p);
         assert_eq!(l.len(), 1);
-        let mut keys: Vec<&str> = l[0].as_object().unwrap().keys().map(String::as_str).collect();
+        let mut keys: Vec<&str> = l[0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
         keys.sort_unstable();
         assert_eq!(keys, ["from", "op", "outcome", "rpc", "session", "ts_ms"]);
         assert_eq!(l[0]["op"], "send");

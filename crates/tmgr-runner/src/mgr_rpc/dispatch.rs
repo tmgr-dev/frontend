@@ -465,12 +465,12 @@ fn prepare(policy: &Policy, from: &str, req: &RpcReq) -> Result<Args, RpcRes> {
             "operation is not available yet",
         ));
     }
-    parse_args(req.op, &req.args, from).ok_or_else(|| err(ErrorCode::BadRequest, "invalid arguments"))
+    parse_args(req.op, &req.args, from)
+        .ok_or_else(|| err(ErrorCode::BadRequest, "invalid arguments"))
 }
 
 fn load_store(path: &Path, now: u64) -> (HashMap<String, SenderState>, bool) {
-    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str()))
-    else {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str())) else {
         return (HashMap::new(), false);
     };
     let text = match read_private(dir, name, MAX_STORE_BYTES) {
@@ -1355,7 +1355,10 @@ mod tests {
         fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String> {
             self.inner.trusted_dir(cwd)
         }
-        fn spawn(&self, spec: crate::manager::SpawnSpec) -> Result<tmgr_ipc::api::SessionInfo, String> {
+        fn spawn(
+            &self,
+            spec: crate::manager::SpawnSpec,
+        ) -> Result<tmgr_ipc::api::SessionInfo, String> {
             self.inner.spawn(spec)
         }
     }
@@ -1423,10 +1426,12 @@ mod tests {
                 std::fs::copy(&path, &snap).unwrap();
             }),
         };
-        assert!(stored_dispatcher(&path, T0)
-            .handle(&open(), &host, PEER, &send_body("dup"))
-            .unwrap()
-            .ok);
+        assert!(
+            stored_dispatcher(&path, T0)
+                .handle(&open(), &host, PEER, &send_body("dup"))
+                .unwrap()
+                .ok
+        );
         let restarted = d.path().join("restarted.json");
         std::fs::copy(&snap, &restarted).unwrap();
         let after = Fake::new();
@@ -1471,7 +1476,12 @@ mod tests {
         let later = T0 + 2 * limits::FRESH_MS + limits::SEEN_MARGIN_MS;
         host.set_now(later);
         let res = dispatcher
-            .handle(&open(), &host, PEER, &body("fresh", "send", valid_args("send"), later))
+            .handle(
+                &open(),
+                &host,
+                PEER,
+                &body("fresh", "send", valid_args("send"), later),
+            )
             .unwrap();
         assert!(res.ok);
         assert_eq!(host.sent.lock().unwrap().len(), 1);

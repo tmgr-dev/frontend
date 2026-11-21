@@ -251,14 +251,13 @@ fn build(setup: &Setup) -> Result<Option<Engine>, String> {
         label: LABEL.to_owned(),
         local_machine: setup.machine.clone(),
     };
-    RelayEngine::new(DynTransport(transport), dir, sink, engine_cfg)
-        .map(|e| {
-            Some(
-                e.with_kind("runner")
-                    .with_room_scope(RoomScope::Local)
-                    .with_rpc_sink(setup.rpc.clone()),
-            )
-        })
+    RelayEngine::new(DynTransport(transport), dir, sink, engine_cfg).map(|e| {
+        Some(
+            e.with_kind("runner")
+                .with_room_scope(RoomScope::Local)
+                .with_rpc_sink(setup.rpc.clone()),
+        )
+    })
 }
 
 fn sleeper(stop: Arc<dyn Fn() -> bool + Send + Sync>) -> impl Fn(Duration) {
@@ -316,7 +315,10 @@ fn serve(engine: Arc<Engine>, setup: &Setup) {
     let rpc_server = (setup.serve_rpc)(rpc_send);
     crate::daemon::log("chat relay: pump started");
     run_poll(&*engine, &*stop, &sleeper(stop.clone()));
-    for h in [forwarder, sender, rpc_server].into_iter().flatten() {
+    for h in [forwarder.ok(), sender.ok(), rpc_server]
+        .into_iter()
+        .flatten()
+    {
         let _ = h.join();
     }
 }
