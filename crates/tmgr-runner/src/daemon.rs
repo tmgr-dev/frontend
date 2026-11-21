@@ -1794,7 +1794,7 @@ struct Rejects {
 }
 
 struct Runner {
-    chat: chat::Chat,
+    chat: Arc<chat::Chat>,
     rename_lock: Mutex<()>,
     cfg: RunnerConfig,
     secret: String,
@@ -5433,8 +5433,9 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
     clock.load_totals(&humantime::read_records(&cfg.dir));
     let saved_config_dirs = load_client_config_dirs(&cfg.dir, &config_dir_forbidden(&cfg));
+    let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
     let rt = Arc::new(Runner {
-        chat: chat::Chat::open(&cfg.dir),
+        chat: chat_store.clone(),
         rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
         secret,
@@ -5454,7 +5455,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
         clock: Mutex::new(clock),
-        mgr: crate::manager::State::default(),
+        mgr: crate::manager::State::new(Box::new(chat_store)),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -6034,8 +6035,9 @@ mod tests {
             version: "test".into(),
             max_sessions: 4,
         };
+        let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         let rt = Runner {
-            chat: chat::Chat::open(&cfg.dir),
+            chat: chat_store.clone(),
             rename_lock: Mutex::new(()),
             cfg,
             secret: String::new(),
@@ -6055,7 +6057,7 @@ mod tests {
             next_conn: AtomicU64::new(1),
             autopilot: autopilot::Host::default(),
             clock: Mutex::new(humantime::Clock::new(0)),
-            mgr: crate::manager::State::default(),
+            mgr: crate::manager::State::new(Box::new(chat_store)),
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({
             "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),

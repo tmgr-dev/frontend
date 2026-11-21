@@ -10,14 +10,10 @@ fn bad(msg: String) -> ApiErr {
 }
 
 impl Runner {
-    pub(super) fn manager_session(&self) -> Option<Arc<Session>> {
-        None
-    }
-
     fn chat_target(&self, room: &tmgr_ipc::chat::RoomRef) -> Option<Arc<Session>> {
         let s = match room.session.as_deref() {
             Some(id) => self.session(id)?,
-            None => self.manager_session()?,
+            None => self.live_manager()?,
         };
         (!s.is_exited() && s.has_shim()).then_some(s)
     }
@@ -332,7 +328,7 @@ mod tests {
     fn the_manager_hook_is_empty_until_wired_so_manager_messages_are_only_stored() {
         let t = tempfile::tempdir().unwrap();
         let rt = runner(t.path());
-        assert!(rt.manager_session().is_none());
+        assert!(rt.live_manager().is_none());
         assert!(rt.chat_target(&rt.chat.manager_room()).is_none());
         assert!(rt
             .chat_target(&rt.chat.session_room("s_abcdefghij"))

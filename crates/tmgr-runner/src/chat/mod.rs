@@ -270,6 +270,16 @@ fn state_name(kind: StateKind) -> &'static str {
     }
 }
 
+impl crate::manager::ChatPort for std::sync::Arc<Chat> {
+    fn post(&self, msg: ChatMessage) -> Result<ChatMessage, String> {
+        self.append(msg)
+    }
+
+    fn history(&self, room: &RoomRef, limit: u32) -> Result<Vec<ChatMessage>, String> {
+        Chat::history(self, room, None, Some(limit))
+    }
+}
+
 pub fn prompt_bytes(body: &str) -> Vec<u8> {
     let clean: String = body
         .chars()

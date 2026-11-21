@@ -64,7 +64,7 @@ impl core::Host for ManagerHost<'_> {
     }
 
     fn machine(&self) -> String {
-        "local".into()
+        self.rt.chat.machine().to_string()
     }
 
     fn now_ms(&self) -> u64 {
