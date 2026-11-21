@@ -56,9 +56,9 @@ impl Runner {
     }
 }
 
-struct ManagerHost<'a> {
-    rt: &'a Arc<Runner>,
-    me: &'a str,
+pub(super) struct ManagerHost<'a> {
+    pub(super) rt: &'a Arc<Runner>,
+    pub(super) me: &'a str,
 }
 
 impl core::Host for ManagerHost<'_> {

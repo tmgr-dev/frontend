@@ -1,13 +1,18 @@
-use super::policy::Policy;
+use super::policy::{read_private, Policy};
 use crate::manager::{execute, Host, State};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tmgr_ipc::chat::{self, Author, AuthorKind, ChatMessage, MessageKind, RoomRef};
 use tmgr_ipc::manager::{limits as mlimits, tool, valid_req_id, SpoolReq, DATA_NOTICE, SPOOL_V};
 use tmgr_ipc::mgr_rpc::{limits, valid_machine_id, ErrorCode, Op, RpcReq, RpcRes, MGR_RPC_V};
 
+pub const SEEN_FILE: &str = "mgr-rpc-seen.json";
+const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
 const RATE_WINDOW_MS: u64 = 60_000;
 const MAX_REFUSAL: usize = 200;
 
@@ -40,15 +45,36 @@ impl Audit for MemoryAudit {
     }
 }
 
+enum Slot {
+    Marker,
+    InFlight,
+    Lost,
+    Answered(RpcRes),
+}
+
 struct Entry {
     expires_ms: u64,
-    stored: Option<RpcRes>,
+    slot: Slot,
 }
 
 #[derive(Default)]
 struct SenderState {
     seen: HashMap<String, Entry>,
     rate: VecDeque<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoreFile {
+    v: u32,
+    senders: BTreeMap<String, BTreeMap<String, StoredEntry>>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredEntry {
+    expires_ms: u64,
+    answer: Option<RpcRes>,
 }
 
 #[derive(Default)]
@@ -72,22 +98,49 @@ struct IdOnly {
     rpc: String,
 }
 
+enum Admit {
+    Reply(RpcRes),
+    Run(Box<RpcReq>, Args),
+}
+
 pub struct Dispatcher {
     machine: String,
     state: State,
     audit: Arc<dyn Audit>,
     senders: Mutex<HashMap<String, SenderState>>,
+    store: Option<PathBuf>,
+    blind_until: u64,
     pub(crate) rate_per_min: usize,
     pub(crate) max_seen: usize,
 }
 
 impl Dispatcher {
     pub fn new(machine: &str, state: State, audit: Arc<dyn Audit>) -> Dispatcher {
+        Dispatcher::with_store(machine, state, audit, None, 0)
+    }
+
+    pub fn with_store(
+        machine: &str,
+        state: State,
+        audit: Arc<dyn Audit>,
+        store: Option<PathBuf>,
+        now_ms: u64,
+    ) -> Dispatcher {
+        let (senders, readable) = store
+            .as_deref()
+            .map_or((HashMap::new(), true), |p| load_store(p, now_ms));
+        let blind_until = if readable {
+            0
+        } else {
+            now_ms + 2 * limits::FRESH_MS + limits::SEEN_MARGIN_MS
+        };
         Dispatcher {
             machine: machine.into(),
             state,
             audit,
-            senders: Mutex::new(HashMap::new()),
+            senders: Mutex::new(senders),
+            store,
+            blind_until,
             rate_per_min: limits::RPC_PER_MINUTE,
             max_seen: limits::MAX_SEEN_PER_SENDER,
         }
@@ -95,6 +148,43 @@ impl Dispatcher {
 
     pub fn state(&self) -> &State {
         &self.state
+    }
+
+    fn persist(&self, senders: &HashMap<String, SenderState>) -> std::io::Result<()> {
+        let Some(path) = &self.store else {
+            return Ok(());
+        };
+        let mut out: BTreeMap<String, BTreeMap<String, StoredEntry>> = BTreeMap::new();
+        for (from, st) in senders {
+            for (rpc, e) in &st.seen {
+                let answer = match &e.slot {
+                    Slot::Marker => continue,
+                    Slot::Answered(a) => Some(a.clone()),
+                    Slot::InFlight | Slot::Lost => None,
+                };
+                out.entry(from.clone()).or_default().insert(
+                    rpc.clone(),
+                    StoredEntry {
+                        expires_ms: e.expires_ms,
+                        answer,
+                    },
+                );
+            }
+        }
+        let bytes = serde_json::to_vec(&StoreFile { v: 1, senders: out })?;
+        let mut tmp = path.clone().into_os_string();
+        tmp.push(".tmp");
+        let tmp = PathBuf::from(tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&tmp)?;
+        f.write_all(&bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)
     }
 
     pub fn handle(
@@ -116,9 +206,8 @@ impl Dispatcher {
             });
             return None;
         }
-        let mut senders = self.senders.lock().unwrap_or_else(|e| e.into_inner());
         let mut meta = Meta::default();
-        let res = self.process(&mut senders, policy, host, from, payload, now, &mut meta);
+        let res = self.process(policy, host, from, payload, now, &mut meta);
         let outcome = match &res {
             None => "dropped",
             Some(r) => r.error.as_ref().map_or("ok", |e| e.code.as_str()),
@@ -134,10 +223,8 @@ impl Dispatcher {
         res
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn process(
         &self,
-        senders: &mut HashMap<String, SenderState>,
         policy: &Policy,
         host: &dyn Host,
         from: &str,
@@ -145,22 +232,62 @@ impl Dispatcher {
         now: u64,
         meta: &mut Meta,
     ) -> Option<RpcRes> {
+        let (req, args) = match self.admit(policy, from, payload, now, meta)? {
+            Admit::Reply(res) => return Some(res),
+            Admit::Run(req, args) => (req, args),
+        };
+        let rpc = req.rpc.as_str();
+        let res = cap_size(
+            rpc,
+            match self.exec(host, from, rpc, args) {
+                Ok(data) => RpcRes::ok(rpc, wrap(data)),
+                Err((code, msg)) => RpcRes::err(rpc, code, msg),
+            },
+        );
+        if durable(req.op) {
+            let mut senders = self.senders.lock().unwrap_or_else(|e| e.into_inner());
+            let st = senders.entry(from.to_string()).or_default();
+            let e = st.seen.entry(req.rpc.clone()).or_insert(Entry {
+                expires_ms: expiry(now, req.ts_ms),
+                slot: Slot::Marker,
+            });
+            e.slot = Slot::Answered(res.clone());
+            if let Err(err) = self.persist(&senders) {
+                crate::daemon::log(&format!("manager rpc: seen store not written: {err}"));
+            }
+        }
+        Some(res)
+    }
+
+    fn admit(
+        &self,
+        policy: &Policy,
+        from: &str,
+        payload: &[u8],
+        now: u64,
+        meta: &mut Meta,
+    ) -> Option<Admit> {
+        let mut senders = self.senders.lock().unwrap_or_else(|e| e.into_inner());
         let st = senders.entry(from.to_string()).or_default();
         st.rate.retain(|t| now.saturating_sub(*t) < RATE_WINDOW_MS);
         if st.rate.len() >= self.rate_per_min {
             let id = readable_id(payload)?;
             meta.rpc = Some(id.clone());
-            return Some(RpcRes::err(
+            return Some(Admit::Reply(RpcRes::err(
                 &id,
                 ErrorCode::RateLimited,
                 "too many requests",
-            ));
+            )));
         }
         st.rate.push_back(now);
         let Some(req) = parse(payload) else {
             let id = readable_id(payload)?;
             meta.rpc = Some(id.clone());
-            return Some(RpcRes::err(&id, ErrorCode::BadRequest, "malformed request"));
+            return Some(Admit::Reply(RpcRes::err(
+                &id,
+                ErrorCode::BadRequest,
+                "malformed request",
+            )));
         };
         meta.rpc = Some(req.rpc.clone());
         meta.op = Some(req.op);
@@ -171,17 +298,16 @@ impl Dispatcher {
             .filter(|s| tmgr_ipc::proto::valid_session_id(s))
             .map(String::from);
         let rpc = req.rpc.as_str();
-        let fail = |code, msg: &str| Some(RpcRes::err(rpc, code, msg));
+        let fail = |code, msg: &str| Some(Admit::Reply(RpcRes::err(rpc, code, msg)));
         if req.v != MGR_RPC_V {
             return fail(ErrorCode::BadRequest, "unsupported version");
         }
         st.seen.retain(|_, e| e.expires_ms > now);
-        if let Some(Entry {
-            stored: Some(answer),
-            ..
-        }) = st.seen.get(rpc)
-        {
-            return Some(answer.clone());
+        match st.seen.get(rpc).map(|e| &e.slot) {
+            Some(Slot::Answered(answer)) => return Some(Admit::Reply(answer.clone())),
+            Some(Slot::InFlight) => return fail(ErrorCode::RateLimited, "in progress"),
+            Some(Slot::Lost) => return fail(ErrorCode::Unavailable, "outcome unknown"),
+            _ => {}
         }
         if now.abs_diff(req.ts_ms) > limits::FRESH_MS {
             return fail(
@@ -195,37 +321,40 @@ impl Dispatcher {
         if st.seen.len() >= self.max_seen && !st.seen.contains_key(rpc) {
             return fail(ErrorCode::RateLimited, "too many requests");
         }
-        let (res, executed) = self.run_op(policy, host, from, &req);
-        let stored = (executed && matches!(req.op, Op::Send | Op::Ask)).then(|| res.clone());
-        let expires = now.max(req.ts_ms) + limits::FRESH_MS + limits::SEEN_MARGIN_MS;
+        let expires = expiry(now, req.ts_ms);
         let e = st.seen.entry(req.rpc.clone()).or_insert(Entry {
             expires_ms: expires,
-            stored: None,
+            slot: Slot::Marker,
         });
         e.expires_ms = e.expires_ms.max(expires);
-        if e.stored.is_none() {
-            e.stored = stored;
-        }
-        Some(res)
-    }
-
-    fn run_op(&self, policy: &Policy, host: &dyn Host, from: &str, req: &RpcReq) -> (RpcRes, bool) {
-        let rpc = req.rpc.as_str();
-        let err = |code, msg: &str| (RpcRes::err(rpc, code, msg), false);
-        if !policy.allows(req.op) {
-            return err(ErrorCode::OpDenied, "operation is not allowed");
-        }
-        if matches!(req.op, Op::SpawnChallenge | Op::Spawn | Op::Switch) {
-            return err(ErrorCode::Unavailable, "operation is not available yet");
-        }
-        let Some(args) = parse_args(req.op, &req.args, from) else {
-            return err(ErrorCode::BadRequest, "invalid arguments");
+        let args = match prepare(policy, from, &req) {
+            Ok(args) => args,
+            Err(res) => return Some(Admit::Reply(res)),
         };
-        let res = match self.exec(host, from, rpc, args) {
-            Ok(data) => RpcRes::ok(rpc, wrap(data)),
-            Err((code, msg)) => RpcRes::err(rpc, code, msg),
-        };
-        (cap_size(rpc, res), true)
+        if durable(req.op) && now < self.blind_until {
+            if let Some(st) = senders.get_mut(from) {
+                st.seen.remove(&req.rpc);
+            }
+            return Some(Admit::Reply(RpcRes::err(
+                &req.rpc,
+                ErrorCode::Unavailable,
+                "request history unreadable",
+            )));
+        }
+        if durable(req.op) {
+            e.slot = Slot::InFlight;
+            if self.persist(&senders).is_err() {
+                if let Some(st) = senders.get_mut(from) {
+                    st.seen.remove(&req.rpc);
+                }
+                return Some(Admit::Reply(RpcRes::err(
+                    &req.rpc,
+                    ErrorCode::Unavailable,
+                    "request could not be recorded",
+                )));
+            }
+        }
+        Some(Admit::Run(Box::new(req), args))
     }
 
     fn exec(&self, host: &dyn Host, from: &str, rpc: &str, args: Args) -> Result<Value, Refusal> {
@@ -296,7 +425,7 @@ impl Dispatcher {
                     author: Author {
                         kind: AuthorKind::Manager,
                         id: "manager".into(),
-                        machine: Some(from.into()),
+                        machine: Some(self.machine.clone()),
                         device: None,
                         agent: None,
                     },
@@ -314,6 +443,69 @@ impl Dispatcher {
             }
         }
     }
+}
+
+fn durable(op: Op) -> bool {
+    matches!(op, Op::Send | Op::Ask)
+}
+
+fn expiry(now: u64, ts_ms: u64) -> u64 {
+    now.max(ts_ms) + limits::FRESH_MS + limits::SEEN_MARGIN_MS
+}
+
+fn prepare(policy: &Policy, from: &str, req: &RpcReq) -> Result<Args, RpcRes> {
+    let rpc = req.rpc.as_str();
+    let err = |code, msg: &str| RpcRes::err(rpc, code, msg);
+    if !policy.allows(req.op) {
+        return Err(err(ErrorCode::OpDenied, "operation is not allowed"));
+    }
+    if matches!(req.op, Op::SpawnChallenge | Op::Spawn | Op::Switch) {
+        return Err(err(
+            ErrorCode::Unavailable,
+            "operation is not available yet",
+        ));
+    }
+    parse_args(req.op, &req.args, from).ok_or_else(|| err(ErrorCode::BadRequest, "invalid arguments"))
+}
+
+fn load_store(path: &Path, now: u64) -> (HashMap<String, SenderState>, bool) {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str()))
+    else {
+        return (HashMap::new(), false);
+    };
+    let text = match read_private(dir, name, MAX_STORE_BYTES) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (HashMap::new(), true),
+        Err(_) => {
+            crate::daemon::log("manager rpc: seen store unreadable; refusing send/ask for now");
+            return (HashMap::new(), false);
+        }
+    };
+    let Ok(file) = serde_json::from_str::<StoreFile>(&text) else {
+        crate::daemon::log("manager rpc: seen store is not valid; refusing send/ask for now");
+        return (HashMap::new(), false);
+    };
+    let mut out = HashMap::new();
+    for (from, entries) in file.senders {
+        if !valid_machine_id(&from) {
+            continue;
+        }
+        let st: &mut SenderState = out.entry(from).or_default();
+        for (rpc, e) in entries {
+            if !valid_req_id(&rpc) || e.expires_ms <= now {
+                continue;
+            }
+            let slot = e.answer.map_or(Slot::Lost, Slot::Answered);
+            st.seen.insert(
+                rpc,
+                Entry {
+                    expires_ms: e.expires_ms,
+                    slot,
+                },
+            );
+        }
+    }
+    (out, true)
 }
 
 fn provenance(from: &str) -> String {
@@ -412,6 +604,7 @@ mod tests {
     use super::super::testkit::*;
     use super::*;
     use crate::manager::MemoryChat;
+    use std::os::unix::fs::PermissionsExt;
     use tmgr_ipc::mgr_rpc::Op;
 
     const OTHER: &str = "mx_00000000000000cc";
@@ -1044,7 +1237,7 @@ mod tests {
     }
 
     #[test]
-    fn ask_posts_once_with_provenance_and_the_sender_as_author_machine() {
+    fn ask_posts_once_with_provenance_and_this_machine_as_author_machine() {
         let r = rig();
         let res = r.call(&open(), "q1", "ask", json!({"text": "status please"}));
         assert!(data(&res)["id"].as_str().unwrap().starts_with("m_"));
@@ -1052,7 +1245,7 @@ mod tests {
         assert_eq!(msgs.len(), 1);
         let m = &msgs[0];
         assert_eq!(m.author.kind, AuthorKind::Manager);
-        assert_eq!(m.author.machine.as_deref(), Some(PEER));
+        assert_eq!(m.author.machine.as_deref(), Some(ME));
         assert_eq!(m.room, RoomRef::manager(ME));
         assert_eq!(
             m.body_md,
@@ -1132,5 +1325,200 @@ mod tests {
         assert_eq!(log[3].outcome, "not_allowed");
         assert_eq!(log[3].from, OTHER);
         assert_eq!((log[3].rpc.clone(), log[3].op), (None, None));
+    }
+
+    struct Hooked<'a> {
+        inner: &'a Fake,
+        on_send: Box<dyn Fn() + Send + Sync + 'a>,
+    }
+
+    impl crate::manager::Host for Hooked<'_> {
+        fn me(&self) -> &str {
+            self.inner.me()
+        }
+        fn machine(&self) -> String {
+            self.inner.machine()
+        }
+        fn now_ms(&self) -> u64 {
+            self.inner.now_ms()
+        }
+        fn sessions(&self) -> Vec<tmgr_ipc::api::SessionInfo> {
+            self.inner.sessions()
+        }
+        fn text(&self, id: &str, lines: u32) -> Result<Vec<String>, String> {
+            self.inner.text(id, lines)
+        }
+        fn send(&self, id: &str, text: &str) -> Result<(), String> {
+            (self.on_send)();
+            self.inner.send(id, text)
+        }
+        fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String> {
+            self.inner.trusted_dir(cwd)
+        }
+        fn spawn(&self, spec: crate::manager::SpawnSpec) -> Result<tmgr_ipc::api::SessionInfo, String> {
+            self.inner.spawn(spec)
+        }
+    }
+
+    fn store_dir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("md")
+            .tempdir_in("/tmp")
+            .unwrap()
+    }
+
+    fn stored_dispatcher(path: &Path, now: u64) -> Dispatcher {
+        Dispatcher::with_store(
+            ME,
+            State::new(Box::new(MemoryChat::default())),
+            Arc::new(MemoryAudit::default()),
+            Some(path.to_path_buf()),
+            now,
+        )
+    }
+
+    fn send_body(rpc: &str) -> Vec<u8> {
+        body(rpc, "send", valid_args("send"), T0)
+    }
+
+    #[test]
+    fn ask_author_machine_equals_the_room_machine() {
+        let r = rig();
+        r.call(&open(), "q1", "ask", valid_args("ask"));
+        let msgs = r.d.state().chat.history(&RoomRef::manager(ME), 10).unwrap();
+        assert_eq!(
+            msgs[0].author.machine.as_deref(),
+            Some(msgs[0].room.machine.as_str())
+        );
+    }
+
+    #[test]
+    fn after_a_restart_a_stored_answer_is_returned_and_send_ran_once() {
+        let d = store_dir();
+        let path = d.path().join(SEEN_FILE);
+        let (first_host, second_host) = (Fake::new(), Fake::new());
+        let first = stored_dispatcher(&path, T0)
+            .handle(&open(), &first_host, PEER, &send_body("dup"))
+            .unwrap();
+        assert!(first.ok);
+        let again = stored_dispatcher(&path, T0)
+            .handle(&open(), &second_host, PEER, &send_body("dup"))
+            .unwrap();
+        assert_eq!(first, again);
+        assert_eq!(first_host.sent.lock().unwrap().len(), 1);
+        assert!(second_host.sent.lock().unwrap().is_empty());
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn a_restart_between_in_flight_and_store_refuses_and_never_runs_again() {
+        let d = store_dir();
+        let path = d.path().join(SEEN_FILE);
+        let snap = d.path().join("snapshot.json");
+        let base = Fake::new();
+        let host = Hooked {
+            inner: &base,
+            on_send: Box::new(|| {
+                std::fs::copy(&path, &snap).unwrap();
+            }),
+        };
+        assert!(stored_dispatcher(&path, T0)
+            .handle(&open(), &host, PEER, &send_body("dup"))
+            .unwrap()
+            .ok);
+        let restarted = d.path().join("restarted.json");
+        std::fs::copy(&snap, &restarted).unwrap();
+        let after = Fake::new();
+        let res = stored_dispatcher(&restarted, T0)
+            .handle(&open(), &after, PEER, &send_body("dup"))
+            .unwrap();
+        assert_eq!(code(&res), ErrorCode::Unavailable);
+        assert_eq!(res.error.unwrap().message, "outcome unknown");
+        assert!(after.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn expired_entries_are_dropped_on_load() {
+        let d = store_dir();
+        let path = d.path().join(SEEN_FILE);
+        let host = Fake::new();
+        stored_dispatcher(&path, T0).handle(&open(), &host, PEER, &send_body("dup"));
+        let later = T0 + 2 * limits::FRESH_MS + limits::SEEN_MARGIN_MS;
+        let fresh_host = Fake::new();
+        fresh_host.set_now(later);
+        let res = stored_dispatcher(&path, later)
+            .handle(&open(), &fresh_host, PEER, &send_body("dup"))
+            .unwrap();
+        assert_eq!(code(&res), ErrorCode::Stale);
+        assert!(fresh_host.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_corrupt_store_refuses_send_until_old_requests_expire() {
+        let d = store_dir();
+        let path = d.path().join(SEEN_FILE);
+        std::fs::write(&path, b"not json").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let host = Fake::new();
+        let dispatcher = stored_dispatcher(&path, T0);
+        let res = dispatcher
+            .handle(&open(), &host, PEER, &send_body("dup"))
+            .unwrap();
+        assert_eq!(code(&res), ErrorCode::Unavailable);
+        assert_eq!(res.error.unwrap().message, "request history unreadable");
+        assert!(host.sent.lock().unwrap().is_empty());
+        let later = T0 + 2 * limits::FRESH_MS + limits::SEEN_MARGIN_MS;
+        host.set_now(later);
+        let res = dispatcher
+            .handle(&open(), &host, PEER, &body("fresh", "send", valid_args("send"), later))
+            .unwrap();
+        assert!(res.ok);
+        assert_eq!(host.sent.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_send_that_cannot_be_recorded_is_not_executed() {
+        let d = store_dir();
+        let path = d.path().join("missing-dir").join(SEEN_FILE);
+        let host = Fake::new();
+        let res = stored_dispatcher(&path, T0)
+            .handle(&open(), &host, PEER, &send_body("dup"))
+            .unwrap();
+        assert_eq!(code(&res), ErrorCode::Unavailable);
+        assert!(host.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_concurrent_duplicate_never_executes_twice() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Barrier;
+        let r = rig();
+        let barrier = Barrier::new(2);
+        let entered = AtomicBool::new(false);
+        let host = Hooked {
+            inner: &r.host,
+            on_send: Box::new(|| {
+                entered.store(true, Ordering::SeqCst);
+                barrier.wait();
+            }),
+        };
+        let p = open();
+        let payload = send_body("dup");
+        std::thread::scope(|s| {
+            let first = s.spawn(|| r.d.handle(&p, &host, PEER, &payload));
+            while !entered.load(Ordering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            let dup = r.d.handle(&p, &host, PEER, &payload).unwrap();
+            assert_eq!(code(&dup), ErrorCode::RateLimited);
+            assert_eq!(dup.error.unwrap().message, "in progress");
+            barrier.wait();
+            assert!(first.join().unwrap().unwrap().ok);
+        });
+        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
+        let again = r.d.handle(&p, &host, PEER, &payload).unwrap();
+        assert!(again.ok);
+        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
     }
 }

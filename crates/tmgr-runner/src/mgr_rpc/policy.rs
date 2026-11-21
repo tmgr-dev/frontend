@@ -52,31 +52,8 @@ impl Policy {
     }
 
     pub fn try_load(runner_dir: &Path) -> Result<Policy, String> {
-        let dir = File::open(runner_dir).map_err(|e| format!("policy: runner dir: {e}"))?;
-        let mut f = openat_nofollow(
-            dir.as_raw_fd(),
-            POLICY_FILE.as_ref(),
-            libc::O_RDONLY | libc::O_NONBLOCK,
-        )
-        .map_err(|e| format!("policy: {POLICY_FILE}: {e}"))?;
-        let m = f.metadata().map_err(|e| format!("policy: stat: {e}"))?;
-        if !m.is_file() {
-            return Err("policy: not a regular file".into());
-        }
-        if m.uid() != unsafe { libc::geteuid() } {
-            return Err("policy: not owned by the runner user".into());
-        }
-        if m.mode() & 0o022 != 0 {
-            return Err("policy: group or world writable".into());
-        }
-        if m.len() > MAX_POLICY_BYTES {
-            return Err("policy: file too large".into());
-        }
-        let mut text = String::new();
-        f.by_ref()
-            .take(MAX_POLICY_BYTES)
-            .read_to_string(&mut text)
-            .map_err(|e| format!("policy: read: {e}"))?;
+        let text = read_private(runner_dir, POLICY_FILE, MAX_POLICY_BYTES)
+            .map_err(|e| format!("policy: {e}"))?;
         Policy::parse(&text)
     }
 
@@ -91,6 +68,32 @@ impl Policy {
     pub fn allows(&self, op: Op) -> bool {
         self.allow.contains(&op)
     }
+}
+
+pub(super) fn read_private(runner_dir: &Path, name: &str, max: u64) -> std::io::Result<String> {
+    let rule = |m: &str| std::io::Error::other(m.to_string());
+    let dir = File::open(runner_dir)?;
+    let mut f = openat_nofollow(
+        dir.as_raw_fd(),
+        name.as_ref(),
+        libc::O_RDONLY | libc::O_NONBLOCK,
+    )?;
+    let m = f.metadata()?;
+    if !m.is_file() {
+        return Err(rule("not a regular file"));
+    }
+    if m.uid() != unsafe { libc::geteuid() } {
+        return Err(rule("not owned by the runner user"));
+    }
+    if m.mode() & 0o022 != 0 {
+        return Err(rule("group or world writable"));
+    }
+    if m.len() > max {
+        return Err(rule("file too large"));
+    }
+    let mut text = String::new();
+    f.by_ref().take(max).read_to_string(&mut text)?;
+    Ok(text)
 }
 
 #[cfg(test)]
