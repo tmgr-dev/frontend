@@ -131,7 +131,7 @@ fn exec(cmd: &SessionCommand) -> Result<(), String> {
             let note = build(
                 &s,
                 &Opts {
-                    target,
+                    target: target.name(),
                     task: task.clone(),
                     previous: previous.clone(),
                     git: cwd.and_then(git::collect),

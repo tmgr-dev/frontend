@@ -482,6 +482,7 @@ fn create(
 
 pub(super) struct SwitchPlan {
     p: Prepared,
+    no_sandbox: bool,
     cwd: String,
     pins: (ExePin, String),
     bundle: RunBundle,
@@ -502,11 +503,18 @@ fn continued(b: &mut RunBundle, note: &str) {
     b.body = format!("{note}\n\n## Original task\n{original}");
 }
 
-pub(super) fn plan_switch(mut p: Prepared, l: &Launch, old_cwd: &str) -> Result<SwitchPlan> {
+pub(super) fn plan_switch(
+    mut p: Prepared,
+    l: &Launch,
+    old_cwd: &str,
+    no_sandbox: bool,
+) -> Result<SwitchPlan> {
     recalled(&mut p.plan);
     let profile = p.profile.clone();
     let mode = p.mode;
-    super::ops::login_preflight(&profile)?;
+    if !no_sandbox {
+        super::ops::login_preflight(&profile)?;
+    }
     let pins = launch_pin(&profile, l.model, mode)?;
     let gone =
         || Error::not_found("the clone of this task is gone, so there is no folder to continue in");
@@ -533,6 +541,7 @@ pub(super) fn plan_switch(mut p: Prepared, l: &Launch, old_cwd: &str) -> Result<
     }
     Ok(SwitchPlan {
         p,
+        no_sandbox,
         cwd,
         pins,
         bundle,
@@ -553,7 +562,7 @@ pub(super) fn start_switch(
         plan.cwd,
         plan.bundle,
         plan.pins,
-        (false, Some(old_id)),
+        (plan.no_sandbox, Some(old_id)),
     )
 }
 
