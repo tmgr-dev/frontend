@@ -7,10 +7,12 @@ import {
 	hasUsage,
 	isAnswerable,
 	isStale,
+	markBusy,
 	moneyText,
 	nextIndex,
 	nextResize,
 	orderOptions,
+	panelMaxHeight,
 	pendingDecisions,
 	resetText,
 	runningElapsed,
@@ -64,6 +66,7 @@ const model = (overrides: Partial<PopoverModel> = {}): PopoverModel => ({
 	openDecisions: 0,
 	extras: {},
 	missed: [],
+	maxHeight: 760,
 	...overrides,
 });
 
@@ -312,20 +315,29 @@ describe('todayEntries', () => {
 		);
 		expect(result.routines.map((r) => r.id)).toEqual([1, 2]);
 		expect(result.deadlines.map((d) => d.id)).toEqual([4, 5, 3]);
-		expect(result.hidden).toBe(1);
+		expect(result.hiddenRoutines).toBe(0);
 	});
 
-	it('shows only routines when they fill the cap', () => {
+	it('reserves the last slot for the nearest deadline when routines fill the cap', () => {
 		const routines = [1, 2, 3, 4, 5, 6, 7, 8].map(routine);
-		const result = todayEntries(routines, [deadline(9, 1)]);
-		expect(result.routines).toHaveLength(5);
-		expect(result.deadlines).toEqual([]);
-		expect(result.hidden).toBe(4);
+		const result = todayEntries(routines, [deadline(9, 5), deadline(10, 1)]);
+		expect(result.routines).toHaveLength(4);
+		expect(result.deadlines.map((d) => d.id)).toEqual([10]);
+		expect(result.hiddenRoutines).toBe(4);
+	});
+
+	it('counts only hidden routines in the more label', () => {
+		const result = todayEntries(
+			[routine(1)],
+			[1, 2, 3, 4, 5, 6].map((i) => deadline(i, i)),
+		);
+		expect(result.deadlines).toHaveLength(4);
+		expect(result.hiddenRoutines).toBe(0);
 	});
 
 	it('hides nothing when everything fits', () => {
 		const result = todayEntries([routine(1)], []);
-		expect(result.hidden).toBe(0);
+		expect(result.hiddenRoutines).toBe(0);
 	});
 
 	it('does not mutate its input', () => {
@@ -343,5 +355,21 @@ describe('isStale', () => {
 
 	it('never flags a bar without an age', () => {
 		expect(isStale({ pct: 1, resetsAt: null })).toBe(false);
+	});
+});
+
+describe('panelMaxHeight', () => {
+	it('leaves room for the transparent padding', () => {
+		expect(panelMaxHeight(760)).toBe(736);
+		expect(panelMaxHeight(10)).toBe(0);
+	});
+});
+
+describe('markBusy', () => {
+	it('adds an id once without mutating the input', () => {
+		const busy = ['a'];
+		expect(markBusy(busy, 'b')).toEqual(['a', 'b']);
+		expect(markBusy(['a'], 'a')).toEqual(['a']);
+		expect(busy).toEqual(['a']);
 	});
 });

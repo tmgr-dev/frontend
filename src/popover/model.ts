@@ -173,20 +173,26 @@ export const todayEntries = (
 	deadlines: TodayExtras['deadlines'],
 	cap = TODAY_CAP,
 ) => {
-	const shownRoutines = routines.slice(0, cap);
-	const shownDeadlines = [...deadlines]
-		.sort((a, b) => a.dueAt - b.dueAt)
-		.slice(0, cap - shownRoutines.length);
+	const sorted = [...deadlines].sort((a, b) => a.dueAt - b.dueAt);
+	const reserved = sorted.length > 0 && cap > 0 ? 1 : 0;
+	const shownRoutines = routines.slice(0, cap - reserved);
+	const shownDeadlines = sorted.slice(0, cap - shownRoutines.length);
 	return {
 		routines: shownRoutines,
 		deadlines: shownDeadlines,
-		hidden:
-			routines.length +
-			deadlines.length -
-			shownRoutines.length -
-			shownDeadlines.length,
+		hiddenRoutines: routines.length - shownRoutines.length,
 	};
 };
+
+export const POPOVER_PADDING = 12;
+export const FALLBACK_MAX_HEIGHT = 760;
+export const BUSY_MS = 1500;
+
+export const panelMaxHeight = (windowMax: number): number =>
+	Math.max(windowMax - 2 * POPOVER_PADDING, 0);
+
+export const markBusy = (busy: readonly string[], id: string): string[] =>
+	busy.includes(id) ? [...busy] : [...busy, id];
 
 export const usageBarPct = (bar: UsageBar): number =>
 	Math.min(100, Math.max(0, Math.round(bar.pct)));

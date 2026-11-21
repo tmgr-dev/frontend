@@ -81,6 +81,7 @@ export type PopoverModel = {
 	openDecisions: number;
 	extras: PopoverExtras;
 	missed: PopoverToastRecord[];
+	maxHeight: number;
 };
 
 export const POPOVER_ACTIONS_FIXED = [

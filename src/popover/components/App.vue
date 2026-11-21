@@ -3,6 +3,7 @@
 		<div
 			v-if="model"
 			class="pop"
+			:style="{ '--pop-max': `${panelMax}px` }"
 			role="menu"
 			:aria-label="$t('popover.window.label')"
 		>
@@ -90,7 +91,10 @@
 							type="button"
 							class="row"
 							data-nav
-							@click="run(actionIds.switch(task.workspaceId, task.id))"
+							:disabled="
+								busy.includes(actionIds.switch(task.workspaceId, task.id))
+							"
+							@click="runBusy(actionIds.switch(task.workspaceId, task.id))"
 						>
 							<span class="c">{{ codeOf(task.title) }}</span>
 							<span class="t">{{ stripTicket(task.title) }}</span>
@@ -138,8 +142,8 @@
 							@click="run('open-routines')"
 						>
 							<span class="t">{{ $t('popover.today.openRoutines') }}</span>
-							<span v-if="todayList.hidden" class="m">{{
-								$t('popover.today.more', { count: todayList.hidden })
+							<span v-if="todayList.hiddenRoutines" class="m">{{
+								$t('popover.today.more', { count: todayList.hiddenRoutines })
 							}}</span>
 							<span class="chev">›</span>
 						</button>
@@ -348,9 +352,13 @@
 	import UsageBar from './UsageBar.vue';
 	import {
 		actionIds,
+		BUSY_MS,
+		FALLBACK_MAX_HEIGHT,
+		markBusy,
 		moneyText,
 		nextIndex,
 		nextResize,
+		panelMaxHeight,
 		pendingDecisions,
 		stripTicket,
 		ticketCode,
@@ -362,8 +370,6 @@
 		type PopoverUsage,
 	} from '../model';
 	import type { PopoverModel, PopoverTask } from '../types';
-
-	const MAX_HEIGHT = 760;
 
 	const NAV_SELECTOR = '[data-nav]:not([disabled])';
 
@@ -378,12 +384,20 @@
 				pluginOpen: {} as Record<string, boolean>,
 				clockOffset: 0,
 				lastHeight: 0,
+				busy: [] as string[],
+				busyTimer: null as ReturnType<typeof setTimeout> | null,
 				resizeObserver: null as ResizeObserver | null,
 				unlisten: [] as Array<() => void>,
 				actionIds,
 			};
 		},
 		computed: {
+			windowMax(): number {
+				return this.model?.maxHeight ?? FALLBACK_MAX_HEIGHT;
+			},
+			panelMax(): number {
+				return panelMaxHeight(this.windowMax);
+			},
 			workspaceName(): string {
 				return this.model?.extras.workspace?.name ?? 'TMGR';
 			},
@@ -453,6 +467,7 @@
 			window.removeEventListener('keydown', this.onKey);
 			window.removeEventListener('focus', this.reload);
 			this.resizeObserver?.disconnect();
+			if (this.busyTimer) clearTimeout(this.busyTimer);
 			this.unlisten.forEach((fn) => fn());
 		},
 		methods: {
@@ -463,6 +478,7 @@
 			},
 			apply(model: PopoverModel) {
 				this.model = model;
+				this.clearBusy();
 				this.clockOffset = model.now - Date.now() / 1000;
 				void this.$nextTick(() => this.resize());
 				if (model.decisionsAvailable) {
@@ -484,6 +500,18 @@
 			},
 			run(id: string) {
 				void popoverAction(id);
+			},
+			runBusy(id: string) {
+				if (this.busy.includes(id)) return;
+				this.busy = markBusy(this.busy, id);
+				if (this.busyTimer) clearTimeout(this.busyTimer);
+				this.busyTimer = setTimeout(() => this.clearBusy(), BUSY_MS);
+				this.run(id);
+			},
+			clearBusy() {
+				if (this.busyTimer) clearTimeout(this.busyTimer);
+				this.busyTimer = null;
+				if (this.busy.length) this.busy = [];
 			},
 			quickAdd() {
 				const title = this.quick.trim();
@@ -582,7 +610,7 @@
 				if (!root) return;
 				const height = nextResize(
 					root.getBoundingClientRect().height,
-					MAX_HEIGHT,
+					this.windowMax,
 					this.lastHeight,
 				);
 				if (height === null) return;

@@ -63,7 +63,7 @@ html.dark .popover-root {
 .pop {
 	width: 400px;
 	max-width: 100%;
-	max-height: 736px;
+	max-height: var(--pop-max, 736px);
 	display: flex;
 	flex-direction: column;
 	background: var(--bg);
