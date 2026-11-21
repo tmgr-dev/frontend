@@ -5,12 +5,21 @@ use std::time::{Duration, Instant};
 
 use tmgr_ipc::decisions::{drain_spool, CardIn, CardPatch, Event, Found, Inbox, LineComment, PatchIn, PendingDelivery};
 
-use super::store::{AnswerIn, CardView, Created, MessageIn, PendingTaskComment, PhoneOutcome, PhoneReq, Recorded, Routing, Store};
+use tmgr_ipc::actions::{ActionIn, ActionResult};
+
+use super::actions::Outcome;
+use super::store::{
+  AnswerIn, CardView, Created, MessageIn, PendingAction, PendingTaskComment, PhoneOutcome, PhoneReq, Recorded, Routing,
+  Store,
+};
 
 pub enum Change {
   Created { title: String, body: String },
   Updated,
+  Finished(Box<Event>),
 }
+
+pub type Exec = Arc<dyn Fn(&ActionIn) -> Outcome + Send + Sync>;
 
 type Hit = (usize, Event);
 
@@ -40,6 +49,7 @@ pub struct Hub {
   spool: Option<PathBuf>,
   listen: Mutex<HashMap<String, Listen>>,
   grace: Duration,
+  exec: Option<Exec>,
 }
 
 struct Waiting<'a> {
@@ -66,11 +76,17 @@ impl Hub {
       spool: None,
       listen: Mutex::new(HashMap::new()),
       grace: LISTEN_GRACE,
+      exec: None,
     }
   }
 
   pub fn with_spool(mut self, dir: PathBuf) -> Hub {
     self.spool = Some(dir);
+    self
+  }
+
+  pub fn with_executor(mut self, exec: Exec) -> Hub {
+    self.exec = Some(exec);
     self
   }
 
@@ -369,6 +385,57 @@ impl Hub {
     let r = self.lock().answer(id, a)?;
     self.changed(Change::Updated);
     Ok(r)
+  }
+
+  pub fn answer_and_run(self: &Arc<Self>, id: &str, a: AnswerIn) -> Result<(Event, CardIn), String> {
+    let r = self.answer(id, a)?;
+    if r.0.kind == "action" {
+      self.run_approved(&r.0.card_id);
+    }
+    Ok(r)
+  }
+
+  fn run_approved(self: &Arc<Self>, card_id: &str) {
+    let (Some(exec), Ok(Some(run))) = (self.exec.clone(), self.lock().running_action(card_id)) else {
+      return;
+    };
+    if !matches!(run.action, ActionIn::Pr(_) | ActionIn::Tag(_)) {
+      return;
+    }
+    let hub = self.clone();
+    let (run_id, action) = (run.run_id.clone(), run.action);
+    let spawned = std::thread::Builder::new().name("decisions-action".into()).spawn(move || {
+      let outcome = exec(&action);
+      hub.finish_run(&run_id, outcome.state, outcome.result);
+    });
+    if let Err(e) = spawned {
+      self.finish_run(
+        &run.run_id,
+        super::actions::STATE_FAILED,
+        ActionResult { ok: false, error: Some(format!("could not start the action: {e}")), ..Default::default() },
+      );
+    }
+  }
+
+  fn finish_run(&self, run_id: &str, state: &str, result: ActionResult) {
+    let done = self.lock().finish_run(run_id, state, result);
+    if let Ok((event, _)) = done {
+      self.changed(Change::Finished(Box::new(event)));
+    }
+  }
+
+  pub fn pending_actions(&self) -> Result<Vec<PendingAction>, String> {
+    self.lock().pending_actions()
+  }
+
+  pub fn claim_action(&self, run_id: &str) -> Result<PendingAction, String> {
+    self.lock().claim_action(run_id)
+  }
+
+  pub fn finish_claimed_action(&self, run_id: &str, result: ActionResult) -> Result<(), String> {
+    let (event, _) = self.lock().finish_claimed(run_id, result)?;
+    self.changed(Change::Finished(Box::new(event)));
+    Ok(())
   }
 
   pub fn dismiss_cards(&self, ids: &[String]) -> Result<Vec<Event>, String> {
@@ -757,5 +824,83 @@ mod tests {
     let d = again.get(&id).unwrap().delivery.unwrap();
     assert_eq!((d.state.as_str(), d.via.as_str()), ("delivered", "agent"));
     assert!(again.live_messages(&id, "hook")[0].delivered_ms.is_some());
+  }
+  fn action_hub(exec: Exec) -> (Arc<Hub>, Arc<Mutex<Vec<String>>>) {
+    let finished = Arc::new(Mutex::new(Vec::new()));
+    let seen = finished.clone();
+    let sink: Sink = Box::new(move |c, _| {
+      if let Change::Finished(e) = c {
+        seen.lock().unwrap().push(e.card_id.clone());
+      }
+    });
+    let store = Store::open(Path::new(":memory:")).unwrap();
+    (Arc::new(Hub::new(store, sink).with_executor(exec)), finished)
+  }
+
+  fn tag_action() -> ActionIn {
+    ActionIn::Tag(tmgr_ipc::actions::TagPayload {
+      repo: "tmgr-dev/frontend".into(),
+      name: "cli-v1".into(),
+      target_sha: "a".repeat(40),
+    })
+  }
+
+  fn approve_answer(a: &ActionIn) -> AnswerIn {
+    AnswerIn {
+      choice: Some("approve".into()),
+      action: Some(tmgr_ipc::actions::ActionDecision { sha256: a.sha256(), edit: None }),
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn an_approved_tag_runs_in_the_background_and_finishes_the_card() {
+    let seen: Arc<Mutex<Vec<ActionIn>>> = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let exec: Exec = Arc::new(move |a| {
+      log.lock().unwrap().push(a.clone());
+      Outcome {
+        state: super::super::actions::STATE_DONE,
+        result: ActionResult {
+          ok: true,
+          url: Some("https://github.com/tmgr-dev/frontend/releases/tag/cli-v1".into()),
+          ..Default::default()
+        },
+      }
+    });
+    let (hub, finished) = action_hub(exec);
+    let card = CardIn {
+      title: "Tag".into(),
+      source: Source { agent: "claude".into(), ..Default::default() },
+      action: Some(tag_action()),
+      ..Default::default()
+    };
+    let id = hub.create(card).unwrap().id;
+    let (event, _) = hub.answer_and_run(&id, approve_answer(&tag_action())).unwrap();
+    assert_eq!(event.kind, "action");
+    until("finished", || finished.lock().unwrap().len() == 1);
+    assert_eq!(seen.lock().unwrap().as_slice(), [tag_action()]);
+    let v = hub.get(&id).unwrap();
+    assert_eq!(v.state, "answered");
+    assert!(v.answer.unwrap().result.unwrap().ok);
+  }
+
+  #[test]
+  fn comment_actions_are_left_to_the_window() {
+    let exec: Exec = Arc::new(|_| panic!("the desktop must not run window actions"));
+    let (hub, finished) = action_hub(exec);
+    let action = ActionIn::Comment(tmgr_ipc::actions::CommentPayload {
+      origin: "https://api.tmgr.dev".into(),
+      user_id: 1,
+      task_id: 7,
+      task_label: "TM-7: x".into(),
+      text: "hi".into(),
+    });
+    let id = hub.create(CardIn { title: "C".into(), action: Some(action.clone()), ..Default::default() }).unwrap().id;
+    hub.answer_and_run(&id, approve_answer(&action)).unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(finished.lock().unwrap().is_empty());
+    assert_eq!(hub.pending_actions().unwrap().len(), 1);
+    assert_eq!(hub.get(&id).unwrap().state, "executing");
   }
 }

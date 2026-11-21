@@ -1,6 +1,6 @@
 # Building a TMGR plugin
 
-Plugin API 1.13. This guide is the entry point; the reference follows it in the same document
+Plugin API 1.14. This guide is the entry point; the reference follows it in the same document
 (the `plugin-system.md` sections, in the published version) and as types (`tmgr.d.ts` for `main.js`, `window.d.ts` for pages).
 
 A plugin is a folder: `manifest.json`, `main.js`, and optional `ui/*.html` pages. `main.js` runs in a
@@ -26,7 +26,7 @@ turns them on for everyone. Web and mobile do not run plugins.
    next to `plugin-sdk/testing` (until `@tmgr/plugin-testing` is published on npm, the template depends on
    it by the path `file:../testing`).
 2. Edit `manifest.json` (id `publisher.name`, command ids start with the plugin id, `engines.tmgr`
-   `^1.13` to use the newest nodes) and `main.js`.
+   `^1.14` to use the newest nodes) and `main.js`.
 3. Test without the app: `npm install && npm test` runs `main.test.mjs` against `createTestHost` from
    `@tmgr/plugin-testing`. It uses the app's own broker, manifest rules and UI sanitizer over an
    in-memory mock of TMGR data, so permission errors and bad parameters show up exactly as in the app.
@@ -45,7 +45,7 @@ turns them on for everyone. Web and mobile do not run plugins.
 | :-- | :-- |
 | `id` | `publisher.name`, lowercase, dots allowed |
 | `version` | semver |
-| `engines.tmgr` | `^1.0` up to `^1.13`; newer nodes and permissions need a newer minor (`images:remote` 1.13, `menus:task` 1.6, pages 1.5, `views:badge` 1.4) |
+| `engines.tmgr` | `^1.0` up to `^1.14`; newer nodes and permissions need a newer minor (`tmgr.ui.publishTaskContribution` 1.14, `images:remote` 1.13, `menus:task` 1.6, pages 1.5, `views:badge` 1.4) |
 | `main` | defaults to `main.js` |
 | `permissions` | list from the table below; unknown names are rejected |
 | `network.allowedOrigins` | only `http://localhost:<port>` (or 127.0.0.1, [::1]) |
@@ -72,6 +72,7 @@ A plugin cannot raise its own permissions: an update that adds one asks the user
 
 ## Rules that save a round trip
 
+- To show badges and sections on the user's phone, call `tmgr.ui.publishTaskContribution(taskId, { name?, badges?, sections? })` (needs `^1.14` and `tasks:read`; shared workspaces only; publish on change, not on every tick; see "Migrating from 1.13 to 1.14" in plugin-system.md).
 - UI is data, not HTML: `tmgr.ui.providePage(viewId, async () => tree)` returns a node tree
   (`stack`, `heading`, `list`, `button`, `card`, `markdown`, inputs, ...). The app sanitizes it by the
   manifest's `engines.tmgr` minor. Pages in `ui/` run in their own window and use `window.tmgr`.

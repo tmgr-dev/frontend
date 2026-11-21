@@ -1,0 +1,11 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "decisions-actions",
+	"description": "Running approved comment and task actions: main window only.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-decisions-pending-actions",
+		"allow-decisions-claim-action",
+		"allow-decisions-finish-action"
+	]
+}

@@ -1,4 +1,4 @@
-use crate::cli_agent::{AgentCommand, AlarmArgs, AskArgs, HookCmd, NotifyArgs};
+use crate::cli_agent::{AgentCommand, AlarmArgs, AskArgs, HookCmd, NotifyArgs, ProposeCmd};
 use crate::cli_link::{LinkCommand, WorkerArgs};
 use crate::cli_usage::UsageArgs;
 use clap::{Args, Parser, Subcommand};
@@ -144,6 +144,12 @@ pub enum Command {
     },
     /// Ask the owner a question in the TMGR desktop Decisions inbox
     Ask(Box<AskArgs>),
+    /// Propose a write action (comment, task, PR, tag) for the owner to approve
+    #[command(after_long_help = crate::cli_agent::PROPOSE_HELP)]
+    Propose {
+        #[command(subcommand)]
+        command: ProposeCmd,
+    },
     /// Look up answers already given in the Decisions inbox
     Decisions {
         #[command(subcommand)]

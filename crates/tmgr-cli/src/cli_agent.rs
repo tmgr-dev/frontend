@@ -361,3 +361,110 @@ Resending
   Blocks until the owner answers. If the desktop is not running, the card is queued, a warning
   is printed and the wait continues until the desktop starts; --timeout SECS ends the wait with
   exit 8 and the card stays queued.";
+
+#[derive(Args)]
+pub struct ProposeWait {
+    /// Print the card id and return at once instead of waiting for the owner
+    #[arg(long)]
+    pub no_wait: bool,
+    /// Give up waiting after this many seconds (exit 8, card stays open)
+    #[arg(long, value_name = "SECS")]
+    pub timeout: Option<u64>,
+}
+
+#[derive(Args)]
+pub struct ProposeCommentArgs {
+    /// Task key (TM-12) or id (#8974)
+    #[arg(long, value_name = "REF")]
+    pub task: String,
+    /// The comment text
+    #[arg(long, value_name = "TEXT", required_unless_present = "text_file")]
+    pub text: Option<String>,
+    /// Read the comment text from FILE, or - for stdin
+    #[arg(long, value_name = "FILE", conflicts_with = "text")]
+    pub text_file: Option<String>,
+    #[command(flatten)]
+    pub wait: ProposeWait,
+}
+
+#[derive(Args)]
+pub struct ProposeTaskArgs {
+    /// Workspace id or code
+    #[arg(long, value_name = "ID|CODE")]
+    pub workspace: String,
+    /// Task title
+    #[arg(long, value_name = "TEXT")]
+    pub title: String,
+    /// Task description
+    #[arg(long, value_name = "TEXT", default_value = "")]
+    pub description: String,
+    /// Project category id
+    #[arg(long, value_name = "ID")]
+    pub category: Option<u64>,
+    /// Status id
+    #[arg(long, value_name = "ID")]
+    pub status: Option<u64>,
+    #[command(flatten)]
+    pub wait: ProposeWait,
+}
+
+#[derive(Args)]
+pub struct ProposePrArgs {
+    /// Title of the pull request
+    #[arg(long, value_name = "TEXT")]
+    pub title: String,
+    /// Body of the pull request
+    #[arg(long, value_name = "TEXT", default_value = "")]
+    pub body: String,
+    /// Head branch (default: the current branch); it must already be pushed
+    #[arg(long, value_name = "BRANCH")]
+    pub branch: Option<String>,
+    /// Base branch (default: the default branch of origin)
+    #[arg(long, value_name = "BRANCH")]
+    pub base: Option<String>,
+    /// Git repository (default: the current directory)
+    #[arg(long, value_name = "DIR")]
+    pub repo_dir: Option<String>,
+    #[command(flatten)]
+    pub wait: ProposeWait,
+}
+
+#[derive(Args)]
+pub struct ProposeTagArgs {
+    /// Tag name
+    #[arg(long, value_name = "NAME")]
+    pub name: String,
+    /// Revision to tag (default: HEAD); it must be on a remote branch
+    #[arg(long, value_name = "REV")]
+    pub target: Option<String>,
+    /// Git repository (default: the current directory)
+    #[arg(long, value_name = "DIR")]
+    pub repo_dir: Option<String>,
+    #[command(flatten)]
+    pub wait: ProposeWait,
+}
+
+#[derive(Subcommand)]
+pub enum ProposeCmd {
+    /// Propose a comment on a task
+    Comment(ProposeCommentArgs),
+    /// Propose a new task
+    Task(ProposeTaskArgs),
+    /// Propose a GitHub pull request for a pushed branch
+    Pr(ProposePrArgs),
+    /// Propose a GitHub release tag
+    Tag(ProposeTagArgs),
+}
+
+pub const PROPOSE_HELP: &str = "The action runs only if the owner approves it in the TMGR desktop app, from the exact payload the owner saw
+or edited. Nothing is queued: with the desktop closed or too old the command fails.
+
+Exit codes
+  0   approved and done (prints the url or sha; \"edited by the owner\" when the owner changed it)
+  8   no answer yet (--timeout, or --no-wait with the card id printed)
+  11  rejected (prints the reason)
+  12  approved but the action failed or is only partly done (prints the error)
+  13  the owner dismissed the card
+  2   refused before sending: invalid input, branch not pushed, desktop too old
+  7   the desktop is not running
+With --json the final event is printed (approved, result and the owner's note included).";

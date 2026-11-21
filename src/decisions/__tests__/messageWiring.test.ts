@@ -56,3 +56,33 @@ describe('CardPane.vue fact links', () => {
 		);
 	});
 });
+
+describe('action panel wiring', () => {
+	const panel = template('ActionPanel.vue');
+
+	it('replaces the option buttons for action cards', () => {
+		const card = template('CardPane.vue');
+		expect(card).toMatch(/<ActionPanel[\s\S]*?v-if="card\.action"/);
+		expect(card).toContain('<template v-else-if="!card.action">');
+	});
+
+	it('disables Reject until a reason is typed', () => {
+		expect(panel).toMatch(/data-reject[\s\S]*?:disabled="!reason\.trim\(\)"/);
+	});
+
+	it('edits only editable fields and offers Reset', () => {
+		expect(panel).toContain('v-if="row.editable && open"');
+		expect(panel).toContain('data-reset');
+		expect(panel).toContain('data-edited');
+	});
+
+	it('renders owner text as plain text, never html', () => {
+		expect(panel).not.toContain('v-html');
+	});
+
+	it('shows the PR guarantee note and run states', () => {
+		expect(panel).toContain("action.kind === 'pr'");
+		expect(panel).toContain('decisions.action.run.');
+		expect(panel).toContain('data-rejected');
+	});
+});

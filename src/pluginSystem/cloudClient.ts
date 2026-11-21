@@ -1,3 +1,7 @@
+import {
+	SOURCE_INSTANCE_HEADER,
+	SOURCE_INSTANCE_ID,
+} from '@/utils/sourceInstance';
 import axios, { type AxiosAdapter, type AxiosInstance } from 'axios';
 import { PluginError } from './broker';
 
@@ -76,6 +80,8 @@ export const cloudPluginClient = ({
 		const renew = Boolean((config as { _renewed?: boolean })._renewed);
 		config.headers.set('Authorization', `Bearer ${await token(renew)}`);
 		config.headers.set('X-Workspace-Id', String(workspaceId));
+		if (method !== 'get')
+			config.headers.set(SOURCE_INSTANCE_HEADER, SOURCE_INSTANCE_ID);
 		return config;
 	});
 

@@ -98,6 +98,25 @@ const createSample = async () => {
 		at: new Date().toISOString(),
 	});
 
+	try {
+		await tmgr.ui.publishTaskContribution(task.id, {
+			name: 'Kitchen Sink',
+			badges: [{ id: 'sample', text: 'sample', tone: 'success' }],
+			sections: [
+				{
+					id: 'note',
+					title: 'Kitchen sink',
+					tree: {
+						type: 'keyValue',
+						items: [{ key: 'Created by', value: 'kitchen-sink' }],
+					},
+				},
+			],
+		});
+	} catch (error) {
+		console.warn(`contribution not published: ${error.message}`);
+	}
+
 	const run = await tmgr.agentWork.start(task.id, {
 		agent: 'kitchen-sink-bot',
 		model: 'demo-1',
