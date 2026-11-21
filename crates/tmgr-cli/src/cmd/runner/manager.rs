@@ -22,7 +22,7 @@ const REMOTE_NOTES: [(&str, &str); 3] = [
     ),
     (
         tool::SPAWN_SESSION,
-        " With machine, starts the session on that machine, only with card_id of a propose_spawn card for that machine the owner approved on the phone, and with exactly the arguments of the proposal. While the owner has not approved, it fails with \"this card is not approved yet\"; retry later. When the card has expired or is closed it fails with \"this card has expired or is closed; propose the spawn again\"; propose again instead of retrying. approval and no_sandbox are not accepted remotely. Off on that machine until its owner allows spawn there.",
+        " With machine, starts the session on that machine, only with card_id of a propose_spawn card for that machine the owner approved on the phone, and with exactly the arguments of the proposal. While the owner has not approved, it fails with \"this card is not approved yet\"; retry later. When the card has expired or is closed it fails with \"this card has expired or is closed; propose the spawn again\"; propose again instead of retrying. The approval and no_sandbox arguments are not accepted remotely. Off on that machine until its owner allows spawn there.",
     ),
     (
         tool::SWITCH_AGENT,
