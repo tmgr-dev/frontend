@@ -80,7 +80,7 @@ describe('actionHeader', () => {
 	it('names each kind with its context', () => {
 		expect(actionHeader(commentAction())).toEqual({
 			key: 'decisions.action.header.comment',
-			params: { task: 'TM-7: Fix' },
+			params: { task: '#7 TM-7: Fix' },
 		});
 		expect(actionHeader(taskAction()).key).toBe('decisions.action.header.task');
 		expect(

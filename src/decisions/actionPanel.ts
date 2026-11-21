@@ -64,7 +64,10 @@ export const actionHeader = (action: CardAction): ActionHeader => {
 	const key = (kind: string) => `decisions.action.header.${kind}`;
 	switch (action.kind) {
 		case 'comment':
-			return { key: key('comment'), params: { task: p.task_label ?? '' } };
+			return {
+				key: key('comment'),
+				params: { task: `#${p.task_id ?? ''} ${p.task_label ?? ''}`.trim() },
+			};
 		case 'task':
 			return { key: key('task'), params: {} };
 		case 'pr':

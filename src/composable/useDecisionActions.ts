@@ -39,7 +39,7 @@ export interface DecisionActionDeps {
 	taskWorkspaceId: (taskId: number) => Promise<number | null>;
 	workspaceCode: (workspaceId: number) => string | null;
 	webOrigin: string;
-	origin: string | null;
+	origin: () => string | null;
 	userId: () => number | null;
 }
 
@@ -75,17 +75,27 @@ export const createDecisionActionRunner = (deps: DecisionActionDeps) => {
 		return code ? `${deps.webOrigin}/${code}/tasks/${taskId}` : undefined;
 	};
 
+	const signedInAs = (p: ActionPayload) => {
+		const origin = deps.origin();
+		const userId = deps.userId();
+		return (
+			origin !== null &&
+			p.origin === origin &&
+			userId !== null &&
+			p.user_id === userId
+		);
+	};
+
 	const execute = async (action: ActionIn): Promise<ActionResult> => {
 		const p = action.payload;
 		if (action.kind === 'comment') {
+			const workspaceId = await deps.taskWorkspaceId(p.task_id as number);
+			if (!signedInAs(p)) return { ok: false, error: MISMATCH_ERROR };
 			await deps.postComment(p.task_id as number, p.text as string);
-			let workspaceId: number | null = null;
-			try {
-				workspaceId = await deps.taskWorkspaceId(p.task_id as number);
-			} catch {}
 			const url = taskUrl(workspaceId, p.task_id as number);
 			return url ? { ok: true, url } : { ok: true };
 		}
+		if (!signedInAs(p)) return { ok: false, error: MISMATCH_ERROR };
 		const task = await deps.createTask({
 			title: p.title,
 			description: p.description,
@@ -117,14 +127,7 @@ export const createDecisionActionRunner = (deps: DecisionActionDeps) => {
 		} catch {
 			return;
 		}
-		const p = claimed.action.payload;
-		const userId = deps.userId();
-		if (
-			deps.origin === null ||
-			p.origin !== deps.origin ||
-			userId === null ||
-			p.user_id !== userId
-		) {
+		if (!signedInAs(claimed.action.payload)) {
 			await finish(claimed.run_id, { ok: false, error: MISMATCH_ERROR });
 			return;
 		}
@@ -196,7 +199,7 @@ const defaultDeps = async (): Promise<DecisionActionDeps> => {
 			(store.state.workspacesById as Record<number, { code?: string }>)?.[id]
 				?.code ?? null,
 		webOrigin: WEB_ORIGIN,
-		origin: apiOrigin($axios.defaults.baseURL),
+		origin: () => apiOrigin($axios.defaults.baseURL),
 		userId: () => store.state.user?.id ?? null,
 	};
 };

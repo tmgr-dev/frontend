@@ -66,7 +66,9 @@ const setup = (
 		taskWorkspaceId: jest.fn(async (_id: number) => 3 as number | null),
 		workspaceCode: jest.fn((id: number) => (id === 3 ? 'ws' : null)),
 		webOrigin: 'https://tmgr.dev',
-		origin: opts.origin === undefined ? 'https://api.tmgr.dev' : opts.origin,
+		origin: jest.fn((): string | null =>
+			opts.origin === undefined ? 'https://api.tmgr.dev' : opts.origin,
+		),
 		userId: () => (opts.userId === undefined ? 5 : opts.userId),
 	};
 	return { deps, calls, finished, runner: createDecisionActionRunner(deps) };
@@ -134,6 +136,27 @@ describe('decision action runner', () => {
 		expect(calls).toContain('decisions_claim_action');
 		expect(deps.postComment).not.toHaveBeenCalled();
 		expect(finished[0].result).toEqual({ ok: false, error: MISMATCH_ERROR });
+	});
+
+	it('refuses when the server changes while the task is being read', async () => {
+		const { deps, finished, runner } = setup([item(commentAction())]);
+		deps.taskWorkspaceId.mockImplementation(async () => {
+			deps.origin.mockReturnValue('http://localhost:8080');
+			return 3;
+		});
+		await runner.run();
+		expect(deps.postComment).not.toHaveBeenCalled();
+		expect(finished[0].result).toEqual({ ok: false, error: MISMATCH_ERROR });
+	});
+
+	it('does not post a comment when the task cannot be read', async () => {
+		const { deps, finished, runner } = setup([item(commentAction())]);
+		deps.taskWorkspaceId.mockRejectedValue({
+			response: { data: { message: 'Not found' } },
+		});
+		await runner.run();
+		expect(deps.postComment).not.toHaveBeenCalled();
+		expect(finished[0].result).toEqual({ ok: false, error: 'Not found' });
 	});
 
 	it('refuses on another account without posting', async () => {
