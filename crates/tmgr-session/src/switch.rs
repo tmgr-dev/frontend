@@ -126,7 +126,7 @@ pub fn ancestors<'a>(sessions: &'a [SessionInfo], from: &'a SessionInfo) -> Vec<
         let Some(s) = sessions.iter().find(|s| s.id == id) else {
             break;
         };
-        if out.iter().any(|o| o.id == s.id) {
+        if s.manager || out.iter().any(|o| o.id == s.id) {
             break;
         }
         out.push(s);
@@ -498,5 +498,15 @@ mod tests {
         y.handoff_from = Some("x".into());
         let all = vec![x.clone(), y];
         assert_eq!(ancestors(&all, &x).len(), 2);
+    }
+
+    #[test]
+    fn the_chain_skips_manager_sessions() {
+        let mut m = info("m", "claude-code");
+        m.manager = true;
+        let mut a = info("a", "codex");
+        a.handoff_from = Some("m".into());
+        let all = vec![m, a.clone()];
+        assert!(ancestors(&all, &a).is_empty());
     }
 }

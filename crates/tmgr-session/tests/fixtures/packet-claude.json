@@ -61,7 +61,8 @@
       "CLAUDE.md"
     ],
     "logs": [
-      "claude-session.jsonl"
+      "claude-session.jsonl",
+      "x.jsonl"
     ]
   },
   "prior": [

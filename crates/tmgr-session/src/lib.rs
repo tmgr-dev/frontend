@@ -13,6 +13,6 @@ pub mod tail;
 
 pub use model::{Agent, Item, Session, Todo, ToolCall, Turn};
 pub use packet::{
-    build_packet, cut_bytes, render_prompt, ChatMessage, HandoffPacket, Limits, PacketError,
-    PacketSource, PacketTo,
+    build_packet, build_packet_screen, cut_bytes, render_prompt, ChatKind, ChatMessage,
+    HandoffPacket, Limits, PacketError, PacketSource, PacketTo,
 };
