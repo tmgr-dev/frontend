@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.152
+
+- New: `tmgr runner objects allow <folder>` lets a sandboxed session start in a very large folder, such as a workspace with many repositories, which was refused with "too large to check for shared git object files". It skips only that one check, and only for exactly that folder. Everything else in the sandbox stays on.
+- `allow` is for you at the keyboard on the follower: it is refused inside an agent session and needs the follower PIN (`tmgr link pin set`) and a typed confirmation. Before it adds the folder it walks the whole folder (this can take minutes) and refuses if any file in it is also linked from outside the folder; it lists those files. Links made later, for example with `git clone <inside> <outside>` or `cp -al`, are not checked again at start, so clone with `--no-local`. A leader that is allowed to start sessions in an exempt folder gets the exemption too.
+- Also: `tmgr runner objects list` (marks entries whose folder was replaced), `deny <folder>` (running sessions keep what they started with) and `check <folder>` (measures without changing anything). Every change is written to the link audit log, and a start that used an exemption is noted on the session.
+- The refusal text for a too-large folder or for shared git object files now names this command and the `--no-sandbox` way out.
+- Restart the runner after updating so it knows the new commands.
+
 ## 1.0.151
 
 - Spawn approval from the phone: when a manager proposes a session with `propose_spawn`, the card now goes into the Manager chat room. A paired phone that has an approved spawn key can sign it. The runner checks the signature and posts "Approved on your phone. Starting the session.". The manager then starts the session with `spawn_session` and the card's `card_id`, using exactly the proposed arguments. A retry returns the same session. A card that is not approved within 5 minutes closes with "Not approved: the card expired". Phone-side signing ships with the mobile app; until then nothing changes for you.
