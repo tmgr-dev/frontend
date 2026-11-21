@@ -161,6 +161,36 @@ describe('trust components', () => {
 		expect(html).toContain('Reset chat identity');
 	});
 
+	it('DevicesPanel offers a kind confirmation only on rows that allow it', async () => {
+		const rows: TrustDevice[] = [
+			devices[0],
+			{ ...devices[1], can_confirm_kind: true },
+			{ ...devices[2], state: 'trusted' },
+		];
+		const html = await render('DevicesPanel', { devices: rows });
+		expect(html.match(/Confirm as desktop/g)).toHaveLength(1);
+		expect(html.match(/Confirm as phone/g)).toHaveLength(1);
+		expect(html).toContain('Confirm Phone as desktop');
+		expect(html).toContain('Confirm Phone as phone');
+		const none = await render('DevicesPanel', { devices });
+		expect(none).not.toContain('Confirm as');
+	});
+
+	it('ConfirmKindDialog shows the device label, kind and grouped fingerprint', async () => {
+		const html = await render('ConfirmKindDialog', {
+			label: 'Phone',
+			kind: 'mobile',
+			fp: '1111222233334444ff',
+			error: 'this device kind cannot be confirmed',
+		});
+		expect(html).toContain('role="dialog"');
+		expect(html).toContain('Confirm this device kind?');
+		expect(html).toContain('Phone');
+		expect(html).toContain('1111 2222 3333 4444');
+		expect(html).toContain('this device kind cannot be confirmed');
+		expect(html).toContain('Cancel');
+	});
+
 	it('DevicesPanel renders every alert kind once and gaps per sender', async () => {
 		const alerts = [
 			{ kind: 'room_conflict', device_id: 'd1', at_ms: 1 },
@@ -169,6 +199,8 @@ describe('trust components', () => {
 			{ kind: 'join_code_reused', device_id: 'd9', at_ms: 4 },
 			{ kind: 'weird', device_id: 'd9', at_ms: 5 },
 			{ kind: 'root_kind_unknown', device_id: 'd7', at_ms: 6 },
+			{ kind: 'kind_unknown', device_id: 'd8', at_ms: 7 },
+			{ kind: 'trust_unstable', device_id: 'd8', at_ms: 8 },
 		];
 		const seqGaps = [
 			{ from_device: devices[1].id, expected: 3, got: 7 },
@@ -176,10 +208,14 @@ describe('trust components', () => {
 		];
 		const html = await render('DevicesPanel', { devices, alerts, seqGaps });
 		expect(html).toContain('claimed a chat room');
-		expect(html.match(/reported a different kind/g)).toHaveLength(1);
+		expect(html.match(/disagree about what kind of device/g)).toHaveLength(1);
 		expect(html).toContain('join code was used again');
 		expect(html).toContain('security alert (weird)');
 		expect(html).toContain('Re-join this device with a fresh join code');
+		expect(html.match(/has no confirmed kind/g)).toHaveLength(1);
+		expect(
+			html.match(/kept changing while it was being checked/g),
+		).toHaveLength(1);
 		expect(html).toContain(
 			`5 messages may be missing from ${devices[1].label}`,
 		);

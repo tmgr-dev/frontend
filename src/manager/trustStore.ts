@@ -12,9 +12,12 @@ export interface ManagerTrustApi {
 	joinDecide: (deviceId: string, accept: boolean) => Promise<void>;
 	revokeDecide: (id: string, accept: boolean) => Promise<void>;
 	revoke: (deviceId: string) => Promise<void>;
+	confirmDeviceKind: (deviceId: string, kind: ConfirmableKind) => Promise<void>;
 	resetIdentity: () => Promise<void>;
 	onTrust: typeof realApi.onManagerTrust;
 }
+
+export type ConfirmableKind = 'desktop' | 'mobile';
 
 export type TrustItem =
 	| { type: 'join'; join: PendingJoin }
@@ -31,6 +34,7 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 		error: '',
 		panelOpen: false,
 		revokeTarget: null as string | null,
+		confirmKindTarget: null as { id: string; kind: ConfirmableKind } | null,
 		resetOpen: false,
 		resetText: '',
 		deferred: [] as string[],
@@ -147,6 +151,23 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 			}
 		},
 
+		askConfirmKind(id: string, kind: ConfirmableKind) {
+			store.confirmKindTarget = { id, kind };
+		},
+		cancelConfirmKind() {
+			store.confirmKindTarget = null;
+		},
+		async submitConfirmKind() {
+			const target = store.confirmKindTarget;
+			if (!target) return;
+			if (
+				await store.run(() => api.confirmDeviceKind(target.id, target.kind))
+			) {
+				store.confirmKindTarget = null;
+				await store.refresh();
+			}
+		},
+
 		openReset() {
 			store.resetText = '';
 			store.resetOpen = true;
@@ -178,6 +199,7 @@ export const useTrustStore = (): TrustStore => {
 		joinDecide: realApi.managerJoinDecide,
 		revokeDecide: realApi.managerRevokeDecide,
 		revoke: realApi.managerRevoke,
+		confirmDeviceKind: realApi.managerConfirmDeviceKind,
 		resetIdentity: realApi.managerResetIdentity,
 		onTrust: realApi.onManagerTrust,
 	});

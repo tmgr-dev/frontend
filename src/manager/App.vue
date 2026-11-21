@@ -163,6 +163,16 @@
 			@reject="trust.cancelRevoke()"
 			@dismiss="trust.cancelRevoke()"
 		/>
+		<ConfirmKindDialog
+			v-else-if="confirmKindDevice && trust.confirmKindTarget"
+			:label="confirmKindDevice.label"
+			:fp="confirmKindDevice.fp"
+			:kind="trust.confirmKindTarget.kind"
+			:busy="trust.busy"
+			:error="trust.error"
+			@approve="trust.submitConfirmKind()"
+			@cancel="trust.cancelConfirmKind()"
+		/>
 		<ResetIdentityDialog
 			v-else-if="trust.resetOpen"
 			v-model="trust.resetText"
@@ -180,6 +190,7 @@
 			:busy="trust.busy"
 			:error="trust.error"
 			@revoke="trust.revoke"
+			@confirm-kind="trust.askConfirmKind"
 			@reset="trust.openReset()"
 			@close="trust.closePanel()"
 		/>
@@ -199,6 +210,7 @@
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
 	import SwitchAgentDialog from './components/SwitchAgentDialog.vue';
+	import ConfirmKindDialog from './components/trust/ConfirmKindDialog.vue';
 	import DevicesPanel from './components/trust/DevicesPanel.vue';
 	import JoinConfirmDialog from './components/trust/JoinConfirmDialog.vue';
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
@@ -225,6 +237,7 @@
 			ChatHeader,
 			ChatList,
 			Composer,
+			ConfirmKindDialog,
 			DecisionCard,
 			DetailPanel,
 			DevicesPanel,
@@ -250,6 +263,13 @@
 				return (
 					this.trust.trust?.devices.find(
 						(d) => d.id === this.trust.revokeTarget,
+					) ?? null
+				);
+			},
+			confirmKindDevice() {
+				return (
+					this.trust.trust?.devices.find(
+						(d) => d.id === this.trust.confirmKindTarget?.id,
 					) ?? null
 				);
 			},

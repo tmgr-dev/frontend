@@ -33,6 +33,7 @@ const setup = (initial: TrustState, over: Partial<ManagerTrustApi> = {}) => {
 		joinDecide: jest.fn(async () => {}),
 		revokeDecide: jest.fn(async () => {}),
 		revoke: jest.fn(async () => {}),
+		confirmDeviceKind: jest.fn(async () => {}),
 		resetIdentity: jest.fn(async () => {}),
 		onTrust: jest.fn(async (h) => {
 			push = h;
@@ -150,5 +151,34 @@ describe('trust store', () => {
 		});
 		await store.refresh();
 		expect(store.error).toBe('down');
+	});
+
+	it('confirms a device kind through the api and closes the dialog', async () => {
+		const { api, store } = setup(base());
+		store.askConfirmKind('d1', 'mobile');
+		expect(store.confirmKindTarget).toEqual({ id: 'd1', kind: 'mobile' });
+		await store.submitConfirmKind();
+		expect(api.confirmDeviceKind).toHaveBeenCalledWith('d1', 'mobile');
+		expect(store.confirmKindTarget).toBeNull();
+	});
+
+	it('keeps the confirm dialog open and shows a refusal as is', async () => {
+		const refusal = 'update these devices first: Phone, Old Mac';
+		const { store } = setup(base({ pending_joins: [join('d1')] }), {
+			joinDecide: jest.fn(async () => {
+				throw refusal;
+			}),
+			confirmDeviceKind: jest.fn(async () => {
+				throw 'this device kind cannot be confirmed';
+			}),
+		});
+		await store.refresh();
+		await store.decideJoin(true);
+		expect(store.error).toBe(refusal);
+		expect(store.current).toMatchObject({ type: 'join' });
+		store.askConfirmKind('d1', 'desktop');
+		await store.submitConfirmKind();
+		expect(store.error).toBe('this device kind cannot be confirmed');
+		expect(store.confirmKindTarget).not.toBeNull();
 	});
 });

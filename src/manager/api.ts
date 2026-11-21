@@ -47,6 +47,11 @@ export const managerRevokeDecide = (id: string, accept: boolean) =>
 export const managerRevoke = (deviceId: string) =>
 	invoke<void>('manager_revoke', { deviceId });
 
+export const managerConfirmDeviceKind = (
+	deviceId: string,
+	kind: 'desktop' | 'mobile',
+) => invoke<void>('manager_confirm_device_kind', { deviceId, kind });
+
 export const managerResetIdentity = () =>
 	invoke<void>('manager_reset_identity');
 
