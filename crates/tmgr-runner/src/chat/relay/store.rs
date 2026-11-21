@@ -3,24 +3,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Slot {
-    Identity,
-    State,
-    Log,
-}
-
-impl Slot {
-    const ALL: [Slot; 3] = [Slot::Identity, Slot::State, Slot::Log];
-
-    fn name(self) -> &'static str {
-        match self {
-            Slot::Identity => "identity",
-            Slot::State => "state",
-            Slot::Log => "log",
-        }
-    }
-}
+use tmgr_chat_relay::engine::{KeyStore, Slot};
 
 pub struct RelayDir {
     dir: PathBuf,
@@ -65,8 +48,10 @@ impl RelayDir {
     fn path(&self, slot: Slot) -> PathBuf {
         self.dir.join(slot.name())
     }
+}
 
-    pub fn load(&self, slot: Slot) -> Result<Option<String>, String> {
+impl KeyStore for RelayDir {
+    fn load(&self, slot: Slot) -> Result<Option<String>, String> {
         check_dir(&self.dir)?;
         let mut f = match OpenOptions::new()
             .read(true)
@@ -82,7 +67,7 @@ impl RelayDir {
         Ok(Some(out))
     }
 
-    pub fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
+    fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
         check_dir(&self.dir)?;
         let mut tmp = tempfile::Builder::new()
             .prefix(".tmp-")
@@ -97,7 +82,7 @@ impl RelayDir {
             .map_err(unusable)
     }
 
-    pub fn clear(&self) -> Result<(), String> {
+    fn clear(&self) -> Result<(), String> {
         check_dir(&self.dir)?;
         for slot in Slot::ALL {
             match fs::remove_file(self.path(slot)) {

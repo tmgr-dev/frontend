@@ -3,12 +3,12 @@ use serde_json::Value;
 use std::io::Read;
 use std::time::Duration;
 use tmgr_chat_relay::api::{Auth, Request};
-use tmgr_runner::chat::relay::RelayTransport;
+use tmgr_chat_relay::engine::Transport;
 
 const BODY_LIMIT: u64 = 4 << 20;
 const UNREACHABLE: &str = "relay unreachable";
 
-/// Failures are `Err("<status> <code>")`, or `Err("429 retry_after=<secs> <code>")` when the server sent a numeric Retry-After.
+/// A failed call is `Err(<response body>)`; a 429 with a numeric Retry-After gets `"retry_after": <secs>` merged into that JSON.
 pub struct HttpRelayTransport {
     pub base_url: String,
     pub login_token: Option<String>,
@@ -34,17 +34,20 @@ fn origin(base: &str) -> Result<String, String> {
     Ok(base.to_owned())
 }
 
-fn error_code(body: &str) -> String {
-    let code = serde_json::from_str::<Value>(body)
-        .ok()
-        .and_then(|v| v.get("error").and_then(Value::as_str).map(str::to_owned))
-        .filter(|c| {
-            !c.is_empty()
-                && c.len() <= 64
-                && c.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
-        });
-    code.unwrap_or_else(|| "unknown".into())
+fn failure(status: u16, retry_after: Option<u64>, body: String) -> String {
+    if let (429, Some(secs)) = (status, retry_after) {
+        let mut map = match serde_json::from_str::<Value>(&body) {
+            Ok(Value::Object(map)) => map,
+            _ => Default::default(),
+        };
+        map.insert("retry_after".into(), secs.into());
+        return Value::Object(map).to_string();
+    }
+    if body.trim().is_empty() {
+        format!("the relay answered HTTP {status}")
+    } else {
+        body
+    }
 }
 
 impl HttpRelayTransport {
@@ -63,7 +66,7 @@ impl HttpRelayTransport {
     }
 }
 
-impl RelayTransport for HttpRelayTransport {
+impl Transport for HttpRelayTransport {
     fn call(&self, req: &Request, device_token: Option<&str>) -> Result<String, String> {
         let url = format!("{}{}", origin(&self.base_url)?, req.path);
         let bearer = self.bearer(req.auth, device_token)?;
@@ -100,11 +103,7 @@ impl RelayTransport for HttpRelayTransport {
         if (200..300).contains(&status) {
             return Ok(body);
         }
-        let code = error_code(&body);
-        Err(match (status, retry_after) {
-            (429, Some(secs)) => format!("429 retry_after={secs} {code}"),
-            _ => format!("{status} {code}"),
-        })
+        Err(failure(status, retry_after, body))
     }
 }
 
@@ -115,6 +114,7 @@ mod tests {
     use std::net::TcpListener;
     use std::sync::mpsc;
     use tmgr_chat_relay::api::Method;
+    use tmgr_chat_relay::engine::{post_error, retry_after_secs};
 
     fn serve(reply: String) -> (String, mpsc::Receiver<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -198,21 +198,55 @@ mod tests {
     }
 
     #[test]
-    fn non_2xx_carries_status_and_code_only() {
+    fn non_2xx_returns_the_response_body() {
+        let (base, _rx) = serve(reply("403 Forbidden", "", "{\"error\":\"scope\"}"));
+        let err = transport(base)
+            .call(&request(Auth::Login), None)
+            .unwrap_err();
+        assert_eq!(err, "{\"error\":\"scope\"}");
+    }
+
+    #[test]
+    fn empty_error_body_names_the_status() {
+        let (base, _rx) = serve(reply("502 Bad Gateway", "", ""));
+        let err = transport(base)
+            .call(&request(Auth::Login), None)
+            .unwrap_err();
+        assert_eq!(err, "the relay answered HTTP 502");
+    }
+
+    #[test]
+    fn rate_limit_merges_retry_after_into_the_body() {
         let (base, _rx) = serve(reply(
-            "403 Forbidden",
-            "",
-            "{\"error\":\"scope\",\"detail\":\"secret-xyz\"}",
+            "429 Too Many Requests",
+            "Retry-After: 7\r\n",
+            "{\"error\":\"rate_limited\"}",
         ));
         let err = transport(base)
             .call(&request(Auth::Login), None)
             .unwrap_err();
-        assert_eq!(err, "403 scope");
-        assert!(!err.contains("secret-xyz") && !err.contains("LOGIN"));
+        let v: Value = serde_json::from_str(&err).unwrap();
+        assert_eq!(v["error"], "rate_limited");
+        assert_eq!(v["retry_after"], 7);
+        assert_eq!(retry_after_secs(&post_error(err)), Some(7));
     }
 
     #[test]
-    fn rate_limit_reports_retry_after() {
+    fn rate_limit_with_a_non_json_body_still_carries_retry_after() {
+        let (base, _rx) = serve(reply(
+            "429 Too Many Requests",
+            "Retry-After: 3\r\n",
+            "slow down",
+        ));
+        let err = transport(base)
+            .call(&request(Auth::Login), None)
+            .unwrap_err();
+        assert_eq!(err, "{\"retry_after\":3}");
+        assert_eq!(retry_after_secs(&post_error(err)), Some(3));
+    }
+
+    #[test]
+    fn full_queue_errors_map_to_the_engine_messages() {
         let (base, _rx) = serve(reply(
             "429 Too Many Requests",
             "Retry-After: 7\r\n",
@@ -221,13 +255,16 @@ mod tests {
         let err = transport(base)
             .call(&request(Auth::Login), None)
             .unwrap_err();
-        assert_eq!(err, "429 retry_after=7 recipient_full");
-    }
-
-    #[test]
-    fn missing_or_hostile_code_is_unknown() {
-        assert_eq!(error_code("<html>"), "unknown");
-        assert_eq!(error_code("{\"error\":\"a b\"}"), "unknown");
+        assert_eq!(post_error(err), "the recipient's relay queue is full");
+        let (base, _rx) = serve(reply(
+            "413 Payload Too Large",
+            "",
+            "{\"error\":\"user_full\"}",
+        ));
+        let err = transport(base)
+            .call(&request(Auth::Login), None)
+            .unwrap_err();
+        assert_eq!(post_error(err), "relay storage is full");
     }
 
     #[test]
