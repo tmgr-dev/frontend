@@ -255,6 +255,7 @@ pub fn run() {
       toast::toast_dismiss,
       toast::toast_resize,
       toast::toast_expand,
+      toast::toast_hover,
       toast::toast_state,
       native_i18n::native_locale_set,
       update_relaunch::mark_update_relaunch,

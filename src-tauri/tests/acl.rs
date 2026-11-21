@@ -20,6 +20,7 @@ probes!(
   popover_extras_update,
   toast_push,
   toast_action,
+  toast_hover,
   runner_enabled,
   llm_chat,
   local_access_event,
@@ -177,4 +178,8 @@ fn toast_push_is_for_the_main_window_and_toast_action_for_the_toast_window() {
   }
   assert!(call("toast", "toast_action").is_ok());
   assert!(call("main", "toast_action").unwrap_err().contains("not allowed on window"));
+  assert!(call("toast", "toast_hover").is_ok());
+  for label in ["main", "popover"] {
+    assert!(call(label, "toast_hover").unwrap_err().contains("not allowed on window"), "toast_hover on {label}");
+  }
 }

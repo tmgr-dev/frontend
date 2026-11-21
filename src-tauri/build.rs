@@ -87,6 +87,7 @@ const APP_COMMANDS: &[&str] = &[
   "toast_dismiss",
   "toast_resize",
   "toast_expand",
+  "toast_hover",
   "toast_state",
   "native_locale_set",
   "mark_update_relaunch",

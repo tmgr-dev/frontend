@@ -19,7 +19,7 @@ const MAX_VISIBLE: usize = 2;
 const MAX_EXPANDED: usize = 6;
 const MAX_QUEUE: usize = 50;
 const MISSED_CAP: usize = 20;
-const DEFAULT_TTL_MS: u64 = 8_000;
+const DEFAULT_TTL_MS: u64 = 10_000;
 const MAX_ACTIONS: usize = 4;
 const MAX_ID: usize = 128;
 const MAX_TITLE: usize = 120;
@@ -99,14 +99,8 @@ pub fn clean(mut toast: Toast) -> Result<Toast, String> {
   Ok(toast)
 }
 
-pub fn effective_ttl(kind: Kind, ttl_ms: Option<Option<u64>>) -> Option<u64> {
-  match ttl_ms {
-    Some(value) => value,
-    None => match kind {
-      Kind::Agent | Kind::Limit => Some(DEFAULT_TTL_MS),
-      Kind::Decision | Kind::Idle => None,
-    },
-  }
+pub fn effective_ttl(ttl_ms: Option<Option<u64>>) -> Option<u64> {
+  ttl_ms.unwrap_or(Some(DEFAULT_TTL_MS))
 }
 
 pub fn stack<T: Clone>(queue: &[T], expanded: bool) -> (Vec<T>, usize) {
@@ -139,7 +133,29 @@ pub fn gate(dnd: (&str, Option<i64>), now_ms: i64, fullscreen: bool, window_ok: 
 struct Entry {
   toast: Toast,
   at_ms: i64,
+  total_ms: Option<u64>,
   expires_at: Option<i64>,
+  paused_left: Option<i64>,
+}
+
+impl Entry {
+  fn remaining(&self, now_ms: i64) -> Option<i64> {
+    let left = self.paused_left.or_else(|| self.expires_at.map(|at| at - now_ms))?;
+    Some(left.max(0))
+  }
+
+  fn set_hover(&mut self, hovering: bool, now_ms: i64) -> bool {
+    let Some(left) = self.remaining(now_ms) else { return false };
+    match (hovering, self.paused_left) {
+      (true, None) => self.paused_left = Some(left),
+      (false, Some(_)) => {
+        self.expires_at = Some(now_ms + left);
+        self.paused_left = None;
+      }
+      _ => return false,
+    }
+    true
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -163,8 +179,9 @@ struct Inner {
 impl Inner {
   fn enqueue(&mut self, toast: Toast, now_ms: i64) {
     self.queue.retain(|e| e.toast.id != toast.id);
-    let expires_at = effective_ttl(toast.kind, toast.ttl_ms).map(|ttl| now_ms + ttl as i64);
-    self.queue.insert(0, Entry { toast, at_ms: now_ms, expires_at });
+    let total_ms = effective_ttl(toast.ttl_ms);
+    let expires_at = total_ms.map(|ttl| now_ms + ttl as i64);
+    self.queue.insert(0, Entry { toast, at_ms: now_ms, total_ms, expires_at, paused_left: None });
     self.queue.truncate(MAX_QUEUE);
   }
 
@@ -194,9 +211,19 @@ impl Inner {
   }
 
   fn expire(&mut self, now_ms: i64) -> bool {
-    let before = self.queue.len();
-    self.queue.retain(|e| e.expires_at.is_none_or(|at| now_ms < at));
-    self.queue.len() != before
+    let (gone, kept): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.queue)
+      .into_iter()
+      .partition(|e| e.paused_left.is_none() && e.expires_at.is_some_and(|at| now_ms >= at));
+    self.queue = kept;
+    let any = !gone.is_empty();
+    for entry in gone.into_iter().rev() {
+      self.defer(entry.toast, now_ms);
+    }
+    any
+  }
+
+  fn hover(&mut self, id: &str, hovering: bool, now_ms: i64) -> bool {
+    self.queue.iter_mut().find(|e| e.toast.id == id).is_some_and(|e| e.set_hover(hovering, now_ms))
   }
 
   fn remove(&mut self, id: &str) -> bool {
@@ -227,6 +254,9 @@ struct View {
   #[serde(flatten)]
   toast: Toast,
   at: i64,
+  remaining_ms: Option<i64>,
+  total_ms: Option<u64>,
+  paused: bool,
 }
 
 #[derive(Serialize)]
@@ -237,10 +267,19 @@ struct ListPayload {
   expanded: bool,
 }
 
-fn payload_of(state: &Inner) -> ListPayload {
+fn payload_of(state: &Inner, now_ms: i64) -> ListPayload {
   let (visible, more) = stack(&state.queue, state.expanded);
   ListPayload {
-    visible: visible.into_iter().map(|e| View { toast: e.toast, at: e.at_ms }).collect(),
+    visible: visible
+      .into_iter()
+      .map(|e| View {
+        remaining_ms: e.remaining(now_ms),
+        total_ms: e.total_ms,
+        paused: e.paused_left.is_some(),
+        at: e.at_ms,
+        toast: e.toast,
+      })
+      .collect(),
     more,
     expanded: state.expanded,
   }
@@ -288,7 +327,7 @@ fn render<R: Runtime>(app: &AppHandle<R>) {
     if state.queue.is_empty() {
       state.expanded = false;
     }
-    payload_of(&state)
+    payload_of(&state, now_ms())
   };
   let empty = payload.visible.is_empty();
   let _ = app.emit_to(LABEL, "toast://list", &payload);
@@ -401,6 +440,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let Some(store) = handle.try_state::<ToastStore>() else { continue };
     if store.state.lock().unwrap().expire(now_ms()) {
       render(&handle);
+      refresh_popover(&handle);
     }
   });
   Ok(())
@@ -497,7 +537,7 @@ pub fn push_idle<R: Runtime>(app: &AppHandle<R>, away_since: i64, now: i64) {
 fn state_payload<R: Runtime>(app: &AppHandle<R>) -> Value {
   let Some(store) = app.try_state::<ToastStore>() else { return json!({ "visible": [], "more": 0, "expanded": false }) };
   let state = store.state.lock().unwrap();
-  serde_json::to_value(payload_of(&state)).unwrap_or_default()
+  serde_json::to_value(payload_of(&state, now_ms())).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -514,6 +554,13 @@ pub fn toast_push<R: Runtime>(app: AppHandle<R>, toast: Toast) -> Result<(), Str
 #[tauri::command]
 pub fn toast_dismiss<R: Runtime>(app: AppHandle<R>, id: String) {
   dismiss(&app, &id);
+}
+
+#[tauri::command]
+pub fn toast_hover<R: Runtime>(app: AppHandle<R>, store: State<'_, ToastStore>, id: String, hovering: bool) {
+  if store.state.lock().unwrap().hover(&id, hovering, now_ms()) {
+    render(&app);
+  }
 }
 
 #[tauri::command]
@@ -658,20 +705,93 @@ mod tests {
   }
 
   #[test]
-  fn ttl_defaults_and_expiry() {
-    assert_eq!(effective_ttl(Kind::Agent, None), Some(8_000));
-    assert_eq!(effective_ttl(Kind::Limit, None), Some(8_000));
-    assert_eq!(effective_ttl(Kind::Decision, None), None);
-    assert_eq!(effective_ttl(Kind::Idle, None), None);
-    assert_eq!(effective_ttl(Kind::Decision, Some(Some(5))), Some(5));
-    assert_eq!(effective_ttl(Kind::Agent, Some(None)), None);
+  fn ttl_defaults_to_ten_seconds_for_every_kind() {
+    assert_eq!(effective_ttl(None), Some(10_000));
+    assert_eq!(effective_ttl(Some(Some(5))), Some(5));
+    assert_eq!(effective_ttl(Some(None)), None);
     let mut s = Inner::default();
-    s.enqueue(toast("agent", Kind::Agent), 0);
-    s.enqueue(toast("decision", Kind::Decision), 0);
-    assert!(!s.expire(7_999));
-    assert!(s.expire(8_000));
-    assert_eq!(s.queue.len(), 1);
+    for (i, kind) in [Kind::Agent, Kind::Decision, Kind::Idle, Kind::Limit].into_iter().enumerate() {
+      s.enqueue(toast(&format!("t{i}"), kind), 0);
+    }
+    assert!(!s.expire(9_999));
+    assert!(s.expire(10_000));
+    assert!(s.queue.is_empty());
+    assert_eq!(s.missed.len(), 4);
     assert!(!s.expire(1_000_000));
+  }
+
+  #[test]
+  fn sticky_only_with_explicit_null_ttl() {
+    let mut s = Inner::default();
+    let mut t = toast("sticky", Kind::Decision);
+    t.ttl_ms = Some(None);
+    s.enqueue(t, 0);
+    assert!(!s.expire(1_000_000));
+    assert_eq!(s.queue[0].remaining(5), None);
+  }
+
+  #[test]
+  fn expiry_moves_to_missed_but_dismiss_removes() {
+    let mut s = Inner::default();
+    s.enqueue(toast("a", Kind::Idle), 0);
+    s.enqueue(toast("b", Kind::Idle), 0);
+    assert!(s.remove("a"));
+    assert!(s.missed.is_empty());
+    assert!(s.expire(10_000));
+    assert_eq!(s.missed.len(), 1);
+    assert_eq!(s.missed[0].id, "b");
+    assert_eq!(s.missed[0].at, 10);
+  }
+
+  #[test]
+  fn hover_pauses_and_resumes_with_the_remaining_time() {
+    let mut s = Inner::default();
+    s.enqueue(toast("a", Kind::Agent), 0);
+    assert_eq!(s.queue[0].remaining(4_000), Some(6_000));
+    assert!(s.hover("a", true, 4_000));
+    assert!(!s.hover("a", true, 5_000));
+    assert_eq!(s.queue[0].remaining(50_000), Some(6_000));
+    assert!(!s.expire(50_000));
+    assert!(s.hover("a", false, 50_000));
+    assert!(!s.hover("a", false, 50_001));
+    assert_eq!(s.queue[0].remaining(53_000), Some(3_000));
+    assert!(!s.expire(55_999));
+    assert!(s.expire(56_000));
+    assert!(!s.hover("a", true, 60_000));
+  }
+
+  #[test]
+  fn hover_ignores_sticky_and_unknown_toasts() {
+    let mut s = Inner::default();
+    let mut t = toast("a", Kind::Agent);
+    t.ttl_ms = Some(None);
+    s.enqueue(t, 0);
+    assert!(!s.hover("a", true, 1));
+    assert!(!s.hover("nope", true, 1));
+  }
+
+  #[test]
+  fn re_enqueue_restarts_the_countdown_and_clears_the_pause() {
+    let mut s = Inner::default();
+    s.enqueue(toast("a", Kind::Agent), 0);
+    s.hover("a", true, 8_000);
+    s.enqueue(toast("a", Kind::Agent), 9_000);
+    assert_eq!(s.queue.len(), 1);
+    assert_eq!(s.queue[0].remaining(9_000), Some(10_000));
+    assert!(s.queue[0].paused_left.is_none());
+    assert!(s.expire(19_000));
+  }
+
+  #[test]
+  fn payload_carries_remaining_total_and_paused() {
+    let mut s = Inner::default();
+    s.enqueue(toast("a", Kind::Agent), 0);
+    s.hover("a", true, 2_500);
+    let v = serde_json::to_value(payload_of(&s, 9_000)).unwrap();
+    let t = &v["visible"][0];
+    assert_eq!(t["remainingMs"], 7_500);
+    assert_eq!(t["totalMs"], 10_000);
+    assert_eq!(t["paused"], true);
   }
 
   #[test]
