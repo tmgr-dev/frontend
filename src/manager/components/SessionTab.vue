@@ -60,7 +60,11 @@
 					.slice(-3)
 					.map((m) => ({
 						id: m.id,
-						who: `${authorLabel(m.author, (k: string) => this.$t(k))}: `,
+						who: `${authorLabel(
+							m.author,
+							(k: string) => this.$t(k),
+							m.user_turn,
+						)}: `,
 						text: plainPreview(m.body_md, 90),
 					}));
 			},

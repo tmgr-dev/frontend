@@ -126,7 +126,7 @@
 				);
 			},
 			who(hit: ChatMessage): string {
-				return authorLabel(hit.author, (k) => this.$t(k));
+				return authorLabel(hit.author, (k) => this.$t(k), hit.user_turn);
 			},
 			parts(hit: ChatMessage) {
 				return highlightParts(

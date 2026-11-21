@@ -43,6 +43,7 @@ export interface ChatMessage {
 	attachments?: Attachment[];
 	reply_to?: string;
 	decision?: DecisionRef;
+	user_turn?: boolean;
 }
 
 export interface RoomInfo {

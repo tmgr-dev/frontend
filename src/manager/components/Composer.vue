@@ -105,7 +105,11 @@
 			},
 			replyWho(): string {
 				return this.replyTo
-					? authorLabel(this.replyTo.author, (k) => this.$t(k))
+					? authorLabel(
+							this.replyTo.author,
+							(k) => this.$t(k),
+							this.replyTo.user_turn,
+						)
 					: '';
 			},
 		},

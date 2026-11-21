@@ -145,7 +145,10 @@ fn backfill(chat: &Chat, s: &SessionInfo, agent: Agent, t: &mut Tail, end: u64, 
     let Ok(start) = tail::backfill_start(&t.path, end, BACKFILL_BYTES) else {
         return;
     };
-    let window = usize::try_from(end - start).unwrap_or(usize::MAX).max(1);
+    if start >= end {
+        return;
+    }
+    let window = usize::try_from(end - start).unwrap_or(usize::MAX);
     let Ok(batch) = tail::read_new(&t.path, agent, start, window) else {
         return;
     };
@@ -154,19 +157,23 @@ fn backfill(chat: &Chat, s: &SessionInfo, agent: Agent, t: &mut Tail, end: u64, 
         .history(&room, None, Some(200))
         .unwrap_or_default()
         .into_iter()
-        .filter(|m| m.author.kind == AuthorKind::Session)
-        .map(|m| m.body_md)
+        .filter(|m| matches!(m.author.kind, AuthorKind::Session | AuthorKind::Owner))
+        .map(|m| super::normalize(&m.body_md))
         .collect();
     let skip = batch.turns.len().saturating_sub(BACKFILL_TURNS);
     for turn in batch.turns.into_iter().skip(skip) {
-        if known.contains(&clip(turn.text.clone())) {
+        if known.contains(&super::normalize(&clip(turn.text.clone()))) {
             continue;
         }
         if post(chat, &room, s, &t.meta, turn).is_err() {
             return;
         }
     }
-    t.offset = if legacy { end } else { batch.offset };
+    t.offset = if legacy {
+        end.max(batch.offset)
+    } else {
+        batch.offset
+    };
 }
 
 pub fn capture(chat: &Chat, sessions: &[SessionInfo]) {
@@ -450,16 +457,22 @@ mod tests {
     }
 
     #[test]
-    fn a_log_over_the_window_starts_at_a_line_boundary() {
+    fn a_log_over_the_window_starts_at_a_line_boundary_and_codex_user_turns_count() {
         let t = tempfile::tempdir().unwrap();
         let chat = Chat::open(&t.path().join("run"));
         let log = t.path().join("log.jsonl");
         append(&log, &line(&"x".repeat((BACKFILL_BYTES as usize) + 10)));
         append(&log, &(user_line("recent q") + &line("recent a")));
-        capture_with(&chat, &[info(SID, "codex", "working")], &|_, _| {
+        capture_with(&chat, &[info(SID, "claude-code", "working")], &|_, _| {
             Some(log.clone())
         });
-        assert!(bodies(&chat, SID).is_empty());
+        assert_eq!(
+            kinds(&chat, SID),
+            [
+                (true, "recent q".to_string()),
+                (false, "recent a".to_string())
+            ]
+        );
         let codex_user =
             json!({"type": "response_item", "payload": {"type": "message", "role": "user",
             "content": [{"type": "input_text", "text": "codex q"}]}})
@@ -521,6 +534,23 @@ mod tests {
         capture_with(&chat, &s, &|_, _| Some(second.clone()));
         assert_eq!(bodies(&chat, SID), ["one", "two"]);
         assert!(load(&tails_path, SID).unwrap().path == second);
+    }
+
+    #[test]
+    fn an_old_saved_state_at_offset_zero_does_not_read_twice() {
+        let t = tempfile::tempdir().unwrap();
+        let log = t.path().join("log.jsonl");
+        append(&log, &(user_line("q1") + &line("a1")));
+        let chat = Chat::open(&t.path().join("run"));
+        let dir = chat.store.as_ref().unwrap().dir().to_path_buf();
+        fs::write(
+            state_path(&dir, SID),
+            serde_json::to_vec(&json!({"path": log, "offset": 0})).unwrap(),
+        )
+        .unwrap();
+        let s = [info(SID, "claude-code", "working")];
+        capture_with(&chat, &s, &|_, _| Some(log.clone()));
+        assert_eq!(kinds(&chat, SID).len(), 2);
     }
 
     #[test]

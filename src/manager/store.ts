@@ -145,7 +145,11 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (info && (!info.last || byTime(info.last, message) <= 0)) {
 				info.last = message;
 			}
-			if (key !== store.activeKey && message.author.kind !== 'owner') {
+			if (
+				key !== store.activeKey &&
+				message.author.kind !== 'owner' &&
+				!message.user_turn
+			) {
 				store.unreadByRoom[key] = (store.unreadByRoom[key] ?? 0) + 1;
 			}
 			if (!info) void store.loadRooms();

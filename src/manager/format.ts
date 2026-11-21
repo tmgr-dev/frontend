@@ -75,7 +75,8 @@ export const groupMessages = (messages: ChatMessage[]): TimelineItem[] => {
 			shownKind(prev) === 'text' &&
 			shownKind(message) === 'text' &&
 			prev.author.kind === message.author.kind &&
-			prev.author.id === message.author.id;
+			prev.author.id === message.author.id &&
+			!!prev.user_turn === !!message.user_turn;
 		items.push({ type: 'message', message, grouped });
 		prev = message;
 	}

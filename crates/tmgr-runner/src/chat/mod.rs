@@ -124,6 +124,10 @@ pub struct Ingested {
 const SENT_TTL: Duration = Duration::from_secs(600);
 const SENT_MAX: usize = 32;
 
+pub(super) fn normalize(text: &str) -> String {
+    text.replace('\r', "").trim().to_string()
+}
+
 pub struct Chat {
     machine: String,
     store: Option<Store>,
@@ -385,21 +389,22 @@ impl Chat {
         })
     }
 
-    fn remember_sent(&self, session: &str, body: &str) {
+    pub(crate) fn remember_sent(&self, session: &str, body: &str) {
         let mut sent = lock(&self.sent);
         let now = Instant::now();
         sent.retain(|(_, _, at)| now.duration_since(*at) < SENT_TTL);
         if sent.len() >= SENT_MAX {
             sent.pop_front();
         }
-        sent.push_back((session.to_string(), body.trim().to_string(), now));
+        sent.push_back((session.to_string(), normalize(body), now));
     }
 
     pub(super) fn take_sent(&self, session: &str, text: &str) -> bool {
+        let text = normalize(text);
         let mut sent = lock(&self.sent);
         let now = Instant::now();
         sent.retain(|(_, _, at)| now.duration_since(*at) < SENT_TTL);
-        match sent.iter().position(|(s, t, _)| s == session && t == text) {
+        match sent.iter().position(|(s, t, _)| s == session && *t == text) {
             Some(i) => {
                 sent.remove(i);
                 true

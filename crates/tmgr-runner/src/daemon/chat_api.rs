@@ -224,6 +224,9 @@ impl Runner {
                 if let Some(target) = self.chat_target(&q.room) {
                     target.input_at_prompt(&chat::prompt_bytes(&q.body_md), Instant::now())?;
                     target.note_input_from(&conn.client);
+                    if let Some(session) = q.room.session.as_deref() {
+                        self.chat.remember_sent(session, &q.body_md);
+                    }
                 }
                 self.chat
                     .post(

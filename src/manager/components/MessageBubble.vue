@@ -109,7 +109,7 @@
 				);
 			},
 			isOwner(): boolean {
-				return this.message.author.kind === 'owner';
+				return this.message.author.kind === 'owner' || !!this.message.user_turn;
 			},
 			isDecision(): boolean {
 				return this.message.kind === 'decision';
@@ -124,7 +124,7 @@
 		methods: {
 			truncate,
 			labelOf(m: ChatMessage): string {
-				return authorLabel(m.author, (k) => this.$t(k));
+				return authorLabel(m.author, (k) => this.$t(k), m.user_turn);
 			},
 		},
 	});

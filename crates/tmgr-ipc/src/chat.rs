@@ -417,6 +417,7 @@ mod tests {
                 "room",
                 "session_meta",
                 "ts_ms",
+                "user_turn",
                 "v"
             ]
         );

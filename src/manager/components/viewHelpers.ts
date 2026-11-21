@@ -72,6 +72,7 @@ export const isGrouped = (
 	isTextual(cur) &&
 	prev.author.kind === cur.author.kind &&
 	prev.author.id === cur.author.id &&
+	!!prev.user_turn === !!cur.user_turn &&
 	dayKey(prev.ts_ms) === dayKey(cur.ts_ms) &&
 	cur.ts_ms - prev.ts_ms < GROUP_WINDOW_MS;
 
@@ -161,8 +162,9 @@ export const formatSize = (bytes: number): string =>
 export const authorLabel = (
 	author: Author,
 	t: (key: string) => string,
+	userTurn?: boolean,
 ): string => {
-	if (author.kind === 'owner') return t('manager.messages.you');
+	if (author.kind === 'owner' || userTurn) return t('manager.messages.you');
 	if (author.kind === 'manager') return t('manager.messages.manager');
 	if (author.kind === 'session') return author.agent ?? author.id;
 	return t('manager.messages.system');

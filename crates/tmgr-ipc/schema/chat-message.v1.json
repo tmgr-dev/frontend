@@ -54,6 +54,7 @@
       "required": ["card_id"],
       "properties": { "card_id": { "$ref": "#/$defs/token" } }
     },
+    "user_turn": { "type": "boolean" },
     "session_meta": {
       "description": "Runner-filled state of the session that wrote the message. Every field is optional.",
       "type": "object",
