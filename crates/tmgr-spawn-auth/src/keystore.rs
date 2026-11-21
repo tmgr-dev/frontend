@@ -1,6 +1,6 @@
 use crate::key_statement::SpawnKeyStatement;
 use crate::verify::PinnedKey;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub type DeviceFp = String;
 
@@ -24,6 +24,29 @@ pub enum OfferOutcome {
     Conflict,
     /// The book already holds `MAX_ENTRIES` devices; a new device_fp is not recorded.
     Full,
+    Revoked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RevokeError {
+    PrefixTooShort,
+    NotFound,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevokedKey {
+    pub device_fp: DeviceFp,
+    pub device_id: String,
+    pub spawn_key_fp: String,
+    pub state: KeyState,
+}
+
+#[derive(Debug)]
+pub struct KeyView<'a> {
+    pub statement: &'a SpawnKeyStatement,
+    pub state: KeyState,
+    pub replaced_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,10 +68,14 @@ struct Entry {
 #[derive(Debug, Default)]
 pub struct KeyBook {
     entries: BTreeMap<DeviceFp, Entry>,
+    revoked: BTreeSet<String>,
 }
 
 impl KeyBook {
     pub fn offer(&mut self, statement: SpawnKeyStatement, now_ms: u64) -> OfferOutcome {
+        if self.revoked.contains(&statement.spawn_key_fp()) {
+            return OfferOutcome::Revoked;
+        }
         let fp = statement.device_fp().to_string();
         let mut replaced_at_ms = None;
         let outcome = match self.entries.get(&fp) {
@@ -124,6 +151,45 @@ impl KeyBook {
         entry.state = KeyState::Approved;
         entry.replaced_at_ms = None;
         Ok(fp.clone())
+    }
+
+    pub fn revoke(&mut self, fp_prefix: &str) -> Result<RevokedKey, RevokeError> {
+        if fp_prefix.len() < MIN_PREFIX_LEN {
+            return Err(RevokeError::PrefixTooShort);
+        }
+        let mut hits = self.entries.keys().filter(|fp| fp.starts_with(fp_prefix));
+        let fp = hits.next().ok_or(RevokeError::NotFound)?.clone();
+        if hits.next().is_some() {
+            return Err(RevokeError::Ambiguous);
+        }
+        let entry = self.entries.remove(&fp).ok_or(RevokeError::NotFound)?;
+        let spawn_key_fp = entry.statement.spawn_key_fp();
+        self.revoked.insert(spawn_key_fp.clone());
+        Ok(RevokedKey {
+            device_fp: fp,
+            device_id: entry.statement.device_id().into(),
+            spawn_key_fp,
+            state: entry.state,
+        })
+    }
+
+    pub fn restore_revoked(&mut self, spawn_key_fp: String) {
+        self.revoked.insert(spawn_key_fp);
+    }
+
+    pub fn revoked(&self) -> Vec<&str> {
+        self.revoked.iter().map(String::as_str).collect()
+    }
+
+    pub fn all(&self) -> Vec<KeyView<'_>> {
+        self.entries
+            .values()
+            .map(|e| KeyView {
+                statement: &e.statement,
+                state: e.state,
+                replaced_at_ms: e.replaced_at_ms,
+            })
+            .collect()
     }
 
     pub fn state(&self, device_fp: &str) -> Option<KeyState> {
@@ -408,5 +474,71 @@ mod tests {
         );
         assert_eq!(b.state(&fp('a')), Some(KeyState::Approved));
         assert_eq!(b.pinned_key("42", &fp('a')).unwrap().spawn_pub, vec![1; 65]);
+    }
+
+    #[test]
+    fn revoke_removes_pinned_key_and_tombstones_it() {
+        let mut b = KeyBook::default();
+        b.offer(st("42", &fp('a'), 1, 10), N);
+        b.approve("aaaaaaaa", &sk(1), N).unwrap();
+        let r = b.revoke("aaaaaaaa").unwrap();
+        assert_eq!(r.device_fp, fp('a'));
+        assert_eq!(r.device_id, "dev-1");
+        assert_eq!(r.spawn_key_fp, sk(1));
+        assert_eq!(r.state, KeyState::Approved);
+        assert_eq!(b.state(&fp('a')), None);
+        assert_eq!(b.pinned_key("42", &fp('a')), None);
+        assert!(b.pending().is_empty());
+        assert_eq!(b.offer(st("42", &fp('a'), 1, 10), N), OfferOutcome::Revoked);
+        assert_eq!(b.state(&fp('a')), None);
+    }
+
+    #[test]
+    fn revoke_drops_a_pending_key_too() {
+        let mut b = KeyBook::default();
+        b.offer(st("42", &fp('a'), 1, 10), N);
+        let r = b.revoke(&fp('a')).unwrap();
+        assert_eq!(r.state, KeyState::Pending);
+        assert!(b.pending().is_empty());
+        assert_eq!(b.offer(st("42", &fp('a'), 1, 10), N), OfferOutcome::Revoked);
+    }
+
+    #[test]
+    fn a_new_key_from_a_revoked_device_is_pending_again() {
+        let mut b = KeyBook::default();
+        b.offer(st("42", &fp('a'), 1, 10), N);
+        b.approve("aaaaaaaa", &sk(1), N).unwrap();
+        b.revoke("aaaaaaaa").unwrap();
+        assert_eq!(b.offer(st("42", &fp('a'), 2, 11), N), OfferOutcome::Added);
+        assert_eq!(b.state(&fp('a')), Some(KeyState::Pending));
+        assert_eq!(b.pinned_key("42", &fp('a')), None);
+        assert_eq!(b.offer(st("42", &fp('a'), 1, 10), N), OfferOutcome::Revoked);
+    }
+
+    #[test]
+    fn revoke_prefix_rules() {
+        let mut b = KeyBook::default();
+        b.offer(st("42", &format!("abcdef01{}", "0".repeat(56)), 1, 10), N);
+        b.offer(st("42", &format!("abcdef01{}", "1".repeat(56)), 2, 10), N);
+        assert_eq!(b.revoke("abcdef0"), Err(RevokeError::PrefixTooShort));
+        assert_eq!(b.revoke("abcdef01"), Err(RevokeError::Ambiguous));
+        assert_eq!(b.revoke("ffffffff"), Err(RevokeError::NotFound));
+        assert_eq!(b.pending().len(), 2);
+    }
+
+    #[test]
+    fn restored_tombstones_refuse_offers_and_all_lists_both_states() {
+        let mut b = KeyBook::default();
+        b.restore_revoked(sk(1));
+        assert_eq!(b.revoked(), vec![sk(1).as_str()]);
+        assert_eq!(b.offer(st("42", &fp('a'), 1, 10), N), OfferOutcome::Revoked);
+        b.offer(st("42", &fp('b'), 2, 10), N);
+        b.offer(st("42", &fp('c'), 3, 10), N);
+        b.approve("cccccccc", &sk(3), N).unwrap();
+        let all = b.all();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].state, KeyState::Pending);
+        assert_eq!(all[1].state, KeyState::Approved);
+        assert_eq!(all[1].statement.device_fp(), fp('c'));
     }
 }

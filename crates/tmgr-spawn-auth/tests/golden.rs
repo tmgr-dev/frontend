@@ -876,6 +876,7 @@ fn offer_name(o: OfferOutcome) -> &'static str {
         OfferOutcome::Stale => "stale",
         OfferOutcome::Conflict => "conflict",
         OfferOutcome::Full => "full",
+        OfferOutcome::Revoked => "revoked",
     }
 }
 

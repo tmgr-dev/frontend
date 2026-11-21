@@ -14,7 +14,9 @@ pub use key_statement::{
     build_spawn_key_statement, device_fp, supersedes, verify_spawn_key_statement, DeviceKeys,
     SpawnKeyStatement,
 };
-pub use keystore::{ApproveError, DeviceFp, KeyBook, KeyState, OfferOutcome};
+pub use keystore::{
+    ApproveError, DeviceFp, KeyBook, KeyState, KeyView, OfferOutcome, RevokeError, RevokedKey,
+};
 pub use proposal::{sha256_hex, SpawnMode, SpawnProposal};
 pub use tokens::{b64_decode_strict, b64_encode, is_hex_lower, is_target_id, is_token};
 pub use verify::{
