@@ -52,6 +52,14 @@ describe('aiUsageMachines actions', () => {
 		});
 	});
 
+	it('fetchDaily sends task_id 0 for unassigned rows', async () => {
+		get.mockResolvedValue({ data: {} });
+		await fetchDaily({ from: 'a', to: 'b', taskId: 0 });
+		expect(get).toHaveBeenCalledWith('ai-usage/daily', {
+			params: { from: 'a', to: 'b', task_id: 0 },
+		});
+	});
+
 	it('fetchDaily omits unset filters', async () => {
 		get.mockResolvedValue({ data: {} });
 		const res = await fetchDaily({ from: 'a', to: 'b' });

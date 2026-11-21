@@ -61,8 +61,8 @@ export const dailyQuery = (
 	if (filters.agent) query.agent = filters.agent;
 	if (filters.model) query.model = filters.model;
 	const taskId = Number(filters.taskId);
-	if (filters.taskId && filters.taskId !== UNASSIGNED && taskId > 0)
-		query.taskId = taskId;
+	if (filters.taskId === UNASSIGNED) query.taskId = 0;
+	else if (taskId > 0) query.taskId = taskId;
 	return query;
 };
 

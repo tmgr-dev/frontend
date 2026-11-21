@@ -73,7 +73,7 @@ describe('periodRange', () => {
 });
 
 describe('dailyQuery', () => {
-	it('drops empty filters and the unassigned marker', () => {
+	it('drops empty filters and sends task_id 0 for unassigned', () => {
 		expect(
 			dailyQuery(
 				{ from: 'a', to: 'b' },
@@ -91,7 +91,7 @@ describe('dailyQuery', () => {
 				{ from: 'a', to: 'b' },
 				{ machineId: '', agent: '', model: '', taskId: 'none' },
 			),
-		).toEqual({ from: 'a', to: 'b' });
+		).toEqual({ from: 'a', to: 'b', taskId: 0 });
 	});
 });
 

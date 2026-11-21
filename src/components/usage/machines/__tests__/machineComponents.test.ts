@@ -69,8 +69,10 @@ describe('AiUsageMachines.vue', () => {
 		expect(page).toContain('clearInterval(timer)');
 	});
 
-	it('reloads the daily rows when the period or a filter changes', () => {
-		expect(page).toContain('watch([period, () => ({ ...filters })]');
+	it('reloads the daily rows when the range rolls over or a filter changes', () => {
+		expect(page).toContain(
+			'[() => range.value.from, () => range.value.to, () => ({ ...filters })]',
+		);
 		expect(page).toContain('dailyQuery(range.value, filters)');
 		expect(page).toContain('fetchDaily(query)');
 	});

@@ -375,7 +375,10 @@
 			);
 			const totals = computed(() => aggregateTotals(rows.value));
 
-			watch([period, () => ({ ...filters })], () => void loadDaily());
+			watch(
+				[() => range.value.from, () => range.value.to, () => ({ ...filters })],
+				() => void loadDaily(),
+			);
 
 			onMounted(() => {
 				setDocumentTitle(t('agents.usage.machines.title'));

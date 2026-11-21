@@ -67,7 +67,7 @@ export const fetchDaily = async (query: DailyQuery): Promise<DailyResult> => {
 	if (query.machineId) params.machine_id = query.machineId;
 	if (query.agent) params.agent = query.agent;
 	if (query.model) params.model = query.model;
-	if (query.taskId) params.task_id = query.taskId;
+	if (query.taskId != null) params.task_id = query.taskId;
 	const { data } = await $axios.get('ai-usage/daily', { params });
 	const body = data?.data ?? data;
 	return {
