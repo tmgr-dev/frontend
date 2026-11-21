@@ -3444,6 +3444,7 @@ impl App {
             permission_cards: false,
             bypass: false,
             no_sandbox: false,
+            host: None,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -3659,6 +3660,7 @@ impl App {
                 permission_cards: false,
                 bypass: false,
                 no_sandbox: false,
+                host: None,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -5759,6 +5761,7 @@ mod tests {
                 permission_cards: false,
                 bypass: false,
                 no_sandbox: false,
+                host: None,
             },
             target: "a".into(),
         })
@@ -5971,6 +5974,7 @@ mod tests {
                 permission_cards: false,
                 bypass: false,
                 no_sandbox: false,
+                host: None,
             },
             target: "a".into(),
         })
@@ -6100,6 +6104,7 @@ mod tests {
                 permission_cards: false,
                 bypass: false,
                 no_sandbox: false,
+                host: None,
             },
             target: "a".into(),
         };
@@ -6235,6 +6240,7 @@ mod tests {
             permission_cards: true,
             bypass: true,
             no_sandbox: true,
+            host: None,
         }
     }
 

@@ -606,6 +606,7 @@ mod tests {
             permission_cards: false,
             bypass: false,
             no_sandbox: false,
+            host: None,
         }
     }
 

@@ -58,6 +58,13 @@ pub struct NewRequest {
     pub permission_cards: bool,
     pub bypass: bool,
     pub no_sandbox: bool,
+    pub host: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HostScope {
+    pub repos: Vec<String>,
+    pub agents: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -210,6 +217,7 @@ impl Place {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NewField {
+    Host,
     Kind,
     Task,
     Command,
@@ -226,6 +234,13 @@ pub enum NewField {
 
 #[derive(Clone, Debug)]
 pub struct NewSession {
+    pub hosts: Vec<String>,
+    pub host: usize,
+    pub scopes: HashMap<String, HostScope>,
+    all_kinds: Vec<KindOpt>,
+    local_folder: String,
+    local_folders: Option<FolderData>,
+    folder_is_remote: bool,
     pub kinds: Vec<KindOpt>,
     pub kind: usize,
     pub folder: String,
@@ -265,6 +280,10 @@ fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
+fn no_dirs(_: &Path) -> Vec<String> {
+    Vec::new()
+}
+
 fn strip_control(s: &str) -> String {
     s.chars().filter(|c| !c.is_control()).collect()
 }
@@ -278,6 +297,13 @@ fn list_dirs(path: &Path) -> Vec<String> {
         .filter(|e| e.path().is_dir())
         .map(|e| strip_control(&e.file_name().to_string_lossy()))
         .collect()
+}
+
+fn is_follower_ref(s: &str) -> bool {
+    let digits = |t: &str| !t.is_empty() && t.len() <= 18 && t.bytes().all(|b| b.is_ascii_digit());
+    s.strip_prefix('w')
+        .and_then(|r| r.split_once(':'))
+        .is_some_and(|(ws, id)| digits(ws) && digits(id))
 }
 
 fn looks_like_ref(s: &str) -> bool {
@@ -337,6 +363,128 @@ impl NewSession {
         self
     }
 
+    pub fn remote(&self) -> Option<&str> {
+        self.host
+            .checked_sub(1)
+            .and_then(|i| self.hosts.get(i))
+            .map(String::as_str)
+    }
+
+    fn remote_kinds(&self, link: &str) -> Vec<KindOpt> {
+        let agents = self
+            .all_kinds
+            .iter()
+            .filter(|k| matches!(k.spawn, SpawnKind::Agent { .. }));
+        let Some(scope) = self.scopes.get(link).filter(|s| !s.agents.is_empty()) else {
+            return agents.cloned().collect();
+        };
+        let profile = |k: &KindOpt| match &k.spawn {
+            SpawnKind::Agent { profile } => profile.clone(),
+            _ => String::new(),
+        };
+        let mut kinds: Vec<KindOpt> = agents
+            .filter(|k| scope.agents.contains(&profile(k)))
+            .cloned()
+            .collect();
+        for a in &scope.agents {
+            if !kinds.iter().any(|k| profile(k) == *a) {
+                kinds.push(KindOpt {
+                    id: format!("agent:{a}"),
+                    label: strip_control(a),
+                    spawn: SpawnKind::Agent { profile: a.clone() },
+                    bypass: false,
+                });
+            }
+        }
+        kinds
+    }
+
+    fn remote_folders(&self, link: &str) -> Option<FolderData> {
+        let scope = self.scopes.get(link).filter(|s| !s.repos.is_empty())?;
+        Some(FolderData {
+            recents: scope
+                .repos
+                .iter()
+                .map(|p| folder_pick::RecentDir {
+                    path: p.clone(),
+                    ..Default::default()
+                })
+                .collect(),
+            pins: Vec::new(),
+        })
+    }
+
+    fn apply_host(&mut self) {
+        let was_remote = self.folder_is_remote;
+        let now = self.remote().map(str::to_string);
+        let selected = self.kinds.get(self.kind).map(|k| k.id.clone());
+        if !was_remote && now.is_some() {
+            self.local_folder = std::mem::take(&mut self.folder);
+            self.local_folders = self.folders.take();
+        }
+        match &now {
+            Some(link) => {
+                self.kinds = self.remote_kinds(link);
+                self.folder = self
+                    .scopes
+                    .get(link)
+                    .and_then(|s| s.repos.first().cloned())
+                    .unwrap_or_default();
+                self.folders = self.remote_folders(link);
+                self.browse_dir = no_dirs;
+                self.list_dir = no_dirs;
+            }
+            None => {
+                self.kinds = self.all_kinds.clone();
+                if was_remote {
+                    self.folder = std::mem::take(&mut self.local_folder);
+                    self.folders = self.local_folders.take();
+                }
+                self.browse_dir = folder_pick::browse_dirs;
+                self.list_dir = list_dirs;
+            }
+        }
+        self.folder_is_remote = now.is_some();
+        self.kind = selected
+            .and_then(|id| self.kinds.iter().position(|k| k.id == id))
+            .unwrap_or(0);
+        self.picker = None;
+        self.marks.clear();
+        self.mark_reqs.clear();
+        self.clear_privileges();
+        self.clear_error();
+        if !self.fields().contains(&self.focus) {
+            self.focus = NewField::Kind;
+        }
+    }
+
+    pub fn set_host(&mut self, host: usize) {
+        if host <= self.hosts.len() && host != self.host {
+            self.host = host;
+            self.apply_host();
+        }
+    }
+
+    pub fn refresh_scopes(&mut self, scopes: HashMap<String, HostScope>) {
+        self.scopes = scopes;
+        let Some(link) = self.remote().map(str::to_string) else {
+            return;
+        };
+        let selected = self.kinds.get(self.kind).map(|k| k.id.clone());
+        self.kinds = self.remote_kinds(&link);
+        self.kind = selected
+            .and_then(|id| self.kinds.iter().position(|k| k.id == id))
+            .unwrap_or(0);
+        self.folders = self.remote_folders(&link);
+        if self.folder.is_empty() {
+            self.folder = self
+                .scopes
+                .get(&link)
+                .and_then(|s| s.repos.first().cloned())
+                .unwrap_or_default();
+        }
+    }
+
     fn is_custom(&self) -> bool {
         self.kinds
             .get(self.kind)
@@ -389,7 +537,7 @@ impl NewSession {
 
     pub fn task_matches(&self) -> Vec<&TaskOpt> {
         let query = self.task.trim();
-        if query.is_empty() {
+        if query.is_empty() || self.remote().is_some() {
             return Vec::new();
         }
         let mut hits = tmgr_fuzzy::rank(query, self.tasks.iter().collect(), |t| {
@@ -424,7 +572,23 @@ impl NewSession {
     }
 
     fn fields(&self) -> Vec<NewField> {
-        let mut f = vec![NewField::Kind];
+        let mut f = Vec::new();
+        if !self.hosts.is_empty() {
+            f.push(NewField::Host);
+        }
+        f.push(NewField::Kind);
+        if self.remote().is_some() {
+            f.extend([
+                NewField::Folder,
+                NewField::Task,
+                NewField::Name,
+                NewField::Bypass,
+                NewField::NoSandbox,
+                NewField::Where,
+                NewField::Start,
+            ]);
+            return f;
+        }
         if self.is_custom() {
             f.push(NewField::Command);
         }
@@ -547,6 +711,15 @@ impl NewSession {
 
     fn cycle(&mut self, forward: bool) {
         match self.focus {
+            NewField::Host => {
+                let n = self.hosts.len() + 1;
+                let next = if forward {
+                    (self.host + 1) % n
+                } else {
+                    (self.host + n - 1) % n
+                };
+                self.set_host(next);
+            }
             NewField::Kind => {
                 let n = self.kinds.len();
                 if n > 0 {
@@ -660,7 +833,7 @@ impl NewSession {
 
     fn try_submit(&mut self) -> Option<NewRequest> {
         let req = self.submit().ok()?;
-        if !req.bypass && !req.no_sandbox {
+        if req.host.is_some() || (!req.bypass && !req.no_sandbox) {
             return Some(req);
         }
         let asked = match self.priv_gate {
@@ -684,7 +857,63 @@ impl NewSession {
         None
     }
 
+    fn validate_remote(&self, link: &str) -> Result<NewRequest, (NewField, String)> {
+        let folder = self.folder.trim();
+        let mut folder = folder.to_string();
+        if !folder.is_empty() {
+            if !folder.starts_with('/') || folder.chars().any(char::is_control) {
+                return Err((
+                    NewField::Folder,
+                    format!("folder must be an absolute path on {}", strip_control(link)),
+                ));
+            }
+            while folder.len() > 1 && folder.ends_with('/') {
+                folder.pop();
+            }
+        }
+        let kind = self
+            .kinds
+            .get(self.kind)
+            .filter(|k| matches!(k.spawn, SpawnKind::Agent { .. }))
+            .ok_or((NewField::Kind, "no agent available on that machine".to_string()))?;
+        let name = self.name.trim();
+        if name.chars().count() > MAX_NAME {
+            return Err((
+                NewField::Name,
+                format!("name is longer than {MAX_NAME} characters"),
+            ));
+        }
+        if name.chars().any(char::is_control) {
+            return Err((NewField::Name, "name has control characters".into()));
+        }
+        let task = self.task.trim();
+        if !task.is_empty() && !looks_like_ref(task) && !is_follower_ref(task) {
+            return Err((
+                NewField::Task,
+                "type w<ws>:<id> for a task on that machine, or a key like TM-12".into(),
+            ));
+        }
+        let bypass = self.bypass && self.lock_of(NewField::Bypass).is_none();
+        let no_sandbox = self.no_sandbox && self.lock_of(NewField::NoSandbox).is_none();
+        Ok(NewRequest {
+            kind: kind.spawn.clone(),
+            folder,
+            name: (!name.is_empty()).then(|| name.to_string()),
+            place: self.place,
+            task: (!task.is_empty()).then(|| task.to_string()),
+            worktree: false,
+            checkpoints: None,
+            permission_cards: false,
+            bypass,
+            no_sandbox,
+            host: Some(link.to_string()),
+        })
+    }
+
     fn validate(&self) -> Result<NewRequest, (NewField, String)> {
+        if let Some(link) = self.remote() {
+            return self.validate_remote(link);
+        }
         let folder = self.folder.trim();
         if folder.is_empty() {
             return Err((NewField::Folder, "folder is required".into()));
@@ -764,6 +993,7 @@ impl NewSession {
             no_sandbox,
             task,
             checkpoints: Some(self.checkpoints),
+            host: None,
         })
     }
 }
@@ -834,7 +1064,7 @@ fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
 }
 
 fn footer(ns: &NewSession) -> &'static str {
-    if ns.task.trim().is_empty() {
+    if ns.task.trim().is_empty() || ns.remote().is_some() {
         "Enter starts, ^O folder, Ctrl+R resumes a past session, Esc cancels, Tab/Shift+Tab next/prev field"
     } else {
         "Enter shows the run to confirm, ^O folder, Esc cancels, Tab/Shift+Tab next/prev field"
@@ -961,6 +1191,12 @@ fn option_spans(labels: &[String], sel: usize, avail: usize) -> Vec<(usize, u16,
 
 fn option_labels(ns: &NewSession, field: NewField) -> (Vec<String>, usize) {
     match field {
+        NewField::Host => (
+            std::iter::once("this machine".to_string())
+                .chain(ns.hosts.iter().map(|h| strip_control(&sanitize_text(h))))
+                .collect(),
+            ns.host,
+        ),
         NewField::Kind => (
             ns.kinds.iter().map(|k| strip_control(&k.label)).collect(),
             ns.kind,
@@ -994,6 +1230,7 @@ fn option_labels(ns: &NewSession, field: NewField) -> (Vec<String>, usize) {
 
 fn field_label(f: NewField) -> &'static str {
     match f {
+        NewField::Host => "Run on",
         NewField::Kind => "Kind",
         NewField::Task => "Task",
         NewField::Command => "Command",
@@ -1021,6 +1258,13 @@ fn field_text(ns: &NewSession, f: NewField) -> Option<&str> {
 
 fn task_hint(ns: &NewSession) -> String {
     let hits = ns.task_matches();
+    if ns.remote().is_some() {
+        return if ns.task.trim().is_empty() {
+            "optional, w<ws>:<id> there or a key like TM-12".into()
+        } else {
+            String::new()
+        };
+    }
     if ns.task.trim().is_empty() {
         return match &ns.task_note {
             Some(n) => strip_control(&sanitize_text(n)),
@@ -1121,7 +1365,8 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
                     row.right().saturating_sub(x),
                 );
             }
-            NewField::Kind
+            NewField::Host
+            | NewField::Kind
             | NewField::Where
             | NewField::Worktree
             | NewField::Checkpoints
@@ -1466,6 +1711,13 @@ impl ViewState {
         self.rename = None;
         self.sidebar_focus = None;
         self.new_session = Some(NewSession {
+            hosts: self.machines.iter().map(|m| m.name.clone()).collect(),
+            host: 0,
+            scopes: self.host_scopes.clone(),
+            all_kinds: kinds.clone(),
+            local_folder: String::new(),
+            local_folders: None,
+            folder_is_remote: false,
             kinds,
             kind,
             folder,
@@ -1504,7 +1756,7 @@ impl ViewState {
     }
 
     pub fn apply_remembered(&mut self, r: &Remembered) {
-        let Some(ns) = self.new_session.as_mut() else {
+        let Some(ns) = self.new_session.as_mut().filter(|n| n.remote().is_none()) else {
             return;
         };
         if let Some(v) = r.worktree {
@@ -1637,6 +1889,10 @@ impl ViewState {
             data.pins = old.pins.clone();
         }
         self.new_folders = Some(data.clone());
+        if let Some(ns) = self.new_session.as_mut().filter(|n| n.remote().is_some()) {
+            ns.local_folders = Some(data);
+            return;
+        }
         if let Some(ns) = self.new_session.as_mut() {
             let waiting = ns.folders.is_none();
             ns.folders = Some(data);
@@ -1652,6 +1908,7 @@ impl ViewState {
         self.new_session
             .as_mut()
             .map(|ns| std::mem::take(&mut ns.mark_reqs))
+            .filter(|_| self.new_session.as_ref().is_some_and(|n| n.remote().is_none()))
             .unwrap_or_default()
     }
 
@@ -1664,6 +1921,30 @@ impl ViewState {
     pub fn remember_new_session(&mut self, req: &NewRequest, kind_id: &str) {
         self.new_kind = Some(kind_id.to_string());
         self.new_place = Some(req.place);
+        self.new_host = req.host.clone();
+    }
+
+    pub fn restore_new_host(&mut self) {
+        let Some(ns) = self.new_session.as_mut() else {
+            return;
+        };
+        if let Some(at) = self
+            .new_host
+            .as_ref()
+            .and_then(|h| ns.hosts.iter().position(|x| x == h))
+        {
+            ns.set_host(at + 1);
+        }
+    }
+
+    pub fn set_host_scopes(&mut self, scopes: HashMap<String, HostScope>) {
+        if self.host_scopes == scopes {
+            return;
+        }
+        self.host_scopes = scopes.clone();
+        if let Some(ns) = self.new_session.as_mut() {
+            ns.refresh_scopes(scopes);
+        }
     }
 
     pub fn edit_new_session(&mut self, data: &[u8]) -> NewEdit {
@@ -1806,8 +2087,9 @@ impl ViewState {
                 }
             }
         }
+        let local = self.new_session.as_ref().is_some_and(|n| n.remote().is_none());
         if self.new_session.is_some() {
-            if let Some(p) = pins {
+            if let Some(p) = pins.filter(|_| local) {
                 if let Some(d) = self.new_folders.as_mut() {
                     d.pins = p.clone();
                 }
@@ -1943,7 +2225,8 @@ impl ViewState {
         let x = value_x(row);
         let avail = value_avail(row);
         match field {
-            NewField::Kind
+            NewField::Host
+            | NewField::Kind
             | NewField::Where
             | NewField::Worktree
             | NewField::Checkpoints
@@ -1955,7 +2238,9 @@ impl ViewState {
                     .into_iter()
                     .find(|(_, off, w)| ev.col >= x + off && ev.col < x + off + w);
                 if let Some((i, _, _)) = hit {
-                    if field == NewField::Kind {
+                    if field == NewField::Host {
+                        ns.set_host(i);
+                    } else if field == NewField::Kind {
                         ns.kind = i;
                         ns.bypass = false;
                         ns.no_sandbox = false;
@@ -2140,6 +2425,7 @@ mod tests {
             permission_cards: false,
             bypass: false,
             no_sandbox: false,
+            host: None,
         };
         v.remember_new_session(&req, "shell");
         let p = v.prefs();
@@ -4387,5 +4673,205 @@ mod tests {
             "new_session_picker_path",
             &draw(&v, AREA.width, AREA.height),
         );
+    }
+
+    mod remote_host {
+        use super::*;
+        use crate::attach::view::{Machine, MachineState};
+
+        fn machine(name: &str) -> Machine {
+            Machine {
+                name: name.into(),
+                state: MachineState::Online { latency_ms: 1 },
+            }
+        }
+
+        fn scope(repos: &[&str], agents: &[&str]) -> HostScope {
+            HostScope {
+                repos: repos.iter().map(|s| s.to_string()).collect(),
+                agents: agents.iter().map(|s| s.to_string()).collect(),
+            }
+        }
+
+        fn open_with(links: &[&str], scopes: &[(&str, HostScope)]) -> (ViewState, tempfile::TempDir) {
+            let h = tmp();
+            let mut v = ViewState::new(Vec::new(), "r");
+            v.priv_gate = Some(test_gate);
+            v.machines = links.iter().map(|l| machine(l)).collect();
+            v.host_scopes = scopes
+                .iter()
+                .map(|(l, s)| (l.to_string(), s.clone()))
+                .collect();
+            v.open_new_session("/home/x".into(), kinds(), h.path().to_path_buf());
+            (v, h)
+        }
+
+        fn fields_of(v: &mut ViewState) -> Vec<NewField> {
+            ns(v).fields()
+        }
+
+        #[test]
+        fn without_followers_there_is_no_host_field() {
+            let h = tmp();
+            let mut v = open("/x", h.path());
+            assert!(!fields_of(&mut v).contains(&NewField::Host));
+            assert_eq!(fields_of(&mut v)[0], NewField::Kind);
+        }
+
+        #[test]
+        fn the_host_field_comes_first_and_cycles_with_the_arrows() {
+            let (mut v, _h) = open_with(&["spark", "lab"], &[]);
+            assert_eq!(fields_of(&mut v)[0], NewField::Host);
+            ns(&mut v).focus = NewField::Host;
+            assert_eq!(ns(&mut v).remote(), None);
+            v.edit_new_session(b"\x1b[C");
+            assert_eq!(ns(&mut v).remote(), Some("spark"));
+            v.edit_new_session(b"\x1b[C");
+            assert_eq!(ns(&mut v).remote(), Some("lab"));
+            v.edit_new_session(b"\x1b[C");
+            assert_eq!(ns(&mut v).remote(), None);
+            v.edit_new_session(b"\x1b[D");
+            assert_eq!(ns(&mut v).remote(), Some("lab"));
+            let (labels, sel) = option_labels(ns(&mut v), NewField::Host);
+            assert_eq!(labels, ["this machine", "spark", "lab"]);
+            assert_eq!(sel, 2);
+        }
+
+        #[test]
+        fn a_follower_hides_local_only_fields_and_non_agent_kinds() {
+            let (mut v, _h) = open_with(&["spark"], &[]);
+            ns(&mut v).set_host(1);
+            let f = fields_of(&mut v);
+            for gone in [
+                NewField::Worktree,
+                NewField::Checkpoints,
+                NewField::PermissionCards,
+                NewField::Command,
+            ] {
+                assert!(!f.contains(&gone), "{gone:?}");
+            }
+            for kept in [
+                NewField::Host,
+                NewField::Kind,
+                NewField::Folder,
+                NewField::Task,
+                NewField::Name,
+                NewField::Bypass,
+                NewField::NoSandbox,
+                NewField::Where,
+                NewField::Start,
+            ] {
+                assert!(f.contains(&kept), "{kept:?}");
+            }
+            let ids: Vec<&str> = ns(&mut v).kinds.iter().map(|k| k.id.as_str()).collect();
+            assert_eq!(ids, ["claude", "codex"]);
+        }
+
+        #[test]
+        fn the_hello_scope_limits_agents_and_the_picker_lists_its_repos() {
+            let (mut v, _h) = open_with(
+                &["spark"],
+                &[("spark", scope(&["/srv/app", "/srv/lib"], &["codex", "aider"]))],
+            );
+            ns(&mut v).set_host(1);
+            let n = ns(&mut v);
+            let ids: Vec<&str> = n.kinds.iter().map(|k| k.id.as_str()).collect();
+            assert_eq!(ids, ["codex", "agent:aider"]);
+            assert_eq!(n.folder, "/srv/app");
+            let paths: Vec<String> = n
+                .folders
+                .as_ref()
+                .unwrap()
+                .recents
+                .iter()
+                .map(|r| r.path.clone())
+                .collect();
+            assert_eq!(paths, ["/srv/app", "/srv/lib"]);
+            assert!((n.browse_dir)(Path::new("/")).is_empty());
+            n.set_host(0);
+            assert_eq!(n.folder, "/home/x");
+            assert!(n.folders.is_none());
+            assert_eq!(n.kinds.len(), 4);
+        }
+
+        #[test]
+        fn picking_a_repo_never_asks_for_folder_marks_or_saves_pins() {
+            let (mut v, _h) = open_with(&["spark"], &[("spark", scope(&["/srv/app"], &[]))]);
+            ns(&mut v).set_host(1);
+            ns(&mut v).focus = NewField::Folder;
+            assert_eq!(v.edit_new_session(b"\x10"), NewEdit::Editing);
+            assert!(v.take_folder_mark_requests().is_empty());
+            v.edit_new_session(b"\r");
+            assert_eq!(ns(&mut v).folder, "/srv/app");
+        }
+
+        #[test]
+        fn the_request_carries_the_host_and_skips_the_local_checks_and_confirmation() {
+            let (mut v, _h) = open_with(&["spark"], &[("spark", scope(&["/srv/app"], &[]))]);
+            ns(&mut v).set_host(1);
+            ns(&mut v).folder = "/not/on/this/machine/".into();
+            ns(&mut v).task = "TM-12".into();
+            ns(&mut v).bypass = true;
+            ns(&mut v).focus = NewField::Start;
+            let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+                panic!("not submitted");
+            };
+            assert_eq!(req.host.as_deref(), Some("spark"));
+            assert_eq!(req.folder, "/not/on/this/machine");
+            assert_eq!(req.task.as_deref(), Some("TM-12"));
+            assert!(req.bypass);
+            assert!(!req.worktree && !req.permission_cards);
+            assert_eq!(req.checkpoints, None);
+            assert!(matches!(req.kind, SpawnKind::Agent { .. }));
+        }
+
+        #[test]
+        fn a_relative_folder_and_a_junk_task_are_refused_there() {
+            let (mut v, _h) = open_with(&["spark"], &[]);
+            ns(&mut v).set_host(1);
+            ns(&mut v).folder = "rel/dir".into();
+            assert!(submit_err(&mut v).contains("absolute path on spark"));
+            ns(&mut v).folder = "/srv/app".into();
+            ns(&mut v).task = "fix the bug".into();
+            assert!(submit_err(&mut v).contains("w<ws>:<id>"));
+            ns(&mut v).task = "w1:7".into();
+            ns(&mut v).focus = NewField::Start;
+            assert!(matches!(v.edit_new_session(b"\r"), NewEdit::Submit(_)));
+        }
+
+        #[test]
+        fn the_choice_is_remembered_and_local_pins_data_survives_the_round_trip() {
+            let (mut v, h) = open_with(&["spark"], &[]);
+            ns(&mut v).set_host(1);
+            ns(&mut v).folder = "/srv/app".into();
+            ns(&mut v).focus = NewField::Start;
+            let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+                panic!("not submitted");
+            };
+            v.remember_new_session(&req, "claude");
+            v.open_new_session("/home/x".into(), kinds(), h.path().to_path_buf());
+            assert_eq!(ns(&mut v).remote(), None);
+            v.restore_new_host();
+            assert_eq!(ns(&mut v).remote(), Some("spark"));
+            v.set_new_folders(FolderData::default());
+            ns(&mut v).set_host(0);
+            assert_eq!(ns(&mut v).folder, "/home/x");
+            assert!(ns(&mut v).folders.is_some());
+        }
+
+        #[test]
+        fn scopes_that_arrive_late_update_an_open_remote_form() {
+            let (mut v, _h) = open_with(&["spark"], &[]);
+            ns(&mut v).set_host(1);
+            assert_eq!(ns(&mut v).kinds.len(), 2);
+            v.set_host_scopes(
+                [("spark".to_string(), scope(&["/srv/app"], &["codex"]))]
+                    .into_iter()
+                    .collect(),
+            );
+            let n = ns(&mut v);
+            assert_eq!(n.kinds.len(), 1);
+            assert_eq!(n.folder, "/srv/app");
+        }
     }
 }
