@@ -183,9 +183,15 @@ pub fn audit_args(params: &Value) -> Value {
         Value::Object(m) => {
             let mut out = Map::new();
             for (k, v) in m {
-                if let (true, Value::String(s)) = (AUDIT_FIELDS.contains(&k.as_str()), v) {
-                    let bounded = s.chars().take(AUDIT_VALUE_MAX).collect();
-                    out.insert(k.clone(), Value::String(bounded));
+                match v {
+                    Value::String(s) if AUDIT_FIELDS.contains(&k.as_str()) => {
+                        let bounded = s.chars().take(AUDIT_VALUE_MAX).collect();
+                        out.insert(k.clone(), Value::String(bounded));
+                    }
+                    Value::Bool(b) if k == "no_sandbox" => {
+                        out.insert(k.clone(), Value::Bool(*b));
+                    }
+                    _ => {}
                 }
             }
             Value::Object(out)
@@ -248,6 +254,7 @@ pub fn validate_run_method(
         "runs.rename" => validate_rename(&obj),
         "runs.paste_image" => validate_paste(&obj),
         "runs.create" => validate_create(&obj, scope, live_runs),
+        "runs.start" => validate_start(&obj, scope, live_runs),
         "attach.open" => validate_attach(&obj),
         _ => Err(Reject::bad("not a run method")),
     }
@@ -262,11 +269,16 @@ fn validate_rename(obj: &Map<String, Value>) -> Result<Accepted, Reject> {
         return Err(Reject::bad("invalid run id"));
     }
     let name = required(obj, "name")?;
+    valid_name(name)?;
+    Ok(Accepted::default())
+}
+
+fn valid_name(name: &str) -> Result<(), Reject> {
     let len = name.trim().chars().count();
     if len == 0 || len > NAME_MAX || name.chars().any(char::is_control) {
         return Err(Reject::bad("name must be 1 to 64 printable characters"));
     }
-    Ok(Accepted::default())
+    Ok(())
 }
 
 const PASTE_DATA_MAX: usize = crate::paste::MAX_CHUNK.div_ceil(3) * 4;
@@ -363,6 +375,87 @@ fn validate_create(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result
         Some(_) => return Err(Reject::bad("invalid mode")),
     }
     let repo = required(obj, "repo")?;
+    check_scope(repo, agent, model, scope, live)
+}
+
+fn validate_start(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result<Accepted, Reject> {
+    only_keys(
+        obj,
+        &[
+            "agent",
+            "repo",
+            "task",
+            "task_hash",
+            "name",
+            "model",
+            "persona",
+            "mode",
+            "no_sandbox",
+        ],
+    )?;
+    let task = string(obj, "task")?;
+    match (task, string(obj, "task_hash")?) {
+        (None, Some(_)) => return Err(Reject::bad("task_hash needs a task")),
+        (_, Some(h))
+            if h.len() != 64
+                || !h
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) =>
+        {
+            return Err(Reject::bad("task_hash must be 64 lowercase hex characters"));
+        }
+        _ => {}
+    }
+    if let Some(t) = task {
+        if !grammar::token(t, 64) || crate::taskref::parse_local(t).is_none() {
+            return Err(Reject::bad("invalid task reference"));
+        }
+    }
+    let agent = required(obj, "agent")?;
+    grammar::agent_name(agent).map_err(|_| Reject::bad("invalid agent name"))?;
+    if let Some(v) = string(obj, "persona")? {
+        if !grammar::persona_name(v) {
+            return Err(Reject::bad("invalid persona"));
+        }
+    }
+    let model = string(obj, "model")?;
+    if let Some(v) = model {
+        if !grammar::model_name(v) {
+            return Err(Reject::bad("invalid model"));
+        }
+    }
+    if let Some(name) = string(obj, "name")? {
+        valid_name(name)?;
+    }
+    match string(obj, "mode")? {
+        None | Some("default") => {}
+        Some("bypass") => {
+            return Err(Reject::forbidden(
+                "bypass-permissions is not allowed on this follower",
+            ))
+        }
+        Some(_) => return Err(Reject::bad("invalid mode")),
+    }
+    match obj.get("no_sandbox") {
+        None | Some(Value::Bool(false)) => {}
+        Some(Value::Bool(true)) => {
+            return Err(Reject::forbidden(
+                "running without the sandbox is not allowed on this follower",
+            ))
+        }
+        Some(_) => return Err(Reject::bad("no_sandbox must be a boolean")),
+    }
+    let repo = required(obj, "repo")?;
+    check_scope(repo, agent, model, scope, live)
+}
+
+fn check_scope(
+    repo: &str,
+    agent: &str,
+    model: Option<&str>,
+    scope: &Scope,
+    live: u32,
+) -> Result<Accepted, Reject> {
     let canon =
         canonical_repo(repo).map_err(|e| Reject::forbidden(format!("repo refused: {e}")))?;
     if !scope.repos.iter().any(|r| Path::new(&canon).starts_with(r)) {
@@ -519,6 +612,184 @@ mod tests {
             );
         }
         assert!(validate_run_method("runs.create", &with("persona", "Builder"), &free, 0).is_ok());
+    }
+
+    fn start(repo: &str) -> Value {
+        json!({"agent":"codex","repo":repo})
+    }
+
+    fn start_with(repo: &str, k: &str, v: Value) -> Value {
+        let mut p = start(repo);
+        p[k] = v;
+        p
+    }
+
+    #[test]
+    fn start_inside_the_scope_is_accepted_with_or_without_a_task() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let sub = format!("{repo}/sub");
+        std::fs::create_dir(&sub).unwrap();
+        let s = scope(&repo);
+        let ok = |p: Value| validate_run_method("runs.start", &p, &s, 0);
+        assert_eq!(
+            ok(start(&repo)).unwrap().repo.as_deref(),
+            Some(repo.as_str())
+        );
+        assert!(ok(start(&sub)).is_ok());
+        assert!(ok(start_with(&repo, "task", json!("w1:7"))).is_ok());
+        assert!(ok(start_with(&repo, "name", json!("  my session "))).is_ok());
+        let mut full = start_with(&repo, "task", json!("w1:7"));
+        full["task_hash"] = json!("a".repeat(64));
+        full["mode"] = json!("default");
+        full["no_sandbox"] = json!(false);
+        full["model"] = json!("m1");
+        full["persona"] = json!("Builder");
+        assert!(ok(full).is_ok());
+    }
+
+    #[test]
+    fn start_outside_the_scope_or_with_a_broken_path_is_forbidden() {
+        let a = crate::testutil::private_tempdir();
+        let b = crate::testutil::private_tempdir();
+        let ra = canonical_repo(a.path().to_str().unwrap()).unwrap();
+        let rb = canonical_repo(b.path().to_str().unwrap()).unwrap();
+        let s = scope(&ra);
+        let err = validate_run_method("runs.start", &start(&rb), &s, 0).unwrap_err();
+        assert_eq!(
+            (err.code, err.reason.as_str()),
+            ("forbidden", "repo is outside the allowed repos")
+        );
+        let dotdot = format!(
+            "{ra}/../{}",
+            Path::new(&rb).file_name().unwrap().to_str().unwrap()
+        );
+        for bad in [dotdot.as_str(), "/nonexistent-path-x", "relative/dir"] {
+            let e = validate_run_method("runs.start", &start(bad), &s, 0).unwrap_err();
+            assert_eq!(e.code, "forbidden", "{bad}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn start_through_a_symlink_out_of_the_scope_is_forbidden() {
+        let a = crate::testutil::private_tempdir();
+        let b = crate::testutil::private_tempdir();
+        let ra = canonical_repo(a.path().to_str().unwrap()).unwrap();
+        let link = format!("{ra}/escape");
+        std::os::unix::fs::symlink(b.path(), &link).unwrap();
+        let e = validate_run_method("runs.start", &start(&link), &scope(&ra), 0).unwrap_err();
+        assert_eq!(e.code, "forbidden");
+    }
+
+    #[test]
+    fn start_enforces_agent_models_and_max() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = scope(&repo);
+        let e = validate_run_method(
+            "runs.start",
+            &start_with(&repo, "agent", json!("aider")),
+            &s,
+            0,
+        )
+        .unwrap_err();
+        assert_eq!(
+            (e.code, e.reason.as_str()),
+            ("forbidden", "agent is not allowed")
+        );
+        let e = validate_run_method("runs.start", &start(&repo), &s, 2).unwrap_err();
+        assert_eq!(e.reason, "max running runs reached");
+        let mut limited = s.clone();
+        limited.models = vec!["m1".into()];
+        assert!(validate_run_method("runs.start", &start(&repo), &limited, 0).is_err());
+        let ok = start_with(&repo, "model", json!("m1"));
+        assert!(validate_run_method("runs.start", &ok, &limited, 0).is_ok());
+    }
+
+    #[test]
+    fn start_refuses_bypass_and_no_sandbox_with_the_follower_reasons() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = scope(&repo);
+        let check = |k: &str, v: Value| {
+            validate_run_method("runs.start", &start_with(&repo, k, v), &s, 0).unwrap_err()
+        };
+        let e = check("mode", json!("bypass"));
+        assert_eq!(
+            (e.code, e.reason.as_str()),
+            (
+                "forbidden",
+                "bypass-permissions is not allowed on this follower"
+            )
+        );
+        assert_eq!(check("mode", json!("yolo")).code, "bad_params");
+        let e = check("no_sandbox", json!(true));
+        assert_eq!(
+            (e.code, e.reason.as_str()),
+            (
+                "forbidden",
+                "running without the sandbox is not allowed on this follower"
+            )
+        );
+        for bad in [json!("true"), json!(1), json!(null)] {
+            assert_eq!(check("no_sandbox", bad).code, "bad_params");
+        }
+    }
+
+    #[test]
+    fn start_refuses_bad_names_tasks_and_foreign_keys() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = scope(&repo);
+        let refused = |k: &str, v: Value| {
+            validate_run_method("runs.start", &start_with(&repo, k, v), &s, 0)
+                .unwrap_err()
+                .code
+        };
+        for name in [
+            json!(""),
+            json!("   "),
+            json!("x".repeat(65)),
+            json!("a\u{1b}b"),
+            json!("a\nb"),
+        ] {
+            assert_eq!(refused("name", name), "bad_params");
+        }
+        assert!(validate_run_method(
+            "runs.start",
+            &start_with(&repo, "name", json!("x".repeat(64))),
+            &s,
+            0
+        )
+        .is_ok());
+        for task in ["TM-1", "c1:2", "w1:0", "#5", "w1:7/x", ""] {
+            assert_eq!(refused("task", json!(task)), "bad_params", "{task}");
+        }
+        assert_eq!(refused("task_hash", json!("a".repeat(64))), "bad_params");
+        let mut bad_hash = start_with(&repo, "task", json!("w1:7"));
+        bad_hash["task_hash"] = json!("ab");
+        assert!(validate_run_method("runs.start", &bad_hash, &s, 0).is_err());
+        assert_eq!(refused("prompt", json!("do it")), "bad_params");
+        assert_eq!(refused("cwd", json!("/")), "bad_params");
+        assert_eq!(refused("on", json!("spark")), "forbidden");
+        assert_eq!(refused("agent", json!(5)), "bad_params");
+    }
+
+    #[test]
+    fn start_needs_a_repo_and_an_agent_in_the_params() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = scope(&repo);
+        assert!(validate_run_method("runs.start", &json!({"agent":"codex"}), &s, 0).is_err());
+        assert!(validate_run_method("runs.start", &json!({"repo":repo}), &s, 0).is_err());
+    }
+
+    #[test]
+    fn audit_args_keep_a_boolean_no_sandbox_only() {
+        let a = audit_args(&json!({"no_sandbox":true,"prompt":"x","mode":"default"}));
+        assert_eq!(a, json!({"no_sandbox":true,"mode":"default"}));
+        assert_eq!(audit_args(&json!({"no_sandbox":"yes"})), json!({}));
     }
 
     #[test]

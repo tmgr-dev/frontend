@@ -117,7 +117,12 @@ fn view(s: &SessionInfo, rec: Option<&RunRecord>, title: Option<&RunTitle>) -> V
             "exit_code": s.state.exit_code,
         },
         "created_ms": s.created_ms,
-        "task": s.task.as_ref().map(format_ref).or_else(|| rec.map(|r| r.task.clone())),
+        "task": s
+            .task
+            .as_ref()
+            .map(format_ref)
+            .or_else(|| rec.map(|r| r.task.clone()))
+            .filter(|t| !t.is_empty()),
         "persona": rec.and_then(|r| r.persona.clone()),
         "model": rec.and_then(|r| r.model.clone()),
     });
@@ -202,7 +207,7 @@ pub(crate) fn run_method(
     let id = Some(req.id);
     let method = req.method.as_str();
     let mut params = req.params.clone();
-    if method == "runs.create" && scope.repos.len() == 1 {
+    if matches!(method, "runs.create" | "runs.start") && scope.repos.len() == 1 {
         if let Value::Object(m) = &mut params {
             m.entry("repo").or_insert_with(|| json!(scope.repos[0]));
         }
@@ -225,6 +230,7 @@ pub(crate) fn run_method(
         "runs.rename" => rename(conn, st, id, args, &params, scope),
         "runs.paste_image" => paste_image(conn, st, id, args, &params, scope),
         "runs.create" => create(conn, st, id, args, &params, accepted.repo, scope),
+        "runs.start" => start(conn, st, id, args, &params, accepted.repo, scope),
         _ => attach_open(conn, st, chan, id, args, &params, scope),
     }
 }
@@ -651,7 +657,6 @@ fn create(
     scope: &Scope,
 ) -> Step {
     let method = "runs.create";
-    let deadline = Instant::now() + BUSY_BUDGET - BUSY_MARGIN;
     let (Some(repo), Some(task_text), Some(agent)) = (
         repo,
         params.get("task").and_then(Value::as_str),
@@ -688,18 +693,124 @@ fn create(
             }
         }
     }
-    let model = params
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let persona = params
-        .get("persona")
-        .and_then(Value::as_str)
-        .map(str::to_string);
     if let Value::Object(m) = &mut args {
         m.insert("task_ref".into(), json!(format_ref(&task)));
         m.insert("mode".into(), json!("default"));
     }
+    let start = StartRun {
+        method,
+        agent,
+        repo,
+        task: Some(task),
+        name: run_name(conn.name, &format_ref(&task)),
+        model: string_param(params, "model"),
+        persona: string_param(params, "persona"),
+    };
+    start_run(conn, st, id, args, params, start, scope)
+}
+
+fn start(
+    conn: &Conn,
+    st: &mut State,
+    id: Option<u64>,
+    mut args: Value,
+    params: &Value,
+    repo: Option<String>,
+    scope: &Scope,
+) -> Step {
+    let method = "runs.start";
+    let (Some(repo), Some(agent)) = (repo, params.get("agent").and_then(Value::as_str)) else {
+        return deny(conn, method, args, id, "bad_params", "incomplete request");
+    };
+    let mut task = None;
+    if let Some(task_text) = params.get("task").and_then(Value::as_str) {
+        let resolved = match conn.rt.resolver.resolve(task_text) {
+            Ok(t) => t,
+            Err(why) => return deny(conn, method, args, id, "forbidden", &why),
+        };
+        if let Some(wanted) = params.get("task_hash").and_then(Value::as_str) {
+            match conn.rt.resolver.content_hash(&resolved) {
+                Some(actual) if actual == wanted => {}
+                Some(_) => {
+                    return deny(
+                        conn,
+                        method,
+                        args,
+                        id,
+                        "forbidden",
+                        "the task changed since the leader saw it",
+                    )
+                }
+                None => {
+                    return deny(
+                        conn,
+                        method,
+                        args,
+                        id,
+                        "forbidden",
+                        "the task content cannot be verified on this machine",
+                    )
+                }
+            }
+        }
+        if let Value::Object(m) = &mut args {
+            m.insert("task_ref".into(), json!(format_ref(&resolved)));
+        }
+        task = Some(resolved);
+    }
+    if let Value::Object(m) = &mut args {
+        m.insert("mode".into(), json!("default"));
+    }
+    let name = match (string_param(params, "name"), &task) {
+        (Some(n), _) => n.trim().to_string(),
+        (None, Some(t)) => run_name(conn.name, &format_ref(t)),
+        (None, None) => tmgr_core::text::truncate_chars(&format!("link-{}", conn.name), 64).0,
+    };
+    let start = StartRun {
+        method,
+        agent,
+        repo,
+        task,
+        name,
+        model: string_param(params, "model"),
+        persona: string_param(params, "persona"),
+    };
+    start_run(conn, st, id, args, params, start, scope)
+}
+
+fn string_param(params: &Value, key: &str) -> Option<String> {
+    params.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+struct StartRun<'a> {
+    method: &'static str,
+    agent: &'a str,
+    repo: String,
+    task: Option<tmgr_ipc::api::TaskRef>,
+    name: String,
+    model: Option<String>,
+    persona: Option<String>,
+}
+
+fn start_run(
+    conn: &Conn,
+    st: &mut State,
+    id: Option<u64>,
+    args: Value,
+    params: &Value,
+    start: StartRun,
+    scope: &Scope,
+) -> Step {
+    let StartRun {
+        method,
+        agent,
+        repo,
+        task,
+        name,
+        model,
+        persona,
+    } = start;
+    let deadline = Instant::now() + BUSY_BUDGET - BUSY_MARGIN;
     if conn.record(method, args.clone(), "accepted", "").is_err() {
         return audit_down();
     }
@@ -756,9 +867,9 @@ fn create(
         parent_session: None,
         clones: Vec::new(),
         profile: agent.to_string(),
-        task: Some(task),
+        task,
         cwd: repo,
-        name: Some(run_name(conn.name, &format_ref(&task))),
+        name: Some(name),
         model: model.clone(),
         cols: DEFAULT_SIZE.0,
         rows: DEFAULT_SIZE.1,
@@ -834,7 +945,7 @@ fn create(
         run: info.id.clone(),
         link: conn.name.to_string(),
         enrollment: conn.enrollment.to_string(),
-        task: format_ref(&task),
+        task: task.as_ref().map(format_ref).unwrap_or_default(),
         agent: agent.to_string(),
         persona,
         model,
@@ -876,6 +987,7 @@ fn create(
                 "persona": record.persona,
                 "model": record.model,
                 "mode": "default",
+                "method": method,
             }),
         )
         .is_err()

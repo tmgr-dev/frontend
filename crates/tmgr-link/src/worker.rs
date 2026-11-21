@@ -491,13 +491,22 @@ fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) 
                 "version": env!("CARGO_PKG_VERSION"),
                 "methods": proto::METHODS,
             });
+            if !conn.hello_only {
+                reply["scope"] = json!({
+                    "repos": scope.repos,
+                    "agents": scope.agents,
+                    "max": scope.max,
+                });
+            }
             if let Ok(Some(own)) = crate::cycle::own_key(conn.paths) {
                 reply["link_key"] = json!(own.openssh());
             }
             Step::Reply(proto::ok(id, reply))
         }
         "runs.list" | "runs.get" | "runs.create" | "runs.halt" | "attach.open" | "runs.rename"
-        | "runs.paste_image" => crate::runs::run_method(conn, state, chan, &req, &scope),
+        | "runs.paste_image" | "runs.start" => {
+            crate::runs::run_method(conn, state, chan, &req, &scope)
+        }
         other => {
             let shown = tmgr_core::text::truncate_chars(
                 &other

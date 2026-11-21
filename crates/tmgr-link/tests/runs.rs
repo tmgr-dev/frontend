@@ -53,6 +53,7 @@ struct FakeState {
     reports_modes: bool,
     remote_off_on_list: Option<Paths>,
     remote_off_skip: u32,
+    place_outside: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -204,7 +205,10 @@ impl Backend for Fake {
         }
         s.creates.push(req.clone());
         s.next += 1;
-        let i = info(&format!("s_run{:06}", s.next), req);
+        let mut i = info(&format!("s_run{:06}", s.next), req);
+        if let Some(cwd) = s.place_outside.clone() {
+            i.cwd = cwd;
+        }
         s.sessions.push(i.clone());
         if s.lose_create_reply {
             return Err(BackendError::Unavailable("connection lost".into()));
@@ -2822,4 +2826,260 @@ fn a_listed_run_carries_the_title_only_when_the_follower_has_one() {
     );
     assert_eq!(manual[0]["result"]["runs"][0]["title"], "Mine");
     assert!(manual[0]["result"]["runs"][0].get("title_auto").is_none());
+}
+
+fn start(w: &World, extra: Value) -> Value {
+    let mut p = json!({"repo":w.repo,"agent":"codex"});
+    for (k, v) in extra.as_object().unwrap() {
+        p[k] = v.clone();
+    }
+    json!({"id":1,"method":"runs.start","params":p})
+}
+
+fn requests<'a>(ev: &'a [Value], method: &str) -> Vec<&'a Value> {
+    ev.iter()
+        .filter(|e| e["event"] == "worker.request" && e["method"] == method)
+        .collect()
+}
+
+#[test]
+fn an_accepted_start_without_a_task_reaches_the_runner_with_no_task_and_no_bypass() {
+    let w = world();
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[start(&w, json!({"name":" scratch "}))],
+    );
+    assert!(r[0]["result"]["id"].is_string(), "{:?}", r[0]);
+    assert!(r[0]["result"]["task"].is_null(), "{:?}", r[0]);
+    assert_eq!(r[0]["result"]["name"], "scratch");
+    {
+        let s = fake.0.lock().unwrap();
+        let req = &s.creates[0];
+        assert_eq!(req.profile, "codex");
+        assert_eq!(req.cwd, w.repo);
+        assert!(req.task.is_none());
+        assert_eq!(req.name.as_deref(), Some("scratch"));
+        assert!(req.permission_mode.is_none() && req.no_sandbox.is_none());
+        assert!(req.bundle.is_none() && !req.agent_work);
+        let origin = req.origin.as_ref().unwrap();
+        assert_eq!(origin.link, "laptop");
+    }
+    let ev = w.audit();
+    let reqs = requests(&ev, "runs.start");
+    assert_eq!(reqs.len(), 1);
+    assert_eq!(reqs[0]["decision"], "accepted");
+    let created = ev
+        .iter()
+        .find(|e| e["event"] == "worker.run_created")
+        .unwrap();
+    assert_eq!(created["method"], "runs.start");
+    assert_eq!(created["task"], "");
+    let rec = tmgr_link::ownership::Runs::lock(&w.paths).unwrap();
+    assert_eq!(
+        rec.get(r[0]["result"]["id"].as_str().unwrap())
+            .unwrap()
+            .task,
+        ""
+    );
+    drop(rec);
+    let again = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.list"})],
+    );
+    assert!(again[0]["result"]["runs"][0]["task"].is_null());
+}
+
+#[test]
+fn a_start_with_a_task_and_no_name_uses_the_task_name_and_a_bare_start_the_link_name() {
+    let w = world();
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[start(&w, json!({"task":"w1:7"})), start(&w, json!({}))],
+    );
+    assert_eq!(r[0]["result"]["task"], "w1:7");
+    let s = fake.0.lock().unwrap();
+    assert_eq!(s.creates[0].name.as_deref(), Some("link-laptop-w1:7"));
+    assert_eq!(s.creates[1].name.as_deref(), Some("link-laptop"));
+}
+
+#[test]
+fn a_refused_start_is_audited_with_its_reason_and_creates_nothing() {
+    let w = world();
+    std::os::unix::fs::symlink(&w.outside, format!("{}/escape", w.repo)).unwrap();
+    let fake = Fake::default();
+    let cases = [
+        (
+            start(&w, json!({"repo": w.outside})),
+            "repo is outside the allowed repos",
+        ),
+        (
+            start(&w, json!({"mode":"bypass"})),
+            "bypass-permissions is not allowed on this follower",
+        ),
+        (
+            start(&w, json!({"no_sandbox":true})),
+            "running without the sandbox is not allowed on this follower",
+        ),
+        (
+            start(&w, json!({"agent":"claude-code"})),
+            "agent is not allowed",
+        ),
+        (
+            start(&w, json!({"repo": format!("{}/escape", w.repo)})),
+            "repo is outside the allowed repos",
+        ),
+        (
+            start(&w, json!({"prompt":"do it"})),
+            "unknown parameter prompt",
+        ),
+        (start(&w, json!({"task":"TM-1"})), "invalid task reference"),
+        (
+            start(&w, json!({"no_sandbox":"yes"})),
+            "no_sandbox must be a boolean",
+        ),
+    ];
+    let items: Vec<Value> = cases.iter().map(|(r, _)| r.clone()).collect();
+    let r = session(&w, "laptop", E1, &fake, &items);
+    assert_eq!(r.len(), cases.len());
+    let ev = w.audit();
+    let reqs = requests(&ev, "runs.start");
+    assert_eq!(reqs.len(), cases.len());
+    for (i, (_, reason)) in cases.iter().enumerate() {
+        assert!(r[i]["error"].is_string(), "case {i}: {}", r[i]);
+        assert_eq!(r[i]["message"], *reason, "case {i}");
+        assert_eq!(reqs[i]["decision"], "rejected", "case {i}");
+        assert_eq!(reqs[i]["reason"], *reason, "case {i}");
+    }
+    assert_eq!(fake.called("runs.create"), 0);
+    assert!(ev.iter().all(|e| e["event"] != "worker.run_created"));
+    let no_sandbox = reqs[2]["args"]["no_sandbox"].clone();
+    assert_eq!(no_sandbox, json!(true));
+    assert!(reqs[5]["args"].get("prompt").is_none());
+}
+
+#[test]
+fn a_start_the_runner_places_outside_the_scope_is_killed_and_rejected() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().place_outside = Some(w.outside.clone());
+    let r = session(&w, "laptop", E1, &fake, &[start(&w, json!({}))]);
+    assert_eq!(r[0]["error"], "forbidden", "{:?}", r[0]);
+    assert_eq!(fake.called("sessions.kill"), 1, "{:?}", fake.calls());
+    let ev = w.audit();
+    assert!(requests(&ev, "runs.start")
+        .iter()
+        .any(|e| e["decision"] == "rejected"
+            && e["reason"] == "the runner placed the run outside the scope"));
+    assert!(ev.iter().all(|e| e["event"] != "worker.run_created"));
+    assert!(tmgr_link::ownership::Runs::lock(&w.paths)
+        .unwrap()
+        .get("s_run000001")
+        .is_none());
+}
+
+#[test]
+fn a_runner_failure_on_start_is_audited_as_failed() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().refuse_create = Some("limit");
+    let r = session(&w, "laptop", E1, &fake, &[start(&w, json!({}))]);
+    assert_eq!(r[0]["error"], "limit");
+    let ev = w.audit();
+    let decisions: Vec<&Value> = requests(&ev, "runs.start")
+        .iter()
+        .map(|e| &e["decision"])
+        .collect();
+    assert_eq!(decisions, [&json!("accepted"), &json!("failed")]);
+}
+
+#[test]
+fn the_max_counts_runs_made_by_start_and_by_create_together() {
+    let w = world();
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[create(&w, json!({})), start(&w, json!({}))],
+    );
+    assert!(r[1]["result"]["id"].is_string());
+    let over_start = session(&w, "laptop", E1, &fake, &[start(&w, json!({}))]);
+    assert_eq!(over_start[0]["error"], "forbidden");
+    assert!(over_start[0]["message"].as_str().unwrap().contains("max"));
+    let over_create = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert_eq!(over_create[0]["error"], "forbidden");
+    fake.exit(&run_id(&r[1]));
+    let again = session(&w, "laptop", E1, &fake, &[start(&w, json!({}))]);
+    assert!(again[0]["result"]["id"].is_string(), "{:?}", again[0]);
+}
+
+#[test]
+fn a_start_checks_a_task_hash_like_a_create() {
+    let w = world();
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[start(&w, json!({"task":"w1:7","task_hash":"a".repeat(64)}))],
+    );
+    assert_eq!(r[0]["error"], "forbidden");
+    assert_eq!(fake.called("runs.create"), 0);
+}
+
+#[test]
+fn hello_lists_start_and_carries_the_scope_and_unknown_methods_keep_the_connection() {
+    let w = world();
+    w.set_scope("laptop", |s| s.max = 3);
+    let fake = Fake::default();
+    let r = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[
+            json!({"id":1,"method":"hello","params":{"protocol":1}}),
+            json!({"id":2,"method":"runs.nope"}),
+            json!({"id":3,"method":"runs.list"}),
+        ],
+    );
+    let methods = r[0]["result"]["methods"].as_array().unwrap();
+    assert!(methods.contains(&json!("runs.start")));
+    assert_eq!(
+        r[0]["result"]["scope"],
+        json!({"repos":[w.repo.clone()],"agents":["codex"],"max":3})
+    );
+    assert_eq!(r[1]["error"], "unknown_method");
+    assert!(r[2]["result"]["runs"].is_array());
+}
+
+#[test]
+fn input_on_a_run_made_by_start_is_refused_without_the_attach_input_scope() {
+    let w = world();
+    let fake = Fake::default();
+    let made = session(&w, "laptop", E1, &fake, &[start(&w, json!({}))]);
+    let id = run_id(&made[0]);
+    let mut l = live(&w, "laptop", E1, &fake);
+    let r = l.call(1, "attach.open", json!({"run": id}));
+    assert_eq!(r["result"]["input"], false);
+    l.say(Outgoing::Input("rm -rf\r".into()));
+    match l.next(&id) {
+        Some(Incoming::Closed(why)) => assert!(why.contains("not allowed"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    l.finish();
+    assert!(fake.0.lock().unwrap().sends.is_empty());
 }
