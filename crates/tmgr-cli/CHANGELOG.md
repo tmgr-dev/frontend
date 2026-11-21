@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.144
 
 - New `tmgr chat join` and `tmgr chat status`: this machine's runner joins your manager chat. `join` reads the join code from a trusted desktop or phone (stdin or a hidden prompt, never the command line) and waits up to 10 minutes for that device to approve; `status` shows the join state, relay device id and number of trusted devices, never keys or tokens. Once joined, the runner relays chat end-to-end encrypted: owner messages from trusted devices reach the sessions on this machine, and session messages go back to your devices. Needs the matching server version (`chat:devices` sign-in scope).
-- Chat trust: when two trusted devices disagree on a device's kind and one of them says runner, the device is treated as a runner, so it cannot author owner messages or vouch for other devices. The phone app keeps the first kind it saw until its follow-up update. A desktop versus phone disagreement still keeps the first kind and raises an alert.
+- Chat trust: when two trusted devices disagree on a device's kind and one of them says runner, the device is treated as a runner, so it cannot author owner messages or vouch for other devices. A desktop versus phone disagreement still keeps the first kind and raises an alert.
 - `tmgr chat join` now needs a join code from an updated desktop or phone app (v2). A code from an older app version is refused with a message to update that app and generate a new code. A runner can join only after every desktop and phone already in the chat has updated.
-- Update all your devices (desktop and mobile apps) before joining a runner: devices on older app versions do not see newly added devices until they update, and a runner can join only once every desktop and phone is updated.
+- Update all your devices (desktop and mobile apps) before joining a runner: devices on older app versions do not see newly added devices until they update, and a runner can join only once every desktop and phone is updated. Needs desktop 0.9.168 and phone app 1.21.0 (OTA 18).
 
 ## 1.0.143
 
