@@ -334,7 +334,7 @@ pub struct RunArgs {
     #[arg(
         long,
         value_enum,
-        conflicts_with_all = ["on", "agent_cmd"],
+        conflicts_with_all = ["agent_cmd"],
         requires = "agent"
     )]
     pub mode: Option<PermissionMode>,
@@ -342,7 +342,7 @@ pub struct RunArgs {
     #[arg(
         long,
         requires = "agent",
-        conflicts_with_all = ["on", "agent_cmd", "trust"]
+        conflicts_with_all = ["agent_cmd", "trust"]
     )]
     pub no_sandbox: bool,
     /// Save the working folder after each turn so `checkpoints restore` can undo the agent's changes (git folders)
