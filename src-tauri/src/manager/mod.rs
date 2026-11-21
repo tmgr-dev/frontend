@@ -206,6 +206,14 @@ pub async fn manager_revoke_decide<R: Runtime>(app: AppHandle<R>, id: String, ac
 }
 
 #[tauri::command]
+pub async fn manager_confirm_device_kind<R: Runtime>(app: AppHandle<R>, device_id: String, kind: String) -> Result<(), String> {
+  let relay = relay_of(&app)?;
+  blocking(move || relay.confirm_device_kind(&device_id, &kind)).await?;
+  trust_changed(&app);
+  Ok(())
+}
+
+#[tauri::command]
 pub async fn manager_revoke<R: Runtime>(app: AppHandle<R>, device_id: String) -> Result<(), String> {
   let relay = relay_of(&app)?;
   blocking(move || relay.revoke(&device_id)).await?;

@@ -23,6 +23,8 @@ pub struct TrustDevice {
   pub is_self: bool,
   #[serde(default)]
   pub kind_verified: bool,
+  #[serde(default)]
+  pub can_confirm_kind: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -85,6 +87,9 @@ pub trait RelayPort: Send + Sync {
   fn trust_state(&self) -> Result<TrustState, String>;
   fn decide_join(&self, device_id: &str, accept: bool) -> Result<(), String>;
   fn revoke(&self, device_id: &str) -> Result<(), String>;
+  fn confirm_device_kind(&self, _device_id: &str, _kind: &str) -> Result<(), String> {
+    Err("chat sync is not set up".into())
+  }
   fn decide_revoke(&self, _statement_id: &str, _accept: bool) -> Result<(), String> {
     Err("chat sync is not set up".into())
   }

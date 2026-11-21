@@ -20,6 +20,7 @@
 		"allow-manager-join-decide",
 		"allow-manager-revoke-decide",
 		"allow-manager-revoke",
+		"allow-manager-confirm-device-kind",
 		"allow-manager-reset-identity",
 		"allow-decisions-get",
 		"allow-decisions-answer"

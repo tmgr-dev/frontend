@@ -427,6 +427,7 @@ pub fn run() {
       manager::manager_join_decide,
       manager::manager_revoke_decide,
       manager::manager_revoke,
+      manager::manager_confirm_device_kind,
       manager::manager_reset_identity,
       manager::manager_set_relay_auth,
       manager::manager_clear_relay_auth
