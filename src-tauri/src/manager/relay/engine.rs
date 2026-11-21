@@ -133,6 +133,10 @@ struct State {
   pinned_at: BTreeMap<String, u64>,
   #[serde(default)]
   alerts: Vec<TrustAlert>,
+  #[serde(default)]
+  kinds: BTreeMap<String, String>,
+  #[serde(default)]
+  bindings: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -255,6 +259,15 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
     .take(MAX_INTROS)
     .collect();
   c.st.trusted = out;
+  for d in &c.st.trusted {
+    if c.st.kinds.contains_key(&d.id) {
+      continue;
+    }
+    let signed = c.st.intros.iter().filter_map(|i| parse_intro(i).ok()).find(|p| p.parsed.target_id == d.id && p.parsed.target_fp == d.fp);
+    if let Some(p) = signed {
+      c.st.kinds.insert(d.id.clone(), p.parsed.target_kind.clone());
+    }
+  }
 }
 
 fn stamp_pins(c: &mut Core, now: u64) {
@@ -562,6 +575,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       &JoinMacInput { user_id: self.cfg.user_id, p_fp: &pdev.fp, n_id: &id.device_id, n_fp: &keys.fingerprint(), n_kind: "desktop", label: &self.cfg.label },
     )
     .map_err(err)?;
+    c.st.kinds.insert(pdev.id.clone(), pdev.kind.clone());
     c.st.base.push(pdev.clone());
     c.st.trusted.push(pdev.clone());
     c.st.joined = false;
@@ -608,6 +622,36 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     stored.flatten()
   }
 
+  fn authorized_author(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) -> bool {
+    let kind = c.st.kinds.get(from).map(String::as_str);
+    match msg.author.kind.as_str() {
+      "owner" => matches!(kind, Some("desktop" | "mobile")),
+      "agent" | "manager" | "session" | "system" => {
+        if kind != Some("runner") || msg.author.machine.as_ref().is_some_and(|m| *m != msg.room.machine) {
+          return false;
+        }
+        let machine = &msg.room.machine;
+        let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
+        match c.st.bindings.get(machine) {
+          Some(d) if d == from => true,
+          Some(_) => {
+            record_alert(c, "room_conflict", from, now);
+            false
+          }
+          None if bound_elsewhere => {
+            record_alert(c, "room_conflict", from, now);
+            false
+          }
+          None => {
+            c.st.bindings.insert(machine.clone(), from.to_owned());
+            true
+          }
+        }
+      }
+      _ => true,
+    }
+  }
+
   fn handle(&self, c: &mut Core, opened: &Opened, now: u64) -> Option<Option<ChatMessage>> {
     let join_open = c.st.join_code.as_ref().is_some_and(|j| now < j.exp_ms);
     let dir = c.dir.clone()?;
@@ -621,8 +665,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         if validate_chat(&msg).is_err() || msg.id != opened.id || !self.owns(&msg.room) {
           return None;
         }
-        let sender_kind = c.st.trusted.iter().find(|d| d.id == opened.from).map(|d| d.kind.as_str());
-        if matches!(msg.author.kind.as_str(), "manager" | "session" | "system") && sender_kind != Some("runner") {
+        if !Self::authorized_author(c, &opened.from, &msg, now) {
           return None;
         }
         if !c.log.iter().any(|x| x.from == opened.from && x.msg.id == msg.id) {
@@ -890,6 +933,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let intro = sign_intro(keys, &id.device_id, &st).map_err(err)?;
     self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
     c.st.intros.push(intro);
+    c.st.kinds.insert(dev.id.clone(), dev.kind.clone());
     if !c.st.trusted.iter().any(|d| d.id == dev.id) {
       c.st.trusted.push(dev.clone());
     }

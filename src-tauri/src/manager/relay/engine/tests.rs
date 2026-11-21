@@ -808,27 +808,87 @@ fn set_kind(fake: &Fake, id: &str, kind: &str) {
   fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == id).unwrap().kind = kind.into();
 }
 
+fn msg_n(n: u8, kind: &str) -> ChatMessage {
+  let mut m = same_id_msg();
+  m.id = format!("m_{}", n.to_string().repeat(32).chars().take(32).collect::<String>());
+  m.author.kind = kind.into();
+  m
+}
+
+fn join_as(fake: &Fake, clock: &Clock, a: &Engine, label: &str, kind: &str) -> Engine {
+  let n = engine_with(fake, clock, label);
+  let code = a.open_join_code().unwrap();
+  n.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let id = my_id(&n);
+  set_kind(fake, &id, kind);
+  a.decide_join(&id, true).unwrap();
+  n.poll_once().unwrap();
+  a.poll_once().unwrap();
+  n
+}
+
+fn alert_kinds(e: &Engine) -> Vec<String> {
+  e.trust_state().unwrap().alerts.into_iter().map(|a| a.kind).collect()
+}
+
 #[test]
-fn only_runner_devices_may_author_manager_session_or_system_messages() {
+fn non_runner_cannot_author_manager_session_or_system_messages() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (a, b) = pair(&fake, &clock);
-  let (aid, bid) = (my_id(&a), my_id(&b));
-  let mk = |n: u8, kind: &str| {
-    let mut m = same_id_msg();
-    m.id = format!("m_{}", n.to_string().repeat(32).chars().take(32).collect::<String>());
-    m.author.kind = kind.into();
-    m
-  };
+  let bid = my_id(&b);
   for (n, k) in [(2, "manager"), (3, "session"), (4, "system")] {
-    post_chat(&a, &bid, &mk(n, k));
+    post_chat(&a, &bid, &msg_n(n, k));
   }
   assert!(b.poll_once().unwrap().is_empty());
-  post_chat(&a, &bid, &mk(5, "owner"));
+  post_chat(&a, &bid, &msg_n(5, "owner"));
   assert_eq!(b.poll_once().unwrap().len(), 1);
-  set_kind(&fake, &aid, "runner");
-  b.poll_once().unwrap();
-  post_chat(&a, &bid, &mk(6, "manager"));
-  assert_eq!(b.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn runner_cannot_author_owner_messages_but_may_author_manager_messages() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let aid = my_id(&a);
+  post_chat(&r, &aid, &msg_n(2, "owner"));
+  assert!(a.poll_once().unwrap().is_empty());
+  post_chat(&r, &aid, &msg_n(3, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn second_runner_claiming_a_bound_machine_is_dropped_and_alerted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+  let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+  let aid = my_id(&a);
+  post_chat(&r1, &aid, &msg_n(2, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  post_chat(&r2, &aid, &msg_n(3, "manager"));
+  assert!(a.poll_once().unwrap().is_empty());
+  assert_eq!(alert_kinds(&a), vec!["room_conflict".to_owned()]);
+  post_chat(&r1, &aid, &msg_n(4, "session"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn runner_machine_binding_survives_a_restart() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+  let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+  let aid = my_id(&a);
+  post_chat(&r1, &aid, &msg_n(2, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  clock.set(T0 + 31_000);
+  a.poll_once().unwrap();
+  let again = engine_on(&fake, &clock, store, "mx_local");
+  post_chat(&r2, &aid, &msg_n(3, "manager"));
+  assert!(again.poll_once().unwrap().is_empty());
+  assert_eq!(alert_kinds(&again), vec!["room_conflict".to_owned()]);
 }
 
 #[test]
