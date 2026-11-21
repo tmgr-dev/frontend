@@ -4080,10 +4080,12 @@ dependencies = [
 name = "tmgr-chat-relay"
 version = "1.0.139"
 dependencies = [
+ "base64 0.22.1",
  "getrandom 0.3.4",
  "p256",
  "serde",
  "serde_json",
+ "subtle",
  "tmgr-phone",
 ]
 
