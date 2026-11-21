@@ -246,6 +246,8 @@ pub struct CardIn {
     pub supersede: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub force_new: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<crate::actions::ActionIn>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -357,6 +359,10 @@ pub struct Event {
     pub via: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via_fp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved: Option<crate::actions::Approved>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<crate::actions::ActionResult>,
 }
 
 impl Event {
@@ -584,6 +590,8 @@ pub struct Response {
     pub pending: Vec<PendingDelivery>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
 }
 
 impl Response {
