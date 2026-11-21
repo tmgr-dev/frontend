@@ -4291,6 +4291,7 @@ version = "1.0.144"
 dependencies = [
  "libc",
  "regex",
+ "serde",
  "serde_json",
  "tempfile",
  "tmgr-ipc",

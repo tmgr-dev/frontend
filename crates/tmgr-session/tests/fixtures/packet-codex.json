@@ -1,0 +1,66 @@
+{
+  "v": 1,
+  "id": "h_01a3185c5000abababababababababab",
+  "created_ms": 1800000000000,
+  "from": {
+    "machine": "machine-1",
+    "session": "019a0000-aaaa-bbbb-cccc-000000000001",
+    "agent": "codex",
+    "profile": "codex-default",
+    "name": "demo"
+  },
+  "to": {
+    "agent": "claude",
+    "profile": "claude-default"
+  },
+  "task": {
+    "ref": "TM-1"
+  },
+  "cwd": "/work/demo",
+  "git": {
+    "status": "## feat/demo\n M src/fetch.rs",
+    "diff_stat": "src/fetch.rs | 2 +-",
+    "log": "abc1234 initial"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "text": "Add a retry to the fetch helper",
+      "ts_ms": 1799999990000
+    },
+    {
+      "role": "assistant",
+      "text": "Working on it, token ***",
+      "ts_ms": 1799999995000
+    }
+  ],
+  "todos": [
+    {
+      "text": "fix test",
+      "state": "in_progress"
+    }
+  ],
+  "permission": {
+    "mode": "accept-edits",
+    "no_sandbox": false,
+    "carried_mode": "ask",
+    "fell_back": true,
+    "bypass_dropped": false
+  },
+  "summary": "# Handoff note\n\nYou are taking over work from a codex session. Continue it; do not start over.\n\nTMGR task: TM-1\nWorking directory: /work/demo\nBranch: feat/demo\nRead the project rules first: CLAUDE.md\n\n## Conversation so far\n### Turn 1\nUser:\nAdd a retry to the fetch helper\nFinal reply:\nPatched the helper.\n\n## Files edited\n- src/fetch.rs\n\n## Git state\nstatus:\n    ## feat/demo\n     M src/fetch.rs\n\ndiff --stat:\n     src/fetch.rs | 2 +-\n\nrecent commits:\n    abc1234 initial\n\n\n## Open plan\n[in_progress] fix test\n\n## Last test command\ncargo test -p demo\nfailed:\n    test result: FAILED\n\n## Interrupted tool calls (re-check, they may be half done)\n- update_plan\n- cargo build\n\n## Earlier sessions\n- old-session (claude)\n- 019a0000-aaaa-bbbb-cccc-000000000001 (codex)\n\nDetails are in session 019a0000-aaaa-bbbb-cccc-000000000001. Use `tmgr session turns 019a0000-aaaa-bbbb-cccc-000000000001`, `tmgr session show 019a0000-aaaa-bbbb-cccc-000000000001 --turn N`, `tmgr session grep 019a0000-aaaa-bbbb-cccc-000000000001 \"<pattern>\"`, `tmgr session files 019a0000-aaaa-bbbb-cccc-000000000001` and `tmgr session errors 019a0000-aaaa-bbbb-cccc-000000000001` before guessing or redoing work. You are the claude.\n",
+  "files": {
+    "read": [],
+    "edited": [
+      "src/fetch.rs"
+    ],
+    "rules": [
+      "CLAUDE.md"
+    ],
+    "logs": [
+      "claude-session.jsonl"
+    ]
+  },
+  "prior": [
+    "old-session (claude)"
+  ]
+}

@@ -31,6 +31,13 @@ pub struct Session {
     pub plan: Option<String>,
     pub skipped: usize,
     pub turns: Vec<Turn>,
+    pub todos: Vec<Todo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Todo {
+    pub text: String,
+    pub state: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -115,6 +122,7 @@ impl Builder {
                 plan: None,
                 skipped: 0,
                 turns: Vec::new(),
+                todos: Vec::new(),
             },
             index: HashMap::new(),
         }
@@ -165,4 +173,24 @@ impl Builder {
             call.failed = failed;
         }
     }
+}
+
+pub(crate) fn todos_of(
+    items: &serde_json::Value,
+    text_key: &str,
+    state_key: &str,
+) -> Option<Vec<Todo>> {
+    let items = items.as_array()?;
+    Some(
+        items
+            .iter()
+            .filter_map(|t| {
+                let text = t[text_key].as_str()?.trim();
+                (!text.is_empty()).then(|| Todo {
+                    text: text.to_string(),
+                    state: t[state_key].as_str().unwrap_or("pending").to_string(),
+                })
+            })
+            .collect(),
+    )
 }
