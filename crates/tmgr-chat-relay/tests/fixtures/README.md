@@ -22,6 +22,40 @@ STANDARD padded, secrets are test keys only.
   outputs `code_string`, `code_base64url`, `mac_transcript`, `mac_hex`.
 - `spawnkey.json`: inputs `user_id`, `device`, `spawn_secret_hex`, `spawn_pub`, `issued_at_ms`; outputs
   `statement`, `sig`, `spawn_sig`, `payload`.
-- `trust.json`: `cases[]`, each `{name, note, inputs: {pins [[id, fp]], revoked [fp], intros [intro_json],
-  directory [{device_id, sign_pub, kex_pub}]}, outputs: {trusted [[id, fp]]}}`. `trusted` is sorted by
-  (id, fp). `intros` is the union of directory and locally cached intros.
+- `unicode.json`: `chat` (same shape as `chat.json`, non-ASCII payload) and `join` (same shape as `join.json`,
+  non-ASCII label; the label hash is over its UTF-8 bytes).
+- `trust.json`: top-level `user_id` (the user the set is computed for) and `cases[]`, each
+  `{name, note, inputs: {pins, revoked [fp], intros [intro_json], directory [{device_id, sign_pub, kex_pub}]},
+  outputs: {trusted, mismatches}}`. `pins` and `trusted` are `{device_id, fp, sign_pub, kex_pub}` sorted by
+  (device_id, fp). `mismatches` is `{device_id, pinned_fp, directory_fp}` for trusted ids whose directory keys
+  give another fp (the UI must alert; the pinned keys stay in use). `intros` is the union of directory and
+  locally cached intros. Rules the cases pin down: intros verify only against the pinned keys of a trusted
+  introducer matched on `(by, introducer_fp)`; the statement `user_id` must equal the user; a new entry takes
+  its keys from the directory entry of that id and only if their fp equals the intro's `N_fp`; a revoked fp never
+  re-enters, even under a new id.
+- `negative.json`: `context` (user, now, default msg id, recipient and sender), `message_vectors[]` and
+  `intro_vectors[]`. A message vector is opened with the recipient keys and the sender pinned (not pinned when
+  `sender_trusted` is false; then the sender's directory keys are offered, which only `join` accepts). Optional
+  per-vector overrides: `user_id`, `now_ms`, `msg_id`. `expect` is `{error: code}` (codes are `tmgr-phone`
+  `Error::code()`: `bad_json`, `bad_format`, `open_failed`, `bad_key`, `bad_window`, `id_mismatch`) or
+  `{ok: {seq, trusted}}`. An intro vector is `verify_intro(intro_json, user_id, signer.device_id,
+  signer.sign_pub, signer.kex_pub)`. The 10-minute freshness rule for runner input is not part of this crate and
+  has no vector; the 31-day and 5-minute `sent_at` window edges do.
+
+## Unknown fields
+
+Unknown JSON fields are ignored everywhere (body, plaintext, inner, intro, revoke, API responses), so
+later versions can add fields. Duplicate keys are never ignored: they are rejected.
+
+## Notes for the JS port
+
+- `@noble` p256: verify with `lowS: false` (high-S signatures must be accepted), DER only: a raw 64-byte r||s
+  signature is rejected; emit DER low-S.
+- Use a strict JSON parser that rejects duplicate keys at any depth (body, plaintext, inner, payload) and
+  rejects lone surrogate escapes.
+- Check base64 by re-encoding: decode, encode again, and require the exact original string (padded, canonical).
+- Senders call `toWellFormed()` on every string they put into JSON so no lone surrogate is ever produced.
+- Integers (`user_id`, `sent_at`, `seq`, `issued_at_ms`, `exp`) must be plain digits: no exponent, fraction,
+  sign or leading zeros, in statements and in JSON.
+- `inner` is hashed and signed as the exact received string; parse it only to read `sent_at`, then verify, and
+  never re-serialise.

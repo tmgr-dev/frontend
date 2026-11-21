@@ -1,9 +1,10 @@
 use crate::fields::{check_device_id, check_fp, check_kind, check_msg_id, parse_strict};
 use crate::keys::{fingerprint, DeviceKeys};
+use crate::trust::Trusted;
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tmgr_phone::{b64_decode, h, hex, open_ctx, seal_ctx_with, sign, verify, Entropy, Sealed};
+use tmgr_phone::{b64_decode, h, hex, open_ctx, seal_ctx_with, sign, verify_der, Entropy, Sealed};
 
 const MAX_AGE_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_SKEW_MS: u64 = 5 * 60 * 1000;
@@ -53,6 +54,7 @@ pub struct Opened {
     pub seq: u64,
     pub sent_at: u64,
     pub payload: Value,
+    pub trusted: bool,
 }
 
 pub fn chat_ctx(
@@ -221,7 +223,8 @@ pub fn open_message<'a, F>(
     server_msg_id: &str,
     body_json: &str,
     now_ms: u64,
-    sender_of: F,
+    trusted: &[Trusted],
+    join_sender: F,
 ) -> Result<Opened>
 where
     F: FnOnce(&str) -> Option<Peer<'a>>,
@@ -233,6 +236,10 @@ where
     let ctx = chat_ctx(user_id, &body.from, own_device_id, &body.kind, &body.id)?;
     if body.id != server_msg_id || body.from != server_from {
         return Err(Error::IdMismatch);
+    }
+    let known = trusted.iter().find(|t| t.device_id == body.from);
+    if known.is_none() && body.kind != "join" {
+        return Err(Error::BadKey);
     }
     let sealed = Sealed {
         v: body.v,
@@ -248,11 +255,17 @@ where
     if inner.v != 1 || inner.kind != body.kind || inner.id != body.id || inner.seq == 0 {
         return Err(Error::IdMismatch);
     }
-    let sender = sender_of(&body.from).ok_or(Error::BadKey)?;
-    if sender.device_id != body.from {
-        return Err(Error::BadKey);
-    }
-    let from_fp = fingerprint(sender.sign_pub_b64, sender.kex_pub_b64);
+    let (sender_sign, sender_kex, is_trusted) = match known {
+        Some(t) => (t.sign_pub.clone(), t.kex_pub.clone(), true),
+        None => {
+            let p = join_sender(&body.from).ok_or(Error::BadKey)?;
+            if p.device_id != body.from {
+                return Err(Error::BadKey);
+            }
+            (p.sign_pub_b64.to_string(), p.kex_pub_b64.to_string(), false)
+        }
+    };
+    let from_fp = fingerprint(&sender_sign, &sender_kex);
     let signed = signed_string(
         user_id,
         &from_fp,
@@ -264,7 +277,7 @@ where
         inner.sent_at,
         &plain.body,
     )?;
-    verify(&b64_decode(sender.sign_pub_b64)?, &signed, &plain.sig)?;
+    verify_der(&b64_decode(&sender_sign)?, &signed, &plain.sig)?;
     if inner.sent_at < now_ms.saturating_sub(MAX_AGE_MS) || inner.sent_at > now_ms + MAX_SKEW_MS {
         return Err(Error::BadWindow);
     }
@@ -276,6 +289,7 @@ where
         seq: inner.seq,
         sent_at: inner.sent_at,
         payload: inner.payload,
+        trusted: is_trusted,
     })
 }
 
@@ -356,11 +370,12 @@ mod tests {
         body: &str,
         now: u64,
     ) -> Result<Opened> {
-        let a = pubs(&w.alice);
-        let a_ref = &a;
-        open_message(me, user, own_id, from, id, body, now, |f| {
-            (f == A).then(|| peer(A, a_ref))
-        })
+        let t = [trusted_alice(w)];
+        open_message(me, user, own_id, from, id, body, now, &t, |_| None)
+    }
+
+    fn trusted_alice(w: &World) -> Trusted {
+        Trusted::new(A, &w.alice.sign_pub_b64(), &w.alice.kex_pub_b64()).unwrap()
     }
 
     fn open_ok(w: &World, body: &str) -> Result<Opened> {
@@ -434,6 +449,7 @@ mod tests {
         assert_eq!(o.id, "m_1");
         assert_eq!(o.seq, 1);
         assert_eq!(o.sent_at, NOW);
+        assert!(o.trusted);
         assert_eq!(o.payload, json!({"text": "hi"}));
     }
 
@@ -567,26 +583,69 @@ mod tests {
     fn wrong_sender_key_is_rejected() {
         let w = world();
         let body = seal_to_bob(&w);
-        let c = pubs(&w.carol);
-        let c_ref = &c;
-        let r = open_message(&w.bob, 42, B, A, "m_1", &body, NOW, |_| {
-            Some(peer(A, c_ref))
-        });
+        let c = Trusted::new(A, &w.carol.sign_pub_b64(), &w.carol.kex_pub_b64()).unwrap();
+        let r = open_message(&w.bob, 42, B, A, "m_1", &body, NOW, &[c], |_| None);
         assert_eq!(r.err(), Some(Error::BadSignature));
     }
 
+    fn seal_kind(w: &World, kind: &str, id: &str) -> String {
+        let bob = pubs(&w.bob);
+        let mut p = params(&bob, json!({}));
+        p.kind = kind;
+        p.msg_id = id;
+        seal_message_with(&w.alice, &p, &ent()).unwrap()
+    }
+
     #[test]
-    fn unknown_sender_or_mismatched_peer_id_is_rejected() {
+    fn untrusted_sender_is_rejected_except_for_join() {
         let w = world();
         let body = seal_to_bob(&w);
-        let r = open_message(&w.bob, 42, B, A, "m_1", &body, NOW, |_| None);
-        assert!(r.is_err());
-        let a = pubs(&w.alice);
-        let a_ref = &a;
-        let r = open_message(&w.bob, 42, B, A, "m_1", &body, NOW, |_| {
-            Some(peer(C, a_ref))
+        let dir_alice = pubs(&w.alice);
+        let r = open_message(&w.bob, 42, B, A, "m_1", &body, NOW, &[], |_| {
+            Some(peer(A, &dir_alice))
         });
-        assert!(r.is_err());
+        assert_eq!(r.err(), Some(Error::BadKey));
+
+        let join = seal_kind(&w, "join", "j_1");
+        let o = open_message(&w.bob, 42, B, A, "j_1", &join, NOW, &[], |_| {
+            Some(peer(A, &dir_alice))
+        })
+        .unwrap();
+        assert!(!o.trusted);
+        assert_eq!(o.from_fp, w.alice.fingerprint());
+        let r = open_message(&w.bob, 42, B, A, "j_1", &join, NOW, &[], |_| None);
+        assert_eq!(r.err(), Some(Error::BadKey));
+        let r = open_message(&w.bob, 42, B, A, "j_1", &join, NOW, &[], |_| {
+            Some(peer(C, &dir_alice))
+        });
+        assert_eq!(r.err(), Some(Error::BadKey));
+    }
+
+    #[test]
+    fn trusted_entry_keys_win_over_directory_for_join() {
+        let w = world();
+        let join = seal_kind(&w, "join", "j_1");
+        let carol_dir = pubs(&w.carol);
+        let t = [trusted_alice(&w)];
+        let o = open_message(&w.bob, 42, B, A, "j_1", &join, NOW, &t, |_| {
+            Some(peer(A, &carol_dir))
+        })
+        .unwrap();
+        assert!(o.trusted);
+    }
+
+    #[test]
+    fn unknown_json_fields_are_ignored() {
+        let w = world();
+        let inner = r#"{"v":1,"kind":"chat","id":"m_1","sent_at":1800000000000,"seq":1,"payload":{},"future":[1,{"x":2}]}"#;
+        let sig = sig_for(&w, inner);
+        let plain = format!(
+            "{{\"body\":{},\"sig\":{sig:?},\"future\":true}}",
+            serde_json::to_string(inner).unwrap(),
+        );
+        let body = seal_raw_plain(&w, plain.as_bytes());
+        let body = body.replacen("{\"v\":1,", "{\"v\":1,\"future\":0,", 1);
+        assert!(open_ok(&w, &body).is_ok());
     }
 
     #[test]

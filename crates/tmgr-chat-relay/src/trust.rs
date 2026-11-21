@@ -4,8 +4,9 @@ use crate::{Error, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use subtle::ConstantTimeEq;
-use tmgr_phone::{b64, b64_decode, h, pair_mac, sign, verify};
+use tmgr_phone::{b64, b64_decode, h, pair_mac, sign, verify_der};
 
 pub const JOIN_PREFIX: &str = "tmgr-chat-join:v1:";
 
@@ -115,9 +116,21 @@ pub fn parse_intro(json: &str) -> Result<Intro> {
     })
 }
 
-pub fn verify_intro(json: &str, signer_sign_pub_b64: &str) -> Result<Intro> {
+pub fn verify_intro(
+    json: &str,
+    user_id: u64,
+    signer_id: &str,
+    signer_sign_pub_b64: &str,
+    signer_kex_pub_b64: &str,
+) -> Result<Intro> {
     let intro = parse_intro(json)?;
-    verify(
+    if intro.parsed.user_id != user_id || intro.by != signer_id {
+        return Err(Error::IdMismatch);
+    }
+    if fingerprint(signer_sign_pub_b64, signer_kex_pub_b64) != intro.parsed.introducer_fp {
+        return Err(Error::BadKey);
+    }
+    verify_der(
         &b64_decode(signer_sign_pub_b64)?,
         &intro.statement,
         &intro.sig,
@@ -200,9 +213,20 @@ pub fn parse_revoke(json: &str) -> Result<Revoke> {
     })
 }
 
-pub fn verify_revoke(json: &str, revoker_sign_pub_b64: &str) -> Result<Revoke> {
+pub fn verify_revoke(
+    json: &str,
+    user_id: u64,
+    revoker_sign_pub_b64: &str,
+    revoker_kex_pub_b64: &str,
+) -> Result<Revoke> {
     let r = parse_revoke(json)?;
-    verify(&b64_decode(revoker_sign_pub_b64)?, &r.statement, &r.sig)?;
+    if r.parsed.user_id != user_id {
+        return Err(Error::IdMismatch);
+    }
+    if fingerprint(revoker_sign_pub_b64, revoker_kex_pub_b64) != r.parsed.revoker_fp {
+        return Err(Error::BadKey);
+    }
+    verify_der(&b64_decode(revoker_sign_pub_b64)?, &r.statement, &r.sig)?;
     Ok(r)
 }
 
@@ -268,29 +292,45 @@ pub fn sign_spawnkey(
 
 pub fn verify_spawnkey(
     json: &str,
+    user_id: u64,
     device_id: &str,
     device_sign_pub_b64: &str,
     device_kex_pub_b64: &str,
 ) -> Result<SpawnStatement> {
     let k: SpawnKey = parse_strict(json)?;
     let st = SpawnStatement::parse(&k.statement)?;
+    if st.user_id != user_id {
+        return Err(Error::IdMismatch);
+    }
     if st.device_id != device_id
         || st.device_fp != fingerprint(device_sign_pub_b64, device_kex_pub_b64)
     {
         return Err(Error::BadKey);
     }
-    verify(&b64_decode(device_sign_pub_b64)?, &k.statement, &k.sig)?;
-    verify(&b64_decode(&st.spawn_pub_b64)?, &k.statement, &k.spawn_sig)?;
+    verify_der(&b64_decode(device_sign_pub_b64)?, &k.statement, &k.sig)?;
+    verify_der(&b64_decode(&st.spawn_pub_b64)?, &k.statement, &k.spawn_sig)?;
     Ok(st)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct JoinCode {
     pub user_id: u64,
     pub device_id: String,
     pub fp: String,
     pub secret: [u8; 32],
     pub exp_ms: u64,
+}
+
+impl std::fmt::Debug for JoinCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JoinCode")
+            .field("user_id", &self.user_id)
+            .field("device_id", &self.device_id)
+            .field("fp", &self.fp)
+            .field("secret", &"<redacted>")
+            .field("exp_ms", &self.exp_ms)
+            .finish()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -390,45 +430,103 @@ pub struct DirEntry {
     pub kex_pub_b64: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct Trusted {
+    pub device_id: String,
+    pub fp: String,
+    pub sign_pub: String,
+    pub kex_pub: String,
+}
+
+impl Trusted {
+    pub fn new(device_id: &str, sign_pub_b64: &str, kex_pub_b64: &str) -> Result<Trusted> {
+        check_device_id(device_id)?;
+        check_pub(sign_pub_b64)?;
+        check_pub(kex_pub_b64)?;
+        Ok(Trusted {
+            device_id: device_id.to_string(),
+            fp: fingerprint(sign_pub_b64, kex_pub_b64),
+            sign_pub: sign_pub_b64.to_string(),
+            kex_pub: kex_pub_b64.to_string(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct KeyMismatch {
+    pub device_id: String,
+    pub pinned_fp: String,
+    pub directory_fp: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrustSet {
+    pub trusted: Vec<Trusted>,
+    pub mismatches: Vec<KeyMismatch>,
+}
+
 pub fn trusted_set(
-    pins: &[(String, String)],
+    user_id: u64,
+    pins: &[Trusted],
     revoked: &[String],
     intros: &[String],
     directory: &[DirEntry],
-) -> Vec<(String, String)> {
+) -> TrustSet {
     let is_revoked = |fp: &str| revoked.iter().any(|r| r == fp);
-    let mut trusted: Vec<(String, String)> = Vec::new();
-    for (id, fp) in pins {
-        if !is_revoked(fp) && !trusted.iter().any(|(i, _)| i == id) {
-            trusted.push((id.clone(), fp.clone()));
+    let mut trusted: Vec<Trusted> = Vec::new();
+    for p in pins {
+        if is_revoked(&p.fp)
+            || p.fp != fingerprint(&p.sign_pub, &p.kex_pub)
+            || trusted.iter().any(|t| t.device_id == p.device_id)
+        {
+            continue;
         }
+        trusted.push(p.clone());
     }
-    let parsed: Vec<Intro> = intros.iter().filter_map(|s| parse_intro(s).ok()).collect();
+    let mut seen = HashSet::new();
+    let parsed: Vec<Intro> = intros
+        .iter()
+        .filter(|s| seen.insert(s.as_str()))
+        .filter_map(|s| parse_intro(s).ok())
+        .filter(|i| i.parsed.user_id == user_id)
+        .collect();
+    let mut failed = vec![false; parsed.len()];
     loop {
         let mut changed = false;
-        for intro in &parsed {
+        for (n, intro) in parsed.iter().enumerate() {
             let st = &intro.parsed;
-            if is_revoked(&st.target_fp) || trusted.iter().any(|(i, _)| *i == st.target_id) {
+            if failed[n]
+                || is_revoked(&st.target_fp)
+                || trusted.iter().any(|t| t.device_id == st.target_id)
+            {
                 continue;
             }
-            let Some((t_id, t_fp)) = trusted.iter().find(|(_, fp)| *fp == st.introducer_fp) else {
+            let Some(introducer) = trusted
+                .iter()
+                .find(|t| t.device_id == intro.by && t.fp == st.introducer_fp)
+            else {
                 continue;
             };
-            if intro.by != *t_id {
-                continue;
-            }
             let Some(entry) = directory.iter().find(|d| {
-                d.device_id == *t_id && fingerprint(&d.sign_pub_b64, &d.kex_pub_b64) == *t_fp
+                d.device_id == st.target_id
+                    && fingerprint(&d.sign_pub_b64, &d.kex_pub_b64) == st.target_fp
             }) else {
                 continue;
             };
-            let Ok(key) = b64_decode(&entry.sign_pub_b64) else {
-                continue;
-            };
-            if verify(&key, &intro.statement, &intro.sig).is_err() {
+            let verified = b64_decode(&introducer.sign_pub)
+                .and_then(|key| verify_der(&key, &intro.statement, &intro.sig))
+                .is_ok();
+            if !verified {
+                failed[n] = true;
                 continue;
             }
-            trusted.push((st.target_id.clone(), st.target_fp.clone()));
+            let added = Trusted {
+                device_id: st.target_id.clone(),
+                fp: st.target_fp.clone(),
+                sign_pub: entry.sign_pub_b64.clone(),
+                kex_pub: entry.kex_pub_b64.clone(),
+            };
+            trusted.push(added);
             changed = true;
         }
         if !changed {
@@ -436,7 +534,27 @@ pub fn trusted_set(
         }
     }
     trusted.sort();
-    trusted
+    let mut mismatches: Vec<KeyMismatch> = trusted
+        .iter()
+        .flat_map(|t| {
+            directory
+                .iter()
+                .filter(|d| d.device_id == t.device_id)
+                .filter_map(|d| {
+                    let directory_fp = fingerprint(&d.sign_pub_b64, &d.kex_pub_b64);
+                    (directory_fp != t.fp).then(|| KeyMismatch {
+                        device_id: t.device_id.clone(),
+                        pinned_fp: t.fp.clone(),
+                        directory_fp,
+                    })
+                })
+        })
+        .collect();
+    mismatches.sort();
+    TrustSet {
+        trusted,
+        mismatches,
+    }
 }
 
 #[cfg(test)]
@@ -467,28 +585,36 @@ mod tests {
             .collect()
     }
 
+    fn statement(
+        by: &DeviceKeys,
+        target: &DeviceKeys,
+        target_id: &str,
+        user: u64,
+    ) -> IntroStatement {
+        IntroStatement {
+            user_id: user,
+            introducer_fp: by.fingerprint(),
+            target_id: target_id.into(),
+            target_fp: target.fingerprint(),
+            target_kind: "mobile".into(),
+            issued_at_ms: 1_800_000_000_000,
+        }
+    }
+
     fn intro(by: (&str, &DeviceKeys), target: (&str, &DeviceKeys)) -> String {
-        sign_intro(
-            by.1,
-            by.0,
-            &IntroStatement {
-                user_id: U,
-                introducer_fp: by.1.fingerprint(),
-                target_id: target.0.to_string(),
-                target_fp: target.1.fingerprint(),
-                target_kind: "mobile".into(),
-                issued_at_ms: 1_800_000_000_000,
-            },
-        )
-        .unwrap()
+        sign_intro(by.1, by.0, &statement(by.1, target.1, target.0, U)).unwrap()
     }
 
-    fn pin(id: &str, k: &DeviceKeys) -> (String, String) {
-        (id.to_string(), k.fingerprint())
+    fn pin(id: &str, k: &DeviceKeys) -> Trusted {
+        Trusted::new(id, &k.sign_pub_b64(), &k.kex_pub_b64()).unwrap()
     }
 
-    fn ids(set: &[(String, String)]) -> Vec<String> {
-        set.iter().map(|(i, _)| i.clone()).collect()
+    fn ids(set: &TrustSet) -> Vec<String> {
+        set.trusted.iter().map(|t| t.device_id.clone()).collect()
+    }
+
+    fn run(pins: &[Trusted], revoked: &[String], intros: &[String], d: &[DirEntry]) -> TrustSet {
+        trusted_set(U, pins, revoked, intros, d)
     }
 
     #[test]
@@ -515,13 +641,51 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
         assert_eq!(keys, ["v", "by", "statement", "sig"]);
-        let got = verify_intro(&json, &k.sign_pub_b64()).unwrap();
+        let (sp, kp) = (k.sign_pub_b64(), k.kex_pub_b64());
+        let got = verify_intro(&json, U, IDS[0], &sp, &kp).unwrap();
         assert_eq!(got.by, IDS[0]);
         assert_eq!(got.parsed, st);
+    }
+
+    #[test]
+    fn verify_intro_binds_user_by_and_keys() {
+        let k = key(1);
+        let json = intro((IDS[0], &k), (IDS[1], &key(2)));
+        let (sp, kp) = (k.sign_pub_b64(), k.kex_pub_b64());
         assert_eq!(
-            verify_intro(&json, &key(9).sign_pub_b64()).err(),
+            verify_intro(&json, 43, IDS[0], &sp, &kp).err(),
+            Some(Error::IdMismatch)
+        );
+        assert_eq!(
+            verify_intro(&json, U, IDS[3], &sp, &kp).err(),
+            Some(Error::IdMismatch)
+        );
+        let other = key(9);
+        assert_eq!(
+            verify_intro(
+                &json,
+                U,
+                IDS[0],
+                &other.sign_pub_b64(),
+                &other.kex_pub_b64()
+            )
+            .err(),
+            Some(Error::BadKey)
+        );
+        let swapped_kex = key(1).kex_pub_b64().replace('A', "B");
+        assert!(verify_intro(&json, U, IDS[0], &sp, &swapped_kex).is_err());
+        let forged = json.replace(
+            &intro_sig(&json),
+            &intro_sig(&intro((IDS[0], &key(5)), (IDS[1], &key(2)))),
+        );
+        assert_eq!(
+            verify_intro(&forged, U, IDS[0], &sp, &kp).err(),
             Some(Error::BadSignature)
         );
+    }
+
+    fn intro_sig(json: &str) -> String {
+        parse_intro(json).unwrap().sig
     }
 
     #[test]
@@ -560,20 +724,22 @@ mod tests {
     }
 
     #[test]
+    fn unknown_json_fields_are_ignored() {
+        let k = key(1);
+        let json = intro((IDS[0], &k), (IDS[1], &key(2)));
+        let extra = json.replacen("{\"v\":1,", "{\"v\":1,\"future\":{\"a\":[1]},", 1);
+        let (sp, kp) = (k.sign_pub_b64(), k.kex_pub_b64());
+        verify_intro(&extra, U, IDS[0], &sp, &kp).unwrap();
+    }
+
+    #[test]
     fn sign_refuses_wrong_signer_fp() {
-        let st = IntroStatement {
-            user_id: U,
-            introducer_fp: key(2).fingerprint(),
-            target_id: IDS[1].into(),
-            target_fp: key(3).fingerprint(),
-            target_kind: "mobile".into(),
-            issued_at_ms: 1,
-        };
+        let st = statement(&key(2), &key(3), IDS[1], U);
         assert!(sign_intro(&key(1), IDS[0], &st).is_err());
     }
 
     #[test]
-    fn revoke_round_trip() {
+    fn revoke_round_trip_and_bindings() {
         let k = key(1);
         let st = RevokeStatement {
             user_id: U,
@@ -586,8 +752,17 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
         assert_eq!(keys, ["v", "statement", "sig"]);
-        assert_eq!(verify_revoke(&json, &k.sign_pub_b64()).unwrap().parsed, st);
-        assert!(verify_revoke(&json, &key(5).sign_pub_b64()).is_err());
+        let (sp, kp) = (k.sign_pub_b64(), k.kex_pub_b64());
+        assert_eq!(verify_revoke(&json, U, &sp, &kp).unwrap().parsed, st);
+        assert_eq!(
+            verify_revoke(&json, 43, &sp, &kp).err(),
+            Some(Error::IdMismatch)
+        );
+        let o = key(5);
+        assert_eq!(
+            verify_revoke(&json, U, &o.sign_pub_b64(), &o.kex_pub_b64()).err(),
+            Some(Error::BadKey)
+        );
         assert_eq!(
             st.to_statement().unwrap(),
             format!(
@@ -624,6 +799,21 @@ mod tests {
         let short = json.replace(&b64(&[9u8; 32]), &b64(&[9u8; 31]));
         let s3 = format!("{JOIN_PREFIX}{}", URL_SAFE_NO_PAD.encode(short));
         assert!(decode_join_code(&s3).is_err());
+    }
+
+    #[test]
+    fn join_code_debug_redacts_secret() {
+        let code = JoinCode {
+            user_id: U,
+            device_id: IDS[0].into(),
+            fp: key(1).fingerprint(),
+            secret: [9u8; 32],
+            exp_ms: 1,
+        };
+        let d = format!("{code:?}");
+        assert!(d.contains("<redacted>"));
+        assert!(!d.contains(&b64(&[9u8; 32])));
+        assert!(!d.contains("[9, 9"));
     }
 
     #[test]
@@ -680,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn spawnkey_needs_both_signatures() {
+    fn spawnkey_needs_both_signatures_and_user() {
         let dev = key(1);
         let spawn_secret = [77u8; 32];
         let spawn_pub = b64(&tmgr_phone::public_key(&spawn_secret).unwrap());
@@ -709,40 +899,38 @@ mod tests {
             .collect();
         assert_eq!(keys, ["statement", "sig", "spawn_sig"]);
         let (sp, kp) = (dev.sign_pub_b64(), dev.kex_pub_b64());
-        assert_eq!(verify_spawnkey(&json, IDS[0], &sp, &kp).unwrap(), st);
-        assert!(verify_spawnkey(&json, IDS[1], &sp, &kp).is_err());
-
+        assert_eq!(verify_spawnkey(&json, U, IDS[0], &sp, &kp).unwrap(), st);
+        assert!(verify_spawnkey(&json, U, IDS[1], &sp, &kp).is_err());
+        assert_eq!(
+            verify_spawnkey(&json, 43, IDS[0], &sp, &kp).err(),
+            Some(Error::IdMismatch)
+        );
+        let as_json = |k: &SpawnKey| serde_json::to_string(k).unwrap();
         let swap_sig = SpawnKey {
             sig: k.spawn_sig.clone(),
             ..k.clone()
         };
-        assert!(
-            verify_spawnkey(&serde_json::to_string(&swap_sig).unwrap(), IDS[0], &sp, &kp).is_err()
-        );
+        assert!(verify_spawnkey(&as_json(&swap_sig), U, IDS[0], &sp, &kp).is_err());
         let swap_spawn = SpawnKey {
             spawn_sig: k.sig.clone(),
             ..k.clone()
         };
-        assert!(verify_spawnkey(
-            &serde_json::to_string(&swap_spawn).unwrap(),
-            IDS[0],
-            &sp,
-            &kp
-        )
-        .is_err());
+        assert!(verify_spawnkey(&as_json(&swap_spawn), U, IDS[0], &sp, &kp).is_err());
         assert!(sign_spawnkey(&dev, &[78u8; 32], &st).is_err());
     }
 
     #[test]
-    fn chain_is_trusted_transitively() {
+    fn chain_is_trusted_transitively_with_keys() {
         let (a, b, c) = (key(1), key(2), key(3));
         let d = dir(&[(IDS[0], &a), (IDS[1], &b), (IDS[2], &c)]);
         let intros = vec![
             intro((IDS[1], &b), (IDS[2], &c)),
             intro((IDS[0], &a), (IDS[1], &b)),
         ];
-        let set = trusted_set(&[pin(IDS[0], &a)], &[], &intros, &d);
+        let set = run(&[pin(IDS[0], &a)], &[], &intros, &d);
         assert_eq!(ids(&set), [IDS[0], IDS[1], IDS[2]]);
+        assert_eq!(set.trusted[2], pin(IDS[2], &c));
+        assert!(set.mismatches.is_empty());
     }
 
     #[test]
@@ -753,19 +941,19 @@ mod tests {
             intro((IDS[0], &a), (IDS[1], &b)),
             intro((IDS[1], &b), (IDS[2], &c)),
         ];
-        let set = trusted_set(&[pin(IDS[0], &a)], &[b.fingerprint()], &intros, &d);
+        let set = run(&[pin(IDS[0], &a)], &[b.fingerprint()], &intros, &d);
         assert_eq!(ids(&set), [IDS[0]]);
         let dense = [intros, vec![intro((IDS[0], &a), (IDS[2], &c))]].concat();
-        let set = trusted_set(&[pin(IDS[0], &a)], &[b.fingerprint()], &dense, &d);
+        let set = run(&[pin(IDS[0], &a)], &[b.fingerprint()], &dense, &d);
         assert_eq!(ids(&set), [IDS[0], IDS[2]]);
     }
 
     #[test]
     fn revoked_pin_is_dropped_and_cannot_introduce() {
-        let (a, b) = (key(1), key(2));
-        let d = dir(&[(IDS[0], &a), (IDS[1], &b)]);
-        let intros = vec![intro((IDS[0], &a), (IDS[1], &b))];
-        let set = trusted_set(
+        let (a, b, c) = (key(1), key(2), key(3));
+        let d = dir(&[(IDS[0], &a), (IDS[1], &b), (IDS[2], &c)]);
+        let intros = vec![intro((IDS[0], &a), (IDS[2], &c))];
+        let set = run(
             &[pin(IDS[0], &a), pin(IDS[1], &b)],
             &[a.fingerprint()],
             &intros,
@@ -775,65 +963,91 @@ mod tests {
     }
 
     #[test]
-    fn mismatched_directory_keys_are_not_used() {
-        let (a, b, c, evil) = (key(1), key(2), key(3), key(66));
-        let intros = vec![
-            intro((IDS[0], &a), (IDS[1], &b)),
-            intro((IDS[1], &b), (IDS[2], &c)),
-        ];
-        let d = dir(&[(IDS[0], &evil), (IDS[1], &b), (IDS[2], &c)]);
-        assert_eq!(
-            ids(&trusted_set(&[pin(IDS[0], &a)], &[], &intros, &d)),
-            [IDS[0]]
-        );
-        let forged_by_evil = vec![intro((IDS[0], &evil), (IDS[3], &key(4)))];
-        let d = dir(&[(IDS[0], &evil)]);
-        assert_eq!(
-            ids(&trusted_set(&[pin(IDS[0], &a)], &[], &forged_by_evil, &d)),
-            [IDS[0]]
-        );
-    }
-
-    #[test]
-    fn tampered_intro_and_unknown_introducer_are_ignored() {
-        let (a, b, c) = (key(1), key(2), key(3));
-        let d = dir(&[(IDS[0], &a), (IDS[1], &b), (IDS[2], &c)]);
-        let good = intro((IDS[0], &a), (IDS[1], &b));
-        let tampered = good.replace(IDS[1], IDS[2]);
-        let stranger = intro((IDS[2], &c), (IDS[3], &key(4)));
-        let set = trusted_set(
-            &[pin(IDS[0], &a)],
-            &[],
-            &[tampered, stranger, "garbage".into()],
-            &d,
-        );
+    fn revoked_fp_cannot_reenter_under_a_new_id() {
+        let (a, b) = (key(1), key(2));
+        let d = dir(&[(IDS[0], &a), (IDS[3], &b)]);
+        let intros = vec![intro((IDS[0], &a), (IDS[3], &b))];
+        let set = run(&[pin(IDS[0], &a)], &[b.fingerprint()], &intros, &d);
         assert_eq!(ids(&set), [IDS[0]]);
     }
 
     #[test]
-    fn intro_by_must_match_verifying_device() {
-        let (a, b) = (key(1), key(2));
-        let d = dir(&[(IDS[0], &a), (IDS[1], &b)]);
-        let wrong_by = sign_intro(&a, IDS[3], &intro_statement_for(&a, &b, IDS[1])).unwrap();
+    fn pinned_keys_verify_intros_and_directory_mismatch_is_reported() {
+        let (a, b, evil) = (key(1), key(2), key(66));
+        let intros = vec![intro((IDS[0], &a), (IDS[1], &b))];
+        let d = dir(&[(IDS[0], &evil), (IDS[1], &b)]);
+        let set = run(&[pin(IDS[0], &a)], &[], &intros, &d);
+        assert_eq!(ids(&set), [IDS[0], IDS[1]]);
+        assert_eq!(set.trusted[0], pin(IDS[0], &a));
         assert_eq!(
-            ids(&trusted_set(&[pin(IDS[0], &a)], &[], &[wrong_by], &d)),
+            set.mismatches,
+            [KeyMismatch {
+                device_id: IDS[0].into(),
+                pinned_fp: a.fingerprint(),
+                directory_fp: evil.fingerprint(),
+            }]
+        );
+        let forged = vec![intro((IDS[0], &evil), (IDS[3], &key(4)))];
+        let d = dir(&[(IDS[0], &evil), (IDS[3], &key(4))]);
+        let set = run(&[pin(IDS[0], &a)], &[], &forged, &d);
+        assert_eq!(ids(&set), [IDS[0]]);
+    }
+
+    #[test]
+    fn target_must_be_in_directory_with_matching_keys() {
+        let (a, b, other) = (key(1), key(2), key(7));
+        let intros = vec![intro((IDS[0], &a), (IDS[1], &b))];
+        let missing = dir(&[(IDS[0], &a)]);
+        assert_eq!(
+            ids(&run(&[pin(IDS[0], &a)], &[], &intros, &missing)),
+            [IDS[0]]
+        );
+        let wrong = dir(&[(IDS[0], &a), (IDS[1], &other)]);
+        assert_eq!(
+            ids(&run(&[pin(IDS[0], &a)], &[], &intros, &wrong)),
             [IDS[0]]
         );
     }
 
-    fn intro_statement_for(
-        by: &DeviceKeys,
-        target: &DeviceKeys,
-        target_id: &str,
-    ) -> IntroStatement {
-        IntroStatement {
-            user_id: U,
-            introducer_fp: by.fingerprint(),
-            target_id: target_id.into(),
-            target_fp: target.fingerprint(),
-            target_kind: "mobile".into(),
-            issued_at_ms: 1,
-        }
+    #[test]
+    fn by_mismatch_and_wrong_user_and_untrusted_introducer_are_ignored() {
+        let (a, b, c) = (key(1), key(2), key(3));
+        let d = dir(&[(IDS[0], &a), (IDS[1], &b), (IDS[2], &c)]);
+        let by_mismatch = sign_intro(&a, IDS[3], &statement(&a, &b, IDS[1], U)).unwrap();
+        assert_eq!(
+            ids(&run(&[pin(IDS[0], &a)], &[], &[by_mismatch], &d)),
+            [IDS[0]]
+        );
+        let by_other_trusted = sign_intro(&a, IDS[1], &statement(&a, &c, IDS[2], U)).unwrap();
+        let set = run(
+            &[pin(IDS[0], &a), pin(IDS[1], &b)],
+            &[],
+            &[by_other_trusted],
+            &d,
+        );
+        assert_eq!(ids(&set), [IDS[0], IDS[1]]);
+        let wrong_user = sign_intro(&a, IDS[0], &statement(&a, &b, IDS[1], 43)).unwrap();
+        assert_eq!(
+            ids(&run(&[pin(IDS[0], &a)], &[], &[wrong_user], &d)),
+            [IDS[0]]
+        );
+        let stranger = intro((IDS[2], &c), (IDS[3], &key(4)));
+        let d2 = dir(&[(IDS[0], &a), (IDS[2], &c), (IDS[3], &key(4))]);
+        assert_eq!(
+            ids(&run(&[pin(IDS[0], &a)], &[], &[stranger], &d2)),
+            [IDS[0]]
+        );
+        let good = intro((IDS[0], &a), (IDS[1], &b));
+        let tampered = good.replace(IDS[1], IDS[2]);
+        assert_eq!(
+            ids(&run(
+                &[pin(IDS[0], &a)],
+                &[],
+                &[tampered, "garbage".into()],
+                &d
+            )),
+            [IDS[0]]
+        );
     }
 
     #[test]
@@ -841,12 +1055,9 @@ mod tests {
         let (a, b) = (key(1), key(2));
         let d = dir(&[(IDS[0], &a), (IDS[1], &b)]);
         let cached = vec![intro((IDS[0], &a), (IDS[1], &b))];
+        assert_eq!(ids(&run(&[pin(IDS[0], &a)], &[], &[], &d)), [IDS[0]]);
         assert_eq!(
-            ids(&trusted_set(&[pin(IDS[0], &a)], &[], &[], &d)),
-            [IDS[0]]
-        );
-        assert_eq!(
-            ids(&trusted_set(&[pin(IDS[0], &a)], &[], &cached, &d)),
+            ids(&run(&[pin(IDS[0], &a)], &[], &cached, &d)),
             [IDS[0], IDS[1]]
         );
     }
@@ -856,7 +1067,34 @@ mod tests {
         let (a, b, other) = (key(1), key(2), key(7));
         let d = dir(&[(IDS[0], &a), (IDS[1], &b)]);
         let intros = vec![intro((IDS[0], &a), (IDS[1], &other))];
-        let set = trusted_set(&[pin(IDS[0], &a), pin(IDS[1], &b)], &[], &intros, &d);
-        assert_eq!(set, [pin(IDS[0], &a), pin(IDS[1], &b)]);
+        let pins = [pin(IDS[0], &a), pin(IDS[1], &b)];
+        let set = run(&pins, &[], &intros, &d);
+        assert_eq!(set.trusted, pins);
+    }
+
+    #[test]
+    fn pins_with_inconsistent_fp_are_dropped() {
+        let a = key(1);
+        let mut bad = pin(IDS[0], &a);
+        bad.fp = key(2).fingerprint();
+        assert!(run(&[bad], &[], &[], &dir(&[(IDS[0], &a)]))
+            .trusted
+            .is_empty());
+    }
+
+    #[test]
+    fn forged_intros_do_not_stall_and_duplicates_are_collapsed() {
+        let (a, b, c) = (key(1), key(2), key(3));
+        let d = dir(&[(IDS[0], &a), (IDS[1], &b), (IDS[2], &c)]);
+        let mut forged = intro((IDS[0], &a), (IDS[1], &b));
+        let real_sig = parse_intro(&forged).unwrap().sig;
+        let other_sig = parse_intro(&intro((IDS[0], &key(9)), (IDS[1], &b)))
+            .unwrap()
+            .sig;
+        forged = forged.replace(&real_sig, &other_sig);
+        let mut intros = vec![forged; 50];
+        intros.push(intro((IDS[0], &a), (IDS[2], &c)));
+        let set = run(&[pin(IDS[0], &a)], &[], &intros, &d);
+        assert_eq!(ids(&set), [IDS[0], IDS[2]]);
     }
 }
