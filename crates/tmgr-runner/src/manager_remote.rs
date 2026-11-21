@@ -205,7 +205,7 @@ fn map_call(tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
     }
 }
 
-fn plain(s: &str) -> String {
+pub(crate) fn plain(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .take(MAX_ERR_CHARS)

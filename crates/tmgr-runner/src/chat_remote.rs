@@ -1,4 +1,4 @@
-use crate::manager_remote::{ready, remote_result, Link};
+use crate::manager_remote::{plain, ready, remote_result, Link};
 use serde_json::{json, Value};
 use tmgr_ipc::chat::{
     limits, Author, AuthorKind, ChatMessage, MessageKind, RoomInfo, RoomKind, RoomRef, CHAT_V,
@@ -50,14 +50,20 @@ pub fn history(
     }
     let max = rpc_limits::MAX_ROOM_LIMIT;
     let limit = limit.unwrap_or(max).clamp(1, max);
-    let res = link.call(machine, Op::Room, json!({"limit": limit}))?;
+    let res = link
+        .call(machine, Op::Room, json!({"limit": limit}))
+        .map_err(|e| plain(&e))?;
     let rows = remote_result(machine, Op::Room, res)?;
-    let all: Vec<ChatMessage> = serde_json::from_value(rows)
-        .map_err(|_| "the remote machine sent an unreadable room".to_string())?;
-    Ok(all
+    let Value::Array(rows) = rows else {
+        return Err("the remote machine sent an unreadable room".into());
+    };
+    let mut all: Vec<ChatMessage> = rows
         .into_iter()
+        .filter_map(|v| serde_json::from_value::<ChatMessage>(v).ok())
         .filter(|m| m.room == *room && m.validate().is_ok())
-        .collect())
+        .collect();
+    all.drain(..all.len().saturating_sub(limit as usize));
+    Ok(all)
 }
 
 pub fn send(
@@ -66,8 +72,12 @@ pub fn send(
     room: &RoomRef,
     body: &str,
     attachments: usize,
+    reply_to: Option<&str>,
 ) -> Result<ChatMessage, String> {
     let machine = target(link, room)?;
+    if reply_to.is_some() {
+        return Err("replies are not supported in rooms of other machines".into());
+    }
     if attachments > 0 {
         return Err("attachments are not supported in a remote room".into());
     }
@@ -80,7 +90,9 @@ pub fn send(
             limits::MAX_BODY
         ));
     }
-    let res = link.call(machine, Op::Ask, json!({"text": body}))?;
+    let res = link
+        .call(machine, Op::Ask, json!({"text": body}))
+        .map_err(|e| plain(&e))?;
     let answer = remote_result(machine, Op::Ask, res)?;
     let id = answer
         .get("id")
@@ -243,7 +255,7 @@ mod tests {
             top: false,
             ..Net::top()
         };
-        let e = send(&net, ME, &RoomRef::manager(PEER), "hi", 0).unwrap_err();
+        let e = send(&net, ME, &RoomRef::manager(PEER), "hi", 0, None).unwrap_err();
         assert_eq!(e, OTHER_MACHINE);
         assert!(net.calls().is_empty());
     }
@@ -253,7 +265,7 @@ mod tests {
         let net = Net::top();
         let room = RoomRef::session(PEER, "s1");
         assert!(history(&net, &room, None, None).is_err());
-        assert!(send(&net, ME, &room, "hi", 0).is_err());
+        assert!(send(&net, ME, &room, "hi", 0, None).is_err());
         assert!(net.calls().is_empty());
     }
 
@@ -263,7 +275,7 @@ mod tests {
         let room = RoomRef::manager("mx_00000000000000dd");
         let want = format!("unknown machine mx_00000000000000dd; known: {PEER}, {STRANGER}");
         assert_eq!(history(&net, &room, None, None).unwrap_err(), want);
-        assert_eq!(send(&net, ME, &room, "hi", 0).unwrap_err(), want);
+        assert_eq!(send(&net, ME, &room, "hi", 0, None).unwrap_err(), want);
         assert!(net.calls().is_empty());
     }
 
@@ -279,7 +291,7 @@ mod tests {
             "relay not ready"
         );
         assert_eq!(
-            send(&net, ME, &room, "hi", 0).unwrap_err(),
+            send(&net, ME, &room, "hi", 0, None).unwrap_err(),
             "relay not ready"
         );
         assert!(net.calls().is_empty());
@@ -302,7 +314,7 @@ mod tests {
         );
         let net = Net::top().replying(denied());
         assert_eq!(
-            send(&net, ME, &room, "hi", 0).unwrap_err(),
+            send(&net, ME, &room, "hi", 0, None).unwrap_err(),
             format!(
                 "machine {PEER} refused ask: allow \"ask\" in manager-remote.toml on that machine"
             )
@@ -317,6 +329,62 @@ mod tests {
         assert!(e.starts_with("refused: a b"), "{e}");
         assert!(!e.contains('\n'));
         assert!(e.chars().count() <= 200 + 10, "{e}");
+    }
+
+    #[test]
+    fn a_transport_error_is_flattened_and_cut_like_a_remote_one() {
+        let long = format!("a\nb{}", "x".repeat(500));
+        let room = RoomRef::manager(PEER);
+        let net = Net::top().replying(Err(long.clone()));
+        let e = history(&net, &room, None, None).unwrap_err();
+        assert!(e.starts_with("a b"), "{e}");
+        assert!(!e.contains('\n'));
+        assert_eq!(e.chars().count(), 200);
+        let net = Net::top().replying(Err(long));
+        let e = send(&net, ME, &room, "hi", 0, None).unwrap_err();
+        assert!(!e.contains('\n'));
+        assert_eq!(e.chars().count(), 200);
+    }
+
+    #[test]
+    fn history_keeps_good_entries_when_one_is_malformed() {
+        let room = RoomRef::manager(PEER);
+        let rows = json!([
+            msg(&mid(1), room.clone()),
+            {"id": 5, "junk": true},
+            "text",
+            msg(&mid(2), room.clone()),
+        ]);
+        let net = Net::top().replying(Ok(RpcRes::ok("r", rows)));
+        let got = history(&net, &room, None, None).unwrap();
+        assert_eq!(
+            got.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
+            [mid(1), mid(2)]
+        );
+    }
+
+    #[test]
+    fn history_keeps_at_most_limit_of_the_last_entries() {
+        let room = RoomRef::manager(PEER);
+        let rows = json!([
+            msg(&mid(1), room.clone()),
+            msg(&mid(2), room.clone()),
+            msg(&mid(3), room.clone()),
+        ]);
+        let net = Net::top().replying(Ok(RpcRes::ok("r", rows)));
+        let got = history(&net, &room, None, Some(2)).unwrap();
+        assert_eq!(
+            got.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
+            [mid(2), mid(3)]
+        );
+    }
+
+    #[test]
+    fn send_refuses_a_reply_to_without_a_call() {
+        let net = Net::top();
+        let e = send(&net, ME, &RoomRef::manager(PEER), "hi", 0, Some(&mid(1))).unwrap_err();
+        assert_eq!(e, "replies are not supported in rooms of other machines");
+        assert!(net.calls().is_empty());
     }
 
     #[test]
@@ -401,7 +469,7 @@ mod tests {
     fn send_asks_with_the_body_and_echoes_the_remote_id() {
         let net = Net::top().replying(Ok(RpcRes::ok("r", json!({"id": mid(9)}))));
         let room = RoomRef::manager(PEER);
-        let echo = send(&net, ME, &room, "  do it ", 0).unwrap();
+        let echo = send(&net, ME, &room, "  do it ", 0, None).unwrap();
         assert_eq!(
             net.calls(),
             [(PEER.into(), Op::Ask, json!({"text": "  do it "}))]
@@ -419,12 +487,12 @@ mod tests {
     fn send_refuses_attachments_empty_and_oversized_bodies_without_a_call() {
         let net = Net::top();
         let room = RoomRef::manager(PEER);
-        assert!(send(&net, ME, &room, "hi", 1)
+        assert!(send(&net, ME, &room, "hi", 1, None)
             .unwrap_err()
             .contains("attachments"));
-        assert!(send(&net, ME, &room, "  ", 0).is_err());
+        assert!(send(&net, ME, &room, "  ", 0, None).is_err());
         let big = "x".repeat(limits::MAX_BODY + 1);
-        assert!(send(&net, ME, &room, &big, 0).is_err());
+        assert!(send(&net, ME, &room, &big, 0, None).is_err());
         assert!(net.calls().is_empty());
     }
 
@@ -432,7 +500,7 @@ mod tests {
     fn send_rejects_an_answer_without_a_valid_id() {
         for r in [json!({}), json!({"id": "bad"}), json!("x")] {
             let net = Net::top().replying(Ok(RpcRes::ok("r", r)));
-            let e = send(&net, ME, &RoomRef::manager(PEER), "hi", 0).unwrap_err();
+            let e = send(&net, ME, &RoomRef::manager(PEER), "hi", 0, None).unwrap_err();
             assert_eq!(e, "the remote machine sent an unreadable answer");
         }
     }

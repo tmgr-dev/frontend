@@ -505,6 +505,32 @@ fn a_selected_remote_room_is_polled_every_15_seconds() {
 }
 
 #[test]
+fn the_next_poll_counts_from_the_completion_of_a_slow_load() {
+    let room = remote_manager(PEER_A);
+    let mut c = on_peer_a();
+    c.history(&room, None, Ok(Vec::new()));
+    assert_eq!(c.poll(100_000), None);
+    assert!(c.poll(115_000).is_some());
+    c.history(&room, None, Ok(Vec::new()));
+    c.history_done(&room, true, 140_000);
+    assert_eq!(c.poll(154_999), None);
+    assert!(c.poll(155_000).is_some());
+}
+
+#[test]
+fn after_a_failed_load_the_next_poll_waits_60_seconds() {
+    let room = remote_manager(PEER_A);
+    let mut c = on_peer_a();
+    c.history(&room, None, Ok(Vec::new()));
+    assert_eq!(c.poll(100_000), None);
+    assert!(c.poll(115_000).is_some());
+    c.history(&room, None, Err("timed out".into()));
+    c.history_done(&room, false, 140_000);
+    assert_eq!(c.poll(199_999), None);
+    assert!(c.poll(200_000).is_some());
+}
+
+#[test]
 fn a_local_room_is_never_polled() {
     let mut c = grouped();
     c.history(&manager_room(), None, Ok(Vec::new()));

@@ -18,6 +18,7 @@ const MAX_INPUT: usize = 4000;
 const LIST_W: u16 = 30;
 const MIN_WIDE: u16 = 56;
 const POLL_MS: u64 = 15_000;
+const POLL_ERR_MS: u64 = 60_000;
 const LOCAL_GROUP: &str = "This machine";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -197,6 +198,21 @@ impl ChatState {
         th.loading = true;
         self.polled = Some((room.clone(), now_ms));
         Some(ChatAction::Load { room, before: None })
+    }
+
+    pub fn history_done(&mut self, room: &RoomRef, ok: bool, now_ms: u64) {
+        if !self.is_remote(room) {
+            return;
+        }
+        if let Some((r, at)) = self.polled.as_mut() {
+            if r == room {
+                *at = if ok {
+                    now_ms
+                } else {
+                    now_ms + (POLL_ERR_MS - POLL_MS)
+                };
+            }
+        }
     }
 
     fn say(&mut self, text: &str, bad: bool) {

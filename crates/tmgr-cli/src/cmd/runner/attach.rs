@@ -679,7 +679,11 @@ impl App {
             } => {
                 self.dirty = true;
                 if let Some(c) = self.view.chat.as_mut() {
+                    let ok = result.is_ok();
                     c.history(&room, before.as_deref(), result);
+                    if before.is_none() {
+                        c.history_done(&room, ok, now_ms());
+                    }
                 }
             }
             Msg::ChatSent { room, result } => {

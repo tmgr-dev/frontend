@@ -188,6 +188,7 @@ impl Runner {
                         &q.room,
                         &q.body_md,
                         q.attachments.len(),
+                        q.reply_to.as_deref(),
                     )
                     .map(|m| to_json(&m))
                     .map_err(bad);
