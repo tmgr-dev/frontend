@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.0.143
 
 - New `tmgr usage machine [status|label NAME|on|off|sync]`: this machine sends its AI usage to your TMGR account for the AI usage page. Per local day, agent, model and task it sends tokens, cost, sessions and events (the task only when the run links to it unambiguously), plus the rate limit windows (percent used, reset time, plan) and the machine name (default: short hostname). Only the name and numbers are sent: never prompts, replies, code, paths or command lines, and an account label that looks like a path or an email is sent as `default`. It is on by default and runs by itself after each agent run and every 15 minutes while the runner is up (at most once per 5 minutes, today and yesterday), reading logs only when `tmgr usage consent` allows it. A limit message in a runner session ("5-hour limit reached", "Weekly limit reached") is recorded as a 100 % limit snapshot and sent at once. `tmgr usage machine off` stops it; removing the machine on the AI usage page makes the next send turn it off, and `tmgr usage machine on` brings it back. Needs the matching server version.
+- Chat: session messages captured from a transcript carry an optional `session_meta` (agent, model and context usage), and `chat.rooms` fills `context_pct` and `context_tokens`. The field is additive in `chat.v1`; older clients ignore it.
 
 ## 1.0.142
 
