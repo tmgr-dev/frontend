@@ -233,9 +233,14 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+const MAX_SAFE_ID: u64 = (1 << 53) - 1;
+
 fn id(field: &str, v: u64) -> Result<(), String> {
     if v == 0 {
         return Err(format!("{field} is required"));
+    }
+    if v > MAX_SAFE_ID {
+        return Err(format!("{field} is too large"));
     }
     Ok(())
 }
@@ -409,6 +414,15 @@ mod tests {
             p.user_id = 0;
         }
         assert!(nobody.validate().is_err());
+        let mut huge = comment();
+        if let ActionIn::Comment(p) = &mut huge {
+            p.task_id = MAX_SAFE_ID + 1;
+        }
+        assert!(huge.validate().is_err());
+        if let ActionIn::Comment(p) = &mut huge {
+            p.task_id = MAX_SAFE_ID;
+        }
+        assert!(huge.validate().is_ok());
         for bad in [
             "-x",
             "a..b",
