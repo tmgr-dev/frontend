@@ -78,7 +78,7 @@ fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// Flip once the chat-relay backend (Liquibase 230) ships and `relay_engine` has a real login token and user id.
-const RELAY_ENABLED: bool = false;
+const RELAY_ENABLED: bool = true;
 
 pub fn setup<R: Runtime>(app: &AppHandle<R>) {
   let runner = app.try_state::<crate::runner::Runner>().map(|r| Arc::new(local::RunnerLocal::new(Arc::new(r.inner().clone()))));

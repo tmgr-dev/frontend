@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.167 — 2026-11-21
+
+- Manager: new Manager window (tray menu or Cmd/Ctrl+Shift+M). A pinned Manager room and a chat per session with context size, markdown, attachments, reply and quote, a `/` command menu, on-device search and Decisions cards inline. Chats sync end-to-end encrypted through the relay between this desktop and your phone; adding or removing a device needs confirmation on an already trusted device. Needs backend 0.0.315 and CLI 1.0.141.
+- Correction: 0.9.166 needs CLI 1.0.141, not 1.0.140.
+
 ## 0.9.166 — 2026-11-21
 
 - Decisions: an agent can ask before it posts a comment, creates a task, opens a pull request or pushes a tag (`tmgr propose`, agent tool `propose_action`). The window shows exactly what will happen; you can edit the text, approve or reject with a reason. Only the approved content runs, from this desktop, and the agent gets the link or the reason back. Needs CLI 1.0.140. Phone approval of these cards comes later.
