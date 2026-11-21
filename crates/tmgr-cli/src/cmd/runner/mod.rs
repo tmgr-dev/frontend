@@ -34,6 +34,7 @@ pub(crate) mod cloud;
 mod gate;
 mod gc;
 mod local;
+pub mod manager;
 pub(crate) mod marked_queue;
 pub(crate) mod menu;
 mod observe;
@@ -98,6 +99,11 @@ pub enum RunnerCommands {
     Session {
         #[command(subcommand)]
         command: SessionCmd,
+    },
+    /// [experimental] Start or inspect the manager agent that oversees the other sessions on this machine
+    Manager {
+        #[command(subcommand)]
+        command: manager::ManagerCmd,
     },
 }
 
@@ -615,6 +621,7 @@ pub fn internal_entry() -> Option<i32> {
         Some("__permission-hook") if args.len() == 2 => {
             Some(tmgr_runner::permit_hook::hook_main(&args[1]))
         }
+        Some("__manager-mcp") if args.len() == 1 => Some(manager::mcp_main()),
         Some("__sandbox-exec") => Some(tmgr_runner::sandbox::exec_helper(&args[1..])),
         Some("__agent-work") if args.len() == 1 => Some(local::agent_work_main()),
         _ => None,

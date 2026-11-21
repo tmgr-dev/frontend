@@ -4205,6 +4205,8 @@ impl Runner {
         if req.manager && prof.id == "claude-code" {
             argv.push("--mcp-config".to_string());
             argv.push(crate::manager::claude_mcp_config(&self.cfg.self_exe));
+            argv.push("--allowedTools".to_string());
+            argv.push(crate::manager::claude_allowed_tools());
         }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
             let args = prof.prompt_args(&bundle::prompt_with(
