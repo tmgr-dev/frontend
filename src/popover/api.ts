@@ -19,4 +19,4 @@ export const onPopoverModel = (
 	listen<PopoverModel>('popover://model', (event) => handler(event.payload));
 
 export const onPopoverShown = (handler: () => void): Promise<UnlistenFn> =>
-	listen('popover://shown', () => handler());
+	listen('popover://show', () => handler());

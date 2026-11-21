@@ -434,6 +434,7 @@ fn request_show<R: Runtime>(app: &AppHandle<R>, rect: &tauri::Rect) {
   *store.anchor.lock().unwrap() = anchor_for(app, rect_area(rect));
   store.pending.store(true, Ordering::SeqCst);
   let _ = app.emit_to(LABEL, "popover://show", ());
+  let _ = app.emit_to("main", "popover://show", ());
   let handle = app.clone();
   std::thread::spawn(move || {
     std::thread::sleep(SHOW_FALLBACK);

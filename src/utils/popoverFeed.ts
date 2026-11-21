@@ -193,7 +193,7 @@ export const startPopoverFeed = ({
 	const interval = setInterval(refresh, REFRESH_MS);
 	window.addEventListener('focus', refresh);
 	import('@tauri-apps/api/event')
-		.then(({ listen }) => listen('popover://shown', refresh))
+		.then(({ listen }) => listen('popover://show', refresh))
 		.then((stop) => {
 			if (stopped) stop();
 			else unlisten = stop;
