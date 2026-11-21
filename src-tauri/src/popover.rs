@@ -609,6 +609,7 @@ pub(crate) enum Action {
   Menu(String),
   OpenUsage,
   OpenRunner,
+  OpenRoutines,
   RoutineDone(i64),
 }
 
@@ -665,6 +666,7 @@ pub(crate) fn classify(id: &str, state: &TrayState, decisions_available: bool) -
     "close" => Ok(Action::Close),
     "open-usage" => Ok(Action::OpenUsage),
     "open-runner" => Ok(Action::OpenRunner),
+    "open-routines" => Ok(Action::OpenRoutines),
     "resume-last" => idle_recent(state)
       .next()
       .map(|t| Action::Menu(format!("switch:{}", t.key())))
@@ -698,6 +700,10 @@ pub fn popover_action<R: Runtime>(app: AppHandle<R>, id: String) -> Result<(), S
     Action::OpenRunner => {
       crate::tray::show_main(&app);
       let _ = app.emit_to("main", "popover://open-runner", ());
+    }
+    Action::OpenRoutines => {
+      crate::tray::show_main(&app);
+      let _ = app.emit_to("main", "popover://open-routines", ());
     }
     Action::RoutineDone(routine) => {
       let _ = app.emit_to("main", "popover://routine-done", json!({ "id": routine }));
@@ -1061,6 +1067,7 @@ mod tests {
       ("close", Ok(Action::Close)),
       ("open-usage", Ok(Action::OpenUsage)),
       ("open-runner", Ok(Action::OpenRunner)),
+      ("open-routines", Ok(Action::OpenRoutines)),
       ("routine-done:42", Ok(Action::RoutineDone(42))),
     ];
     for (id, expected) in table {
@@ -1068,7 +1075,7 @@ mod tests {
     }
     for id in [
       "open:9:9", "stop:2:20", "switch:0:0", "plugin-item:nope", "dnd:forever", "dnd:", "routine-done:x", "bogus", "",
-      "open-usage ", "Quit",
+      "open-usage ", "open-routines ", "Quit",
     ] {
       assert!(classify(id, &s, true).is_err(), "{id} should be rejected");
     }
@@ -1183,7 +1190,7 @@ mod tests {
     let s = state();
     let ids = [
       "open:1:10", "stop:1:11", "switch:2:21", "plugin-item:p1", "dnd:1h", "open", "manager", "shortcuts", "autostart", "quit",
-      "tray_check_for_updates", "decisions", "resume-last", "close", "open-usage", "open-runner", "routine-done:42",
+      "tray_check_for_updates", "decisions", "resume-last", "close", "open-usage", "open-runner", "open-routines", "routine-done:42",
     ];
     for id in ids {
       let class = action_class(&classify(id, &s, true).unwrap());
@@ -1195,7 +1202,7 @@ mod tests {
   #[test]
   fn actions_that_show_main_are_not_hide_only() {
     let s = state();
-    for id in ["open:1:10", "open", "shortcuts", "decisions", "manager", "open-usage", "open-runner", "plugin-item:p1"] {
+    for id in ["open:1:10", "open", "shortcuts", "decisions", "manager", "open-usage", "open-runner", "open-routines", "plugin-item:p1"] {
       assert_eq!(action_class(&classify(id, &s, true).unwrap()), ActionClass::HideAndShowMain, "{id}");
     }
     for id in ["close", "dnd:1h", "autostart", "quit", "routine-done:42"] {
