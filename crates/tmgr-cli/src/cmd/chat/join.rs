@@ -31,6 +31,7 @@ pub trait JoinPort {
     fn peers(&self) -> std::result::Result<usize, String>;
     fn is_joined(&self) -> bool;
     fn join(&self, code: &str) -> std::result::Result<(), String>;
+    fn reset_pending_join(&self) -> std::result::Result<(), String>;
     fn poll(&self) -> std::result::Result<(), String>;
 }
 
@@ -50,6 +51,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> JoinPort for RelayEngine<T, K, S> {
 
     fn join(&self, code: &str) -> std::result::Result<(), String> {
         self.join_with_code(code)
+    }
+
+    fn reset_pending_join(&self) -> std::result::Result<(), String> {
+        RelayEngine::reset_pending_join(self)
     }
 
     fn poll(&self) -> std::result::Result<(), String> {
@@ -72,7 +77,11 @@ pub fn drive(
     if peers > 0 && port.is_joined() {
         return Ok(Outcome::AlreadyJoined);
     }
-    if peers == 0 {
+    let fresh = !code.trim().is_empty();
+    if peers > 0 && fresh {
+        port.reset_pending_join()?;
+    }
+    if peers == 0 || fresh {
         port.join(code)?;
     }
     let mut fails = 0;
@@ -159,6 +168,7 @@ mod tests {
         peers: Cell<usize>,
         joined: Cell<bool>,
         join_calls: RefCell<Vec<String>>,
+        resets: Cell<usize>,
         join_result: std::result::Result<(), String>,
         polls: RefCell<Vec<std::result::Result<(), String>>>,
         join_ok_after: Cell<Option<usize>>,
@@ -170,6 +180,7 @@ mod tests {
                 peers: Cell::new(peers),
                 joined: Cell::new(joined),
                 join_calls: RefCell::new(Vec::new()),
+                resets: Cell::new(0),
                 join_result: Ok(()),
                 polls: RefCell::new(polls),
                 join_ok_after: Cell::new(None),
@@ -189,6 +200,11 @@ mod tests {
             self.peers.set(1);
             self.joined.set(false);
             self.join_result.clone()
+        }
+        fn reset_pending_join(&self) -> std::result::Result<(), String> {
+            self.resets.set(self.resets.get() + 1);
+            self.peers.set(0);
+            Ok(())
         }
         fn poll(&self) -> std::result::Result<(), String> {
             let mut q = self.polls.borrow_mut();
@@ -218,11 +234,23 @@ mod tests {
     }
 
     #[test]
-    fn an_unfinished_join_is_resumed_without_posting_again() {
+    fn an_unfinished_join_is_resumed_without_posting_again_when_no_code_is_given() {
         let m = Mock::new(1, false, vec![Ok(())]);
         m.join_ok_after.set(Some(0));
-        assert_eq!(drive(&m, "code", &no_sleep), Ok(Outcome::Joined));
+        assert_eq!(drive(&m, "", &no_sleep), Ok(Outcome::Joined));
         assert!(m.join_calls.borrow().is_empty());
+        assert_eq!(m.resets.get(), 0);
+    }
+
+    #[test]
+    fn a_timed_out_join_followed_by_a_new_code_posts_again() {
+        let m = Mock::new(1, false, vec![]);
+        assert_eq!(drive(&m, "old", &no_sleep), Err(TIMEOUT.into()));
+        m.join_ok_after.set(Some(0));
+        m.polls.borrow_mut().push(Ok(()));
+        assert_eq!(drive(&m, "new", &no_sleep), Ok(Outcome::Joined));
+        assert_eq!(m.resets.get(), 2);
+        assert_eq!(*m.join_calls.borrow(), ["old", "new"]);
     }
 
     #[test]

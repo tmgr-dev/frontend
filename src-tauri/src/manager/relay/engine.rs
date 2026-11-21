@@ -11,7 +11,7 @@ use tmgr_chat_relay::api::{self, Directory, Msg, Request};
 use tmgr_chat_relay::fields::{check_device_id, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
-  decode_join_code, encode_join_code, join_mac, parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set, verify_join_mac,
+  decode_join_code, encode_join_code, join_mac, parse_intro, parse_revoke, sign_intro, sign_revoke, trusted_set_by_kind, may_vouch, verify_join_mac,
   verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, RevokeStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
@@ -229,7 +229,7 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
   entries.extend(
     c.st.trusted.iter().chain(c.st.base.iter()).map(|d| DirEntry { device_id: d.id.clone(), sign_pub_b64: d.sign_pub.clone(), kex_pub_b64: d.kex_pub.clone() }),
   );
-  let set = trusted_set(uid, &pins, &c.st.revoked, &intros, &entries);
+  let set = trusted_set_by_kind(uid, &pins, &c.st.revoked, &intros, &entries, Some(&c.st.kinds));
   let mut out: Vec<Dev> = Vec::new();
   for t in &set.trusted {
     let in_dir = dir_devices.iter().find(|d| d.device_id == t.device_id && fingerprint(&d.sign_pub, &d.kex_pub) == t.fp);
@@ -298,14 +298,27 @@ fn pin_kind(c: &mut Core, id: &str, kind: &str, now: u64) {
 }
 
 fn apply_intro_kinds(c: &mut Core, now: u64) {
-  let signed: Vec<(String, String)> = c
-    .st
-    .trusted
-    .iter()
-    .flat_map(|d| c.st.intros.iter().filter_map(|i| parse_intro(i).ok()).filter(|p| p.parsed.target_id == d.id && p.parsed.target_fp == d.fp).map(|p| (d.id.clone(), p.parsed.target_kind.clone())))
-    .collect();
-  for (id, kind) in signed {
-    pin_kind(c, &id, &kind, now);
+  loop {
+    let before = c.st.kinds.len();
+    let signed: Vec<(String, String)> = c
+      .st
+      .trusted
+      .iter()
+      .flat_map(|d| {
+        c.st
+          .intros
+          .iter()
+          .filter_map(|i| parse_intro(i).ok())
+          .filter(|p| p.parsed.target_id == d.id && p.parsed.target_fp == d.fp && may_vouch(c.st.kinds.get(&p.by).map(String::as_str)))
+          .map(|p| (d.id.clone(), p.parsed.target_kind.clone()))
+      })
+      .collect();
+    for (id, kind) in signed {
+      pin_kind(c, &id, &kind, now);
+    }
+    if c.st.kinds.len() == before {
+      break;
+    }
   }
 }
 

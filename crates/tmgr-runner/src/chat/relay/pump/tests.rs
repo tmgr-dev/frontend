@@ -229,8 +229,10 @@ fn forward_skips_relay_origin_and_survives_a_full_queue_and_a_closed_subscriptio
     let push = |m: ChatMessage| ChatPush { message: m };
     let local = msg(AuthorKind::Session, MACHINE, None);
     let echoed = msg(AuthorKind::Owner, MACHINE, Some("dev-1"));
+    let owner_typed = msg(AuthorKind::Owner, MACHINE, None);
     let second = msg(AuthorKind::Manager, MACHINE, None);
     tx_a.send(push(echoed)).unwrap();
+    tx_a.send(push(owner_typed)).unwrap();
     tx_a.send(push(local.clone())).unwrap();
     drop(tx_a);
     tx_b.send(push(second.clone())).unwrap();
@@ -248,4 +250,45 @@ fn forward_skips_relay_origin_and_survives_a_full_queue_and_a_closed_subscriptio
     assert_eq!(queue_rx.try_recv().unwrap().id, local.id);
     assert!(queue_rx.try_recv().is_err());
     drop(tx_b);
+}
+
+#[test]
+fn send_wait_is_capped_at_five_minutes() {
+    let m = msg(AuthorKind::Manager, MACHINE, None);
+    let relay = ScriptedRelay::new(
+        vec![],
+        vec![Err("relay is busy, retry in 3600s".into()), Ok(())],
+    );
+    let sleeps = Mutex::new(Vec::new());
+    send_one(&relay, &m, &|| false, &|d| {
+        sleeps.lock().unwrap().push(d.as_secs())
+    });
+    assert_eq!(*sleeps.lock().unwrap(), [300]);
+}
+
+#[test]
+fn poll_failures_are_logged_on_the_first_error_and_on_each_class_change() {
+    let mut log = FailureLog::default();
+    let busy = r#"{"error":"busy","retry_after":9}"#;
+    assert_eq!(log.note("relay unreachable"), Some("failed"));
+    assert_eq!(log.note("relay unreachable"), None);
+    assert_eq!(log.note(busy), Some("rate limited"));
+    assert_eq!(log.note(busy), None);
+    assert_eq!(log.note("HTTP 401"), Some("unauthorized"));
+    log.clear();
+    assert_eq!(log.note("HTTP 401"), Some("unauthorized"));
+}
+
+#[test]
+fn only_agent_decision_cards_push() {
+    let mut m = msg(AuthorKind::Manager, MACHINE, None);
+    assert!(!wants_push(&m));
+    m.kind = MessageKind::Decision;
+    assert!(wants_push(&m));
+    m.author.kind = AuthorKind::Session;
+    assert!(wants_push(&m));
+    m.author.kind = AuthorKind::Owner;
+    assert!(!wants_push(&m));
+    m.author.kind = AuthorKind::System;
+    assert!(!wants_push(&m));
 }

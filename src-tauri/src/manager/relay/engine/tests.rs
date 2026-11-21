@@ -1580,3 +1580,29 @@ fn repeated_revoke_retries_the_broadcast_and_the_directory_delete() {
   assert!(!fake.0.lock().unwrap().devices.iter().any(|d| d.id == cid));
   assert_eq!(a.trust_state().unwrap().devices.iter().filter(|d| d.id == cid).count(), 1);
 }
+
+fn put_foreign_intro(fake: &Fake, signer: &Engine, target_id: &str, target_fp: &str, kind: &str) {
+  let st = IntroStatement { user_id: USER, introducer_fp: fp_of(signer), target_id: target_id.to_owned(), target_fp: target_fp.to_owned(), target_kind: kind.into(), issued_at_ms: T0 };
+  let sid = my_id(signer);
+  let intro = sign_intro(signer.lock().keys.as_ref().unwrap(), &sid, &st).unwrap();
+  let mut s = fake.0.lock().unwrap();
+  let d = s.devices.iter_mut().find(|d| d.id == target_id).unwrap();
+  d.intros.push((sid, intro));
+}
+
+#[test]
+fn a_runner_signed_intro_adds_no_device_but_a_desktop_signed_one_does() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let x = engine_with(&fake, &clock, "Desktop X");
+  x.register().unwrap();
+  let xid = my_id(&x);
+  let x_fp = x.lock().st.trusted[0].fp.clone();
+  put_foreign_intro(&fake, &r, &xid, &x_fp, "desktop");
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().devices.iter().all(|d| d.id != xid));
+  put_foreign_intro(&fake, &a, &xid, &x_fp, "desktop");
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().devices.iter().any(|d| d.id == xid && d.state == DeviceState::Trusted));
+}

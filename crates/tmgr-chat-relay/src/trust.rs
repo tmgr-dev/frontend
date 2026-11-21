@@ -472,6 +472,23 @@ pub fn trusted_set(
     intros: &[String],
     directory: &[DirEntry],
 ) -> TrustSet {
+    trusted_set_by_kind(user_id, pins, revoked, intros, directory, None)
+}
+
+pub fn may_vouch(kind: Option<&str>) -> bool {
+    matches!(kind, Some("desktop" | "mobile"))
+}
+
+/// With `kinds` (device id -> signed kind) only desktop and mobile devices may vouch; a runner key is readable by agents.
+pub fn trusted_set_by_kind(
+    user_id: u64,
+    pins: &[Trusted],
+    revoked: &[String],
+    intros: &[String],
+    directory: &[DirEntry],
+    kinds: Option<&std::collections::BTreeMap<String, String>>,
+) -> TrustSet {
+    let mut known = kinds.cloned();
     let is_revoked = |fp: &str| revoked.iter().any(|r| r == fp);
     let mut trusted: Vec<Trusted> = Vec::new();
     for p in pins {
@@ -501,6 +518,12 @@ pub fn trusted_set(
             {
                 continue;
             }
+            if known
+                .as_ref()
+                .is_some_and(|k| !may_vouch(k.get(&intro.by).map(String::as_str)))
+            {
+                continue;
+            }
             let Some(introducer) = trusted
                 .iter()
                 .find(|t| t.device_id == intro.by && t.fp == st.introducer_fp)
@@ -527,6 +550,10 @@ pub fn trusted_set(
                 kex_pub: entry.kex_pub_b64.clone(),
             };
             trusted.push(added);
+            if let Some(k) = known.as_mut() {
+                k.entry(st.target_id.clone())
+                    .or_insert_with(|| st.target_kind.clone());
+            }
             changed = true;
         }
         if !changed {

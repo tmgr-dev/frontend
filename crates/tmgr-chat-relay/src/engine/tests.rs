@@ -40,6 +40,7 @@ struct Server {
     post_error: Option<String>,
     dir_error: bool,
     posts: usize,
+    pushes: Vec<bool>,
     last_seen: BTreeMap<String, u64>,
 }
 
@@ -204,6 +205,7 @@ impl Transport for Fake {
             (Method::Post, ["messages"]) => {
                 let from = caller.ok_or("401")?;
                 s.posts += 1;
+                s.pushes.push(body["push"].as_bool().unwrap_or(false));
                 if let Some(e) = s.post_error.clone() {
                     return Err(e);
                 }
@@ -390,7 +392,7 @@ fn text_msg(id: String, text: &str) -> ChatMessage {
 
 fn send<K: KeyStore>(e: &RelayEngine<Fake, K, Rec>, text: &str) -> Result<ChatMessage, String> {
     let m = text_msg(new_message_id(), text);
-    e.send_chat(&m)?;
+    e.send_chat(&m, true)?;
     Ok(m)
 }
 
@@ -2091,7 +2093,7 @@ fn send_chat_seals_to_every_trusted_device_but_self_for_any_author_kind() {
         device: None,
         agent: Some("claude-code".into()),
     };
-    r.send_chat(&msg).unwrap();
+    r.send_chat(&msg, true).unwrap();
     assert_eq!(
         (
             fake.queue_len(&aid),
@@ -2113,6 +2115,134 @@ fn send_chat_refuses_an_invalid_message_before_any_request() {
     let (fake, clock) = (Fake::default(), Clock::new(T0));
     let (a, _b) = pair(&fake, &clock);
     let posts = fake.posts();
-    assert!(a.send_chat(&text_msg("m_short".into(), "x")).is_err());
+    assert!(a.send_chat(&text_msg("m_short".into(), "x"), true).is_err());
     assert_eq!(fake.posts(), posts);
+}
+
+fn put_foreign_intro(fake: &Fake, signer: &Engine, target_id: &str, target_fp: &str, kind: &str) {
+    let st = IntroStatement {
+        user_id: USER,
+        introducer_fp: fp_of(signer),
+        target_id: target_id.to_owned(),
+        target_fp: target_fp.to_owned(),
+        target_kind: kind.into(),
+        issued_at_ms: T0,
+    };
+    let sid = my_id(signer);
+    let intro = sign_intro(signer.lock().keys.as_ref().unwrap(), &sid, &st).unwrap();
+    let mut s = fake.0.lock().unwrap();
+    let d = s.devices.iter_mut().find(|d| d.id == target_id).unwrap();
+    d.intros.push((sid, intro));
+}
+
+#[test]
+fn a_runner_signed_intro_adds_no_device() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let r = join_as(&fake, &clock, &a, "Runner", "runner");
+    let x = engine_with(&fake, &clock, "Desktop X");
+    x.register().unwrap();
+    let xid = my_id(&x);
+    let x_fp = x.lock().st.trusted[0].fp.clone();
+    put_foreign_intro(&fake, &r, &xid, &x_fp, "desktop");
+    a.poll_once().unwrap();
+    r.poll_once().unwrap();
+    for e in [&a, &r] {
+        assert!(e.trust_state().unwrap().devices.iter().all(|d| d.id != xid));
+    }
+    assert!(!a.lock().st.kinds.contains_key(&xid));
+}
+
+#[test]
+fn a_desktop_signed_intro_still_adds_a_device() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let x = engine_with(&fake, &clock, "Desktop X");
+    x.register().unwrap();
+    let xid = my_id(&x);
+    let x_fp = x.lock().st.trusted[0].fp.clone();
+    put_foreign_intro(&fake, &a, &xid, &x_fp, "desktop");
+    b.poll_once().unwrap();
+    assert!(b
+        .trust_state()
+        .unwrap()
+        .devices
+        .iter()
+        .any(|d| d.id == xid && d.state == DeviceState::Trusted && d.kind == "desktop"));
+}
+
+#[test]
+fn a_runner_signed_kind_is_not_pinned() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let r = join_as(&fake, &clock, &a, "Runner", "runner");
+    let bid = my_id(&b);
+    for d in fake.0.lock().unwrap().devices.iter_mut() {
+        d.intros.clear();
+    }
+    a.lock().st.intros.clear();
+    a.lock().st.kinds.remove(&bid);
+    let b_fp = fp_of(&b);
+    put_foreign_intro(&fake, &r, &bid, &b_fp, "desktop");
+    a.poll_once().unwrap();
+    assert!(!a.lock().st.kinds.contains_key(&bid));
+}
+
+#[test]
+fn a_runner_neither_publishes_intros_nor_opens_join_codes() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let r = join_as(&fake, &clock, &a, "Runner", "runner");
+    assert!(intros_of(&fake, &my_id(&a)).is_empty());
+    assert!(r.open_join_code().is_err());
+}
+
+#[test]
+fn a_runner_seals_only_to_desktop_and_mobile_devices() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+    r1.poll_once().unwrap();
+    let (aid, r2id) = (my_id(&a), my_id(&r2));
+    assert!(r1
+        .trust_state()
+        .unwrap()
+        .devices
+        .iter()
+        .any(|d| d.id == r2id));
+    let before = (fake.queue_len(&aid), fake.queue_len(&r2id));
+    r1.send_chat(&text_msg(new_message_id(), "x"), false)
+        .unwrap();
+    assert_eq!(
+        (fake.queue_len(&aid), fake.queue_len(&r2id)),
+        (before.0 + 1, before.1)
+    );
+}
+
+#[test]
+fn send_chat_posts_with_the_given_push_flag() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, _b) = pair(&fake, &clock);
+    a.send_chat(&text_msg(new_message_id(), "quiet"), false)
+        .unwrap();
+    a.send_chat(&text_msg(new_message_id(), "loud"), true)
+        .unwrap();
+    let s = fake.0.lock().unwrap();
+    assert_eq!(&s.pushes[s.pushes.len() - 2..], [false, true]);
+}
+
+#[test]
+fn reset_pending_join_lets_a_fresh_code_post_again() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let b = engine_with(&fake, &clock, "Desktop B");
+    b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+    assert!(!b.is_joined());
+    b.reset_pending_join().unwrap();
+    assert!(b.is_joined());
+    assert_eq!(b.trust_state().unwrap().devices.len(), 1);
+    let posts = fake.posts();
+    b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+    assert_eq!(fake.posts(), posts + 1);
 }

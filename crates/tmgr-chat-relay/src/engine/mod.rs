@@ -14,9 +14,9 @@ use crate::api::{self, Directory, Msg, Request};
 use crate::fields::{check_device_id, check_fp};
 use crate::keys::{fingerprint, DeviceKeys};
 use crate::trust::{
-    decode_join_code, encode_join_code, join_mac, parse_intro, parse_revoke, sign_intro,
-    sign_revoke, trusted_set, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode,
-    JoinMacInput, RevokeStatement, Trusted,
+    decode_join_code, encode_join_code, join_mac, may_vouch, parse_intro, parse_revoke, sign_intro,
+    sign_revoke, trusted_set_by_kind, verify_join_mac, verify_revoke, DirEntry, IntroStatement,
+    JoinCode, JoinMacInput, RevokeStatement, Trusted,
 };
 use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 
@@ -246,7 +246,14 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
                 kex_pub_b64: d.kex_pub.clone(),
             }),
     );
-    let set = trusted_set(uid, &pins, &c.st.revoked, &intros, &entries);
+    let set = trusted_set_by_kind(
+        uid,
+        &pins,
+        &c.st.revoked,
+        &intros,
+        &entries,
+        Some(&c.st.kinds),
+    );
     let mut out: Vec<Dev> = Vec::new();
     for t in &set.trusted {
         let in_dir = dir_devices
@@ -336,19 +343,29 @@ fn pin_kind(c: &mut Core, id: &str, kind: &str, now: u64) {
 }
 
 fn apply_intro_kinds(c: &mut Core, now: u64) {
-    let signed: Vec<(String, String)> =
-        c.st.trusted
-            .iter()
-            .flat_map(|d| {
-                c.st.intros
-                    .iter()
-                    .filter_map(|i| parse_intro(i).ok())
-                    .filter(|p| p.parsed.target_id == d.id && p.parsed.target_fp == d.fp)
-                    .map(|p| (d.id.clone(), p.parsed.target_kind.clone()))
-            })
-            .collect();
-    for (id, kind) in signed {
-        pin_kind(c, &id, &kind, now);
+    loop {
+        let before = c.st.kinds.len();
+        let signed: Vec<(String, String)> =
+            c.st.trusted
+                .iter()
+                .flat_map(|d| {
+                    c.st.intros
+                        .iter()
+                        .filter_map(|i| parse_intro(i).ok())
+                        .filter(|p| {
+                            p.parsed.target_id == d.id
+                                && p.parsed.target_fp == d.fp
+                                && may_vouch(c.st.kinds.get(&p.by).map(String::as_str))
+                        })
+                        .map(|p| (d.id.clone(), p.parsed.target_kind.clone()))
+                })
+                .collect();
+        for (id, kind) in signed {
+            pin_kind(c, &id, &kind, now);
+        }
+        if c.st.kinds.len() == before {
+            break;
+        }
     }
 }
 
@@ -718,6 +735,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
+        if self.kind == "runner" {
+            return Ok(());
+        }
         let (id, keys) = Self::own(c)?;
         let now = self.now();
         let mut reqs = Vec::new();
@@ -748,6 +768,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn open_join_code(&self) -> Result<String, String> {
+        if self.kind == "runner" {
+            return Err("a runner cannot issue join codes".into());
+        }
         let mut g = self.lock();
         let c = &mut *g;
         self.ensure_registered(c)?;
@@ -1110,7 +1133,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
     }
 
-    pub fn send_chat(&self, msg: &ChatMessage) -> Result<(), String> {
+    pub fn send_chat(&self, msg: &ChatMessage, push: bool) -> Result<(), String> {
         msg.validate()?;
         let mut g = self.lock();
         let c = &mut *g;
@@ -1119,17 +1142,41 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
             return Err("this device is not a trusted member of the chat yet".into());
         }
+        let runner = self.kind == "runner";
         let targets: Vec<Dev> =
             c.st.trusted
                 .iter()
                 .filter(|d| d.id != id.device_id)
+                .filter(|d| !runner || may_vouch(c.st.kinds.get(&d.id).map(String::as_str)))
                 .cloned()
                 .collect();
         if targets.is_empty() {
             return Err("there are no other trusted devices to send to".into());
         }
         let payload = serde_json::to_value(msg).map_err(err)?;
-        self.seal_and_post(c, "chat", &msg.id, &payload, &targets, true)?;
+        self.seal_and_post(c, "chat", &msg.id, &payload, &targets, push)?;
+        self.save_now(c)
+    }
+
+    pub fn reset_pending_join(&self) -> Result<(), String> {
+        let mut g = self.lock();
+        let c = &mut *g;
+        if c.st.joined {
+            return Ok(());
+        }
+        let own = c.identity.as_ref().map(|i| i.device_id.clone());
+        let stale: Vec<String> =
+            c.st.base
+                .iter()
+                .filter(|d| Some(&d.id) != own.as_ref())
+                .map(|d| d.id.clone())
+                .collect();
+        for id in stale {
+            c.st.kinds.remove(&id);
+            c.st.base.retain(|d| d.id != id);
+            c.st.trusted.retain(|d| d.id != id);
+        }
+        c.st.joined = true;
         self.save_now(c)
     }
 

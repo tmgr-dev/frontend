@@ -9,7 +9,7 @@ use tmgr_chat_relay::api::Request;
 use tmgr_chat_relay::engine::{
     retry_after_secs, ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Slot, Transport,
 };
-use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush};
+use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind};
 
 use super::store::RelayDir;
 use crate::chat::{Incoming, IngestError, Ingested};
@@ -18,7 +18,6 @@ const LABEL: &str = "Runner";
 const CADENCE: Duration = Duration::from_secs(5);
 const BACKOFF_START: Duration = Duration::from_secs(5);
 const BACKOFF_CAP: Duration = Duration::from_secs(300);
-const RETRY_AFTER_CAP: u64 = 3600;
 const WAIT_SETUP: Duration = Duration::from_secs(5);
 const WAIT_BROKEN: Duration = Duration::from_secs(60);
 const OUT_QUEUE: usize = 1024;
@@ -45,8 +44,13 @@ impl<T: Transport, K: KeyStore, S: ChatSink> Relay for RelayEngine<T, K, S> {
     }
 
     fn send(&self, msg: &ChatMessage) -> Result<(), String> {
-        self.send_chat(msg)
+        self.send_chat(msg, wants_push(msg))
     }
+}
+
+fn wants_push(msg: &ChatMessage) -> bool {
+    matches!(msg.author.kind, AuthorKind::Manager | AuthorKind::Session)
+        && msg.kind == MessageKind::Decision
 }
 
 pub struct RelaySink {
@@ -101,19 +105,48 @@ fn retry_hint(e: &str) -> Option<u64> {
 }
 
 fn wait_for(backoff: Duration, err: &str) -> Duration {
-    let hinted = Duration::from_secs(retry_hint(err).unwrap_or(0).min(RETRY_AFTER_CAP));
+    let hinted = Duration::from_secs(retry_hint(err).unwrap_or(0).min(BACKOFF_CAP.as_secs()));
     backoff.max(hinted)
+}
+
+fn error_class(e: &str) -> &'static str {
+    if retry_hint(e).is_some() {
+        "rate limited"
+    } else if e.contains("401") || e.contains("unauthorized") {
+        "unauthorized"
+    } else {
+        "failed"
+    }
+}
+
+#[derive(Default)]
+struct FailureLog(Option<&'static str>);
+
+impl FailureLog {
+    fn note(&mut self, e: &str) -> Option<&'static str> {
+        let class = error_class(e);
+        (self.0.replace(class) != Some(class)).then_some(class)
+    }
+
+    fn clear(&mut self) {
+        self.0 = None;
+    }
 }
 
 pub fn run_poll(relay: &dyn Relay, stop: &dyn Fn() -> bool, sleep: &dyn Fn(Duration)) {
     let mut backoff = BACKOFF_START;
+    let mut failures = FailureLog::default();
     while !stop() {
         match relay.poll() {
             Ok(()) => {
                 backoff = BACKOFF_START;
+                failures.clear();
                 sleep(CADENCE);
             }
             Err(e) => {
+                if let Some(class) = failures.note(&e) {
+                    crate::daemon::log(&format!("chat relay: poll failed ({class})"));
+                }
                 sleep(wait_for(backoff, &e));
                 backoff = (backoff * 2).min(BACKOFF_CAP);
             }
@@ -129,7 +162,9 @@ pub fn forward(
     let mut rx = subscribe();
     while !stop() {
         match rx.recv_timeout(RECV_TICK) {
-            Ok(push) if push.message.author.device.is_some() => {}
+            Ok(push)
+                if push.message.author.device.is_some()
+                    || push.message.author.kind == AuthorKind::Owner => {}
             Ok(push) => match queue.try_send(push.message) {
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) => {
