@@ -9,6 +9,9 @@ pub struct LinkScope {
     pub agents: Vec<String>,
     pub models: Vec<String>,
     pub max: u32,
+    pub remote_control: bool,
+    pub allow_bypass: bool,
+    pub allow_no_sandbox: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +30,12 @@ struct ScopeRec {
     models: Vec<String>,
     #[serde(default)]
     max: u32,
+    #[serde(default)]
+    remote_control: bool,
+    #[serde(default)]
+    allow_bypass: bool,
+    #[serde(default)]
+    allow_no_sandbox: bool,
 }
 
 #[derive(Deserialize)]
@@ -107,15 +116,48 @@ pub fn read(link: &str) -> Result<Option<LinkTrust>, String> {
     }
     let text =
         std::fs::read_to_string(&path).map_err(|e| format!("cannot read the trust store: {e}"))?;
+    parse(&text, link)
+}
+
+fn parse(text: &str, link: &str) -> Result<Option<LinkTrust>, String> {
     let store: StoreRec =
-        toml::from_str(&text).map_err(|_| "the trust store is not valid".to_string())?;
+        toml::from_str(text).map_err(|_| "the trust store is not valid".to_string())?;
     Ok(store.leaders.get(link).map(|l| LinkTrust {
         scope: LinkScope {
             repos: l.scope.repos.clone(),
             agents: l.scope.agents.clone(),
             models: l.scope.models.clone(),
             max: l.scope.max,
+            remote_control: l.scope.remote_control,
+            allow_bypass: l.scope.allow_bypass,
+            allow_no_sandbox: l.scope.allow_no_sandbox,
         },
         generation: store.generations.get(link).copied().unwrap_or(0),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const OLD: &str = "[leaders.laptop.scope]\nrepos = [\"/r\"]\nagents = [\"claude-code\"]\nmax = 2\n\n[generations]\nlaptop = 3\n";
+
+    #[test]
+    fn a_scope_without_the_privilege_fields_has_them_all_off() {
+        let t = parse(OLD, "laptop").unwrap().unwrap();
+        assert_eq!(t.generation, 3);
+        assert_eq!(t.scope.max, 2);
+        assert!(!t.scope.remote_control && !t.scope.allow_bypass && !t.scope.allow_no_sandbox);
+    }
+
+    #[test]
+    fn the_privilege_fields_are_read_when_true() {
+        let text = "[leaders.laptop.scope]\nremote_control = true\nallow_bypass = true\nallow_no_sandbox = true\n";
+        let s = parse(text, "laptop").unwrap().unwrap().scope;
+        assert!(s.remote_control && s.allow_bypass && s.allow_no_sandbox);
+        let only = "[leaders.laptop.scope]\nallow_bypass = true\n";
+        let s = parse(only, "laptop").unwrap().unwrap().scope;
+        assert!(s.allow_bypass && !s.remote_control && !s.allow_no_sandbox);
+        assert!(parse(text, "other").unwrap().is_none());
+    }
 }
