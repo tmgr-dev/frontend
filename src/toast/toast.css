@@ -81,6 +81,58 @@ html.dark .toast-root {
 	grid-template-columns: auto 1fr auto;
 	gap: 2px 10px;
 	align-items: start;
+	position: relative;
+	overflow: hidden;
+}
+
+.toast .tx {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 20px;
+	height: 20px;
+	display: grid;
+	place-items: center;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	padding: 0;
+}
+
+.toast .tx:hover {
+	background: var(--hover);
+	color: var(--fg);
+}
+
+.toast .tt {
+	margin-right: 22px;
+}
+
+.toast .prog {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 3px;
+	background: var(--accent);
+	transform-origin: left center;
+	transform: scaleX(var(--from, 1));
+	animation: toast-drain var(--drain, 0ms) linear forwards;
+	animation-play-state: var(--state, running);
+}
+
+@keyframes toast-drain {
+	to {
+		transform: scaleX(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.toast .prog {
+		animation: none;
+	}
 }
 
 .toast .ti {

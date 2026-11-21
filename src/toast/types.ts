@@ -10,6 +10,9 @@ export type ToastView = {
 	meta?: string;
 	actions: ToastAction[];
 	at: number;
+	remainingMs?: number | null;
+	totalMs?: number | null;
+	paused?: boolean;
 };
 
 export type ToastList = {

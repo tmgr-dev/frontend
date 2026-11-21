@@ -1,4 +1,12 @@
-import { ageLabel, glyphOf, heightOf, isOk } from '../model';
+import {
+	ageLabel,
+	drainStyle,
+	glyphOf,
+	heightOf,
+	hoverKey,
+	isOk,
+	progressFraction,
+} from '../model';
 
 describe('toast model', () => {
 	it('labels the age of a toast', () => {
@@ -18,5 +26,30 @@ describe('toast model', () => {
 	it('rounds the measured height up', () => {
 		expect(heightOf(120.2)).toBe(121);
 		expect(heightOf(-3)).toBe(0);
+	});
+
+	it('computes the countdown fraction', () => {
+		expect(progressFraction(5_000, 10_000)).toBe(0.5);
+		expect(progressFraction(20_000, 10_000)).toBe(1);
+		expect(progressFraction(-5, 10_000)).toBe(0);
+		expect(progressFraction(null, 10_000)).toBeNull();
+		expect(progressFraction(5_000, null)).toBeNull();
+		expect(progressFraction(5_000, 0)).toBeNull();
+	});
+
+	it('builds the drain style from the remaining time', () => {
+		expect(
+			drainStyle({ remainingMs: 2_500, totalMs: 10_000, paused: false }),
+		).toEqual({ '--from': '0.25', '--drain': '2500ms', '--state': 'running' });
+		expect(
+			drainStyle({ remainingMs: 2_500, totalMs: 10_000, paused: true }),
+		)?.toMatchObject({ '--state': 'paused' });
+		expect(drainStyle({ remainingMs: null, totalMs: null })).toBeNull();
+	});
+
+	it('pauses while hovered or focused', () => {
+		expect(hoverKey(false, false)).toBe(false);
+		expect(hoverKey(true, false)).toBe(true);
+		expect(hoverKey(false, true)).toBe(true);
 	});
 });

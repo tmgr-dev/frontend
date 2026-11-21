@@ -2,6 +2,7 @@
 	"window": {
 		"label": "TMGR notifications"
 	},
+	"dismiss": "Dismiss",
 	"more": "{count} more · click to expand",
 	"moreHidden": "{count} more"
 }

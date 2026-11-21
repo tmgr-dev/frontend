@@ -6,7 +6,27 @@
 				:key="item.id"
 				class="toast"
 				role="alert"
+				@pointerenter="setHover(item.id, 'hover', true)"
+				@pointerleave="setHover(item.id, 'hover', false)"
+				@focusin="setHover(item.id, 'focus', true)"
+				@focusout="setHover(item.id, 'focus', false)"
 			>
+				<button
+					type="button"
+					class="tx"
+					:aria-label="$t('toast.dismiss')"
+					@click="dismiss(item.id)"
+				>
+					<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+						<path
+							d="M2 2l8 8M10 2l-8 8"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							fill="none"
+						/>
+					</svg>
+				</button>
 				<div class="ti" :class="{ ok: isOk(item.kind) }">
 					{{ glyphOf(item.kind) }}
 				</div>
@@ -27,6 +47,12 @@
 						{{ action.label }}
 					</button>
 				</div>
+				<div
+					v-if="drainStyle(item)"
+					:key="`${item.id}:${item.remainingMs}:${item.paused}`"
+					class="prog"
+					:style="drainStyle(item) ?? undefined"
+				></div>
 			</div>
 			<button
 				v-if="list.more > 0 && !list.expanded"
@@ -54,11 +80,20 @@
 	import {
 		onToastList,
 		toastAction,
+		toastDismiss,
 		toastExpand,
+		toastHover,
 		toastResize,
 		toastState,
 	} from './api';
-	import { ageLabel, glyphOf, heightOf, isOk } from './model';
+	import {
+		ageLabel,
+		drainStyle,
+		glyphOf,
+		heightOf,
+		hoverKey,
+		isOk,
+	} from './model';
 	import type { ToastList } from './types';
 
 	export default defineComponent({
@@ -83,6 +118,28 @@
 				void toastAction(toastId, actionId).catch((error) =>
 					console.error('toast action failed', error),
 				);
+			};
+
+			const dismiss = (toastId: string) => {
+				void toastDismiss(toastId).catch(() => undefined);
+			};
+
+			const pointer = new Map<string, { hover: boolean; focus: boolean }>();
+			const setHover = (
+				toastId: string,
+				part: 'hover' | 'focus',
+				value: boolean,
+			) => {
+				const prev = pointer.get(toastId) ?? { hover: false, focus: false };
+				const next = { ...prev, [part]: value };
+				pointer.set(toastId, next);
+				if (
+					hoverKey(prev.hover, prev.focus) !== hoverKey(next.hover, next.focus)
+				) {
+					void toastHover(toastId, hoverKey(next.hover, next.focus)).catch(
+						() => undefined,
+					);
+				}
 			};
 
 			const expand = () => {
@@ -113,7 +170,19 @@
 				if (timer) clearInterval(timer);
 			});
 
-			return { root, list, clock, act, expand, ageLabel, glyphOf, isOk };
+			return {
+				root,
+				list,
+				clock,
+				act,
+				dismiss,
+				setHover,
+				expand,
+				ageLabel,
+				drainStyle,
+				glyphOf,
+				isOk,
+			};
 		},
 	});
 </script>
