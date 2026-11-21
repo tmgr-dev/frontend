@@ -70,7 +70,7 @@ impl Runner {
                         body_md: q.body_md,
                         reply_to: q.reply_to,
                         attachments: q.attachments,
-                        device: q.device,
+                        device: None,
                     };
                     let deliver = |body: &str| match self.chat_target(&room) {
                         None => chat::Delivery::NoTarget,
@@ -236,7 +236,6 @@ mod tests {
             attachments: Vec::new(),
             id: None,
             ts_ms: None,
-            device: None,
         })
     }
 
@@ -330,7 +329,6 @@ mod tests {
             attachments: Vec::new(),
             id: None,
             ts_ms: None,
-            device: None,
         });
         for p in [
             foreign,
@@ -387,7 +385,7 @@ mod tests {
         if let Some(ts) = ts {
             p["ts_ms"] = json!(ts);
         }
-        p["device"] = json!("d_phone1");
+        p["device"] = json!("d_forged");
         p
     }
 
@@ -409,7 +407,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(first.id, id);
-        assert_eq!(first.author.device.as_deref(), Some("d_phone1"));
+        assert_eq!(first.author.device, None);
         let again: ChatMessage = serde_json::from_value(
             call(
                 &rt,
@@ -452,7 +450,6 @@ mod tests {
             attachments: Vec::new(),
             id: Some(tmgr_ipc::chat::message_id_at(2, [3; 10])),
             ts_ms: Some(ts),
-            device: None,
         });
         assert_eq!(
             call(&rt, &c, chat_method::SEND, ghost).unwrap_err().code,

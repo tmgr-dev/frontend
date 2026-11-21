@@ -401,7 +401,6 @@ impl Client {
             attachments: Vec::new(),
             id: None,
             ts_ms: None,
-            device: None,
         };
         from_value(self.call(wire_chat::method::SEND, to_params(&params)?)?)
     }
