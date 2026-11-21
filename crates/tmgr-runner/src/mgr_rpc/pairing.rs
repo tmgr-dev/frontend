@@ -47,6 +47,16 @@ fn save_rows(runner_dir: &Path, rows: Vec<Value>) -> Result<(), String> {
         .map_err(|e| format!("{MACHINES_FILE} was not written: {e}"))
 }
 
+fn lock(runner_dir: &Path) -> Result<std::fs::File, String> {
+    use std::os::fd::AsRawFd;
+    let f = std::fs::File::open(runner_dir)
+        .map_err(|e| format!("the runner dir could not be opened: {e}"))?;
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return Err("the runner dir could not be locked".into());
+    }
+    Ok(f)
+}
+
 pub fn add_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), String> {
     let peer: PeerLine =
         serde_json::from_str(line).map_err(|_| "the line must be the JSON printed by show")?;
@@ -56,6 +66,7 @@ pub fn add_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), Str
             "the label must be 1 to {MAX_LABEL_CHARS} characters without control characters"
         ));
     }
+    let _held = lock(runner_dir)?;
     let mut rows = load_rows(runner_dir)?;
     let taken = |key: &str, val: &str| rows.iter().any(|r| r[key].as_str() == Some(val));
     if taken("id", &peer.id) {
@@ -74,6 +85,7 @@ pub fn add_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), Str
 }
 
 pub fn remove_machine(runner_dir: &Path, id: &str) -> Result<(), String> {
+    let _held = lock(runner_dir)?;
     let mut rows = load_rows(runner_dir)?;
     let before = rows.len();
     rows.retain(|r| r["id"].as_str() != Some(id));
@@ -284,5 +296,36 @@ mod tests {
         assert!(remove_machine(d.path(), B).is_err());
         assert!(remove_machine(d.path(), "nope").is_err());
         assert_eq!(file_text(d.path()), before);
+    }
+    #[test]
+    fn concurrent_adds_and_a_remove_never_lose_an_update() {
+        let d = dir();
+        add_machine(d.path(), &line(A, DEV_A, FP_A), "a").unwrap();
+        let p = d.path().to_path_buf();
+        let ids: Vec<String> = (0..8).map(|i| format!("mx_{:016x}", 0x100 + i)).collect();
+        let handles: Vec<_> = ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| {
+                let (p, id) = (p.clone(), id.clone());
+                std::thread::spawn(move || {
+                    let dev = format!("{:08x}-2222-3333-4444-555555555555", i + 0x10);
+                    add_machine(&p, &line(&id, &dev, FP_B), "x").unwrap();
+                })
+            })
+            .chain(std::iter::once({
+                let p = p.clone();
+                std::thread::spawn(move || remove_machine(&p, A).unwrap())
+            }))
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        let got: Vec<String> = rows(d.path()).into_iter().map(|(id, _)| id).collect();
+        assert_eq!(got.len(), 8);
+        assert!(!got.iter().any(|id| id == A));
+        for id in &ids {
+            assert!(got.contains(id));
+        }
     }
 }

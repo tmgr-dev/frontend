@@ -222,6 +222,8 @@ pub fn run_send(
     }
 }
 
+pub type OnDevice = Arc<dyn Fn(Option<(String, String)>) + Send + Sync>;
+
 pub struct Setup {
     pub dir: PathBuf,
     pub machine: String,
@@ -231,7 +233,7 @@ pub struct Setup {
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
     pub rpc: Arc<RpcInbox>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
-    pub on_device: Arc<dyn Fn(Option<(String, String)>) + Send + Sync>,
+    pub on_device: OnDevice,
 }
 
 type Engine = RelayEngine<DynTransport, RelayDir, RelaySink>;
