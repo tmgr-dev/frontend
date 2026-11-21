@@ -80,8 +80,9 @@ pub mod caps {
     pub const SWITCH_V1: &str = "switch.v1";
     pub const SPAWNAUTH_V1: &str = "spawnauth.v1";
     pub const OBJECT_EXEMPT_V1: &str = "object_exempt.v1";
+    pub const MANAGER_UNRESTRICTED_V1: &str = "manager.unrestricted.v1";
 
-    pub const ALL: [&str; 45] = [
+    pub const ALL: [&str; 46] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -127,6 +128,7 @@ pub mod caps {
         SWITCH_V1,
         SPAWNAUTH_V1,
         OBJECT_EXEMPT_V1,
+        MANAGER_UNRESTRICTED_V1,
     ];
 }
 
@@ -143,6 +145,7 @@ pub mod method {
     pub const SESSIONS_RENAME: &str = "sessions.rename";
     pub const SESSIONS_WORKLOG: &str = "sessions.worklog";
     pub const RUNS_CREATE: &str = "runs.create";
+    pub const MANAGER_UNRESTRICTED: &str = "manager.unrestricted";
     pub const LAYOUT_GET: &str = "layout.get";
     pub const LAYOUT_SET: &str = "layout.set";
     pub const ATTACH_OPEN: &str = "attach.open";

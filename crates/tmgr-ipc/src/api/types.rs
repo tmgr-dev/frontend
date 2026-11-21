@@ -136,6 +136,23 @@ pub struct NoSandbox {
     pub env: BTreeMap<String, String>,
 }
 
+/// Params of `manager.unrestricted` (`client: "cli"` only): a manager without the sandbox, in bypass mode, after the follower PIN.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagerUnrestrictedReq {
+    pub run: RunCreateReq,
+    pub pin: String,
+}
+
+impl std::fmt::Debug for ManagerUnrestrictedReq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ManagerUnrestrictedReq")
+            .field("run", &self.run)
+            .field("pin", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Params of `orchestrator.create` (`client: "cli"` only): the runner builds the command and the prompt itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

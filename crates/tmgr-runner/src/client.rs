@@ -12,10 +12,10 @@ use tmgr_ipc::api::{
     CandidateInfo, CheckpointDiff, CheckpointDiffParams, CheckpointEnableParams, CheckpointList,
     CheckpointRestoreParams, CheckpointRestored, CreateReq, DiffAgainst, EventMsg, ForkParams,
     HandoffFinishReq, HandoffFinishResp, HandoffPrepareReq, HandoffPrepareResp, IdParams,
-    KillParams, LayoutSetParams, Line, LookupParams, OrchestratorCreateReq, PermissionAnswer,
-    PermissionCard, RenameParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus, ScreenPush,
-    SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary,
-    CLIENT_CLI,
+    KillParams, LayoutSetParams, Line, LookupParams, ManagerUnrestrictedReq, OrchestratorCreateReq,
+    PermissionAnswer, PermissionCard, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
+    RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
+    Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::chat as wire_chat;
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -165,6 +165,13 @@ impl Client {
     pub fn create_run(&mut self, req: RunCreateReq) -> io::Result<SessionInfo> {
         let params = serde_json::to_value(req).map_err(io::Error::other)?;
         from_value(self.call(method::RUNS_CREATE, params)?)
+    }
+
+    pub fn create_unrestricted_manager(
+        &mut self,
+        req: ManagerUnrestrictedReq,
+    ) -> io::Result<SessionInfo> {
+        from_value(self.call(method::MANAGER_UNRESTRICTED, to_params(&req)?)?)
     }
 
     pub fn create_orchestrator(&mut self, req: OrchestratorCreateReq) -> io::Result<SessionInfo> {

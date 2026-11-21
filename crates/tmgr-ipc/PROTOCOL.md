@@ -127,6 +127,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `manager.v1` | `manager` on `runs.create` and `SessionInfo` (section 5, "Manager session") |
 | `run_prompt.v1` | `prompt` on `runs.create` |
 | `spawnauth.v1` | method `spawn.challenge` (CLI and desktop only) |
+| `manager.unrestricted.v1` | method `manager.unrestricted` (CLI only, follower PIN; section 5, "Unrestricted manager") |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |

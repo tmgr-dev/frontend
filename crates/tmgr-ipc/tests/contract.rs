@@ -971,7 +971,8 @@ fn constants_are_pinned() {
             "handoff.v1",
             "switch.v1",
             "spawnauth.v1",
-            "object_exempt.v1"
+            "object_exempt.v1",
+            "manager.unrestricted.v1"
         ]
     );
     let methods = [
@@ -1108,7 +1109,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 45);
+    assert_eq!(w.caps.len(), 46);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1774,7 +1775,7 @@ fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
 fn switch_method_cap_and_shapes() {
     assert_eq!(method::SESSIONS_SWITCH, "sessions.switch");
     assert_eq!(caps::SWITCH_V1, "switch.v1");
-    assert_eq!(caps::ALL[caps::ALL.len() - 3], caps::SWITCH_V1);
+    assert_eq!(caps::ALL[caps::ALL.len() - 4], caps::SWITCH_V1);
     let req = SwitchReq {
         session: "s_aaaaaaaaaa".into(),
         to: "codex".into(),
@@ -1795,4 +1796,23 @@ fn switch_method_cap_and_shapes() {
         .unwrap()
         .warnings
         .is_empty());
+}
+
+#[test]
+fn manager_unrestricted_shape_hides_the_pin() {
+    assert_eq!(method::MANAGER_UNRESTRICTED, "manager.unrestricted");
+    assert_eq!(caps::MANAGER_UNRESTRICTED_V1, "manager.unrestricted.v1");
+    let req: ManagerUnrestrictedReq = serde_json::from_value(serde_json::json!({
+        "run": {"profile": "claude-code", "cwd": "/w", "manager": true},
+        "pin": "493817"
+    }))
+    .unwrap();
+    assert_eq!(req.pin, "493817");
+    assert!(!format!("{req:?}").contains("493817"));
+    let extra = serde_json::from_value::<ManagerUnrestrictedReq>(serde_json::json!({
+        "run": {"profile": "claude-code", "cwd": "/w"},
+        "pin": "493817",
+        "yes": true
+    }));
+    assert!(extra.is_err());
 }
