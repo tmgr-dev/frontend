@@ -816,12 +816,11 @@ fn msg_n(n: u8, kind: &str) -> ChatMessage {
 }
 
 fn join_as(fake: &Fake, clock: &Clock, a: &Engine, label: &str, kind: &str) -> Engine {
-  let n = engine_with(fake, clock, label);
+  let n = engine_with(fake, clock, label).with_kind(kind);
   let code = a.open_join_code().unwrap();
   n.join_with_code(&code).unwrap();
   a.poll_once().unwrap();
   let id = my_id(&n);
-  set_kind(fake, &id, kind);
   a.decide_join(&id, true).unwrap();
   n.poll_once().unwrap();
   a.poll_once().unwrap();
@@ -1358,4 +1357,86 @@ fn alerts_are_capped_at_fifty() {
   }
   assert_eq!(g.st.alerts.len(), 50);
   assert_eq!(g.st.alerts[0].device_id, "d10");
+}
+
+#[test]
+fn signed_kind_wins_over_a_lying_directory() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = engine_with(&fake, &clock, "Runner").with_kind("runner");
+  let code = a.open_join_code().unwrap();
+  r.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let rid = my_id(&r);
+  set_kind(&fake, &rid, "desktop");
+  a.decide_join(&rid, true).unwrap();
+  r.poll_once().unwrap();
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().devices.iter().any(|d| d.id == rid && d.kind == "runner"));
+  let aid = my_id(&a);
+  post_chat(&r, &aid, &msg_n(2, "owner"));
+  assert!(a.poll_once().unwrap().is_empty());
+  post_chat(&r, &aid, &msg_n(3, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn directory_only_kind_is_unknown_and_cannot_author_owner_messages() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (aid, bid) = (my_id(&a), my_id(&b));
+  a.lock().st.kinds.remove(&bid);
+  a.lock().st.intros.clear();
+  fake.0.lock().unwrap().devices.iter_mut().find(|d| d.id == bid).unwrap().intros.clear();
+  post_chat(&b, &aid, &msg_n(2, "owner"));
+  assert!(a.poll_once().unwrap().is_empty());
+  a.lock().st.kinds.insert(bid.clone(), "desktop".into());
+  post_chat(&b, &aid, &msg_n(3, "owner"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn a_conflicting_signed_kind_raises_an_alert_and_is_not_applied() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  {
+    let mut g = a.lock();
+    pin_kind(&mut g, &bid, "runner", T0);
+    assert_eq!(g.st.kinds.get(&bid).map(String::as_str), Some("desktop"));
+  }
+  assert_eq!(alert_kinds(&a), vec!["kind_conflict".to_owned()]);
+}
+
+fn code_with_kind(a: &Engine, kind: Option<&str>) -> String {
+  let code = a.open_join_code().unwrap();
+  let (stripped, _) = split_code_kind(&code).unwrap();
+  match kind {
+    Some(k) => add_code_kind(&stripped, k).unwrap(),
+    None => stripped,
+  }
+}
+
+#[test]
+fn join_code_kind_must_match_the_directory_and_is_pinned() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  a.register().unwrap();
+  let aid = my_id(&a);
+  set_kind(&fake, &aid, "runner");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  assert!(b.join_with_code(&code_with_kind(&a, Some("mobile"))).is_err());
+  assert_eq!(b.trust_state().unwrap().devices.len(), 1);
+  assert!(!b.lock().st.kinds.contains_key(&aid));
+  b.join_with_code(&code_with_kind(&a, Some("runner"))).unwrap();
+  assert_eq!(b.lock().st.kinds.get(&aid).map(String::as_str), Some("runner"));
+}
+
+#[test]
+fn v1_join_code_without_kind_still_joins_with_unknown_kind() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.join_with_code(&code_with_kind(&a, None)).unwrap();
+  assert!(!b.lock().st.kinds.contains_key(&my_id(&a)));
 }
