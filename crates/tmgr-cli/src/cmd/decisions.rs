@@ -922,6 +922,7 @@ impl Spec {
             diff,
             diffs,
             patches,
+            code: None,
             replaces: self.replaces,
             key: self.key.map(|k| k.trim().to_string()),
             force_new: self.force_new,

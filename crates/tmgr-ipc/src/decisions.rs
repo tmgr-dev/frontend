@@ -193,6 +193,18 @@ pub struct PatchIn {
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodeIn {
+    pub file: String,
+    #[serde(default = "first_line")]
+    pub start: u32,
+    pub text: String,
+}
+
+fn first_line() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CardIn {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -218,6 +230,8 @@ pub struct CardIn {
     pub diffs: Vec<DiffSpec>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patches: Vec<PatchIn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<CodeIn>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replaces: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -299,6 +313,14 @@ pub struct ThreadRef {
     pub side: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ChoiceOut {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
 /// What the agent receives. `type` is `answer` (final unless `deferred`) or `message` (interim).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Event {
@@ -311,6 +333,8 @@ pub struct Event {
     pub choice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<ChoiceOut>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1042,6 +1066,30 @@ mod tests {
         assert!(serde_json::to_string(&old)
             .unwrap()
             .contains(r#""side":"old""#));
+    }
+
+    #[test]
+    fn choices_and_code_are_optional_on_the_wire() {
+        let plain = Event::default();
+        assert!(!serde_json::to_string(&plain).unwrap().contains("choices"));
+        let old: Event = serde_json::from_str(r#"{"card_id":"c","type":"answer"}"#).unwrap();
+        assert!(old.choices.is_empty());
+        let ev = Event {
+            choices: vec![ChoiceOut {
+                id: "a".into(),
+                label: "A".into(),
+                note: None,
+            }],
+            ..plain
+        };
+        let text = serde_json::to_string(&ev).unwrap();
+        assert!(text.contains(r#""choices":[{"id":"a","label":"A"}]"#));
+        assert_eq!(serde_json::from_str::<Event>(&text).unwrap(), ev);
+        let card: CardIn = serde_json::from_str(r#"{"title":"t"}"#).unwrap();
+        assert_eq!(card.code, None);
+        assert!(!serde_json::to_string(&card).unwrap().contains("code"));
+        let code: CodeIn = serde_json::from_str(r#"{"file":"a.rs","text":"x"}"#).unwrap();
+        assert_eq!(code.start, 1);
     }
 
     const TOKEN_VALUE: &str = "s3cr3t-token-value";
