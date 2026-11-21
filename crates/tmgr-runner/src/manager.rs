@@ -612,6 +612,7 @@ pub trait Host {
     ) -> Result<Verdict, String>;
     fn spawn_done(&self, card_id: &str, session: &str);
     fn propose_spawn(&self, proposal: &SpawnProposal) -> Result<Proposed, String>;
+    fn approved_spawn(&self, card_id: &str) -> Option<SignedSpawn>;
 }
 
 fn text_arg<'a>(
@@ -859,7 +860,7 @@ fn propose_spawn(host: &dyn Host, a: &Value) -> Result<Value, String> {
 }
 
 fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
-    let approval = match a.get("approval") {
+    let mut approval = match a.get("approval") {
         None => None,
         Some(v) => Some(
             serde_json::from_value::<SignedSpawn>(v.clone()).map_err(|_| {
@@ -868,6 +869,20 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
             })?,
         ),
     };
+    if let Some(card) = text_arg(a, "card_id", 1, 128)? {
+        match &approval {
+            Some(signed) if signed.card_id != card => {
+                return Err("approval and card_id belong to different cards".into());
+            }
+            Some(_) => {}
+            None => {
+                approval = Some(
+                    host.approved_spawn(card)
+                        .ok_or("this card is not approved yet")?,
+                );
+            }
+        }
+    }
     if approval.is_some() {
         if truthy(a, "no_sandbox") {
             return Err("a spawn without the sandbox is not allowed, even with an approval".into());
@@ -974,6 +989,7 @@ fn switch(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::os::unix::fs::{symlink, MetadataExt};
     use std::sync::Arc;
     use tmgr_ipc::api::{Origin, TeamLink};
@@ -1278,6 +1294,7 @@ mod tests {
         verdict: Mutex<Result<bool, String>>,
         done: Mutex<Vec<(String, String)>>,
         proposed: Mutex<Vec<SpawnProposal>>,
+        approved: Mutex<HashMap<String, SignedSpawn>>,
         precheck: Mutex<Result<(), String>>,
         downgrade: bool,
         pins: Mutex<Vec<Option<CwdPin>>>,
@@ -1326,6 +1343,7 @@ mod tests {
                 verdict: Mutex::new(Ok(true)),
                 done: Mutex::default(),
                 proposed: Mutex::default(),
+                approved: Mutex::default(),
                 precheck: Mutex::new(Ok(())),
                 downgrade: false,
                 pins: Mutex::default(),
@@ -1422,6 +1440,9 @@ mod tests {
                 exp_ms: 9,
                 req_sha256: p.req_sha256(),
             })
+        }
+        fn approved_spawn(&self, card: &str) -> Option<SignedSpawn> {
+            self.approved.lock().unwrap().get(card).cloned()
         }
     }
 
@@ -1533,6 +1554,30 @@ mod tests {
             h.sent.lock().unwrap()[0],
             ("s_bbbbbbbbbb".to_string(), "hi".to_string())
         );
+    }
+
+    #[test]
+    fn spawn_by_card_id_uses_the_stored_approval_or_refuses() {
+        let h = Fake::new();
+        let st = State::default();
+        let signed: SignedSpawn = serde_json::from_value(json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"card_9","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"})).unwrap();
+        let args = json!({"profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass", "card_id": "card_9"});
+        let err = call(&h, &st, "spawn_session", args.clone()).unwrap_err();
+        assert_eq!(err, "this card is not approved yet");
+        assert!(h.spawned.lock().unwrap().is_empty());
+        h.approved.lock().unwrap().insert("card_9".into(), signed);
+        let v = call(&h, &st, "spawn_session", args.clone()).unwrap();
+        assert_eq!(v["id"], "s_ffffffffff");
+        assert_eq!(h.done.lock().unwrap()[0].0, "card_9");
+        let mut other = args.clone();
+        other["card_id"] = json!("card_8");
+        other["approval"] = json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"card_9","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"});
+        assert!(call(&h, &st, "spawn_session", other)
+            .unwrap_err()
+            .contains("different cards"));
+        let mut refused = args;
+        refused["no_sandbox"] = json!(true);
+        assert!(call(&h, &st, "spawn_session", refused).is_err());
     }
 
     #[test]

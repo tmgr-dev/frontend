@@ -2,29 +2,39 @@ use super::*;
 use crate::chat::relay::store::RelayDir;
 use crate::manager::{Proposed, Verdict};
 use crate::spawnauth::{
-    CardError, CardResult, CardState, ClaimOutcome, Identity, IssueOutcome, KeyOffer, SpawnAuth,
-    TrustSource,
+    CardBudget, CardError, CardResult, CardState, CheckOutcome, ClaimOutcome, Identity,
+    IssueOutcome, KeyOffer, SpawnAuth, TrustSource,
 };
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use tmgr_chat_relay::api::Request as RelayRequest;
-use tmgr_chat_relay::engine::SpawnKeySink;
 use tmgr_chat_relay::engine::{
     ChatSink, DeviceState, EngineConfig, RelayEngine, Transport, TrustState,
 };
+use tmgr_chat_relay::engine::{SpawnKeySink, SpawnOkSink};
 use tmgr_chat_relay::trust::SpawnKey;
-use tmgr_ipc::api::{SpawnChallengeParams, SpawnChallengeResult};
+use tmgr_ipc::api::{SpawnCardParams, SpawnCardResult, SpawnChallengeParams, SpawnChallengeResult};
+use tmgr_ipc::chat::{
+    Author, AuthorKind, ChatMessage, DecisionRef, MessageKind, SpawnCard, CHAT_V,
+};
 use tmgr_spawn_auth::{b64_encode, OfferOutcome, Refusal, SignedSpawn, SpawnProposal, TrustStatus};
 
 const CHALLENGES_PER_MINUTE: usize = 10;
 const NO_ACCOUNT: &str = "spawn approval is not available: this machine is not linked to an account through the chat relay";
 const STORE_ERROR: &str = "spawn approval store is not available";
 const INTERRUPTED: &str = "interrupted; ask again with a new card";
+const CARD_RT_CAP: usize = 64;
+const CARD_RT_KEEP_MS: u64 = 10 * 60 * 1000;
+const CARD_TICK: Duration = Duration::from_secs(15);
+const OK_INBOX_CAP: usize = 16;
+const OK_TICK: Duration = Duration::from_millis(500);
+const SUMMARY_MAX: usize = 1024;
 
 #[derive(Default)]
 pub(super) struct SpawnGate {
     slot: Mutex<Option<(Identity, Arc<SpawnAuth>)>>,
     asked: Mutex<VecDeque<u64>>,
     proposed: Mutex<VecDeque<u64>>,
+    cards: Mutex<HashMap<String, CardRt>>,
     #[cfg(test)]
     pub(super) fixed: Mutex<Option<Arc<SpawnAuth>>>,
 }
@@ -45,10 +55,52 @@ impl ChatSink for Discard {
     }
 }
 
+#[derive(Default)]
+struct CardRt {
+    msg_id: Option<String>,
+    proposer: Option<String>,
+    approval: Option<SignedSpawn>,
+    exp_ms: u64,
+    started_noted: bool,
+}
+
 #[derive(Clone, Copy)]
 enum Budget {
     Human,
     Manager,
+}
+
+impl Budget {
+    fn card(self) -> CardBudget {
+        match self {
+            Budget::Human => CardBudget::Human,
+            Budget::Manager => CardBudget::Manager,
+        }
+    }
+}
+
+fn clip(mut s: String, max: usize) -> String {
+    if s.len() > max {
+        let mut end = max;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+    }
+    s
+}
+
+fn card_summary(p: &SpawnProposal) -> String {
+    let mode = match p.mode {
+        tmgr_spawn_auth::SpawnMode::Ask => "ask",
+        tmgr_spawn_auth::SpawnMode::AcceptEdits => "accept-edits",
+        tmgr_spawn_auth::SpawnMode::Bypass => "bypass",
+    };
+    let mut line = format!("Start {} in {} ({mode})", p.profile, p.cwd);
+    if let Some(what) = p.task.as_deref().or(p.name.as_deref()) {
+        line.push_str(&format!(" - {what}"));
+    }
+    clip(line, SUMMARY_MAX)
 }
 
 fn relay_state(dir: &Path, machine: &str) -> Option<(u64, TrustState)> {
@@ -176,7 +228,7 @@ impl Runner {
             .auth(self)
             .map_err(|m| api(ErrorCode::Forbidden, m))?;
         match auth
-            .issue(card_id, proposal, now)
+            .issue_for(card_id, proposal, budget.card(), now)
             .map_err(|e| api(ErrorCode::InvalidParams, card_error(e)))?
         {
             IssueOutcome::Challenge(c) => Ok(SpawnChallengeResult {
@@ -213,13 +265,23 @@ impl Runner {
             .map(|r| to_json(&r))
     }
 
+    #[cfg(test)]
     pub(super) fn propose_spawn(&self, proposal: &SpawnProposal) -> Result<Proposed, String> {
+        self.propose_spawn_by(proposal, None)
+    }
+
+    pub(super) fn propose_spawn_by(
+        &self,
+        proposal: &SpawnProposal,
+        proposer: Option<&str>,
+    ) -> Result<Proposed, String> {
         let mut raw = [0u8; 16];
         getrandom::fill(&mut raw).map_err(|_| "no random source".to_string())?;
         let card_id = format!("card_{}", crate::spawnauth::hex_lower(&raw));
         let c = self
             .spawn_challenge_within(&card_id, proposal, Budget::Manager)
             .map_err(|e| e.msg)?;
+        self.announce_card(&card_id, proposal, &c, proposer);
         Ok(Proposed {
             card_id,
             exp_ms: c.exp_ms,
@@ -282,6 +344,13 @@ impl Runner {
             log(&format!(
                 "spawn approval: session {session} is running but its card was not marked"
             ));
+            return;
+        }
+        let first = lock(&self.spawn_gate.cards)
+            .get_mut(card_id)
+            .is_some_and(|c| !std::mem::replace(&mut c.started_noted, true));
+        if first {
+            self.card_reply(card_id, &format!("Started session {session}"));
         }
     }
 
@@ -290,6 +359,273 @@ impl Runner {
             .into_iter()
             .find(|s| !s.is_exited() && lock(&s.inner).meta.spawn_card.as_deref() == Some(card_id))
             .map(|s| s.info())
+    }
+}
+
+impl Runner {
+    fn announce_card(
+        &self,
+        card_id: &str,
+        proposal: &SpawnProposal,
+        c: &SpawnChallengeResult,
+        proposer: Option<&str>,
+    ) {
+        let request = tmgr_spawn_auth::b64_decode_strict(&c.req)
+            .and_then(|b| String::from_utf8(b).ok())
+            .unwrap_or_default();
+        let summary = card_summary(proposal);
+        let machine = self.chat.machine().to_owned();
+        let msg = ChatMessage {
+            v: CHAT_V,
+            id: self.chat.mint_id(),
+            room: self.chat.manager_room(),
+            author: Author {
+                kind: AuthorKind::Manager,
+                id: "manager".into(),
+                machine: Some(machine),
+                device: None,
+                agent: None,
+            },
+            ts_ms: now_ms(),
+            kind: MessageKind::Decision,
+            body_md: summary.clone(),
+            attachments: Vec::new(),
+            reply_to: None,
+            decision: Some(DecisionRef {
+                card_id: card_id.into(),
+                spawn: Some(SpawnCard {
+                    summary,
+                    request,
+                    nonce: c.nonce.clone(),
+                    exp_ms: c.exp_ms,
+                    target_id: c.target_id.clone(),
+                    target_fp: c.target_fp.clone(),
+                }),
+            }),
+            session_meta: None,
+        };
+        let msg_id = match self.chat.append(msg) {
+            Ok(m) => Some(m.id),
+            Err(e) => {
+                log(&format!(
+                    "spawn approval: the card message was not posted: {e}"
+                ));
+                None
+            }
+        };
+        let mut cards = lock(&self.spawn_gate.cards);
+        if cards.len() >= CARD_RT_CAP {
+            if let Some(oldest) = cards
+                .iter()
+                .min_by_key(|(_, c)| c.exp_ms)
+                .map(|(k, _)| k.clone())
+            {
+                cards.remove(&oldest);
+            }
+        }
+        cards.insert(
+            card_id.to_owned(),
+            CardRt {
+                msg_id,
+                proposer: proposer.map(String::from),
+                exp_ms: c.exp_ms,
+                ..CardRt::default()
+            },
+        );
+    }
+
+    fn card_reply(&self, card_id: &str, text: &str) {
+        let reply_to = lock(&self.spawn_gate.cards)
+            .get(card_id)
+            .and_then(|c| c.msg_id.clone());
+        let room = self.chat.manager_room();
+        if let Err(e) = self.chat.reply_system(&room, reply_to.as_deref(), text) {
+            log(&format!("spawn approval: a card reply was not posted: {e}"));
+        }
+    }
+
+    pub(super) fn approved_spawn(&self, card_id: &str) -> Option<SignedSpawn> {
+        lock(&self.spawn_gate.cards)
+            .get(card_id)
+            .and_then(|c| c.approval.clone())
+    }
+
+    pub(super) fn accept_spawnok(&self, signed: &SignedSpawn, now: u64) {
+        let card = signed.card_id.as_str();
+        let Ok(auth) = self.spawn_gate.auth(self) else {
+            log("spawn approval: an answer was dropped, no account is linked");
+            return;
+        };
+        let manager_card = match auth.cards().state(card) {
+            Ok(Some(CardState::Issued {
+                budget: CardBudget::Manager,
+                ..
+            })) => true,
+            Ok(_) => false,
+            Err(_) => {
+                log("spawn approval: an answer was dropped, the card store is not available");
+                return;
+            }
+        };
+        if !manager_card {
+            log("spawn approval: an answer was dropped, the card is unknown or not waiting");
+            return;
+        }
+        match auth.check(card, signed, now) {
+            Ok(CheckOutcome::Valid) => {}
+            Ok(_) | Err(_) => {
+                log("spawn approval: an answer was dropped, it did not verify");
+                return;
+            }
+        }
+        let proposer = {
+            let mut cards = lock(&self.spawn_gate.cards);
+            let entry = cards.entry(card.to_owned()).or_insert_with(|| CardRt {
+                exp_ms: signed.exp_ms,
+                ..CardRt::default()
+            });
+            if entry.approval.is_some() {
+                return;
+            }
+            entry.approval = Some(signed.clone());
+            entry.proposer.clone()
+        };
+        self.card_reply(card, "Approved on your phone. Starting the session.");
+        if let Some(session) = proposer {
+            self.mgr.queue_prompt(
+                &session,
+                &format!(
+                    "Spawn card {card} was approved. Call spawn_session with card_id \"{card}\" and the same arguments."
+                ),
+                now,
+            );
+        }
+    }
+
+    pub(super) fn card_tick(&self, now: u64) {
+        let Ok(auth) = self.spawn_gate.auth(self) else {
+            return;
+        };
+        let expired = match auth.expire_due(now) {
+            Ok(ids) => ids,
+            Err(_) => {
+                log("spawn approval: the expiry sweep failed");
+                return;
+            }
+        };
+        for id in &expired {
+            let known = lock(&self.spawn_gate.cards).contains_key(id);
+            if known {
+                self.card_reply(id, "Not approved: the card expired");
+                lock(&self.spawn_gate.cards).remove(id);
+            }
+        }
+        lock(&self.spawn_gate.cards).retain(|_, c| now <= c.exp_ms.saturating_add(CARD_RT_KEEP_MS));
+    }
+
+    pub(super) fn spawn_card_loop(&self) {
+        let mut last = Instant::now();
+        while !self.stop.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(250));
+            if last.elapsed() < CARD_TICK {
+                continue;
+            }
+            last = Instant::now();
+            self.card_tick(now_ms());
+        }
+    }
+
+    pub(super) fn spawn_card_call(&self, conn: &Conn, p: &Value) -> Result<Value, ApiErr> {
+        if conn.client != CLIENT_CLI && conn.client != CLIENT_DESKTOP {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "spawn cards are available only to the tmgr CLI and the desktop app",
+            ));
+        }
+        let q: SpawnCardParams = params(p)?;
+        let auth = self
+            .spawn_gate
+            .auth(self)
+            .map_err(|m| api(ErrorCode::Forbidden, m))?;
+        let state = auth
+            .cards()
+            .state(&q.card_id)
+            .map_err(|e| api(ErrorCode::InvalidParams, card_error(e)))?
+            .ok_or_else(|| api(ErrorCode::NotFound, "unknown card"))?;
+        let none = |state: &str| SpawnCardResult {
+            state: state.into(),
+            exp_ms: None,
+            session: None,
+            reason: None,
+        };
+        let out = match state {
+            CardState::Issued { exp_ms, .. } if now_ms() > exp_ms => SpawnCardResult {
+                reason: Some("expired".into()),
+                ..none("refused")
+            },
+            CardState::Issued { exp_ms, .. } => SpawnCardResult {
+                exp_ms: Some(exp_ms),
+                ..none(if self.approved_spawn(&q.card_id).is_some() {
+                    "approved"
+                } else {
+                    "issued"
+                })
+            },
+            CardState::Claimed { .. } => SpawnCardResult {
+                session: self.card_session(&q.card_id).map(|s| s.id),
+                ..none("claimed")
+            },
+            CardState::Spawned { session, .. } => SpawnCardResult {
+                session: Some(session),
+                ..none("spawned")
+            },
+            CardState::Refused { reason } => SpawnCardResult {
+                reason: Some(reason),
+                ..none("refused")
+            },
+        };
+        Ok(to_json(&out))
+    }
+}
+
+struct OkItem {
+    signed: SignedSpawn,
+}
+
+pub(super) struct SpawnOkInbox {
+    tx: std::sync::mpsc::SyncSender<OkItem>,
+}
+
+impl SpawnOkSink for SpawnOkInbox {
+    fn deliver_spawnok(&self, _: &str, _: &str, signed: &SignedSpawn) {
+        let sent = self.tx.try_send(OkItem {
+            signed: signed.clone(),
+        });
+        if sent.is_err() {
+            log("spawn approval: an answer was dropped, the intake is busy or stopped");
+        }
+    }
+}
+
+impl Runner {
+    pub(super) fn start_spawnok_intake(self: &Arc<Self>) -> Arc<SpawnOkInbox> {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<OkItem>(OK_INBOX_CAP);
+        let rt = self.clone();
+        let spawned = thread::Builder::new()
+            .name("spawnok-intake".into())
+            .spawn(move || {
+                while !rt.stop.load(Ordering::SeqCst) {
+                    match rx.recv_timeout(OK_TICK) {
+                        Ok(item) => rt.accept_spawnok(&item.signed, now_ms()),
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+            });
+        if spawned.is_err() {
+            log("spawn approval: the answer intake did not start");
+        }
+        Arc::new(SpawnOkInbox { tx })
     }
 }
 
@@ -534,6 +870,9 @@ mod tests {
         }
         fn propose_spawn(&self, p: &SpawnProposal) -> Result<core::Proposed, String> {
             self.inner.propose_spawn(p)
+        }
+        fn approved_spawn(&self, c: &str) -> Option<SignedSpawn> {
+            self.inner.approved_spawn(c)
         }
         fn switch(&self, id: &str, to: &str) -> Result<core::SwitchResult, String> {
             self.inner.switch(id, to)
@@ -865,8 +1204,335 @@ mod tests {
             );
         }
         assert!(limited);
-        let err = challenge(&e, CLIENT_CLI, "card_human").unwrap_err();
-        assert_ne!(err.code, ErrorCode::Limit);
+        challenge(&e, CLIENT_CLI, "card_human").unwrap();
+    }
+
+    fn room_msgs(e: &Env) -> Vec<ChatMessage> {
+        e.rt.chat
+            .history(&e.rt.chat.manager_room(), None, Some(200))
+            .unwrap()
+    }
+
+    fn card_msg(e: &Env, card: &str) -> ChatMessage {
+        room_msgs(e)
+            .into_iter()
+            .find(|m| m.decision.as_ref().is_some_and(|d| d.card_id == card))
+            .expect("card message")
+    }
+
+    fn replies(e: &Env, to: &str) -> Vec<String> {
+        room_msgs(e)
+            .into_iter()
+            .filter(|m| m.reply_to.as_deref() == Some(to))
+            .map(|m| m.body_md)
+            .collect()
+    }
+
+    fn phone_answer(e: &Env, msg: &ChatMessage) -> SignedSpawn {
+        let d = msg.decision.as_ref().unwrap();
+        let c = d.spawn.as_ref().unwrap();
+        let req_sha256 = tmgr_spawn_auth::sha256_hex(c.request.as_bytes());
+        let ts = now_ms();
+        let card = &d.card_id;
+        let signed = format!(
+            "tmgr-spawn:v1:{USER}:{}:{}:{}:{card}:{}:{ts}:{}:{req_sha256}",
+            e.fp, c.target_id, c.target_fp, c.nonce, c.exp_ms
+        );
+        SignedSpawn {
+            v: 1,
+            user_id: USER.into(),
+            device_fp: e.fp.clone(),
+            target_id: c.target_id.clone(),
+            target_fp: c.target_fp.clone(),
+            card_id: card.clone(),
+            nonce: c.nonce.clone(),
+            ts_ms: ts,
+            exp_ms: c.exp_ms,
+            req_sha256,
+            alg: "es256".into(),
+            sig: sign(&secret(3), &signed),
+        }
+    }
+
+    fn manager_prompts(e: &Env) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        e.rt.mgr.deliver_prompts(now_ms(), |p| {
+            out.push((p.session.clone(), p.text.clone()));
+            core::Delivery::Done
+        });
+        out
+    }
+
+    fn card_args(e: &Env, card: &str) -> Value {
+        serde_json::json!({
+            "profile": "claude-code", "cwd": e.work.join("a"), "permission_mode": "bypass",
+            "prompt": "go", "card_id": card
+        })
+    }
+
+    fn card_state(e: &Env, client: &str, card: &str) -> Result<SpawnCardResult, ApiErr> {
+        let (c, _peer) = conn(client);
+        e.rt.dispatch(
+            &c,
+            &Request {
+                id: 1,
+                method: method::SPAWN_CARD.into(),
+                params: serde_json::json!({"card_id": card}),
+            },
+        )
+        .map(|v| serde_json::from_value(v).unwrap())
+    }
+
+    fn wait_for(what: &str, mut f: impl FnMut() -> bool) {
+        let end = Instant::now() + Duration::from_secs(5);
+        while !f() {
+            assert!(Instant::now() < end, "timed out waiting for {what}");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_phone_approval_starts_exactly_one_session_and_reports_back_in_the_room() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = card_msg(&e, &card);
+        assert_eq!(msg.kind, MessageKind::Decision);
+        assert_eq!(msg.author.kind, AuthorKind::Manager);
+        let spawn = msg.decision.as_ref().unwrap().spawn.as_ref().unwrap();
+        assert!(spawn.summary.starts_with("Start claude-code in "));
+        assert!(spawn.summary.contains("(bypass)"));
+        let Some(CardState::Issued {
+            nonce,
+            exp_ms,
+            req_sha256,
+            target_id,
+            target_fp,
+            ..
+        }) = e.auth.cards().state(&card).unwrap()
+        else {
+            panic!("card is not issued");
+        };
+        assert_eq!(
+            tmgr_spawn_auth::sha256_hex(spawn.request.as_bytes()),
+            req_sha256
+        );
+        assert_eq!(
+            (
+                &spawn.nonce,
+                spawn.exp_ms,
+                &spawn.target_id,
+                &spawn.target_fp
+            ),
+            (&nonce, exp_ms, &target_id, &target_fp)
+        );
+        assert_eq!(card_state(&e, CLIENT_CLI, &card).unwrap().state, "issued");
+
+        let signed = phone_answer(&e, &msg);
+        let inbox = e.rt.start_spawnok_intake();
+        inbox.deliver_spawnok("phone", &e.fp, &signed);
+        wait_for("the approval", || e.rt.approved_spawn(&card).is_some());
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec!["Approved on your phone. Starting the session."]
+        );
+        let notes = manager_prompts(&e);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].0, MGR);
+        assert!(notes[0].1.contains(&card) && notes[0].1.contains("spawn_session"));
+        let got = card_state(&e, CLIENT_DESKTOP, &card).unwrap();
+        assert_eq!((got.state.as_str(), got.exp_ms), ("approved", Some(exp_ms)));
+
+        inbox.deliver_spawnok("phone", &e.fp, &signed);
+        e.rt.accept_spawnok(&signed, now_ms());
+        assert_eq!(replies(&e, &msg.id).len(), 1);
+        assert!(manager_prompts(&e).is_empty());
+
+        let first = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        let session = first["id"].as_str().unwrap().to_owned();
+        assert!(session.starts_with("s_"));
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec![
+                "Approved on your phone. Starting the session.".to_string(),
+                format!("Started session {session}")
+            ]
+        );
+        let done = card_state(&e, CLIENT_CLI, &card).unwrap();
+        assert_eq!(done.state, "spawned");
+        assert_eq!(done.session.as_deref(), Some(session.as_str()));
+
+        let again = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(again["id"], first["id"]);
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        assert_eq!(replies(&e, &msg.id).len(), 2);
+        e.rt.stop.store(true, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn an_expired_card_is_refused_and_announced_once_and_a_late_answer_is_dropped() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = card_msg(&e, &card);
+        let signed = phone_answer(&e, &msg);
+        let exp = msg
+            .decision
+            .as_ref()
+            .unwrap()
+            .spawn
+            .as_ref()
+            .unwrap()
+            .exp_ms;
+        e.rt.card_tick(exp - 1);
+        assert!(replies(&e, &msg.id).is_empty());
+        e.rt.card_tick(exp + 1);
+        assert_eq!(replies(&e, &msg.id), vec!["Not approved: the card expired"]);
+        e.rt.card_tick(exp + 2);
+        e.rt.card_tick(exp + 20_000);
+        assert_eq!(replies(&e, &msg.id).len(), 1);
+        let got = card_state(&e, CLIENT_CLI, &card).unwrap();
+        assert_eq!(got.state, "refused");
+        assert_eq!(got.reason.as_deref(), Some("expired"));
+        e.rt.accept_spawnok(&signed, exp + 3);
+        assert!(e.rt.approved_spawn(&card).is_none());
+        assert_eq!(replies(&e, &msg.id).len(), 1);
+        let err = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err();
+        assert_eq!(err, "this card is not approved yet");
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_approved_card_that_expires_before_the_spawn_loses_its_approval() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = card_msg(&e, &card);
+        e.rt.accept_spawnok(&phone_answer(&e, &msg), now_ms());
+        assert!(e.rt.approved_spawn(&card).is_some());
+        let exp = msg
+            .decision
+            .as_ref()
+            .unwrap()
+            .spawn
+            .as_ref()
+            .unwrap()
+            .exp_ms;
+        e.rt.card_tick(exp + 1);
+        assert!(e.rt.approved_spawn(&card).is_none());
+        assert!(run(&h, &e, "spawn_session", card_args(&e, &card)).is_err());
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn answers_with_a_bad_signature_another_target_or_an_unknown_card_are_dropped() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = card_msg(&e, &card);
+        let good = phone_answer(&e, &msg);
+
+        let mut bad_sig = good.clone();
+        bad_sig.sig = sign(&secret(4), "tmgr-spawn:v1:other");
+        let mut other_target = good.clone();
+        other_target.target_fp = "c".repeat(64);
+        let mut other_req = good.clone();
+        other_req.req_sha256 = "d".repeat(64);
+        let mut other_key = good.clone();
+        other_key.device_fp = "e".repeat(64);
+        let mut unknown = good.clone();
+        unknown.card_id = "card_unknown".into();
+        for wire in [bad_sig, other_target, other_req, other_key, unknown] {
+            e.rt.accept_spawnok(&wire, now_ms());
+            assert!(e.rt.approved_spawn(&wire.card_id).is_none());
+        }
+        assert!(replies(&e, &msg.id).is_empty());
+        assert!(manager_prompts(&e).is_empty());
+        let err = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err();
+        assert_eq!(err, "this card is not approved yet");
+        assert!(matches!(
+            e.auth.cards().state(&card).unwrap(),
+            Some(CardState::Issued {
+                failed_attempts: 0,
+                ..
+            })
+        ));
+        e.rt.accept_spawnok(&good, now_ms());
+        assert!(e.rt.approved_spawn(&card).is_some());
+    }
+
+    #[test]
+    fn an_answer_for_a_human_challenge_card_is_not_stored() {
+        let e = env();
+        challenge(&e, CLIENT_CLI, "card_human").unwrap();
+        let Some(CardState::Issued {
+            nonce,
+            exp_ms,
+            req_sha256,
+            target_id,
+            target_fp,
+            ..
+        }) = e.auth.cards().state("card_human").unwrap()
+        else {
+            panic!("card is not issued");
+        };
+        let ts = now_ms();
+        let msg = format!(
+            "tmgr-spawn:v1:{USER}:{}:{target_id}:{target_fp}:card_human:{nonce}:{ts}:{exp_ms}:{req_sha256}",
+            e.fp
+        );
+        let wire = SignedSpawn {
+            v: 1,
+            user_id: USER.into(),
+            device_fp: e.fp.clone(),
+            target_id,
+            target_fp,
+            card_id: "card_human".into(),
+            nonce,
+            ts_ms: ts,
+            exp_ms,
+            req_sha256,
+            alg: "es256".into(),
+            sig: sign(&secret(3), &msg),
+        };
+        e.rt.accept_spawnok(&wire, now_ms());
+        assert!(e.rt.approved_spawn("card_human").is_none());
+    }
+
+    #[test]
+    fn spawn_card_is_only_for_the_cli_and_desktop() {
+        let e = env();
+        challenge(&e, CLIENT_CLI, "card_s").unwrap();
+        for client in [CLIENT_WORKER, "other", ""] {
+            let err = card_state(&e, client, "card_s").unwrap_err();
+            assert_eq!(err.code, ErrorCode::Forbidden, "{client}");
+        }
+        for client in [CLIENT_CLI, CLIENT_DESKTOP] {
+            assert_eq!(card_state(&e, client, "card_s").unwrap().state, "issued");
+        }
+        let err = card_state(&e, CLIENT_CLI, "card_nope").unwrap_err();
+        assert_eq!(err.code, ErrorCode::NotFound);
+    }
+
+    #[test]
+    fn at_most_four_manager_cards_wait_while_a_human_challenge_still_issues() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        for _ in 0..crate::spawnauth::MAX_MANAGER_PENDING {
+            propose(&h, &e, "bypass", "a");
+        }
+        let args = serde_json::json!({
+            "profile": "claude-code", "cwd": e.work.join("a"), "permission_mode": "bypass"
+        });
+        let err = run(&h, &e, "propose_spawn", args).unwrap_err();
+        assert_eq!(err, "too many spawn cards are waiting for approval");
+        challenge(&e, CLIENT_CLI, "card_human").unwrap();
     }
 
     #[test]

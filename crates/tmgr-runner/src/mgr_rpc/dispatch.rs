@@ -1541,6 +1541,9 @@ mod tests {
         ) -> Result<crate::manager::Proposed, String> {
             self.inner.propose_spawn(proposal)
         }
+        fn approved_spawn(&self, card_id: &str) -> Option<tmgr_spawn_auth::SignedSpawn> {
+            self.inner.approved_spawn(card_id)
+        }
     }
 
     fn store_dir() -> tempfile::TempDir {

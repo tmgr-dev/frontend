@@ -143,5 +143,8 @@ pub(crate) mod testkit {
         ) -> Result<crate::manager::Proposed, String> {
             panic!("propose_spawn must never be reached")
         }
+        fn approved_spawn(&self, _: &str) -> Option<tmgr_spawn_auth::SignedSpawn> {
+            panic!("approved_spawn must never be reached")
+        }
     }
 }

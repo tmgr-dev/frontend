@@ -244,7 +244,11 @@ impl core::Host for ManagerHost<'_> {
         &self,
         proposal: &tmgr_spawn_auth::SpawnProposal,
     ) -> Result<core::Proposed, String> {
-        self.rt.propose_spawn(proposal)
+        self.rt.propose_spawn_by(proposal, Some(self.me))
+    }
+
+    fn approved_spawn(&self, card_id: &str) -> Option<tmgr_spawn_auth::SignedSpawn> {
+        self.rt.approved_spawn(card_id)
     }
 }
 

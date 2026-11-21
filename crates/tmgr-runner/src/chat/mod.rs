@@ -270,6 +270,17 @@ impl Chat {
         }
     }
 
+    pub fn reply_system(
+        &self,
+        room: &RoomRef,
+        reply_to: Option<&str>,
+        text: &str,
+    ) -> Result<ChatMessage, String> {
+        let mut msg = system_message(room, self.mint_id(), now_ms(), text);
+        msg.reply_to = reply_to.map(String::from);
+        self.append(msg)
+    }
+
     pub fn system_once(
         &self,
         room: &RoomRef,

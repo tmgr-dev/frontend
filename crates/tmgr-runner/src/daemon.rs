@@ -2993,6 +2993,7 @@ impl Runner {
                 self.checkpoints_call(req.method.as_str(), p)
             }
             method::SPAWN_CHALLENGE => self.spawn_challenge_call(conn, p),
+            method::SPAWN_CARD => self.spawn_card_call(conn, p),
             method::SESSIONS_WORKLOG => {
                 let s = self
                     .session(&session_id_param(p)?)
@@ -5614,6 +5615,8 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     rt.start_relay_pump();
     let capturer = rt.clone();
     thread::spawn(move || capturer.chat_capture_loop());
+    let card_ticker = rt.clone();
+    thread::spawn(move || card_ticker.spawn_card_loop());
     let managers = rt.clone();
     thread::spawn(move || {
         while !managers.stop.load(Ordering::SeqCst) {
