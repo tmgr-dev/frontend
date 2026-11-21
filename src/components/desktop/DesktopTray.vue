@@ -80,6 +80,11 @@
 		unwatchGitTrack,
 	} from '@/utils/gitTrack';
 	import { showSurface } from '@/utils/moduleSurfaces';
+	import {
+		completeTodayRoutine,
+		createQuickTask,
+		startPopoverFeed,
+	} from '@/utils/popoverFeed';
 	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import {
 		computed,
@@ -137,6 +142,7 @@
 			const away = ref(null);
 			const unlisteners = [];
 			let unmounted = false;
+			let feed = null;
 			let userSubscription = null;
 			let subscribedUserId = null;
 
@@ -160,6 +166,7 @@
 					pluginSections: pluginTraySections(),
 					trayTitle: pluginState.trayTitle,
 				});
+				feed?.refresh();
 			};
 
 			watch(() => props.tasks, sync, { deep: true });
@@ -262,6 +269,34 @@
 					console.error('tray action failed', error);
 					reloadActiveTasks();
 				}
+			};
+
+			const onPopoverQuickAdd = async ({ title }) => {
+				if (!title?.trim()) return;
+				try {
+					await createQuickTask(store, title);
+					toast({ title: t('desktop.popover.quickAddDone') });
+				} catch (error) {
+					console.error('popover quick add failed', error);
+					toast({
+						title: t('desktop.popover.quickAddFailed'),
+						variant: 'destructive',
+					});
+				}
+				sync();
+			};
+
+			const onPopoverRoutineDone = async ({ id }) => {
+				try {
+					await completeTodayRoutine(id);
+				} finally {
+					feed?.refresh();
+				}
+			};
+
+			const openFromPopover = async (path) => {
+				await showWindow();
+				await router.push(path);
 			};
 
 			const subscribe = (userId) => {
@@ -371,8 +406,21 @@
 			);
 
 			onMounted(async () => {
+				feed = startPopoverFeed({ store, recent: () => recent.value });
 				const { listen } = await import('@tauri-apps/api/event');
 				unlisteners.push(
+					await listen('popover://quick-add', safely(onPopoverQuickAdd)),
+					await listen('popover://routine-done', safely(onPopoverRoutineDone)),
+					await listen('popover://open-usage', () =>
+						openFromPopover('/ai-usage').catch((error) =>
+							console.error('popover open-usage failed', error),
+						),
+					),
+					await listen('popover://open-runner', () =>
+						openFromPopover('/settings?tab=experimental').catch((error) =>
+							console.error('popover open-runner failed', error),
+						),
+					),
 					await listen('tray://open', ({ payload }) =>
 						openTaskPreferringWindow(payload, store, router, showWindow),
 					),
@@ -412,6 +460,8 @@
 
 			onBeforeUnmount(() => {
 				unmounted = true;
+				feed?.stop();
+				feed = null;
 				unlisteners.forEach((unlisten) => unlisten());
 				subscribe(null);
 				pushTrayState({ running: [], recent: [] });
