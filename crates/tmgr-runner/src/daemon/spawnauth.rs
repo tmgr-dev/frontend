@@ -26,6 +26,7 @@ const CARD_RT_CAP: usize = 64;
 const CARD_RT_KEEP_MS: u64 = 10 * 60 * 1000;
 const CARD_TICK: Duration = Duration::from_secs(15);
 const OK_INBOX_CAP: usize = 16;
+const OK_PER_DEVICE: usize = 2;
 const OK_TICK: Duration = Duration::from_millis(500);
 const SUMMARY_MAX: usize = 1024;
 
@@ -589,19 +590,46 @@ impl Runner {
 }
 
 struct OkItem {
+    device: String,
     signed: SignedSpawn,
 }
 
 pub(super) struct SpawnOkInbox {
     tx: std::sync::mpsc::SyncSender<OkItem>,
+    queued: Arc<Mutex<HashMap<String, usize>>>,
+}
+
+fn spawnok_inbox() -> (SpawnOkInbox, std::sync::mpsc::Receiver<OkItem>) {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<OkItem>(OK_INBOX_CAP);
+    let queued = Arc::new(Mutex::new(HashMap::new()));
+    (SpawnOkInbox { tx, queued }, rx)
+}
+
+fn release_queued(queued: &Mutex<HashMap<String, usize>>, device: &str) {
+    let mut q = lock(queued);
+    if let Some(n) = q.get_mut(device) {
+        *n -= 1;
+        if *n == 0 {
+            q.remove(device);
+        }
+    }
 }
 
 impl SpawnOkSink for SpawnOkInbox {
-    fn deliver_spawnok(&self, _: &str, _: &str, signed: &SignedSpawn) {
-        let sent = self.tx.try_send(OkItem {
-            signed: signed.clone(),
-        });
-        if sent.is_err() {
+    fn deliver_spawnok(&self, from_device: &str, _: &str, signed: &SignedSpawn) {
+        let mut q = lock(&self.queued);
+        let n = q.get(from_device).copied().unwrap_or(0);
+        let sent = n < OK_PER_DEVICE
+            && self
+                .tx
+                .try_send(OkItem {
+                    device: from_device.to_owned(),
+                    signed: signed.clone(),
+                })
+                .is_ok();
+        if sent {
+            q.insert(from_device.to_owned(), n + 1);
+        } else {
             log("spawn approval: an answer was dropped, the intake is busy or stopped");
         }
     }
@@ -609,14 +637,18 @@ impl SpawnOkSink for SpawnOkInbox {
 
 impl Runner {
     pub(super) fn start_spawnok_intake(self: &Arc<Self>) -> Arc<SpawnOkInbox> {
-        let (tx, rx) = std::sync::mpsc::sync_channel::<OkItem>(OK_INBOX_CAP);
+        let (inbox, rx) = spawnok_inbox();
+        let queued = inbox.queued.clone();
         let rt = self.clone();
         let spawned = thread::Builder::new()
             .name("spawnok-intake".into())
             .spawn(move || {
                 while !rt.stop.load(Ordering::SeqCst) {
                     match rx.recv_timeout(OK_TICK) {
-                        Ok(item) => rt.accept_spawnok(&item.signed, now_ms()),
+                        Ok(item) => {
+                            release_queued(&queued, &item.device);
+                            rt.accept_spawnok(&item.signed, now_ms());
+                        }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     }
@@ -625,7 +657,7 @@ impl Runner {
         if spawned.is_err() {
             log("spawn approval: the answer intake did not start");
         }
-        Arc::new(SpawnOkInbox { tx })
+        Arc::new(inbox)
     }
 }
 
@@ -1226,6 +1258,28 @@ mod tests {
             .filter(|m| m.reply_to.as_deref() == Some(to))
             .map(|m| m.body_md)
             .collect()
+    }
+
+    #[test]
+    fn one_flooding_device_cannot_crowd_out_the_phone_answer() {
+        let signed: SignedSpawn = serde_json::from_value(serde_json::json!({
+            "v": 1, "user_id": "42", "device_fp": "ab".repeat(32), "target_id": "d_runner1",
+            "target_fp": "cd".repeat(32), "card_id": "card_00112233445566778899aabbccddeeff",
+            "nonce": "ab".repeat(16), "ts_ms": 1, "exp_ms": 2, "req_sha256": "ef".repeat(32),
+            "alg": "es256", "sig": "c2ln"
+        }))
+        .unwrap();
+        let (inbox, rx) = spawnok_inbox();
+        for _ in 0..OK_INBOX_CAP {
+            inbox.deliver_spawnok("d_flood", "ff", &signed);
+        }
+        inbox.deliver_spawnok("phone", "ab", &signed);
+        let from: Vec<String> = rx.try_iter().map(|i| i.device).collect();
+        assert_eq!(
+            from.iter().filter(|d| *d == "d_flood").count(),
+            OK_PER_DEVICE
+        );
+        assert!(from.iter().any(|d| d == "phone"));
     }
 
     fn phone_answer(e: &Env, msg: &ChatMessage) -> SignedSpawn {
