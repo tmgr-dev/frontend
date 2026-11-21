@@ -11,17 +11,18 @@ pub const CARD_TTL_MS: u64 = 5 * 60 * 1000;
 pub const MAX_PENDING: usize = 8;
 pub const ATTEMPT_LIMIT: u32 = 5;
 pub const PRUNE_AFTER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+pub const MAX_CARDS: usize = 512;
 
 const REASON_EXPIRED: &str = "expired";
 const REASON_ATTEMPTS: &str = "too_many_attempts";
 
-pub type Rng = Arc<dyn Fn() -> [u8; 16] + Send + Sync>;
+pub type Rng = Arc<dyn Fn() -> std::io::Result<[u8; 16]> + Send + Sync>;
 
 pub fn os_rng() -> Rng {
     Arc::new(|| {
         let mut b = [0u8; 16];
-        getrandom::fill(&mut b).expect("system random source");
-        b
+        getrandom::fill(&mut b).map_err(std::io::Error::other)?;
+        Ok(b)
     })
 }
 
@@ -117,6 +118,7 @@ pub enum CardError {
     Corrupt,
     NotClaimed,
     AlreadySpawned,
+    BadSession,
 }
 
 impl fmt::Display for CardError {
@@ -127,6 +129,7 @@ impl fmt::Display for CardError {
             CardError::Corrupt => "spawn card record is corrupt",
             CardError::NotClaimed => "spawn card is not claimed",
             CardError::AlreadySpawned => "spawn card already has a different session",
+            CardError::BadSession => "invalid session id",
         })
     }
 }
@@ -187,7 +190,20 @@ fn refused(reason: &str) -> CardState {
 }
 
 impl CardStore {
-    pub fn open(runner_dir: &Path, identity: Identity, rng: Rng) -> Result<Self, CardError> {
+    pub fn open(runner_dir: &Path, identity: Identity) -> Result<Self, CardError> {
+        Self::open_inner(runner_dir, identity, os_rng())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_with_rng(
+        runner_dir: &Path,
+        identity: Identity,
+        rng: Rng,
+    ) -> Result<Self, CardError> {
+        Self::open_inner(runner_dir, identity, rng)
+    }
+
+    fn open_inner(runner_dir: &Path, identity: Identity, rng: Rng) -> Result<Self, CardError> {
         let root = runner_dir.join("spawnauth");
         io(super::ensure_private_dir(&root))?;
         let dir = root.join("cards");
@@ -241,26 +257,30 @@ impl CardStore {
                 other => return Ok(IssueOutcome::Closed(result_of(&other))),
             }
         }
+        let others: Vec<String> = self.ids()?.into_iter().filter(|o| o != id).collect();
         let mut pending = 0;
-        for other in self.ids()? {
-            if other == id {
-                continue;
-            }
-            let Ok(Some(file)) = self.load(&other) else {
+        for other in &others {
+            let Ok(Some(file)) = self.load(other) else {
                 continue;
             };
             if let CardState::Issued { exp_ms, .. } = file.state {
                 if now_ms > exp_ms {
-                    self.save(&other, refused(REASON_EXPIRED), exp_ms)?;
+                    self.save(other, refused(REASON_EXPIRED), exp_ms)?;
                 } else {
                     pending += 1;
+                    if pending >= MAX_PENDING {
+                        return Ok(IssueOutcome::Full);
+                    }
                 }
             }
         }
-        if pending >= MAX_PENDING {
-            return Ok(IssueOutcome::Full);
+        if others.len() >= MAX_CARDS {
+            self.prune_locked(now_ms)?;
+            if self.ids()?.iter().filter(|o| *o != id).count() >= MAX_CARDS {
+                return Ok(IssueOutcome::Full);
+            }
         }
-        let nonce = super::hex_lower(&(self.rng)());
+        let nonce = super::hex_lower(&io((self.rng)())?);
         let exp_ms = now_ms.saturating_add(CARD_TTL_MS);
         self.save(
             id,
@@ -335,7 +355,7 @@ impl CardStore {
             }
             Err(refusal) => {
                 if refusal.counts_as_attempt() {
-                    let failed_attempts = failed_attempts + 1;
+                    let failed_attempts = failed_attempts.saturating_add(1);
                     let next = if failed_attempts >= ATTEMPT_LIMIT {
                         refused(REASON_ATTEMPTS)
                     } else {
@@ -360,6 +380,9 @@ impl CardStore {
 
     pub fn mark_spawned(&self, card_id: &str, session: &str, now_ms: u64) -> Result<(), CardError> {
         let id = check_id(card_id)?;
+        if !is_token(session) {
+            return Err(CardError::BadSession);
+        }
         let _lock = self.lock()?;
         match self.load(id)?.map(|f| f.state) {
             Some(CardState::Claimed { .. }) => self.save(
@@ -410,6 +433,10 @@ impl CardStore {
 
     pub fn prune(&self, now_ms: u64) -> Result<usize, CardError> {
         let _lock = self.lock()?;
+        self.prune_locked(now_ms)
+    }
+
+    fn prune_locked(&self, now_ms: u64) -> Result<usize, CardError> {
         let mut removed = 0;
         for id in self.ids()? {
             let Ok(Some(file)) = self.load(&id) else {
@@ -432,24 +459,7 @@ impl CardStore {
     }
 
     fn lock(&self) -> Result<std::fs::File, CardError> {
-        use std::os::fd::AsRawFd;
-        use std::os::unix::fs::OpenOptionsExt;
-        let f = io(std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .custom_flags(libc::O_NOFOLLOW)
-            .mode(0o600)
-            .open(self.dir.join(".lock")))?;
-        loop {
-            // SAFETY: the fd is owned by `f` and stays open for the call.
-            if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } == 0 {
-                return Ok(f);
-            }
-            if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
-                return Err(CardError::Io);
-            }
-        }
+        io(super::lock_file(&self.dir.join(".lock")))
     }
 
     fn ids(&self) -> Result<Vec<String>, CardError> {
@@ -593,16 +603,16 @@ mod tests {
 
     fn fixed_rng() -> Rng {
         Arc::new(|| {
-            [
+            Ok([
                 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
                 0xcd, 0xef,
-            ]
+            ])
         })
     }
 
     fn counting_rng() -> Rng {
         let n = Arc::new(AtomicU8::new(0));
-        Arc::new(move || [n.fetch_add(1, Ordering::SeqCst) + 1; 16])
+        Arc::new(move || Ok([n.fetch_add(1, Ordering::SeqCst) + 1; 16]))
     }
 
     fn identity() -> Identity {
@@ -610,7 +620,7 @@ mod tests {
     }
 
     fn store(dir: &Path, rng: Rng) -> CardStore {
-        CardStore::open(dir, identity(), rng).unwrap()
+        CardStore::open_with_rng(dir, identity(), rng).unwrap()
     }
 
     fn fixture_store(dir: &Path) -> CardStore {
@@ -1108,5 +1118,128 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.result("card-0001"), Err(CardError::Corrupt));
+    }
+
+    fn write_card(dir: &Path, id: &str, updated_ms: u64) {
+        let json = format!(
+            r#"{{"card_id":"{id}","updated_ms":{updated_ms},"state":{{"kind":"spawned","session":"s"}}}}"#
+        );
+        std::fs::write(dir.join(format!("spawnauth/cards/{id}.json")), json).unwrap();
+    }
+
+    #[test]
+    fn issue_refuses_when_the_card_directory_is_full_after_pruning() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        s.issue("seed", &proposal("/w/0"), NOW).unwrap();
+        for i in 0..MAX_CARDS {
+            write_card(t.path(), &format!("fill-{i}"), NOW);
+        }
+        assert_eq!(
+            s.issue("one-more", &proposal("/w/1"), NOW + 1).unwrap(),
+            IssueOutcome::Full
+        );
+        assert_eq!(s.state("one-more").unwrap(), None);
+    }
+
+    #[test]
+    fn issue_prunes_old_terminal_cards_to_make_room() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        s.issue("seed", &proposal("/w/0"), NOW).unwrap();
+        for i in 0..MAX_CARDS {
+            write_card(t.path(), &format!("old-{i}"), ISSUED);
+        }
+        let later = ISSUED + PRUNE_AFTER_MS + 1;
+        let out = s.issue("fresh", &proposal("/w/1"), later).unwrap();
+        assert!(matches!(out, IssueOutcome::Challenge(_)), "{out:?}");
+        assert_eq!(s.state("old-0").unwrap(), None);
+    }
+
+    #[test]
+    fn a_failing_random_source_is_an_io_error_not_a_panic() {
+        let t = tempfile::tempdir().unwrap();
+        let rng: Rng = Arc::new(|| Err(std::io::Error::other("no entropy")));
+        let s = store(t.path(), rng);
+        assert_eq!(
+            s.issue("card-1", &proposal("/w/1"), ISSUED),
+            Err(CardError::Io)
+        );
+        assert_eq!(s.state("card-1").unwrap(), None);
+    }
+
+    #[test]
+    fn mark_spawned_requires_a_token_session() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        s.claim(
+            "card-0001",
+            &wire_of("ok_low_s"),
+            &fixture_key(),
+            &FakeTrust::trusted(),
+            NOW,
+        )
+        .unwrap();
+        for bad in ["", "a b", "x:y", &"s".repeat(65)] {
+            assert_eq!(
+                s.mark_spawned("card-0001", bad, NOW),
+                Err(CardError::BadSession),
+                "{bad:?}"
+            );
+        }
+        assert!(matches!(
+            s.state("card-0001").unwrap(),
+            Some(CardState::Claimed { .. })
+        ));
+    }
+
+    #[test]
+    fn failed_attempts_at_the_maximum_do_not_panic_or_reset() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        let file = t.path().join("spawnauth/cards/card-0001.json");
+        let text = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(
+            &file,
+            text.replace("\"failed_attempts\":0", "\"failed_attempts\":4294967295"),
+        )
+        .unwrap();
+        let out = s
+            .claim(
+                "card-0001",
+                &wire_of("bad_sig_signed_other_nonce"),
+                &fixture_key(),
+                &FakeTrust::trusted(),
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(out, ClaimOutcome::Rejected(Refusal::BadSig));
+        assert_eq!(
+            s.state("card-0001").unwrap(),
+            Some(CardState::Refused {
+                reason: "too_many_attempts".into()
+            })
+        );
+    }
+
+    #[test]
+    fn a_failed_claimed_write_returns_no_verified_and_keeps_the_card_issued() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        let dir = t.path().join("spawnauth/cards");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let out = s.claim(
+            "card-0001",
+            &wire_of("ok_low_s"),
+            &fixture_key(),
+            &FakeTrust::trusted(),
+            NOW,
+        );
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(out, Err(CardError::Io));
+        assert!(matches!(
+            s.state("card-0001").unwrap(),
+            Some(CardState::Issued { .. })
+        ));
     }
 }

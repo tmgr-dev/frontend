@@ -38,6 +38,9 @@ impl SpawnKeyStatement {
     pub fn issued_at_ms(&self) -> u64 {
         self.issued_at_ms
     }
+    pub fn spawn_key_fp(&self) -> String {
+        hex::encode(Sha256::digest(&self.spawn_pub))
+    }
 
     #[cfg(test)]
     pub(crate) fn for_test(
