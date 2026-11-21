@@ -201,8 +201,57 @@ fn map_call(tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
             }
             Ok((Op::Room, out))
         }
+        tool::SWITCH_AGENT => {
+            only(&a, &["session", "to"])?;
+            let out = json!({"session": session(&a)?, "to": text(&a, "to", 32)?});
+            Ok((Op::Switch, out))
+        }
+        tool::PROPOSE_SPAWN => Ok((Op::SpawnChallenge, spawn_args(&a, false)?)),
+        tool::SPAWN_SESSION => Ok((Op::Spawn, spawn_args(&a, true)?)),
         _ => Err(NOT_AVAILABLE.into()),
     }
+}
+
+const REMOTE_PROMPT_MAX: usize = 1000;
+
+fn spawn_args(a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
+    for k in ["approval", "no_sandbox", "manager"] {
+        if a.contains_key(k) {
+            return Err(format!("{k} is not allowed for a remote spawn"));
+        }
+    }
+    let mut keys = vec![
+        "profile",
+        "cwd",
+        "prompt",
+        "name",
+        "task",
+        "permission_mode",
+    ];
+    if claim {
+        keys.push("card_id");
+    }
+    only(a, &keys)?;
+    let mut out = json!({
+        "profile": text(a, "profile", 32)?,
+        "cwd": text(a, "cwd", 4096)?,
+    });
+    for (k, max) in [
+        ("prompt", REMOTE_PROMPT_MAX),
+        ("name", 64),
+        ("task", 128),
+        ("permission_mode", 32),
+    ] {
+        if a.contains_key(k) {
+            out[k] = json!(text(a, k, max)?);
+        }
+    }
+    if claim {
+        out["card_id"] = json!(text(a, "card_id", 128).map_err(|_| {
+            "card_id is required: propose_spawn first and wait for the owner's approval".to_string()
+        })?);
+    }
+    Ok(out)
 }
 
 pub(crate) fn plain(s: &str) -> String {
@@ -550,6 +599,164 @@ mod tests {
         assert!(sent(&net).is_empty());
     }
 
+    fn spawn_case(tool_name: &str, extra: Value) -> Value {
+        let mut v = json!({"machine": PEER, "profile": "codex", "cwd": "/work/x"});
+        for (k, x) in extra.as_object().unwrap() {
+            v[k] = x.clone();
+        }
+        let _ = tool_name;
+        v
+    }
+
+    #[test]
+    fn spawn_and_switch_map_to_their_ops_without_the_machine_key() {
+        let full =
+            json!({"prompt": "go", "name": "n", "task": "TM-1", "permission_mode": "bypass"});
+        let cases = [
+            (
+                tool::PROPOSE_SPAWN,
+                spawn_case(tool::PROPOSE_SPAWN, full.clone()),
+                Op::SpawnChallenge,
+                json!({"profile": "codex", "cwd": "/work/x", "prompt": "go", "name": "n", "task": "TM-1", "permission_mode": "bypass"}),
+            ),
+            (
+                tool::PROPOSE_SPAWN,
+                spawn_case(tool::PROPOSE_SPAWN, json!({})),
+                Op::SpawnChallenge,
+                json!({"profile": "codex", "cwd": "/work/x"}),
+            ),
+            (
+                tool::SPAWN_SESSION,
+                spawn_case(
+                    tool::SPAWN_SESSION,
+                    json!({"card_id": "c1", "prompt": "go"}),
+                ),
+                Op::Spawn,
+                json!({"profile": "codex", "cwd": "/work/x", "prompt": "go", "card_id": "c1"}),
+            ),
+            (
+                tool::SWITCH_AGENT,
+                json!({"machine": PEER, "session": WORKER, "to": "codex"}),
+                Op::Switch,
+                json!({"session": WORKER, "to": "codex"}),
+            ),
+        ];
+        for (t, args, op, sent_args) in cases {
+            let net = Net::top();
+            let v = run(&net, t, args).unwrap();
+            assert_eq!(ok_envelope(&v), "remote text");
+            assert_eq!(sent(&net), vec![(PEER.to_string(), op, sent_args)], "{t}");
+        }
+    }
+
+    #[test]
+    fn remote_spawn_and_switch_arguments_are_strict() {
+        let net = Net::top();
+        let long = "a".repeat(1001);
+        let bad = [
+            (tool::SPAWN_SESSION, spawn_case("", json!({}))),
+            (tool::SPAWN_SESSION, spawn_case("", json!({"card_id": ""}))),
+            (tool::SPAWN_SESSION, spawn_case("", json!({"card_id": 5}))),
+            (
+                tool::SPAWN_SESSION,
+                spawn_case("", json!({"card_id": null})),
+            ),
+            (
+                tool::SPAWN_SESSION,
+                spawn_case("", json!({"card_id": "c", "approval": {}})),
+            ),
+            (
+                tool::SPAWN_SESSION,
+                spawn_case("", json!({"card_id": "c", "no_sandbox": true})),
+            ),
+            (
+                tool::SPAWN_SESSION,
+                spawn_case("", json!({"card_id": "c", "manager": true})),
+            ),
+            (
+                tool::SPAWN_SESSION,
+                spawn_case("", json!({"card_id": "c", "x": 1})),
+            ),
+            (
+                tool::SPAWN_SESSION,
+                spawn_case("", json!({"card_id": "c", "prompt": long.clone()})),
+            ),
+            (tool::PROPOSE_SPAWN, spawn_case("", json!({"card_id": "c"}))),
+            (tool::PROPOSE_SPAWN, spawn_case("", json!({"prompt": long}))),
+            (tool::PROPOSE_SPAWN, spawn_case("", json!({"prompt": ""}))),
+            (tool::PROPOSE_SPAWN, spawn_case("", json!({"approval": {}}))),
+            (
+                tool::PROPOSE_SPAWN,
+                spawn_case("", json!({"no_sandbox": false})),
+            ),
+            (
+                tool::PROPOSE_SPAWN,
+                json!({"machine": PEER, "profile": "codex"}),
+            ),
+            (tool::PROPOSE_SPAWN, json!({"machine": PEER, "cwd": "/x"})),
+            (
+                tool::SWITCH_AGENT,
+                json!({"machine": PEER, "session": WORKER}),
+            ),
+            (tool::SWITCH_AGENT, json!({"machine": PEER, "to": "codex"})),
+            (
+                tool::SWITCH_AGENT,
+                json!({"machine": PEER, "session": "../x", "to": "codex"}),
+            ),
+            (
+                tool::SWITCH_AGENT,
+                json!({"machine": PEER, "session": WORKER, "to": "codex", "x": 1}),
+            ),
+        ];
+        for (t, a) in bad {
+            assert!(run(&net, t, a.clone()).is_err(), "{t} {a}");
+        }
+        assert!(sent(&net).is_empty());
+    }
+
+    #[test]
+    fn a_missing_card_id_says_what_to_do() {
+        let net = Net::top();
+        let e = run(&net, tool::SPAWN_SESSION, spawn_case("", json!({}))).unwrap_err();
+        assert!(
+            e.contains("card_id is required") && e.contains("propose_spawn"),
+            "{e}"
+        );
+        let e = run(
+            &net,
+            tool::SPAWN_SESSION,
+            spawn_case("", json!({"approval": {}, "card_id": "c"})),
+        )
+        .unwrap_err();
+        assert_eq!(e, "approval is not allowed for a remote spawn");
+    }
+
+    #[test]
+    fn own_machine_spawn_and_switch_stay_local_and_a_sub_cannot_go_remote() {
+        let net = Net::top();
+        for (t, a) in [
+            (
+                tool::PROPOSE_SPAWN,
+                json!({"machine": ME, "profile": "codex", "cwd": "/x"}),
+            ),
+            (
+                tool::SWITCH_AGENT,
+                json!({"machine": ME, "session": WORKER, "to": "codex"}),
+            ),
+        ] {
+            let reached_the_local_core =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&net, t, a))).is_err();
+            assert!(reached_the_local_core, "{t}");
+        }
+        assert!(sent(&net).is_empty());
+        let net = Net::sub();
+        for t in [tool::PROPOSE_SPAWN, tool::SPAWN_SESSION, tool::SWITCH_AGENT] {
+            let a = json!({"machine": PEER, "profile": "codex", "cwd": "/x", "card_id": "c", "session": WORKER, "to": "codex"});
+            assert_eq!(run(&net, t, a).unwrap_err(), "not available", "{t}");
+        }
+        assert!(sent(&net).is_empty());
+    }
+
     #[test]
     fn op_denied_names_the_op_and_the_fix() {
         for (t, a, op) in [
@@ -560,6 +767,21 @@ mod tests {
                 "ask",
             ),
             (tool::READ_SUBMANAGER, json!({"machine": PEER}), "room"),
+            (
+                tool::SWITCH_AGENT,
+                json!({"machine": PEER, "session": WORKER, "to": "codex"}),
+                "switch",
+            ),
+            (
+                tool::PROPOSE_SPAWN,
+                json!({"machine": PEER, "profile": "codex", "cwd": "/x"}),
+                "spawn_challenge",
+            ),
+            (
+                tool::SPAWN_SESSION,
+                json!({"machine": PEER, "profile": "codex", "cwd": "/x", "card_id": "c"}),
+                "spawn",
+            ),
         ] {
             let net = Net::top().replying(Ok(RpcRes::err("r", ErrorCode::OpDenied, "denied")));
             assert_eq!(

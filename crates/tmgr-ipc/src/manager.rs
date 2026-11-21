@@ -35,7 +35,14 @@ pub mod tool {
     pub const READ_SUBMANAGER: &str = "read_submanager";
     pub const CAPS: &str = "__caps";
     pub const TOP_ONLY: [&str; 3] = [LIST_MACHINES, ASK_SUBMANAGER, READ_SUBMANAGER];
-    pub const MACHINE_SCOPED: [&str; 3] = [LIST_SESSIONS, READ_SESSION, SEND_TO_SESSION];
+    pub const MACHINE_SCOPED: [&str; 6] = [
+        LIST_SESSIONS,
+        READ_SESSION,
+        SEND_TO_SESSION,
+        PROPOSE_SPAWN,
+        SPAWN_SESSION,
+        SWITCH_AGENT,
+    ];
     pub const READ_ONLY: [&str; 3] = [LIST_SESSIONS, READ_SESSION, READ_ROOM];
     pub const ALL: [&str; 8] = [
         LIST_SESSIONS,
@@ -130,7 +137,10 @@ mod tests {
             [
                 tool::LIST_SESSIONS,
                 tool::READ_SESSION,
-                tool::SEND_TO_SESSION
+                tool::SEND_TO_SESSION,
+                tool::PROPOSE_SPAWN,
+                tool::SPAWN_SESSION,
+                tool::SWITCH_AGENT
             ]
         );
         for t in tool::TOP_ONLY.iter().chain(&[tool::CAPS]) {
