@@ -52,7 +52,22 @@
     "decision": {
       "type": "object",
       "required": ["card_id"],
-      "properties": { "card_id": { "$ref": "#/$defs/token" } }
+      "properties": {
+        "card_id": { "$ref": "#/$defs/token" },
+        "spawn": {
+          "description": "Owner approval card for a spawn proposal. Readers that do not know it ignore it.",
+          "type": "object",
+          "required": ["summary", "request", "nonce", "exp_ms", "target_id", "target_fp"],
+          "properties": {
+            "summary": { "type": "string", "maxLength": 2048 },
+            "request": { "type": "string", "minLength": 1, "maxLength": 16384 },
+            "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+            "exp_ms": { "type": "integer", "minimum": 0 },
+            "target_id": { "$ref": "#/$defs/token" },
+            "target_fp": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      }
     },
     "user_turn": { "type": "boolean" },
     "session_meta": {

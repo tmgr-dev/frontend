@@ -27,6 +27,8 @@ pub mod limits {
     pub const MAX_HISTORY: u32 = 500;
     pub const MAX_QUERY: usize = 256;
     pub const MAX_MODEL: usize = 128;
+    pub const MAX_SPAWN_REQUEST: usize = 16 << 10;
+    pub const MAX_SPAWN_SUMMARY: usize = 2048;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +138,42 @@ pub struct Attachment {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecisionRef {
     pub card_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawn: Option<SpawnCard>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnCard {
+    pub summary: String,
+    pub request: String,
+    pub nonce: String,
+    pub exp_ms: u64,
+    pub target_id: String,
+    pub target_fp: String,
+}
+
+impl SpawnCard {
+    fn validate(&self) -> Result<(), String> {
+        let lower_hex = |s: &str, n: usize| {
+            s.len() == n && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+        };
+        if !lower_hex(&self.nonce, 32) {
+            return Err("invalid spawn nonce".into());
+        }
+        if !valid_sha256(&self.target_fp) {
+            return Err("invalid spawn target_fp".into());
+        }
+        if !valid_token(&self.target_id) {
+            return Err("invalid spawn target_id".into());
+        }
+        if self.request.is_empty() || self.request.len() > limits::MAX_SPAWN_REQUEST {
+            return Err("invalid spawn request".into());
+        }
+        if self.summary.len() > limits::MAX_SPAWN_SUMMARY {
+            return Err("spawn summary too long".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -324,6 +362,10 @@ impl ChatMessage {
                 Err("a decision message needs decision.card_id".into())
             }
             (_, Some(d)) if !valid_token(&d.card_id) => Err("invalid decision card id".into()),
+            (MessageKind::Decision, Some(d)) => {
+                d.spawn.as_ref().map_or(Ok(()), SpawnCard::validate)
+            }
+            (_, Some(d)) if d.spawn.is_some() => Err("spawn is only valid on a decision".into()),
             _ => Ok(()),
         }
     }
@@ -520,5 +562,68 @@ mod tests {
         assert!(a < b);
         assert!(valid_message_id(&a) && valid_message_id(&new_message_id()));
         assert!(!valid_message_id("c_0190a1b2c3d4aabbccddeeff00112233"));
+    }
+    fn spawn_card() -> Value {
+        json!({
+            "summary": "claude-code in ~/x",
+            "request": "{\"v\":1}",
+            "nonce": "ab".repeat(16),
+            "exp_ms": 1795000900000u64,
+            "target_id": "d_runner1",
+            "target_fp": "cd".repeat(32)
+        })
+    }
+
+    fn spawn_message(spawn: Value) -> Value {
+        let mut e = examples().remove(2);
+        e["decision"]["spawn"] = spawn;
+        e
+    }
+
+    #[test]
+    fn a_spawn_card_round_trips_and_validates() {
+        let e = spawn_message(spawn_card());
+        let m: ChatMessage = serde_json::from_value(e.clone()).unwrap();
+        m.validate().unwrap();
+        assert_eq!(
+            m.decision.as_ref().unwrap().spawn.as_ref().unwrap().exp_ms,
+            1795000900000
+        );
+        assert_eq!(serde_json::to_value(&m).unwrap(), e);
+    }
+
+    #[test]
+    fn a_decision_without_spawn_serializes_without_the_field() {
+        let m: ChatMessage = serde_json::from_value(examples().remove(2)).unwrap();
+        assert!(m.decision.as_ref().unwrap().spawn.is_none());
+        assert!(!serde_json::to_string(&m).unwrap().contains("spawn"));
+    }
+
+    #[test]
+    fn a_malformed_spawn_card_is_refused() {
+        let mutate = |f: &dyn Fn(&mut Value)| {
+            let mut c = spawn_card();
+            f(&mut c);
+            let m: ChatMessage = serde_json::from_value(spawn_message(c)).unwrap();
+            m.validate()
+        };
+        assert!(mutate(&|c| c["nonce"] = json!("AB".repeat(16))).is_err());
+        assert!(mutate(&|c| c["nonce"] = json!("ab")).is_err());
+        assert!(mutate(&|c| c["target_fp"] = json!("CD".repeat(32))).is_err());
+        assert!(mutate(&|c| c["target_fp"] = json!("cd")).is_err());
+        assert!(mutate(&|c| c["request"] = json!("")).is_err());
+        assert!(mutate(&|c| c["request"] = json!("x".repeat(16 * 1024 + 1))).is_err());
+        assert!(mutate(&|c| c["summary"] = json!("x".repeat(2049))).is_err());
+        assert!(mutate(&|c| c["target_id"] = json!("bad id")).is_err());
+        assert!(mutate(&|_| ()).is_ok());
+        assert!(mutate(&|c| c["request"] = json!("x".repeat(16 * 1024))).is_ok());
+    }
+
+    #[test]
+    fn spawn_is_only_valid_on_a_decision_message() {
+        let mut e = spawn_message(spawn_card());
+        e["kind"] = json!("text");
+        let m: ChatMessage = serde_json::from_value(e).unwrap();
+        assert!(m.validate().is_err());
     }
 }
