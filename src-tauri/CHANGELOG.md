@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.162 — 2026-11-21
+
+- Cursor: a task can launch Cursor agents in several repositories, and the task shows each agent's status.
+- Invitations: a guest can open an invite link and returns to it after sign-up. The pending invite is kept on transient errors.
+- Fixes: routine quick-create sends the schedule correctly, deleting a category no longer fails on the empty response, the member activity page loads again, and the recent tasks list shows the time from the last update.
+
 ## 0.9.161 — 2026-11-17
 
 - Plugins: while developer mode is on, the log lines of a folder plugin (its `tmgr.log` calls, thrown errors and refused calls) are also written to the app log as `[plugin] <id> [<level>] <message>`, so `tmgr-plugin dev` shows them in the terminal.
