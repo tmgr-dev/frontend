@@ -5,10 +5,13 @@ import {
 	MAX_BODY_BYTES,
 	roomKey,
 	type Attachment,
+	type AuditEntry,
 	type ChatMessage,
 	type RoomInfo,
 	type RoomRef,
 	type SlashCommand,
+	type SpawnAgent,
+	type SpawnRequest,
 } from './types';
 
 export interface ManagerApi {
@@ -18,7 +21,28 @@ export interface ManagerApi {
 	commands: typeof realApi.managerCommands;
 	search: typeof realApi.managerSearch;
 	onMessage: typeof realApi.onManagerMessage;
+	audit: typeof realApi.managerAudit;
+	spawn: typeof realApi.managerSpawnSession;
+	switchAgent: typeof realApi.managerSwitchAgent;
 }
+
+export type PanelTab = 'session' | 'hierarchy' | 'audit' | 'encryption';
+
+export const AGENT_MODELS: Record<SpawnAgent, string[]> = {
+	claude: ['opus', 'sonnet', 'haiku'],
+	codex: ['gpt-5', 'gpt-5-mini'],
+	opencode: ['default'],
+	agy: ['default'],
+};
+
+const emptyForm = (): SpawnRequest => ({
+	agent: 'claude',
+	machine: '',
+	folder: '',
+	name: '',
+	task: '',
+	prompt: '',
+});
 
 export interface FileLike {
 	name: string;
@@ -82,6 +106,29 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 		focusId: null as string | null,
 		error: null as string | null,
+		panel: {
+			tab: 'session' as PanelTab,
+			audit: [] as AuditEntry[],
+			auditLoaded: false,
+			auditError: '',
+		},
+		newSession: {
+			open: false,
+			busy: false,
+			error: '',
+			form: emptyForm(),
+		},
+		switcher: {
+			open: false,
+			busy: false,
+			error: '',
+			agent: 'claude' as SpawnAgent,
+			model: AGENT_MODELS.claude[0],
+		},
+
+		get machines(): string[] {
+			return [...new Set(store.rooms.map((r) => r.room.machine))];
+		},
 
 		roomRef(key: string): RoomRef | null {
 			return store.rooms.find((r) => roomKey(r.room) === key)?.room ?? null;
@@ -295,6 +342,92 @@ export const createManagerStore = (api: ManagerApi) => {
 			}
 		},
 
+		async setTab(tab: PanelTab) {
+			store.panel.tab = tab;
+			if (tab === 'audit' && !store.panel.auditLoaded) await store.loadAudit();
+		},
+
+		async loadAudit() {
+			try {
+				store.panel.audit = await api.audit();
+				store.panel.auditLoaded = true;
+				store.panel.auditError = '';
+			} catch (e) {
+				store.panel.auditError = errorText(e);
+			}
+		},
+
+		async selectFromHierarchy(key: string) {
+			store.panel.tab = 'session';
+			await store.select(key);
+		},
+
+		openNewSession() {
+			store.newSession.form = {
+				...emptyForm(),
+				machine: store.machines[0] ?? '',
+			};
+			store.newSession.error = '';
+			store.newSession.open = true;
+		},
+
+		closeNewSession() {
+			store.newSession.open = false;
+			store.newSession.error = '';
+		},
+
+		async submitNewSession() {
+			const form = store.newSession;
+			if (form.busy || !form.form.machine || !form.form.folder.trim()) return;
+			form.busy = true;
+			form.error = '';
+			try {
+				await api.spawn({ ...form.form, folder: form.form.folder.trim() });
+				store.closeNewSession();
+			} catch (e) {
+				form.error = errorText(e);
+			} finally {
+				form.busy = false;
+			}
+		},
+
+		openSwitch() {
+			const info = store.rooms.find((r) => roomKey(r.room) === store.activeKey);
+			if (!info || info.room.kind === 'manager') return;
+			const known = info.agent as SpawnAgent | undefined;
+			const agent = known && known in AGENT_MODELS ? known : 'claude';
+			store.switcher.agent = agent;
+			store.switcher.model = AGENT_MODELS[agent][0];
+			store.switcher.error = '';
+			store.switcher.open = true;
+		},
+
+		pickSwitchAgent(agent: SpawnAgent) {
+			store.switcher.agent = agent;
+			store.switcher.model = AGENT_MODELS[agent][0];
+		},
+
+		closeSwitch() {
+			store.switcher.open = false;
+			store.switcher.error = '';
+		},
+
+		async submitSwitch() {
+			const sw = store.switcher;
+			const key = store.activeKey;
+			if (sw.busy || !key) return;
+			sw.busy = true;
+			sw.error = '';
+			try {
+				await api.switchAgent(key, sw.agent, sw.model);
+				store.closeSwitch();
+			} catch (e) {
+				sw.error = errorText(e);
+			} finally {
+				sw.busy = false;
+			}
+		},
+
 		async jumpToHit(hit: ChatMessage): Promise<boolean> {
 			const key = roomKey(hit.room);
 			store.closeSearch();
@@ -325,6 +458,9 @@ export const useManagerStore = (): ManagerStore => {
 		commands: realApi.managerCommands,
 		search: realApi.managerSearch,
 		onMessage: realApi.onManagerMessage,
+		audit: realApi.managerAudit,
+		spawn: realApi.managerSpawnSession,
+		switchAgent: realApi.managerSwitchAgent,
 	});
 	return singleton;
 };

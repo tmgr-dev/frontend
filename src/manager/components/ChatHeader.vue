@@ -19,6 +19,14 @@
 		>
 			<Icon name="search" />
 		</button>
+		<button
+			v-if="!isManager"
+			type="button"
+			class="btn sm"
+			@click="$emit('switch')"
+		>
+			{{ $t('manager.header.switchAgent') }}
+		</button>
 		<span v-if="info.state" class="hxx">
 			<StatePill :state="info.state" />
 			<span v-if="info.context_tokens !== undefined" :class="['ctx', ctxLevel]"
@@ -45,7 +53,7 @@
 			info: { type: Object as PropType<RoomInfo>, required: true },
 			sub: { type: String, default: '' },
 		},
-		emits: ['search'],
+		emits: ['search', 'switch'],
 		computed: {
 			isManager(): boolean {
 				return this.info.room.kind === 'manager';

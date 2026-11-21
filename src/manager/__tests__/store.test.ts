@@ -45,6 +45,9 @@ const setup = (over: Partial<ManagerApi> = {}) => {
 		send: jest.fn(async ({ room }) => msg(99, room, 'owner')),
 		commands: jest.fn(async () => commands),
 		search: jest.fn(async () => []),
+		audit: jest.fn(async () => []),
+		spawn: jest.fn(async () => undefined),
+		switchAgent: jest.fn(async () => undefined),
 		onMessage: jest.fn(async (h) => {
 			push = h;
 			return () => {};
@@ -446,5 +449,109 @@ describe('search', () => {
 		await store.init();
 		expect(await store.jumpToHit(msg(500))).toBe(false);
 		expect(store.focusId).toBeNull();
+	});
+});
+
+describe('detail panel and dialogs', () => {
+	it('loads the audit log once when the audit tab opens', async () => {
+		const { api, store } = setup();
+		await store.setTab('audit');
+		await store.setTab('session');
+		await store.setTab('audit');
+		expect(store.panel.tab).toBe('audit');
+		expect(api.audit).toHaveBeenCalledTimes(1);
+		expect(store.panel.audit).toEqual([]);
+	});
+
+	it('keeps the audit tab usable when loading fails', async () => {
+		const { store } = setup({
+			audit: jest.fn(async () => {
+				throw new Error('no audit');
+			}),
+		});
+		await store.setTab('audit');
+		expect(store.panel.auditError).toBe('no audit');
+		expect(store.panel.auditLoaded).toBe(false);
+	});
+
+	it('selecting from the hierarchy opens the session tab and the room', async () => {
+		const { store } = setup();
+		await store.init();
+		await store.setTab('hierarchy');
+		await store.selectFromHierarchy(S1_KEY);
+		expect(store.panel.tab).toBe('session');
+		expect(store.activeKey).toBe(S1_KEY);
+	});
+
+	it('new-session dialog opens with the first machine and closes', async () => {
+		const { store } = setup();
+		await store.init();
+		store.openNewSession();
+		expect(store.newSession.open).toBe(true);
+		expect(store.newSession.form.machine).toBe('mac');
+		store.closeNewSession();
+		expect(store.newSession.open).toBe(false);
+	});
+
+	it('new-session stub error stays in the dialog and is never success', async () => {
+		const spawn = jest.fn(async () => {
+			throw new Error(
+				'Starting sessions from the Manager window is not available yet',
+			);
+		});
+		const { store } = setup({ spawn });
+		await store.init();
+		store.openNewSession();
+		await store.submitNewSession();
+		expect(spawn).not.toHaveBeenCalled();
+		store.newSession.form.folder = ' ~/app ';
+		await store.submitNewSession();
+		expect(spawn).toHaveBeenCalledWith(
+			expect.objectContaining({ folder: '~/app', machine: 'mac' }),
+		);
+		expect(store.newSession.open).toBe(true);
+		expect(store.newSession.error).toContain('not available yet');
+		expect(store.newSession.busy).toBe(false);
+	});
+
+	it('closes the new-session dialog after a real success', async () => {
+		const { store } = setup();
+		await store.init();
+		store.openNewSession();
+		store.newSession.form.folder = '~/app';
+		await store.submitNewSession();
+		expect(store.newSession.open).toBe(false);
+	});
+
+	it('switch dialog opens only for session rooms and preselects the agent', async () => {
+		const { store } = setup({
+			rooms: jest.fn(async () => [{ ...info(S1), agent: 'codex' }, info(MGR)]),
+		});
+		await store.init();
+		await store.select(MGR_KEY);
+		store.openSwitch();
+		expect(store.switcher.open).toBe(false);
+		await store.select(S1_KEY);
+		store.openSwitch();
+		expect(store.switcher.open).toBe(true);
+		expect(store.switcher.agent).toBe('codex');
+		store.pickSwitchAgent('opencode');
+		expect(store.switcher.model).toBe('default');
+		store.closeSwitch();
+		expect(store.switcher.open).toBe(false);
+	});
+
+	it('switch stub error surfaces in the dialog', async () => {
+		const switchAgent = jest.fn(async () => {
+			throw new Error('Use the tmgr CLI.');
+		});
+		const { store } = setup({ switchAgent });
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		await store.submitSwitch();
+		expect(switchAgent).toHaveBeenCalledWith(S1_KEY, 'claude', 'opus');
+		expect(store.switcher.open).toBe(true);
+		expect(store.switcher.error).toBe('Use the tmgr CLI.');
 	});
 });

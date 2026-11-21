@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+	AuditEntry,
 	ChatMessage,
 	HistoryParams,
 	RoomInfo,
@@ -8,6 +9,7 @@ import type {
 	SearchParams,
 	SendParams,
 	SlashCommand,
+	SpawnRequest,
 	TrustState,
 } from './types';
 
@@ -47,3 +49,24 @@ export const managerResetIdentity = () =>
 
 export const onManagerTrust = (handler: () => void): Promise<UnlistenFn> =>
 	listen('manager://trust', () => handler());
+
+// STUB: no backend for the manager audit log yet
+export const managerAudit = async (): Promise<AuditEntry[]> => [];
+
+// STUB: no backend for starting sessions from the Manager window yet
+export const managerSpawnSession = (_req: SpawnRequest): Promise<void> =>
+	Promise.reject(
+		new Error('Starting sessions from the Manager window is not available yet'),
+	);
+
+// STUB: no backend for switching agents from the desktop app yet
+export const managerSwitchAgent = (
+	_roomKey: string,
+	_agent: string,
+	_model: string,
+): Promise<void> =>
+	Promise.reject(
+		new Error(
+			'Switching agents from the desktop app is not available yet. Use the tmgr CLI.',
+		),
+	);
