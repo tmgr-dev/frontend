@@ -13,6 +13,7 @@ mod error;
 mod handoff;
 pub mod policy;
 mod screen;
+mod switch;
 mod types;
 mod worklog;
 
@@ -22,6 +23,7 @@ pub use checkpoints::*;
 pub use error::ErrorCode;
 pub use handoff::*;
 pub use screen::*;
+pub use switch::*;
 pub use types::*;
 pub use worklog::*;
 
@@ -73,8 +75,9 @@ pub mod caps {
     pub const MANAGER_V1: &str = "manager.v1";
     pub const RUN_PROMPT_V1: &str = "run_prompt.v1";
     pub const HANDOFF_V1: &str = "handoff.v1";
+    pub const SWITCH_V1: &str = "switch.v1";
 
-    pub const ALL: [&str; 42] = [
+    pub const ALL: [&str; 43] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -117,6 +120,7 @@ pub mod caps {
         MANAGER_V1,
         RUN_PROMPT_V1,
         HANDOFF_V1,
+        SWITCH_V1,
     ];
 }
 
@@ -160,6 +164,7 @@ pub mod method {
     pub const CHECKPOINTS_RESTORE: &str = "checkpoints.restore";
     pub const HANDOFF_PREPARE: &str = "handoff.prepare";
     pub const HANDOFF_FINISH: &str = "handoff.finish";
+    pub const SESSIONS_SWITCH: &str = "sessions.switch";
 }
 
 pub mod limits {

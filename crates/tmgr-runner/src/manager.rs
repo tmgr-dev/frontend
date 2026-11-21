@@ -451,6 +451,7 @@ pub enum Delivery {
 
 pub struct State {
     spawns: Mutex<VecDeque<u64>>,
+    switches: Mutex<VecDeque<u64>>,
     prompts: Mutex<Vec<Prompt>>,
     pub create: Mutex<()>,
     pub warned: AtomicBool,
@@ -467,6 +468,7 @@ impl State {
     pub fn new(chat: Box<dyn ChatPort>) -> State {
         State {
             spawns: Mutex::new(VecDeque::new()),
+            switches: Mutex::new(VecDeque::new()),
             prompts: Mutex::new(Vec::new()),
             create: Mutex::new(()),
             warned: AtomicBool::new(false),
@@ -474,19 +476,27 @@ impl State {
         }
     }
 
-    fn allow_spawn(&self, now_ms: u64) -> bool {
-        let mut w = self.spawns.lock().unwrap_or_else(|e| e.into_inner());
+    fn allow_in(window: &Mutex<VecDeque<u64>>, max: usize, now_ms: u64) -> bool {
+        let mut w = window.lock().unwrap_or_else(|e| e.into_inner());
         while w
             .front()
             .is_some_and(|t| now_ms.saturating_sub(*t) >= 60_000)
         {
             w.pop_front();
         }
-        if w.len() >= limits::SPAWNS_PER_MINUTE {
+        if w.len() >= max {
             return false;
         }
         w.push_back(now_ms);
         true
+    }
+
+    fn allow_spawn(&self, now_ms: u64) -> bool {
+        State::allow_in(&self.spawns, limits::SPAWNS_PER_MINUTE, now_ms)
+    }
+
+    fn allow_switch(&self, now_ms: u64) -> bool {
+        State::allow_in(&self.switches, limits::SWITCHES_PER_MINUTE, now_ms)
     }
 
     pub fn queue_prompt(&self, session: &str, text: &str, now_ms: u64) {
@@ -539,6 +549,12 @@ pub struct SpawnSpec {
     pub parent: String,
 }
 
+pub struct SwitchResult {
+    pub session: SessionInfo,
+    pub packet_id: String,
+    pub warnings: Vec<String>,
+}
+
 pub trait Host {
     fn me(&self) -> &str;
     fn machine(&self) -> String;
@@ -548,6 +564,7 @@ pub trait Host {
     fn send(&self, id: &str, text: &str) -> Result<(), String>;
     fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String>;
     fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String>;
+    fn switch(&self, id: &str, to: &str) -> Result<SwitchResult, String>;
 }
 
 fn text_arg<'a>(
@@ -660,6 +677,7 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
             Ok(json!({"sent": true}))
         }
         tool::SPAWN_SESSION => spawn(host, st, a),
+        tool::SWITCH_AGENT => switch(host, st, a),
         tool::POST_MESSAGE => {
             let body = need(a, "body_md", 1, chat::limits::MAX_BODY)?;
             let reply_to = text_arg(a, "reply_to", 1, 64)?;
@@ -751,6 +769,60 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
         st.queue_prompt(&info.id, p, host.now_ms());
     }
     Ok(row(&info, host.me()))
+}
+
+fn switch(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
+    let id = session_id(a)?;
+    let to = need(a, "to", 1, 64)?;
+    if !SPAWN_PROFILES.contains(&to) {
+        return Err("to must be a built-in claude-code, codex, opencode or agy".into());
+    }
+    if id == host.me() {
+        return Err("a manager cannot switch itself".into());
+    }
+    let s = find(host, id)?;
+    let owner = "the owner switches those from the CLI or the app";
+    if s.manager {
+        return Err(format!("manager sessions cannot be switched; {owner}"));
+    }
+    if s.origin.is_some() {
+        return Err(format!(
+            "sessions started by a link cannot be switched; {owner}"
+        ));
+    }
+    if s.team.is_some() || s.managed {
+        return Err(format!(
+            "worker sessions of a team or queue cannot be switched; {owner}"
+        ));
+    }
+    if s.task.is_some() {
+        return Err(format!(
+            "sessions linked to a task cannot be switched; {owner}"
+        ));
+    }
+    if s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox {
+        return Err(format!(
+            "sessions in bypass mode or without the sandbox cannot be switched; {owner}"
+        ));
+    }
+    if !st.allow_switch(host.now_ms()) {
+        return Err(format!(
+            "at most {} switches per minute",
+            limits::SWITCHES_PER_MINUTE
+        ));
+    }
+    if !st.allow_spawn(host.now_ms()) {
+        return Err(format!(
+            "at most {} spawns per minute",
+            limits::SPAWNS_PER_MINUTE
+        ));
+    }
+    let out = host.switch(id, to)?;
+    Ok(json!({
+        "new_session": out.session.id,
+        "packet_id": out.packet_id,
+        "warnings": out.warnings,
+    }))
 }
 
 #[cfg(test)]
@@ -1053,6 +1125,7 @@ mod tests {
         list: Vec<SessionInfo>,
         sent: Mutex<Vec<(String, String)>>,
         spawned: Mutex<Vec<String>>,
+        switched: Mutex<Vec<String>>,
         trusted: Vec<String>,
         now: u64,
     }
@@ -1090,6 +1163,7 @@ mod tests {
                 ],
                 sent: Mutex::default(),
                 spawned: Mutex::default(),
+                switched: Mutex::default(),
                 trusted: vec!["/tmp/ok".into()],
                 now: 1_000_000,
             }
@@ -1129,6 +1203,14 @@ mod tests {
                 .unwrap()
                 .push(format!("{}:{}:{}", spec.profile, spec.mode, spec.parent));
             Ok(info("s_ffffffffff"))
+        }
+        fn switch(&self, id: &str, to: &str) -> Result<SwitchResult, String> {
+            self.switched.lock().unwrap().push(format!("{id}:{to}"));
+            Ok(SwitchResult {
+                session: info("s_ffffffffff"),
+                packet_id: "h_1".into(),
+                warnings: vec!["w".into()],
+            })
         }
     }
 
@@ -1309,6 +1391,95 @@ mod tests {
             .contains("per minute"));
         h.now += 61_000;
         call(&h, &st, "spawn_session", a).unwrap();
+    }
+
+    fn switch_args(id: &str) -> Value {
+        json!({"session": id, "to": "codex"})
+    }
+
+    #[test]
+    fn switch_refusals_never_reach_the_host() {
+        let mut h = Fake::new();
+        let st = State::default();
+        let mut manager = info("s_gggggggggg");
+        manager.manager = true;
+        let mut task = info("s_hhhhhhhhhh");
+        task.task = serde_json::from_value(json!({"task_id": 1, "workspace_id": 1})).ok();
+        let mut bypass = info("s_iiiiiiiiii");
+        bypass.permission_mode = Some("bypass".into());
+        let mut raw = info("s_jjjjjjjjjj");
+        raw.no_sandbox = true;
+        let mut managed = info("s_kkkkkkkkkk");
+        managed.managed = true;
+        h.list.extend([manager, task, bypass, raw, managed]);
+        let cases = [
+            ("s_aaaaaaaaaa", "itself"),
+            ("s_gggggggggg", "manager sessions"),
+            ("s_cccccccccc", "link"),
+            ("s_dddddddddd", "worker sessions"),
+            ("s_kkkkkkkkkk", "worker sessions"),
+            ("s_hhhhhhhhhh", "linked to a task"),
+            ("s_iiiiiiiiii", "bypass"),
+            ("s_jjjjjjjjjj", "bypass"),
+            ("s_llllllllll", "no such session"),
+        ];
+        for (id, needle) in cases {
+            let e = call(&h, &st, "switch_agent", switch_args(id)).unwrap_err();
+            assert!(e.contains(needle), "{id}: {e}");
+        }
+        assert!(h.switched.lock().unwrap().is_empty());
+        let e = call(
+            &h,
+            &st,
+            "switch_agent",
+            json!({"session": "s_bbbbbbbbbb", "to": "vim"}),
+        )
+        .unwrap_err();
+        assert!(e.contains("to must be"));
+        assert!(call(&h, &st, "switch_agent", json!({"session": "s_bbbbbbbbbb"})).is_err());
+        assert!(h.switched.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_switch_returns_the_new_session_packet_and_warnings() {
+        let h = Fake::new();
+        let st = State::default();
+        let v = call(&h, &st, "switch_agent", switch_args("s_bbbbbbbbbb")).unwrap();
+        assert_eq!(
+            v,
+            json!({"new_session": "s_ffffffffff", "packet_id": "h_1", "warnings": ["w"]})
+        );
+        assert_eq!(h.switched.lock().unwrap()[0], "s_bbbbbbbbbb:codex");
+    }
+
+    #[test]
+    fn exited_sessions_are_left_to_the_host() {
+        let h = Fake::new();
+        let st = State::default();
+        call(&h, &st, "switch_agent", switch_args("s_eeeeeeeeee")).unwrap();
+        assert_eq!(h.switched.lock().unwrap()[0], "s_eeeeeeeeee:codex");
+    }
+
+    #[test]
+    fn switches_are_rate_limited_and_use_spawn_slots() {
+        let mut h = Fake::new();
+        let st = State::default();
+        let a = switch_args("s_bbbbbbbbbb");
+        for _ in 0..limits::SWITCHES_PER_MINUTE {
+            call(&h, &st, "switch_agent", a.clone()).unwrap();
+        }
+        assert!(call(&h, &st, "switch_agent", a.clone())
+            .unwrap_err()
+            .contains("switches per minute"));
+        let spawn = json!({"profile": "codex", "cwd": "/tmp/ok"});
+        for _ in 0..limits::SPAWNS_PER_MINUTE - limits::SWITCHES_PER_MINUTE {
+            call(&h, &st, "spawn_session", spawn.clone()).unwrap();
+        }
+        assert!(call(&h, &st, "spawn_session", spawn)
+            .unwrap_err()
+            .contains("per minute"));
+        h.now += 61_000;
+        call(&h, &st, "switch_agent", a).unwrap();
     }
 
     #[test]

@@ -1,9 +1,8 @@
-#![allow(dead_code)]
-
 use super::handoff::{supports, switch_err};
 use super::*;
 use crate::handoff_store::HandoffStore;
 use crate::switch::{self as sw, Carry, SwitchError, Target};
+use tmgr_ipc::api::{SwitchReq, SwitchResp};
 
 const INT_WAIT: Duration = Duration::from_secs(10);
 const TERM_WAIT: Duration = Duration::from_secs(5);
@@ -44,6 +43,40 @@ fn refuse(m: impl Into<String>) -> ApiErr {
 }
 
 impl Runner {
+    pub(super) fn switch_dispatch(
+        self: &Arc<Self>,
+        conn: &Conn,
+        p: &Value,
+    ) -> Result<Value, ApiErr> {
+        if conn.client != CLIENT_CLI && conn.client != CLIENT_DESKTOP {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "sessions.switch is accepted only from the tmgr CLI or the desktop app",
+            ));
+        }
+        if p.get("permission_mode").and_then(Value::as_str) == Some("bypass")
+            || p.get("keep_bypass").and_then(Value::as_bool) == Some(true)
+        {
+            return Err(refuse("bypass is never carried by a switch"));
+        }
+        let req: SwitchReq = params(p)?;
+        let to = Target::of_profile(Some(&req.to))
+            .ok_or_else(|| refuse("to must be a built-in claude-code, codex, opencode or agy"))?;
+        let out = self.switch_session(
+            &req.session,
+            to,
+            SwitchOpts {
+                keep_bypass: false,
+                manual: false,
+            },
+        )?;
+        Ok(to_json(&SwitchResp {
+            new_session: out.new_session,
+            packet_id: out.packet_id,
+            warnings: out.warnings,
+        }))
+    }
+
     pub(crate) fn switch_session(
         self: &Arc<Self>,
         old_id: &str,
@@ -60,8 +93,8 @@ impl Runner {
             plan.session.text(Some(SCREEN_LINES)).lines
         };
         let sessions: Vec<SessionInfo> = self.all().iter().map(|x| x.info()).collect();
-        let inputs = sw::prepare_inputs(&old, &sessions, plan.target, None, &screen)
-            .map_err(switch_err)?;
+        let inputs =
+            sw::prepare_inputs(&old, &sessions, plan.target, None, &screen).map_err(switch_err)?;
         let store = HandoffStore::open(&self.cfg.dir)
             .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
         let mut random = [0u8; 10];
@@ -312,6 +345,86 @@ mod tests {
         assert!(e.msg.contains(needle), "{}", e.msg);
     }
 
+    fn conn(client: &str) -> Arc<Conn> {
+        let (a, _b) = std::os::unix::net::UnixStream::pair().unwrap();
+        Arc::new(Conn {
+            id: 1,
+            w: Mutex::new(a),
+            watched: Mutex::new(Vec::new()),
+            scroll: Mutex::new(HashMap::new()),
+            sizes: Mutex::new(HashMap::new()),
+            closed: AtomicBool::new(false),
+            attached: AtomicBool::new(false),
+            client: client.into(),
+            pending_rx: Mutex::new(None),
+            chat_rx: Mutex::new(None),
+        })
+    }
+
+    fn call(rt: &Arc<Runner>, client: &str, p: Value) -> Result<Value, ApiErr> {
+        rt.dispatch(
+            &conn(client),
+            &Request {
+                id: 1,
+                method: method::SESSIONS_SWITCH.into(),
+                params: p,
+            },
+        )
+    }
+
+    #[test]
+    fn sessions_switch_is_forbidden_for_workers_and_other_clients() {
+        let (_t, rt) = kit("opencode", serde_json::json!({}));
+        let p = serde_json::json!({"session": OLD, "to": "codex"});
+        for client in [CLIENT_WORKER, "other", ""] {
+            let e = call(&rt, client, p.clone()).unwrap_err();
+            assert_eq!(e.code, ErrorCode::Forbidden, "{client}");
+        }
+    }
+
+    #[test]
+    fn sessions_switch_reaches_the_switch_for_cli_and_desktop() {
+        let (_t, rt) = kit("opencode", serde_json::json!({}));
+        for client in [CLIENT_CLI, CLIENT_DESKTOP] {
+            let e = call(
+                &rt,
+                client,
+                serde_json::json!({"session": "s_zzzzzzzzzz", "to": "codex"}),
+            )
+            .unwrap_err();
+            assert_eq!(e.code, ErrorCode::NotFound, "{client}");
+        }
+        let e = call(&rt, CLIENT_CLI, serde_json::json!({"session": OLD})).unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidParams);
+        let e = call(
+            &rt,
+            CLIENT_CLI,
+            serde_json::json!({"session": OLD, "to": "vim"}),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidParams);
+    }
+
+    #[test]
+    fn sessions_switch_refuses_bypass_params_and_bypass_sessions() {
+        let (_t, rt) = kit("opencode", serde_json::json!({"permission_mode": "bypass"}));
+        let p = serde_json::json!({"session": OLD, "to": "codex"});
+        let e = call(&rt, CLIENT_CLI, p).unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidParams);
+        assert!(e.msg.contains("bypass"), "{}", e.msg);
+        for extra in [
+            serde_json::json!({"keep_bypass": true}),
+            serde_json::json!({"permission_mode": "bypass"}),
+        ] {
+            let mut p = serde_json::json!({"session": OLD, "to": "codex"});
+            p.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let e = call(&rt, CLIENT_DESKTOP, p).unwrap_err();
+            assert!(e.msg.contains("never carried"), "{}", e.msg);
+        }
+    }
+
     #[test]
     fn the_manager_session_is_refused() {
         refused(serde_json::json!({"manager": true}), "manager");
@@ -351,7 +464,13 @@ mod tests {
     fn bypass_is_never_carried_even_with_keep_bypass() {
         for manual in [false, true] {
             let (_t, rt) = kit("opencode", serde_json::json!({"permission_mode": "bypass"}));
-            let e = err(&rt, SwitchOpts { keep_bypass: true, manual });
+            let e = err(
+                &rt,
+                SwitchOpts {
+                    keep_bypass: true,
+                    manual,
+                },
+            );
             assert_eq!(e.code, ErrorCode::InvalidParams);
             assert!(e.msg.contains("bypass"), "{}", e.msg);
             assert!(rt.all().len() == 1, "no session was started");

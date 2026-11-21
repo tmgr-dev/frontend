@@ -1,6 +1,8 @@
+use super::switch::SwitchOpts;
 use super::*;
 use crate::manager as core;
-use tmgr_ipc::manager::SpoolResp;
+use crate::switch::Target;
+use tmgr_ipc::manager::{tool, SpoolReq, SpoolResp};
 
 impl Runner {
     pub(super) fn live_manager(&self) -> Option<Arc<Session>> {
@@ -28,6 +30,10 @@ impl Runner {
                         me: &m.id,
                     };
                     for req in reqs {
+                        if req.tool == tool::SWITCH_AGENT {
+                            self.answer_switch_async(&m.id, home.clone(), req);
+                            continue;
+                        }
                         let resp = match core::execute(&host, &self.mgr, &req) {
                             Ok(v) => SpoolResp::ok(&req.id, v),
                             Err(e) => SpoolResp::err(&req.id, e),
@@ -53,6 +59,30 @@ impl Runner {
                 },
             }
         });
+    }
+}
+
+impl Runner {
+    fn answer_switch_async(self: &Arc<Self>, manager: &str, home: PathBuf, req: SpoolReq) {
+        let rt = Arc::clone(self);
+        let id = manager.to_string();
+        let spawned = std::thread::Builder::new()
+            .name("manager-switch".into())
+            .spawn(move || {
+                let host = ManagerHost { rt: &rt, me: &id };
+                let resp = match core::execute(&host, &rt.mgr, &req) {
+                    Ok(v) => SpoolResp::ok(&req.id, v),
+                    Err(e) => SpoolResp::err(&req.id, e),
+                };
+                if let Err(e) = core::respond(&home, &resp) {
+                    log(&format!("manager {id}: response not written: {e}"));
+                }
+            });
+        if let Err(e) = spawned {
+            log(&format!(
+                "manager {manager}: switch thread not started: {e}"
+            ));
+        }
     }
 }
 
@@ -126,6 +156,25 @@ impl core::Host for ManagerHost<'_> {
         self.rt
             .create_run_as(req, false, None, None, None)
             .map(|(info, ..)| info)
+            .map_err(|e| e.msg)
+    }
+
+    fn switch(&self, id: &str, to: &str) -> Result<core::SwitchResult, String> {
+        let target = Target::of_profile(Some(to)).ok_or("to must be a built-in agent")?;
+        self.rt
+            .switch_session(
+                id,
+                target,
+                SwitchOpts {
+                    keep_bypass: false,
+                    manual: false,
+                },
+            )
+            .map(|o| core::SwitchResult {
+                session: o.new_session,
+                packet_id: o.packet_id,
+                warnings: o.warnings,
+            })
             .map_err(|e| e.msg)
     }
 }
@@ -225,6 +274,30 @@ mod tests {
         let theirs = core::req_dir(&homes.join(OTHER)).join(format!("{foreign}.json"));
         assert!(theirs.exists());
         assert!(!homes.join(OTHER).join(".cache/tmgr-manager/resp").exists());
+    }
+
+    #[test]
+    fn a_switch_request_is_answered_from_its_own_thread() {
+        let (t, rt) = pair();
+        let home = t.path().join("homes").join(MGR);
+        let stem = format!("{}-1-ab", now_ms());
+        let d = core::req_dir(&home);
+        fs::create_dir_all(&d).unwrap();
+        fs::write(
+            d.join(format!("{stem}.json")),
+            json!({"v":1,"id":stem,"tool":"switch_agent","args":{"session": MGR, "to": "codex"}})
+                .to_string(),
+        )
+        .unwrap();
+        rt.manager_pass();
+        let resp = home.join(format!(".cache/tmgr-manager/resp/{stem}.json"));
+        let end = Instant::now() + Duration::from_secs(5);
+        while !resp.exists() && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let v: Value = serde_json::from_slice(&fs::read(resp).unwrap()).unwrap();
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("itself"));
     }
 
     #[test]

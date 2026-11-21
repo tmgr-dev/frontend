@@ -967,7 +967,8 @@ fn constants_are_pinned() {
             "chat.v1",
             "manager.v1",
             "run_prompt.v1",
-            "handoff.v1"
+            "handoff.v1",
+            "switch.v1"
         ]
     );
     let methods = [
@@ -1065,7 +1066,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 42);
+    assert_eq!(w.caps.len(), 43);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1724,4 +1725,31 @@ fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
     assert!(b.validate().is_err());
     b.assignment = None;
     assert_eq!(b.sha256(), base);
+}
+
+#[test]
+fn switch_method_cap_and_shapes() {
+    assert_eq!(method::SESSIONS_SWITCH, "sessions.switch");
+    assert_eq!(caps::SWITCH_V1, "switch.v1");
+    assert_eq!(caps::ALL.last(), Some(&caps::SWITCH_V1));
+    let req = SwitchReq {
+        session: "s_aaaaaaaaaa".into(),
+        to: "codex".into(),
+    };
+    assert_eq!(
+        serde_json::to_value(&req).unwrap(),
+        json!({"session": "s_aaaaaaaaaa", "to": "codex"})
+    );
+    let resp = SwitchResp {
+        new_session: session_info(),
+        packet_id: "h_1".into(),
+        warnings: vec!["w".into()],
+    };
+    let back: SwitchResp = serde_json::from_value(serde_json::to_value(&resp).unwrap()).unwrap();
+    assert_eq!(back, resp);
+    let bare = json!({"new_session": session_info(), "packet_id": "h_1"});
+    assert!(serde_json::from_value::<SwitchResp>(bare)
+        .unwrap()
+        .warnings
+        .is_empty());
 }

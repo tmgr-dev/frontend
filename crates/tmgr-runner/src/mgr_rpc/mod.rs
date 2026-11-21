@@ -119,5 +119,8 @@ pub(crate) mod testkit {
         fn spawn(&self, _: SpawnSpec) -> Result<SessionInfo, String> {
             panic!("spawn must never be reached")
         }
+        fn switch(&self, _: &str, _: &str) -> Result<crate::manager::SwitchResult, String> {
+            panic!("switch must never be reached")
+        }
     }
 }

@@ -2954,6 +2954,7 @@ impl Runner {
             m @ (method::HANDOFF_PREPARE | method::HANDOFF_FINISH) => {
                 self.handoff_dispatch(conn, m, p)
             }
+            method::SESSIONS_SWITCH => self.switch_dispatch(conn, p),
             m if m.starts_with("chat.") => self.chat_dispatch(conn, m, p),
             m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
         }
