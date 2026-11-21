@@ -4,6 +4,9 @@
 			:title="$t('agents.aiUsage.title')"
 			:subtitle="$t('agents.aiUsage.subtitle')"
 		>
+			<template #header-actions>
+				<AiUsageTabs current="device" />
+			</template>
 			<template #body>
 				<div class="flex flex-col gap-6">
 					<AutopilotPanel v-if="showAutopilot" />
@@ -418,6 +421,7 @@
 	import CommandChip from '@/components/general/CommandChip.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import LimitForecast from '@/components/usage/LimitForecast.vue';
+	import AiUsageTabs from '@/components/usage/machines/AiUsageTabs.vue';
 	import UsageDailyChart from '@/components/usage/UsageDailyChart.vue';
 	import UsageProjects from '@/components/usage/UsageProjects.vue';
 	import UsageTokenTypes from '@/components/usage/UsageTokenTypes.vue';
@@ -472,6 +476,7 @@
 	export default defineComponent({
 		name: 'AiUsage',
 		components: {
+			AiUsageTabs,
 			AutopilotPanel,
 			Button,
 			CommandChip,

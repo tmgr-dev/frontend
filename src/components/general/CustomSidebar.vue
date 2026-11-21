@@ -965,9 +965,12 @@
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
-							<SidebarMenuItem v-if="isDesktop">
+							<SidebarMenuItem>
 								<SidebarMenuButton as-child>
-									<router-link to="/ai-usage" :class="NAV_ACTIVE">
+									<router-link
+										:to="isDesktop ? '/ai-usage' : '/ai-usage/machines'"
+										:class="NAV_ACTIVE"
+									>
 										<Gauge />
 										<span>{{ $t('nav.sidebar.aiUsage') }}</span>
 									</router-link>
