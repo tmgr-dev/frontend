@@ -1,56 +1,77 @@
-// STUB contract: mirrors the envelope planned by track A (TM-1018). Replace with A's generated types when they land.
+// Mirrors chat.v1 from track A (crates/tmgr-ipc/src/chat.rs, schema/chat-message.v1.json, branch feat/tm-1018-manager).
+// Replace with A's merged types when they land. SlashCommand is desktop-local (A has no commands method yet).
 
-export type ChatKind = 'room' | 'session' | 'machine';
+export type RoomKind = 'manager' | 'session';
 
-export type SessionStatus = 'working' | 'waiting' | 'failed' | 'idle' | 'done';
-
-export interface Chat {
-	id: string;
-	kind: ChatKind;
-	title: string;
-	agent?: string;
-	machine?: string;
-	ctx_tokens?: number;
-	status?: SessionStatus;
-	unread: number;
-	pinned: boolean;
-	last_preview?: string;
-	last_ts?: number;
+export interface RoomRef {
+	kind: RoomKind;
+	machine: string;
+	session?: string;
 }
 
-export type AuthorKind = 'owner' | 'manager' | 'session' | 'agent';
+export type AuthorKind = 'owner' | 'manager' | 'session' | 'system';
 
 export interface Author {
 	kind: AuthorKind;
 	id: string;
-	label: string;
+	machine?: string;
+	device?: string;
+	agent?: string;
 }
 
-export type MessageKind = 'text' | 'decision' | 'system';
+export type MessageKind = 'text' | 'decision' | 'system' | (string & {});
 
 export interface Attachment {
-	id: string;
 	name: string;
 	mime: string;
 	size: number;
+	sha256: string;
 }
 
-export interface ManagerMessage {
+export interface DecisionRef {
+	card_id: string;
+}
+
+export interface ChatMessage {
+	v: 1;
 	id: string;
-	chat_id: string;
+	room: RoomRef;
 	author: Author;
-	ts: number;
-	body_md: string;
-	attachments: Attachment[];
-	reply_to?: string;
+	ts_ms: number;
 	kind: MessageKind;
-	decision_id?: string;
+	body_md: string;
+	attachments?: Attachment[];
+	reply_to?: string;
+	decision?: DecisionRef;
 }
 
-export interface Draft {
+export interface RoomInfo {
+	room: RoomRef;
+	title: string;
+	agent?: string;
+	state?: string;
+	context_pct?: number;
+	context_tokens?: number;
+	last?: ChatMessage;
+}
+
+export interface HistoryParams {
+	room: RoomRef;
+	before?: string;
+	limit?: number;
+}
+
+export interface SendParams {
+	room: RoomRef;
 	body_md: string;
 	reply_to?: string;
-	attachments: Attachment[];
+	attachments?: Attachment[];
+}
+
+export interface SearchParams {
+	query: string;
+	room?: RoomRef;
+	limit?: number;
 }
 
 export interface SlashCommand {
@@ -61,14 +82,10 @@ export interface SlashCommand {
 	dangerous: boolean;
 }
 
-export interface SearchQuery {
-	text: string;
-	chat_id?: string;
-}
+export const roomKey = (room: RoomRef): string =>
+	room.kind === 'manager'
+		? `manager:${room.machine}`
+		: `session:${room.machine}:${room.session ?? ''}`;
 
-export interface SearchHit {
-	chat_id: string;
-	message_id: string;
-	ts: number;
-	snippet: string;
-}
+export const MAX_BODY_BYTES = 64 * 1024;
+export const MAX_ATTACHMENTS = 16;

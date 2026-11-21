@@ -1,35 +1,30 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
-	Chat,
-	Draft,
-	ManagerMessage,
-	SearchHit,
-	SearchQuery,
+	ChatMessage,
+	HistoryParams,
+	RoomInfo,
+	RoomRef,
+	SearchParams,
+	SendParams,
 	SlashCommand,
 } from './types';
 
-export const managerChats = () => invoke<Chat[]>('manager_chats');
+export const managerRooms = () => invoke<RoomInfo[]>('manager_rooms');
 
-export const managerMessages = (
-	chatId: string,
-	before?: string,
-	limit?: number,
-) => invoke<ManagerMessage[]>('manager_messages', { chatId, before, limit });
+export const managerHistory = (params: HistoryParams) =>
+	invoke<ChatMessage[]>('manager_history', { params });
 
-export const managerSend = (chatId: string, draft: Draft) =>
-	invoke<ManagerMessage>('manager_send', { chatId, draft });
+export const managerSend = (params: SendParams) =>
+	invoke<ChatMessage>('manager_send', { params });
 
-export const managerCommands = (chatId: string) =>
-	invoke<SlashCommand[]>('manager_commands', { chatId });
+export const managerSearch = (params: SearchParams) =>
+	invoke<ChatMessage[]>('manager_search', { params });
 
-export const managerSearch = (query: SearchQuery) =>
-	invoke<SearchHit[]>('manager_search', { query });
+export const managerCommands = (room: RoomRef) =>
+	invoke<SlashCommand[]>('manager_commands', { room });
 
-export const managerMarkRead = (chatId: string) =>
-	invoke<void>('manager_mark_read', { chatId });
-
-export const onManagerChanged = (
-	handler: (chatId: string) => void,
+export const onManagerMessage = (
+	handler: (message: ChatMessage) => void,
 ): Promise<UnlistenFn> =>
-	listen<string>('manager://changed', (event) => handler(event.payload));
+	listen<ChatMessage>('manager://message', (event) => handler(event.payload));
