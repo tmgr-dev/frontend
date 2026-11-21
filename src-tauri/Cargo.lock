@@ -5452,7 +5452,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-chat-relay"
-version = "1.0.139"
+version = "1.0.140"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
