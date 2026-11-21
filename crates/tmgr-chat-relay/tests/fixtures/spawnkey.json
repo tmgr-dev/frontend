@@ -1,0 +1,29 @@
+{
+  "description": "spawn key statement signed by the device chat sign key and by the spawn key",
+  "inputs": {
+    "user_id": 42,
+    "device": {
+      "device_id": "00000000-0000-4000-8000-00000000000a",
+      "keys": {
+        "sign_secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+        "kex_secret_hex": "6565656565656565656565656565656565656565656565656565656565656565",
+        "sign_pub": "BG/wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW/AdxT9sCwx+7ni0DG/30lqW4igrmJzvccFEo=",
+        "kex_pub": "BCA5SAYO/Wge2vfxq0nV9jHxEi0uDLRSos5UkEl7Mt8iU3K4C4blpxCmTotNkjGEFKF5R5uWgn8zed4kcWOUkIQ=",
+        "fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233"
+      }
+    },
+    "spawn_secret_hex": "7777777777777777777777777777777777777777777777777777777777777777",
+    "spawn_pub": "BORQVOtbGr2XZlD385W/UdDY3Rk+AXTnoUocjBJ/vfLbrv4yk7BEXz+Sv44QggLgCUFciZSZYgxxt/bfkCETLJw=",
+    "issued_at_ms": 1800000000000
+  },
+  "outputs": {
+    "statement": "tmgr-spawn-key:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000a:BORQVOtbGr2XZlD385W/UdDY3Rk+AXTnoUocjBJ/vfLbrv4yk7BEXz+Sv44QggLgCUFciZSZYgxxt/bfkCETLJw=:1800000000000",
+    "sig": "MEQCIGXjlSnHlJQ+D/tHpawp+MbDw4v6v7EVOBWf1bin5v3MAiAv6Ib+86AVRoVXLtF8qBKtvOGrFUv2EgAZvIesYZiiwQ==",
+    "spawn_sig": "MEQCIC2DrwAFohk8NBSx9/9Wsf0hpOcsJw5CDOKTSXPsaGmvAiBX85ZZRYl/wO7EY9vyXEGmleCZdW/he0fwENn8xmpaYA==",
+    "payload": {
+      "statement": "tmgr-spawn-key:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000a:BORQVOtbGr2XZlD385W/UdDY3Rk+AXTnoUocjBJ/vfLbrv4yk7BEXz+Sv44QggLgCUFciZSZYgxxt/bfkCETLJw=:1800000000000",
+      "sig": "MEQCIGXjlSnHlJQ+D/tHpawp+MbDw4v6v7EVOBWf1bin5v3MAiAv6Ib+86AVRoVXLtF8qBKtvOGrFUv2EgAZvIesYZiiwQ==",
+      "spawn_sig": "MEQCIC2DrwAFohk8NBSx9/9Wsf0hpOcsJw5CDOKTSXPsaGmvAiBX85ZZRYl/wO7EY9vyXEGmleCZdW/he0fwENn8xmpaYA=="
+    }
+  }
+}
