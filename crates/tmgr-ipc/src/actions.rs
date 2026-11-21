@@ -18,6 +18,7 @@ const LABEL_MAX: usize = 300;
 #[serde(deny_unknown_fields)]
 pub struct CommentPayload {
     pub origin: String,
+    pub user_id: u64,
     pub task_id: u64,
     pub task_label: String,
     pub text: String,
@@ -27,6 +28,7 @@ pub struct CommentPayload {
 #[serde(deny_unknown_fields)]
 pub struct TaskPayload {
     pub origin: String,
+    pub user_id: u64,
     pub workspace_id: u64,
     #[serde(default)]
     pub category_id: Option<u64>,
@@ -132,12 +134,14 @@ impl ActionIn {
         match self {
             ActionIn::Comment(p) => {
                 origin(&p.origin)?;
+                id("user_id", p.user_id)?;
                 id("task_id", p.task_id)?;
                 text("task_label", &p.task_label, LABEL_MAX, false)?;
                 text("text", &p.text, TEXT_MAX, true)
             }
             ActionIn::Task(p) => {
                 origin(&p.origin)?;
+                id("user_id", p.user_id)?;
                 id("workspace_id", p.workspace_id)?;
                 if let Some(c) = p.category_id {
                     id("category_id", c)?;
@@ -323,6 +327,7 @@ mod tests {
     fn comment() -> ActionIn {
         ActionIn::Comment(CommentPayload {
             origin: "https://api.tmgr.dev".into(),
+            user_id: 1,
             task_id: 7,
             task_label: "TM-7: fix".into(),
             text: "Shipped in 1.2.3".into(),
@@ -399,6 +404,11 @@ mod tests {
             p.text = "x".repeat(TEXT_MAX + 1);
         }
         assert!(long.validate().is_err());
+        let mut nobody = comment();
+        if let ActionIn::Comment(p) = &mut nobody {
+            p.user_id = 0;
+        }
+        assert!(nobody.validate().is_err());
         for bad in [
             "-x",
             "a..b",
