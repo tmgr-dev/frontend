@@ -593,6 +593,10 @@ fn parse_answer(r: &Row) -> Result<Option<Event>, String> {
   r.answer.as_deref().map(serde_json::from_str::<Event>).transpose().map_err(json_err)
 }
 
+fn capped_choices(choices: &[ChoiceOut]) -> Vec<ChoiceOut> {
+  choices.iter().map(|c| ChoiceOut { note: cap_opt(c.note.clone(), FOUND_TEXT_MAX), ..c.clone() }).collect()
+}
+
 fn found(r: &Row, c: &CardIn, answer: Option<&Event>) -> Found {
   let dismissed = r.state == "dismissed";
   Found {
@@ -601,6 +605,7 @@ fn found(r: &Row, c: &CardIn, answer: Option<&Event>) -> Found {
     question: cap_opt(c.question.clone(), FOUND_TEXT_MAX),
     state: r.state.clone(),
     choice_label: answer.filter(|_| !dismissed).and_then(|a| a.choice_label.clone()),
+    choices: answer.filter(|_| !dismissed).map(|a| capped_choices(&a.choices)).unwrap_or_default(),
     free_text: cap_opt(answer.and_then(|a| a.free_text.clone()), FOUND_TEXT_MAX),
     note: cap_opt(answer.and_then(|a| a.note.clone()), FOUND_TEXT_MAX),
     dismissed,

@@ -20,7 +20,7 @@ const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[cfg(unix)]
 fn spec_of(args: &AskArgs) -> std::result::Result<crate::cmd::decisions::Spec, String> {
-    use crate::cmd::decisions::{parse_check, parse_diff, parse_fact, read_patch, Spec};
+    use crate::cmd::decisions::{parse_check, parse_diff, parse_fact, read_code, read_patch, Spec};
     let mut stdin_used = false;
     Ok(Spec {
         title: args.title.clone(),
@@ -54,6 +54,11 @@ fn spec_of(args: &AskArgs) -> std::result::Result<crate::cmd::decisions::Spec, S
             .iter()
             .map(|p| read_patch(p, &mut stdin_used))
             .collect::<std::result::Result<_, _>>()?,
+        code: args
+            .code
+            .as_deref()
+            .map(|c| read_code(c, &mut stdin_used))
+            .transpose()?,
         prs: args.pr.clone(),
         commits: args.commits.clone(),
         tags: args.tags.clone(),

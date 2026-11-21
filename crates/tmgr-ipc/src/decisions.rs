@@ -283,6 +283,8 @@ pub struct Found {
     pub state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<ChoiceOut>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub free_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1066,6 +1068,27 @@ mod tests {
         assert!(serde_json::to_string(&old)
             .unwrap()
             .contains(r#""side":"old""#));
+    }
+
+    #[test]
+    fn found_choices_are_optional_on_the_wire() {
+        let old: Found = serde_json::from_str(
+            r#"{"card_id":"c","title":"t","state":"answered","created_ms":1}"#,
+        )
+        .unwrap();
+        assert!(old.choices.is_empty());
+        assert!(!serde_json::to_string(&old).unwrap().contains("choices"));
+        let found = Found {
+            choices: vec![ChoiceOut {
+                id: "a".into(),
+                label: "A".into(),
+                note: Some("n".into()),
+            }],
+            ..old
+        };
+        let text = serde_json::to_string(&found).unwrap();
+        assert!(text.contains(r#""choices":[{"id":"a","label":"A","note":"n"}]"#));
+        assert_eq!(serde_json::from_str::<Found>(&text).unwrap(), found);
     }
 
     #[test]

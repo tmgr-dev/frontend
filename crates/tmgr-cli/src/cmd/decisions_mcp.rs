@@ -1,7 +1,7 @@
 use crate::cmd::decisions::{
     self, agent_name, check_checked, default_wait, event_text, fact_checked, parent_pid,
     parse_check, parse_fact, pending_json, send_card_full_meta, source, wait_cards, SentFull, Spec,
-    Waited, KINDS, MAX_CONTEXT, MAX_TITLE,
+    Waited, KINDS, MAX_CODE_BYTES, MAX_CONTEXT, MAX_TITLE,
 };
 use crate::cmd::mcp::{arg_err, bool_arg, int_arg, str_arg, text_result};
 use serde_json::{json, Value};
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 use tmgr_ipc::decisions::{
-    Cancel, CardPatch, Client, DiffSpec, Found, LineComment, PatchIn, Source, WaitCard,
+    Cancel, CardPatch, Client, CodeIn, DiffSpec, Found, LineComment, PatchIn, Source, WaitCard,
     MAX_PATCH_BYTES, MAX_WAIT_CARDS, OUTCOME_SIMILAR,
 };
 use tmgr_ipc::decisions::{MAX_DIFFS, MAX_PATCHES};
@@ -68,7 +68,7 @@ pub fn defs() -> Vec<Value> {
     vec![
         json!({
             "name": "ask_owner",
-            "description": "Before asking, call find_answers for the same task: the owner often already answered. If ask_owner returns status similar_answered, use that answer instead of asking again. Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head or repos (the owner sees the diffs and can comment on lines), patches (diff text you hold, no repository needed), task, prs, commits, tags and links when useful. Line comments on a card with 2 or more diff groups (repos plus patches) arrive as file = \"<label>:<path>\" where the label is the repository folder name (a second one gets -2) or the patch label; with one group the file is the plain path. Keep the repos order when you resend so the labels stay stable. To resend a question instead of piling up cards, pass key or replaces. key names one question for good: the same key from the same agent and working directory updates the still-open card in place (same card_id, queue position and messages), and if the owner already answered or dismissed it nothing is reopened and the existing answer is returned; a new round of the question needs a new key. A deliberate new round of a question the owner already answered needs force_new:true together with a new key. The key is scoped to (agent, working directory, key), so a resend from another worktree needs replaces (the card_id returned the first time), which wins over key. Always use the card_id the call returns. Returns JSON: an event with type \"answer\" (choice, choice_label, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running. When the owner's chat messages change the facts or options, update the card with the card field of reply_owner in the same call as your reply instead of sending a new card.",
+            "description": "Before asking, call find_answers for the same task: the owner often already answered. If ask_owner returns status similar_answered, use that answer instead of asking again. Ask the owner a question and wait for the answer in the TMGR desktop Decisions inbox. Call it for decisions, reviews and release gates: anything where you would otherwise guess or stop and wait for the human. Give a short title, the question, and the options when the answer is a choice (set recommended to the option you advise). Add facts, checks, repo/base/head or repos (the owner sees the diffs and can comment on lines), patches (diff text you hold, no repository needed), code (one code block: file, text, optional start), task, prs, commits, tags and links when useful. Line comments on a card with 2 or more diff groups (repos plus patches) arrive as file = \"<label>:<path>\" where the label is the repository folder name (a second one gets -2) or the patch label; with one group the file is the plain path. Keep the repos order when you resend so the labels stay stable. To resend a question instead of piling up cards, pass key or replaces. key names one question for good: the same key from the same agent and working directory updates the still-open card in place (same card_id, queue position and messages), and if the owner already answered or dismissed it nothing is reopened and the existing answer is returned; a new round of the question needs a new key. A deliberate new round of a question the owner already answered needs force_new:true together with a new key. The key is scoped to (agent, working directory, key), so a resend from another worktree needs replaces (the card_id returned the first time), which wins over key. Always use the card_id the call returns. On a card with 2 or more options the owner may tick several options and add a note to each (you cannot force a single pick): choice and choice_label are only the first pick, so read every pick from choices. Returns JSON: an event with type \"answer\" (choice and choice_label are the first pick, choices is [{id, label, note}] with every pick and its note, note, free_text, line_comments; deferred=true means the owner postponed the decision: continue other work and call get_answer later; dismissed=true means they declined to answer) or type \"message\" (an interim owner comment, chat message or fix request: address it, then call reply_owner with your reply). If nothing arrives in time it returns {\"status\":\"pending\",\"card_id\":...}: continue other work and call get_answer with that card_id later. The card is queued even when the desktop is not running. When the owner's chat messages change the facts or options, update the card with the card field of reply_owner in the same call as your reply instead of sending a new card.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -119,6 +119,11 @@ pub fn defs() -> Vec<Value> {
                         "required": ["text"],
                         "additionalProperties": false
                     }, "description": "Diffs given as text. At most 8, 1 MiB in total; a bigger card is refused, never cut."},
+                    "code": {"type": "object", "properties": {
+                        "file": {"type": "string", "description": "File name shown above the code; name it like the source file (for example src/main.rs) so the owner sees the language"},
+                        "start": {"type": "integer", "minimum": 1, "description": "Number of the first line (default 1)"},
+                        "text": {"type": "string", "description": "The code, at most 64 KiB; a bigger block is refused, never cut"}
+                    }, "required": ["file", "text"], "additionalProperties": false, "description": "One code block to show on the card."},
                     "prs": {"type": "array", "items": {"type": "string"}, "description": "Pull requests: http(s) URL or owner/repo#123"},
                     "commits": {"type": "array", "items": {"type": "string"}, "description": "Commits: URL or owner/repo@<7-40 hex sha>"},
                     "tags": {"type": "array", "items": {"type": "string"}, "description": "Release tags: URL or owner/repo@tag"},
@@ -134,7 +139,7 @@ pub fn defs() -> Vec<Value> {
         }),
         json!({
             "name": "get_answer",
-            "description": "Collect the owner's answer to a card created by ask_owner that came back pending (or was deferred). Waits up to waitSeconds for the next event after the ones already returned in this session: an \"answer\" (final unless deferred=true) or a \"message\" (an interim owner comment: address it, then call reply_owner). Pass card_ids (up to 64) to cover several cards with one wait: it returns the first event from any of them, and the event JSON includes its card_id. Returns {\"status\":\"pending\",\"card_id\":...} when nothing new arrived (with card_ids: {\"status\":\"pending\",\"card_ids\":[...]}).",
+            "description": "Collect the owner's answer to a card created by ask_owner that came back pending (or was deferred). Waits up to waitSeconds for the next event after the ones already returned in this session: an \"answer\" (final unless deferred=true) or a \"message\" (an interim owner comment: address it, then call reply_owner). When the owner may have ticked several options, choices lists every pick as {id, label, note} (choice is the first one). Pass card_ids (up to 64) to cover several cards with one wait: it returns the first event from any of them, and the event JSON includes its card_id. Returns {\"status\":\"pending\",\"card_id\":...} when nothing new arrived (with card_ids: {\"status\":\"pending\",\"card_ids\":[...]}).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -147,7 +152,7 @@ pub fn defs() -> Vec<Value> {
         }),
         json!({
             "name": "find_answers",
-            "description": "Look up the owner's past answers in the TMGR desktop Decisions inbox: answered and dismissed cards, newest first, filtered by task (TM-123 or a task URL), by key prefix or by text (query: every word must occur in the title, question, choice, free text or note). Each result gives the choice, free text, note and state (dismissed=true means the owner declined to answer). Call it before ask_owner: the owner often already answered the same question. Returns {\"answers\":[...]}.",
+            "description": "Look up the owner's past answers in the TMGR desktop Decisions inbox: answered and dismissed cards, newest first, filtered by task (TM-123 or a task URL), by key prefix or by text (query: every word must occur in the title, question, choice, free text or note). Each result gives the choice, choices (every pick with its label and note, when the owner picked several or added a note), free text, note and state (dismissed=true means the owner declined to answer). Call it before ask_owner: the owner often already answered the same question. Returns {\"answers\":[...]}.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -255,6 +260,19 @@ fn parse_spec(a: &Value) -> Result<Spec, String> {
                 .to_string(),
         });
     }
+    spec.code = match a.get("code") {
+        None | Some(Value::Null) => None,
+        Some(c @ Value::Object(_)) => Some(CodeIn {
+            file: str_arg(c, "file", 1, MAX_TITLE)?
+                .ok_or("code needs file")?
+                .to_string(),
+            start: int_arg(c, "start", 1, u32::MAX as i64)?.map_or(1, |n| n as u32),
+            text: str_arg(c, "text", 1, MAX_CODE_BYTES)?
+                .ok_or("code needs text")?
+                .to_string(),
+        }),
+        Some(_) => return Err("code must be an object".into()),
+    };
     for (key, list) in [
         ("prs", &mut spec.prs),
         ("commits", &mut spec.commits),
@@ -690,6 +708,7 @@ mod tests {
             question: Some("Release 1.2?".into()),
             state: state.into(),
             choice_label: None,
+            choices: Vec::new(),
             free_text: None,
             note: None,
             dismissed,
@@ -697,6 +716,38 @@ mod tests {
             task: Some("TM-1".into()),
             created_ms: 1,
         }
+    }
+
+    #[test]
+    fn ask_owner_takes_a_code_block() {
+        let spec =
+            parse_spec(&json!({"title": "t", "code": {"file": "a.rs", "text": "x", "start": 5}}))
+                .unwrap();
+        let code = spec.code.unwrap();
+        assert_eq!(
+            (code.file.as_str(), code.start, code.text.as_str()),
+            ("a.rs", 5, "x")
+        );
+        let spec =
+            parse_spec(&json!({"title": "t", "code": {"file": "a.rs", "text": "x"}})).unwrap();
+        assert_eq!(spec.code.unwrap().start, 1);
+        assert!(parse_spec(&json!({"title": "t"})).unwrap().code.is_none());
+        for bad in [
+            json!("x"),
+            json!({"file": "a.rs"}),
+            json!({"text": "x"}),
+            json!({"file": "a.rs", "text": "x", "start": 0}),
+        ] {
+            assert!(parse_spec(&json!({"title": "t", "code": bad})).is_err());
+        }
+        let ask = defs()
+            .into_iter()
+            .find(|t| t["name"] == "ask_owner")
+            .unwrap();
+        assert_eq!(
+            ask["inputSchema"]["properties"]["code"]["required"],
+            json!(["file", "text"])
+        );
     }
 
     #[test]

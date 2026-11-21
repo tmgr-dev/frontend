@@ -295,6 +295,9 @@ pub struct AskArgs {
     /// A patch to show, [LABEL=]FILE or - for stdin (repeatable, 1 MiB in total)
     #[arg(long = "patch", value_name = "[LABEL=]FILE|-")]
     pub patches: Vec<String>,
+    /// A code block to show, [NAME[:START]=]FILE or - for stdin (64 KiB)
+    #[arg(long = "code", value_name = "[NAME[:START]=]FILE|-")]
+    pub code: Option<String>,
     /// Commit: URL or owner/repo@SHA (7 to 40 hex digits) (repeatable)
     #[arg(long = "commit", value_name = "URL|OWNER/REPO@SHA")]
     pub commits: Vec<String>,
@@ -326,6 +329,18 @@ pub const ASK_HELP: &str = "Several repositories and patches
   file = \"<label>:<path>\"; with one group the file is the plain path.
   --patch [LABEL=]FILE or - (stdin, once) shows text you hold, without a repository. Up to 8
   patches and 1 MiB in all; a bigger card is refused, never cut.
+
+Code and answers
+  --code [NAME[:START]=]FILE or - (stdin, once, not together with a stdin --patch) shows one code
+  block. NAME is the file name shown above the code (name it like the source file so the owner sees
+  the language; default: the
+  file's own name, or \"code\" for stdin, so give stdin a name with an extension: src/a.rs=-), START the number of its first line (default 1). At most
+  64 KiB; a bigger block is refused, never cut.
+  The code block cannot be changed by a later reply; resend the card with --key or --replaces.
+  On a card with 2 or more options the owner may tick several options and add a note to each;
+  there is no flag for it and no way to force a single pick. choice is only the first pick, so
+  read choices (every pick with its label and note; `tmgr decisions answers` prints them as
+  Choices). A desktop or phone that is not updated returns choice and note only.
 
 Links
   --pr, --commit, --tag take a URL or owner/repo#123, owner/repo@SHA, owner/repo@TAG

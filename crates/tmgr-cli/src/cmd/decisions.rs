@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result as CoreResult};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::decisions::{
-    self, Cancel, CardIn, Check, Client, DiffSpec, Event, Fact, Found, Inbox, LinkItem, Links, Opt,
-    PatchIn, PendingDelivery, Response, Secret, Source, WaitCard, MAX_DIFFS, MAX_LINE, MAX_LINKS,
-    MAX_PATCHES, MAX_PATCH_BYTES,
+    self, Cancel, CardIn, Check, ChoiceOut, Client, CodeIn, DiffSpec, Event, Fact, Found, Inbox,
+    LinkItem, Links, Opt, PatchIn, PendingDelivery, Response, Secret, Source, WaitCard, MAX_DIFFS,
+    MAX_LINE, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES,
 };
 use tmgr_ipc::loopback::{self, HttpErr};
 
@@ -479,6 +479,7 @@ pub struct Spec {
     pub task: Option<String>,
     pub diffs: Vec<DiffSpec>,
     pub patches: Vec<PatchIn>,
+    pub code: Option<CodeIn>,
     pub prs: Vec<String>,
     pub commits: Vec<String>,
     pub tags: Vec<String>,
@@ -491,6 +492,8 @@ pub struct Spec {
 const MAX_URL: usize = 2000;
 const MAX_KEY: usize = 200;
 const DEFAULT_PATCH_LABEL: &str = "patch";
+const DEFAULT_CODE_FILE: &str = "code";
+pub const MAX_CODE_BYTES: usize = 64 * 1024;
 
 fn is_http(s: &str) -> bool {
     let lower = s.to_ascii_lowercase();
@@ -697,6 +700,55 @@ pub fn read_patch(arg: &str, stdin_used: &mut bool) -> Result<PatchIn, String> {
     })
 }
 
+pub fn read_code(arg: &str, stdin_used: &mut bool) -> Result<CodeIn, String> {
+    use std::io::Read;
+    let (head, source) = if arg == "-" || Path::new(arg).is_file() {
+        (None, arg)
+    } else {
+        match arg.split_once('=') {
+            Some((h, f)) if !h.trim().is_empty() => (Some(h.trim()), f),
+            _ => (None, arg),
+        }
+    };
+    let (name, start) = match head.and_then(|h| h.rsplit_once(':')) {
+        Some((n, l)) if !n.is_empty() && l.bytes().all(|b| b.is_ascii_digit()) && !l.is_empty() => {
+            let start = l
+                .parse::<u32>()
+                .ok()
+                .filter(|n| *n > 0)
+                .ok_or_else(|| format!("{l:?}: the first line number must be 1 or more"))?;
+            (Some(n.to_string()), start)
+        }
+        _ => (head.map(str::to_string), 1),
+    };
+    let cap = MAX_CODE_BYTES as u64 + 1;
+    let mut bytes = Vec::new();
+    let default = if source == "-" {
+        if std::mem::replace(stdin_used, true) {
+            return Err("stdin can be used for only one of --patch and --code".into());
+        }
+        io::stdin()
+            .lock()
+            .take(cap)
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("cannot read the code from stdin: {e}"))?;
+        DEFAULT_CODE_FILE.to_string()
+    } else {
+        std::fs::File::open(source)
+            .and_then(|f| f.take(cap).read_to_end(&mut bytes))
+            .map_err(|e| format!("cannot read the code file {source:?}: {e}"))?;
+        Path::new(source).file_name().map_or_else(
+            || DEFAULT_CODE_FILE.to_string(),
+            |n| n.to_string_lossy().into(),
+        )
+    };
+    Ok(CodeIn {
+        file: name.unwrap_or(default),
+        start,
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+    })
+}
+
 pub fn split_state<'a>(s: &'a str, allowed: &[&str]) -> Result<(&'a str, &'a str), String> {
     let (state, text) = s
         .split_once(':')
@@ -861,6 +913,31 @@ impl Spec {
         if patch_bytes > MAX_PATCH_BYTES {
             return Err(format!("patches may total at most {MAX_PATCH_BYTES} bytes"));
         }
+        let code = match self.code {
+            Some(c) => {
+                let file = c.file.trim();
+                if file.is_empty() || file.chars().count() > MAX_TITLE {
+                    return Err(format!(
+                        "code file names must be 1 to {MAX_TITLE} characters"
+                    ));
+                }
+                if c.text.trim().is_empty() {
+                    return Err("code must not be empty".into());
+                }
+                if c.text.len() > MAX_CODE_BYTES {
+                    return Err(format!("code may be at most {MAX_CODE_BYTES} bytes"));
+                }
+                if c.start == 0 {
+                    return Err("the first line number must be 1 or more".into());
+                }
+                Some(CodeIn {
+                    file: file.into(),
+                    start: c.start,
+                    text: c.text,
+                })
+            }
+            None => None,
+        };
         if let Some(t) = &self.task {
             refuse_foreign_scheme(t, "task")?;
         }
@@ -922,7 +999,7 @@ impl Spec {
             diff,
             diffs,
             patches,
-            code: None,
+            code,
             replaces: self.replaces,
             key: self.key.map(|k| k.trim().to_string()),
             force_new: self.force_new,
@@ -1068,10 +1145,18 @@ fn answers_human(found: &[Found]) -> String {
             if let Some(c) = &f.choice_label {
                 lines.push(format!("  Choice: {}", sanitize_line(c)));
             }
+            if f.choices.len() > 1 || f.choices.iter().any(|c| c.note.is_some()) {
+                lines.push("  Choices:".into());
+                lines.extend(
+                    f.choices
+                        .iter()
+                        .map(|c| format!("    - {}", choice_line(c))),
+                );
+            }
             if let Some(t) = &f.free_text {
                 lines.push(format!("  Free text: {}", sanitize_line(t)));
             }
-            if let Some(n) = &f.note {
+            if let Some(n) = f.note.as_ref().filter(|_| f.choices.len() < 2) {
                 lines.push(format!("  Note: {}", sanitize_line(n)));
             }
             lines.push(format!("  Created: {}", created(f.created_ms)));
@@ -1080,6 +1165,13 @@ fn answers_human(found: &[Found]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn choice_line(c: &ChoiceOut) -> String {
+    match &c.note {
+        Some(n) => format!("{}: {}", sanitize_line(&c.label), sanitize_line(n)),
+        None => sanitize_line(&c.label),
+    }
 }
 
 fn side_note(side: Option<&str>) -> &'static str {
@@ -1113,7 +1205,11 @@ pub fn event_text(e: &Event) -> String {
     if let Some(label) = e.choice_label.as_deref().or(e.choice.as_deref()) {
         lines.push(format!("choice: {label}"));
     }
-    if let Some(n) = &e.note {
+    if e.choices.len() > 1 || e.choices.iter().any(|c| c.note.is_some()) {
+        lines.push("choices:".to_string());
+        lines.extend(e.choices.iter().map(|c| format!("  - {}", choice_line(c))));
+    }
+    if let Some(n) = e.note.as_ref().filter(|_| e.choices.len() < 2) {
         lines.push(format!("note: {n}"));
     }
     if let Some(t) = &e.free_text {
@@ -1724,6 +1820,115 @@ mod tests {
     }
 
     #[test]
+    fn a_code_block_lands_on_the_card() {
+        let mut s = spec();
+        s.code = Some(CodeIn {
+            file: " src/main.rs ".into(),
+            start: 7,
+            text: "fn main() {}".into(),
+        });
+        let card = s.into_card("mcp", Source::default()).unwrap();
+        let code = card.code.unwrap();
+        assert_eq!((code.file.as_str(), code.start), ("src/main.rs", 7));
+        assert_eq!(code.text, "fn main() {}");
+        assert!(spec()
+            .into_card("mcp", Source::default())
+            .unwrap()
+            .code
+            .is_none());
+    }
+
+    #[test]
+    fn bad_code_blocks_are_refused() {
+        let code = |file: &str, start: u32, text: &str| CodeIn {
+            file: file.into(),
+            start,
+            text: text.into(),
+        };
+        for c in [
+            code(" ", 1, "x"),
+            code("a.rs", 1, " \n"),
+            code("a.rs", 0, "x"),
+            code("a.rs", 1, &"x".repeat(MAX_CODE_BYTES + 1)),
+        ] {
+            let mut s = spec();
+            s.code = Some(c);
+            assert!(s.into_card("mcp", Source::default()).is_err());
+        }
+    }
+
+    #[test]
+    fn code_arguments_name_the_file_and_the_first_line() {
+        let dir = std::env::temp_dir().join(format!("tmgr-code-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.rs");
+        std::fs::write(&path, "let x = 1;\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut used = false;
+        let plain = read_code(p, &mut used).unwrap();
+        assert_eq!((plain.file.as_str(), plain.start), ("a.rs", 1));
+        let named = read_code(&format!("lib/x.rs:40={p}"), &mut used).unwrap();
+        assert_eq!((named.file.as_str(), named.start), ("lib/x.rs", 40));
+        assert_eq!(named.text, "let x = 1;\n");
+        let bare = read_code(&format!("lib/x.rs={p}"), &mut used).unwrap();
+        assert_eq!((bare.file.as_str(), bare.start), ("lib/x.rs", 1));
+        assert!(read_code(&format!("x.rs:0={p}"), &mut used).is_err());
+        assert!(read_code(&dir.join("missing").to_string_lossy(), &mut used).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn every_chosen_option_is_printed_with_its_note() {
+        let choices = vec![
+            ChoiceOut {
+                id: "a".into(),
+                label: "Ship".into(),
+                note: Some("after lunch".into()),
+            },
+            ChoiceOut {
+                id: "b".into(),
+                label: "Tag".into(),
+                note: None,
+            },
+        ];
+        let found = Found {
+            card_id: "c_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            title: "t".into(),
+            question: None,
+            state: "answered".into(),
+            choice_label: Some("Ship".into()),
+            choices: choices.clone(),
+            free_text: None,
+            note: None,
+            dismissed: false,
+            key: None,
+            task: None,
+            created_ms: 0,
+        };
+        let text = answers_human(&[found]);
+        assert!(text.contains("  Choice: Ship"));
+        assert!(!text.contains("Note:"));
+        assert!(text.contains("  Choices:\n    - Ship: after lunch\n    - Tag"));
+        let event = Event {
+            choice_label: Some("Ship".into()),
+            choices,
+            ..Default::default()
+        };
+        let text = event_text(&event);
+        assert!(text.contains("choices:\n  - Ship: after lunch\n  - Tag"));
+        let single = Event {
+            choice_label: Some("Ship".into()),
+            choices: vec![ChoiceOut {
+                id: "a".into(),
+                label: "Ship".into(),
+                note: None,
+            }],
+            ..Default::default()
+        };
+        assert!(!event_text(&single).contains("choices"));
+    }
+
+    #[test]
     fn states_are_validated() {
         assert_eq!(parse_fact("ok:tests pass").unwrap().text, "tests pass");
         assert!(parse_fact("todo:x").is_err());
@@ -1873,6 +2078,7 @@ mod tests {
             question: Some("Release 1.2?".into()),
             state: "answered".into(),
             choice_label: Some("Yes".into()),
+            choices: Vec::new(),
             free_text: None,
             note: None,
             dismissed: false,

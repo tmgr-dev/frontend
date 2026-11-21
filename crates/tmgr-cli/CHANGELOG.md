@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.139
+
+- Decisions: `tmgr ask --code [NAME[:START]=]FILE|-` and the `code` field of `ask_owner` (`{file, text, start}`) show a code block on the card, next to the diffs from `--patch`. The block is at most 64 KiB and is refused, not cut, when larger. Several chosen options: `get_answer` already returns `choices` (every pick with its label and note, `choice` stays the first one); `tmgr decisions answers` and `find_answers` now include `choices` too and print them as a list, which needs a desktop with the same update (an older desktop gives `choice` and `note` only). There is no multi-select flag: the owner may pick several options on any card with 2 or more options.
+
 ## 1.0.138
 
 - `tmgr attach`: mouse selection now works on sessions of a linked machine. Dragging on a remote pane highlights the text and copies it to your clipboard, as on a local pane (double click selects a word, triple click a line). In 1.0.136 the drag never started on remote panes.
