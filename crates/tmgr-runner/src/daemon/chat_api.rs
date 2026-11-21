@@ -18,6 +18,50 @@ impl Runner {
         (!s.is_exited() && s.has_shim()).then_some(s)
     }
 
+    fn chat_deliver(
+        &self,
+        room: &tmgr_ipc::chat::RoomRef,
+        body: &str,
+        client: &str,
+    ) -> chat::Delivery {
+        match self.chat_target(room) {
+            None => chat::Delivery::NoTarget,
+            Some(t) => match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
+                Ok(()) => {
+                    t.note_input_from(client);
+                    chat::Delivery::Delivered
+                }
+                Err(_) => chat::Delivery::Busy,
+            },
+        }
+    }
+
+    pub(super) fn start_relay_pump(self: &Arc<Self>) {
+        let Some(transport) = self.cfg.relay.clone() else {
+            return;
+        };
+        let (ingest_rt, sub_rt, stop_rt) = (self.clone(), self.clone(), self.clone());
+        let setup = chat::relay::pump::Setup {
+            dir: self.cfg.dir.clone(),
+            machine: self.chat.machine().to_owned(),
+            transport,
+            ingest: Arc::new(move |m: chat::Incoming| {
+                let room = m.room.clone();
+                ingest_rt.chat.ingest(
+                    m,
+                    now_ms(),
+                    |s| ingest_rt.session(s).is_some(),
+                    |body| ingest_rt.chat_deliver(&room, body, "relay"),
+                )
+            }),
+            subscribe: Arc::new(move || sub_rt.chat.subscribe()),
+            stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
+        };
+        if let Err(e) = chat::relay::pump::spawn(setup) {
+            log(&format!("chat relay: pump did not start: {e}"));
+        }
+    }
+
     pub(super) fn chat_dispatch(
         &self,
         conn: &Arc<Conn>,
@@ -72,18 +116,7 @@ impl Runner {
                         attachments: q.attachments,
                         device: None,
                     };
-                    let deliver = |body: &str| match self.chat_target(&room) {
-                        None => chat::Delivery::NoTarget,
-                        Some(t) => {
-                            match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
-                                Ok(()) => {
-                                    t.note_input_from(&conn.client);
-                                    chat::Delivery::Delivered
-                                }
-                                Err(_) => chat::Delivery::Busy,
-                            }
-                        }
-                    };
+                    let deliver = |body: &str| self.chat_deliver(&room, body, &conn.client);
                     return self
                         .chat
                         .ingest(incoming, now_ms(), |s| self.session(s).is_some(), deliver)
@@ -173,6 +206,7 @@ mod tests {
             quiet_ms: 1000,
             version: "test".into(),
             max_sessions: 4,
+            relay: None,
         };
         let chat_store = Arc::new(chat::Chat::open(&cfg.dir));
         Arc::new(Runner {

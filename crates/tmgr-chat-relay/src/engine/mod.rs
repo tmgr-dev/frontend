@@ -1133,6 +1133,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         self.save_now(c)
     }
 
+    pub fn is_joined(&self) -> bool {
+        self.lock().st.joined
+    }
+
     pub fn trust_state(&self) -> Result<TrustState, String> {
         let g = self.lock();
         let own_id = g.identity.as_ref().map(|i| i.device_id.as_str());

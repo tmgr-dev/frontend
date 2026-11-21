@@ -415,6 +415,21 @@ fn pair(fake: &Fake, clock: &Clock) -> (Engine, Engine) {
 }
 
 #[test]
+fn is_joined_flips_when_join_ok_arrives() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let b = engine_with(&fake, &clock, "Desktop B");
+    let code = a.open_join_code().unwrap();
+    b.join_with_code(&code).unwrap();
+    assert!(!b.is_joined());
+    a.poll_once().unwrap();
+    let bid = my_id(&b);
+    a.decide_join(&bid, true).unwrap();
+    b.poll_once().unwrap();
+    assert!(b.is_joined());
+}
+
+#[test]
 fn message_round_trip_between_two_engines() {
     let (fake, clock) = (Fake::default(), Clock::new(T0));
     let (a, b) = pair(&fake, &clock);

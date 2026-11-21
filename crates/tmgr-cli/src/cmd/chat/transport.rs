@@ -14,6 +14,15 @@ pub struct HttpRelayTransport {
     pub login_token: Option<String>,
 }
 
+pub fn factory() -> tmgr_runner::chat::relay::pump::TransportFactory {
+    std::sync::Arc::new(|server| {
+        Ok(Box::new(HttpRelayTransport {
+            base_url: server.to_owned(),
+            login_token: None,
+        }))
+    })
+}
+
 fn is_loopback(rest: &str) -> bool {
     ["127.0.0.1", "localhost", "[::1]"].iter().any(|h| {
         rest.strip_prefix(h)

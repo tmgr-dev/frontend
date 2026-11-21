@@ -145,7 +145,7 @@ pub(super) fn clean(s: &str) -> String {
 }
 
 fn serve() -> Result<i32> {
-    let cfg = runner_config()?;
+    let mut cfg = runner_config()?;
     if std::env::var_os(daemon::ENV_CLEAN).is_none() {
         use std::os::unix::process::CommandExt;
         let err = std::process::Command::new(&cfg.self_exe)
@@ -156,6 +156,7 @@ fn serve() -> Result<i32> {
             .exec();
         return Err(Error::internal(format!("runner: {err}")));
     }
+    cfg.relay = Some(crate::cmd::chat::transport::factory());
     daemon::serve(cfg).map_err(|e| Error::internal(format!("runner: {e}")))?;
     Ok(0)
 }

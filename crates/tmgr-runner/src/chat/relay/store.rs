@@ -3,7 +3,16 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use tmgr_chat_relay::engine::{KeyStore, Slot};
+
+const CONFIG_FILE: &str = "config";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelayConfig {
+    pub server: String,
+    pub user_id: u64,
+}
 
 pub struct RelayDir {
     dir: PathBuf,
@@ -50,13 +59,13 @@ impl RelayDir {
     }
 }
 
-impl KeyStore for RelayDir {
-    fn load(&self, slot: Slot) -> Result<Option<String>, String> {
+impl RelayDir {
+    fn read(&self, path: PathBuf) -> Result<Option<String>, String> {
         check_dir(&self.dir)?;
         let mut f = match OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NOFOLLOW)
-            .open(self.path(slot))
+            .open(path)
         {
             Ok(f) => f,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -67,7 +76,7 @@ impl KeyStore for RelayDir {
         Ok(Some(out))
     }
 
-    fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
+    fn write(&self, path: PathBuf, value: &str) -> Result<(), String> {
         check_dir(&self.dir)?;
         let mut tmp = tempfile::Builder::new()
             .prefix(".tmp-")
@@ -75,11 +84,34 @@ impl KeyStore for RelayDir {
             .map_err(unusable)?;
         tmp.write_all(value.as_bytes()).map_err(unusable)?;
         tmp.as_file().sync_all().map_err(unusable)?;
-        tmp.persist(self.path(slot))
-            .map_err(|e| unusable(e.error))?;
+        tmp.persist(path).map_err(|e| unusable(e.error))?;
         File::open(&self.dir)
             .and_then(|d| d.sync_all())
             .map_err(unusable)
+    }
+
+    pub fn load_config(&self) -> Result<Option<RelayConfig>, String> {
+        match self.read(self.dir.join(CONFIG_FILE))? {
+            Some(raw) => serde_json::from_str(&raw)
+                .map(Some)
+                .map_err(|_| unusable("config is unreadable")),
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_config(&self, cfg: &RelayConfig) -> Result<(), String> {
+        let raw = serde_json::to_string(cfg).map_err(unusable)?;
+        self.write(self.dir.join(CONFIG_FILE), &raw)
+    }
+}
+
+impl KeyStore for RelayDir {
+    fn load(&self, slot: Slot) -> Result<Option<String>, String> {
+        self.read(self.path(slot))
+    }
+
+    fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
+        self.write(self.path(slot), value)
     }
 
     fn clear(&self) -> Result<(), String> {
@@ -149,6 +181,20 @@ mod tests {
         let d = RelayDir::open(t.path()).unwrap();
         symlink(other.path().join("secret"), d.dir.join("identity")).unwrap();
         assert!(d.load(Slot::Identity).is_err());
+    }
+
+    #[test]
+    fn config_round_trips_privately() {
+        let t = tempfile::tempdir().unwrap();
+        let d = RelayDir::open(t.path()).unwrap();
+        assert_eq!(d.load_config().unwrap(), None);
+        let cfg = RelayConfig {
+            server: "https://tmgr.dev".into(),
+            user_id: 7,
+        };
+        d.save_config(&cfg).unwrap();
+        assert_eq!(d.load_config().unwrap(), Some(cfg));
+        assert_eq!(mode(&d.dir.join("config")), 0o600);
     }
 
     #[test]

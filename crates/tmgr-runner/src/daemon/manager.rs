@@ -149,6 +149,7 @@ mod tests {
                 quiet_ms: 1000,
                 version: "test".into(),
                 max_sessions: 4,
+                relay: None,
             },
             secret: String::new(),
             started: Instant::now(),

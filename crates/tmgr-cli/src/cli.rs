@@ -43,6 +43,12 @@ pub enum Command {
     #[cfg(feature = "runner")]
     #[command(flatten)]
     Runner(crate::cmd::runner::RunnerCommands),
+    /// Pair this runner with the chat relay
+    #[cfg(feature = "runner")]
+    Chat {
+        #[command(subcommand)]
+        command: crate::cmd::chat::ChatCommand,
+    },
     /// Time you spent in `tmgr attach`: totals, idle cap and sending to tasks
     #[cfg(feature = "runner")]
     Time(crate::cmd::time::TimeArgs),

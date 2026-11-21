@@ -1,14 +1,14 @@
 use std::io::{self, BufRead};
-use tmgr_chat_relay::trust::{decode_join_code, JoinCode};
+use tmgr_chat_relay::trust::{decode_join_code, JoinCode, JOIN_PREFIX};
 use tmgr_core::error::{Error, Result};
 
 const PIPE_HINT: &str = "pipe the code in (echo ... | tmgr chat join) or type it at the prompt";
 
-pub fn read_join_code(
+fn read_line(
     mut stdin: impl BufRead,
     is_tty: bool,
     mut prompt: impl FnMut() -> io::Result<String>,
-) -> Result<JoinCode> {
+) -> Result<String> {
     let line = if is_tty {
         prompt()
     } else {
@@ -20,7 +20,28 @@ pub fn read_join_code(
     if line.is_empty() {
         return Err(Error::usage("no join code given").hint(PIPE_HINT));
     }
-    decode_join_code(line)
+    Ok(line.to_owned())
+}
+
+pub fn read_join_text(
+    stdin: impl BufRead,
+    is_tty: bool,
+    prompt: impl FnMut() -> io::Result<String>,
+) -> Result<String> {
+    let line = read_line(stdin, is_tty, prompt)?;
+    if !line.starts_with(JOIN_PREFIX) {
+        return Err(Error::usage("that is not a valid join code").hint("copy the whole code"));
+    }
+    Ok(line)
+}
+
+pub fn read_join_code(
+    stdin: impl BufRead,
+    is_tty: bool,
+    prompt: impl FnMut() -> io::Result<String>,
+) -> Result<JoinCode> {
+    let line = read_line(stdin, is_tty, prompt)?;
+    decode_join_code(&line)
         .map_err(|_| Error::usage("that is not a valid join code").hint("copy the whole code"))
 }
 
@@ -76,6 +97,15 @@ mod tests {
         let err = read_join_code(Cursor::new(format!("{bad}\n")), false, no_prompt).unwrap_err();
         let shown = format!("{err} {:?}", err);
         assert!(!shown.contains("SECRETSECRET"));
+    }
+
+    #[test]
+    fn join_text_keeps_the_raw_code_and_checks_only_the_prefix() {
+        let raw = format!("{JOIN_PREFIX}anything-with-a-kind-field");
+        let got = read_join_text(Cursor::new(format!(" {raw}\n")), false, no_prompt).unwrap();
+        assert_eq!(got, raw);
+        let err = read_join_text(Cursor::new("SECRETSECRET\n"), false, no_prompt).unwrap_err();
+        assert!(!format!("{err}").contains("SECRETSECRET"));
     }
 
     #[test]
