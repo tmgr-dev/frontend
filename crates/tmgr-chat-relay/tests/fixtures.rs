@@ -1057,9 +1057,7 @@ fn committed_negative_vectors_behave_as_declared() {
         let user = v.get("user_id").unwrap_or(&c["user_id"]).as_u64().unwrap();
         let now = v.get("now_ms").unwrap_or(&c["now_ms"]).as_u64().unwrap();
         let msg_id = v.get("msg_id").unwrap_or(&c["msg_id"]).as_str().unwrap();
-        let trusted_sender = v
-            .get("sender_trusted")
-            .map_or(true, |b| b.as_bool().unwrap());
+        let trusted_sender = v.get("sender_trusted").is_none_or(|b| b.as_bool().unwrap());
         let pins: Vec<Trusted> = if trusted_sender {
             vec![pinned.clone()]
         } else {
