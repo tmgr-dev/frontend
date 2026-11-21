@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use tmgr_phone::AckResult;
 use tmgr_ipc::loopback;
 use tmgr_ipc::decisions::{
-  new_card_id, valid_card_id, CardIn, CardPatch, Check, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
+  new_card_id, valid_card_id, CardIn, CardPatch, Check, ChoiceOut, CodeIn, DiffSpec, Event, Fact, Found, Inbox, LineComment, LinkItem, Links, Opt,
   PatchIn, PendingDelivery, Secret, Source, ThreadRef, MAX_DIFFS, MAX_LINKS, MAX_PATCHES, MAX_PATCH_BYTES, OUTCOME_CREATED, OUTCOME_FINAL,
   OUTCOME_SIMILAR, OUTCOME_UPDATED,
 };
@@ -81,6 +81,8 @@ pub struct AnswerIn {
   pub choice: Option<String>,
   #[serde(default)]
   pub note: Option<String>,
+  #[serde(default)]
+  pub choices: Vec<(String, Option<String>)>,
   #[serde(default)]
   pub free_text: Option<String>,
   #[serde(default)]
@@ -154,6 +156,10 @@ pub struct CardView {
   pub unpicked: bool,
   #[serde(skip)]
   pub rev: String,
+  #[serde(skip)]
+  pub code: Option<CodeIn>,
+  #[serde(skip)]
+  pub first_patch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -225,6 +231,7 @@ pub struct PhoneReq {
   pub action: tmgr_phone::Action,
   pub choice: Option<String>,
   pub text: Option<String>,
+  pub choices: Option<Vec<tmgr_phone::Choice>>,
   pub issued_at: i64,
 }
 
@@ -258,12 +265,46 @@ fn event_label(e: &Event) -> String {
   } else if e.deferred {
     "Deferred".into()
   } else {
-    e.choice_label.clone().unwrap_or_else(|| "Text reply".into())
+    match e.choices.as_slice() {
+      [] => e.choice_label.clone().unwrap_or_else(|| "Text reply".into()),
+      picked => picked.iter().map(|c| c.label.as_str()).collect::<Vec<_>>().join(", "),
+    }
   }
 }
 
-fn phone_answer_in_of(r: &PhoneReq, card: &CardIn) -> Option<AnswerIn> {
+fn choices_note(choices: &[ChoiceOut], note: Option<String>) -> Option<String> {
+  if let [only] = choices {
+    return only.note.clone().or(note);
+  }
+  let ids: Vec<&str> = choices.iter().map(|c| c.id.as_str()).collect();
+  let mut lines = vec![format!("Chosen: {}", ids.join(", "))];
+  lines.extend(choices.iter().filter_map(|c| c.note.as_ref().map(|n| format!("{}: {n}", c.id))));
+  Some(lines.join("\n"))
+}
+
+fn phone_answer_in_of(r: &PhoneReq, card: &CardIn, multi: bool, notes: bool) -> Option<AnswerIn> {
   use tmgr_phone::Action;
+  let text_ok = r.text.as_deref().is_none_or(|t| !t.trim().is_empty() && tmgr_phone::check_text(t).is_ok());
+  if let Some(picked) = &r.choices {
+    let body = tmgr_phone::AnswerBody {
+      card_id: r.card_id.clone(),
+      card_digest: r.card_digest.clone(),
+      session: r.session.clone(),
+      answer_id: r.answer_id.clone(),
+      issued_at: r.issued_at,
+      action: r.action,
+      choice: r.choice.clone(),
+      text: r.text.clone(),
+      choices: Some(picked.clone()),
+    };
+    let known = picked.iter().all(|c| card.options.iter().any(|o| o.id == c.id));
+    let capable = (picked.len() < 2 || multi) && (notes || picked.iter().all(|c| c.note.is_none()));
+    if tmgr_phone::check_choices(&body).is_err() || !known || !capable || !text_ok {
+      return None;
+    }
+    let choices = picked.iter().map(|c| (c.id.clone(), c.note.clone())).collect();
+    return Some(AnswerIn { choice: r.choice.clone(), choices, free_text: r.text.clone(), ..Default::default() });
+  }
   match r.action {
     Action::Chat => None,
     Action::Defer | Action::Dismiss if r.choice.is_some() || r.text.is_some() => None,
@@ -274,7 +315,6 @@ fn phone_answer_in_of(r: &PhoneReq, card: &CardIn) -> Option<AnswerIn> {
         Some(c) => card.options.iter().any(|o| &o.id == c),
         None => true,
       };
-      let text_ok = r.text.as_deref().is_none_or(|t| !t.trim().is_empty() && tmgr_phone::check_text(t).is_ok());
       if !choice_ok || !text_ok || (r.choice.is_none() && r.text.is_none()) {
         return None;
       }
@@ -353,6 +393,10 @@ fn sanitize(mut c: CardIn) -> Result<CardIn, String> {
   if c.links.items.len() > MAX_LINKS {
     return Err(format!("a card takes at most {MAX_LINKS} links"));
   }
+  c.code = c.code.take().and_then(|k| {
+    let text = cap(&k.text, TEXT_MAX);
+    (!text.trim().is_empty()).then(|| CodeIn { file: cap(&k.file, FIELD_MAX * 4), start: k.start.max(1), text })
+  });
   c.links.items = std::mem::take(&mut c.links.items).into_iter().filter_map(clean_link).collect();
   c.links.task = safe_ref(c.links.task.take());
   c.links.pr = safe_ref(c.links.pr.take());
@@ -609,19 +653,28 @@ fn unmarked(s: &str) -> String {
   out
 }
 
-fn comment_body(c: &CardIn, a: &Event, card_id: &str) -> String {
+pub(super) fn comment_body(c: &CardIn, a: &Event, card_id: &str) -> String {
   let mut head = vec![format!("Decision answered: {}", unmarked(&c.title))];
   if let Some(q) = c.question.as_deref().filter(|q| !q.trim().is_empty()) {
     head.push(format!("Question: {}", unmarked(q)));
   }
   let mut tail = Vec::new();
-  if let Some(choice) = a.choice_label.as_deref().or(a.choice.as_deref()).filter(|v| !v.is_empty()) {
+  if !a.choices.is_empty() {
+    let labels: Vec<&str> = a.choices.iter().map(|c| c.label.as_str()).collect();
+    tail.push(format!("Answer: {}", cap(&unmarked(&labels.join(", ")), COMMENT_TAIL_FIELD_MAX)));
+    for c in &a.choices {
+      if let Some(n) = c.note.as_deref().filter(|n| !n.trim().is_empty()) {
+        let label = cap(&unmarked(&c.label), COMMENT_TAIL_FIELD_MAX);
+        tail.push(format!("Note on {label}: {}", cap(&unmarked(n), COMMENT_TAIL_FIELD_MAX)));
+      }
+    }
+  } else if let Some(choice) = a.choice_label.as_deref().or(a.choice.as_deref()).filter(|v| !v.is_empty()) {
     tail.push(format!("Answer: {}", cap(&unmarked(choice), COMMENT_TAIL_FIELD_MAX)));
   }
   if let Some(t) = a.free_text.as_deref().filter(|t| !t.trim().is_empty()) {
     tail.push(format!("Free text: {}", cap(&unmarked(t), COMMENT_TAIL_FIELD_MAX)));
   }
-  if let Some(n) = a.note.as_deref().filter(|n| !n.trim().is_empty()) {
+  if let Some(n) = a.note.as_deref().filter(|n| !n.trim().is_empty() && a.choices.is_empty()) {
     tail.push(format!("Note: {}", cap(&unmarked(n), COMMENT_TAIL_FIELD_MAX)));
   }
   tail.push(format!("Card: {card_id}"));
@@ -1181,6 +1234,11 @@ impl Store {
     let answer = r.answer.as_deref().map(serde_json::from_str::<Event>).transpose().map_err(json_err)?;
     let live = is_live(&r.state);
     let patches = self.patch_info(&r.id)?;
+    let first_patch = self
+      .conn
+      .query_row("SELECT text FROM patches WHERE card_id=?1 ORDER BY idx LIMIT 1", [&r.id], |t| t.get::<_, String>(0))
+      .optional()
+      .map_err(sql_err)?;
     let push = self
       .conn
       .query_row("SELECT EXISTS(SELECT 1 FROM push_targets WHERE card_id=?1)", [&r.id], |t| t.get::<_, bool>(0))
@@ -1245,6 +1303,8 @@ impl Store {
       messages,
       unpicked,
       rev,
+      code: c.code,
+      first_patch,
     })
   }
 
@@ -1526,13 +1586,25 @@ impl Store {
     a: AnswerIn,
     via: Option<(&str, &str)>,
   ) -> Result<(Event, CardIn), String> {
-    let choice = cap_opt(a.choice, 64);
-    let choice_label = match &choice {
-      Some(c) if !card.options.is_empty() => {
-        Some(card.options.iter().find(|o| &o.id == c).ok_or_else(|| "unknown option".to_owned())?.label.clone())
+    let label_of = |c: &str| -> Result<Option<String>, String> {
+      if card.options.is_empty() {
+        return Ok(None);
       }
-      _ => None,
+      let o = card.options.iter().find(|o| o.id == c).ok_or_else(|| "unknown option".to_owned())?;
+      Ok(Some(o.label.clone()))
     };
+    let picks: Vec<(String, Option<String>)> = a.choices.into_iter().take(tmgr_phone::MAX_CHOICES).collect();
+    let choice = cap_opt(a.choice, 64).or_else(|| picks.first().map(|(id, _)| id.clone()));
+    let choice_label = match &choice {
+      Some(c) => label_of(c)?,
+      None => None,
+    };
+    let mut choices = Vec::new();
+    for (id, note) in picks {
+      let label = label_of(&id)?.unwrap_or_else(|| id.clone());
+      choices.push(ChoiceOut { id, label, note: cap_opt(note, TEXT_MAX) });
+    }
+    let note = if choices.is_empty() { a.note } else { choices_note(&choices, a.note) };
     let mut line_comments = a.line_comments;
     line_comments.truncate(MAX_LINE_COMMENTS);
     for l in &mut line_comments {
@@ -1546,7 +1618,8 @@ impl Store {
       seq,
       choice,
       choice_label,
-      note: cap_opt(a.note, TEXT_MAX),
+      choices,
+      note: cap_opt(note, TEXT_MAX),
       free_text: cap_opt(a.free_text, TEXT_MAX),
       line_comments,
       deferred: a.deferred && !a.dismissed,
@@ -1688,7 +1761,8 @@ impl Store {
     if !phone::eligible(&view) {
       return reject(self, AckResult::NotEligible);
     }
-    let Some(a) = phone_answer_in_of(r, &card) else { return reject(self, AckResult::Invalid) };
+    let (multi, notes) = phone::capabilities(&view);
+    let Some(a) = phone_answer_in_of(r, &card, multi, notes) else { return reject(self, AckResult::Invalid) };
     let fp = r.phone_fp.get(..8).unwrap_or(&r.phone_fp);
     let (event, card) = self.write_answer(&self.conn, &r.card_id, card, a, Some(("phone", fp)))?;
     let label = event_label(&event);

@@ -22,7 +22,7 @@ use pairing::Pending;
 use pins::{Keychain, Pins};
 use relay::{HttpRelay, Relay};
 
-pub use projection::{eligible, project};
+pub use projection::{capabilities, eligible, project};
 
 pub const PHONES_LABEL: &str = "decisions-phones";
 const MAIN_LABEL: &str = "main";

@@ -110,6 +110,7 @@ impl Phones {
       action: body.action,
       choice: body.choice,
       text: body.text,
+      choices: body.choices,
       issued_at: body.issued_at,
     };
     let current = |p: &Pin| {

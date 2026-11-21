@@ -2,8 +2,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tmgr_ipc::decisions::{CardIn, Event, Inbox, Opt, Secret, Source};
-use tmgr_phone::{AckBody, AckResult, Action, AnswerBody, Dir, HelloBody, HelloCtx, Kind, Pairing, SnapshotBody};
+use tmgr_ipc::decisions::{CardIn, CodeIn, Event, Fact, Inbox, Opt, PatchIn, Secret, Source};
+use tmgr_phone::{AckBody, AckResult, Action, AnswerBody, Choice, Dir, HelloBody, HelloCtx, Kind, Pairing, SnapshotBody};
 
 use super::super::hub::Hub;
 use super::super::push::{route_with, OpencodeSender, CHANGED, PushErr, Queue, SocketSender};
@@ -225,6 +225,7 @@ impl Rig {
       action,
       choice: choice.map(Into::into),
       text: text.map(Into::into),
+      choices: None,
     }
   }
 
@@ -941,7 +942,7 @@ fn projection_is_deterministic_and_capped() {
   let a = project(&v1, "").unwrap();
   assert_eq!(a.json, project(&v2, "").unwrap().json);
   assert_eq!(a.digest, tmgr_phone::digest(&a.json));
-  assert!(a.json.starts_with(r#"{"p":2,"kind":"decision","reply_via":"mcp","agent":"claude""#));
+  assert!(a.json.starts_with(r#"{"p":3,"kind":"decision","reply_via":"mcp","agent":"claude""#));
   let h = project(&r.hub.get(&huge).unwrap(), "").unwrap();
   assert!(h.json.len() <= 16 * 1024);
   let parsed: serde_json::Value = serde_json::from_str(&h.json).unwrap();
@@ -1480,7 +1481,7 @@ fn the_projection_is_v2_with_message_seq_chat_and_task_flags() {
     serde_json::from_str(&snap.cards.iter().find(|c| c.id == id).unwrap().projection).unwrap()
   };
   let a = proj(&id);
-  assert_eq!((a["p"].as_u64(), a["chat"].as_bool(), a["task"].as_bool()), (Some(2), Some(true), Some(false)));
+  assert_eq!((a["p"].as_u64(), a["chat"].as_bool(), a["task"].as_bool()), (Some(3), Some(true), Some(false)));
   assert_eq!(a["messages"][0]["seq"], 1);
   assert!(a["messages"][0]["created_ms"].as_i64().unwrap() > 0);
   assert_eq!(proj(&hook)["chat"], false);
@@ -1588,4 +1589,299 @@ fn the_pairing_qr_is_a_tmgr_pair_link_around_the_raw_payload() {
 fn the_largest_pairing_link_still_fits_in_a_qr_code() {
   let link = super::pairing::pair_link(&vec![b'x'; 1100]);
   assert!(super::pairing::qr_data_url(&link).is_ok());
+}
+
+fn two_options() -> Vec<Opt> {
+  vec![
+    Opt { id: "a".into(), label: "Ship".into(), recommended: true },
+    Opt { id: "b".into(), label: "Hold".into(), recommended: false },
+  ]
+}
+
+fn card_of(r: &Rig, reply_via: &str, options: Vec<Opt>) -> String {
+  let card = CardIn {
+    title: "Pick".into(),
+    kind: "decision".into(),
+    reply_via: reply_via.into(),
+    source: Source {
+      agent: "claude".into(),
+      session: Some("s1".into()),
+      runner_session: Some("run-9".into()),
+      ..Default::default()
+    },
+    options,
+    ..Default::default()
+  };
+  r.hub.create(card).unwrap().id
+}
+
+fn pick(id: &str, note: Option<&str>) -> Choice {
+  Choice { id: id.into(), note: note.map(Into::into) }
+}
+
+fn v2_body(r: &Rig, id: &str, digest: &str, session: &str, choices: Vec<Choice>) -> AnswerBody {
+  AnswerBody {
+    choices: Some(choices.clone()),
+    ..r.body(id, digest, session, Action::Answer, Some(&choices[0].id), None)
+  }
+}
+
+fn projection_of(r: &Rig, p: &Phone, id: &str) -> serde_json::Value {
+  let snap = r.snapshot(p);
+  let c = snap.cards.iter().find(|c| c.id == id).unwrap();
+  assert!(c.projection.len() <= projection::CARD_MAX);
+  serde_json::from_str(&c.projection).unwrap()
+}
+
+#[test]
+fn a_v2_answer_applies_every_choice_and_note() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let mut body = v2_body(&r, &id, &digest, &session, vec![pick("a", Some("after the release")), pick("b", None)]);
+  body.text = Some("thanks".into());
+  let ack = r.answer_ack(&p, &body);
+  assert_eq!(ack.result, AckResult::Applied);
+  assert_eq!(ack.label.as_deref(), Some("Ship, Hold"));
+  let ev = r.hub.get(&id).unwrap().answer.unwrap();
+  assert_eq!(ev.choice.as_deref(), Some("a"));
+  assert_eq!(ev.choice_label.as_deref(), Some("Ship"));
+  assert_eq!(
+    serde_json::to_value(&ev.choices).unwrap(),
+    serde_json::json!([{"id": "a", "label": "Ship", "note": "after the release"}, {"id": "b", "label": "Hold"}])
+  );
+  assert_eq!(ev.note.as_deref(), Some("Chosen: a, b\na: after the release"));
+  assert_eq!(ev.free_text.as_deref(), Some("thanks"));
+  assert_eq!(ev.via.as_deref(), Some("phone"));
+  assert_eq!(r.host.notes.lock().unwrap().as_slice(), ["Answered from iPhone: Ship, Hold"]);
+}
+
+#[test]
+fn a_v2_answer_with_one_choice_puts_its_note_in_the_summary() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = v2_body(&r, &id, &digest, &session, vec![pick("b", Some("not yet"))]);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+  let ev = r.hub.get(&id).unwrap().answer.unwrap();
+  assert_eq!((ev.choice.as_deref(), ev.note.as_deref()), (Some("b"), Some("not yet")));
+  assert_eq!(ev.choices.len(), 1);
+}
+
+#[test]
+fn a_v1_answer_keeps_the_event_without_choices() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let body = r.body(&id, &digest, &session, Action::Answer, Some("a"), None);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+  let ev = r.hub.get(&id).unwrap().answer.unwrap();
+  assert!(ev.choices.is_empty() && ev.note.is_none());
+  assert!(!serde_json::to_string(&ev).unwrap().contains("choices"));
+}
+
+fn invalid_v2(r: &Rig, p: &Phone, id: &str, choices: Vec<Choice>) {
+  let (digest, session) = r.bind(p, id);
+  let body = v2_body(r, id, &digest, &session, choices);
+  assert_eq!(r.answer_ack(p, &body).result, AckResult::Invalid);
+  assert_eq!(r.state(id), "open");
+  assert!(r.host.notes.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_v2_answer_with_an_unknown_option_is_invalid() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  invalid_v2(&r, &p, &id, vec![pick("a", None), pick("zzz", None)]);
+}
+
+#[test]
+fn several_choices_need_a_multi_card() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let hook = card_of(&r, "hook", two_options());
+  invalid_v2(&r, &p, &hook, vec![pick("a", None), pick("b", None)]);
+}
+
+#[test]
+fn a_note_needs_a_notes_card() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let hook = card_of(&r, "hook", two_options());
+  invalid_v2(&r, &p, &hook, vec![pick("a", Some("why"))]);
+}
+
+#[test]
+fn a_single_option_card_takes_a_note_but_not_two_choices() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = card_of(&r, "mcp", vec![Opt { id: "a".into(), label: "Ship".into(), recommended: true }]);
+  invalid_v2(&r, &p, &id, vec![pick("a", None), pick("b", None)]);
+  let (digest, session) = r.bind(&p, &id);
+  let body = v2_body(&r, &id, &digest, &session, vec![pick("a", Some("ok"))]);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+}
+
+#[test]
+fn a_replayed_v2_answer_is_a_duplicate_and_a_stale_digest_is_changed() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r.card("Ship it?");
+  let (digest, session) = r.bind(&p, &id);
+  let stale = v2_body(&r, &id, &"0".repeat(64), &session, vec![pick("a", None), pick("b", None)]);
+  assert_eq!(r.answer_ack(&p, &stale).result, AckResult::Changed);
+  let body = v2_body(&r, &id, &digest, &session, vec![pick("a", None), pick("b", None)]);
+  assert_eq!(r.answer_ack(&p, &body).result, AckResult::Applied);
+  let again = r.answer_ack(&p, &body);
+  assert_eq!(again.result, AckResult::Duplicate);
+  assert_eq!(again.label.as_deref(), Some("Ship, Hold"));
+  assert_eq!(r.hub.get(&id).unwrap().answer.unwrap().seq, 1);
+}
+
+#[test]
+fn the_task_comment_lists_every_label_and_note() {
+  let card = CardIn { title: "Pick".into(), ..Default::default() };
+  let ev = Event {
+    kind: "answer".into(),
+    seq: 4,
+    choice: Some("a".into()),
+    choice_label: Some("Ship".into()),
+    choices: vec![
+      tmgr_ipc::decisions::ChoiceOut { id: "a".into(), label: "Ship".into(), note: Some("after release".into()) },
+      tmgr_ipc::decisions::ChoiceOut { id: "b".into(), label: "Hold".into(), note: None },
+    ],
+    note: Some("Chosen: a, b\na: after release".into()),
+    ..Default::default()
+  };
+  let body = super::super::store::comment_body(&card, &ev, "cid");
+  assert!(body.contains("Answer: Ship, Hold"), "{body}");
+  assert!(body.contains("Note on Ship: after release"), "{body}");
+  assert!(!body.contains("Chosen:"), "{body}");
+}
+
+#[test]
+fn the_projection_advertises_multi_and_notes_by_reply_via_and_options() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let flags = |id: &str| {
+    let v = projection_of(&r, &p, id);
+    (v["p"].as_u64().unwrap(), v["multi"].as_bool().unwrap(), v["notes"].as_bool().unwrap())
+  };
+  assert_eq!(flags(&card_of(&r, "mcp", two_options())), (3, true, true));
+  assert_eq!(flags(&card_of(&r, "cli", two_options())), (3, true, true));
+  assert_eq!(flags(&card_of(&r, "mcp", two_options()[..1].to_vec())), (3, false, true));
+  assert_eq!(flags(&card_of(&r, "mcp", vec![])), (3, false, false));
+  assert_eq!(flags(&card_of(&r, "hook", two_options())), (3, false, false));
+}
+
+fn long_lines(n: usize, width: usize) -> String {
+  (0..n).map(|i| format!("{i:04}{}", "x".repeat(width))).collect::<Vec<_>>().join("\n")
+}
+
+fn patch_of(lines: usize) -> String {
+  let body: String = (0..lines).map(|i| format!("+added {i}\n")).collect();
+  format!("diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,{} @@\n ctx\n-gone\n{body}", lines + 1)
+}
+
+#[test]
+fn the_projection_carries_code_and_the_first_patch() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r
+    .hub
+    .create(CardIn {
+      title: "Review".into(),
+      options: two_options(),
+      code: Some(CodeIn { file: "src/a.rs".into(), start: 10, text: "fn a() {\n  b();\n}".into() }),
+      patches: vec![PatchIn { label: "one".into(), text: patch_of(2) }, PatchIn { label: "two".into(), text: patch_of(5) }],
+      ..Default::default()
+    })
+    .unwrap()
+    .id;
+  let v = projection_of(&r, &p, &id);
+  assert_eq!(v["code"], serde_json::json!({"file": "src/a.rs", "start": 10, "lines": ["fn a() {", "  b();", "}"]}));
+  assert_eq!(v["code_cut"], false);
+  assert_eq!(v["diff_cut"], false);
+  assert_eq!(v["diff"]["file"], "src/a.rs");
+  let lines = v["diff"]["lines"].as_array().unwrap();
+  let kinds: Vec<&str> = lines.iter().map(|l| l["kind"].as_str().unwrap()).collect();
+  assert_eq!(kinds, ["hunk", "ctx", "del", "add", "add"]);
+  assert_eq!(lines[0]["text"], "@@ -1,1 +1,3 @@");
+  assert_eq!(lines[3]["text"], "added 0");
+  assert_eq!(v["title"], "Review");
+  assert_eq!(v["options"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn a_card_without_code_or_patches_has_null_code_and_diff() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let v = projection_of(&r, &p, &r.card("Plain"));
+  assert!(v["code"].is_null() && v["diff"].is_null());
+  assert_eq!((v["code_cut"].as_bool(), v["diff_cut"].as_bool()), (Some(false), Some(false)));
+}
+
+#[test]
+fn big_code_is_cut_before_context_and_dropped_when_it_still_does_not_fit() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let context = "c".repeat(6000);
+  let mk = |code_lines: usize| {
+    r.hub
+      .create(CardIn {
+        title: format!("Big {code_lines}"),
+        context: Some(context.clone()),
+        options: two_options(),
+        code: Some(CodeIn { file: "f.rs".into(), start: 1, text: long_lines(code_lines, 200) }),
+        patches: vec![PatchIn { label: "p".into(), text: patch_of(3000) }],
+        ..Default::default()
+      })
+      .unwrap()
+      .id
+  };
+  let v = projection_of(&r, &p, &mk(100));
+  assert_eq!(v["context"].as_str().unwrap().len(), 6000);
+  assert_eq!(v["context_cut"], false);
+  assert_eq!(v["code_cut"], true);
+  assert!(v["code"]["lines"].as_array().unwrap().len() <= 40);
+  assert_eq!(v["diff_cut"], true);
+  let tight = r
+    .hub
+    .create(CardIn {
+      title: "Tight".into(),
+      context: Some("c".repeat(8000)),
+      facts: (0..5).map(|_| Fact { state: "ok".into(), text: "f".repeat(1000), link: None }).collect(),
+      options: two_options(),
+      code: Some(CodeIn { file: "f.rs".into(), start: 1, text: long_lines(50, 300) }),
+      ..Default::default()
+    })
+    .unwrap()
+    .id;
+  let v = projection_of(&r, &p, &tight);
+  assert!(v["code"].is_null());
+  assert_eq!(v["code_cut"], true);
+  assert_eq!(v["context"].as_str().unwrap().len(), 8000);
+  assert_eq!(v["facts"].as_array().unwrap().len(), 5);
+}
+
+#[test]
+fn a_very_long_line_is_cut_and_flagged() {
+  let r = rig();
+  let p = r.pair("mb1", "Pocket", 10);
+  let id = r
+    .hub
+    .create(CardIn {
+      title: "Wide".into(),
+      code: Some(CodeIn { file: "w.rs".into(), start: 1, text: "y".repeat(1000) }),
+      ..Default::default()
+    })
+    .unwrap()
+    .id;
+  let v = projection_of(&r, &p, &id);
+  assert_eq!(v["code"]["lines"][0].as_str().unwrap().len(), 300);
+  assert_eq!(v["code_cut"], true);
 }
