@@ -1,5 +1,6 @@
-use super::{emit, remote_attach, Opts, RunArgs};
+use super::{emit, privilege, remote_attach, Opts, PermissionMode, RunArgs};
 use crate::cmd::runner::{AttachArgs, HaltArgs};
+use crate::os_auth::{self, Outcome};
 use crate::out::table;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -10,6 +11,7 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{State, StateKind};
 use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::leader::{self, Client, KeyFile};
+use tmgr_link::privileged;
 use tmgr_link::proto::Reply;
 use tmgr_link::store::Paths;
 use tmgr_runner::sanitize::sanitize_text;
@@ -182,11 +184,109 @@ pub(super) fn is_follower_ref(task: &str) -> bool {
         .is_some_and(|(ws, id)| digits(ws) && digits(id))
 }
 
-fn start_params(a: &RunArgs) -> Result<(Value, bool)> {
+pub(super) struct Pin(String);
+
+impl Pin {
+    fn new(s: String) -> Option<Self> {
+        (!s.is_empty()).then_some(Self(s))
+    }
+}
+
+impl std::fmt::Debug for Pin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Pin(<redacted>)")
+    }
+}
+
+fn privileged(a: &RunArgs) -> bool {
+    a.mode == Some(PermissionMode::Bypass) || a.no_sandbox
+}
+
+fn gate_word(a: &RunArgs) -> &'static str {
+    if a.no_sandbox {
+        "no-sandbox"
+    } else {
+        "bypass"
+    }
+}
+
+fn gate_privileged(
+    link: &str,
+    a: &RunArgs,
+    in_agent: bool,
+    tty: bool,
+    auth: &mut dyn FnMut(&str) -> Result<Outcome>,
+    typed: &mut dyn FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    privileged::check(in_agent, tty)?;
+    if a.yes {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "--yes is not accepted for a privileged start on a follower",
+        )
+        .hint("run it in a terminal and confirm on this machine"));
+    }
+    let word = gate_word(a);
+    match auth(&format!("start a {word} session on {link}"))? {
+        Outcome::Approved => Ok(()),
+        Outcome::Denied => Err(Error::new(
+            Kind::Interrupted,
+            "the local authentication was not approved, nothing was started",
+        )),
+        Outcome::Unavailable => typed(word),
+    }
+}
+
+fn confirm_privileged(link: &str, a: &RunArgs) -> Result<Pin> {
+    let in_agent = tmgr_link::privileged::RUN_ENV
+        .iter()
+        .any(|k| std::env::var_os(k).is_some())
+        || tmgr_core::local::agent_session_detected();
+    let tty = std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal()
+        && std::io::stderr().is_terminal();
+    if !in_agent && tty {
+        for line in privilege::warnings(a.mode == Some(PermissionMode::Bypass), a.no_sandbox) {
+            eprintln!("{line}");
+            eprintln!("  (on {link})");
+        }
+    }
+    gate_privileged(
+        link,
+        a,
+        in_agent,
+        tty,
+        &mut os_auth::authenticate,
+        &mut |word| privileged::confirm_typed_stdio(word, &privilege::prompt(word)),
+    )?;
+    read_pin(link, &mut |prompt| {
+        rpassword::prompt_password(prompt)
+            .map_err(|_| Error::new(Kind::Interrupted, "could not read the PIN"))
+    })
+}
+
+fn read_pin(link: &str, read: &mut dyn FnMut(&str) -> Result<String>) -> Result<Pin> {
+    Pin::new(read(&format!("PIN for {link}: "))?)
+        .ok_or_else(|| Error::new(Kind::Interrupted, "no PIN entered, nothing was started"))
+}
+
+fn start_params(a: &RunArgs, pin: Option<&Pin>) -> Result<(Value, bool)> {
     let Some(agent) = &a.agent else {
         return Err(Error::usage("--on needs --agent <profile>"));
     };
+    if a.mode.is_some_and(|m| m != PermissionMode::Bypass) {
+        return Err(Error::usage("with --on, --mode accepts only bypass"));
+    }
     let mut params = json!({"agent": agent});
+    if a.mode == Some(PermissionMode::Bypass) {
+        params["mode"] = json!("bypass");
+    }
+    if a.no_sandbox {
+        params["no_sandbox"] = json!(true);
+    }
+    if let (true, Some(pin)) = (privileged(a), pin) {
+        params["pin"] = json!(pin.0);
+    }
     if let Some(task) = &a.task {
         if !is_follower_ref(task) {
             return Err(Error::usage(
@@ -213,7 +313,7 @@ fn start_params(a: &RunArgs) -> Result<(Value, bool)> {
             params[key] = json!(v);
         }
     }
-    let fallback = a.task.is_some() && a.name.is_none();
+    let fallback = a.task.is_some() && a.name.is_none() && !privileged(a);
     Ok((params, fallback))
 }
 
@@ -238,7 +338,13 @@ fn start_or_fallback(
 }
 
 pub fn run(o: &Opts, link: &str, a: &RunArgs) -> Result<i32> {
-    let (params, fallback) = start_params(a)?;
+    start_params(a, None)?;
+    let pin = if privileged(a) {
+        Some(confirm_privileged(link, a)?)
+    } else {
+        None
+    };
+    let (params, fallback) = start_params(a, pin.as_ref())?;
     let (mut client, _key) = dial(link)?;
     let v = start_or_fallback(link, params, fallback, &mut |m, p| client.call(m, p))?;
     let view: RunView = serde_json::from_value(v.clone())
@@ -458,21 +564,133 @@ mod tests {
         fn on_parses_without_a_ref_and_a_missing_agent_is_a_clear_error() {
             let a = parse(&["run", "--on", "spark", "--agent", "codex"]).unwrap();
             assert!(a.task.is_none());
-            let (params, fallback) = start_params(&a).unwrap();
+            let (params, fallback) = start_params(&a, None).unwrap();
             assert_eq!(params, json!({"agent": "codex"}));
             assert!(!fallback);
             let bare = parse(&["run", "--on", "spark"]);
             let message = match bare {
-                Ok(a) => start_params(&a).unwrap_err().message,
+                Ok(a) => start_params(&a, None).unwrap_err().message,
                 Err(e) => e.to_string(),
             };
             assert!(message.contains("agent"), "{message}");
         }
 
         #[test]
-        fn on_keeps_conflicting_with_bypass_and_no_sandbox() {
-            assert!(parse(&["run", "--on", "s", "--agent", "x", "--mode", "bypass"]).is_err());
-            assert!(parse(&["run", "--on", "s", "--agent", "x", "--no-sandbox"]).is_err());
+        fn on_accepts_bypass_and_no_sandbox_but_no_other_mode() {
+            assert!(parse(&["run", "--on", "s", "--agent", "x", "--mode", "bypass"]).is_ok());
+            assert!(parse(&["run", "--on", "s", "--agent", "x", "--no-sandbox"]).is_ok());
+            let a = parse(&["run", "--on", "s", "--agent", "x", "--mode", "plan"]).unwrap();
+            assert!(start_params(&a, None)
+                .unwrap_err()
+                .message
+                .contains("only bypass"));
+        }
+
+        fn pin(s: &str) -> Pin {
+            Pin::new(s.to_string()).unwrap()
+        }
+
+        #[test]
+        fn privileged_params_carry_mode_no_sandbox_and_pin() {
+            let a = parse(&["run", "--on", "s", "--agent", "x", "--mode", "bypass"]).unwrap();
+            let (p, _) = start_params(&a, Some(&pin("1234"))).unwrap();
+            assert_eq!(p, json!({"agent": "x", "mode": "bypass", "pin": "1234"}));
+            let a = parse(&["run", "--on", "s", "--agent", "x", "--no-sandbox"]).unwrap();
+            let (p, _) = start_params(&a, Some(&pin("1234"))).unwrap();
+            assert_eq!(p, json!({"agent": "x", "no_sandbox": true, "pin": "1234"}));
+        }
+
+        #[test]
+        fn a_plain_start_never_carries_a_pin() {
+            let a = parse(&["run", "--on", "s", "--agent", "x"]).unwrap();
+            let (p, _) = start_params(&a, Some(&pin("1234"))).unwrap();
+            assert_eq!(p, json!({"agent": "x"}));
+        }
+
+        #[test]
+        fn a_privileged_task_start_never_falls_back_to_runs_create() {
+            let a = parse(&[
+                "run", "w1:7", "--on", "s", "--agent", "x", "--mode", "bypass",
+            ])
+            .unwrap();
+            assert!(!start_params(&a, None).unwrap().1);
+        }
+
+        #[test]
+        fn the_pin_is_redacted_in_debug() {
+            assert!(!format!("{:?}", pin("1234")).contains("1234"));
+        }
+
+        #[test]
+        fn an_empty_pin_aborts() {
+            let e = read_pin("s", &mut |_| Ok(String::new())).unwrap_err();
+            assert!(e.message.contains("no PIN"));
+            let mut seen = String::new();
+            read_pin("studio", &mut |p| {
+                seen = p.to_string();
+                Ok("1".into())
+            })
+            .unwrap();
+            assert_eq!(seen, "PIN for studio: ");
+        }
+
+        fn gate(
+            extra: &[&str],
+            in_agent: bool,
+            tty: bool,
+            out: Result<Outcome>,
+        ) -> (Result<()>, usize, Option<String>) {
+            let mut argv = vec!["run", "--on", "s", "--agent", "x", "--mode", "bypass"];
+            argv.extend_from_slice(extra);
+            let a = parse(&argv).unwrap();
+            let mut asked = 0;
+            let mut out = Some(out);
+            let mut typed_word = None;
+            let r = gate_privileged(
+                "s",
+                &a,
+                in_agent,
+                tty,
+                &mut |_| {
+                    asked += 1;
+                    out.take().unwrap()
+                },
+                &mut |w| {
+                    typed_word = Some(w.to_string());
+                    Ok(())
+                },
+            );
+            (r, asked, typed_word)
+        }
+
+        #[test]
+        fn the_gate_refuses_an_agent_session_and_a_missing_terminal_before_asking() {
+            let (r, asked, _) = gate(&[], true, true, Ok(Outcome::Approved));
+            assert_eq!(r.unwrap_err().kind, Kind::Forbidden);
+            assert_eq!(asked, 0);
+            let (r, asked, _) = gate(&[], false, false, Ok(Outcome::Approved));
+            assert_eq!(r.unwrap_err().kind, Kind::NeedsConfirmation);
+            assert_eq!(asked, 0);
+        }
+
+        #[test]
+        fn the_gate_refuses_yes() {
+            let (r, asked, _) = gate(&["--yes"], false, true, Ok(Outcome::Approved));
+            assert!(r.unwrap_err().message.contains("--yes"));
+            assert_eq!(asked, 0);
+        }
+
+        #[test]
+        fn approved_passes_denied_aborts_unavailable_asks_for_the_typed_word() {
+            let (r, _, typed) = gate(&[], false, true, Ok(Outcome::Approved));
+            assert!(r.is_ok() && typed.is_none());
+            let (r, _, typed) = gate(&[], false, true, Ok(Outcome::Denied));
+            assert!(r.is_err() && typed.is_none());
+            let (r, _, typed) = gate(&[], false, true, Ok(Outcome::Unavailable));
+            assert!(r.is_ok());
+            assert_eq!(typed.as_deref(), Some("bypass"));
+            let (_, _, typed) = gate(&["--no-sandbox"], false, true, Ok(Outcome::Unavailable));
+            assert_eq!(typed.as_deref(), Some("no-sandbox"));
         }
 
         #[test]
@@ -482,28 +700,31 @@ mod tests {
                 "/srv/app", "--model", "m",
             ])
             .unwrap();
-            let (params, fallback) = start_params(&a).unwrap();
+            let (params, fallback) = start_params(&a, None).unwrap();
             assert_eq!(
                 params,
                 json!({"agent": "codex", "task": "w1:7", "repo": "/srv/app", "name": "job", "model": "m"})
             );
             assert!(!fallback);
             let plain = parse(&["run", "w1:7", "--on", "spark", "--agent", "codex"]).unwrap();
-            assert!(start_params(&plain).unwrap().1);
+            assert!(start_params(&plain, None).unwrap().1);
         }
 
         #[test]
         fn a_cloud_ref_and_a_relative_folder_are_refused() {
             for r in ["TM-1", "#5", "12", "c1:2"] {
                 let a = parse(&["run", r, "--on", "spark", "--agent", "codex"]).unwrap();
-                let e = start_params(&a).unwrap_err();
+                let e = start_params(&a, None).unwrap_err();
                 assert!(
                     e.message.contains("start cloud tasks from tmgr attach"),
                     "{r}"
                 );
             }
             let a = parse(&["run", "--on", "s", "--agent", "x", "--cwd", "rel"]).unwrap();
-            assert!(start_params(&a).unwrap_err().message.contains("absolute"));
+            assert!(start_params(&a, None)
+                .unwrap_err()
+                .message
+                .contains("absolute"));
         }
 
         #[test]
