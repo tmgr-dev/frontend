@@ -9,6 +9,7 @@ use tmgr_spawn_auth::{
 
 pub const CARD_TTL_MS: u64 = 5 * 60 * 1000;
 pub const MAX_PENDING: usize = 8;
+pub const MAX_MANAGER_PENDING: usize = 4;
 pub const ATTEMPT_LIMIT: u32 = 5;
 pub const PRUNE_AFTER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 pub const MAX_CARDS: usize = 512;
@@ -50,6 +51,14 @@ impl Identity {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CardBudget {
+    #[default]
+    Human,
+    Manager,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CardState {
@@ -63,6 +72,8 @@ pub enum CardState {
         target_fp: String,
         user_id: String,
         failed_attempts: u32,
+        #[serde(default)]
+        budget: CardBudget,
     },
     Claimed {
         claimed_ms: u64,
@@ -124,6 +135,14 @@ pub enum ClaimOutcome {
     Rejected(Refusal),
     AlreadyClaimed(CardResult),
     Dead { reason: String },
+    UnknownCard,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CheckOutcome {
+    Valid,
+    Rejected(Refusal),
+    NotIssued,
     UnknownCard,
 }
 
@@ -233,6 +252,16 @@ impl CardStore {
         proposal: &SpawnProposal,
         now_ms: u64,
     ) -> Result<IssueOutcome, CardError> {
+        self.issue_for(card_id, proposal, CardBudget::Human, now_ms)
+    }
+
+    pub fn issue_for(
+        &self,
+        card_id: &str,
+        proposal: &SpawnProposal,
+        budget: CardBudget,
+        now_ms: u64,
+    ) -> Result<IssueOutcome, CardError> {
         let id = check_id(card_id)?;
         if let Err(r) = proposal.validate() {
             return Ok(IssueOutcome::Invalid(r));
@@ -275,20 +304,30 @@ impl CardStore {
         }
         let others: Vec<String> = self.ids()?.into_iter().filter(|o| o != id).collect();
         let mut pending = 0;
+        let mut manager_pending = 0;
         for other in &others {
             let Ok(Some(file)) = self.load(other) else {
                 continue;
             };
-            if let CardState::Issued { exp_ms, .. } = file.state {
+            if let CardState::Issued {
+                exp_ms,
+                budget: other_budget,
+                ..
+            } = file.state
+            {
                 if now_ms > exp_ms {
                     self.save(other, refused(REASON_EXPIRED), exp_ms)?;
                 } else {
                     pending += 1;
+                    manager_pending += usize::from(other_budget == CardBudget::Manager);
                     if pending >= MAX_PENDING {
                         return Ok(IssueOutcome::Full);
                     }
                 }
             }
+        }
+        if budget == CardBudget::Manager && manager_pending >= MAX_MANAGER_PENDING {
+            return Ok(IssueOutcome::Full);
         }
         if others.len() >= MAX_CARDS {
             self.prune_locked(now_ms)?;
@@ -311,6 +350,7 @@ impl CardStore {
                 target_fp: self.identity.target_fp.clone(),
                 user_id: self.identity.user_id.clone(),
                 failed_attempts: 0,
+                budget,
             },
             now_ms,
         )?;
@@ -348,6 +388,7 @@ impl CardStore {
             target_fp,
             user_id,
             failed_attempts,
+            budget,
         } = file.state
         else {
             return Ok(match file.state {
@@ -393,6 +434,7 @@ impl CardStore {
                             target_fp,
                             user_id,
                             failed_attempts,
+                            budget,
                         }
                     };
                     self.save(id, next, now_ms)?;
@@ -454,6 +496,67 @@ impl CardStore {
             }
         }
         Ok(report)
+    }
+
+    pub fn expire_due(&self, now_ms: u64) -> Result<Vec<String>, CardError> {
+        let _lock = self.lock()?;
+        let mut expired = Vec::new();
+        for id in self.ids()? {
+            let Ok(Some(file)) = self.load(&id) else {
+                continue;
+            };
+            if let CardState::Issued { exp_ms, .. } = file.state {
+                if now_ms > exp_ms {
+                    self.save(&id, refused(REASON_EXPIRED), exp_ms)?;
+                    expired.push(id);
+                }
+            }
+        }
+        Ok(expired)
+    }
+
+    pub fn check(
+        &self,
+        card_id: &str,
+        wire: &SignedSpawn,
+        key: &PinnedKey,
+        trust: &dyn TrustView,
+        now_ms: u64,
+    ) -> Result<CheckOutcome, CardError> {
+        let id = check_id(card_id)?;
+        let _lock = self.lock()?;
+        let Some(file) = self.load(id)? else {
+            return Ok(CheckOutcome::UnknownCard);
+        };
+        let CardState::Issued {
+            proposal,
+            nonce,
+            issued_ms,
+            exp_ms,
+            target_id,
+            target_fp,
+            user_id,
+            ..
+        } = file.state
+        else {
+            return Ok(CheckOutcome::NotIssued);
+        };
+        let record = tmgr_spawn_auth::ChallengeRecord {
+            user_id,
+            target_id,
+            target_fp,
+            card_id: id.into(),
+            nonce,
+            issued_ms,
+            exp_ms,
+            proposal: *proposal,
+        };
+        Ok(
+            match tmgr_spawn_auth::verify(wire, &record, key, trust, now_ms) {
+                Ok(_) => CheckOutcome::Valid,
+                Err(r) => CheckOutcome::Rejected(r),
+            },
+        )
     }
 
     pub fn prune(&self, now_ms: u64) -> Result<usize, CardError> {
@@ -853,6 +956,109 @@ mod tests {
         assert_eq!(
             s.mark_spawned("nope", "sess-1", NOW),
             Err(CardError::NotClaimed)
+        );
+    }
+
+    #[test]
+    fn manager_cards_are_capped_below_the_total_and_human_cards_still_issue() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        for i in 0..MAX_MANAGER_PENDING {
+            let out = s
+                .issue_for(
+                    &format!("card-{i}"),
+                    &proposal(&format!("/w/{i}")),
+                    CardBudget::Manager,
+                    ISSUED,
+                )
+                .unwrap();
+            assert!(matches!(out, IssueOutcome::Challenge(_)), "{i}: {out:?}");
+        }
+        let fifth = s
+            .issue_for("card-m", &proposal("/w/m"), CardBudget::Manager, ISSUED)
+            .unwrap();
+        assert_eq!(fifth, IssueOutcome::Full);
+        assert!(matches!(
+            s.issue("card-h", &proposal("/w/h"), ISSUED).unwrap(),
+            IssueOutcome::Challenge(_)
+        ));
+        assert!(matches!(
+            s.issue_for("card-1", &proposal("/w/1"), CardBudget::Manager, ISSUED)
+                .unwrap(),
+            IssueOutcome::Challenge(_)
+        ));
+    }
+
+    #[test]
+    fn expire_due_refuses_only_overdue_issued_cards_once() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        s.issue("card-a", &proposal("/w/a"), ISSUED).unwrap();
+        s.issue("card-b", &proposal("/w/b"), ISSUED + 10_000)
+            .unwrap();
+        assert!(s.expire_due(ISSUED + 1).unwrap().is_empty());
+        let due = ISSUED + CARD_TTL_MS + 1;
+        assert_eq!(s.expire_due(due).unwrap(), vec!["card-a".to_string()]);
+        assert!(s.expire_due(due).unwrap().is_empty());
+        assert_eq!(
+            s.result("card-a").unwrap(),
+            Some(CardResult::Refused {
+                reason: "expired".into()
+            })
+        );
+        assert!(matches!(
+            s.result("card-b").unwrap(),
+            Some(CardResult::Pending { .. })
+        ));
+    }
+
+    #[test]
+    fn check_verifies_without_changing_the_card() {
+        let t = tempfile::tempdir().unwrap();
+        let s = fixture_store(t.path());
+        let trust = FakeTrust::trusted();
+        let before = s.state("card-0001").unwrap();
+        let ok = s
+            .check(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(ok, CheckOutcome::Valid);
+        let mut bad = wire_of("ok_low_s");
+        bad.sig = "AAAA".into();
+        for _ in 0..ATTEMPT_LIMIT + 1 {
+            let out = s
+                .check("card-0001", &bad, &fixture_key(), &trust, NOW)
+                .unwrap();
+            assert_eq!(out, CheckOutcome::Rejected(Refusal::BadSig));
+        }
+        assert_eq!(s.state("card-0001").unwrap(), before);
+        assert_eq!(
+            s.check("nope", &bad, &fixture_key(), &trust, NOW).unwrap(),
+            CheckOutcome::UnknownCard
+        );
+        s.claim(
+            "card-0001",
+            &wire_of("ok_low_s"),
+            &fixture_key(),
+            &trust,
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(
+            s.check(
+                "card-0001",
+                &wire_of("ok_low_s"),
+                &fixture_key(),
+                &trust,
+                NOW
+            )
+            .unwrap(),
+            CheckOutcome::NotIssued
         );
     }
 

@@ -5,9 +5,9 @@ mod cards;
 mod keys;
 
 pub use cards::{
-    os_rng, CardError, CardResult, CardState, CardStore, Challenge, ClaimOutcome, Identity,
-    IssueOutcome, RecoverReport, Rng, ATTEMPT_LIMIT, CARD_TTL_MS, MAX_CARDS, MAX_PENDING,
-    PRUNE_AFTER_MS,
+    os_rng, CardBudget, CardError, CardResult, CardState, CardStore, Challenge, CheckOutcome,
+    ClaimOutcome, Identity, IssueOutcome, RecoverReport, Rng, ATTEMPT_LIMIT, CARD_TTL_MS,
+    MAX_CARDS, MAX_MANAGER_PENDING, MAX_PENDING, PRUNE_AFTER_MS,
 };
 #[cfg(test)]
 pub(crate) use keys::testutil;
@@ -146,6 +146,37 @@ impl SpawnAuth {
                 }
             })
             .map_err(|_| CardError::Io)?
+    }
+
+    pub fn issue_for(
+        &self,
+        card_id: &str,
+        proposal: &SpawnProposal,
+        budget: CardBudget,
+        now_ms: u64,
+    ) -> Result<IssueOutcome, CardError> {
+        self.cards.issue_for(card_id, proposal, budget, now_ms)
+    }
+
+    pub fn check(
+        &self,
+        card_id: &str,
+        wire: &SignedSpawn,
+        now_ms: u64,
+    ) -> Result<CheckOutcome, CardError> {
+        self.keys
+            .with_pinned(&wire.device_fp, |key| match key {
+                None => Ok(CheckOutcome::Rejected(Refusal::UnknownKey)),
+                Some(key) => {
+                    self.cards
+                        .check(card_id, wire, &key, &TrustAdapter(&*self.trust), now_ms)
+                }
+            })
+            .map_err(|_| CardError::Io)?
+    }
+
+    pub fn expire_due(&self, now_ms: u64) -> Result<Vec<String>, CardError> {
+        self.cards.expire_due(now_ms)
     }
 
     pub fn offer_key(&self, offer: KeyOffer, now_ms: u64) -> Result<OfferOutcome, KeyError> {
