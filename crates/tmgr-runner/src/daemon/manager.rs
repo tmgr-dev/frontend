@@ -97,6 +97,25 @@ fn guarded(req_id: &str, run: impl FnOnce() -> Result<Value, String>) -> SpoolRe
     }
 }
 
+fn builtin<'a>(set: &'a ProfileSet, id: &str) -> Result<&'a Profile, String> {
+    set.get(id)
+        .filter(|p| p.source == profile::Source::Builtin)
+        .ok_or_else(|| "profile must be a built-in agent".into())
+}
+
+fn spawn_req(spec: &core::SpawnSpec) -> Result<RunCreateReq, String> {
+    serde_json::from_value(serde_json::json!({
+        "profile": spec.profile,
+        "cwd": spec.cwd.display().to_string(),
+        "name": spec.name,
+        "permission_mode": spec.mode,
+        "parent_session": spec.parent,
+        "spawn_card": spec.card,
+        "cwd_pin": spec.pin,
+    }))
+    .map_err(|e| e.to_string())
+}
+
 pub(super) struct ManagerHost<'a> {
     pub(super) rt: &'a Arc<Runner>,
     pub(super) me: &'a str,
@@ -132,7 +151,7 @@ impl core::Host for ManagerHost<'_> {
             .map_err(|e| e.msg)
     }
 
-    fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String> {
+    fn trusted_dir(&self, cwd: &str) -> Result<core::TrustedDir, String> {
         let bad = || "cwd must be an existing absolute directory".to_string();
         if !Path::new(cwd).is_absolute() {
             return Err(bad());
@@ -145,28 +164,33 @@ impl core::Host for ManagerHost<'_> {
                     .into(),
             );
         }
-        Ok(dir.path.clone())
+        let (dev, ino) = dir.id();
+        Ok(core::TrustedDir {
+            path: dir.path.clone(),
+            pin: CwdPin { dev, ino },
+        })
+    }
+
+    fn precheck_spawn(&self, spec: &core::SpawnSpec) -> Result<(), String> {
+        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+        let prof = builtin(&set, &spec.profile)?;
+        plan_mode(
+            prof,
+            &spawn_req(spec)?,
+            &None,
+            false,
+            true,
+            sandbox::network_restriction_enforced(),
+        )
+        .map(|_| ())
+        .map_err(|e| e.msg)
     }
 
     fn spawn(&self, spec: core::SpawnSpec) -> Result<SessionInfo, String> {
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-        if !set
-            .get(&spec.profile)
-            .is_some_and(|p| p.source == profile::Source::Builtin)
-        {
-            return Err("profile must be a built-in agent".into());
-        }
-        let req: RunCreateReq = serde_json::from_value(serde_json::json!({
-            "profile": spec.profile,
-            "cwd": spec.cwd.display().to_string(),
-            "name": spec.name,
-            "permission_mode": spec.mode,
-            "parent_session": spec.parent,
-            "spawn_card": spec.card,
-        }))
-        .map_err(|e| e.to_string())?;
+        builtin(&set, &spec.profile)?;
         self.rt
-            .create_run_as(req, false, None, None, None)
+            .create_run_as(spawn_req(&spec)?, false, None, None, None)
             .map(|(info, ..)| info)
             .map_err(|e| e.msg)
     }
@@ -177,7 +201,7 @@ impl core::Host for ManagerHost<'_> {
         let trusted = self.trusted_dir(&old.cwd).map_err(|e| {
             format!("{e}; the owner switches sessions of untrusted folders from the CLI or the app")
         })?;
-        if fs::canonicalize(&old.cwd).ok().as_deref() != Some(trusted.as_path()) {
+        if fs::canonicalize(&old.cwd).ok().as_deref() != Some(trusted.path.as_path()) {
             return Err(
                 "cwd is not a trusted folder; the owner switches it from the CLI or the app".into(),
             );
@@ -222,6 +246,7 @@ impl core::Host for ManagerHost<'_> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
+    use crate::manager::Host;
     use serde_json::json;
 
     const MGR: &str = "s_aaaaaaaaaa";
@@ -449,5 +474,63 @@ pub(super) mod tests {
                 .code,
             ErrorCode::InvalidParams
         );
+    }
+
+    #[test]
+    fn a_folder_swapped_after_the_trust_check_is_refused_at_spawn() {
+        use std::os::unix::fs::MetadataExt;
+        let (t, rt) = pair();
+        let dir = fs::canonicalize(t.path()).unwrap().join("proj");
+        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(t.path().join("homes")).unwrap();
+        folders::add(&t.path().join("homes"), &dir, None, 1).unwrap();
+        let host = ManagerHost { rt: &rt, me: MGR };
+        let trusted = host.trusted_dir(dir.to_str().unwrap()).unwrap();
+        let meta = fs::metadata(&dir).unwrap();
+        assert_eq!((trusted.pin.dev, trusted.pin.ino), (meta.dev(), meta.ino()));
+        let spec = |pin| core::SpawnSpec {
+            profile: "claude-code".into(),
+            cwd: dir.clone(),
+            name: None,
+            mode: "ask".into(),
+            parent: MGR.into(),
+            card: None,
+            pin: Some(pin),
+        };
+        let moved = t.path().join("proj-moved");
+        fs::rename(&dir, &moved).unwrap();
+        fs::create_dir_all(&dir).unwrap();
+        let err = host.spawn(spec(trusted.pin)).unwrap_err();
+        assert_eq!(err, "approved folder changed");
+    }
+
+    #[test]
+    fn precheck_refuses_what_the_run_plan_would_refuse() {
+        let (t, rt) = pair();
+        let host = ManagerHost { rt: &rt, me: MGR };
+        let spec = |profile: &str, mode: &str, card: Option<&str>| core::SpawnSpec {
+            profile: profile.into(),
+            cwd: t.path().to_path_buf(),
+            name: None,
+            mode: mode.into(),
+            parent: MGR.into(),
+            card: card.map(String::from),
+            pin: None,
+        };
+        host.precheck_spawn(&spec("claude-code", "bypass", Some("card_1")))
+            .unwrap();
+        host.precheck_spawn(&spec("claude-code", "ask", None))
+            .unwrap();
+        assert!(host
+            .precheck_spawn(&spec("opencode", "bypass", Some("card_1")))
+            .unwrap_err()
+            .contains("cannot run in mode bypass"));
+        assert!(host
+            .precheck_spawn(&spec("codex", "plan", None))
+            .unwrap_err()
+            .contains("plan"));
+        assert!(host
+            .precheck_spawn(&spec("claude-code", "bypass", None))
+            .is_err());
     }
 }

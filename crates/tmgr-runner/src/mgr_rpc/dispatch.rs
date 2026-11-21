@@ -1361,8 +1361,11 @@ mod tests {
             (self.on_send)();
             self.inner.send(id, text)
         }
-        fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String> {
+        fn trusted_dir(&self, cwd: &str) -> Result<crate::manager::TrustedDir, String> {
             self.inner.trusted_dir(cwd)
+        }
+        fn precheck_spawn(&self, spec: &crate::manager::SpawnSpec) -> Result<(), String> {
+            self.inner.precheck_spawn(spec)
         }
         fn spawn(
             &self,

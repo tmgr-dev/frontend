@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tmgr_ipc::api::{ErrorCode, RunCreateReq, SessionInfo, StateKind};
+use tmgr_ipc::api::{CwdPin, ErrorCode, RunCreateReq, SessionInfo, StateKind};
 use tmgr_ipc::chat::{self, Author, AuthorKind, ChatMessage, MessageKind, RoomRef};
 use tmgr_ipc::manager::{
     limits, tool, valid_req_id, SignedSpawn, SpoolReq, SpoolResp, DATA_NOTICE, MCP_ARG, REQ_DIR,
@@ -500,12 +500,20 @@ impl State {
         true
     }
 
-    fn can_spawn(&self, now_ms: u64) -> bool {
-        State::pruned(&self.spawns, now_ms).len() < limits::SPAWNS_PER_MINUTE
+    fn reserve_spawn(&self, now_ms: u64) -> Option<u64> {
+        let mut w = State::pruned(&self.spawns, now_ms);
+        if w.len() >= limits::SPAWNS_PER_MINUTE {
+            return None;
+        }
+        w.push_back(now_ms);
+        Some(now_ms)
     }
 
-    fn allow_spawn(&self, now_ms: u64) -> bool {
-        State::allow_in(&self.spawns, limits::SPAWNS_PER_MINUTE, now_ms)
+    fn release_spawn(&self, slot: u64) {
+        let mut w = self.spawns.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(i) = w.iter().rposition(|t| *t == slot) {
+            w.remove(i);
+        }
     }
 
     fn allow_switch(&self, now_ms: u64) -> bool {
@@ -561,6 +569,12 @@ pub struct SpawnSpec {
     pub mode: String,
     pub parent: String,
     pub card: Option<String>,
+    pub pin: Option<CwdPin>,
+}
+
+pub struct TrustedDir {
+    pub path: PathBuf,
+    pub pin: CwdPin,
 }
 
 pub enum Verdict {
@@ -587,7 +601,8 @@ pub trait Host {
     fn sessions(&self) -> Vec<SessionInfo>;
     fn text(&self, id: &str, lines: u32) -> Result<Vec<String>, String>;
     fn send(&self, id: &str, text: &str) -> Result<(), String>;
-    fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String>;
+    fn trusted_dir(&self, cwd: &str) -> Result<TrustedDir, String>;
+    fn precheck_spawn(&self, spec: &SpawnSpec) -> Result<(), String>;
     fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String>;
     fn switch(&self, id: &str, to: &str) -> Result<SwitchResult, String>;
     fn verify_spawn(
@@ -765,9 +780,12 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
 
 const REMOTE_SPAWN: &str = "remote spawn is not available yet";
 
+const DOWNGRADED: &str =
+    "the session started in a lower permission mode than approved and is not in bypass";
+
 struct SpawnArgs<'a> {
     profile: &'a str,
-    dir: PathBuf,
+    dir: TrustedDir,
     prompt: Option<&'a str>,
     name: Option<&'a str>,
     mode: &'a str,
@@ -779,7 +797,7 @@ fn truthy(a: &Value, key: &str) -> bool {
         .is_some_and(|v| !v.is_null() && *v != Value::Bool(false))
 }
 
-fn spawn_args<'a>(host: &dyn Host, a: &'a Value, bypass_ok: bool) -> Result<SpawnArgs<'a>, String> {
+fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnArgs<'a>, String> {
     if text_arg(a, "machine", 1, 64)?.is_some_and(|m| m != host.machine()) {
         return Err(REMOTE_SPAWN.into());
     }
@@ -790,14 +808,18 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, bypass_ok: bool) -> Result<Spaw
     let cwd = need(a, "cwd", 1, 4096)?;
     let prompt = text_arg(a, "prompt", 1, limits::MAX_SEND_BYTES)?;
     let name = text_arg(a, "name", 1, 64)?;
-    let task = text_arg(a, "task", 1, 128)?;
+    let task = if signed {
+        text_arg(a, "task", 1, 128)?
+    } else {
+        None
+    };
     let mode = text_arg(a, "permission_mode", 1, 32)?.unwrap_or("ask");
     let spawn_mode = match mode {
         "ask" => SpawnMode::Ask,
         "accept-edits" => SpawnMode::AcceptEdits,
-        "bypass" if bypass_ok => SpawnMode::Bypass,
+        "bypass" if signed => SpawnMode::Bypass,
         "bypass" => return Err("permission_mode bypass needs an owner approval".into()),
-        _ if bypass_ok => {
+        _ if signed => {
             return Err("permission_mode must be ask, accept-edits or bypass".into());
         }
         _ => {
@@ -811,7 +833,7 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, bypass_ok: bool) -> Result<Spaw
     let proposal = SpawnProposal {
         v: 1,
         profile: profile.into(),
-        cwd: dir.display().to_string(),
+        cwd: dir.path.display().to_string(),
         mode: spawn_mode,
         prompt_sha256: prompt.map(|p| sha256_hex(p.as_bytes())),
         name: name.map(String::from),
@@ -854,41 +876,44 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
         }
     }
     let args = spawn_args(host, a, approval.is_some())?;
-    let too_many = || format!("at most {} spawns per minute", limits::SPAWNS_PER_MINUTE);
-    match &approval {
-        None => {
-            if !st.allow_spawn(host.now_ms()) {
-                return Err(too_many());
-            }
-        }
-        Some(signed) => {
-            if !st.can_spawn(host.now_ms()) {
-                return Err(too_many());
-            }
-            match host.verify_spawn(signed, &args.proposal)? {
-                Verdict::Verified => {}
-                Verdict::Existing(info) => return Ok(row(&info, host.me())),
-            }
-            if !st.allow_spawn(host.now_ms()) {
-                return Err(too_many());
-            }
-        }
-    }
-    let info = host.spawn(SpawnSpec {
+    let spec = SpawnSpec {
         profile: args.profile.into(),
-        cwd: args.dir,
+        cwd: args.dir.path.clone(),
         name: args.name.map(String::from),
         mode: args.mode.into(),
         parent: host.me().into(),
         card: approval.as_ref().map(|s| s.card_id.clone()),
-    })?;
+        pin: Some(args.dir.pin),
+    };
+    host.precheck_spawn(&spec)?;
+    let slot = st
+        .reserve_spawn(host.now_ms())
+        .ok_or_else(|| format!("at most {} spawns per minute", limits::SPAWNS_PER_MINUTE))?;
     if let Some(signed) = &approval {
-        host.spawn_done(&signed.card_id, &info.id);
+        match host.verify_spawn(signed, &args.proposal) {
+            Ok(Verdict::Verified) => {}
+            Ok(Verdict::Existing(info)) => {
+                st.release_spawn(slot);
+                return Ok(row(&info, host.me()));
+            }
+            Err(e) => {
+                st.release_spawn(slot);
+                return Err(e);
+            }
+        }
     }
+    let info = host.spawn(spec)?;
     if let Some(p) = args.prompt {
         st.queue_prompt(&info.id, p, host.now_ms());
     }
-    Ok(row(&info, host.me()))
+    if let Some(signed) = &approval {
+        host.spawn_done(&signed.card_id, &info.id);
+    }
+    let mut reply = row(&info, host.me());
+    if args.mode == "bypass" && info.permission_mode.as_deref() != Some("bypass") {
+        reply["note"] = json!(DOWNGRADED);
+    }
+    Ok(reply)
 }
 
 fn switch(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
@@ -931,7 +956,7 @@ fn switch(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
             limits::SWITCHES_PER_MINUTE
         ));
     }
-    if !st.allow_spawn(host.now_ms()) {
+    if st.reserve_spawn(host.now_ms()).is_none() {
         return Err(format!(
             "at most {} spawns per minute",
             limits::SPAWNS_PER_MINUTE
@@ -1252,6 +1277,12 @@ mod tests {
         verdict: Mutex<Result<bool, String>>,
         done: Mutex<Vec<(String, String)>>,
         proposed: Mutex<Vec<SpawnProposal>>,
+        precheck: Mutex<Result<(), String>>,
+        downgrade: bool,
+        pins: Mutex<Vec<Option<CwdPin>>>,
+        probe: Mutex<Option<std::sync::Arc<State>>>,
+        queued_at_done: Mutex<Vec<usize>>,
+        events: Mutex<Vec<&'static str>>,
     }
 
     fn info(id: &str) -> SessionInfo {
@@ -1294,6 +1325,12 @@ mod tests {
                 verdict: Mutex::new(Ok(true)),
                 done: Mutex::default(),
                 proposed: Mutex::default(),
+                precheck: Mutex::new(Ok(())),
+                downgrade: false,
+                pins: Mutex::default(),
+                probe: Mutex::new(None),
+                queued_at_done: Mutex::default(),
+                events: Mutex::default(),
             }
         }
     }
@@ -1318,19 +1355,33 @@ mod tests {
             self.sent.lock().unwrap().push((id.into(), text.into()));
             Ok(())
         }
-        fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String> {
+        fn trusted_dir(&self, cwd: &str) -> Result<TrustedDir, String> {
             if self.trusted.iter().any(|t| t == cwd) {
-                Ok(PathBuf::from(cwd))
+                Ok(TrustedDir {
+                    path: PathBuf::from(cwd),
+                    pin: CwdPin { dev: 7, ino: 9 },
+                })
             } else {
                 Err("cwd is not a trusted folder".into())
             }
+        }
+        fn precheck_spawn(&self, _: &SpawnSpec) -> Result<(), String> {
+            self.events.lock().unwrap().push("precheck");
+            self.precheck.lock().unwrap().clone()
         }
         fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String> {
             self.spawned
                 .lock()
                 .unwrap()
                 .push(format!("{}:{}:{}", spec.profile, spec.mode, spec.parent));
-            Ok(info("s_ffffffffff"))
+            self.pins.lock().unwrap().push(spec.pin);
+            let mut i = info("s_ffffffffff");
+            i.permission_mode = Some(if self.downgrade {
+                "accept-edits".into()
+            } else {
+                spec.mode.clone()
+            });
+            Ok(i)
         }
         fn switch(&self, id: &str, to: &str) -> Result<SwitchResult, String> {
             self.switched.lock().unwrap().push(format!("{id}:{to}"));
@@ -1341,6 +1392,7 @@ mod tests {
             })
         }
         fn verify_spawn(&self, _: &SignedSpawn, p: &SpawnProposal) -> Result<Verdict, String> {
+            self.events.lock().unwrap().push("verify");
             self.verified.lock().unwrap().push(p.clone());
             match self.verdict.lock().unwrap().clone() {
                 Ok(true) => Ok(Verdict::Verified),
@@ -1349,6 +1401,14 @@ mod tests {
             }
         }
         fn spawn_done(&self, card: &str, session: &str) {
+            if let Some(st) = self.probe.lock().unwrap().as_ref() {
+                let mut n = 0;
+                st.deliver_prompts(self.now, |_| {
+                    n += 1;
+                    Delivery::Retry
+                });
+                self.queued_at_done.lock().unwrap().push(n);
+            }
             self.done
                 .lock()
                 .unwrap()
@@ -1679,6 +1739,118 @@ mod tests {
         let bad = json!({"profile": "codex", "cwd": "/tmp/ok", "permission_mode": "plan"});
         call(&h, &st, "propose_spawn", bad).unwrap_err();
         assert_eq!(h.proposed.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_approved_folder_identity_travels_with_every_spawn() {
+        let h = Fake::new();
+        let st = State::default();
+        call(
+            &h,
+            &st,
+            "spawn_session",
+            json!({"profile": "codex", "cwd": "/tmp/ok"}),
+        )
+        .unwrap();
+        call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        assert_eq!(
+            *h.pins.lock().unwrap(),
+            vec![Some(CwdPin { dev: 7, ino: 9 }); 2]
+        );
+    }
+
+    #[test]
+    fn a_refused_precheck_burns_neither_the_card_nor_a_rate_slot() {
+        let h = Fake::new();
+        let st = State::default();
+        *h.precheck.lock().unwrap() = Err("profile codex cannot run in mode bypass".into());
+        for _ in 0..limits::SPAWNS_PER_MINUTE + 2 {
+            call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap_err();
+        }
+        assert!(h.verified.lock().unwrap().is_empty());
+        *h.precheck.lock().unwrap() = Ok(());
+        call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+    }
+
+    #[test]
+    fn a_refused_or_existing_verification_gives_the_rate_slot_back() {
+        let h = Fake::new();
+        let st = State::default();
+        for verdict in [Err("spawn approval expired".to_string()), Ok(false)] {
+            *h.verdict.lock().unwrap() = verdict;
+            for _ in 0..limits::SPAWNS_PER_MINUTE + 2 {
+                let _ = call(&h, &st, "spawn_session", signed_args(json!({})));
+            }
+        }
+        *h.verdict.lock().unwrap() = Ok(true);
+        for _ in 0..limits::SPAWNS_PER_MINUTE {
+            call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        }
+        assert!(call(&h, &st, "spawn_session", signed_args(json!({})))
+            .unwrap_err()
+            .contains("per minute"));
+        assert_eq!(h.spawned.lock().unwrap().len(), limits::SPAWNS_PER_MINUTE);
+    }
+
+    #[test]
+    fn a_full_rate_window_is_refused_before_the_card_is_verified() {
+        let h = Fake::new();
+        let st = State::default();
+        for _ in 0..limits::SPAWNS_PER_MINUTE {
+            assert!(st.reserve_spawn(h.now).is_some());
+        }
+        call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap_err();
+        assert!(h.verified.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_prompt_is_queued_before_the_card_is_marked_spawned() {
+        let h = Fake::new();
+        let st = std::sync::Arc::new(State::default());
+        *h.probe.lock().unwrap() = Some(st.clone());
+        call(
+            &h,
+            &st,
+            "spawn_session",
+            signed_args(json!({"prompt": "go"})),
+        )
+        .unwrap();
+        assert_eq!(*h.queued_at_done.lock().unwrap(), vec![1]);
+    }
+
+    #[test]
+    fn task_is_validated_only_with_an_approval() {
+        let h = Fake::new();
+        let st = State::default();
+        let long = "t".repeat(500);
+        call(
+            &h,
+            &st,
+            "spawn_session",
+            json!({"profile": "codex", "cwd": "/tmp/ok", "task": long}),
+        )
+        .unwrap();
+        call(&h, &st, "spawn_session", signed_args(json!({"task": long}))).unwrap_err();
+        assert!(h.verified.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_downgraded_bypass_says_so_in_the_reply() {
+        let mut h = Fake::new();
+        let st = State::default();
+        let v = call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        assert!(v.get("note").is_none());
+        h.downgrade = true;
+        let v = call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        assert_eq!(v["note"], DOWNGRADED);
+    }
+
+    #[test]
+    fn precheck_runs_before_the_rate_slot_and_verification() {
+        let h = Fake::new();
+        let st = State::default();
+        call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        assert_eq!(*h.events.lock().unwrap(), vec!["precheck", "verify"]);
     }
 
     #[test]

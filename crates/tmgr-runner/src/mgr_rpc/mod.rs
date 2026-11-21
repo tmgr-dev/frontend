@@ -15,7 +15,6 @@ pub use transport::{serve_one, Inbound, MemoryNet, Transport};
 pub(crate) mod testkit {
     use crate::manager::{Host, SpawnSpec};
     use serde_json::json;
-    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Mutex;
     use tmgr_ipc::api::{Origin, SessionInfo, StateKind, TeamLink, TeamRole};
@@ -113,8 +112,11 @@ pub(crate) mod testkit {
             self.sent.lock().unwrap().push((id.into(), text.into()));
             Ok(())
         }
-        fn trusted_dir(&self, _: &str) -> Result<PathBuf, String> {
+        fn trusted_dir(&self, _: &str) -> Result<crate::manager::TrustedDir, String> {
             panic!("trusted_dir must never be reached")
+        }
+        fn precheck_spawn(&self, _: &SpawnSpec) -> Result<(), String> {
+            panic!("precheck_spawn must never be reached")
         }
         fn spawn(&self, _: SpawnSpec) -> Result<SessionInfo, String> {
             panic!("spawn must never be reached")

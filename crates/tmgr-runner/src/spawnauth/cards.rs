@@ -66,13 +66,28 @@ pub enum CardState {
     },
     Claimed {
         claimed_ms: u64,
+        #[serde(default)]
+        req_sha256: String,
     },
     Spawned {
         session: String,
+        #[serde(default)]
+        req_sha256: String,
     },
     Refused {
         reason: String,
     },
+}
+
+impl CardState {
+    pub fn req_sha256(&self) -> Option<&str> {
+        match self {
+            CardState::Issued { req_sha256, .. }
+            | CardState::Claimed { req_sha256, .. }
+            | CardState::Spawned { req_sha256, .. } => Some(req_sha256),
+            CardState::Refused { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,10 +187,10 @@ fn result_of(state: &CardState) -> CardResult {
             nonce: nonce.clone(),
             exp_ms: *exp_ms,
         },
-        CardState::Claimed { claimed_ms } => CardResult::Interrupted {
+        CardState::Claimed { claimed_ms, .. } => CardResult::Interrupted {
             claimed_ms: *claimed_ms,
         },
-        CardState::Spawned { session } => CardResult::Spawned {
+        CardState::Spawned { session, .. } => CardResult::Spawned {
             session: session.clone(),
         },
         CardState::Refused { reason } => CardResult::Refused {
@@ -352,7 +367,14 @@ impl CardStore {
         };
         match tmgr_spawn_auth::verify(wire, &record, key, trust, now_ms) {
             Ok(approved) => {
-                self.save(id, CardState::Claimed { claimed_ms: now_ms }, now_ms)?;
+                self.save(
+                    id,
+                    CardState::Claimed {
+                        claimed_ms: now_ms,
+                        req_sha256,
+                    },
+                    now_ms,
+                )?;
                 Ok(ClaimOutcome::Verified(Box::new(approved)))
             }
             Err(refusal) => {
@@ -387,14 +409,15 @@ impl CardStore {
         }
         let _lock = self.lock()?;
         match self.load(id)?.map(|f| f.state) {
-            Some(CardState::Claimed { .. }) => self.save(
+            Some(CardState::Claimed { req_sha256, .. }) => self.save(
                 id,
                 CardState::Spawned {
                     session: session.into(),
+                    req_sha256,
                 },
                 now_ms,
             ),
-            Some(CardState::Spawned { session: prev }) if prev == session => Ok(()),
+            Some(CardState::Spawned { session: prev, .. }) if prev == session => Ok(()),
             Some(CardState::Spawned { .. }) => Err(CardError::AlreadySpawned),
             _ => Err(CardError::NotClaimed),
         }
@@ -707,10 +730,15 @@ mod tests {
             };
             assert_eq!(a.card_id(), "card-0001");
             assert_eq!(a.proposal(), &fixture_proposal());
-            assert_eq!(
-                s.state("card-0001").unwrap(),
-                Some(CardState::Claimed { claimed_ms: NOW })
-            );
+            let Some(CardState::Claimed {
+                claimed_ms,
+                req_sha256,
+            }) = s.state("card-0001").unwrap()
+            else {
+                panic!("{name}: not claimed")
+            };
+            assert_eq!(claimed_ms, NOW);
+            assert_eq!(req_sha256, fixture_proposal().req_sha256());
             let again = s
                 .claim(
                     "card-0001",

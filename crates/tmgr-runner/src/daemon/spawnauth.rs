@@ -23,6 +23,7 @@ const INTERRUPTED: &str = "interrupted; ask again with a new card";
 pub(super) struct SpawnGate {
     slot: Mutex<Option<(Identity, Arc<SpawnAuth>)>>,
     asked: Mutex<VecDeque<u64>>,
+    proposed: Mutex<VecDeque<u64>>,
     #[cfg(test)]
     pub(super) fixed: Mutex<Option<Arc<SpawnAuth>>>,
 }
@@ -43,7 +44,14 @@ impl ChatSink for Discard {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Budget {
+    Human,
+    Manager,
+}
+
 fn relay_state(dir: &Path, machine: &str) -> Option<(u64, TrustState)> {
+    fs::symlink_metadata(dir.join("relay")).ok()?;
     let relay = RelayDir::open(dir).ok()?;
     let user_id = relay.load_config().ok()??.user_id;
     let cfg = EngineConfig {
@@ -125,8 +133,11 @@ impl SpawnGate {
         Ok(auth)
     }
 
-    fn challenge_slot(&self, now: u64) -> bool {
-        let mut w = lock(&self.asked);
+    fn challenge_slot(&self, now: u64, budget: Budget) -> bool {
+        let mut w = lock(match budget {
+            Budget::Human => &self.asked,
+            Budget::Manager => &self.proposed,
+        });
         while w.front().is_some_and(|t| now.saturating_sub(*t) >= 60_000) {
             w.pop_front();
         }
@@ -146,13 +157,14 @@ fn card_error(e: CardError) -> String {
 }
 
 impl Runner {
-    pub(super) fn spawn_challenge(
+    fn spawn_challenge_within(
         &self,
         card_id: &str,
         proposal: &SpawnProposal,
+        budget: Budget,
     ) -> Result<SpawnChallengeResult, ApiErr> {
         let now = now_ms();
-        if !self.spawn_gate.challenge_slot(now) {
+        if !self.spawn_gate.challenge_slot(now, budget) {
             return Err(api(
                 ErrorCode::Limit,
                 format!("at most {CHALLENGES_PER_MINUTE} spawn challenges per minute"),
@@ -196,7 +208,7 @@ impl Runner {
             ));
         }
         let q: SpawnChallengeParams = params(p)?;
-        self.spawn_challenge(&q.card_id, &q.proposal)
+        self.spawn_challenge_within(&q.card_id, &q.proposal, Budget::Human)
             .map(|r| to_json(&r))
     }
 
@@ -205,7 +217,7 @@ impl Runner {
         getrandom::fill(&mut raw).map_err(|_| "no random source".to_string())?;
         let card_id = format!("card_{}", crate::spawnauth::hex_lower(&raw));
         let c = self
-            .spawn_challenge(&card_id, proposal)
+            .spawn_challenge_within(&card_id, proposal, Budget::Manager)
             .map_err(|e| e.msg)?;
         Ok(Proposed {
             card_id,
@@ -223,10 +235,9 @@ impl Runner {
         let card = wire.card_id.as_str();
         let now = now_ms();
         let mismatch = || Refusal::Mismatch.to_string();
-        if let Some(CardState::Issued { req_sha256, .. }) =
-            auth.cards().state(card).map_err(card_error)?
-        {
-            if req_sha256 != proposal.req_sha256() {
+        let stored = auth.cards().state(card).map_err(card_error)?;
+        if let Some(stored) = stored.as_ref().and_then(CardState::req_sha256) {
+            if stored != proposal.req_sha256() {
                 return Err(mismatch());
             }
         }
@@ -427,11 +438,17 @@ mod tests {
         fn send(&self, id: &str, text: &str) -> Result<(), String> {
             self.inner.send(id, text)
         }
-        fn trusted_dir(&self, cwd: &str) -> Result<PathBuf, String> {
+        fn trusted_dir(&self, cwd: &str) -> Result<core::TrustedDir, String> {
             let p = PathBuf::from(cwd);
             p.starts_with(&self.work)
-                .then_some(p)
+                .then_some(core::TrustedDir {
+                    path: p,
+                    pin: CwdPin { dev: 0, ino: 0 },
+                })
                 .ok_or_else(|| "cwd is not a trusted folder".into())
+        }
+        fn precheck_spawn(&self, spec: &SpawnSpec) -> Result<(), String> {
+            self.inner.precheck_spawn(spec)
         }
         fn spawn(&self, spec: SpawnSpec) -> Result<SessionInfo, String> {
             let fail = self.fail.load(Ordering::SeqCst);
@@ -443,6 +460,7 @@ mod tests {
                 "id": id, "name": id, "argv": ["claude"], "cwd": spec.cwd,
                 "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,
                 "shim_pid": 1, "child_pid": 2, "spawn_card": spec.card,
+                "permission_mode": spec.mode,
             }))
             .unwrap();
             let sdir = self.work.join("sessions").join(&id);
@@ -687,6 +705,128 @@ mod tests {
         assert!(!last.is_empty());
     }
 
+    #[test]
+    fn a_retry_of_a_spawned_card_with_other_arguments_is_refused_and_returns_no_session() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let args = spawn_args(&e, "bypass", "a", &card);
+        let first = run(&h, &e, "spawn_session", args.clone()).unwrap();
+        for (key, other) in [
+            ("permission_mode", serde_json::json!("accept-edits")),
+            ("cwd", serde_json::json!(e.work.join("b"))),
+            ("prompt", serde_json::json!("different")),
+        ] {
+            let mut changed = args.clone();
+            changed[key] = other;
+            let err = run(&h, &e, "spawn_session", changed).unwrap_err();
+            assert_eq!(err, Refusal::Mismatch.to_string(), "{key}");
+        }
+        assert_eq!(
+            run(&h, &e, "spawn_session", args).unwrap()["id"],
+            first["id"]
+        );
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_interrupted_card_healed_with_other_arguments_is_refused_and_stays_claimed() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let args = spawn_args(&e, "bypass", "a", &card);
+        h.fail(Fail::AfterCreate);
+        assert!(run(&h, &e, "spawn_session", args.clone()).is_err());
+        h.fail(Fail::No);
+        let mut changed = args;
+        changed["permission_mode"] = serde_json::json!("accept-edits");
+        let err = run(&h, &e, "spawn_session", changed).unwrap_err();
+        assert_eq!(err, Refusal::Mismatch.to_string());
+        assert!(matches!(
+            e.auth.cards().state(&card).unwrap(),
+            Some(CardState::Claimed { .. })
+        ));
+    }
+
+    #[test]
+    fn a_profile_that_cannot_bypass_is_refused_before_the_card_is_claimed() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let args = serde_json::json!({
+            "profile": "opencode", "cwd": e.work.join("a"), "permission_mode": "bypass", "prompt": "go"
+        });
+        let card = run(&h, &e, "propose_spawn", args.clone()).unwrap()["card_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut signed = args;
+        signed["approval"] = approval(&e, &card);
+        let err = run(&h, &e, "spawn_session", signed).unwrap_err();
+        assert!(err.contains("cannot run in mode bypass"), "{err}");
+        assert!(matches!(
+            e.auth.cards().state(&card).unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+    }
+
+    #[test]
+    fn refused_verifications_do_not_use_up_the_spawn_rate_window() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let mut bad = spawn_args(&e, "bypass", "a", &card);
+        bad["approval"]["sig"] = serde_json::json!("AAAA");
+        for _ in 0..tmgr_ipc::manager::limits::SPAWNS_PER_MINUTE + 2 {
+            let err = run(&h, &e, "spawn_session", bad.clone()).unwrap_err();
+            assert!(!err.contains("per minute"), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_manager_and_the_human_have_separate_challenge_budgets() {
+        let gate = SpawnGate::default();
+        for _ in 0..CHALLENGES_PER_MINUTE {
+            assert!(gate.challenge_slot(1_000, Budget::Manager));
+        }
+        assert!(!gate.challenge_slot(1_000, Budget::Manager));
+        for _ in 0..CHALLENGES_PER_MINUTE {
+            assert!(gate.challenge_slot(1_000, Budget::Human));
+        }
+        assert!(!gate.challenge_slot(1_000, Budget::Human));
+        assert!(gate.challenge_slot(61_000, Budget::Manager));
+    }
+
+    #[test]
+    fn a_looping_manager_cannot_use_up_the_human_challenge_budget() {
+        let e = env();
+        let proposal: SpawnProposal = serde_json::from_value(serde_json::json!({
+            "v": 1, "profile": "claude-code", "cwd": e.work.display().to_string(),
+            "mode": "bypass", "target_id": e.rt.chat.machine()
+        }))
+        .unwrap();
+        let mut limited = false;
+        for _ in 0..CHALLENGES_PER_MINUTE + 2 {
+            limited |= matches!(
+                e.rt.propose_spawn(&proposal),
+                Err(m) if m.contains("per minute")
+            );
+        }
+        assert!(limited);
+        let err = challenge(&e, CLIENT_CLI, "card_human").unwrap_err();
+        assert_ne!(err.code, ErrorCode::Limit);
+    }
+
+    #[test]
+    fn an_unlinked_runner_dir_is_not_given_a_relay_directory_by_a_trust_lookup() {
+        let t = tempfile::tempdir().unwrap();
+        assert!(relay_state(t.path(), "mx_0123456789abcdef").is_none());
+        assert!(!t.path().join("relay").exists());
+    }
+
     fn conn(client: &str) -> (Arc<Conn>, UnixStream) {
         let (a, b) = UnixStream::pair().unwrap();
         let c = Arc::new(Conn {
@@ -787,7 +927,9 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(
-            rt.spawn_challenge("card_n", &proposal).unwrap_err().code,
+            rt.spawn_challenge_within("card_n", &proposal, Budget::Human)
+                .unwrap_err()
+                .code,
             ErrorCode::Forbidden
         );
         let wire: SignedSpawn = serde_json::from_value(serde_json::json!({
