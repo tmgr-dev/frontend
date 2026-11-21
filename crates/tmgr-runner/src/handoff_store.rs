@@ -40,6 +40,22 @@ impl HandoffStore {
         Ok(self.dir.join(format!("{id}.json")))
     }
 
+    fn done_path(&self, id: &str) -> io::Result<PathBuf> {
+        if !valid_id(id) {
+            return Err(invalid("invalid handoff packet id"));
+        }
+        Ok(self.dir.join(format!("{id}.done")))
+    }
+
+    pub fn mark_finished(&self, id: &str, new_session: &str) -> io::Result<()> {
+        write_atomic(&self.done_path(id)?, new_session.as_bytes())
+    }
+
+    fn is_finished(&self, id: &str) -> bool {
+        self.done_path(id)
+            .is_ok_and(|p| fs::symlink_metadata(p).is_ok())
+    }
+
     pub fn save(&self, id: &str, value: &serde_json::Value) -> io::Result<()> {
         let path = self.path(id)?;
         let bytes = serde_json::to_vec(value).map_err(io::Error::other)?;
@@ -92,7 +108,7 @@ impl HandoffStore {
             let Some(id) = name.strip_suffix(".json") else {
                 continue;
             };
-            if !valid_id(id) {
+            if !valid_id(id) || self.is_finished(id) {
                 continue;
             }
             let Ok(Some(v)) = self.get(id) else {
@@ -146,6 +162,20 @@ impl HandoffStore {
                 .map_or(0, |d| d.as_millis() as u64);
             if modified_ms < cutoff && fs::remove_file(entry.path()).is_ok() {
                 removed += 1;
+                let _ = fs::remove_file(self.dir.join(format!("{id}.done")));
+            }
+        }
+        if let Ok(rd) = fs::read_dir(&self.dir) {
+            for entry in rd.flatten() {
+                let Ok(name) = entry.file_name().into_string() else {
+                    continue;
+                };
+                let Some(id) = name.strip_suffix(".done") else {
+                    continue;
+                };
+                if valid_id(id) && !self.dir.join(format!("{id}.json")).exists() {
+                    let _ = fs::remove_file(entry.path());
+                }
             }
         }
         removed
@@ -315,5 +345,49 @@ mod tests {
         assert_eq!(s.prune(now, RETENTION_MS), 1);
         assert_eq!(s.get(ID_A).unwrap(), None);
         assert!(s.get(ID_B).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_finished_packet_is_skipped_by_find_for_and_the_marker_is_private() {
+        let (t, s) = store();
+        s.save(ID_A, &packet("old", "claude", 100)).unwrap();
+        s.save(ID_B, &packet("old", "claude", 50)).unwrap();
+        s.mark_finished(ID_A, "new1").unwrap();
+        s.mark_finished(ID_A, "new1").unwrap();
+        let (id, _) = s.find_for("old", "claude", 0).unwrap();
+        assert_eq!(id, ID_B);
+        let done = t.path().join("handoff").join(format!("{ID_A}.done"));
+        assert_eq!(fs::read_to_string(&done).unwrap(), "new1");
+        assert_eq!(
+            fs::metadata(&done).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(s.get(ID_A).unwrap().is_some());
+        assert!(s.mark_finished("../x", "new1").is_err());
+    }
+
+    #[test]
+    fn prune_removes_the_marker_with_its_packet_and_orphaned_markers() {
+        let (t, s) = store();
+        let dir = t.path().join("handoff");
+        let now = now_ms();
+        s.save(ID_A, &packet("old", "claude", 1)).unwrap();
+        s.mark_finished(ID_A, "new1").unwrap();
+        s.mark_finished(ID_B, "new2").unwrap();
+        s.save(ID_C, &packet("old", "claude", 1)).unwrap();
+        s.mark_finished(ID_C, "new3").unwrap();
+        let stale = UNIX_EPOCH + Duration::from_millis(now - RETENTION_MS - 60_000);
+        OpenOptions::new()
+            .write(true)
+            .open(dir.join(format!("{ID_A}.json")))
+            .unwrap()
+            .set_modified(stale)
+            .unwrap();
+
+        assert_eq!(s.prune(now, RETENTION_MS), 1);
+        assert!(!dir.join(format!("{ID_A}.done")).exists());
+        assert!(!dir.join(format!("{ID_B}.done")).exists());
+        assert!(dir.join(format!("{ID_C}.done")).exists());
+        assert!(dir.join(format!("{ID_C}.json")).exists());
     }
 }

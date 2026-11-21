@@ -102,21 +102,39 @@ impl Runner {
             .ok_or_else(|| api(ErrorCode::NotFound, "no such handoff packet"))?;
         let packet: HandoffPacket = serde_json::from_value(value.clone())
             .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
-        let old = self.handoff_session(&packet.from.session)?.info();
+        if req.new_session == packet.from.session {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "the new session is the one being replaced",
+            ));
+        }
         let target = Target::of_profile(Some(&packet.to.profile))
             .ok_or_else(|| api(ErrorCode::Internal, "the packet names an unknown target"))?;
-        sw::announce(&self.chat, &old, &req.new_session, &packet, target).map_err(switch_err)?;
-        let sessions: Vec<SessionInfo> = self.all().iter().map(|x| x.info()).collect();
+        let old = self.handoff_session(&packet.from.session).map(|s| s.info());
         let mut warnings: Vec<String> = Vec::new();
         let home = self.cfg.homes.join(&req.new_session);
-        match sw::prepare_inputs(&old, &sessions, target, None, &[]) {
-            Ok(inputs) => warnings.extend(sw::export_all_at(&home, &inputs.exports)),
-            Err(e) => warnings.push(e.to_string()),
+        match &old {
+            Ok(old) => {
+                let sessions: Vec<SessionInfo> = self.all().iter().map(|x| x.info()).collect();
+                match sw::prepare_inputs(old, &sessions, target, None, &[]) {
+                    Ok(inputs) => warnings.extend(sw::export_all_at(&home, &inputs.exports)),
+                    Err(e) => warnings.push(e.to_string()),
+                }
+            }
+            Err(e) => warnings.push(format!("the old session is unavailable: {}", e.msg)),
         }
         let bytes = serde_json::to_vec_pretty(&value)
             .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
         if let Err(e) = write_atomic(&home.join(PACKET_FILE), &bytes) {
             warnings.push(format!("the handoff packet could not be copied: {e}"));
+        }
+        if let Ok(old) = &old {
+            if let Err(e) = sw::announce(&self.chat, old, &req.new_session, &packet, target) {
+                warnings.push(format!("the chat note was not written: {e}"));
+            }
+        }
+        if let Err(e) = store.mark_finished(&req.packet_id, &req.new_session) {
+            warnings.push(format!("the handoff packet was not marked finished: {e}"));
         }
         Ok(HandoffFinishResp {
             warning: (!warnings.is_empty()).then(|| warnings.join("; ")),
@@ -323,5 +341,44 @@ mod tests {
         let (_t, rt) = kit();
         let e = finish(&rt, &format!("h_{}", "0".repeat(32))).unwrap_err();
         assert_eq!(e.code, ErrorCode::NotFound);
+    }
+
+    #[test]
+    fn finish_rejects_the_old_session_and_unknown_or_invalid_new_sessions() {
+        let (_t, rt) = kit();
+        let id = prepare(&rt, false).packet_id;
+        let to = |new: &str| {
+            let req = HandoffFinishReq {
+                packet_id: id.clone(),
+                new_session: new.into(),
+            };
+            call(&rt, CLIENT_CLI, method::HANDOFF_FINISH, to_json(&req)).unwrap_err()
+        };
+        assert_eq!(to(OLD).code, ErrorCode::InvalidParams);
+        assert_eq!(to("s_cccccccccc").code, ErrorCode::NotFound);
+        assert_eq!(to("../x").code, ErrorCode::InvalidParams);
+    }
+
+    #[test]
+    fn a_chat_failure_still_leaves_the_packet_copy_and_a_warning() {
+        let (t, rt) = kit();
+        let id = prepare(&rt, false).packet_id;
+        let rooms = t.path().join("run/chat");
+        if rooms.exists() {
+            fs::remove_dir_all(&rooms).unwrap();
+        }
+        fs::write(&rooms, "x").unwrap();
+        let r = finish(&rt, &id).unwrap();
+        let copy = t.path().join("homes").join(NEW).join(PACKET_FILE);
+        assert!(copy.exists());
+        assert!(r["warning"].as_str().unwrap().contains("chat note"));
+    }
+
+    #[test]
+    fn a_finished_handoff_is_not_reused_by_the_next_prepare() {
+        let (_t, rt) = kit();
+        let first = prepare(&rt, false).packet_id;
+        finish(&rt, &first).unwrap();
+        assert_ne!(prepare(&rt, false).packet_id, first);
     }
 }
