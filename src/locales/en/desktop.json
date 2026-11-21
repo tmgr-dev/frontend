@@ -108,6 +108,11 @@
 		"keyMoved": "Your AI provider key moved to this account.",
 		"keyConflict": "This account already has an AI provider key, so it was kept. Your local key is still saved for local mode."
 	},
+	"popover": {
+		"localMachine": "This computer",
+		"quickAddDone": "Task added",
+		"quickAddFailed": "Could not add the task"
+	},
 	"tray": {
 		"awayTitle": "You were away for {duration}",
 		"awayDescription": "Since {since} the timer kept running on {tasks}.",
