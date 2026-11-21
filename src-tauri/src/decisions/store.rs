@@ -1593,7 +1593,12 @@ impl Store {
       let o = card.options.iter().find(|o| o.id == c).ok_or_else(|| "unknown option".to_owned())?;
       Ok(Some(o.label.clone()))
     };
-    let picks: Vec<(String, Option<String>)> = a.choices.into_iter().take(tmgr_phone::MAX_CHOICES).collect();
+    let picks = a.choices;
+    let dup = picks.iter().enumerate().any(|(i, (id, _))| picks[..i].iter().any(|(o, _)| o == id));
+    let first_ok = a.choice.is_none() || picks.first().is_none_or(|(id, _)| a.choice.as_ref() == Some(id));
+    if picks.len() > tmgr_phone::MAX_CHOICES || dup || !first_ok {
+      return Err("invalid choices".into());
+    }
     let choice = cap_opt(a.choice, 64).or_else(|| picks.first().map(|(id, _)| id.clone()));
     let choice_label = match &choice {
       Some(c) => label_of(c)?,
@@ -2327,6 +2332,20 @@ mod tests {
     let v = s.get(&id).unwrap().unwrap();
     assert_eq!(v.title, "Ship?");
     assert!(v.messages.is_empty() && v.updated_ms.is_none());
+  }
+
+  #[test]
+  fn window_answers_with_bad_choices_are_refused() {
+    let mut s = mem();
+    let id = s.create_id(card("Ship?"));
+    let pick = |ids: &[&str]| ids.iter().map(|i| (i.to_string(), None)).collect::<Vec<_>>();
+    for (choice, choices) in [(Some("a"), pick(&["a", "b", "b"])), (Some("b"), pick(&["a", "b"])), (None, pick(&["a"; 10]))] {
+      let a = AnswerIn { choice: choice.map(Into::into), choices, ..Default::default() };
+      assert!(s.answer(&id, a).is_err());
+    }
+    let (e, _) = s.answer(&id, AnswerIn { choices: pick(&["b", "a"]), ..Default::default() }).unwrap();
+    assert_eq!(e.choice.as_deref(), Some("b"));
+    assert_eq!(e.choices.len(), 2);
   }
 
   #[test]
