@@ -480,6 +480,10 @@ pub fn trusted_set(
     trusted_set_by_kind(user_id, pins, revoked, intros, directory, None)
 }
 
+pub fn lowers_kind(have: &str, new: &str) -> bool {
+    new == "runner" && have != "runner"
+}
+
 pub fn may_vouch(kind: Option<&str>) -> bool {
     matches!(kind, Some("desktop" | "mobile"))
 }
@@ -572,8 +576,12 @@ pub fn trusted_set_by_kind(
                 });
             }
             if let Some(k) = known.as_mut() {
-                k.entry(kind_key(&st.target_id, &st.target_fp))
-                    .or_insert_with(|| st.target_kind.clone());
+                let key = kind_key(&st.target_id, &st.target_fp);
+                if k.get(&key)
+                    .is_none_or(|have| lowers_kind(have, &st.target_kind))
+                {
+                    k.insert(key, st.target_kind.clone());
+                }
                 learned.push((
                     st.target_id.clone(),
                     st.target_fp.clone(),

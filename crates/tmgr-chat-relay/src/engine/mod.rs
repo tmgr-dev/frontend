@@ -14,9 +14,9 @@ use crate::api::{self, Directory, Msg, Request};
 use crate::fields::{check_device_id, check_device_kind, check_fp};
 use crate::keys::{fingerprint, DeviceKeys};
 use crate::trust::{
-    decode_join_code, encode_join_code, join_mac, kind_key, may_vouch, parse_intro, parse_revoke,
-    sign_intro, sign_revoke, trusted_set_by_kind, verify_intro, verify_join_mac, verify_revoke,
-    DirEntry, IntroStatement, JoinCode, JoinMacInput, RevokeStatement, Trusted,
+    decode_join_code, encode_join_code, join_mac, kind_key, lowers_kind, may_vouch, parse_intro,
+    parse_revoke, sign_intro, sign_revoke, trusted_set_by_kind, verify_intro, verify_join_mac,
+    verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, RevokeStatement, Trusted,
 };
 use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 
@@ -150,6 +150,10 @@ struct State {
     #[serde(default)]
     kinds_v: u32,
     #[serde(default)]
+    kinds_migrated_at: u64,
+    #[serde(default)]
+    republish_intros: bool,
+    #[serde(default)]
     bindings: BTreeMap<String, String>,
     #[serde(default)]
     pending_code: Option<String>,
@@ -238,8 +242,16 @@ fn intro_matches(i: &str, uid: u64) -> bool {
     parse_intro(i).is_ok_and(|p| p.parsed.user_id == uid)
 }
 
+fn is_stale_own_intro(st: &State, own_id: Option<&str>, intro: &str) -> bool {
+    st.kinds_migrated_at > 0
+        && parse_intro(intro).is_ok_and(|p| {
+            Some(p.by.as_str()) == own_id && p.parsed.issued_at_ms < st.kinds_migrated_at
+        })
+}
+
 fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_base: bool) {
     backfill_own_intro_kinds(c, uid);
+    let own_id = c.identity.as_ref().map(|i| i.device_id.clone());
     let no_devices: &[api::Device] = &[];
     let dir_devices = dir.map_or(no_devices, |d| d.devices.as_slice());
     let mut intros: Vec<String> = c.st.intros.clone();
@@ -248,7 +260,7 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_bas
             intros.push(i.clone());
         }
     }
-    intros.retain(|i| intro_matches(i, uid));
+    intros.retain(|i| intro_matches(i, uid) && !is_stale_own_intro(&c.st, own_id.as_deref(), i));
     let mut pins: Vec<Trusted> = c.st.base.iter().map(to_trusted).collect();
     if !from_base {
         pins.extend(c.st.trusted.iter().map(to_trusted));
@@ -271,14 +283,15 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, now: u64, from_bas
                 kex_pub_b64: d.kex_pub.clone(),
             }),
     );
-    let set = trusted_set_by_kind(
-        uid,
-        &pins,
-        &c.st.revoked,
-        &intros,
-        &entries,
-        Some(&c.st.kinds),
-    );
+    let mut known = c.st.kinds.clone();
+    if from_base {
+        for d in &c.st.base {
+            known
+                .entry(kind_key(&d.id, &d.fp))
+                .or_insert_with(|| "desktop".to_owned());
+        }
+    }
+    let set = trusted_set_by_kind(uid, &pins, &c.st.revoked, &intros, &entries, Some(&known));
     for (id, fp, kind) in &set.kinds {
         pin_kind(c, id, fp, kind, now);
     }
@@ -369,12 +382,18 @@ fn backfill_self(c: &mut Core, kind: &str) {
     }
 }
 
-fn migrate_kinds(c: &mut Core, own_kind: &str) {
+fn migrate_kinds(c: &mut Core, own_kind: &str, now: u64) {
     if c.st.kinds_v >= KINDS_V {
         return;
     }
     let old = std::mem::take(&mut c.st.kinds);
     c.st.kinds_v = KINDS_V;
+    c.st.kinds_migrated_at = now;
+    c.st.republish_intros = true;
+    let own_id = c.identity.as_ref().map(|i| i.device_id.clone());
+    let mut intros = std::mem::take(&mut c.st.intros);
+    intros.retain(|i| !is_stale_own_intro(&c.st, own_id.as_deref(), i));
+    c.st.intros = intros;
     backfill_self(c, own_kind);
     let own = c.identity.as_ref().map(|i| i.device_id.clone());
     let roots: Vec<Dev> = c.st.base.clone();
@@ -403,8 +422,11 @@ fn backfill_own_intro_kinds(c: &mut Core, uid: u64) {
         return;
     }
     let (sign_pub, kex_pub) = (keys.sign_pub_b64(), keys.kex_pub_b64());
-    let mut learned: Vec<(String, String)> = Vec::new();
+    let mut learned: BTreeMap<String, String> = BTreeMap::new();
     for i in &c.st.intros {
+        if is_stale_own_intro(&c.st, Some(&id.device_id), i) {
+            continue;
+        }
         let Ok(v) = verify_intro(i, uid, &id.device_id, &sign_pub, &kex_pub) else {
             continue;
         };
@@ -412,7 +434,13 @@ fn backfill_own_intro_kinds(c: &mut Core, uid: u64) {
         if check_device_kind(&st.target_kind).is_ok()
             && missing.contains(&(st.target_id.clone(), st.target_fp.clone()))
         {
-            learned.push((kind_key(&st.target_id, &st.target_fp), st.target_kind));
+            let key = kind_key(&st.target_id, &st.target_fp);
+            if learned
+                .get(&key)
+                .is_none_or(|have| lowers_kind(have, &st.target_kind))
+            {
+                learned.insert(key, st.target_kind);
+            }
         }
     }
     for (key, kind) in learned {
@@ -453,9 +481,13 @@ fn pin_kind(c: &mut Core, id: &str, fp: &str, kind: &str, now: u64) -> bool {
             true
         }
         Some(k) if k == kind => true,
-        Some(_) => {
+        Some(k) => {
+            let lowered = lowers_kind(k, kind);
+            if lowered {
+                c.st.kinds.insert(kind_key(id, fp), kind.to_owned());
+            }
             record_alert_once(c, "kind_conflict", id, now);
-            false
+            lowered
         }
     }
 }
@@ -555,16 +587,17 @@ fn apply_revoke(c: &mut Core, uid: u64, now: u64, target_id: &str, target_fp: &s
     c.st.pending_revokes.retain(|p| p.target_fp != target_fp);
     c.st.pending_joins.retain(|j| j.fp != target_fp);
     backfill_own_intro_kinds(c, uid);
-    let unknown = unknown_roots(c, Some(target_fp));
-    if !unknown.is_empty() {
-        for id in unknown {
-            record_alert_once(c, "root_kind_unknown", &id, now);
-        }
-        c.st.trusted.retain(|d| d.fp != target_fp);
-        return;
+    for id in unknown_roots(c, Some(target_fp)) {
+        record_alert_once(c, "root_kind_unknown", &id, now);
     }
+    let before: Vec<Dev> = c.st.trusted.clone();
     let dir = c.dir.clone();
     recompute(c, dir.as_ref(), uid, now, true);
+    for d in before {
+        if !c.st.trusted.iter().any(|t| t.id == d.id && t.fp == d.fp) {
+            c.st.kinds.remove(&kind_key(&d.id, &d.fp));
+        }
+    }
 }
 
 fn ingest_revoke(
@@ -651,7 +684,6 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             core.written_state = serde_json::to_string(&core.st).map_err(err)?;
             core.written_trust = trust_key(&core.st);
             core.acked = core.st.cursor;
-            migrate_kinds(&mut core, "desktop");
         }
         let now = Box::new(|| {
             std::time::SystemTime::now()
@@ -691,7 +723,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     fn lock(&self) -> MutexGuard<'_, Core> {
-        self.core.lock().unwrap_or_else(|p| p.into_inner())
+        let mut g = self.core.lock().unwrap_or_else(|p| p.into_inner());
+        if g.identity.is_some() && g.st.kinds_v < KINDS_V {
+            migrate_kinds(&mut g, &self.kind, self.now());
+        }
+        g
     }
 
     fn now(&self) -> u64 {
@@ -818,6 +854,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 Some(&r.target_fp),
                 &mut budget,
             );
+        }
+        if c.st.republish_intros && self.publish_intros(c).is_ok() {
+            c.st.republish_intros = false;
         }
         Ok(())
     }

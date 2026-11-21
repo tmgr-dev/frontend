@@ -1814,7 +1814,7 @@ fn a_conflicting_signed_kind_raises_an_alert_and_is_not_applied() {
     {
         let mut g = a.lock();
         let fp = pin_fp(&g, &bid).unwrap();
-        assert!(!pin_kind(&mut g, &bid, &fp, "runner", T0));
+        assert!(!pin_kind(&mut g, &bid, &fp, "mobile", T0));
         assert_eq!(g.st.kind_of(&bid, &fp), Some("desktop"));
     }
     assert_eq!(alert_kinds(&a), vec!["kind_conflict".to_owned()]);
@@ -2831,4 +2831,176 @@ fn a_failed_join_keeps_a_kind_that_was_pinned_before_and_drops_one_it_added() {
 fn my_id_after_open(a: &Engine) -> String {
     a.register().unwrap();
     my_id(a)
+}
+
+fn legacy_state_with_kinds(
+    store: &Arc<MemKeyStore>,
+    e: &Engine,
+    kinds: Value,
+    intros: Vec<String>,
+) {
+    let g = e.lock();
+    let mut v: Value = serde_json::to_value(&g.st).unwrap();
+    v["kinds"] = kinds;
+    v.as_object_mut().unwrap().remove("kinds_v");
+    v["intros"] = json!(intros);
+    store.save(Slot::State, &v.to_string()).unwrap();
+}
+
+#[test]
+fn a_poisoned_own_signed_intro_does_not_bring_a_purged_runner_back_as_desktop() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let store = Arc::new(MemKeyStore::default());
+    let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+    let r = join_as(&fake, &clock, &a, "Runner", "runner");
+    let (aid, rid, r_fp) = (my_id(&a), my_id(&r), fp_of(&r));
+    let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+    let poisoned = signed_intro(&a, &rid, &r_fp, "desktop");
+    clear_intros(&fake, &a);
+    put_raw_intro(&fake, &aid, &rid, &poisoned);
+    legacy_state_with_kinds(
+        &store,
+        &a,
+        json!({ aid.clone(): "desktop", rid.clone(): "desktop" }),
+        vec![poisoned.clone()],
+    );
+    clock.set(T0 + 1000);
+    let a2 = engine_on(&fake, &clock, store.clone(), "mx_local");
+    a2.poll_once().unwrap();
+    assert_ne!(kind_pin(&a2, &rid).as_deref(), Some("desktop"));
+    assert!(!a2.lock().st.intros.contains(&poisoned));
+    post_chat(&r, &aid, &msg_n(2, AuthorKind::Owner));
+    assert!(a2.poll_once().unwrap().is_empty());
+    put_foreign_intro(&fake, &r, &xid, &x_fp, "desktop");
+    a2.poll_once().unwrap();
+    assert!(a2
+        .trust_state()
+        .unwrap()
+        .devices
+        .iter()
+        .all(|d| d.id != xid));
+    clock.set(T0 + 2000);
+    a2.poll_once().unwrap();
+    assert_ne!(kind_pin(&a2, &rid).as_deref(), Some("desktop"));
+}
+
+#[test]
+fn a_migrated_device_republishes_its_intros_once_with_fresh_timestamps() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let store = Arc::new(MemKeyStore::default());
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let b = engine_on(&fake, &clock, store.clone(), "mx_local");
+    b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+    a.poll_once().unwrap();
+    a.decide_join(&my_id(&b), true).unwrap();
+    b.poll_once().unwrap();
+    let (aid, bid) = (my_id(&a), my_id(&b));
+    let own_intros = b.lock().st.intros.clone();
+    legacy_state_with_kinds(
+        &store,
+        &b,
+        json!({ aid.clone(): "desktop", bid: "desktop" }),
+        own_intros,
+    );
+    let issued = |fake: &Fake| -> Vec<u64> {
+        intros_of(fake, &aid)
+            .iter()
+            .map(|i| parse_intro(i).unwrap().parsed.issued_at_ms)
+            .collect()
+    };
+    assert!(issued(&fake).contains(&T0));
+    clock.set(T0 + 1000);
+    let b2 = engine_on(&fake, &clock, store, "mx_local");
+    b2.poll_once().unwrap();
+    assert!(issued(&fake).iter().all(|t| *t >= T0 + 1000));
+    assert!(!issued(&fake).is_empty());
+}
+
+fn kind_race(runner_first: bool) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+    let by_a = signed_intro(&a, &xid, &x_fp, "desktop");
+    let by_b = signed_intro(&b, &xid, &x_fp, "runner");
+    let (first, second) = if runner_first {
+        ((my_id(&b), by_b), (my_id(&a), by_a))
+    } else {
+        ((my_id(&a), by_a), (my_id(&b), by_b))
+    };
+    put_raw_intro(&fake, &first.0, &xid, &first.1);
+    put_raw_intro(&fake, &second.0, &xid, &second.1);
+    a.poll_once().unwrap();
+    assert_eq!(kind_pin(&a, &xid).as_deref(), Some("runner"));
+    assert!(alert_kinds(&a).contains(&"kind_conflict".to_owned()));
+}
+
+#[test]
+fn a_runner_intro_wins_a_kind_conflict_when_it_comes_second() {
+    kind_race(false);
+}
+
+#[test]
+fn a_runner_intro_wins_a_kind_conflict_when_it_comes_first() {
+    kind_race(true);
+}
+
+#[test]
+fn a_pin_kind_conflict_pins_runner_and_keeps_desktop_against_mobile() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let bid = my_id(&b);
+    let b_fp = fp_of(&b);
+    {
+        let mut g = a.lock();
+        assert!(!pin_kind(&mut g, &bid, &b_fp, "mobile", T0));
+        assert_eq!(g.st.kind_of(&bid, &b_fp), Some("desktop"));
+        pin_kind(&mut g, &bid, &b_fp, "runner", T0);
+        assert_eq!(g.st.kind_of(&bid, &b_fp), Some("runner"));
+        assert!(!pin_kind(&mut g, &bid, &b_fp, "desktop", T0));
+        assert_eq!(g.st.kind_of(&bid, &b_fp), Some("runner"));
+    }
+    assert!(alert_kinds(&a).contains(&"kind_conflict".to_owned()));
+}
+
+#[test]
+fn revoking_a_voucher_drops_its_devices_even_when_a_root_kind_is_unknown() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (_c, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+    let (_x, xid, x_fp) = registered(&fake, &clock, "Desktop X", "desktop");
+    let (aid, c_dev) = (my_id(&a), _c);
+    put_raw_intro(&fake, &aid, &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+    put_raw_intro(
+        &fake,
+        &cid,
+        &xid,
+        &signed_intro(&c_dev, &xid, &x_fp, "desktop"),
+    );
+    b.poll_once().unwrap();
+    assert!(is_trusted_with(&b, &cid, "desktop"));
+    assert!(is_trusted_with(&b, &xid, "desktop"));
+    {
+        let mut g = b.lock();
+        let prefix = kind_key(&aid, "");
+        g.st.kinds.retain(|k, _| !k.starts_with(&prefix));
+        g.dir = None;
+        g.st.intros.retain(|i| {
+            parse_intro(i).is_ok_and(|p| p.parsed.target_id == cid || p.parsed.target_id == xid)
+        });
+        apply_revoke(&mut g, USER, T0, &cid, &c_fp, "C");
+    }
+    assert!(alert_kinds(&b).contains(&"root_kind_unknown".to_owned()));
+    assert!(b
+        .trust_state()
+        .unwrap()
+        .devices
+        .iter()
+        .all(|d| d.id != xid || d.state != DeviceState::Trusted));
+    assert!(kind_entries_of(&b, &xid).is_empty());
+    assert!(b
+        .trust_state()
+        .unwrap()
+        .devices
+        .iter()
+        .any(|d| d.id == aid && d.state == DeviceState::Trusted));
 }

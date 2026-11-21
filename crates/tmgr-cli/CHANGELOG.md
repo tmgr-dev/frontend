@@ -3,6 +3,7 @@
 ## Unreleased
 
 - New `tmgr chat join` and `tmgr chat status`: this machine's runner joins your manager chat. `join` reads the join code from a trusted desktop or phone (stdin or a hidden prompt, never the command line) and waits up to 10 minutes for that device to approve; `status` shows the join state, relay device id and number of trusted devices, never keys or tokens. Once joined, the runner relays chat end-to-end encrypted: owner messages from trusted devices reach the sessions on this machine, and session messages go back to your devices. Needs the matching server version (`chat:devices` sign-in scope).
+- Chat trust: when two trusted devices disagree on a device's kind and one of them says runner, the device is treated as a runner, so it cannot author owner messages or vouch for other devices. The phone app keeps the first kind it saw until its follow-up update. A desktop versus phone disagreement still keeps the first kind and raises an alert.
 
 ## 1.0.143
 
