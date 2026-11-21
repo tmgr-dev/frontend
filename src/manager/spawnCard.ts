@@ -100,7 +100,7 @@ export const spawnStatusText = (
 						params: { left: formatLeft(expMs - now) },
 						final: false,
 						tone: 'wait',
-				  };
+					};
 		case 'approved':
 			return {
 				key: 'manager.spawn.approved',
@@ -130,6 +130,6 @@ export const spawnStatusText = (
 						params: { reason: status.reason ?? 'refused' },
 						final: true,
 						tone: 'fail',
-				  };
+					};
 	}
 };

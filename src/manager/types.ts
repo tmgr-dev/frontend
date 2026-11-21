@@ -178,11 +178,7 @@ export interface TrustState {
 export const RESET_PHRASE = 'RESET';
 
 export type SpawnCardState =
-	| 'issued'
-	| 'approved'
-	| 'claimed'
-	| 'spawned'
-	| 'refused';
+	'issued' | 'approved' | 'claimed' | 'spawned' | 'refused';
 
 export interface SpawnCardStatus {
 	state: SpawnCardState;

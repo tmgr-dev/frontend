@@ -65,15 +65,14 @@
 				>
 					<template #decision="{ message }">
 						<template v-if="message.decision?.card_id">
-							<SpawnApprovalCard
-								v-if="message.decision.spawn"
-								:card-id="message.decision.card_id"
-								:spawn="message.decision.spawn"
-							/>
-							<DecisionCard
-								v-else-if="activeInfo?.local !== false"
-								:card-id="message.decision.card_id"
-							/>
+							<template v-if="activeInfo?.local !== false">
+								<SpawnApprovalCard
+									v-if="message.decision.spawn"
+									:card-id="message.decision.card_id"
+									:spawn="message.decision.spawn"
+								/>
+								<DecisionCard v-else :card-id="message.decision.card_id" />
+							</template>
 							<p v-else class="mgr-remote-decision">
 								{{ $t('manager.decision.otherMachine') }}
 							</p>
@@ -312,7 +311,7 @@
 			},
 			messages() {
 				return this.store.activeKey
-					? this.store.messagesByRoom[this.store.activeKey] ?? []
+					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
 					: [];
 			},
 			bodyHtml(): Record<string, string> {
