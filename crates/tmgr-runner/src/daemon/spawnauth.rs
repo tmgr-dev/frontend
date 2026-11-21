@@ -26,7 +26,7 @@ const CARD_RT_CAP: usize = 64;
 const CARD_RT_KEEP_MS: u64 = 10 * 60 * 1000;
 const CARD_TICK: Duration = Duration::from_secs(15);
 const OK_INBOX_CAP: usize = 16;
-const OK_PER_DEVICE: usize = 2;
+const OK_PER_DEVICE: usize = 4;
 const OK_TICK: Duration = Duration::from_millis(500);
 const SUMMARY_MAX: usize = 1024;
 
@@ -1280,6 +1280,13 @@ mod tests {
             OK_PER_DEVICE
         );
         assert!(from.iter().any(|d| d == "phone"));
+
+        for _ in 0..OK_PER_DEVICE {
+            release_queued(&inbox.queued, "d_flood");
+        }
+        inbox.deliver_spawnok("d_flood", "ff", &signed);
+        assert_eq!(rx.try_iter().count(), 1);
+        assert_eq!(lock(&inbox.queued).get("d_flood"), Some(&1));
     }
 
     fn phone_answer(e: &Env, msg: &ChatMessage) -> SignedSpawn {
