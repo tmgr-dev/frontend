@@ -1370,6 +1370,10 @@ mod tests {
         ) -> Result<tmgr_ipc::api::SessionInfo, String> {
             self.inner.spawn(spec)
         }
+
+        fn switch(&self, id: &str, to: &str) -> Result<crate::manager::SwitchResult, String> {
+            self.inner.switch(id, to)
+        }
     }
 
     fn store_dir() -> tempfile::TempDir {
