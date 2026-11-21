@@ -134,7 +134,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `exe_pin.v1` | `exe_pin` on `runs.create` (section 5, "Pinned executable") |
 | `argv_pin.v1` | `argv_sha256` on `runs.create` (section 5, "Pinned executable") |
 | `trusted_folders.v1` | `trust.list`, `trust.add`, `trust.remove` (section 5, "Trusted folders") |
-| `object_exempt.v1` | `objects.list`, `objects.allow`, `objects.deny`: folders exempt from the shared git object check at start (`.object-exempt.json` in the homes directory; the runner skips only that check for a run whose opened `cwd` has the same canonical path and `st_dev`/`st_ino`) |
+| `object_exempt.v1` | `objects.list`, `objects.allow`, `objects.deny`: folders exempt from the shared git object check at start (`.object-exempt.json` in the homes directory; the runner skips only that check for a run whose opened `cwd` has the same canonical path, `st_dev`/`st_ino`, filesystem id and creation time (`birth_ns`, 0 when the filesystem reports none)) |
 | `trust_via_repo.v1` | `trust_via_repo` on `runs.create` (section 5, "Trusted folders") |
 | `human_time.v1` | `attention` stream message; `human_s` on `SessionInfo` (section 7, "Human time") |
 | `autopilot.v1` | `autopilot.start`, `autopilot.status`, `autopilot.control`, `autopilot.log`; `reason` on `sessions.kill` (section 5, "Autopilot") |
@@ -175,9 +175,9 @@ missing params) and `internal`.
 | `trust.list` | none | `[TrustedFolder]` (`{path, dev, ino, added_ms, how}`) | | any client except `worker`; cap `trusted_folders.v1` |
 | `trust.add` | `{path, dev?, ino?}` (absolute) | `TrustedFolder` | `invalid_params` | `client: "cli"` only; cap `trusted_folders.v1` |
 | `trust.remove` | `{path}` | `{removed}` | | `client: "cli"` only; cap `trusted_folders.v1` |
-| `objects.list` | none | `[ExemptFolder]` (`{path, dev, ino, added_ms, measured_ms, stale}`) | `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
+| `objects.list` | none | `[ExemptFolder]` (`{path, dev, ino, birth_ns, fsid, added_ms, measured_ms, stale}`) | `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
 | `objects.allow` | `{path, dev, ino, measured_ms}` (absolute) | `ExemptFolder` | `invalid_params`, `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
-| `objects.deny` | `{path}` | `{removed}` | `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
+| `objects.deny` | `{path, dev?, ino?}` (removes the entries with this path or this `dev`/`ino`) | `{removed}` | `forbidden` | `client: "cli"` only; cap `object_exempt.v1` |
 | `sessions.kill` | `{id, signal, reason?}` (`term`, `kill`, `int`, `hup`; `reason` at most 200 characters, control characters become `?`) | `null` | `not_found`, `not_running`, `invalid_params` | any |
 | `orchestrator.create` | `{profile, cwd, start_key, name?}` (no other field) | `SessionInfo` | `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit`, `busy` | `client: "cli"` only; cap `orchestrator.v1` |
 | `autopilot.start` | `{settings_id}` (`[a-z0-9-]`, 1 to 64) | `{pid}` | `forbidden`, `busy`, `invalid_params` | `client: "cli"` only; cap `autopilot.v1` |

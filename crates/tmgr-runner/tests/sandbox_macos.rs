@@ -58,14 +58,22 @@ fn writes_only_in_cwd_and_home() {
 #[test]
 fn a_file_outside_cannot_be_hardlinked_into_the_cwd_and_written_through() {
     let f = fx();
-    let victim = f.other_home.join("notes.txt");
-    let before = fs::read(&victim).unwrap();
+    let outside = f.root.join("outside");
+    fs::create_dir(&outside).unwrap();
+    let victim = outside.join("victim.txt");
+    fs::write(&victim, "original\n").unwrap();
     let v = f.path(&victim);
-    f.run(&format!("ln {v} linked.txt 2>/dev/null; true"));
-    assert!(!f.cwd.join("linked.txt").exists());
-    f.run("echo pwn >> $(ls linked.txt 2>/dev/null || echo none.txt); true");
-    assert_eq!(fs::read(&victim).unwrap(), before);
-    let _ = fs::remove_file(f.cwd.join("none.txt"));
+    let o = f.run(&format!("cat {v}"));
+    assert!(
+        o.ok() && o.stdout == "original\n",
+        "{} {}",
+        o.stdout,
+        o.stderr
+    );
+    let o = f.run(&format!("ln {v} linked.txt"));
+    assert!(!o.ok(), "ln succeeded: {} {}", o.stdout, o.stderr);
+    assert!(!f.cwd.join("linked.txt").exists(), "{}", o.stderr);
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "original\n");
     let o = f.run("echo a > a.txt && ln a.txt b.txt && echo b >> b.txt");
     assert!(o.ok(), "{}", o.stderr);
     assert_eq!(fs::read_to_string(f.cwd.join("a.txt")).unwrap(), "a\nb\n");

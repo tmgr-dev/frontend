@@ -496,7 +496,7 @@ pub struct TrustedFolder {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PathParams {
     pub path: String,
-    /// `trust.add`: the folder identity the person confirmed; a different folder at the path is refused.
+    /// `trust.add`: the folder identity the person confirmed ; a different folder at the path is refused. `objects.deny`: also removes the entry with this identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dev: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -523,6 +523,10 @@ pub struct ExemptFolder {
     pub path: String,
     pub dev: u64,
     pub ino: u64,
+    #[serde(default)]
+    pub birth_ns: u64,
+    #[serde(default)]
+    pub fsid: u64,
     pub added_ms: u64,
     pub measured_ms: u64,
     #[serde(default)]

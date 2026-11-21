@@ -147,6 +147,32 @@ fn writes_only_in_cwd_home_and_tmp() {
 }
 
 #[test]
+fn the_exempt_folder_store_cannot_be_opened_for_write() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    let store = f.other_home.parent().unwrap().join(".object-exempt.json");
+    let s = f.path(&store);
+    let o = f.run(&format!("echo '[]' > {s}"));
+    assert!(!o.ok(), "{} {}", o.stdout, o.stderr);
+    assert!(!store.exists());
+    fs::write(&store, "[]").unwrap();
+    for script in [
+        format!("echo x >> {s}"),
+        format!("echo x > {s}"),
+        format!("rm -f {s}"),
+        format!("mv {s} {s}.moved"),
+        format!("ln {s} linked.json"),
+    ] {
+        let o = f.run(&script);
+        assert!(!o.ok(), "{script}: {} {}", o.stdout, o.stderr);
+    }
+    assert_eq!(fs::read_to_string(&store).unwrap(), "[]");
+    assert!(!f.cwd.join("linked.json").exists());
+}
+
+#[test]
 fn ordinary_tools_work() {
     let f = fx();
     if !landlock_usable(&f) {

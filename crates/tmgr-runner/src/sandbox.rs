@@ -2310,6 +2310,17 @@ mod tests {
             }
         }
         assert!(lines[at..].contains(&format!("(allow file-read* file-write* {home})").as_str()));
+        for l in &lines[at + 1..] {
+            if !l.starts_with("(allow ") || l.starts_with("(allow file-read-metadata (literal ") {
+                continue;
+            }
+            for quoted in l.split('"').skip(1).step_by(2) {
+                assert!(
+                    !homes.starts_with(std::path::Path::new(quoted)),
+                    "an allow after the homes deny names {quoted}: {l}"
+                );
+            }
+        }
     }
 
     #[test]

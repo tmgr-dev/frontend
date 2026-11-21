@@ -17,6 +17,7 @@ use tmgr_runner::wire::now_ms;
 
 const SHOWN: usize = 10;
 const CONFIRM_WORD: &str = "exempt";
+const CHANGED: &str = "the folder changed while it was checked, try again";
 
 fn clean(s: &str) -> String {
     tmgr_core::text::sanitize_line(s)
@@ -34,12 +35,6 @@ fn client() -> Result<Client> {
         .hint(format!("{0} runner restart", super::bin())));
     }
     Ok(c)
-}
-
-fn in_agent_session() -> bool {
-    privileged::RUN_ENV
-        .iter()
-        .any(|k| std::env::var_os(k).is_some())
 }
 
 fn gate(in_agent: bool, tty: bool) -> Result<()> {
@@ -192,7 +187,7 @@ fn tty() -> bool {
 }
 
 pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
-    gate(in_agent_session(), tty())?;
+    gate(privileged::in_agent_session(), tty())?;
     let shown = canonical(dir)?;
     let id = std::fs::metadata(&shown).map_err(|e| Error::usage(e.to_string()))?;
     let paths = Paths::from_env()?;
@@ -201,6 +196,9 @@ pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
     authorize(&paths, &entered)?;
     drop(entered);
     let m = walk(&shown)?;
+    if m.root != (id.dev(), id.ino()) {
+        return Err(Error::usage(CHANGED));
+    }
     refuse_outside(&m)?;
     let text = shown.display().to_string();
     privileged::confirm_typed_stdio(CONFIRM_WORD, &confirm_text(&text, &m))?;
@@ -215,18 +213,18 @@ pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
             "measured_ms": m.elapsed_ms,
         }),
     )?;
-    let v = c
-        .call(
-            method::OBJECTS_ALLOW,
-            serde_json::to_value(ObjectsAllowParams {
-                path: text,
-                dev: id.dev(),
-                ino: id.ino(),
-                measured_ms: m.elapsed_ms,
-            })
-            .map_err(|e| Error::usage(e.to_string()))?,
-        )
-        .map_err(rerr)?;
+    let audit = Audit::new(&paths.audit_dir());
+    let call = c.call(
+        method::OBJECTS_ALLOW,
+        serde_json::to_value(ObjectsAllowParams {
+            path: text.clone(),
+            dev: id.dev(),
+            ino: id.ino(),
+            measured_ms: m.elapsed_ms,
+        })
+        .map_err(|e| Error::usage(e.to_string()))?,
+    );
+    let v = outcome(&audit, call, "object_exempt.added", &text)?;
     let f: ExemptFolder = serde_json::from_value(v).map_err(|e| Error::usage(e.to_string()))?;
     let human = format!(
         "{} no longer gets the shared-object check at start",
@@ -235,18 +233,41 @@ pub fn allow(o: &Opts, dir: &Path) -> Result<i32> {
     Ok(emit(o, &f, human))
 }
 
+fn outcome(audit: &Audit, call: std::io::Result<Value>, done: &str, path: &str) -> Result<Value> {
+    match call {
+        Ok(v) => {
+            audit.append(done, json!({ "path": path }))?;
+            Ok(v)
+        }
+        Err(e) => {
+            let e = rerr(e);
+            let _ = audit.append(
+                "object_exempt.failed",
+                json!({ "path": path, "error": e.message }),
+            );
+            Err(e)
+        }
+    }
+}
+
 pub fn deny(o: &Opts, dir: &Path) -> Result<i32> {
-    gate(in_agent_session(), true)?;
-    let path = canonical(dir)
+    gate(privileged::in_agent_session(), true)?;
+    let path = absolute(dir)?;
+    let target = canonical(dir)
         .ok()
-        .and_then(|p| p.to_str().map(str::to_string))
-        .map_or_else(|| absolute(dir), Ok)?;
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| (m.dev(), m.ino()));
     let mut c = client()?;
     let paths = Paths::from_env()?;
-    Audit::new(&paths.audit_dir()).append("object_exempt.remove", json!({ "path": path }))?;
-    let v = c
-        .call(method::OBJECTS_DENY, json!({ "path": path }))
-        .map_err(rerr)?;
+    let audit = Audit::new(&paths.audit_dir());
+    audit.append("object_exempt.remove", json!({ "path": path }))?;
+    let mut params = json!({ "path": path });
+    if let Some((dev, ino)) = target {
+        params["dev"] = dev.into();
+        params["ino"] = ino.into();
+    }
+    let call = c.call(method::OBJECTS_DENY, params);
+    let v = outcome(&audit, call, "object_exempt.removed", &path)?;
     let r: ObjectsDenied = serde_json::from_value(v).map_err(|e| Error::usage(e.to_string()))?;
     let human = if r.removed {
         format!(
@@ -308,6 +329,7 @@ mod tests {
 
     fn measured(outside: &[&str], count: u64) -> Measured {
         Measured {
+            root: (1, 2),
             files_seen: 1234,
             outside: outside.iter().map(|s| s.to_string()).collect(),
             outside_count: count,
@@ -320,6 +342,8 @@ mod tests {
             path: path.into(),
             dev: 1,
             ino: 2,
+            birth_ns: 3,
+            fsid: 4,
             added_ms: 1_000_000,
             measured_ms: 3200,
             stale,

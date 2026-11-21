@@ -4728,6 +4728,30 @@ fn an_exempt_folder_skips_only_the_shared_object_check() {
         .unwrap();
     let info = h.client().create_run(h.run_req("fake")).unwrap();
     h.client().kill(&info.id, "kill").unwrap();
+
+    let shared_store = |dir: &std::path::Path, name: &str| {
+        fs::create_dir_all(dir.join(".git/objects/ab")).unwrap();
+        fs::create_dir_all(dir.join(".git/objects/pack")).unwrap();
+        fs::write(dir.join(".git/objects/ab/cdef"), "x").unwrap();
+        fs::hard_link(dir.join(".git/objects/ab/cdef"), outside.path().join(name)).unwrap();
+    };
+    let sub = h.work.join("sub");
+    shared_store(&sub, "sublink");
+    let mut sub_req = h.run_req("fake");
+    sub_req.cwd = sub.display().to_string();
+    let sub_refused = err_text(h.client().create_run(sub_req));
+    assert!(sub_refused.contains("git object files"), "{sub_refused}");
+    fs::remove_dir_all(&sub).unwrap();
+
+    let moved = h.work.with_extension("moved");
+    fs::rename(&h.work, &moved).unwrap();
+    fs::create_dir(&h.work).unwrap();
+    shared_store(&h.work, "replacedlink");
+    let replaced = err_text(h.client().create_run(h.run_req("fake")));
+    fs::remove_dir_all(&h.work).unwrap();
+    fs::rename(&moved, &h.work).unwrap();
+    assert!(replaced.contains("git object files"), "{replaced}");
+
     h.client()
         .call("objects.deny", json!({"path": h.work}))
         .unwrap();

@@ -1844,11 +1844,25 @@ fn retry_revocation(dir: &Path, sdir: &Path, s: &Arc<Session>) {
     }
 }
 
+fn log_objects(method: &str, path: &str, result: Result<&str, &String>) {
+    let canonical = std::fs::canonicalize(path)
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+        .unwrap_or_else(|| path.to_string());
+    let result = match result {
+        Ok(r) => r.to_string(),
+        Err(e) => format!("failed: {e}"),
+    };
+    log(&format!("{method} {canonical:?}: {result}"));
+}
+
 fn exempt_folder(f: objects_exempt::ExemptFolder, stale: bool) -> ExemptFolder {
     ExemptFolder {
         path: f.path,
         dev: f.dev,
         ino: f.ino,
+        birth_ns: f.birth_ns,
+        fsid: f.fsid,
         added_ms: f.added_ms,
         measured_ms: f.measured_ms,
         stale,
@@ -2819,19 +2833,26 @@ impl Runner {
                     Ok(to_json(&all))
                 } else if req.method == method::OBJECTS_ALLOW {
                     let q = params::<ObjectsAllowParams>(p)?;
-                    objects_exempt::add(
+                    let r = objects_exempt::add(
                         homes,
                         Path::new(&q.path),
                         (q.dev, q.ino),
                         q.measured_ms,
                         now_ms(),
-                    )
-                    .map(|f| to_json(&exempt_folder(f, false)))
-                    .map_err(|e| api(ErrorCode::InvalidParams, e))
+                    );
+                    log_objects(method::OBJECTS_ALLOW, &q.path, r.as_ref().map(|_| "ok"));
+                    r.map(|f| to_json(&exempt_folder(f, false)))
+                        .map_err(|e| api(ErrorCode::InvalidParams, e))
                 } else {
                     let q = params::<PathParams>(p)?;
-                    objects_exempt::remove(homes, &q.path)
-                        .map(|removed| to_json(&ObjectsDenied { removed }))
+                    let r = objects_exempt::remove(homes, &q.path, q.dev.zip(q.ino));
+                    log_objects(
+                        method::OBJECTS_DENY,
+                        &q.path,
+                        r.as_ref()
+                            .map(|removed| if *removed { "removed" } else { "not listed" }),
+                    );
+                    r.map(|removed| to_json(&ObjectsDenied { removed }))
                         .map_err(|e| api(ErrorCode::Internal, e))
                 }
             }
@@ -4095,9 +4116,8 @@ impl Runner {
             plan.restricted = false;
         }
         let (mode, perm_args) = (plan.mode.clone(), plan.args.clone());
-        let exempt = (!no_sandbox
-            && dir.is_some_and(|d| objects_exempt::is_exempt(&self.cfg.homes, &d.path, d.id())))
-        .then_some(req.origin.is_some());
+        let exempt = (!no_sandbox && dir.is_some_and(|d| self.is_exempt_dir(d)))
+            .then_some(req.origin.is_some());
         let audit = agentwork::audit_note(mode.as_deref(), no_sandbox, exempt);
         if req.agent_work {
             check_agent_work(&req, mode.as_deref())?;
@@ -4497,6 +4517,11 @@ impl Runner {
         self.create_with(req, (None, None, None), (prof, &RunExtra::default()), None)
     }
 
+    fn is_exempt_dir(&self, dir: &bundle::Dir) -> bool {
+        objects_exempt::ident_fd(dir.raw_fd())
+            .is_ok_and(|id| objects_exempt::is_exempt(&self.cfg.homes, &dir.path, &id))
+    }
+
     fn create_with(
         self: &Arc<Self>,
         req: CreateReq,
@@ -4530,20 +4555,9 @@ impl Runner {
                 &opened
             }
         };
-        if extra.no_sandbox.is_none() {
-            if objects_exempt::is_exempt(&self.cfg.homes, &dir.path, dir.id()) {
-                log(&format!(
-                    "object_exempt.used: shared-object check skipped for {} (start from {})",
-                    dir.path.display(),
-                    if origin.is_some() {
-                        "a link"
-                    } else {
-                        "this machine"
-                    }
-                ));
-            } else {
-                clone::check_stores(dir).map_err(|(code, m)| api(code, m))?;
-            }
+        let exempt = extra.no_sandbox.is_none() && self.is_exempt_dir(dir);
+        if extra.no_sandbox.is_none() && !exempt {
+            clone::check_stores(dir).map_err(|(code, m)| api(code, m))?;
         }
         let _g = lock(&self.create_lock);
         let mut repo_trust_dropped = false;
@@ -4553,6 +4567,17 @@ impl Runner {
         };
         if let Some((o, model)) = origin {
             self.check_origin(o, model, &req, Some(dir), extra.link_wants)?;
+        }
+        if exempt {
+            log(&format!(
+                "object_exempt.used: shared-object check skipped for {} (start from {})",
+                dir.path.display(),
+                if origin.is_some() {
+                    "a link"
+                } else {
+                    "this machine"
+                }
+            ));
         }
         {
             let sessions = lock(&self.sessions);

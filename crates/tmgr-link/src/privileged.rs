@@ -19,9 +19,13 @@ pub fn check(in_agent_session: bool, interactive: bool) -> Result<()> {
     Ok(())
 }
 
+pub fn in_agent_session() -> bool {
+    RUN_ENV.iter().any(|k| std::env::var_os(k).is_some())
+        || tmgr_core::local::agent_session_detected()
+}
+
 pub fn guard() -> Result<()> {
-    let in_agent = RUN_ENV.iter().any(|k| std::env::var_os(k).is_some())
-        || tmgr_core::local::agent_session_detected();
+    let in_agent = in_agent_session();
     let tty = std::io::stdin().is_terminal()
         && std::io::stdout().is_terminal()
         && std::io::stderr().is_terminal();

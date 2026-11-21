@@ -204,7 +204,13 @@ fn an_agent_session_cannot_allow_or_deny() {
     env.set_pin();
     let dir = env.folder("proj");
     let d = dir.to_str().unwrap();
-    for var in ["TMGR_RUN_TOKEN", "TMGR_RUN_ID", "TMGR_SESSION_ID"] {
+    for var in [
+        "TMGR_RUN_TOKEN",
+        "TMGR_RUN_ID",
+        "TMGR_SESSION_ID",
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+    ] {
         for sub in ["allow", "deny"] {
             let out = env
                 .cmd(&["runner", "objects", sub, d])

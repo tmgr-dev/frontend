@@ -1056,11 +1056,14 @@ fn constants_are_pinned() {
 #[test]
 fn an_exempt_folder_without_stale_is_not_stale_and_unknown_fields_are_ignored() {
     let f: ExemptFolder = serde_json::from_value(
-        json!({"path": "/w", "dev": 1, "ino": 2, "added_ms": 3, "measured_ms": 4, "future": 1}),
+        json!({"path": "/w", "dev": 1, "ino": 2, "birth_ns": 5, "fsid": 6, "added_ms": 3, "measured_ms": 4, "future": 1}),
     )
     .unwrap();
     assert!(!f.stale);
-    assert_eq!((f.dev, f.ino, f.added_ms, f.measured_ms), (1, 2, 3, 4));
+    assert_eq!(
+        (f.dev, f.ino, f.birth_ns, f.fsid, f.added_ms, f.measured_ms),
+        (1, 2, 5, 6, 3, 4)
+    );
 }
 
 #[test]

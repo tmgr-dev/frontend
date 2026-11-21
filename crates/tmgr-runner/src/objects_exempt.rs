@@ -1,7 +1,7 @@
 use crate::bundle::{open_at, open_root};
 use crate::clone::{entries, gone};
 use crate::wire::write_atomic;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
@@ -24,12 +24,91 @@ pub struct ExemptFolder {
     pub path: String,
     pub dev: u64,
     pub ino: u64,
+    pub birth_ns: u64,
+    pub fsid: u64,
     pub added_ms: u64,
     pub measured_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ident {
+    pub dev: u64,
+    pub ino: u64,
+    pub birth_ns: u64,
+    pub fsid: u64,
+}
+
+impl ExemptFolder {
+    fn matches(&self, id: &Ident) -> bool {
+        (self.dev, self.ino, self.fsid) == (id.dev, id.ino, id.fsid)
+            && (self.birth_ns == 0 || self.birth_ns == id.birth_ns)
+    }
+}
+
+fn ns(sec: i64, nsec: i64) -> u64 {
+    u64::try_from(sec)
+        .ok()
+        .and_then(|s| s.checked_mul(1_000_000_000))
+        .and_then(|n| n.checked_add(u64::try_from(nsec).ok()?))
+        .unwrap_or(0)
+}
+
+#[cfg(target_os = "macos")]
+#[allow(clippy::unnecessary_cast)]
+fn birth(_fd: i32, st: &libc::stat) -> u64 {
+    ns(st.st_birthtime as i64, st.st_birthtime_nsec as i64)
+}
+
+#[cfg(target_os = "linux")]
+fn birth(fd: i32, _st: &libc::stat) -> u64 {
+    let mut stx: libc::statx = unsafe { std::mem::zeroed() };
+    let r = unsafe {
+        libc::syscall(
+            libc::SYS_statx,
+            fd,
+            c"".as_ptr(),
+            libc::AT_EMPTY_PATH,
+            libc::STATX_BTIME,
+            &mut stx as *mut libc::statx,
+        )
+    };
+    if r != 0 || stx.stx_mask & libc::STATX_BTIME == 0 {
+        return 0;
+    }
+    ns(stx.stx_btime.tv_sec, i64::from(stx.stx_btime.tv_nsec))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn birth(_fd: i32, _st: &libc::stat) -> u64 {
+    0
+}
+
+#[allow(clippy::unnecessary_cast)]
+pub fn ident_fd(fd: i32) -> std::io::Result<Ident> {
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd, &mut st) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut sfs: libc::statfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstatfs(fd, &mut sfs) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let [a, b]: [i32; 2] = unsafe { std::ptr::read((&raw const sfs.f_fsid).cast()) };
+    Ok(Ident {
+        dev: st.st_dev as u64,
+        ino: st.st_ino as u64,
+        birth_ns: birth(fd, &st),
+        fsid: u64::from(a as u32) << 32 | u64::from(b as u32),
+    })
+}
+
+fn ident_path(path: &Path) -> std::io::Result<Ident> {
+    ident_fd(open_root(path)?.as_raw_fd())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Measured {
+    pub root: (u64, u64),
     pub files_seen: u64,
     pub outside: Vec<String>,
     pub outside_count: u64,
@@ -67,7 +146,8 @@ pub fn add(
     if !m.is_dir() {
         return Err(format!("{} is not a folder", canon.display()));
     }
-    if (m.dev(), m.ino()) != expect {
+    let id = ident_path(&canon).map_err(|e| format!("cannot read {}: {e}", canon.display()))?;
+    if (id.dev, id.ino) != expect {
         return Err("the folder changed since it was confirmed".into());
     }
     let folder = ExemptFolder {
@@ -75,8 +155,10 @@ pub fn add(
             .to_str()
             .ok_or("the folder path is not valid UTF-8")?
             .to_string(),
-        dev: m.dev(),
-        ino: m.ino(),
+        dev: id.dev,
+        ino: id.ino,
+        birth_ns: id.birth_ns,
+        fsid: id.fsid,
         added_ms: now_ms,
         measured_ms,
     };
@@ -91,14 +173,16 @@ pub fn add(
     Ok(folder)
 }
 
-pub fn remove(homes: &Path, path: &str) -> Result<bool, String> {
+pub fn remove(homes: &Path, path: &str, target: Option<(u64, u64)>) -> Result<bool, String> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let canon = std::fs::canonicalize(path)
         .ok()
         .and_then(|p| p.to_str().map(str::to_string));
     let mut all = list(homes);
     let before = all.len();
-    all.retain(|f| f.path != path && Some(&f.path) != canon.as_ref());
+    all.retain(|f| {
+        f.path != path && Some(&f.path) != canon.as_ref() && Some((f.dev, f.ino)) != target
+    });
     if all.len() == before {
         return Ok(false);
     }
@@ -106,19 +190,17 @@ pub fn remove(homes: &Path, path: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-pub fn is_exempt(homes: &Path, canonical_path: &Path, id: (u64, u64)) -> bool {
+pub fn is_exempt(homes: &Path, canonical_path: &Path, id: &Ident) -> bool {
     let Some(path) = canonical_path.to_str() else {
         return false;
     };
-    list(homes)
-        .iter()
-        .any(|f| f.path == path && (f.dev, f.ino) == id)
+    list(homes).iter().any(|f| f.path == path && f.matches(id))
 }
 
 pub fn is_stale(f: &ExemptFolder) -> bool {
     let path = Path::new(&f.path);
     std::fs::canonicalize(path).ok().as_deref() != Some(path)
-        || std::fs::metadata(path).map_or(true, |m| (m.dev(), m.ino()) != (f.dev, f.ino))
+        || ident_path(path).map_or(true, |id| !f.matches(&id))
 }
 
 const MAX_DEPTH: u32 = 256;
@@ -129,8 +211,11 @@ fn ident(st: &libc::stat) -> (u64, u64) {
     (st.st_dev as u64, st.st_ino as u64)
 }
 
+const CHANGED: &str = "the folder changed while it was checked, try again";
+
 struct Walk<'a> {
-    root_dev: u64,
+    changed: bool,
+    dirs: HashSet<(u64, u64)>,
     files: u64,
     links: HashMap<(u64, u64), (u64, u64, PathBuf)>,
     progress: &'a mut dyn FnMut(u64),
@@ -159,8 +244,9 @@ impl Walk<'_> {
             let child = path.join(os_name);
             match st.st_mode & libc::S_IFMT {
                 libc::S_IFDIR => {
-                    if ident(&st).0 != self.root_dev {
-                        continue;
+                    if !self.dirs.insert(ident(&st)) {
+                        self.changed = true;
+                        return Err(std::io::Error::other(CHANGED));
                     }
                     let sub = match open_at(fd, os_name, DIR) {
                         Ok(sub) => sub,
@@ -186,6 +272,10 @@ impl Walk<'_> {
                             child,
                         ));
                         e.1 += 1;
+                        if e.1 > e.0 {
+                            self.changed = true;
+                            return Err(std::io::Error::other(CHANGED));
+                        }
                     }
                 }
                 _ => {}
@@ -198,18 +288,23 @@ impl Walk<'_> {
 pub fn measure(path: &Path, progress: &mut dyn FnMut(u64)) -> Result<Measured, String> {
     let started = Instant::now();
     let root = open_root(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
-    let root_dev = root
+    let root_id = root
         .metadata()
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?
-        .dev();
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let root_id = (root_id.dev(), root_id.ino());
     let mut walk = Walk {
-        root_dev,
+        changed: false,
+        dirs: HashSet::from([root_id]),
         files: 0,
         links: HashMap::new(),
         progress,
     };
-    walk.dir(root, path, 0)
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    if let Err(e) = walk.dir(root, path, 0) {
+        if walk.changed {
+            return Err(CHANGED.into());
+        }
+        return Err(format!("cannot read {}: {e}", path.display()));
+    }
     (walk.progress)(walk.files);
     let mut outside: Vec<String> = walk
         .links
@@ -221,6 +316,7 @@ pub fn measure(path: &Path, progress: &mut dyn FnMut(u64)) -> Result<Measured, S
     let outside_count = outside.len() as u64;
     outside.truncate(SHOWN);
     Ok(Measured {
+        root: root_id,
         files_seen: walk.files,
         outside,
         outside_count,
@@ -248,6 +344,10 @@ mod tests {
         (m.dev(), m.ino())
     }
 
+    fn full(p: &Path) -> Ident {
+        ident_path(p).unwrap()
+    }
+
     fn allow(homes: &Path, p: &Path) -> Result<ExemptFolder, String> {
         add(homes, p, id(p), 7, 5)
     }
@@ -265,6 +365,9 @@ mod tests {
             ((f.dev, f.ino), f.added_ms, f.measured_ms),
             (id(&work), 5, 7)
         );
+        let i = full(&work);
+        assert_eq!((f.birth_ns, f.fsid), (i.birth_ns, i.fsid));
+        assert_ne!(f.fsid, 0);
         assert_eq!(list(&homes), vec![f]);
         assert_eq!(
             std::fs::metadata(store(&homes))
@@ -309,16 +412,21 @@ mod tests {
         let other = work.with_file_name("other");
         std::fs::create_dir(&other).unwrap();
         allow(&homes, &work).unwrap();
-        assert!(is_exempt(&homes, &work, id(&work)));
-        assert!(!is_exempt(&homes, &work, (0, 0)));
-        assert!(!is_exempt(&homes, &sub, id(&sub)));
+        assert!(is_exempt(&homes, &work, &full(&work)));
         assert!(!is_exempt(
             &homes,
-            work.parent().unwrap(),
-            id(work.parent().unwrap())
+            &work,
+            &Ident {
+                dev: 0,
+                ino: 0,
+                ..full(&work)
+            }
         ));
-        assert!(!is_exempt(&homes, &other, id(&other)));
-        assert!(!is_exempt(&homes, &other, id(&work)));
+        assert!(!is_exempt(&homes, &sub, &full(&sub)));
+        let parent = work.parent().unwrap();
+        assert!(!is_exempt(&homes, parent, &full(parent)));
+        assert!(!is_exempt(&homes, &other, &full(&other)));
+        assert!(!is_exempt(&homes, &other, &full(&work)));
     }
 
     #[test]
@@ -326,14 +434,80 @@ mod tests {
         let (_t, homes, work) = dirs();
         let f = allow(&homes, &work).unwrap();
         assert!(!is_stale(&f));
-        let old = id(&work);
+        let old = full(&work);
         std::fs::rename(&work, work.with_extension("old")).unwrap();
         std::fs::create_dir(&work).unwrap();
-        assert!(is_exempt(&homes, &work, old));
-        assert!(!is_exempt(&homes, &work, id(&work)));
+        assert!(is_exempt(&homes, &work, &old));
+        assert!(!is_exempt(&homes, &work, &full(&work)));
         assert!(is_stale(&f));
         std::fs::remove_dir(&work).unwrap();
         assert!(is_stale(&f));
+    }
+
+    fn write_record(homes: &Path, p: &Path, edit: impl Fn(&mut ExemptFolder)) -> ExemptFolder {
+        let i = full(p);
+        let mut f = ExemptFolder {
+            path: p.to_str().unwrap().into(),
+            dev: i.dev,
+            ino: i.ino,
+            birth_ns: i.birth_ns,
+            fsid: i.fsid,
+            added_ms: 0,
+            measured_ms: 0,
+        };
+        edit(&mut f);
+        std::fs::write(store(homes), serde_json::to_vec(&[&f]).unwrap()).unwrap();
+        f
+    }
+
+    #[test]
+    fn a_recorded_birth_time_or_filesystem_that_differs_does_not_match() {
+        let (_t, homes, work) = dirs();
+        let f = write_record(&homes, &work, |_| {});
+        assert!(is_exempt(&homes, &work, &full(&work)));
+        assert!(!is_stale(&f));
+        for edit in [
+            (|f: &mut ExemptFolder| f.birth_ns = f.birth_ns.wrapping_add(1))
+                as fn(&mut ExemptFolder),
+            |f| f.fsid ^= 1,
+        ] {
+            let f = write_record(&homes, &work, edit);
+            assert!(!is_exempt(&homes, &work, &full(&work)));
+            assert!(is_stale(&f));
+        }
+    }
+
+    #[test]
+    fn a_missing_birth_time_matches_only_on_one_side() {
+        let (_t, homes, work) = dirs();
+        let i = full(&work);
+        let zero_now = Ident { birth_ns: 0, ..i };
+        let f = write_record(&homes, &work, |f| f.birth_ns = 42);
+        assert!(!f.matches(&zero_now));
+        assert!(!f.matches(&Ident { birth_ns: 43, ..i }));
+        assert!(f.matches(&Ident { birth_ns: 42, ..i }));
+        let f = write_record(&homes, &work, |f| f.birth_ns = 0);
+        assert!(f.matches(&zero_now));
+        assert!(f.matches(&i));
+    }
+
+    #[test]
+    fn remove_also_matches_the_target_identity_when_the_path_differs() {
+        let (t, homes, work) = dirs();
+        allow(&homes, &work).unwrap();
+        let other = t.path().join("elsewhere");
+        std::fs::create_dir(&other).unwrap();
+        allow(&homes, &other).unwrap();
+        let target = Some(id(&work));
+        assert!(!remove(&homes, "/nowhere/raw", Some((0, 0))).unwrap());
+        assert_eq!(list(&homes).len(), 2);
+        assert!(remove(&homes, "/nowhere/raw", target).unwrap());
+        let left = list(&homes);
+        assert_eq!(left.len(), 1);
+        assert_eq!(
+            left[0].path,
+            std::fs::canonicalize(&other).unwrap().to_str().unwrap()
+        );
     }
 
     #[test]
@@ -341,8 +515,8 @@ mod tests {
         let (_t, homes, work) = dirs();
         allow(&homes, &work).unwrap();
         std::fs::remove_dir(&work).unwrap();
-        assert!(remove(&homes, work.to_str().unwrap()).unwrap());
-        assert!(!remove(&homes, work.to_str().unwrap()).unwrap());
+        assert!(remove(&homes, work.to_str().unwrap(), None).unwrap());
+        assert!(!remove(&homes, work.to_str().unwrap(), None).unwrap());
         assert!(list(&homes).is_empty());
     }
 
@@ -350,35 +524,39 @@ mod tests {
     fn a_garbled_symlinked_linked_or_unknown_field_store_exempts_nothing() {
         let (_t, homes, work) = dirs();
         let good = |p: &Path| {
-            let (dev, ino) = id(p);
+            let i = full(p);
             format!(
-                r#"[{{"path":{:?},"dev":{dev},"ino":{ino},"added_ms":0,"measured_ms":0}}]"#,
-                p.to_str().unwrap()
+                r#"[{{"path":{:?},"dev":{},"ino":{},"birth_ns":{},"fsid":{},"added_ms":0,"measured_ms":0}}]"#,
+                p.to_str().unwrap(),
+                i.dev,
+                i.ino,
+                i.birth_ns,
+                i.fsid
             )
         };
         let file = store(&homes);
         std::fs::write(&file, good(&work)).unwrap();
-        assert!(is_exempt(&homes, &work, id(&work)));
+        assert!(is_exempt(&homes, &work, &full(&work)));
 
         std::fs::write(&file, "{ not json").unwrap();
-        assert!(!is_exempt(&homes, &work, id(&work)));
+        assert!(!is_exempt(&homes, &work, &full(&work)));
 
         std::fs::write(
             &file,
             good(&work).replace("\"measured_ms\":0", "\"measured_ms\":0,\"x\":1"),
         )
         .unwrap();
-        assert!(!is_exempt(&homes, &work, id(&work)));
+        assert!(!is_exempt(&homes, &work, &full(&work)));
 
         let real = work.join("real.json");
         std::fs::write(&real, good(&work)).unwrap();
         std::fs::remove_file(&file).unwrap();
         std::os::unix::fs::symlink(&real, &file).unwrap();
-        assert!(!is_exempt(&homes, &work, id(&work)));
+        assert!(!is_exempt(&homes, &work, &full(&work)));
 
         std::fs::remove_file(&file).unwrap();
         std::fs::hard_link(&real, &file).unwrap();
-        assert!(!is_exempt(&homes, &work, id(&work)));
+        assert!(!is_exempt(&homes, &work, &full(&work)));
     }
 
     #[test]
@@ -388,7 +566,7 @@ mod tests {
         crate::folders::learn(&homes, cwd, id(&work), 1).unwrap();
         crate::folders::add(&homes, &work, None, 2).unwrap();
         assert!(!store(&homes).exists());
-        assert!(!is_exempt(&homes, &work, id(&work)));
+        assert!(!is_exempt(&homes, &work, &full(&work)));
         allow(&homes, &work).unwrap();
         let before = std::fs::read(store(&homes)).unwrap();
         crate::folders::learn(&homes, cwd, id(&work), 3).unwrap();
@@ -404,6 +582,8 @@ mod tests {
                 path: format!("/nowhere/{i}"),
                 dev: 1,
                 ino: i as u64,
+                birth_ns: 0,
+                fsid: 0,
                 added_ms: 0,
                 measured_ms: 0,
             })
@@ -424,6 +604,7 @@ mod tests {
         std::os::unix::fs::symlink("/etc/hosts", work.join("sym")).unwrap();
         let mut last = 0;
         let m = measure(&work, &mut |n| last = n).unwrap();
+        assert_eq!(m.root, id(&work));
         assert_eq!((m.files_seen, m.outside_count), (4, 0));
         assert!(m.outside.is_empty());
         assert_eq!(last, 4);
