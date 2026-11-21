@@ -1380,6 +1380,12 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 {
                     return None;
                 }
+                if c.st
+                    .kind_of(&dev.id, &dev.fp)
+                    .is_some_and(|k| k != "mobile")
+                {
+                    return None;
+                }
                 let signed: tmgr_spawn_auth::SignedSpawn =
                     serde_json::from_value(opened.payload.clone()).ok()?;
                 if signed.device_fp != dev.fp {

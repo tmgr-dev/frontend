@@ -3841,8 +3841,12 @@ impl SpawnOkSink for OkRec {
 }
 
 fn spawnok_world() -> (Fake, Clock, Engine, Engine, OkRec) {
+    spawnok_world_from("mobile")
+}
+
+fn spawnok_world_from(kind: &str) -> (Fake, Clock, Engine, Engine, OkRec) {
     let (fake, clock) = (Fake::default(), Clock::new(T0));
-    let a = engine_with(&fake, &clock, "Phone");
+    let a = engine_with(&fake, &clock, "Phone").with_kind(kind);
     let mut r = join_as(&fake, &clock, &a, "Runner", "runner");
     r.poll_once().unwrap();
     let sink = OkRec::default();
@@ -3882,6 +3886,14 @@ fn spawnok_from_a_trusted_joined_phone_reaches_the_sink() {
     assert_eq!(got[0].0, my_id(&a));
     assert_eq!(got[0].1, fp_of(&a));
     assert_eq!(serde_json::to_value(&got[0].2).unwrap(), payload);
+}
+
+#[test]
+fn spawnok_from_a_device_pinned_as_desktop_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnok_world_from("desktop");
+    assert_eq!(kind_pin(&r, &my_id(&a)).as_deref(), Some("desktop"));
+    post_spawnok(&a, &r, &spawnok_payload(&fp_of(&a)));
+    assert_eq!(sink.n(), 0);
 }
 
 #[test]
