@@ -286,7 +286,6 @@ pub struct RunArgs {
     #[arg(
         long,
         value_name = "LINK",
-        requires = "task",
         conflicts_with_all = ["agent_cmd", "no_attach"],
         hide = true
     )]

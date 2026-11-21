@@ -120,7 +120,7 @@ fn kind_of(code: &str) -> Kind {
         "forbidden" | "revoked" => Kind::Forbidden,
         "bad_params" | "unknown_method" | "bad_request" => Kind::Usage,
         "not_found" => Kind::NotFound,
-        "busy" | "not_running" | "conflict" | "rate_limited" | "too_many_requests" => {
+        "busy" | "not_running" | "conflict" | "rate_limited" | "too_many_requests" | "limit" => {
             Kind::Conflict
         }
         "not_available" => Kind::Offline,
@@ -167,11 +167,26 @@ pub(super) fn list_runs(client: &mut Client) -> Result<Vec<RunView>> {
     Ok(runs_of(&v))
 }
 
-pub fn run(o: &Opts, link: &str, a: &RunArgs) -> Result<i32> {
-    let (Some(task), Some(agent)) = (&a.task, &a.agent) else {
-        return Err(Error::usage("--on needs a task reference and --agent"));
+pub(super) fn is_follower_ref(task: &str) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.len() <= 18 && s.bytes().all(|b| b.is_ascii_digit());
+    task.strip_prefix('w')
+        .and_then(|rest| rest.split_once(':'))
+        .is_some_and(|(ws, id)| digits(ws) && digits(id))
+}
+
+fn start_params(a: &RunArgs) -> Result<(Value, bool)> {
+    let Some(agent) = &a.agent else {
+        return Err(Error::usage("--on needs --agent <profile>"));
     };
-    let mut params = json!({"task": task, "agent": agent});
+    let mut params = json!({"agent": agent});
+    if let Some(task) = &a.task {
+        if !is_follower_ref(task) {
+            return Err(Error::usage(
+                "--on takes a follower-local w<ws>:<id> ref; start cloud tasks from tmgr attach",
+            ));
+        }
+        params["task"] = json!(task);
+    }
     if let Some(dir) = &a.cwd {
         if !dir.is_absolute() {
             return Err(Error::usage(
@@ -181,6 +196,7 @@ pub fn run(o: &Opts, link: &str, a: &RunArgs) -> Result<i32> {
         params["repo"] = json!(dir.display().to_string());
     }
     for (key, value) in [
+        ("name", &a.name),
         ("model", &a.model),
         ("persona", &a.persona),
         ("task_hash", &a.task_hash),
@@ -189,11 +205,34 @@ pub fn run(o: &Opts, link: &str, a: &RunArgs) -> Result<i32> {
             params[key] = json!(v);
         }
     }
-    if a.name.is_some() {
-        return Err(Error::usage("--name is not supported with --on"));
+    let fallback = a.task.is_some() && a.name.is_none();
+    Ok((params, fallback))
+}
+
+fn start_or_fallback(
+    link: &str,
+    params: Value,
+    fallback: bool,
+    call: &mut dyn FnMut(&str, Value) -> Result<Reply>,
+) -> Result<Value> {
+    match call("runs.start", params.clone())? {
+        Reply::Err { code, .. } if code == "unknown_method" => {
+            if fallback {
+                check(call("runs.create", params)?)
+            } else {
+                Err(Error::usage(format!(
+                    "{link} runs an older tmgr CLI; update it on the follower to start sessions there"
+                )))
+            }
+        }
+        other => check(other),
     }
+}
+
+pub fn run(o: &Opts, link: &str, a: &RunArgs) -> Result<i32> {
+    let (params, fallback) = start_params(a)?;
     let (mut client, _key) = dial(link)?;
-    let v = check(client.call("runs.create", params)?)?;
+    let v = start_or_fallback(link, params, fallback, &mut |m, p| client.call(m, p))?;
     let view: RunView = serde_json::from_value(v.clone())
         .map_err(|_| Error::new(Kind::Link, "the follower sent an unexpected reply"))?;
     let bin = super::bin();
@@ -365,5 +404,136 @@ mod tests {
             find_by_key(&one_live, "dev").unwrap().unwrap().id,
             "s_bbbbbbbbbb"
         );
+    }
+
+    mod start {
+        use super::super::*;
+        use crate::cli::{Cli, Command};
+        use clap::Parser;
+
+        fn parse(args: &[&str]) -> std::result::Result<RunArgs, clap::Error> {
+            let cli = Cli::try_parse_from(std::iter::once("tmgr").chain(args.iter().copied()))?;
+            match cli.command {
+                Some(Command::Runner(crate::cmd::runner::RunnerCommands::Run(a))) => Ok(a),
+                _ => panic!("not run"),
+            }
+        }
+
+        fn err(code: &str, message: &str) -> Reply {
+            Reply::Err {
+                code: code.into(),
+                message: message.into(),
+            }
+        }
+
+        fn view() -> Reply {
+            Reply::Ok(
+                json!({"id": "s_aaaaaaaaaa", "name": "n", "state": {"kind": "working", "since_ms": 0}}),
+            )
+        }
+
+        #[test]
+        fn on_parses_without_a_ref_and_a_missing_agent_is_a_clear_error() {
+            let a = parse(&["run", "--on", "spark", "--agent", "codex"]).unwrap();
+            assert!(a.task.is_none());
+            let (params, fallback) = start_params(&a).unwrap();
+            assert_eq!(params, json!({"agent": "codex"}));
+            assert!(!fallback);
+            let bare = parse(&["run", "--on", "spark"]);
+            let message = match bare {
+                Ok(a) => start_params(&a).unwrap_err().message,
+                Err(e) => e.to_string(),
+            };
+            assert!(message.contains("agent"), "{message}");
+        }
+
+        #[test]
+        fn on_keeps_conflicting_with_bypass_and_no_sandbox() {
+            assert!(parse(&["run", "--on", "s", "--agent", "x", "--mode", "bypass"]).is_err());
+            assert!(parse(&["run", "--on", "s", "--agent", "x", "--no-sandbox"]).is_err());
+        }
+
+        #[test]
+        fn params_carry_a_follower_ref_name_folder_and_model() {
+            let a = parse(&[
+                "run", "w1:7", "--on", "spark", "--agent", "codex", "--name", "job", "--cwd",
+                "/srv/app", "--model", "m",
+            ])
+            .unwrap();
+            let (params, fallback) = start_params(&a).unwrap();
+            assert_eq!(
+                params,
+                json!({"agent": "codex", "task": "w1:7", "repo": "/srv/app", "name": "job", "model": "m"})
+            );
+            assert!(!fallback);
+            let plain = parse(&["run", "w1:7", "--on", "spark", "--agent", "codex"]).unwrap();
+            assert!(start_params(&plain).unwrap().1);
+        }
+
+        #[test]
+        fn a_cloud_ref_and_a_relative_folder_are_refused() {
+            for r in ["TM-1", "#5", "12", "c1:2"] {
+                let a = parse(&["run", r, "--on", "spark", "--agent", "codex"]).unwrap();
+                let e = start_params(&a).unwrap_err();
+                assert!(
+                    e.message.contains("start cloud tasks from tmgr attach"),
+                    "{r}"
+                );
+            }
+            let a = parse(&["run", "--on", "s", "--agent", "x", "--cwd", "rel"]).unwrap();
+            assert!(start_params(&a).unwrap_err().message.contains("absolute"));
+        }
+
+        #[test]
+        fn an_old_follower_gets_the_update_message_or_the_old_method_for_a_plain_ref() {
+            let mut calls: Vec<String> = Vec::new();
+            let mut old = |m: &str, _p: Value| {
+                calls.push(m.to_string());
+                Ok(match m {
+                    "runs.start" => err("unknown_method", "unknown method"),
+                    _ => view(),
+                })
+            };
+            let e = start_or_fallback("spark", json!({"agent": "a"}), false, &mut old).unwrap_err();
+            assert_eq!(
+                e.message,
+                "spark runs an older tmgr CLI; update it on the follower to start sessions there"
+            );
+            assert_eq!(e.kind, Kind::Usage);
+            assert_eq!(calls, ["runs.start"]);
+            calls.clear();
+            let mut old = |m: &str, _p: Value| {
+                calls.push(m.to_string());
+                Ok(match m {
+                    "runs.start" => err("unknown_method", "unknown method"),
+                    _ => view(),
+                })
+            };
+            let v = start_or_fallback(
+                "spark",
+                json!({"agent": "a", "task": "w1:2"}),
+                true,
+                &mut old,
+            )
+            .unwrap();
+            assert_eq!(v["id"], "s_aaaaaaaaaa");
+            assert_eq!(calls, ["runs.start", "runs.create"]);
+        }
+
+        #[test]
+        fn a_refusal_from_a_new_follower_is_shown_and_never_retried() {
+            let mut n = 0;
+            let mut call = |_m: &str, _p: Value| {
+                n += 1;
+                Ok(err(
+                    "forbidden",
+                    "bypass-permissions is not allowed on this follower",
+                ))
+            };
+            let e = start_or_fallback("spark", json!({"agent": "a"}), true, &mut call).unwrap_err();
+            assert!(e.message.contains("bypass-permissions"));
+            assert_eq!(e.kind, Kind::Forbidden);
+            assert_eq!(n, 1);
+        }
     }
 }
