@@ -272,6 +272,9 @@ pub async fn runner_switch_agent<R: Runtime>(
   let all = blocking(move || r.session_infos()).await?;
   let old = all.iter().find(|s| s.id == sid).cloned().ok_or_else(|| "session not found".to_owned())?;
   let target = sw::check(&old, target_hint).map_err(|e| e.to_string())?;
+  if target.agent().is_none() || sw::Target::of_profile(old.profile.as_deref()).and_then(sw::Target::agent).is_none() {
+    return Err("Switching to or from opencode or agy works in the tmgr CLI only".to_owned());
+  }
   if auto && old.limit.is_none() {
     return Err("The agent has not hit its usage limit".to_owned());
   }
@@ -319,13 +322,13 @@ pub async fn runner_switch_agent<R: Runtime>(
     }
   }
   let resume = "Resume the old session from the session list.";
-  let reason = format!("handed to {}", target.agent().name());
+  let reason = format!("handed to {}", target.name());
   let (r, sid) = (runner.clone(), session.clone());
   blocking(move || r.stop_for_switch(&sid, &reason))
     .await
     .map_err(|e| format!("{e}. The old session got a terminate signal and may have stopped in the middle of a turn. {resume}"))?;
   let (o2, a2) = (old.clone(), all.clone());
-  let note = blocking(move || sw::prepare_note(&o2, &a2, target, &ref_text).map_err(|e| e.to_string()))
+  let note = blocking(move || sw::prepare_note(&o2, &a2, target, Some(ref_text.as_str()), &[]).map_err(|e| e.to_string()))
     .await
     .map_err(|e| format!("The old session stopped, but the new agent did not start: {e}. {resume}"))?;
   let req = api::build_switch(&info, ids, target.profile(), (&pin.0, pin.1), &caps, (&note.text, &old.id))
