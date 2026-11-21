@@ -9,7 +9,6 @@ use tmgr_ipc::manager::{limits as mlimits, tool, valid_req_id, SpoolReq, DATA_NO
 use tmgr_ipc::mgr_rpc::{limits, valid_machine_id, ErrorCode, Op, RpcReq, RpcRes, MGR_RPC_V};
 
 const RATE_WINDOW_MS: u64 = 60_000;
-const ID_SCAN_MAX: usize = 2 * 1024 * 1024;
 const MAX_REFUSAL: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,8 +104,19 @@ impl Dispatcher {
         from: &str,
         payload: &[u8],
     ) -> Option<RpcRes> {
-        let mut senders = self.senders.lock().unwrap_or_else(|e| e.into_inner());
         let now = host.now_ms();
+        if !valid_machine_id(from) || from == self.machine || !policy.accepts(from) {
+            self.audit.record(AuditRecord {
+                ts_ms: now,
+                from: from.chars().take(64).collect(),
+                rpc: None,
+                op: None,
+                session: None,
+                outcome: ErrorCode::NotAllowed.as_str().into(),
+            });
+            return None;
+        }
+        let mut senders = self.senders.lock().unwrap_or_else(|e| e.into_inner());
         let mut meta = Meta::default();
         let res = self.process(&mut senders, policy, host, from, payload, now, &mut meta);
         let outcome = match &res {
@@ -135,6 +145,18 @@ impl Dispatcher {
         now: u64,
         meta: &mut Meta,
     ) -> Option<RpcRes> {
+        let st = senders.entry(from.to_string()).or_default();
+        st.rate.retain(|t| now.saturating_sub(*t) < RATE_WINDOW_MS);
+        if st.rate.len() >= self.rate_per_min {
+            let id = readable_id(payload)?;
+            meta.rpc = Some(id.clone());
+            return Some(RpcRes::err(
+                &id,
+                ErrorCode::RateLimited,
+                "too many requests",
+            ));
+        }
+        st.rate.push_back(now);
         let Some(req) = parse(payload) else {
             let id = readable_id(payload)?;
             meta.rpc = Some(id.clone());
@@ -153,10 +175,6 @@ impl Dispatcher {
         if req.v != MGR_RPC_V {
             return fail(ErrorCode::BadRequest, "unsupported version");
         }
-        if !valid_machine_id(from) || from == self.machine || !policy.accepts(from) {
-            return fail(ErrorCode::NotAllowed, "sender is not accepted");
-        }
-        let st = senders.entry(from.to_string()).or_default();
         st.seen.retain(|_, e| e.expires_ms > now);
         if let Some(Entry {
             stored: Some(answer),
@@ -174,13 +192,9 @@ impl Dispatcher {
         if !req.chain.is_empty() {
             return fail(ErrorCode::Depth, "forwarded requests are not accepted");
         }
-        st.rate.retain(|t| now.saturating_sub(*t) < RATE_WINDOW_MS);
-        if st.rate.len() >= self.rate_per_min
-            || (st.seen.len() >= self.max_seen && !st.seen.contains_key(rpc))
-        {
+        if st.seen.len() >= self.max_seen && !st.seen.contains_key(rpc) {
             return fail(ErrorCode::RateLimited, "too many requests");
         }
-        st.rate.push_back(now);
         let (res, executed) = self.run_op(policy, host, from, &req);
         let stored = (executed && matches!(req.op, Op::Send | Op::Ask)).then(|| res.clone());
         let expires = now.max(req.ts_ms) + limits::FRESH_MS + limits::SEEN_MARGIN_MS;
@@ -339,7 +353,7 @@ fn parse(payload: &[u8]) -> Option<RpcReq> {
 }
 
 fn readable_id(payload: &[u8]) -> Option<String> {
-    if payload.len() > ID_SCAN_MAX {
+    if payload.len() > limits::MAX_REQ_BYTES {
         return None;
     }
     serde_json::from_slice::<IdOnly>(payload)
@@ -485,14 +499,12 @@ mod tests {
     fn a_missing_policy_accepts_nobody_for_every_op() {
         let r = rig();
         for op in Op::ALL {
-            let res = r
-                .call_at(
-                    &Policy::deny_all(),
-                    PEER,
-                    &body("r1", op.as_str(), valid_args(op.as_str()), T0),
-                )
-                .unwrap();
-            assert_eq!(code(&res), ErrorCode::NotAllowed, "{op:?}");
+            let res = r.call_at(
+                &Policy::deny_all(),
+                PEER,
+                &body("r1", op.as_str(), valid_args(op.as_str()), T0),
+            );
+            assert!(res.is_none(), "{op:?}");
         }
         assert!(r.host.sent.lock().unwrap().is_empty());
     }
@@ -501,14 +513,12 @@ mod tests {
     fn a_sender_outside_accept_from_is_refused_for_every_op() {
         let r = rig();
         for op in Op::ALL {
-            let res = r
-                .call_at(
-                    &open(),
-                    OTHER,
-                    &body("r1", op.as_str(), valid_args(op.as_str()), T0),
-                )
-                .unwrap();
-            assert_eq!(code(&res), ErrorCode::NotAllowed, "{op:?}");
+            let res = r.call_at(
+                &open(),
+                OTHER,
+                &body("r1", op.as_str(), valid_args(op.as_str()), T0),
+            );
+            assert!(res.is_none(), "{op:?}");
         }
     }
 
@@ -517,15 +527,9 @@ mod tests {
         let r = rig();
         let selfish = Policy::parse(&format!("accept_from = [\"{ME}\"]")).unwrap();
         let p = body("r1", "list", json!({}), T0);
-        assert_eq!(
-            code(&r.call_at(&selfish, ME, &p).unwrap()),
-            ErrorCode::NotAllowed
-        );
+        assert!(r.call_at(&selfish, ME, &p).is_none());
         for bad in ["", "mx_AAAA", "laptop", "mx_00000000000000bbb"] {
-            assert_eq!(
-                code(&r.call_at(&open(), bad, &p).unwrap()),
-                ErrorCode::NotAllowed
-            );
+            assert!(r.call_at(&open(), bad, &p).is_none());
         }
     }
 
@@ -560,13 +564,68 @@ mod tests {
     }
 
     #[test]
-    fn an_oversize_request_is_a_bad_request_not_an_execution() {
+    fn an_oversize_request_is_dropped_without_an_id_scan_and_not_executed() {
         let r = rig();
         let big = "a".repeat(limits::MAX_REQ_BYTES);
-        let res = r
-            .call_at(&open(), PEER, &body("r1", "ask", json!({"text": big}), T0))
-            .unwrap();
-        assert_eq!(code(&res), ErrorCode::BadRequest);
+        let res = r.call_at(&open(), PEER, &body("r1", "ask", json!({"text": big}), T0));
+        assert!(res.is_none());
+        assert_eq!(r.audit.records()[0].rpc, None);
+        let msgs = r.d.state().chat.history(&RoomRef::manager(ME), 10).unwrap();
+        assert!(msgs.is_empty());
+    }
+
+    #[test]
+    fn a_non_accepted_sender_with_garbage_gets_no_reply_and_an_audit_line() {
+        let r = rig();
+        for junk in [&b"not json"[..], br#"{"rpc":"r1"}"#, b""] {
+            assert!(r.call_at(&open(), OTHER, junk).is_none());
+        }
+        let log = r.audit.records();
+        assert_eq!(log.len(), 3);
+        assert!(log
+            .iter()
+            .all(|l| l.outcome == "not_allowed" && l.rpc.is_none() && l.op.is_none()));
+    }
+
+    #[test]
+    fn malformed_payloads_from_an_accepted_sender_spend_the_rate_budget() {
+        let r = rig();
+        let junk = br#"{"rpc":"r1"}"#;
+        for i in 0..limits::RPC_PER_MINUTE {
+            let res = r.call_at(&open(), PEER, junk).unwrap();
+            assert_eq!(code(&res), ErrorCode::BadRequest, "{i}");
+        }
+        let res = r.call_at(&open(), PEER, junk).unwrap();
+        assert_eq!(code(&res), ErrorCode::RateLimited);
+        assert_eq!(res.rpc, "r1");
+    }
+
+    #[test]
+    fn an_accepted_sender_over_budget_with_an_unreadable_payload_gets_no_reply() {
+        let r = rig();
+        for _ in 0..limits::RPC_PER_MINUTE {
+            r.call_at(&open(), PEER, b"junk");
+        }
+        assert!(r.call_at(&open(), PEER, b"junk").is_none());
+    }
+
+    #[test]
+    fn an_oversize_payload_with_a_late_rpc_id_is_not_scanned() {
+        let r = rig();
+        let mut p = vec![b' '; 5000];
+        p.extend_from_slice(br#"{"rpc":"late"}"#);
+        p.resize(limits::MAX_REQ_BYTES + 1, b' ');
+        assert!(r.call_at(&open(), PEER, &p).is_none());
+        assert_eq!(r.audit.records()[0].rpc, None);
+    }
+
+    #[test]
+    fn a_sender_without_an_allow_key_may_not_ask() {
+        let r = rig();
+        let p = Policy::parse(&format!("accept_from = [\"{PEER}\"]")).unwrap();
+        let res = r.call(&p, "q1", "ask", valid_args("ask"));
+        assert_eq!(code(&res), ErrorCode::OpDenied);
+        assert!(r.call(&p, "l1", "list", json!({})).ok);
         let msgs = r.d.state().chat.history(&RoomRef::manager(ME), 10).unwrap();
         assert!(msgs.is_empty());
     }
@@ -1072,5 +1131,6 @@ mod tests {
         assert_eq!(log[2].outcome, "op_denied");
         assert_eq!(log[3].outcome, "not_allowed");
         assert_eq!(log[3].from, OTHER);
+        assert_eq!((log[3].rpc.clone(), log[3].op), (None, None));
     }
 }

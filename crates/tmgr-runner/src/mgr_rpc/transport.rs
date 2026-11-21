@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_request_still_gets_an_answer_to_its_sender() {
+    fn a_request_from_a_stranger_gets_no_answer() {
         let net = MemoryNet::new();
         let stranger = net.endpoint("mx_00000000000000cc");
         let sub = net.endpoint(ME);
@@ -129,8 +129,7 @@ mod tests {
             .send(ME, serde_json::to_vec(&req).unwrap())
             .unwrap();
         serve_one(&sub, &d, &Policy::deny_all(), &host);
-        let res: RpcRes = serde_json::from_slice(&stranger.recv().unwrap().payload).unwrap();
-        assert!(!res.ok);
+        assert!(stranger.recv().is_none());
     }
 
     #[test]

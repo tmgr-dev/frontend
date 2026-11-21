@@ -10,7 +10,7 @@ use tmgr_ipc::mgr_rpc::{valid_machine_id, Op};
 
 pub const POLICY_FILE: &str = "manager-remote.toml";
 const MAX_POLICY_BYTES: u64 = 16 * 1024;
-const DEFAULT_ALLOW: [Op; 3] = [Op::List, Op::Read, Op::Ask];
+const DEFAULT_ALLOW: [Op; 2] = [Op::List, Op::Read];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
@@ -130,14 +130,14 @@ mod tests {
     }
 
     #[test]
-    fn default_ops_are_list_read_ask() {
+    fn default_ops_are_list_and_read() {
         let p = Policy::parse(&format!("accept_from = [\"{A}\"]")).unwrap();
         assert!(p.accepts(A));
         assert!(!p.accepts("mx_ffffffffffffffff"));
         for (op, want) in [
             (Op::List, true),
             (Op::Read, true),
-            (Op::Ask, true),
+            (Op::Ask, false),
             (Op::Send, false),
             (Op::SpawnChallenge, false),
             (Op::Spawn, false),
