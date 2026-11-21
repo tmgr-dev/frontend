@@ -130,6 +130,23 @@ pub fn clear_questions(runner_dir: &Path, wait: Duration) -> io::Result<bool> {
     Ok(true)
 }
 
+/// A folder for the manager session: next to the runner dir, because the runner
+/// refuses sessions inside its own folders.
+pub fn manager_dir(runner_dir: &Path) -> PathBuf {
+    #[cfg(not(target_os = "macos"))]
+    if let Some(rt) = env_path("XDG_RUNTIME_DIR") {
+        if runner_dir == rt.join("tmgr") {
+            if let Ok(state) = state_home() {
+                return state.join("tmgr").join("manager");
+            }
+        }
+    }
+    let leaf = runner_dir
+        .file_name()
+        .map_or_else(|| "tmgr".to_string(), |n| n.to_string_lossy().into_owned());
+    runner_dir.with_file_name(format!("{leaf}-manager"))
+}
+
 fn persistent_dir(runner_dir: &Path, name: &str) -> PathBuf {
     #[cfg(not(target_os = "macos"))]
     if let Some(rt) = env_path("XDG_RUNTIME_DIR") {
@@ -523,5 +540,16 @@ mod tests {
     fn paste_dir_of_an_explicit_runner_dir_stays_inside_it() {
         let t = private_tmp();
         assert_eq!(paste_dir(t.path()), t.path().join("paste"));
+    }
+
+    #[test]
+    fn the_manager_dir_is_a_sibling_the_runner_does_not_own() {
+        let t = private_tmp();
+        let run = t.path().join("run");
+        let dir = manager_dir(&run);
+        assert_eq!(dir, t.path().join("run-manager"));
+        assert!(!dir.starts_with(&run) && !run.starts_with(&dir));
+        ensure_private_leaf(&dir).unwrap();
+        assert_eq!(fs::metadata(&dir).unwrap().mode() & 0o777, 0o700);
     }
 }

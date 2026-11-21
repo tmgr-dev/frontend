@@ -290,7 +290,62 @@ impl Runner {
             }
             last = Instant::now();
             let sessions: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
-            tail::capture(&self.chat, &sessions);
+            let titles = tail::capture(&self.chat, &sessions);
+            self.apply_auto_names(&titles);
+        }
+    }
+
+    fn apply_auto_names(&self, titles: &[(String, String)]) {
+        let _guard = lock(&self.rename_lock);
+        let mut live = self.all();
+        live.sort_by_key(|s| {
+            let i = lock(&s.inner);
+            (i.meta.created_ms, i.meta.id.clone())
+        });
+        let mut names: Vec<(String, String)> = live
+            .iter()
+            .map(|s| {
+                let i = lock(&s.inner);
+                (i.meta.id.clone(), i.meta.name.clone())
+            })
+            .collect();
+        for s in live.iter().filter(|s| !s.is_exited()) {
+            let (id, current, base) = {
+                let i = lock(&s.inner);
+                let m = &i.meta;
+                let auto = m.name_auto || m.name == default_name(m.argv.first().map_or("", |a| a));
+                if !auto || m.manager {
+                    continue;
+                }
+                let from_title = titles
+                    .iter()
+                    .find(|(t, _)| *t == m.id)
+                    .and_then(|(_, t)| crate::autoname::title_name(t));
+                if from_title.is_none() && m.name_auto {
+                    continue;
+                }
+                let Some(base) = from_title.or_else(|| crate::autoname::folder_name(&m.cwd)) else {
+                    continue;
+                };
+                (m.id.clone(), m.name.clone(), base)
+            };
+            let taken = names
+                .iter()
+                .filter(|(o, _)| *o != id)
+                .map(|(_, n)| n.clone())
+                .collect();
+            let Some(new) = crate::autoname::pick(&base, &current, &taken) else {
+                continue;
+            };
+            {
+                let mut i = lock(&s.inner);
+                i.meta.name = new.clone();
+                i.meta.name_auto = true;
+            }
+            s.persist();
+            if let Some(slot) = names.iter_mut().find(|(o, _)| *o == id) {
+                slot.1 = new;
+            }
         }
     }
 }
@@ -708,5 +763,50 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(e.code, ErrorCode::Forbidden);
+    }
+    fn add_named(rt: &Arc<Runner>, t: &Path, id: &str, name: &str, cwd: &str, created: u64) {
+        let meta: Meta = serde_json::from_value(json!({
+            "id": id, "name": name, "argv": ["claude"], "cwd": cwd,
+            "profile": "claude-code", "created_ms": created, "cols": 100, "rows": 24,
+            "shim_pid": 1, "child_pid": 2,
+        }))
+        .unwrap();
+        let sdir = t.join("sessions").join(id);
+        fs::create_dir_all(&sdir).unwrap();
+        let s = rt.new_session(meta, None, &sdir);
+        lock(&rt.sessions).insert(id.to_string(), s);
+    }
+
+    fn name_of(rt: &Arc<Runner>, id: &str) -> String {
+        rt.session(id).unwrap().info().name
+    }
+
+    #[test]
+    fn sessions_named_after_the_agent_default_get_a_folder_or_title_name() {
+        let t = tempfile::Builder::new()
+            .prefix("an")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        add_named(&rt, t.path(), "a", "claude", "/work/app", 1);
+        add_named(&rt, t.path(), "b", "claude", "/work/app", 2);
+        add_named(&rt, t.path(), "c", "mine", "/work/app", 3);
+        add_named(&rt, t.path(), "d", "claude", "/work/app", 4);
+        rt.apply_auto_names(&[]);
+        let names: Vec<String> = ["a", "b", "c", "d"]
+            .iter()
+            .map(|i| name_of(&rt, i))
+            .collect();
+        assert_eq!(names, ["app", "app 2", "mine", "app 3"]);
+        rt.apply_auto_names(&[("b".into(), "Fix the build".into())]);
+        assert_eq!(name_of(&rt, "b"), "Fix the build");
+        assert_eq!(name_of(&rt, "a"), "app");
+        assert_eq!(name_of(&rt, "d"), "app 3");
+        rt.rename("a", "chosen").unwrap();
+        rt.apply_auto_names(&[("a".into(), "Other".into())]);
+        assert_eq!(name_of(&rt, "a"), "chosen");
+        add_named(&rt, t.path(), "e", "claude", "/work/app", 5);
+        rt.apply_auto_names(&[("e".into(), "Fix the build".into())]);
+        assert_eq!(name_of(&rt, "e"), "Fix the build 2");
     }
 }

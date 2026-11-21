@@ -12,15 +12,19 @@ use tmgr_ipc::chat::{
 };
 use tmgr_session::{switch, tail, Agent};
 
+use crate::attach::{Format, TitleScan};
+
 const RESOLVE_EVERY: Duration = Duration::from_secs(30);
 const BACKFILL_BYTES: u64 = 4 << 20;
 const BACKFILL_TURNS: usize = 30;
+const PID_FILE_SLACK_MS: u64 = 2000;
 
 pub struct Tail {
     path: PathBuf,
     offset: u64,
     resolve_at: Instant,
     pub(super) meta: SessionMeta,
+    title: Option<TitleScan>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -140,17 +144,24 @@ fn post(
     .map(|_| ())
 }
 
-fn backfill(chat: &Chat, s: &SessionInfo, agent: Agent, t: &mut Tail, end: u64, legacy: bool) {
+fn backfill(
+    chat: &Chat,
+    s: &SessionInfo,
+    agent: Agent,
+    t: &mut Tail,
+    end: u64,
+    legacy: bool,
+) -> bool {
     let room = chat.session_room(&s.id);
     let Ok(start) = tail::backfill_start(&t.path, end, BACKFILL_BYTES) else {
-        return;
+        return false;
     };
     if start >= end {
-        return;
+        return true;
     }
     let window = usize::try_from(end - start).unwrap_or(usize::MAX);
     let Ok(batch) = tail::read_new(&t.path, agent, start, window) else {
-        return;
+        return false;
     };
     update_meta(&mut t.meta, s.profile.as_deref(), &batch.usage);
     let known: HashSet<String> = chat
@@ -166,7 +177,7 @@ fn backfill(chat: &Chat, s: &SessionInfo, agent: Agent, t: &mut Tail, end: u64, 
             continue;
         }
         if post(chat, &room, s, &t.meta, turn).is_err() {
-            return;
+            return false;
         }
     }
     t.offset = if legacy {
@@ -174,19 +185,50 @@ fn backfill(chat: &Chat, s: &SessionInfo, agent: Agent, t: &mut Tail, end: u64, 
     } else {
         batch.offset
     };
+    true
 }
 
-pub fn capture(chat: &Chat, sessions: &[SessionInfo]) {
-    capture_with(chat, sessions, &|s, a| switch::log_of(s, a).ok());
+fn resolve_log(s: &SessionInfo, agent: Agent, home: &Path) -> Option<PathBuf> {
+    switch::log_of(s, agent).ok().or_else(|| {
+        if !s.no_sandbox || agent != Agent::Claude {
+            return None;
+        }
+        crate::attach::locate_unsandboxed_claude(
+            home,
+            &s.cwd,
+            s.child_pid,
+            s.created_ms.saturating_sub(PID_FILE_SLACK_MS),
+        )
+        .map(|(path, _)| path)
+    })
+}
+
+pub fn capture(chat: &Chat, sessions: &[SessionInfo]) -> Vec<(String, String)> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    capture_with(chat, sessions, &|s, a| resolve_log(s, a, home.as_deref()?))
+}
+
+fn title_scan(agent: Agent, path: &Path) -> Option<TitleScan> {
+    if agent != Agent::Claude {
+        return None;
+    }
+    let root = path.parent()?.to_path_buf();
+    Some(TitleScan::new(
+        Format::Claude,
+        root,
+        path.to_path_buf(),
+        None,
+    ))
 }
 
 pub fn capture_with(
     chat: &Chat,
     sessions: &[SessionInfo],
     resolve: &dyn Fn(&SessionInfo, Agent) -> Option<PathBuf>,
-) {
+) -> Vec<(String, String)> {
+    let mut titles = Vec::new();
     let Some(store) = chat.store.as_ref() else {
-        return;
+        return titles;
     };
     let dir = store.dir();
     let mut tails = lock(&chat.tails);
@@ -222,13 +264,20 @@ pub fn capture_with(
                         }
                     };
                     let mut t = Tail {
+                        title: title_scan(agent, &path),
                         path,
                         offset,
                         resolve_at: Instant::now() + RESOLVE_EVERY,
                         meta: SessionMeta::default(),
                     };
                     if let Some((end, legacy)) = backfill_from {
-                        backfill(chat, s, agent, &mut t, end, legacy);
+                        if !backfill(chat, s, agent, &mut t, end, legacy) {
+                            crate::daemon::log(&format!(
+                                "chat: history of session {} not read, will retry",
+                                s.id
+                            ));
+                            continue;
+                        }
                     }
                     save(dir, &s.id, &t);
                     tails.insert(s.id.clone(), t);
@@ -242,6 +291,12 @@ pub fn capture_with(
         let Some(t) = tails.get_mut(&s.id) else {
             continue;
         };
+        if let Some(scan) = t.title.as_mut() {
+            scan.poll();
+            if let Some(found) = scan.title("") {
+                titles.push((s.id.clone(), found.text));
+            }
+        }
         let Ok(batch) = tail::read_new(&t.path, agent, t.offset, tail::WINDOW) else {
             continue;
         };
@@ -263,6 +318,7 @@ pub fn capture_with(
             .iter()
             .any(|s| s.id == *id && s.state.kind != StateKind::Exited)
     });
+    titles
 }
 
 #[cfg(test)]
@@ -304,6 +360,58 @@ mod tests {
     }
 
     const SID: &str = "s_abcdefghij";
+
+    #[test]
+    fn the_agent_title_follows_the_transcript_and_a_custom_one_wins() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        assert!(capture_with(&chat, &s, &resolve).is_empty());
+        append(
+            &log,
+            "{\"type\":\"ai-title\",\"aiTitle\":\"Fix the build\"}\n",
+        );
+        assert_eq!(
+            capture_with(&chat, &s, &resolve),
+            [(SID.to_string(), "Fix the build".to_string())]
+        );
+        append(
+            &log,
+            "{\"type\":\"custom-title\",\"customTitle\":\"Mine\"}\n",
+        );
+        assert_eq!(
+            capture_with(&chat, &s, &resolve),
+            [(SID.to_string(), "Mine".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_session_without_the_sandbox_is_read_through_its_pid_file() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let id = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+        let cwd = "/work/app";
+        let proj = home.join(".claude/projects").join("-work-app");
+        fs::create_dir_all(&proj).unwrap();
+        fs::create_dir_all(home.join(".claude/sessions")).unwrap();
+        fs::write(
+            home.join(".claude/sessions/2.json"),
+            json!({"pid": 2, "sessionId": id}).to_string(),
+        )
+        .unwrap();
+        append(&proj.join(format!("{id}.jsonl")), &line("hello"));
+        let mut s = info(SID, "claude-code", "working");
+        s.no_sandbox = true;
+        s.cwd = cwd.into();
+        let chat = Chat::open(&t.path().join("run"));
+        capture_with(&chat, &[s.clone()], &|s, a| resolve_log(s, a, &home));
+        append(&proj.join(format!("{id}.jsonl")), &line("more"));
+        capture_with(&chat, &[s], &|s, a| resolve_log(s, a, &home));
+        assert_eq!(bodies(&chat, SID), ["hello", "more"]);
+    }
 
     #[test]
     fn new_assistant_text_becomes_session_messages_once() {

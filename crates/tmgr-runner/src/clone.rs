@@ -419,10 +419,22 @@ fn walk_stores(dir: File, path: &Path, depth: u32, left: &mut usize) -> Result<(
 
 /// Refuses a folder with git object files that are also linked from elsewhere: a sandboxed session could change them there.
 pub fn check_stores(cwd: &Dir) -> Result<(), Refusal> {
-    check_stores_within(cwd, WALK_ENTRIES)
+    check_stores_within(cwd, WALK_ENTRIES, true)
 }
 
-fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
+pub fn check_stores_for_manager(cwd: &Dir) -> Result<(), Refusal> {
+    check_stores_within(cwd, WALK_ENTRIES, false)
+}
+
+fn alternative(no_sandbox_ok: bool) -> String {
+    if no_sandbox_ok {
+        format!("start with --no-sandbox ({NO_SANDBOX_HOW})")
+    } else {
+        "start the manager in another folder with --cwd <folder>".to_string()
+    }
+}
+
+fn check_stores_within(cwd: &Dir, budget: usize, no_sandbox_ok: bool) -> Result<(), Refusal> {
     let refused = |m: String| (ErrorCode::InvalidParams, m);
     let own = open_at(cwd.raw_fd(), ".", DIR).map_err(|_| {
         refused(format!(
@@ -438,7 +450,8 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
              run `git gc --prune=now` and `git commit-graph write --reachable` in the repository, \
              or re-clone with `git clone --no-local <repository> <new folder>` (uncommitted changes and stashes are not carried over), \
              or run `tmgr runner objects allow <folder>` on the follower (needs the PIN), \
-             or start with --no-sandbox ({NO_SANDBOX_HOW}); store: {}",
+             or {}; store: {}",
+            alternative(no_sandbox_ok),
             p.display()
         ))),
         Err(Stop::Unchecked(p)) => Err(refused(format!(
@@ -446,8 +459,13 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
             p.display()
         ))),
         Err(Stop::Budget) => Err(refused(format!(
-            "{} is too large to check for shared git object files; start the session in a smaller folder, run `tmgr runner objects allow <folder>` on the follower (needs the PIN), or start with --no-sandbox ({NO_SANDBOX_HOW})",
-            cwd.path.display()
+            "{} is too large to check for shared git object files; start the session in a smaller folder{}",
+            cwd.path.display(),
+            if no_sandbox_ok {
+                format!(", run `tmgr runner objects allow <folder>` on the follower (needs the PIN), or start with --no-sandbox ({NO_SANDBOX_HOW})")
+            } else {
+                " with --cwd <folder>, or run `tmgr runner objects allow <folder>` on the follower (needs the PIN)".to_string()
+            }
         ))),
     }
 }
@@ -1360,7 +1378,7 @@ mod tests {
         for i in 0..10 {
             std::fs::write(folder.join(format!("f{i}")), "").unwrap();
         }
-        let err = check_stores_within(&open_path(folder.clone()).unwrap(), 5)
+        let err = check_stores_within(&open_path(folder.clone()).unwrap(), 5, true)
             .unwrap_err()
             .1;
         assert!(err.contains("too large"), "{err}");
@@ -1377,12 +1395,23 @@ mod tests {
     #[test]
     fn a_folder_over_the_budget_names_the_no_sandbox_way_out() {
         let (_tmp, _root, repo) = fixture();
-        let msg = check_stores_within(&open_path(repo).unwrap(), 0)
+        let msg = check_stores_within(&open_path(repo).unwrap(), 0, true)
             .unwrap_err()
             .1;
         assert!(msg.contains("too large to check"), "{msg}");
         assert!(msg.contains("tmgr runner objects allow <folder>"), "{msg}");
         assert!(msg.contains("--no-sandbox"), "{msg}");
         assert!(msg.contains("--allow-no-sandbox on"), "{msg}");
+    }
+
+    #[test]
+    fn the_manager_refusal_never_offers_no_sandbox() {
+        let (_tmp, _root, repo) = fixture();
+        let msg = check_stores_within(&open_path(repo).unwrap(), 0, false)
+            .unwrap_err()
+            .1;
+        assert!(msg.contains("too large to check"), "{msg}");
+        assert!(msg.contains("--cwd"), "{msg}");
+        assert!(!msg.contains("--no-sandbox"), "{msg}");
     }
 }

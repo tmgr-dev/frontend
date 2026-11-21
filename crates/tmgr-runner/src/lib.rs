@@ -1,4 +1,5 @@
 pub mod attach;
+pub mod autoname;
 pub mod egress;
 #[cfg(unix)]
 pub mod exe;

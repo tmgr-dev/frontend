@@ -54,7 +54,7 @@ pub struct ManagerStartArgs {
     /// Agent to run as the manager
     #[arg(long, value_enum, default_value = "claude-code")]
     pub agent: ManagerAgent,
-    /// Folder to start in (default: the current folder)
+    /// Folder to start in (default: a private manager folder next to the runner's)
     #[arg(long, value_name = "DIR")]
     pub cwd: Option<PathBuf>,
     /// Session name
@@ -103,13 +103,23 @@ pub(super) fn run(o: &Opts, cmd: &ManagerCmd) -> Result<i32> {
     }
 }
 
-fn start(o: &Opts, a: &ManagerStartArgs) -> Result<i32> {
-    let cwd = match &a.cwd {
-        Some(p) => std::path::absolute(p),
-        None => std::env::current_dir(),
+fn start_cwd(runner_dir: &std::path::Path, cwd: Option<&std::path::Path>) -> Result<PathBuf> {
+    if let Some(p) = cwd {
+        return std::path::absolute(p).map_err(|e| Error::usage(format!("bad --cwd: {e}")));
     }
-    .map_err(|e| Error::usage(format!("bad --cwd: {e}")))?;
+    let dir = tmgr_ipc::dirs::manager_dir(runner_dir);
+    tmgr_ipc::dirs::ensure_private_leaf(&dir).map_err(|e| {
+        Error::usage(format!(
+            "cannot prepare the manager folder {}: {e}",
+            dir.display()
+        ))
+    })?;
+    Ok(dir)
+}
+
+fn start(o: &Opts, a: &ManagerStartArgs) -> Result<i32> {
     let cfg = runner_config()?;
+    let cwd = start_cwd(&cfg.dir, a.cwd.as_deref())?;
     apply_top(&cfg.dir, a.top_choice())
         .map_err(|e| Error::usage(format!("cannot update the top manager flag: {e}")))?;
     daemon::start_background(&cfg).map_err(rerr)?;
@@ -423,6 +433,22 @@ mod tests {
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
             .collect()
+    }
+
+    #[test]
+    fn without_cwd_the_manager_gets_a_private_folder_of_its_own() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            t.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
+        let run = t.path().join("run");
+        let dir = start_cwd(&run, None).unwrap();
+        assert!(dir.is_dir() && !dir.starts_with(&run));
+        assert_eq!(start_cwd(&run, None).unwrap(), dir);
+        let other = t.path().join("elsewhere");
+        assert_eq!(start_cwd(&run, Some(&other)).unwrap(), other);
     }
 
     fn start_args(extra: &[&str]) -> std::result::Result<ManagerStartArgs, clap::Error> {

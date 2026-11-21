@@ -444,6 +444,8 @@ struct Meta {
     spawn_card: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     spawned_by: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    name_auto: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -4564,7 +4566,12 @@ impl Runner {
         };
         let exempt = extra.no_sandbox.is_none() && self.is_exempt_dir(dir);
         if extra.no_sandbox.is_none() && !exempt {
-            clone::check_stores(dir).map_err(|(code, m)| api(code, m))?;
+            let checked = if extra.manager {
+                clone::check_stores_for_manager(dir)
+            } else {
+                clone::check_stores(dir)
+            };
+            checked.map_err(|(code, m)| api(code, m))?;
         }
         let _g = lock(&self.create_lock);
         let mut repo_trust_dropped = false;
@@ -5004,6 +5011,7 @@ impl Runner {
             manager: extra.manager,
             spawn_card: extra.spawn_card.clone(),
             spawned_by: None,
+            name_auto: false,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -5108,7 +5116,11 @@ impl Runner {
                 format!("a session is already named {name:?}"),
             ));
         }
-        lock(&s.inner).meta.name = name;
+        {
+            let mut i = lock(&s.inner);
+            i.meta.name = name;
+            i.meta.name_auto = false;
+        }
         s.persist();
         Ok(())
     }
