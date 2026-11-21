@@ -2,6 +2,7 @@ pub mod actions;
 pub mod api;
 pub mod chat;
 pub mod manager;
+pub mod mgr_rpc;
 pub mod proto;
 
 #[cfg(unix)]
