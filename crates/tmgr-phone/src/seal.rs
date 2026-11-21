@@ -113,11 +113,10 @@ fn derive(shared: &[u8], eph_pub: &[u8], recipient_pub: &[u8], ctx: &str) -> Res
     Aes256Gcm::new_from_slice(&key).map_err(|_| Error::OpenFailed)
 }
 
-pub fn seal_with(
+pub fn seal_ctx_with(
     recipient_kex_pub: &[u8],
-    mailbox: &str,
-    dir: Dir,
-    kind: Kind,
+    ctx: &str,
+    kind: &str,
     id: &str,
     plaintext: &[u8],
     ent: &Entropy,
@@ -126,12 +125,11 @@ pub fn seal_with(
     let eph = SecretKey::from_slice(&ent.eph_secret).map_err(|_| Error::BadKey)?;
     let eph_pub = eph.public_key().to_encoded_point(false);
     let shared = diffie_hellman(eph.to_nonzero_scalar(), recipient.as_affine());
-    let ctx = ctx(mailbox, dir, kind.as_str(), id);
     let cipher = derive(
         shared.raw_secret_bytes().as_slice(),
         eph_pub.as_bytes(),
         recipient_kex_pub,
-        &ctx,
+        ctx,
     )?;
     let ct = cipher
         .encrypt(
@@ -144,12 +142,31 @@ pub fn seal_with(
         .map_err(|_| Error::OpenFailed)?;
     Ok(Sealed {
         v: 1,
-        kind: kind.as_str().to_string(),
+        kind: kind.to_string(),
         id: id.to_string(),
         eph: b64(eph_pub.as_bytes()),
         nonce: b64(&ent.nonce),
         ct: b64(&ct),
     })
+}
+
+pub fn seal_with(
+    recipient_kex_pub: &[u8],
+    mailbox: &str,
+    dir: Dir,
+    kind: Kind,
+    id: &str,
+    plaintext: &[u8],
+    ent: &Entropy,
+) -> Result<Sealed> {
+    seal_ctx_with(
+        recipient_kex_pub,
+        &ctx(mailbox, dir, kind.as_str(), id),
+        kind.as_str(),
+        id,
+        plaintext,
+        ent,
+    )
 }
 
 pub fn seal(
@@ -171,6 +188,37 @@ pub fn seal(
     )
 }
 
+pub fn open_ctx(kex_secret: &[u8], ctx: &str, sealed: &Sealed) -> Result<Vec<u8>> {
+    if sealed.v != 1 {
+        return Err(Error::BadFormat);
+    }
+    let secret = SecretKey::from_slice(kex_secret).map_err(|_| Error::BadKey)?;
+    let own_pub = secret.public_key().to_encoded_point(false);
+    let eph_bytes = b64_decode(&sealed.eph)?;
+    let eph = parse_public(&eph_bytes)?;
+    let nonce = b64_decode(&sealed.nonce)?;
+    if nonce.len() != 12 {
+        return Err(Error::BadFormat);
+    }
+    let ct = b64_decode(&sealed.ct)?;
+    let shared = diffie_hellman(secret.to_nonzero_scalar(), eph.as_affine());
+    let cipher = derive(
+        shared.raw_secret_bytes().as_slice(),
+        &eph_bytes,
+        own_pub.as_bytes(),
+        ctx,
+    )?;
+    cipher
+        .decrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &ct,
+                aad: ctx.as_bytes(),
+            },
+        )
+        .map_err(|_| Error::OpenFailed)
+}
+
 pub fn open(
     kex_secret: &[u8],
     mailbox: &str,
@@ -185,35 +233,64 @@ pub fn open(
     let kind = Kind::parse(&sealed.kind)
         .filter(|k| expected.contains(k))
         .ok_or(Error::UnexpectedKind)?;
-    let secret = SecretKey::from_slice(kex_secret).map_err(|_| Error::BadKey)?;
-    let own_pub = secret.public_key().to_encoded_point(false);
-    let eph_bytes = b64_decode(&sealed.eph)?;
-    let eph = parse_public(&eph_bytes)?;
-    let nonce = b64_decode(&sealed.nonce)?;
-    if nonce.len() != 12 {
-        return Err(Error::BadFormat);
-    }
-    let ct = b64_decode(&sealed.ct)?;
-    let shared = diffie_hellman(secret.to_nonzero_scalar(), eph.as_affine());
-    let ctx = ctx(mailbox, dir, kind.as_str(), &sealed.id);
-    let cipher = derive(
-        shared.raw_secret_bytes().as_slice(),
-        &eph_bytes,
-        own_pub.as_bytes(),
-        &ctx,
+    let plaintext = open_ctx(
+        kex_secret,
+        &ctx(mailbox, dir, kind.as_str(), &sealed.id),
+        &sealed,
     )?;
-    let plaintext = cipher
-        .decrypt(
-            Nonce::from_slice(&nonce),
-            Payload {
-                msg: &ct,
-                aad: ctx.as_bytes(),
-            },
-        )
-        .map_err(|_| Error::OpenFailed)?;
     Ok(Opened {
         kind,
         id: sealed.id,
         plaintext,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ent() -> Entropy {
+        Entropy {
+            eph_secret: [3u8; 32],
+            nonce: [9u8; 12],
+        }
+    }
+
+    fn kex() -> ([u8; 32], Vec<u8>) {
+        let secret = [5u8; 32];
+        let public = SecretKey::from_slice(&secret)
+            .unwrap()
+            .public_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .to_vec();
+        (secret, public)
+    }
+
+    #[test]
+    fn typed_and_raw_ctx_seal_identically() {
+        let (_, public) = kex();
+        let old = seal_with(&public, "mb", Dir::D2p, Kind::Answer, "id1", b"hi", &ent()).unwrap();
+        let raw = seal_ctx_with(
+            &public,
+            &ctx("mb", Dir::D2p, "answer", "id1"),
+            "answer",
+            "id1",
+            b"hi",
+            &ent(),
+        )
+        .unwrap();
+        assert_eq!(old, raw);
+    }
+
+    #[test]
+    fn raw_ctx_round_trips_and_binds_ctx() {
+        let (secret, public) = kex();
+        let sealed = seal_ctx_with(&public, "any:ctx", "k", "i", b"data", &ent()).unwrap();
+        assert_eq!(open_ctx(&secret, "any:ctx", &sealed).unwrap(), b"data");
+        assert_eq!(
+            open_ctx(&secret, "any:ctx2", &sealed),
+            Err(Error::OpenFailed)
+        );
+    }
 }
