@@ -615,7 +615,14 @@ fn home_paths_become_tilde_in_cwd_summary_and_prompt() {
         "/Users/someone/proj/CLAUDE.md".into(),
         "/Users/someone/other/R.md".into(),
     ];
-    let chat = vec![msg("owner", ChatKind::Text, "see /Users/someone/z")];
+    let chat = vec![
+        msg("owner", ChatKind::Text, "see /Users/someone/z"),
+        msg(
+            "agent",
+            ChatKind::Text,
+            "edited `/Users/someone/proj/a.rs` and file:///Users/someone/q and **/home/someone/w**",
+        ),
+    ];
     let p = build_with(&src, session, &chat, &o);
     assert_eq!(p.cwd, "~/proj");
     let json = serde_json::to_string(&p).unwrap();

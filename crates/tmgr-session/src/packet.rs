@@ -223,7 +223,7 @@ fn home() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
         Regex::new(
-            r#"(?m)((?:^|[\s"'(=:\[,]))(?:/Users|/home)/[^/\s"')\]]+|[A-Za-z]:[\\/]Users[\\/][^\\/\s"')\]]+"#,
+            r#"(?mi)((?:^|[^A-Za-z0-9_.~-]))(?:(?:/Users|/home)/[^/\s"'`)\]>*|]+|[A-Za-z]:[\\/]Users[\\/][^\\/\s"'`)\]>*|]+)"#,
         )
         .expect("home")
     })
