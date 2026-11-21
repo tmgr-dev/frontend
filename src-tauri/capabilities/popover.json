@@ -1,0 +1,16 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "popover",
+	"description": "Tray popover: its own commands, Decisions list/answer and event listening.",
+	"windows": ["popover"],
+	"permissions": [
+		"core:event:allow-listen",
+		"core:event:allow-unlisten",
+		"allow-popover-state",
+		"allow-popover-action",
+		"allow-popover-quick-add",
+		"allow-popover-resize",
+		"allow-decisions-list",
+		"allow-decisions-answer"
+	]
+}

@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "popover-main",
+	"description": "Tray popover data feed: main window only.",
+	"windows": ["main"],
+	"permissions": ["allow-popover-extras-update"]
+}
