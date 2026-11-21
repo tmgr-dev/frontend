@@ -763,7 +763,16 @@ fn start(
         task = Some(resolved);
     }
     if let Value::Object(m) = &mut args {
-        m.insert("mode".into(), json!("default"));
+        let mode = if params.get("mode").and_then(Value::as_str) == Some("bypass") {
+            "bypass"
+        } else {
+            "default"
+        };
+        m.insert("mode".into(), json!(mode));
+        m.insert(
+            "no_sandbox".into(),
+            json!(params.get("no_sandbox").and_then(Value::as_bool) == Some(true)),
+        );
     }
     let name = match (string_param(params, "name"), &task) {
         (Some(n), _) => n.trim().to_string(),
@@ -782,6 +791,12 @@ fn start(
     start_run(conn, st, id, args, params, start, scope)
 }
 
+fn set_pin_word(args: &mut Value, word: &str) {
+    if let Value::Object(m) = args {
+        m.insert("pin".into(), json!(word));
+    }
+}
+
 fn string_param(params: &Value, key: &str) -> Option<String> {
     params.get(key).and_then(Value::as_str).map(str::to_string)
 }
@@ -796,11 +811,28 @@ struct StartRun<'a> {
     persona: Option<String>,
 }
 
+fn pin_refusal(verdict: crate::pin::Verdict) -> Option<(&'static str, String)> {
+    use crate::pin::Verdict;
+    match verdict {
+        Verdict::Ok => None,
+        Verdict::Unset => Some((
+            "unset",
+            "no PIN is set on this follower; set one there with `tmgr link pin set`".into(),
+        )),
+        Verdict::Locked => Some((
+            "locked",
+            "the follower PIN is locked after 5 wrong tries; unlock it there with `tmgr link pin reset`"
+                .into(),
+        )),
+        Verdict::Wrong { left } => Some(("wrong", format!("wrong follower PIN ({left} tries left)"))),
+    }
+}
+
 fn start_run(
     conn: &Conn,
     st: &mut State,
     id: Option<u64>,
-    args: Value,
+    mut args: Value,
     params: &Value,
     start: StartRun,
     scope: &Scope,
@@ -862,8 +894,40 @@ fn start_run(
         }
     }
     let live = live_count(&listed, &runs, conn.name, conn.enrollment);
-    if let Err(r) = scope::validate_run_method(method, params, &fresh, live) {
-        return deny(conn, method, args, id, r.code, &r.reason);
+    let accepted = match scope::validate_run_method(method, params, &fresh, live) {
+        Ok(a) => a,
+        Err(r) => return deny(conn, method, args, id, r.code, &r.reason),
+    };
+    if accepted.privileged() {
+        let pin = params
+            .get("pin")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        match crate::pin::verify(conn.paths, pin) {
+            Ok(verdict) => match pin_refusal(verdict) {
+                None => {
+                    set_pin_word(&mut args, "ok");
+                    if conn.record(method, args.clone(), "pin_ok", "").is_err() {
+                        return audit_down();
+                    }
+                }
+                Some((word, reason)) => {
+                    set_pin_word(&mut args, word);
+                    return deny(conn, method, args, id, "forbidden", &reason);
+                }
+            },
+            Err(_) => {
+                set_pin_word(&mut args, "error");
+                return deny(
+                    conn,
+                    method,
+                    args,
+                    id,
+                    "forbidden",
+                    "the follower PIN cannot be checked",
+                );
+            }
+        }
     }
     let mut req = RunCreateReq {
         manager: false,
@@ -886,7 +950,7 @@ fn start_run(
             link: conn.name.to_string(),
             generation,
         }),
-        permission_mode: None,
+        permission_mode: accepted.bypass.then(|| "bypass".to_string()),
         start_key: None,
         clone_of: None,
         trust_cwd: None,
@@ -896,7 +960,7 @@ fn start_run(
         unattended: false,
         exe_pin: None,
         argv_sha256: None,
-        no_sandbox: None,
+        no_sandbox: accepted.no_sandbox.then(tmgr_ipc::api::NoSandbox::default),
         external_resume: None,
         permission_cards: false,
     };
@@ -992,7 +1056,8 @@ fn start_run(
                 "agent": record.agent,
                 "persona": record.persona,
                 "model": record.model,
-                "mode": "default",
+                "mode": if accepted.bypass { "bypass" } else { "default" },
+                "no_sandbox": accepted.no_sandbox,
                 "method": method,
             }),
         )

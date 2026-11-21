@@ -12,7 +12,7 @@ use super::attach_layouts;
 use super::attach_links::{split_local, view_id, LinkMsg};
 use super::attach_new::{
     self, cloud_ref, default_folder, dialog_for, execute_task, in_agent, installed_kinds,
-    kind_label, lookup_cloud_task, place_session, prepare_task, registers_shell, remote_start,
+    kind_label, lookup_cloud_task, place_session, prepare_remote, prepare_task, registers_shell,
     route, spawn_size, start_session, NewFlow, RemoteStart, Route, SpawnErr, TaskReview,
 };
 use super::attach_notes;
@@ -2371,18 +2371,25 @@ impl App {
         });
         let tx = self.tx.clone();
         thread::spawn(move || {
+            let mut req = req;
             let cloud = match cloud_ref(&req).map(lookup_cloud_task) {
                 Some(Ok(task)) => Ok(Some(task)),
                 Some(Err(e)) => Err(e),
                 None => Ok(None),
             };
             let result = cloud.and_then(|cloud| {
-                let mut start = remote_start(&req, cloud.as_ref())?;
+                let mut start = prepare_remote(
+                    &req,
+                    cloud.as_ref(),
+                    in_agent(),
+                    &mut crate::os_auth::authenticate,
+                )?;
                 if prompt.is_some() {
                     start.prompt = prompt;
                 }
                 Ok(start)
             });
+            req.pin = None;
             let _ = tx.send(Msg::RemotePrepared {
                 flow,
                 result,
@@ -3737,6 +3744,7 @@ impl App {
             bypass: false,
             no_sandbox: false,
             host: None,
+            pin: None,
         };
         let (cols, rows) = spawn_size(content, req.place);
         self.notify(&format!("starting {}...", sanitize_text(&t.name)));
@@ -3794,6 +3802,7 @@ impl App {
             bypass: false,
             no_sandbox: false,
             host: Some(link),
+            pin: None,
         };
         let prompt = Some(launch.prompt).filter(|p| !p.trim().is_empty());
         self.begin_remote_spawn(None, req, target, prompt);
@@ -3998,6 +4007,7 @@ impl App {
                 bypass: false,
                 no_sandbox: false,
                 host: None,
+                pin: None,
             };
             let mut run_req = req.clone();
             if registers_shell(&req) {
@@ -6119,6 +6129,7 @@ mod tests {
                 bypass: false,
                 no_sandbox: false,
                 host: None,
+                pin: None,
             },
             target: "a".into(),
         })
@@ -6345,6 +6356,7 @@ mod tests {
                 bypass: false,
                 no_sandbox: false,
                 host: None,
+                pin: None,
             },
             target: "a".into(),
         })
@@ -6475,6 +6487,7 @@ mod tests {
                 bypass: false,
                 no_sandbox: false,
                 host: None,
+                pin: None,
             },
             target: "a".into(),
         };
@@ -6611,6 +6624,7 @@ mod tests {
             bypass: true,
             no_sandbox: true,
             host: None,
+            pin: None,
         }
     }
 

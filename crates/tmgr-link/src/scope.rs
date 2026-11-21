@@ -21,6 +21,10 @@ pub struct Scope {
     pub remote_control: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub include_bypass: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_bypass: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_no_sandbox: bool,
 }
 
 pub fn is_bypass_session(s: &tmgr_ipc::api::SessionInfo) -> bool {
@@ -61,7 +65,9 @@ impl Scope {
             && (self.models.is_empty() || self.models.iter().any(|m| !old.models.contains(m)));
         let input = self.allow_attach_input && !old.allow_attach_input;
         let remote = (self.remote_control && !old.remote_control)
-            || (self.include_bypass && !old.include_bypass);
+            || (self.include_bypass && !old.include_bypass)
+            || (self.allow_bypass && !old.allow_bypass)
+            || (self.allow_no_sandbox && !old.allow_no_sandbox);
         repos || agents || models || self.max > old.max || from || input || remote
     }
 
@@ -97,9 +103,16 @@ impl Scope {
             (true, true) => "remote control: on, bypass sessions included",
             (false, true) => "remote control: off (include-bypass has no effect)",
         };
+        let privileged = |on: bool| match (on, self.remote_control) {
+            (true, true) => "allowed with the PIN",
+            (true, false) => "forbidden (needs remote control)",
+            (false, _) => "forbidden",
+        };
         format!(
-            "{repos} · {agents} · {models} · max {} running · {from} · {input} · {remote} · bypass-permissions: forbidden",
-            self.max
+            "{repos} · {agents} · {models} · max {} running · {from} · {input} · {remote} · bypass-permissions: {} · no-sandbox: {}",
+            self.max,
+            privileged(self.allow_bypass),
+            privileged(self.allow_no_sandbox)
         )
     }
 }
@@ -163,6 +176,14 @@ impl Reject {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Accepted {
     pub repo: Option<String>,
+    pub bypass: bool,
+    pub no_sandbox: bool,
+}
+
+impl Accepted {
+    pub fn privileged(&self) -> bool {
+        self.bypass || self.no_sandbox
+    }
 }
 
 pub const AUDIT_VALUE_MAX: usize = 256;
@@ -193,6 +214,15 @@ pub fn audit_args(params: &Value) -> Value {
                     }
                     _ => {}
                 }
+            }
+            let asks = m.get("mode").and_then(Value::as_str) == Some("bypass")
+                || m.get("no_sandbox").and_then(Value::as_bool) == Some(true);
+            let has_pin = m
+                .get("pin")
+                .and_then(Value::as_str)
+                .is_some_and(|p| !p.is_empty());
+            if asks && !has_pin {
+                out.insert("pin".into(), Value::String("missing".into()));
             }
             Value::Object(out)
         }
@@ -391,6 +421,7 @@ fn validate_start(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result<
             "persona",
             "mode",
             "no_sandbox",
+            "pin",
         ],
     )?;
     let task = string(obj, "task")?;
@@ -427,27 +458,46 @@ fn validate_start(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result<
     if let Some(name) = string(obj, "name")? {
         valid_name(name)?;
     }
-    match string(obj, "mode")? {
-        None | Some("default") => {}
+    let bypass = match string(obj, "mode")? {
+        None | Some("default") => false,
+        Some("bypass") if scope.remote_control && scope.allow_bypass => true,
         Some("bypass") => {
             return Err(Reject::forbidden(
                 "bypass-permissions is not allowed on this follower",
             ))
         }
         Some(_) => return Err(Reject::bad("invalid mode")),
-    }
-    match obj.get("no_sandbox") {
-        None | Some(Value::Bool(false)) => {}
+    };
+    let no_sandbox = match obj.get("no_sandbox") {
+        None | Some(Value::Bool(false)) => false,
+        Some(Value::Bool(true)) if scope.remote_control && scope.allow_no_sandbox => true,
         Some(Value::Bool(true)) => {
             return Err(Reject::forbidden(
                 "running without the sandbox is not allowed on this follower",
             ))
         }
         Some(_) => return Err(Reject::bad("no_sandbox must be a boolean")),
+    };
+    let privileged = bypass || no_sandbox;
+    if obj.contains_key("pin") && !privileged {
+        return Err(Reject::bad("unknown parameter pin"));
+    }
+    let pin = string(obj, "pin")?;
+    if pin.is_some_and(|p| p.chars().count() > PIN_MAX) {
+        return Err(Reject::bad("invalid pin"));
     }
     let repo = required(obj, "repo")?;
-    check_scope(repo, agent, model, scope, live)
+    let mut accepted = check_scope(repo, agent, model, scope, live)?;
+    if privileged && pin.is_none_or(str::is_empty) {
+        return Err(Reject::forbidden(PIN_MISSING));
+    }
+    accepted.bypass = bypass;
+    accepted.no_sandbox = no_sandbox;
+    Ok(accepted)
 }
+
+const PIN_MAX: usize = 256;
+pub const PIN_MISSING: &str = "a privileged start needs the follower PIN";
 
 fn check_scope(
     repo: &str,
@@ -474,7 +524,10 @@ fn check_scope(
     if live >= scope.max {
         return Err(Reject::forbidden("max running runs reached"));
     }
-    Ok(Accepted { repo: Some(canon) })
+    Ok(Accepted {
+        repo: Some(canon),
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]
@@ -737,6 +790,163 @@ mod tests {
         }
     }
 
+    fn privileged_scope(repo: &str, remote: bool, bypass: bool, no_sandbox: bool) -> Scope {
+        Scope {
+            remote_control: remote,
+            allow_bypass: bypass,
+            allow_no_sandbox: no_sandbox,
+            ..scope(repo)
+        }
+    }
+
+    #[test]
+    fn privileged_starts_are_admitted_with_the_opt_in_remote_control_and_a_pin() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = privileged_scope(&repo, true, true, true);
+        let run = |p: &Value| validate_run_method("runs.start", p, &s, 0);
+        let mut p = start_with(&repo, "mode", json!("bypass"));
+        assert_eq!(
+            run(&p).unwrap_err().reason,
+            "a privileged start needs the follower PIN"
+        );
+        p["pin"] = json!("");
+        assert_eq!(
+            run(&p).unwrap_err().reason,
+            "a privileged start needs the follower PIN"
+        );
+        p["pin"] = json!("123456");
+        let a = run(&p).unwrap();
+        assert!(a.bypass && !a.no_sandbox && a.privileged());
+        let mut q = start_with(&repo, "no_sandbox", json!(true));
+        q["pin"] = json!("123456");
+        let a = run(&q).unwrap();
+        assert!(!a.bypass && a.no_sandbox);
+        p["pin"] = json!("x".repeat(PIN_MAX + 1));
+        assert_eq!(run(&p).unwrap_err().code, "bad_params");
+        p["pin"] = json!(7);
+        assert_eq!(run(&p).unwrap_err().code, "bad_params");
+        let mut outside = start_with(&repo, "mode", json!("bypass"));
+        outside["pin"] = json!("123456");
+        outside["agent"] = json!("other-agent");
+        assert_eq!(run(&outside).unwrap_err().reason, "agent is not allowed");
+        let one = privileged_scope(&repo, true, true, false);
+        assert!(validate_run_method("runs.start", &q, &one, 0).is_err());
+    }
+
+    #[test]
+    fn privileged_starts_are_refused_without_remote_control_or_the_opt_in_even_with_a_pin() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        for s in [
+            privileged_scope(&repo, false, true, true),
+            privileged_scope(&repo, true, false, false),
+            privileged_scope(&repo, false, false, false),
+        ] {
+            for (k, v, why) in [
+                (
+                    "mode",
+                    json!("bypass"),
+                    "bypass-permissions is not allowed on this follower",
+                ),
+                (
+                    "no_sandbox",
+                    json!(true),
+                    "running without the sandbox is not allowed on this follower",
+                ),
+            ] {
+                let mut p = start_with(&repo, k, v);
+                p["pin"] = json!("123456");
+                let e = validate_run_method("runs.start", &p, &s, 0).unwrap_err();
+                assert_eq!((e.code, e.reason.as_str()), ("forbidden", why));
+            }
+        }
+    }
+
+    #[test]
+    fn a_pin_without_a_privileged_request_is_an_unknown_parameter() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = privileged_scope(&repo, true, true, true);
+        let p = start_with(&repo, "pin", json!("123456"));
+        let e = validate_run_method("runs.start", &p, &s, 0).unwrap_err();
+        assert_eq!(
+            (e.code, e.reason.as_str()),
+            ("bad_params", "unknown parameter pin")
+        );
+    }
+
+    #[test]
+    fn create_keeps_refusing_bypass_even_when_it_is_opted_in() {
+        let d = crate::testutil::private_tempdir();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = privileged_scope(&repo, true, true, true);
+        let mut p = create(&repo);
+        p["mode"] = json!("bypass");
+        let e = validate_run_method("runs.create", &p, &s, 0).unwrap_err();
+        assert_eq!(e.reason, "bypass not allowed");
+    }
+
+    #[test]
+    fn an_old_scope_without_the_new_fields_reads_as_off_and_a_round_trip_keeps_them() {
+        let old: Scope = toml::from_str("repos = [\"/srv/a\"]\nremote_control = true\n").unwrap();
+        assert!(old.remote_control && !old.allow_bypass && !old.allow_no_sandbox);
+        let text = toml::to_string(&old).unwrap();
+        assert!(!text.contains("allow_bypass") && !text.contains("allow_no_sandbox"));
+        let on = Scope {
+            allow_bypass: true,
+            allow_no_sandbox: true,
+            ..old
+        };
+        let back: Scope = toml::from_str(&toml::to_string(&on).unwrap()).unwrap();
+        assert_eq!(back, on);
+    }
+
+    #[test]
+    fn turning_the_privileged_opt_ins_on_widens_and_the_summary_tells_the_truth() {
+        let base = Scope::default();
+        for f in [
+            |s: &mut Scope| s.allow_bypass = true,
+            |s: &mut Scope| s.allow_no_sandbox = true,
+        ] {
+            let mut on = base.clone();
+            f(&mut on);
+            assert!(on.widens(&base));
+            assert!(!base.widens(&on));
+        }
+        assert!(base.summary().contains("bypass-permissions: forbidden"));
+        let mut s = Scope {
+            allow_bypass: true,
+            ..Default::default()
+        };
+        assert!(s
+            .summary()
+            .contains("bypass-permissions: forbidden (needs remote control)"));
+        s.remote_control = true;
+        s.allow_no_sandbox = true;
+        let sum = s.summary();
+        assert!(sum.contains("bypass-permissions: allowed with the PIN"));
+        assert!(sum.contains("no-sandbox: allowed with the PIN"));
+    }
+
+    #[test]
+    fn audit_args_mark_a_privileged_request_without_a_pin_as_missing() {
+        let a = audit_args(&json!({"mode":"bypass"}));
+        assert_eq!(a, json!({"mode":"bypass","pin":"missing"}));
+        let a = audit_args(&json!({"mode":"bypass","pin":""}));
+        assert_eq!(a["pin"], "missing");
+        assert_eq!(
+            audit_args(&json!({"mode":"default"})),
+            json!({"mode":"default"})
+        );
+    }
+
+    #[test]
+    fn audit_args_never_copy_the_pin() {
+        let a = audit_args(&json!({"mode":"bypass","no_sandbox":true,"pin":"123456"}));
+        assert_eq!(a, json!({"mode":"bypass","no_sandbox":true}));
+    }
+
     #[test]
     fn start_refuses_bad_names_tasks_and_foreign_keys() {
         let d = crate::testutil::private_tempdir();
@@ -788,7 +998,10 @@ mod tests {
     #[test]
     fn audit_args_keep_a_boolean_no_sandbox_only() {
         let a = audit_args(&json!({"no_sandbox":true,"prompt":"x","mode":"default"}));
-        assert_eq!(a, json!({"no_sandbox":true,"mode":"default"}));
+        assert_eq!(
+            a,
+            json!({"no_sandbox":true,"mode":"default","pin":"missing"})
+        );
         assert_eq!(audit_args(&json!({"no_sandbox":"yes"})), json!({}));
     }
 

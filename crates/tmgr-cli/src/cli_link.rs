@@ -20,6 +20,19 @@ pub enum LinkCommand {
     Test { name: String },
     /// Show the local link audit log, or verify its hash chain
     Audit(AuditArgs),
+    /// The follower PIN that gates remote bypass and no-sandbox starts (local, interactive)
+    #[command(subcommand)]
+    Pin(PinCommand),
+}
+
+#[derive(Subcommand)]
+pub enum PinCommand {
+    /// Set or replace the follower PIN (asked twice, input hidden, at least 6 characters)
+    Set,
+    /// Clear the wrong-try counter and unlock the PIN (needs a terminal)
+    Reset,
+    /// Show whether a PIN is set and whether it is locked (never the PIN)
+    Status,
 }
 
 #[derive(Args)]
@@ -98,6 +111,12 @@ pub struct ScopeArgs {
     /// on|off. Extend remote control to sessions started with --no-sandbox or --mode bypass. Has no effect unless remote control is on. Turning it on needs a terminal and a typed confirmation; turning it off is always allowed
     #[arg(long, value_enum, value_name = "on|off")]
     pub include_bypass: Option<Switch>,
+    /// on|off. Let this leader start sessions with --mode bypass: the agent runs every tool without asking. Needs remote control on and the follower PIN at each start. Turning it on needs a terminal and a typed confirmation; turning it off is always allowed
+    #[arg(long, value_enum, value_name = "on|off")]
+    pub allow_bypass: Option<Switch>,
+    /// on|off. Let this leader start sessions with --no-sandbox: the agent gets full access to this machine's files, network and keychain-accessible data as your user. Needs remote control on and the follower PIN at each start. Turning it on needs a terminal and a typed confirmation; turning it off is always allowed
+    #[arg(long, value_enum, value_name = "on|off")]
+    pub allow_no_sandbox: Option<Switch>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

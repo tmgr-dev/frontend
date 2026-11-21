@@ -296,7 +296,9 @@ mod tests {
         #[test]
         fn mode_conflicts_with_agent_cmd_and_on() {
             assert!(parse(&["run", "--agent-cmd", "ls", "--mode", "bypass"]).is_err());
-            assert!(parse(&["run", "TM-1", "--agent", "x", "--on", "l", "--mode", "ask"]).is_err());
+            assert!(
+                parse(&["run", "TM-1", "--agent", "x", "--on", "l", "--mode", "bypass"]).is_ok()
+            );
         }
 
         #[test]
@@ -318,7 +320,7 @@ mod tests {
             .is_ok());
             assert!(parse(&["run", "--no-sandbox"]).is_err());
             assert!(parse(&["run", "--agent-cmd", "ls", "--no-sandbox"]).is_err());
-            assert!(parse(&["run", "TM-1", "--agent", "x", "--on", "l", "--no-sandbox"]).is_err());
+            assert!(parse(&["run", "TM-1", "--agent", "x", "--on", "l", "--no-sandbox"]).is_ok());
             assert!(parse(&["run", "--agent", "x", "--no-sandbox", "--trust"]).is_err());
         }
     }

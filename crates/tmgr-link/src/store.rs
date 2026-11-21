@@ -55,6 +55,14 @@ impl Paths {
         self.config.join("link")
     }
 
+    pub fn pin_file(&self) -> PathBuf {
+        self.link_dir().join("pin.toml")
+    }
+
+    pub fn pin_lock(&self) -> PathBuf {
+        self.link_dir().join("pin.lock")
+    }
+
     pub fn audit_dir(&self) -> PathBuf {
         self.state.join("link-audit")
     }
