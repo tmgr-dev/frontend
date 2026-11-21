@@ -142,6 +142,20 @@
 				}
 			};
 
+			const releaseHover = (keep: Set<string>) => {
+				for (const [toastId, state] of [...pointer]) {
+					if (keep.has(toastId)) continue;
+					pointer.delete(toastId);
+					if (state.hover || state.focus) {
+						void toastHover(toastId, false).catch(() => undefined);
+					}
+				}
+			};
+			const onBlur = () => releaseHover(new Set());
+			const onVisibility = () => {
+				if (document.hidden) releaseHover(new Set());
+			};
+
 			const expand = () => {
 				void toastExpand().catch(() => undefined);
 			};
@@ -151,9 +165,12 @@
 					observer = new ResizeObserver(report);
 					observer.observe(root.value);
 				}
+				window.addEventListener('blur', onBlur);
+				document.addEventListener('visibilitychange', onVisibility);
 				timer = setInterval(() => (clock.value = Date.now()), 30_000);
 				unlisten = await onToastList((next) => {
 					list.value = next;
+					releaseHover(new Set(next.visible.map((item) => item.id)));
 					clock.value = Date.now();
 				});
 				try {
@@ -166,6 +183,8 @@
 
 			onBeforeUnmount(() => {
 				unlisten?.();
+				window.removeEventListener('blur', onBlur);
+				document.removeEventListener('visibilitychange', onVisibility);
 				observer?.disconnect();
 				if (timer) clearInterval(timer);
 			});

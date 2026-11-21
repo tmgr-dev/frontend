@@ -20,6 +20,7 @@ const MAX_EXPANDED: usize = 6;
 const MAX_QUEUE: usize = 50;
 const MISSED_CAP: usize = 20;
 const DEFAULT_TTL_MS: u64 = 10_000;
+const MAX_PAUSE_MS: i64 = 60_000;
 const MAX_ACTIONS: usize = 4;
 const MAX_ID: usize = 128;
 const MAX_TITLE: usize = 120;
@@ -136,6 +137,7 @@ struct Entry {
   total_ms: Option<u64>,
   expires_at: Option<i64>,
   paused_left: Option<i64>,
+  paused_at: Option<i64>,
 }
 
 impl Entry {
@@ -147,10 +149,14 @@ impl Entry {
   fn set_hover(&mut self, hovering: bool, now_ms: i64) -> bool {
     let Some(left) = self.remaining(now_ms) else { return false };
     match (hovering, self.paused_left) {
-      (true, None) => self.paused_left = Some(left),
+      (true, None) => {
+        self.paused_left = Some(left);
+        self.paused_at = Some(now_ms);
+      }
       (false, Some(_)) => {
         self.expires_at = Some(now_ms + left);
         self.paused_left = None;
+        self.paused_at = None;
       }
       _ => return false,
     }
@@ -181,7 +187,7 @@ impl Inner {
     self.queue.retain(|e| e.toast.id != toast.id);
     let total_ms = effective_ttl(toast.ttl_ms);
     let expires_at = total_ms.map(|ttl| now_ms + ttl as i64);
-    self.queue.insert(0, Entry { toast, at_ms: now_ms, total_ms, expires_at, paused_left: None });
+    self.queue.insert(0, Entry { toast, at_ms: now_ms, total_ms, expires_at, paused_left: None, paused_at: None });
     self.queue.truncate(MAX_QUEUE);
   }
 
@@ -210,7 +216,19 @@ impl Inner {
     before != (self.queue.clone(), self.missed.len())
   }
 
+  fn release_pauses(&mut self, now_ms: i64, visible: usize) -> bool {
+    let mut any = false;
+    for (index, entry) in self.queue.iter_mut().enumerate() {
+      let stale = entry.paused_at.is_some_and(|at| now_ms - at >= MAX_PAUSE_MS);
+      if index >= visible || stale {
+        any |= entry.set_hover(false, now_ms);
+      }
+    }
+    any
+  }
+
   fn expire(&mut self, now_ms: i64) -> bool {
+    let released = self.release_pauses(now_ms, if self.expanded { MAX_EXPANDED } else { MAX_VISIBLE });
     let (gone, kept): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.queue)
       .into_iter()
       .partition(|e| e.paused_left.is_none() && e.expires_at.is_some_and(|at| now_ms >= at));
@@ -219,7 +237,7 @@ impl Inner {
     for entry in gone.into_iter().rev() {
       self.defer(entry.toast, now_ms);
     }
-    any
+    any || released
   }
 
   fn hover(&mut self, id: &str, hovering: bool, now_ms: i64) -> bool {
@@ -231,6 +249,10 @@ impl Inner {
     self.queue.retain(|e| e.toast.id != id);
     self.missed.retain(|x| x.id != id);
     (q, m) != (self.queue.len(), self.missed.len())
+  }
+
+  fn has_decisions(&self) -> bool {
+    self.queue.iter().any(|e| e.toast.decision_id().is_some()) || self.missed.iter().any(|m| m.decision_id.is_some())
   }
 
   fn remove_decision(&mut self, decision_id: &str) -> bool {
@@ -327,7 +349,10 @@ fn render<R: Runtime>(app: &AppHandle<R>) {
     if state.queue.is_empty() {
       state.expanded = false;
     }
-    payload_of(&state, now_ms())
+    let now = now_ms();
+    let shown = if state.expanded { MAX_EXPANDED } else { MAX_VISIBLE };
+    state.release_pauses(now, shown);
+    payload_of(&state, now)
   };
   let empty = payload.visible.is_empty();
   let _ = app.emit_to(LABEL, "toast://list", &payload);
@@ -393,7 +418,7 @@ pub fn dismiss<R: Runtime>(app: &AppHandle<R>, id: &str) {
 pub fn has_decision_toasts<R: Runtime>(app: &AppHandle<R>) -> bool {
   let Some(store) = app.try_state::<ToastStore>() else { return false };
   let state = store.state.lock().unwrap();
-  state.queue.iter().any(|e| e.toast.decision_id().is_some())
+  state.has_decisions()
 }
 
 pub fn sync_decisions<R: Runtime>(app: &AppHandle<R>, open: &HashMap<String, (i64, Vec<DecisionOption>)>) {
@@ -522,7 +547,7 @@ pub fn idle_toast(task_title: &str, elapsed_secs: i64, idle_secs: i64, away_sinc
       ToastAction { id: "keep".to_owned(), label: "Keep going".to_owned(), primary: false },
       ToastAction { id: "stop-at".to_owned(), label: format!("Stop at {minutes} min ago"), primary: false },
     ],
-    ttl_ms: None,
+    ttl_ms: Some(None),
     data: Some(json!({ "awaySince": away_since })),
   })
 }
@@ -758,6 +783,56 @@ mod tests {
     assert!(!s.expire(55_999));
     assert!(s.expire(56_000));
     assert!(!s.hover("a", true, 60_000));
+  }
+
+  #[test]
+  fn missed_decisions_count_as_decision_toasts() {
+    let mut s = Inner::default();
+    assert!(!s.has_decisions());
+    let mut t = toast("decision:d", Kind::Decision);
+    t.data = Some(json!({"decisionId": "d"}));
+    s.defer(t, 0);
+    assert!(s.has_decisions());
+    assert!(s.sync_decisions(&HashMap::new()));
+    assert!(!s.has_decisions());
+  }
+
+  #[test]
+  fn idle_toast_is_sticky() {
+    let t = idle_toast("TM-1 x", 60, 60, 0, 0);
+    assert_eq!(effective_ttl(t.ttl_ms), None);
+    let mut s = Inner::default();
+    s.enqueue(t, 0);
+    assert!(!s.expire(3_600_000));
+    assert_eq!(s.queue.len(), 1);
+  }
+
+  #[test]
+  fn pushed_out_toast_loses_its_pause() {
+    let mut s = Inner::default();
+    s.enqueue(toast("a", Kind::Agent), 0);
+    assert!(s.hover("a", true, 1_000));
+    for id in ["b", "c"] {
+      s.enqueue(toast(id, Kind::Agent), 2_000);
+    }
+    assert_eq!(s.queue[2].toast.id, "a");
+    assert!(s.release_pauses(3_000, MAX_VISIBLE));
+    assert_eq!(s.queue[2].paused_left, None);
+    assert_eq!(s.queue[2].remaining(3_000), Some(9_000));
+  }
+
+  #[test]
+  fn pause_is_capped_at_sixty_seconds() {
+    let mut s = Inner::default();
+    s.enqueue(toast("a", Kind::Agent), 0);
+    assert!(s.hover("a", true, 1_000));
+    assert!(!s.expire(60_999));
+    assert!(s.queue[0].paused_left.is_some());
+    assert!(s.expire(61_000));
+    assert_eq!(s.queue[0].paused_left, None);
+    assert!(!s.expire(61_001));
+    assert!(s.expire(61_000 + 9_001));
+    assert_eq!(s.missed.len(), 1);
   }
 
   #[test]
