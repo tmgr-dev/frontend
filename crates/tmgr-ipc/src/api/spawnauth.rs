@@ -39,3 +39,49 @@ pub struct SpawnCardResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
+
+/// One spawn key of a phone, `state` is `pending` or `approved`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnKeyInfo {
+    pub device_fp: String,
+    pub device_id: String,
+    pub spawn_key_fp: String,
+    pub state: String,
+    pub issued_at_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced_at_ms: Option<u64>,
+}
+
+/// Result of `spawn.keys.list` (`client: "cli"` only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnKeysList {
+    pub keys: Vec<SpawnKeyInfo>,
+}
+
+/// Params of `spawn.keys.approve` (`client: "cli"` only); both fingerprints may be prefixes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnKeysApproveParams {
+    pub device_fp: String,
+    pub spawn_key_fp: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnKeysApproveResult {
+    pub device_fp: String,
+}
+
+/// Params of `spawn.keys.revoke` (`client: "cli"` only); `device_fp` may be a prefix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnKeysRevokeParams {
+    pub device_fp: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnKeysRevokeResult {
+    pub device_fp: String,
+    pub device_id: String,
+    pub spawn_key_fp: String,
+    pub state: String,
+}

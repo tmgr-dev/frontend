@@ -158,7 +158,7 @@ impl TrustSource for RelayTrust {
 }
 
 impl SpawnGate {
-    fn auth(&self, rt: &Runner) -> Result<Arc<SpawnAuth>, String> {
+    pub(super) fn auth(&self, rt: &Runner) -> Result<Arc<SpawnAuth>, String> {
         #[cfg(test)]
         if let Some(a) = lock(&self.fixed).clone() {
             return Ok(a);

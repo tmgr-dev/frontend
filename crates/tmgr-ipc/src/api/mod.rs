@@ -171,6 +171,9 @@ pub mod method {
     pub const SESSIONS_SWITCH: &str = "sessions.switch";
     pub const SPAWN_CHALLENGE: &str = "spawn.challenge";
     pub const SPAWN_CARD: &str = "spawn.card";
+    pub const SPAWN_KEYS_LIST: &str = "spawn.keys.list";
+    pub const SPAWN_KEYS_APPROVE: &str = "spawn.keys.approve";
+    pub const SPAWN_KEYS_REVOKE: &str = "spawn.keys.revoke";
 }
 
 pub mod limits {

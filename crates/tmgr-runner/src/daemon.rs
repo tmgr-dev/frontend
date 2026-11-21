@@ -68,6 +68,7 @@ mod checkpoints;
 mod handoff;
 mod manager;
 mod spawnauth;
+mod spawnkeys;
 mod switch;
 
 const MAX_CONNS: usize = 64;
@@ -2994,6 +2995,9 @@ impl Runner {
             }
             method::SPAWN_CHALLENGE => self.spawn_challenge_call(conn, p),
             method::SPAWN_CARD => self.spawn_card_call(conn, p),
+            method::SPAWN_KEYS_LIST | method::SPAWN_KEYS_APPROVE | method::SPAWN_KEYS_REVOKE => {
+                self.spawn_keys_call(conn, req.method.as_str(), p)
+            }
             method::SESSIONS_WORKLOG => {
                 let s = self
                     .session(&session_id_param(p)?)
