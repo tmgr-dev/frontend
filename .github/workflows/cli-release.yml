@@ -21,7 +21,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       dry_run: ${{ steps.v.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: v
         run: |
@@ -85,7 +85,7 @@ jobs:
       TARGET: ${{ matrix.target }}
       TMGR_BUILD_COMMIT: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: musl tools
         if: contains(matrix.target, 'linux-musl')
@@ -207,7 +207,7 @@ jobs:
       CLI_VERSION: ${{ needs.meta.outputs.version }}
       DRY_RUN: ${{ needs.meta.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
