@@ -76,9 +76,34 @@ fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {
   }
 }
 
+/// Flip once the chat-relay backend (Liquibase 230) ships and `relay_engine` has a real login token and user id.
+const RELAY_ENABLED: bool = false;
+
+fn select_relay(
+  enabled: bool,
+  engine: impl FnOnce() -> Result<Arc<dyn relay::port::RelayPort>, String>,
+) -> Arc<dyn relay::port::RelayPort> {
+  if !enabled {
+    return Arc::new(relay::port::NoRelay);
+  }
+  engine().unwrap_or_else(|e| {
+    log::warn!("[manager] chat relay unavailable: {e}");
+    Arc::new(relay::port::NoRelay)
+  })
+}
+
+fn relay_engine<R: Runtime>(_app: &AppHandle<R>) -> Result<Arc<dyn relay::port::RelayPort>, String> {
+  // The login JWT and the user id live only in the web UI; no Rust-side source exists yet, so there is nothing
+  // to feed `RelayEngine::<HttpTransport, KeychainStore>::new` and `HttpTransport::new` with.
+  Err("no login token or user id is available to the desktop backend".to_owned())
+}
+
+fn build_relay<R: Runtime>(app: &AppHandle<R>) -> Arc<dyn relay::port::RelayPort> {
+  select_relay(RELAY_ENABLED, || relay_engine(app))
+}
+
 pub fn setup<R: Runtime>(app: &AppHandle<R>) {
-  // STUB: NoRelay until the chat-relay backend (Liquibase 230) ships and a real Transport exists
-  let relay: Arc<dyn relay::port::RelayPort> = Arc::new(relay::port::NoRelay);
+  let relay = build_relay(app);
   let backend: Arc<dyn ManagerBackend> = match app.try_state::<crate::runner::Runner>() {
     Some(runner) => {
       let handle = app.clone();
@@ -170,4 +195,26 @@ pub async fn manager_reset_identity<R: Runtime>(app: AppHandle<R>) -> Result<(),
   blocking(move || relay.reset_identity()).await?;
   trust_changed(&app);
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn relay_is_off_by_default_and_never_builds_the_engine() {
+    let relay = select_relay(RELAY_ENABLED, || panic!("engine must not be built"));
+    assert_eq!(relay.reset_identity().unwrap_err(), "chat sync is not set up");
+  }
+
+  #[test]
+  fn enabled_relay_falls_back_to_no_relay_when_the_engine_fails() {
+    let called = std::cell::Cell::new(false);
+    let relay = select_relay(true, || {
+      called.set(true);
+      Err("no login".into())
+    });
+    assert!(called.get());
+    assert_eq!(relay.reset_identity().unwrap_err(), "chat sync is not set up");
+  }
 }
