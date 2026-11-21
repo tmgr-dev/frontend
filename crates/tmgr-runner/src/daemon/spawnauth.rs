@@ -331,12 +331,15 @@ pub(super) struct SpawnKeyInbox {
 
 impl SpawnKeySink for SpawnKeyInbox {
     fn deliver_spawnkey(&self, from: &str, _: &str, sign_pub: &str, kex_pub: &str, key: &SpawnKey) {
-        let _ = self.tx.try_send(KeyItem {
+        let sent = self.tx.try_send(KeyItem {
             device_id: from.to_owned(),
             sign_pub: sign_pub.to_owned(),
             kex_pub: kex_pub.to_owned(),
             key: key.clone(),
         });
+        if sent.is_err() {
+            log("spawn approval: a spawn key statement was dropped, the intake is busy or stopped");
+        }
     }
 }
 
@@ -348,8 +351,10 @@ impl Runner {
             .name("spawnkey-intake".into())
             .spawn(move || {
                 while !rt.stop.load(Ordering::SeqCst) {
-                    let Ok(item) = rx.recv_timeout(KEY_TICK) else {
-                        continue;
+                    let item = match rx.recv_timeout(KEY_TICK) {
+                        Ok(item) => item,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     };
                     let Ok(auth) = rt.spawn_gate.auth(&rt) else {
                         continue;
