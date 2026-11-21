@@ -21,6 +21,7 @@ tmgr-ipc.workspace = true
 ssh-key = { version = "0.6", default-features = false, features = ["std", "ed25519", "rand_core"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 libc.workspace = true
+argon2 = { version = "=0.5.3", default-features = false, features = ["alloc", "password-hash", "std"] }
 
 [dev-dependencies]
 keyring.workspace = true
