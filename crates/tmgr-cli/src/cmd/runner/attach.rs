@@ -4641,6 +4641,10 @@ impl App {
         if self.view.perm_tick() {
             self.dirty = true;
         }
+        let polls = self.view.chat_poll(now_ms());
+        if !polls.is_empty() {
+            self.chat_actions(polls);
+        }
         if self
             .send_enter
             .as_ref()

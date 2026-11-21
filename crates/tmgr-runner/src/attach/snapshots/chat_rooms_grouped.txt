@@ -1,0 +1,16 @@
+╭ Chat ────────────────────────────────────────────────────────────────────────────────────────────╮
+│This machine                  │No messages yet                                                    │
+│  Manager                     │                                                                   │
+│  working                     │                                                                   │
+│  api-fix                     │                                                                   │
+│  claude-code · 42% · working │                                                                   │
+│laptop                        │                                                                   │
+│  Manager                     │                                                                   │
+│  working                     │                                                                   │
+│build box                     │                                                                   │
+│  Manager                     │                                                                   │
+│  working                     │                                                                   │
+│                              │                                                                   │
+│                              │>                                                                  │
+╰ Esc close · Up/Down room · PgUp older · Enter send ──────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1            drag copies  Ctrl-] ? help

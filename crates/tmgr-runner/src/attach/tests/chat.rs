@@ -407,3 +407,131 @@ fn long_lines_wrap_at_words_and_break_unbroken_tokens() {
     assert_eq!(wrap_words("abcdefghij", 4), vec!["abcd", "efgh", "ij"]);
     assert_eq!(wrap_words("a\n\nb", 10), vec!["a", "", "b"]);
 }
+
+const PEER_A: &str = "mx_aaaaaaaaaaaaaaaa";
+const PEER_B: &str = "mx_bbbbbbbbbbbbbbbb";
+
+fn remote_manager(machine: &str) -> RoomRef {
+    RoomRef {
+        kind: RoomKind::Manager,
+        machine: machine.into(),
+        session: None,
+    }
+}
+
+fn grouped_rooms() -> Vec<RoomInfo> {
+    vec![
+        info(manager_room(), "Manager", None, None),
+        info(
+            session_room("s_aaaaaaaaaa"),
+            "api-fix",
+            Some("claude-code"),
+            Some(42),
+        ),
+        info(remote_manager(PEER_A), "laptop", None, None),
+        info(remote_manager(PEER_B), "build box", None, None),
+    ]
+}
+
+fn grouped() -> ChatState {
+    let mut c = ChatState::new().with_offset(0);
+    c.set_rooms(grouped_rooms());
+    c
+}
+
+fn on_peer_a() -> ChatState {
+    let mut v = view_with(grouped());
+    type_keys(&mut v, &[b"\x1b[B", b"\x1b[B"]);
+    v.chat.take().unwrap()
+}
+
+#[test]
+fn snapshot_room_list_grouped_by_machine() {
+    let mut c = grouped();
+    c.history(&manager_room(), None, Ok(Vec::new()));
+    let v = view_with(c);
+    assert_snapshot("chat_rooms_grouped", &draw(&v, &screens(), 100, 16));
+}
+
+#[test]
+fn headers_are_skipped_by_the_arrow_keys() {
+    let mut v = view_with(grouped());
+    let mut seen = vec![v.chat.as_ref().unwrap().selected().cloned().unwrap()];
+    for _ in 0..4 {
+        v.edit_chat(b"\x1b[B");
+        seen.push(v.chat.as_ref().unwrap().selected().cloned().unwrap());
+    }
+    assert_eq!(
+        seen,
+        vec![
+            manager_room(),
+            session_room("s_aaaaaaaaaa"),
+            remote_manager(PEER_A),
+            remote_manager(PEER_B),
+            remote_manager(PEER_B),
+        ]
+    );
+    for _ in 0..4 {
+        v.edit_chat(b"\x1b[A");
+    }
+    assert_eq!(v.chat.as_ref().unwrap().selected(), Some(&manager_room()));
+}
+
+#[test]
+fn without_remote_rooms_there_are_no_headers() {
+    let mut c = ready();
+    c.history(&manager_room(), None, Ok(Vec::new()));
+    let text = draw(&view_with(c), &screens(), 100, 16);
+    assert!(!text.contains("This machine"));
+}
+
+#[test]
+fn a_selected_remote_room_is_polled_every_15_seconds() {
+    let mut c = on_peer_a();
+    c.history(&remote_manager(PEER_A), None, Ok(Vec::new()));
+    assert_eq!(c.poll(100_000), None);
+    assert_eq!(c.poll(114_999), None);
+    assert_eq!(
+        c.poll(115_000),
+        Some(ChatAction::Load {
+            room: remote_manager(PEER_A),
+            before: None
+        })
+    );
+    assert_eq!(c.poll(131_000), None);
+    c.history(&remote_manager(PEER_A), None, Ok(Vec::new()));
+    assert_eq!(c.poll(129_999), None);
+    assert!(c.poll(130_000).is_some());
+}
+
+#[test]
+fn a_local_room_is_never_polled() {
+    let mut c = grouped();
+    c.history(&manager_room(), None, Ok(Vec::new()));
+    assert_eq!(c.poll(0), None);
+    assert_eq!(c.poll(1_000_000), None);
+}
+
+#[test]
+fn paging_up_in_a_remote_room_does_not_ask_for_older_messages() {
+    let mut c = on_peer_a();
+    let room = remote_manager(PEER_A);
+    let list: Vec<ChatMessage> = (0..HISTORY_LIMIT as u64)
+        .map(|n| msg(n, room.clone(), AuthorKind::Manager, MessageKind::Text, "x"))
+        .collect();
+    c.history(&room, None, Ok(list));
+    let mut v = view_with(c);
+    assert!(type_keys(&mut v, &[b"\x1b[5~", b"\x1b[5~"]).is_empty());
+}
+
+#[test]
+fn grouped_chat_renders_at_every_small_size() {
+    let mut c = grouped();
+    c.history(&manager_room(), None, Ok(Vec::new()));
+    let v = view_with(c);
+    for w in [1u16, 10, 20, 40, 56, 80] {
+        for h in [1u16, 4, 8, 12] {
+            draw(&v, &screens(), w, h);
+        }
+    }
+}

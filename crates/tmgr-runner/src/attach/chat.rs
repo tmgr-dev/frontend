@@ -17,6 +17,8 @@ pub const BUSY_STATUS: &str = "Session is busy, try again when it is at its prom
 const MAX_INPUT: usize = 4000;
 const LIST_W: u16 = 30;
 const MIN_WIDE: u16 = 56;
+const POLL_MS: u64 = 15_000;
+const LOCAL_GROUP: &str = "This machine";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChatPhase {
@@ -60,6 +62,8 @@ pub struct ChatState {
     pub rooms: Vec<RoomEntry>,
     pub sel: usize,
     threads: HashMap<RoomRef, Thread>,
+    local: Option<String>,
+    polled: Option<(RoomRef, u64)>,
     input: Vec<char>,
     cur: usize,
     status: String,
@@ -118,6 +122,8 @@ impl ChatState {
             rooms: Vec::new(),
             sel: 0,
             threads: HashMap::new(),
+            local: None,
+            polled: None,
             input: Vec::new(),
             cur: 0,
             status: String::new(),
@@ -160,6 +166,39 @@ impl ChatState {
         self.threads.get(room).map_or(&[], |t| t.msgs.as_slice())
     }
 
+    fn is_remote(&self, room: &RoomRef) -> bool {
+        self.local.as_ref().is_some_and(|l| &room.machine != l)
+    }
+
+    fn grouped(&self) -> bool {
+        self.rooms.iter().any(|r| self.is_remote(&r.info.room))
+    }
+
+    pub fn poll(&mut self, now_ms: u64) -> Option<ChatAction> {
+        if self.phase != ChatPhase::Ready {
+            return None;
+        }
+        let room = self.selected()?.clone();
+        if !self.is_remote(&room) {
+            self.polled = None;
+            return None;
+        }
+        let due = match &self.polled {
+            Some((r, at)) if *r == room => now_ms.saturating_sub(*at) >= POLL_MS,
+            _ => {
+                self.polled = Some((room.clone(), now_ms));
+                false
+            }
+        };
+        let th = self.thread(&room);
+        if !due || th.loading || !th.loaded {
+            return None;
+        }
+        th.loading = true;
+        self.polled = Some((room.clone(), now_ms));
+        Some(ChatAction::Load { room, before: None })
+    }
+
     fn say(&mut self, text: &str, bad: bool) {
         self.status = text.to_string();
         self.status_bad = bad;
@@ -171,6 +210,7 @@ impl ChatState {
 
     pub fn set_rooms(&mut self, rooms: Vec<RoomInfo>) -> Option<ChatAction> {
         let keep = self.selected().cloned();
+        self.local = rooms.first().map(|r| r.room.machine.clone());
         let unread: HashSet<RoomRef> = self
             .rooms
             .iter()
@@ -184,7 +224,19 @@ impl ChatState {
                 info,
             })
             .collect();
-        entries.sort_by_key(|r| !is_manager(&r.info));
+        let local = self.local.clone();
+        let mut remotes: Vec<String> = Vec::new();
+        for e in &entries {
+            let m = &e.info.room.machine;
+            if Some(m) != local.as_ref() && !remotes.contains(m) {
+                remotes.push(m.clone());
+            }
+        }
+        entries.sort_by_key(|r| {
+            let m = &r.info.room.machine;
+            let group = remotes.iter().position(|x| x == m).map_or(0, |i| i + 1);
+            (group, !is_manager(&r.info))
+        });
         self.rooms = entries;
         self.sel = keep
             .and_then(|k| self.rooms.iter().position(|r| r.info.room == k))
@@ -326,6 +378,9 @@ impl ChatState {
 
     fn page_up(&mut self) -> Option<ChatAction> {
         let room = self.selected()?.clone();
+        if self.is_remote(&room) {
+            return None;
+        }
         let (total, height) = self.metrics.get();
         let page = height.saturating_sub(1).max(1);
         let max = total.saturating_sub(height);
@@ -439,6 +494,14 @@ impl ViewState {
             out.extend(chat.key(&key));
         }
         out
+    }
+
+    pub fn chat_poll(&mut self, now_ms: u64) -> Vec<ChatAction> {
+        self.chat
+            .as_mut()
+            .and_then(|c| c.poll(now_ms))
+            .into_iter()
+            .collect()
     }
 
     pub fn insert_chat_text(&mut self, data: &[u8]) {
@@ -595,53 +658,113 @@ fn room_meta(info: &RoomInfo) -> String {
     parts.join(" \u{b7} ")
 }
 
-fn draw_list(buf: &mut Buffer, rect: Rect, chat: &ChatState) {
-    let per = 2u16;
-    let visible = usize::from(rect.height / per).max(1);
-    let first = (chat.sel + 1).saturating_sub(visible);
-    for (i, entry) in chat.rooms.iter().enumerate().skip(first).take(visible) {
-        let y = rect.y + (i - first) as u16 * per;
-        let selected = i == chat.sel;
-        let base = if selected {
-            Style::new().add_modifier(Modifier::REVERSED)
-        } else {
-            Style::new()
-        };
-        let dot = if entry.unread { "\u{25cf} " } else { "  " };
-        let dot_style = if entry.unread {
-            base.fg(colors().accent)
-        } else {
-            base
-        };
-        for dy in 0..per {
-            put(
-                buf,
-                rect.x,
-                y + dy,
-                &" ".repeat(rect.width.into()),
-                base,
-                rect.width,
-            );
+enum ListItem<'a> {
+    Header(&'a str),
+    Room(usize),
+}
+
+fn list_items(chat: &ChatState) -> Vec<ListItem<'_>> {
+    if !chat.grouped() {
+        return (0..chat.rooms.len()).map(ListItem::Room).collect();
+    }
+    let mut items = Vec::new();
+    let mut group: Option<&str> = None;
+    for (i, e) in chat.rooms.iter().enumerate() {
+        let m = e.info.room.machine.as_str();
+        if group != Some(m) {
+            group = Some(m);
+            items.push(ListItem::Header(if chat.is_remote(&e.info.room) {
+                e.info.title.as_str()
+            } else {
+                LOCAL_GROUP
+            }));
         }
-        let x = put(buf, rect.x, y, dot, dot_style, rect.width);
+        items.push(ListItem::Room(i));
+    }
+    items
+}
+
+fn draw_list(buf: &mut Buffer, rect: Rect, chat: &ChatState) {
+    let items = list_items(chat);
+    let height = |it: &ListItem| match it {
+        ListItem::Header(_) => 1u16,
+        ListItem::Room(_) => 2,
+    };
+    let sel_item = items
+        .iter()
+        .position(|it| matches!(it, ListItem::Room(i) if *i == chat.sel))
+        .unwrap_or(0);
+    let mut first = sel_item;
+    let mut used = items.get(sel_item).map_or(0, height);
+    while first > 0 && used + height(&items[first - 1]) <= rect.height {
+        first -= 1;
+        used += height(&items[first]);
+    }
+    let mut y = rect.y;
+    for item in items.iter().skip(first) {
+        if y + height(item) > rect.bottom() && y > rect.y {
+            break;
+        }
+        match item {
+            ListItem::Header(title) => {
+                put(
+                    buf,
+                    rect.x,
+                    y,
+                    title,
+                    dim().add_modifier(Modifier::BOLD),
+                    rect.width,
+                );
+            }
+            ListItem::Room(i) => draw_room(buf, rect, y, chat, *i),
+        }
+        y += height(item);
+    }
+}
+
+fn draw_room(buf: &mut Buffer, rect: Rect, y: u16, chat: &ChatState, i: usize) {
+    let per = 2u16;
+    let entry = &chat.rooms[i];
+    let selected = i == chat.sel;
+    let base = if selected {
+        Style::new().add_modifier(Modifier::REVERSED)
+    } else {
+        Style::new()
+    };
+    let dot = if entry.unread { "\u{25cf} " } else { "  " };
+    let dot_style = if entry.unread {
+        base.fg(colors().accent)
+    } else {
+        base
+    };
+    for dy in 0..per {
         put(
             buf,
-            x,
-            y,
-            room_label(&entry.info),
-            base.add_modifier(Modifier::BOLD),
-            rect.right().saturating_sub(x),
-        );
-        let meta_style = if selected { base } else { dim() };
-        put(
-            buf,
-            rect.x + 2,
-            y + 1,
-            &room_meta(&entry.info),
-            meta_style,
-            rect.width.saturating_sub(2),
+            rect.x,
+            y + dy,
+            &" ".repeat(rect.width.into()),
+            base,
+            rect.width,
         );
     }
+    let x = put(buf, rect.x, y, dot, dot_style, rect.width);
+    put(
+        buf,
+        x,
+        y,
+        room_label(&entry.info),
+        base.add_modifier(Modifier::BOLD),
+        rect.right().saturating_sub(x),
+    );
+    let meta_style = if selected { base } else { dim() };
+    put(
+        buf,
+        rect.x + 2,
+        y + 1,
+        &room_meta(&entry.info),
+        meta_style,
+        rect.width.saturating_sub(2),
+    );
 }
 
 fn draw_input(buf: &mut Buffer, rect: Rect, chat: &ChatState) {

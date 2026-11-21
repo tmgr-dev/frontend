@@ -7,6 +7,7 @@
 - New tools for the top manager: `list_machines` (id, label and whether the relay is ready; it does not say whether a machine is online), `ask_submanager` and `read_submanager`, plus an optional `machine` argument on `list_sessions`, `read_session` and `send_to_session`. Text that comes back from another machine is marked as data, never instructions, and the top manager is told to send or ask on another machine only when you asked.
 - `ask` and `room` (which `ask_submanager` and `read_submanager` use) are off on a sub manager by default. To allow them, set `allow = ["list", "read", "ask", "room"]` in `manager-remote.toml` on that machine. A refusal names the op and this fix.
 - Restart the runner after updating so it picks up the new tools.
+- `tmgr attach` chat on a top manager lists the Manager room of every paired machine, grouped by machine under "This machine" and one header per remote machine, and refreshes the open remote room every 15 seconds. Reading needs `room`, and writing needs `ask`, allowed in `manager-remote.toml` on that machine.
 
 ## 1.0.146
 
