@@ -161,6 +161,31 @@ describe('trust components', () => {
 		expect(html).toContain('Reset chat identity');
 	});
 
+	it('DevicesPanel renders every alert kind once and gaps per sender', async () => {
+		const alerts = [
+			{ kind: 'room_conflict', device_id: 'd1', at_ms: 1 },
+			{ kind: 'kind_conflict', device_id: 'd2', at_ms: 2 },
+			{ kind: 'kind_conflict', device_id: 'd3', at_ms: 3 },
+			{ kind: 'join_code_reused', device_id: 'd9', at_ms: 4 },
+			{ kind: 'weird', device_id: 'd9', at_ms: 5 },
+		];
+		const seqGaps = [
+			{ from_device: devices[1].id, expected: 3, got: 7 },
+			{ from_device: devices[1].id, expected: 10, got: 11 },
+		];
+		const html = await render('DevicesPanel', { devices, alerts, seqGaps });
+		expect(html).toContain('claimed a chat room');
+		expect(html.match(/reported a different kind/g)).toHaveLength(1);
+		expect(html).toContain('join code was used again');
+		expect(html).toContain('security alert (weird)');
+		expect(html).toContain(
+			`5 messages may be missing from ${devices[1].label}`,
+		);
+		const none = await render('DevicesPanel', { devices });
+		expect(none).not.toContain('may be missing');
+		expect(none).not.toContain('role="alert"');
+	});
+
 	it('DevicesPanel shows a one-line alert when a spent join code was reused', async () => {
 		const alerts = [{ kind: 'join_code_reused', device_id: 'd9', at_ms: 1 }];
 		const on = await render('DevicesPanel', { devices, alerts });

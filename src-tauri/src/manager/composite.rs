@@ -65,7 +65,7 @@ impl ManagerBackend for CompositeBackend {
     let own = self.local.machine().ok();
     let pinned = |r: &RoomInfo| r.room.kind == RoomKind::Manager && own.as_deref() == Some(r.room.machine.as_str());
     rooms.sort_by_key(|r| !pinned(r));
-    rooms.extend(relay.unwrap_or_default());
+    rooms.extend(relay.unwrap_or_default().into_iter().map(|r| RoomInfo { local: false, ..r }));
     let mut seen: Vec<RoomRef> = vec![];
     rooms.retain(|r| {
       let fresh = !seen.contains(&r.room);
@@ -133,7 +133,7 @@ mod tests {
   }
 
   fn info(r: RoomRef) -> RoomInfo {
-    RoomInfo { room: r, title: "t".into(), agent: None, state: None, context_pct: None, context_tokens: None, last: None }
+    RoomInfo { room: r, title: "t".into(), agent: None, state: None, context_pct: None, context_tokens: None, last: None, local: true }
   }
 
   fn msg(id: &str, ts: u64, r: RoomRef) -> ChatMessage {
@@ -268,6 +268,20 @@ mod tests {
     let relay = FakeRelay { rooms: vec![info(mine()), info(far_mgr())], ..Default::default() };
     let (c, ..) = build(local, relay);
     assert_eq!(c.rooms().unwrap().len(), 2);
+  }
+
+  #[test]
+  fn only_relay_rooms_are_marked_not_local() {
+    let local = FakeLocal { rooms: vec![info(mine())], ..Default::default() };
+    let (c, ..) = build(local, relay_with_far());
+    let flags: Vec<(RoomRef, bool)> = c.rooms().unwrap().into_iter().map(|r| (r.room, r.local)).collect();
+    assert_eq!(flags, vec![(mine(), true), (far_mgr(), false), (far_sess(), false)]);
+  }
+
+  #[test]
+  fn room_info_without_the_local_field_deserializes_as_local() {
+    let r: RoomInfo = serde_json::from_str(r#"{"room":{"kind":"manager","machine":"m"},"title":"t"}"#).unwrap();
+    assert!(r.local);
   }
 
   #[test]

@@ -13,12 +13,21 @@
 			<p v-if="keyMismatch.length > 0" class="mgr-error" role="alert">
 				{{ $t('manager.trust.devices.keyMismatch') }}
 			</p>
+			<p v-for="kind in alertKinds" :key="kind" class="mgr-error" role="alert">
+				{{ alertText(kind) }}
+			</p>
 			<p
-				v-if="alerts.some((a) => a.kind === 'join_code_reused')"
+				v-for="gap in gaps"
+				:key="gap.from_device"
 				class="mgr-error"
 				role="alert"
 			>
-				{{ $t('manager.trust.devices.joinCodeReused') }}
+				{{
+					$t('manager.trust.devices.seqGaps', {
+						n: gap.missing,
+						label: gap.label,
+					})
+				}}
 			</p>
 			<ul class="trust-devices">
 				<li v-for="d in devices" :key="d.id" class="trust-device">
@@ -79,8 +88,14 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import type { TrustAlert, TrustDevice } from '../../types';
+	import type { SeqGap, TrustAlert, TrustDevice } from '../../types';
 	import { dialogKeydown, focusInitial, groupFp } from './trustHelpers';
+
+	const ALERT_KEYS: Record<string, string> = {
+		join_code_reused: 'joinCodeReused',
+		room_conflict: 'roomConflict',
+		kind_conflict: 'kindConflict',
+	};
 
 	export default defineComponent({
 		name: 'ManagerDevicesPanel',
@@ -88,15 +103,43 @@
 			devices: { type: Array as PropType<TrustDevice[]>, required: true },
 			keyMismatch: { type: Array as PropType<string[]>, default: () => [] },
 			alerts: { type: Array as PropType<TrustAlert[]>, default: () => [] },
+			seqGaps: { type: Array as PropType<SeqGap[]>, default: () => [] },
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
 		},
 		emits: ['revoke', 'reset', 'close'],
+		computed: {
+			alertKinds(): string[] {
+				return [...new Set(this.alerts.map((a) => a.kind))];
+			},
+			gaps(): { from_device: string; label: string; missing: number }[] {
+				const missing = new Map<string, number>();
+				for (const g of this.seqGaps) {
+					missing.set(
+						g.from_device,
+						(missing.get(g.from_device) ?? 0) + Math.max(g.got - g.expected, 1),
+					);
+				}
+				return [...missing].map(([from_device, n]) => ({
+					from_device,
+					label:
+						this.devices.find((d) => d.id === from_device)?.label ??
+						from_device,
+					missing: n,
+				}));
+			},
+		},
 		mounted() {
 			focusInitial(this.$refs.dialog as HTMLElement);
 		},
 		methods: {
 			grouped: (fp: string) => groupFp(fp),
+			alertText(kind: string): string {
+				const key = ALERT_KEYS[kind];
+				return key
+					? this.$t(`manager.trust.devices.${key}`)
+					: this.$t('manager.trust.devices.alertOther', { kind });
+			},
 			onKey(e: KeyboardEvent) {
 				dialogKeydown(this.$refs.dialog as HTMLElement, e, () =>
 					this.$emit('close'),

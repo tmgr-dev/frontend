@@ -843,7 +843,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         (RoomKind::Session, Some(s)) => s.to_owned(),
         _ => "Manager".to_owned(),
       };
-      rooms.push(RoomInfo { room: m.room.clone(), title, agent: None, state: None, context_pct: None, context_tokens: None, last });
+      rooms.push(RoomInfo { room: m.room.clone(), title, agent: None, state: None, context_pct: None, context_tokens: None, last, local: false });
     }
     rooms.sort_by(|a, b| b.last.as_ref().map(|m| m.ts_ms).cmp(&a.last.as_ref().map(|m| m.ts_ms)).then(a.title.cmp(&b.title)));
     Ok(rooms)

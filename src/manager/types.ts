@@ -53,6 +53,7 @@ export interface RoomInfo {
 	context_pct?: number;
 	context_tokens?: number;
 	last?: ChatMessage;
+	local?: boolean;
 }
 
 export interface HistoryParams {
@@ -143,6 +144,12 @@ export interface TrustAlert {
 	at_ms: number;
 }
 
+export interface SeqGap {
+	from_device: string;
+	expected: number;
+	got: number;
+}
+
 export interface TrustState {
 	registered: boolean;
 	self_fp: string;
@@ -151,6 +158,7 @@ export interface TrustState {
 	key_mismatch?: string[];
 	pending_revokes?: PendingRevoke[];
 	alerts?: TrustAlert[];
+	seq_gaps?: SeqGap[];
 }
 
 export const RESET_PHRASE = 'RESET';

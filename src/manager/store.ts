@@ -166,6 +166,22 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (first) await store.select(roomKey(first.room));
 		},
 
+		async refreshActive() {
+			await store.loadRooms().catch(() => undefined);
+			const key = store.activeKey;
+			const room = key && store.roomRef(key);
+			if (!key || !room) return;
+			try {
+				const page = await api.history({ room, limit: PAGE });
+				store.messagesByRoom[key] = merge(
+					store.messagesByRoom[key] ?? [],
+					page,
+				);
+			} catch (e) {
+				store.error = errorText(e);
+			}
+		},
+
 		async select(key: string) {
 			const room = store.roomRef(key);
 			if (!room) return;

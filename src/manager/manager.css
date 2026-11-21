@@ -936,6 +936,12 @@ html.dark .manager .qt {
 	color: var(--fix-fg);
 	font-size: 12.5px;
 }
+.manager .mgr-remote-decision {
+	margin: 0;
+	color: var(--ink-3, inherit);
+	font-size: 12.5px;
+	font-style: italic;
+}
 .manager .dcard {
 	border: 1px solid var(--line-strong);
 	background: var(--raised);
