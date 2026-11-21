@@ -141,10 +141,10 @@ export const pendingDecisions = (cards: readonly CardView[]): CardView[] =>
 
 export const hasUsage = (usage: PopoverUsage | undefined): boolean =>
 	usage !== undefined &&
-	(usage.fiveHour !== undefined ||
-		usage.week !== undefined ||
+	((usage.providers?.length ?? 0) > 0 ||
 		usage.todayCost !== undefined ||
 		usage.todayTokens !== undefined ||
+		usage.weekCost !== undefined ||
 		usage.runningCost !== undefined);
 
 export const visibleSections = (model: PopoverModel): PopoverSection[] => {
@@ -157,6 +157,35 @@ export const visibleSections = (model: PopoverModel): PopoverSection[] => {
 	if (hasUsage(model.extras.usage)) sections.push('ai');
 	if (model.pluginSections.length > 0) sections.push('plugins');
 	return sections;
+};
+
+export const STALE_AFTER_S = 3600;
+
+export const isStale = (bar: UsageBar): boolean =>
+	bar.ageS !== undefined && bar.ageS > STALE_AFTER_S;
+
+export const TODAY_CAP = 5;
+
+type TodayExtras = NonNullable<PopoverExtras['today']>;
+
+export const todayEntries = (
+	routines: TodayExtras['routines'],
+	deadlines: TodayExtras['deadlines'],
+	cap = TODAY_CAP,
+) => {
+	const shownRoutines = routines.slice(0, cap);
+	const shownDeadlines = [...deadlines]
+		.sort((a, b) => a.dueAt - b.dueAt)
+		.slice(0, cap - shownRoutines.length);
+	return {
+		routines: shownRoutines,
+		deadlines: shownDeadlines,
+		hidden:
+			routines.length +
+			deadlines.length -
+			shownRoutines.length -
+			shownDeadlines.length,
+	};
 };
 
 export const usageBarPct = (bar: UsageBar): number =>

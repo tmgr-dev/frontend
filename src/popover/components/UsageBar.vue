@@ -1,5 +1,5 @@
 <template>
-	<div>
+	<div :class="{ stale }">
 		<div class="lh">
 			<b>{{ label }}</b>
 			<span>
@@ -7,6 +7,9 @@
 					· {{ $t('popover.usage.resets', { time: reset }) }}</template
 				>
 			</span>
+		</div>
+		<div v-if="stale" class="upd">
+			{{ $t('popover.usage.updated', { ago: age }) }}
 		</div>
 		<div class="bar">
 			<i
@@ -19,7 +22,13 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { resetText, usageBarPct, usageLevel } from '../model';
+	import {
+		durationText,
+		isStale,
+		resetText,
+		usageBarPct,
+		usageLevel,
+	} from '../model';
 	import type { UsageBar } from '../types';
 
 	export default defineComponent({
@@ -34,6 +43,12 @@
 			},
 			level() {
 				return usageLevel(this.pct);
+			},
+			stale(): boolean {
+				return isStale(this.bar);
+			},
+			age(): string {
+				return durationText(this.bar.ageS ?? 0);
 			},
 			reset(): string | null {
 				return resetText(this.bar.resetsAt, this.now);

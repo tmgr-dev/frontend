@@ -48,8 +48,9 @@ export const limitToasts = (
 	nowSeconds: number,
 ): { key: string; toast: ToastPayload }[] => {
 	const toasts: { key: string; toast: ToastPayload }[] = [];
+	const claude = usage?.providers?.find((p) => p.tool === 'claude');
 	for (const window of ['fiveHour', 'week'] as const) {
-		const bar = usage?.[window];
+		const bar = claude?.[window];
 		if (!bar || bar.pct < LIMIT_THRESHOLD) continue;
 		const key = limitKey(window, bar.resetsAt);
 		if (seen.has(key)) continue;

@@ -14,7 +14,20 @@ export type PopoverPluginSection = {
 	items: PopoverPluginItem[];
 };
 
-export type UsageBar = { pct: number; resetsAt: number | null };
+export type UsageBar = {
+	pct: number;
+	resetsAt: number | null;
+	ageS?: number;
+};
+
+export type UsageProvider = {
+	tool: 'claude' | 'codex';
+	fiveHour?: UsageBar;
+	week?: UsageBar;
+	plan?: string;
+	todayCost?: number;
+	todayTokens?: number;
+};
 
 export type PopoverExtras = {
 	workspace?: { name: string; code: string };
@@ -31,10 +44,10 @@ export type PopoverExtras = {
 		}[];
 	};
 	usage?: {
-		fiveHour?: UsageBar;
-		week?: UsageBar;
+		providers?: UsageProvider[];
 		todayCost?: number;
 		todayTokens?: number;
+		weekCost?: number;
 		runningCost?: number;
 	};
 	machines?: {
@@ -80,6 +93,7 @@ export const POPOVER_ACTIONS_FIXED = [
 	'tray_check_for_updates',
 	'resume-last',
 	'open-usage',
+	'open-routines',
 	'open-runner',
 	'close',
 ] as const;

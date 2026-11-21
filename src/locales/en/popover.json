@@ -27,7 +27,9 @@
 	},
 	"today": {
 		"title": "Today",
-		"tracked": "Tracked"
+		"tracked": "Tracked",
+		"openRoutines": "Go to routines",
+		"more": "+{count} more"
 	},
 	"machines": {
 		"title": "Machines & sessions",
@@ -51,8 +53,12 @@
 	"manager": "Manager",
 	"usage": {
 		"title": "AI usage",
-		"fiveHour": "Claude · 5h window",
-		"week": "Claude · week",
+		"claude": "Claude",
+		"codex": "Codex",
+		"fiveHour": "5h window",
+		"week": "Week",
+		"weekTotal": "Week total",
+		"updated": "updated {ago} ago",
 		"resets": "resets {time}",
 		"today": "Today",
 		"tokens": "tok",

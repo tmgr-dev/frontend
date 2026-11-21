@@ -36,8 +36,8 @@ input {
 	--ok: #16a36a;
 	--crit: oklch(0.55 0.2 25);
 	--bar: #e4e4e8;
-	--shadow: 0 18px 50px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(24, 24, 27, 0.08);
-	padding: 8px;
+	--shadow: 0 3px 9px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(24, 24, 27, 0.08);
+	padding: 12px;
 	color: var(--fg);
 	color-scheme: light;
 }
@@ -56,15 +56,14 @@ html.dark .popover-root {
 	--ok: #3ecf8e;
 	--crit: oklch(0.68 0.2 25);
 	--bar: #2a2a2e;
-	--shadow:
-		0 18px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+	--shadow: 0 3px 9px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
 	color-scheme: dark;
 }
 
 .pop {
 	width: 400px;
 	max-width: 100%;
-	max-height: 624px;
+	max-height: 736px;
 	display: flex;
 	flex-direction: column;
 	background: var(--bg);
@@ -612,6 +611,52 @@ button.row:focus-visible .play {
 
 .bar i.crit {
 	background: var(--crit);
+}
+
+.ai .prov {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.ai .prov + .prov {
+	margin-top: 4px;
+}
+
+.ai .ph {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	font-size: 12px;
+}
+
+.ai .ph .plan {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+	background: var(--active);
+	border-radius: 4px;
+	padding: 0 5px;
+}
+
+.ai .ph .pt {
+	margin-left: auto;
+	font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+	font-size: 11px;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.stale .lh,
+.stale .bar {
+	opacity: 0.55;
+}
+
+.upd {
+	font-size: 10px;
+	color: var(--muted);
+	margin-top: 1px;
 }
 
 .ai .tot {

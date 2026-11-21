@@ -37,8 +37,13 @@ describe('limit toasts', () => {
 	it('pushes one toast per window and reset time', () => {
 		const seen = new Set<string>();
 		const usage = {
-			fiveHour: { pct: 96, resetsAt: 1_000 + 18 * 60 },
-			week: { pct: 94, resetsAt: 9_000 },
+			providers: [
+				{
+					tool: 'claude' as const,
+					fiveHour: { pct: 96, resetsAt: 1_000 + 18 * 60 },
+					week: { pct: 94, resetsAt: 9_000 },
+				},
+			],
 		};
 		const first = limitToasts(usage, seen, 1_000);
 		expect(first).toHaveLength(1);
@@ -47,13 +52,21 @@ describe('limit toasts', () => {
 		expect(first[0].toast.body).toBe('5h window resets in 18 min.');
 		seen.add(first[0].key);
 		expect(limitToasts(usage, seen, 1_100)).toHaveLength(0);
-		const nextWindow = { fiveHour: { pct: 97, resetsAt: 30_000 } };
+		const nextWindow = {
+			providers: [
+				{ tool: 'claude' as const, fiveHour: { pct: 97, resetsAt: 30_000 } },
+			],
+		};
 		expect(limitToasts(nextWindow, seen, 1_200)).toHaveLength(1);
 		expect(limitToasts(undefined, seen, 0)).toEqual([]);
 	});
 
 	it('keeps offering a limit until it is remembered', () => {
-		const usage = { fiveHour: { pct: 99, resetsAt: 5_000 } };
+		const usage = {
+			providers: [
+				{ tool: 'claude' as const, fiveHour: { pct: 99, resetsAt: 5_000 } },
+			],
+		};
 		const seen = new Set<string>();
 		expect(limitToasts(usage, seen, 1_000)).toHaveLength(1);
 		expect(limitToasts(usage, seen, 1_060)).toHaveLength(1);
