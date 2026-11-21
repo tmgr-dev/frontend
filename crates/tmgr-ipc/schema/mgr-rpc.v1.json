@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schema/mgr-rpc.v1.json",
+  "title": "TMGR cross-machine manager RPC (mgr-rpc.v1)",
+  "oneOf": [{ "$ref": "#/$defs/req" }, { "$ref": "#/$defs/res" }],
+  "$defs": {
+    "rpc_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "machine": { "type": "string", "pattern": "^mx_[0-9a-f]{16}$" },
+    "req": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "rpc", "op", "args", "chain", "ts_ms"],
+      "properties": {
+        "v": { "const": 1 },
+        "rpc": { "$ref": "#/$defs/rpc_id" },
+        "op": {
+          "enum": [
+            "list",
+            "read",
+            "send",
+            "ask",
+            "spawn_challenge",
+            "spawn",
+            "switch"
+          ]
+        },
+        "args": { "type": "object" },
+        "chain": { "type": "array", "items": { "$ref": "#/$defs/machine" } },
+        "ts_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "res": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "rpc", "ok"],
+      "properties": {
+        "v": { "const": 1 },
+        "rpc": { "$ref": "#/$defs/rpc_id" },
+        "ok": { "type": "boolean" },
+        "result": {
+          "type": "object",
+          "required": ["notice", "data"],
+          "properties": { "notice": { "type": "string" }, "data": {} }
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "bad_request",
+                "not_allowed",
+                "stale",
+                "depth",
+                "rate_limited",
+                "op_denied",
+                "unavailable",
+                "refused"
+              ]
+            },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

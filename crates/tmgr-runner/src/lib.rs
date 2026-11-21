@@ -40,6 +40,8 @@ pub mod hostview;
 #[cfg(unix)]
 pub mod humantime;
 #[cfg(unix)]
+pub mod mgr_rpc;
+#[cfg(unix)]
 pub mod objectmodes;
 #[cfg(unix)]
 pub mod permit_hook;
