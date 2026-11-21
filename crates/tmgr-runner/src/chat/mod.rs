@@ -226,28 +226,34 @@ impl Chat {
     }
 
     fn note(&self, room: &RoomRef, text: &str) {
-        let msg = ChatMessage {
-            v: CHAT_V,
-            id: self.mint_id(),
-            room: room.clone(),
-            author: Author {
-                kind: AuthorKind::System,
-                id: "runner".into(),
-                machine: None,
-                device: None,
-                agent: None,
-            },
-            ts_ms: now_ms(),
-            kind: MessageKind::System,
-            body_md: text.into(),
-            attachments: Vec::new(),
-            reply_to: None,
-            decision: None,
-            session_meta: None,
-        };
+        let msg = system_message(room, self.mint_id(), now_ms(), text);
         if let Err(e) = self.append(msg) {
             crate::daemon::log(&format!("chat: note not stored: {e}"));
         }
+    }
+
+    pub fn system_once(
+        &self,
+        room: &RoomRef,
+        id: &str,
+        ts_ms: u64,
+        text: &str,
+    ) -> Result<bool, String> {
+        if !valid_message_id(id) {
+            return Err("invalid message id".into());
+        }
+        self.own(room)?;
+        let store = self.store()?;
+        let msg = system_message(room, id.into(), ts_ms, text);
+        {
+            let _g = lock(&self.write);
+            if store.get(room, id)?.is_some() {
+                return Ok(false);
+            }
+            store.append(&msg)?;
+        }
+        self.publish(&msg);
+        Ok(true)
     }
 
     pub fn ingest(
@@ -432,6 +438,28 @@ impl crate::manager::ChatPort for std::sync::Arc<Chat> {
 
     fn history(&self, room: &RoomRef, limit: u32) -> Result<Vec<ChatMessage>, String> {
         Chat::history(self, room, None, Some(limit))
+    }
+}
+
+fn system_message(room: &RoomRef, id: String, ts_ms: u64, text: &str) -> ChatMessage {
+    ChatMessage {
+        v: CHAT_V,
+        id,
+        room: room.clone(),
+        author: Author {
+            kind: AuthorKind::System,
+            id: "runner".into(),
+            machine: None,
+            device: None,
+            agent: None,
+        },
+        ts_ms,
+        kind: MessageKind::System,
+        body_md: text.into(),
+        attachments: Vec::new(),
+        reply_to: None,
+        decision: None,
+        session_meta: None,
     }
 }
 
@@ -800,5 +828,53 @@ mod tests {
             .unwrap();
         assert!(!r.duplicate);
         assert_eq!(texts(&c, &room).len(), 2);
+    }
+
+    #[test]
+    fn system_once_writes_a_message_once_and_history_shows_it() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let id = message_id_at(7, [3; 10]);
+        assert!(c.system_once(&room, &id, NOW, "handed off").unwrap());
+        assert!(!c.system_once(&room, &id, NOW, "handed off").unwrap());
+        let all = c.history(&room, None, None).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, id);
+        assert_eq!(all[0].kind, MessageKind::System);
+        assert_eq!(all[0].body_md, "handed off");
+    }
+
+    #[test]
+    fn concurrent_system_once_calls_write_one_message() {
+        use std::sync::{Arc, Barrier};
+        let t = tempfile::tempdir().unwrap();
+        let c = Arc::new(Chat::open(t.path()));
+        let room = c.manager_room();
+        let id = message_id_at(9, [4; 10]);
+        let gate = Arc::new(Barrier::new(8));
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let (c, room, gate, id) = (c.clone(), room.clone(), gate.clone(), id.clone());
+                std::thread::spawn(move || {
+                    gate.wait();
+                    c.system_once(&room, &id, NOW, "once").unwrap()
+                })
+            })
+            .collect();
+        let wrote = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .filter(|w| *w)
+            .count();
+        assert_eq!(wrote, 1);
+        assert_eq!(c.history(&room, None, None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn system_once_refuses_a_malformed_id() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        assert!(c.system_once(&room, "m_short", NOW, "x").is_err());
+        assert!(c.history(&room, None, None).unwrap().is_empty());
     }
 }
