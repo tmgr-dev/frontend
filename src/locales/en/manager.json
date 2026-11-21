@@ -102,6 +102,7 @@
 			"joinCodeReused": "A join code was used again after it was spent or expired. Nobody was added; open a new code if you did not expect this.",
 			"roomConflict": "A device claimed a chat room that already belongs to another device. Check your devices before trusting new messages.",
 			"kindConflict": "A device reported a different kind than the one it was added with. Check your devices.",
+			"rootKindUnknown": "This device cannot confirm what kind of device it was joined through. Re-join this device with a fresh join code from a desktop or phone.",
 			"alertOther": "The relay raised a security alert ({kind}). Check your devices.",
 			"seqGaps": "{n} messages may be missing from {label}",
 			"thisDevice": "this device",

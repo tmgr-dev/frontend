@@ -168,6 +168,7 @@ describe('trust components', () => {
 			{ kind: 'kind_conflict', device_id: 'd3', at_ms: 3 },
 			{ kind: 'join_code_reused', device_id: 'd9', at_ms: 4 },
 			{ kind: 'weird', device_id: 'd9', at_ms: 5 },
+			{ kind: 'root_kind_unknown', device_id: 'd7', at_ms: 6 },
 		];
 		const seqGaps = [
 			{ from_device: devices[1].id, expected: 3, got: 7 },
@@ -178,6 +179,7 @@ describe('trust components', () => {
 		expect(html.match(/reported a different kind/g)).toHaveLength(1);
 		expect(html).toContain('join code was used again');
 		expect(html).toContain('security alert (weird)');
+		expect(html).toContain('Re-join this device with a fresh join code');
 		expect(html).toContain(
 			`5 messages may be missing from ${devices[1].label}`,
 		);

@@ -463,7 +463,11 @@ pub struct KeyMismatch {
 pub struct TrustSet {
     pub trusted: Vec<Trusted>,
     pub mismatches: Vec<KeyMismatch>,
-    pub kinds: Vec<(String, String)>,
+    pub kinds: Vec<(String, String, String)>,
+}
+
+pub fn kind_key(device_id: &str, fp: &str) -> String {
+    format!("{device_id}:{fp}")
 }
 
 pub fn trusted_set(
@@ -480,7 +484,7 @@ pub fn may_vouch(kind: Option<&str>) -> bool {
     matches!(kind, Some("desktop" | "mobile"))
 }
 
-/// With `kinds` (device id -> signed kind) only desktop and mobile devices may vouch; a runner key is readable by agents.
+/// With `kinds` (`device_id:fp` -> signed kind) only desktop and mobile devices may vouch; a runner key is readable by agents.
 pub fn trusted_set_by_kind(
     user_id: u64,
     pins: &[Trusted],
@@ -489,7 +493,12 @@ pub fn trusted_set_by_kind(
     directory: &[DirEntry],
     kinds: Option<&std::collections::BTreeMap<String, String>>,
 ) -> TrustSet {
-    let mut known = kinds.cloned();
+    let mut known = kinds.map(|k| {
+        k.iter()
+            .filter(|(_, v)| crate::fields::check_device_kind(v).is_ok())
+            .map(|(a, b)| (a.clone(), b.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    });
     let is_revoked = |fp: &str| revoked.iter().any(|r| r == fp);
     let mut trusted: Vec<Trusted> = Vec::new();
     for p in pins {
@@ -509,7 +518,7 @@ pub fn trusted_set_by_kind(
         .filter(|i| i.parsed.user_id == user_id)
         .collect();
     let mut done = vec![false; parsed.len()];
-    let mut learned: Vec<(String, String)> = Vec::new();
+    let mut learned: Vec<(String, String, String)> = Vec::new();
     loop {
         let mut changed = false;
         for (n, intro) in parsed.iter().enumerate() {
@@ -522,18 +531,20 @@ pub fn trusted_set_by_kind(
                 Some(_) => continue,
                 None => false,
             };
-            if known
-                .as_ref()
-                .is_some_and(|k| !may_vouch(k.get(&intro.by).map(String::as_str)))
-            {
-                continue;
-            }
             let Some(introducer) = trusted
                 .iter()
                 .find(|t| t.device_id == intro.by && t.fp == st.introducer_fp)
             else {
                 continue;
             };
+            if known.as_ref().is_some_and(|k| {
+                !may_vouch(
+                    k.get(&kind_key(&introducer.device_id, &introducer.fp))
+                        .map(String::as_str),
+                )
+            }) {
+                continue;
+            }
             let entry = if target_pinned {
                 None
             } else {
@@ -561,9 +572,13 @@ pub fn trusted_set_by_kind(
                 });
             }
             if let Some(k) = known.as_mut() {
-                k.entry(st.target_id.clone())
+                k.entry(kind_key(&st.target_id, &st.target_fp))
                     .or_insert_with(|| st.target_kind.clone());
-                learned.push((st.target_id.clone(), st.target_kind.clone()));
+                learned.push((
+                    st.target_id.clone(),
+                    st.target_fp.clone(),
+                    st.target_kind.clone(),
+                ));
             }
             changed = true;
         }

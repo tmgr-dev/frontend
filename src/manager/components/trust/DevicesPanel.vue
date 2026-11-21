@@ -95,6 +95,7 @@
 		join_code_reused: 'joinCodeReused',
 		room_conflict: 'roomConflict',
 		kind_conflict: 'kindConflict',
+		root_kind_unknown: 'rootKindUnknown',
 	};
 
 	export default defineComponent({
