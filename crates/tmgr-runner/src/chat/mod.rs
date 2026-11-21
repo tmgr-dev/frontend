@@ -13,8 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use store::Store;
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
-    message_id_at, Attachment, Author, AuthorKind, ChatMessage, ChatPush, MessageKind, RoomInfo,
-    RoomRef, CHAT_V,
+    message_id_at, valid_message_id, Attachment, Author, AuthorKind, ChatMessage, ChatPush,
+    MessageKind, RoomInfo, RoomRef, CHAT_V,
 };
 
 const MACHINE_FILE: &str = "machine.id";
@@ -82,6 +82,40 @@ pub fn machine_id(runner_dir: &Path) -> io::Result<String> {
             Err(e) => return Err(e),
         }
     }
+}
+
+pub const FRESH_PAST_MS: u64 = 10 * 60 * 1000;
+pub const FRESH_FUTURE_MS: u64 = 5 * 60 * 1000;
+
+pub struct Incoming {
+    pub room: RoomRef,
+    pub id: String,
+    pub ts_ms: u64,
+    pub body_md: String,
+    pub reply_to: Option<String>,
+    pub attachments: Vec<Attachment>,
+    pub device: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Delivery {
+    NoTarget,
+    Delivered,
+    Busy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IngestError {
+    Invalid(String),
+    NotFound(String),
+    Conflict(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ingested {
+    pub message: ChatMessage,
+    pub delivered: bool,
+    pub duplicate: bool,
 }
 
 pub struct Chat {
@@ -178,11 +212,127 @@ impl Chat {
             let _g = lock(&self.write);
             self.store()?.append(&msg)?;
         }
+        self.publish(&msg);
+        Ok(msg)
+    }
+
+    fn publish(&self, msg: &ChatMessage) {
         let push = ChatPush {
             message: msg.clone(),
         };
         lock(&self.subs).retain(|s| s.try_send(push.clone()).is_ok());
-        Ok(msg)
+    }
+
+    fn note(&self, room: &RoomRef, text: &str) {
+        let msg = ChatMessage {
+            v: CHAT_V,
+            id: self.mint_id(),
+            room: room.clone(),
+            author: Author {
+                kind: AuthorKind::System,
+                id: "runner".into(),
+                machine: None,
+                device: None,
+                agent: None,
+            },
+            ts_ms: now_ms(),
+            kind: MessageKind::System,
+            body_md: text.into(),
+            attachments: Vec::new(),
+            reply_to: None,
+            decision: None,
+        };
+        if let Err(e) = self.append(msg) {
+            crate::daemon::log(&format!("chat: note not stored: {e}"));
+        }
+    }
+
+    pub fn ingest(
+        &self,
+        m: Incoming,
+        now_ms: u64,
+        known_session: impl Fn(&str) -> bool,
+        deliver: impl FnOnce(&str) -> Delivery,
+    ) -> Result<Ingested, IngestError> {
+        use IngestError::{Conflict, Invalid, NotFound};
+        if !valid_message_id(&m.id) {
+            return Err(Invalid("invalid message id".into()));
+        }
+        self.own(&m.room).map_err(Invalid)?;
+        let store = self.store().map_err(Invalid)?;
+        let exists = match m.room.session.as_deref() {
+            None => true,
+            Some(s) => known_session(s) || store.exists(&m.room),
+        };
+        if !exists {
+            return Err(NotFound("no such room".into()));
+        }
+        let msg = ChatMessage {
+            v: CHAT_V,
+            id: m.id,
+            room: m.room,
+            author: Author {
+                kind: AuthorKind::Owner,
+                id: "owner".into(),
+                machine: None,
+                device: m.device,
+                agent: None,
+            },
+            ts_ms: m.ts_ms,
+            kind: MessageKind::Text,
+            body_md: m.body_md,
+            attachments: m.attachments,
+            reply_to: m.reply_to,
+            decision: None,
+        };
+        msg.validate().map_err(Invalid)?;
+        {
+            let _g = lock(&self.write);
+            match store.get(&msg.room, &msg.id).map_err(Invalid)? {
+                Some(old) if old.author.kind == msg.author.kind && old.body_md == msg.body_md => {
+                    return Ok(Ingested {
+                        message: old,
+                        delivered: false,
+                        duplicate: true,
+                    });
+                }
+                Some(_) => return Err(Conflict("that message id holds different content".into())),
+                None => store.append(&msg).map_err(Invalid)?,
+            }
+        }
+        self.publish(&msg);
+        if msg.ts_ms < now_ms && now_ms - msg.ts_ms > FRESH_PAST_MS {
+            self.note(&msg.room, "Not delivered: older than 10 minutes.");
+            return Ok(Ingested {
+                message: msg,
+                delivered: false,
+                duplicate: false,
+            });
+        }
+        if msg.ts_ms > now_ms + FRESH_FUTURE_MS {
+            self.note(
+                &msg.room,
+                "Not delivered: its time is too far ahead of this machine's clock.",
+            );
+            return Ok(Ingested {
+                message: msg,
+                delivered: false,
+                duplicate: false,
+            });
+        }
+        let delivered = match deliver(&msg.body_md) {
+            Delivery::Delivered => true,
+            Delivery::NoTarget => false,
+            Delivery::Busy => {
+                self.note(&msg.room, "Not delivered: the session was busy.");
+                false
+            }
+        };
+        Ok(Ingested {
+            message: msg,
+            delivered,
+            duplicate: false,
+        })
     }
 
     pub fn owner() -> Author {
@@ -376,5 +526,265 @@ mod tests {
     fn prompt_bytes_wrap_the_body_in_a_paste_and_drop_escapes() {
         let b = prompt_bytes("a\nb\x1b[201~c\x07");
         assert_eq!(b, b"\x1b[200~a\nb[201~c\x1b[201~\r");
+    }
+
+    const NOW: u64 = 1_800_000_000_000;
+
+    fn incoming(room: RoomRef, n: u64, ts: u64, body: &str) -> Incoming {
+        Incoming {
+            room,
+            id: message_id_at(n, [7; 10]),
+            ts_ms: ts,
+            body_md: body.into(),
+            reply_to: None,
+            attachments: Vec::new(),
+            device: Some("d_phone1".into()),
+        }
+    }
+
+    fn chat() -> (tempfile::TempDir, Chat) {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        (t, c)
+    }
+
+    fn texts(c: &Chat, room: &RoomRef) -> Vec<(AuthorKind, String)> {
+        c.history(room, None, None)
+            .unwrap()
+            .into_iter()
+            .map(|m| (m.author.kind, m.body_md))
+            .collect()
+    }
+
+    fn no_session(_: &str) -> bool {
+        false
+    }
+
+    #[test]
+    fn a_fresh_ingest_is_stored_with_the_device_and_delivered_once() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let calls = std::cell::Cell::new(0);
+        let deliver = |body: &str| {
+            assert_eq!(body, "run it");
+            calls.set(calls.get() + 1);
+            Delivery::Delivered
+        };
+        let r = c
+            .ingest(
+                incoming(room.clone(), 1, NOW - 1000, "run it"),
+                NOW,
+                no_session,
+                deliver,
+            )
+            .unwrap();
+        assert!(r.delivered && !r.duplicate);
+        assert_eq!(r.message.author.kind, AuthorKind::Owner);
+        assert_eq!(r.message.author.device.as_deref(), Some("d_phone1"));
+        assert_eq!(r.message.ts_ms, NOW - 1000);
+        assert_eq!(calls.get(), 1);
+        assert_eq!(
+            texts(&c, &room),
+            [(AuthorKind::Owner, "run it".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_fresh_ingest_without_a_target_is_only_stored() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let r = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "hi"),
+                NOW,
+                no_session,
+                |_| Delivery::NoTarget,
+            )
+            .unwrap();
+        assert!(!r.delivered);
+        assert_eq!(texts(&c, &room).len(), 1);
+    }
+
+    #[test]
+    fn a_stale_or_future_message_is_stored_with_a_note_and_never_delivered() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let never = |_: &str| -> Delivery { panic!("must not deliver") };
+        let r = c
+            .ingest(
+                incoming(room.clone(), 1, NOW - FRESH_PAST_MS - 1, "old"),
+                NOW,
+                no_session,
+                never,
+            )
+            .unwrap();
+        assert!(!r.delivered);
+        let r = c
+            .ingest(
+                incoming(room.clone(), 2, NOW + FRESH_FUTURE_MS + 1, "future"),
+                NOW,
+                no_session,
+                never,
+            )
+            .unwrap();
+        assert!(!r.delivered);
+        let h = texts(&c, &room);
+        assert_eq!(h.len(), 4);
+        assert_eq!(
+            h[1],
+            (
+                AuthorKind::System,
+                "Not delivered: older than 10 minutes.".to_string()
+            )
+        );
+        assert_eq!(h[3].0, AuthorKind::System);
+        let edge = c
+            .ingest(
+                incoming(room.clone(), 3, NOW - FRESH_PAST_MS, "edge"),
+                NOW,
+                no_session,
+                |_| Delivery::Delivered,
+            )
+            .unwrap();
+        assert!(edge.delivered);
+        let edge = c
+            .ingest(
+                incoming(room, 4, NOW + FRESH_FUTURE_MS, "edge2"),
+                NOW,
+                no_session,
+                |_| Delivery::Delivered,
+            )
+            .unwrap();
+        assert!(edge.delivered);
+    }
+
+    #[test]
+    fn a_busy_target_gets_a_note_and_nothing_is_queued() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let r = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "hello"),
+                NOW,
+                no_session,
+                |_| Delivery::Busy,
+            )
+            .unwrap();
+        assert!(!r.delivered);
+        let h = texts(&c, &room);
+        assert_eq!(h[0].1, "hello");
+        assert_eq!(
+            h[1],
+            (
+                AuthorKind::System,
+                "Not delivered: the session was busy.".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn the_same_id_and_content_is_a_no_op_and_different_content_conflicts() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let first = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "same"),
+                NOW,
+                no_session,
+                |_| Delivery::Delivered,
+            )
+            .unwrap();
+        let rx = c.subscribe();
+        let again = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "same"),
+                NOW,
+                no_session,
+                |_| -> Delivery { panic!("no second delivery") },
+            )
+            .unwrap();
+        assert!(again.duplicate && !again.delivered);
+        assert_eq!(again.message, first.message);
+        assert!(rx.try_recv().is_err());
+        let e = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "other"),
+                NOW,
+                no_session,
+                |_| Delivery::Delivered,
+            )
+            .unwrap_err();
+        assert!(matches!(e, IngestError::Conflict(_)));
+        assert_eq!(texts(&c, &room), [(AuthorKind::Owner, "same".to_string())]);
+    }
+
+    #[test]
+    fn a_duplicate_of_a_stale_message_adds_no_second_note() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let old = NOW - FRESH_PAST_MS - 5;
+        c.ingest(
+            incoming(room.clone(), 1, old, "old"),
+            NOW,
+            no_session,
+            |_| Delivery::Delivered,
+        )
+        .unwrap();
+        c.ingest(
+            incoming(room.clone(), 1, old, "old"),
+            NOW,
+            no_session,
+            |_| Delivery::Delivered,
+        )
+        .unwrap();
+        assert_eq!(texts(&c, &room).len(), 2);
+    }
+
+    #[test]
+    fn bad_ids_foreign_machines_and_unknown_rooms_are_refused() {
+        let (_t, c) = chat();
+        let mut m = incoming(c.manager_room(), 1, NOW, "x");
+        m.id = "b_0123456789abcdef0123456789abcdef".into();
+        assert!(matches!(
+            c.ingest(m, NOW, no_session, |_| Delivery::Delivered),
+            Err(IngestError::Invalid(_))
+        ));
+        let foreign = RoomRef::manager("mx_ffffffffffffffff");
+        let m = incoming(foreign, 1, NOW, "x");
+        assert!(matches!(
+            c.ingest(m, NOW, no_session, |_| Delivery::Delivered),
+            Err(IngestError::Invalid(_))
+        ));
+        let mut m = incoming(c.manager_room(), 1, NOW, "x");
+        m.device = Some("bad device".into());
+        assert!(matches!(
+            c.ingest(m, NOW, no_session, |_| Delivery::Delivered),
+            Err(IngestError::Invalid(_))
+        ));
+        let ghost = c.session_room("s_abcdefghij");
+        let m = incoming(ghost.clone(), 1, NOW, "x");
+        assert!(matches!(
+            c.ingest(m, NOW, no_session, |_| Delivery::Delivered),
+            Err(IngestError::NotFound(_))
+        ));
+        assert!(c.history(&ghost, None, None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_session_room_exists_when_the_session_is_known_or_the_store_has_it() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        let known = |s: &str| s == "s_abcdefghij";
+        c.ingest(incoming(room.clone(), 1, NOW, "a"), NOW, known, |_| {
+            Delivery::NoTarget
+        })
+        .unwrap();
+        let r = c
+            .ingest(incoming(room.clone(), 2, NOW, "b"), NOW, no_session, |_| {
+                Delivery::NoTarget
+            })
+            .unwrap();
+        assert!(!r.duplicate);
+        assert_eq!(texts(&c, &room).len(), 2);
     }
 }

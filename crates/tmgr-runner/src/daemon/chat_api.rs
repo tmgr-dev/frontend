@@ -58,6 +58,44 @@ impl Runner {
                 if q.room.machine != self.chat.machine() {
                     return Err(bad("the room belongs to another machine".into()));
                 }
+                if let Some(id) = q.id {
+                    let ts_ms = q
+                        .ts_ms
+                        .ok_or_else(|| bad("ts_ms is required with id".into()))?;
+                    let room = q.room.clone();
+                    let incoming = chat::Incoming {
+                        room: q.room,
+                        id,
+                        ts_ms,
+                        body_md: q.body_md,
+                        reply_to: q.reply_to,
+                        attachments: q.attachments,
+                        device: q.device,
+                    };
+                    let deliver = |body: &str| match self.chat_target(&room) {
+                        None => chat::Delivery::NoTarget,
+                        Some(t) => {
+                            match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
+                                Ok(()) => {
+                                    t.note_input_from(&conn.client);
+                                    chat::Delivery::Delivered
+                                }
+                                Err(_) => chat::Delivery::Busy,
+                            }
+                        }
+                    };
+                    return self
+                        .chat
+                        .ingest(incoming, now_ms(), |s| self.session(s).is_some(), deliver)
+                        .map(|r| to_json(&r.message))
+                        .map_err(|e| match e {
+                            chat::IngestError::Invalid(m) => bad(m),
+                            chat::IngestError::NotFound(m) => api(ErrorCode::NotFound, m),
+                            chat::IngestError::Conflict(m) => {
+                                api(ErrorCode::Other("conflict".into()), m)
+                            }
+                        });
+                }
                 if let Some(target) = self.chat_target(&q.room) {
                     target.input_at_prompt(&chat::prompt_bytes(&q.body_md), Instant::now())?;
                     target.note_input_from(&conn.client);
@@ -196,6 +234,9 @@ mod tests {
             body_md: body.into(),
             reply_to: None,
             attachments: Vec::new(),
+            id: None,
+            ts_ms: None,
+            device: None,
         })
     }
 
@@ -287,6 +328,9 @@ mod tests {
             body_md: "x".into(),
             reply_to: None,
             attachments: Vec::new(),
+            id: None,
+            ts_ms: None,
+            device: None,
         });
         for p in [
             foreign,
@@ -335,5 +379,107 @@ mod tests {
         assert!(rt
             .chat_target(&rt.chat.session_room("s_abcdefghij"))
             .is_none());
+    }
+
+    fn ingest_params(rt: &Runner, id: &str, ts: Option<u64>, body: &str) -> Value {
+        let mut p = send_params(rt, body);
+        p["id"] = json!(id);
+        if let Some(ts) = ts {
+            p["ts_ms"] = json!(ts);
+        }
+        p["device"] = json!("d_phone1");
+        p
+    }
+
+    #[test]
+    fn an_ingest_over_ipc_is_idempotent_conflicts_and_needs_a_timestamp() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let (c, _peer) = conn(CLIENT_CLI);
+        let id = tmgr_ipc::chat::message_id_at(1, [3; 10]);
+        let ts = now_ms();
+        let first: ChatMessage = serde_json::from_value(
+            call(
+                &rt,
+                &c,
+                chat_method::SEND,
+                ingest_params(&rt, &id, Some(ts), "go"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(first.id, id);
+        assert_eq!(first.author.device.as_deref(), Some("d_phone1"));
+        let again: ChatMessage = serde_json::from_value(
+            call(
+                &rt,
+                &c,
+                chat_method::SEND,
+                ingest_params(&rt, &id, Some(ts), "go"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(again, first);
+        let e = call(
+            &rt,
+            &c,
+            chat_method::SEND,
+            ingest_params(&rt, &id, Some(ts), "different"),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, ErrorCode::Other("conflict".into()));
+        let e = call(
+            &rt,
+            &c,
+            chat_method::SEND,
+            ingest_params(&rt, &id, None, "go"),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidParams);
+        let e = call(
+            &rt,
+            &c,
+            chat_method::SEND,
+            ingest_params(&rt, "m_short", Some(ts), "go"),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidParams);
+        let ghost = to_json(&SendParams {
+            room: rt.chat.session_room("s_abcdefghij"),
+            body_md: "x".into(),
+            reply_to: None,
+            attachments: Vec::new(),
+            id: Some(tmgr_ipc::chat::message_id_at(2, [3; 10])),
+            ts_ms: Some(ts),
+            device: None,
+        });
+        assert_eq!(
+            call(&rt, &c, chat_method::SEND, ghost).unwrap_err().code,
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            rt.chat
+                .history(&rt.chat.manager_room(), None, None)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_worker_cannot_ingest() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let (c, _peer) = conn(CLIENT_WORKER);
+        let id = tmgr_ipc::chat::message_id_at(1, [3; 10]);
+        let e = call(
+            &rt,
+            &c,
+            chat_method::SEND,
+            ingest_params(&rt, &id, Some(now_ms()), "go"),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, ErrorCode::Forbidden);
     }
 }

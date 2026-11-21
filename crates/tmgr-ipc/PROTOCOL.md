@@ -688,19 +688,30 @@ may call these methods; every other client gets `forbidden`.
 | method | params | result |
 |---|---|---|
 | `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`), then one room per session (`title` = session name, `agent` = profile, `state`, `last`); `context_pct` and `context_tokens` are not filled yet |
-| `chat.history` | `{room, before?, limit?}` (`limit` 1 to 500, default 500) | `[ChatMessage]`, oldest first: the newest `limit` messages whose `id` sorts before `before` |
-| `chat.send` | `{room, body_md, reply_to?, attachments?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
+| `chat.history` | `{room, before?, limit?}` (`limit` 1 to 500, default 500) | `[ChatMessage]`, oldest first: the newest `limit` messages stored before the message with id `before` (store order, which is append order); an unknown `before` gives `[]` |
+| `chat.send` | `{room, body_md, reply_to?, attachments?, id?, ts_ms?, device?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
 | `chat.search` | `{query, room?, limit?}` (`query` 1 to 256 characters, `limit` default 50, max 500) | `[ChatMessage]`, newest first: case-insensitive substring match on `body_md` |
 | `chat.subscribe` | none | `null`; the connection then also receives a `chat` push |
 
-Errors: `invalid_params` (bad room, a room of another machine, empty body, bad query), `busy` (the target
+Errors: `invalid_params` (bad room, a room of another machine, empty body, bad query, `id` without `ts_ms`, bad `id`), `not_found` (an ingest into a session room this runner does not know), `conflict` (an ingest id that already holds different content), `busy` (the target
 session is not at its prompt), `forbidden`.
 
 `room.machine` must be this runner's machine id: `mx_` and 16 lowercase hex characters, created once in the
 runner directory (`machine.id`, mode 0600). It is never a hostname. Read it from the `room.machine` of the first
 `chat.rooms` entry.
 
-`chat.send` into a session room whose session is running types the body at the agent's prompt as a bracketed
+With `id` (a valid `m_<32hex>`, and then `ts_ms` is required) `chat.send` ingests an owner message written on
+another device. The id and `ts_ms` are kept, the author is always `{kind: owner, id: owner, device}` with `device` from the
+param, and the message is always stored first. The room must belong to this machine; the Manager room always exists, a
+session room exists when the session is known or the room already has a file (`not_found` otherwise). The same id with
+the same room, author kind and body is a no-op that returns the stored message and delivers nothing; the same id with
+other content is `conflict` and never overwrites. The message is delivered only when `now - ts_ms` is at most 10 minutes and
+`ts_ms` is at most 5 minutes ahead of `now`; otherwise a system message ("Not delivered: older than 10 minutes." or a
+clock-skew note) is stored after it. A live target that is not at its prompt gets the system message "Not delivered: the
+session was busy." and nothing is queued; ingest never answers `busy`. Without a live target the message is only stored.
+In process the relay pump calls `Chat::ingest`.
+
+`chat.send` without `id` into a session room whose session is running types the body at the agent's prompt as a bracketed
 paste followed by Enter, exactly like `sessions.send` with `at_prompt`, and answers `busy` (and stores nothing)
 when the agent is not at its prompt. A room without a running target (an exited session, or the Manager room
 while no manager session exists) only stores the message.

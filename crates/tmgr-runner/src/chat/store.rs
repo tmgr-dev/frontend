@@ -124,11 +124,23 @@ impl Store {
             .clamp(1, limits::MAX_HISTORY) as usize;
         let all = self.read_room(&key);
         let eligible: Vec<ChatMessage> = match before {
-            Some(b) => all.into_iter().filter(|m| m.id.as_str() < b).collect(),
+            Some(b) => match all.iter().position(|m| m.id == b) {
+                Some(i) => all.into_iter().take(i).collect(),
+                None => Vec::new(),
+            },
             None => all,
         };
         let skip = eligible.len().saturating_sub(limit);
         Ok(eligible.into_iter().skip(skip).collect())
+    }
+
+    pub fn exists(&self, room: &RoomRef) -> bool {
+        room_key(room).is_ok_and(|k| self.path(&k).exists() || self.older(&k).exists())
+    }
+
+    pub fn get(&self, room: &RoomRef, id: &str) -> Result<Option<ChatMessage>, String> {
+        let key = room_key(room)?;
+        Ok(self.read_room(&key).into_iter().find(|m| m.id == id))
     }
 
     pub fn last(&self, room: &RoomRef) -> Option<ChatMessage> {
@@ -311,6 +323,56 @@ mod tests {
             2
         );
         assert_eq!(s.history(&r, None, Some(9999)).unwrap().len(), 10);
+    }
+
+    #[test]
+    fn get_finds_a_message_by_id_in_either_generation() {
+        let t = tempfile::tempdir().unwrap();
+        let s = Store::open_with_cap(t.path(), 2000).unwrap();
+        let r = RoomRef::manager(MX);
+        assert!(!s.exists(&r));
+        for n in 1..=20 {
+            s.append(&msg(n, &r, &format!("m{n}"))).unwrap();
+        }
+        assert!(s.exists(&r));
+        let old = s.read_room("manager")[0].id.clone();
+        assert!(s.get(&r, &old).unwrap().is_some());
+        assert_eq!(
+            s.get(&r, &message_id_at(20, [0; 10]))
+                .unwrap()
+                .unwrap()
+                .body_md,
+            "m20"
+        );
+        assert!(s.get(&r, &message_id_at(99, [0; 10])).unwrap().is_none());
+    }
+
+    #[test]
+    fn paging_follows_append_order_even_when_an_old_id_is_in_the_middle() {
+        let (_t, s) = store();
+        let r = RoomRef::manager(MX);
+        for n in [10, 11, 3, 12, 13] {
+            s.append(&msg(n, &r, &format!("m{n}"))).unwrap();
+        }
+        let page = s.history(&r, None, Some(2)).unwrap();
+        assert_eq!(
+            page.iter().map(|m| m.body_md.as_str()).collect::<Vec<_>>(),
+            ["m12", "m13"]
+        );
+        let prev = s.history(&r, Some(&page[0].id), Some(2)).unwrap();
+        assert_eq!(
+            prev.iter().map(|m| m.body_md.as_str()).collect::<Vec<_>>(),
+            ["m11", "m3"]
+        );
+        let first = s.history(&r, Some(&prev[0].id), Some(2)).unwrap();
+        assert_eq!(
+            first.iter().map(|m| m.body_md.as_str()).collect::<Vec<_>>(),
+            ["m10"]
+        );
+        assert!(s
+            .history(&r, Some(&message_id_at(99, [0; 10])), None)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
