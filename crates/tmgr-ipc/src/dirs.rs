@@ -71,6 +71,10 @@ pub fn time_dir(runner_dir: &Path) -> PathBuf {
     persistent_dir(runner_dir, "time")
 }
 
+pub fn paste_dir(runner_dir: &Path) -> PathBuf {
+    persistent_dir(runner_dir, "paste")
+}
+
 pub fn questions_dir(runner_dir: &Path) -> PathBuf {
     persistent_dir(runner_dir, "questions")
 }
@@ -513,5 +517,11 @@ mod tests {
     fn time_dir_of_an_explicit_runner_dir_stays_inside_it() {
         let t = private_tmp();
         assert_eq!(time_dir(t.path()), t.path().join("time"));
+    }
+
+    #[test]
+    fn paste_dir_of_an_explicit_runner_dir_stays_inside_it() {
+        let t = private_tmp();
+        assert_eq!(paste_dir(t.path()), t.path().join("paste"));
     }
 }

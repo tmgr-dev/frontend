@@ -5,6 +5,7 @@ use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use tmgr_ipc::proto::valid_session_id;
 
 pub const MAX_IMAGE: usize = 10 * 1024 * 1024;
 pub const MAX_CHUNK: usize = 512 * 1024;
@@ -117,6 +118,33 @@ pub fn store(home: &Path, bytes: &[u8], ext: &str) -> io::Result<PathBuf> {
     Ok(path)
 }
 
+fn private_subdir(parent: &Path, name: &str) -> io::Result<PathBuf> {
+    let dir = parent.join(name);
+    match DirBuilder::new().mode(0o700).create(&dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+    let meta = fs::symlink_metadata(&dir)?;
+    if meta.file_type().is_dir()
+        && meta.uid() == unsafe { libc::geteuid() }
+        && meta.mode() & 0o077 == 0
+    {
+        Ok(dir)
+    } else {
+        Err(invalid("the paste directory is not private"))
+    }
+}
+
+pub fn store_private(root: &Path, id: &str, bytes: &[u8], ext: &str) -> io::Result<PathBuf> {
+    if !valid_session_id(id) {
+        return Err(invalid("invalid session id"));
+    }
+    tmgr_ipc::dirs::ensure_private_dir(root)?;
+    let home = private_subdir(root, id)?;
+    store(&home, bytes, ext)
+}
+
 pub fn remove(path: &Path) {
     let _ = fs::remove_file(path);
 }
@@ -218,6 +246,82 @@ mod tests {
             store(&home, b"\x89PNG\r\n\x1a\n", "png").unwrap();
         }
         assert_eq!(fs::read_dir(home.join(DIR)).unwrap().count(), KEEP);
+    }
+
+    #[test]
+    fn without_a_session_home_the_image_goes_to_a_private_per_session_directory() {
+        let d = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(d.path()).unwrap().join("paste");
+        let a = store_private(&root, "s_aaaaaaaaa3", b"\x89PNG\r\n\x1a\nA", "png").unwrap();
+        assert_eq!(a.parent().unwrap(), root.join("s_aaaaaaaaa3").join(DIR));
+        assert_eq!(fs::read(&a).unwrap(), b"\x89PNG\r\n\x1a\nA");
+        assert_eq!(fs::metadata(&a).unwrap().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::metadata(root.join("s_aaaaaaaaa3")).unwrap().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(fs::metadata(&root).unwrap().mode() & 0o777, 0o700);
+        let b = store_private(&root, "s_aaaaaaaaa3", b"\x89PNG\r\n\x1a\nB", "png").unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn a_planted_symlink_or_open_session_directory_is_refused_in_the_fallback() {
+        let d = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(d.path()).unwrap().join("paste");
+        let elsewhere = fs::canonicalize(d.path()).unwrap().join("elsewhere");
+        fs::create_dir(&elsewhere).unwrap();
+        store_private(&root, "s_aaaaaaaaa5", b"\x89PNG\r\n\x1a\n", "png").unwrap();
+        std::os::unix::fs::symlink(&elsewhere, root.join("s_aaaaaaaaa3")).unwrap();
+        assert!(store_private(&root, "s_aaaaaaaaa3", b"\x89PNG\r\n\x1a\n", "png").is_err());
+        assert_eq!(fs::read_dir(&elsewhere).unwrap().count(), 0);
+        fs::create_dir(root.join("s_aaaaaaaaa2")).unwrap();
+        fs::set_permissions(
+            root.join("s_aaaaaaaaa2"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        assert!(store_private(&root, "s_aaaaaaaaa2", b"\x89PNG\r\n\x1a\n", "png").is_err());
+        assert_eq!(fs::read_dir(root.join("s_aaaaaaaaa2")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_fallback_root_that_is_a_symlink_or_open_is_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(d.path()).unwrap();
+        let elsewhere = base.join("elsewhere");
+        fs::create_dir(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, base.join("link")).unwrap();
+        assert!(store_private(&base.join("link"), "s_aaaaaaaaa3", b"x", "png").is_err());
+        assert_eq!(fs::read_dir(&elsewhere).unwrap().count(), 0);
+        let open = base.join("open");
+        fs::create_dir(&open).unwrap();
+        fs::set_permissions(&open, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        assert!(store_private(&open, "s_aaaaaaaaa3", b"x", "png").is_err());
+    }
+
+    #[test]
+    fn the_fallback_refuses_ids_that_could_leave_the_directory() {
+        let d = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(d.path()).unwrap().join("paste");
+        for id in ["", ".", "..", "../x", "a/b", "s_1/../../x"] {
+            assert!(store_private(&root, id, b"x", "png").is_err(), "{id}");
+        }
+    }
+
+    #[test]
+    fn only_the_newest_images_are_kept_in_the_fallback() {
+        let d = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(d.path()).unwrap().join("paste");
+        for _ in 0..KEEP + 4 {
+            store_private(&root, "s_aaaaaaaaa3", b"\x89PNG\r\n\x1a\n", "png").unwrap();
+        }
+        assert_eq!(
+            fs::read_dir(root.join("s_aaaaaaaaa3").join(DIR))
+                .unwrap()
+                .count(),
+            KEEP
+        );
     }
 
     #[test]

@@ -5041,6 +5041,7 @@ impl Runner {
         s.cp_forget();
         let _ = fs::remove_dir_all(self.sdir(id));
         let _ = fs::remove_dir_all(self.cfg.homes.join(id));
+        let _ = fs::remove_dir_all(tmgr_ipc::dirs::paste_dir(&self.cfg.dir).join(id));
         let s_dir = self.cfg.dir.join("s");
         let _ = fs::remove_file(s_dir.join(format!("{id}.sock")));
         let _ = fs::remove_file(s_dir.join(format!("{id}.addr")));

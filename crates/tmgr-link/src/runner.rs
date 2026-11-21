@@ -370,13 +370,18 @@ impl Backend for RunnerClient {
             return Err(refuse("invalid session id"));
         }
         let home = dirs::homes_dir().map_err(unavailable)?.join(id);
-        let path = paste::store(&home, image, ext).map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                refuse("image paste needs a sandboxed session")
-            } else {
-                refuse("cannot store the image in the session home")
+        let path = match paste::store(&home, image, ext) {
+            Ok(path) => path,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                let unsandboxed = self.list()?.iter().any(|s| s.id == id && s.no_sandbox);
+                if !unsandboxed {
+                    return Err(refuse("image paste needs a sandboxed session"));
+                }
+                paste::store_private(&dirs::paste_dir(&self.dir), id, image, ext)
+                    .map_err(|_| refuse("cannot store the image for the session"))?
             }
-        })?;
+            Err(_) => return Err(refuse("cannot store the image in the session home")),
+        };
         let sent = self.send(id, &paste::paste_text(&path, bracketed));
         if sent.is_err() {
             paste::remove(&path);
