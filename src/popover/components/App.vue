@@ -363,7 +363,7 @@
 	} from '../model';
 	import type { PopoverModel, PopoverTask } from '../types';
 
-	const MAX_HEIGHT = 640;
+	const MAX_HEIGHT = 760;
 
 	const NAV_SELECTOR = '[data-nav]:not([disabled])';
 
