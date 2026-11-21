@@ -22,7 +22,9 @@ use crate::trust::{
 };
 use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 
-pub use ports::{ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, SpawnKeySink, Transport};
+pub use ports::{
+    ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, SpawnKeySink, SpawnOkSink, Transport,
+};
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
 };
@@ -681,6 +683,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore, S: ChatSink> {
     scope: RoomScope,
     rpc: Option<Arc<dyn RpcSink>>,
     spawnkey: Option<Arc<dyn SpawnKeySink>>,
+    spawnok: Option<Arc<dyn SpawnOkSink>>,
     core: Mutex<Core>,
 }
 
@@ -720,6 +723,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             scope: RoomScope::default(),
             rpc: None,
             spawnkey: None,
+            spawnok: None,
             core: Mutex::new(core),
         })
     }
@@ -741,6 +745,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     pub fn with_spawnkey_sink(mut self, sink: Arc<dyn SpawnKeySink>) -> Self {
         self.spawnkey = Some(sink);
+        self
+    }
+
+    pub fn with_spawnok_sink(mut self, sink: Arc<dyn SpawnOkSink>) -> Self {
+        self.spawnok = Some(sink);
         self
     }
 
@@ -1360,6 +1369,23 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .ok()?;
                 let key: SpawnKey = serde_json::from_str(&json).ok()?;
                 sink.deliver_spawnkey(&dev.id, &dev.fp, &dev.sign_pub, &dev.kex_pub, &key);
+            }
+            "spawnok" if sender_trusted && c.st.joined => {
+                let sink = self.spawnok.as_ref()?;
+                let own = c.identity.as_ref().map(|i| i.device_id.as_str());
+                let dev = c.st.trusted.iter().find(|d| d.id == opened.from)?;
+                if Some(dev.id.as_str()) == own
+                    || dev.fp != opened.from_fp
+                    || c.st.revoked.contains(&dev.fp)
+                {
+                    return None;
+                }
+                let signed: tmgr_spawn_auth::SignedSpawn =
+                    serde_json::from_value(opened.payload.clone()).ok()?;
+                if signed.device_fp != dev.fp {
+                    return None;
+                }
+                sink.deliver_spawnok(&dev.id, &dev.fp, &signed);
             }
             _ => return None,
         }

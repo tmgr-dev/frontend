@@ -15,6 +15,7 @@ http = []
 [dependencies]
 tmgr-phone.workspace = true
 tmgr-ipc.workspace = true
+tmgr-spawn-auth.workspace = true
 chrono.workspace = true
 log = "0.4"
 serde.workspace = true

@@ -5,6 +5,7 @@ use tmgr_ipc::chat::ChatMessage;
 
 use crate::api::Request;
 use crate::trust::SpawnKey;
+use tmgr_spawn_auth::SignedSpawn;
 
 pub trait Transport: Send + Sync {
     fn call(&self, req: &Request, device_token: Option<&str>) -> Result<String, String>;
@@ -89,4 +90,11 @@ pub trait SpawnKeySink: Send + Sync {
         kex_pub_b64: &str,
         key: &SpawnKey,
     );
+}
+
+/// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
+/// The sender is a trusted, joined, non-revoked device other than ourselves and `signed.device_fp == from_fp`;
+/// the signature itself is not checked here.
+pub trait SpawnOkSink: Send + Sync {
+    fn deliver_spawnok(&self, from_device: &str, from_fp: &str, signed: &SignedSpawn);
 }

@@ -105,6 +105,7 @@ pub fn msg_id_from(kind: &str, random: &[u8; 16]) -> Result<String> {
         "join_ok" => "o",
         "revoke" => "x",
         "spawnkey" => "k",
+        "spawnok" => "a",
         "mgr_req" => "g",
         "mgr_res" => "h",
         _ => return Err(Error::UnexpectedKind),
@@ -810,6 +811,7 @@ mod tests {
             ("join_ok", "o"),
             ("revoke", "x"),
             ("spawnkey", "k"),
+            ("spawnok", "a"),
             ("mgr_req", "g"),
             ("mgr_res", "h"),
         ] {

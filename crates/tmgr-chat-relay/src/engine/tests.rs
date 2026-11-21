@@ -3821,3 +3821,178 @@ fn spawnkey_from_the_own_device_is_dropped() {
     r.poll_once().unwrap();
     assert_eq!(sink.n(), 0);
 }
+
+#[derive(Clone, Default)]
+struct OkRec(Arc<Mutex<Vec<(String, String, tmgr_spawn_auth::SignedSpawn)>>>);
+
+impl OkRec {
+    fn n(&self) -> usize {
+        self.0.lock().unwrap().len()
+    }
+}
+
+impl SpawnOkSink for OkRec {
+    fn deliver_spawnok(&self, from: &str, fp: &str, signed: &tmgr_spawn_auth::SignedSpawn) {
+        self.0
+            .lock()
+            .unwrap()
+            .push((from.into(), fp.into(), signed.clone()));
+    }
+}
+
+fn spawnok_world() -> (Fake, Clock, Engine, Engine, OkRec) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Phone");
+    let mut r = join_as(&fake, &clock, &a, "Runner", "runner");
+    r.poll_once().unwrap();
+    let sink = OkRec::default();
+    r.spawnok = Some(Arc::new(sink.clone()));
+    (fake, clock, a, r, sink)
+}
+
+fn spawnok_payload(device_fp: &str) -> Value {
+    json!({
+        "v": 1,
+        "user_id": "42",
+        "device_fp": device_fp,
+        "target_id": "d_runner1",
+        "target_fp": "cd".repeat(32),
+        "card_id": "card_00112233445566778899aabbccddeeff",
+        "nonce": "ab".repeat(16),
+        "ts_ms": 1,
+        "exp_ms": 2,
+        "req_sha256": "ef".repeat(32),
+        "alg": "es256",
+        "sig": "c2ln"
+    })
+}
+
+fn post_spawnok(from: &Engine, to: &Engine, payload: &Value) {
+    raw_post(from, &my_id(to), "spawnok", &rpc_id("spawnok"), payload);
+    to.poll_once().unwrap();
+}
+
+#[test]
+fn spawnok_from_a_trusted_joined_phone_reaches_the_sink() {
+    let (_f, _c, a, r, sink) = spawnok_world();
+    let payload = spawnok_payload(&fp_of(&a));
+    post_spawnok(&a, &r, &payload);
+    let got = sink.0.lock().unwrap().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0, my_id(&a));
+    assert_eq!(got[0].1, fp_of(&a));
+    assert_eq!(serde_json::to_value(&got[0].2).unwrap(), payload);
+}
+
+#[test]
+fn spawnok_whose_device_fp_is_not_the_sender_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnok_world();
+    post_spawnok(&a, &r, &spawnok_payload(&"11".repeat(32)));
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn a_malformed_spawnok_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnok_world();
+    let fp = fp_of(&a);
+    let mut no_sig = spawnok_payload(&fp);
+    no_sig.as_object_mut().unwrap().remove("sig");
+    let mut bad_ts = spawnok_payload(&fp);
+    bad_ts["ts_ms"] = json!(-1);
+    let mut huge = spawnok_payload(&fp);
+    huge["exp_ms"] = json!(u64::MAX);
+    for junk in [no_sig, bad_ts, huge, json!("x"), json!([1]), json!({})] {
+        post_spawnok(&a, &r, &junk);
+    }
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnok_from_an_untrusted_device_is_dropped() {
+    let (fake, clock, _a, r, sink) = spawnok_world();
+    let stranger = engine_with(&fake, &clock, "Stranger");
+    stranger.ensure_registered(&mut stranger.lock()).unwrap();
+    let rid = my_id(&r);
+    let dev = {
+        let g = r.lock();
+        g.st.trusted.iter().find(|d| d.id == rid).cloned().unwrap()
+    };
+    let payload = spawnok_payload(&fp_of(&stranger));
+    stranger
+        .seal_and_post(
+            &mut stranger.lock(),
+            "spawnok",
+            &rpc_id("spawnok"),
+            &payload,
+            &[dev],
+            false,
+        )
+        .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnok_from_a_revoked_sender_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnok_world();
+    let payload = spawnok_payload(&fp_of(&a));
+    let fp = fp_of(&a);
+    {
+        let mut g = r.lock();
+        g.st.revoked.push(fp.clone());
+        g.st.trusted.retain(|d| d.fp != fp);
+    }
+    let target: Vec<Dev> = {
+        let g = a.lock();
+        g.st.trusted
+            .iter()
+            .filter(|d| d.id == my_id(&r))
+            .cloned()
+            .collect()
+    };
+    a.seal_and_post(
+        &mut a.lock(),
+        "spawnok",
+        &rpc_id("spawnok"),
+        &payload,
+        &target,
+        false,
+    )
+    .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnok_from_the_own_device_is_dropped() {
+    let (_f, _c, _a, r, sink) = spawnok_world();
+    let rid = my_id(&r);
+    let payload = spawnok_payload(&fp_of(&r));
+    let me: Vec<Dev> = r
+        .lock()
+        .st
+        .trusted
+        .iter()
+        .filter(|d| d.id == rid)
+        .cloned()
+        .collect();
+    r.seal_and_post(
+        &mut r.lock(),
+        "spawnok",
+        &rpc_id("spawnok"),
+        &payload,
+        &me,
+        false,
+    )
+    .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn spawnok_before_joining_is_dropped() {
+    let (_f, _c, a, r, sink) = spawnok_world();
+    r.lock().st.joined = false;
+    post_spawnok(&a, &r, &spawnok_payload(&fp_of(&a)));
+    assert_eq!(sink.n(), 0);
+}

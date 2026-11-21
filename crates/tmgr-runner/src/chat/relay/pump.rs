@@ -8,7 +8,7 @@ use serde_json::Value;
 use tmgr_chat_relay::api::Request;
 use tmgr_chat_relay::engine::{
     retry_after_secs, ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Slot, SpawnKeySink,
-    Transport,
+    SpawnOkSink, Transport,
 };
 use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind};
 
@@ -234,6 +234,7 @@ pub struct Setup {
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
     pub rpc: Arc<RpcInbox>,
     pub spawnkey: Arc<dyn SpawnKeySink>,
+    pub spawnok: Option<Arc<dyn SpawnOkSink>>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
     pub on_device: OnDevice,
 }
@@ -257,12 +258,15 @@ fn build(setup: &Setup) -> Result<Option<Engine>, String> {
         local_machine: setup.machine.clone(),
     };
     RelayEngine::new(DynTransport(transport), dir, sink, engine_cfg).map(|e| {
-        Some(
-            e.with_kind("runner")
-                .with_room_scope(RoomScope::Local)
-                .with_rpc_sink(setup.rpc.clone())
-                .with_spawnkey_sink(setup.spawnkey.clone()),
-        )
+        let e = e
+            .with_kind("runner")
+            .with_room_scope(RoomScope::Local)
+            .with_rpc_sink(setup.rpc.clone())
+            .with_spawnkey_sink(setup.spawnkey.clone());
+        Some(match &setup.spawnok {
+            Some(sink) => e.with_spawnok_sink(sink.clone()),
+            None => e,
+        })
     })
 }
 
