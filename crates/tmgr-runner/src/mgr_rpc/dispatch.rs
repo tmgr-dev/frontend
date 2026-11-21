@@ -184,7 +184,11 @@ impl Dispatcher {
             .open(&tmp)?;
         f.write_all(&bytes)?;
         f.sync_all()?;
-        std::fs::rename(&tmp, path)
+        std::fs::rename(&tmp, path)?;
+        match path.parent() {
+            Some(dir) => std::fs::File::open(dir)?.sync_all(),
+            None => Ok(()),
+        }
     }
 
     pub fn handle(
@@ -329,7 +333,7 @@ impl Dispatcher {
         e.expires_ms = e.expires_ms.max(expires);
         let args = match prepare(policy, from, &req) {
             Ok(args) => args,
-            Err(res) => return Some(Admit::Reply(res)),
+            Err(res) => return Some(Admit::Reply(*res)),
         };
         if durable(req.op) && now < self.blind_until {
             if let Some(st) = senders.get_mut(from) {
@@ -453,9 +457,9 @@ fn expiry(now: u64, ts_ms: u64) -> u64 {
     now.max(ts_ms) + limits::FRESH_MS + limits::SEEN_MARGIN_MS
 }
 
-fn prepare(policy: &Policy, from: &str, req: &RpcReq) -> Result<Args, RpcRes> {
+fn prepare(policy: &Policy, from: &str, req: &RpcReq) -> Result<Args, Box<RpcRes>> {
     let rpc = req.rpc.as_str();
-    let err = |code, msg: &str| RpcRes::err(rpc, code, msg);
+    let err = |code, msg: &str| Box::new(RpcRes::err(rpc, code, msg));
     if !policy.allows(req.op) {
         return Err(err(ErrorCode::OpDenied, "operation is not allowed"));
     }
@@ -485,14 +489,19 @@ fn load_store(path: &Path, now: u64) -> (HashMap<String, SenderState>, bool) {
         crate::daemon::log("manager rpc: seen store is not valid; refusing send/ask for now");
         return (HashMap::new(), false);
     };
+    let intact = file.v == 1
+        && file.senders.iter().all(|(from, entries)| {
+            valid_machine_id(from) && entries.keys().all(|rpc| valid_req_id(rpc))
+        });
+    if !intact {
+        crate::daemon::log("manager rpc: seen store is not valid; refusing send/ask for now");
+        return (HashMap::new(), false);
+    }
     let mut out = HashMap::new();
     for (from, entries) in file.senders {
-        if !valid_machine_id(&from) {
-            continue;
-        }
         let st: &mut SenderState = out.entry(from).or_default();
         for (rpc, e) in entries {
-            if !valid_req_id(&rpc) || e.expires_ms <= now {
+            if e.expires_ms <= now {
                 continue;
             }
             let slot = e.answer.map_or(Slot::Lost, Slot::Answered);
@@ -1485,6 +1494,24 @@ mod tests {
             .unwrap();
         assert!(res.ok);
         assert_eq!(host.sent.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_store_with_an_invalid_entry_is_rejected_whole() {
+        let d = store_dir();
+        let path = d.path().join(SEEN_FILE);
+        let text = format!(
+            r#"{{"v":1,"senders":{{"{PEER}":{{"bad id!":{{"expires_ms":{}}}}}}}}}"#,
+            T0 + 1000
+        );
+        std::fs::write(&path, text).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let host = Fake::new();
+        let res = stored_dispatcher(&path, T0)
+            .handle(&open(), &host, PEER, &send_body("dup"))
+            .unwrap();
+        assert_eq!(code(&res), ErrorCode::Unavailable);
+        assert!(host.sent.lock().unwrap().is_empty());
     }
 
     #[test]

@@ -206,13 +206,13 @@ mod tests {
             file(&[entry("mx_ABC", DEV_A, FP_A)]),
             file(&[entry("laptop", DEV_A, FP_A)]),
             file(&[entry(A, "not-a-uuid", FP_A)]),
-            file(&[entry(A, &DEV_A.to_uppercase(), FP_A)]),
+            file(&[entry(A, &DEV_B.to_uppercase(), FP_A)]),
             file(&[entry(A, DEV_A, "abc")]),
             file(&[entry(A, DEV_A, &FP_A.to_uppercase())]),
             bad_label,
             file(&[entry(A, DEV_A, FP_A), entry(A, DEV_B, FP_B)]),
             file(&[entry(A, DEV_A, FP_A), entry(B, DEV_A, FP_B)]),
-            format!(r#"{{"machines":[],"extra":1}}"#),
+            r#"{"machines":[],"extra":1}"#.to_string(),
             format!(
                 r#"{{"machines":[{{"id":"{A}","label":"x","device_id":"{DEV_A}","fp":"{FP_A}","note":1}}]}}"#
             ),

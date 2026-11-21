@@ -90,7 +90,9 @@ impl Audit for FileAudit {
         }
         if g.size > 0 && g.size + len > self.cap {
             g.file = None;
-            let _ = std::fs::rename(&self.path, self.rotated_path());
+            if std::fs::rename(&self.path, self.rotated_path()).is_err() {
+                return;
+            }
             let Some((f, size)) = self.open() else { return };
             g.file = Some(f);
             g.size = size;
