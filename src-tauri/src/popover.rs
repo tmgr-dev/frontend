@@ -90,7 +90,7 @@ fn clamp_axis(value: f64, low: f64, high: f64) -> f64 {
   }
 }
 
-/// Physical top-left of the popover: on the screen side the icon's bar is on, centred on the icon, kept inside the work area.
+/// Top-left of the popover (physical on Windows, logical points on macOS where the anchor scale is 1.0): on the screen side the icon's bar is on, centred on the icon, kept inside the work area.
 pub fn position(icon: Area, work: Area, scale: f64, size: (f64, f64), edge: Edge) -> (i32, i32) {
   let (w, h) = size;
   let gap = GAP * scale;
@@ -346,7 +346,9 @@ fn resolve_anchor(
         })
         .collect();
       let by_cursor = cursor_logical.and_then(|(x, y)| candidates.iter().find(|m| m.monitor.scaled(1.0 / m.scale).contains(x, y)));
-      let m = by_cursor.copied().or(candidates.first().copied()).or(primary.as_ref())?;
+      let bar_gap = |m: &&MonitorInfo| (icon.h / m.scale - (m.work.y - m.monitor.y) / m.scale).abs();
+      let by_bar = candidates.iter().copied().min_by(|a, b| bar_gap(a).total_cmp(&bar_gap(b)));
+      let m = by_cursor.copied().or(by_bar).or(primary.as_ref())?;
       Some(logical_anchor(icon, m))
     }
   }
@@ -459,7 +461,11 @@ fn anchor_for<R: Runtime>(app: &AppHandle<R>, icon: Area) -> Option<Anchor> {
   let monitors: Vec<MonitorInfo> = app.available_monitors().unwrap_or_default().iter().map(monitor_info).collect();
   let primary = app.primary_monitor().ok().flatten().map(|m| monitor_info(&m));
   let mode = if cfg!(target_os = "macos") { Coords::MacLogical } else { Coords::Physical };
-  let cursor_logical = primary.and_then(|p| app.cursor_position().ok().map(|c| (c.x / p.scale, c.y / p.scale)));
+  let cursor_logical = if cfg!(target_os = "macos") {
+    primary.and_then(|p| app.cursor_position().ok().map(|c| (c.x / p.scale, c.y / p.scale)))
+  } else {
+    None
+  };
   resolve_anchor(icon, &monitors, primary, mode, cursor_logical)
 }
 
@@ -695,7 +701,11 @@ mod tests {
   }
 
   fn old_choice(icon: Area, monitors: &[MonitorInfo], primary: MonitorInfo) -> MonitorInfo {
-    monitors.iter().copied().find(|m| m.monitor.contains(icon.cx(), icon.cy())).unwrap_or(primary)
+    monitors
+      .iter()
+      .copied()
+      .find(|m| m.monitor.scaled(1.0 / m.scale).contains(icon.cx(), icon.cy()))
+      .unwrap_or(primary)
   }
 
   fn mac_pick(icon: Area, monitors: &[MonitorInfo], cursor: (f64, f64)) -> Anchor {
@@ -727,10 +737,37 @@ mod tests {
   fn mac_icon_on_scale1_second_monitor_right_of_retina_primary() {
     let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
     let icon = tray_icon(1800.0, 0.0, 1.0);
-    assert_eq!(old_choice(icon, &monitors, monitors[0]), monitors[0]);
     let anchor = mac_pick(icon, &monitors, (1810.0, 5.0));
     assert_below_icon_inside(anchor, &monitors[1]);
     assert_eq!(anchor.icon.x, 1800.0);
+  }
+
+  #[test]
+  fn mac_icon_on_retina_primary_is_not_stolen_by_scale1_monitor_to_its_right() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let icon = tray_icon(1000.0, 0.0, 2.0);
+    assert_eq!(icon.x, 2000.0);
+    assert_eq!(old_choice(icon, &monitors, monitors[0]), monitors[1]);
+    let anchor = mac_pick(icon, &monitors, (1010.0, 5.0));
+    assert_below_icon_inside(anchor, &monitors[0]);
+  }
+
+  #[test]
+  fn mac_icon_on_scale1_monitor_that_also_fits_the_primary_logical_range() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let icon = tray_icon(1500.0, 0.0, 1.0);
+    let anchor = mac_pick(icon, &monitors, (1510.0, 5.0));
+    assert_below_icon_inside(anchor, &monitors[1]);
+  }
+
+  #[test]
+  fn mac_without_cursor_the_menu_bar_height_picks_the_monitor() {
+    let monitors = [mon(0.0, 0.0, 1440.0, 900.0, 2.0), mon(1440.0, 0.0, 1920.0, 1080.0, 1.0)];
+    let icon = tray_icon(1500.0, 0.0, 1.0);
+    let anchor = resolve_anchor(icon, &monitors, Some(monitors[0]), Coords::MacLogical, None).unwrap();
+    assert_below_icon_inside(anchor, &monitors[1]);
+    let off_cursor = resolve_anchor(icon, &monitors, Some(monitors[0]), Coords::MacLogical, Some((9000.0, 9000.0))).unwrap();
+    assert_below_icon_inside(off_cursor, &monitors[1]);
   }
 
   #[test]
