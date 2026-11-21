@@ -434,9 +434,10 @@ fn check_stores_within(cwd: &Dir, budget: usize) -> Result<(), Refusal> {
     match walk_stores(own, &cwd.path, 0, &mut left) {
         Ok(()) => Ok(()),
         Err(Stop::Shared(p)) => Err(refused(format!(
-            "git object files under {} are also linked from another place, so a sandboxed session could change them there; \
-             run `git gc --prune=now` and `git commit-graph write --reachable` in it, or re-clone with `git clone --no-local <repository> <new folder>`; \
-             or start with --no-sandbox ({NO_SANDBOX_HOW})",
+            "git object files are also linked from another place, so a sandboxed session could change them there; \
+             run `git gc --prune=now` and `git commit-graph write --reachable` in the repository, \
+             or re-clone with `git clone --no-local <repository> <new folder>` (uncommitted changes and stashes are not carried over), \
+             or start with --no-sandbox ({NO_SANDBOX_HOW}); store: {}",
             p.display()
         ))),
         Err(Stop::Unchecked(p)) => Err(refused(format!(
@@ -1110,6 +1111,8 @@ mod tests {
         assert_eq!(code, ErrorCode::InvalidParams);
         assert!(msg.contains(dest.to_str().unwrap()), "{msg}");
         assert!(msg.contains("git clone --no-local"), "{msg}");
+        assert!(msg.contains("--no-sandbox"), "{msg}");
+        assert!(msg.contains("--allow-no-sandbox on"), "{msg}");
         assert!(linked_files(&dest) > 0);
     }
 

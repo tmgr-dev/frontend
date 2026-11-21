@@ -1440,3 +1440,20 @@ fn attach_loop(
         }
     }
 }
+
+#[cfg(test)]
+mod reply_tests {
+    use super::*;
+
+    #[test]
+    fn a_runner_refusal_of_a_few_hundred_characters_reaches_the_leader_whole() {
+        let message = "m".repeat(400);
+        let e = BackendError::Refused {
+            code: "invalid_params".into(),
+            message: message.clone(),
+        };
+        let v: Value = serde_json::from_slice(&backend_reply(Some(1), &e)).unwrap();
+        assert_eq!(v["error"], "invalid_params");
+        assert_eq!(v["message"], message);
+    }
+}

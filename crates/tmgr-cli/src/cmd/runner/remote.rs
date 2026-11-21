@@ -476,21 +476,20 @@ mod tests {
 
     #[test]
     fn a_runner_refusal_keeps_its_text_and_is_not_a_lost_link() {
-        for code in [
-            "invalid_params",
-            "unknown_profile",
-            "sandbox",
-            "unauthorized",
-            "proto_mismatch",
-            "refused",
+        for (code, kind) in [
+            ("invalid_params", Kind::Usage),
+            ("unknown_profile", Kind::Usage),
+            ("sandbox", Kind::Conflict),
+            ("unauthorized", Kind::Conflict),
+            ("proto_mismatch", Kind::Conflict),
+            ("refused", Kind::Conflict),
         ] {
             let e = check(Reply::Err {
                 code: code.into(),
                 message: "folder is too large".into(),
             })
             .unwrap_err();
-            assert_ne!(e.kind, Kind::Link, "{code}");
-            assert_ne!(e.kind, Kind::Forbidden, "{code}");
+            assert_eq!(e.kind, kind, "{code}");
             assert_eq!(e.message, "folder is too large");
         }
     }
