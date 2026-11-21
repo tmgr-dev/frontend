@@ -240,6 +240,7 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, scope: &Scope
         return audit_down();
     }
     let Ok(mut runs) = Runs::lock(conn.paths) else {
+        let _ = conn.record("runs.list", args, "failed", "run store unavailable");
         return Step::Close(proto::error(id, "unavailable", "request refused"));
     };
     let listed = match with_backend(conn, st, true, None, |b| b.list()) {
@@ -283,7 +284,13 @@ fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], store: &crate::st
                 && store.enrollment_of(&o.link, o.generation).as_deref() == Some(conn.enrollment)
         });
         if ours && !runs.recorded(&s.id) {
-            let recorded = runs.record(RunRecord {
+            if conn
+                .note("worker.run_adopted", json!({"run": s.id}))
+                .is_err()
+            {
+                return;
+            }
+            let _ = runs.record(RunRecord {
                 run: s.id.clone(),
                 link: conn.name.to_string(),
                 enrollment: conn.enrollment.to_string(),
@@ -294,9 +301,6 @@ fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], store: &crate::st
                 created: crate::now_rfc3339(),
                 generation: s.origin.as_ref().map(|o| o.generation),
             });
-            if recorded.is_ok() {
-                let _ = conn.note("worker.run_adopted", json!({"run": s.id}));
-            }
         }
     }
 }
