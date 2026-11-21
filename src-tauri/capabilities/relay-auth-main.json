@@ -1,7 +1,7 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "relay-auth-main",
-	"description": "Handing the login token to the chat relay and dropping it on sign-out: main window only (the manager window gets it in manager.json).",
+	"description": "Handing the login token to the chat relay and dropping it on sign-out: main window only; the manager window cannot set or clear it.",
 	"windows": ["main"],
 	"permissions": [
 		"allow-manager-set-relay-auth",

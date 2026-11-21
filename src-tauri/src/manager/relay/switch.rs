@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 
-use super::auth::{AuthCell, RelayAuth};
+use super::auth::{AuthCell, BoundLogin, RelayAuth};
 use super::engine::{retry_after_secs, EngineConfig, RelayEngine};
 use super::http::{HttpTransport, LoginToken};
 use super::port::{NoRelay, RelayPort, TrustState};
@@ -33,7 +33,10 @@ pub fn build_engine(spec: EngineSpec, store: impl KeyStore + 'static) -> Result<
 }
 
 pub fn keychain_builder() -> Builder {
-  Box::new(|spec| build_engine(spec, KeychainStore))
+  Box::new(|spec| {
+    let store = KeychainStore::new(format!("u{}@{}", spec.user_id, spec.api_base));
+    build_engine(spec, store)
+  })
 }
 
 struct Slot {
@@ -106,7 +109,7 @@ impl SwitchRelay {
     }
     self.put(Arc::new(NoRelay), None);
     let built = (self.machine)().and_then(|local_machine| {
-      (self.build)(EngineSpec { user_id: key.0, api_base: key.1.clone(), local_machine, login: self.auth.clone() })
+      (self.build)(EngineSpec { user_id: key.0, api_base: key.1.clone(), local_machine, login: Arc::new(BoundLogin::new(self.auth.clone(), key.clone())) })
     });
     match built {
       Ok(relay) => {
@@ -265,7 +268,7 @@ mod tests {
   }
 
   fn auth(user: u64) -> RelayAuth {
-    RelayAuth::new(SECRET.into(), user, "https://api.example.com/api/").unwrap()
+    RelayAuth::new(SECRET.into(), user, "https://api.tmgr.dev/api/").unwrap()
   }
 
   fn live_builder(count: Arc<AtomicUsize>) -> Builder {
@@ -324,10 +327,27 @@ mod tests {
     let count = Arc::new(AtomicUsize::new(0));
     let s = switch(true, &count);
     s.set_auth(auth(7));
-    s.set_auth(RelayAuth::new("fresh".into(), 7, "https://api.example.com").unwrap());
+    s.set_auth(RelayAuth::new("fresh".into(), 7, "https://api.tmgr.dev").unwrap());
     assert_eq!(count.load(Ordering::SeqCst), 1);
     s.set_auth(auth(8));
     assert_eq!(count.load(Ordering::SeqCst), 2);
+  }
+
+  #[test]
+  fn an_engine_built_for_the_old_account_never_sends_the_new_token() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    let build: Builder = Box::new(move |spec| {
+      sink.lock().unwrap().push(spec.login.clone());
+      Ok(Arc::new(Live))
+    });
+    let s = SwitchRelay::new(true, build, machine_ok());
+    s.set_auth(RelayAuth::new("old".into(), 7, "https://api.tmgr.dev").unwrap());
+    s.set_auth(RelayAuth::new("new".into(), 8, "https://api.tmgr.dev").unwrap());
+    let logins = seen.lock().unwrap();
+    assert_eq!(logins.len(), 2);
+    assert_eq!(logins[0].token(), None);
+    assert_eq!(logins[1].token().as_deref(), Some("new"));
   }
 
   #[test]
@@ -341,9 +361,9 @@ mod tests {
     let s = SwitchRelay::new(true, build, machine_ok());
     s.set_auth(auth(7));
     let (user, base, machine, login) = seen.lock().unwrap().take().unwrap();
-    assert_eq!((user, base.as_str(), machine.as_str()), (7, "https://api.example.com", "mx_a"));
+    assert_eq!((user, base.as_str(), machine.as_str()), (7, "https://api.tmgr.dev", "mx_a"));
     assert_eq!(login.token().as_deref(), Some(SECRET));
-    s.set_auth(RelayAuth::new("fresh".into(), 7, "https://api.example.com").unwrap());
+    s.set_auth(RelayAuth::new("fresh".into(), 7, "https://api.tmgr.dev").unwrap());
     assert_eq!(login.token().as_deref(), Some("fresh"));
     s.clear();
     assert_eq!(login.token(), None);
@@ -376,13 +396,13 @@ mod tests {
     let bad = [
       build_engine(spec(&format!("https://u:{SECRET}@api.example.com"), SECRET), MemKeyStore::default()),
       build_engine(spec(&format!("http://{SECRET}.example.com"), SECRET), MemKeyStore::default()),
-      build_engine(spec("https://api.example.com", SECRET), BrokenStore),
+      build_engine(spec("https://api.tmgr.dev", SECRET), BrokenStore),
     ];
     for r in bad {
       let e = r.err().expect("build must fail");
       assert!(!e.contains(SECRET), "{e}");
     }
-    assert!(build_engine(spec("https://api.example.com", SECRET), MemKeyStore::default()).is_ok());
+    assert!(build_engine(spec("https://api.tmgr.dev", SECRET), MemKeyStore::default()).is_ok());
   }
 
   struct TokenOnly(String);

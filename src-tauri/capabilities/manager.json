@@ -21,8 +21,6 @@
 		"allow-manager-revoke-decide",
 		"allow-manager-revoke",
 		"allow-manager-reset-identity",
-		"allow-manager-set-relay-auth",
-		"allow-manager-clear-relay-auth",
 		"allow-decisions-get",
 		"allow-decisions-answer"
 	]

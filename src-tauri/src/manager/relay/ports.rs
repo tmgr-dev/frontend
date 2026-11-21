@@ -100,7 +100,23 @@ impl Cells for KeyringCells {
   }
 }
 
-pub struct KeychainStore;
+pub struct KeychainStore {
+  namespace: String,
+}
+
+impl KeychainStore {
+  pub fn new(namespace: String) -> Self {
+    Self { namespace }
+  }
+
+  fn account(&self, slot: Slot) -> String {
+    scoped(&self.namespace, slot.name())
+  }
+}
+
+fn scoped(namespace: &str, name: &str) -> String {
+  format!("{namespace}/{name}")
+}
 
 fn unreadable() -> String {
   "the chat store is unreadable".to_owned()
@@ -173,15 +189,15 @@ fn clear_chunked(cells: &dyn Cells, name: &str) -> Result<(), String> {
 
 impl KeyStore for KeychainStore {
   fn load(&self, slot: Slot) -> Result<Option<String>, String> {
-    load_chunked(&KeyringCells, slot.name())
+    load_chunked(&KeyringCells, &self.account(slot))
   }
 
   fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
-    save_chunked(&KeyringCells, slot.name(), value)
+    save_chunked(&KeyringCells, &self.account(slot), value)
   }
 
   fn clear(&self) -> Result<(), String> {
-    Slot::ALL.into_iter().try_for_each(|slot| clear_chunked(&KeyringCells, slot.name()))
+    Slot::ALL.into_iter().try_for_each(|slot| clear_chunked(&KeyringCells, &self.account(slot)))
   }
 }
 
@@ -210,6 +226,16 @@ mod tests {
     assert_eq!(s.load(Slot::State).unwrap().as_deref(), Some("x"));
     s.clear().unwrap();
     assert_eq!(s.load(Slot::State).unwrap(), None);
+  }
+
+  #[test]
+  fn keychain_accounts_differ_per_user_and_origin() {
+    let a = KeychainStore::new("u7@https://api.tmgr.dev".into());
+    let b = KeychainStore::new("u8@https://api.tmgr.dev".into());
+    let c = KeychainStore::new("u7@http://127.0.0.1:8080".into());
+    assert_ne!(a.account(Slot::Identity), b.account(Slot::Identity));
+    assert_ne!(a.account(Slot::Identity), c.account(Slot::Identity));
+    assert_ne!(a.account(Slot::Identity), a.account(Slot::State));
   }
 
   #[test]

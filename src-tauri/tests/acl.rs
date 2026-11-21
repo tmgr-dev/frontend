@@ -136,11 +136,10 @@ fn activity_commands_are_allowed_for_the_main_window_only() {
 }
 
 #[test]
-fn relay_auth_commands_are_allowed_for_main_and_manager_only() {
+fn relay_auth_commands_are_allowed_for_main_only() {
   for cmd in ["manager_set_relay_auth", "manager_clear_relay_auth"] {
     assert!(call("main", cmd).is_ok(), "{cmd} on main");
-    assert!(call("manager", cmd).is_ok(), "{cmd} on manager");
-    for label in ["task-1", "page-1", "decisions", "quick-add"] {
+    for label in ["manager", "task-1", "page-1", "decisions", "quick-add"] {
       assert!(call(label, cmd).unwrap_err().contains("not allowed on window"), "{cmd} on {label}");
     }
   }
