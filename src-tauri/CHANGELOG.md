@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.172 — 2026-11-21
+
+- Manager window: clicking a session in the list now opens it (before, only the Manager chat could be selected).
+- Manager window: the list of sessions refreshes by itself every few seconds and when the window gets focus, so new sessions show up.
+- Manager window: empty session chats and an empty session list now explain what you are looking at.
+
 ## 0.9.171 — 2026-11-21
 
 - Tray popover: the Today block shows up to 5 entries with a "Go to routines" button. AI usage now lists Claude and Codex with their 5-hour and weekly windows, plan and reset times, and the popover is taller (it scrolls on small screens).
