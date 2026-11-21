@@ -2178,7 +2178,6 @@ impl ViewState {
                 let agent = !local && wants(pane.mouse, kind);
                 if ev.is_left_press()
                     && self.copy.is_none()
-                    && self.machine_of(&session).is_none()
                     && !(agent && has_modifiers(&ev))
                 {
                     if let Some(at) = at {

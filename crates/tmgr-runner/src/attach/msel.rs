@@ -723,6 +723,22 @@ mod tests {
     }
 
     #[test]
+    fn remote_pane_drag_selects_and_release_asks_for_text() {
+        let mut v = view(1);
+        v.remote.insert("a".into(), "lab".into());
+        let i = info(MouseMode::default(), 7);
+        let rect = inner(&v, 0);
+        let (x, y) = (rect.x + 2, rect.y + 1);
+        let out = v.on_mouse(AREA, ev(0, x, y, false), &i);
+        assert_eq!(out.forward, None);
+        assert!(v.msel.as_ref().is_some_and(|m| m.held));
+        v.on_mouse(AREA, drag_ev(x + 5, y + 2), &i);
+        let out = v.on_mouse(AREA, ev(0, x + 5, y + 2, true), &i);
+        assert_eq!(out.want_text.as_deref(), Some("a"));
+        assert!(v.msel_waiting());
+    }
+
+    #[test]
     fn agentless_pane_drag_selects_and_release_asks_for_text() {
         let mut v = view(1);
         let i = info(MouseMode::default(), 7);
