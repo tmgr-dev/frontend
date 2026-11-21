@@ -115,6 +115,13 @@ pub(super) fn dial(link: &str) -> Result<(Client, KeyFile)> {
     Ok((client, key))
 }
 
+pub(super) const AUDIT_HINT: &str =
+    "the follower cannot write its audit log; this link retries on its own";
+
+pub(super) fn audit_unavailable(e: &Error) -> bool {
+    e.hint.as_deref() == Some(AUDIT_HINT)
+}
+
 fn kind_of(code: &str) -> Kind {
     match code {
         "forbidden" | "revoked" => Kind::Forbidden,
@@ -123,7 +130,7 @@ fn kind_of(code: &str) -> Kind {
         "busy" | "not_running" | "conflict" | "rate_limited" | "too_many_requests" | "limit" => {
             Kind::Conflict
         }
-        "not_available" => Kind::Offline,
+        "not_available" | "audit_unavailable" => Kind::Offline,
         _ => Kind::Link,
     }
 }
@@ -138,6 +145,7 @@ pub(super) fn check(reply: Reply) -> Result<Value> {
             let hint = match code.as_str() {
                 "not_available" => Some("start the runner on the follower: tmgr runner start"),
                 "forbidden" => Some("what a leader may do is set on the follower: tmgr link scope"),
+                "audit_unavailable" => Some(AUDIT_HINT),
                 _ => None,
             };
             let err = Error::new(kind_of(&code), clean(&message));
@@ -344,6 +352,20 @@ pub fn halt(o: &Opts, link: &str, a: &HaltArgs) -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_audit_refusal_is_recognised_and_other_codes_are_not() {
+        let refused = |code: &str| {
+            check(Reply::Err {
+                code: code.into(),
+                message: "x".into(),
+            })
+            .unwrap_err()
+        };
+        assert!(audit_unavailable(&refused("audit_unavailable")));
+        assert!(!audit_unavailable(&refused("not_available")));
+        assert!(!audit_unavailable(&refused("busy")));
+    }
 
     fn run(id: &str, name: &str, via: Option<&str>, exited: bool) -> RunView {
         serde_json::from_value(json!({
