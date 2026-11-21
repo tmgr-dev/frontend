@@ -54,6 +54,11 @@
 					ref="list"
 					:messages="messages"
 					:body-html="bodyHtml"
+					:empty-hint="
+						activeInfo?.room.kind === 'session'
+							? $t('manager.messages.emptySession')
+							: undefined
+					"
 					@reply="store.setReply"
 					@copy="copy"
 					@older="store.loadOlder"
@@ -295,12 +300,17 @@
 			},
 		},
 		data() {
-			return { unlistenResync: null as (() => void) | null };
+			return {
+				unlistenResync: null as (() => void) | null,
+				stopWatch: null as (() => void) | null,
+			};
 		},
 		mounted() {
 			void this.store.init();
 			void this.trust.init();
 			window.addEventListener('keydown', this.onGlobalKey);
+			window.addEventListener('focus', this.onWindowFocus);
+			this.stopWatch = this.store.watchRooms(5000);
 			void onManagerResync(() => void this.store.refreshActive()).then(
 				(off) => {
 					this.unlistenResync = off;
@@ -309,10 +319,15 @@
 		},
 		beforeUnmount() {
 			this.unlistenResync?.();
+			this.stopWatch?.();
 			window.removeEventListener('keydown', this.onGlobalKey);
+			window.removeEventListener('focus', this.onWindowFocus);
 			this.trust.dispose();
 		},
 		methods: {
+			onWindowFocus() {
+				void this.store.loadRooms().catch(() => undefined);
+			},
 			onGlobalKey(e: KeyboardEvent) {
 				if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 					e.preventDefault();

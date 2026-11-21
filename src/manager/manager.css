@@ -931,6 +931,11 @@ html.dark .manager .qt {
 	padding: 1px 6px;
 	border-radius: 5px;
 }
+.manager .mgr-hint {
+	padding: 10px 8px;
+	font-size: 12px;
+	color: var(--subtle);
+}
 .manager .mgr-error {
 	margin: 0 24px 8px;
 	color: var(--fix-fg);

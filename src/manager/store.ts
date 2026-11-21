@@ -159,6 +159,13 @@ export const createManagerStore = (api: ManagerApi) => {
 			);
 		},
 
+		watchRooms(intervalMs: number): () => void {
+			const timer = setInterval(() => {
+				void store.loadRooms().catch(() => undefined);
+			}, intervalMs);
+			return () => clearInterval(timer);
+		},
+
 		async init() {
 			await store.loadRooms();
 			await api.onMessage((message) => store.ingest(message));

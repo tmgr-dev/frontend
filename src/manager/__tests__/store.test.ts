@@ -573,3 +573,61 @@ describe('detail panel and dialogs', () => {
 		expect(store.switcher.error).toBe('Use the tmgr CLI.');
 	});
 });
+
+describe('select by room key', () => {
+	it('loads that room history and activates it', async () => {
+		const { api, store } = setup();
+		await store.init();
+		await store.select(S1_KEY);
+		expect(api.history).toHaveBeenLastCalledWith({ room: S1, limit: 50 });
+		expect(store.activeKey).toBe(S1_KEY);
+	});
+});
+
+describe('watchRooms', () => {
+	beforeEach(() => {
+		jest.useFakeTimers();
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	it('picks up a session that appears after the first poll', async () => {
+		const rooms = jest
+			.fn()
+			.mockResolvedValueOnce([info(MGR)])
+			.mockResolvedValueOnce([info(MGR), info(S1)]);
+		const { store } = setup({ rooms });
+		await store.init();
+		const stop = store.watchRooms(5000);
+		await jest.advanceTimersByTimeAsync(5000);
+		expect(store.rooms.map((r) => roomKey(r.room))).toEqual([MGR_KEY, S1_KEY]);
+		expect(store.activeKey).toBe(MGR_KEY);
+		stop();
+	});
+
+	it('keeps the previous rooms and sets no error when a poll fails', async () => {
+		const rooms = jest
+			.fn()
+			.mockResolvedValueOnce([info(MGR), info(S1)])
+			.mockRejectedValue(new Error('offline'));
+		const { api, store } = setup({ rooms });
+		await store.init();
+		const stop = store.watchRooms(5000);
+		await jest.advanceTimersByTimeAsync(10000);
+		expect(api.rooms).toHaveBeenCalledTimes(3);
+		expect(store.rooms.map((r) => roomKey(r.room))).toEqual([MGR_KEY, S1_KEY]);
+		expect(store.error).toBeNull();
+		stop();
+	});
+
+	it('stops polling after stop()', async () => {
+		const { api, store } = setup();
+		await store.init();
+		const stop = store.watchRooms(5000);
+		stop();
+		await jest.advanceTimersByTimeAsync(20000);
+		expect(api.rooms).toHaveBeenCalledTimes(1);
+	});
+});

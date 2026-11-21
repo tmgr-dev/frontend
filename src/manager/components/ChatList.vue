@@ -9,7 +9,7 @@
 				role="option"
 				:aria-selected="keyOf(info) === activeKey"
 				:class="['crow', { on: keyOf(info) === activeKey }]"
-				@click="$emit('select', info.room)"
+				@click="$emit('select', keyOf(info))"
 			>
 				<Avatar manager />
 				<span class="cm2">
@@ -40,7 +40,7 @@
 					`st-${info.state ?? 'idle'}`,
 					{ on: keyOf(info) === activeKey },
 				]"
-				@click="$emit('select', info.room)"
+				@click="$emit('select', keyOf(info))"
 			>
 				<Avatar :agent="info.agent" />
 				<span class="cm2">
@@ -61,6 +61,9 @@
 				<span v-if="badge(info)" class="ub">{{ badge(info) }}</span>
 			</button>
 		</template>
+		<p v-if="sessions.length === 0" class="mgr-hint">
+			{{ $t('manager.list.noSessions') }}
+		</p>
 	</div>
 </template>
 

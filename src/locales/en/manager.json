@@ -5,7 +5,8 @@
 		"sessions": "Sessions",
 		"noMessages": "No messages yet",
 		"you": "You: ",
-		"newSession": "New session"
+		"newSession": "New session",
+		"noSessions": "No sessions yet. Sessions started with the tmgr runner on this machine appear here."
 	},
 	"header": {
 		"search": "Search in chat",
@@ -32,6 +33,7 @@
 		"copy": "Copy",
 		"empty": "Nothing here yet",
 		"emptyHint": "No messages in this chat.",
+		"emptySession": "Shows the agent's replies from the moment the runner started following this session. Earlier history and your own prompts stay in the terminal.",
 		"you": "You",
 		"manager": "Manager",
 		"system": "System",

@@ -1,8 +1,11 @@
+/**
+ * @jest-environment jsdom
+ */
 import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import ts from 'typescript';
-import { createSSRApp, type Component } from 'vue';
+import { createApp, createSSRApp, h, type Component } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { renderToString } from 'vue/server-renderer';
 import manager from '../../locales/en/manager.json';
@@ -79,6 +82,20 @@ const render = (name: string, props: Record<string, unknown>, slots = {}) =>
 	);
 
 const T0 = new Date(2026, 10, 21, 9, 15).getTime();
+const mountDom = (name: string, props: Record<string, unknown>) => {
+	const el = document.createElement('div');
+	document.body.appendChild(el);
+	const app = createApp({ render: () => h(load(name), props) }).use(i18n);
+	app.mount(el);
+	return {
+		el,
+		unmount: () => {
+			app.unmount();
+			el.remove();
+		},
+	};
+};
+
 const mgrRoom = { kind: 'manager' as const, machine: 'mac' };
 const sessRoom = { kind: 'session' as const, machine: 'mac', session: 's1' };
 
@@ -125,6 +142,43 @@ describe('manager components', () => {
 		expect(html).toContain('09:15');
 	});
 
+	it('ChatList emits the room key when a session row is clicked', () => {
+		const onSelect = jest.fn();
+		const { el, unmount } = mountDom('ChatList', {
+			rooms,
+			activeKey: null,
+			onSelect,
+		});
+		(el.querySelectorAll('button.crow')[1] as HTMLElement).click();
+		expect(onSelect).toHaveBeenCalledWith(roomKey(sessRoom));
+		unmount();
+	});
+
+	it('ChatList emits the room key when the pinned Manager row is clicked', () => {
+		const onSelect = jest.fn();
+		const { el, unmount } = mountDom('ChatList', {
+			rooms,
+			activeKey: null,
+			onSelect,
+		});
+		(el.querySelectorAll('button.crow')[0] as HTMLElement).click();
+		expect(onSelect).toHaveBeenCalledWith(roomKey(mgrRoom));
+		unmount();
+	});
+
+	it('ChatList shows the no-sessions hint when only the Manager room exists', async () => {
+		const html = await render('ChatList', {
+			rooms: [{ room: mgrRoom, title: 'Manager' }],
+		});
+		expect(html).toContain('class="mgr-hint"');
+		expect(html).toContain('No sessions yet.');
+	});
+
+	it('ChatList hides the no-sessions hint once a session exists', async () => {
+		const html = await render('ChatList', { rooms });
+		expect(html).not.toContain('mgr-hint');
+	});
+
 	it('ChatHeader shows title, sub, status and full context', async () => {
 		const html = await render('ChatHeader', {
 			info: rooms[0],
@@ -134,6 +188,20 @@ describe('manager components', () => {
 		expect(html).toContain('TM-1021 · Cursor pagination');
 		expect(html).toContain('142k / 200k · 71%');
 		expect(html).toContain('aria-label="Search in chat"');
+	});
+
+	it('MessageList shows the default empty hint without a custom one', async () => {
+		const html = await render('MessageList', { messages: [] });
+		expect(html).toContain('No messages in this chat.');
+	});
+
+	it('MessageList shows a custom empty hint instead of the default', async () => {
+		const html = await render('MessageList', {
+			messages: [],
+			emptyHint: 'Replies appear from now on.',
+		});
+		expect(html).toContain('Replies appear from now on.');
+		expect(html).not.toContain('No messages in this chat.');
 	});
 
 	it('MessageList renders day separator, grouping, reply quote, system and decision slot', async () => {

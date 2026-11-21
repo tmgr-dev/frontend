@@ -8,7 +8,7 @@
 		<div class="inner">
 			<div v-if="messages.length === 0" class="empty">
 				<Icon name="term" /><b>{{ $t('manager.messages.empty') }}</b
-				><span>{{ $t('manager.messages.emptyHint') }}</span>
+				><span>{{ emptyHint ?? $t('manager.messages.emptyHint') }}</span>
 			</div>
 			<template v-for="row in rows" :key="row.message.id">
 				<div v-if="row.day" class="day">{{ row.day }}</div>
@@ -53,6 +53,7 @@
 				default: () => ({}),
 			},
 			now: { type: Number, default: () => Date.now() },
+			emptyHint: { type: String, default: undefined },
 		},
 		emits: ['reply', 'copy', 'older'],
 		methods: {
