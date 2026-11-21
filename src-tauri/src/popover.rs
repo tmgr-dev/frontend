@@ -362,6 +362,13 @@ pub struct PopoverStore {
   anchor: Mutex<Option<Anchor>>,
   height: Mutex<Option<f64>>,
   pending: AtomicBool,
+  previous: Mutex<Option<ShownFrom>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ShownFrom {
+  main_was_active: bool,
+  app_pid: Option<i32>,
 }
 
 fn gather<R: Runtime>(app: &AppHandle<R>) -> Inputs {
@@ -496,6 +503,51 @@ fn reveal<R: Runtime>(app: &AppHandle<R>, window: &tauri::WebviewWindow<R>) {
   app.state::<PopoverStore>().gate.lock().unwrap().shown(now_ms());
 }
 
+#[cfg(target_os = "macos")]
+fn frontmost_pid() -> Option<i32> {
+  use objc2_app_kit::NSWorkspace;
+  let pid = NSWorkspace::sharedWorkspace().frontmostApplication()?.processIdentifier();
+  (pid != std::process::id() as i32).then_some(pid)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn frontmost_pid() -> Option<i32> {
+  None
+}
+
+#[cfg(target_os = "macos")]
+fn activate_pid(pid: i32) {
+  use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+  if let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
+    app.activateWithOptions(NSApplicationActivationOptions::empty());
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn activate_pid(_pid: i32) {}
+
+fn main_is_active<R: Runtime>(app: &AppHandle<R>) -> bool {
+  app
+    .get_webview_window("main")
+    .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
+}
+
+fn other_windows_visible<R: Runtime>(app: &AppHandle<R>) -> bool {
+  app.webview_windows().iter().any(|(label, w)| {
+    !matches!(label.as_str(), LABEL | "main" | crate::toast::LABEL) && w.is_visible().unwrap_or(false)
+  })
+}
+
+fn restore_previous_app<R: Runtime>(app: &AppHandle<R>, class: ActionClass) {
+  let Some(store) = app.try_state::<PopoverStore>() else { return };
+  let Some(from) = store.previous.lock().unwrap().take() else { return };
+  if should_restore_previous_app(from.main_was_active, other_windows_visible(app), class) {
+    if let Some(pid) = from.app_pid {
+      activate_pid(pid);
+    }
+  }
+}
+
 fn hide<R: Runtime>(app: &AppHandle<R>) {
   if let Some(store) = app.try_state::<PopoverStore>() {
     store.pending.store(false, Ordering::SeqCst);
@@ -508,6 +560,7 @@ fn hide<R: Runtime>(app: &AppHandle<R>) {
 fn request_show<R: Runtime>(app: &AppHandle<R>, rect: &tauri::Rect) {
   let store = app.state::<PopoverStore>();
   *store.anchor.lock().unwrap() = anchor_for(app, rect_area(rect));
+  *store.previous.lock().unwrap() = Some(ShownFrom { main_was_active: main_is_active(app), app_pid: frontmost_pid() });
   store.pending.store(true, Ordering::SeqCst);
   let _ = app.emit_to(LABEL, "popover://show", ());
   let _ = app.emit_to("main", "popover://show", ());
@@ -557,6 +610,27 @@ pub(crate) enum Action {
   OpenUsage,
   OpenRunner,
   RoutineDone(i64),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ActionClass {
+  KeepOpen,
+  HideOnly,
+  HideAndShowMain,
+}
+
+pub(crate) fn action_class(action: &Action) -> ActionClass {
+  match action {
+    Action::Menu(id) if id.starts_with("switch:") || id.starts_with("stop:") => ActionClass::KeepOpen,
+    Action::Close | Action::RoutineDone(_) => ActionClass::HideOnly,
+    Action::Menu(id) if id.starts_with("dnd:") || id == "autostart" || id == "quit" => ActionClass::HideOnly,
+    _ => ActionClass::HideAndShowMain,
+  }
+}
+
+/// Hiding the focused popover makes macOS activate TMGR's next window; give focus back to the app that had it unless TMGR is meant to be on screen.
+pub(crate) fn should_restore_previous_app(main_was_active: bool, other_tmgr_windows_visible: bool, class: ActionClass) -> bool {
+  class == ActionClass::HideOnly && !main_was_active && !other_tmgr_windows_visible
 }
 
 const MENU_IDS: [&str; 6] = ["open", "manager", "shortcuts", "autostart", "quit", "tray_check_for_updates"];
@@ -609,7 +683,11 @@ pub fn popover_state<R: Runtime>(app: AppHandle<R>) -> PopoverModel {
 #[tauri::command]
 pub fn popover_action<R: Runtime>(app: AppHandle<R>, id: String) -> Result<(), String> {
   let action = classify(&id, &tray_state(&app), cfg!(unix))?;
-  hide(&app);
+  let class = action_class(&action);
+  if class != ActionClass::KeepOpen {
+    hide(&app);
+    restore_previous_app(&app, class);
+  }
   match action {
     Action::Close => {}
     Action::Menu(menu_id) => crate::tray::on_menu_event(&app, &menu_id),
@@ -1098,5 +1176,47 @@ mod tests {
     assert!(clean_quick_add("   ").is_err());
     assert!(clean_quick_add(&"a".repeat(200)).is_ok());
     assert!(clean_quick_add(&"a".repeat(201)).is_err());
+  }
+
+  #[test]
+  fn only_switch_and_stop_keep_the_popover_open() {
+    let s = state();
+    let ids = [
+      "open:1:10", "stop:1:11", "switch:2:21", "plugin-item:p1", "dnd:1h", "open", "manager", "shortcuts", "autostart", "quit",
+      "tray_check_for_updates", "decisions", "resume-last", "close", "open-usage", "open-runner", "routine-done:42",
+    ];
+    for id in ids {
+      let class = action_class(&classify(id, &s, true).unwrap());
+      let keeps = matches!(id, "stop:1:11" | "switch:2:21" | "resume-last");
+      assert_eq!(class == ActionClass::KeepOpen, keeps, "{id}");
+    }
+  }
+
+  #[test]
+  fn actions_that_show_main_are_not_hide_only() {
+    let s = state();
+    for id in ["open:1:10", "open", "shortcuts", "decisions", "manager", "open-usage", "open-runner", "plugin-item:p1"] {
+      assert_eq!(action_class(&classify(id, &s, true).unwrap()), ActionClass::HideAndShowMain, "{id}");
+    }
+    for id in ["close", "dnd:1h", "autostart", "quit", "routine-done:42"] {
+      assert_eq!(action_class(&classify(id, &s, true).unwrap()), ActionClass::HideOnly, "{id}");
+    }
+  }
+
+  #[test]
+  fn previous_app_is_restored_only_for_hide_only_when_tmgr_was_not_on_screen() {
+    use ActionClass::{HideAndShowMain, HideOnly, KeepOpen};
+    let table = [
+      (false, false, HideOnly, true),
+      (true, false, HideOnly, false),
+      (false, true, HideOnly, false),
+      (true, true, HideOnly, false),
+      (false, false, KeepOpen, false),
+      (false, false, HideAndShowMain, false),
+      (true, false, HideAndShowMain, false),
+    ];
+    for (main_was_active, other_visible, class, expected) in table {
+      assert_eq!(should_restore_previous_app(main_was_active, other_visible, class), expected, "{main_was_active} {other_visible} {class:?}");
+    }
   }
 }
