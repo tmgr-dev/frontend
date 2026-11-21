@@ -117,6 +117,8 @@ export interface TestHostState {
 	categories: Record<string, unknown>[];
 	comments: Record<number, Record<string, unknown>[]>;
 	taskData: Record<string, string>;
+	/** Documents published with `tmgr.ui.publishTaskContribution` (API 1.14), by task id; cleared or empty ones are removed. */
+	contributions: Record<number, Record<string, unknown>>;
 	pages: Record<string, unknown>[];
 	/** `tmgr.pageData`, keyed `<pageId>:<key>`, values as JSON text. */
 	pageData: Record<string, string>;

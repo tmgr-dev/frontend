@@ -1,3 +1,8 @@
+import {
+	isEmptyContribution,
+	reduceContribution,
+	type ContributionDoc,
+} from './contribution';
 import type { Permission, PluginManifest } from './manifest';
 import type { Routine, RoutineEntry, RoutineInstance } from './routines';
 
@@ -70,6 +75,8 @@ export interface DataApi {
 	taskDataSet(taskId: number, key: string, json: string): Promise<unknown>;
 	taskDataDelete(taskId: number, key: string): Promise<unknown>;
 	taskDataGetMany(taskIds: number[], key: string): Promise<unknown>;
+	contributionPut(taskId: number, doc: ContributionDoc): Promise<unknown>;
+	contributionDelete(taskId: number): Promise<unknown>;
 	pagesSearch(
 		q: string,
 		opts: { type?: string; limit?: number },
@@ -195,6 +202,8 @@ export interface BrokerDeps {
 	register: (kind: RegistrationKind, id: string) => void;
 	log: (level: 'info' | 'warn' | 'error', message: string) => void;
 	now: () => number;
+	/** Delays for contribution debounce and 429 backoff; defaults to setTimeout. */
+	sleep?: (ms: number) => Promise<void>;
 	/** Plain http to this computer only; the Rust side checks the address again. */
 	fetch?: (request: FetchRequest) => Promise<FetchResponse>;
 	/** Bound to this plugin: its own export folder, and a file picker titled with its name. */
@@ -627,6 +636,8 @@ const taskFields = (patch: unknown) => {
 
 const MAX_VALUE_BYTES = 256 * 1024;
 const MAX_TASK_DATA_VALUE_BYTES = 64 * 1024;
+const CONTRIBUTION_DEBOUNCE_MS = 500;
+const CONTRIBUTION_BACKOFF_MS = [1000, 2000, 4000];
 const byteLength = (value: string): number =>
 	new TextEncoder().encode(value).byteLength;
 const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
@@ -752,6 +763,62 @@ export const createBroker = (deps: BrokerDeps) => {
 	const reads = bucket(50, 100, deps.now);
 	const writes = bucket(10, 20, deps.now);
 	let pendingConnection = false;
+
+	const sleep =
+		deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+	const contributions = new Map<
+		number,
+		{ doc: ContributionDoc; done: Promise<void> }
+	>();
+	const contributionSends = new Map<number, Promise<unknown>>();
+	const sendContribution = async (taskId: number, doc: ContributionDoc) => {
+		for (let attempt = 0; ; attempt++) {
+			try {
+				return await (isEmptyContribution(doc)
+					? api.contributionDelete(taskId)
+					: api.contributionPut(taskId, doc));
+			} catch (error) {
+				if (
+					!(error instanceof PluginError && error.code === 'RATE_LIMITED') ||
+					attempt >= CONTRIBUTION_BACKOFF_MS.length
+				)
+					throw error;
+				await sleep(CONTRIBUTION_BACKOFF_MS[attempt]);
+			}
+		}
+	};
+	const publishContribution = (taskId: number, doc: ContributionDoc) => {
+		const queued = contributions.get(taskId);
+		if (queued) {
+			queued.doc = doc;
+			return queued.done;
+		}
+		const entry = { doc, done: Promise.resolve() };
+		entry.done = (async () => {
+			await sleep(CONTRIBUTION_DEBOUNCE_MS);
+			contributions.delete(taskId);
+			const previous = contributionSends.get(taskId);
+			const send = (previous ?? Promise.resolve())
+				.catch(() => undefined)
+				.then(() => sendContribution(taskId, entry.doc));
+			contributionSends.set(taskId, send);
+			try {
+				await send;
+			} finally {
+				if (contributionSends.get(taskId) === send)
+					contributionSends.delete(taskId);
+			}
+		})();
+		contributions.set(taskId, entry);
+		return entry.done;
+	};
+	const contributionAllowed = () => {
+		if (manifest.apiMinor < 14)
+			throw new PluginError(
+				'NOT_SUPPORTED',
+				'task contributions need engines.tmgr ^1.14',
+			);
+	};
 
 	/** `relationTypeWithTask` is a local implementation detail; only relations:read may see it. */
 	const stripRelations = (task: unknown): unknown => {
@@ -1535,6 +1602,28 @@ export const createBroker = (deps: BrokerDeps) => {
 				if (typeof p.viewId !== 'string' || !declared.page.has(p.viewId))
 					invalid('viewId must be a view declared by this plugin');
 				deps.setViewBadge(p.viewId as string, viewBadge(p.badge));
+			},
+		},
+		'ui.publishTaskContribution': {
+			permission: 'tasks:read',
+			write: true,
+			run: (p) => {
+				contributionAllowed();
+				return publishContribution(
+					id(p.taskId, 'taskId'),
+					reduceContribution(p.contribution),
+				);
+			},
+		},
+		'ui.clearTaskContribution': {
+			permission: 'tasks:read',
+			write: true,
+			run: (p) => {
+				contributionAllowed();
+				return publishContribution(
+					id(p.taskId, 'taskId'),
+					reduceContribution(null),
+				);
 			},
 		},
 		'ui.refresh': {

@@ -39,3 +39,6 @@ src/local/__tests__/parity.test.ts
 
 # Emitted by plugin-sdk/cli/sync.mjs; a test compares them byte for byte.
 plugin-sdk/cli/lib
+
+# Shared contract fixtures are copied verbatim.
+src/pluginSystem/__fixtures__/contribution

@@ -29,6 +29,8 @@ a plugin declaring `^1.3` gets the API 1.3 `card`/`grid`/`menu` nodes and the ne
 `stack`/`button`/`stat`/`badge`; an older `engines.tmgr` gets those nodes downgraded to plain `stack`s,
 same as the real app.
 
+`tmgr.contributions[taskId]` holds the document `tmgr.ui.publishTaskContribution` published (API 1.14), reduced to the phone's limits; an empty one or `clearTaskContribution` removes the key. The host's 500 ms debounce is skipped.
+
 `tmgr.viewBadges[viewId]` holds what `tmgr.ui.setViewBadge` set (`{ count, text, tone }`, exactly one of
 `count`/`text` non-null). The test host applies it immediately: the app coalesces calls to one per second
 per view, the test host does not. Validation and errors are the app's own. One difference: the app answers

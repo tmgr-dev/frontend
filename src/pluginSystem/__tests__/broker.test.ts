@@ -6,13 +6,17 @@ import {
 } from '../broker';
 import { parseManifest, type Permission } from '../manifest';
 
-const manifest = (permissions: Permission[], allowedOrigins: string[] = []) =>
+const manifest = (
+	permissions: Permission[],
+	allowedOrigins: string[] = [],
+	engine = '^1.5',
+) =>
 	parseManifest({
 		network: { allowedOrigins },
 		id: 'tmgr.test',
 		name: 'Test',
 		version: '1.0.0',
-		engines: { tmgr: '^1.5' },
+		engines: { tmgr: engine },
 		permissions,
 		contributes: {
 			boardCardBadges: [{ id: 'overrun' }],
@@ -90,6 +94,8 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 		taskDataSet: record('taskDataSet'),
 		taskDataDelete: record('taskDataDelete'),
 		taskDataGetMany: record('taskDataGetMany'),
+		contributionPut: record('contributionPut'),
+		contributionDelete: record('contributionDelete'),
 		pagesSearch: record('pagesSearch'),
 		pagesTree: record('pagesTree'),
 		pagesGet: async (...args: unknown[]) => {
@@ -1791,5 +1797,142 @@ describe('pages (API 1.5)', () => {
 				}),
 			),
 		).toBe('PERMISSION_DENIED');
+	});
+});
+
+describe('task contributions (API 1.14)', () => {
+	const contributionSetup = (
+		permissions: Permission[],
+		engine = '^1.14',
+		sleeps: number[] = [],
+	) =>
+		setup(permissions, {
+			manifest: manifest(permissions, [], engine),
+			sleep: async (ms) => {
+				sleeps.push(ms);
+			},
+		});
+	const doc = { badges: [{ id: 'a', text: 'x', color: 'green' }] };
+
+	it('needs tasks:read', async () => {
+		const { broker } = contributionSetup([]);
+		expect(
+			await code(
+				broker.call('ui.publishTaskContribution', {
+					taskId: 1,
+					contribution: doc,
+				}),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(broker.call('ui.clearTaskContribution', { taskId: 1 })),
+		).toBe('PERMISSION_DENIED');
+	});
+
+	it('refuses a plugin declaring an older engine', async () => {
+		const { broker, api } = contributionSetup(['tasks:read'], '^1.13');
+		expect(
+			await code(
+				broker.call('ui.publishTaskContribution', {
+					taskId: 1,
+					contribution: doc,
+				}),
+			),
+		).toBe('NOT_SUPPORTED');
+		expect(api.calls).toEqual([]);
+	});
+
+	it('puts the reduced document and deletes on an empty one', async () => {
+		const { broker, api } = contributionSetup(['tasks:read']);
+		await broker.call('ui.publishTaskContribution', {
+			taskId: 7,
+			contribution: doc,
+		});
+		await broker.call('ui.publishTaskContribution', {
+			taskId: 7,
+			contribution: {},
+		});
+		await broker.call('ui.publishTaskContribution', {
+			taskId: 8,
+			contribution: doc,
+		});
+		await broker.call('ui.clearTaskContribution', { taskId: 8 });
+		expect(api.calls).toEqual([
+			[
+				'contributionPut',
+				7,
+				{
+					v: 1,
+					badges: [{ id: 'a', text: 'x', tone: 'success' }],
+					sections: [],
+				},
+			],
+			['contributionDelete', 7],
+			[
+				'contributionPut',
+				8,
+				{
+					v: 1,
+					badges: [{ id: 'a', text: 'x', tone: 'success' }],
+					sections: [],
+				},
+			],
+			['contributionDelete', 8],
+		]);
+	});
+
+	it('rejects a bad task id', async () => {
+		const { broker } = contributionSetup(['tasks:read']);
+		expect(
+			await code(
+				broker.call('ui.publishTaskContribution', {
+					taskId: 'x',
+					contribution: doc,
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+	});
+
+	it('sends only the last of several calls for one task', async () => {
+		const { broker, api } = contributionSetup(['tasks:read']);
+		const calls = [1, 2, 3].map((n) =>
+			broker.call('ui.publishTaskContribution', {
+				taskId: 3,
+				contribution: { name: `n${n}`, badges: [{ id: 'a', text: `${n}` }] },
+			}),
+		);
+		await Promise.all(calls);
+		expect(api.calls).toHaveLength(1);
+		expect(api.calls[0][2]).toMatchObject({ name: 'n3' });
+	});
+
+	it('retries a 429 with backoff and then gives up', async () => {
+		const sleeps: number[] = [];
+		const { broker, api } = contributionSetup(['tasks:read'], '^1.14', sleeps);
+		let failures = 2;
+		api.contributionPut = async () => {
+			if (failures-- > 0) throw new PluginError('RATE_LIMITED', 'slow down');
+			return undefined;
+		};
+		await broker.call('ui.publishTaskContribution', {
+			taskId: 1,
+			contribution: doc,
+		});
+		expect(sleeps).toEqual([500, 1000, 2000]);
+
+		const again: number[] = [];
+		const second = contributionSetup(['tasks:read'], '^1.14', again);
+		second.api.contributionPut = async () => {
+			throw new PluginError('RATE_LIMITED', 'slow down');
+		};
+		expect(
+			await code(
+				second.broker.call('ui.publishTaskContribution', {
+					taskId: 1,
+					contribution: doc,
+				}),
+			),
+		).toBe('RATE_LIMITED');
+		expect(again).toEqual([500, 1000, 2000, 4000]);
 	});
 });

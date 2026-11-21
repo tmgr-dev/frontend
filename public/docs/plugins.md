@@ -1,6 +1,6 @@
 # Building a TMGR plugin
 
-Plugin API 1.13. This guide is the entry point; the reference follows it in the same document
+Plugin API 1.14. This guide is the entry point; the reference follows it in the same document
 (the `plugin-system.md` sections, in the published version) and as types (`tmgr.d.ts` for `main.js`, `window.d.ts` for pages).
 
 A plugin is a folder: `manifest.json`, `main.js`, and optional `ui/*.html` pages. `main.js` runs in a
@@ -26,7 +26,7 @@ turns them on for everyone. Web and mobile do not run plugins.
    next to `plugin-sdk/testing` (until `@tmgr/plugin-testing` is published on npm, the template depends on
    it by the path `file:../testing`).
 2. Edit `manifest.json` (id `publisher.name`, command ids start with the plugin id, `engines.tmgr`
-   `^1.13` to use the newest nodes) and `main.js`.
+   `^1.14` to use the newest nodes) and `main.js`.
 3. Test without the app: `npm install && npm test` runs `main.test.mjs` against `createTestHost` from
    `@tmgr/plugin-testing`. It uses the app's own broker, manifest rules and UI sanitizer over an
    in-memory mock of TMGR data, so permission errors and bad parameters show up exactly as in the app.
@@ -45,7 +45,7 @@ turns them on for everyone. Web and mobile do not run plugins.
 | :-- | :-- |
 | `id` | `publisher.name`, lowercase, dots allowed |
 | `version` | semver |
-| `engines.tmgr` | `^1.0` up to `^1.13`; newer nodes and permissions need a newer minor (`images:remote` 1.13, `menus:task` 1.6, pages 1.5, `views:badge` 1.4) |
+| `engines.tmgr` | `^1.0` up to `^1.14`; newer nodes and permissions need a newer minor (`tmgr.ui.publishTaskContribution` 1.14, `images:remote` 1.13, `menus:task` 1.6, pages 1.5, `views:badge` 1.4) |
 | `main` | defaults to `main.js` |
 | `permissions` | list from the table below; unknown names are rejected |
 | `network.allowedOrigins` | only `http://localhost:<port>` (or 127.0.0.1, [::1]) |
@@ -72,6 +72,7 @@ A plugin cannot raise its own permissions: an update that adds one asks the user
 
 ## Rules that save a round trip
 
+- To show badges and sections on the user's phone, call `tmgr.ui.publishTaskContribution(taskId, { name?, badges?, sections? })` (needs `^1.14` and `tasks:read`; shared workspaces only; publish on change, not on every tick; see "Migrating from 1.13 to 1.14" in plugin-system.md).
 - UI is data, not HTML: `tmgr.ui.providePage(viewId, async () => tree)` returns a node tree
   (`stack`, `heading`, `list`, `button`, `card`, `markdown`, inputs, ...). The app sanitizes it by the
   manifest's `engines.tmgr` minor. Pages in `ui/` run in their own window and use `window.tmgr`.
@@ -446,6 +447,8 @@ Rules:
 | `tmgr.ui.setTrayItem(id, item)` | A submenu in the menu bar icon. `null` removes it. | `tray` (needs machine consent in shared workspaces) | `id` in `contributes.trayItems`, at most 5; at most 10 entries; titles are shortened, see below. |
 | `tmgr.ui.setTrayTitle(text)` | Text next to the menu bar icon. | `tray` | Only the plugin chosen in Settings; at most 12 characters, one line. |
 | `tmgr.ui.dnd()` | Reads whether Do Not Disturb is active. | none | Read-only. |
+| `tmgr.ui.publishTaskContribution(taskId, contribution)` | Badges and sections for the user's phone on one task. An empty result removes it. | `tasks:read` (API 1.14, no consent) | Shared workspaces only; limits and rate, see "Migrating from 1.13 to 1.14". |
+| `tmgr.ui.clearTaskContribution(taskId)` | Removes this plugin's contribution to the task. | `tasks:read` (API 1.14) | Same as publishing an empty one. |
 | `tmgr.ui.setViewBadge(viewId, badge)` | A counter on the plugin's own sidebar item. `null` clears it. | `views:badge` (API 1.4, no consent) | One applied change per view per second, see below. |
 
 ### `setTrayItem`: long titles
@@ -647,3 +650,38 @@ Either way:
 
 1. Update `tmgr.d.ts` from the SDK template.
 2. Copy `plugin-sdk/testing` again so the test host knows the new nodes.
+
+## Migrating from 1.13 to 1.14
+
+Nothing changes for existing plugins. To show something on the user's phone next to a task:
+
+1. Set `"engines": { "tmgr": "^1.14" }` (a plugin on an older minor gets `NOT_SUPPORTED` from these calls).
+2. Declare `tasks:read`.
+3. Call `tmgr.ui.publishTaskContribution(taskId, { name?, badges?, sections? })`, and
+   `tmgr.ui.clearTaskContribution(taskId)` to remove it.
+
+What it does:
+
+- The phone app shows the contribution on the task screen (one card per section) and the badges on the board
+  card and the list row. The label `name` falls back to the plugin id.
+- It is personal to the signed-in user: other members of the workspace do not see it. It works in shared
+  (cloud) workspaces only; a local workspace rejects with `NOT_SUPPORTED`.
+- Each publish replaces the previous document for that task. Publishing an empty one removes it.
+- Badges: up to 3, `{ id, text, tone? }` with `id` of `[a-z0-9_-]` up to 40 characters, `text` up to 24, `tone`
+  one of `default`, `muted`, `success`, `warning`, `danger`. The card-badge form `{ id, text, color }` also
+  works (`gray` is `muted`, `green` `success`, `yellow` and `orange` `warning`, `red` `danger`, `blue` and
+  `purple` `default`).
+- Sections: up to 4, `{ id, title, tree }`. The tree uses these page nodes: `stack`, `heading`, `text`,
+  `divider`, `keyValue` (values are turned into strings), `badge`, `progress`, `stat`, `list`, `markdown`,
+  `taskLink`. Other nodes are dropped.
+- Limits are applied for you by dropping or shortening, without an error: tree depth 6, 80 nodes per section,
+  strings cut to their maximum, control characters removed, and the whole document at most 8 KiB (sections are
+  dropped from the end until it fits).
+- Publish when the data changes, not on every tick. Calls for one task are collected for about 500 ms and the
+  last one wins. The server allows 10 writes per second per plugin; on HTTP 429 the host retries after 1, 2
+  and 4 seconds, then the call rejects with `RATE_LIMITED`.
+
+Either way:
+
+1. Update `tmgr.d.ts` from the SDK template.
+2. Copy `plugin-sdk/testing` again; `tmgr.contributions[taskId]` holds what the test host received.
