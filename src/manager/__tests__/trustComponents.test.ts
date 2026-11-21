@@ -160,4 +160,13 @@ describe('trust components', () => {
 		expect(html).not.toContain('Revoke Old box');
 		expect(html).toContain('Reset chat identity');
 	});
+
+	it('DevicesPanel shows a one-line alert when a spent join code was reused', async () => {
+		const alerts = [{ kind: 'join_code_reused', device_id: 'd9', at_ms: 1 }];
+		const on = await render('DevicesPanel', { devices, alerts });
+		expect(on).toContain('join code was used again');
+		expect(on).toContain('role="alert"');
+		const off = await render('DevicesPanel', { devices });
+		expect(off).not.toContain('join code was used again');
+	});
 });

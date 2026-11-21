@@ -13,6 +13,13 @@
 			<p v-if="keyMismatch.length > 0" class="mgr-error" role="alert">
 				{{ $t('manager.trust.devices.keyMismatch') }}
 			</p>
+			<p
+				v-if="alerts.some((a) => a.kind === 'join_code_reused')"
+				class="mgr-error"
+				role="alert"
+			>
+				{{ $t('manager.trust.devices.joinCodeReused') }}
+			</p>
 			<ul class="trust-devices">
 				<li v-for="d in devices" :key="d.id" class="trust-device">
 					<div class="t">
@@ -72,7 +79,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import type { TrustDevice } from '../../types';
+	import type { TrustAlert, TrustDevice } from '../../types';
 	import { dialogKeydown, focusInitial, groupFp } from './trustHelpers';
 
 	export default defineComponent({
@@ -80,6 +87,7 @@
 		props: {
 			devices: { type: Array as PropType<TrustDevice[]>, required: true },
 			keyMismatch: { type: Array as PropType<string[]>, default: () => [] },
+			alerts: { type: Array as PropType<TrustAlert[]>, default: () => [] },
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
 		},

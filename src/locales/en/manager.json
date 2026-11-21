@@ -98,6 +98,7 @@
 			"title": "Chat devices",
 			"hint": "Devices that can read your chats.",
 			"keyMismatch": "The relay now reports different keys for a device you trust. That device is not used until you check it.",
+			"joinCodeReused": "A join code was used again after it was spent or expired. Nobody was added; open a new code if you did not expect this.",
 			"thisDevice": "this device",
 			"revoke": "Revoke",
 			"revokeLabel": "Revoke {name}",

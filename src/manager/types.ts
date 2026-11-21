@@ -137,6 +137,12 @@ export interface PendingRevoke {
 	target_fp: string;
 }
 
+export interface TrustAlert {
+	kind: string;
+	device_id: string;
+	at_ms: number;
+}
+
 export interface TrustState {
 	registered: boolean;
 	self_fp: string;
@@ -144,6 +150,7 @@ export interface TrustState {
 	pending_joins: PendingJoin[];
 	key_mismatch?: string[];
 	pending_revokes?: PendingRevoke[];
+	alerts?: TrustAlert[];
 }
 
 export const RESET_PHRASE = 'RESET';

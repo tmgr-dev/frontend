@@ -170,6 +170,7 @@
 			v-else-if="trust.panelOpen"
 			:devices="trust.trust?.devices ?? []"
 			:key-mismatch="trust.trust?.key_mismatch ?? []"
+			:alerts="trust.trust?.alerts ?? []"
 			:busy="trust.busy"
 			:error="trust.error"
 			@revoke="trust.revoke"

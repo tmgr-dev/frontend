@@ -50,6 +50,13 @@ pub struct SeqGap {
   pub got: u64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TrustAlert {
+  pub kind: String,
+  pub device_id: String,
+  pub at_ms: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct TrustState {
   pub registered: bool,
@@ -62,6 +69,8 @@ pub struct TrustState {
   pub key_mismatch: Vec<String>,
   #[serde(default)]
   pub seq_gaps: Vec<SeqGap>,
+  #[serde(default)]
+  pub alerts: Vec<TrustAlert>,
 }
 
 #[allow(dead_code)]

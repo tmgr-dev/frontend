@@ -1170,3 +1170,132 @@ fn seen_is_capped_at_5000_dropping_the_oldest() {
   assert!(g.st.seen.last().unwrap().id.starts_with("m_"));
   assert!(g.st.seen.iter().all(|s| s.id != "old0"));
 }
+
+const DAY: u64 = 24 * 3600 * 1000;
+
+fn silence_setup() -> (Fake, Clock, Engine, Engine, Engine) {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  (fake, clock, a, b, c)
+}
+
+fn is_revoked(e: &Engine, id: &str) -> bool {
+  e.trust_state().unwrap().devices.iter().any(|d| d.id == id && d.state == DeviceState::Revoked)
+}
+
+#[test]
+fn revoke_of_a_device_unseen_for_31_days_applies_automatically() {
+  let (_f, clock, a, b, c) = silence_setup();
+  let cid = my_id(&c);
+  send(&c, "hello").unwrap();
+  b.poll_once().unwrap();
+  clock.set(T0 + 31 * DAY);
+  a.revoke(&cid).unwrap();
+  b.poll_once().unwrap();
+  assert!(is_revoked(&b, &cid));
+  assert!(b.trust_state().unwrap().pending_revokes.is_empty());
+}
+
+#[test]
+fn revoke_of_a_device_seen_29_days_ago_stays_pending() {
+  let (_f, clock, a, b, c) = silence_setup();
+  let cid = my_id(&c);
+  send(&c, "hello").unwrap();
+  b.poll_once().unwrap();
+  clock.set(T0 + 29 * DAY);
+  a.revoke(&cid).unwrap();
+  b.poll_once().unwrap();
+  let ts = b.trust_state().unwrap();
+  assert_eq!(ts.pending_revokes.len(), 1);
+  assert!(!is_revoked(&b, &cid));
+}
+
+#[test]
+fn revoke_of_a_never_seen_device_pinned_31_days_ago_applies_automatically() {
+  let (_f, clock, a, b, c) = silence_setup();
+  let cid = my_id(&c);
+  clock.set(T0 + 31 * DAY);
+  a.revoke(&cid).unwrap();
+  b.poll_once().unwrap();
+  assert!(is_revoked(&b, &cid));
+}
+
+#[test]
+fn self_revoke_still_applies_automatically() {
+  let (_f, _clock, a, b, c) = silence_setup();
+  let cid = my_id(&c);
+  c.reset_identity().unwrap();
+  a.poll_once().unwrap();
+  b.poll_once().unwrap();
+  assert!(!a.trust_state().unwrap().devices.iter().any(|d| d.id == cid && d.state == DeviceState::Trusted));
+  assert!(a.trust_state().unwrap().pending_revokes.is_empty());
+}
+
+#[test]
+fn last_seen_survives_a_restart() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  send(&b, "hi").unwrap();
+  a.poll_once().unwrap();
+  let bid = my_id(&b);
+  assert_eq!(a.lock().st.last_seen.get(&bid), Some(&T0));
+  clock.set(T0 + 31_000);
+  a.poll_once().unwrap();
+  let again = engine_on(&fake, &clock, store, "mx_local");
+  assert_eq!(again.lock().st.last_seen.get(&bid), Some(&T0));
+}
+
+#[test]
+fn reused_join_code_raises_an_alert_without_a_pending_join() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let c = engine_with(&fake, &clock, "Desktop C");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  c.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let ts = a.trust_state().unwrap();
+  assert_eq!(ts.pending_joins.len(), 1);
+  assert_eq!(ts.alerts.len(), 1);
+  assert_eq!(ts.alerts[0].kind, "join_code_reused");
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().alerts.len(), 1);
+}
+
+#[test]
+fn expired_join_code_raises_an_alert_and_alerts_age_out_after_7_days() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  clock.set(T0 + 11 * 60 * 1000);
+  a.poll_once().unwrap();
+  let ts = a.trust_state().unwrap();
+  assert!(ts.pending_joins.is_empty());
+  assert_eq!(ts.alerts.len(), 1);
+  assert_eq!(ts.alerts[0].device_id, my_id(&b));
+  clock.set(T0 + 8 * DAY);
+  assert!(a.trust_state().unwrap().alerts.is_empty());
+}
+
+#[test]
+fn alerts_are_capped_at_fifty() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  a.open_join_code().unwrap();
+  let mut g = a.lock();
+  for i in 0..60 {
+    record_alert(&mut g, "join_code_reused", &format!("d{i}"), T0);
+  }
+  assert_eq!(g.st.alerts.len(), 50);
+  assert_eq!(g.st.alerts[0].device_id, "d10");
+}

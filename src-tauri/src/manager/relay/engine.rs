@@ -17,7 +17,7 @@ use tmgr_chat_relay::trust::{
 use tmgr_chat_relay::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex};
 
-use super::port::{DeviceState, PendingJoin, PendingRevoke, RelayPort, SeqGap, TrustDevice, TrustState};
+use super::port::{DeviceState, PendingJoin, PendingRevoke, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
 use crate::manager::backend::{
   ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, MAX_ATTACHMENTS, MAX_BODY, MAX_HISTORY, MAX_QUERY,
@@ -33,6 +33,9 @@ const HOLD_MS: u64 = 60_000;
 const WRITE_EVERY_MS: u64 = 30_000;
 const MAX_INTROS: usize = 200;
 const MAX_REVOKES_PER_DEVICE: usize = 50;
+const MAX_ALERTS: usize = 50;
+const ALERT_TTL_MS: u64 = 7 * 24 * 3600 * 1000;
+const AUTO_REVOKE_SILENCE_MS: u64 = 30 * 24 * 3600 * 1000;
 const BUSY_PREFIX: &str = "relay is busy, retry in ";
 
 #[cfg(test)]
@@ -124,6 +127,12 @@ struct State {
   seq_in: BTreeMap<String, u64>,
   #[serde(default)]
   seq_gaps: Vec<SeqGap>,
+  #[serde(default)]
+  last_seen: BTreeMap<String, u64>,
+  #[serde(default)]
+  pinned_at: BTreeMap<String, u64>,
+  #[serde(default)]
+  alerts: Vec<TrustAlert>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -158,7 +167,7 @@ struct Core {
 }
 
 fn trust_key(st: &State) -> String {
-  json!([st.base, st.trusted, st.revoked, st.pending_joins, st.pending_revokes, st.declined, st.seq_gaps]).to_string()
+  json!([st.base, st.trusted, st.revoked, st.pending_joins, st.pending_revokes, st.declined, st.seq_gaps, st.alerts]).to_string()
 }
 
 fn dev_from(d: &api::Device) -> Dev {
@@ -248,6 +257,25 @@ fn recompute(c: &mut Core, dir: Option<&Directory>, uid: u64, from_base: bool) {
   c.st.trusted = out;
 }
 
+fn stamp_pins(c: &mut Core, now: u64) {
+  for d in &c.st.trusted {
+    c.st.pinned_at.entry(d.id.clone()).or_insert(now);
+  }
+}
+
+fn record_alert(c: &mut Core, kind: &str, device_id: &str, now: u64) {
+  c.st.alerts.retain(|a| now.saturating_sub(a.at_ms) < ALERT_TTL_MS && !(a.kind == kind && a.device_id == device_id));
+  c.st.alerts.push(TrustAlert { kind: kind.to_owned(), device_id: device_id.to_owned(), at_ms: now });
+  if c.st.alerts.len() > MAX_ALERTS {
+    c.st.alerts.remove(0);
+  }
+}
+
+fn unseen_for_30_days(c: &Core, device_id: &str, now: u64) -> bool {
+  let since = c.st.last_seen.get(device_id).or_else(|| c.st.pinned_at.get(device_id));
+  since.is_some_and(|t| now.saturating_sub(*t) > AUTO_REVOKE_SILENCE_MS)
+}
+
 fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label: &str) {
   if !c.st.revoked.iter().any(|f| f == target_fp) {
     c.st.revoked.push(target_fp.to_owned());
@@ -260,7 +288,7 @@ fn apply_revoke(c: &mut Core, uid: u64, target_id: &str, target_fp: &str, label:
   recompute(c, dir.as_ref(), uid, true);
 }
 
-fn ingest_revoke(c: &mut Core, uid: u64, json: &str, expect_fp: Option<&str>, budget: &mut BTreeMap<String, usize>) {
+fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option<&str>, budget: &mut BTreeMap<String, usize>) {
   let Ok(r) = parse_revoke(json) else { return };
   let p = &r.parsed;
   if p.user_id != uid || expect_fp.is_some_and(|f| f != p.target_fp) {
@@ -281,7 +309,7 @@ fn ingest_revoke(c: &mut Core, uid: u64, json: &str, expect_fp: Option<&str>, bu
   }
   let own_fp = c.keys.as_ref().map(|k| k.fingerprint());
   let target_label = c.st.trusted.iter().find(|d| d.fp == p.target_fp).map(|d| d.label.clone()).unwrap_or_default();
-  if p.revoker_fp == p.target_fp || own_fp.as_deref() == Some(p.revoker_fp.as_str()) {
+  if p.revoker_fp == p.target_fp || own_fp.as_deref() == Some(p.revoker_fp.as_str()) || unseen_for_30_days(c, &p.target_id, now) {
     apply_revoke(c, uid, &p.target_id, &p.target_fp, &target_label);
   } else {
     c.st.pending_revokes.push(PendingRevoke {
@@ -425,9 +453,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       return Ok(());
     }
     recompute(c, Some(&dir), self.cfg.user_id, false);
+    let now = self.now();
+    stamp_pins(c, now);
     let mut budget = BTreeMap::new();
     for r in &dir.revocations {
-      ingest_revoke(c, self.cfg.user_id, &r.statement, Some(&r.target_fp), &mut budget);
+      ingest_revoke(c, self.cfg.user_id, now, &r.statement, Some(&r.target_fp), &mut budget);
     }
     Ok(())
   }
@@ -552,7 +582,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       return None;
     }
     let kind_hint = serde_json::from_str::<Value>(&m.body).ok().and_then(|v| v.get("kind")?.as_str().map(str::to_owned));
-    let join_open = kind_hint.as_deref() == Some("join") && c.st.join_code.as_ref().is_some_and(|j| now < j.exp_ms);
+    let join_open = kind_hint.as_deref() == Some("join");
     let dir = c.dir.as_ref()?;
     let (id, keys) = Self::own(c).ok()?;
     let trusted: Vec<Trusted> = c.st.trusted.iter().map(to_trusted).collect();
@@ -579,7 +609,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn handle(&self, c: &mut Core, opened: &Opened, now: u64) -> Option<Option<ChatMessage>> {
-    let join_open = opened.kind == "join" && c.st.join_code.as_ref().is_some_and(|j| now < j.exp_ms);
+    let join_open = c.st.join_code.as_ref().is_some_and(|j| now < j.exp_ms);
     let dir = c.dir.clone()?;
     let (_, keys) = Self::own(c).ok()?;
     let own_fp = keys.fingerprint();
@@ -601,7 +631,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           stored = Some(msg);
         }
       }
-      "join" if !sender_trusted && join_open => {
+      "join" if !sender_trusted => {
+        if !join_open {
+          record_alert(c, "join_code_reused", &opened.from, now);
+          return Some(None);
+        }
         let code = c.st.join_code.clone()?;
         let secret: [u8; 32] = b64_decode(&code.secret).ok()?.try_into().ok()?;
         let label = opened.payload.get("label")?.as_str()?.to_owned();
@@ -631,7 +665,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         let statement = opened.payload.get("statement")?.as_str()?;
         let sig = opened.payload.get("sig")?.as_str()?;
         let json = json!({ "v": 1, "statement": statement, "sig": sig }).to_string();
-        ingest_revoke(c, self.cfg.user_id, &json, None, &mut BTreeMap::new());
+        ingest_revoke(c, self.cfg.user_id, now, &json, None, &mut BTreeMap::new());
       }
       _ => return None,
     }
@@ -640,6 +674,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   /// Per sender, messages are applied in `seq` order; a missing predecessor holds the rest for HOLD_MS, then a gap is recorded.
   fn process_page(&self, c: &mut Core, msgs: &[Msg], now: u64, hold: &mut Hold, out: &mut Vec<ChatMessage>) -> Result<(), String> {
+    stamp_pins(c, now);
     let mut opened: Vec<(u64, Opened)> = msgs.iter().filter_map(|m| Some((m.cursor as u64, self.open_one(c, m, now)?))).collect();
     opened.sort_by(|a, b| (&a.1.from, a.1.seq, a.0).cmp(&(&b.1.from, b.1.seq, b.0)));
     for (cursor, o) in opened {
@@ -663,6 +698,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         hold.held += 1;
         hold.stuck = Some(hold.stuck.map_or(cursor, |s| s.min(cursor)));
         continue;
+      }
+      if o.trusted {
+        c.st.last_seen.insert(from.clone(), now);
       }
       let entry = c.st.seq_in.entry(from).or_insert(0);
       *entry = (*entry).max(o.seq);
@@ -816,6 +854,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       pending_revokes: g.st.pending_revokes.clone(),
       key_mismatch: g.st.mismatch.clone(),
       seq_gaps: g.st.seq_gaps.clone(),
+      alerts: g.st.alerts.iter().filter(|a| self.now().saturating_sub(a.at_ms) < ALERT_TTL_MS).cloned().collect(),
     })
   }
 
@@ -854,6 +893,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     if !c.st.trusted.iter().any(|d| d.id == dev.id) {
       c.st.trusted.push(dev.clone());
     }
+    stamp_pins(c, self.now());
     self.save_now(c)?;
     let msg_id = random_msg_id("join_ok").map_err(err)?;
     let payload = json!({ "revoked": c.st.revoked });
