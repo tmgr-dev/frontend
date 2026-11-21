@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.163 — 2026-11-21
+
+- Decisions: answers from the phone can pick several options and add a note to each. The window shows every chosen option with its note.
+- Decisions: cards can show code and a diff.
+- Attach: the new session form can start a session or a template on a linked machine.
+
 ## 0.9.162 — 2026-11-21
 
 - Cursor: a task can launch Cursor agents in several repositories, and the task shows each agent's status.
