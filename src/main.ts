@@ -5,6 +5,7 @@ import components from '@/globalComponents.ts';
 import { detectLocale, i18n, setLocale, storedLocale } from '@/i18n';
 import { installLocalWorkspaces } from '@/local/install';
 import { activeLocalWorkspace } from '@/local/runtime';
+import { installRelayAuthSync } from '@/manager/relayAuth';
 import { installOnboardingFlow } from '@/onboarding/boot';
 import { mask, VueTheMask } from '@/plugins/VueTheMask';
 import $axios, { hardLogout } from '@/plugins/axios';
@@ -295,6 +296,7 @@ const start = async () => {
 		void startRunnerStore();
 		installNativeLocale();
 		installCloudIdentitySync(store);
+		installRelayAuthSync(store, import.meta.env.VITE_API_BASE_URL);
 		if (store.state.localProfile)
 			installLocalUpgrade(
 				store,
