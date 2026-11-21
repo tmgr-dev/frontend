@@ -1,5 +1,5 @@
 import type { Machine } from '@/actions/tmgr/aiUsageMachines';
-import type { PopoverExtras } from '@/popover/types';
+import type { PopoverExtras, UsageBar } from '@/popover/types';
 import type { RunnerSession } from '@/runner/api';
 import type { RoutineEntry } from '@/types/dailyRoutine';
 import type { TimeDailyDay } from '@/types/dashboard';
@@ -26,14 +26,19 @@ const parseMs = (iso: string | null | undefined): number =>
 
 const clampPct = (value: number): number => Math.min(100, Math.max(0, value));
 
-const newestClaudeLimit = (
+const TOOLS = ['claude', 'codex'] as const;
+type Tool = (typeof TOOLS)[number];
+type Provider = NonNullable<Usage['providers']>[number];
+
+const newestLimit = (
 	limits: UsageLimit[],
+	tool: Tool,
 	windowS: number,
 ): UsageLimit | undefined =>
 	limits
 		.filter(
 			(limit) =>
-				limit.tool === 'claude' &&
+				limit.tool === tool &&
 				limit.window_s === windowS &&
 				finite(limit.used_pct),
 		)
@@ -50,10 +55,43 @@ const resetsAt = (limit: UsageLimit, now: number): number | null => {
 	return null;
 };
 
-const usageBar = (limit: UsageLimit, now: number) => ({
-	pct: clampPct(limit.used_pct),
-	resetsAt: resetsAt(limit, now),
-});
+const usageBar = (limit: UsageLimit, now: number): UsageBar => {
+	const bar: UsageBar = {
+		pct: clampPct(limit.used_pct),
+		resetsAt: resetsAt(limit, now),
+	};
+	if (finite(limit.age_s)) bar.ageS = limit.age_s;
+	return bar;
+};
+
+const buildProvider = (
+	tool: Tool,
+	overview: UsageOverview | null | undefined,
+	now: number,
+): Provider | undefined => {
+	const limits = overview?.limits ?? [];
+	const provider: Provider = { tool };
+	const five = newestLimit(limits, tool, FIVE_HOURS_S);
+	const week = newestLimit(limits, tool, WEEK_S);
+	if (five) provider.fiveHour = usageBar(five, now);
+	if (week) provider.week = usageBar(week, now);
+	const plan = [five, week].find((limit) => limit?.plan)?.plan;
+	if (plan) provider.plan = plan;
+	const rows = (
+		overview?.windows?.find((window) => window.key === 'today')?.rows ?? []
+	).filter((row) => row.tool === tool);
+	if (rows.length) {
+		provider.todayCost = rows.reduce(
+			(sum, row) => sum + (row.cost_usd || 0),
+			0,
+		);
+		provider.todayTokens = rows.reduce(
+			(sum, row) => sum + (row.tokens_total || 0),
+			0,
+		);
+	}
+	return Object.keys(provider).length > 1 ? provider : undefined;
+};
 
 export const buildUsageExtras = (
 	overview: UsageOverview | null | undefined,
@@ -61,15 +99,18 @@ export const buildUsageExtras = (
 	now = Date.now(),
 ): Usage | undefined => {
 	const usage: Usage = {};
-	const fiveHour = newestClaudeLimit(overview?.limits ?? [], FIVE_HOURS_S);
-	if (fiveHour) usage.fiveHour = usageBar(fiveHour, now);
-	const week = newestClaudeLimit(overview?.limits ?? [], WEEK_S);
-	if (week) usage.week = usageBar(week, now);
-	const today = overview?.windows?.find((window) => window.key === 'today');
+	const providers = TOOLS.map((tool) =>
+		buildProvider(tool, overview, now),
+	).filter((provider): provider is Provider => provider !== undefined);
+	if (providers.length) usage.providers = providers;
+	const windows = overview?.windows ?? [];
+	const today = windows.find((window) => window.key === 'today');
 	if (finite(today?.totals?.cost_usd)) usage.todayCost = today.totals.cost_usd;
 	if (finite(today?.totals?.tokens_total)) {
 		usage.todayTokens = today.totals.tokens_total;
 	}
+	const week = windows.find((window) => window.key === 'week');
+	if (finite(week?.totals?.cost_usd)) usage.weekCost = week.totals.cost_usd;
 	if (finite(runningCost)) usage.runningCost = runningCost;
 	return Object.keys(usage).length ? usage : undefined;
 };

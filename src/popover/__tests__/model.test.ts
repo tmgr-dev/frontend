@@ -6,6 +6,7 @@ import {
 	formatClock,
 	hasUsage,
 	isAnswerable,
+	isStale,
 	moneyText,
 	nextIndex,
 	nextResize,
@@ -286,7 +287,11 @@ describe('section visibility', () => {
 		expect(hasUsage(undefined)).toBe(false);
 		expect(hasUsage({})).toBe(false);
 		expect(hasUsage({ runningCost: 0 })).toBe(true);
-		expect(hasUsage({ week: { pct: 10, resetsAt: null } })).toBe(true);
+		expect(hasUsage({ weekCost: 4 })).toBe(true);
+		expect(hasUsage({ providers: [] })).toBe(false);
+		expect(hasUsage({ providers: [{ tool: 'codex', plan: 'pro' }] })).toBe(
+			true,
+		);
 	});
 });
 
@@ -327,5 +332,16 @@ describe('todayEntries', () => {
 		const deadlines = [deadline(1, 9), deadline(2, 1)];
 		todayEntries([], deadlines);
 		expect(deadlines.map((d) => d.id)).toEqual([1, 2]);
+	});
+});
+
+describe('isStale', () => {
+	it('flags a bar observed more than an hour ago', () => {
+		expect(isStale({ pct: 1, resetsAt: null, ageS: 3601 })).toBe(true);
+		expect(isStale({ pct: 1, resetsAt: null, ageS: 3600 })).toBe(false);
+	});
+
+	it('never flags a bar without an age', () => {
+		expect(isStale({ pct: 1, resetsAt: null })).toBe(false);
 	});
 });

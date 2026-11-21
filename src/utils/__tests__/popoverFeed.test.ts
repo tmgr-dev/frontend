@@ -64,30 +64,78 @@ const todayWindow = (cost: number, tokens: number) =>
 		projects: [],
 	}) as UsageOverview['windows'][number];
 
+const row = (tool: string, cost: number, tokens: number) =>
+	({
+		tool,
+		model: 'm',
+		cost_usd: cost,
+		tokens_total: tokens,
+	}) as UsageOverview['windows'][number]['rows'][number];
+
+const withRows = (
+	window: UsageOverview['windows'][number],
+	rows: UsageOverview['windows'][number]['rows'],
+) => ({ ...window, rows });
+
 describe('buildUsageExtras', () => {
-	it('picks the 5h and weekly Claude limits by exact window length', () => {
+	it('picks the 5h and weekly limits per tool by exact window length', () => {
 		const result = buildUsageExtras(
 			overview({
 				limits: [
 					limit({ window_s: 18000, used_pct: 42 }),
 					limit({ window_s: 604800, used_pct: 13, window: 'seven_day' }),
 					limit({ window_s: 3600, used_pct: 99 }),
+					limit({ tool: 'codex', window_s: 18000, used_pct: 7 }),
+					limit({ tool: 'codex', window_s: 604800, used_pct: 55 }),
 				],
 			}),
 			undefined,
 			NOW,
 		);
-		expect(result?.fiveHour?.pct).toBe(42);
-		expect(result?.week?.pct).toBe(13);
+		expect(result?.providers).toEqual([
+			{
+				tool: 'claude',
+				fiveHour: { pct: 42, resetsAt: NOW_S + 600, ageS: 60 },
+				week: { pct: 13, resetsAt: NOW_S + 600, ageS: 60 },
+			},
+			{
+				tool: 'codex',
+				fiveHour: { pct: 7, resetsAt: NOW_S + 600, ageS: 60 },
+				week: { pct: 55, resetsAt: NOW_S + 600, ageS: 60 },
+			},
+		]);
 	});
 
-	it('ignores non-Claude limits', () => {
+	it('lists only providers that have data, claude before codex', () => {
 		const result = buildUsageExtras(
-			overview({ limits: [limit({ tool: 'codex', used_pct: 90 })] }),
+			overview({ limits: [limit({ tool: 'codex' })] }),
+			undefined,
+			NOW,
+		);
+		expect(result?.providers?.map((p) => p.tool)).toEqual(['codex']);
+	});
+
+	it('ignores unknown tools', () => {
+		const result = buildUsageExtras(
+			overview({ limits: [limit({ tool: 'other', used_pct: 90 })] }),
 			undefined,
 			NOW,
 		);
 		expect(result).toBeUndefined();
+	});
+
+	it('takes the plan from the newest limit that has one', () => {
+		const result = buildUsageExtras(
+			overview({
+				limits: [
+					limit({ tool: 'codex', plan: 'pro' }),
+					limit({ tool: 'codex', window_s: 604800, plan: null }),
+				],
+			}),
+			undefined,
+			NOW,
+		);
+		expect(result?.providers?.[0].plan).toBe('pro');
 	});
 
 	it('prefers the most recently observed limit of the same window', () => {
@@ -101,7 +149,7 @@ describe('buildUsageExtras', () => {
 			undefined,
 			NOW,
 		);
-		expect(result?.fiveHour?.pct).toBe(70);
+		expect(result?.providers?.[0].fiveHour?.pct).toBe(70);
 	});
 
 	it('takes resets_at as absolute epoch seconds when present', () => {
@@ -112,18 +160,9 @@ describe('buildUsageExtras', () => {
 			undefined,
 			NOW,
 		);
-		expect(result?.fiveHour?.resetsAt).toBe(
+		expect(result?.providers?.[0].fiveHour?.resetsAt).toBe(
 			Date.parse('2026-11-21T14:00:00Z') / 1000,
 		);
-	});
-
-	it('derives resetsAt from resets_in_s relative to now', () => {
-		const result = buildUsageExtras(
-			overview({ limits: [limit({ resets_at: null, resets_in_s: 600 })] }),
-			undefined,
-			NOW,
-		);
-		expect(result?.fiveHour?.resetsAt).toBe(NOW_S + 600);
 	});
 
 	it('leaves resetsAt null when neither reset source exists', () => {
@@ -132,7 +171,20 @@ describe('buildUsageExtras', () => {
 			undefined,
 			NOW,
 		);
-		expect(result?.fiveHour).toEqual({ pct: 40, resetsAt: null });
+		expect(result?.providers?.[0].fiveHour).toEqual({
+			pct: 40,
+			resetsAt: null,
+			ageS: 60,
+		});
+	});
+
+	it('omits ageS when the limit has no finite age', () => {
+		const result = buildUsageExtras(
+			overview({ limits: [limit({ age_s: Number.NaN })] }),
+			undefined,
+			NOW,
+		);
+		expect(result?.providers?.[0].fiveHour).not.toHaveProperty('ageS');
 	});
 
 	it('clamps the percentage into 0..100', () => {
@@ -141,10 +193,10 @@ describe('buildUsageExtras', () => {
 			undefined,
 			NOW,
 		);
-		expect(result?.fiveHour?.pct).toBe(100);
+		expect(result?.providers?.[0].fiveHour?.pct).toBe(100);
 	});
 
-	it('reads today cost and tokens from the today window only', () => {
+	it('reads today and week totals from their own windows', () => {
 		const result = buildUsageExtras(
 			overview({
 				windows: [
@@ -155,7 +207,51 @@ describe('buildUsageExtras', () => {
 			undefined,
 			NOW,
 		);
-		expect(result).toEqual({ todayCost: 0.5, todayTokens: 1200 });
+		expect(result).toEqual({
+			todayCost: 0.5,
+			todayTokens: 1200,
+			weekCost: 1.25,
+		});
+	});
+
+	it('splits today cost and tokens per tool when rows exist', () => {
+		const result = buildUsageExtras(
+			overview({
+				limits: [limit(), limit({ tool: 'codex' })],
+				windows: [
+					withRows(todayWindow(5, 900), [
+						row('claude', 1, 100),
+						row('claude', 2, 300),
+						row('codex', 2, 500),
+					]),
+				],
+			}),
+			undefined,
+			NOW,
+		);
+		expect(result?.providers?.[0]).toMatchObject({
+			tool: 'claude',
+			todayCost: 3,
+			todayTokens: 400,
+		});
+		expect(result?.providers?.[1]).toMatchObject({
+			tool: 'codex',
+			todayCost: 2,
+			todayTokens: 500,
+		});
+	});
+
+	it('adds a provider that has only today rows', () => {
+		const result = buildUsageExtras(
+			overview({
+				windows: [withRows(todayWindow(2, 500), [row('codex', 2, 500)])],
+			}),
+			undefined,
+			NOW,
+		);
+		expect(result?.providers).toEqual([
+			{ tool: 'codex', todayCost: 2, todayTokens: 500 },
+		]);
 	});
 
 	it('keeps a zero today cost as a real value', () => {

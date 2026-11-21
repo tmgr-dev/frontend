@@ -215,18 +215,39 @@
 					<div class="sec">
 						<div class="label">{{ $t('popover.usage.title') }}</div>
 						<div class="ai">
-							<UsageBar
-								v-if="usage.fiveHour"
-								:label="$t('popover.usage.fiveHour')"
-								:bar="usage.fiveHour"
-								:now="model.now"
-							/>
-							<UsageBar
-								v-if="usage.week"
-								:label="$t('popover.usage.week')"
-								:bar="usage.week"
-								:now="model.now"
-							/>
+							<div
+								v-for="provider in usage.providers ?? []"
+								:key="provider.tool"
+								class="prov"
+							>
+								<div class="ph">
+									<b>{{ $t(`popover.usage.${provider.tool}`) }}</b>
+									<span v-if="provider.plan" class="plan">{{
+										provider.plan
+									}}</span>
+									<span class="pt">
+										<template v-if="provider.todayCost !== undefined">
+											{{ moneyText(provider.todayCost) }}
+										</template>
+										<template v-if="provider.todayTokens !== undefined">
+											· {{ tokensText(provider.todayTokens) }}
+											{{ $t('popover.usage.tokens') }}
+										</template>
+									</span>
+								</div>
+								<UsageBar
+									v-if="provider.fiveHour"
+									:label="$t('popover.usage.fiveHour')"
+									:bar="provider.fiveHour"
+									:now="model.now"
+								/>
+								<UsageBar
+									v-if="provider.week"
+									:label="$t('popover.usage.week')"
+									:bar="provider.week"
+									:now="model.now"
+								/>
+							</div>
 							<div class="tot">
 								<span v-if="usage.todayCost !== undefined">
 									{{ $t('popover.usage.today') }}
@@ -235,6 +256,10 @@
 								<span v-if="usage.todayTokens !== undefined">
 									<b>{{ tokensText(usage.todayTokens) }}</b>
 									{{ $t('popover.usage.tokens') }}
+								</span>
+								<span v-if="usage.weekCost !== undefined">
+									{{ $t('popover.usage.weekTotal') }}
+									<b>{{ moneyText(usage.weekCost) }}</b>
 								</span>
 								<span v-if="usage.runningCost !== undefined">
 									{{ runningLabel }}

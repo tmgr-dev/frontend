@@ -141,10 +141,10 @@ export const pendingDecisions = (cards: readonly CardView[]): CardView[] =>
 
 export const hasUsage = (usage: PopoverUsage | undefined): boolean =>
 	usage !== undefined &&
-	(usage.fiveHour !== undefined ||
-		usage.week !== undefined ||
+	((usage.providers?.length ?? 0) > 0 ||
 		usage.todayCost !== undefined ||
 		usage.todayTokens !== undefined ||
+		usage.weekCost !== undefined ||
 		usage.runningCost !== undefined);
 
 export const visibleSections = (model: PopoverModel): PopoverSection[] => {
@@ -158,6 +158,11 @@ export const visibleSections = (model: PopoverModel): PopoverSection[] => {
 	if (model.pluginSections.length > 0) sections.push('plugins');
 	return sections;
 };
+
+export const STALE_AFTER_S = 3600;
+
+export const isStale = (bar: UsageBar): boolean =>
+	bar.ageS !== undefined && bar.ageS > STALE_AFTER_S;
 
 export const TODAY_CAP = 5;
 
