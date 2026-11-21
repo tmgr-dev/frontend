@@ -208,10 +208,19 @@ fn parse<T: DeserializeOwned>(body: &str) -> Result<T> {
     serde_json::from_value(unwrap_data(v)).map_err(|_| Error::BadJson)
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, PartialEq)]
 pub struct Registered {
     pub device_id: String,
     pub device_token: String,
+}
+
+impl std::fmt::Debug for Registered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Registered")
+            .field("device_id", &self.device_id)
+            .field("device_token", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
@@ -446,6 +455,13 @@ mod tests {
             );
         }
         assert_eq!(parse_acked(r#"{"data":{"deleted":3}}"#).unwrap().deleted, 3);
+    }
+
+    #[test]
+    fn registered_debug_redacts_token() {
+        let r = parse_registered(r#"{"device_id":"d","device_token":"secret-token"}"#).unwrap();
+        let d = format!("{r:?}");
+        assert!(d.contains("<redacted>") && !d.contains("secret-token"));
     }
 
     #[test]

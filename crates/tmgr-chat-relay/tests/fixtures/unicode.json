@@ -1,0 +1,91 @@
+{
+  "description": "non-ASCII positive vectors: a chat payload and a join label; hashes are over the UTF-8 bytes, no \\u escapes in the inner string",
+  "chat": {
+    "description": "chat with non-ASCII payload",
+    "inputs": {
+      "user_id": 42,
+      "now_ms": 1800000000000,
+      "sender": {
+        "device_id": "00000000-0000-4000-8000-00000000000a",
+        "keys": {
+          "sign_secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+          "kex_secret_hex": "6565656565656565656565656565656565656565656565656565656565656565",
+          "sign_pub": "BG/wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW/AdxT9sCwx+7ni0DG/30lqW4igrmJzvccFEo=",
+          "kex_pub": "BCA5SAYO/Wge2vfxq0nV9jHxEi0uDLRSos5UkEl7Mt8iU3K4C4blpxCmTotNkjGEFKF5R5uWgn8zed4kcWOUkIQ=",
+          "fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233"
+        }
+      },
+      "recipient": {
+        "device_id": "00000000-0000-4000-8000-00000000000b",
+        "keys": {
+          "sign_secret_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+          "kex_secret_hex": "6666666666666666666666666666666666666666666666666666666666666666",
+          "sign_pub": "BFUPRxAD89+Xw99QaseX9nIfsaH7e49vg9IkSYplyI4kE2CT1wEuUJpzcVy9CwCjzA/0tcAbP/oZarH7MnA2uOY=",
+          "kex_pub": "BAu7xei8hL0z0dPOA/+smnR/TBmT/dsuyTpBFqhvAip3w8FxkVWaTCoapX55uNGXfaLJWRcvR440HicCjWn/+3s=",
+          "fp": "41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33"
+        }
+      },
+      "kind": "chat",
+      "msg_id": "m_00000000000000000000000000000003",
+      "sent_at_ms": 1799999990000,
+      "seq": 1,
+      "payload": {
+        "text": "Привет, мир ✓ 日本語 😀",
+        "n": 1
+      },
+      "entropy": {
+        "eph_secret_hex": "0707070707070707070707070707070707070707070707070707070707070707",
+        "nonce_hex": "080808080808080808080808"
+      }
+    },
+    "outputs": {
+      "ctx": "tmgr-chat:v1:42:00000000-0000-4000-8000-00000000000a:00000000-0000-4000-8000-00000000000b:chat:m_00000000000000000000000000000003",
+      "inner": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000003\",\"sent_at\":1799999990000,\"seq\":1,\"payload\":{\"text\":\"Привет, мир ✓ 日本語 😀\",\"n\":1}}",
+      "inner_sha256_hex": "b5630e2eb437abd9ee4262239ae74a0a52f133f5903cae5b6f67590b56a6239f",
+      "signed_string": "tmgr-chat-msg:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33:00000000-0000-4000-8000-00000000000a:00000000-0000-4000-8000-00000000000b:chat:m_00000000000000000000000000000003:1799999990000:b5630e2eb437abd9ee4262239ae74a0a52f133f5903cae5b6f67590b56a6239f",
+      "sig": "MEUCIQDeubwelWV7MW6v0wMoLqHOi2yJxsGs+NaIC05AFUEGvgIgDEsV3e70/oh7SglxF+/pv1fJwXnDiYfjGlz17Z8GK5U=",
+      "plaintext": "{\"body\":\"{\\\"v\\\":1,\\\"kind\\\":\\\"chat\\\",\\\"id\\\":\\\"m_00000000000000000000000000000003\\\",\\\"sent_at\\\":1799999990000,\\\"seq\\\":1,\\\"payload\\\":{\\\"text\\\":\\\"Привет, мир ✓ 日本語 😀\\\",\\\"n\\\":1}}\",\"sig\":\"MEUCIQDeubwelWV7MW6v0wMoLqHOi2yJxsGs+NaIC05AFUEGvgIgDEsV3e70/oh7SglxF+/pv1fJwXnDiYfjGlz17Z8GK5U=\",\"pad\":\"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           \"}",
+      "plaintext_len": 1024,
+      "body": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000003\",\"from\":\"00000000-0000-4000-8000-00000000000a\",\"eph\":\"BB4YUy/UdUwC8wQdnHXOszuD/9gax85P6ILMscmLxYlupGwxHE4v9A3ZajZT5uRURdMt/khuztdcepDGoYiBwKM=\",\"nonce\":\"CAgICAgICAgICAgI\",\"ct\":\"aFzqCJOVdgqSreg9W9h4/yEopQpsYeCvaADssBavezpfPJlSZ2w26rYGYCzOs5pnFHyb16TNVWAC2HJwvszIkhI3qsidsrCTGQNQDhiuVktIiaz7zRBS6wgz+lR+A8pf92GBv5JbxLZc/M+qK9KXRWUxV1+qZWqIURizNZZn7BkOW4BnvGTCUZfqmmWiIL1atIM5tCogGYqnQcfc4wmtrJu2ObNrWyQ4gxHvilHgRC5DiqnPUrDyIoGn8F0ZNdQgVkRvL/coWEUdhzISuIRpvZwbSICHdHZXt8k/yye+6WJGS8BLTJ4Imos5UoGF282YT3WlML8RK4kkfszfEtIdQ/+RX5wrpMN4YgQrR9R1jFti9k9caBUDLHK4qX3qDXcWS/xG6Ku+Br6Id+Yjm7tWeE6JqTeR2ccXqrOREzPY2oQsX7471CsVTECOLKBDhSpQ2cj7BsJubsPNJpSI0yIsVsaZbvA1S8b9Cp9v0Luq3rYiWd4ue3Qs8kYkpvgeP9kAr2lwjKdJ5Gi1ignq086gA7k1CNywxLtXRGYPyNVbhx9iyXfGhUI23SYaXz1TFuMpFYCfbaodOWATJT/3kDgjFDOAfPHW85UFscunsC+e9hQOEB8BUNqSbe6KQn86RiKgozXh6a0PQwK6cQH1Hj+q9LNHCO8AWZtg5ryfVOyDX7FhtNvY7bIOwCoHymnDf9uym/HfBNzGr+kwNAuxNPsvAubl001DUy6sHmDajQ90cNNycETK6+uiEVotl9AFf2i5XbOyZoVCaFd9x+RQJhV0QUOq4+ibibgX4Xbm+jMFKFNiVMD+SiqlOvbZANO6d5bAoqA1s6sTndzZPiTRysrsQqqKp6xmM0hmKA2+03CcwaFVNln2pSjxhevVctn2lVlIiGowuq9jGF6KN7MEdUTBgqkiTEYpmlyJWo205fcxfKPgkCoiBJ/Jq17gqPBtJrj2Fjr0yLTEMTTBtF9oOTWBcRXo3bL2Mma9V1vvSawVay5DUvknYZEW0X2lGNFzqpEsOKS66HkdWsLyOBt9sNWw50ObHUfYlzrsw/1TJp42LgfCaFurLeHmy6ezKO1ttXKeITkdO6CU3PBc+a31efbG4gxDvl5WXX8vnTMN7ULJmPE5XsvDJNXuYC9QiGrZhp6wkq8nb7w7SS2SCAMRzAlRmB+/lamQN1sY+cBnxOlDkYJZeWwiYbsd/JDfT4bnUeQnX+Q4idRFrobeOdVuchDZksWZ76TxXNym7Eje8O/U/wPr5/tQbdQrxKQcTpaWmXhXsZKee9j1EHK4Sftfz/iU0e18VtiZnW0T/ER5uxvk0yXkmDOTJhjvP5GEbuxO/aX2o2qhCqWZoCbZWXAD2szHT6krAHPbn7NqTeytzy5WI80=\"}",
+      "plaintext_unpadded": "{\"body\":\"{\\\"v\\\":1,\\\"kind\\\":\\\"chat\\\",\\\"id\\\":\\\"m_00000000000000000000000000000003\\\",\\\"sent_at\\\":1799999990000,\\\"seq\\\":1,\\\"payload\\\":{\\\"text\\\":\\\"Привет, мир ✓ 日本語 😀\\\",\\\"n\\\":1}}\",\"sig\":\"MEUCIQDeubwelWV7MW6v0wMoLqHOi2yJxsGs+NaIC05AFUEGvgIgDEsV3e70/oh7SglxF+/pv1fJwXnDiYfjGlz17Z8GK5U=\"}",
+      "body_unpadded": "{\"v\":1,\"kind\":\"chat\",\"id\":\"m_00000000000000000000000000000003\",\"from\":\"00000000-0000-4000-8000-00000000000a\",\"eph\":\"BB4YUy/UdUwC8wQdnHXOszuD/9gax85P6ILMscmLxYlupGwxHE4v9A3ZajZT5uRURdMt/khuztdcepDGoYiBwKM=\",\"nonce\":\"CAgICAgICAgICAgI\",\"ct\":\"aFzqCJOVdgqSreg9W9h4/yEopQpsYeCvaADssBavezpfPJlSZ2w26rYGYCzOs5pnFHyb16TNVWAC2HJwvszIkhI3qsidsrCTGQNQDhiuVktIiaz7zRBS6wgz+lR+A8pf92GBv5JbxLZc/M+qK9KXRWUxV1+qZWqIURizNZZn7BkOW4BnvGTCUZfqmmWiIL1atIM5tCogGYqnQcfc4wmtrJu2ObNrWyQ4gxHvilHgRC5DiqnPUrDyIoGn8F0ZNdQgVkRvL/coWEUdhzISuIRpvZwbSICHdHZXt8k/yye+6WJGS8BLTJ4Imos5UoGF282YT3WlML8RK4kkfszfEtIdQ/+RX5wrpMN4YgQrR9R1jFti9k9caBUDLHK4qX3qDXcWS/xG6Ku+Br6Id+ZyKmXgZkM76nSwzFIB/xBgTA==\"}",
+      "open": {
+        "from": "00000000-0000-4000-8000-00000000000a",
+        "from_fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233",
+        "kind": "chat",
+        "id": "m_00000000000000000000000000000003",
+        "seq": 1,
+        "sent_at": 1799999990000,
+        "payload": {
+          "text": "Привет, мир ✓ 日本語 😀",
+          "n": 1
+        },
+        "trusted": true
+      }
+    }
+  },
+  "join": {
+    "inputs": {
+      "code": {
+        "user_id": 42,
+        "device_id": "00000000-0000-4000-8000-00000000000a",
+        "fp": "bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233",
+        "secret_hex": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "secret_b64": "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo=",
+        "exp_ms": 1800000600000
+      },
+      "joiner": {
+        "device_id": "00000000-0000-4000-8000-00000000000b",
+        "kind": "mobile",
+        "label": "Телефон ✓ 日本語",
+        "fp": "41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33"
+      }
+    },
+    "outputs": {
+      "code_string": "tmgr-chat-join:v1:eyJ2IjoxLCJ1c2VyX2lkIjo0MiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDBhIiwiZnAiOiJiYjMwMmZhZmQ0M2Q3OTQ5NWYwMmNjOTdhYmZkMmE5YzI0NTkzNGU0YjI5Zjc0NjAwMDY0NGY1OGQ0MjdmMjMzIiwic2VjcmV0IjoiV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdsbz0iLCJleHAiOjE4MDAwMDA2MDAwMDB9",
+      "code_base64url": "eyJ2IjoxLCJ1c2VyX2lkIjo0MiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDBhIiwiZnAiOiJiYjMwMmZhZmQ0M2Q3OTQ5NWYwMmNjOTdhYmZkMmE5YzI0NTkzNGU0YjI5Zjc0NjAwMDY0NGY1OGQ0MjdmMjMzIiwic2VjcmV0IjoiV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdsbz0iLCJleHAiOjE4MDAwMDA2MDAwMDB9",
+      "mac_transcript": "tmgr-chat-join:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000b:41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33:mobile:11d0ca3b9f069c13d55e399d7ce01e027bf9ce5a8f7029654ddc35a9234ee55e",
+      "mac_hex": "455518a421d150679fed135813b0188d4d8eb5f1d4ab29f668411995a1bcc0b0"
+    }
+  }
+}

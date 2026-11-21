@@ -59,7 +59,8 @@
         "sha256": "c8b94fd2135b4b2ca119dc6eed8801342f593ca4befa8c25f40d4fa47068b246",
         "mime": "text/plain",
         "data": "Zml4dHVyZSBibG9iIGJ5dGVz"
-      }
+      },
+      "trusted": true
     }
   }
 }

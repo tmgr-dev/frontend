@@ -1,5 +1,4 @@
 {
-  "description": "join code, MAC key is the 32 decoded secret bytes",
   "inputs": {
     "code": {
       "user_id": 42,
@@ -21,5 +20,6 @@
     "code_base64url": "eyJ2IjoxLCJ1c2VyX2lkIjo0MiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDBhIiwiZnAiOiJiYjMwMmZhZmQ0M2Q3OTQ5NWYwMmNjOTdhYmZkMmE5YzI0NTkzNGU0YjI5Zjc0NjAwMDY0NGY1OGQ0MjdmMjMzIiwic2VjcmV0IjoiV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdscGFXbHBhV2xwYVdsbz0iLCJleHAiOjE4MDAwMDA2MDAwMDB9",
     "mac_transcript": "tmgr-chat-join:v1:42:bb302fafd43d79495f02cc97abfd2a9c245934e4b29f746000644f58d427f233:00000000-0000-4000-8000-00000000000b:41af63167254755a018743a7c1a1fa37720d01a2fc29112b2eb81ca299f66e33:mobile:63dceb8800b2dd4af9567a1f54f03b7c3dbdc27fac4799091ebfcc4928899ee5",
     "mac_hex": "9541ca07aa3e6a707f31a93052a4ff5b7e07e402a9b4e296efe75f8bdb21a2d3"
-  }
+  },
+  "description": "join code, MAC key is the 32 decoded secret bytes"
 }
