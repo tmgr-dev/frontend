@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.0.141
 
-- `tmgr runner switch-agent`: continue in opencode or agy too (`--to opencode|agy`, required when the old session runs one of them; the note is then built from the session's screen text and the git state). Sessions without a task can be switched. The permission mode (ask, accept-edits, plan) now carries over; bypass and no-sandbox carry over only with `--keep-bypass` and the typed confirmation of `run --mode bypass`, otherwise the new session starts in ask mode. If the new agent has no such mode it starts in ask mode and says so. Plain runs accept a first `prompt` on `runs.create` (cap `run_prompt.v1`), so a runner restart is needed.
+- Decisions: `tmgr propose comment|task|pr|tag` and the `propose_action` MCP tool send a write action to the owner as a card. The action runs only after the owner approves it on the desktop, and it runs from the exact payload that was approved or edited; the approval is bound to a SHA-256 of that payload. A rejection returns the reason. An approval returns the url, plus the sha for tags. The desktop runs the action itself: comments and tasks through the signed-in TMGR account, pull requests and tags through `gh`. Needs desktop 0.9.166. Phone approval of these cards comes later.
+- 1.0.140 was never published.
 
 ## 1.0.139
 
