@@ -1,4 +1,4 @@
-import type { ToastKind } from './types';
+import type { ToastKind, ToastView } from './types';
 
 const GLYPHS: Record<ToastKind, string> = {
 	decision: '?',
@@ -20,3 +20,26 @@ export const ageLabel = (nowMs: number, atMs: number): string => {
 
 export const heightOf = (contentHeight: number): number =>
 	Math.ceil(Math.max(0, contentHeight));
+
+export const progressFraction = (
+	remainingMs?: number | null,
+	totalMs?: number | null,
+): number | null => {
+	if (remainingMs == null || !totalMs || totalMs <= 0) return null;
+	return Math.min(1, Math.max(0, remainingMs / totalMs));
+};
+
+export const drainStyle = (
+	item: Pick<ToastView, 'remainingMs' | 'totalMs' | 'paused'>,
+): Record<string, string> | null => {
+	const fraction = progressFraction(item.remainingMs, item.totalMs);
+	if (fraction === null) return null;
+	return {
+		'--from': String(fraction),
+		'--drain': `${Math.max(0, item.remainingMs ?? 0)}ms`,
+		'--state': item.paused ? 'paused' : 'running',
+	};
+};
+
+export const hoverKey = (hover: boolean, focus: boolean): boolean =>
+	hover || focus;

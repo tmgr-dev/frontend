@@ -10,6 +10,9 @@ export const toastAction = (toastId: string, actionId: string) =>
 export const toastDismiss = (id: string) =>
 	invoke<void>('toast_dismiss', { id });
 
+export const toastHover = (id: string, hovering: boolean) =>
+	invoke<void>('toast_hover', { id, hovering });
+
 export const toastResize = (height: number) =>
 	invoke<void>('toast_resize', { height });
 

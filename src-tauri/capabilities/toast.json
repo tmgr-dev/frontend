@@ -10,6 +10,7 @@
 		"allow-toast-action",
 		"allow-toast-dismiss",
 		"allow-toast-resize",
-		"allow-toast-expand"
+		"allow-toast-expand",
+		"allow-toast-hover"
 	]
 }
