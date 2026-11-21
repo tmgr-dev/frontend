@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.164 — 2026-11-21
+
+- Decisions: `tmgr decisions answers` and the agent tool `find_answers` now return every chosen option with its label and note (`choices`), next to the first pick in `choice`. Needs CLI 1.0.139 to read them.
+
 ## 0.9.163 — 2026-11-21
 
 - Decisions: answers from the phone can pick several options and add a note to each. The window shows every chosen option with its note.
