@@ -6,6 +6,8 @@ pub mod auth;
 #[cfg(feature = "runner")]
 pub mod autopilot;
 pub mod board;
+#[cfg(feature = "runner")]
+pub mod chat;
 pub mod config;
 #[cfg(unix)]
 pub mod decisions;

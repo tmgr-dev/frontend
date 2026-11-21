@@ -1,3 +1,4 @@
+pub mod relay;
 pub mod store;
 pub mod tail;
 

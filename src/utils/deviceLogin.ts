@@ -18,6 +18,7 @@ export const SCOPE_KEYS: Record<string, string> = {
 		'settingsPages.helpers.deviceScope.agentApprovalsWrite',
 	'skills:read': 'settingsPages.helpers.deviceScope.skillsRead',
 	'skills:write': 'settingsPages.helpers.deviceScope.skillsWrite',
+	'chat:devices': 'settingsPages.helpers.deviceScope.chatDevices',
 };
 
 export const describeScope = (scope: string): string =>

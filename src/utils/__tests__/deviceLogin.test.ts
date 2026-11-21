@@ -40,7 +40,7 @@ describe('isCompleteUserCode', () => {
 
 describe('scope descriptions', () => {
 	it('describes all fourteen scopes', () => {
-		expect(Object.keys(SCOPE_KEYS)).toHaveLength(16);
+		expect(Object.keys(SCOPE_KEYS)).toHaveLength(17);
 		expect(describeScope('agent-status:write')).toBe(
 			'Share your local AI agent status (working, waiting, done) with your workspace',
 		);
@@ -50,6 +50,12 @@ describe('scope descriptions', () => {
 		);
 		expect(describeScope('agent-approvals:write')).toBe(
 			"Sign agent-run approvals with this computer's key",
+		);
+	});
+
+	it('describes the chat devices scope', () => {
+		expect(describeScope('chat:devices')).toBe(
+			'Register chat devices (end-to-end chat relay)',
 		);
 	});
 

@@ -1026,7 +1026,8 @@
 			"notifySend": "Benachrichtigungen und Handy-Alarme an deine Geräte senden",
 			"agentApprovalsWrite": "Freigaben für Agent-Läufe mit dem Schlüssel dieses Computers signieren",
 			"skillsRead": "Deine geteilten Skills lesen und sehen, welche Personas sie nutzen",
-			"skillsWrite": "Deine geteilten Skills erstellen, ändern und löschen und sie deinen Personas zuweisen (ändert, was diesen Agenten gesagt wird)"
+			"skillsWrite": "Deine geteilten Skills erstellen, ändern und löschen und sie deinen Personas zuweisen (ändert, was diesen Agenten gesagt wird)",
+			"chatDevices": "Chat-Geräte registrieren (Ende-zu-Ende-Chat-Relay)"
 		},
 		"workspaceColor": {
 			"red": "Rot",

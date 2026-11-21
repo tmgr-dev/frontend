@@ -1026,7 +1026,8 @@
 			"notifySend": "Wysyłaj powiadomienia i alarmy telefoniczne na swoje urządzenia",
 			"agentApprovalsWrite": "Podpisuj zatwierdzenia uruchomień agentów kluczem tego komputera",
 			"skillsRead": "Czytaj swoje współdzielone skille i persony, które ich używają",
-			"skillsWrite": "Twórz, zmieniaj i usuwaj swoje współdzielone skille oraz przypisuj je swoim personom (zmienia to, co mają robić ci agenci)"
+			"skillsWrite": "Twórz, zmieniaj i usuwaj swoje współdzielone skille oraz przypisuj je swoim personom (zmienia to, co mają robić ci agenci)",
+			"chatDevices": "Rejestruj urządzenia czatu (szyfrowany end-to-end przekaźnik czatu)"
 		},
 		"workspaceColor": {
 			"red": "Czerwony",
