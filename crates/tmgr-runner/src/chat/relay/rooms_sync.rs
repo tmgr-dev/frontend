@@ -110,6 +110,29 @@ fn size_of(m: &ChatMessage) -> usize {
     serde_json::to_vec(m).map_or(usize::MAX, |v| v.len())
 }
 
+fn eligible_recent(
+    room: &RoomRef,
+    history: &dyn Fn(&RoomRef, u32) -> Vec<ChatMessage>,
+) -> Vec<ChatMessage> {
+    let mut limit = BACKFILL_PER_ROOM;
+    loop {
+        let got = history(room, limit);
+        let exhausted = got.len() < limit as usize;
+        let eligible: Vec<ChatMessage> = got
+            .into_iter()
+            .filter(relayable)
+            .filter(|m| m.validate().is_ok())
+            .collect();
+        if eligible.len() >= BACKFILL_PER_ROOM as usize
+            || exhausted
+            || limit >= tmgr_ipc::chat::limits::MAX_HISTORY
+        {
+            return eligible;
+        }
+        limit = (limit * 2).min(tmgr_ipc::chat::limits::MAX_HISTORY);
+    }
+}
+
 pub fn backfill_plan(
     rooms: &[RoomInfo],
     history: &dyn Fn(&RoomRef, u32) -> Vec<ChatMessage>,
@@ -120,11 +143,7 @@ pub fn backfill_plan(
     let mut groups: Vec<Vec<ChatMessage>> = ordered
         .iter()
         .map(|r| {
-            let mut msgs: Vec<ChatMessage> = history(&r.room, BACKFILL_PER_ROOM)
-                .into_iter()
-                .filter(relayable)
-                .filter(|m| m.validate().is_ok())
-                .collect();
+            let mut msgs = eligible_recent(&r.room, history);
             msgs.sort_by_key(|m| m.ts_ms);
             let skip = msgs.len().saturating_sub(BACKFILL_PER_ROOM as usize);
             msgs.drain(..skip);
@@ -231,7 +250,11 @@ impl RoomsSync {
                     Some(only),
                 )
                 .and_then(|()| {
-                    for m in backfill_plan(&snap.rooms, history, BACKFILL_CAP_BYTES) {
+                    for m in backfill_plan(
+                        &snap.rooms[..index.rooms.len()],
+                        history,
+                        BACKFILL_CAP_BYTES,
+                    ) {
                         sink.send_chat(&m, only)?;
                     }
                     Ok(())
@@ -572,5 +595,39 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn backfill_pages_past_owner_messages_to_fill_twenty_runner_messages() {
+        let room = RoomRef::manager(MACHINE);
+        let hist = |r: &RoomRef, limit: u32| {
+            let all: Vec<ChatMessage> = (0..60u64)
+                .map(|i| {
+                    let mut m = chat_msg(r, i, "x");
+                    if i >= 30 {
+                        m.author.kind = AuthorKind::Owner;
+                    }
+                    m
+                })
+                .collect();
+            all[all.len().saturating_sub(limit as usize)..].to_vec()
+        };
+        let plan = backfill_plan(&[info(room, "Manager", Some(1))], &hist, BACKFILL_CAP_BYTES);
+        assert_eq!(plan.len(), 20);
+        assert!(plan.iter().all(|m| m.author.kind != AuthorKind::Owner));
+        assert_eq!(plan.iter().map(|m| m.ts_ms).max(), Some(29));
+    }
+
+    #[test]
+    fn backfill_uses_only_the_rooms_advertised_in_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let sink = Sink::with_owners(&["phone"]);
+        let rooms: Vec<RoomInfo> = (0..250)
+            .map(|i| info(RoomRef::session(MACHINE, &format!("s{i}")), "t", Some(i)))
+            .collect();
+        let snapshot = || snap(rooms.clone());
+        let hist = history_of(1, 4);
+        RoomsSync::new().tick(&sink, dir.path(), &snapshot, &hist);
+        assert_eq!(sink.chats_to.borrow().len(), MAX_ROOMS);
     }
 }
