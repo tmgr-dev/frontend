@@ -53,6 +53,7 @@ pub(crate) mod testkit {
         pub spawned_for: Mutex<Vec<(String, String)>>,
         pub failed: Mutex<Vec<(String, String)>>,
         pub explode: std::sync::atomic::AtomicBool,
+        pub unrestricted_manager: std::sync::atomic::AtomicBool,
         pub now: AtomicU64,
         pub line_len: usize,
     }
@@ -109,6 +110,7 @@ pub(crate) mod testkit {
                 spawned_for: Mutex::default(),
                 failed: Mutex::default(),
                 explode: std::sync::atomic::AtomicBool::new(false),
+                unrestricted_manager: std::sync::atomic::AtomicBool::new(false),
                 now: AtomicU64::new(T0),
                 line_len: 5,
             }
@@ -139,6 +141,9 @@ pub(crate) mod testkit {
         fn send(&self, id: &str, text: &str) -> Result<(), String> {
             self.sent.lock().unwrap().push((id.into(), text.into()));
             Ok(())
+        }
+        fn local_manager_unrestricted(&self) -> bool {
+            self.unrestricted_manager.load(Ordering::SeqCst)
         }
         fn trusted_dir(&self, cwd: &str) -> Result<crate::manager::TrustedDir, String> {
             if cwd == "/tmp/ok" {

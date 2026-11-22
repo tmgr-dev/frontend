@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use tmgr_ipc::api::{CwdPin, ErrorCode, RunCreateReq, SessionInfo, StateKind};
 use tmgr_ipc::chat::{self, Author, AuthorKind, ChatMessage, MessageKind, RoomRef};
 use tmgr_ipc::manager::{
-    limits, remote_prompt_ok, tool, valid_req_id, SignedSpawn, SpoolReq, SpoolResp, DATA_NOTICE,
-    MCP_ARG, REMOTE_PROMPT_CHARS, REQ_DIR, RESP_DIR, SERVER_NAME, SPOOL_ROOT, SPOOL_V,
+    limits, remote_prompt_ok, tool, valid_req_id, wrap_untrusted, SignedSpawn, SpoolReq, SpoolResp,
+    DATA_NOTICE, MCP_ARG, REMOTE_PROMPT_CHARS, REQ_DIR, RESP_DIR, SERVER_NAME, SPOOL_ROOT, SPOOL_V,
 };
 use tmgr_spawn_auth::{sha256_hex, SpawnMode, SpawnProposal};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
@@ -721,7 +721,12 @@ pub trait Host {
     fn unrestricted(&self) -> bool {
         false
     }
+    fn local_manager_unrestricted(&self) -> bool {
+        false
+    }
 }
+
+pub const REMOTE_MANAGER_SOURCE: &str = "manager on another machine";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardMiss {
@@ -1080,7 +1085,14 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
         }
     };
     if let Some(p) = args.prompt {
-        st.queue_prompt(&info.id, p, host.now_ms());
+        match host.remote_caller() {
+            Some(from) => st.queue_prompt(
+                &info.id,
+                &wrap_untrusted(REMOTE_MANAGER_SOURCE, from, p),
+                host.now_ms(),
+            ),
+            None => st.queue_prompt(&info.id, p, host.now_ms()),
+        }
     }
     if let Some(signed) = &approval {
         host.spawn_done(&signed.card_id, &info.id);
@@ -2728,6 +2740,26 @@ mod tests {
         st.queue_prompt("s_x", "t", 0);
         st.deliver_prompts(PROMPT_WAIT_MS + 1, |_| Delivery::Retry);
         st.deliver_prompts(PROMPT_WAIT_MS + 2, |_| panic!("expired prompt kept"));
+    }
+
+    #[test]
+    fn a_remote_spawn_prompt_is_wrapped_and_a_local_one_is_not() {
+        let h = Fake::remote("mx_peer");
+        let st = State::default();
+        h.approved
+            .lock()
+            .unwrap()
+            .insert("card_9".into(), remote_signed());
+        call(&h, &st, "spawn_session", remote_args()).unwrap();
+        let mut seen = Vec::new();
+        st.deliver_prompts(h.now + 1, |p| {
+            seen.push(p.text.clone());
+            Delivery::Done
+        });
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].starts_with("[relayed message "), "{}", seen[0]);
+        assert!(seen[0].contains("source: manager on another machine | from: mx_peer]"));
+        assert!(seen[0].contains("\n\ngo\n\n"));
     }
 
     #[test]

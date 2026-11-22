@@ -318,6 +318,10 @@ impl core::Host for ManagerHost<'_> {
     fn unrestricted(&self) -> bool {
         self.unrestricted
     }
+
+    fn local_manager_unrestricted(&self) -> bool {
+        self.rt.live_manager().is_some_and(|m| is_unrestricted(&m))
+    }
 }
 
 #[cfg(test)]

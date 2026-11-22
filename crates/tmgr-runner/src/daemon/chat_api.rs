@@ -10,9 +10,13 @@ use crate::mgr_rpc::relay::{
 use crate::mgr_rpc::{Dispatcher, FileAudit};
 use std::sync::mpsc::RecvTimeoutError as ChatRecv;
 use tmgr_ipc::chat::{method as chat_method, ChatPush, HistoryParams, SearchParams, SendParams};
+use tmgr_ipc::manager::wrap_untrusted;
 
 const CAPTURE_EVERY: Duration = Duration::from_secs(3);
 const RPC_TICK: Duration = Duration::from_millis(100);
+const RELAY_SOURCE: &str = "phone or another device via chat relay";
+const UNRESTRICTED_REFUSAL: &str =
+    "Not delivered: an unrestricted manager takes input only from this machine's keyboard.";
 
 fn bad(msg: String) -> ApiErr {
     api(ErrorCode::InvalidParams, msg)
@@ -45,6 +49,26 @@ impl Runner {
         }
     }
 
+    fn relay_deliver(
+        &self,
+        room: &tmgr_ipc::chat::RoomRef,
+        device: Option<&str>,
+        body: &str,
+    ) -> chat::Delivery {
+        let target = match room.session.as_deref() {
+            Some(id) => self.session(id),
+            None => self.live_manager(),
+        };
+        if target.is_some_and(|s| super::manager::is_unrestricted(&s)) {
+            return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
+        }
+        let typed = wrap_untrusted(RELAY_SOURCE, device.unwrap_or("unknown device"), body);
+        match self.chat_deliver(room, &typed, "relay") {
+            chat::Delivery::Delivered => chat::Delivery::Typed(typed),
+            other => other,
+        }
+    }
+
     pub(super) fn start_relay_pump(self: &Arc<Self>) {
         let Some(transport) = self.cfg.relay.clone() else {
             return;
@@ -58,11 +82,12 @@ impl Runner {
             transport,
             ingest: Arc::new(move |m: chat::Incoming| {
                 let room = m.room.clone();
+                let device = m.device.clone();
                 ingest_rt.chat.ingest(
                     m,
                     now_ms(),
                     |s| ingest_rt.session(s).is_some(),
-                    |body| ingest_rt.chat_deliver(&room, body, "relay"),
+                    |body| ingest_rt.relay_deliver(&room, device.as_deref(), body),
                 )
             }),
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
@@ -537,6 +562,88 @@ mod tests {
             let e = call(&rt, &c, chat_method::HISTORY, history_params(room)).unwrap_err();
             assert!(e.msg.starts_with(want), "{}", e.msg);
         }
+    }
+
+    fn manager_rig(flags: Value) -> (tempfile::TempDir, Arc<Runner>) {
+        use crate::daemon::manager::tests::{add_meta, runner};
+        let t = tempfile::Builder::new()
+            .prefix("mc")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        let mut meta = json!({"manager": true});
+        meta.as_object_mut()
+            .unwrap()
+            .extend(flags.as_object().unwrap().clone());
+        add_meta(&rt, t.path(), "s_aaaaaaaaaa", meta);
+        add_meta(
+            &rt,
+            t.path(),
+            "s_cccccccccc",
+            json!({"permission_mode": "bypass", "no_sandbox": true}),
+        );
+        (t, rt)
+    }
+
+    fn relay_msg(room: RoomRef, body: &str) -> chat::Incoming {
+        chat::Incoming {
+            room,
+            id: tmgr_ipc::chat::message_id_at(now_ms(), [3; 10]),
+            ts_ms: now_ms(),
+            body_md: body.into(),
+            reply_to: None,
+            attachments: Vec::new(),
+            device: Some("d_phone1".into()),
+        }
+    }
+
+    #[test]
+    fn an_unrestricted_manager_refuses_relay_input_and_posts_a_note() {
+        let (_t, rt) = manager_rig(
+            json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
+        );
+        let room = rt.chat.manager_room();
+        for room in [room.clone(), rt.chat.session_room("s_aaaaaaaaaa")] {
+            assert_eq!(
+                rt.relay_deliver(&room, Some("d_phone1"), "hi"),
+                chat::Delivery::Refused(UNRESTRICTED_REFUSAL)
+            );
+        }
+        let r = rt
+            .chat
+            .ingest(
+                relay_msg(room.clone(), "hi"),
+                now_ms(),
+                |s| rt.session(s).is_some(),
+                |body| rt.relay_deliver(&room, Some("d_phone1"), body),
+            )
+            .unwrap();
+        assert!(!r.delivered);
+        let h = rt.chat.history(&room, None, None).unwrap();
+        assert_eq!(h[0].body_md, "hi");
+        assert_eq!(h[1].body_md, UNRESTRICTED_REFUSAL);
+    }
+
+    #[test]
+    fn a_restricted_manager_and_bypass_workers_are_not_refused_relay_input() {
+        let (_t, rt) = manager_rig(json!({}));
+        for room in [
+            rt.chat.manager_room(),
+            rt.chat.session_room("s_aaaaaaaaaa"),
+            rt.chat.session_room("s_cccccccccc"),
+        ] {
+            assert_eq!(
+                rt.relay_deliver(&room, None, "hi"),
+                chat::Delivery::NoTarget
+            );
+        }
+        let (_t, rt) = manager_rig(
+            json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
+        );
+        assert_eq!(
+            rt.relay_deliver(&rt.chat.session_room("s_cccccccccc"), None, "hi"),
+            chat::Delivery::NoTarget
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use super::policy::{read_private, Policy};
 use crate::manager::{
     execute, CardMiss, Host, Proposed, SpawnSpec, State, SwitchResult, TrustedDir, Verdict,
+    REMOTE_MANAGER_SOURCE,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -11,7 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tmgr_ipc::chat::{self, Author, AuthorKind, ChatMessage, MessageKind, RoomRef};
 use tmgr_ipc::manager::{
-    limits as mlimits, tool, valid_req_id, SignedSpawn, SpoolReq, DATA_NOTICE, SPOOL_V,
+    limits as mlimits, tool, valid_req_id, wrap_untrusted, SignedSpawn, SpoolReq, DATA_NOTICE,
+    SPOOL_V,
 };
 use tmgr_ipc::mgr_rpc::{limits, valid_machine_id, ErrorCode, Op, RpcReq, RpcRes, MGR_RPC_V};
 use tmgr_spawn_auth::SpawnProposal;
@@ -472,7 +474,8 @@ impl Dispatcher {
                         "manager sessions cannot be written to; talk to a manager with ask",
                     ));
                 }
-                call(
+                run(
+                    &remote,
                     tool::SEND_TO_SESSION,
                     json!({"session": session, "text": text}),
                 )
@@ -501,6 +504,11 @@ impl Dispatcher {
                 ))
             }
             Args::Ask { text } => {
+                if host.local_manager_unrestricted() {
+                    return Err(refused(
+                        "an unrestricted manager takes input only from this machine's keyboard",
+                    ));
+                }
                 let msg = ChatMessage {
                     v: chat::CHAT_V,
                     id: chat::new_message_id(),
@@ -514,7 +522,7 @@ impl Dispatcher {
                     },
                     ts_ms: host.now_ms(),
                     kind: MessageKind::Text,
-                    body_md: format!("{}{text}", provenance(from)),
+                    body_md: wrap_untrusted(REMOTE_MANAGER_SOURCE, from, &text),
                     attachments: Vec::new(),
                     reply_to: None,
                     decision: None,
@@ -559,7 +567,8 @@ impl Host for RpcHost<'_> {
         self.inner.text(id, lines)
     }
     fn send(&self, id: &str, text: &str) -> Result<(), String> {
-        self.inner.send(id, text)
+        self.inner
+            .send(id, &wrap_untrusted(REMOTE_MANAGER_SOURCE, self.from, text))
     }
     fn trusted_dir(&self, cwd: &str) -> Result<TrustedDir, String> {
         self.inner.trusted_dir(cwd)
@@ -610,6 +619,9 @@ impl Host for RpcHost<'_> {
     }
     fn spawned_for(&self, session: &str, from: &str) -> bool {
         self.inner.spawned_for(session, from)
+    }
+    fn local_manager_unrestricted(&self) -> bool {
+        self.inner.local_manager_unrestricted()
     }
 }
 
@@ -671,8 +683,8 @@ fn load_store(path: &Path, now: u64) -> (HashMap<String, SenderState>, bool) {
     (out, true)
 }
 
-fn provenance(from: &str) -> String {
-    format!("_From the top manager ({from})_\n\n")
+fn untrusted_overhead(from: &str) -> usize {
+    wrap_untrusted(REMOTE_MANAGER_SOURCE, from, "").len()
 }
 
 fn wrap(data: Value) -> Value {
@@ -770,7 +782,7 @@ fn parse_args(op: Op, a: &Value, from: &str) -> Option<Args> {
         Op::Ask if only(&["text"]) => Some(Args::Ask {
             text: text_in(
                 m.get("text")?,
-                chat::limits::MAX_BODY.saturating_sub(provenance(from).len()),
+                chat::limits::MAX_BODY.saturating_sub(untrusted_overhead(from)),
             )?,
         }),
         Op::SpawnChallenge if only(&SPAWN_KEYS) => Some(Args::SpawnChallenge(spawn_object(m)?)),
@@ -1768,10 +1780,14 @@ mod tests {
             json!({"session": WORKER, "text": "do it"}),
         );
         assert_eq!(data(&res), &json!({"sent": true}));
-        assert_eq!(
-            *r.host.sent.lock().unwrap(),
-            vec![(WORKER.to_string(), "do it".to_string())]
-        );
+        let sent = r.host.sent.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].0, WORKER);
+        assert!(sent[0].1.starts_with("[relayed message "), "{}", sent[0].1);
+        assert!(sent[0].1.contains(&format!(
+            "source: manager on another machine | from: {PEER}]"
+        )));
+        assert!(sent[0].1.contains("\n\ndo it\n\n[end of relayed message "));
     }
 
     #[test]
@@ -1841,17 +1857,59 @@ mod tests {
         assert_eq!(m.author.kind, AuthorKind::Manager);
         assert_eq!(m.author.machine.as_deref(), Some(ME));
         assert_eq!(m.room, RoomRef::manager(ME));
-        assert_eq!(
-            m.body_md,
-            format!("_From the top manager ({PEER})_\n\nstatus please")
-        );
+        assert!(m.body_md.starts_with("[relayed message "), "{}", m.body_md);
+        assert!(m.body_md.contains(&format!(
+            "source: manager on another machine | from: {PEER}]"
+        )));
+        assert!(m
+            .body_md
+            .contains("\n\nstatus please\n\n[end of relayed message "));
         m.validate().unwrap();
+    }
+
+    #[test]
+    fn ask_is_refused_while_the_local_manager_is_unrestricted() {
+        let r = rig();
+        r.host
+            .unrestricted_manager
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let res = r.call(&open(), "q1", "ask", json!({"text": "status please"}));
+        assert_eq!(code(&res), ErrorCode::Refused);
+        assert!(res.error.unwrap().message.contains("unrestricted manager"));
+        assert!(r
+            .d
+            .state()
+            .chat
+            .history(&RoomRef::manager(ME), 10)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn remote_send_stays_refused_for_bypass_unsandboxed_and_manager_sessions() {
+        let r = rig();
+        r.host
+            .unrestricted_manager
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        for (i, id) in [BYPASS, UNSANDBOXED, MANAGER, OTHER_MANAGER]
+            .into_iter()
+            .enumerate()
+        {
+            let res = r.call(
+                &open(),
+                &format!("u{i}"),
+                "send",
+                json!({"session": id, "text": "x"}),
+            );
+            assert_eq!(code(&res), ErrorCode::Refused, "{id}");
+        }
+        assert!(r.host.sent.lock().unwrap().is_empty());
     }
 
     #[test]
     fn ask_accepts_the_largest_text_that_still_fits_the_room_body() {
         let r = rig();
-        let max = chat::limits::MAX_BODY - provenance(PEER).len();
+        let max = chat::limits::MAX_BODY - untrusted_overhead(PEER);
         let ok = r.call(&open(), "q1", "ask", json!({"text": "a".repeat(max)}));
         assert!(ok.ok);
         let over = r.call(&open(), "q2", "ask", json!({"text": "a".repeat(max + 1)}));

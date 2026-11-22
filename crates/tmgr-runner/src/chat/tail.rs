@@ -840,6 +840,37 @@ mod tests {
     }
 
     #[test]
+    fn a_relayed_prompt_is_not_echoed_as_a_second_message() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        let typed = tmgr_ipc::manager::wrap_untrusted("a phone", "d_phone1", "run it");
+        let m = crate::chat::Incoming {
+            room: chat.session_room(SID),
+            id: tmgr_ipc::chat::message_id_at(1, [7; 10]),
+            ts_ms: 5,
+            body_md: "run it".into(),
+            reply_to: None,
+            attachments: Vec::new(),
+            device: Some("d_phone1".into()),
+        };
+        let typed_back = typed.clone();
+        chat.ingest(
+            m,
+            5,
+            |_| true,
+            move |_| crate::chat::Delivery::Typed(typed_back),
+        )
+        .unwrap();
+        append(&log, &user_line(&typed));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(kinds(&chat, SID), [(false, "run it".to_string())]);
+    }
+
+    #[test]
     fn other_profiles_and_unresolvable_logs_are_skipped_and_the_log_is_cached() {
         let t = tempfile::tempdir().unwrap();
         let chat = Chat::open(&t.path().join("run"));

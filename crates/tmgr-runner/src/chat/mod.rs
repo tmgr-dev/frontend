@@ -100,11 +100,13 @@ pub struct Incoming {
     pub device: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Delivery {
     NoTarget,
     Delivered,
+    Typed(String),
     Busy,
+    Refused(&'static str),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -386,6 +388,16 @@ impl Chat {
                     self.remember_sent(session, &msg.body_md);
                 }
                 true
+            }
+            Delivery::Typed(typed) => {
+                if let Some(session) = msg.room.session.as_deref() {
+                    self.remember_sent(session, &typed);
+                }
+                true
+            }
+            Delivery::Refused(why) => {
+                self.note(&msg.room, why);
+                false
             }
             Delivery::NoTarget => false,
             Delivery::Busy => {
@@ -883,6 +895,46 @@ mod tests {
                 "Not delivered: the session was busy.".to_string()
             )
         );
+    }
+
+    #[test]
+    fn a_refused_delivery_stores_the_message_and_posts_the_reason() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let r = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "hello"),
+                NOW,
+                no_session,
+                |_| Delivery::Refused("Not delivered: nope."),
+            )
+            .unwrap();
+        assert!(!r.delivered);
+        let h = texts(&c, &room);
+        assert_eq!(h[0].1, "hello");
+        assert_eq!(
+            h[1],
+            (AuthorKind::System, "Not delivered: nope.".to_string())
+        );
+    }
+
+    #[test]
+    fn a_typed_delivery_remembers_what_was_typed_not_the_stored_body() {
+        let (_t, c) = chat();
+        let session = "s_abcdefghij";
+        let room = c.session_room(session);
+        let r = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "hello"),
+                NOW,
+                |_| true,
+                |_| Delivery::Typed("[marker]\n\nhello".into()),
+            )
+            .unwrap();
+        assert!(r.delivered);
+        assert_eq!(r.message.body_md, "hello");
+        assert!(!c.take_sent(session, "hello"));
+        assert!(c.take_sent(session, "[marker]\n\nhello\n"));
     }
 
     #[test]
