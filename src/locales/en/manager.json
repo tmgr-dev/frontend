@@ -79,7 +79,7 @@
 		"name": "Name",
 		"target": "Machine",
 		"bypass": "Bypass permissions: no confirmation before edits or commands",
-		"waiting": "Waiting for approval on your phone · {left} left",
+		"waiting": "Waiting for approval · {left} left",
 		"expired": "Not approved: the card expired",
 		"approved": "Approved. Starting the session…",
 		"claimed": "Starting the session…",

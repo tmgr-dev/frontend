@@ -370,8 +370,6 @@ pub async fn manager_spawn_card<R: Runtime>(app: AppHandle<R>, card_id: String) 
   blocking(move || runner.chat_call("spawn.card", serde_json::json!({ "card_id": card_id }))).await
 }
 
-const SPAWN_DECIDE_CAP: &str = "spawn_decide.v1";
-
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct SpawnEdit {
   pub cwd: String,
@@ -432,7 +430,7 @@ pub async fn manager_spawn_decide<R: Runtime>(
   let params = decide_params(&card_id, &request, &decision, edit.as_ref())?;
   let runner = app.try_state::<crate::runner::Runner>().ok_or_else(|| "the runner is not available".to_owned())?.inner().clone();
   blocking(move || {
-    if !runner.caps()?.iter().any(|c| c == SPAWN_DECIDE_CAP) {
+    if !runner.caps()?.iter().any(|c| c == tmgr_ipc::api::caps::SPAWN_DECIDE_V1) {
       return Err("runner_outdated".to_owned());
     }
     runner.chat_call("spawn.decide", params).map_err(outdated)
