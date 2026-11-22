@@ -411,6 +411,7 @@
 				const el = e.currentTarget as HTMLElement;
 				el.setPointerCapture?.(e.pointerId);
 				const move = (ev: PointerEvent) => {
+					if (ev.buttons === 0) return;
 					const x =
 						side === 'left' ? ev.clientX : window.innerWidth - ev.clientX;
 					if (side === 'left') this.wantLeft = x;
@@ -420,11 +421,15 @@
 					el.removeEventListener('pointermove', move);
 					el.removeEventListener('pointerup', up);
 					el.removeEventListener('pointercancel', up);
+					el.removeEventListener('lostpointercapture', up);
+					this.wantLeft = this.leftW;
+					this.wantRight = this.rightW;
 					saveWidth(side, side === 'left' ? this.leftW : this.rightW);
 				};
 				el.addEventListener('pointermove', move);
 				el.addEventListener('pointerup', up);
 				el.addEventListener('pointercancel', up);
+				el.addEventListener('lostpointercapture', up);
 			},
 			resetWidth(side: PanelSide) {
 				if (side === 'left') this.wantLeft = DEFAULT_WIDTH.left;

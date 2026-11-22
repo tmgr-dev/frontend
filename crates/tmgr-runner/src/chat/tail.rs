@@ -161,7 +161,9 @@ fn post(
             .history(room, None, Some(MANAGER_DEDUPE))
             .unwrap_or_default()
             .iter()
-            .any(|m| m.author.kind != AuthorKind::Owner && super::normalize(&m.body_md) == said);
+            .rev()
+            .take_while(|m| m.author.kind != AuthorKind::Session)
+            .any(|m| m.author.kind == AuthorKind::Manager && super::normalize(&m.body_md) == said);
         if posted {
             return Ok(());
         }
@@ -514,6 +516,22 @@ mod tests {
         append(&log, &line("All sessions are idle"));
         capture_with(&chat, &s, &resolve);
         assert_eq!(manager_bodies(&chat), ["old", "All sessions are idle"]);
+    }
+
+    #[test]
+    fn a_repeated_manager_reply_is_kept() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("old"));
+        let s = [manager_info()];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        append(&log, &line("Done."));
+        capture_with(&chat, &s, &resolve);
+        append(&log, &line("Done."));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(manager_bodies(&chat), ["old", "Done.", "Done."]);
     }
 
     #[test]

@@ -3,7 +3,7 @@
 		class="sl"
 		role="listbox"
 		:aria-label="$t('manager.list.label')"
-		@mouseenter="hover = true"
+		@mouseenter="onEnter"
 		@mouseleave="onLeave"
 	>
 		<template v-if="pinned.length > 0">
@@ -155,6 +155,10 @@
 				this.timer = setTimeout(() => {
 					this.keys = this.target;
 				}, 600);
+			},
+			onEnter() {
+				this.hover = true;
+				if (this.timer) clearTimeout(this.timer);
 			},
 			onLeave() {
 				this.hover = false;
