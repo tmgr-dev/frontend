@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.157
+
+- Fixed: replies of the manager that it wrote in its terminal instead of calling `post_message` did not show in the Manager chat; they appeared only in a separate "manager" session room. They now appear in the Manager chat, and the manager's own session no longer has a second room in the list. Terminal replies are not shared with other machines through the `room` operation of the manager RPC.
+- Restart the runner after updating (`tmgr runner restart`); running sessions do not need to be restarted.
+
 ## 1.0.156
 
 - Fixed: the runner crashed when a client started a session from a terminal that reports no window size (0 columns and 0 rows), for example a script or a pty without a size. A wide character such as an emoji or a Chinese character on the one-column screen made the screen parser panic. Because the size was saved with the session, the runner crashed again when it re-adopted the session after a restart, and kept doing so.

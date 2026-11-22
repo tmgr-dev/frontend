@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.177 — 2026-11-22
+
+- Manager window: the window can be moved by dragging the top bars (the chat header, the sessions header and the panel tabs).
+- Manager window: drag the inner edge of the left and right panels to resize them; the widths are remembered, a double click on the edge resets the width, and the chat keeps at least 400 px.
+- Manager window: the session list can be sorted by the latest message ("Recent"); the choice is remembered and the list does not jump while the pointer is over it.
+- Manager window: replies the manager writes in its terminal now show in the pinned Manager chat, and the manager has no second room in the list (needs tmgr 1.0.157).
+
 ## 0.9.176 — 2026-11-22
 
 - Manager window: an unrestricted manager (started with `tmgr manager start --unrestricted`: no sandbox, bypass mode) shows an "Unrestricted" badge in the chat header (needs tmgr 1.0.155).
