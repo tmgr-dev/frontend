@@ -116,6 +116,20 @@ impl ManagerBackend for CompositeBackend {
     self.route(room)?;
     Ok(static_commands(room.kind))
   }
+
+  fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String> {
+    match self.route(room)? {
+      Route::Local => self.local.queued(room),
+      Route::Relay => Ok(vec![]),
+    }
+  }
+
+  fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String> {
+    match self.route(room)? {
+      Route::Local => self.local.cancel(room, id),
+      Route::Relay => Err("only this machine's queued messages can be cancelled here".into()),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -160,6 +174,7 @@ mod tests {
     down: bool,
     rooms: Vec<RoomInfo>,
     hits: Vec<ChatMessage>,
+    queue: Vec<String>,
     calls: Mutex<Vec<&'static str>>,
   }
 
@@ -189,6 +204,14 @@ mod tests {
     fn send(&self, p: SendParams) -> Result<ChatMessage, String> {
       self.note("send");
       self.up().map(|_| msg("ls", 9, p.room))
+    }
+    fn queued(&self, _: &RoomRef) -> Result<Vec<String>, String> {
+      self.note("queued");
+      self.up().map(|_| self.queue.clone())
+    }
+    fn cancel(&self, _: &RoomRef, _: &str) -> Result<bool, String> {
+      self.note("cancel");
+      self.up().map(|_| true)
     }
   }
 
@@ -343,6 +366,18 @@ mod tests {
     assert_eq!(c.search(scoped).unwrap().len(), 1);
     let all = SearchParams { query: "x".into(), room: None, limit: None };
     assert_eq!(c.search(all).unwrap().len(), 1);
+  }
+
+  #[test]
+  fn queue_is_read_and_cancelled_only_on_this_machine() {
+    let local = FakeLocal { queue: vec!["q1".into()], ..Default::default() };
+    let (c, l, r) = build(local, relay_with_far());
+    assert_eq!(c.queued(&mine()).unwrap(), ["q1"]);
+    assert!(c.cancel(&mine(), "q1").unwrap());
+    assert!(c.queued(&far_sess()).unwrap().is_empty());
+    assert!(c.cancel(&far_sess(), "q1").is_err());
+    assert_eq!(*l.calls.lock().unwrap(), ["queued", "cancel"]);
+    assert!(r.calls.lock().unwrap().is_empty());
   }
 
   #[test]

@@ -176,6 +176,8 @@ const APP_COMMANDS: &[&str] = &[
   "manager_send",
   "manager_search",
   "manager_commands",
+  "manager_queued",
+  "manager_cancel",
   "manager_spawn_card",
   "manager_trust_state",
   "manager_join_decide",

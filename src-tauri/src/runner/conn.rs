@@ -183,7 +183,6 @@ impl Conn {
 
 fn response_value(r: Response) -> Result<Value, ConnError> {
   match r.err {
-    Some(e) if e.code == ErrorCode::Busy => Err(ConnError::Failed("busy".to_owned())),
     Some(e) => Err(ConnError::Failed(format!("{}: {}", e.code, sanitize::text(&e.message, 200)))),
     None => Ok(r.ok.unwrap_or(Value::Null)),
   }

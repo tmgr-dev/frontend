@@ -627,12 +627,12 @@ mod tests {
   }
 
   #[test]
-  fn busy_is_a_retryable_string_and_other_errors_keep_their_code() {
+  fn busy_keeps_its_code_and_message() {
     let mut m = Mock::new("secret");
     m.busy = true;
     let (mut conn, server) = connected(m);
-    assert_eq!(conn.call("sessions.send", json!({"id": SID, "text": "x"})).unwrap_err(), ConnError::Failed("busy".into()));
-    assert_eq!(conn.call("sessions.remove", json!({"id": SID})).unwrap_err().message(), "busy");
+    assert_eq!(conn.call("sessions.send", json!({"id": SID, "text": "x"})).unwrap_err(), ConnError::Failed("busy: input queue is full".into()));
+    assert_eq!(conn.call("sessions.remove", json!({"id": SID})).unwrap_err().message(), "busy: input queue is full");
     assert!(conn.call("nope", Value::Null).unwrap_err().message().starts_with("unknown_method: "));
     drop(conn);
     server.join().unwrap();
