@@ -9,10 +9,14 @@ use crate::mgr_rpc::relay::{
 };
 use crate::mgr_rpc::{Dispatcher, FileAudit};
 use std::sync::mpsc::RecvTimeoutError as ChatRecv;
-use tmgr_ipc::chat::{method as chat_method, ChatPush, HistoryParams, SearchParams, SendParams};
+use tmgr_ipc::chat::{
+    method as chat_method, CancelParams, ChatPush, HistoryParams, QueuedParams, SearchParams,
+    SendParams,
+};
 use tmgr_ipc::manager::wrap_untrusted;
 
 const CAPTURE_EVERY: Duration = Duration::from_secs(3);
+const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
 const RELAY_SOURCE: &str = "phone or another device via chat relay";
 const UNRESTRICTED_REFUSAL: &str =
@@ -23,12 +27,23 @@ fn bad(msg: String) -> ApiErr {
 }
 
 impl Runner {
-    fn chat_target(&self, room: &tmgr_ipc::chat::RoomRef) -> Option<Arc<Session>> {
+    fn chat_target(&self, room: &tmgr_ipc::chat::RoomRef) -> Result<Arc<Session>, chat::Delivery> {
+        let gone = |r: &str| chat::Delivery::Gone(r.into());
         let s = match room.session.as_deref() {
-            Some(id) => self.session(id)?,
-            None => self.live_manager()?,
+            Some(id) => self
+                .session(id)
+                .ok_or_else(|| gone("the session no longer exists"))?,
+            None => self
+                .live_manager()
+                .ok_or_else(|| gone("no manager is running"))?,
         };
-        (!s.is_exited() && s.has_shim()).then_some(s)
+        if s.is_exited() {
+            return Err(gone("the session has exited"));
+        }
+        if !s.has_shim() {
+            return Err(chat::Delivery::Busy);
+        }
+        Ok(s)
     }
 
     fn chat_deliver(
@@ -37,15 +52,17 @@ impl Runner {
         body: &str,
         client: &str,
     ) -> chat::Delivery {
-        match self.chat_target(room) {
-            None => chat::Delivery::NoTarget,
-            Some(t) => match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
-                Ok(()) => {
-                    t.note_input_from(client);
-                    chat::Delivery::Delivered
-                }
-                Err(_) => chat::Delivery::Busy,
-            },
+        let t = match self.chat_target(room) {
+            Ok(t) => t,
+            Err(d) => return d,
+        };
+        match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
+            Ok(()) => {
+                t.note_input_from(client);
+                chat::Delivery::Delivered
+            }
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
+            Err(e) => chat::Delivery::Gone(e.msg),
         }
     }
 
@@ -62,8 +79,9 @@ impl Runner {
         if target.is_some_and(|s| super::manager::is_unrestricted(&s)) {
             return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
         }
-        let Some(t) = self.chat_target(room) else {
-            return chat::Delivery::NoTarget;
+        let t = match self.chat_target(room) {
+            Ok(t) => t,
+            Err(d) => return d,
         };
         if super::manager::is_unrestricted(&t) {
             return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
@@ -74,7 +92,8 @@ impl Runner {
                 t.note_input_from("relay");
                 chat::Delivery::Typed(typed)
             }
-            Err(_) => chat::Delivery::Busy,
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
+            Err(e) => chat::Delivery::Gone(e.msg),
         }
     }
 
@@ -249,6 +268,7 @@ impl Runner {
                         reply_to: q.reply_to,
                         attachments: q.attachments,
                         device: None,
+                        client: conn.client.clone(),
                     };
                     let deliver = |body: &str| self.chat_deliver(&room, body, &conn.client);
                     return self
@@ -263,14 +283,8 @@ impl Runner {
                             }
                         });
                 }
-                if let Some(target) = self.chat_target(&q.room) {
-                    target.input_at_prompt(&chat::prompt_bytes(&q.body_md), Instant::now())?;
-                    target.note_input_from(&conn.client);
-                    if let Some(session) = q.room.session.as_deref() {
-                        self.chat.remember_sent(session, &q.body_md);
-                    }
-                }
-                self.chat
+                let posted = self
+                    .chat
                     .post(
                         q.room,
                         chat::Chat::owner(),
@@ -278,8 +292,28 @@ impl Runner {
                         q.reply_to,
                         q.attachments,
                     )
-                    .map(|m| to_json(&m))
-                    .map_err(bad)
+                    .map_err(bad)?;
+                let outcome = self.chat.submit(
+                    &posted.room,
+                    &posted.id,
+                    &posted.body_md,
+                    &conn.client,
+                    None,
+                    now_ms(),
+                    |body, client, _| self.chat_deliver(&posted.room, body, client),
+                );
+                self.chat.note_undelivered(&posted.room, &outcome);
+                Ok(to_json(&posted))
+            }
+            chat_method::QUEUED => {
+                let q: QueuedParams = params(p)?;
+                q.room.validate().map_err(bad)?;
+                Ok(to_json(&self.chat.queued_ids(&q.room)))
+            }
+            chat_method::CANCEL => {
+                let q: CancelParams = params(p)?;
+                q.room.validate().map_err(bad)?;
+                Ok(to_json(&self.chat.cancel(&q.room, &q.id)))
             }
             chat_method::RELAY_SELF => {
                 self.chat.relay_self().map(|r| to_json(&r)).ok_or_else(|| {
@@ -319,6 +353,24 @@ impl Runner {
                     return fail(conn);
                 }
             }
+        }
+    }
+
+    pub(super) fn chat_queue_loop(&self) {
+        while !self.stop.load(Ordering::SeqCst) {
+            thread::sleep(QUEUE_EVERY);
+            self.chat
+                .drain_queue(now_ms(), |room, body, client, device| {
+                    let delivery = if client == "relay" {
+                        self.relay_deliver(room, device, body)
+                    } else {
+                        self.chat_deliver(room, body, client)
+                    };
+                    match delivery {
+                        chat::Delivery::Gone(_) if room.session.is_none() => chat::Delivery::Busy,
+                        d => d,
+                    }
+                });
         }
     }
 
@@ -603,6 +655,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             device: Some("d_phone1".into()),
+            client: "relay".into(),
         }
     }
 
@@ -641,18 +694,18 @@ mod tests {
             rt.chat.session_room("s_aaaaaaaaaa"),
             rt.chat.session_room("s_cccccccccc"),
         ] {
-            assert_eq!(
+            assert!(!matches!(
                 rt.relay_deliver(&room, None, "hi"),
-                chat::Delivery::NoTarget
-            );
+                chat::Delivery::Refused(_)
+            ));
         }
         let (_t, rt) = manager_rig(
             json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
         );
-        assert_eq!(
+        assert!(!matches!(
             rt.relay_deliver(&rt.chat.session_room("s_cccccccccc"), None, "hi"),
-            chat::Delivery::NoTarget
-        );
+            chat::Delivery::Refused(_)
+        ));
     }
 
     #[test]
@@ -714,7 +767,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(hist.len(), 2);
+        assert_eq!(hist.len(), 4);
         let found: Vec<ChatMessage> = serde_json::from_value(
             call(
                 &rt,
@@ -730,7 +783,7 @@ mod tests {
             serde_json::from_value(call(&rt, &c, chat_method::ROOMS, Value::Null).unwrap())
                 .unwrap();
         assert_eq!(rooms[0].title, "Manager");
-        assert_eq!(rooms[0].last.as_ref().unwrap().id, hist[1].id);
+        assert_eq!(rooms[0].last.as_ref().unwrap().id, hist[3].id);
     }
 
     #[test]
@@ -789,10 +842,14 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let rt = runner(t.path());
         assert!(rt.live_manager().is_none());
-        assert!(rt.chat_target(&rt.chat.manager_room()).is_none());
-        assert!(rt
-            .chat_target(&rt.chat.session_room("s_abcdefghij"))
-            .is_none());
+        assert_eq!(
+            rt.chat_target(&rt.chat.manager_room()).err(),
+            Some(chat::Delivery::Gone("no manager is running".into()))
+        );
+        assert_eq!(
+            rt.chat_target(&rt.chat.session_room("s_abcdefghij")).err(),
+            Some(chat::Delivery::Gone("the session no longer exists".into()))
+        );
     }
 
     fn ingest_params(rt: &Runner, id: &str, ts: Option<u64>, body: &str) -> Value {
@@ -876,7 +933,7 @@ mod tests {
                 .history(&rt.chat.manager_room(), None, None)
                 .unwrap()
                 .len(),
-            1
+            2
         );
     }
 
@@ -895,6 +952,127 @@ mod tests {
         .unwrap_err();
         assert_eq!(e.code, ErrorCode::Forbidden);
     }
+
+    fn send_body_to(rt: &Arc<Runner>, room: &RoomRef, body: &str) -> Value {
+        let (c, _peer) = conn(CLIENT_DESKTOP);
+        call(
+            rt,
+            &c,
+            chat_method::SEND,
+            to_json(&SendParams {
+                room: room.clone(),
+                body_md: body.into(),
+                reply_to: None,
+                attachments: Vec::new(),
+                id: None,
+                ts_ms: None,
+            }),
+        )
+        .unwrap()
+    }
+
+    fn system_notes(rt: &Arc<Runner>, room: &RoomRef) -> Vec<String> {
+        rt.chat
+            .history(room, None, None)
+            .unwrap()
+            .into_iter()
+            .filter(|m| m.author.kind == tmgr_ipc::chat::AuthorKind::System)
+            .map(|m| m.body_md)
+            .collect()
+    }
+
+    #[test]
+    fn a_desktop_send_with_no_manager_posts_and_notes_the_real_reason() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let room = rt.chat.manager_room();
+        send_body_to(&rt, &room, "hello");
+        assert_eq!(
+            system_notes(&rt, &room),
+            ["Not delivered: no manager is running."]
+        );
+        assert!(rt.chat.queued_ids(&room).is_empty());
+    }
+
+    #[test]
+    fn a_desktop_send_to_a_session_without_a_shim_queues_and_can_be_listed_and_cancelled() {
+        let t = tempfile::Builder::new()
+            .prefix("cq")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        add_named(&rt, t.path(), "s_abcdefghij", "claude", "/work/app", 1);
+        let room = rt.chat.session_room("s_abcdefghij");
+        let posted: ChatMessage =
+            serde_json::from_value(send_body_to(&rt, &room, "later")).unwrap();
+        assert!(system_notes(&rt, &room).is_empty());
+        let (c, _peer) = conn(CLIENT_DESKTOP);
+        let queued: Vec<String> = serde_json::from_value(
+            call(
+                &rt,
+                &c,
+                chat_method::QUEUED,
+                to_json(&QueuedParams { room: room.clone() }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(queued, std::slice::from_ref(&posted.id));
+        let cancel = |id: &str| -> bool {
+            serde_json::from_value(
+                call(
+                    &rt,
+                    &c,
+                    chat_method::CANCEL,
+                    to_json(&CancelParams {
+                        room: room.clone(),
+                        id: id.into(),
+                    }),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        };
+        assert!(cancel(&posted.id));
+        assert!(!cancel(&posted.id));
+        assert_eq!(system_notes(&rt, &room), ["Not delivered: cancelled."]);
+    }
+
+    #[test]
+    fn a_send_to_an_exited_or_unknown_session_notes_the_reason() {
+        let t = tempfile::Builder::new()
+            .prefix("cq")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let rt = runner(t.path());
+        add_named(&rt, t.path(), "s_abcdefghij", "claude", "/work/app", 1);
+        rt.session("s_abcdefghij").unwrap().on_exited(&ExitInfo {
+            code: Some(0),
+            signal: None,
+        });
+        let exited = rt.chat.session_room("s_abcdefghij");
+        send_body_to(&rt, &exited, "a");
+        assert_eq!(
+            system_notes(&rt, &exited),
+            ["Not delivered: the session has exited."]
+        );
+        let gone = rt.chat.session_room("s_zzzzzzzzzz");
+        rt.chat
+            .post(
+                gone.clone(),
+                chat::Chat::owner(),
+                "seed".into(),
+                None,
+                Vec::new(),
+            )
+            .unwrap();
+        send_body_to(&rt, &gone, "b");
+        assert_eq!(
+            system_notes(&rt, &gone),
+            ["Not delivered: the session no longer exists."]
+        );
+    }
+
     fn add_named(rt: &Arc<Runner>, t: &Path, id: &str, name: &str, cwd: &str, created: u64) {
         let meta: Meta = serde_json::from_value(json!({
             "id": id, "name": name, "argv": ["claude"], "cwd": cwd,
