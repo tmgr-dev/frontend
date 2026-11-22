@@ -1293,7 +1293,7 @@ impl Session {
     }
 
     fn settled_without_idle_rules(&self, i: &Inner, now: Instant) -> bool {
-        if i.matcher.as_ref().is_some_and(Matcher::has_idle) {
+        if !i.matcher.as_ref().is_some_and(|m| !m.has_idle()) {
             return false;
         }
         let state = self.effective(i);
@@ -6698,6 +6698,15 @@ mod tests {
     #[test]
     fn a_profile_with_idle_rules_still_needs_its_prompt_even_when_waiting() {
         let (_t, s, _rx) = lone_session();
+        s.feed(b"plain output\r\n", true);
+        waiting_since(&s, 20_000);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_session_without_a_matcher_never_takes_chat_input() {
+        let (_t, s, _rx) = lone_session();
+        lock(&s.inner).matcher = None;
         s.feed(b"plain output\r\n", true);
         waiting_since(&s, 20_000);
         assert!(!send_at_prompt(&s, b"note\r", settled()));

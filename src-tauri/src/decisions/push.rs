@@ -314,7 +314,7 @@ struct RunnerLink(crate::runner::Runner);
 impl RunnerSender for RunnerLink {
   fn send_at_prompt(&self, session: &str, text: &str) -> Result<(), RunErr> {
     self.0.session_send_at_prompt(session, text).map_err(|e| {
-      if e == "busy" {
+      if e.starts_with("busy") {
         RunErr::Busy
       } else if e.starts_with("not_found") || e.starts_with("not_running") {
         RunErr::Gone
