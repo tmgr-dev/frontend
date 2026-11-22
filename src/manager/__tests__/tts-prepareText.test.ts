@@ -83,4 +83,12 @@ describe('chunkText', () => {
 		expect(chunks.every((c) => c === c.trim())).toBe(true);
 		expect(chunks.join(' ')).toBe(text);
 	});
+
+	it('hard-splits at the passed max, not the default', () => {
+		const text = Array.from({ length: 30 }, (_, i) => `w${i}`).join(' ');
+		const chunks = chunkText(text, 50);
+		expect(chunks.length).toBeGreaterThan(1);
+		expect(chunks.every((c) => c.length <= 50)).toBe(true);
+		expect(chunks.join(' ')).toBe(text);
+	});
 });

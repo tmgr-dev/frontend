@@ -19,25 +19,24 @@ const synth = (): SpeechSynthesis | undefined =>
 		? undefined
 		: globalThis.speechSynthesis;
 
-const voicesReady = (s: SpeechSynthesis): Promise<SpeechSynthesisVoice[]> => {
-	const ready = s.getVoices();
-	if (ready.length) return Promise.resolve(ready);
-	return new Promise((resolve) => {
-		const done = () => {
-			clearTimeout(timer);
-			s.removeEventListener('voiceschanged', done);
-			resolve(s.getVoices());
-		};
-		const timer = setTimeout(done, VOICE_WAIT_MS);
-		s.addEventListener('voiceschanged', done);
-	});
-};
+const pickVoice = (
+	voices: SpeechSynthesisVoice[],
+	lang: 'ru' | 'en',
+): SpeechSynthesisVoice | undefined =>
+	voices.find(
+		(v) => v.localService !== false && v.lang.toLowerCase().startsWith(lang),
+	);
 
 let generation = 0;
 
 export const speechSynthesisEngine: TtsEngine = {
 	id: 'speechSynthesis',
-	isAvailable: () => synth() !== undefined,
+	isAvailable() {
+		const s = synth();
+		if (!s) return false;
+		s.getVoices();
+		return true;
+	},
 	speak(chunks, lang, hooks) {
 		if (!chunks.length) {
 			hooks.onEnd();
@@ -55,9 +54,8 @@ export const speechSynthesisEngine: TtsEngine = {
 			settled = true;
 			fn();
 		};
-		void voicesReady(s).then((voices) => {
-			if (gen !== generation) return;
-			const voice = voices.find((v) => v.lang.toLowerCase().startsWith(lang));
+		const start = (voices: SpeechSynthesisVoice[]) => {
+			const voice = pickVoice(voices, lang);
 			if (!voice) {
 				settle(() => hooks.onError('no-voice'));
 				return;
@@ -68,12 +66,30 @@ export const speechSynthesisEngine: TtsEngine = {
 				u.lang = voice.lang;
 				if (i === chunks.length - 1) u.onend = () => settle(hooks.onEnd);
 				u.onerror = (e) => {
-					if (CANCELLED.includes(e.error)) return;
-					settle(() => hooks.onError(e.error || 'error'));
+					if (CANCELLED.includes(e.error)) {
+						settle(hooks.onEnd);
+						return;
+					}
+					settle(() => {
+						s.cancel();
+						hooks.onError(e.error || 'error');
+					});
 				};
 				s.speak(u);
 			});
-		});
+		};
+		const ready = s.getVoices();
+		if (ready.length) {
+			start(ready);
+			return;
+		}
+		const done = () => {
+			clearTimeout(timer);
+			s.removeEventListener('voiceschanged', done);
+			if (gen === generation) start(s.getVoices());
+		};
+		const timer = setTimeout(done, VOICE_WAIT_MS);
+		s.addEventListener('voiceschanged', done);
 	},
 	stop() {
 		generation++;
