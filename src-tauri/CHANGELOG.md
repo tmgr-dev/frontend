@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.181 — 2026-11-22
+
+- Manager window: a Speak button under agent replies reads the message aloud with the system voice (Russian or English), press again to stop. Code blocks are skipped, text never leaves the device.
+
 ## 0.9.180 — 2026-11-22
 
 - Manager window: a chat opens at its last message and stays at the bottom while new messages arrive.
