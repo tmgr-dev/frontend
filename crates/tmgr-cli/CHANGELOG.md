@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.156
+
+- Fixed: the runner crashed when a client started a session from a terminal that reports no window size (0 columns and 0 rows), for example a script or a pty without a size. A wide character such as an emoji or a Chinese character on the one-column screen made the screen parser panic. Because the size was saved with the session, the runner crashed again when it re-adopted the session after a restart, and kept doing so.
+- A size of 0 now means "unknown" and becomes 80x24, and every size has a minimum of 2x2. This applies to starting, resizing, attaching and re-adopting sessions, including sessions saved with a bad size by an older version.
+- Restart the runner after updating (`tmgr runner restart`); running sessions do not need to be restarted.
+
 ## 1.0.155
 
 - New: `tmgr manager start --unrestricted` runs the manager without the sandbox and in bypass mode, so it can work on your whole machine. It is for you at the keyboard: it is refused inside an agent session and without a terminal, works only with Claude Code, and needs the follower PIN (`tmgr link pin set`) and a typed confirmation after a warning.
