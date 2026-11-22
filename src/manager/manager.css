@@ -2252,14 +2252,6 @@ html.dark .manager .tools ul {
 	background: var(--ink);
 	color: var(--bg);
 }
-.manager .lbl i {
-	font-style: normal;
-	font-weight: 500;
-	text-transform: none;
-	letter-spacing: 0;
-	color: var(--faint);
-	margin-left: 4px;
-}
 .manager .safe {
 	display: flex;
 	flex-direction: column;

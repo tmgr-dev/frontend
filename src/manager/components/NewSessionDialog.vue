@@ -73,10 +73,9 @@
 			/>
 			<div class="two">
 				<div>
-					<label class="lbl" for="mgr-new-task"
-						>{{ $t('manager.newSession.task') }}
-						<i>{{ $t('manager.newSession.optional') }}</i></label
-					>
+					<label class="lbl" for="mgr-new-task">{{
+						$t('manager.newSession.task')
+					}}</label>
 					<input
 						id="mgr-new-task"
 						class="fld"

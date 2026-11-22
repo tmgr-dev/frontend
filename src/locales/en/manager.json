@@ -321,7 +321,6 @@
 		"promptPlaceholder": "What should it do first?",
 		"start": "Start session",
 		"linked": "linked",
-		"optional": "optional",
 		"safety": "Safety",
 		"noSandbox": "No sandbox",
 		"noSandboxHint": "The session can touch anything your user can",
