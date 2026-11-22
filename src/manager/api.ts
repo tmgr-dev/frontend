@@ -16,6 +16,8 @@ import type {
 	SendParams,
 	SlashCommand,
 	SpawnCardStatus,
+	SpawnDecision,
+	SpawnEdit,
 	SpawnRequest,
 	TrustState,
 } from './types';
@@ -51,6 +53,22 @@ export const managerRemove = (room: RoomRef) =>
 
 export const spawnCard = (cardId: string) =>
 	invoke<SpawnCardStatus>('manager_spawn_card', { cardId });
+
+export const spawnDecide = (
+	cardId: string,
+	request: string,
+	decision: 'approve' | 'reject' | 'edit',
+	edit?: SpawnEdit,
+) =>
+	invoke<SpawnDecision>('manager_spawn_decide', {
+		cardId,
+		request,
+		decision,
+		edit,
+	});
+
+export const runnerCaps = () =>
+	invoke<{ caps: string[] }>('runner_status').then((s) => s.caps);
 
 export const onManagerMessage = (
 	handler: (message: ChatMessage) => void,

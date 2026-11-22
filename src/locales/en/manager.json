@@ -112,15 +112,28 @@
 			"pending": "Waiting",
 			"approved": "Approved",
 			"rejected": "Rejected",
+			"replaced": "Replaced",
 			"expired": "Expired",
 			"failed": "Failed"
 		},
 		"resolved": {
 			"approved": "Approved",
 			"rejected": "Rejected",
+			"replaced": "Edited, replaced by a new card",
 			"expired": "Expired",
-			"failed": "Approved, then failed"
-		}
+			"failed": "Failed"
+		},
+		"approve": "Approve",
+		"edit": "Edit",
+		"reject": "Reject",
+		"submit": "Submit",
+		"cancel": "Cancel",
+		"outdated": "Update tmgr CLI to approve from desktop",
+		"replacedNote": "Replaced by a new card",
+		"editFolder": "Folder",
+		"editMode": "Permissions",
+		"editName": "Name",
+		"editTask": "Task"
 	},
 	"messages": {
 		"label": "Messages",

@@ -1,4 +1,4 @@
-import type { SpawnCardStatus, SpawnCardWire } from './types';
+import type { SpawnCardStatus, SpawnCardWire, SpawnEdit } from './types';
 
 export type SpawnKind = 'spawn' | 'stop' | 'send';
 
@@ -65,7 +65,8 @@ export interface SpawnStatusText {
 	params: Record<string, string>;
 	final: boolean;
 	tone: 'wait' | 'ok' | 'fail';
-	outcome: 'pending' | 'approved' | 'rejected' | 'expired' | 'failed';
+	outcome:
+		'pending' | 'approved' | 'rejected' | 'replaced' | 'expired' | 'failed';
 }
 
 const str = (v: unknown): string | undefined =>
@@ -269,7 +270,6 @@ export const spawnStatusText = (
 	status: SpawnCardStatus,
 	fallbackExpMs: number,
 	now: number,
-	approvedSeen = false,
 ): SpawnStatusText => {
 	const expMs = status.exp_ms ?? fallbackExpMs;
 	const expired = (): SpawnStatusText => ({
@@ -314,15 +314,58 @@ export const spawnStatusText = (
 				tone: 'ok',
 				outcome: 'approved',
 			};
-		default:
-			return status.reason === 'expired'
-				? expired()
-				: {
-						key: 'manager.spawn.refused',
-						params: { reason: status.reason ?? 'refused' },
-						final: true,
-						tone: 'fail',
-						outcome: approvedSeen ? 'failed' : 'rejected',
-					};
+		default: {
+			if (status.reason === 'expired') return expired();
+			const outcome =
+				status.reason === 'rejected'
+					? 'rejected'
+					: status.reason === 'edited'
+						? 'replaced'
+						: 'failed';
+			return {
+				key: 'manager.spawn.refused',
+				params: { reason: status.reason ?? 'refused' },
+				final: true,
+				tone: 'fail',
+				outcome,
+			};
+		}
 	}
+};
+
+export const DECIDE_CAP = 'spawn_decide.v1';
+
+export const supportsDecide = (caps: string[] | null): boolean =>
+	!!caps && caps.includes(DECIDE_CAP);
+
+export const isOutdatedError = (e: unknown): boolean =>
+	(e instanceof Error ? e.message : String(e)).includes('runner_outdated');
+
+export const canDecide = (
+	status: SpawnCardStatus,
+	fallbackExpMs: number,
+	now: number,
+): boolean =>
+	status.state === 'issued' && now < (status.exp_ms ?? fallbackExpMs);
+
+export const SPAWN_MODES = ['ask', 'accept-edits', 'bypass'] as const;
+
+export interface EditForm {
+	cwd: string;
+	mode: string;
+	name: string;
+	task: string;
+}
+
+export const buildEdit = (form: EditForm): SpawnEdit | null => {
+	const cwd = form.cwd.trim();
+	if (!cwd) return null;
+	const name = form.name.trim();
+	const task = form.task.trim();
+	return {
+		cwd,
+		mode: form.mode,
+		...(name ? { name } : {}),
+		...(task ? { task } : {}),
+	};
 };

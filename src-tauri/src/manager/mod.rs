@@ -370,9 +370,117 @@ pub async fn manager_spawn_card<R: Runtime>(app: AppHandle<R>, card_id: String) 
   blocking(move || runner.chat_call("spawn.card", serde_json::json!({ "card_id": card_id }))).await
 }
 
+const SPAWN_DECIDE_CAP: &str = "spawn_decide.v1";
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct SpawnEdit {
+  pub cwd: String,
+  pub mode: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub name: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub task: Option<String>,
+}
+
+fn request_sha256(request: &str) -> String {
+  use sha2::{Digest, Sha256};
+  Sha256::digest(request.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn decide_params(card_id: &str, request: &str, decision: &str, edit: Option<&SpawnEdit>) -> Result<serde_json::Value, String> {
+  if !valid_card_id(card_id) {
+    return Err("invalid card id".to_owned());
+  }
+  if !matches!(decision, "approve" | "reject" | "edit") {
+    return Err("invalid decision".to_owned());
+  }
+  if !matches!((decision == "edit", edit.is_some()), (true, true) | (false, false)) {
+    return Err("edit is required for, and only allowed with, the edit decision".to_owned());
+  }
+  if let Some(e) = edit {
+    if e.cwd.trim().is_empty() || !matches!(e.mode.as_str(), "ask" | "accept-edits" | "bypass") {
+      return Err("invalid edit".to_owned());
+    }
+  }
+  let mut params = serde_json::json!({ "card_id": card_id, "req_sha256": request_sha256(request), "decision": decision });
+  if let Some(e) = edit {
+    params["edit"] = serde_json::to_value(e).map_err(|e| e.to_string())?;
+  }
+  Ok(params)
+}
+
+fn outdated(err: String) -> String {
+  if err.to_lowercase().contains("unknown method") {
+    "runner_outdated".to_owned()
+  } else {
+    err
+  }
+}
+
+#[tauri::command]
+pub async fn manager_spawn_decide<R: Runtime>(
+  window: tauri::WebviewWindow<R>,
+  app: AppHandle<R>,
+  card_id: String,
+  request: String,
+  decision: String,
+  edit: Option<SpawnEdit>,
+) -> Result<serde_json::Value, String> {
+  if window.label() != LABEL {
+    return Err("not allowed from this window".to_owned());
+  }
+  let params = decide_params(&card_id, &request, &decision, edit.as_ref())?;
+  let runner = app.try_state::<crate::runner::Runner>().ok_or_else(|| "the runner is not available".to_owned())?.inner().clone();
+  blocking(move || {
+    if !runner.caps()?.iter().any(|c| c == SPAWN_DECIDE_CAP) {
+      return Err("runner_outdated".to_owned());
+    }
+    runner.chat_call("spawn.decide", params).map_err(outdated)
+  })
+  .await
+}
+
 #[cfg(test)]
 mod tests {
-  use super::valid_card_id;
+  use super::{decide_params, outdated, request_sha256, valid_card_id, SpawnEdit};
+
+  const CARD: &str = "card_0123456789abcdef0123456789abcdef";
+
+  fn edit() -> SpawnEdit {
+    SpawnEdit { cwd: "/work".into(), mode: "ask".into(), name: None, task: Some("t".into()) }
+  }
+
+  #[test]
+  fn hashes_request_bytes_as_lowercase_hex() {
+    assert_eq!(request_sha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  }
+
+  #[test]
+  fn decide_params_carry_the_hash_and_validate_inputs() {
+    let p = decide_params(CARD, "abc", "approve", None).unwrap();
+    assert_eq!(p["req_sha256"], request_sha256("abc"));
+    assert_eq!(p["decision"], "approve");
+    assert!(p.get("edit").is_none());
+    assert!(decide_params("card_x", "abc", "approve", None).is_err());
+    assert!(decide_params(CARD, "abc", "yes", None).is_err());
+    assert!(decide_params(CARD, "abc", "approve", Some(&edit())).is_err());
+    assert!(decide_params(CARD, "abc", "reject", Some(&edit())).is_err());
+    assert!(decide_params(CARD, "abc", "edit", None).is_err());
+    let p = decide_params(CARD, "abc", "edit", Some(&edit())).unwrap();
+    assert_eq!(p["edit"], serde_json::json!({"cwd": "/work", "mode": "ask", "task": "t"}));
+    let mut bad = edit();
+    bad.mode = "default".into();
+    assert!(decide_params(CARD, "abc", "edit", Some(&bad)).is_err());
+    bad = edit();
+    bad.cwd = " ".into();
+    assert!(decide_params(CARD, "abc", "edit", Some(&bad)).is_err());
+  }
+
+  #[test]
+  fn unknown_method_maps_to_runner_outdated() {
+    assert_eq!(outdated("unknown method spawn.decide".into()), "runner_outdated");
+    assert_eq!(outdated("card expired".into()), "card expired");
+  }
 
   #[test]
   fn card_id_needs_prefix_and_32_lowercase_hex() {

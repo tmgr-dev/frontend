@@ -1,8 +1,12 @@
 import {
+	buildEdit,
+	canDecide,
 	formatLeft,
+	isOutdatedError,
 	parseSpawnRequest,
 	spawnStatusText,
 	spawnView,
+	supportsDecide,
 } from '../spawnCard';
 import type { SpawnCardWire } from '../types';
 
@@ -156,13 +160,19 @@ describe('spawn card status', () => {
 		expect(
 			spawnStatusText({ state: 'spawned', session: 's' }, 0, 0).outcome,
 		).toBe('approved');
-		expect(
-			spawnStatusText({ state: 'refused', reason: 'untrusted' }, 0, 0).outcome,
-		).toBe('rejected');
-		expect(
-			spawnStatusText({ state: 'refused', reason: 'untrusted' }, 0, 0, true)
-				.outcome,
-		).toBe('failed');
+		for (const [reason, outcome] of [
+			['rejected', 'rejected'],
+			['edited', 'replaced'],
+			['spawn_failed', 'failed'],
+			['too_many_attempts', 'failed'],
+			['interrupted', 'failed'],
+			['untrusted', 'failed'],
+		]) {
+			expect(spawnStatusText({ state: 'refused', reason }, 0, 0).outcome).toBe(
+				outcome,
+			);
+		}
+		expect(spawnStatusText({ state: 'refused' }, 0, 0).outcome).toBe('failed');
 		expect(
 			spawnStatusText({ state: 'refused', reason: 'expired' }, 0, 0).outcome,
 		).toBe('expired');
@@ -218,5 +228,39 @@ describe('spawn card status', () => {
 			params: { reason: 'untrusted' },
 			final: true,
 		});
+	});
+});
+
+describe('spawn card actions', () => {
+	it('offers decisions only for a live issued card', () => {
+		expect(canDecide({ state: 'issued' }, 60_000, 0)).toBe(true);
+		expect(canDecide({ state: 'issued', exp_ms: 5 }, 60_000, 5)).toBe(false);
+		for (const state of [
+			'approved',
+			'claimed',
+			'spawned',
+			'refused',
+		] as const) {
+			expect(canDecide({ state }, 60_000, 0)).toBe(false);
+		}
+	});
+
+	it('detects a runner without spawn.decide', () => {
+		expect(supportsDecide(['chat.v1', 'spawn_decide.v1'])).toBe(true);
+		expect(supportsDecide(['chat.v1'])).toBe(false);
+		expect(supportsDecide(null)).toBe(false);
+		expect(isOutdatedError('runner_outdated')).toBe(true);
+		expect(isOutdatedError(new Error('runner_outdated'))).toBe(true);
+		expect(isOutdatedError('card expired')).toBe(false);
+	});
+
+	it('builds the edit payload with trimmed optional fields', () => {
+		expect(
+			buildEdit({ cwd: ' /w ', mode: 'ask', name: ' ', task: ' t ' }),
+		).toEqual({ cwd: '/w', mode: 'ask', task: 't' });
+		expect(
+			buildEdit({ cwd: '/w', mode: 'bypass', name: 'n', task: '' }),
+		).toEqual({ cwd: '/w', mode: 'bypass', name: 'n' });
+		expect(buildEdit({ cwd: ' ', mode: 'ask', name: '', task: '' })).toBeNull();
 	});
 });

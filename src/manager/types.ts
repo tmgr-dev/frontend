@@ -243,6 +243,18 @@ export const RESET_PHRASE = 'RESET';
 export type SpawnCardState =
 	'issued' | 'approved' | 'claimed' | 'spawned' | 'refused';
 
+export interface SpawnEdit {
+	cwd: string;
+	mode: string;
+	name?: string;
+	task?: string;
+}
+
+export interface SpawnDecision {
+	state: string;
+	card_id?: string;
+}
+
 export interface SpawnCardStatus {
 	state: SpawnCardState;
 	exp_ms?: number;
