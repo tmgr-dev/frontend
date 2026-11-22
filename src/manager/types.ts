@@ -68,6 +68,8 @@ export interface RoomInfo {
 	last?: ChatMessage;
 	local?: boolean;
 	unrestricted?: boolean;
+	task?: string;
+	stuck?: string;
 }
 
 export interface ActivityEvent {

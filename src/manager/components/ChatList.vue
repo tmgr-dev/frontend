@@ -35,6 +35,32 @@
 					<span v-if="badge(info)" class="ub">{{ badge(info) }}</span>
 				</button>
 			</template>
+			<template v-if="gi === 0">
+				<p v-if="hasCounts" class="cnts">
+					<span v-for="c in countItems" :key="c.state" :class="['cnt', c.state]"
+						><b>{{ c.n }}</b> {{ $t(`manager.list.count.${c.state}`) }}</span
+					>
+				</p>
+				<div
+					v-if="needs.length > 0"
+					role="group"
+					:aria-label="$t('manager.list.needsYou')"
+				>
+					<div class="gl">
+						{{ $t('manager.list.needsYou') }} &middot; {{ needs.length }}
+					</div>
+					<button
+						v-for="row in needs"
+						:key="row.key"
+						type="button"
+						:class="['nrow', row.tag]"
+						@click="$emit('select', row.key)"
+					>
+						<b>{{ $t(`manager.list.tag.${row.tag}`) }}</b>
+						<span>{{ row.title }}</span>
+					</button>
+				</div>
+			</template>
 			<template v-if="g.sessions.length > 0">
 				<div v-if="!g.header || gi === 0" class="gl glsort">
 					<span>{{ $t('manager.list.sessions') }}</span>
@@ -68,18 +94,23 @@
 					<Avatar :agent="info.agent" />
 					<span class="cm2">
 						<span class="cn"
-							><b>{{ info.title }}</b
+							><b>{{ rowTitle(info) }}</b
 							><i>{{ time(info) }}</i></span
 						>
 						<span class="cp">{{ preview(info) }}</span>
 						<span class="cmeta">
 							<StatePill v-if="info.state" :state="info.state" />
-							<ContextMeter
-								v-if="info.context_tokens !== undefined"
-								:tokens="info.context_tokens"
-								:pct="info.context_pct"
-							/>
+							<span v-if="info.unrestricted" class="bypass">{{
+								$t('manager.list.bypass')
+							}}</span>
+							<span v-if="info.stuck" class="stuck">{{ info.stuck }}</span>
 						</span>
+						<ContextMeter
+							v-if="info.context_tokens !== undefined"
+							full
+							:tokens="info.context_tokens"
+							:pct="info.context_pct"
+						/>
 					</span>
 					<span v-if="badge(info)" class="ub">{{ badge(info) }}</span>
 				</button>
@@ -101,6 +132,7 @@
 		sortRooms,
 		type SortMode,
 	} from '../roomOrder';
+	import { needsYou, rowTitle, stateCounts } from '../sidebar';
 	import { roomKey, type ManagerMachine, type RoomInfo } from '../types';
 	import Avatar from './Avatar.vue';
 	import ContextMeter from './ContextMeter.vue';
@@ -151,6 +183,18 @@
 				const all = this.rooms.filter((r) => r.room.kind !== 'manager');
 				return arrangeByKeys(all, this.keys);
 			},
+			needs() {
+				return needsYou(this.rooms);
+			},
+			countItems() {
+				const c = stateCounts(this.rooms);
+				return (['working', 'waiting', 'failed'] as const)
+					.filter((state) => c[state] > 0)
+					.map((state) => ({ state, n: c[state] }));
+			},
+			hasCounts(): boolean {
+				return this.countItems.length > 0;
+			},
 			view(): ChatGroup[] {
 				const groups = groupRoomsByMachine(
 					[...this.pinned, ...this.sessions],
@@ -189,6 +233,7 @@
 			if (this.timer) clearTimeout(this.timer);
 		},
 		methods: {
+			rowTitle,
 			schedule() {
 				if (this.timer) clearTimeout(this.timer);
 				if (this.hover) return;

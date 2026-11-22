@@ -1,6 +1,6 @@
 {
 	"list": {
-		"label": "Chats",
+		"label": "Agents",
 		"pinned": "Pinned",
 		"sessions": "Sessions",
 		"sortDefault": "Default",
@@ -13,7 +13,18 @@
 		"mainMachine": "Main · {label}",
 		"subMachine": "{label} · Sub-manager",
 		"thisComputer": "This computer",
-		"sharedWithPhone": "This computer is shared with your phone"
+		"sharedWithPhone": "This computer is shared with your phone",
+		"needsYou": "Needs you",
+		"bypass": "Bypass",
+		"count": {
+			"working": "working",
+			"waiting": "waiting",
+			"failed": "failed"
+		},
+		"tag": {
+			"waiting": "Waiting for you",
+			"failed": "Failed"
+		}
 	},
 	"pairing": {
 		"added": "Runner on {machine} was added to chat",
