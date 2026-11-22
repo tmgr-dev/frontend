@@ -1532,7 +1532,7 @@ body:has(.manager.app-shell) {
 	background: var(--progress);
 }
 .manager .hs.st-waiting .dt {
-	background: var(--fix);
+	background: var(--testing);
 }
 .manager .hs.st-done .dt {
 	background: var(--done);

@@ -28,10 +28,21 @@ describe('buildHierarchy', () => {
 		expect(nodes[1].sessions).toHaveLength(1);
 	});
 
-	it('falls back to the first manager room without machine data', () => {
+	it('assigns no roles without machine data', () => {
 		const nodes = buildHierarchy([ses('a', 's0'), mgr('b'), mgr('c')]);
-		expect(nodes[0]).toMatchObject({ machine: 'b', main: true });
+		expect(nodes.every((n) => !n.roles)).toBe(true);
 		expect(nodes.find((n) => n.machine === 'a')?.manager).toBeNull();
+	});
+
+	it('never makes a sub machine main when the top has no rooms', () => {
+		const nodes = buildHierarchy(
+			[mgr('studio')],
+			[
+				{ machine: 'mac', role: 'top' },
+				{ machine: 'studio', role: 'sub' },
+			],
+		);
+		expect(nodes[0]).toMatchObject({ machine: 'studio', main: false });
 	});
 
 	it('is empty for no rooms', () => {

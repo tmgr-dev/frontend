@@ -5,6 +5,7 @@ export interface HierarchyNode {
 	label: string;
 	manager: RoomInfo | null;
 	main: boolean;
+	roles: boolean;
 	sessions: RoomInfo[];
 }
 
@@ -26,8 +27,14 @@ export const buildHierarchy = (
 	const mainId =
 		top && order.includes(top.machine)
 			? top.machine
-			: (rooms.find((r) => r.room.kind === 'manager')?.room.machine ??
-				order[0]);
+			: machines.length
+				? rooms.find(
+						(r) =>
+							r.room.kind === 'manager' &&
+							known.get(r.room.machine)?.role !== 'sub',
+					)?.room.machine
+				: (rooms.find((r) => r.room.kind === 'manager')?.room.machine ??
+					order[0]);
 	const sorted = [
 		...order.filter((id) => id === mainId),
 		...order.filter((id) => id !== mainId),
@@ -39,6 +46,7 @@ export const buildHierarchy = (
 			label: known.get(machine)?.label || machine,
 			manager: own.find((r) => r.room.kind === 'manager') ?? null,
 			main: machine === mainId,
+			roles: machines.length > 0,
 			sessions: own.filter((r) => r.room.kind !== 'manager'),
 		};
 	});

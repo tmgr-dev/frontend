@@ -18,7 +18,7 @@
 						<small>{{ roleLine(node) }}</small>
 					</div>
 				</button>
-				<div v-if="node.manager && !node.main" class="scope">
+				<div v-if="node.manager && node.roles && !node.main" class="scope">
 					<Icon name="shield" /><span>{{
 						$t('manager.hierarchy.localScope', { machine: node.label })
 					}}</span>
@@ -26,7 +26,7 @@
 				<div v-if="node.sessions.length" :class="node.main ? 'hb' : 'hbs'">
 					<div class="hl">
 						{{
-							node.main && node.manager
+							node.main && node.manager && node.roles
 								? $t('manager.hierarchy.controlsOwn')
 								: node.label
 						}}
@@ -89,19 +89,27 @@
 			roleLine(node: HierarchyNode): string {
 				const m = node.manager as RoomInfo;
 				const parts = [
-					this.$t(
-						node.main
-							? 'manager.hierarchy.mainRole'
-							: 'manager.hierarchy.subRole',
-					),
+					...(node.roles
+						? [
+								this.$t(
+									node.main
+										? 'manager.hierarchy.mainRole'
+										: 'manager.hierarchy.subRole',
+								),
+							]
+						: []),
 					node.label,
 					...(m.agent ? [agentName(m.agent)] : []),
 					...(m.model ? [modelFamily(m.agent, m.model)] : []),
-					this.$t(
-						node.main
-							? 'manager.hierarchy.mainDuty'
-							: 'manager.hierarchy.subDuty',
-					),
+					...(node.roles
+						? [
+								this.$t(
+									node.main
+										? 'manager.hierarchy.mainDuty'
+										: 'manager.hierarchy.subDuty',
+								),
+							]
+						: []),
 				];
 				return parts.join(' · ');
 			},

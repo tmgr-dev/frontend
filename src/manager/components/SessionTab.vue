@@ -25,7 +25,11 @@
 				>
 				<template v-if="info.state">
 					<span>{{ $t('manager.panel.state') }}</span
-					><b>{{ $t(`manager.state.${info.state}`) }}</b>
+					><b>{{
+						$te(`manager.state.${info.state}`)
+							? $t(`manager.state.${info.state}`)
+							: info.state
+					}}</b>
 				</template>
 			</div>
 			<div v-if="handoff" class="handoff">
