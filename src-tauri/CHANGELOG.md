@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.182 — 2026-11-22
+
+- Manager window: a Speak button under agent replies reads the message aloud with the system voice (Russian or English), press again to stop. Code blocks are skipped, text never leaves the device.
+
 ## 0.9.181 — 2026-11-22
 
 - Manager window: a message sent while the agent is busy now waits in a queue and shows "Queued" with a Cancel button, instead of the "busy" error. It is typed when the agent is back at its prompt.
