@@ -24,6 +24,8 @@ pub trait ChatCall: Send + Sync {
   fn call(&self, method: &str, params: Value) -> Result<Value, String>;
 }
 
+const NOT_RUNNING: &str = "This chat is not running.";
+
 struct StopTiming {
   poll: Duration,
   int_wait: Duration,
@@ -41,12 +43,21 @@ struct SessState {
 struct Sess {
   id: String,
   state: SessState,
-  manager: Option<bool>,
+  #[serde(default)]
+  manager: bool,
 }
 
 impl Sess {
   fn exited(&self) -> bool {
     self.state.kind == "exited"
+  }
+}
+
+fn listing_error(e: String) -> String {
+  if e.starts_with("busy") {
+    "The runner is busy. Try again in a moment.".to_owned()
+  } else {
+    e
   }
 }
 
@@ -56,7 +67,7 @@ fn control_error(e: String) -> String {
   } else if e.starts_with("not_found") {
     "This chat no longer exists in the runner.".to_owned()
   } else if e.starts_with("not_running") {
-    "This chat is not running.".to_owned()
+    NOT_RUNNING.to_owned()
   } else {
     e
   }
@@ -73,7 +84,7 @@ impl RunnerLocal {
   }
 
   fn sessions(&self) -> Result<Vec<Sess>, String> {
-    self.request("sessions.list", &Value::Null)
+    self.request("sessions.list", &Value::Null).map_err(listing_error)
   }
 
   fn target(&self, room: &RoomRef) -> Result<Sess, String> {
@@ -86,7 +97,7 @@ impl RunnerLocal {
       return Err("only this machine's chats can be controlled here".to_owned());
     }
     let sess = self.sessions()?.into_iter().find(|s| s.id == id).ok_or_else(|| "This chat no longer exists in the runner.".to_owned())?;
-    if sess.manager != Some(false) {
+    if sess.manager {
       return Err("The manager session cannot be stopped or deleted from here.".to_owned());
     }
     Ok(sess)
@@ -95,7 +106,7 @@ impl RunnerLocal {
   fn running(&self, room: &RoomRef) -> Result<Sess, String> {
     let sess = self.target(room)?;
     if sess.exited() {
-      return Err("This chat is not running.".to_owned());
+      return Err(NOT_RUNNING.to_owned());
     }
     Ok(sess)
   }
@@ -183,6 +194,9 @@ impl LocalPort for RunnerLocal {
     }
     if force {
       return Ok(StopOutcome { exited: false });
+    }
+    if self.running(room).is_err_and(|e| e == NOT_RUNNING) {
+      return Ok(StopOutcome { exited: true });
     }
     if self.guarded_signal(room, "term")? {
       return Ok(StopOutcome { exited: true });
@@ -347,7 +361,11 @@ mod tests {
     }
 
     fn sess_json(kind: &str, manager: bool) -> Value {
-      json!([{ "id": SID, "state": { "kind": kind }, "manager": manager }])
+      if manager {
+        json!([{ "id": SID, "state": { "kind": kind }, "manager": true }])
+      } else {
+        json!([{ "id": SID, "state": { "kind": kind } }])
+      }
     }
 
     fn fast(mut l: RunnerLocal) -> RunnerLocal {
@@ -478,18 +496,45 @@ mod tests {
     }
 
     #[test]
-    fn entry_without_manager_flag_refuses_stop_and_remove() {
-      for kind in ["working", "exited"] {
-        let (l, f) = local(move |method, _| match method {
-          "chat.rooms" => Ok(rooms_reply()),
-          "sessions.list" => Ok(json!([{ "id": SID, "state": { "kind": kind } }])),
-          _ => Ok(Value::Null),
-        });
-        assert!(l.stop(&sess_room(), false).is_err());
-        assert!(l.remove(&sess_room()).is_err());
-        assert!(signals(&f).is_empty());
-        assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
-      }
+    fn runner_json_without_the_manager_field_is_an_ordinary_session() {
+      assert!(sess_json("working", false)[0].get("manager").is_none());
+      let (l, f) = stateful("int", false);
+      assert!(l.stop(&sess_room(), false).unwrap().exited);
+      assert_eq!(signals(&f), ["int"]);
+      let (l, f) = local(|method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(sess_json("exited", false)),
+        _ => Ok(Value::Null),
+      });
+      l.remove(&sess_room()).unwrap();
+      assert!(methods(&f).contains(&"sessions.remove".to_owned()));
+    }
+
+    #[test]
+    fn session_that_exits_before_term_counts_as_exited() {
+      let lists = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+      let (l, f) = local(move |method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => {
+          let n = lists.fetch_add(1, Ordering::SeqCst);
+          Ok(sess_json(if n >= 2 { "exited" } else { "working" }, false))
+        }
+        _ => Ok(Value::Null),
+      });
+      let mut l = fast(l);
+      l.timing.int_wait = Duration::ZERO;
+      assert!(l.stop(&sess_room(), false).unwrap().exited);
+      assert_eq!(signals(&f), ["int"]);
+    }
+
+    #[test]
+    fn busy_listing_errors_are_not_blamed_on_the_chat() {
+      let (l, _) = local(|method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        _ => Err("busy: too many connections".into()),
+      });
+      let e = l.stop(&sess_room(), false).unwrap_err();
+      assert!(e.contains("runner is busy") && !e.contains("this chat"));
     }
 
     fn flipping(first: Value, then: Value) -> (RunnerLocal, Arc<Fake>) {

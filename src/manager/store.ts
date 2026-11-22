@@ -714,6 +714,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		async runControl(
 			key: string | null,
 			wantExited: boolean,
+			reportStill: boolean,
 			act: (room: RoomRef) => Promise<boolean>,
 		) {
 			const info = store.controllable(key);
@@ -724,10 +725,15 @@ export const createManagerStore = (api: ManagerApi) => {
 			ctl.busy = true;
 			ctl.error = '';
 			ctl.stillRunning = false;
+			const current = () => ctl.key === key && store.activeKey === key;
 			try {
-				if (await act(info.room)) ctl.open = null;
+				const done = await act(info.room);
+				if (current()) {
+					if (done) ctl.open = null;
+					else if (reportStill) ctl.stillRunning = true;
+				}
 			} catch (e) {
-				ctl.error = errorText(e);
+				if (current()) ctl.error = errorText(e);
 			} finally {
 				ctl.busy = false;
 			}
@@ -735,37 +741,33 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		async stopActive() {
-			await store.runControl(store.activeKey, false, async (room) => {
-				const { exited } = await api.stop(room, false);
-				store.control.stillRunning = !exited;
-				return exited;
+			await store.runControl(store.activeKey, false, true, async (room) => {
+				return (await api.stop(room, false)).exited;
 			});
 		},
 
 		async forceStopActive() {
 			if (store.control.open !== 'force') return;
-			await store.runControl(store.control.key, false, async (room) => {
-				const { exited } = await api.stop(room, true);
-				store.control.stillRunning = !exited;
-				return exited;
+			await store.runControl(store.control.key, false, true, async (room) => {
+				return (await api.stop(room, true)).exited;
 			});
 		},
 
 		async deleteActive() {
-			const key = store.control.key;
 			if (store.control.open !== 'delete') return;
-			await store.runControl(key, true, async (room) => {
+			await store.runControl(store.control.key, true, false, async (room) => {
+				const key = roomKey(room);
 				await api.remove(room);
+				store.rooms = store.rooms.filter((r) => roomKey(r.room) !== key);
+				delete store.messagesByRoom[key];
+				store.shownRooms.delete(key);
+				if (store.activeKey === key) {
+					const first = store.rooms[0];
+					store.activeKey = null;
+					if (first) await store.select(roomKey(first.room));
+				}
 				return true;
 			});
-			if (!key || store.control.open) return;
-			if (store.rooms.some((r) => roomKey(r.room) === key)) return;
-			delete store.messagesByRoom[key];
-			store.shownRooms.delete(key);
-			if (store.activeKey !== key) return;
-			const first = store.rooms[0];
-			store.activeKey = null;
-			if (first) await store.select(roomKey(first.room));
 		},
 
 		async jumpToHit(hit: ChatMessage): Promise<boolean> {

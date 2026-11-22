@@ -263,6 +263,7 @@
 		"stillRunning": "This chat is still running. Use Force stop.",
 		"confirmForce": "Force stop",
 		"confirmDelete": "Delete",
-		"working": "Working..."
+		"working": "Working...",
+		"busyHint": "Working... please wait for it to finish."
 	}
 }

@@ -1235,6 +1235,57 @@ describe('chat control', () => {
 		expect(stop).toHaveBeenCalledWith(S1, true);
 	});
 
+	it('a stop result for a room that is no longer active is ignored', async () => {
+		let release: (v: { exited: boolean }) => void = () => {};
+		const stop = jest.fn(
+			() => new Promise<{ exited: boolean }>((r) => (release = r)),
+		);
+		const { store } = withRooms(running, { stop });
+		await store.init();
+		await store.select(S1_KEY);
+		const pending = store.stopActive();
+		await store.select(MGR_KEY);
+		release({ exited: false });
+		await pending;
+		expect(store.control.stillRunning).toBe(false);
+		expect(store.control.busy).toBe(false);
+	});
+
+	it('a delete error for a room that is no longer active is ignored', async () => {
+		let fail: (e: Error) => void = () => {};
+		const remove = jest.fn(() => new Promise<void>((_, rej) => (fail = rej)));
+		const { store } = withRooms(exited, { remove });
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('delete');
+		const pending = store.deleteActive();
+		await store.select(MGR_KEY);
+		fail(new Error('late'));
+		await pending;
+		expect(store.control.error).toBe('');
+		expect(store.control.busy).toBe(false);
+	});
+
+	it('a deleted room leaves the list even when the refresh fails', async () => {
+		let gone = false;
+		const rooms = jest.fn(async () => {
+			if (gone) throw new Error('down');
+			return [exited, info(MGR)];
+		});
+		const { store } = setup({
+			rooms,
+			remove: jest.fn(async () => {
+				gone = true;
+			}),
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('delete');
+		await store.deleteActive();
+		expect(store.rooms.map((r) => roomKey(r.room))).toEqual([MGR_KEY]);
+		expect(store.activeKey).toBe(MGR_KEY);
+	});
+
 	it('failed force stop keeps the dialog open with the error', async () => {
 		const { store } = withRooms(running, {
 			stop: jest.fn(async () => {

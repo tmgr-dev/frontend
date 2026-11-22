@@ -333,6 +333,52 @@ describe('manager components', () => {
 			expect(html).toContain('data-autofocus');
 		});
 
+		it('dialog is described by its body and exposes busy state', () => {
+			const a = mountDom('ControlDialog', { mode: 'delete', title: 'x' });
+			const dlg = a.el.querySelector('[role="dialog"]')!;
+			expect(dlg.getAttribute('aria-describedby')).toBe('mgr-control-body');
+			expect(a.el.querySelector('#mgr-control-body')).not.toBeNull();
+			expect(dlg.getAttribute('aria-busy')).toBe('false');
+			a.unmount();
+			const b = mountDom('ControlDialog', {
+				mode: 'delete',
+				title: 'x',
+				busy: true,
+			});
+			expect(
+				b.el.querySelector('[role="dialog"]')!.getAttribute('aria-busy'),
+			).toBe('true');
+			b.unmount();
+		});
+
+		it('cancel while busy shows a hint instead of emitting', async () => {
+			const onCancel = jest.fn();
+			const a = mountDom('ControlDialog', {
+				mode: 'force',
+				title: 'x',
+				busy: true,
+				onCancel,
+			});
+			a.el.querySelector<HTMLButtonElement>('button[data-autofocus]')!.click();
+			await nextTick();
+			expect(onCancel).not.toHaveBeenCalled();
+			expect(a.el.querySelector('[role="status"]')?.textContent).toContain(
+				'please wait',
+			);
+			a.unmount();
+		});
+
+		it('focus returns to the opener when the dialog closes', async () => {
+			const opener = document.createElement('button');
+			document.body.appendChild(opener);
+			opener.focus();
+			const a = mountDom('ControlDialog', { mode: 'delete', title: 'x' });
+			expect(document.activeElement).not.toBe(opener);
+			a.unmount();
+			expect(document.activeElement).toBe(opener);
+			opener.remove();
+		});
+
 		it('force dialog warns about killing the process', async () => {
 			const html = await render('ControlDialog', {
 				mode: 'force',
