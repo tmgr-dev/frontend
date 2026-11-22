@@ -411,6 +411,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			const room = store.roomRef(key);
 			if (!room) return;
 			store.activeKey = key;
+			store.slash.picked = null;
 			if (store.control.key !== key) {
 				store.control.open = null;
 				store.control.error = '';
@@ -507,6 +508,7 @@ export const createManagerStore = (api: ManagerApi) => {
 					store.closeSlash();
 				}
 				store.error = null;
+				store.slash.picked = null;
 				store.ingest(sent);
 				postSendPolls = POST_SEND_POLLS;
 				void store.refreshQueued();
