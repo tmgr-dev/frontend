@@ -17,6 +17,8 @@ pub mod method {
     pub const SEARCH: &str = "chat.search";
     pub const SUBSCRIBE: &str = "chat.subscribe";
     pub const RELAY_SELF: &str = "chat.relay_self";
+    pub const QUEUED: &str = "chat.queued";
+    pub const CANCEL: &str = "chat.cancel";
 }
 
 pub mod limits {
@@ -224,6 +226,17 @@ pub struct SendParams {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ts_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuedParams {
+    pub room: RoomRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelParams {
+    pub room: RoomRef,
+    pub id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
