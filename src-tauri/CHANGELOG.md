@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.181 — 2026-11-22
+
+- Manager window: a message sent while the agent is busy now waits in a queue and shows "Queued" with a Cancel button, instead of the "busy" error. It is typed when the agent is back at its prompt.
+- Manager window: when a message cannot be delivered, the chat says the real reason.
+
 ## 0.9.180 — 2026-11-22
 
 - Manager window: a chat opens at its last message and stays at the bottom while new messages arrive.

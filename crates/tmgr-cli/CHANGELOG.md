@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.161
+
+- Changed: a message sent to the Manager or a session that is not at its prompt is no longer refused with "busy". The runner queues it per chat (up to 20 messages, for up to 30 minutes), types it in order when the session is back at its prompt, and says why when it cannot (no manager running, session exited, queue full, expired, cancelled). Queued messages are kept in memory only, so a runner restart drops them.
+- Fixed: sessions of agents without an idle-prompt pattern (aider, Cursor Agent, Agy) were always treated as busy; they now count as at their prompt after 5 seconds of quiet.
+- Restart the runner after updating (`tmgr runner restart`); running sessions do not need to be restarted.
+
 ## 1.0.160
 
 - Added: `tmgr chat join --json` prints the runner's chat identity (`id`, `device_id`, `fp`, `already_joined`) as its first line, so the desktop app can pair its own machine's runner in one step.
