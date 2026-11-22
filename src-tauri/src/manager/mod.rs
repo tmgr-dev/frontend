@@ -180,6 +180,18 @@ pub async fn manager_commands<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> R
   blocking(move || backend.commands(&room)).await
 }
 
+#[tauri::command]
+pub async fn manager_queued<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> Result<Vec<String>, String> {
+  let backend = backend_of(&app)?;
+  blocking(move || backend.queued(&room)).await
+}
+
+#[tauri::command]
+pub async fn manager_cancel<R: Runtime>(app: AppHandle<R>, room: RoomRef, id: String) -> Result<bool, String> {
+  let backend = backend_of(&app)?;
+  blocking(move || backend.cancel(&room, &id)).await
+}
+
 fn relay_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<dyn relay::port::RelayPort>, String> {
   app.try_state::<ManagerState>().map(|m| m.relay.clone()).ok_or_else(|| "the manager chat is not running".to_owned())
 }

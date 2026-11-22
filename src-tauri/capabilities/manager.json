@@ -16,6 +16,8 @@
 		"allow-manager-send",
 		"allow-manager-search",
 		"allow-manager-commands",
+		"allow-manager-queued",
+		"allow-manager-cancel",
 		"allow-manager-spawn-card",
 		"allow-manager-trust-state",
 		"allow-manager-join-decide",

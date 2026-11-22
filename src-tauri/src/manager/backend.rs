@@ -142,6 +142,8 @@ pub trait ManagerBackend: Send + Sync {
   fn send(&self, params: SendParams) -> Result<ChatMessage, String>;
   fn search(&self, params: SearchParams) -> Result<Vec<ChatMessage>, String>;
   fn commands(&self, room: &RoomRef) -> Result<Vec<SlashCommand>, String>;
+  fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String>;
+  fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
 }
 
 fn valid_attachment(a: &Attachment) -> Result<(), String> {
@@ -345,6 +347,14 @@ impl ManagerBackend for StubBackend {
       })
     })
   }
+
+  fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String> {
+    self.with(|s| if known(s, room) { Ok(vec![]) } else { Err("unknown room".into()) })
+  }
+
+  fn cancel(&self, room: &RoomRef, _id: &str) -> Result<bool, String> {
+    self.with(|s| if known(s, room) { Ok(false) } else { Err("unknown room".into()) })
+  }
 }
 
 #[cfg(test)]
@@ -419,6 +429,15 @@ mod tests {
     assert!(backend.commands(&manager_room()).unwrap().iter().any(|c| c.name == "/summary"));
     assert!(backend.commands(&session_room("claude-backend")).unwrap().iter().any(|c| c.name == "/compact"));
     assert!(backend.commands(&session_room("nope")).is_err());
+  }
+
+  #[test]
+  fn queue_is_empty_and_cancel_finds_nothing_in_the_stub() {
+    let backend = StubBackend::default();
+    assert!(backend.queued(&manager_room()).unwrap().is_empty());
+    assert!(!backend.cancel(&manager_room(), "m_1").unwrap());
+    assert!(backend.queued(&session_room("nope")).is_err());
+    assert!(backend.cancel(&session_room("nope"), "m_1").is_err());
   }
 
   #[test]

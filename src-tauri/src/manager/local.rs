@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::backend::{ChatMessage, HistoryParams, RoomInfo, RoomKind, SearchParams, SendParams, MAX_HISTORY};
+use super::backend::{ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, MAX_HISTORY};
 
 pub trait LocalPort: Send + Sync {
   fn machine(&self) -> Result<String, String>;
@@ -12,6 +12,8 @@ pub trait LocalPort: Send + Sync {
   fn history(&self, params: &HistoryParams) -> Result<Vec<ChatMessage>, String>;
   fn search(&self, params: &SearchParams) -> Result<Vec<ChatMessage>, String>;
   fn send(&self, params: SendParams) -> Result<ChatMessage, String>;
+  fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String>;
+  fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
 }
 
 pub trait ChatCall: Send + Sync {
@@ -58,6 +60,14 @@ impl LocalPort for RunnerLocal {
 
   fn search(&self, params: &SearchParams) -> Result<Vec<ChatMessage>, String> {
     self.request("chat.search", params)
+  }
+
+  fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String> {
+    self.request("chat.queued", &serde_json::json!({ "room": room }))
+  }
+
+  fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String> {
+    self.request("chat.cancel", &serde_json::json!({ "room": room, "id": id }))
   }
 
   fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
@@ -180,6 +190,18 @@ mod tests {
     let (l, _) = local(|_, _| Err("Agent runner is not running".into()));
     assert_eq!(l.rooms().unwrap_err(), "Agent runner is not running");
     assert!(l.send(send_params(None)).is_err());
+  }
+
+  #[test]
+  fn queue_calls_carry_the_room_and_message_id() {
+    let (l, fake) = local(|method, _| Ok(if method == "chat.queued" { json!(["m_1"]) } else { json!(true) }));
+    assert_eq!(l.queued(&room()).unwrap(), ["m_1"]);
+    assert!(l.cancel(&room(), "m_1").unwrap());
+    let log = fake.log.lock().unwrap();
+    assert_eq!(log[0].0, "chat.queued");
+    assert_eq!(log[0].1["room"]["kind"], "manager");
+    assert_eq!(log[1].0, "chat.cancel");
+    assert_eq!(log[1].1["id"], "m_1");
   }
 
   #[test]
