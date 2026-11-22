@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.180 — 2026-11-22
+
+- Manager window: a chat opens at its last message and stays at the bottom while new messages arrive.
+- Manager window: when you have scrolled up, a floating "↓" button shows how many new messages arrived and jumps to the bottom.
+- Manager window: older messages load as you scroll to the top without jumping the view.
+
 ## 0.9.179 — 2026-11-22
 
 - Manager window: every code block and quote in agent messages has a Copy button that copies only that block's text.
