@@ -31,5 +31,11 @@ describe('claude model labels', () => {
 
 	it('returns an unknown claude value unchanged', () => {
 		expect(modelLabel('claude', 'custom-model')).toBe('custom-model');
+		expect(modelLabel('claude', 'toString')).toBe('toString');
+	});
+
+	it('keeps the current codex model first in the fallback list', () => {
+		expect(AGENT_MODELS.codex[0]).toBe('gpt-6.1-terra');
+		expect(AGENT_MODELS.codex).not.toContain('gpt-5');
 	});
 });
