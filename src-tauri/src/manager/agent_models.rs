@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -126,37 +127,55 @@ fn find_cli(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
 }
 
 fn run_models(cli: &Path) -> Result<String, String> {
+  run_models_at(cli, &["models"], CLI_TIMEOUT, MAX_INPUT_BYTES as usize)
+}
+
+fn run_models_at(cli: &Path, args: &[&str], timeout: Duration, cap: usize) -> Result<String, String> {
   let mut child = Command::new(cli)
-    .arg("models")
+    .args(args)
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::null())
     .spawn()
     .map_err(|e| e.kind().to_string())?;
   let stdout = child.stdout.take().ok_or("no stdout")?;
-  let reader = std::thread::spawn(move || {
+  let (tx, rx) = mpsc::channel();
+  std::thread::spawn(move || {
     let mut buf = Vec::new();
-    let _ = stdout.take(MAX_INPUT_BYTES).read_to_end(&mut buf);
-    buf
+    let _ = stdout.take(cap as u64 + 1).read_to_end(&mut buf);
+    let _ = tx.send(buf);
   });
-  let deadline = Instant::now() + CLI_TIMEOUT;
-  let status = loop {
-    match child.try_wait() {
-      Ok(Some(status)) => break status,
-      Ok(None) if Instant::now() >= deadline => {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err("timed out".to_owned());
-      }
-      Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-      Err(e) => return Err(e.kind().to_string()),
-    }
+  let fail = |child: &mut std::process::Child, msg: &str| {
+    let _ = child.kill();
+    let _ = child.wait();
+    Err(msg.to_owned())
   };
-  let bytes = reader.join().map_err(|_| "reader failed".to_owned())?;
-  if !status.success() {
-    return Err("command failed".to_owned());
+  let deadline = Instant::now() + timeout;
+  let mut output: Option<Vec<u8>> = None;
+  let mut status = None;
+  loop {
+    if output.is_none() {
+      match rx.try_recv() {
+        Ok(bytes) if bytes.len() > cap => return fail(&mut child, "output too large"),
+        Ok(bytes) => output = Some(bytes),
+        Err(mpsc::TryRecvError::Empty) => {}
+        Err(mpsc::TryRecvError::Disconnected) => return fail(&mut child, "reader failed"),
+      }
+    }
+    if status.is_none() {
+      status = child.try_wait().map_err(|e| e.kind().to_string())?;
+    }
+    if let (Some(status), Some(bytes)) = (&status, &output) {
+      if !status.success() {
+        return Err("command failed".to_owned());
+      }
+      return Ok(String::from_utf8_lossy(bytes).into_owned());
+    }
+    if Instant::now() >= deadline {
+      return fail(&mut child, "timed out");
+    }
+    std::thread::sleep(Duration::from_millis(10));
   }
-  Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 pub fn load(agent: &str, home: Option<&Path>) -> Result<Vec<ModelChoice>, String> {
@@ -259,5 +278,56 @@ mod tests {
   #[test]
   fn unknown_agent_is_an_error() {
     assert!(load("claude", None).is_err());
+  }
+
+  #[cfg(unix)]
+  mod process {
+    use super::super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn script(dir: &tempfile::TempDir, body: &str) -> PathBuf {
+      let path = dir.path().join("fake-cli");
+      std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+      std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+      path
+    }
+
+    const SHORT: Duration = Duration::from_millis(500);
+
+    #[test]
+    fn normal_output_is_returned() {
+      let dir = tempfile::tempdir().unwrap();
+      let cli = script(&dir, "echo 'anthropic/claude-sonnet-5-5'");
+      assert_eq!(run_models_at(&cli, &["models"], Duration::from_secs(5), 1024).unwrap(), "anthropic/claude-sonnet-5-5\n");
+    }
+
+    #[test]
+    fn output_over_the_cap_is_an_error() {
+      let dir = tempfile::tempdir().unwrap();
+      let cli = script(&dir, "yes model");
+      assert_eq!(run_models_at(&cli, &["models"], Duration::from_secs(5), 1024), Err("output too large".to_owned()));
+    }
+
+    #[test]
+    fn descendant_holding_stdout_does_not_hang() {
+      let dir = tempfile::tempdir().unwrap();
+      let cli = script(&dir, "sleep 30 &\necho partial\nexit 0");
+      let started = Instant::now();
+      assert_eq!(run_models_at(&cli, &["models"], SHORT, 1024), Err("timed out".to_owned()));
+      assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
+    fn failing_command_is_an_error() {
+      let dir = tempfile::tempdir().unwrap();
+      let cli = script(&dir, "echo x\nexit 3");
+      assert_eq!(run_models_at(&cli, &["models"], SHORT, 1024), Err("command failed".to_owned()));
+    }
+
+    #[test]
+    fn missing_command_is_an_error() {
+      let dir = tempfile::tempdir().unwrap();
+      assert!(run_models_at(&dir.path().join("nope"), &["models"], SHORT, 1024).is_err());
+    }
   }
 }
