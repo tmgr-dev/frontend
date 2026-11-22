@@ -13,7 +13,21 @@
 				<div v-if="html" class="txt" v-html="html"></div>
 				<div v-else class="txt plain">{{ message.body_md }}</div>
 			</div>
-			<div class="meta">{{ clock }}</div>
+			<div class="meta">
+				{{ clock }}
+				<template v-if="queued">
+					<span :title="$t('manager.messages.queuedHint')">{{
+						$t('manager.messages.queued')
+					}}</span>
+					<button
+						type="button"
+						class="qcancel"
+						@click="$emit('cancel-queued', message.id)"
+					>
+						{{ $t('manager.messages.cancelQueued') }}
+					</button>
+				</template>
+			</div>
 		</div>
 		<div v-else :class="['msg', 'mgr', { grouped }]">
 			<Avatar
@@ -110,8 +124,9 @@
 			html: { type: String, default: undefined },
 			replyTo: { type: Object as PropType<ChatMessage>, default: undefined },
 			grouped: { type: Boolean, default: false },
+			queued: { type: Boolean, default: false },
 		},
-		emits: ['reply', 'copy'],
+		emits: ['reply', 'copy', 'cancel-queued'],
 		computed: {
 			isSystem(): boolean {
 				return (

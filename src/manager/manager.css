@@ -447,6 +447,11 @@ html.dark .manager {
 	gap: 4px;
 	align-items: center;
 }
+.manager .qcancel {
+	color: var(--brand);
+	font-size: 11px;
+	text-decoration: underline;
+}
 .manager .msg.mgr {
 	flex-direction: row;
 	gap: 10px;

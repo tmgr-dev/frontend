@@ -59,11 +59,13 @@
 							? $t('manager.messages.emptySession')
 							: undefined
 					"
+					:queued-ids="store.queuedIds"
 					@reply="store.setReply"
 					@copy="copy"
 					:room-key="store.activeKey ?? ''"
 					:shown-rooms="store.shownRooms"
 					:load-older="store.loadOlder"
+					@cancel-queued="store.cancelQueued"
 				>
 					<template #decision="{ message }">
 						<template v-if="message.decision?.card_id">
@@ -391,6 +393,7 @@
 		beforeUnmount() {
 			this.unlistenResync?.();
 			this.stopWatch?.();
+			this.store.stopQueuePoll();
 			window.removeEventListener('keydown', this.onGlobalKey);
 			window.removeEventListener('focus', this.onWindowFocus);
 			window.removeEventListener('resize', this.onWindowResize);

@@ -238,6 +238,48 @@ describe('manager components', () => {
 		expect(html).not.toMatch(/<button[^>]*data-tauri-drag-region/);
 	});
 
+	it('MessageBubble labels a queued owner message and offers Cancel', async () => {
+		const html = await render('MessageBubble', {
+			message: msg({
+				id: 'q1',
+				author: { kind: 'owner', id: 'me' },
+				body_md: 'Run the tests',
+			}),
+			queued: true,
+		});
+		expect(html).toContain('Queued');
+		expect(html).toContain('Cancel');
+		expect(html).toContain('Waiting for the session to be at its prompt');
+	});
+
+	it('MessageBubble drops the queue label once the message has left the queue', async () => {
+		const html = await render('MessageBubble', {
+			message: msg({
+				id: 'q1',
+				author: { kind: 'owner', id: 'me' },
+				body_md: 'Run the tests',
+			}),
+			queued: false,
+		});
+		expect(html).not.toContain('Queued');
+		expect(html).not.toContain('>Cancel<');
+	});
+
+	it('MessageBubble emits cancel-queued with the message id when Cancel is clicked', () => {
+		const onCancelQueued = jest.fn();
+		const { el, unmount } = mountDom('MessageBubble', {
+			message: msg({
+				id: 'q1',
+				author: { kind: 'owner', id: 'me' },
+			}),
+			queued: true,
+			onCancelQueued,
+		});
+		(el.querySelector('button.qcancel') as HTMLElement).click();
+		expect(onCancelQueued).toHaveBeenCalledWith('q1');
+		unmount();
+	});
+
 	it('MessageList shows the default empty hint without a custom one', async () => {
 		const html = await render('MessageList', { messages: [] });
 		expect(html).toContain('No messages in this chat.');
