@@ -4,6 +4,8 @@ import type {
 	ActivityEvent,
 	AuditEntry,
 	ChatMessage,
+	FollowerInfo,
+	FollowerResult,
 	HistoryParams,
 	ManagerMachine,
 	ModelChoice,
@@ -143,6 +145,26 @@ export const managerMachines = async (): Promise<ManagerMachine[]> => {
 		return (await invoke<ManagerMachine[]>('manager_machines')) ?? [];
 	} catch (e) {
 		if (commandMissing(e)) return [];
+		throw e;
+	}
+};
+
+export const managerFollowers = async (): Promise<FollowerInfo[]> => {
+	try {
+		return (await invoke<FollowerInfo[]>('manager_followers')) ?? [];
+	} catch (e) {
+		if (commandMissing(e)) return [];
+		throw e;
+	}
+};
+
+export const managerConnectFollowers = async (): Promise<
+	FollowerResult[] | null
+> => {
+	try {
+		return await invoke<FollowerResult[]>('manager_connect_followers');
+	} catch (e) {
+		if (commandMissing(e)) return null;
 		throw e;
 	}
 };

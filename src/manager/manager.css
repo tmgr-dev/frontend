@@ -1923,3 +1923,11 @@ body:has(.manager.app-shell) {
 html.dark .manager .tools ul {
 	background: rgba(255, 255, 255, 0.06);
 }
+.manager .mgr-followers {
+	padding: 4px 12px 8px;
+}
+.manager .mgr-followers-line {
+	margin: 4px 0 0;
+	font-size: 11.5px;
+	color: var(--subtle);
+}

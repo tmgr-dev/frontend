@@ -160,7 +160,7 @@ struct JoinLine {
   already_joined: bool,
 }
 
-struct Flight<'a>(&'a AtomicBool);
+pub(super) struct Flight<'a>(pub(super) &'a AtomicBool);
 
 impl Drop for Flight<'_> {
   fn drop(&mut self) {
@@ -168,11 +168,11 @@ impl Drop for Flight<'_> {
   }
 }
 
-fn trusted(ts: &TrustState, device_id: &str, fp: &str) -> bool {
+pub(super) fn trusted(ts: &TrustState, device_id: &str, fp: &str) -> bool {
   ts.devices.iter().any(|d| d.id == device_id && d.fp == fp && d.state == DeviceState::Trusted)
 }
 
-fn close_code(relay: &dyn RelayPort, code: &str) {
+pub(super) fn close_code(relay: &dyn RelayPort, code: &str) {
   if let Ok(c) = decode_join_code(code) {
     let _ = relay.close_join_code(c.exp_ms);
   }

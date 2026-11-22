@@ -27,6 +27,14 @@
 			<p v-if="sharedWithPhone" class="mgr-share">
 				{{ $t('manager.list.sharedWithPhone') }}
 			</p>
+			<ConnectFollowers
+				:followers="followers.followers.length"
+				:pending="followers.pendingCount(pairing.machines)"
+				:busy="followers.busy"
+				:hints="followers.scopeHints"
+				:results="followers.results"
+				@connect="followers.connect()"
+			/>
 			<ChatList
 				:rooms="store.rooms"
 				:machines="pairing.machines"
@@ -295,6 +303,7 @@
 	import ControlDialog from './components/ControlDialog.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
+	import ConnectFollowers from './components/ConnectFollowers.vue';
 	import DecisionCard from './components/DecisionCard.vue';
 	import DetailPanel from './components/DetailPanel.vue';
 	import GateBlockersBanner from './components/GateBlockersBanner.vue';
@@ -312,6 +321,7 @@
 	import PairDeviceDialog from './components/trust/PairDeviceDialog.vue';
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
+	import { useFollowersStore } from './followersStore';
 	import { renderBody } from './format';
 	import { sharedWithPhone } from './machineTree';
 	import { usePairingStore } from './pairingStore';
@@ -348,6 +358,7 @@
 			SpawnApprovalCard,
 			DetailPanel,
 			DevicesPanel,
+			ConnectFollowers,
 			GateBlockersBanner,
 			PairDeviceDialog,
 			Icon,
@@ -362,10 +373,16 @@
 			SwitchAgentDialog,
 		},
 		setup() {
+			const trust = useTrustStore();
+			const pairing = usePairingStore();
 			return {
 				store: useManagerStore(),
-				trust: useTrustStore(),
-				pairing: usePairingStore(),
+				trust,
+				pairing,
+				followers: useFollowersStore(async () => {
+					await pairing.refreshMachines();
+					await trust.refresh();
+				}),
 			};
 		},
 		computed: {
@@ -440,6 +457,7 @@
 			void this.store.init();
 			void this.trust.init();
 			void this.pairing.start().then(() => this.trust.refresh());
+			void this.followers.refresh();
 			this.stopMachines = this.pairing.watch(5000);
 			window.addEventListener('keydown', this.onGlobalKey);
 			window.addEventListener('focus', this.onWindowFocus);

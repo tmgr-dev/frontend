@@ -22,6 +22,17 @@
 		"blocked": "Update these devices first: {devices}",
 		"autoJoinError": "Automatic setup of the local runner failed: {error}"
 	},
+	"followers": {
+		"connect": "Connect follower machines ({count})",
+		"connecting": "Connecting...",
+		"enrolled": "{name}: added",
+		"already": "{name}: already connected",
+		"refused": "{name}: scope does not allow chat enroll — run tmgr link scope on that machine",
+		"unreachable": "{name}: not reachable",
+		"error": "{name}: {message}",
+		"failed": "{message}",
+		"scopeHint": "{name}: scope does not allow chat enroll — run tmgr link scope on that machine"
+	},
 	"header": {
 		"search": "Search in chat",
 		"encrypted": "End-to-end encrypted",

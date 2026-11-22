@@ -178,3 +178,58 @@ describe('ChatList machine tree', () => {
 		expect(html).toContain('Pinned');
 	});
 });
+
+describe('ConnectFollowers', () => {
+	const results = [
+		{ follower: 'studio', state: 'enrolled' },
+		{ follower: 'nas', state: 'refused' },
+		{ follower: 'old', state: 'unreachable' },
+		{ follower: 'bad', state: 'error', message: 'not logged in' },
+		{ follower: '', state: 'error', message: 'tmgr not found' },
+	];
+
+	it('shows the pending count and emits connect on click', () => {
+		const onConnect = jest.fn();
+		const { el, unmount } = mount('ConnectFollowers', {
+			followers: 3,
+			pending: 2,
+			onConnect,
+		});
+		const button = el.querySelector('button') as HTMLButtonElement;
+		expect(button.textContent?.trim()).toBe('Connect follower machines (2)');
+		button.click();
+		expect(onConnect).toHaveBeenCalledTimes(1);
+		unmount();
+	});
+
+	it('renders nothing without followers', async () => {
+		const html = await render('ConnectFollowers', { followers: 0, pending: 0 });
+		expect(html).not.toContain('Connect follower machines');
+	});
+
+	it('disables the button while busy', async () => {
+		const html = await render('ConnectFollowers', {
+			followers: 1,
+			pending: 1,
+			busy: true,
+		});
+		expect(html).toContain('disabled');
+		expect(html).toContain('Connecting...');
+	});
+
+	it('renders one line per result and scope hints', async () => {
+		const html = await render('ConnectFollowers', {
+			followers: 5,
+			pending: 0,
+			results,
+			hints: ['nas'],
+		});
+		expect(html).toContain('studio: added');
+		expect(html).toContain(
+			'nas: scope does not allow chat enroll — run tmgr link scope on that machine',
+		);
+		expect(html).toContain('old: not reachable');
+		expect(html).toContain('bad: not logged in');
+		expect(html).toContain('tmgr not found');
+	});
+});

@@ -458,6 +458,8 @@ pub fn run() {
       manager::manager_join_with_code,
       manager::manager_pair_local_runner,
       manager::manager_machines,
+      manager::manager_connect_followers,
+      manager::manager_followers,
       manager::manager_set_relay_auth,
       manager::manager_clear_relay_auth
     ])

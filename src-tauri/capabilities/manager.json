@@ -33,6 +33,8 @@
 		"allow-manager-join-with-code",
 		"allow-manager-pair-local-runner",
 		"allow-manager-machines",
+		"allow-manager-connect-followers",
+		"allow-manager-followers",
 		"allow-decisions-get",
 		"allow-decisions-answer"
 	]

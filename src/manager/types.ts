@@ -211,6 +211,21 @@ export interface PairResult {
 	blockers?: string[];
 }
 
+export type FollowerState =
+	'enrolled' | 'already' | 'refused' | 'unreachable' | 'pending' | 'error';
+
+export interface FollowerInfo {
+	follower: string;
+	chat_enroll: boolean | null;
+}
+
+export interface FollowerResult {
+	follower: string;
+	state: FollowerState;
+	machine?: string;
+	message?: string;
+}
+
 export interface ManagerMachine {
 	machine: string;
 	label?: string | null;

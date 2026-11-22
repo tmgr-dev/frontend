@@ -2,6 +2,7 @@ pub mod agent_models;
 pub mod backend;
 pub mod bridge;
 pub mod composite;
+pub mod followers;
 pub mod local;
 pub mod machines;
 pub mod pair;
@@ -328,6 +329,21 @@ pub async fn manager_pair_local_runner<R: Runtime>(app: AppHandle<R>) -> Result<
   .await?;
   trust_changed(&app);
   Ok(out)
+}
+
+static FOLLOWERS_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+pub async fn manager_connect_followers<R: Runtime>(app: AppHandle<R>) -> Result<Vec<followers::FollowerResult>, String> {
+  let relay = relay_of(&app)?;
+  let out = blocking(move || Ok(followers::connect_followers(relay.as_ref(), &followers::ProcLinkCli, &FOLLOWERS_BUSY))).await?;
+  trust_changed(&app);
+  Ok(out)
+}
+
+#[tauri::command]
+pub async fn manager_followers() -> Result<Vec<followers::FollowerInfo>, String> {
+  blocking(|| Ok(followers::followers(&followers::ProcLinkCli))).await
 }
 
 #[tauri::command]
