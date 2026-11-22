@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.189 — 2026-11-22
+
+- Manager window: the sidebar now reads like a control room. It is titled "Agents", session rows show the agent and task, the context as used / max with a percent, a Bypass chip for sessions without restrictions, and an orange unread count. Under Pinned there are counters of working, waiting and failed sessions, and a "Needs you" list that jumps to a session waiting for you or failed.
+
 ## 0.9.188 — 2026-11-22
 
 - Manager window: a "Connect follower machines" button adds the machines this computer reaches over `tmgr link` to the manager chat in one click. Each follower then shows up with its sub-manager and sessions on the desktop and the phone. Needs `tmgr` CLI 1.0.162 or later on this computer and on each follower.
