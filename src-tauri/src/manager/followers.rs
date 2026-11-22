@@ -144,7 +144,7 @@ fn cli_failure(follower: &str, e: CliError) -> FollowerResult {
 
 fn envelope_failure(follower: &str, e: EnvelopeError) -> FollowerResult {
   let lower = e.message.to_lowercase();
-  if e.code == "forbidden" || lower.contains("chat_enroll") || lower.contains("chat enroll") || lower.contains("scope") {
+  if lower.contains("chat_enroll") || lower.contains("chat enroll") || lower.contains("scope") || (e.code == "forbidden" && e.message.is_empty()) {
     return outcome(follower, "refused", Some("the follower's link scope does not allow chat enroll".into()));
   }
   if matches!(e.code.as_str(), "link" | "offline") {
@@ -404,12 +404,22 @@ mod tests {
   #[test]
   fn a_scope_refusal_is_mapped_and_closes_the_code() {
     let relay = FakeRelay::default();
-    let (cli, _) = cli(&["studio"], vec![("chat-enroll studio", Ok(refusal("forbidden", "link scope denies chat_enroll")))]);
+    let (cli, _) = cli(&["studio"], vec![("chat-enroll studio", Ok(refusal("forbidden", "the follower's scope does not allow chat enrolment")))]);
     let out = run(&relay, &cli);
     assert_eq!(states(&out), [("studio", "refused")]);
     assert_eq!(out[0].message.as_deref(), Some("the follower's link scope does not allow chat enroll"));
     let c = relay.0.lock().unwrap();
     assert!(c.expected.is_empty());
+  }
+
+  #[test]
+  fn a_leader_binding_refusal_keeps_the_cli_reason() {
+    let relay = FakeRelay::default();
+    let (cli, _) = cli(&["studio"], vec![("chat-enroll studio", Ok(refusal("forbidden", "this link is bound to a different leader machine")))]);
+    let out = run(&relay, &cli);
+    assert_eq!(states(&out), [("studio", "error")]);
+    assert_eq!(out[0].message.as_deref(), Some("this link is bound to a different leader machine"));
+    assert!(relay.0.lock().unwrap().expected.is_empty());
   }
 
   #[test]
