@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.179 — 2026-11-22
+
+- Manager window: every code block and quote in agent messages has a Copy button that copies only that block's text.
+
 ## 0.9.178 — 2026-11-22
 
 - Manager window: the model switcher now offers Fable and shows versions (Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 5.5).
