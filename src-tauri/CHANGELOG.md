@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.176 — 2026-11-22
+
+- Manager window: an unrestricted manager (started with `tmgr manager start --unrestricted`: no sandbox, bypass mode) shows an "Unrestricted" badge in the chat header (needs tmgr 1.0.155).
+
 ## 0.9.174 — 2026-11-21
 
 - Manager window: a spawn card from the manager shows what it wants to start and its state: waiting for approval on your phone, approved, started (with the session id), or closed with the reason. Approval happens on the phone only; the desktop has no approve button. Cards show only in rooms of this machine.
