@@ -588,4 +588,98 @@ describe('MessageList scroll behaviour', () => {
 		await settle();
 		expect(loadOlder).toHaveBeenCalledTimes(1);
 	});
+
+	const deferred = () => {
+		let resolve: (grew: boolean) => void = () => undefined;
+		const promise = new Promise<boolean>((res) => (resolve = res));
+		return { promise, resolve };
+	};
+
+	it('counts a message from someone else that arrives during loadOlder', async () => {
+		const page = deferred();
+		const { state, scrollTo, jump } = mountList(base, {
+			loadOlder: jest.fn(() => page.promise),
+		});
+		await settle();
+		scrollTo(0);
+		state.messages = [...state.messages, msg({ id: 'c', ts_ms: T0 + 90_000 })];
+		await settle();
+		page.resolve(false);
+		await settle();
+		expect(jump()?.getAttribute('aria-label')).toBe('1 new message');
+	});
+
+	it('pins to the bottom for an own message that arrives during loadOlder', async () => {
+		const page = deferred();
+		const { state, metrics, scrollTo } = mountList(base, {
+			loadOlder: jest.fn(() => page.promise),
+		});
+		await settle();
+		scrollTo(0);
+		state.messages = [
+			...state.messages,
+			msg({
+				id: 'd',
+				author: { kind: 'owner', id: 'me' },
+				ts_ms: T0 + 90_000,
+			}),
+		];
+		await settle();
+		expect(metrics.scrollTop).toBe(1000);
+		page.resolve(false);
+		await settle();
+		expect(metrics.scrollTop).toBe(1000);
+	});
+
+	it('ignores a stale history result after leaving and returning to the room', async () => {
+		const first = deferred();
+		const second = deferred();
+		const loadOlder = jest
+			.fn()
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const { state, scrollTo } = mountList(base, { loadOlder });
+		await settle();
+		scrollTo(0);
+		state.roomKey = 'r2';
+		await settle();
+		state.roomKey = 'r1';
+		await settle();
+		scrollTo(0);
+		expect(loadOlder).toHaveBeenCalledTimes(2);
+		first.resolve(false);
+		await settle();
+		scrollTo(0);
+		expect(loadOlder).toHaveBeenCalledTimes(2);
+		second.resolve(true);
+		await settle();
+		scrollTo(0);
+		expect(loadOlder).toHaveBeenCalledTimes(3);
+	});
+
+	it('keeps history retryable after a failed page request', async () => {
+		const loadOlder = jest
+			.fn()
+			.mockRejectedValueOnce(new Error('offline'))
+			.mockResolvedValueOnce(false);
+		const { scrollTo } = mountList(base, { loadOlder });
+		await settle();
+		scrollTo(0);
+		await settle();
+		scrollTo(0);
+		await settle();
+		expect(loadOlder).toHaveBeenCalledTimes(2);
+	});
+
+	it('scrolls to the bottom on first visit even when the room was empty before', async () => {
+		const { state, metrics } = mountList([]);
+		await settle();
+		state.roomKey = 'r2';
+		await settle();
+		state.roomKey = 'r1';
+		await settle();
+		state.messages = base;
+		await settle();
+		expect(metrics.scrollTop).toBe(1000);
+	});
 });

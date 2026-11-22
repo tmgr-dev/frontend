@@ -91,10 +91,13 @@
 				pinned: true,
 				newBelow: 0,
 				trackedKey: '',
+				gen: 0,
 				lastId: undefined as string | undefined,
+				firstId: undefined as string | undefined,
 				pendingBottom: false,
 				olderBusy: false,
 				olderDone: false,
+				olderBefore: 0,
 			};
 		},
 		watch: {
@@ -113,35 +116,48 @@
 				const list = this.messages;
 				if (this.roomKey !== this.trackedKey) this.enterRoom(list);
 				const tail = arrivalsAfter(this.lastId, list);
+				const prepended = this.olderBusy && list[0]?.id !== this.firstId;
 				this.lastId = list[list.length - 1]?.id;
-				if (this.olderBusy) return;
+				this.firstId = list[0]?.id;
 				if (this.pendingBottom) {
 					if (list.length) {
 						this.pendingBottom = false;
+						this.shownRooms.add(this.roomKey);
 						this.pinEnd();
 					}
 					return;
 				}
-				if (!tail.length) return;
-				if (this.pinned || tail.some(isOwn)) {
-					this.pinEnd();
-					return;
+				if (tail.length) {
+					if (this.pinned || tail.some(isOwn)) {
+						this.pinEnd();
+					} else {
+						const arrived = tail.filter((m) => !isOwn(m)).length;
+						this.newBelow = newBelowCount(this.newBelow, arrived, this.pinned);
+					}
 				}
-				const arrived = tail.filter((m) => !isOwn(m)).length;
-				this.newBelow = newBelowCount(this.newBelow, arrived, this.pinned);
+				if (prepended && !this.pinned) this.anchorOlder();
 			},
 			enterRoom(list: ChatMessage[]) {
 				this.trackedKey = this.roomKey;
+				this.gen += 1;
 				this.olderDone = false;
 				this.olderBusy = false;
 				this.newBelow = 0;
 				this.lastId = list[list.length - 1]?.id;
-				if (this.shownRooms.has(this.roomKey)) {
-					this.pendingBottom = false;
-					return;
-				}
-				this.shownRooms.add(this.roomKey);
-				this.pendingBottom = true;
+				this.firstId = list[0]?.id;
+				this.pendingBottom = !this.shownRooms.has(this.roomKey);
+			},
+			anchorOlder() {
+				const before = this.olderBefore;
+				this.$nextTick(() => {
+					const el = this.$refs.scroll as HTMLElement | undefined;
+					if (el)
+						el.scrollTop = anchoredScrollTop(
+							el.scrollTop,
+							before,
+							el.scrollHeight,
+						);
+				});
 			},
 			pinEnd() {
 				this.pinned = true;
@@ -169,25 +185,18 @@
 				}
 			},
 			async fetchOlder(el: HTMLElement, loadOlder: () => Promise<boolean>) {
-				const key = this.trackedKey;
-				const before = el.scrollHeight;
+				const gen = this.gen;
+				this.olderBefore = el.scrollHeight;
 				this.olderBusy = true;
+				let grew: boolean | undefined;
 				try {
-					const grew = await loadOlder();
-					if (key !== this.trackedKey) return;
-					if (!grew) {
-						this.olderDone = true;
-						return;
-					}
-					await this.$nextTick();
-					el.scrollTop = anchoredScrollTop(
-						el.scrollTop,
-						before,
-						el.scrollHeight,
-					);
-				} finally {
-					if (key === this.trackedKey) this.olderBusy = false;
+					grew = await loadOlder();
+				} catch {
+					grew = undefined;
 				}
+				if (gen !== this.gen) return;
+				if (grew === false) this.olderDone = true;
+				this.olderBusy = false;
 			},
 		},
 		computed: {
