@@ -289,6 +289,10 @@ describe('manager dialogs', () => {
 		])
 			expect(html).toContain(t);
 		expect(html).toContain('disabled');
+		expect(html).toContain('aria-labelledby="mgr-new-machine"');
+		expect(html).toContain('aria-labelledby="mgr-new-agent"');
+		expect(html).toContain('id="mgr-new-machine"');
+		expect(html).toContain('id="mgr-new-agent"');
 	});
 
 	it('NewSessionDialog enables start with a folder and shows the error', async () => {

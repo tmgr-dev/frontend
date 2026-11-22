@@ -10,8 +10,10 @@
 			@submit.prevent="$emit('submit')"
 		>
 			<h2 id="mgr-new-title">{{ $t('manager.newSession.title') }}</h2>
-			<div class="lbl">{{ $t('manager.newSession.machine') }}</div>
-			<div class="seg" role="radiogroup">
+			<div id="mgr-new-machine" class="lbl">
+				{{ $t('manager.newSession.machine') }}
+			</div>
+			<div class="seg" role="radiogroup" aria-labelledby="mgr-new-machine">
 				<button
 					v-for="m in options"
 					:key="m.id"
@@ -27,8 +29,10 @@
 					>
 				</button>
 			</div>
-			<div class="lbl">{{ $t('manager.newSession.agent') }}</div>
-			<div class="mods" role="radiogroup">
+			<div id="mgr-new-agent" class="lbl">
+				{{ $t('manager.newSession.agent') }}
+			</div>
+			<div class="mods" role="radiogroup" aria-labelledby="mgr-new-agent">
 				<button
 					v-for="a in agents"
 					:key="a"

@@ -8,6 +8,7 @@ export const DEFAULT_WIDTH: Record<PanelSide, number> = {
 export const MIN_WIDTH: Record<PanelSide, number> = { left: 220, right: 260 };
 export const MAX_WIDTH: Record<PanelSide, number> = { left: 520, right: 560 };
 export const MIN_CHAT_WIDTH = 400;
+export const RIGHT_PANEL_HIDE_AT = 1100;
 
 const storageKey = (side: PanelSide) => `manager.panel.${side}`;
 
@@ -59,3 +60,12 @@ export const saveWidth = (
 		return;
 	}
 };
+
+export const shellColumns = (
+	left: number,
+	right: number,
+	viewport: number,
+): string =>
+	viewport <= RIGHT_PANEL_HIDE_AT
+		? `${left}px minmax(0, 1fr)`
+		: `${left}px minmax(0, 1fr) ${right}px`;

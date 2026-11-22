@@ -6,6 +6,7 @@ import {
 	MIN_CHAT_WIDTH,
 	MIN_WIDTH,
 	saveWidth,
+	shellColumns,
 	type WidthStorage,
 } from '../panelWidths';
 
@@ -84,5 +85,17 @@ describe('stored widths', () => {
 	it('survives missing storage', () => {
 		expect(loadWidth('left', null)).toBe(DEFAULT_WIDTH.left);
 		expect(() => saveWidth('left', 300, null)).not.toThrow();
+	});
+});
+
+describe('shellColumns', () => {
+	it('has three columns above 1100px', () => {
+		expect(shellColumns(300, 340, 1300)).toBe('300px minmax(0, 1fr) 340px');
+		expect(shellColumns(300, 340, 1101)).toBe('300px minmax(0, 1fr) 340px');
+	});
+
+	it('drops the right column at 1100px and below', () => {
+		expect(shellColumns(300, 340, 1100)).toBe('300px minmax(0, 1fr)');
+		expect(shellColumns(300, 340, 900)).toBe('300px minmax(0, 1fr)');
 	});
 });

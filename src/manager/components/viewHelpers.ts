@@ -209,16 +209,18 @@ export const authorLabel = (
 	return t('manager.messages.system');
 };
 
-const plural = (n: number, one: string): string =>
-	`${n} ${one}${n === 1 ? '' : 's'}`;
-
-export const headerSubtitle = (info: RoomInfo, rooms: RoomInfo[]): string => {
+export const headerSubtitle = (
+	info: RoomInfo,
+	rooms: RoomInfo[],
+	count: (key: string, n: number) => string,
+): string => {
 	if (info.room.kind === 'session') return info.task ?? '';
 	const sessions = rooms.filter((r) => r.room.kind === 'session');
 	if (sessions.length === 0) return '';
 	const machines = new Set(rooms.map((r) => r.room.machine));
-	const parts = [plural(sessions.length, 'session')];
-	if (machines.size > 1) parts.push(plural(machines.size, 'machine'));
+	const parts = [count('manager.header.sessionCount', sessions.length)];
+	if (machines.size > 1)
+		parts.push(count('manager.header.machineCount', machines.size));
 	return parts.join(' \u00b7 ');
 };
 

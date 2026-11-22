@@ -177,6 +177,7 @@
 			@dblclick="resetWidth('left')"
 		></div>
 		<div
+			v-if="viewport > RIGHT_PANEL_HIDE_AT"
 			class="rz rz-right"
 			role="separator"
 			aria-orientation="vertical"
@@ -346,7 +347,9 @@
 		clampWidth,
 		DEFAULT_WIDTH,
 		loadWidth,
+		RIGHT_PANEL_HIDE_AT,
 		saveWidth,
+		shellColumns,
 		type PanelSide,
 	} from './panelWidths';
 	import { MAX_FILE_BYTES, useManagerStore } from './store';
@@ -395,6 +398,7 @@
 			const pairing = usePairingStore();
 			return {
 				store: useManagerStore(),
+				RIGHT_PANEL_HIDE_AT,
 				trust,
 				pairing,
 				followers: useFollowersStore(async () => {
@@ -417,7 +421,11 @@
 			},
 			shellStyle(): Record<string, string> {
 				return {
-					gridTemplateColumns: `${this.leftW}px minmax(0, 1fr) ${this.rightW}px`,
+					gridTemplateColumns: shellColumns(
+						this.leftW,
+						this.rightW,
+						this.viewport,
+					),
 				};
 			},
 			gateBlockers(): string[] {
@@ -463,7 +471,9 @@
 			},
 			subtitle(): string {
 				return this.activeInfo
-					? headerSubtitle(this.activeInfo, this.store.rooms)
+					? headerSubtitle(this.activeInfo, this.store.rooms, (k, n) =>
+							this.$t(k, { count: n }, n),
+						)
 					: '';
 			},
 			placeholder(): string {

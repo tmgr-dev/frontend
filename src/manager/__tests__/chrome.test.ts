@@ -19,12 +19,14 @@ const session = (machine: string, extra: Partial<RoomInfo> = {}): RoomInfo => ({
 const t = (key: string, p?: Record<string, string>) =>
 	p ? `${key}:${p.agent}` : key;
 
+const count = (key: string, n: number) => `${key}:${n}`;
+
 describe('headerSubtitle', () => {
 	it('shows the task of a session room and nothing without one', () => {
-		expect(headerSubtitle(session('m1', { task: 'TM-1021' }), [])).toBe(
+		expect(headerSubtitle(session('m1', { task: 'TM-1021' }), [], count)).toBe(
 			'TM-1021',
 		);
-		expect(headerSubtitle(session('m1'), [])).toBe('');
+		expect(headerSubtitle(session('m1'), [], count)).toBe('');
 	});
 
 	it('counts sessions and machines for the manager room', () => {
@@ -33,11 +35,13 @@ describe('headerSubtitle', () => {
 			session('m1', { task: 'a' }),
 			session('m2', { task: 'b' }),
 		];
-		expect(headerSubtitle(mgr, rooms)).toBe('2 sessions · 2 machines');
-		expect(headerSubtitle(mgr, [mgr, session('m1', { task: 'a' })])).toBe(
-			'1 session',
+		expect(headerSubtitle(mgr, rooms, count)).toBe(
+			'manager.header.sessionCount:2 \u00b7 manager.header.machineCount:2',
 		);
-		expect(headerSubtitle(mgr, [mgr])).toBe('');
+		expect(
+			headerSubtitle(mgr, [mgr, session('m1', { task: 'a' })], count),
+		).toBe('manager.header.sessionCount:1');
+		expect(headerSubtitle(mgr, [mgr], count)).toBe('');
 	});
 });
 

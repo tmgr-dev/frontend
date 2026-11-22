@@ -2312,7 +2312,7 @@ html.dark .manager .tools ul {
 .manager .safe-row.on .tgl::after {
 	transform: translateX(14px);
 }
-.manager .sf2:disabled {
+.manager .sf2[aria-disabled='true'] {
 	opacity: 0.45;
 	cursor: not-allowed;
 }

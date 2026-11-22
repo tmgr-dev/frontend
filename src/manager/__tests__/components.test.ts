@@ -646,6 +646,17 @@ describe('manager components', () => {
 		expect(html).toContain('All chats');
 	});
 
+	it('SearchPanel keeps pending filters focusable with aria-disabled and names the group', async () => {
+		const html = await render('SearchPanel', {
+			query: '',
+			pending: ['scopeMe'],
+		});
+		expect(html).toMatch(/class="sf2 off"[^>]*aria-disabled="true"/);
+		expect(html).not.toMatch(/class="sf2 off"[^>]*\sdisabled/);
+		expect(html).toContain('Not available yet');
+		expect(html).toContain('aria-label="Search filters"');
+	});
+
 	it('SearchPanel shows empty states', async () => {
 		expect(await render('SearchPanel', { query: '' })).toContain(
 			'Search all your chats',

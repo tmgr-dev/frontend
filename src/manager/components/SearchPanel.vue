@@ -21,7 +21,7 @@
 				<Icon name="x" />
 			</button>
 		</div>
-		<div class="sfil">
+		<div class="sfil" role="group" :aria-label="$t('manager.search.filters')">
 			<button
 				type="button"
 				:class="['sf2', { on: scope === 'all' }]"
@@ -51,9 +51,12 @@
 				v-for="f in pending"
 				:key="f"
 				type="button"
-				class="sf2"
-				disabled
+				class="sf2 off"
+				aria-disabled="true"
 				:title="$t('manager.search.comingSoon')"
+				@click.prevent
+				@keydown.enter.prevent
+				@keydown.space.prevent
 			>
 				{{ $t(`manager.search.${f}`) }}
 			</button>

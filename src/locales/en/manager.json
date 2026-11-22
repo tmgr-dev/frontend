@@ -53,7 +53,9 @@
 		"unrestrictedHint": "No sandbox, bypass mode: this manager can run any command as you and type into bypass sessions.",
 		"stop": "Stop",
 		"forceStop": "Force stop",
-		"delete": "Delete"
+		"delete": "Delete",
+		"sessionCount": "{count} session | {count} sessions",
+		"machineCount": "{count} machine | {count} machines"
 	},
 	"state": {
 		"working": "Working",
@@ -163,6 +165,7 @@
 	"search": {
 		"placeholder": "Search messages",
 		"clear": "Clear search",
+		"filters": "Search filters",
 		"scopeAll": "All chats",
 		"scopeChat": "In {chat}",
 		"scopeManager": "In Manager room",
