@@ -198,6 +198,18 @@ describe('loadOlder', () => {
 		await store.init();
 		expect(await store.loadOlder()).toBe(false);
 	});
+
+	it('returns null and sets the error when the page request fails', async () => {
+		const history = jest.fn(async ({ before }) => {
+			if (before) throw new Error('offline');
+			return range(1, 2);
+		});
+		const { store } = setup({ history });
+		await store.init();
+		expect(await store.loadOlder()).toBeNull();
+		expect(store.error).toBe('offline');
+		expect(ids(store.messagesByRoom[MGR_KEY])).toEqual(['m001', 'm002']);
+	});
 });
 
 describe('send', () => {

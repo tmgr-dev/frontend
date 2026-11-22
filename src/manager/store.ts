@@ -224,7 +224,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			}
 		},
 
-		async loadOlder(): Promise<boolean> {
+		async loadOlder(): Promise<boolean | null> {
 			const key = store.activeKey;
 			const room = key && store.roomRef(key);
 			const first = key && store.messagesByRoom[key]?.[0];
@@ -241,7 +241,7 @@ export const createManagerStore = (api: ManagerApi) => {
 				return grew;
 			} catch (e) {
 				store.error = errorText(e);
-				return false;
+				return null;
 			}
 		},
 

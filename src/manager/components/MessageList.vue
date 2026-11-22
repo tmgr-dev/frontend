@@ -4,10 +4,11 @@
 			ref="scroll"
 			class="scroll"
 			role="log"
+			tabindex="-1"
 			:aria-label="$t('manager.messages.label')"
 			@scroll.passive="onScroll"
 		>
-			<div class="inner">
+			<div ref="inner" class="inner">
 				<div v-if="messages.length === 0" class="empty">
 					<Icon name="term" /><b>{{ $t('manager.messages.empty') }}</b
 					><span>{{ emptyHint ?? $t('manager.messages.emptyHint') }}</span>
@@ -81,7 +82,7 @@
 				default: () => new Set<string>(),
 			},
 			loadOlder: {
-				type: Function as PropType<() => Promise<boolean>>,
+				type: Function as PropType<() => Promise<boolean | null>>,
 				default: undefined,
 			},
 		},
@@ -97,7 +98,10 @@
 				pendingBottom: false,
 				olderBusy: false,
 				olderDone: false,
-				olderBefore: 0,
+				jumping: false,
+				jumpTimer: 0,
+				views: new Map<string, { scrollTop: number; pinned: boolean }>(),
+				observer: null as ResizeObserver | null,
 			};
 		},
 		watch: {
@@ -109,14 +113,28 @@
 			},
 		},
 		mounted() {
+			if (typeof ResizeObserver !== 'undefined') {
+				this.observer = new ResizeObserver(() => {
+					if (this.pinned) this.pinEnd();
+				});
+				this.observer.observe(this.$refs.inner as Element);
+			}
 			this.sync();
+		},
+		beforeUnmount() {
+			this.observer?.disconnect();
+			clearTimeout(this.jumpTimer);
 		},
 		methods: {
 			sync() {
 				const list = this.messages;
-				if (this.roomKey !== this.trackedKey) this.enterRoom(list);
+				if (this.roomKey !== this.trackedKey) this.switchRoom(list);
 				const tail = arrivalsAfter(this.lastId, list);
-				const prepended = this.olderBusy && list[0]?.id !== this.firstId;
+				const prepended =
+					this.firstId !== undefined && list[0]?.id !== this.firstId;
+				const before = prepended
+					? (this.$refs.scroll as HTMLElement).scrollHeight
+					: 0;
 				this.lastId = list[list.length - 1]?.id;
 				this.firstId = list[0]?.id;
 				if (this.pendingBottom) {
@@ -127,17 +145,37 @@
 					}
 					return;
 				}
-				if (tail.length) {
-					if (this.pinned || tail.some(isOwn)) {
-						this.pinEnd();
-					} else {
-						const arrived = tail.filter((m) => !isOwn(m)).length;
-						this.newBelow = newBelowCount(this.newBelow, arrived, this.pinned);
-					}
+				if (!tail.length && !prepended) return;
+				if (this.pinned || tail.some(isOwn)) {
+					this.pinEnd();
+					return;
 				}
-				if (prepended && !this.pinned) this.anchorOlder();
+				const arrived = tail.filter((m) => !isOwn(m)).length;
+				this.newBelow = newBelowCount(this.newBelow, arrived, this.pinned);
+				if (prepended) this.anchorOlder(before);
+			},
+			switchRoom(list: ChatMessage[]) {
+				const el = this.$refs.scroll as HTMLElement | undefined;
+				if (el && this.trackedKey) {
+					this.views.set(this.trackedKey, {
+						scrollTop: el.scrollTop,
+						pinned: this.pinned,
+					});
+				}
+				const saved = this.views.get(this.roomKey);
+				this.enterRoom(list);
+				if (this.pendingBottom || !saved) return;
+				this.$nextTick(() => {
+					const scroller = this.$refs.scroll as HTMLElement | undefined;
+					if (!scroller) return;
+					scroller.scrollTop = saved.pinned
+						? scroller.scrollHeight
+						: saved.scrollTop;
+					this.pinned = isNearBottom(scroller);
+				});
 			},
 			enterRoom(list: ChatMessage[]) {
+				this.endJump();
 				this.trackedKey = this.roomKey;
 				this.gen += 1;
 				this.olderDone = false;
@@ -147,8 +185,15 @@
 				this.firstId = list[0]?.id;
 				this.pendingBottom = !this.shownRooms.has(this.roomKey);
 			},
-			anchorOlder() {
-				const before = this.olderBefore;
+			pinEnd() {
+				this.pinned = true;
+				this.newBelow = 0;
+				this.$nextTick(() => {
+					const el = this.$refs.scroll as HTMLElement | undefined;
+					if (el) el.scrollTop = el.scrollHeight;
+				});
+			},
+			anchorOlder(before: number) {
 				this.$nextTick(() => {
 					const el = this.$refs.scroll as HTMLElement | undefined;
 					if (el)
@@ -159,40 +204,44 @@
 						);
 				});
 			},
-			pinEnd() {
-				this.pinned = true;
-				this.newBelow = 0;
-				this.$nextTick(() => {
-					const el = this.$refs.scroll as HTMLElement | undefined;
-					if (el) el.scrollTop = el.scrollHeight;
-				});
-			},
 			jumpToEnd() {
 				const el = this.$refs.scroll as HTMLElement;
+				this.jumping = true;
+				clearTimeout(this.jumpTimer);
+				this.jumpTimer = window.setTimeout(() => this.endJump(), 600);
 				this.pinned = true;
 				this.newBelow = 0;
 				el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+				el.focus({ preventScroll: true });
+			},
+			endJump() {
+				this.jumping = false;
+				clearTimeout(this.jumpTimer);
 			},
 			onScroll(e: Event) {
 				const el = e.target as HTMLElement;
-				this.pinned = isNearBottom(el);
-				if (this.pinned) this.newBelow = 0;
+				const near = isNearBottom(el);
+				if (this.jumping) {
+					if (near) this.endJump();
+					return;
+				}
+				this.pinned = near;
+				if (near) this.newBelow = 0;
 				if (
 					this.loadOlder &&
 					shouldLoadOlder(el.scrollTop, this.olderBusy, this.olderDone)
 				) {
-					void this.fetchOlder(el, this.loadOlder);
+					void this.fetchOlder(this.loadOlder);
 				}
 			},
-			async fetchOlder(el: HTMLElement, loadOlder: () => Promise<boolean>) {
+			async fetchOlder(loadOlder: () => Promise<boolean | null>) {
 				const gen = this.gen;
-				this.olderBefore = el.scrollHeight;
 				this.olderBusy = true;
-				let grew: boolean | undefined;
+				let grew: boolean | null;
 				try {
 					grew = await loadOlder();
 				} catch {
-					grew = undefined;
+					grew = null;
 				}
 				if (gen !== this.gen) return;
 				if (grew === false) this.olderDone = true;

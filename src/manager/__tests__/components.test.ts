@@ -453,12 +453,19 @@ describe('MessageBubble copy buttons', () => {
 
 describe('MessageList scroll behaviour', () => {
 	const mounted: Array<() => void> = [];
+	const ROW = 100;
+	const VIEW = 400;
 	const settle = async () => {
 		for (let i = 0; i < 3; i++) await nextTick();
 	};
+	const deferred = () => {
+		let resolve: (grew: boolean | null) => void = () => undefined;
+		const promise = new Promise<boolean | null>((res) => (resolve = res));
+		return { promise, resolve };
+	};
 
 	const mountList = (
-		initial: ChatMessage[],
+		initial: ChatMessage[] = long,
 		extra: Record<string, unknown> = {},
 	) => {
 		const state = reactive({ messages: initial, roomKey: 'r1' });
@@ -476,18 +483,28 @@ describe('MessageList scroll behaviour', () => {
 		}).use(i18n);
 		app.mount(el);
 		const scroller = el.querySelector('.scroll') as HTMLElement;
-		const metrics = { scrollTop: 0, scrollHeight: 1000, clientHeight: 400 };
-		for (const key of ['scrollTop', 'scrollHeight', 'clientHeight'] as const) {
-			Object.defineProperty(scroller, key, {
+		const rendered = () =>
+			(scroller.querySelector('.inner') as HTMLElement).children.length;
+		const metrics = {
+			extra: 0,
+			stored: 0,
+			height: () => rendered() * ROW + metrics.extra,
+			bottom: () => Math.max(0, metrics.height() - VIEW),
+		};
+		Object.defineProperties(scroller, {
+			scrollHeight: { configurable: true, get: () => metrics.height() },
+			clientHeight: { configurable: true, get: () => VIEW },
+			scrollTop: {
 				configurable: true,
-				get: () => metrics[key],
+				get: () =>
+					(metrics.stored = Math.min(metrics.stored, metrics.bottom())),
 				set: (v: number) => {
-					metrics[key] = v;
+					metrics.stored = Math.max(0, Math.min(v, metrics.bottom()));
 				},
-			});
-		}
+			},
+		});
 		const scrollTo = (top: number) => {
-			metrics.scrollTop = top;
+			scroller.scrollTop = top;
 			scroller.dispatchEvent(new Event('scroll'));
 		};
 		const jump = () =>
@@ -503,84 +520,178 @@ describe('MessageList scroll behaviour', () => {
 		mounted.splice(0).forEach((unmount) => unmount());
 	});
 
+	const row = (i: number) =>
+		msg({ id: `m${i}`, ts_ms: T0 + i * 60_000, body_md: `row ${i}` });
+	const long = Array.from({ length: 10 }, (_, i) => row(i));
 	const older = (id: string) => msg({ id, ts_ms: T0 - 60_000, body_md: id });
-	const base = [msg({ id: 'a' }), msg({ id: 'b', ts_ms: T0 + 60_000 })];
+	const fromOwner = (id: string, ts = T0 + 90_000) =>
+		msg({ id, author: { kind: 'owner', id: 'me' }, ts_ms: ts });
+	const fromOther = (id: string, ts = T0 + 90_000) => msg({ id, ts_ms: ts });
 
 	it('pins to the last message the first time a chat is shown', async () => {
-		const { metrics } = mountList(base);
+		const { scroller, metrics } = mountList();
 		await settle();
-		expect(metrics.scrollTop).toBe(1000);
+		expect(scroller.scrollTop).toBe(metrics.bottom());
 	});
 
 	it('shows no jump button while pinned to the bottom', async () => {
-		const { jump } = mountList(base);
+		const { jump } = mountList();
 		await settle();
 		expect(jump()).toBeNull();
 	});
 
 	it('keeps the position and counts arrivals when scrolled up', async () => {
-		const { state, metrics, scrollTo, jump } = mountList(base);
+		const { state, scroller, scrollTo, jump } = mountList();
 		await settle();
 		scrollTo(100);
-		state.messages = [...state.messages, msg({ id: 'c', ts_ms: T0 + 90_000 })];
+		state.messages = [...state.messages, fromOther('c')];
 		await settle();
-		expect(metrics.scrollTop).toBe(100);
+		expect(scroller.scrollTop).toBe(100);
 		expect(jump()?.getAttribute('aria-label')).toBe('1 new message');
 		expect(jump()?.textContent).toContain('↓');
 		expect(jump()?.textContent).toContain('1');
 	});
 
 	it('does not count own messages and scrolls to them', async () => {
-		const { state, metrics, scrollTo, jump } = mountList(base);
+		const { state, scroller, metrics, scrollTo, jump } = mountList();
 		await settle();
 		scrollTo(100);
-		state.messages = [
-			...state.messages,
-			msg({
-				id: 'd',
-				author: { kind: 'owner', id: 'me' },
-				ts_ms: T0 + 90_000,
-			}),
-		];
+		state.messages = [...state.messages, fromOwner('d')];
 		await settle();
-		expect(metrics.scrollTop).toBe(1000);
+		expect(scroller.scrollTop).toBe(metrics.bottom());
 		expect(jump()).toBeNull();
 	});
 
 	it('smooth-scrolls to the bottom and resets the count on click', async () => {
-		const { state, scroller, scrollTo, jump } = mountList(base);
+		const { state, scroller, metrics, scrollTo, jump } = mountList();
 		await settle();
 		scrollTo(100);
-		state.messages = [...state.messages, msg({ id: 'c', ts_ms: T0 + 90_000 })];
+		state.messages = [...state.messages, fromOther('c')];
 		await settle();
 		const scrollToSpy = jest.fn();
 		(scroller as HTMLElement & { scrollTo: unknown }).scrollTo = scrollToSpy;
 		jump()!.click();
 		await settle();
-		expect(scrollToSpy).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
+		expect(scrollToSpy).toHaveBeenCalledWith({
+			top: metrics.height(),
+			behavior: 'smooth',
+		});
 		expect(jump()).toBeNull();
 	});
 
+	it('moves focus to the message list after jumping', async () => {
+		const { state, scroller, scrollTo, jump } = mountList();
+		await settle();
+		scrollTo(100);
+		state.messages = [...state.messages, fromOther('c')];
+		await settle();
+		(scroller as HTMLElement & { scrollTo: unknown }).scrollTo = jest.fn();
+		jump()!.click();
+		await settle();
+		expect(document.activeElement).toBe(scroller);
+	});
+
+	it('ignores mid-animation scroll positions while jumping to the bottom', async () => {
+		const { state, scroller, metrics, scrollTo, jump } = mountList();
+		await settle();
+		scrollTo(100);
+		state.messages = [...state.messages, fromOther('c')];
+		await settle();
+		(scroller as HTMLElement & { scrollTo: unknown }).scrollTo = jest.fn();
+		jump()!.click();
+		await settle();
+		scrollTo(300);
+		state.messages = [...state.messages, fromOther('d', T0 + 120_000)];
+		await settle();
+		expect(jump()).toBeNull();
+		expect(scroller.scrollTop).toBe(metrics.bottom());
+	});
+
+	it('stops ignoring scroll positions after the jump timeout', async () => {
+		jest.useFakeTimers();
+		try {
+			const { state, scroller, scrollTo, jump } = mountList();
+			await settle();
+			scrollTo(100);
+			state.messages = [...state.messages, fromOther('c')];
+			await settle();
+			(scroller as HTMLElement & { scrollTo: unknown }).scrollTo = jest.fn();
+			jump()!.click();
+			await settle();
+			jest.advanceTimersByTime(600);
+			scrollTo(300);
+			state.messages = [...state.messages, fromOther('d', T0 + 120_000)];
+			await settle();
+			expect(jump()?.getAttribute('aria-label')).toBe('1 new message');
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
 	it('requests older history once while busy and keeps the position', async () => {
-		let resolveOlder: (grew: boolean) => void = () => undefined;
-		const loadOlder = jest.fn(
-			() => new Promise<boolean>((resolve) => (resolveOlder = resolve)),
-		);
-		const { state, metrics, scrollTo } = mountList(base, { loadOlder });
+		const page = deferred();
+		const loadOlder = jest.fn(() => page.promise);
+		const { state, scroller, scrollTo } = mountList(long, { loadOlder });
 		await settle();
 		scrollTo(0);
 		scrollTo(0);
 		expect(loadOlder).toHaveBeenCalledTimes(1);
 		state.messages = [older('z'), ...state.messages];
-		metrics.scrollHeight = 1300;
-		resolveOlder(true);
+		page.resolve(true);
 		await settle();
-		expect(metrics.scrollTop).toBe(300);
+		expect(scroller.scrollTop).toBe(100);
+	});
+
+	it('keeps the anchor when a row arrives at the bottom before the older page', async () => {
+		const page = deferred();
+		const loadOlder = jest.fn(() => page.promise);
+		const { state, scroller, scrollTo } = mountList(long, { loadOlder });
+		await settle();
+		scrollTo(0);
+		state.messages = [...state.messages, fromOther('c')];
+		await settle();
+		state.messages = [older('z'), ...state.messages];
+		await settle();
+		page.resolve(true);
+		await settle();
+		expect(scroller.scrollTop).toBe(100);
+	});
+
+	it('re-pins to the bottom when older rows are prepended while pinned', async () => {
+		const { state, scroller, metrics } = mountList();
+		await settle();
+		state.messages = [older('z'), ...state.messages];
+		await settle();
+		expect(scroller.scrollTop).toBe(metrics.bottom());
+	});
+
+	it('keeps the bottom when rows grow without a message change while pinned', async () => {
+		const callbacks: Array<() => void> = [];
+		const holder = globalThis as { ResizeObserver?: unknown };
+		const original = holder.ResizeObserver;
+		holder.ResizeObserver = class {
+			constructor(callback: () => void) {
+				callbacks.push(callback);
+			}
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		};
+		try {
+			const { metrics, scroller } = mountList();
+			await settle();
+			metrics.extra = 50;
+			callbacks.forEach((callback) => callback());
+			await settle();
+			expect(scroller.scrollTop).toBe(metrics.bottom());
+		} finally {
+			holder.ResizeObserver = original;
+		}
 	});
 
 	it('stops requesting history after a page adds nothing', async () => {
 		const loadOlder = jest.fn(async () => false);
-		const { scrollTo } = mountList(base, { loadOlder });
+		const { scrollTo } = mountList(long, { loadOlder });
 		await settle();
 		scrollTo(0);
 		await settle();
@@ -589,20 +700,44 @@ describe('MessageList scroll behaviour', () => {
 		expect(loadOlder).toHaveBeenCalledTimes(1);
 	});
 
-	const deferred = () => {
-		let resolve: (grew: boolean) => void = () => undefined;
-		const promise = new Promise<boolean>((res) => (resolve = res));
-		return { promise, resolve };
-	};
+	it('keeps history retryable after a null (failed) page result', async () => {
+		const loadOlder = jest
+			.fn()
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce(false);
+		const { scrollTo } = mountList(long, { loadOlder });
+		await settle();
+		scrollTo(0);
+		await settle();
+		scrollTo(0);
+		await settle();
+		scrollTo(0);
+		await settle();
+		expect(loadOlder).toHaveBeenCalledTimes(2);
+	});
 
-	it('counts a message from someone else that arrives during loadOlder', async () => {
+	it('keeps history retryable after a rejected page request', async () => {
+		const loadOlder = jest
+			.fn()
+			.mockRejectedValueOnce(new Error('offline'))
+			.mockResolvedValueOnce(false);
+		const { scrollTo } = mountList(long, { loadOlder });
+		await settle();
+		scrollTo(0);
+		await settle();
+		scrollTo(0);
+		await settle();
+		expect(loadOlder).toHaveBeenCalledTimes(2);
+	});
+
+	it('counts an arrival from someone else during loadOlder', async () => {
 		const page = deferred();
-		const { state, scrollTo, jump } = mountList(base, {
+		const { state, scrollTo, jump } = mountList(long, {
 			loadOlder: jest.fn(() => page.promise),
 		});
 		await settle();
 		scrollTo(0);
-		state.messages = [...state.messages, msg({ id: 'c', ts_ms: T0 + 90_000 })];
+		state.messages = [...state.messages, fromOther('c')];
 		await settle();
 		page.resolve(false);
 		await settle();
@@ -611,24 +746,17 @@ describe('MessageList scroll behaviour', () => {
 
 	it('pins to the bottom for an own message that arrives during loadOlder', async () => {
 		const page = deferred();
-		const { state, metrics, scrollTo } = mountList(base, {
+		const { state, scroller, metrics, scrollTo } = mountList(long, {
 			loadOlder: jest.fn(() => page.promise),
 		});
 		await settle();
 		scrollTo(0);
-		state.messages = [
-			...state.messages,
-			msg({
-				id: 'd',
-				author: { kind: 'owner', id: 'me' },
-				ts_ms: T0 + 90_000,
-			}),
-		];
+		state.messages = [...state.messages, fromOwner('d')];
 		await settle();
-		expect(metrics.scrollTop).toBe(1000);
+		expect(scroller.scrollTop).toBe(metrics.bottom());
 		page.resolve(false);
 		await settle();
-		expect(metrics.scrollTop).toBe(1000);
+		expect(scroller.scrollTop).toBe(metrics.bottom());
 	});
 
 	it('ignores a stale history result after leaving and returning to the room', async () => {
@@ -638,7 +766,7 @@ describe('MessageList scroll behaviour', () => {
 			.fn()
 			.mockReturnValueOnce(first.promise)
 			.mockReturnValueOnce(second.promise);
-		const { state, scrollTo } = mountList(base, { loadOlder });
+		const { state, scroller, scrollTo } = mountList(long, { loadOlder });
 		await settle();
 		scrollTo(0);
 		state.roomKey = 'r2';
@@ -655,31 +783,44 @@ describe('MessageList scroll behaviour', () => {
 		await settle();
 		scrollTo(0);
 		expect(loadOlder).toHaveBeenCalledTimes(3);
-	});
-
-	it('keeps history retryable after a failed page request', async () => {
-		const loadOlder = jest
-			.fn()
-			.mockRejectedValueOnce(new Error('offline'))
-			.mockResolvedValueOnce(false);
-		const { scrollTo } = mountList(base, { loadOlder });
-		await settle();
-		scrollTo(0);
-		await settle();
-		scrollTo(0);
-		await settle();
-		expect(loadOlder).toHaveBeenCalledTimes(2);
+		expect(scroller).toBeDefined();
 	});
 
 	it('scrolls to the bottom on first visit even when the room was empty before', async () => {
-		const { state, metrics } = mountList([]);
+		const { state, scroller, metrics } = mountList([]);
 		await settle();
 		state.roomKey = 'r2';
 		await settle();
 		state.roomKey = 'r1';
 		await settle();
-		state.messages = base;
+		state.messages = long;
 		await settle();
-		expect(metrics.scrollTop).toBe(1000);
+		expect(scroller.scrollTop).toBe(metrics.bottom());
+	});
+
+	it('restores the scroll position of a revisited room', async () => {
+		const { state, scroller, scrollTo } = mountList();
+		await settle();
+		scrollTo(200);
+		state.roomKey = 'r2';
+		state.messages = [row(20)];
+		await settle();
+		expect(scroller.scrollTop).toBe(0);
+		state.roomKey = 'r1';
+		state.messages = long;
+		await settle();
+		expect(scroller.scrollTop).toBe(200);
+	});
+
+	it('pins a revisited room that was left at the bottom', async () => {
+		const { state, scroller, metrics } = mountList();
+		await settle();
+		state.roomKey = 'r2';
+		state.messages = [row(20)];
+		await settle();
+		state.roomKey = 'r1';
+		state.messages = long;
+		await settle();
+		expect(scroller.scrollTop).toBe(metrics.bottom());
 	});
 });
