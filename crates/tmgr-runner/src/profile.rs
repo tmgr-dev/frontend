@@ -727,6 +727,10 @@ impl Matcher {
         Ok(Matcher { rules })
     }
 
+    pub fn has_idle(&self) -> bool {
+        self.rules.iter().any(|(id, _)| id.starts_with("idle"))
+    }
+
     pub fn check(&self, lines: &[String]) -> Option<(String, String)> {
         self.rules.iter().find_map(|(id, re)| {
             lines
