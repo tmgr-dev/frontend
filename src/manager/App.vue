@@ -452,7 +452,7 @@
 			searchScope(): 'chat' | 'all' | 'manager' {
 				const key = this.store.search.scopeKey;
 				if (!key) return 'all';
-				if (key === this.managerKey && key !== this.store.activeKey)
+				if (key.startsWith('manager:') && key !== this.store.activeKey)
 					return 'manager';
 				return 'chat';
 			},

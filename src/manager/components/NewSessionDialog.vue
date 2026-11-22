@@ -188,7 +188,7 @@
 			},
 			pick(id: string) {
 				this.template = id;
-				this.form.prompt = applyTemplate(this.form, id).prompt;
+				this.set('prompt', applyTemplate(this.form, id).prompt);
 			},
 			onKey(e: KeyboardEvent) {
 				dialogKeydown(this.$refs.dialog as HTMLElement, e, () =>
