@@ -1122,6 +1122,8 @@ describe('live tool activity', () => {
 		jest.setSystemTime(Date.now() - 61_000);
 		emit(msg(10, S1, 'session'));
 		expect(store.toolsByMessage).toEqual({});
+	});
+});
 
 describe('chat control', () => {
 	const running = { ...info(S1), state: 'working' };
