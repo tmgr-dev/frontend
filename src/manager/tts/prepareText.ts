@@ -52,12 +52,12 @@ const stripMarkdown = (md: string): string =>
 		.replace(/(^|\W)_(\S(?:[^_\n]*\S)?)_(?=\W|$)/g, '$1$2')
 		.replace(/\p{Extended_Pictographic}|\p{Emoji_Presentation}|️|‍/gu, '');
 
-const splitLong = (text: string): string[] => {
+const splitLong = (text: string, max: number): string[] => {
 	const out: string[] = [];
 	let rest = text;
-	while (rest.length > MAX_CHUNK) {
-		let cut = rest.lastIndexOf(' ', MAX_CHUNK);
-		if (cut <= 0) cut = MAX_CHUNK;
+	while (rest.length > max) {
+		let cut = rest.lastIndexOf(' ', max);
+		if (cut <= 0) cut = max;
 		out.push(rest.slice(0, cut).trim());
 		rest = rest.slice(cut).trim();
 	}
@@ -69,7 +69,7 @@ export const chunkText = (text: string, max = MAX_CHUNK): string[] => {
 	const pieces = (text.match(/[^.!?…]+(?:[.!?…]+|$)/g) ?? [])
 		.map((s) => s.trim())
 		.filter(Boolean)
-		.flatMap((s) => (s.length > max ? splitLong(s) : [s]));
+		.flatMap((s) => (s.length > max ? splitLong(s, max) : [s]));
 	const chunks: string[] = [];
 	let current = '';
 	for (const piece of pieces) {
