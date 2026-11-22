@@ -6304,6 +6304,13 @@ mod tests {
     }
 
     fn lone_session() -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
+        lone_session_sized(100, 24)
+    }
+
+    fn lone_session_sized(
+        cols: u16,
+        rows: u16,
+    ) -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
         let t = tempfile::tempdir().unwrap();
         let cfg = RunnerConfig {
             dir: t.path().join("run"),
@@ -6343,7 +6350,7 @@ mod tests {
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({
             "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),
-            "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,
+            "profile": "claude-code", "created_ms": 0, "cols": cols, "rows": rows,
             "shim_pid": 1, "child_pid": 2,
         }))
         .unwrap();
@@ -6360,6 +6367,12 @@ mod tests {
             credit: None,
         });
         (t, s, rx)
+    }
+
+    #[test]
+    fn a_persisted_session_with_a_zero_size_is_adopted_and_fed() {
+        let (_t, s, _rx) = lone_session_sized(0, 0);
+        s.feed("世界\u{1f600}\r\n".repeat(50).as_bytes(), true);
     }
 
     fn drain(s: &Session, rx: &mpsc::Receiver<Frame>) {

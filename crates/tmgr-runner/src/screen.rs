@@ -4,8 +4,6 @@ use tmgr_ipc::api::{
     INVERSE, ITALIC, UNDERLINE,
 };
 
-const MAX_ROWS: u16 = 200;
-const MAX_COLS: u16 = 500;
 const MAX_CSI_LEN: usize = 16;
 const MAX_STRING: usize = 4096;
 
@@ -187,7 +185,8 @@ pub struct ScreenModel {
 }
 
 fn clamp_dims(rows: u16, cols: u16) -> (u16, u16) {
-    (rows.clamp(1, MAX_ROWS), cols.clamp(1, MAX_COLS))
+    let (cols, rows) = crate::wire::clamp_size(cols, rows);
+    (rows, cols)
 }
 
 impl ScreenModel {
@@ -667,14 +666,28 @@ mod tests {
     fn resize_clamps() {
         let mut m = ScreenModel::new(0, 0, 10);
         let s = m.snapshot(0);
-        assert_eq!((s.rows, s.cols), (1, 1));
+        assert_eq!((s.rows, s.cols), (24, 80));
         m.resize(9999, 9999);
         let s = m.snapshot(0);
         assert_eq!((s.rows, s.cols), (200, 500));
         m.resize(0, 0);
-        assert_eq!((m.snapshot(0).rows, m.snapshot(0).cols), (1, 1));
+        assert_eq!((m.snapshot(0).rows, m.snapshot(0).cols), (24, 80));
+        m.resize(1, 1);
+        assert_eq!((m.snapshot(0).rows, m.snapshot(0).cols), (2, 2));
         let big = ScreenModel::new(1000, 1000, 0).snapshot(0);
         assert_eq!((big.rows, big.cols), (200, 500));
+    }
+
+    #[test]
+    fn wide_chars_do_not_panic_on_degenerate_sizes() {
+        for (rows, cols) in [(0, 0), (1, 1), (0, 1), (1, 0), (24, 0), (0, 80)] {
+            let mut m = ScreenModel::new(rows, cols, 10);
+            m.feed("世界\u{1f600}x\r\n".repeat(50).as_bytes());
+            m.snapshot(0);
+            m.resize(rows, cols);
+            m.feed("世界".as_bytes());
+            m.snapshot(0);
+        }
     }
 
     #[test]

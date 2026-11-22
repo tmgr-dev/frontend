@@ -33,8 +33,18 @@ impl Drop for Slot {
     }
 }
 
+const DEFAULT_COLS: u16 = 80;
+const DEFAULT_ROWS: u16 = 24;
+const MIN_COLS: u16 = 2;
+const MIN_ROWS: u16 = 2;
+
 pub fn clamp_size(cols: u16, rows: u16) -> (u16, u16) {
-    (cols.clamp(1, MAX_COLS), rows.clamp(1, MAX_ROWS))
+    let cols = if cols == 0 { DEFAULT_COLS } else { cols };
+    let rows = if rows == 0 { DEFAULT_ROWS } else { rows };
+    (
+        cols.clamp(MIN_COLS, MAX_COLS),
+        rows.clamp(MIN_ROWS, MAX_ROWS),
+    )
 }
 
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
