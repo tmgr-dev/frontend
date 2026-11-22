@@ -140,6 +140,12 @@ export const ICONS: Record<
 	reply: {
 		body: '<path d="M10 8L4 13l6 5v-3.5c5 0 8 1 10 4-.5-5-3.5-8.5-10-8.5z"/>',
 	},
+	speak: {
+		body: '<path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>',
+	},
+	stop: {
+		body: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+	},
 	search: { body: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>' },
 	term: {
 		body: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',

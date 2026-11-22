@@ -17,6 +17,8 @@ import { createI18n } from 'vue-i18n';
 import { renderToString } from 'vue/server-renderer';
 import manager from '../../locales/en/manager.json';
 import { renderBody } from '../format';
+import { speechSynthesisEngine, type TtsEngine } from '../tts/engine';
+import { setEngine } from '../tts/speaker';
 import {
 	roomKey,
 	type ChatMessage,
@@ -822,5 +824,101 @@ describe('MessageList scroll behaviour', () => {
 		state.messages = long;
 		await settle();
 		expect(scroller.scrollTop).toBe(metrics.bottom());
+	});
+});
+
+describe('MessageBubble speak button', () => {
+	const flush = () => nextTick();
+	const fakeEngine = (available = true) => {
+		const calls: Array<{
+			hooks: { onEnd(): void; onError(reason: string): void };
+		}> = [];
+		const engine: TtsEngine = {
+			id: 'fake',
+			isAvailable: () => available,
+			speak: (_chunks, _lang, hooks) => {
+				calls.push({ hooks });
+			},
+			stop: jest.fn(),
+		};
+		return { engine, calls };
+	};
+	const speakBtn = (el: HTMLElement) =>
+		el.querySelector<HTMLButtonElement>('.macts button[aria-pressed]');
+
+	afterEach(() => setEngine(speechSynthesisEngine));
+
+	it('shows a toggle for an agent reply with text and reads it aloud', async () => {
+		const fake = fakeEngine();
+		setEngine(fake.engine);
+		const mounted = mountDom('MessageBubble', {
+			message: msg({ id: 's1', body_md: 'Hello there.' }),
+			html: renderBody('Hello there.'),
+		});
+		const btn = speakBtn(mounted.el);
+		expect(btn?.getAttribute('aria-pressed')).toBe('false');
+		expect(btn?.getAttribute('aria-label')).toBe('Speak');
+
+		btn!.click();
+		await flush();
+		expect(speakBtn(mounted.el)?.getAttribute('aria-pressed')).toBe('true');
+		expect(speakBtn(mounted.el)?.getAttribute('aria-label')).toBe(
+			'Stop speaking',
+		);
+
+		speakBtn(mounted.el)!.click();
+		await flush();
+		expect(speakBtn(mounted.el)?.getAttribute('aria-pressed')).toBe('false');
+		mounted.unmount();
+	});
+
+	it('shows the no-voice message as the title', async () => {
+		const fake = fakeEngine();
+		setEngine(fake.engine);
+		const mounted = mountDom('MessageBubble', {
+			message: msg({ id: 's2', body_md: 'Привет.' }),
+			html: renderBody('Привет.'),
+		});
+		speakBtn(mounted.el)!.click();
+		fake.calls[0].hooks.onError('no-voice');
+		await flush();
+		expect(speakBtn(mounted.el)?.getAttribute('title')).toBe(
+			'No voice for this language',
+		);
+		mounted.unmount();
+	});
+
+	it('is hidden for owner messages, decisions, empty text and an unavailable engine', () => {
+		setEngine(fakeEngine().engine);
+		const owner = mountDom('MessageBubble', {
+			message: msg({
+				id: 'o2',
+				author: { kind: 'owner', id: 'me' },
+				body_md: 'mine',
+			}),
+			html: renderBody('mine'),
+		});
+		expect(speakBtn(owner.el)).toBeNull();
+		owner.unmount();
+
+		const decision = mountDom('MessageBubble', {
+			message: msg({ id: 'd1', kind: 'decision', body_md: 'Pick one' }),
+		});
+		expect(speakBtn(decision.el)).toBeNull();
+		decision.unmount();
+
+		const empty = mountDom('MessageBubble', {
+			message: msg({ id: 'e1', body_md: '  ' }),
+		});
+		expect(speakBtn(empty.el)).toBeNull();
+		empty.unmount();
+
+		setEngine(fakeEngine(false).engine);
+		const unavailable = mountDom('MessageBubble', {
+			message: msg({ id: 'u1', body_md: 'Hello.' }),
+			html: renderBody('Hello.'),
+		});
+		expect(speakBtn(unavailable.el)).toBeNull();
+		unavailable.unmount();
 	});
 });
