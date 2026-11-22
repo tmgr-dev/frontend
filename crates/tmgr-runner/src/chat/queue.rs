@@ -29,6 +29,7 @@ pub(super) struct Queue {
 }
 
 impl Chat {
+    #[allow(clippy::too_many_arguments)]
     pub fn submit(
         &self,
         room: &RoomRef,
