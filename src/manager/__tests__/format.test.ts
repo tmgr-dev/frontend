@@ -219,8 +219,31 @@ describe('addCopyButtons', () => {
 		);
 		const block = root.querySelector('button.blk-copy')!.parentElement!;
 		expect(copyBlockText(block)).toBe(
-			'first line\nstill first\nsecond\nnested',
+			'first line\nstill first\n\nsecond\n\nnested',
 		);
+	});
+
+	it('copies the heading and body of a quote', () => {
+		const root = withButtons('> ## Title\n> body');
+		const block = root.querySelector('button.blk-copy')!.parentElement!;
+		expect(copyBlockText(block)).toBe('Title\n\nbody');
+	});
+
+	it('copies the text of a list item and its nested list', () => {
+		const root = withButtons('> - a\n>   - b');
+		const block = root.querySelector('button.blk-copy')!.parentElement!;
+		expect(copyBlockText(block)).toBe('a\nb');
+	});
+
+	it('copies the code text of a fenced block inside a quote', () => {
+		const root = withButtons('> intro\n>\n> ```\n> const a = 1;\n> ```');
+		const block = root.querySelector('button.blk-copy')!.parentElement!;
+		expect(copyBlockText(block)).toBe('intro\n\nconst a = 1;');
+	});
+
+	it('gives a quote containing code exactly one button', () => {
+		const root = withButtons('> intro\n>\n> ```\n> x\n> ```');
+		expect(root.querySelectorAll('.blk-copy')).toHaveLength(1);
 	});
 
 	it('gives a button only to the outer of nested quotes', () => {

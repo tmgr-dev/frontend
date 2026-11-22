@@ -121,11 +121,12 @@ export const addCopyButtons = (html: string, labels: CopyLabels): string => {
 	tpl.innerHTML = html;
 	const targets = Array.from(
 		tpl.content.querySelectorAll('pre, blockquote, .bigcode'),
-	).filter((el) =>
-		el.tagName === 'PRE'
-			? !el.closest('.bigcode')
-			: el.tagName !== 'BLOCKQUOTE' || !el.parentElement?.closest('blockquote'),
-	);
+	).filter((el) => {
+		if (el.tagName === 'PRE') return !el.closest('.bigcode, blockquote');
+		if (el.tagName === 'BLOCKQUOTE')
+			return !el.parentElement?.closest('blockquote');
+		return !el.parentElement?.closest('blockquote');
+	});
 	for (const el of targets) {
 		const blk = document.createElement('div');
 		blk.className = 'blk';
@@ -138,23 +139,45 @@ export const addCopyButtons = (html: string, labels: CopyLabels): string => {
 const codeText = (code: Element | null): string =>
 	(code?.textContent ?? '').replace(/\n$/, '');
 
+const BLOCK_TAGS = new Set([
+	'P',
+	'LI',
+	'H1',
+	'H2',
+	'H3',
+	'H4',
+	'H5',
+	'H6',
+	'UL',
+	'OL',
+	'BLOCKQUOTE',
+	'DIV',
+	'TR',
+	'TABLE',
+	'HR',
+]);
+
+const walkText = (node: Node): string => {
+	if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+	if (node.nodeType !== Node.ELEMENT_NODE) return '';
+	const el = node as Element;
+	if (el.tagName === 'BR') return '\n';
+	if (el.tagName === 'SUMMARY') return '';
+	if (el.tagName === 'PRE') return `${codeText(el.querySelector('code'))}\n`;
+	const inner = Array.from(el.childNodes).map(walkText).join('');
+	if (el.tagName === 'TD' || el.tagName === 'TH') return `${inner}\t`;
+	return BLOCK_TAGS.has(el.tagName) ? `${inner}\n` : inner;
+};
+
 const quoteText = (quote: Element): string => {
 	const clone = quote.cloneNode(true) as Element;
 	clone
 		.querySelectorAll('.blk-copy, .bigcode > pre')
 		.forEach((el) => el.remove());
-	clone.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
-	const leaves = Array.from(clone.querySelectorAll('p, li, pre')).filter(
-		(el) => !el.querySelector('p, li, pre'),
-	);
-	if (leaves.length === 0) return (clone.textContent ?? '').trim();
-	return leaves
-		.map((el) =>
-			el.tagName === 'PRE'
-				? codeText(el.querySelector('code'))
-				: (el.textContent ?? '').trim(),
-		)
-		.join('\n');
+	return walkText(clone)
+		.replace(/\t+\n/g, '\n')
+		.trim()
+		.replace(/\n{3,}/g, '\n\n');
 };
 
 export const copyBlockText = (block: Element | null): string => {

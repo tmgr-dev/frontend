@@ -389,8 +389,20 @@ describe('MessageBubble copy buttons', () => {
 		for (let i = 0; i < 5; i++) await Promise.resolve();
 	};
 
+	const originalClipboard = Object.getOwnPropertyDescriptor(
+		navigator,
+		'clipboard',
+	);
+
 	beforeEach(() => jest.useFakeTimers());
-	afterEach(() => jest.useRealTimers());
+	afterEach(() => {
+		jest.useRealTimers();
+		if (originalClipboard) {
+			Object.defineProperty(navigator, 'clipboard', originalClipboard);
+		} else {
+			delete (navigator as { clipboard?: unknown }).clipboard;
+		}
+	});
 
 	it('copies the code of an agent message and shows Copied for 1.5 s', async () => {
 		const writeText = jest.fn().mockResolvedValue(undefined);
