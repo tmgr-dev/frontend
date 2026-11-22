@@ -257,6 +257,126 @@ describe('manager components', () => {
 		expect(off).not.toContain('Unrestricted');
 	});
 
+	describe('ChatHeader control buttons', () => {
+		const labels = (el: HTMLElement) =>
+			Array.from(el.querySelectorAll<HTMLButtonElement>('button.ctl')).map(
+				(b) => b.textContent?.trim(),
+			);
+		const header = (info: RoomInfo, extra: Record<string, unknown> = {}) =>
+			mountDom('ChatHeader', { info, ...extra });
+
+		it('running local session shows Stop and Force stop', () => {
+			const { el, unmount } = header(rooms[0]);
+			expect(labels(el)).toEqual(['Stop', 'Force stop']);
+			unmount();
+		});
+
+		it('exited local session shows only Delete', () => {
+			const { el, unmount } = header({ ...rooms[0], state: 'exited' });
+			expect(labels(el)).toEqual(['Delete']);
+			unmount();
+		});
+
+		it('a session without a state yet can be stopped', () => {
+			const { el, unmount } = header({ ...rooms[0], state: undefined });
+			expect(labels(el)).toEqual(['Stop', 'Force stop']);
+			unmount();
+		});
+
+		it('manager room and remote rooms show no controls', () => {
+			for (const info of [
+				rooms[1],
+				{ ...rooms[0], local: false },
+				{ ...rooms[0], state: 'exited', local: false },
+			]) {
+				const { el, unmount } = header(info);
+				expect(labels(el)).toEqual([]);
+				unmount();
+			}
+		});
+
+		it('buttons emit and busy disables them', () => {
+			const onStop = jest.fn();
+			const onForce = jest.fn();
+			const onDelete = jest.fn();
+			const a = header(rooms[0], { onStop, onForce });
+			const [stop, force] = Array.from(
+				a.el.querySelectorAll<HTMLButtonElement>('button.ctl'),
+			);
+			stop.click();
+			force.click();
+			expect(onStop).toHaveBeenCalledTimes(1);
+			expect(onForce).toHaveBeenCalledTimes(1);
+			a.unmount();
+			const b = header({ ...rooms[0], state: 'exited' }, { onDelete });
+			b.el.querySelector<HTMLButtonElement>('button.ctl')!.click();
+			expect(onDelete).toHaveBeenCalledTimes(1);
+			b.unmount();
+			const c = header(rooms[0], { busy: true });
+			for (const btn of c.el.querySelectorAll<HTMLButtonElement>('button.ctl'))
+				expect(btn.disabled).toBe(true);
+			c.unmount();
+		});
+	});
+
+	describe('ControlDialog', () => {
+		it('delete dialog names the chat and says it cannot be undone', async () => {
+			const html = await render('ControlDialog', {
+				mode: 'delete',
+				title: 'claude · TM-1021',
+			});
+			expect(html).toContain('role="dialog"');
+			expect(html).toContain('aria-modal="true"');
+			expect(html).toContain('claude · TM-1021');
+			expect(html).toContain('cannot be undone');
+			expect(html).toContain('runner');
+			expect(html).toContain('data-autofocus');
+		});
+
+		it('force dialog warns about killing the process', async () => {
+			const html = await render('ControlDialog', {
+				mode: 'force',
+				title: 'x',
+			});
+			expect(html).toContain('Force stop');
+			expect(html).toContain('immediately');
+		});
+
+		it('confirm and cancel emit, busy disables confirm, error is an alert', async () => {
+			const onConfirm = jest.fn();
+			const onCancel = jest.fn();
+			const a = mountDom('ControlDialog', {
+				mode: 'delete',
+				title: 'x',
+				onConfirm,
+				onCancel,
+			});
+			const [cancel, confirm] = Array.from(
+				a.el.querySelectorAll<HTMLButtonElement>('.trust-actions button'),
+			);
+			cancel.click();
+			expect(onCancel).toHaveBeenCalledTimes(1);
+			expect(onConfirm).not.toHaveBeenCalled();
+			confirm.click();
+			expect(onConfirm).toHaveBeenCalledTimes(1);
+			a.unmount();
+			const b = mountDom('ControlDialog', {
+				mode: 'delete',
+				title: 'x',
+				busy: true,
+				error: 'nope',
+			});
+			const buttons = b.el.querySelectorAll<HTMLButtonElement>(
+				'.trust-actions button',
+			);
+			expect(buttons[1].disabled).toBe(true);
+			expect(b.el.querySelector('.mgr-error[role="alert"]')?.textContent).toBe(
+				'nope',
+			);
+			b.unmount();
+		});
+	});
+
 	it('ChatHeader bar and title are window drag regions, buttons are not', async () => {
 		const html = await render('ChatHeader', { info: rooms[0], sub: 'x' });
 		expect(html).toMatch(/<div class="mh2" data-tauri-drag-region/);

@@ -47,8 +47,22 @@
 				v-if="activeInfo"
 				:info="activeInfo"
 				@search="store.openSearch(store.activeKey ?? undefined)"
+				:busy="store.control.busy"
 				@switch="store.openSwitch()"
+				@stop="store.stopActive()"
+				@force="store.openControl('force')"
+				@delete="store.openControl('delete')"
 			/>
+			<p
+				v-if="
+					!store.control.open &&
+					(store.control.error || store.control.stillRunning)
+				"
+				class="mgr-error"
+				role="alert"
+			>
+				{{ store.control.error || $t('manager.control.stillRunning') }}
+			</p>
 			<SearchPanel
 				v-if="store.search.open"
 				:query="store.search.text"
@@ -162,6 +176,19 @@
 			@submit="store.submitNewSession()"
 			@cancel="store.closeNewSession()"
 		/>
+		<ControlDialog
+			v-else-if="store.control.open"
+			:mode="store.control.open"
+			:title="activeInfo?.title ?? ''"
+			:busy="store.control.busy"
+			:error="store.control.error"
+			@confirm="
+				store.control.open === 'delete'
+					? store.deleteActive()
+					: store.forceStopActive()
+			"
+			@cancel="store.closeControl()"
+		/>
 		<SwitchAgentDialog
 			v-else-if="store.switcher.open"
 			:agent="store.switcher.agent"
@@ -265,6 +292,7 @@
 	import { defineComponent } from 'vue';
 	import { onManagerResync } from './api';
 	import ChatHeader from './components/ChatHeader.vue';
+	import ControlDialog from './components/ControlDialog.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
 	import DecisionCard from './components/DecisionCard.vue';
@@ -312,6 +340,7 @@
 		name: 'ManagerApp',
 		components: {
 			ChatHeader,
+			ControlDialog,
 			ChatList,
 			Composer,
 			ConfirmKindDialog,

@@ -26,6 +26,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tmgr_ipc::api::{caps, method, AutopilotCommand, AutopilotStatus, ClientMsg, Resize, Scroll, ServerMsg};
 
+pub(crate) use api::check_session_id;
 use api::{find_session, list_sessions, session_from_value, state_from_value, Detail, RunnerSession, RunnerState, StartRun, TaskRef};
 use conn::{input_frame, read_frame, write_frame, write_json, Conn, Frame, ConnError, Welcome, MAX_INPUT, UPDATE_RUNNER};
 use dir::Sock;

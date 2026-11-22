@@ -27,7 +27,10 @@
 		"encrypted": "End-to-end encrypted",
 		"switchAgent": "Switch agent",
 		"unrestricted": "Unrestricted",
-		"unrestrictedHint": "No sandbox, bypass mode: this manager can run any command as you and type into bypass sessions."
+		"unrestrictedHint": "No sandbox, bypass mode: this manager can run any command as you and type into bypass sessions.",
+		"stop": "Stop",
+		"forceStop": "Force stop",
+		"delete": "Delete"
 	},
 	"state": {
 		"working": "Working",
@@ -250,5 +253,16 @@
 	"activity": {
 		"working": "Working…",
 		"toolsUsed": "Tools used ({count})"
+	},
+	"control": {
+		"forceTitle": "Force stop this chat?",
+		"forceBody": "The agent process is killed immediately and cannot save its work. Use this only when Stop does not work.",
+		"deleteTitle": "Delete this chat?",
+		"deleteBody": "This removes the session entry from the runner. It cannot be undone.",
+		"deleteTarget": "Chat: {title}",
+		"stillRunning": "This chat is still running. Use Force stop.",
+		"confirmForce": "Force stop",
+		"confirmDelete": "Delete",
+		"working": "Working..."
 	}
 }

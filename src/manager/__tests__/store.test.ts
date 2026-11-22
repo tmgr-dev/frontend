@@ -55,6 +55,8 @@ const setup = (over: Partial<ManagerApi> = {}) => {
 		audit: jest.fn(async () => []),
 		spawn: jest.fn(async () => undefined),
 		switchAgent: jest.fn(async () => undefined),
+		stop: jest.fn(async () => ({ exited: true })),
+		remove: jest.fn(async () => undefined),
 		onMessage: jest.fn(async (h) => {
 			push = h;
 			return () => {};
@@ -1120,5 +1122,161 @@ describe('live tool activity', () => {
 		jest.setSystemTime(Date.now() - 61_000);
 		emit(msg(10, S1, 'session'));
 		expect(store.toolsByMessage).toEqual({});
+
+describe('chat control', () => {
+	const running = { ...info(S1), state: 'working' };
+	const exited = { ...info(S1), state: 'exited' };
+	const withRooms = (first: RoomInfo, extra: Partial<ManagerApi> = {}) =>
+		setup({ rooms: jest.fn(async () => [first, info(MGR)]), ...extra });
+
+	it('stopActive asks for a graceful stop and refreshes the rooms', async () => {
+		const { api, store } = withRooms(running);
+		await store.init();
+		await store.select(S1_KEY);
+		const before = (api.rooms as jest.Mock).mock.calls.length;
+		await store.stopActive();
+		expect(api.stop).toHaveBeenCalledWith(S1, false);
+		expect((api.rooms as jest.Mock).mock.calls.length).toBe(before + 1);
+		expect(store.control.busy).toBe(false);
+		expect(store.control.error).toBe('');
+	});
+
+	it('stopActive shows busy while the call is in flight and ignores a second click', async () => {
+		let release: (v: { exited: boolean }) => void = () => {};
+		const stop = jest.fn(
+			() => new Promise<{ exited: boolean }>((r) => (release = r)),
+		);
+		const { store } = withRooms(running, { stop });
+		await store.init();
+		await store.select(S1_KEY);
+		const first = store.stopActive();
+		expect(store.control.busy).toBe(true);
+		await store.stopActive();
+		expect(stop).toHaveBeenCalledTimes(1);
+		release({ exited: true });
+		await first;
+		expect(store.control.busy).toBe(false);
+	});
+
+	it('a stop that did not exit points to Force stop', async () => {
+		const { store } = withRooms(running, {
+			stop: jest.fn(async () => ({ exited: false })),
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		await store.stopActive();
+		expect(store.control.stillRunning).toBe(true);
+	});
+
+	it('stop errors surface and clear busy', async () => {
+		const { store } = withRooms(running, {
+			stop: jest.fn(async () => {
+				throw new Error('The runner is busy');
+			}),
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		await store.stopActive();
+		expect(store.control.error).toBe('The runner is busy');
+		expect(store.control.busy).toBe(false);
+	});
+
+	it('force stop calls the api only after the dialog is confirmed', async () => {
+		const { api, store } = withRooms(running);
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('force');
+		expect(store.control.open).toBe('force');
+		expect(api.stop).not.toHaveBeenCalled();
+		await store.forceStopActive();
+		expect(api.stop).toHaveBeenCalledWith(S1, true);
+		expect(store.control.open).toBeNull();
+	});
+
+	it('cancelling the dialog never calls the api', async () => {
+		const { api, store } = withRooms(exited);
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('delete');
+		store.closeControl();
+		expect(store.control.open).toBeNull();
+		expect(api.remove).not.toHaveBeenCalled();
+		expect(api.stop).not.toHaveBeenCalled();
+	});
+
+	it('failed force stop keeps the dialog open with the error', async () => {
+		const { store } = withRooms(running, {
+			stop: jest.fn(async () => {
+				throw new Error('boom');
+			}),
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('force');
+		await store.forceStopActive();
+		expect(store.control.open).toBe('force');
+		expect(store.control.error).toBe('boom');
+	});
+
+	it('deleteActive removes the room and selects another one', async () => {
+		let gone = false;
+		const remove = jest.fn(async () => {
+			gone = true;
+		});
+		const { store } = setup({
+			rooms: jest.fn(async () => (gone ? [info(MGR)] : [exited, info(MGR)])),
+			remove,
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('delete');
+		await store.deleteActive();
+		expect(remove).toHaveBeenCalledWith(S1);
+		expect(store.control.open).toBeNull();
+		expect(store.messagesByRoom[S1_KEY]).toBeUndefined();
+		expect(store.activeKey).toBe(MGR_KEY);
+	});
+
+	it('delete error keeps the dialog open', async () => {
+		const { store } = withRooms(exited, {
+			remove: jest.fn(async () => {
+				throw new Error('Stop the chat first');
+			}),
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('delete');
+		await store.deleteActive();
+		expect(store.control.open).toBe('delete');
+		expect(store.control.error).toBe('Stop the chat first');
+		expect(store.control.busy).toBe(false);
+	});
+
+	it('control actions are refused for the manager room, remote rooms and wrong states', async () => {
+		const remote = { ...running, local: false };
+		const a = withRooms(running);
+		await a.store.init();
+		await a.store.select(MGR_KEY);
+		await a.store.stopActive();
+		a.store.openControl('force');
+		await a.store.deleteActive();
+		expect(a.store.control.open).toBeNull();
+		const b = withRooms(remote);
+		await b.store.init();
+		await b.store.select(S1_KEY);
+		await b.store.stopActive();
+		await b.store.forceStopActive();
+		const c = withRooms(running);
+		await c.store.init();
+		await c.store.select(S1_KEY);
+		await c.store.deleteActive();
+		const d = withRooms(exited);
+		await d.store.init();
+		await d.store.select(S1_KEY);
+		await d.store.stopActive();
+		for (const t of [a, b, c, d]) {
+			expect(t.api.stop).not.toHaveBeenCalled();
+			expect(t.api.remove).not.toHaveBeenCalled();
+		}
 	});
 });

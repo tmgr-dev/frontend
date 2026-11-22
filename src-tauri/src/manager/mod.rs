@@ -13,7 +13,7 @@ use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use backend::{ChatMessage, HistoryParams, ManagerBackend, RoomInfo, RoomRef, SearchParams, SendParams, SlashCommand, StubBackend};
+use backend::{ChatMessage, HistoryParams, ManagerBackend, RoomInfo, RoomRef, SearchParams, SendParams, SlashCommand, StopOutcome, StubBackend};
 
 pub const LABEL: &str = "manager";
 pub const SHORTCUT: &str = "CmdOrCtrl+Shift+M";
@@ -203,6 +203,18 @@ pub async fn manager_cancel<R: Runtime>(app: AppHandle<R>, room: RoomRef, id: St
 pub async fn manager_agent_models<R: Runtime>(app: AppHandle<R>, agent: String) -> Result<Vec<agent_models::ModelChoice>, String> {
   let home = app.path().home_dir().ok();
   blocking(move || agent_models::load(&agent, home.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn manager_stop<R: Runtime>(app: AppHandle<R>, room: RoomRef, force: bool) -> Result<StopOutcome, String> {
+  let backend = backend_of(&app)?;
+  blocking(move || backend.stop(&room, force)).await
+}
+
+#[tauri::command]
+pub async fn manager_remove<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> Result<(), String> {
+  let backend = backend_of(&app)?;
+  blocking(move || backend.remove(&room)).await
 }
 
 fn relay_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<dyn relay::port::RelayPort>, String> {

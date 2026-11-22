@@ -138,6 +138,11 @@ pub const MAX_ATTACHMENTS: usize = 16;
 pub const MAX_HISTORY: u32 = 500;
 pub const MAX_QUERY: usize = 256;
 
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+pub struct StopOutcome {
+  pub exited: bool,
+}
+
 pub trait ManagerBackend: Send + Sync {
   fn rooms(&self) -> Result<Vec<RoomInfo>, String>;
   fn history(&self, params: HistoryParams) -> Result<Vec<ChatMessage>, String>;
@@ -146,6 +151,8 @@ pub trait ManagerBackend: Send + Sync {
   fn commands(&self, room: &RoomRef) -> Result<Vec<SlashCommand>, String>;
   fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String>;
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
+  fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
+  fn remove(&self, room: &RoomRef) -> Result<(), String>;
 }
 
 fn valid_attachment(a: &Attachment) -> Result<(), String> {
@@ -358,6 +365,14 @@ impl ManagerBackend for StubBackend {
 
   fn cancel(&self, room: &RoomRef, _id: &str) -> Result<bool, String> {
     self.with(|s| if known(s, room) { Ok(false) } else { Err("unknown room".into()) })
+  }
+
+  fn stop(&self, _room: &RoomRef, _force: bool) -> Result<StopOutcome, String> {
+    Err("controlling chats needs the local runner".into())
+  }
+
+  fn remove(&self, _room: &RoomRef) -> Result<(), String> {
+    Err("controlling chats needs the local runner".into())
   }
 }
 

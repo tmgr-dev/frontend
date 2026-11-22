@@ -444,6 +444,8 @@ pub fn run() {
       manager::manager_queued,
       manager::manager_cancel,
       manager::manager_agent_models,
+      manager::manager_stop,
+      manager::manager_remove,
       manager::manager_spawn_card,
       manager::manager_trust_state,
       manager::manager_join_decide,

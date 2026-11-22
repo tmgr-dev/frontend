@@ -41,6 +41,12 @@ export const managerCancel = (room: RoomRef, id: string) =>
 export const managerAgentModels = (agent: string) =>
 	invoke<ModelChoice[]>('manager_agent_models', { agent });
 
+export const managerStop = (room: RoomRef, force: boolean) =>
+	invoke<{ exited: boolean }>('manager_stop', { room, force });
+
+export const managerRemove = (room: RoomRef) =>
+	invoke<void>('manager_remove', { room });
+
 export const spawnCard = (cardId: string) =>
 	invoke<SpawnCardStatus>('manager_spawn_card', { cardId });
 

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::backend::{ChatMessage, HistoryParams, ManagerBackend, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, SlashCommand, MAX_HISTORY};
+use super::backend::{ChatMessage, HistoryParams, ManagerBackend, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, SlashCommand, StopOutcome, MAX_HISTORY};
 use super::local::LocalPort;
 use super::relay::port::RelayPort;
 
@@ -9,6 +9,8 @@ pub struct CompositeBackend {
   local: Arc<dyn LocalPort>,
   relay: Arc<dyn RelayPort>,
 }
+
+const CONTROL_LOCAL_ONLY: &str = "only this machine's chats can be stopped or deleted here";
 
 enum Route {
   Local,
@@ -130,6 +132,20 @@ impl ManagerBackend for CompositeBackend {
       Route::Relay => Err("only this machine's queued messages can be cancelled here".into()),
     }
   }
+
+  fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String> {
+    match self.route(room)? {
+      Route::Local => self.local.stop(room, force),
+      Route::Relay => Err(CONTROL_LOCAL_ONLY.into()),
+    }
+  }
+
+  fn remove(&self, room: &RoomRef) -> Result<(), String> {
+    match self.route(room)? {
+      Route::Local => self.local.remove(room),
+      Route::Relay => Err(CONTROL_LOCAL_ONLY.into()),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -212,6 +228,14 @@ mod tests {
     fn cancel(&self, _: &RoomRef, _: &str) -> Result<bool, String> {
       self.note("cancel");
       self.up().map(|_| true)
+    }
+    fn stop(&self, _: &RoomRef, force: bool) -> Result<StopOutcome, String> {
+      self.note(if force { "force" } else { "stop" });
+      self.up().map(|_| StopOutcome { exited: true })
+    }
+    fn remove(&self, _: &RoomRef) -> Result<(), String> {
+      self.note("remove");
+      self.up()
     }
   }
 
@@ -385,5 +409,21 @@ mod tests {
     let (c, ..) = build(FakeLocal::default(), relay_with_far());
     assert!(c.commands(&mine()).unwrap().iter().any(|x| x.name == "/summary"));
     assert!(c.commands(&far_sess()).unwrap().iter().any(|x| x.name == "/compact"));
+  }
+
+  #[test]
+  fn stop_and_remove_are_local_only() {
+    let (c, l, _) = build(FakeLocal::default(), relay_with_far());
+    let mine_sess = room(RoomKind::Session, ME, Some("s_abcdefghij"));
+    assert!(c.stop(&mine_sess, false).unwrap().exited);
+    assert!(c.stop(&mine_sess, true).unwrap().exited);
+    c.remove(&mine_sess).unwrap();
+    assert_eq!(*l.calls.lock().unwrap(), ["stop", "force", "remove"]);
+    assert!(c.stop(&far_sess(), false).is_err());
+    assert!(c.stop(&far_sess(), true).is_err());
+    assert!(c.remove(&far_sess()).is_err());
+    let unknown = room(RoomKind::Session, "mx_none", Some("z"));
+    assert_eq!(c.remove(&unknown).unwrap_err(), "unknown room");
+    assert_eq!(l.calls.lock().unwrap().len(), 3);
   }
 }

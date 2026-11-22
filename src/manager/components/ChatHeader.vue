@@ -40,6 +40,35 @@
 		>
 			{{ $t('manager.header.switchAgent') }}
 		</button>
+		<template v-if="canControl">
+			<template v-if="!exited">
+				<button
+					type="button"
+					class="btn sm ctl"
+					:disabled="busy"
+					@click="$emit('stop')"
+				>
+					{{ $t('manager.header.stop') }}
+				</button>
+				<button
+					type="button"
+					class="btn sm ctl"
+					:disabled="busy"
+					@click="$emit('force')"
+				>
+					{{ $t('manager.header.forceStop') }}
+				</button>
+			</template>
+			<button
+				v-else
+				type="button"
+				class="btn sm ctl"
+				:disabled="busy"
+				@click="$emit('delete')"
+			>
+				{{ $t('manager.header.delete') }}
+			</button>
+		</template>
 		<span v-if="info.state" class="hxx">
 			<StatePill :state="info.state" />
 			<span v-if="info.context_tokens !== undefined" :class="['ctx', ctxLevel]"
@@ -65,9 +94,16 @@
 		props: {
 			info: { type: Object as PropType<RoomInfo>, required: true },
 			sub: { type: String, default: '' },
+			busy: { type: Boolean, default: false },
 		},
-		emits: ['search', 'switch'],
+		emits: ['search', 'switch', 'stop', 'force', 'delete'],
 		computed: {
+			canControl(): boolean {
+				return this.info.room.kind === 'session' && this.info.local !== false;
+			},
+			exited(): boolean {
+				return this.info.state === 'exited';
+			},
 			isManager(): boolean {
 				return this.info.room.kind === 'manager';
 			},

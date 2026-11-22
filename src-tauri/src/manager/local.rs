@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::Deserialize;
 use serde_json::Value;
+use std::time::{Duration, Instant};
 
-use super::backend::{ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, MAX_HISTORY};
+use super::backend::{ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, StopOutcome, MAX_HISTORY};
 
 pub trait LocalPort: Send + Sync {
   fn machine(&self) -> Result<String, String>;
@@ -14,19 +16,98 @@ pub trait LocalPort: Send + Sync {
   fn send(&self, params: SendParams) -> Result<ChatMessage, String>;
   fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String>;
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
+  fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
+  fn remove(&self, room: &RoomRef) -> Result<(), String>;
 }
 
 pub trait ChatCall: Send + Sync {
   fn call(&self, method: &str, params: Value) -> Result<Value, String>;
 }
 
+struct StopTiming {
+  poll: Duration,
+  int_wait: Duration,
+  term_wait: Duration,
+}
+
+const STOP_TIMING: StopTiming = StopTiming { poll: Duration::from_millis(200), int_wait: Duration::from_secs(10), term_wait: Duration::from_secs(5) };
+
+#[derive(Deserialize)]
+struct SessState {
+  kind: String,
+}
+
+#[derive(Deserialize)]
+struct Sess {
+  id: String,
+  state: SessState,
+  #[serde(default)]
+  manager: bool,
+}
+
+impl Sess {
+  fn exited(&self) -> bool {
+    self.state.kind == "exited"
+  }
+}
+
+fn control_error(e: String) -> String {
+  if e.starts_with("busy") {
+    "The runner is busy with this chat. Try again in a moment.".to_owned()
+  } else if e.starts_with("not_found") {
+    "This chat no longer exists in the runner.".to_owned()
+  } else if e.starts_with("not_running") {
+    "This chat is not running.".to_owned()
+  } else {
+    e
+  }
+}
+
 pub struct RunnerLocal {
   runner: Arc<dyn ChatCall>,
+  timing: StopTiming,
 }
 
 impl RunnerLocal {
   pub fn new(runner: Arc<dyn ChatCall>) -> Self {
-    Self { runner }
+    Self { runner, timing: STOP_TIMING }
+  }
+
+  fn sessions(&self) -> Result<Vec<Sess>, String> {
+    self.request("sessions.list", &Value::Null)
+  }
+
+  fn target(&self, room: &RoomRef) -> Result<Sess, String> {
+    let id = match (room.kind, room.session.as_deref()) {
+      (RoomKind::Session, Some(id)) => id,
+      _ => return Err("only a session chat can be controlled".to_owned()),
+    };
+    crate::runner::check_session_id(id)?;
+    if self.machine()? != room.machine {
+      return Err("only this machine's chats can be controlled here".to_owned());
+    }
+    self.sessions()?.into_iter().find(|s| s.id == id).ok_or_else(|| "This chat no longer exists in the runner.".to_owned())
+  }
+
+  fn signal(&self, id: &str, signal: &str) -> Result<bool, String> {
+    match self.runner.call("sessions.kill", serde_json::json!({ "id": id, "signal": signal })) {
+      Ok(_) => Ok(false),
+      Err(e) if e.starts_with("not_running") => Ok(true),
+      Err(e) => Err(control_error(e)),
+    }
+  }
+
+  fn wait_exit(&self, id: &str, limit: Duration) -> Result<bool, String> {
+    let end = Instant::now() + limit;
+    loop {
+      if self.sessions()?.iter().find(|s| s.id == id).is_none_or(Sess::exited) {
+        return Ok(true);
+      }
+      if Instant::now() >= end {
+        return Ok(false);
+      }
+      std::thread::sleep(self.timing.poll);
+    }
   }
 
   fn request<P: Serialize, T: DeserializeOwned>(&self, method: &str, params: &P) -> Result<T, String> {
@@ -68,6 +149,35 @@ impl LocalPort for RunnerLocal {
 
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String> {
     self.request("chat.cancel", &serde_json::json!({ "room": room, "id": id }))
+  }
+
+  fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String> {
+    let sess = self.target(room)?;
+    if sess.exited() {
+      return Err("This chat is not running.".to_owned());
+    }
+    if sess.manager {
+      return Err("The manager session cannot be stopped from here.".to_owned());
+    }
+    let first = if force { "kill" } else { "int" };
+    if self.signal(&sess.id, first)? || self.wait_exit(&sess.id, self.timing.int_wait)? {
+      return Ok(StopOutcome { exited: true });
+    }
+    if force {
+      return Ok(StopOutcome { exited: false });
+    }
+    if self.signal(&sess.id, "term")? {
+      return Ok(StopOutcome { exited: true });
+    }
+    Ok(StopOutcome { exited: self.wait_exit(&sess.id, self.timing.term_wait)? })
+  }
+
+  fn remove(&self, room: &RoomRef) -> Result<(), String> {
+    let sess = self.target(room)?;
+    if !sess.exited() {
+      return Err("Stop the chat first. Only a stopped chat can be deleted.".to_owned());
+    }
+    self.runner.call("sessions.remove", serde_json::json!({ "id": sess.id })).map(drop).map_err(control_error)
   }
 
   fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
@@ -208,5 +318,184 @@ mod tests {
   fn malformed_reply_is_an_error() {
     let (l, _) = local(|_, _| Ok(json!({"x": 1})));
     assert!(l.rooms().unwrap_err().contains("bad reply"));
+  }
+
+  mod control {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    const SID: &str = "s_abcdefghij";
+
+    fn sess_room() -> RoomRef {
+      RoomRef { kind: RoomKind::Session, machine: "mx_a".into(), session: Some(SID.into()) }
+    }
+
+    fn sess_json(kind: &str, manager: bool) -> Value {
+      json!([{ "id": SID, "state": { "kind": kind }, "manager": manager }])
+    }
+
+    fn fast(mut l: RunnerLocal) -> RunnerLocal {
+      l.timing = StopTiming { poll: Duration::from_millis(1), int_wait: Duration::from_millis(40), term_wait: Duration::from_millis(40) };
+      l
+    }
+
+    fn rooms_reply() -> Value {
+      json!([{"room": {"kind": "manager", "machine": "mx_a"}, "title": "Manager"}])
+    }
+
+    fn signals(fake: &Fake) -> Vec<String> {
+      fake.log.lock().unwrap().iter().filter(|c| c.0 == "sessions.kill").map(|c| c.1["signal"].as_str().unwrap().to_owned()).collect()
+    }
+
+    fn methods(fake: &Fake) -> Vec<String> {
+      fake.log.lock().unwrap().iter().map(|c| c.0.clone()).collect()
+    }
+
+    fn stateful(exit_on: &'static str, manager: bool) -> (RunnerLocal, Arc<Fake>) {
+      let dead = Arc::new(AtomicBool::new(false));
+      let (l, f) = local(move |method, params| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(sess_json(if dead.load(Ordering::SeqCst) { "exited" } else { "working" }, manager)),
+        "sessions.kill" => {
+          if params["signal"] == exit_on {
+            dead.store(true, Ordering::SeqCst);
+          }
+          Ok(Value::Null)
+        }
+        _ => Ok(Value::Null),
+      });
+      (fast(l), f)
+    }
+
+    #[test]
+    fn stop_sends_int_and_waits_for_exit() {
+      let (l, f) = stateful("int", false);
+      assert!(l.stop(&sess_room(), false).unwrap().exited);
+      assert_eq!(signals(&f), ["int"]);
+    }
+
+    #[test]
+    fn stop_escalates_to_term_when_int_is_ignored() {
+      let (l, f) = stateful("term", false);
+      assert!(l.stop(&sess_room(), false).unwrap().exited);
+      assert_eq!(signals(&f), ["int", "term"]);
+    }
+
+    #[test]
+    fn stop_reports_still_running_when_nothing_works() {
+      let (l, f) = stateful("never", false);
+      assert!(!l.stop(&sess_room(), false).unwrap().exited);
+      assert_eq!(signals(&f), ["int", "term"]);
+    }
+
+    #[test]
+    fn force_stop_sends_only_kill() {
+      let (l, f) = stateful("kill", false);
+      assert!(l.stop(&sess_room(), true).unwrap().exited);
+      assert_eq!(signals(&f), ["kill"]);
+    }
+
+    #[test]
+    fn force_stop_that_does_not_exit_does_not_escalate() {
+      let (l, f) = stateful("never", false);
+      assert!(!l.stop(&sess_room(), true).unwrap().exited);
+      assert_eq!(signals(&f), ["kill"]);
+    }
+
+    #[test]
+    fn not_running_during_kill_counts_as_exited() {
+      let (l, _) = local(|method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(sess_json("working", false)),
+        _ => Err("not_running: gone".into()),
+      });
+      assert!(fast(l).stop(&sess_room(), false).unwrap().exited);
+    }
+
+    #[test]
+    fn guards_reject_non_session_remote_and_malformed_rooms() {
+      let (l, f) = stateful("int", false);
+      let bad = [
+        RoomRef { kind: RoomKind::Manager, machine: "mx_a".into(), session: None },
+        RoomRef { kind: RoomKind::Session, machine: "mx_a".into(), session: None },
+        RoomRef { kind: RoomKind::Session, machine: "mx_other".into(), session: Some(SID.into()) },
+        RoomRef { kind: RoomKind::Session, machine: "mx_a".into(), session: Some("../x".into()) },
+      ];
+      for room in &bad {
+        assert!(l.stop(room, false).is_err());
+        assert!(l.stop(room, true).is_err());
+        assert!(l.remove(room).is_err());
+      }
+      assert!(signals(&f).is_empty());
+      assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
+    }
+
+    #[test]
+    fn unknown_session_is_not_found() {
+      let (l, f) = local(|method, _| if method == "chat.rooms" { Ok(rooms_reply()) } else { Ok(json!([])) });
+      assert!(l.stop(&sess_room(), false).unwrap_err().contains("no longer exists"));
+      assert!(l.remove(&sess_room()).unwrap_err().contains("no longer exists"));
+      assert!(signals(&f).is_empty());
+    }
+
+    #[test]
+    fn live_manager_session_is_never_stopped_or_removed() {
+      let (l, f) = stateful("int", true);
+      assert!(l.stop(&sess_room(), false).is_err());
+      assert!(l.stop(&sess_room(), true).is_err());
+      assert!(l.remove(&sess_room()).is_err());
+      assert!(signals(&f).is_empty());
+      assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
+    }
+
+    #[test]
+    fn stop_of_an_exited_session_is_refused() {
+      let (l, f) = local(|method, _| if method == "chat.rooms" { Ok(rooms_reply()) } else { Ok(sess_json("exited", false)) });
+      assert!(l.stop(&sess_room(), false).unwrap_err().contains("not running"));
+      assert!(signals(&f).is_empty());
+    }
+
+    #[test]
+    fn remove_only_works_after_exit() {
+      let (l, f) = local(|method, _| if method == "chat.rooms" { Ok(rooms_reply()) } else { Ok(sess_json("working", false)) });
+      assert!(l.remove(&sess_room()).unwrap_err().contains("Stop the chat first"));
+      assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
+    }
+
+    #[test]
+    fn remove_of_an_exited_session_calls_sessions_remove() {
+      let (l, f) = local(|method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(sess_json("exited", false)),
+        _ => Ok(Value::Null),
+      });
+      l.remove(&sess_room()).unwrap();
+      let log = f.log.lock().unwrap();
+      let last = log.last().unwrap();
+      assert_eq!((last.0.as_str(), last.1["id"].as_str()), ("sessions.remove", Some(SID)));
+    }
+
+    #[test]
+    fn runner_errors_become_clear_messages() {
+      let (l, _) = local(|method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(sess_json("exited", false)),
+        _ => Err("busy: processes are alive".into()),
+      });
+      assert!(l.remove(&sess_room()).unwrap_err().contains("busy with this chat"));
+      let (l, _) = local(|method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(sess_json("working", false)),
+        _ => Err("not_found: x".into()),
+      });
+      assert!(fast(l).stop(&sess_room(), false).unwrap_err().contains("no longer exists"));
+    }
+
+    #[test]
+    fn disabled_runner_gives_the_existing_error() {
+      let (l, _) = local(|_, _| Err("Agent runner is not running".into()));
+      assert_eq!(l.stop(&sess_room(), false).unwrap_err(), "Agent runner is not running");
+      assert_eq!(l.remove(&sess_room()).unwrap_err(), "Agent runner is not running");
+    }
   }
 }

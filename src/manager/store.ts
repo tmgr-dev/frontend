@@ -32,6 +32,8 @@ export interface ManagerApi {
 	audit: typeof realApi.managerAudit;
 	spawn: typeof realApi.managerSpawnSession;
 	switchAgent: typeof realApi.managerSwitchAgent;
+	stop: typeof realApi.managerStop;
+	remove: typeof realApi.managerRemove;
 }
 
 export type PanelTab = 'session' | 'hierarchy' | 'audit' | 'encryption';
@@ -225,6 +227,12 @@ export const createManagerStore = (api: ManagerApi) => {
 			busy: false,
 			error: '',
 			form: emptyForm(),
+		},
+		control: {
+			open: null as 'force' | 'delete' | null,
+			busy: false,
+			error: '',
+			stillRunning: false,
 		},
 		switcher: {
 			open: false,
@@ -674,6 +682,78 @@ export const createManagerStore = (api: ManagerApi) => {
 			}
 		},
 
+		controllable(): RoomInfo | null {
+			const info = store.rooms.find((r) => roomKey(r.room) === store.activeKey);
+			return info && info.room.kind === 'session' && info.local !== false
+				? info
+				: null;
+		},
+
+		openControl(mode: 'force' | 'delete') {
+			const info = store.controllable();
+			if (!info || store.control.busy) return;
+			if ((info.state === 'exited') !== (mode === 'delete')) return;
+			store.control.error = '';
+			store.control.open = mode;
+		},
+
+		closeControl() {
+			if (store.control.busy) return;
+			store.control.open = null;
+			store.control.error = '';
+		},
+
+		async runControl(
+			wantExited: boolean,
+			act: (room: RoomRef) => Promise<boolean>,
+		) {
+			const info = store.controllable();
+			const ctl = store.control;
+			if (!info || ctl.busy || (info.state === 'exited') !== wantExited) return;
+			ctl.busy = true;
+			ctl.error = '';
+			ctl.stillRunning = false;
+			try {
+				if (await act(info.room)) ctl.open = null;
+			} catch (e) {
+				ctl.error = errorText(e);
+			} finally {
+				ctl.busy = false;
+			}
+			await store.loadRooms().catch(() => undefined);
+		},
+
+		async stopActive() {
+			await store.runControl(false, async (room) => {
+				const { exited } = await api.stop(room, false);
+				store.control.stillRunning = !exited;
+				return exited;
+			});
+		},
+
+		async forceStopActive() {
+			await store.runControl(false, async (room) => {
+				const { exited } = await api.stop(room, true);
+				store.control.stillRunning = !exited;
+				return exited;
+			});
+		},
+
+		async deleteActive() {
+			const key = store.activeKey;
+			await store.runControl(true, async (room) => {
+				await api.remove(room);
+				return true;
+			});
+			if (!key || store.control.open) return;
+			if (store.rooms.some((r) => roomKey(r.room) === key)) return;
+			delete store.messagesByRoom[key];
+			store.shownRooms.delete(key);
+			const first = store.rooms[0];
+			store.activeKey = null;
+			if (first) await store.select(roomKey(first.room));
+		},
+
 		async jumpToHit(hit: ChatMessage): Promise<boolean> {
 			const key = roomKey(hit.room);
 			store.closeSearch();
@@ -711,6 +791,8 @@ export const useManagerStore = (): ManagerStore => {
 		audit: realApi.managerAudit,
 		spawn: realApi.managerSpawnSession,
 		switchAgent: realApi.managerSwitchAgent,
+		stop: realApi.managerStop,
+		remove: realApi.managerRemove,
 	});
 	return singleton;
 };

@@ -19,6 +19,8 @@
 		"allow-manager-queued",
 		"allow-manager-cancel",
 		"allow-manager-agent-models",
+		"allow-manager-stop",
+		"allow-manager-remove",
 		"allow-manager-spawn-card",
 		"allow-manager-trust-state",
 		"allow-manager-join-decide",
