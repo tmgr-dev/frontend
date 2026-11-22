@@ -59,6 +59,16 @@
 		</div>
 		<div class="macts">
 			<button
+				v-if="canSpeak"
+				type="button"
+				:aria-pressed="speaking ? 'true' : 'false'"
+				:aria-label="speakLabel"
+				:title="speakTitle"
+				@click="onSpeak"
+			>
+				<Icon :name="speaking ? 'stop' : 'speak'" />
+			</button>
+			<button
 				type="button"
 				:aria-label="$t('manager.messages.copy')"
 				:title="$t('manager.messages.copy')"
@@ -95,6 +105,7 @@
 		formatSize,
 		truncate,
 	} from './viewHelpers';
+	import { speaker } from '../tts/speaker';
 
 	const Attachments = defineComponent({
 		name: 'ManagerAttachments',
@@ -146,6 +157,28 @@
 			clock(): string {
 				return formatClock(this.message.ts_ms);
 			},
+			canSpeak(): boolean {
+				return (
+					!this.isOwner &&
+					!this.isDecision &&
+					this.message.body_md.trim().length > 0 &&
+					speaker.available
+				);
+			},
+			speaking(): boolean {
+				return speaker.speakingId === this.message.id;
+			},
+			speakLabel(): string {
+				return this.speaking
+					? this.$t('manager.messages.stopSpeaking')
+					: this.$t('manager.messages.speak');
+			},
+			speakTitle(): string {
+				if (speaker.errorId !== this.message.id) return this.speakLabel;
+				return speaker.error === 'no-voice'
+					? this.$t('manager.messages.noVoice')
+					: this.$t('manager.messages.speakFailed');
+			},
 			copyableHtml(): string | undefined {
 				return this.html
 					? addCopyButtons(this.html, {
@@ -157,6 +190,9 @@
 		},
 		methods: {
 			truncate,
+			onSpeak() {
+				speaker.toggle(this.message.id, this.message.body_md);
+			},
 			onBodyClick(e: MouseEvent) {
 				const btn = (e.target as Element).closest<HTMLElement>('.blk-copy');
 				if (!btn) return;
