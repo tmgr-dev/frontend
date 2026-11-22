@@ -655,7 +655,7 @@ mod tests {
         capture_consenting(&chat, &s, &resolve, &|_| true);
         let got = drain(&rx);
         let wire = serde_json::to_string(&got).unwrap();
-        for leaked in ["SECRETVALUE", "FILECONTENTS", "TOOLOUTPUT"] {
+        for leaked in ["abc123", "FILECONTENTS", "TOOLOUTPUT"] {
             assert!(!wire.contains(leaked), "{leaked}");
         }
         assert!(got[0].used.len() == 2 && got[0].used[1] == "Write: notes.txt");
