@@ -75,6 +75,8 @@ const QUEUE_POLL_MS = 2000;
 const POST_SEND_POLLS = 3;
 const ACTIVITY_TTL_MS = 60_000;
 const MAX_TOOLS = 50;
+const MAX_LABEL = 80;
+const MAX_TOOL_MESSAGES = 200;
 
 const byTime = (a: ChatMessage, b: ChatMessage) =>
 	a.ts_ms - b.ts_ms || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -109,6 +111,34 @@ export const createManagerStore = (api: ManagerApi) => {
 	let postSendPolls = 0;
 	const activityTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const lastUsed = new Map<string, { used: string[]; at: number }>();
+
+	const toolOrder: string[] = [];
+	const toolRoom = new Map<string, string>();
+
+	const dropTools = (id: string) => {
+		delete store.toolsByMessage[id];
+		toolRoom.delete(id);
+	};
+
+	const rememberTools = (id: string, key: string, used: string[]) => {
+		store.toolsByMessage[id] = used;
+		toolRoom.set(id, key);
+		toolOrder.push(id);
+		while (toolOrder.length > MAX_TOOL_MESSAGES) {
+			const old = toolOrder.shift();
+			if (old) dropTools(old);
+		}
+	};
+
+	const forgetRoom = (key: string) => {
+		lastUsed.delete(key);
+		dropActivity(key);
+		for (const [id, room] of [...toolRoom]) {
+			if (room !== key) continue;
+			dropTools(id);
+			toolOrder.splice(toolOrder.indexOf(id), 1);
+		}
+	};
 
 	const dropActivity = (key: string) => {
 		const timer = activityTimers.get(key);
@@ -234,12 +264,12 @@ export const createManagerStore = (api: ManagerApi) => {
 			store.messagesByRoom[key] = next;
 			if (
 				message.kind === 'text' &&
-				message.author.kind !== 'owner' &&
-				!message.user_turn
+				!message.user_turn &&
+				message.author.kind === message.room.kind
 			) {
 				const seen = lastUsed.get(key);
 				if (seen && Date.now() - seen.at <= ACTIVITY_TTL_MS) {
-					store.toolsByMessage[message.id] = seen.used;
+					rememberTools(message.id, key, seen.used);
 				}
 				lastUsed.delete(key);
 				dropActivity(key);
@@ -261,23 +291,27 @@ export const createManagerStore = (api: ManagerApi) => {
 
 		ingestActivity(event: ActivityEvent) {
 			const key = roomKey(event.room);
-			const used = event.used.slice(0, MAX_TOOLS);
+			const cap = (text: string) => text.slice(0, MAX_LABEL);
+			const used = event.used.slice(0, MAX_TOOLS).map(cap);
+			dropActivity(key);
 			if (used.length) lastUsed.set(key, { used, at: Date.now() });
-			if (event.state === 'idle') {
-				dropActivity(key);
-				return;
+			else if (event.state === 'idle') lastUsed.delete(key);
+			if (event.state === 'working') {
+				store.activityByRoom[key] = {
+					state: event.state,
+					current: event.current === null ? null : cap(event.current),
+					used,
+				};
 			}
-			store.activityByRoom[key] = {
-				state: event.state,
-				current: event.current,
-				used,
-			};
-			const timer = activityTimers.get(key);
-			if (timer) clearTimeout(timer);
-			activityTimers.set(
-				key,
-				setTimeout(() => dropActivity(key), ACTIVITY_TTL_MS),
-			);
+			if (event.state === 'working' || used.length) {
+				activityTimers.set(
+					key,
+					setTimeout(() => {
+						lastUsed.delete(key);
+						dropActivity(key);
+					}, ACTIVITY_TTL_MS),
+				);
+			}
 		},
 
 		async refreshQueued() {
@@ -312,6 +346,14 @@ export const createManagerStore = (api: ManagerApi) => {
 
 		async loadRooms() {
 			const rooms = await api.rooms();
+			const live = new Set(rooms.map((r) => roomKey(r.room)));
+			for (const key of new Set([
+				...store.rooms.map((r) => roomKey(r.room)),
+				...toolRoom.values(),
+				...Object.keys(store.activityByRoom),
+			])) {
+				if (!live.has(key)) forgetRoom(key);
+			}
 			store.rooms = [...rooms].sort(
 				(a, b) =>
 					Number(b.room.kind === 'manager') - Number(a.room.kind === 'manager'),

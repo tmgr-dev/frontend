@@ -1040,4 +1040,85 @@ describe('live tool activity', () => {
 		expect(store.toolsByMessage.m010).toHaveLength(50);
 		expect(store.activityByRoom[S1_KEY]).toBeDefined();
 	});
+
+	it('attaches tools only to the room own agent message', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 'Bash: ls', ['Bash: ls']));
+		emit(msg(10, S1, 'manager'));
+		expect(store.toolsByMessage).toEqual({});
+		emit(msg(11, S1, 'session'));
+		expect(store.toolsByMessage.m011).toEqual(['Bash: ls']);
+		emitActivity(act(MGR, 'working', 'Read: a', ['Read: a']));
+		emit(msg(12, MGR, 'session'));
+		expect(store.toolsByMessage.m012).toBeUndefined();
+		emit(msg(13, MGR, 'manager'));
+		expect(store.toolsByMessage.m013).toEqual(['Read: a']);
+	});
+
+	it('caps labels at 80 characters and the list at 50 on receipt', async () => {
+		const { store, emitActivity } = setup();
+		await store.init();
+		const long = 'x'.repeat(200);
+		emitActivity(act(S1, 'working', long, Array(60).fill(long)));
+		const live = store.activityByRoom[S1_KEY];
+		expect(live.used).toHaveLength(50);
+		expect(live.used[0]).toHaveLength(80);
+		expect(live.current).toHaveLength(80);
+	});
+
+	it('keeps only the newest 200 message tool lists', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		for (let i = 0; i < 205; i++) {
+			emitActivity(act(S1, 'working', 't', ['t']));
+			emit(msg(i, S1, 'session'));
+		}
+		const keys = Object.keys(store.toolsByMessage);
+		expect(keys).toHaveLength(200);
+		expect(store.toolsByMessage.m000).toBeUndefined();
+		expect(store.toolsByMessage.m204).toBeDefined();
+	});
+
+	it('drops tool lists and activity of a room that is removed', async () => {
+		const rooms = jest.fn(async () => [info(S1), info(MGR)]);
+		const { store, emit, emitActivity } = setup({ rooms });
+		await store.init();
+		emitActivity(act(S1, 'working', 't', ['t']));
+		emit(msg(10, S1, 'session'));
+		emitActivity(act(S1, 'working', 'u', ['u']));
+		rooms.mockResolvedValue([info(MGR)]);
+		await store.loadRooms();
+		expect(store.toolsByMessage).toEqual({});
+		expect(store.activityByRoom[S1_KEY]).toBeUndefined();
+	});
+
+	it('keeps the used list of a finished turn from the idle event for the reply', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'idle', null, ['Read: a.ts']));
+		expect(store.activityByRoom[S1_KEY]).toBeUndefined();
+		emit(msg(10, S1, 'session'));
+		expect(store.toolsByMessage.m010).toEqual(['Read: a.ts']);
+	});
+
+	it('clears everything for the room on an empty idle', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 't', ['t']));
+		emitActivity(act(S1, 'idle', null, []));
+		expect(store.activityByRoom[S1_KEY]).toBeUndefined();
+		emit(msg(10, S1, 'session'));
+		expect(store.toolsByMessage).toEqual({});
+	});
+
+	it('expiry also clears the remembered tools', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'idle', null, ['t']));
+		jest.advanceTimersByTime(61_000);
+		jest.setSystemTime(Date.now() - 61_000);
+		emit(msg(10, S1, 'session'));
+		expect(store.toolsByMessage).toEqual({});
+	});
 });
