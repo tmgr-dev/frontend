@@ -6,6 +6,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 ## 0.9.182 — 2026-11-22
 
 - Manager window: a Speak button under agent replies reads the message aloud with the system voice (Russian or English), press again to stop. Code blocks are skipped, text never leaves the device.
+- Manager window: the model switcher lists the models your installed Codex, agy and opencode report, instead of a fixed list.
 
 ## 0.9.181 — 2026-11-22
 
