@@ -263,6 +263,18 @@ describe('manager dialogs', () => {
 		expect(html).toContain('Use the tmgr CLI.');
 	});
 
+	it('SwitchAgentDialog shows list labels and keeps the slug in the submit text', async () => {
+		const html = await render('SwitchAgentDialog', {
+			agent: 'agy',
+			model: 'gemini-3.8-flash-medium',
+			models: ['default', 'gemini-3.8-flash-medium'],
+			labels: { 'gemini-3.8-flash-medium': 'Gemini 3.8 Flash (Medium)' },
+			current: 'claude',
+		});
+		expect(html).toContain('Gemini 3.8 Flash (Medium)');
+		expect(html).toContain('Switch to agy · gemini-3.8-flash-medium');
+	});
+
 	it('SwitchAgentDialog shows claude model labels and keeps the alias in the submit text', async () => {
 		const html = await render('SwitchAgentDialog', {
 			agent: 'claude',

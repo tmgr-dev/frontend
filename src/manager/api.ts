@@ -4,6 +4,7 @@ import type {
 	AuditEntry,
 	ChatMessage,
 	HistoryParams,
+	ModelChoice,
 	RoomInfo,
 	RoomRef,
 	SearchParams,
@@ -33,6 +34,9 @@ export const managerQueued = (room: RoomRef) =>
 
 export const managerCancel = (room: RoomRef, id: string) =>
 	invoke<boolean>('manager_cancel', { room, id });
+
+export const managerAgentModels = (agent: string) =>
+	invoke<ModelChoice[]>('manager_agent_models', { agent });
 
 export const spawnCard = (cardId: string) =>
 	invoke<SpawnCardStatus>('manager_spawn_card', { cardId });

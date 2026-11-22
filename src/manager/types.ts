@@ -187,3 +187,8 @@ export interface SpawnCardStatus {
 	session?: string;
 	reason?: string;
 }
+
+export interface ModelChoice {
+	value: string;
+	label: string;
+}

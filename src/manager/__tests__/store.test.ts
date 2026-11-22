@@ -47,6 +47,9 @@ const setup = (over: Partial<ManagerApi> = {}) => {
 		search: jest.fn(async () => []),
 		queued: jest.fn(async () => []),
 		cancel: jest.fn(async () => true),
+		agentModels: jest.fn(async () => {
+			throw new Error('no list');
+		}),
 		audit: jest.fn(async () => []),
 		spawn: jest.fn(async () => undefined),
 		switchAgent: jest.fn(async () => undefined),
@@ -571,6 +574,66 @@ describe('detail panel and dialogs', () => {
 		expect(store.switcher.model).toBe('default');
 		store.closeSwitch();
 		expect(store.switcher.open).toBe(false);
+	});
+
+	it('switch dialog loads the agent model list once and caches it', async () => {
+		const agentModels = jest.fn(async (_agent: string) => [
+			{ value: 'default', label: 'default' },
+			{ value: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
+		]);
+		const { store } = setup({
+			rooms: jest.fn(async () => [{ ...info(S1), agent: 'codex' }, info(MGR)]),
+			agentModels,
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		store.pickSwitchAgent('agy');
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(agentModels).toHaveBeenCalledWith('agy');
+		expect(store.switchModels).toEqual(['default', 'gemini-3.8-flash-medium']);
+		expect(store.switchLabels['gemini-3.8-flash-medium']).toBe(
+			'Gemini 3.8 Flash (Medium)',
+		);
+		expect(store.switcher.model).toBe('default');
+		store.closeSwitch();
+		store.pickSwitchAgent('agy');
+		await Promise.resolve();
+		expect(agentModels.mock.calls.filter((c) => c[0] === 'agy')).toHaveLength(
+			1,
+		);
+	});
+
+	it('switch dialog keeps the static list when the model query fails or for claude', async () => {
+		const agentModels = jest.fn(async () => {
+			throw new Error('agy not found');
+		});
+		const { store } = setup({ agentModels });
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		store.pickSwitchAgent('opencode');
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(store.switchModels).toEqual(['default']);
+		expect(store.switchLabels).toEqual({});
+		store.pickSwitchAgent('claude');
+		expect(agentModels).not.toHaveBeenCalledWith('claude');
+		expect(store.switchModels[0]).toBe('opus');
+	});
+
+	it('a loaded list replaces an unavailable preselected model', async () => {
+		const { store } = setup({
+			rooms: jest.fn(async () => [{ ...info(S1), agent: 'codex' }, info(MGR)]),
+			agentModels: jest.fn(async () => [{ value: 'gpt-7', label: 'GPT 7' }]),
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(store.switcher.model).toBe('gpt-7');
 	});
 
 	it('switch stub error surfaces in the dialog', async () => {

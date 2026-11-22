@@ -18,6 +18,7 @@
 		"allow-manager-commands",
 		"allow-manager-queued",
 		"allow-manager-cancel",
+		"allow-manager-agent-models",
 		"allow-manager-spawn-card",
 		"allow-manager-trust-state",
 		"allow-manager-join-decide",

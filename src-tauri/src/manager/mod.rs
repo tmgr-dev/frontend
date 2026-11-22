@@ -1,3 +1,4 @@
+pub mod agent_models;
 pub mod backend;
 pub mod bridge;
 pub mod composite;
@@ -190,6 +191,12 @@ pub async fn manager_queued<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> Res
 pub async fn manager_cancel<R: Runtime>(app: AppHandle<R>, room: RoomRef, id: String) -> Result<bool, String> {
   let backend = backend_of(&app)?;
   blocking(move || backend.cancel(&room, &id)).await
+}
+
+#[tauri::command]
+pub async fn manager_agent_models<R: Runtime>(app: AppHandle<R>, agent: String) -> Result<Vec<agent_models::ModelChoice>, String> {
+  let home = app.path().home_dir().ok();
+  blocking(move || agent_models::load(&agent, home.as_deref())).await
 }
 
 fn relay_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<dyn relay::port::RelayPort>, String> {
