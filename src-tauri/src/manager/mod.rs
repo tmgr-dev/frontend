@@ -303,8 +303,11 @@ pub async fn manager_pair_local_runner<R: Runtime>(app: AppHandle<R>) -> Result<
   let relay = relay_of(&app)?;
   let runner = app.try_state::<crate::runner::Runner>().map(|r| r.inner().clone());
   let out = blocking(move || {
-    let Some(runner) = runner else { return Ok(pair::PairResult { state: "no_runner".into(), message: Some("the runner is not available".into()), ..Default::default() }) };
-    Ok(pair::pair_local_runner(relay.as_ref(), &runner, &pair::CliSpawner, &PAIR_BUSY, pair::Timeouts::default()))
+    let runner: Box<dyn local::ChatCall> = match runner {
+      Some(r) => Box::new(r),
+      None => Box::new(pair::NoRunner),
+    };
+    Ok(pair::pair_local_runner(relay.as_ref(), &*runner, &pair::CliSpawner, &PAIR_BUSY, pair::Timeouts::default()))
   })
   .await?;
   trust_changed(&app);

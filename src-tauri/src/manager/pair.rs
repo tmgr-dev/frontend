@@ -153,6 +153,7 @@ struct RelaySelf {
 
 #[derive(Deserialize)]
 struct JoinLine {
+  id: String,
   device_id: String,
   fp: String,
   #[serde(default)]
@@ -192,60 +193,71 @@ fn after_failure(relay: &dyn RelayPort, fallback: &str) -> PairResult {
   }
 }
 
+pub struct NoRunner;
+
+impl ChatCall for NoRunner {
+  fn call(&self, _: &str, _: Value) -> Result<Value, String> {
+    Err("the runner is not available".into())
+  }
+}
+
 pub fn pair_local_runner(relay: &dyn RelayPort, runner: &dyn ChatCall, spawner: &dyn JoinSpawner, busy: &AtomicBool, timeouts: Timeouts) -> PairResult {
   if busy.swap(true, Ordering::SeqCst) {
     return result("pending", Some("pairing is already running".into()));
   }
   let _flight = Flight(busy);
-  let own: RelaySelf = match runner.call("chat.relay_self", Value::Null).and_then(|v| serde_json::from_value(v).map_err(|e| format!("bad reply from the runner: {e}"))) {
-    Ok(own) => own,
-    Err(e) => return result("no_runner", Some(e)),
-  };
-  let with_ids = |mut r: PairResult| {
-    r.machine = Some(own.id.clone());
-    r.device_id = Some(own.device_id.clone());
+  let own: Option<RelaySelf> = runner.call("chat.relay_self", Value::Null).ok().and_then(|v| serde_json::from_value(v).ok());
+  let mut ids: Option<(String, String)> = own.as_ref().map(|o| (o.id.clone(), o.device_id.clone()));
+  let with_ids = |ids: &Option<(String, String)>, mut r: PairResult| {
+    if let Some((machine, device_id)) = ids {
+      r.machine = Some(machine.clone());
+      r.device_id = Some(device_id.clone());
+    }
     r
   };
   let ts = match relay.trust_state() {
     Ok(ts) => ts,
-    Err(e) => return with_ids(failed(e)),
+    Err(e) => return with_ids(&ids, failed(e)),
   };
-  if trusted(&ts, &own.device_id, &own.fp) {
-    return with_ids(result("already", None));
+  if own.as_ref().is_some_and(|o| trusted(&ts, &o.device_id, &o.fp)) {
+    return with_ids(&ids, result("already", None));
   }
   if !ts.gate_blockers.is_empty() {
-    return with_ids(blocked(ts.gate_blockers, None));
+    return with_ids(&ids, blocked(ts.gate_blockers, None));
   }
   let code = match relay.open_join_code() {
     Ok(code) => code,
-    Err(e) => return with_ids(failed(e)),
+    Err(e) => return with_ids(&ids, failed(e)),
   };
   let mut child = match spawner.spawn(&code) {
     Ok(child) => child,
     Err(SpawnError::NoCli) => {
       close_code(relay, &code);
-      return with_ids(result("no_cli", Some("the tmgr command line tool was not found".into())));
+      return with_ids(&ids, result("no_cli", Some("the tmgr command line tool was not found".into())));
     }
     Err(SpawnError::Failed(e)) => {
       close_code(relay, &code);
-      return with_ids(failed(e));
+      return with_ids(&ids, failed(e));
     }
   };
   let line = match child.first_line(timeouts.first_line) {
     Ok(line) => line,
-    Err(e) => return with_ids(stop(relay, &code, &mut *child, failed(e))),
+    Err(e) => return with_ids(&ids, stop(relay, &code, &mut *child, failed(e))),
   };
   let Ok(parsed) = serde_json::from_str::<JoinLine>(line.trim()) else {
-    return with_ids(stop(relay, &code, &mut *child, failed("the tmgr command printed an unexpected line")));
+    return with_ids(&ids, stop(relay, &code, &mut *child, failed("the tmgr command printed an unexpected line")));
   };
-  if parsed.device_id != own.device_id || parsed.fp != own.fp {
-    return with_ids(stop(relay, &code, &mut *child, failed("the joining runner does not match this computer's runner")));
+  if own.as_ref().is_some_and(|o| parsed.device_id != o.device_id || parsed.fp != o.fp) {
+    return with_ids(&ids, stop(relay, &code, &mut *child, failed("the joining runner does not match this computer's runner")));
   }
+  ids = Some((parsed.id.clone(), parsed.device_id.clone()));
   if parsed.already_joined {
-    return with_ids(stop(relay, &code, &mut *child, failed("this computer's runner already joined a chat that this app does not trust")));
+    let known = relay.trust_state().is_ok_and(|t| trusted(&t, &parsed.device_id, &parsed.fp));
+    let out = if known { result("already", None) } else { failed("this computer's runner already joined a chat that this app does not trust") };
+    return with_ids(&ids, stop(relay, &code, &mut *child, out));
   }
   if let Err(e) = relay.expect_join(&parsed.device_id, &parsed.fp) {
-    return with_ids(stop(relay, &code, &mut *child, failed(e)));
+    return with_ids(&ids, stop(relay, &code, &mut *child, failed(e)));
   }
   let deadline = Instant::now() + timeouts.wait;
   let exited = loop {
@@ -253,21 +265,21 @@ pub fn pair_local_runner(relay: &dyn RelayPort, runner: &dyn ChatCall, spawner: 
       Ok(Some(success)) => break success,
       Ok(None) => {
         if relay.trust_state().is_ok_and(|t| t.auto_join_error.is_some()) {
-          return with_ids(stop(relay, &code, &mut *child, after_failure(relay, "the join did not complete")));
+          return with_ids(&ids, stop(relay, &code, &mut *child, after_failure(relay, "the join did not complete")));
         }
         if Instant::now() >= deadline {
-          return with_ids(stop(relay, &code, &mut *child, result("pending", Some("the runner is waiting for approval".into()))));
+          return with_ids(&ids, stop(relay, &code, &mut *child, result("pending", Some("the runner is waiting for approval".into()))));
         }
       }
-      Err(e) => return with_ids(stop(relay, &code, &mut *child, failed(e))),
+      Err(e) => return with_ids(&ids, stop(relay, &code, &mut *child, failed(e))),
     }
   };
   if !exited {
-    return with_ids(after_failure(relay, "the join did not complete"));
+    return with_ids(&ids, after_failure(relay, "the join did not complete"));
   }
   match relay.trust_state() {
-    Ok(ts) if trusted(&ts, &parsed.device_id, &parsed.fp) => with_ids(result("paired", None)),
-    _ => with_ids(result("pending", Some("the runner is waiting for approval".into()))),
+    Ok(ts) if trusted(&ts, &parsed.device_id, &parsed.fp) => with_ids(&ids, result("paired", None)),
+    _ => with_ids(&ids, result("pending", Some("the runner is waiting for approval".into()))),
   }
 }
 
@@ -486,12 +498,40 @@ mod tests {
     assert!(relay.0.lock().unwrap().expected.is_empty());
   }
 
+  fn fresh_runner() -> FakeRunner {
+    FakeRunner(Err("the chat relay is not configured or not ready on this runner".into()))
+  }
+
   #[test]
-  fn a_runner_that_does_not_answer_is_no_runner() {
+  fn a_fresh_runner_without_relay_self_pairs_through_the_cli_line() {
     let relay = FakeRelay::default();
-    let out = run(&relay, &FakeRunner(Err("Agent runner is not running".into())), &spawner(Err(SpawnError::NoCli)));
-    assert_eq!((out.state.as_str(), out.message.as_deref()), ("no_runner", Some("Agent runner is not running")));
-    assert_eq!(relay.0.lock().unwrap().opened, 0);
+    let sp = spawner(Ok(child(&good_line(), &[Some(true)])));
+    let out = run(&relay, &fresh_runner(), &sp);
+    assert_eq!((out.state.as_str(), out.machine.as_deref(), out.device_id.as_deref()), ("paired", Some("mx_a"), Some(DEV)));
+    let c = relay.0.lock().unwrap();
+    assert_eq!(c.opened, 1);
+    assert_eq!(c.expected, [(DEV.to_owned(), FP.to_owned())]);
+  }
+
+  #[test]
+  fn a_fresh_runner_with_no_cli_is_no_cli() {
+    let relay = FakeRelay::default();
+    let out = run(&relay, &fresh_runner(), &spawner(Err(SpawnError::NoCli)));
+    assert_eq!(out.state, "no_cli");
+    assert_eq!(relay.0.lock().unwrap().opened, 1);
+  }
+
+  #[test]
+  fn an_already_joined_line_that_this_app_trusts_is_already_and_closes_the_code() {
+    let relay = FakeRelay::default();
+    relay.0.lock().unwrap().trusted = true;
+    let line = json!({ "id": "mx_a", "device_id": DEV, "fp": FP, "already_joined": true }).to_string();
+    let c = child(&line, &[]);
+    let killed = c.killed.clone();
+    let out = run(&relay, &fresh_runner(), &spawner(Ok(c)));
+    assert_eq!((out.state.as_str(), out.machine.as_deref()), ("already", Some("mx_a")));
+    assert!(relay.0.lock().unwrap().expected.is_empty());
+    assert!(*killed.lock().unwrap());
   }
 
   #[test]
