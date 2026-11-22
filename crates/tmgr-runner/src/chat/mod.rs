@@ -475,9 +475,10 @@ impl Chat {
         }
     }
 
-    pub(crate) fn forget_activity(&self, room: &RoomRef) {
+    pub(crate) fn retire_activity(&self, room: &RoomRef) {
         for s in lock(&self.activity_subs).iter() {
             s.forget(room);
+            s.put_blank_idle(room);
         }
     }
 

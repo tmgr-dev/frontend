@@ -1951,6 +1951,7 @@ struct Conn {
     client: String,
     pending_rx: Mutex<Option<Receiver<Value>>>,
     chat_rx: Mutex<Option<chat::ChatSub>>,
+    chat_subscribed: AtomicBool,
 }
 
 impl Conn {
@@ -5584,6 +5585,7 @@ impl Runner {
             client: hello.client,
             pending_rx: Mutex::new(None),
             chat_rx: Mutex::new(None),
+            chat_subscribed: AtomicBool::new(false),
         });
         let closed = |reason: &str| {
             let _ = conn.write(&ServerMsg::Closed {

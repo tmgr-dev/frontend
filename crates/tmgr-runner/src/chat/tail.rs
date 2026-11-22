@@ -415,23 +415,42 @@ pub fn capture_consenting(
         }
         if reading_allowed(agent) {
             if t.status.is_none() && agent == Agent::Claude {
-                t.status = t
-                    .path
-                    .parent()
-                    .map(|root| StatusScan::new(root.to_path_buf(), t.path.clone()));
+                t.status = t.path.parent().map(|root| {
+                    let mut scan = StatusScan::new(root.to_path_buf(), t.path.clone());
+                    scan.poll();
+                    scan.take_finished();
+                    scan
+                });
             }
-            if let Some(scan) = t.status.as_mut() {
+            let finished = t.status.as_mut().and_then(|scan| {
                 scan.poll();
-            }
-            let event = activity_of(&room, s, t.status.as_ref());
+                scan.take_finished()
+            });
+            let event = match finished {
+                Some(done) => ChatActivity {
+                    v: 1,
+                    room: room.clone(),
+                    state: ActivityState::Idle,
+                    current: None,
+                    used: done
+                        .iter()
+                        .map(|l| crate::attach::status::mask_secrets(l))
+                        .collect(),
+                },
+                None => activity_of(&room, s, t.status.as_ref()),
+            };
             if t.sent.as_ref() != Some(&event) {
                 chat.publish_activity(&event);
                 t.sent = Some(event);
             }
         } else {
             t.status = None;
-            t.sent = None;
-            chat.forget_activity(&room);
+            if t.sent
+                .take()
+                .is_some_and(|prev| prev != super::activity::blank_idle(&room))
+            {
+                chat.retire_activity(&room);
+            }
         }
         let Ok(batch) = tail::read_new(&t.path, agent, t.offset, tail::WINDOW) else {
             continue;
@@ -566,6 +585,9 @@ mod tests {
         allowed.set(false);
         capture_consenting(&chat, &s, &resolve, &consent);
         assert!(lock(&chat.tails).get(SID).unwrap().status.is_none());
+        let last = drain(&rx);
+        assert_eq!(last.len(), 1);
+        assert!(last[0].current.is_none() && last[0].used.is_empty());
         append(&log, &tool_line("b", "Bash", json!({"command": "rm"})));
         capture_consenting(&chat, &s, &resolve, &consent);
         assert!(drain(&rx).is_empty());
@@ -665,6 +687,85 @@ mod tests {
             .used
             .iter()
             .all(|l| l.chars().count() <= crate::attach::status::ACTIVITY_MAX));
+    }
+
+    #[test]
+    fn revoking_consent_sends_one_blank_idle_event_and_nothing_else() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let rx = chat.subscribe_activity();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        let allowed = Cell::new(true);
+        let consent = |_: Agent| allowed.get();
+        capture_consenting(&chat, &s, &resolve, &consent);
+        append(&log, &tool_line("a", "Bash", json!({"command": "ls"})));
+        capture_consenting(&chat, &s, &resolve, &consent);
+        allowed.set(false);
+        capture_consenting(&chat, &s, &resolve, &consent);
+        let got = drain(&rx);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].room, chat.session_room(SID));
+        assert_eq!(got[0].state, ActivityState::Idle);
+        assert_eq!(got[0].current, None);
+        assert!(got[0].used.is_empty());
+        capture_consenting(&chat, &s, &resolve, &consent);
+        assert!(drain(&rx).is_empty());
+    }
+
+    #[test]
+    fn tools_and_the_final_answer_in_one_window_still_report_the_finished_turns_tools() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let rx = chat.subscribe_activity();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        drain(&rx);
+        let mut chunk = tool_line("a", "Bash", json!({"command": "cargo test -p x"}));
+        chunk += &(json!({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "a", "content": "ok"}]}})
+        .to_string()
+            + "\n");
+        chunk += &(json!({"type": "assistant", "message": {"id": "fin", "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "done"}]}})
+        .to_string()
+            + "\n");
+        append(&log, &chunk);
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        let got = drain(&rx);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].state, ActivityState::Idle);
+        assert_eq!(got[0].current, None);
+        assert_eq!(got[0].used, ["Bash: cargo test"]);
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        let after = drain(&rx);
+        assert!(after.iter().all(|e| e.used.is_empty()));
+    }
+
+    #[test]
+    fn a_finished_turn_already_in_the_log_when_the_scan_starts_is_not_replayed() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let rx = chat.subscribe_activity();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        append(&log, &tool_line("a", "Bash", json!({"command": "ls"})));
+        append(
+            &log,
+            &(json!({"type": "assistant", "message": {"id": "fin", "stop_reason": "end_turn",
+                "content": [{"type": "text", "text": "done"}]}})
+            .to_string()
+                + "\n"),
+        );
+        let s = [info(SID, "claude-code", "waiting")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        assert!(drain(&rx).iter().all(|e| e.used.is_empty()));
     }
 
     fn manager_info() -> SessionInfo {

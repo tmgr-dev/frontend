@@ -335,6 +335,9 @@ impl Runner {
                 })
             }
             chat_method::SUBSCRIBE => {
+                if conn.chat_subscribed.swap(true, Ordering::SeqCst) {
+                    return Ok(Value::Null);
+                }
                 let activity = p.get("activity").and_then(Value::as_bool) == Some(true);
                 let mut slot = lock(&conn.chat_rx);
                 let sub = slot.get_or_insert_with(|| chat::ChatSub {
@@ -541,6 +544,7 @@ mod tests {
             client: client.into(),
             pending_rx: Mutex::new(None),
             chat_rx: Mutex::new(None),
+            chat_subscribed: AtomicBool::new(false),
         });
         (c, b)
     }
@@ -919,6 +923,39 @@ mod tests {
         peer.set_read_timeout(Some(Duration::from_millis(800)))
             .unwrap();
         assert!(read_frame(&mut peer).is_err());
+        c.closed.store(true, Ordering::SeqCst);
+        h.join().unwrap();
+    }
+
+    #[test]
+    fn a_second_subscribe_on_one_connection_is_a_no_op() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let (c, mut peer) = conn(CLIENT_DESKTOP);
+        rt.chat.set_activity_consent(true);
+        call(&rt, &c, chat_method::SUBSCRIBE, Value::Null).unwrap();
+        let sub = lock(&c.chat_rx).take().unwrap();
+        let (rt2, c2) = (rt.clone(), c.clone());
+        let h = thread::spawn(move || rt2.chat_pusher(&c2, sub));
+        assert_eq!(
+            call(&rt, &c, chat_method::SUBSCRIBE, json!({"activity": true})).unwrap(),
+            Value::Null
+        );
+        assert!(lock(&c.chat_rx).is_none());
+        assert_eq!(rt.chat.activity_subscribers(), 0);
+        let (sender, _p2) = conn(CLIENT_CLI);
+        call(&rt, &sender, chat_method::SEND, send_params(&rt, "once")).unwrap();
+        peer.set_read_timeout(Some(Duration::from_millis(800)))
+            .unwrap();
+        let mut bodies = Vec::new();
+        while let Ok(Some(Frame::Json(v))) = read_frame(&mut peer) {
+            bodies.push(v["message"]["body_md"].as_str().unwrap_or("").to_string());
+        }
+        assert_eq!(
+            bodies.iter().filter(|b| *b == "once").count(),
+            1,
+            "{bodies:?}"
+        );
         c.closed.store(true, Ordering::SeqCst);
         h.join().unwrap();
     }

@@ -2203,6 +2203,7 @@ mod tests {
             client: client.into(),
             pending_rx: Mutex::new(None),
             chat_rx: Mutex::new(None),
+            chat_subscribed: AtomicBool::new(false),
         });
         (c, b)
     }

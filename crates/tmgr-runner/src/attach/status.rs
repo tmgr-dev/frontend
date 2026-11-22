@@ -286,6 +286,7 @@ pub struct StatusScan {
     skipping: bool,
     pending: Vec<(String, String, String)>,
     used: Vec<String>,
+    finished: Option<Vec<String>>,
     todo: Option<(u32, u32)>,
     subs: Vec<Sub>,
     asking: Option<(String, String)>,
@@ -317,6 +318,7 @@ impl StatusScan {
             skipping: false,
             pending: Vec::new(),
             used: Vec::new(),
+            finished: None,
             todo: None,
             subs: Vec::new(),
             asking: None,
@@ -328,6 +330,10 @@ impl StatusScan {
 
     pub fn current_event(&self) -> Option<&str> {
         self.pending.last().map(|(_, _, event)| event.as_str())
+    }
+
+    pub fn take_finished(&mut self) -> Option<Vec<String>> {
+        self.finished.take()
     }
 
     pub fn used(&self) -> &[String] {
@@ -392,6 +398,7 @@ impl StatusScan {
         self.skipping = false;
         self.pending.clear();
         self.used.clear();
+        self.finished = None;
         self.todo = None;
         self.windowed = false;
         self.asking = None;
@@ -511,7 +518,10 @@ impl StatusScan {
                     .and_then(Value::as_str)
                     == Some("end_turn")
                 {
-                    self.used.clear();
+                    let done = std::mem::take(&mut self.used);
+                    if !done.is_empty() {
+                        self.finished = Some(done);
+                    }
                 }
             }
             Some("user") => self.user(&v, content),
@@ -918,6 +928,30 @@ pub fn activity_label(name: &str, input: &Value) -> String {
 const EVENT_LABEL_MAX: usize = 60;
 const EVENT_TOOL_MAX: usize = 40;
 
+const SUBCOMMAND_PROGRAMS: [&str; 21] = [
+    "git",
+    "cargo",
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "docker",
+    "kubectl",
+    "make",
+    "go",
+    "python",
+    "python3",
+    "pip",
+    "uv",
+    "gh",
+    "tmgr",
+    "rustup",
+    "brew",
+    "apt",
+    "systemctl",
+    "terraform",
+];
+
 fn plain_subcommand(word: &str) -> bool {
     let mut chars = word.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
@@ -946,7 +980,10 @@ pub(crate) fn event_label(name: &str, input: &Value) -> String {
                         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '-'))
             });
             match program {
-                Some(p) => match words.next().filter(|w| plain_subcommand(w)) {
+                Some(p) => match words
+                    .next()
+                    .filter(|w| SUBCOMMAND_PROGRAMS.contains(&p.as_str()) && plain_subcommand(w))
+                {
                     Some(sub) => format!("Bash: {p} {sub}"),
                     None => format!("Bash: {p}"),
                 },
@@ -1067,6 +1104,12 @@ mod tests {
             l("Bash", r#"{"command":"/usr/bin/git push origin"}"#),
             "Bash: git push"
         );
+        assert_eq!(l("Bash", r#"{"command":"echo hunter2"}"#), "Bash: echo");
+        assert_eq!(
+            l("Bash", r#"{"command":"openssl passwd x"}"#),
+            "Bash: openssl"
+        );
+        assert_eq!(l("Bash", r#"{"command":"git -C x log"}"#), "Bash: git");
         assert_eq!(l("Bash", r#"{"command":"tool ./x.sh"}"#), "Bash: tool");
         assert_eq!(l("Bash", r#"{"command":"tool a=b"}"#), "Bash: tool");
         assert_eq!(l("Bash", r#"{"command":"KEY=zzz9 run"}"#), "Bash");
