@@ -8,6 +8,7 @@ import {
 	type Attachment,
 	type AuditEntry,
 	type ChatMessage,
+	type ModelChoice,
 	type RoomInfo,
 	type RoomRef,
 	type SlashCommand,
@@ -23,6 +24,7 @@ export interface ManagerApi {
 	search: typeof realApi.managerSearch;
 	queued: typeof realApi.managerQueued;
 	cancel: typeof realApi.managerCancel;
+	agentModels: typeof realApi.managerAgentModels;
 	onMessage: typeof realApi.onManagerMessage;
 	audit: typeof realApi.managerAudit;
 	spawn: typeof realApi.managerSpawnSession;
@@ -94,6 +96,7 @@ export const createManagerStore = (api: ManagerApi) => {
 	const commandCache = new Map<string, SlashCommand[]>();
 	let searchSeq = 0;
 	let queueSeq = 0;
+	const modelsRequested = new Set<string>();
 
 	const unread = reactive({} as Record<string, number>);
 	let queueTimer: ReturnType<typeof setInterval> | null = null;
@@ -102,6 +105,21 @@ export const createManagerStore = (api: ManagerApi) => {
 	const stopQueuePoll = () => {
 		if (queueTimer) clearInterval(queueTimer);
 		queueTimer = null;
+	};
+
+	const loadModels = async (agent: SpawnAgent) => {
+		if (agent === 'claude' || modelsRequested.has(agent)) return;
+		modelsRequested.add(agent);
+		try {
+			const list = await api.agentModels(agent);
+			if (!Array.isArray(list) || !list.length) return;
+			store.switcher.choices[agent] = list;
+			const sw = store.switcher;
+			if (sw.agent === agent && !list.some((m) => m.value === sw.model))
+				sw.model = list[0].value;
+		} catch {
+			modelsRequested.delete(agent);
+		}
 	};
 
 	const syncQueuePoll = () => {
@@ -161,6 +179,19 @@ export const createManagerStore = (api: ManagerApi) => {
 			error: '',
 			agent: 'claude' as SpawnAgent,
 			model: AGENT_MODELS.claude[0],
+			choices: {} as Partial<Record<SpawnAgent, ModelChoice[]>>,
+		},
+
+		get switchModels(): string[] {
+			const dynamic = store.switcher.choices[store.switcher.agent];
+			return dynamic
+				? dynamic.map((m) => m.value)
+				: AGENT_MODELS[store.switcher.agent];
+		},
+
+		get switchLabels(): Record<string, string> {
+			const dynamic = store.switcher.choices[store.switcher.agent] ?? [];
+			return Object.fromEntries(dynamic.map((m) => [m.value, m.label]));
 		},
 
 		get machines(): string[] {
@@ -498,14 +529,16 @@ export const createManagerStore = (api: ManagerApi) => {
 			const known = info.agent as SpawnAgent | undefined;
 			const agent = known && known in AGENT_MODELS ? known : 'claude';
 			store.switcher.agent = agent;
-			store.switcher.model = AGENT_MODELS[agent][0];
+			store.switcher.model = store.switchModels[0];
 			store.switcher.error = '';
 			store.switcher.open = true;
+			void loadModels(agent);
 		},
 
 		pickSwitchAgent(agent: SpawnAgent) {
 			store.switcher.agent = agent;
-			store.switcher.model = AGENT_MODELS[agent][0];
+			store.switcher.model = store.switchModels[0];
+			void loadModels(agent);
 		},
 
 		closeSwitch() {
@@ -560,6 +593,7 @@ export const useManagerStore = (): ManagerStore => {
 		search: realApi.managerSearch,
 		queued: realApi.managerQueued,
 		cancel: realApi.managerCancel,
+		agentModels: realApi.managerAgentModels,
 		onMessage: realApi.onManagerMessage,
 		audit: realApi.managerAudit,
 		spawn: realApi.managerSpawnSession,

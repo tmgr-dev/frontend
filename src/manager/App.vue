@@ -151,7 +151,8 @@
 			v-else-if="store.switcher.open"
 			:agent="store.switcher.agent"
 			:model="store.switcher.model"
-			:models="AGENT_MODELS[store.switcher.agent]"
+			:models="store.switchModels"
+			:labels="store.switchLabels"
 			:current="activeInfo?.agent"
 			:busy="store.switcher.busy"
 			:error="store.switcher.error"
@@ -273,7 +274,7 @@
 		saveWidth,
 		type PanelSide,
 	} from './panelWidths';
-	import { AGENT_MODELS, MAX_FILE_BYTES, useManagerStore } from './store';
+	import { MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
 	import { roomKey } from './types';
 
@@ -313,7 +314,6 @@
 			return {
 				store: useManagerStore(),
 				trust: useTrustStore(),
-				AGENT_MODELS,
 			};
 		},
 		computed: {

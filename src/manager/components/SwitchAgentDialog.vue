@@ -40,7 +40,7 @@
 					:aria-pressed="model === m"
 					@click="$emit('update:model', m)"
 				>
-					{{ modelLabel(agent, m) }}
+					{{ labels[m] ?? modelLabel(agent, m) }}
 				</button>
 			</div>
 			<p v-if="cliOnly(agent)" class="hint">
@@ -91,6 +91,10 @@
 			agent: { type: String, required: true },
 			model: { type: String, required: true },
 			models: { type: Array as PropType<string[]>, required: true },
+			labels: {
+				type: Object as PropType<Record<string, string>>,
+				default: () => ({}),
+			},
 			current: { type: String, default: '' },
 			currentModel: { type: String, default: '' },
 			busy: { type: Boolean, default: false },
