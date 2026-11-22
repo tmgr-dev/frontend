@@ -21,6 +21,8 @@ export interface ManagerApi {
 	send: typeof realApi.managerSend;
 	commands: typeof realApi.managerCommands;
 	search: typeof realApi.managerSearch;
+	queued: typeof realApi.managerQueued;
+	cancel: typeof realApi.managerCancel;
 	onMessage: typeof realApi.onManagerMessage;
 	audit: typeof realApi.managerAudit;
 	spawn: typeof realApi.managerSpawnSession;
@@ -64,6 +66,8 @@ export interface FileLike {
 const PAGE = 50;
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_JUMP_PAGES = 20;
+const QUEUE_POLL_MS = 2000;
+const POST_SEND_POLLS = 3;
 
 const byTime = (a: ChatMessage, b: ChatMessage) =>
 	a.ts_ms - b.ts_ms || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -89,8 +93,29 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export const createManagerStore = (api: ManagerApi) => {
 	const commandCache = new Map<string, SlashCommand[]>();
 	let searchSeq = 0;
+	let queueSeq = 0;
 
 	const unread = reactive({} as Record<string, number>);
+	let queueTimer: ReturnType<typeof setInterval> | null = null;
+	let postSendPolls = 0;
+
+	const stopQueuePoll = () => {
+		if (queueTimer) clearInterval(queueTimer);
+		queueTimer = null;
+	};
+
+	const syncQueuePoll = () => {
+		if (!store.queuedIds.length && postSendPolls <= 0) {
+			stopQueuePoll();
+			return;
+		}
+		if (queueTimer) return;
+		queueTimer = setInterval(() => {
+			if (!store.queuedIds.length)
+				postSendPolls = Math.max(0, postSendPolls - 1);
+			void store.refreshQueued();
+		}, QUEUE_POLL_MS);
+	};
 
 	const store = reactive({
 		rooms: [] as RoomInfo[],
@@ -101,6 +126,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		unreadTotal: computed(() =>
 			Object.values(unread).reduce((a, b) => a + b, 0),
 		),
+		queuedIds: [] as string[],
 		replyTo: null as ChatMessage | null,
 		draft: { text: '', attachments: [] as Attachment[] },
 		slash: {
@@ -163,8 +189,39 @@ export const createManagerStore = (api: ManagerApi) => {
 			) {
 				store.unreadByRoom[key] = (store.unreadByRoom[key] ?? 0) + 1;
 			}
+			if (key === store.activeKey) void store.refreshQueued();
 			if (!info) void store.loadRooms();
 		},
+
+		async refreshQueued() {
+			const seq = ++queueSeq;
+			const key = store.activeKey;
+			const room = key && store.roomRef(key);
+			if (!key || !room) {
+				store.queuedIds = [];
+				syncQueuePoll();
+				return;
+			}
+			const ids = await api.queued(room).catch(() => null);
+			if (seq !== queueSeq || store.activeKey !== key) return;
+			if (ids) store.queuedIds = ids;
+			syncQueuePoll();
+		},
+
+		async cancelQueued(id: string) {
+			const key = store.activeKey;
+			const room = key && store.roomRef(key);
+			if (!room) return;
+			try {
+				await api.cancel(room, id);
+				store.error = null;
+			} catch (e) {
+				store.error = errorText(e);
+			}
+			await store.refreshQueued();
+		},
+
+		stopQueuePoll,
 
 		async loadRooms() {
 			const rooms = await api.rooms();
@@ -208,6 +265,10 @@ export const createManagerStore = (api: ManagerApi) => {
 			const room = store.roomRef(key);
 			if (!room) return;
 			store.activeKey = key;
+			store.queuedIds = [];
+			postSendPolls = 0;
+			stopQueuePoll();
+			void store.refreshQueued();
 			store.replyTo = null;
 			store.draft.attachments = [];
 			store.closeSlash();
@@ -296,6 +357,8 @@ export const createManagerStore = (api: ManagerApi) => {
 				}
 				store.error = null;
 				store.ingest(sent);
+				postSendPolls = POST_SEND_POLLS;
+				void store.refreshQueued();
 			} catch (e) {
 				store.error = errorText(e);
 			}
@@ -495,6 +558,8 @@ export const useManagerStore = (): ManagerStore => {
 		send: realApi.managerSend,
 		commands: realApi.managerCommands,
 		search: realApi.managerSearch,
+		queued: realApi.managerQueued,
+		cancel: realApi.managerCancel,
 		onMessage: realApi.onManagerMessage,
 		audit: realApi.managerAudit,
 		spawn: realApi.managerSpawnSession,

@@ -45,6 +45,8 @@ const setup = (over: Partial<ManagerApi> = {}) => {
 		send: jest.fn(async ({ room }) => msg(99, room, 'owner')),
 		commands: jest.fn(async () => commands),
 		search: jest.fn(async () => []),
+		queued: jest.fn(async () => []),
+		cancel: jest.fn(async () => true),
 		audit: jest.fn(async () => []),
 		spawn: jest.fn(async () => undefined),
 		switchAgent: jest.fn(async () => undefined),
@@ -641,5 +643,136 @@ describe('watchRooms', () => {
 		stop();
 		await jest.advanceTimersByTimeAsync(20000);
 		expect(api.rooms).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('queued messages', () => {
+	beforeEach(() => jest.useFakeTimers());
+	afterEach(() => jest.useRealTimers());
+
+	const flush = async () => {
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+	};
+
+	it('refreshes the queue when a room opens, after a send and after an ingest', async () => {
+		const queued = jest.fn(async () => ['m050']);
+		const { api, store, emit } = setup({ queued });
+		await store.init();
+		await flush();
+		expect(api.queued).toHaveBeenCalledWith(MGR);
+		expect(store.queuedIds).toEqual(['m050']);
+		const before = queued.mock.calls.length;
+		emit(msg(77, MGR));
+		await flush();
+		expect(queued.mock.calls.length).toBe(before + 1);
+		queued.mockResolvedValue([]);
+		store.draft.text = 'hi';
+		await store.send();
+		await flush();
+		expect(store.queuedIds).toEqual([]);
+	});
+
+	it('polls every 2 seconds only while messages are queued', async () => {
+		const queued = jest.fn(async () => ['m050']);
+		const { store } = setup({ queued });
+		await store.init();
+		await flush();
+		const opened = queued.mock.calls.length;
+		await jest.advanceTimersByTimeAsync(2000);
+		expect(queued.mock.calls.length).toBe(opened + 1);
+		queued.mockResolvedValue([]);
+		await jest.advanceTimersByTimeAsync(2000);
+		const drained = queued.mock.calls.length;
+		await jest.advanceTimersByTimeAsync(10_000);
+		expect(queued.mock.calls.length).toBe(drained);
+	});
+
+	it('polls a few times after a send and then stops when nothing is queued', async () => {
+		const queued = jest.fn(async () => []);
+		const { store } = setup({ queued });
+		await store.init();
+		await flush();
+		store.draft.text = 'hi';
+		await store.send();
+		await flush();
+		const sent = queued.mock.calls.length;
+		await jest.advanceTimersByTimeAsync(2000 * 4);
+		expect(queued.mock.calls.length).toBeGreaterThan(sent);
+		const settled = queued.mock.calls.length;
+		await jest.advanceTimersByTimeAsync(10_000);
+		expect(queued.mock.calls.length).toBe(settled);
+	});
+
+	it('stops polling on room switch and ignores a late response for the old room', async () => {
+		let resolveManager: (ids: string[]) => void = () => {};
+		const queued = jest.fn((room: RoomRef) =>
+			room.kind === 'manager'
+				? new Promise<string[]>((resolve) => {
+						resolveManager = resolve;
+					})
+				: Promise.resolve([]),
+		);
+		const { store } = setup({ queued });
+		await store.init();
+		await store.select(S1_KEY);
+		await flush();
+		resolveManager(['m050']);
+		await flush();
+		expect(store.queuedIds).toEqual([]);
+		const switched = queued.mock.calls.length;
+		await jest.advanceTimersByTimeAsync(10_000);
+		expect(queued.mock.calls.length).toBe(switched);
+		expect(queued.mock.calls.slice(switched)).toEqual([]);
+	});
+
+	it('keeps the newest queue when responses arrive out of order', async () => {
+		const pending: Array<(ids: string[]) => void> = [];
+		const queued = jest.fn(
+			() =>
+				new Promise<string[]>((resolve) => {
+					pending.push(resolve);
+				}),
+		);
+		const { store, emit } = setup({ queued });
+		await store.init();
+		emit(msg(77, MGR));
+		await flush();
+		expect(pending).toHaveLength(2);
+		pending[1]([]);
+		await flush();
+		pending[0](['m050']);
+		await flush();
+		expect(store.queuedIds).toEqual([]);
+	});
+
+	it('cancelQueued cancels the message and refreshes the queue', async () => {
+		let ids = ['m050'];
+		const cancel = jest.fn(async () => {
+			ids = [];
+			return true;
+		});
+		const { api, store } = setup({
+			queued: jest.fn(async () => ids),
+			cancel,
+		});
+		await store.init();
+		await flush();
+		await store.cancelQueued('m050');
+		expect(api.cancel).toHaveBeenCalledWith(MGR, 'm050');
+		expect(store.queuedIds).toEqual([]);
+		expect(store.error).toBeNull();
+	});
+
+	it('cancelQueued reports a failed cancel as the store error', async () => {
+		const { store } = setup({
+			queued: jest.fn(async () => ['m050']),
+			cancel: jest.fn(async () => {
+				throw new Error('runner is down');
+			}),
+		});
+		await store.init();
+		await flush();
+		await store.cancelQueued('m050');
+		expect(store.error).toBe('runner is down');
 	});
 });

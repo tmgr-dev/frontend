@@ -28,6 +28,12 @@ export const managerSearch = (params: SearchParams) =>
 export const managerCommands = (room: RoomRef) =>
 	invoke<SlashCommand[]>('manager_commands', { room });
 
+export const managerQueued = (room: RoomRef) =>
+	invoke<string[]>('manager_queued', { room });
+
+export const managerCancel = (room: RoomRef, id: string) =>
+	invoke<boolean>('manager_cancel', { room, id });
+
 export const spawnCard = (cardId: string) =>
 	invoke<SpawnCardStatus>('manager_spawn_card', { cardId });
 

@@ -20,8 +20,10 @@
 						:html="bodyHtml[row.message.id]"
 						:reply-to="row.replyTo"
 						:grouped="row.grouped"
+						:queued="queuedIds.includes(row.message.id)"
 						@reply="$emit('reply', $event)"
 						@copy="$emit('copy', $event)"
+						@cancel-queued="$emit('cancel-queued', $event)"
 					>
 						<template #decision="slotProps">
 							<slot name="decision" :message="slotProps.message"></slot>
@@ -76,6 +78,10 @@
 			},
 			now: { type: Number, default: () => Date.now() },
 			emptyHint: { type: String, default: undefined },
+			queuedIds: {
+				type: Array as PropType<string[]>,
+				default: () => [],
+			},
 			roomKey: { type: String, default: '' },
 			shownRooms: {
 				type: Object as PropType<Set<string>>,
@@ -86,7 +92,7 @@
 				default: undefined,
 			},
 		},
-		emits: ['reply', 'copy'],
+		emits: ['reply', 'copy', 'cancel-queued'],
 		data() {
 			return {
 				pinned: true,
