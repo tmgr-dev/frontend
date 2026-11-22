@@ -10,7 +10,7 @@ use tmgr_ipc::mgr_rpc::{valid_machine_id, Op};
 
 pub const POLICY_FILE: &str = "manager-remote.toml";
 const MAX_POLICY_BYTES: u64 = 16 * 1024;
-const DEFAULT_ALLOW: [Op; 2] = [Op::List, Op::Read];
+const DEFAULT_ALLOW: [Op; 3] = [Op::List, Op::Read, Op::Room];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
@@ -142,7 +142,7 @@ mod tests {
             (Op::Read, true),
             (Op::Ask, false),
             (Op::Send, false),
-            (Op::Room, false),
+            (Op::Room, true),
             (Op::SpawnChallenge, false),
             (Op::Spawn, false),
             (Op::Switch, false),

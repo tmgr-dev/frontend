@@ -1453,13 +1453,13 @@ mod tests {
     }
 
     #[test]
-    fn room_is_denied_by_the_default_policy_and_allowed_when_listed() {
+    fn room_is_allowed_by_the_default_policy_and_denied_when_not_listed() {
         let r = rig();
         let default = Policy::parse(&format!("accept_from = [\"{PEER}\"]")).unwrap();
         let res = r.call(&default, "rm1", "room", json!({}));
-        assert_eq!(code(&res), ErrorCode::OpDenied);
-        let res = r.call(&policy(&["room"]), "rm2", "room", json!({}));
         assert!(data(&res).as_array().unwrap().is_empty());
+        let res = r.call(&policy(&["list"]), "rm2", "room", json!({}));
+        assert_eq!(code(&res), ErrorCode::OpDenied);
     }
 
     #[test]
