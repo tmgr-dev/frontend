@@ -138,6 +138,12 @@ describe('spawn card kinds', () => {
 		expect(spawnView(mismatch).chips).toEqual([
 			{ key: 'mismatch', tone: 'danger' },
 		]);
+		const escaped = wire(request().replace('"claude"', '"cl\\u202eaude"'));
+		expect(spawnView(escaped).chips).toEqual([
+			{ key: 'hidden', tone: 'danger' },
+		]);
+		const plain = wire(JSON.stringify({ kind: 'nuke', target_id: 'other' }));
+		expect(spawnView(plain).chips.map((c) => c.key)).toEqual(['mismatch']);
 		const hidden = wire(request({ task: 'ok\u202Eevil' }));
 		expect(spawnView(hidden).chips).toEqual([
 			{ key: 'hidden', tone: 'danger' },

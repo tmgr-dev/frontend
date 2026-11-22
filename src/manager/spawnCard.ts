@@ -219,17 +219,42 @@ const buildView = (spawn: SpawnCardWire): SpawnView => {
 };
 
 const HIDDEN =
-	/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/;
+	/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff\u{e0000}-\u{e007f}]/u;
+
+const hasHidden = (request: string): boolean => {
+	if (HIDDEN.test(request)) return true;
+	try {
+		const raw: unknown = JSON.parse(request);
+		if (raw && typeof raw === 'object') {
+			return Object.values(raw).some(
+				(v) => typeof v === 'string' && HIDDEN.test(v),
+			);
+		}
+	} catch {
+		return false;
+	}
+	return false;
+};
+
+const requestTarget = (request: string): string | undefined => {
+	try {
+		const raw: unknown = JSON.parse(request);
+		return raw && typeof raw === 'object'
+			? str((raw as Record<string, unknown>).target_id)
+			: undefined;
+	} catch {
+		return undefined;
+	}
+};
 
 export const spawnView = (spawn: SpawnCardWire): SpawnView => {
 	const view = buildView(spawn);
-	if (!view.structured) return view;
-	const p = parseSpawnRequest(spawn.request);
 	const chips = [...view.chips];
-	if (p && p.target_id !== spawn.target_id) {
+	const target = requestTarget(spawn.request);
+	if (target !== undefined && target !== spawn.target_id) {
 		chips.push({ key: 'mismatch', tone: 'danger' });
 	}
-	if (HIDDEN.test(spawn.request)) chips.push({ key: 'hidden', tone: 'danger' });
+	if (hasHidden(spawn.request)) chips.push({ key: 'hidden', tone: 'danger' });
 	return { ...view, chips };
 };
 

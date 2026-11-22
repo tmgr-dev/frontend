@@ -11,12 +11,11 @@
 			<span class="sp-rtitle">{{ title }}</span>
 		</div>
 		<div v-else class="dc-title"><Icon name="shield" />{{ title }}</div>
-		<div v-if="!resolved && view.chips.length" class="sp-chips">
+		<div v-if="!resolved && view.chips.length" class="sp-chips" role="group">
 			<span
 				v-for="chip in view.chips"
 				:key="chip.key"
 				:class="['sp-chip', chip.tone]"
-				role="alert"
 				><Icon name="alert" />{{ $t(`manager.spawn.chip.${chip.key}`) }}</span
 			>
 		</div>
@@ -25,7 +24,7 @@
 			<span class="sp-machine">{{ view.target.machine }}</span>
 			<span :class="['pill', pillClass]"
 				><Icon :name="pillIcon" />{{
-					$t(`manager.spawn.state.${statusText.outcome}`)
+					$t(`manager.spawn.state.${failed ? 'failed' : statusText.outcome}`)
 				}}</span
 			>
 		</div>
