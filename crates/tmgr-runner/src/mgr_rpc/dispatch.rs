@@ -483,7 +483,10 @@ impl Dispatcher {
                     .state
                     .chat
                     .history(&room, chat::limits::MAX_HISTORY)
-                    .map_err(refused)?;
+                    .map_err(refused)?
+                    .into_iter()
+                    .filter(|m| m.author.kind != AuthorKind::Session)
+                    .collect::<Vec<_>>();
                 let start = since
                     .as_deref()
                     .and_then(|s| all.iter().position(|m| m.id == s))
@@ -1493,6 +1496,44 @@ mod tests {
         assert_eq!(bodies(data(&both)), ["m4"]);
         let unknown = r.call(&p, "re", "room", json!({"since": "nope"}));
         assert_eq!(bodies(data(&unknown)), ["m0", "m1", "m2", "m3", "m4"]);
+    }
+
+    #[test]
+    fn room_leaves_out_terminal_replies_tailed_from_the_manager_session() {
+        let r = rig();
+        let p = policy(&["room"]);
+        post_to(&r, RoomRef::manager(ME), "posted");
+        r.d.state()
+            .chat
+            .post(ChatMessage {
+                v: chat::CHAT_V,
+                id: chat::new_message_id(),
+                room: RoomRef::manager(ME),
+                author: Author {
+                    kind: AuthorKind::Session,
+                    id: "s_aaaaaaaaaa".into(),
+                    machine: Some(ME.into()),
+                    device: None,
+                    agent: None,
+                },
+                ts_ms: 2,
+                kind: MessageKind::Text,
+                body_md: "terminal only".into(),
+                attachments: Vec::new(),
+                reply_to: None,
+                decision: None,
+                session_meta: None,
+                user_turn: false,
+            })
+            .unwrap();
+        let res = r.call(&p, "rt", "room", json!({}));
+        let bodies: Vec<&str> = data(&res)
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["body_md"].as_str().unwrap())
+            .collect();
+        assert_eq!(bodies, ["posted"]);
     }
 
     #[test]

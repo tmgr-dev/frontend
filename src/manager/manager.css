@@ -906,6 +906,7 @@ html.dark .manager .qt {
 	outline-offset: 1px;
 }
 .manager.app-shell {
+	position: relative;
 	display: grid;
 	grid-template-columns: 300px 1fr 340px;
 	height: 100vh;
@@ -1618,4 +1619,35 @@ body:has(.manager.app-shell) {
 }
 .manager .sp-warn {
 	color: var(--fix-fg);
+}
+
+.manager .rz {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 6px;
+	z-index: 20;
+	cursor: col-resize;
+	touch-action: none;
+}
+.manager .rz:hover,
+.manager .rz:active {
+	background: var(--ring);
+	opacity: 0.35;
+}
+.manager .glsort {
+	justify-content: space-between;
+}
+.manager .sortb {
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--muted);
+	padding: 2px 6px;
+	border-radius: var(--r-sm);
+}
+.manager .sortb:hover,
+.manager .sortb[aria-pressed='true'] {
+	background: var(--active);
 }

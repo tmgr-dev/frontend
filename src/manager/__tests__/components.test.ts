@@ -200,6 +200,14 @@ describe('manager components', () => {
 		expect(off).not.toContain('Unrestricted');
 	});
 
+	it('ChatHeader bar and title are window drag regions, buttons are not', async () => {
+		const html = await render('ChatHeader', { info: rooms[0], sub: 'x' });
+		expect(html).toMatch(/<div class="mh2" data-tauri-drag-region/);
+		expect(html).toMatch(/<div class="t" data-tauri-drag-region/);
+		expect(html).toMatch(/<b data-tauri-drag-region/);
+		expect(html).not.toMatch(/<button[^>]*data-tauri-drag-region/);
+	});
+
 	it('MessageList shows the default empty hint without a custom one', async () => {
 		const html = await render('MessageList', { messages: [] });
 		expect(html).toContain('No messages in this chat.');

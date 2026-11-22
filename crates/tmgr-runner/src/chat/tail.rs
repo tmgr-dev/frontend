@@ -131,6 +131,16 @@ fn update_meta(meta: &mut SessionMeta, profile: Option<&str>, usage: &tail::Usag
     }
 }
 
+fn room_of(chat: &Chat, s: &SessionInfo) -> RoomRef {
+    if s.manager {
+        chat.manager_room()
+    } else {
+        chat.session_room(&s.id)
+    }
+}
+
+const MANAGER_DEDUPE: u32 = 50;
+
 fn post(
     chat: &Chat,
     room: &RoomRef,
@@ -141,6 +151,20 @@ fn post(
     let text = clip(turn.text);
     if turn.user && chat.take_sent(&s.id, &text) {
         return Ok(());
+    }
+    if s.manager {
+        if turn.user {
+            return Ok(());
+        }
+        let said = super::normalize(&text);
+        let posted = chat
+            .history(room, None, Some(MANAGER_DEDUPE))
+            .unwrap_or_default()
+            .iter()
+            .any(|m| m.author.kind != AuthorKind::Owner && super::normalize(&m.body_md) == said);
+        if posted {
+            return Ok(());
+        }
     }
     let ts_ms = turn
         .ts
@@ -179,7 +203,7 @@ fn backfill(
     end: u64,
     legacy: bool,
 ) -> bool {
-    let room = chat.session_room(&s.id);
+    let room = room_of(chat, s);
     let Ok(start) = tail::backfill_start(&t.path, end, BACKFILL_BYTES) else {
         return false;
     };
@@ -267,7 +291,7 @@ pub fn capture_with(
         if exited && !tails.contains_key(&s.id) {
             continue;
         }
-        let room = chat.session_room(&s.id);
+        let room = room_of(chat, s);
         if room.validate().is_err() {
             continue;
         }
@@ -429,6 +453,67 @@ mod tests {
             capture_with(&chat, &s, &resolve),
             [(SID.to_string(), "Mine".to_string())]
         );
+    }
+
+    fn manager_info() -> SessionInfo {
+        let mut s = info(SID, "claude-code", "working");
+        s.manager = true;
+        s
+    }
+
+    fn manager_bodies(chat: &Chat) -> Vec<String> {
+        chat.history(&chat.manager_room(), None, None)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.body_md)
+            .collect()
+    }
+
+    #[test]
+    fn a_manager_sessions_replies_land_in_the_manager_room_without_user_turns() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("old"));
+        let s = [manager_info()];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        append(
+            &log,
+            &(json!({"type": "user", "message": {"content": "do it"}}).to_string() + "\n"),
+        );
+        append(&log, &line("done"));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(manager_bodies(&chat), ["old", "done"]);
+        assert!(bodies(&chat, SID).is_empty());
+    }
+
+    #[test]
+    fn a_manager_reply_already_posted_with_post_message_is_not_duplicated() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("old"));
+        let s = [manager_info()];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        chat.post(
+            chat.manager_room(),
+            Author {
+                kind: AuthorKind::Manager,
+                id: "manager".into(),
+                machine: None,
+                device: None,
+                agent: None,
+            },
+            "All sessions are idle".into(),
+            None,
+            Vec::new(),
+        )
+        .unwrap();
+        append(&log, &line("All sessions are idle"));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(manager_bodies(&chat), ["old", "All sessions are idle"]);
     }
 
     #[test]

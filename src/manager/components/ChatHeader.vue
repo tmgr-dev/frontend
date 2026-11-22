@@ -1,8 +1,8 @@
 <template>
-	<div class="mh2">
+	<div class="mh2" data-tauri-drag-region>
 		<Avatar :agent="info.agent" :manager="isManager" />
-		<div class="t">
-			<b
+		<div class="t" data-tauri-drag-region>
+			<b data-tauri-drag-region
 				>{{ info.title }}
 				<span v-if="isManager" class="lockb"
 					><Icon name="lock" />{{ $t('manager.header.encrypted') }}</span
@@ -14,7 +14,7 @@
 					><Icon name="bolt" />{{ $t('manager.header.unrestricted') }}</span
 				></b
 			>
-			<small v-if="sub">{{ sub }}</small>
+			<small v-if="sub" data-tauri-drag-region>{{ sub }}</small>
 		</div>
 		<button
 			type="button"

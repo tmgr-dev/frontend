@@ -1,8 +1,8 @@
 <template>
-	<div class="manager app-shell">
+	<div class="manager app-shell" :style="shellStyle">
 		<aside class="side">
-			<div class="top">
-				<b>{{ $t('manager.list.label') }}</b>
+			<div class="top" data-tauri-drag-region>
+				<b data-tauri-drag-region>{{ $t('manager.list.label') }}</b>
 				<button
 					type="button"
 					class="btn pri sm"
@@ -117,6 +117,22 @@
 			@select="store.selectFromHierarchy"
 			@devices="trust.openPanel()"
 		/>
+		<div
+			class="rz rz-left"
+			role="separator"
+			aria-orientation="vertical"
+			:style="{ left: `${leftW - 3}px` }"
+			@pointerdown="startResize('left', $event)"
+			@dblclick="resetWidth('left')"
+		></div>
+		<div
+			class="rz rz-right"
+			role="separator"
+			aria-orientation="vertical"
+			:style="{ right: `${rightW - 3}px` }"
+			@pointerdown="startResize('right', $event)"
+			@dblclick="resetWidth('right')"
+		></div>
 		<input ref="file" type="file" multiple hidden @change="onFiles" />
 		<NewSessionDialog
 			v-if="store.newSession.open"
@@ -246,6 +262,13 @@
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
 	import { renderBody } from './format';
+	import {
+		clampWidth,
+		DEFAULT_WIDTH,
+		loadWidth,
+		saveWidth,
+		type PanelSide,
+	} from './panelWidths';
 	import { AGENT_MODELS, MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
 	import { roomKey } from './types';
@@ -290,6 +313,22 @@
 			};
 		},
 		computed: {
+			leftW(): number {
+				return clampWidth(
+					'left',
+					this.wantLeft,
+					this.viewport,
+					this.rightWant(),
+				);
+			},
+			rightW(): number {
+				return clampWidth('right', this.wantRight, this.viewport, this.leftW);
+			},
+			shellStyle(): Record<string, string> {
+				return {
+					gridTemplateColumns: `${this.leftW}px minmax(0, 1fr) ${this.rightW}px`,
+				};
+			},
 			revokeDevice() {
 				return (
 					this.trust.trust?.devices.find(
@@ -327,6 +366,9 @@
 		},
 		data() {
 			return {
+				wantLeft: loadWidth('left'),
+				wantRight: loadWidth('right'),
+				viewport: window.innerWidth,
 				unlistenResync: null as (() => void) | null,
 				stopWatch: null as (() => void) | null,
 			};
@@ -336,6 +378,7 @@
 			void this.trust.init();
 			window.addEventListener('keydown', this.onGlobalKey);
 			window.addEventListener('focus', this.onWindowFocus);
+			window.addEventListener('resize', this.onWindowResize);
 			this.stopWatch = this.store.watchRooms(5000);
 			void onManagerResync(() => void this.store.refreshActive()).then(
 				(off) => {
@@ -348,9 +391,46 @@
 			this.stopWatch?.();
 			window.removeEventListener('keydown', this.onGlobalKey);
 			window.removeEventListener('focus', this.onWindowFocus);
+			window.removeEventListener('resize', this.onWindowResize);
 			this.trust.dispose();
 		},
 		methods: {
+			rightWant(): number {
+				return clampWidth(
+					'right',
+					this.wantRight,
+					this.viewport,
+					DEFAULT_WIDTH.left,
+				);
+			},
+			onWindowResize() {
+				this.viewport = window.innerWidth;
+			},
+			startResize(side: PanelSide, e: PointerEvent) {
+				e.preventDefault();
+				const el = e.currentTarget as HTMLElement;
+				el.setPointerCapture?.(e.pointerId);
+				const move = (ev: PointerEvent) => {
+					const x =
+						side === 'left' ? ev.clientX : window.innerWidth - ev.clientX;
+					if (side === 'left') this.wantLeft = x;
+					else this.wantRight = x;
+				};
+				const up = () => {
+					el.removeEventListener('pointermove', move);
+					el.removeEventListener('pointerup', up);
+					el.removeEventListener('pointercancel', up);
+					saveWidth(side, side === 'left' ? this.leftW : this.rightW);
+				};
+				el.addEventListener('pointermove', move);
+				el.addEventListener('pointerup', up);
+				el.addEventListener('pointercancel', up);
+			},
+			resetWidth(side: PanelSide) {
+				if (side === 'left') this.wantLeft = DEFAULT_WIDTH.left;
+				else this.wantRight = DEFAULT_WIDTH.right;
+				saveWidth(side, DEFAULT_WIDTH[side]);
+			},
 			onWindowFocus() {
 				void this.store.loadRooms().catch(() => undefined);
 			},

@@ -1,5 +1,11 @@
 <template>
-	<div class="sl" role="listbox" :aria-label="$t('manager.list.label')">
+	<div
+		class="sl"
+		role="listbox"
+		:aria-label="$t('manager.list.label')"
+		@mouseenter="hover = true"
+		@mouseleave="onLeave"
+	>
 		<template v-if="pinned.length > 0">
 			<div class="gl">{{ $t('manager.list.pinned') }}</div>
 			<button
@@ -28,7 +34,22 @@
 			</button>
 		</template>
 		<template v-if="sessions.length > 0">
-			<div class="gl">{{ $t('manager.list.sessions') }}</div>
+			<div class="gl glsort">
+				<span>{{ $t('manager.list.sessions') }}</span>
+				<button
+					type="button"
+					class="sortb"
+					:aria-pressed="mode === 'recent'"
+					:title="$t('manager.list.sortHint')"
+					@click="toggleSort"
+				>
+					{{
+						mode === 'recent'
+							? $t('manager.list.sortRecent')
+							: $t('manager.list.sortDefault')
+					}}
+				</button>
+			</div>
 			<button
 				v-for="info in sessions"
 				:key="keyOf(info)"
@@ -69,6 +90,13 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
+	import {
+		arrangeByKeys,
+		loadSortMode,
+		saveSortMode,
+		sortRooms,
+		type SortMode,
+	} from '../roomOrder';
 	import { roomKey, type RoomInfo } from '../types';
 	import Avatar from './Avatar.vue';
 	import ContextMeter from './ContextMeter.vue';
@@ -88,15 +116,55 @@
 			},
 		},
 		emits: ['select'],
+		data() {
+			return {
+				mode: loadSortMode() as SortMode,
+				hover: false,
+				keys: [] as string[],
+				timer: null as ReturnType<typeof setTimeout> | null,
+			};
+		},
 		computed: {
 			pinned(): RoomInfo[] {
 				return this.rooms.filter((r) => r.room.kind === 'manager');
 			},
+			target(): string[] {
+				const all = this.rooms.filter((r) => r.room.kind !== 'manager');
+				return sortRooms(all, this.mode).map((r) => roomKey(r.room));
+			},
 			sessions(): RoomInfo[] {
-				return this.rooms.filter((r) => r.room.kind !== 'manager');
+				const all = this.rooms.filter((r) => r.room.kind !== 'manager');
+				return arrangeByKeys(all, this.keys);
 			},
 		},
+		watch: {
+			target() {
+				this.schedule();
+			},
+		},
+		created() {
+			this.keys = this.target;
+		},
+		beforeUnmount() {
+			if (this.timer) clearTimeout(this.timer);
+		},
 		methods: {
+			schedule() {
+				if (this.timer) clearTimeout(this.timer);
+				if (this.hover) return;
+				this.timer = setTimeout(() => {
+					this.keys = this.target;
+				}, 600);
+			},
+			onLeave() {
+				this.hover = false;
+				this.schedule();
+			},
+			toggleSort() {
+				this.mode = this.mode === 'recent' ? 'default' : 'recent';
+				saveSortMode(this.mode);
+				this.keys = this.target;
+			},
 			keyOf(info: RoomInfo): string {
 				return roomKey(info.room);
 			},

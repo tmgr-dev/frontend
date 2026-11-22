@@ -465,17 +465,25 @@ impl Chat {
     pub fn rooms(&self, sessions: &[SessionInfo], unrestricted: Option<&str>) -> Vec<RoomInfo> {
         let last = |room: &RoomRef| self.store.as_ref().and_then(|s| s.last(room));
         let manager = self.manager_room();
+        let live = sessions
+            .iter()
+            .find(|s| s.manager && s.state.kind != StateKind::Exited);
+        let live_meta = live.and_then(|s| lock(&self.tails).get(&s.id).map(|t| t.meta.clone()));
         let mut out = vec![RoomInfo {
             last: last(&manager),
             room: manager,
             title: "Manager".into(),
             agent: None,
-            state: None,
-            context_pct: None,
-            context_tokens: None,
+            state: live.map(|s| state_name(s.state.kind).into()),
+            context_pct: live_meta.as_ref().and_then(|m| m.context_pct),
+            context_tokens: live_meta.and_then(|m| m.context_tokens),
             unrestricted: unrestricted.is_some(),
         }];
-        let mut sessions: Vec<&SessionInfo> = sessions.iter().collect();
+        let live_id = live.map(|s| s.id.as_str());
+        let mut sessions: Vec<&SessionInfo> = sessions
+            .iter()
+            .filter(|s| live_id != Some(s.id.as_str()))
+            .collect();
         sessions.sort_by(|a, b| {
             a.created_ms
                 .cmp(&b.created_ms)
@@ -640,6 +648,27 @@ mod tests {
             "created_ms": 5, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn the_live_manager_session_has_no_room_of_its_own_and_lends_its_state_to_the_manager_room() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let mut live = session_info("s_aaaaaaaaaa");
+        live.manager = true;
+        let other = session_info("s_bbbbbbbbbb");
+        let rooms = c.rooms(&[live.clone(), other.clone()], Some("s_aaaaaaaaaa"));
+        let sessions: Vec<_> = rooms
+            .iter()
+            .filter_map(|r| r.room.session.clone())
+            .collect();
+        assert_eq!(sessions, ["s_bbbbbbbbbb"]);
+        assert_eq!(rooms[0].state.as_deref(), Some("waiting"));
+        assert!(rooms[0].unrestricted);
+        live.state.kind = StateKind::Exited;
+        let rooms = c.rooms(&[live, other], None);
+        assert_eq!(rooms.len(), 3);
+        assert_eq!(rooms[0].state, None);
     }
 
     #[test]

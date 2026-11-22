@@ -1,6 +1,6 @@
 <template>
 	<aside class="det">
-		<div class="tabs" role="tablist">
+		<div class="tabs" role="tablist" data-tauri-drag-region>
 			<button
 				v-for="t in TABS"
 				:key="t"
