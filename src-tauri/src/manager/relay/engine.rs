@@ -1089,6 +1089,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
           state: ir.state.clone(),
           context_pct: ir.context_pct,
           context_tokens: None,
+          model: None,
           last: None,
           local: false,
         }),
