@@ -33,7 +33,12 @@
 				<slot v-if="isDecision" name="decision" :message="message"></slot>
 				<template v-else>
 					<Attachments :items="message.attachments" />
-					<div v-if="html" class="txt" v-html="html"></div>
+					<div
+						v-if="html"
+						class="txt"
+						v-html="copyableHtml"
+						@click="onBodyClick"
+					></div>
 					<div v-else class="txt plain">{{ message.body_md }}</div>
 				</template>
 			</div>
@@ -64,6 +69,12 @@
 	import type { Attachment, ChatMessage } from '../types';
 	import Avatar from './Avatar.vue';
 	import Icon from './Icon.vue';
+	import {
+		addCopyButtons,
+		copyBlockText,
+		copyText,
+		flashCopied,
+	} from '../format';
 	import {
 		authorLabel,
 		formatClock,
@@ -120,9 +131,24 @@
 			clock(): string {
 				return formatClock(this.message.ts_ms);
 			},
+			copyableHtml(): string | undefined {
+				return this.html
+					? addCopyButtons(this.html, {
+							copy: this.$t('manager.messages.copy'),
+							copied: this.$t('manager.messages.copied'),
+						})
+					: undefined;
+			},
 		},
 		methods: {
 			truncate,
+			onBodyClick(e: MouseEvent) {
+				const btn = (e.target as Element).closest<HTMLElement>('.blk-copy');
+				if (!btn) return;
+				void copyText(copyBlockText(btn.parentElement)).then((ok) => {
+					if (ok) flashCopied(btn);
+				});
+			},
 			labelOf(m: ChatMessage): string {
 				return authorLabel(m.author, (k) => this.$t(k), m.user_turn);
 			},

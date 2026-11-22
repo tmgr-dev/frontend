@@ -96,3 +96,115 @@ export const quotePreview = (bodyMd: string, max = 120): string => {
 };
 
 export const renderBody = (bodyMd: string): string => renderMarkdown(bodyMd);
+
+export interface CopyLabels {
+	copy: string;
+	copied: string;
+}
+
+const COPIED_MS = 1500;
+const copyTimers = new WeakMap<HTMLElement, number>();
+
+const copyButton = (labels: CopyLabels): HTMLButtonElement => {
+	const btn = document.createElement('button');
+	btn.type = 'button';
+	btn.className = 'blk-copy';
+	btn.textContent = labels.copy;
+	btn.setAttribute('aria-label', labels.copy);
+	btn.dataset.copyLabel = labels.copy;
+	btn.dataset.copiedLabel = labels.copied;
+	return btn;
+};
+
+export const addCopyButtons = (html: string, labels: CopyLabels): string => {
+	const tpl = document.createElement('template');
+	tpl.innerHTML = html;
+	const targets = Array.from(
+		tpl.content.querySelectorAll('pre, blockquote, .bigcode'),
+	).filter((el) =>
+		el.tagName === 'PRE'
+			? !el.closest('.bigcode')
+			: el.tagName !== 'BLOCKQUOTE' || !el.parentElement?.closest('blockquote'),
+	);
+	for (const el of targets) {
+		const blk = document.createElement('div');
+		blk.className = 'blk';
+		el.before(blk);
+		blk.append(copyButton(labels), el);
+	}
+	return tpl.innerHTML;
+};
+
+const codeText = (code: Element | null): string =>
+	(code?.textContent ?? '').replace(/\n$/, '');
+
+const quoteText = (quote: Element): string => {
+	const clone = quote.cloneNode(true) as Element;
+	clone
+		.querySelectorAll('.blk-copy, .bigcode > pre')
+		.forEach((el) => el.remove());
+	clone.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+	const leaves = Array.from(clone.querySelectorAll('p, li, pre')).filter(
+		(el) => !el.querySelector('p, li, pre'),
+	);
+	if (leaves.length === 0) return (clone.textContent ?? '').trim();
+	return leaves
+		.map((el) =>
+			el.tagName === 'PRE'
+				? codeText(el.querySelector('code'))
+				: (el.textContent ?? '').trim(),
+		)
+		.join('\n');
+};
+
+export const copyBlockText = (block: Element | null): string => {
+	const target = block?.lastElementChild;
+	if (!target) return '';
+	if (target.tagName === 'BLOCKQUOTE') return quoteText(target);
+	if (target.classList.contains('bigcode'))
+		return codeText(target.querySelector('details pre code'));
+	return codeText(target.querySelector('code'));
+};
+
+const execCopy = (text: string): boolean => {
+	const area = document.createElement('textarea');
+	area.value = text;
+	area.setAttribute('readonly', '');
+	area.style.position = 'fixed';
+	area.style.opacity = '0';
+	document.body.appendChild(area);
+	area.select();
+	try {
+		return document.execCommand('copy');
+	} catch {
+		return false;
+	} finally {
+		area.remove();
+	}
+};
+
+export const copyText = async (text: string): Promise<boolean> => {
+	try {
+		await navigator.clipboard.writeText(text);
+		return true;
+	} catch {
+		return execCopy(text);
+	}
+};
+
+const setButtonLabel = (btn: HTMLElement, label: string): void => {
+	btn.textContent = label;
+	btn.setAttribute('aria-label', label);
+};
+
+export const flashCopied = (btn: HTMLElement): void => {
+	window.clearTimeout(copyTimers.get(btn));
+	setButtonLabel(btn, btn.dataset.copiedLabel ?? '');
+	copyTimers.set(
+		btn,
+		window.setTimeout(
+			() => setButtonLabel(btn, btn.dataset.copyLabel ?? ''),
+			COPIED_MS,
+		),
+	);
+};

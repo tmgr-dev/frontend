@@ -52,6 +52,7 @@
 		"label": "Messages",
 		"reply": "Reply",
 		"copy": "Copy",
+		"copied": "Copied",
 		"empty": "Nothing here yet",
 		"emptyHint": "No messages in this chat.",
 		"emptySession": "Shows the agent's replies from the moment the runner started following this session. Earlier history and your own prompts stay in the terminal.",

@@ -1,5 +1,10 @@
 /** @jest-environment jsdom */
+import { renderMarkdown } from '@/decisions/markdown';
 import {
+	addCopyButtons,
+	copyBlockText,
+	copyText,
+	flashCopied,
 	formatCtx,
 	formatTime,
 	groupMessages,
@@ -174,5 +179,145 @@ describe('renderBody', () => {
 		const root = parse(renderBody('<img src=x onerror="alert(1)">'));
 		expect(root.querySelector('[onerror]')).toBeNull();
 		expect(root.querySelector('img')).toBeNull();
+	});
+});
+
+const copyLabels = { copy: 'Copy', copied: 'Copied' };
+const withButtons = (md: string): HTMLElement => {
+	const root = document.createElement('div');
+	root.innerHTML = addCopyButtons(renderBody(md), copyLabels);
+	return root;
+};
+const longCode = Array.from({ length: 60 }, (_, i) => `line ${i + 1}`);
+
+describe('addCopyButtons', () => {
+	it('puts one copy button next to a fenced code block', () => {
+		const root = withButtons('```\nconst a = 1;\nreturn a;\n```');
+		const buttons = root.querySelectorAll('button.blk-copy');
+		expect(buttons).toHaveLength(1);
+		expect(buttons[0].getAttribute('aria-label')).toBe('Copy');
+		expect(buttons[0].getAttribute('type')).toBe('button');
+		expect(buttons[0].nextElementSibling?.tagName).toBe('PRE');
+	});
+
+	it('copies a fenced code block without the fence', () => {
+		const root = withButtons('```\nconst a = 1;\nreturn a;\n```');
+		const block = root.querySelector('button.blk-copy')!.parentElement!;
+		expect(copyBlockText(block)).toBe('const a = 1;\nreturn a;');
+	});
+
+	it('copies the full text of a code block longer than the preview', () => {
+		const root = withButtons('```\n' + longCode.join('\n') + '\n```');
+		expect(root.querySelectorAll('button.blk-copy')).toHaveLength(1);
+		const block = root.querySelector('button.blk-copy')!.parentElement!;
+		expect(copyBlockText(block)).toBe(longCode.join('\n'));
+	});
+
+	it('copies a quote without the > markers and keeps paragraph breaks as newlines', () => {
+		const root = withButtons(
+			'> first line\n> still first\n>\n> second\n>\n> > nested',
+		);
+		const block = root.querySelector('button.blk-copy')!.parentElement!;
+		expect(copyBlockText(block)).toBe(
+			'first line\nstill first\nsecond\nnested',
+		);
+	});
+
+	it('gives a button only to the outer of nested quotes', () => {
+		const root = withButtons('> outer\n>\n> > inner');
+		expect(root.querySelectorAll('button.blk-copy')).toHaveLength(1);
+	});
+
+	it('leaves inline code and plain text without buttons', () => {
+		expect(
+			withButtons('plain `x` text').querySelectorAll('button'),
+		).toHaveLength(0);
+	});
+
+	it('keeps the decisions renderer free of copy buttons', () => {
+		const html = renderMarkdown('```\nx\n```\n\n> quote');
+		expect(html).toContain('<pre>');
+		expect(html).not.toContain('blk-copy');
+		expect(html).not.toContain('<button');
+	});
+});
+
+describe('copyText', () => {
+	const setClipboard = (value: unknown) =>
+		Object.defineProperty(navigator, 'clipboard', {
+			value,
+			configurable: true,
+		});
+	const setExecCommand = (fn: jest.Mock) =>
+		Object.defineProperty(document, 'execCommand', {
+			value: fn,
+			configurable: true,
+		});
+
+	afterEach(() => {
+		setClipboard(undefined);
+		setExecCommand(jest.fn(() => false));
+	});
+
+	it('uses the async clipboard API when it is available', async () => {
+		const writeText = jest.fn().mockResolvedValue(undefined);
+		setClipboard({ writeText });
+		await expect(copyText('hello')).resolves.toBe(true);
+		expect(writeText).toHaveBeenCalledWith('hello');
+	});
+
+	it('falls back to execCommand through a temporary textarea without a clipboard API', async () => {
+		setClipboard(undefined);
+		let seen: string | undefined;
+		setExecCommand(
+			jest.fn(() => {
+				seen = document.querySelector('textarea')?.value;
+				return true;
+			}),
+		);
+		await expect(copyText('fallback text')).resolves.toBe(true);
+		expect(seen).toBe('fallback text');
+		expect(document.execCommand).toHaveBeenCalledWith('copy');
+		expect(document.querySelector('textarea')).toBeNull();
+	});
+
+	it('falls back when writeText rejects', async () => {
+		setClipboard({
+			writeText: jest.fn().mockRejectedValue(new Error('denied')),
+		});
+		setExecCommand(jest.fn(() => true));
+		await expect(copyText('x')).resolves.toBe(true);
+		expect(document.execCommand).toHaveBeenCalledWith('copy');
+	});
+
+	it('reports failure when the fallback copy is refused', async () => {
+		setClipboard(undefined);
+		setExecCommand(jest.fn(() => false));
+		await expect(copyText('x')).resolves.toBe(false);
+	});
+});
+
+describe('flashCopied', () => {
+	beforeEach(() => jest.useFakeTimers());
+	afterEach(() => jest.useRealTimers());
+
+	it('shows Copied for 1.5 s, restarts on repeat, then resets to Copy', () => {
+		const root = withButtons('```\nx\n```');
+		document.body.appendChild(root);
+		const btn = root.querySelector<HTMLButtonElement>('button.blk-copy')!;
+
+		flashCopied(btn);
+		expect(btn.textContent).toBe('Copied');
+		expect(btn.getAttribute('aria-label')).toBe('Copied');
+
+		jest.advanceTimersByTime(1000);
+		flashCopied(btn);
+		jest.advanceTimersByTime(1499);
+		expect(btn.textContent).toBe('Copied');
+
+		jest.advanceTimersByTime(1);
+		expect(btn.textContent).toBe('Copy');
+		expect(btn.getAttribute('aria-label')).toBe('Copy');
+		root.remove();
 	});
 });

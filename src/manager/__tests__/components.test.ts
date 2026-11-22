@@ -9,6 +9,7 @@ import { createApp, createSSRApp, h, type Component } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { renderToString } from 'vue/server-renderer';
 import manager from '../../locales/en/manager.json';
+import { renderBody } from '../format';
 import {
 	roomKey,
 	type ChatMessage,
@@ -380,5 +381,52 @@ describe('manager components', () => {
 		expect(await render('SearchPanel', { query: 'zzz' })).toContain(
 			'No matches',
 		);
+	});
+});
+
+describe('MessageBubble copy buttons', () => {
+	const flushMicrotasks = async () => {
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+	};
+
+	beforeEach(() => jest.useFakeTimers());
+	afterEach(() => jest.useRealTimers());
+
+	it('copies the code of an agent message and shows Copied for 1.5 s', async () => {
+		const writeText = jest.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, 'clipboard', {
+			value: { writeText },
+			configurable: true,
+		});
+		const m = msg({ id: 'c1', body_md: '```\nconst a = 1;\n```' });
+		const mounted = mountDom('MessageBubble', {
+			message: m,
+			html: renderBody(m.body_md),
+		});
+		const btn = mounted.el.querySelector<HTMLButtonElement>('button.blk-copy');
+		expect(btn?.textContent).toBe('Copy');
+
+		btn!.click();
+		await flushMicrotasks();
+		expect(writeText).toHaveBeenCalledWith('const a = 1;');
+		expect(btn!.textContent).toBe('Copied');
+
+		jest.advanceTimersByTime(1500);
+		expect(btn!.textContent).toBe('Copy');
+		mounted.unmount();
+	});
+
+	it('adds no copy buttons to owner messages', () => {
+		const m = msg({
+			id: 'o1',
+			author: { kind: 'owner', id: 'me' },
+			body_md: '```\nx\n```',
+		});
+		const mounted = mountDom('MessageBubble', {
+			message: m,
+			html: renderBody(m.body_md),
+		});
+		expect(mounted.el.querySelector('.blk-copy')).toBeNull();
+		mounted.unmount();
 	});
 });

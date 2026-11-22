@@ -484,6 +484,37 @@ html.dark .manager {
 	padding-left: 20px;
 	margin: 0 0 6px;
 }
+.manager .blk {
+	position: relative;
+}
+.manager .blk-copy {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	z-index: 1;
+	padding: 2px 8px;
+	border-radius: 6px;
+	background: var(--raised);
+	box-shadow: 0 0 0 1px var(--line-strong);
+	color: var(--muted);
+	font-size: 11px;
+	line-height: 1.5;
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+.manager .blk:hover .blk-copy,
+.manager .blk-copy:focus-visible,
+.manager .blk-copy:hover {
+	opacity: 1;
+}
+.manager .blk-copy:hover {
+	color: var(--ink);
+}
+@media (hover: none) {
+	.manager .blk-copy {
+		opacity: 1;
+	}
+}
 .manager .txt blockquote {
 	border-left: 3px solid var(--line-strong);
 	padding: 2px 10px;
