@@ -10,6 +10,23 @@
 			@submit.prevent="$emit('submit')"
 		>
 			<h2 id="mgr-new-title">{{ $t('manager.newSession.title') }}</h2>
+			<div class="lbl">{{ $t('manager.newSession.machine') }}</div>
+			<div class="seg" role="radiogroup">
+				<button
+					v-for="m in options"
+					:key="m.id"
+					type="button"
+					role="radio"
+					:aria-checked="form.machine === m.id"
+					:class="['mchip', { on: form.machine === m.id }]"
+					@click="set('machine', m.id)"
+				>
+					{{ m.label
+					}}<template v-if="m.linked">
+						&middot; {{ $t('manager.newSession.linked') }}</template
+					>
+				</button>
+			</div>
 			<div class="lbl">{{ $t('manager.newSession.agent') }}</div>
 			<div class="mods" role="radiogroup">
 				<button
@@ -21,21 +38,25 @@
 					:class="['mchip', { on: form.agent === a }]"
 					@click="set('agent', a)"
 				>
-					{{ a }}
+					{{ agentLabels[a] }}
 				</button>
 			</div>
-			<div class="lbl">{{ $t('manager.newSession.machine') }}</div>
-			<div class="mods" role="radiogroup">
+			<div class="lbl">{{ $t('manager.newSession.safety') }}</div>
+			<div class="safe">
 				<button
-					v-for="m in machines"
-					:key="m"
+					v-for="s in safety"
+					:key="s.key"
 					type="button"
-					role="radio"
-					:aria-checked="form.machine === m"
-					:class="['mchip', { on: form.machine === m }]"
-					@click="set('machine', m)"
+					role="switch"
+					:aria-checked="!!form[s.key]"
+					:class="['safe-row', { on: !!form[s.key] }]"
+					@click="set(s.key, !form[s.key])"
 				>
-					{{ m }}
+					<span class="tgl" aria-hidden="true"></span>
+					<span class="safe-txt"
+						><b>{{ $t(`manager.newSession.${s.key}`) }}</b
+						><span>{{ $t(`manager.newSession.${s.key}Hint`) }}</span></span
+					>
 				</button>
 			</div>
 			<label class="lbl" for="mgr-new-folder">{{
@@ -52,9 +73,10 @@
 			/>
 			<div class="two">
 				<div>
-					<label class="lbl" for="mgr-new-task">{{
-						$t('manager.newSession.task')
-					}}</label>
+					<label class="lbl" for="mgr-new-task"
+						>{{ $t('manager.newSession.task') }}
+						<i>{{ $t('manager.newSession.optional') }}</i></label
+					>
 					<input
 						id="mgr-new-task"
 						class="fld"
@@ -76,6 +98,19 @@
 						@input="set('name', ($event.target as HTMLInputElement).value)"
 					/>
 				</div>
+			</div>
+			<div class="lbl">{{ $t('manager.newSession.template') }}</div>
+			<div class="mods">
+				<button
+					v-for="t in templates"
+					:key="t.id"
+					type="button"
+					:class="['mchip', { on: template === t.id }]"
+					:aria-pressed="template === t.id"
+					@click="pick(t.id)"
+				>
+					{{ $t(`manager.newSession.templates.${t.id}`) }}
+				</button>
 			</div>
 			<label class="lbl" for="mgr-new-prompt">{{
 				$t('manager.newSession.prompt')
@@ -107,7 +142,17 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { SPAWN_AGENTS, type SpawnRequest } from '../types';
+	import {
+		AGENT_LABELS,
+		SESSION_TEMPLATES,
+		applyTemplate,
+		machineOptions,
+	} from '../newSession';
+	import {
+		SPAWN_AGENTS,
+		type ManagerMachine,
+		type SpawnRequest,
+	} from '../types';
 	import { dialogKeydown, focusInitial } from './trust/trustHelpers';
 
 	export default defineComponent({
@@ -115,17 +160,36 @@
 		props: {
 			form: { type: Object as PropType<SpawnRequest>, required: true },
 			machines: { type: Array as PropType<string[]>, required: true },
+			machineInfo: {
+				type: Array as PropType<ManagerMachine[]>,
+				default: () => [],
+			},
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
 		},
 		emits: ['submit', 'cancel'],
-		data: () => ({ agents: SPAWN_AGENTS }),
+		data: () => ({
+			agents: SPAWN_AGENTS,
+			agentLabels: AGENT_LABELS,
+			templates: SESSION_TEMPLATES,
+			template: 'blank',
+			safety: [{ key: 'noSandbox' as const }, { key: 'bypass' as const }],
+		}),
+		computed: {
+			options() {
+				return machineOptions(this.machines, this.machineInfo);
+			},
+		},
 		mounted() {
 			focusInitial(this.$refs.dialog as HTMLElement);
 		},
 		methods: {
 			set<K extends keyof SpawnRequest>(key: K, value: SpawnRequest[K]) {
 				this.form[key] = value;
+			},
+			pick(id: string) {
+				this.template = id;
+				this.form.prompt = applyTemplate(this.form, id).prompt;
 			},
 			onKey(e: KeyboardEvent) {
 				dialogKeydown(this.$refs.dialog as HTMLElement, e, () =>

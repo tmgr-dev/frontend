@@ -263,16 +263,31 @@ describe('manager dialogs', () => {
 		prompt: '',
 	};
 
-	it('NewSessionDialog offers agents and machines, no safety toggles', async () => {
+	it('NewSessionDialog offers machines, agents, safety toggles and templates', async () => {
 		const html = await render('NewSessionDialog', {
 			form,
 			machines: ['mac', 'studio'],
+			machineInfo: [
+				{ machine: 'mac', local: true, label: 'Mac' },
+				{ machine: 'studio', label: 'Studio' },
+			],
 		});
-		for (const a of ['claude', 'codex', 'opencode', 'agy'])
+		for (const a of ['Claude Code', 'Codex', 'opencode', 'agy'])
 			expect(html).toContain(`>${a}<`);
-		expect(html).toContain('>studio<');
+		expect(html).toContain('This Mac');
+		expect(html).toContain('Studio');
+		expect(html).toContain('linked');
 		expect(html).toContain('First prompt');
-		expect(html).not.toMatch(/sandbox|bypass/i);
+		for (const t of ['No sandbox', 'Bypass permissions'])
+			expect(html).toContain(t);
+		for (const t of [
+			'Blank',
+			'Fix a bug',
+			'Feature from task',
+			'Review a PR',
+			'Release notes',
+		])
+			expect(html).toContain(t);
 		expect(html).toContain('disabled');
 	});
 

@@ -75,8 +75,9 @@
 			<SearchPanel
 				v-if="store.search.open"
 				:query="store.search.text"
-				:scope="store.search.scopeKey ? 'chat' : 'all'"
+				:scope="searchScope"
 				:chat-label="activeInfo?.title ?? ''"
+				:can-manager="!!managerKey && managerKey !== store.activeKey"
 				:hits="store.search.hits"
 				:room-titles="roomTitles"
 				@update:query="store.runSearch"
@@ -188,6 +189,7 @@
 			v-if="store.newSession.open"
 			:form="store.newSession.form"
 			:machines="store.machines"
+			:machine-info="pairing.machines"
 			:busy="store.newSession.busy"
 			:error="store.newSession.error"
 			@submit="store.submitNewSession()"
@@ -438,6 +440,22 @@
 					) ?? null
 				);
 			},
+			managerKey(): string | null {
+				const rooms = this.store.rooms.filter((r) => r.room.kind === 'manager');
+				const active = this.store.activeKey;
+				const pick =
+					rooms.find((r) => roomKey(r.room) === active) ??
+					rooms.find((r) => r.room.machine === this.activeInfo?.room.machine) ??
+					rooms[0];
+				return pick ? roomKey(pick.room) : null;
+			},
+			searchScope(): 'chat' | 'all' | 'manager' {
+				const key = this.store.search.scopeKey;
+				if (!key) return 'all';
+				if (key === this.managerKey && key !== this.store.activeKey)
+					return 'manager';
+				return 'chat';
+			},
 			activeInfo() {
 				return this.store.rooms.find(
 					(r) => roomKey(r.room) === this.store.activeKey,
@@ -587,9 +605,13 @@
 					this.store.closeSlash();
 				}
 			},
-			onScope(scope: 'chat' | 'all') {
+			onScope(scope: 'chat' | 'all' | 'manager') {
 				this.store.search.scopeKey =
-					scope === 'chat' ? this.store.activeKey : null;
+					scope === 'chat'
+						? this.store.activeKey
+						: scope === 'manager'
+							? this.managerKey
+							: null;
 				void this.store.runSearch(this.store.search.text);
 			},
 			async onHit(hit: Parameters<typeof this.store.jumpToHit>[0]) {

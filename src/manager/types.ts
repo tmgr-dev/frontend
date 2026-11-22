@@ -130,6 +130,8 @@ export interface SpawnRequest {
 	name: string;
 	task: string;
 	prompt: string;
+	noSandbox?: boolean;
+	bypass?: boolean;
 }
 
 export const roomKey = (room: RoomRef): string =>

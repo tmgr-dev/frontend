@@ -31,12 +31,31 @@
 				{{ $t('manager.search.scopeAll') }}
 			</button>
 			<button
+				v-if="canManager"
+				type="button"
+				:class="['sf2', { on: scope === 'manager' }]"
+				:aria-pressed="scope === 'manager'"
+				@click="$emit('update:scope', 'manager')"
+			>
+				{{ $t('manager.search.scopeManager') }}
+			</button>
+			<button
 				type="button"
 				:class="['sf2', { on: scope === 'chat' }]"
 				:aria-pressed="scope === 'chat'"
 				@click="$emit('update:scope', 'chat')"
 			>
 				{{ $t('manager.search.scopeChat', { chat: chatLabel }) }}
+			</button>
+			<button
+				v-for="f in pending"
+				:key="f"
+				type="button"
+				class="sf2"
+				disabled
+				:title="$t('manager.search.comingSoon')"
+			>
+				{{ $t(`manager.search.${f}`) }}
 			</button>
 		</div>
 		<div class="sres">
@@ -53,6 +72,7 @@
 					{{
 						$t('manager.search.results', { count: hits.length }, hits.length)
 					}}
+					{{ $t('manager.search.inChats', { count: chats }, chats) }}
 				</div>
 				<button
 					v-for="hit in hits"
@@ -87,11 +107,15 @@
 				</button>
 			</template>
 		</div>
+		<div class="sprivacy">
+			<Icon name="lock" /><span>{{ $t('manager.search.privacy') }}</span>
+		</div>
 	</div>
 </template>
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
+	import { distinctChats } from '../newSession';
 	import { roomKey, type ChatMessage } from '../types';
 	import Avatar from './Avatar.vue';
 	import Icon from './Icon.vue';
@@ -107,8 +131,12 @@
 		components: { Avatar, Icon },
 		props: {
 			query: { type: String, default: '' },
-			scope: { type: String as PropType<'chat' | 'all'>, default: 'all' },
+			scope: {
+				type: String as PropType<'chat' | 'all' | 'manager'>,
+				default: 'all',
+			},
 			chatLabel: { type: String, default: '' },
+			canManager: { type: Boolean, default: false },
 			hits: { type: Array as PropType<ChatMessage[]>, default: () => [] },
 			roomTitles: {
 				type: Object as PropType<Record<string, string>>,
@@ -116,6 +144,19 @@
 			},
 		},
 		emits: ['update:query', 'update:scope', 'select'],
+		data: () => ({
+			pending: [
+				'scopeMe',
+				'scopeManagerAuthor',
+				'scopeSessions',
+				'scopeAttachment',
+			],
+		}),
+		computed: {
+			chats(): number {
+				return distinctChats(this.hits);
+			},
+		},
 		methods: {
 			formatClock,
 			titleOf(hit: ChatMessage): string {
