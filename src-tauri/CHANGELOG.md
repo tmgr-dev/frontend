@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.186 — 2026-11-22
+
+- Manager window: a local chat header has a menu with Stop, Force stop and Delete. Stop interrupts the agent and waits for it to exit, Force stop kills it, and Delete removes an exited session from the runner. Both ask for confirmation, and neither is offered for the Manager session or for chats on other computers.
+
 ## 0.9.185 — 2026-11-22
 
 - Manager window: a session's header shows which agent and model it runs, for example "Claude Code · opus". It appears once the session has reported a model, and needs runner 1.0.163 or newer.
