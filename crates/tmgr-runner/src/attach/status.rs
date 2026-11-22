@@ -726,9 +726,11 @@ pub fn mask_secrets(text: &str) -> String {
             continue;
         }
         let lower = word.to_ascii_lowercase();
-        if lower == "authorization:" {
+        let bare = lower.trim_start_matches(['\'', '"']);
+        if bare == "authorization:" {
             mask_next = 2;
-        } else if lower.ends_with("key:")
+        } else if bare == "bearer"
+            || lower.ends_with("key:")
             || lower.ends_with("token:")
             || matches!(lower.as_str(), "-u" | "--user" | "-p" | "--pass")
             || (lower.starts_with("--") && secret_name(&lower) && !lower.contains('='))
@@ -1114,6 +1116,19 @@ mod tests {
         let st = s.status();
         assert_eq!(st.model.as_deref(), Some("sonnet"));
         assert_eq!(st.ctx, Some(10));
+    }
+
+    #[test]
+    fn a_quoted_authorization_header_and_a_bare_bearer_are_masked_whatever_the_length() {
+        assert_eq!(
+            mask_secrets("curl -H 'Authorization: Bearer abc123' x"),
+            "curl -H 'Authorization: … … x"
+        );
+        assert_eq!(
+            mask_secrets("curl -H Authorization: Bearer ab y"),
+            "curl -H Authorization: … … y"
+        );
+        assert_eq!(mask_secrets("echo Bearer abc1 done"), "echo Bearer … done");
     }
 
     #[test]
