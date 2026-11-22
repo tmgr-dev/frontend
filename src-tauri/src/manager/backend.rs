@@ -86,6 +86,8 @@ pub struct RoomInfo {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub context_tokens: Option<u64>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub model: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   pub last: Option<ChatMessage>,
   #[serde(default = "yes")]
   pub local: bool,
@@ -235,6 +237,7 @@ impl ManagerBackend for StubBackend {
         state: None,
         context_pct: None,
         context_tokens: None,
+        model: None,
         last: last(&manager_room()),
         local: true,
       }];
@@ -248,6 +251,7 @@ impl ManagerBackend for StubBackend {
           state: Some("working".into()),
           context_pct: Some(*pct),
           context_tokens: Some(u64::from(*pct) * 2000),
+          model: None,
           last: last(&session_room(id)),
           local: true,
         })

@@ -223,6 +223,21 @@ describe('manager components', () => {
 		expect(html).toContain('aria-label="Search in chat"');
 	});
 
+	it('ChatHeader shows the agent and model pill only for sessions with a model', async () => {
+		const on = await render('ChatHeader', {
+			info: { ...rooms[0], agent: 'claude-code', model: 'claude-opus-4-1' },
+		});
+		expect(on).toContain('Claude Code · opus');
+		const codex = await render('ChatHeader', {
+			info: { ...rooms[0], agent: 'codex', model: 'gpt-5-codex' },
+		});
+		expect(codex).toContain('Codex · gpt-5-codex');
+		const off = await render('ChatHeader', {
+			info: { ...rooms[0], model: undefined },
+		});
+		expect(off).not.toContain('mdlp');
+	});
+
 	it('ChatHeader shows the Unrestricted badge only for unrestricted rooms', async () => {
 		const on = await render('ChatHeader', {
 			info: { ...rooms[0], unrestricted: true },

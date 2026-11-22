@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.185 — 2026-11-22
+
+- Manager window: a session's header shows which agent and model it runs, for example "Claude Code · opus". It appears once the session has reported a model, and needs runner 1.0.163 or newer.
+
 ## 0.9.184 — 2026-11-22
 
 - Manager window: this computer's runner is paired with the manager chat automatically on first open (a notice says so, and you can revoke it in Devices). Needs `tmgr` CLI 1.0.160 or later.

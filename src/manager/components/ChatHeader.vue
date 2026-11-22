@@ -14,6 +14,13 @@
 					><Icon name="bolt" />{{ $t('manager.header.unrestricted') }}</span
 				></b
 			>
+			<small
+				v-if="modelText"
+				class="mdlp"
+				:title="info.model"
+				data-tauri-drag-region
+				>{{ modelText }}</small
+			>
 			<small v-if="sub" data-tauri-drag-region>{{ sub }}</small>
 		</div>
 		<button
@@ -50,7 +57,7 @@
 	import Avatar from './Avatar.vue';
 	import Icon from './Icon.vue';
 	import StatePill from './StatePill.vue';
-	import { contextFull, contextLevel } from './viewHelpers';
+	import { contextFull, contextLevel, modelPillText } from './viewHelpers';
 
 	export default defineComponent({
 		name: 'ManagerChatHeader',
@@ -63,6 +70,9 @@
 		computed: {
 			isManager(): boolean {
 				return this.info.room.kind === 'manager';
+			},
+			modelText(): string {
+				return modelPillText(this.info);
 			},
 			ctxLevel(): string {
 				return contextLevel(this.info.context_pct);

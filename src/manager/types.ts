@@ -64,6 +64,7 @@ export interface RoomInfo {
 	state?: string;
 	context_pct?: number;
 	context_tokens?: number;
+	model?: string;
 	last?: ChatMessage;
 	local?: boolean;
 	unrestricted?: boolean;

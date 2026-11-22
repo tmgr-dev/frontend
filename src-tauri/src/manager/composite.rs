@@ -147,7 +147,7 @@ mod tests {
   }
 
   fn info(r: RoomRef) -> RoomInfo {
-    RoomInfo { room: r, title: "t".into(), agent: None, state: None, context_pct: None, context_tokens: None, last: None, local: true }
+    RoomInfo { room: r, title: "t".into(), agent: None, state: None, context_pct: None, context_tokens: None, model: None, last: None, local: true }
   }
 
   fn msg(id: &str, ts: u64, r: RoomRef) -> ChatMessage {

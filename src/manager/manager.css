@@ -186,6 +186,16 @@ html.dark .manager {
 	padding: 2px 8px 2px 6px;
 	border-radius: 99px;
 }
+.manager .mdlp {
+	align-self: flex-start;
+	margin-bottom: 2px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--muted);
+	background: var(--sunken);
+	padding: 1px 8px;
+	border-radius: 99px;
+}
 .manager .ctx {
 	display: inline-flex;
 	align-items: center;

@@ -19,6 +19,23 @@ export const avatarLetter = (agent?: string, manager = false): string =>
 export const roomAgent = (info: RoomInfo): string | undefined =>
 	info.room.kind === 'manager' ? undefined : info.agent;
 
+const AGENT_NAMES: Record<string, string> = {
+	claude: 'Claude Code',
+	'claude-code': 'Claude Code',
+	codex: 'Codex',
+	opencode: 'OpenCode',
+	agy: 'Antigravity',
+};
+
+export const modelPillText = (info: RoomInfo): string => {
+	if (info.room.kind === 'manager' || !info.model) return '';
+	const family = /opus|sonnet|haiku|fable/.exec(info.model.toLowerCase());
+	const model =
+		info.agent?.startsWith('claude') && family ? family[0] : info.model;
+	const name = info.agent ? (AGENT_NAMES[info.agent] ?? info.agent) : '';
+	return name ? `${name} · ${model}` : model;
+};
+
 export const formatContext = (tokens?: number): string =>
 	tokens === undefined ? '' : `${Math.round(tokens / 1000)}k`;
 

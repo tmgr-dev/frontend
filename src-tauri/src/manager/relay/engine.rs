@@ -1069,7 +1069,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         (RoomKind::Session, Some(s)) => s.to_owned(),
         _ => "Manager".to_owned(),
       };
-      rooms.push(RoomInfo { room: m.room.clone(), title, agent: None, state: None, context_pct: None, context_tokens: None, last, local: false });
+      rooms.push(RoomInfo { room: m.room.clone(), title, agent: None, state: None, context_pct: None, context_tokens: None, model: None, last, local: false });
     }
     let mut index_ts: Vec<(RoomRef, u64)> = Vec::new();
     for ir in self.live_indexes(&g).into_iter().flat_map(|r| r.index.rooms.iter()).filter(|ir| self.owns(&ir.room)) {
