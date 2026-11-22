@@ -2,7 +2,7 @@
 	<div v-if="isSystem" class="sys">
 		<span>{{ message.body_md }}</span>
 	</div>
-	<div v-else class="mw" :data-mid="message.id">
+	<div v-else :class="['mw', { flash: message.fresh }]" :data-mid="message.id">
 		<div v-if="isOwner" class="msg owner">
 			<div class="bubble">
 				<div v-if="replyTo" class="qt">

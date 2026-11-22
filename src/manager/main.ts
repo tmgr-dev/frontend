@@ -3,6 +3,11 @@ import { detectLocale, i18n, setLocale, storedLocale } from '@/i18n';
 import { followStoredLocale } from '@/i18n/followStoredLocale';
 import '@fontsource/exo-2/400.css';
 import '@fontsource/exo-2/600.css';
+import '@fontsource/exo-2/700.css';
+import '@fontsource/exo-2/800.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/700.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 

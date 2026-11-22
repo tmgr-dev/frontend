@@ -278,7 +278,13 @@ export const createManagerStore = (api: ManagerApi) => {
 
 		async init() {
 			await store.loadRooms();
-			await api.onMessage((message) => store.ingest(message));
+			await api.onMessage((message) =>
+				store.ingest(
+					message.author.kind === 'owner' || message.user_turn
+						? message
+						: { ...message, fresh: true },
+				),
+			);
 			const first = store.rooms[0];
 			if (first) await store.select(roomKey(first.room));
 		},
