@@ -62,10 +62,19 @@ impl Runner {
         if target.is_some_and(|s| super::manager::is_unrestricted(&s)) {
             return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
         }
+        let Some(t) = self.chat_target(room) else {
+            return chat::Delivery::NoTarget;
+        };
+        if super::manager::is_unrestricted(&t) {
+            return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
+        }
         let typed = wrap_untrusted(RELAY_SOURCE, device.unwrap_or("unknown device"), body);
-        match self.chat_deliver(room, &typed, "relay") {
-            chat::Delivery::Delivered => chat::Delivery::Typed(typed),
-            other => other,
+        match t.input_at_prompt(&chat::prompt_bytes(&typed), Instant::now()) {
+            Ok(()) => {
+                t.note_input_from("relay");
+                chat::Delivery::Typed(typed)
+            }
+            Err(_) => chat::Delivery::Busy,
         }
     }
 

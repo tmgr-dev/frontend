@@ -427,6 +427,9 @@ impl Dispatcher {
             proposer: format!("remote:{from}"),
         };
         match args {
+            Args::SpawnChallenge(_) if host.local_manager_unrestricted() => Err(refused(
+                "an unrestricted manager takes input only from this machine's keyboard",
+            )),
             Args::SpawnChallenge(a) => run(&remote, tool::PROPOSE_SPAWN, a),
             Args::Spawn(a) => run(&remote, tool::SPAWN_SESSION, a),
             Args::Switch { session, to } => run(
@@ -1868,7 +1871,7 @@ mod tests {
     }
 
     #[test]
-    fn ask_is_refused_while_the_local_manager_is_unrestricted() {
+    fn ask_and_spawn_cards_are_refused_while_the_local_manager_is_unrestricted() {
         let r = rig();
         r.host
             .unrestricted_manager
@@ -1876,6 +1879,15 @@ mod tests {
         let res = r.call(&open(), "q1", "ask", json!({"text": "status please"}));
         assert_eq!(code(&res), ErrorCode::Refused);
         assert!(res.error.unwrap().message.contains("unrestricted manager"));
+        let res = r.call(
+            &open(),
+            "q2",
+            "spawn_challenge",
+            json!({"profile": "claude-code", "cwd": "/tmp/ok", "prompt": "go", "name": "n"}),
+        );
+        assert_eq!(code(&res), ErrorCode::Refused);
+        assert!(res.error.unwrap().message.contains("unrestricted manager"));
+        assert!(r.host.proposed.lock().unwrap().is_empty());
         assert!(r
             .d
             .state()
