@@ -576,22 +576,34 @@ describe('detail panel and dialogs', () => {
 		expect(store.switcher.open).toBe(false);
 	});
 
+	const deferred = <T>() => {
+		let resolve!: (v: T) => void;
+		let reject!: (e: unknown) => void;
+		const promise = new Promise<T>((res, rej) => {
+			resolve = res;
+			reject = rej;
+		});
+		return { promise, resolve, reject };
+	};
+	const flush = () => new Promise((r) => setTimeout(r, 0));
+	type Choices = { value: string; label: string }[];
+	const codexSetup = (agentModels: ManagerApi['agentModels']) =>
+		setup({
+			rooms: jest.fn(async () => [{ ...info(S1), agent: 'codex' }, info(MGR)]),
+			agentModels,
+		});
+
 	it('switch dialog loads the agent model list once and caches it', async () => {
 		const agentModels = jest.fn(async (_agent: string) => [
 			{ value: 'default', label: 'default' },
 			{ value: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
 		]);
-		const { store } = setup({
-			rooms: jest.fn(async () => [{ ...info(S1), agent: 'codex' }, info(MGR)]),
-			agentModels,
-		});
+		const { store } = codexSetup(agentModels);
 		await store.init();
 		await store.select(S1_KEY);
 		store.openSwitch();
 		store.pickSwitchAgent('agy');
-		await Promise.resolve();
-		await Promise.resolve();
-		expect(agentModels).toHaveBeenCalledWith('agy');
+		await flush();
 		expect(store.switchModels).toEqual(['default', 'gemini-3.8-flash-medium']);
 		expect(store.switchLabels['gemini-3.8-flash-medium']).toBe(
 			'Gemini 3.8 Flash (Medium)',
@@ -599,14 +611,14 @@ describe('detail panel and dialogs', () => {
 		expect(store.switcher.model).toBe('default');
 		store.closeSwitch();
 		store.pickSwitchAgent('agy');
-		await Promise.resolve();
+		await flush();
 		expect(agentModels.mock.calls.filter((c) => c[0] === 'agy')).toHaveLength(
 			1,
 		);
 	});
 
-	it('switch dialog keeps the static list when the model query fails or for claude', async () => {
-		const agentModels = jest.fn(async () => {
+	it('switch dialog keeps the static list when the query fails and never asks for claude', async () => {
+		const agentModels = jest.fn(async (_agent: string): Promise<Choices> => {
 			throw new Error('agy not found');
 		});
 		const { store } = setup({ agentModels });
@@ -614,8 +626,7 @@ describe('detail panel and dialogs', () => {
 		await store.select(S1_KEY);
 		store.openSwitch();
 		store.pickSwitchAgent('opencode');
-		await Promise.resolve();
-		await Promise.resolve();
+		await flush();
 		expect(store.switchModels).toEqual(['default']);
 		expect(store.switchLabels).toEqual({});
 		store.pickSwitchAgent('claude');
@@ -623,17 +634,97 @@ describe('detail panel and dialogs', () => {
 		expect(store.switchModels[0]).toBe('opus');
 	});
 
-	it('a loaded list replaces an unavailable preselected model', async () => {
-		const { store } = setup({
-			rooms: jest.fn(async () => [{ ...info(S1), agent: 'codex' }, info(MGR)]),
-			agentModels: jest.fn(async () => [{ value: 'gpt-7', label: 'GPT 7' }]),
-		});
+	it('a failed query is retried on the next open', async () => {
+		const first = deferred<Choices>();
+		const second = deferred<Choices>();
+		const agentModels = jest
+			.fn()
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const { store } = codexSetup(agentModels);
 		await store.init();
 		await store.select(S1_KEY);
 		store.openSwitch();
-		await Promise.resolve();
-		await Promise.resolve();
+		first.reject(new Error('boom'));
+		await flush();
+		store.closeSwitch();
+		store.openSwitch();
+		expect(agentModels).toHaveBeenCalledTimes(2);
+		second.resolve([{ value: 'gpt-7', label: 'GPT 7' }]);
+		await flush();
 		expect(store.switcher.model).toBe('gpt-7');
+	});
+
+	it('a loaded list replaces an unavailable untouched model', async () => {
+		const d = deferred<Choices>();
+		const { store } = codexSetup(jest.fn(() => d.promise));
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		d.resolve([{ value: 'gpt-7', label: 'GPT 7' }]);
+		await flush();
+		expect(store.switcher.model).toBe('gpt-7');
+	});
+
+	it('a chip picked before the list arrives is kept', async () => {
+		const d = deferred<Choices>();
+		const { store } = codexSetup(jest.fn(() => d.promise));
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		store.pickSwitchModel('gpt-6-luna');
+		d.resolve([{ value: 'gpt-7', label: 'GPT 7' }]);
+		await flush();
+		expect(store.switcher.model).toBe('gpt-6-luna');
+		expect(store.switchModels).toEqual(['gpt-7']);
+	});
+
+	it('a list arriving while a switch is busy does not change the model', async () => {
+		const d = deferred<Choices>();
+		const { store } = codexSetup(jest.fn(() => d.promise));
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		store.switcher.busy = true;
+		d.resolve([{ value: 'gpt-7', label: 'GPT 7' }]);
+		await flush();
+		expect(store.switcher.model).toBe('gpt-6.1-terra');
+	});
+
+	it('a list arriving after the dialog closed does not touch the model', async () => {
+		const d = deferred<Choices>();
+		const { store } = codexSetup(jest.fn(() => d.promise));
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		store.closeSwitch();
+		d.resolve([{ value: 'gpt-7', label: 'GPT 7' }]);
+		await flush();
+		expect(store.switcher.model).toBe('gpt-6.1-terra');
+	});
+
+	it('lists resolving out of order only affect their own agent', async () => {
+		const agy = deferred<Choices>();
+		const opencode = deferred<Choices>();
+		const agentModels = jest.fn((agent: string) =>
+			agent === 'agy' ? agy.promise : opencode.promise,
+		);
+		const { store } = codexSetup(agentModels);
+		await store.init();
+		await store.select(S1_KEY);
+		store.openSwitch();
+		store.pickSwitchAgent('agy');
+		store.pickSwitchAgent('opencode');
+		agy.resolve([{ value: 'agy-m', label: 'Agy M' }]);
+		await flush();
+		expect(store.switcher.agent).toBe('opencode');
+		expect(store.switcher.model).toBe('default');
+		opencode.resolve([{ value: 'p/m', label: 'p/m' }]);
+		await flush();
+		expect(store.switcher.model).toBe('p/m');
+		store.pickSwitchAgent('agy');
+		expect(store.switchModels).toEqual(['agy-m']);
+		expect(store.switcher.model).toBe('agy-m');
 	});
 
 	it('switch stub error surfaces in the dialog', async () => {
