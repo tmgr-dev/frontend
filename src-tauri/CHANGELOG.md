@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.178 — 2026-11-22
+
+- Manager window: the model switcher now offers Fable and shows versions (Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 5.5).
+- Manager window: the Codex model list is updated to the current models.
+
 ## 0.9.177 — 2026-11-22
 
 - Manager window: the window can be moved by dragging the top bars (the chat header, the sessions header and the panel tabs).
