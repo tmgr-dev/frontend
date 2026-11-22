@@ -4,8 +4,8 @@
 			<div class="ph2">
 				<Avatar :agent="info.agent" />
 				<div>
-					<b>{{ info.title }}</b>
-					<small>{{ info.agent ?? $t('manager.panel.unknownAgent') }}</small>
+					<b>{{ heading }}</b>
+					<small>{{ subheading }}</small>
 				</div>
 				<StatePill v-if="info.state" :state="info.state" />
 			</div>
@@ -23,6 +23,14 @@
 						full
 					/><template v-else>—</template></b
 				>
+				<template v-if="info.state">
+					<span>{{ $t('manager.panel.state') }}</span
+					><b>{{ $t(`manager.state.${info.state}`) }}</b>
+				</template>
+			</div>
+			<div v-if="handoff" class="handoff">
+				<b>{{ $t('manager.panel.handoff') }}</b>
+				<small>{{ $t('manager.panel.handoffHint') }}</small>
 			</div>
 			<div class="lbl">{{ $t('manager.panel.lastMessages') }}</div>
 			<ul v-if="previews.length" class="pv">
@@ -44,6 +52,7 @@
 	import Avatar from './Avatar.vue';
 	import ContextMeter from './ContextMeter.vue';
 	import StatePill from './StatePill.vue';
+	import { needsHandoff } from '../hierarchy';
 	import { authorLabel, plainPreview } from './viewHelpers';
 
 	export default defineComponent({
@@ -54,6 +63,17 @@
 			messages: { type: Array as PropType<ChatMessage[]>, default: () => [] },
 		},
 		computed: {
+			heading(): string {
+				const i = this.info as RoomInfo;
+				return `${i.agent ?? this.$t('manager.panel.unknownAgent')} · ${i.room.machine}`;
+			},
+			subheading(): string {
+				const { task, title } = this.info as RoomInfo;
+				return task && task !== title ? `${task} · ${title}` : title;
+			},
+			handoff(): boolean {
+				return needsHandoff(this.info?.context_tokens);
+			},
 			previews(): { id: string; who: string; text: string }[] {
 				return this.messages
 					.filter((m) => m.kind !== 'decision')

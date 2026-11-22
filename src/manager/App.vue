@@ -151,6 +151,7 @@
 		<DetailPanel
 			:tab="store.panel.tab"
 			:rooms="store.rooms"
+			:machines="pairing.machines"
 			:info="activeInfo"
 			:active-key="store.activeKey ?? undefined"
 			:messages="messages"

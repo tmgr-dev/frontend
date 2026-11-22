@@ -275,6 +275,10 @@
 		"context": "Context",
 		"lastMessages": "Last messages",
 		"writeToAct": "To make it act, write in its chat.",
+		"state": "State",
+		"task": "Task",
+		"handoff": "Hand off to a fresh session",
+		"handoffHint": "Context is above 180k. Ask the Manager to hand this work off to a fresh session.",
 		"pickSession": "Select a session to see its details.",
 		"noSessions": "No sessions yet.",
 		"needsApproval": "needs approval",
@@ -289,6 +293,14 @@
 		"pairedDevices": "Paired devices",
 		"keyFingerprint": "Key fingerprint",
 		"manageDevices": "Manage devices"
+	},
+	"hierarchy": {
+		"mainRole": "Main",
+		"subRole": "Sub-manager",
+		"mainDuty": "asks you to approve risky actions",
+		"subDuty": "takes orders from the main Manager",
+		"controlsOwn": "Controls its own machine directly",
+		"localScope": "Local scope: acts only on {machine}."
 	},
 	"newSession": {
 		"title": "New session",

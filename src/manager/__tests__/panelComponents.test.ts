@@ -143,6 +143,14 @@ describe('manager detail panel components', () => {
 		expect(html).toContain('Running tests');
 		expect(html).toContain('All green');
 		expect(html).not.toContain('Stop');
+		expect(html).not.toContain('Hand off');
+	});
+
+	it('SessionTab suggests a handoff above 180k context', async () => {
+		const html = await render('SessionTab', {
+			info: { ...rooms[0], context_tokens: 190_000, context_pct: 95 },
+		});
+		expect(html).toContain('Hand off to a fresh session');
 	});
 
 	it('SessionTab asks to pick a session for the Manager room', async () => {
@@ -156,9 +164,36 @@ describe('manager detail panel components', () => {
 			activeKey: 'session:mac:s1',
 		});
 		expect(html.indexOf('Manager')).toBeLessThan(html.indexOf('claude'));
-		expect(html.indexOf('>mac<')).toBeLessThan(html.indexOf('>studio<'));
-		expect(html).toContain('codex · TM-9');
+		expect(html.indexOf('Controls its own machine directly')).toBeLessThan(
+			html.indexOf('>studio<'),
+		);
+		expect(html).toContain('Main · mac · asks you to approve risky actions');
+		expect(html).toContain('<b>codex</b>');
 		expect(html).toContain('hs st-working on');
+	});
+
+	it('HierarchyTab shows a sub-manager with its local scope banner and task ids', async () => {
+		const html = await render('HierarchyTab', {
+			rooms: [
+				...rooms,
+				{
+					room: { kind: 'manager', machine: 'studio' },
+					title: 'Studio manager',
+				},
+				{ ...rooms[1], task: 'TM-1014' },
+			],
+			machines: [
+				{ machine: 'mac', role: 'top' },
+				{ machine: 'studio', role: 'sub', label: 'Studio' },
+			],
+			activeKey: null,
+		});
+		expect(html).toContain('Studio manager');
+		expect(html).toContain(
+			'Sub-manager · Studio · takes orders from the main Manager',
+		);
+		expect(html).toContain('Local scope: acts only on Studio.');
+		expect(html).toContain('TM-1014');
 	});
 
 	it('AuditTab shows the empty state and entries', async () => {

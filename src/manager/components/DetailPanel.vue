@@ -18,6 +18,7 @@
 			<HierarchyTab
 				v-else-if="tab === 'hierarchy'"
 				:rooms="rooms"
+				:machines="machines"
 				:active-key="activeKey"
 				@select="$emit('select', $event)"
 			/>
@@ -38,7 +39,13 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import type { AuditEntry, ChatMessage, RoomInfo, TrustState } from '../types';
+	import type {
+		AuditEntry,
+		ChatMessage,
+		ManagerMachine,
+		RoomInfo,
+		TrustState,
+	} from '../types';
 	import AuditTab from './AuditTab.vue';
 	import EncryptionTab from './EncryptionTab.vue';
 	import HierarchyTab from './HierarchyTab.vue';
@@ -52,6 +59,10 @@
 		props: {
 			tab: { type: String, required: true },
 			rooms: { type: Array as PropType<RoomInfo[]>, required: true },
+			machines: {
+				type: Array as PropType<ManagerMachine[]>,
+				default: () => [],
+			},
 			info: { type: Object as PropType<RoomInfo>, default: undefined },
 			activeKey: { type: String, default: null },
 			messages: { type: Array as PropType<ChatMessage[]>, default: () => [] },

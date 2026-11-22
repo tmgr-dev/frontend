@@ -1436,6 +1436,57 @@ body:has(.manager.app-shell) {
 .manager .hn.top {
 	background: var(--brand-soft);
 }
+.manager .hn {
+	width: 100%;
+}
+.manager .hn.mid {
+	background: var(--sunken);
+}
+.manager .hsub {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.manager .hnode {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.manager .hbs {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.manager .scope {
+	display: flex;
+	gap: 6px;
+	align-items: flex-start;
+	font-size: 12px;
+	color: var(--done-fg);
+	background: var(--done-bg);
+	padding: 6px 10px;
+	border-radius: var(--r-sm);
+}
+.manager .scope svg {
+	margin-top: 2px;
+	flex: none;
+}
+.manager .handoff {
+	margin-top: 10px;
+	padding: 8px 10px;
+	border-radius: var(--r-sm);
+	background: var(--progress-bg);
+	color: var(--progress-fg);
+	font-size: 12.5px;
+}
+.manager .handoff b,
+.manager .handoff small {
+	display: block;
+}
+.manager .handoff small {
+	opacity: 0.85;
+	font-size: 11.5px;
+}
 .manager .hn.on,
 .manager .hs.on {
 	box-shadow: 0 0 0 2px var(--brand);
@@ -1485,6 +1536,9 @@ body:has(.manager.app-shell) {
 }
 .manager .hs.st-done .dt {
 	background: var(--done);
+}
+.manager .hs.st-failed .dt {
+	background: var(--fix);
 }
 .manager .audit .ar {
 	display: flex;

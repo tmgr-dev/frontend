@@ -27,12 +27,19 @@ const AGENT_NAMES: Record<string, string> = {
 	agy: 'Antigravity',
 };
 
+export const agentName = (agent?: string): string =>
+	agent ? (AGENT_NAMES[agent] ?? agent) : '';
+
+export const modelFamily = (agent?: string, model?: string): string => {
+	if (!model) return '';
+	const family = /opus|sonnet|haiku|fable/.exec(model.toLowerCase());
+	return agent?.startsWith('claude') && family ? family[0] : model;
+};
+
 export const modelPillText = (info: RoomInfo): string => {
 	if (info.room.kind === 'manager' || !info.model) return '';
-	const family = /opus|sonnet|haiku|fable/.exec(info.model.toLowerCase());
-	const model =
-		info.agent?.startsWith('claude') && family ? family[0] : info.model;
-	const name = info.agent ? (AGENT_NAMES[info.agent] ?? info.agent) : '';
+	const model = modelFamily(info.agent, info.model);
+	const name = agentName(info.agent);
 	return name ? `${name} · ${model}` : model;
 };
 
