@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.162
+
+- Added: `tmgr link chat-enroll <follower>` enrols a follower machine into this machine's manager chat over `tmgr link`. The join code is read from stdin, never from the command line. The follower's runner then shows up as a sub-manager with its sessions on your desktop and phone, with `list`, `read`, `room`, `ask` and `send` allowed for this leader.
+- Added: a follower allows chat enrolment by default for a leader it trusts. `tmgr link trust --no-chat-enroll` and `tmgr link scope <leader> --chat-enroll false` turn it off; turning it back on needs a terminal.
+- Security: a follower binds the chat to the first leader machine that enrols it and refuses a different one. Enrolment is refused if it would widen what other machines in `manager-remote.toml` may do; edit that file by hand in that case. A machine cannot enrol itself.
+- Update the CLI on the leader and on each follower, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.161
 
 - Changed: a message sent to the Manager or a session that is not at its prompt is no longer refused with "busy". The runner queues it per chat (up to 20 messages, for up to 30 minutes), types it in order when the session is back at its prompt, and says why when it cannot (no manager running, session exited, queue full, expired, cancelled). Queued messages are kept in memory only, so a runner restart drops them.
