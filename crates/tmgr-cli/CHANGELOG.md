@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.159
+
+- Security: text that reaches an agent from outside this machine is now marked as relayed. Messages from the phone or another device through the chat relay, and `send`, `ask` and spawn prompts from a manager on another machine, arrive inside a block that names the source and the sender and asks the agent to check risky actions with you. Control and invisible characters are removed from that text. Text you type on this machine is unchanged.
+- Security: an unrestricted manager (`tmgr manager start --unrestricted`) no longer takes relayed input. A phone message to it is kept in the chat with the note "Not delivered: an unrestricted manager takes input only from this machine's keyboard", and `ask` and spawn cards from other machines are refused while it runs. A normal manager and other sessions still get phone messages, with the marker.
+- Security: a new follower PIN must be at least 12 characters and is stored with a stronger hash. An existing shorter PIN keeps working for links; `tmgr link pin status` suggests setting a longer one. Starting an unrestricted manager needs a PIN of at least 12 characters and says how to set one; a short PIN there does not count as a failed attempt.
+- Security: `pin.toml` must be a regular file owned by you and not readable by other users. Otherwise the PIN is refused with a hint; `tmgr link pin set` writes a new private file.
+- Restart the runner after updating (`tmgr runner restart`); running sessions do not need to be restarted.
+
 ## 1.0.158
 
 - Fixed: messages the Manager and the chat sent into a session were not always submitted: the text and the Enter key arrived in one burst, and Codex took the Enter for part of a paste and added a new line instead of sending. The runner now writes the text first and presses Enter separately a moment later.
