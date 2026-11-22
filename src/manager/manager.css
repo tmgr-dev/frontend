@@ -2237,7 +2237,6 @@ html.dark .manager .tools ul {
 	margin-left: auto;
 	font-style: normal;
 	opacity: 0.8;
-=======
 .manager .seg {
 	display: inline-flex;
 	gap: 2px;
@@ -2332,5 +2331,4 @@ html.dark .manager .tools ul {
 	.manager .safe-row .tgl::after {
 		transition: none;
 	}
->>>>>>> 280b6265a (feat(manager): new session dialog and search panel like the mock (TM-1055))
 }
