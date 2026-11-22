@@ -85,6 +85,7 @@ const SHIM_LINK_SILENT: Duration = Duration::from_secs(5);
 const ATTACH_INPUT_WAIT: Duration = Duration::from_secs(2);
 // A note typed into the agent only shows on screen after its next redraw; wait that long before the next one.
 const SEND_SETTLE: Duration = Duration::from_secs(5);
+const SUBMIT_DELAY: Duration = Duration::from_millis(250);
 const MAX_REPLIES_PER_SEC: u32 = 32;
 const MAX_PENDING: usize = 16;
 const REJECT_LOG_EVERY: Duration = Duration::from_secs(10);
@@ -1290,7 +1291,32 @@ impl Session {
         }
     }
 
-    fn input_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
+    fn input_at_prompt(self: &Arc<Self>, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
+        self.input_at_prompt_after(bytes, now, SUBMIT_DELAY)
+    }
+
+    fn input_at_prompt_after(
+        self: &Arc<Self>,
+        bytes: &[u8],
+        now: Instant,
+        delay: Duration,
+    ) -> Result<(), ApiErr> {
+        let (text, submit) = match bytes.strip_suffix(b"\r") {
+            Some(text) => (text, true),
+            None => (bytes, false),
+        };
+        self.write_at_prompt(text, now)?;
+        if submit {
+            let s = Arc::clone(self);
+            thread::spawn(move || {
+                thread::sleep(delay);
+                s.input(b"\r");
+            });
+        }
+        Ok(())
+    }
+
+    fn write_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
         {
             let mut i = lock(&self.inner);
             let bottom = i.screen.bottom_text(10);
@@ -6390,7 +6416,7 @@ mod tests {
     }
 
     fn send_at_prompt(s: &Session, bytes: &[u8], now: Instant) -> bool {
-        s.input_at_prompt(bytes, now).is_ok()
+        s.write_at_prompt(bytes, now).is_ok()
     }
 
     const IDLE: &[u8] = "done\r\n\r\n\u{276f}\r\n".as_bytes();
@@ -6517,6 +6543,48 @@ mod tests {
         s.feed(LIMIT_SCREEN, true);
         s.watch_limit(Some(Some(0)));
         assert!(s.info().limit.is_none());
+    }
+
+    fn queued(rx: &mpsc::Receiver<Frame>) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        while let Ok(Frame::Bin(b)) = rx.try_recv() {
+            out.push(b.data.to_vec());
+        }
+        out
+    }
+
+    #[test]
+    fn the_submit_key_is_written_apart_from_the_text_after_a_pause() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        let text = b"\x1b[200~a\nb\x1b[201~\r";
+        s.input_at_prompt_after(text, Instant::now(), Duration::from_millis(80))
+            .unwrap();
+        assert_eq!(queued(&rx), vec![b"\x1b[200~a\nb\x1b[201~".to_vec()]);
+        thread::sleep(Duration::from_millis(400));
+        assert_eq!(queued(&rx), vec![b"\r".to_vec()]);
+    }
+
+    #[test]
+    fn a_single_line_is_written_before_its_submit_key_not_with_it() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        s.input_at_prompt_after(b"poll\r", Instant::now(), Duration::from_millis(80))
+            .unwrap();
+        assert_eq!(queued(&rx), vec![b"poll".to_vec()]);
+        thread::sleep(Duration::from_millis(400));
+        assert_eq!(queued(&rx), vec![b"\r".to_vec()]);
+    }
+
+    #[test]
+    fn a_refused_send_does_not_submit_anything_later() {
+        let (_t, s, rx) = lone_session();
+        s.feed(b"\r\nworking\r\n", true);
+        assert!(s
+            .input_at_prompt_after(b"x\r", Instant::now(), Duration::from_millis(50))
+            .is_err());
+        thread::sleep(Duration::from_millis(300));
+        assert!(queued(&rx).is_empty());
     }
 
     #[test]
