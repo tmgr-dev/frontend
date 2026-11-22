@@ -484,6 +484,7 @@ impl Chat {
             state: live.map(|s| state_name(s.state.kind).into()),
             context_pct: live_meta.as_ref().and_then(|m| m.context_pct),
             context_tokens: live_meta.and_then(|m| m.context_tokens),
+            model: None,
             unrestricted: unrestricted.is_some(),
         }];
         let live_id = live.map(|s| s.id.as_str());
@@ -509,7 +510,8 @@ impl Chat {
                 agent: s.profile.clone(),
                 state: Some(state_name(s.state.kind).into()),
                 context_pct: meta.as_ref().and_then(|m| m.context_pct),
-                context_tokens: meta.and_then(|m| m.context_tokens),
+                context_tokens: meta.as_ref().and_then(|m| m.context_tokens),
+                model: meta.and_then(|m| m.model),
                 unrestricted: unrestricted == Some(s.id.as_str()),
             });
         }

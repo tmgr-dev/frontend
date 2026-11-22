@@ -701,7 +701,7 @@ optional; readers ignore the object when it is absent.
 
 | method | params | result |
 |---|---|---|
-| `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`; `state`, `context_pct` and `context_tokens` of the live manager session when there is one), then one room per session except the live manager, whose terminal replies are posted into the Manager room as `session` messages without `reply_to` and whose user turns are not mirrored (`title` = session name, `agent` = profile, `state`, `last`, and `context_pct` and `context_tokens` once the session's transcript reported usage since the runner started) |
+| `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`; `state`, `context_pct` and `context_tokens` of the live manager session when there is one), then one room per session except the live manager, whose terminal replies are posted into the Manager room as `session` messages without `reply_to` and whose user turns are not mirrored (`title` = session name, `agent` = profile, `state`, `last`, and `context_pct`, `context_tokens` and `model` once the session's transcript reported usage since the runner started) |
 | `chat.history` | `{room, before?, limit?}` (`limit` 1 to 500, default 500) | `[ChatMessage]`, oldest first: the newest `limit` messages stored before the message with id `before` (store order, which is append order); an unknown `before` gives `[]` |
 | `chat.send` | `{room, body_md, reply_to?, attachments?, id?, ts_ms?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
 | `chat.search` | `{query, room?, limit?}` (`query` 1 to 256 characters, `limit` default 50, max 500) | `[ChatMessage]`, newest first: case-insensitive substring match on `body_md` |

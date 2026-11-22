@@ -200,6 +200,8 @@ pub struct RoomInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last: Option<ChatMessage>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unrestricted: bool,

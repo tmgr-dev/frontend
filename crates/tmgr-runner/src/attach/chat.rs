@@ -349,6 +349,7 @@ impl ChatState {
                     state: None,
                     context_pct: None,
                     context_tokens: None,
+                    model: None,
                     last: None,
                     unrestricted: false,
                     room: room.clone(),

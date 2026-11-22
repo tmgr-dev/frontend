@@ -347,6 +347,7 @@ mod tests {
             state: Some("working".into()),
             context_pct: Some(5),
             context_tokens: None,
+            model: None,
             last,
             unrestricted: false,
         }

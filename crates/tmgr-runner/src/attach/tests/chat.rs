@@ -28,6 +28,7 @@ fn info(room: RoomRef, title: &str, agent: Option<&str>, pct: Option<u8>) -> Roo
         state: Some("working".into()),
         context_pct: pct,
         context_tokens: None,
+        model: None,
         last: None,
         unrestricted: false,
     }

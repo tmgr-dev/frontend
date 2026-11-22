@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.163
+
+- Fixed: `tmgr chat join` with a login that lacks the `chat:devices` scope no longer ends in a bare 403. It says what is missing and prints the `tmgr login --scopes ...` command that fixes it.
+- Added: the runner reports each session's model in the room list, so the desktop Manager can show it in the session header.
+
 ## 1.0.161
 
 - Changed: a message sent to the Manager or a session that is not at its prompt is no longer refused with "busy". The runner queues it per chat (up to 20 messages, for up to 30 minutes), types it in order when the session is back at its prompt, and says why when it cannot (no manager running, session exited, queue full, expired, cancelled). Queued messages are kept in memory only, so a runner restart drops them.

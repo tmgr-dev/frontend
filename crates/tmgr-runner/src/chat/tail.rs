@@ -632,6 +632,7 @@ mod tests {
         let room = chat.rooms(&s, None).remove(1);
         assert_eq!(room.context_pct, Some(20));
         assert_eq!(room.context_tokens, Some(40_000));
+        assert_eq!(room.model.as_deref(), Some("claude-opus-4-1"));
     }
 
     #[test]
