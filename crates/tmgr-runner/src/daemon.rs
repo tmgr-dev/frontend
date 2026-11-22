@@ -1310,7 +1310,9 @@ impl Session {
             let s = Arc::clone(self);
             thread::spawn(move || {
                 thread::sleep(delay);
-                s.input(b"\r");
+                if !s.input(b"\r") {
+                    log(&format!("session {}: submit key not delivered", s.id));
+                }
             });
         }
         Ok(())
@@ -6553,27 +6555,33 @@ mod tests {
         out
     }
 
+    fn queued_by(rx: &mpsc::Receiver<Frame>, frames: usize) -> Vec<Vec<u8>> {
+        let end = Instant::now() + Duration::from_secs(5);
+        let mut out = queued(rx);
+        while out.len() < frames && Instant::now() < end {
+            thread::sleep(Duration::from_millis(20));
+            out.extend(queued(rx));
+        }
+        out
+    }
+
     #[test]
     fn the_submit_key_is_written_apart_from_the_text_after_a_pause() {
         let (_t, s, rx) = lone_session();
         s.feed(IDLE, true);
-        let text = b"\x1b[200~a\nb\x1b[201~\r";
-        s.input_at_prompt_after(text, Instant::now(), Duration::from_millis(80))
+        s.input_at_prompt(b"\x1b[200~a\nb\x1b[201~\r", Instant::now())
             .unwrap();
         assert_eq!(queued(&rx), vec![b"\x1b[200~a\nb\x1b[201~".to_vec()]);
-        thread::sleep(Duration::from_millis(400));
-        assert_eq!(queued(&rx), vec![b"\r".to_vec()]);
+        assert_eq!(queued_by(&rx, 1), vec![b"\r".to_vec()]);
     }
 
     #[test]
     fn a_single_line_is_written_before_its_submit_key_not_with_it() {
         let (_t, s, rx) = lone_session();
         s.feed(IDLE, true);
-        s.input_at_prompt_after(b"poll\r", Instant::now(), Duration::from_millis(80))
-            .unwrap();
+        s.input_at_prompt(b"poll\r", Instant::now()).unwrap();
         assert_eq!(queued(&rx), vec![b"poll".to_vec()]);
-        thread::sleep(Duration::from_millis(400));
-        assert_eq!(queued(&rx), vec![b"\r".to_vec()]);
+        assert_eq!(queued_by(&rx, 1), vec![b"\r".to_vec()]);
     }
 
     #[test]
@@ -6583,7 +6591,7 @@ mod tests {
         assert!(s
             .input_at_prompt_after(b"x\r", Instant::now(), Duration::from_millis(50))
             .is_err());
-        thread::sleep(Duration::from_millis(300));
+        thread::sleep(Duration::from_millis(400));
         assert!(queued(&rx).is_empty());
     }
 
