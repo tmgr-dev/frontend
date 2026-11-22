@@ -41,8 +41,7 @@ struct SessState {
 struct Sess {
   id: String,
   state: SessState,
-  #[serde(default)]
-  manager: bool,
+  manager: Option<bool>,
 }
 
 impl Sess {
@@ -86,7 +85,32 @@ impl RunnerLocal {
     if self.machine()? != room.machine {
       return Err("only this machine's chats can be controlled here".to_owned());
     }
-    self.sessions()?.into_iter().find(|s| s.id == id).ok_or_else(|| "This chat no longer exists in the runner.".to_owned())
+    let sess = self.sessions()?.into_iter().find(|s| s.id == id).ok_or_else(|| "This chat no longer exists in the runner.".to_owned())?;
+    if sess.manager != Some(false) {
+      return Err("The manager session cannot be stopped or deleted from here.".to_owned());
+    }
+    Ok(sess)
+  }
+
+  fn running(&self, room: &RoomRef) -> Result<Sess, String> {
+    let sess = self.target(room)?;
+    if sess.exited() {
+      return Err("This chat is not running.".to_owned());
+    }
+    Ok(sess)
+  }
+
+  fn stopped(&self, room: &RoomRef) -> Result<Sess, String> {
+    let sess = self.target(room)?;
+    if !sess.exited() {
+      return Err("Stop the chat first. Only a stopped chat can be deleted.".to_owned());
+    }
+    Ok(sess)
+  }
+
+  fn guarded_signal(&self, room: &RoomRef, signal: &str) -> Result<bool, String> {
+    let sess = self.running(room)?;
+    self.signal(&sess.id, signal)
   }
 
   fn signal(&self, id: &str, signal: &str) -> Result<bool, String> {
@@ -100,13 +124,13 @@ impl RunnerLocal {
   fn wait_exit(&self, id: &str, limit: Duration) -> Result<bool, String> {
     let end = Instant::now() + limit;
     loop {
-      if self.sessions()?.iter().find(|s| s.id == id).is_none_or(Sess::exited) {
-        return Ok(true);
-      }
       if Instant::now() >= end {
         return Ok(false);
       }
-      std::thread::sleep(self.timing.poll);
+      if self.sessions()?.iter().find(|s| s.id == id).is_none_or(Sess::exited) {
+        return Ok(true);
+      }
+      std::thread::sleep(self.timing.poll.min(end.saturating_duration_since(Instant::now())));
     }
   }
 
@@ -152,32 +176,24 @@ impl LocalPort for RunnerLocal {
   }
 
   fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String> {
-    let sess = self.target(room)?;
-    if sess.exited() {
-      return Err("This chat is not running.".to_owned());
-    }
-    if sess.manager {
-      return Err("The manager session cannot be stopped from here.".to_owned());
-    }
+    let id = self.running(room)?.id;
     let first = if force { "kill" } else { "int" };
-    if self.signal(&sess.id, first)? || self.wait_exit(&sess.id, self.timing.int_wait)? {
+    if self.guarded_signal(room, first)? || self.wait_exit(&id, self.timing.int_wait)? {
       return Ok(StopOutcome { exited: true });
     }
     if force {
       return Ok(StopOutcome { exited: false });
     }
-    if self.signal(&sess.id, "term")? {
+    if self.guarded_signal(room, "term")? {
       return Ok(StopOutcome { exited: true });
     }
-    Ok(StopOutcome { exited: self.wait_exit(&sess.id, self.timing.term_wait)? })
+    Ok(StopOutcome { exited: self.wait_exit(&id, self.timing.term_wait)? })
   }
 
   fn remove(&self, room: &RoomRef) -> Result<(), String> {
-    let sess = self.target(room)?;
-    if !sess.exited() {
-      return Err("Stop the chat first. Only a stopped chat can be deleted.".to_owned());
-    }
-    self.runner.call("sessions.remove", serde_json::json!({ "id": sess.id })).map(drop).map_err(control_error)
+    self.stopped(room)?;
+    let id = self.stopped(room)?.id;
+    self.runner.call("sessions.remove", serde_json::json!({ "id": id })).map(drop).map_err(control_error)
   }
 
   fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
@@ -446,6 +462,81 @@ mod tests {
       assert!(l.remove(&sess_room()).is_err());
       assert!(signals(&f).is_empty());
       assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
+    }
+
+    #[test]
+    fn exited_manager_session_is_not_removed() {
+      let (l, f) = local(|method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(sess_json("exited", true)),
+        _ => Ok(Value::Null),
+      });
+      assert!(l.remove(&sess_room()).is_err());
+      assert!(l.stop(&sess_room(), true).is_err());
+      assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
+      assert!(signals(&f).is_empty());
+    }
+
+    #[test]
+    fn entry_without_manager_flag_refuses_stop_and_remove() {
+      for kind in ["working", "exited"] {
+        let (l, f) = local(move |method, _| match method {
+          "chat.rooms" => Ok(rooms_reply()),
+          "sessions.list" => Ok(json!([{ "id": SID, "state": { "kind": kind } }])),
+          _ => Ok(Value::Null),
+        });
+        assert!(l.stop(&sess_room(), false).is_err());
+        assert!(l.remove(&sess_room()).is_err());
+        assert!(signals(&f).is_empty());
+        assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
+      }
+    }
+
+    fn flipping(first: Value, then: Value) -> (RunnerLocal, Arc<Fake>) {
+      let lists = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+      let (l, f) = local(move |method, _| match method {
+        "chat.rooms" => Ok(rooms_reply()),
+        "sessions.list" => Ok(if lists.fetch_add(1, Ordering::SeqCst) == 0 { first.clone() } else { then.clone() }),
+        _ => Ok(Value::Null),
+      });
+      (fast(l), f)
+    }
+
+    #[test]
+    fn session_that_becomes_manager_before_kill_is_refused() {
+      let (l, f) = flipping(sess_json("working", false), sess_json("working", true));
+      assert!(l.stop(&sess_room(), false).is_err());
+      assert!(signals(&f).is_empty());
+    }
+
+    #[test]
+    fn session_that_exits_before_kill_is_not_signalled() {
+      let (l, f) = flipping(sess_json("working", false), sess_json("exited", false));
+      assert!(l.stop(&sess_room(), false).is_err());
+      assert!(signals(&f).is_empty());
+    }
+
+    #[test]
+    fn session_that_becomes_manager_or_running_before_remove_is_refused() {
+      for second in [sess_json("exited", true), sess_json("working", false)] {
+        let (l, f) = flipping(sess_json("exited", false), second);
+        assert!(l.remove(&sess_room()).is_err());
+        assert!(!methods(&f).contains(&"sessions.remove".to_owned()));
+      }
+    }
+
+    #[test]
+    fn wait_never_exceeds_the_deadline_by_more_than_one_list_call() {
+      let (l, _) = local(|method, _| {
+        if method == "sessions.list" {
+          std::thread::sleep(Duration::from_millis(30));
+          return Ok(sess_json("working", false));
+        }
+        Ok(rooms_reply())
+      });
+      let start = Instant::now();
+      assert!(!l.wait_exit(SID, Duration::from_millis(50)).unwrap());
+      assert!(start.elapsed() < Duration::from_millis(50 + 30 + 40));
     }
 
     #[test]

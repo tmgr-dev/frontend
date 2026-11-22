@@ -1204,6 +1204,37 @@ describe('chat control', () => {
 		expect(api.stop).not.toHaveBeenCalled();
 	});
 
+	it('changing the active room closes the dialog and nothing is called', async () => {
+		const { api, store } = withRooms(exited);
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('delete');
+		await store.select(MGR_KEY);
+		expect(store.control.open).toBeNull();
+		await store.deleteActive();
+		await store.forceStopActive();
+		expect(api.remove).not.toHaveBeenCalled();
+		expect(api.stop).not.toHaveBeenCalled();
+	});
+
+	it('confirm acts on the room the dialog was opened for', async () => {
+		const other: RoomInfo = {
+			...info({ ...S1, session: 's2' }),
+			state: 'working',
+		};
+		const stop = jest.fn(async () => ({ exited: true }));
+		const { store } = setup({
+			rooms: jest.fn(async () => [running, other, info(MGR)]),
+			stop,
+		});
+		await store.init();
+		await store.select(S1_KEY);
+		store.openControl('force');
+		store.activeKey = roomKey(other.room);
+		await store.forceStopActive();
+		expect(stop).toHaveBeenCalledWith(S1, true);
+	});
+
 	it('failed force stop keeps the dialog open with the error', async () => {
 		const { store } = withRooms(running, {
 			stop: jest.fn(async () => {

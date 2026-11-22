@@ -230,6 +230,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 		control: {
 			open: null as 'force' | 'delete' | null,
+			key: null as string | null,
 			busy: false,
 			error: '',
 			stillRunning: false,
@@ -409,6 +410,11 @@ export const createManagerStore = (api: ManagerApi) => {
 			const room = store.roomRef(key);
 			if (!room) return;
 			store.activeKey = key;
+			if (store.control.key !== key) {
+				store.control.open = null;
+				store.control.error = '';
+				store.control.stillRunning = false;
+			}
 			store.queuedIds = [];
 			postSendPolls = 0;
 			stopQueuePoll();
@@ -682,18 +688,20 @@ export const createManagerStore = (api: ManagerApi) => {
 			}
 		},
 
-		controllable(): RoomInfo | null {
-			const info = store.rooms.find((r) => roomKey(r.room) === store.activeKey);
+		controllable(key: string | null): RoomInfo | null {
+			const info = store.rooms.find((r) => roomKey(r.room) === key);
 			return info && info.room.kind === 'session' && info.local !== false
 				? info
 				: null;
 		},
 
 		openControl(mode: 'force' | 'delete') {
-			const info = store.controllable();
+			const info = store.controllable(store.activeKey);
 			if (!info || store.control.busy) return;
 			if ((info.state === 'exited') !== (mode === 'delete')) return;
+			store.control.key = roomKey(info.room);
 			store.control.error = '';
+			store.control.stillRunning = false;
 			store.control.open = mode;
 		},
 
@@ -704,12 +712,15 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		async runControl(
+			key: string | null,
 			wantExited: boolean,
 			act: (room: RoomRef) => Promise<boolean>,
 		) {
-			const info = store.controllable();
+			const info = store.controllable(key);
 			const ctl = store.control;
-			if (!info || ctl.busy || (info.state === 'exited') !== wantExited) return;
+			if (!key || !info || ctl.busy) return;
+			if ((info.state === 'exited') !== wantExited) return;
+			ctl.key = key;
 			ctl.busy = true;
 			ctl.error = '';
 			ctl.stillRunning = false;
@@ -724,7 +735,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		async stopActive() {
-			await store.runControl(false, async (room) => {
+			await store.runControl(store.activeKey, false, async (room) => {
 				const { exited } = await api.stop(room, false);
 				store.control.stillRunning = !exited;
 				return exited;
@@ -732,7 +743,8 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		async forceStopActive() {
-			await store.runControl(false, async (room) => {
+			if (store.control.open !== 'force') return;
+			await store.runControl(store.control.key, false, async (room) => {
 				const { exited } = await api.stop(room, true);
 				store.control.stillRunning = !exited;
 				return exited;
@@ -740,8 +752,9 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		async deleteActive() {
-			const key = store.activeKey;
-			await store.runControl(true, async (room) => {
+			const key = store.control.key;
+			if (store.control.open !== 'delete') return;
+			await store.runControl(key, true, async (room) => {
 				await api.remove(room);
 				return true;
 			});
@@ -749,6 +762,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (store.rooms.some((r) => roomKey(r.room) === key)) return;
 			delete store.messagesByRoom[key];
 			store.shownRooms.delete(key);
+			if (store.activeKey !== key) return;
 			const first = store.rooms[0];
 			store.activeKey = null;
 			if (first) await store.select(roomKey(first.room));
