@@ -1362,12 +1362,12 @@ fn pin_status_works_anywhere_and_never_shows_the_hash() {
     };
     let v: Value = serde_json::from_str(&run(true)).unwrap();
     assert_eq!(v["data"]["set"], false);
-    tmgr_link::pin::set(&f.paths, "owner-pin-1").unwrap();
+    tmgr_link::pin::set(&f.paths, "owner-pin-1234").unwrap();
     let text = run(false);
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["data"]["set"], true);
     assert_eq!(v["data"]["locked"], false);
-    assert!(!text.contains("argon2") && !text.contains("owner-pin-1"));
+    assert!(!text.contains("argon2") && !text.contains("owner-pin-1234"));
     for _ in 0..5 {
         tmgr_link::pin::verify(&f.paths, "wrong-pin-x").unwrap();
     }

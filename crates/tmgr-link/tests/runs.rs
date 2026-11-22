@@ -3086,7 +3086,7 @@ fn input_on_a_run_made_by_start_is_refused_without_the_attach_input_scope() {
     assert!(fake.0.lock().unwrap().sends.is_empty());
 }
 
-const PIN: &str = "owner-pin-1";
+const PIN: &str = "owner-pin-1234";
 
 fn privileged_world(remote: bool, bypass: bool, no_sandbox: bool) -> World {
     let w = world();

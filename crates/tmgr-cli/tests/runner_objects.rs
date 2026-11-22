@@ -13,7 +13,7 @@ use tmgr_link::store::Paths;
 use tmgr_runner::client::Client;
 
 const BIN: &str = env!("CARGO_BIN_EXE_tmgr");
-const PIN: &str = "owner-pin-1";
+const PIN: &str = "owner-pin-1234";
 
 struct Env {
     tmp: tempfile::TempDir,

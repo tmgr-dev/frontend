@@ -42,14 +42,20 @@ fn pin_json(st: &tmgr_link::pin::Status) -> Value {
         "locked": st.locked,
         "failures": st.failures,
         "tries_left": tmgr_link::pin::MAX_FAILURES.saturating_sub(st.failures),
+        "legacy": st.legacy,
     })
 }
 
 fn pin_line(st: &tmgr_link::pin::Status) -> String {
-    match (st.set, st.locked) {
+    let line = match (st.set, st.locked) {
         (false, _) => "follower PIN: not set".to_string(),
         (true, true) => "follower PIN: set, LOCKED (unlock with tmgr link pin reset)".to_string(),
         (true, false) => format!("follower PIN: set ({} wrong tries so far)", st.failures),
+    };
+    if st.legacy {
+        format!("{line}\nPIN is shorter or older than the current rules; set a new one with `tmgr link pin set`.")
+    } else {
+        line
     }
 }
 

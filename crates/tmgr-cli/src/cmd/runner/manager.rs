@@ -152,6 +152,13 @@ fn start_unrestricted(o: &Opts, a: &ManagerStartArgs, cwd: &Path) -> Result<i32>
     )?;
     require_pin_set()?;
     let entered = rpassword::prompt_password("Follower PIN (input hidden): ")?;
+    if entered.chars().count() < pin::MIN_LEN {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the PIN is shorter than 12 characters, so an unrestricted manager cannot start",
+        )
+        .hint("set a longer PIN with: tmgr link pin set"));
+    }
     apply_top(&cfg.dir, a.top_choice())
         .map_err(|e| Error::usage(format!("cannot update the top manager flag: {e}")))?;
     let mut req = super::ops::run_create_run(

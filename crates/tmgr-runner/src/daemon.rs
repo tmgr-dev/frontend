@@ -265,6 +265,7 @@ pub enum PinVerdict {
     Wrong { left: u32 },
     Locked,
     Unset,
+    TooShort,
 }
 
 pub type PinCheck = Arc<dyn Fn(&str) -> Result<PinVerdict, String> + Send + Sync>;

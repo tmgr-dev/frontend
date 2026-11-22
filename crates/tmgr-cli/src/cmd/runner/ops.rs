@@ -167,12 +167,13 @@ fn serve() -> Result<i32> {
     cfg.relay = Some(crate::cmd::chat::transport::factory());
     cfg.pin_check = Some(std::sync::Arc::new(|pin| {
         let paths = tmgr_link::store::Paths::from_env().map_err(|e| e.to_string())?;
-        tmgr_link::pin::verify(&paths, pin)
+        tmgr_link::pin::verify_strong(&paths, pin)
             .map(|v| match v {
                 tmgr_link::pin::Verdict::Ok => daemon::PinVerdict::Ok,
                 tmgr_link::pin::Verdict::Wrong { left } => daemon::PinVerdict::Wrong { left },
                 tmgr_link::pin::Verdict::Locked => daemon::PinVerdict::Locked,
                 tmgr_link::pin::Verdict::Unset => daemon::PinVerdict::Unset,
+                tmgr_link::pin::Verdict::TooShort => daemon::PinVerdict::TooShort,
             })
             .map_err(|e| e.to_string())
     }));

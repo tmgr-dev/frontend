@@ -67,6 +67,10 @@ fn pin_verdict(v: Verdict) -> Result<()> {
             "the follower PIN is locked after too many wrong tries",
         )
         .hint("unlock it with: tmgr link pin reset")),
+        Verdict::TooShort => Err(Error::new(
+            Kind::Forbidden,
+            "the follower PIN is too short, nothing was changed",
+        )),
         Verdict::Wrong { left } => Err(Error::new(
             Kind::Forbidden,
             format!("wrong follower PIN ({left} tries left), nothing was changed"),
@@ -405,29 +409,29 @@ mod tests {
             .unwrap_or("")
             .contains("tmgr link pin set"));
         assert!(e.message.contains("PIN"));
-        let (_d, p) = paths_with_pin(Some("owner-pin-1"));
+        let (_d, p) = paths_with_pin(Some("owner-pin-1234"));
         assert!(require_pin_set(&tmgr_link::pin::status(&p).unwrap()).is_ok());
     }
 
     #[test]
     fn a_wrong_pin_is_refused_and_counts_toward_the_lockout() {
-        let (_d, p) = paths_with_pin(Some("owner-pin-1"));
+        let (_d, p) = paths_with_pin(Some("owner-pin-1234"));
         let e = authorize(&p, "wrong-pin-x").unwrap_err();
         assert_eq!(e.exit_code(), 5);
         assert!(e.message.contains("wrong"));
         assert!(!e.message.contains("wrong-pin-x"));
         assert_eq!(tmgr_link::pin::status(&p).unwrap().failures, 1);
-        assert!(authorize(&p, "owner-pin-1").is_ok());
+        assert!(authorize(&p, "owner-pin-1234").is_ok());
         assert_eq!(tmgr_link::pin::status(&p).unwrap().failures, 0);
     }
 
     #[test]
     fn a_locked_pin_is_refused_even_with_the_right_pin() {
-        let (_d, p) = paths_with_pin(Some("owner-pin-1"));
+        let (_d, p) = paths_with_pin(Some("owner-pin-1234"));
         for _ in 0..tmgr_link::pin::MAX_FAILURES {
             let _ = authorize(&p, "wrong-pin-x");
         }
-        let e = authorize(&p, "owner-pin-1").unwrap_err();
+        let e = authorize(&p, "owner-pin-1234").unwrap_err();
         assert!(e.message.contains("locked"));
         assert!(e
             .hint

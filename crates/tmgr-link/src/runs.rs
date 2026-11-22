@@ -825,6 +825,7 @@ fn pin_refusal(verdict: crate::pin::Verdict) -> Option<(&'static str, String)> {
                 .into(),
         )),
         Verdict::Wrong { left } => Some(("wrong", format!("wrong follower PIN ({left} tries left)"))),
+        Verdict::TooShort => Some(("wrong", "the follower PIN is too short".into())),
     }
 }
 

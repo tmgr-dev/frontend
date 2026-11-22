@@ -27,7 +27,7 @@ pub enum LinkCommand {
 
 #[derive(Subcommand)]
 pub enum PinCommand {
-    /// Set or replace the follower PIN (asked twice, input hidden, at least 6 characters)
+    /// Set or replace the follower PIN (asked twice, input hidden, at least 12 characters)
     Set,
     /// Clear the wrong-try counter and unlock the PIN (needs a terminal)
     Reset,

@@ -147,6 +147,10 @@ impl Runner {
                     "the PIN is locked after too many wrong tries; reset it with `tmgr link pin reset`",
                 ))
             }
+            PinVerdict::TooShort => Err(refuse(
+                ErrorCode::Forbidden,
+                "the PIN is shorter than 12 characters; set a longer one with `tmgr link pin set`",
+            )),
             PinVerdict::Unset => Err(refuse(
                 ErrorCode::Forbidden,
                 "no follower PIN is set; set one with `tmgr link pin set`",
