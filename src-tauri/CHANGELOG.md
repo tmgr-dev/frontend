@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.183 — 2026-11-22
+
+- Manager window: Exo 2 bold and extra-bold and JetBrains Mono now ship with the app. Tables, quotes and code blocks in messages are styled in light and dark, and new messages flash briefly (off with reduced motion).
+
 ## 0.9.182 — 2026-11-22
 
 - Manager window: a Speak button under agent replies reads the message aloud with the system voice (Russian or English), press again to stop. Code blocks are skipped, text never leaves the device.
