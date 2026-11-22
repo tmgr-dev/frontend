@@ -204,7 +204,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			}
 			const ids = await api.queued(room).catch(() => null);
 			if (seq !== queueSeq || store.activeKey !== key) return;
-			store.queuedIds = ids ?? [];
+			if (ids) store.queuedIds = ids;
 			syncQueuePoll();
 		},
 

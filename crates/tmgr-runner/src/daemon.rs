@@ -1292,8 +1292,16 @@ impl Session {
         }
     }
 
-    fn settled_without_idle_rules(&self, i: &Inner, now: Instant) -> bool {
-        if !i.matcher.as_ref().is_some_and(|m| !m.has_idle()) {
+    fn settled_without_idle_rules(
+        &self,
+        i: &Inner,
+        now: Instant,
+        agent: Option<permit::Agent>,
+        rows: &[String],
+    ) -> bool {
+        if !i.matcher.as_ref().is_some_and(|m| !m.has_idle())
+            || agent.is_some_and(|a| permit::parse_dialog(a, rows).is_some())
+        {
             return false;
         }
         let state = self.effective(i);
@@ -1347,7 +1355,7 @@ impl Session {
             });
             if self.effective(&i).kind == StateKind::Blocked
                 || !(prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
-                    || self.settled_without_idle_rules(&i, now))
+                    || self.settled_without_idle_rules(&i, now, agent, &rows))
                 || i.input_sent_at
                     .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
                 || !idle_queue
