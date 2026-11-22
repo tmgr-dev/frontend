@@ -12,8 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tmgr_ipc::chat::{self, Author, AuthorKind, ChatMessage, MessageKind, RoomRef};
 use tmgr_ipc::manager::{
-    limits as mlimits, tool, valid_req_id, wrap_untrusted, SignedSpawn, SpoolReq, DATA_NOTICE,
-    SPOOL_V,
+    limits as mlimits, tool, valid_req_id, wrap_untrusted, SpoolReq, DATA_NOTICE, SPOOL_V,
 };
 use tmgr_ipc::mgr_rpc::{limits, valid_machine_id, ErrorCode, Op, RpcReq, RpcRes, MGR_RPC_V};
 use tmgr_spawn_auth::SpawnProposal;
@@ -587,7 +586,7 @@ impl Host for RpcHost<'_> {
     }
     fn verify_spawn(
         &self,
-        approval: &SignedSpawn,
+        approval: &crate::manager::Approval,
         proposal: &SpawnProposal,
         proposer: Option<&str>,
     ) -> Result<Verdict, String> {
@@ -611,7 +610,7 @@ impl Host for RpcHost<'_> {
         &self,
         card_id: &str,
         proposer: Option<&str>,
-    ) -> Result<SignedSpawn, CardMiss> {
+    ) -> Result<crate::manager::Approval, CardMiss> {
         self.inner.approved_spawn(card_id, proposer)
     }
     fn proposer(&self) -> Option<String> {
@@ -841,6 +840,7 @@ mod tests {
     use super::*;
     use crate::manager::MemoryChat;
     use std::os::unix::fs::PermissionsExt;
+    use tmgr_ipc::manager::SignedSpawn;
     use tmgr_ipc::mgr_rpc::Op;
 
     const OTHER: &str = "mx_00000000000000cc";
@@ -2034,7 +2034,7 @@ mod tests {
         }
         fn verify_spawn(
             &self,
-            approval: &tmgr_ipc::manager::SignedSpawn,
+            approval: &crate::manager::Approval,
             proposal: &tmgr_spawn_auth::SpawnProposal,
             proposer: Option<&str>,
         ) -> Result<crate::manager::Verdict, String> {
@@ -2058,7 +2058,7 @@ mod tests {
             &self,
             card_id: &str,
             proposer: Option<&str>,
-        ) -> Result<tmgr_spawn_auth::SignedSpawn, CardMiss> {
+        ) -> Result<crate::manager::Approval, CardMiss> {
             self.inner.approved_spawn(card_id, proposer)
         }
         fn proposer(&self) -> Option<String> {

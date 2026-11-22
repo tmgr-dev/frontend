@@ -1,9 +1,9 @@
 use super::*;
 use crate::chat::relay::store::RelayDir;
-use crate::manager::{CardMiss, Proposed, Verdict};
+use crate::manager::{Approval, CardMiss, Proposed, Verdict};
 use crate::spawnauth::{
     CardBudget, CardError, CardResult, CardState, CheckOutcome, ClaimOutcome, Identity,
-    IssueOutcome, KeyOffer, SpawnAuth, TrustSource,
+    IssueOutcome, KeyOffer, LocalClaim, SpawnAuth, TrustSource,
 };
 use std::collections::{HashMap, VecDeque};
 use tmgr_chat_relay::api::Request as RelayRequest;
@@ -12,7 +12,10 @@ use tmgr_chat_relay::engine::{
 };
 use tmgr_chat_relay::engine::{SpawnKeySink, SpawnOkSink};
 use tmgr_chat_relay::trust::SpawnKey;
-use tmgr_ipc::api::{SpawnCardParams, SpawnCardResult, SpawnChallengeParams, SpawnChallengeResult};
+use tmgr_ipc::api::{
+    SpawnCardParams, SpawnCardResult, SpawnChallengeParams, SpawnChallengeResult,
+    SpawnDecideParams, SpawnDecideResult, SpawnDecision,
+};
 use tmgr_ipc::chat::{
     Author, AuthorKind, ChatMessage, DecisionRef, MessageKind, SpawnCard, CHAT_V,
 };
@@ -62,9 +65,10 @@ impl ChatSink for Discard {
 struct CardRt {
     msg_id: Option<String>,
     proposer: Option<String>,
-    approval: Option<SignedSpawn>,
+    approval: Option<Approval>,
     exp_ms: u64,
     started_noted: bool,
+    failed: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -212,6 +216,14 @@ impl SpawnGate {
     }
 }
 
+enum Claim {
+    Verified(SpawnProposal),
+    Rejected(Refusal),
+    Already(CardResult),
+    Dead,
+    Unknown,
+}
+
 fn card_error(e: CardError) -> String {
     match e {
         CardError::BadCardId => "invalid card id".into(),
@@ -302,12 +314,12 @@ impl Runner {
 
     pub(super) fn verify_spawn(
         &self,
-        wire: &SignedSpawn,
+        approval: &Approval,
         proposal: &SpawnProposal,
         proposer: Option<&str>,
     ) -> Result<Verdict, String> {
         let auth = self.spawn_gate.auth(self)?;
-        let card = wire.card_id.as_str();
+        let card = approval.card_id();
         let bound = lock(&self.spawn_gate.cards)
             .get(card)
             .and_then(|c| c.proposer.clone());
@@ -322,31 +334,51 @@ impl Runner {
                 return Err(mismatch());
             }
         }
-        match auth.claim(card, wire, now).map_err(card_error)? {
-            ClaimOutcome::Verified(approved) => {
-                if approved.proposal() != proposal {
+        let claim = match approval {
+            Approval::Signed(wire) => match auth.claim(card, wire, now).map_err(card_error)? {
+                ClaimOutcome::Verified(approved) => Claim::Verified(approved.proposal().clone()),
+                ClaimOutcome::Rejected(r) => Claim::Rejected(r),
+                ClaimOutcome::AlreadyClaimed(r) => Claim::Already(r),
+                ClaimOutcome::Dead { .. } => Claim::Dead,
+                ClaimOutcome::UnknownCard => Claim::Unknown,
+            },
+            Approval::Local { req_sha256, .. } => {
+                match auth
+                    .cards()
+                    .claim_local(card, req_sha256, now)
+                    .map_err(card_error)?
+                {
+                    LocalClaim::Claimed(p) => Claim::Verified(*p),
+                    LocalClaim::Rejected(r) => Claim::Rejected(r),
+                    LocalClaim::AlreadyClaimed(r) => Claim::Already(r),
+                    LocalClaim::Dead { .. } => Claim::Dead,
+                    LocalClaim::UnknownCard => Claim::Unknown,
+                }
+            }
+        };
+        match claim {
+            Claim::Verified(approved) => {
+                if approved != *proposal {
                     return Err(mismatch());
                 }
                 Ok(Verdict::Verified)
             }
-            ClaimOutcome::Rejected(r) => Err(r.to_string()),
-            ClaimOutcome::AlreadyClaimed(CardResult::Spawned { session }) => self
+            Claim::Rejected(r) => Err(r.to_string()),
+            Claim::Already(CardResult::Spawned { session }) => self
                 .session(&session)
                 .map(|s| Verdict::Existing(Box::new(s.info())))
                 .ok_or_else(|| {
                     "the session of this card is gone; ask again with a new card".into()
                 }),
-            ClaimOutcome::AlreadyClaimed(_) => match self.card_session(card) {
+            Claim::Already(_) => match self.card_session(card) {
                 Some(info) => {
                     self.spawn_done(card, &info.id);
                     Ok(Verdict::Existing(Box::new(info)))
                 }
                 None => Err(INTERRUPTED.into()),
             },
-            ClaimOutcome::Dead { .. } => {
-                Err("this card is closed; ask again with a new card".into())
-            }
-            ClaimOutcome::UnknownCard => Err("unknown card".into()),
+            Claim::Dead => Err("this card is closed; ask again with a new card".into()),
+            Claim::Unknown => Err("unknown card".into()),
         }
     }
 
@@ -387,6 +419,9 @@ impl Runner {
     }
 
     pub(super) fn spawn_failed(&self, card_id: &str, reason: &str) {
+        if let Some(c) = lock(&self.spawn_gate.cards).get_mut(card_id) {
+            c.failed = true;
+        }
         let first = reason.lines().next().unwrap_or_default().trim();
         let first = clip(first.trim_end_matches('.').to_owned(), 200);
         self.card_reply(
@@ -532,7 +567,7 @@ impl Runner {
         &self,
         card_id: &str,
         proposer: Option<&str>,
-    ) -> Result<SignedSpawn, CardMiss> {
+    ) -> Result<Approval, CardMiss> {
         let (approval, exp_ms) = {
             let cards = lock(&self.spawn_gate.cards);
             let card = cards.get(card_id).ok_or(CardMiss::Gone)?;
@@ -611,7 +646,13 @@ impl Runner {
             if entry.approval.is_some() {
                 return;
             }
-            entry.approval = Some(signed.clone());
+            let still_issued =
+                matches!(auth.cards().state(card), Ok(Some(CardState::Issued { .. })));
+            if !still_issued {
+                log("spawn approval: an answer was dropped, the card was closed meanwhile");
+                return;
+            }
+            entry.approval = Some(Approval::Signed(signed.clone()));
             entry.proposer.clone()
         };
         match proposer.as_deref() {
@@ -707,10 +748,28 @@ impl Runner {
                     "issued"
                 })
             },
-            CardState::Claimed { .. } => SpawnCardResult {
-                session: self.card_session(&q.card_id).map(|s| s.id),
-                ..none("claimed")
-            },
+            CardState::Claimed { claimed_ms, .. } => {
+                let session = self.card_session(&q.card_id).map(|s| s.id);
+                let failed = lock(&self.spawn_gate.cards)
+                    .get(&q.card_id)
+                    .is_some_and(|c| c.failed);
+                if session.is_none() && failed {
+                    SpawnCardResult {
+                        reason: Some("spawn_failed".into()),
+                        ..none("refused")
+                    }
+                } else if session.is_none() && claimed_ms < self.started_ms() {
+                    SpawnCardResult {
+                        reason: Some("interrupted".into()),
+                        ..none("refused")
+                    }
+                } else {
+                    SpawnCardResult {
+                        session,
+                        ..none("claimed")
+                    }
+                }
+            }
             CardState::Spawned { session, .. } => SpawnCardResult {
                 session: Some(session),
                 ..none("spawned")
@@ -721,6 +780,239 @@ impl Runner {
             },
         };
         Ok(to_json(&out))
+    }
+}
+
+fn spawn_call_args(card_id: &str, p: &SpawnProposal) -> String {
+    let mode = match p.mode {
+        tmgr_spawn_auth::SpawnMode::Ask => "ask",
+        tmgr_spawn_auth::SpawnMode::AcceptEdits => "accept-edits",
+        tmgr_spawn_auth::SpawnMode::Bypass => "bypass",
+    };
+    let mut args = serde_json::json!({
+        "card_id": card_id,
+        "profile": p.profile,
+        "cwd": p.cwd,
+        "permission_mode": mode,
+    });
+    if let Some(name) = &p.name {
+        args["name"] = name.clone().into();
+    }
+    if let Some(task) = &p.task {
+        args["task"] = task.clone().into();
+    }
+    let prompt = if p.prompt_sha256.is_some() {
+        " and the same prompt as in propose_spawn"
+    } else {
+        ""
+    };
+    format!("{args}{prompt}")
+}
+
+fn decide_refusal(msg: &str) -> ApiErr {
+    api(ErrorCode::InvalidParams, msg)
+}
+
+impl Runner {
+    pub(super) fn started_ms(&self) -> u64 {
+        now_ms().saturating_sub(self.started.elapsed().as_millis() as u64)
+    }
+
+    pub(super) fn spawn_decide_call(&self, conn: &Conn, p: &Value) -> Result<Value, ApiErr> {
+        if conn.client != CLIENT_DESKTOP {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "spawn decisions are available only to the desktop app",
+            ));
+        }
+        let q: SpawnDecideParams = params(p)?;
+        let auth = self
+            .spawn_gate
+            .auth(self)
+            .map_err(|m| api(ErrorCode::Forbidden, m))?;
+        let now = now_ms();
+        let card = q.card_id.as_str();
+        let (proposal, proposer) = {
+            let mut cards = lock(&self.spawn_gate.cards);
+            let state = auth
+                .cards()
+                .state(card)
+                .map_err(|e| api(ErrorCode::InvalidParams, card_error(e)))?
+                .ok_or_else(|| api(ErrorCode::NotFound, "unknown card"))?;
+            let CardState::Issued {
+                proposal,
+                exp_ms,
+                req_sha256,
+                budget: CardBudget::Manager,
+                ..
+            } = state
+            else {
+                return Err(decide_refusal("this card is not waiting for an answer"));
+            };
+            if now > exp_ms {
+                return Err(decide_refusal("this card has expired"));
+            }
+            if req_sha256 != q.req_sha256 {
+                return Err(decide_refusal(
+                    "the card does not match what you saw; reload it",
+                ));
+            }
+            let entry = cards.entry(card.to_owned()).or_insert_with(|| CardRt {
+                exp_ms,
+                ..CardRt::default()
+            });
+            if entry.approval.is_some() {
+                return Err(decide_refusal("this card was already approved"));
+            }
+            let proposer = entry.proposer.clone();
+            match q.decision {
+                SpawnDecision::Approve => {
+                    entry.approval = Some(Approval::Local {
+                        card_id: card.to_owned(),
+                        req_sha256,
+                    });
+                }
+                SpawnDecision::Reject | SpawnDecision::Edit => {
+                    let local_manager = proposer.as_deref().is_some_and(|p| {
+                        !p.starts_with(REMOTE_PREFIX) && tmgr_ipc::proto::valid_session_id(p)
+                    });
+                    if q.decision == SpawnDecision::Edit && !local_manager {
+                        return Err(decide_refusal(
+                            "only a card of a local manager session can be edited",
+                        ));
+                    }
+                    if q.decision == SpawnDecision::Edit && q.edit.is_none() {
+                        return Err(decide_refusal("edit is required to edit a card"));
+                    }
+                }
+            }
+            (*proposal, proposer)
+        };
+        match q.decision {
+            SpawnDecision::Approve => {
+                self.card_reply(card, "Approved on the desktop.");
+                self.prompt_manager(
+                    proposer.as_deref(),
+                    &format!(
+                        "Spawn card {card} was approved. Call spawn_session with {}.",
+                        spawn_call_args(card, &proposal)
+                    ),
+                    now,
+                );
+                Ok(to_json(&SpawnDecideResult {
+                    state: "approved".into(),
+                    card_id: None,
+                    exp_ms: None,
+                }))
+            }
+            SpawnDecision::Reject => {
+                self.close_card(&auth, card, "rejected", now)?;
+                self.card_reply(card, "Rejected on the desktop.");
+                self.prompt_manager(
+                    proposer.as_deref(),
+                    &format!("Spawn card {card} was rejected by the owner; do not retry it."),
+                    now,
+                );
+                Ok(to_json(&SpawnDecideResult {
+                    state: "rejected".into(),
+                    card_id: None,
+                    exp_ms: None,
+                }))
+            }
+            SpawnDecision::Edit => {
+                let edited = self.edited_proposal(&proposal, q.edit.as_ref())?;
+                self.close_card(&auth, card, "edited", now)?;
+                self.card_reply(card, "Edited on the desktop; replaced by a new card.");
+                match self.propose_spawn_by(&edited, proposer.as_deref(), None) {
+                    Ok(new) => {
+                        self.prompt_manager(
+                            proposer.as_deref(),
+                            &format!(
+                                "Spawn card {card} was edited by the owner and replaced by card {}. It is not approved yet; wait for the owner. Then call spawn_session with {}.",
+                                new.card_id,
+                                spawn_call_args(&new.card_id, &edited)
+                            ),
+                            now,
+                        );
+                        Ok(to_json(&SpawnDecideResult {
+                            state: "edited".into(),
+                            card_id: Some(new.card_id),
+                            exp_ms: Some(new.exp_ms),
+                        }))
+                    }
+                    Err(e) => {
+                        self.prompt_manager(
+                            proposer.as_deref(),
+                            &format!("Spawn card {card} was closed by the owner; do not retry it."),
+                            now,
+                        );
+                        Err(api(
+                            ErrorCode::Busy,
+                            format!("the card was closed but the edited card was not issued: {e}"),
+                        ))
+                    }
+                }
+            }
+        }
+    }
+
+    fn close_card(
+        &self,
+        auth: &SpawnAuth,
+        card: &str,
+        reason: &str,
+        now: u64,
+    ) -> Result<(), ApiErr> {
+        match auth.cards().refuse(card, reason, now) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(decide_refusal("this card is not waiting for an answer")),
+            Err(e) => Err(api(ErrorCode::InvalidParams, card_error(e))),
+        }
+    }
+
+    fn edited_proposal(
+        &self,
+        old: &SpawnProposal,
+        edit: Option<&tmgr_ipc::api::SpawnDecideEdit>,
+    ) -> Result<SpawnProposal, ApiErr> {
+        let edit = edit.ok_or_else(|| decide_refusal("edit is required to edit a card"))?;
+        let mode = match edit.mode.as_str() {
+            "ask" => tmgr_spawn_auth::SpawnMode::Ask,
+            "accept-edits" => tmgr_spawn_auth::SpawnMode::AcceptEdits,
+            "bypass" if old.mode == tmgr_spawn_auth::SpawnMode::Bypass => {
+                tmgr_spawn_auth::SpawnMode::Bypass
+            }
+            _ => {
+                return Err(decide_refusal(
+                    "mode must be ask or accept-edits (bypass only if the card asked for it)",
+                ))
+            }
+        };
+        if edit.name.as_ref().is_some_and(|n| n.len() > 64)
+            || edit.task.as_ref().is_some_and(|t| t.len() > 128)
+        {
+            return Err(decide_refusal("name is at most 64 bytes, task at most 128"));
+        }
+        let dir = self
+            .trusted_dir_of(&edit.cwd)
+            .map_err(|e| api(ErrorCode::InvalidParams, e))?;
+        let edited = SpawnProposal {
+            cwd: dir.path.display().to_string(),
+            mode,
+            name: edit.name.clone().filter(|n| !n.is_empty()),
+            task: edit.task.clone().filter(|t| !t.is_empty()),
+            ..old.clone()
+        };
+        edited
+            .validate()
+            .map_err(|r| api(ErrorCode::InvalidParams, r.to_string()))?;
+        Ok(edited)
+    }
+
+    fn prompt_manager(&self, proposer: Option<&str>, text: &str, now: u64) {
+        if let Some(session) = proposer.filter(|s| tmgr_ipc::proto::valid_session_id(s)) {
+            self.mgr.queue_prompt(session, text, now);
+        }
     }
 }
 
@@ -922,7 +1214,7 @@ mod tests {
             .unwrap();
         let rt = runner(t.path());
         add(&rt, t.path(), MGR, true);
-        let work = t.path().join("work");
+        let work = fs::canonicalize(t.path()).unwrap().join("work");
         fs::create_dir_all(&work).unwrap();
         let identity = Identity::new(USER, rt.chat.machine(), &"b".repeat(64)).unwrap();
         let source = Arc::new(Source(Mutex::new(TrustStatus::Trusted)));
@@ -1035,7 +1327,7 @@ mod tests {
         }
         fn verify_spawn(
             &self,
-            a: &SignedSpawn,
+            a: &Approval,
             p: &SpawnProposal,
             by: Option<&str>,
         ) -> Result<core::Verdict, String> {
@@ -1055,7 +1347,7 @@ mod tests {
         fn spawn_failed(&self, c: &str, reason: &str) {
             self.inner.spawn_failed(c, reason)
         }
-        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Result<SignedSpawn, CardMiss> {
+        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Result<Approval, CardMiss> {
             self.inner.approved_spawn(c, by)
         }
         fn proposer(&self) -> Option<String> {
@@ -1644,7 +1936,7 @@ mod tests {
         }
         fn verify_spawn(
             &self,
-            a: &SignedSpawn,
+            a: &Approval,
             p: &SpawnProposal,
             by: Option<&str>,
         ) -> Result<core::Verdict, String> {
@@ -1664,7 +1956,7 @@ mod tests {
         fn spawn_failed(&self, c: &str, reason: &str) {
             self.inner.spawn_failed(c, reason)
         }
-        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Result<SignedSpawn, CardMiss> {
+        fn approved_spawn(&self, c: &str, by: Option<&str>) -> Result<Approval, CardMiss> {
             self.inner.approved_spawn(c, by)
         }
         fn proposer(&self) -> Option<String> {
@@ -1862,7 +2154,9 @@ mod tests {
             task: None,
             target_id: h.machine(),
         };
-        let Err(err) = e.rt.verify_spawn(&wire, &proposal, Some(&remote_by)) else {
+        let Err(err) =
+            e.rt.verify_spawn(&Approval::Signed(wire.clone()), &proposal, Some(&remote_by))
+        else {
             panic!("a foreign proposer must be refused");
         };
         assert!(err.contains("proposed by someone else"));
@@ -2301,7 +2595,9 @@ mod tests {
             "nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"
         }))
         .unwrap();
-        assert!(rt.verify_spawn(&wire, &proposal, None).is_err());
+        assert!(rt
+            .verify_spawn(&Approval::Signed(wire.clone()), &proposal, None)
+            .is_err());
     }
 
     #[test]
@@ -2411,5 +2707,500 @@ mod tests {
         );
         assert!(out.is_err());
         assert!(auth.pending_keys().unwrap().is_empty());
+    }
+
+    fn trust(e: &Env, dir: &str) {
+        fs::create_dir_all(&e.rt.cfg.homes).unwrap();
+        folders::add(&e.rt.cfg.homes, &e.work.join(dir), None, 1).unwrap();
+    }
+
+    fn card_hash(e: &Env, card: &str) -> String {
+        let msg = card_msg(e, card);
+        let request = &msg
+            .decision
+            .as_ref()
+            .unwrap()
+            .spawn
+            .as_ref()
+            .unwrap()
+            .request;
+        tmgr_spawn_auth::sha256_hex(request.as_bytes())
+    }
+
+    fn decide_raw(e: &Env, client: &str, params: Value) -> Result<Value, ApiErr> {
+        let (c, _peer) = conn(client);
+        e.rt.dispatch(
+            &c,
+            &Request {
+                id: 1,
+                method: method::SPAWN_DECIDE.into(),
+                params,
+            },
+        )
+    }
+
+    fn decide(e: &Env, card: &str, decision: &str) -> Result<Value, ApiErr> {
+        decide_raw(
+            e,
+            CLIENT_DESKTOP,
+            serde_json::json!({
+                "card_id": card, "req_sha256": card_hash(e, card), "decision": decision
+            }),
+        )
+    }
+
+    fn edit(e: &Env, card: &str, edit: Value) -> Result<Value, ApiErr> {
+        decide_raw(
+            e,
+            CLIENT_DESKTOP,
+            serde_json::json!({
+                "card_id": card, "req_sha256": card_hash(e, card), "decision": "edit", "edit": edit
+            }),
+        )
+    }
+
+    fn is_issued(e: &Env, card: &str) -> bool {
+        matches!(
+            e.auth.cards().state(card).unwrap(),
+            Some(CardState::Issued { .. })
+        )
+    }
+
+    #[test]
+    fn only_the_desktop_client_may_decide_a_card() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let params = serde_json::json!({
+            "card_id": card, "req_sha256": card_hash(&e, &card), "decision": "approve"
+        });
+        for client in [CLIENT_CLI, CLIENT_WORKER, "manager", "other", ""] {
+            let err = decide_raw(&e, client, params.clone()).unwrap_err();
+            assert_eq!(err.code, ErrorCode::Forbidden, "{client}");
+        }
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_err());
+        assert!(is_issued(&e, &card));
+        decide_raw(&e, CLIENT_DESKTOP, params).unwrap();
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_ok());
+    }
+
+    #[test]
+    fn a_payload_hash_mismatch_is_refused_and_the_card_stays_open() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        for decision in ["approve", "reject"] {
+            let err = decide_raw(
+                &e,
+                CLIENT_DESKTOP,
+                serde_json::json!({
+                    "card_id": card, "req_sha256": "0".repeat(64), "decision": decision
+                }),
+            )
+            .unwrap_err();
+            assert_eq!(err.code, ErrorCode::InvalidParams);
+        }
+        assert!(is_issued(&e, &card));
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_err());
+        assert!(manager_prompts(&e).is_empty());
+    }
+
+    #[test]
+    fn decisions_on_unknown_closed_and_human_cards_are_refused() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let err = decide_raw(
+            &e,
+            CLIENT_DESKTOP,
+            serde_json::json!({"card_id": "card_nope", "req_sha256": "ab", "decision": "approve"}),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::NotFound);
+        challenge(&e, CLIENT_CLI, "card_human").unwrap();
+        let err = decide_raw(
+            &e,
+            CLIENT_DESKTOP,
+            serde_json::json!({"card_id": "card_human", "req_sha256": "ab", "decision": "approve"}),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidParams);
+        let card = propose(&h, &e, "bypass", "a");
+        decide(&e, &card, "reject").unwrap();
+        assert!(decide(&e, &card, "approve").is_err());
+    }
+
+    #[test]
+    fn a_desktop_approval_starts_exactly_one_session_and_a_replay_starts_none() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = card_msg(&e, &card);
+        let out = decide(&e, &card, "approve").unwrap();
+        assert_eq!(out["state"], "approved");
+        assert_eq!(replies(&e, &msg.id), vec!["Approved on the desktop."]);
+        let notes = manager_prompts(&e);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].0, MGR);
+        assert!(notes[0].1.contains(&card) && notes[0].1.contains("spawn_session"));
+        assert!(notes[0].1.contains(&e.work.join("a").display().to_string()));
+        assert!(notes[0].1.contains("\"permission_mode\":\"bypass\""));
+        assert_eq!(
+            card_state(&e, CLIENT_DESKTOP, &card).unwrap().state,
+            "approved"
+        );
+        assert!(decide(&e, &card, "approve").is_err());
+        assert!(decide(&e, &card, "reject").is_err());
+
+        let first = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        assert_eq!(
+            h.spawned.lock().unwrap()[0].1.as_deref(),
+            Some(card.as_str())
+        );
+        let done = card_state(&e, CLIENT_DESKTOP, &card).unwrap();
+        assert_eq!(done.state, "spawned");
+        assert_eq!(done.session, first["id"].as_str().map(String::from));
+        let again = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(again["id"], first["id"]);
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        assert!(decide(&e, &card, "approve").is_err());
+    }
+
+    #[test]
+    fn a_desktop_approval_binds_the_exact_arguments() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        decide(&e, &card, "approve").unwrap();
+        for (key, other) in [
+            ("permission_mode", serde_json::json!("accept-edits")),
+            ("cwd", serde_json::json!(e.work.join("b"))),
+            ("prompt", serde_json::json!("different")),
+        ] {
+            let mut changed = card_args(&e, &card);
+            changed[key] = other;
+            let err = run(&h, &e, "spawn_session", changed).unwrap_err();
+            assert_eq!(err, Refusal::Mismatch.to_string(), "{key}");
+        }
+        assert!(h.spawned.lock().unwrap().is_empty());
+        assert!(is_issued(&e, &card));
+        run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_card_approved_on_the_desktop_cannot_be_used_by_a_local_approval_of_another_card() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let first = propose(&h, &e, "bypass", "a");
+        let second = propose(&h, &e, "bypass", "a");
+        decide(&e, &first, "approve").unwrap();
+        let err = run(&h, &e, "spawn_session", card_args(&e, &second)).unwrap_err();
+        assert_eq!(err, "this card is not approved yet");
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_rejected_card_refuses_the_spawn_and_tells_the_manager() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = card_msg(&e, &card);
+        assert_eq!(decide(&e, &card, "reject").unwrap()["state"], "rejected");
+        assert_eq!(replies(&e, &msg.id), vec!["Rejected on the desktop."]);
+        let notes = manager_prompts(&e);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].0, MGR);
+        assert!(notes[0].1.contains(&card) && notes[0].1.contains("do not retry"));
+        let err = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err();
+        assert_eq!(err, GONE);
+        assert!(h.spawned.lock().unwrap().is_empty());
+        let got = card_state(&e, CLIENT_DESKTOP, &card).unwrap();
+        assert_eq!(
+            (got.state.as_str(), got.reason.as_deref()),
+            ("refused", Some("rejected"))
+        );
+    }
+
+    #[test]
+    fn an_edit_replaces_the_card_and_only_the_new_arguments_work_after_approval() {
+        let e = env();
+        with_dirs(&e);
+        trust(&e, "b");
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let msg = card_msg(&e, &card);
+        let out = edit(
+            &e,
+            &card,
+            serde_json::json!({
+                "cwd": e.work.join("b"), "mode": "accept-edits", "name": "n1", "task": "t1"
+            }),
+        )
+        .unwrap();
+        assert_eq!(out["state"], "edited");
+        let new = out["card_id"].as_str().unwrap().to_owned();
+        assert_ne!(new, card);
+        assert!(out["exp_ms"].as_u64().is_some());
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec!["Edited on the desktop; replaced by a new card."]
+        );
+        let got = card_state(&e, CLIENT_DESKTOP, &card).unwrap();
+        assert_eq!(
+            (got.state.as_str(), got.reason.as_deref()),
+            ("refused", Some("edited"))
+        );
+        assert_eq!(
+            card_state(&e, CLIENT_DESKTOP, &new).unwrap().state,
+            "issued"
+        );
+        let Some(CardState::Issued { proposal, .. }) = e.auth.cards().state(&new).unwrap() else {
+            panic!("new card is not issued")
+        };
+        let old_proposal = card_msg(&e, &new).decision.unwrap().spawn.unwrap();
+        assert!(old_proposal.summary.contains("accept-edits"));
+        assert_eq!(proposal.cwd, e.work.join("b").display().to_string());
+        assert_eq!(proposal.name.as_deref(), Some("n1"));
+        assert_eq!(proposal.task.as_deref(), Some("t1"));
+        assert_eq!(proposal.profile, "claude-code");
+        assert_eq!(
+            proposal.prompt_sha256,
+            Some(tmgr_spawn_auth::sha256_hex(b"go"))
+        );
+
+        let notes = manager_prompts(&e);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].1.contains(&new) && notes[0].1.contains("not approved yet"));
+
+        let old_err = run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap_err();
+        assert_eq!(old_err, GONE);
+        let new_args = serde_json::json!({
+            "profile": "claude-code", "cwd": e.work.join("b"), "permission_mode": "accept-edits",
+            "prompt": "go", "name": "n1", "task": "t1", "card_id": new
+        });
+        let err = run(&h, &e, "spawn_session", new_args.clone()).unwrap_err();
+        assert_eq!(err, "this card is not approved yet");
+        assert!(decide(&e, &card, "approve").is_err());
+        decide(&e, &new, "approve").unwrap();
+        let mut stale = new_args.clone();
+        stale["cwd"] = serde_json::json!(e.work.join("a"));
+        assert!(run(&h, &e, "spawn_session", stale).is_err());
+        assert!(h.spawned.lock().unwrap().is_empty());
+        run(&h, &e, "spawn_session", new_args).unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        assert_eq!(
+            h.spawned.lock().unwrap()[0].1.as_deref(),
+            Some(new.as_str())
+        );
+    }
+
+    #[test]
+    fn a_bad_edit_is_refused_and_keeps_the_old_card_untouched() {
+        let e = env();
+        with_dirs(&e);
+        trust(&e, "b");
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "ask", "a");
+        let outside = e.work.join("c");
+        fs::create_dir_all(&outside).unwrap();
+        let bad = [
+            serde_json::json!({"cwd": outside, "mode": "ask"}),
+            serde_json::json!({"cwd": "relative", "mode": "ask"}),
+            serde_json::json!({"cwd": e.work.join("b"), "mode": "bypass"}),
+            serde_json::json!({"cwd": e.work.join("b"), "mode": "no_sandbox"}),
+            serde_json::json!({"cwd": e.work.join("b"), "mode": "ask", "name": "x".repeat(65)}),
+        ];
+        for edit_args in bad {
+            let err = edit(&e, &card, edit_args.clone()).unwrap_err();
+            assert_eq!(err.code, ErrorCode::InvalidParams, "{edit_args}");
+            assert!(is_issued(&e, &card));
+        }
+        let err = decide_raw(
+            &e,
+            CLIENT_DESKTOP,
+            serde_json::json!({
+                "card_id": card, "req_sha256": card_hash(&e, &card), "decision": "edit"
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidParams);
+        assert!(is_issued(&e, &card));
+        assert!(manager_prompts(&e).is_empty());
+        assert_eq!(
+            room_msgs(&e)
+                .iter()
+                .filter(|m| m.decision.is_some())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_remote_proposers_card_is_never_edited() {
+        let e = env();
+        with_dirs(&e);
+        trust(&e, "b");
+        let h = TestHost::new(&e);
+        let rh = As::remote(&h);
+        let card = propose_as(&rh, &e, "go");
+        let err = edit(
+            &e,
+            &card,
+            serde_json::json!({"cwd": e.work.join("b"), "mode": "ask"}),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidParams);
+        assert!(is_issued(&e, &card));
+        assert_eq!(decide(&e, &card, "approve").unwrap()["state"], "approved");
+    }
+
+    #[test]
+    fn the_phone_answer_after_a_desktop_decision_is_dropped() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let approved = propose(&h, &e, "bypass", "a");
+        let rejected = propose(&h, &e, "bypass", "a");
+        let edited = propose(&h, &e, "bypass", "a");
+        trust(&e, "b");
+        let phone: Vec<SignedSpawn> = [&approved, &rejected, &edited]
+            .iter()
+            .map(|c| phone_answer(&e, &card_msg(&e, c)))
+            .collect();
+        decide(&e, &approved, "approve").unwrap();
+        decide(&e, &rejected, "reject").unwrap();
+        edit(
+            &e,
+            &edited,
+            serde_json::json!({"cwd": e.work.join("b"), "mode": "ask"}),
+        )
+        .unwrap();
+        let before = manager_prompts(&e).len();
+        assert_eq!(before, 3);
+        for signed in &phone {
+            e.rt.accept_spawnok(signed, now_ms());
+        }
+        assert!(manager_prompts(&e).is_empty());
+        assert!(matches!(
+            e.rt.approved_spawn(&approved, Some(MGR)),
+            Ok(Approval::Local { .. })
+        ));
+        assert!(e.rt.approved_spawn(&rejected, Some(MGR)).is_err());
+        assert!(e.rt.approved_spawn(&edited, Some(MGR)).is_err());
+        let msg = card_msg(&e, &approved);
+        assert_eq!(replies(&e, &msg.id), vec!["Approved on the desktop."]);
+    }
+
+    #[test]
+    fn a_desktop_decision_after_the_phone_answer_is_refused() {
+        let e = env();
+        with_dirs(&e);
+        trust(&e, "b");
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        e.rt.accept_spawnok(&phone_answer(&e, &card_msg(&e, &card)), now_ms());
+        assert!(matches!(
+            e.rt.approved_spawn(&card, Some(MGR)),
+            Ok(Approval::Signed(_))
+        ));
+        assert_eq!(manager_prompts(&e).len(), 1);
+        for call in [
+            decide(&e, &card, "approve"),
+            decide(&e, &card, "reject"),
+            edit(
+                &e,
+                &card,
+                serde_json::json!({"cwd": e.work.join("b"), "mode": "ask"}),
+            ),
+        ] {
+            assert_eq!(call.unwrap_err().code, ErrorCode::InvalidParams);
+        }
+        assert!(is_issued(&e, &card));
+        assert!(manager_prompts(&e).is_empty());
+        run(&h, &e, "spawn_session", card_args(&e, &card)).unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn spawn_card_tells_a_failed_spawn_from_one_in_flight_and_one_from_before_the_restart() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+
+        let failed = propose(&h, &e, "bypass", "a");
+        decide(&e, &failed, "approve").unwrap();
+        h.fail(Fail::BeforeCreate);
+        assert!(run(&h, &e, "spawn_session", card_args(&e, &failed)).is_err());
+        h.fail(Fail::No);
+        let got = card_state(&e, CLIENT_DESKTOP, &failed).unwrap();
+        assert_eq!(
+            (got.state.as_str(), got.reason.as_deref()),
+            ("refused", Some("spawn_failed"))
+        );
+
+        let in_flight = propose(&h, &e, "bypass", "a");
+        let sha = card_hash(&e, &in_flight);
+        decide(&e, &in_flight, "approve").unwrap();
+        e.auth
+            .cards()
+            .claim_local(&in_flight, &sha, now_ms())
+            .unwrap();
+        let got = card_state(&e, CLIENT_DESKTOP, &in_flight).unwrap();
+        assert_eq!(
+            (got.state.as_str(), got.reason.as_deref()),
+            ("claimed", None)
+        );
+
+        let old = propose(&h, &e, "bypass", "a");
+        let sha = card_hash(&e, &old);
+        e.auth.cards().claim_local(&old, &sha, 1).unwrap();
+        let got = card_state(&e, CLIENT_DESKTOP, &old).unwrap();
+        assert_eq!(
+            (got.state.as_str(), got.reason.as_deref()),
+            ("refused", Some("interrupted"))
+        );
+    }
+
+    #[test]
+    fn the_manager_has_no_tool_that_decides_a_card_and_an_old_runner_says_unknown_method() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let args = serde_json::json!({
+            "card_id": card, "req_sha256": card_hash(&e, &card), "decision": "approve"
+        });
+        for t in [
+            "spawn.decide",
+            "spawn_decide",
+            "decide_spawn",
+            "approve_spawn",
+        ] {
+            assert!(run(&h, &e, t, args.clone())
+                .unwrap_err()
+                .contains("unknown tool"));
+        }
+        assert!(e.rt.approved_spawn(&card, Some(MGR)).is_err());
+        let (c, _peer) = conn(CLIENT_DESKTOP);
+        let err =
+            e.rt.dispatch(
+                &c,
+                &Request {
+                    id: 1,
+                    method: "spawn.nope".into(),
+                    params: Value::Null,
+                },
+            )
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::UnknownMethod);
+        assert_eq!(err.msg, "unknown method spawn.nope");
     }
 }

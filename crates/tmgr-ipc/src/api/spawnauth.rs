@@ -40,6 +40,47 @@ pub struct SpawnCardResult {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SpawnDecision {
+    Approve,
+    Reject,
+    Edit,
+}
+
+/// The replacement values of `decision: "edit"`; profile, target and prompt stay as proposed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnDecideEdit {
+    pub cwd: String,
+    pub mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+}
+
+/// Params of `spawn.decide` (`client: "desktop"` only); `req_sha256` is the hash of the request bytes the owner saw.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnDecideParams {
+    pub card_id: String,
+    pub req_sha256: String,
+    pub decision: SpawnDecision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edit: Option<SpawnDecideEdit>,
+}
+
+/// `state` is `approved`, `rejected` or `edited`; an edit also returns the new card.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnDecideResult {
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exp_ms: Option<u64>,
+}
+
 /// One spawn key of a phone, `state` is `pending` or `approved`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpawnKeyInfo {

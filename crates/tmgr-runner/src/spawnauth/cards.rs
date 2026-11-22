@@ -139,6 +139,15 @@ pub enum ClaimOutcome {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum LocalClaim {
+    Claimed(Box<SpawnProposal>),
+    Rejected(Refusal),
+    AlreadyClaimed(CardResult),
+    Dead { reason: String },
+    UnknownCard,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum CheckOutcome {
     Valid,
     Rejected(Refusal),
@@ -441,6 +450,62 @@ impl CardStore {
                 }
                 Ok(ClaimOutcome::Rejected(refusal))
             }
+        }
+    }
+
+    pub fn claim_local(
+        &self,
+        card_id: &str,
+        req_sha256: &str,
+        now_ms: u64,
+    ) -> Result<LocalClaim, CardError> {
+        let id = check_id(card_id)?;
+        let _lock = self.lock()?;
+        let Some(file) = self.load(id)? else {
+            return Ok(LocalClaim::UnknownCard);
+        };
+        let CardState::Issued {
+            proposal,
+            exp_ms,
+            req_sha256: stored,
+            budget,
+            ..
+        } = file.state
+        else {
+            return Ok(match file.state {
+                CardState::Refused { reason } => LocalClaim::Dead { reason },
+                other => LocalClaim::AlreadyClaimed(result_of(&other)),
+            });
+        };
+        if budget != CardBudget::Manager {
+            return Ok(LocalClaim::Rejected(Refusal::NotTrusted));
+        }
+        if now_ms > exp_ms {
+            return Ok(LocalClaim::Rejected(Refusal::Expired));
+        }
+        if stored != req_sha256 {
+            return Ok(LocalClaim::Rejected(Refusal::Mismatch));
+        }
+        self.save(
+            id,
+            CardState::Claimed {
+                claimed_ms: now_ms,
+                req_sha256: stored,
+            },
+            now_ms,
+        )?;
+        Ok(LocalClaim::Claimed(proposal))
+    }
+
+    pub fn refuse(&self, card_id: &str, reason: &str, now_ms: u64) -> Result<bool, CardError> {
+        let id = check_id(card_id)?;
+        let _lock = self.lock()?;
+        match self.load(id)?.map(|f| f.state) {
+            Some(CardState::Issued { .. }) => {
+                self.save(id, refused(reason), now_ms)?;
+                Ok(true)
+            }
+            _ => Ok(false),
         }
     }
 
@@ -1603,5 +1668,149 @@ mod tests {
             s.state("card-0001").unwrap(),
             Some(CardState::Issued { .. })
         ));
+    }
+
+    fn manager_card(s: &CardStore, id: &str) -> String {
+        match s
+            .issue_for(id, &proposal("/w/m"), CardBudget::Manager, ISSUED)
+            .unwrap()
+        {
+            IssueOutcome::Challenge(c) => c.req_sha256,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn claim_local_claims_a_live_manager_card_once() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        let sha = manager_card(&s, "card-m");
+        let LocalClaim::Claimed(p) = s.claim_local("card-m", &sha, NOW).unwrap() else {
+            panic!("not claimed")
+        };
+        assert_eq!(*p, proposal("/w/m"));
+        assert!(matches!(
+            s.state("card-m").unwrap(),
+            Some(CardState::Claimed {
+                claimed_ms: NOW,
+                ..
+            })
+        ));
+        assert!(matches!(
+            s.claim_local("card-m", &sha, NOW + 1).unwrap(),
+            LocalClaim::AlreadyClaimed(CardResult::Interrupted { .. })
+        ));
+    }
+
+    #[test]
+    fn claim_local_refuses_a_wrong_hash_and_keeps_the_card() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        manager_card(&s, "card-m");
+        let wrong = "0".repeat(64);
+        assert_eq!(
+            s.claim_local("card-m", &wrong, NOW).unwrap(),
+            LocalClaim::Rejected(Refusal::Mismatch)
+        );
+        assert!(matches!(
+            s.state("card-m").unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+    }
+
+    #[test]
+    fn claim_local_refuses_an_expired_card_and_a_human_card() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        let sha = manager_card(&s, "card-m");
+        assert_eq!(
+            s.claim_local("card-m", &sha, ISSUED + CARD_TTL_MS + 1)
+                .unwrap(),
+            LocalClaim::Rejected(Refusal::Expired)
+        );
+        let IssueOutcome::Challenge(c) = s.issue("card-h", &proposal("/w/h"), ISSUED).unwrap()
+        else {
+            panic!("not issued")
+        };
+        assert_eq!(
+            s.claim_local("card-h", &c.req_sha256, NOW).unwrap(),
+            LocalClaim::Rejected(Refusal::NotTrusted)
+        );
+        assert!(matches!(
+            s.state("card-h").unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+    }
+
+    #[test]
+    fn claim_local_refuses_cards_that_are_not_issued() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        assert_eq!(
+            s.claim_local("card-none", &"0".repeat(64), NOW).unwrap(),
+            LocalClaim::UnknownCard
+        );
+        let sha = manager_card(&s, "card-m");
+        assert!(s.refuse("card-m", "rejected", NOW).unwrap());
+        assert_eq!(
+            s.claim_local("card-m", &sha, NOW).unwrap(),
+            LocalClaim::Dead {
+                reason: "rejected".into()
+            }
+        );
+    }
+
+    #[test]
+    fn two_racing_local_claims_have_one_winner() {
+        let t = tempfile::tempdir().unwrap();
+        let s = Arc::new(store(t.path(), counting_rng()));
+        let sha = manager_card(&s, "card-m");
+        let barrier = Arc::new(Barrier::new(2));
+        let handles: Vec<_> = (0..2)
+            .map(|_| {
+                let (s, sha, b) = (s.clone(), sha.clone(), barrier.clone());
+                std::thread::spawn(move || {
+                    b.wait();
+                    s.claim_local("card-m", &sha, NOW).unwrap()
+                })
+            })
+            .collect();
+        let won = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .filter(|o| matches!(o, LocalClaim::Claimed(_)))
+            .count();
+        assert_eq!(won, 1);
+    }
+
+    #[test]
+    fn refuse_only_closes_an_issued_card() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(t.path(), counting_rng());
+        let sha = manager_card(&s, "card-m");
+        assert!(!s.refuse("card-none", "rejected", NOW).unwrap());
+        assert!(s.refuse("card-m", "rejected", NOW).unwrap());
+        assert_eq!(
+            s.state("card-m").unwrap(),
+            Some(CardState::Refused {
+                reason: "rejected".into()
+            })
+        );
+        assert!(!s.refuse("card-m", "edited", NOW).unwrap());
+        manager_card(&s, "card-c");
+        let sha_c = s
+            .state("card-c")
+            .unwrap()
+            .unwrap()
+            .req_sha256()
+            .unwrap()
+            .to_owned();
+        s.claim_local("card-c", &sha_c, NOW).unwrap();
+        assert!(!s.refuse("card-c", "rejected", NOW).unwrap());
+        assert!(matches!(
+            s.state("card-c").unwrap(),
+            Some(CardState::Claimed { .. })
+        ));
+        let _ = sha;
     }
 }

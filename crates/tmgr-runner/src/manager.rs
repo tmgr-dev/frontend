@@ -668,6 +668,21 @@ pub struct TrustedDir {
     pub pin: CwdPin,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Approval {
+    Signed(SignedSpawn),
+    Local { card_id: String, req_sha256: String },
+}
+
+impl Approval {
+    pub fn card_id(&self) -> &str {
+        match self {
+            Approval::Signed(s) => &s.card_id,
+            Approval::Local { card_id, .. } => card_id,
+        }
+    }
+}
+
 pub enum Verdict {
     Verified,
     Existing(Box<SessionInfo>),
@@ -698,7 +713,7 @@ pub trait Host {
     fn switch(&self, id: &str, to: &str) -> Result<SwitchResult, String>;
     fn verify_spawn(
         &self,
-        approval: &SignedSpawn,
+        approval: &Approval,
         proposal: &SpawnProposal,
         proposer: Option<&str>,
     ) -> Result<Verdict, String>;
@@ -710,11 +725,7 @@ pub trait Host {
         prompt: Option<&str>,
     ) -> Result<Proposed, String>;
     fn spawn_failed(&self, card_id: &str, reason: &str);
-    fn approved_spawn(
-        &self,
-        card_id: &str,
-        proposer: Option<&str>,
-    ) -> Result<SignedSpawn, CardMiss>;
+    fn approved_spawn(&self, card_id: &str, proposer: Option<&str>) -> Result<Approval, CardMiss>;
     fn proposer(&self) -> Option<String>;
     fn remote_caller(&self) -> Option<&str>;
     fn spawned_for(&self, session: &str, from: &str) -> bool;
@@ -1015,16 +1026,16 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
     }
     let mut approval = match a.get("approval") {
         None => None,
-        Some(v) => Some(
+        Some(v) => Some(Approval::Signed(
             serde_json::from_value::<SignedSpawn>(v.clone()).map_err(|_| {
                 "approval is malformed; remote spawn is not available yet without a valid approval"
                     .to_string()
             })?,
-        ),
+        )),
     };
     if let Some(card) = text_arg(a, "card_id", 1, 128)? {
         match &approval {
-            Some(signed) if signed.card_id != card => {
+            Some(given) if given.card_id() != card => {
                 return Err("approval and card_id belong to different cards".into());
             }
             Some(_) => {}
@@ -1054,15 +1065,15 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
         name: args.name.map(String::from),
         mode: args.mode.into(),
         parent: (!remote && host.me() != "-").then(|| host.me().to_string()),
-        card: approval.as_ref().map(|s| s.card_id.clone()),
+        card: approval.as_ref().map(|s| s.card_id().to_owned()),
         pin: Some(args.dir.pin),
     };
     host.precheck_spawn(&spec)?;
     let slot = st
         .reserve_spawn(host.now_ms())
         .ok_or_else(|| format!("at most {} spawns per minute", limits::SPAWNS_PER_MINUTE))?;
-    if let Some(signed) = &approval {
-        match host.verify_spawn(signed, &args.proposal, proposer.as_deref()) {
+    if let Some(approved) = &approval {
+        match host.verify_spawn(approved, &args.proposal, proposer.as_deref()) {
             Ok(Verdict::Verified) => {}
             Ok(Verdict::Existing(info)) => {
                 st.release_spawn(slot);
@@ -1078,8 +1089,8 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
         Ok(info) => info,
         Err(e) => {
             st.release_spawn(slot);
-            if let Some(signed) = &approval {
-                host.spawn_failed(&signed.card_id, &e);
+            if let Some(approved) = &approval {
+                host.spawn_failed(approved.card_id(), &e);
             }
             return Err(e);
         }
@@ -1094,8 +1105,8 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
             None => st.queue_prompt(&info.id, p, host.now_ms()),
         }
     }
-    if let Some(signed) = &approval {
-        host.spawn_done(&signed.card_id, &info.id);
+    if let Some(approved) = &approval {
+        host.spawn_done(approved.card_id(), &info.id);
     }
     let mut reply = row(&info, host.me());
     if args.mode == "bypass" && info.permission_mode.as_deref() != Some("bypass") {
@@ -1767,7 +1778,7 @@ mod tests {
         }
         fn verify_spawn(
             &self,
-            _: &SignedSpawn,
+            _: &Approval,
             p: &SpawnProposal,
             _: Option<&str>,
         ) -> Result<Verdict, String> {
@@ -1816,9 +1827,9 @@ mod tests {
                 .unwrap()
                 .push((card.into(), reason.into()));
         }
-        fn approved_spawn(&self, card: &str, _: Option<&str>) -> Result<SignedSpawn, CardMiss> {
+        fn approved_spawn(&self, card: &str, _: Option<&str>) -> Result<Approval, CardMiss> {
             match self.approved.lock().unwrap().get(card).cloned() {
-                Some(signed) => Ok(signed),
+                Some(signed) => Ok(Approval::Signed(signed)),
                 None if self.gone.lock().unwrap().contains(card) => Err(CardMiss::Gone),
                 None => Err(CardMiss::Pending),
             }

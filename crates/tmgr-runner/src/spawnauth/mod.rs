@@ -6,8 +6,8 @@ mod keys;
 
 pub use cards::{
     os_rng, CardBudget, CardError, CardResult, CardState, CardStore, Challenge, CheckOutcome,
-    ClaimOutcome, Identity, IssueOutcome, RecoverReport, Rng, ATTEMPT_LIMIT, CARD_TTL_MS,
-    MAX_CARDS, MAX_MANAGER_PENDING, MAX_PENDING, PRUNE_AFTER_MS,
+    ClaimOutcome, Identity, IssueOutcome, LocalClaim, RecoverReport, Rng, ATTEMPT_LIMIT,
+    CARD_TTL_MS, MAX_CARDS, MAX_MANAGER_PENDING, MAX_PENDING, PRUNE_AFTER_MS,
 };
 #[cfg(test)]
 pub(crate) use keys::testutil;

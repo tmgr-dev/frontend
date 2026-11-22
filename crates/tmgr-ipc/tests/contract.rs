@@ -922,6 +922,52 @@ fn checkpoint_types_round_trip_and_off_sessions_stay_unchanged() {
 }
 
 #[test]
+fn spawn_decide_params_and_result_are_pinned() {
+    assert_eq!(method::SPAWN_DECIDE, "spawn.decide");
+    assert_eq!(caps::SPAWN_DECIDE_V1, "spawn_decide.v1");
+    let approve: SpawnDecideParams = serde_json::from_value(
+        json!({"card_id": "card_1", "req_sha256": "ab", "decision": "approve"}),
+    )
+    .unwrap();
+    assert_eq!(approve.decision, SpawnDecision::Approve);
+    assert!(approve.edit.is_none());
+    assert_eq!(
+        serde_json::to_value(&approve).unwrap(),
+        json!({"card_id": "card_1", "req_sha256": "ab", "decision": "approve"})
+    );
+    let edit: SpawnDecideParams = serde_json::from_value(json!({
+        "card_id": "card_1", "req_sha256": "ab", "decision": "edit",
+        "edit": {"cwd": "/w", "mode": "ask", "name": "n"}
+    }))
+    .unwrap();
+    let e = edit.edit.unwrap();
+    assert_eq!(
+        (e.cwd.as_str(), e.mode.as_str(), e.name.as_deref()),
+        ("/w", "ask", Some("n"))
+    );
+    assert!(e.task.is_none());
+    for bad in [
+        json!({"card_id": "c", "req_sha256": "ab", "decision": "maybe"}),
+        json!({"card_id": "c", "req_sha256": "ab", "decision": "reject", "extra": 1}),
+        json!({"card_id": "c", "req_sha256": "ab", "decision": "edit", "edit": {"cwd": "/w", "mode": "ask", "x": 1}}),
+        json!({"card_id": "c", "decision": "reject"}),
+    ] {
+        assert!(serde_json::from_value::<SpawnDecideParams>(bad).is_err());
+    }
+    assert_eq!(
+        serde_json::to_value(SpawnDecideResult {
+            state: "edited".into(),
+            card_id: Some("card_2".into()),
+            exp_ms: Some(9),
+        })
+        .unwrap(),
+        json!({"state": "edited", "card_id": "card_2", "exp_ms": 9})
+    );
+    let plain: SpawnDecideResult = serde_json::from_value(json!({"state": "approved"})).unwrap();
+    assert!(plain.card_id.is_none() && plain.exp_ms.is_none());
+}
+
+#[test]
 fn constants_are_pinned() {
     assert_eq!(PROTO_VERSION, 1);
     assert_eq!(
@@ -973,7 +1019,8 @@ fn constants_are_pinned() {
             "spawnauth.v1",
             "object_exempt.v1",
             "manager.unrestricted.v1",
-            "chat.activity.v1"
+            "chat.activity.v1",
+            "spawn_decide.v1"
         ]
     );
     let methods = [
@@ -1110,7 +1157,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 47);
+    assert_eq!(w.caps.len(), 48);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1776,7 +1823,7 @@ fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
 fn switch_method_cap_and_shapes() {
     assert_eq!(method::SESSIONS_SWITCH, "sessions.switch");
     assert_eq!(caps::SWITCH_V1, "switch.v1");
-    assert_eq!(caps::ALL[caps::ALL.len() - 5], caps::SWITCH_V1);
+    assert_eq!(caps::ALL[caps::ALL.len() - 6], caps::SWITCH_V1);
     let req = SwitchReq {
         session: "s_aaaaaaaaaa".into(),
         to: "codex".into(),

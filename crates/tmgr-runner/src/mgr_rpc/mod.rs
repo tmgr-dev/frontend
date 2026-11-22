@@ -172,14 +172,14 @@ pub(crate) mod testkit {
         }
         fn verify_spawn(
             &self,
-            approval: &tmgr_ipc::manager::SignedSpawn,
+            approval: &crate::manager::Approval,
             _: &tmgr_spawn_auth::SpawnProposal,
             proposer: Option<&str>,
         ) -> Result<crate::manager::Verdict, String> {
             self.verified
                 .lock()
                 .unwrap()
-                .push((approval.card_id.clone(), proposer.map(String::from)));
+                .push((approval.card_id().to_owned(), proposer.map(String::from)));
             Ok(crate::manager::Verdict::Verified)
         }
         fn spawn_done(&self, card: &str, session: &str) {
@@ -216,12 +216,12 @@ pub(crate) mod testkit {
             &self,
             card: &str,
             proposer: Option<&str>,
-        ) -> Result<tmgr_spawn_auth::SignedSpawn, crate::manager::CardMiss> {
+        ) -> Result<crate::manager::Approval, crate::manager::CardMiss> {
             let Some((by, signed)) = self.approved.lock().unwrap().get(card).cloned() else {
                 return Err(crate::manager::CardMiss::Pending);
             };
             if proposer.is_some() && proposer == by.as_deref() {
-                Ok(signed)
+                Ok(crate::manager::Approval::Signed(signed))
             } else {
                 Err(crate::manager::CardMiss::Gone)
             }

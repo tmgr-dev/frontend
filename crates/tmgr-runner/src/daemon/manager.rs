@@ -69,6 +69,26 @@ impl Runner {
 }
 
 impl Runner {
+    pub(super) fn trusted_dir_of(&self, cwd: &str) -> Result<core::TrustedDir, String> {
+        let bad = || "cwd must be an existing absolute directory".to_string();
+        if !Path::new(cwd).is_absolute() {
+            return Err(bad());
+        }
+        let dir =
+            bundle::open_path(fs::canonicalize(cwd).map_err(|_| bad())?).map_err(|_| bad())?;
+        if !folders::is_trusted(&self.cfg.homes, &dir.path, dir.id()) {
+            return Err(
+                "cwd is not a trusted folder; the owner must trust it with tmgr runner trust"
+                    .into(),
+            );
+        }
+        let (dev, ino) = dir.id();
+        Ok(core::TrustedDir {
+            path: dir.path.clone(),
+            pin: CwdPin { dev, ino },
+        })
+    }
+
     fn answer_remote_async(self: &Arc<Self>, manager: &str, home: PathBuf, req: SpoolReq) {
         let rt = Arc::clone(self);
         let id = manager.to_string();
@@ -189,23 +209,7 @@ impl core::Host for ManagerHost<'_> {
     }
 
     fn trusted_dir(&self, cwd: &str) -> Result<core::TrustedDir, String> {
-        let bad = || "cwd must be an existing absolute directory".to_string();
-        if !Path::new(cwd).is_absolute() {
-            return Err(bad());
-        }
-        let dir =
-            bundle::open_path(fs::canonicalize(cwd).map_err(|_| bad())?).map_err(|_| bad())?;
-        if !folders::is_trusted(&self.rt.cfg.homes, &dir.path, dir.id()) {
-            return Err(
-                "cwd is not a trusted folder; the owner must trust it with tmgr runner trust"
-                    .into(),
-            );
-        }
-        let (dev, ino) = dir.id();
-        Ok(core::TrustedDir {
-            path: dir.path.clone(),
-            pin: CwdPin { dev, ino },
-        })
+        self.rt.trusted_dir_of(cwd)
     }
 
     fn precheck_spawn(&self, spec: &core::SpawnSpec) -> Result<(), String> {
@@ -271,7 +275,7 @@ impl core::Host for ManagerHost<'_> {
 
     fn verify_spawn(
         &self,
-        approval: &tmgr_ipc::manager::SignedSpawn,
+        approval: &core::Approval,
         proposal: &tmgr_spawn_auth::SpawnProposal,
         proposer: Option<&str>,
     ) -> Result<core::Verdict, String> {
@@ -299,7 +303,7 @@ impl core::Host for ManagerHost<'_> {
         &self,
         card_id: &str,
         proposer: Option<&str>,
-    ) -> Result<tmgr_spawn_auth::SignedSpawn, core::CardMiss> {
+    ) -> Result<core::Approval, core::CardMiss> {
         self.rt.approved_spawn(card_id, proposer)
     }
 
