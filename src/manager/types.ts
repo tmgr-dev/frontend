@@ -54,6 +54,7 @@ export interface ChatMessage {
 	reply_to?: string;
 	decision?: DecisionRef;
 	user_turn?: boolean;
+	fresh?: boolean;
 }
 
 export interface RoomInfo {
