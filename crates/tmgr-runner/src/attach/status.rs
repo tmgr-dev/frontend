@@ -284,7 +284,7 @@ pub struct StatusScan {
     offset: u64,
     carry: Vec<u8>,
     skipping: bool,
-    pending: Vec<(String, String)>,
+    pending: Vec<(String, String, String)>,
     used: Vec<String>,
     todo: Option<(u32, u32)>,
     subs: Vec<Sub>,
@@ -326,6 +326,10 @@ impl StatusScan {
         }
     }
 
+    pub fn current_event(&self) -> Option<&str> {
+        self.pending.last().map(|(_, _, event)| event.as_str())
+    }
+
     pub fn used(&self) -> &[String] {
         &self.used
     }
@@ -336,7 +340,7 @@ impl StatusScan {
 
     pub fn status(&self) -> SessionStatus {
         SessionStatus {
-            activity: self.pending.last().map(|(_, label)| label.clone()),
+            activity: self.pending.last().map(|(_, label, _)| label.clone()),
             todo: self.todo,
             ask: self.asking.as_ref().map(|(_, q)| q.clone()),
             model: self.model.clone(),
@@ -605,11 +609,12 @@ impl StatusScan {
                 _ => {}
             }
             let label = activity_label(name, input);
-            self.used.push(label.clone());
+            let event = event_label(name, input);
+            self.used.push(event.clone());
             if self.used.len() > MAX_USED {
                 self.used.remove(0);
             }
-            self.pending.push((id.to_string(), label));
+            self.pending.push((id.to_string(), label, event));
             if self.pending.len() > MAX_PENDING {
                 self.pending.remove(0);
             }
@@ -661,7 +666,7 @@ impl StatusScan {
             return;
         }
         self.pending
-            .retain(|(id, _)| !results.contains(&id.as_str()));
+            .retain(|(id, _, _)| !results.contains(&id.as_str()));
         if self
             .asking
             .as_ref()
@@ -910,6 +915,50 @@ pub fn activity_label(name: &str, input: &Value) -> String {
     clip(&line, ACTIVITY_MAX)
 }
 
+const EVENT_LABEL_MAX: usize = 60;
+const EVENT_TOOL_MAX: usize = 40;
+
+fn plain_subcommand(word: &str) -> bool {
+    let mut chars = word.chars();
+    chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && word.len() <= 24
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+}
+
+pub(crate) fn event_label(name: &str, input: &Value) -> String {
+    let base = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
+    let line = match name {
+        "Read" | "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => {
+            match str_of(input, &["file_path", "notebook_path"]).map(base) {
+                Some(file) => format!("{name}: {}", clean_title(&file)),
+                None => name.to_string(),
+            }
+        }
+        "Bash" => {
+            let mut words = str_of(input, &["command"])
+                .and_then(|c| c.lines().find(|l| !l.trim().is_empty()))
+                .unwrap_or("")
+                .split_whitespace();
+            let program = words.next().map(base).filter(|p| {
+                !p.is_empty()
+                    && p.len() <= 32
+                    && p.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '-'))
+            });
+            match program {
+                Some(p) => match words.next().filter(|w| plain_subcommand(w)) {
+                    Some(sub) => format!("Bash: {p} {sub}"),
+                    None => format!("Bash: {p}"),
+                },
+                None => "Bash".to_string(),
+            }
+        }
+        "Agent" | "Task" => "Agent".to_string(),
+        other => clip(&clean_title(other), EVENT_TOOL_MAX),
+    };
+    mask_secrets(&clip(&line, EVENT_LABEL_MAX))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -984,8 +1033,8 @@ mod tests {
         for i in 0..60 {
             lines.push(tool(
                 &format!("t{i}"),
-                "Grep",
-                &format!(r#"{{"pattern":"p{i}"}}"#),
+                "Read",
+                &format!(r#"{{"file_path":"/x/p{i}"}}"#),
             ));
         }
         fn refs(l: &[String]) -> Vec<&str> {
@@ -993,11 +1042,67 @@ mod tests {
         }
         let s = scan(dir.path(), &refs(&lines));
         assert_eq!(s.used().len(), 50);
-        assert_eq!(s.used().first().map(String::as_str), Some("Grep: p10"));
-        assert_eq!(s.used().last().map(String::as_str), Some("Grep: p59"));
+        assert_eq!(s.used().first().map(String::as_str), Some("Read: p10"));
+        assert_eq!(s.used().last().map(String::as_str), Some("Read: p59"));
         lines.push(end.to_string());
         let s = scan(dir.path(), &refs(&lines));
         assert!(s.used().is_empty());
+    }
+
+    #[test]
+    fn event_labels_carry_no_arguments_beyond_a_file_name_or_a_plain_subcommand() {
+        let l = |n: &str, i: &str| event_label(n, &serde_json::from_str::<Value>(i).unwrap());
+        assert_eq!(
+            l(
+                "Bash",
+                r#"{"command":"curl --data-binary @x https://u:p@h/ -H X-Api: zzz9"}"#
+            ),
+            "Bash: curl"
+        );
+        assert_eq!(
+            l("Bash", r#"{"command":"cargo test -p x"}"#),
+            "Bash: cargo test"
+        );
+        assert_eq!(
+            l("Bash", r#"{"command":"/usr/bin/git push origin"}"#),
+            "Bash: git push"
+        );
+        assert_eq!(l("Bash", r#"{"command":"tool ./x.sh"}"#), "Bash: tool");
+        assert_eq!(l("Bash", r#"{"command":"tool a=b"}"#), "Bash: tool");
+        assert_eq!(l("Bash", r#"{"command":"KEY=zzz9 run"}"#), "Bash");
+        assert_eq!(
+            l("Read", r#"{"file_path":"/a/b/main.rs"}"#),
+            "Read: main.rs"
+        );
+        assert_eq!(l("Grep", r#"{"pattern":"hunter2secret"}"#), "Grep");
+        assert_eq!(l("Glob", r#"{"pattern":"**/*.key"}"#), "Glob");
+        assert_eq!(l("WebFetch", r#"{"url":"https://x/?t=abc"}"#), "WebFetch");
+        assert_eq!(l("WebSearch", r#"{"query":"my secret"}"#), "WebSearch");
+        assert_eq!(
+            l("Agent", r#"{"description":"do the secret thing"}"#),
+            "Agent"
+        );
+        let mcp = format!("mcp__{}__tool", "s".repeat(60));
+        assert_eq!(l(&mcp, "{}").chars().count(), 40);
+    }
+
+    #[test]
+    fn the_used_list_and_current_event_use_event_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = scan(
+            dir.path(),
+            &[
+                HUMAN,
+                &tool("a", "Grep", r#"{"pattern":"hunter2secret"}"#),
+                &tool("b", "Bash", r#"{"command":"cargo test -p x"}"#),
+            ],
+        );
+        assert_eq!(s.used(), ["Grep", "Bash: cargo test"]);
+        assert_eq!(s.current_event(), Some("Bash: cargo test"));
+        assert!(s
+            .status()
+            .activity
+            .is_some_and(|a| a.starts_with("Bash: cargo test -p")));
     }
 
     #[test]

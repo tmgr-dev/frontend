@@ -281,7 +281,7 @@ fn activity_of(room: &RoomRef, s: &SessionInfo, scan: Option<&StatusScan>) -> Ch
     let short = |label: &str| crate::attach::status::mask_secrets(label);
     let current = scan
         .filter(|_| working)
-        .and_then(|sc| sc.status().activity)
+        .and_then(|sc| sc.current_event().map(str::to_string))
         .map(|l| short(&l));
     ChatActivity {
         v: 1,
@@ -323,6 +323,7 @@ pub fn capture_consenting(
     resolve: &dyn Fn(&SessionInfo, Agent) -> Option<PathBuf>,
     reading_allowed: &dyn Fn(Agent) -> bool,
 ) -> Vec<(String, String)> {
+    chat.set_activity_consent(reading_allowed(Agent::Claude) || reading_allowed(Agent::Codex));
     let mut titles = Vec::new();
     let Some(store) = chat.store.as_ref() else {
         return titles;
@@ -430,6 +431,7 @@ pub fn capture_consenting(
         } else {
             t.status = None;
             t.sent = None;
+            chat.forget_activity(&room);
         }
         let Ok(batch) = tail::read_new(&t.path, agent, t.offset, tail::WINDOW) else {
             continue;

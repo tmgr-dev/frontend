@@ -884,6 +884,7 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let rt = runner(t.path());
         let (c, mut peer) = conn(CLIENT_DESKTOP);
+        rt.chat.set_activity_consent(true);
         call(&rt, &c, chat_method::SUBSCRIBE, json!({"activity": true})).unwrap();
         let sub = lock(&c.chat_rx).take().unwrap();
         let (rt2, c2) = (rt.clone(), c.clone());
@@ -899,6 +900,25 @@ mod tests {
         assert_eq!(v["current"], "Bash: ls");
         assert_eq!(v["used"], json!(["Read: a.rs"]));
         assert_eq!(v["room"]["session"], "s_abcdefghij");
+        c.closed.store(true, Ordering::SeqCst);
+        h.join().unwrap();
+    }
+
+    #[test]
+    fn nothing_is_sent_to_a_slow_subscriber_after_consent_is_revoked() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let (c, mut peer) = conn(CLIENT_DESKTOP);
+        rt.chat.set_activity_consent(true);
+        call(&rt, &c, chat_method::SUBSCRIBE, json!({"activity": true})).unwrap();
+        let sub = lock(&c.chat_rx).take().unwrap();
+        rt.chat.publish_activity(&activity_event(&rt, "Bash: ls"));
+        rt.chat.set_activity_consent(false);
+        let (rt2, c2) = (rt.clone(), c.clone());
+        let h = thread::spawn(move || rt2.chat_pusher(&c2, sub));
+        peer.set_read_timeout(Some(Duration::from_millis(800)))
+            .unwrap();
+        assert!(read_frame(&mut peer).is_err());
         c.closed.store(true, Ordering::SeqCst);
         h.join().unwrap();
     }

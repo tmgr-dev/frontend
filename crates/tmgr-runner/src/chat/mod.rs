@@ -11,7 +11,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -146,6 +146,7 @@ pub struct Chat {
     write: Mutex<()>,
     subs: Mutex<Vec<SyncSender<ChatPush>>>,
     activity_subs: Mutex<Vec<Arc<activity::Slot>>>,
+    activity_on: Arc<AtomicBool>,
     seq: AtomicU16,
     tails: Mutex<HashMap<String, tail::Tail>>,
     sent: Mutex<VecDeque<(String, String, Instant)>>,
@@ -171,6 +172,7 @@ impl Chat {
             write: Mutex::new(()),
             subs: Mutex::new(Vec::new()),
             activity_subs: Mutex::new(Vec::new()),
+            activity_on: Arc::new(AtomicBool::new(false)),
             seq: AtomicU16::new(0),
             tails: Mutex::new(HashMap::new()),
             sent: Mutex::new(VecDeque::new()),
@@ -457,9 +459,26 @@ impl Chat {
     }
 
     pub fn subscribe_activity(&self) -> ActivityRx {
-        let slot = Arc::new(activity::Slot::default());
-        lock(&self.activity_subs).push(slot.clone());
+        let slot = Arc::new(activity::Slot::new(self.activity_on.clone()));
+        let mut subs = lock(&self.activity_subs);
+        subs.retain(|s| Arc::strong_count(s) > 1);
+        subs.push(slot.clone());
         ActivityRx(slot)
+    }
+
+    pub(crate) fn set_activity_consent(&self, on: bool) {
+        self.activity_on.store(on, Ordering::SeqCst);
+        if !on {
+            for s in lock(&self.activity_subs).iter() {
+                s.clear();
+            }
+        }
+    }
+
+    pub(crate) fn forget_activity(&self, room: &RoomRef) {
+        for s in lock(&self.activity_subs).iter() {
+            s.forget(room);
+        }
     }
 
     #[cfg(test)]
@@ -468,6 +487,9 @@ impl Chat {
     }
 
     pub(crate) fn publish_activity(&self, event: &ChatActivity) {
+        if !self.activity_on.load(Ordering::SeqCst) {
+            return;
+        }
         let mut subs = lock(&self.activity_subs);
         subs.retain(|s| Arc::strong_count(s) > 1);
         for s in subs.iter() {
@@ -755,6 +777,7 @@ mod tests {
     #[test]
     fn a_slow_activity_subscriber_is_never_evicted_and_the_latest_event_per_room_wins() {
         let (_t, c) = chat();
+        c.set_activity_consent(true);
         let rx = c.subscribe_activity();
         let rooms = [c.manager_room(), c.session_room("s_abcdefghij")];
         for i in 0..5000 {
@@ -778,6 +801,69 @@ mod tests {
         drop(rx);
         c.publish_activity(&got[0]);
         assert!(lock(&c.activity_subs).is_empty());
+    }
+
+    fn activity_in(room: &RoomRef, current: &str) -> ChatActivity {
+        ChatActivity {
+            v: 1,
+            room: room.clone(),
+            state: tmgr_ipc::chat::ActivityState::Working,
+            current: Some(current.into()),
+            used: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn revoked_consent_drops_queued_activity_and_silences_publishing_until_it_returns() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        c.set_activity_consent(true);
+        let rx = c.subscribe_activity();
+        c.publish_activity(&activity_in(&room, "Bash: ls"));
+        c.set_activity_consent(false);
+        c.publish_activity(&activity_in(&room, "Bash: rm"));
+        assert!(rx.take(Duration::ZERO).is_empty());
+        c.set_activity_consent(true);
+        c.publish_activity(&activity_in(&room, "Bash: cargo"));
+        let got = rx.take(Duration::ZERO);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].current.as_deref(), Some("Bash: cargo"));
+    }
+
+    #[test]
+    fn an_event_queued_before_revocation_is_not_handed_out_after_it() {
+        let (_t, c) = chat();
+        c.set_activity_consent(true);
+        let rx = c.subscribe_activity();
+        c.publish_activity(&activity_in(&c.manager_room(), "Bash: ls"));
+        c.activity_on.store(false, Ordering::SeqCst);
+        assert!(rx.take(Duration::ZERO).is_empty());
+    }
+
+    #[test]
+    fn subscribing_prunes_dead_slots_without_any_event() {
+        let (_t, c) = chat();
+        for _ in 0..1000 {
+            drop(c.subscribe_activity());
+        }
+        assert!(c.activity_subscribers() <= 1);
+    }
+
+    #[test]
+    fn past_the_room_limit_the_oldest_room_is_evicted_and_the_newest_kept() {
+        let (_t, c) = chat();
+        c.set_activity_consent(true);
+        let rx = c.subscribe_activity();
+        let room = |i: usize| c.session_room(&format!("s_{i:010}"));
+        for i in 0..300 {
+            c.publish_activity(&activity_in(&room(i), "Bash: ls"));
+        }
+        c.publish_activity(&activity_in(&room(299), "Bash: cargo"));
+        let got = rx.take(Duration::ZERO);
+        assert_eq!(got.len(), 256);
+        assert_eq!(got[0].room, room(44));
+        assert_eq!(got[255].room, room(299));
+        assert_eq!(got[255].current.as_deref(), Some("Bash: cargo"));
     }
 
     #[test]

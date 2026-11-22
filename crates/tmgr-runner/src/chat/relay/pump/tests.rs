@@ -257,6 +257,7 @@ fn forward_skips_relay_origin_and_survives_a_full_queue_and_a_closed_subscriptio
 fn forward_receives_zero_activity_events() {
     let dir = tempfile::tempdir().unwrap();
     let chat = Chat::open(dir.path());
+    chat.set_activity_consent(true);
     let activity = |i: u32| tmgr_ipc::chat::ChatActivity {
         v: 1,
         room: chat.session_room("s_abcdefghij"),
