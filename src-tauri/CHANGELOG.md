@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.192 — 2026-11-22
+
+- Manager window: below 1100 px the chat no longer leaves an empty column where the right panel was.
+- Manager window: search filters that are not available yet can be reached with the keyboard and read out their hint, and the machine, agent and filter groups have names for screen readers.
+- Manager window: the session and machine counts in the header are translatable.
+
 ## 0.9.191 — 2026-11-22
 
 - Manager window: the right panel shows hierarchy cards for the Manager, its sessions and linked sub-managers, with session details next to them.
