@@ -54,7 +54,7 @@ fn read_private(paths: &Paths) -> std::io::Result<Option<String>> {
     use std::io::Read;
     let file = match std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(paths.pin_file())
     {
         Ok(f) => f,
