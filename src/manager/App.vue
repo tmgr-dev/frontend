@@ -157,7 +157,7 @@
 			:busy="store.switcher.busy"
 			:error="store.switcher.error"
 			@pick="store.pickSwitchAgent"
-			@update:model="store.switcher.model = $event"
+			@update:model="store.pickSwitchModel"
 			@submit="store.submitSwitch()"
 			@cancel="store.closeSwitch()"
 		/>

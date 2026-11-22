@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 const MAX_ENTRIES: usize = 200;
-const MAX_VALUE_LEN: usize = 64;
+const MAX_VALUE_LEN: usize = 100;
 const MAX_INPUT_BYTES: u64 = 1024 * 1024;
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -19,7 +19,7 @@ pub struct ModelChoice {
 
 fn valid_value(value: &str) -> bool {
   (1..=MAX_VALUE_LEN).contains(&value.len())
-    && value.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b':' | b'/' | b'#' | b'-'))
+    && value.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b':' | b'/' | b'#' | b'-' | b'@'))
 }
 
 fn choice(value: &str, label: &str) -> Option<ModelChoice> {
@@ -68,11 +68,22 @@ pub fn parse_codex(json: &str) -> Vec<ModelChoice> {
   out
 }
 
+fn valid_agy_slug(slug: &str) -> bool {
+  let b = slug.as_bytes();
+  !b.is_empty()
+    && (b[0].is_ascii_lowercase() || b[0].is_ascii_digit())
+    && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'.' | b'_' | b':' | b'-'))
+    && !slug.ends_with(':')
+}
+
 pub fn parse_agy(stdout: &str) -> Vec<ModelChoice> {
   let mut out: Vec<ModelChoice> = Vec::new();
   for line in stdout.lines() {
     let line = line.trim();
-    let (slug, name) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
+    let Some((slug, name)) = line.split_once(char::is_whitespace) else { continue };
+    if !valid_agy_slug(slug) || name.trim().is_empty() {
+      continue;
+    }
     if let Some(c) = choice(slug, name) {
       if !out.iter().any(|o| o.value == c.value) {
         out.push(c);
@@ -89,6 +100,9 @@ pub fn parse_opencode(stdout: &str) -> Vec<ModelChoice> {
   let mut out: Vec<ModelChoice> = Vec::new();
   for line in stdout.lines() {
     let line = line.trim();
+    if !line.contains('/') || line.contains(char::is_whitespace) || line.ends_with(':') {
+      continue;
+    }
     if let Some(c) = choice(line, line) {
       if !out.iter().any(|o| o.value == c.value) {
         out.push(c);
@@ -119,25 +133,52 @@ fn cli_dirs(home: Option<&Path>) -> Vec<PathBuf> {
   dirs
 }
 
+fn is_executable(path: &Path) -> bool {
+  let Ok(meta) = std::fs::metadata(path) else { return false };
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    meta.is_file() && meta.permissions().mode() & 0o111 != 0
+  }
+  #[cfg(not(unix))]
+  {
+    meta.is_file()
+  }
+}
+
 fn find_cli(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
   dirs.iter().filter(|d| d.is_absolute()).find_map(|d| {
     let candidates = if cfg!(windows) { vec![format!("{name}.exe"), format!("{name}.cmd")] } else { vec![name.to_owned()] };
-    candidates.into_iter().map(|c| d.join(c)).find(|p| p.is_file())
+    candidates.into_iter().map(|c| d.join(c)).find(|p| is_executable(p))
   })
 }
 
-fn run_models(cli: &Path) -> Result<String, String> {
-  run_models_at(cli, &["models"], CLI_TIMEOUT, MAX_INPUT_BYTES as usize)
+fn run_models(cli: &Path, cwd: &Path) -> Result<String, String> {
+  run_models_at(cli, &["models"], cwd, CLI_TIMEOUT, MAX_INPUT_BYTES as usize)
 }
 
-fn run_models_at(cli: &Path, args: &[&str], timeout: Duration, cap: usize) -> Result<String, String> {
-  let mut child = Command::new(cli)
+fn kill_tree(child: &mut std::process::Child) {
+  #[cfg(unix)]
+  unsafe {
+    libc::killpg(child.id() as i32, libc::SIGKILL);
+  }
+  let _ = child.kill();
+  let _ = child.wait();
+}
+
+fn run_models_at(cli: &Path, args: &[&str], cwd: &Path, timeout: Duration, cap: usize) -> Result<String, String> {
+  let mut cmd = Command::new(cli);
+  cmd
     .args(args)
+    .current_dir(cwd)
+    .env_remove("OPENCODE_CONFIG")
+    .env_remove("OPENCODE_CONFIG_DIR")
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
-    .stderr(Stdio::null())
-    .spawn()
-    .map_err(|e| e.kind().to_string())?;
+    .stderr(Stdio::null());
+  #[cfg(unix)]
+  std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+  let mut child = cmd.spawn().map_err(|e| e.kind().to_string())?;
   let stdout = child.stdout.take().ok_or("no stdout")?;
   let (tx, rx) = mpsc::channel();
   std::thread::spawn(move || {
@@ -146,8 +187,7 @@ fn run_models_at(cli: &Path, args: &[&str], timeout: Duration, cap: usize) -> Re
     let _ = tx.send(buf);
   });
   let fail = |child: &mut std::process::Child, msg: &str| {
-    let _ = child.kill();
-    let _ = child.wait();
+    kill_tree(child);
     Err(msg.to_owned())
   };
   let deadline = Instant::now() + timeout;
@@ -169,6 +209,7 @@ fn run_models_at(cli: &Path, args: &[&str], timeout: Duration, cap: usize) -> Re
       if !status.success() {
         return Err("command failed".to_owned());
       }
+      kill_tree(&mut child);
       return Ok(String::from_utf8_lossy(bytes).into_owned());
     }
     if Instant::now() >= deadline {
@@ -182,11 +223,14 @@ pub fn load(agent: &str, home: Option<&Path>) -> Result<Vec<ModelChoice>, String
   let list = match agent {
     "codex" => {
       let home = home.ok_or("home directory unavailable")?;
-      parse_codex(&read_capped(&home.join(".codex").join("models_cache.json"))?)
+      parse_codex(
+        &read_capped(&home.join(".codex").join("models_cache.json")).map_err(|_| "no codex model cache".to_owned())?,
+      )
     }
     "agy" | "opencode" => {
       let cli = find_cli(agent, &cli_dirs(home)).ok_or_else(|| format!("{agent} not found"))?;
-      let out = run_models(&cli)?;
+      let cwd = home.map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
+      let out = run_models(&cli, &cwd)?;
       if agent == "agy" {
         parse_agy(&out)
       } else {
@@ -249,10 +293,10 @@ mod tests {
 
   #[test]
   fn invalid_values_and_oversized_slugs_are_dropped() {
-    let long = "a".repeat(65);
-    let ok = "a".repeat(64);
-    let input = format!("{long}  Too long\n{ok}  Fits\nbad$slug  Nope\nopen/ai#x:1_2.3-4  Ok\n");
-    assert_eq!(values(&parse_agy(&input)), ["default", ok.as_str(), "open/ai#x:1_2.3-4"]);
+    let long = "a".repeat(101);
+    let ok = "a".repeat(100);
+    let input = format!("{long}  Too long\n{ok}  Fits\nbad$slug  Nope\nx.y:1-2  Ok\n");
+    assert_eq!(values(&parse_agy(&input)), ["default", ok.as_str(), "x.y:1-2"]);
   }
 
   #[test]
@@ -273,6 +317,36 @@ mod tests {
     let list = parse_agy("default  Fake\nm1  A\nm1  B\n");
     assert_eq!(values(&list), ["default", "m1"]);
     assert_eq!(list[1].label, "A");
+  }
+
+  #[test]
+  fn agy_skips_headers_logs_and_single_column_lines() {
+    let list = parse_agy("Available models:\nLoading...\nlonely\nm1  Model One\n");
+    assert_eq!(values(&list), ["default", "m1"]);
+  }
+
+  #[test]
+  fn opencode_requires_provider_slash_model() {
+    let list = parse_opencode("Available models:\nLoading...\nnoslash\nprov/:\ncloudflare-workers-ai/@cf/meta/x\n");
+    assert_eq!(values(&list), ["default", "cloudflare-workers-ai/@cf/meta/x"]);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn find_cli_skips_non_executable_files() {
+    use std::os::unix::fs::PermissionsExt;
+    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    std::fs::write(a.path().join("agy"), "x").unwrap();
+    std::fs::write(b.path().join("agy"), "x").unwrap();
+    std::fs::set_permissions(b.path().join("agy"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let found = find_cli("agy", &[a.path().to_path_buf(), b.path().to_path_buf()]);
+    assert_eq!(found, Some(b.path().join("agy")));
+  }
+
+  #[test]
+  fn missing_codex_cache_has_a_clear_error() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(load("codex", Some(dir.path())), Err("no codex model cache".to_owned()));
   }
 
   #[test]
@@ -298,14 +372,14 @@ mod tests {
     fn normal_output_is_returned() {
       let dir = tempfile::tempdir().unwrap();
       let cli = script(&dir, "echo 'anthropic/claude-sonnet-5-5'");
-      assert_eq!(run_models_at(&cli, &["models"], Duration::from_secs(5), 1024).unwrap(), "anthropic/claude-sonnet-5-5\n");
+      assert_eq!(run_models_at(&cli, &["models"], dir.path(), Duration::from_secs(5), 1024).unwrap(), "anthropic/claude-sonnet-5-5\n");
     }
 
     #[test]
     fn output_over_the_cap_is_an_error() {
       let dir = tempfile::tempdir().unwrap();
       let cli = script(&dir, "yes model");
-      assert_eq!(run_models_at(&cli, &["models"], Duration::from_secs(5), 1024), Err("output too large".to_owned()));
+      assert_eq!(run_models_at(&cli, &["models"], dir.path(), Duration::from_secs(5), 1024), Err("output too large".to_owned()));
     }
 
     #[test]
@@ -313,7 +387,7 @@ mod tests {
       let dir = tempfile::tempdir().unwrap();
       let cli = script(&dir, "sleep 30 &\necho partial\nexit 0");
       let started = Instant::now();
-      assert_eq!(run_models_at(&cli, &["models"], SHORT, 1024), Err("timed out".to_owned()));
+      assert_eq!(run_models_at(&cli, &["models"], dir.path(), SHORT, 1024), Err("timed out".to_owned()));
       assert!(started.elapsed() < Duration::from_secs(3));
     }
 
@@ -321,13 +395,36 @@ mod tests {
     fn failing_command_is_an_error() {
       let dir = tempfile::tempdir().unwrap();
       let cli = script(&dir, "echo x\nexit 3");
-      assert_eq!(run_models_at(&cli, &["models"], SHORT, 1024), Err("command failed".to_owned()));
+      assert_eq!(run_models_at(&cli, &["models"], dir.path(), SHORT, 1024), Err("command failed".to_owned()));
+    }
+
+    #[test]
+    fn child_runs_in_the_given_directory() {
+      let dir = tempfile::tempdir().unwrap();
+      let cwd = tempfile::tempdir().unwrap();
+      let cli = script(&dir, "pwd");
+      let out = run_models_at(&cli, &["models"], cwd.path(), Duration::from_secs(5), 1024).unwrap();
+      assert_eq!(std::fs::canonicalize(out.trim()).unwrap(), std::fs::canonicalize(cwd.path()).unwrap());
+    }
+
+    #[test]
+    fn timeout_kills_the_whole_process_tree() {
+      let dir = tempfile::tempdir().unwrap();
+      let pidfile = dir.path().join("pid");
+      let cli = script(&dir, &format!("sleep 30 &\necho $! > {}\necho partial\nexit 0", pidfile.display()));
+      assert!(run_models_at(&cli, &["models"], dir.path(), SHORT, 1024).is_err());
+      let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+      let deadline = Instant::now() + Duration::from_secs(3);
+      while unsafe { libc::kill(pid, 0) } == 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+      }
+      assert_ne!(unsafe { libc::kill(pid, 0) }, 0);
     }
 
     #[test]
     fn missing_command_is_an_error() {
       let dir = tempfile::tempdir().unwrap();
-      assert!(run_models_at(&dir.path().join("nope"), &["models"], SHORT, 1024).is_err());
+      assert!(run_models_at(&dir.path().join("nope"), &["models"], dir.path(), SHORT, 1024).is_err());
     }
   }
 }

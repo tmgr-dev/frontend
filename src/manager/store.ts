@@ -97,6 +97,7 @@ export const createManagerStore = (api: ManagerApi) => {
 	let searchSeq = 0;
 	let queueSeq = 0;
 	const modelsRequested = new Set<string>();
+	let modelTouched = false;
 
 	const unread = reactive({} as Record<string, number>);
 	let queueTimer: ReturnType<typeof setInterval> | null = null;
@@ -115,7 +116,13 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (!Array.isArray(list) || !list.length) return;
 			store.switcher.choices[agent] = list;
 			const sw = store.switcher;
-			if (sw.agent === agent && !list.some((m) => m.value === sw.model))
+			if (
+				sw.open &&
+				!sw.busy &&
+				sw.agent === agent &&
+				!modelTouched &&
+				!list.some((m) => m.value === sw.model)
+			)
 				sw.model = list[0].value;
 		} catch {
 			modelsRequested.delete(agent);
@@ -532,13 +539,20 @@ export const createManagerStore = (api: ManagerApi) => {
 			store.switcher.model = store.switchModels[0];
 			store.switcher.error = '';
 			store.switcher.open = true;
+			modelTouched = false;
 			void loadModels(agent);
 		},
 
 		pickSwitchAgent(agent: SpawnAgent) {
 			store.switcher.agent = agent;
 			store.switcher.model = store.switchModels[0];
+			modelTouched = false;
 			void loadModels(agent);
+		},
+
+		pickSwitchModel(model: string) {
+			store.switcher.model = model;
+			modelTouched = true;
 		},
 
 		closeSwitch() {
