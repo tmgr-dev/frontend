@@ -175,6 +175,33 @@ export interface TrustState {
 	seq_gaps?: SeqGap[];
 	joining?: boolean;
 	can_join_with_code?: boolean;
+	gate_blockers?: string[];
+	auto_join_error?: string | null;
+}
+
+export type PairState =
+	| 'paired'
+	| 'already'
+	| 'pending'
+	| 'blocked'
+	| 'no_runner'
+	| 'no_cli'
+	| 'error';
+
+export interface PairResult {
+	state: PairState;
+	machine?: string;
+	device_id?: string;
+	message?: string;
+	blockers?: string[];
+}
+
+export interface ManagerMachine {
+	machine: string;
+	label?: string | null;
+	role?: 'top' | 'sub' | null;
+	followers?: string[];
+	local?: boolean;
 }
 
 export const RESET_PHRASE = 'RESET';

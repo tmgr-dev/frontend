@@ -291,4 +291,16 @@ describe('trust components', () => {
 			/<button[^>]*disabled[^>]*>\s*Add device\s*<\/button>/,
 		);
 	});
+
+	it('DevicesPanel shows the automatic runner setup error', async () => {
+		const html = await render('DevicesPanel', {
+			devices,
+			autoJoinError: 'join refused',
+		});
+		expect(html).toContain(
+			'Automatic setup of the local runner failed: join refused',
+		);
+		const quiet = await render('DevicesPanel', { devices });
+		expect(quiet).not.toContain('Automatic setup');
+	});
 });

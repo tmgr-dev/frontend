@@ -1826,3 +1826,30 @@ body:has(.manager.app-shell) {
 		visibility: hidden;
 	}
 }
+.manager .gl.gh {
+	padding-top: 14px;
+	color: var(--ink-3, var(--subtle));
+}
+.manager .mgr-share {
+	margin: 0;
+	padding: 4px 12px 8px;
+	font-size: 11.5px;
+	color: var(--subtle);
+}
+.manager .mgr-banner {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin: 8px 24px 0;
+	padding: 8px 12px;
+	border-radius: 8px;
+	font-size: 12.5px;
+	background: var(--sunken);
+	color: var(--fix-fg);
+}
+.manager .mgr-banner.mgr-notice {
+	color: inherit;
+}
+.manager .mgr-banner.mgr-notice span {
+	flex: 1;
+}

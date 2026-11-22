@@ -13,6 +13,9 @@
 			<p v-if="keyMismatch.length > 0" class="mgr-error" role="alert">
 				{{ $t('manager.trust.devices.keyMismatch') }}
 			</p>
+			<p v-if="autoJoinError" class="mgr-error" role="alert">
+				{{ $t('manager.pairing.autoJoinError', { error: autoJoinError }) }}
+			</p>
 			<p v-for="kind in alertKinds" :key="kind" class="mgr-error" role="alert">
 				{{ alertText(kind) }}
 			</p>
@@ -162,6 +165,7 @@
 			joining: { type: Boolean, default: false },
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
+			autoJoinError: { type: String as PropType<string | null>, default: null },
 		},
 		emits: [
 			'revoke',

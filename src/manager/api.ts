@@ -5,6 +5,8 @@ import type {
 	ChatMessage,
 	HistoryParams,
 	ModelChoice,
+	ManagerMachine,
+	PairResult,
 	RoomInfo,
 	RoomRef,
 	SearchParams,
@@ -107,3 +109,26 @@ export const managerSwitchAgent = (
 			'Switching agents from the desktop app is not available yet. Use the tmgr CLI.',
 		),
 	);
+
+const commandMissing = (e: unknown) =>
+	/not found|unknown command|not allowed|did not find/i.test(
+		e instanceof Error ? e.message : String(e),
+	);
+
+export const managerPairLocalRunner = async (): Promise<PairResult | null> => {
+	try {
+		return await invoke<PairResult>('manager_pair_local_runner');
+	} catch (e) {
+		if (commandMissing(e)) return null;
+		throw e;
+	}
+};
+
+export const managerMachines = async (): Promise<ManagerMachine[]> => {
+	try {
+		return (await invoke<ManagerMachine[]>('manager_machines')) ?? [];
+	} catch (e) {
+		if (commandMissing(e)) return [];
+		throw e;
+	}
+};

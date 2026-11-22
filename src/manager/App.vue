@@ -24,14 +24,25 @@
 				<span>{{ $t('manager.search.scopeAll') }}</span>
 				<kbd>&#8984;K</kbd>
 			</button>
+			<p v-if="sharedWithPhone" class="mgr-share">
+				{{ $t('manager.list.sharedWithPhone') }}
+			</p>
 			<ChatList
 				:rooms="store.rooms"
+				:machines="pairing.machines"
 				:active-key="store.activeKey ?? undefined"
 				:unread="store.unreadByRoom"
 				@select="store.select"
 			/>
 		</aside>
 		<section class="main">
+			<GateBlockersBanner :labels="gateBlockers" />
+			<RunnerAddedNotice
+				v-if="pairing.notice"
+				:label="pairing.notice.label"
+				@revoke="revokeAddedRunner"
+				@dismiss="pairing.dismiss()"
+			/>
 			<ChatHeader
 				v-if="activeInfo"
 				:info="activeInfo"
@@ -233,6 +244,7 @@
 			:seq-gaps="trust.trust?.seq_gaps ?? []"
 			:can-join="trust.trust?.can_join_with_code ?? false"
 			:joining="trust.trust?.joining ?? false"
+			:auto-join-error="trust.trust?.auto_join_error ?? null"
 			:busy="trust.busy"
 			:error="trust.error"
 			@revoke="trust.revoke"
@@ -253,9 +265,11 @@
 	import Composer from './components/Composer.vue';
 	import DecisionCard from './components/DecisionCard.vue';
 	import DetailPanel from './components/DetailPanel.vue';
+	import GateBlockersBanner from './components/GateBlockersBanner.vue';
 	import Icon from './components/Icon.vue';
 	import MessageList from './components/MessageList.vue';
 	import NewSessionDialog from './components/NewSessionDialog.vue';
+	import RunnerAddedNotice from './components/RunnerAddedNotice.vue';
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
 	import SpawnApprovalCard from './components/SpawnApprovalCard.vue';
@@ -267,6 +281,8 @@
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
 	import { renderBody } from './format';
+	import { sharedWithPhone } from './machineTree';
+	import { usePairingStore } from './pairingStore';
 	import {
 		clampWidth,
 		DEFAULT_WIDTH,
@@ -299,12 +315,14 @@
 			SpawnApprovalCard,
 			DetailPanel,
 			DevicesPanel,
+			GateBlockersBanner,
 			PairDeviceDialog,
 			Icon,
 			JoinConfirmDialog,
 			MessageList,
 			NewSessionDialog,
 			ResetIdentityDialog,
+			RunnerAddedNotice,
 			RevokeConfirmDialog,
 			SearchPanel,
 			SlashMenu,
@@ -314,6 +332,7 @@
 			return {
 				store: useManagerStore(),
 				trust: useTrustStore(),
+				pairing: usePairingStore(),
 			};
 		},
 		computed: {
@@ -332,6 +351,12 @@
 				return {
 					gridTemplateColumns: `${this.leftW}px minmax(0, 1fr) ${this.rightW}px`,
 				};
+			},
+			gateBlockers(): string[] {
+				return this.trust.trust?.gate_blockers ?? this.pairing.blockers;
+			},
+			sharedWithPhone(): boolean {
+				return sharedWithPhone(this.trust.trust?.devices);
 			},
 			revokeDevice() {
 				return (
@@ -375,11 +400,14 @@
 				viewport: window.innerWidth,
 				unlistenResync: null as (() => void) | null,
 				stopWatch: null as (() => void) | null,
+				stopMachines: null as (() => void) | null,
 			};
 		},
 		mounted() {
 			void this.store.init();
 			void this.trust.init();
+			void this.pairing.start().then(() => this.trust.refresh());
+			this.stopMachines = this.pairing.watch(5000);
 			window.addEventListener('keydown', this.onGlobalKey);
 			window.addEventListener('focus', this.onWindowFocus);
 			window.addEventListener('resize', this.onWindowResize);
@@ -394,12 +422,18 @@
 			this.unlistenResync?.();
 			this.stopWatch?.();
 			this.store.stopQueuePoll();
+			this.stopMachines?.();
 			window.removeEventListener('keydown', this.onGlobalKey);
 			window.removeEventListener('focus', this.onWindowFocus);
 			window.removeEventListener('resize', this.onWindowResize);
 			this.trust.dispose();
 		},
 		methods: {
+			revokeAddedRunner() {
+				const id = this.pairing.notice?.deviceId;
+				this.pairing.dismiss();
+				if (id) this.trust.revoke(id);
+			},
 			rightWant(): number {
 				return clampWidth(
 					'right',

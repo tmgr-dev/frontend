@@ -9,7 +9,18 @@
 		"noMessages": "No messages yet",
 		"you": "You: ",
 		"newSession": "New session",
-		"noSessions": "No sessions yet. Sessions started with the tmgr runner on this machine appear here."
+		"noSessions": "No sessions yet. Sessions started with the tmgr runner on this machine appear here.",
+		"mainMachine": "Main · {label}",
+		"subMachine": "{label} · Sub-manager",
+		"thisComputer": "This computer",
+		"sharedWithPhone": "This computer is shared with your phone"
+	},
+	"pairing": {
+		"added": "Runner on {machine} was added to chat",
+		"revoke": "Revoke",
+		"dismiss": "Dismiss",
+		"blocked": "Update these devices first: {devices}",
+		"autoJoinError": "Automatic setup of the local runner failed: {error}"
 	},
 	"header": {
 		"search": "Search in chat",
