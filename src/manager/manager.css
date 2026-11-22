@@ -1821,4 +1821,8 @@ body:has(.manager.app-shell) {
 	.manager .anim-show {
 		opacity: 1;
 	}
+	.manager .anim-hide {
+		opacity: 0;
+		visibility: hidden;
+	}
 }
