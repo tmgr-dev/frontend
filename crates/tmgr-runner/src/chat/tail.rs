@@ -856,6 +856,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             device: Some("d_phone1".into()),
+            client: "relay".into(),
         };
         let typed_back = typed.clone();
         chat.ingest(

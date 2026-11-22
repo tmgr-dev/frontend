@@ -1,7 +1,9 @@
+pub mod queue;
 pub mod relay;
 pub mod store;
 pub mod tail;
 
+pub use queue::Submit;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -98,15 +100,16 @@ pub struct Incoming {
     pub reply_to: Option<String>,
     pub attachments: Vec<Attachment>,
     pub device: Option<String>,
+    pub client: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Delivery {
-    NoTarget,
     Delivered,
     Typed(String),
     Busy,
     Refused(&'static str),
+    Gone(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,6 +141,7 @@ pub struct Chat {
     seq: AtomicU16,
     tails: Mutex<HashMap<String, tail::Tail>>,
     sent: Mutex<VecDeque<(String, String, Instant)>>,
+    queue: Mutex<queue::Queue>,
     rpc_client: Mutex<Option<Arc<RpcClient>>>,
     relay_device: Mutex<Option<(String, String)>>,
 }
@@ -161,6 +165,7 @@ impl Chat {
             seq: AtomicU16::new(0),
             tails: Mutex::new(HashMap::new()),
             sent: Mutex::new(VecDeque::new()),
+            queue: Mutex::new(queue::Queue::default()),
             rpc_client: Mutex::new(None),
             relay_device: Mutex::new(None),
         }
@@ -327,6 +332,7 @@ impl Chat {
         if !exists {
             return Err(NotFound("no such room".into()));
         }
+        let (client, device) = (m.client, m.device.clone());
         let msg = ChatMessage {
             v: CHAT_V,
             id: m.id,
@@ -382,29 +388,18 @@ impl Chat {
                 duplicate: false,
             });
         }
-        let delivered = match deliver(&msg.body_md) {
-            Delivery::Delivered => {
-                if let Some(session) = msg.room.session.as_deref() {
-                    self.remember_sent(session, &msg.body_md);
-                }
-                true
-            }
-            Delivery::Typed(typed) => {
-                if let Some(session) = msg.room.session.as_deref() {
-                    self.remember_sent(session, &typed);
-                }
-                true
-            }
-            Delivery::Refused(why) => {
-                self.note(&msg.room, why);
-                false
-            }
-            Delivery::NoTarget => false,
-            Delivery::Busy => {
-                self.note(&msg.room, "Not delivered: the session was busy.");
-                false
-            }
-        };
+        let mut deliver = Some(deliver);
+        let outcome = self.submit(
+            &msg.room,
+            &msg.id,
+            &msg.body_md,
+            &client,
+            device.as_deref(),
+            now_ms,
+            |body, _, _| deliver.take().map_or(Delivery::Busy, |d| d(body)),
+        );
+        self.note_undelivered(&msg.room, &outcome);
+        let delivered = outcome == Submit::Delivered;
         Ok(Ingested {
             message: msg,
             delivered,
@@ -754,6 +749,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             device: Some("d_phone1".into()),
+            client: "relay".into(),
         }
     }
 
@@ -805,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_ingest_without_a_target_is_only_stored() {
+    fn a_fresh_ingest_without_a_target_is_stored_with_the_real_reason() {
         let (_t, c) = chat();
         let room = c.manager_room();
         let r = c
@@ -813,11 +809,18 @@ mod tests {
                 incoming(room.clone(), 1, NOW, "hi"),
                 NOW,
                 no_session,
-                |_| Delivery::NoTarget,
+                |_| Delivery::Gone("no manager is running".into()),
             )
             .unwrap();
         assert!(!r.delivered);
-        assert_eq!(texts(&c, &room).len(), 1);
+        assert_eq!(
+            texts(&c, &room)[1],
+            (
+                AuthorKind::System,
+                "Not delivered: no manager is running.".to_string()
+            )
+        );
+        assert!(c.queued_ids(&room).is_empty());
     }
 
     #[test]
@@ -874,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn a_busy_target_gets_a_note_and_nothing_is_queued() {
+    fn a_busy_target_queues_the_message_without_a_note_until_drain_delivers_it() {
         let (_t, c) = chat();
         let room = c.manager_room();
         let r = c
@@ -886,15 +889,51 @@ mod tests {
             )
             .unwrap();
         assert!(!r.delivered);
-        let h = texts(&c, &room);
-        assert_eq!(h[0].1, "hello");
-        assert_eq!(
-            h[1],
-            (
-                AuthorKind::System,
-                "Not delivered: the session was busy.".to_string()
+        assert_eq!(c.queued_ids(&room), std::slice::from_ref(&r.message.id));
+        assert_eq!(texts(&c, &room).len(), 1);
+        let got = std::cell::RefCell::new(Vec::new());
+        c.drain_queue(NOW + 1, |_, body, client, _| {
+            got.borrow_mut()
+                .push((body.to_string(), client.to_string()));
+            Delivery::Delivered
+        });
+        assert_eq!(*got.borrow(), [("hello".to_string(), "relay".to_string())]);
+        assert!(c.queued_ids(&room).is_empty());
+        assert_eq!(texts(&c, &room).len(), 1);
+    }
+
+    #[test]
+    fn a_duplicate_id_is_not_queued_twice() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        for _ in 0..2 {
+            c.ingest(
+                incoming(room.clone(), 1, NOW, "hello"),
+                NOW,
+                no_session,
+                |_| Delivery::Busy,
             )
+            .unwrap();
+        }
+        assert_eq!(c.queued_ids(&room).len(), 1);
+    }
+
+    #[test]
+    fn a_full_queue_notes_it_and_a_gone_target_notes_its_reason_never_busy() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        for n in 1..=21 {
+            c.ingest(incoming(room.clone(), n, NOW, "x"), NOW, no_session, |_| {
+                Delivery::Busy
+            })
+            .unwrap();
+        }
+        let h = texts(&c, &room);
+        assert_eq!(
+            h.last().unwrap().1,
+            "Not delivered: the queue for this session is full (20 messages)."
         );
+        assert!(h.iter().all(|(_, t)| !t.contains("busy")));
     }
 
     #[test]
@@ -1040,12 +1079,12 @@ mod tests {
         let room = c.session_room("s_abcdefghij");
         let known = |s: &str| s == "s_abcdefghij";
         c.ingest(incoming(room.clone(), 1, NOW, "a"), NOW, known, |_| {
-            Delivery::NoTarget
+            Delivery::Delivered
         })
         .unwrap();
         let r = c
             .ingest(incoming(room.clone(), 2, NOW, "b"), NOW, no_session, |_| {
-                Delivery::NoTarget
+                Delivery::Delivered
             })
             .unwrap();
         assert!(!r.duplicate);

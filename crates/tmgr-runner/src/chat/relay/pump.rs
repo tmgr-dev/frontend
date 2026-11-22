@@ -85,6 +85,7 @@ impl ChatSink for RelaySink {
             reply_to: msg.reply_to,
             attachments: msg.attachments,
             device: Some(from_device.to_owned()),
+            client: "relay".into(),
         };
         match (self.ingest)(incoming) {
             Ok(_) => Ok(()),
