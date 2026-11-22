@@ -7,6 +7,39 @@
 		@mouseleave="onLeave"
 	>
 		<template v-for="(g, gi) in view" :key="g.key">
+			<template v-if="gi === 0 && !!g.header">
+				<div
+					v-if="hasCounts"
+					role="group"
+					:aria-label="$t('manager.list.counts')"
+					class="cnts"
+				>
+					<span v-for="c in countItems" :key="c.state" :class="['cnt', c.state]"
+						><b>{{ c.n }}</b> {{ $t(`manager.list.count.${c.state}`) }}</span
+					>
+				</div>
+				<div
+					v-if="needs.length > 0"
+					role="group"
+					:aria-label="$t('manager.list.needsYou')"
+				>
+					<div class="gl">
+						{{ $t('manager.list.needsYou') }} &middot; {{ needs.length }}
+					</div>
+					<button
+						v-for="row in needs"
+						:key="row.key"
+						type="button"
+						role="option"
+						:aria-selected="row.key === activeKey"
+						:class="['nrow', row.tag]"
+						@click="$emit('select', row.key)"
+					>
+						<b>{{ $t(`manager.list.tag.${row.tag}`) }}</b>
+						<span>{{ row.title }}</span>
+					</button>
+				</div>
+			</template>
 			<div v-if="g.header" class="gl gh">{{ g.header }}</div>
 			<template v-if="g.pinned.length > 0">
 				<div v-if="!g.header" class="gl">{{ $t('manager.list.pinned') }}</div>
@@ -35,12 +68,17 @@
 					<span v-if="badge(info)" class="ub">{{ badge(info) }}</span>
 				</button>
 			</template>
-			<template v-if="gi === 0">
-				<p v-if="hasCounts" class="cnts">
+			<template v-if="gi === 0 && !g.header">
+				<div
+					v-if="hasCounts"
+					role="group"
+					:aria-label="$t('manager.list.counts')"
+					class="cnts"
+				>
 					<span v-for="c in countItems" :key="c.state" :class="['cnt', c.state]"
 						><b>{{ c.n }}</b> {{ $t(`manager.list.count.${c.state}`) }}</span
 					>
-				</p>
+				</div>
 				<div
 					v-if="needs.length > 0"
 					role="group"
@@ -53,6 +91,8 @@
 						v-for="row in needs"
 						:key="row.key"
 						type="button"
+						role="option"
+						:aria-selected="row.key === activeKey"
 						:class="['nrow', row.tag]"
 						@click="$emit('select', row.key)"
 					>

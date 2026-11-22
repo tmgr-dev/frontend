@@ -308,7 +308,7 @@ html.dark .manager {
 	height: 20px;
 	border-radius: 10px;
 	background: var(--progress);
-	color: #fff;
+	color: #1b1206;
 	font-size: 11px;
 	font-weight: 800;
 	display: grid;
@@ -1948,7 +1948,7 @@ html.dark .manager .tools ul {
 	color: var(--progress-fg);
 }
 .manager .cnt.waiting b {
-	color: var(--review-fg, var(--progress-fg));
+	color: var(--testing-fg);
 }
 .manager .cnt.failed b {
 	color: var(--fix-fg);
