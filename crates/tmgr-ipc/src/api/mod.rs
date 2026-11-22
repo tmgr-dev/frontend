@@ -75,6 +75,7 @@ pub mod caps {
     pub const PROFILES_LOGIN_CHECK_V1: &str = "profiles_login_check.v1";
     pub const CHAT_V1: &str = "chat.v1";
     pub const MANAGER_V1: &str = "manager.v1";
+    pub const CHAT_ACTIVITY_V1: &str = "chat.activity.v1";
     pub const RUN_PROMPT_V1: &str = "run_prompt.v1";
     pub const HANDOFF_V1: &str = "handoff.v1";
     pub const SWITCH_V1: &str = "switch.v1";
@@ -82,7 +83,7 @@ pub mod caps {
     pub const OBJECT_EXEMPT_V1: &str = "object_exempt.v1";
     pub const MANAGER_UNRESTRICTED_V1: &str = "manager.unrestricted.v1";
 
-    pub const ALL: [&str; 46] = [
+    pub const ALL: [&str; 47] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -129,6 +130,7 @@ pub mod caps {
         SPAWNAUTH_V1,
         OBJECT_EXEMPT_V1,
         MANAGER_UNRESTRICTED_V1,
+        CHAT_ACTIVITY_V1,
     ];
 }
 

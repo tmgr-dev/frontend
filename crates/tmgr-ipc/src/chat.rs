@@ -262,6 +262,22 @@ pub struct ChatPush {
     pub message: ChatMessage,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityState {
+    Working,
+    Idle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChatActivity {
+    pub v: u32,
+    pub room: RoomRef,
+    pub state: ActivityState,
+    pub current: Option<String>,
+    pub used: Vec<String>,
+}
+
 pub fn new_message_id() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

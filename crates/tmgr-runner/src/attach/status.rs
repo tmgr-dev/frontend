@@ -10,7 +10,8 @@ use tmgr_ipc::api::StateKind;
 const TAIL_BYTES: u64 = 1 << 20;
 const MAX_PASSES: usize = 4;
 const MAX_PENDING: usize = 32;
-const ACTIVITY_MAX: usize = 80;
+const MAX_USED: usize = 50;
+pub(crate) const ACTIVITY_MAX: usize = 80;
 const SECRET_WORDS: [&str; 5] = ["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD"];
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -284,6 +285,7 @@ pub struct StatusScan {
     carry: Vec<u8>,
     skipping: bool,
     pending: Vec<(String, String)>,
+    used: Vec<String>,
     todo: Option<(u32, u32)>,
     subs: Vec<Sub>,
     asking: Option<(String, String)>,
@@ -314,6 +316,7 @@ impl StatusScan {
             carry: Vec::new(),
             skipping: false,
             pending: Vec::new(),
+            used: Vec::new(),
             todo: None,
             subs: Vec::new(),
             asking: None,
@@ -321,6 +324,10 @@ impl StatusScan {
             ctx: None,
             mode: None,
         }
+    }
+
+    pub fn used(&self) -> &[String] {
+        &self.used
     }
 
     pub fn is_for(&self, path: &Path) -> bool {
@@ -380,6 +387,7 @@ impl StatusScan {
         self.carry.clear();
         self.skipping = false;
         self.pending.clear();
+        self.used.clear();
         self.todo = None;
         self.windowed = false;
         self.asking = None;
@@ -494,6 +502,13 @@ impl StatusScan {
                     .and_then(iso_secs);
                 self.meter(v.get("message"));
                 self.assistant(message, at.unwrap_or(0), content);
+                if v.get("message")
+                    .and_then(|m| m.get("stop_reason"))
+                    .and_then(Value::as_str)
+                    == Some("end_turn")
+                {
+                    self.used.clear();
+                }
             }
             Some("user") => self.user(&v, content),
             _ => {}
@@ -589,8 +604,12 @@ impl StatusScan {
                 "TaskUpdate" if !self.windowed => self.task_update(input),
                 _ => {}
             }
-            self.pending
-                .push((id.to_string(), activity_label(name, input)));
+            let label = activity_label(name, input);
+            self.used.push(label.clone());
+            if self.used.len() > MAX_USED {
+                self.used.remove(0);
+            }
+            self.pending.push((id.to_string(), label));
             if self.pending.len() > MAX_PENDING {
                 self.pending.remove(0);
             }
@@ -599,6 +618,7 @@ impl StatusScan {
 
     fn human(&mut self) {
         self.pending.clear();
+        self.used.clear();
         self.asking = None;
         self.subs.retain(|s| s.agent.is_some());
     }
@@ -929,6 +949,53 @@ mod tests {
             ],
         );
         assert_eq!(s.status().activity.as_deref(), Some("Bash: cargo test"));
+    }
+
+    #[test]
+    fn the_tools_of_the_current_turn_are_collected_and_reset_on_a_new_turn() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lines = vec![
+            HUMAN.to_string(),
+            tool("a", "Read", r#"{"file_path":"/x/main.rs"}"#),
+            result("a"),
+            tool("b", "Bash", r#"{"command":"cargo test"}"#),
+            result("b"),
+        ];
+        let s = scan(
+            dir.path(),
+            &lines.iter().map(String::as_str).collect::<Vec<_>>(),
+        );
+        assert_eq!(s.used(), ["Read: main.rs", "Bash: cargo test"]);
+        lines.push(HUMAN.to_string());
+        let s = scan(
+            dir.path(),
+            &lines.iter().map(String::as_str).collect::<Vec<_>>(),
+        );
+        assert!(s.used().is_empty());
+    }
+
+    #[test]
+    fn the_final_assistant_text_ends_the_turn_and_the_used_list_is_capped() {
+        let dir = tempfile::tempdir().unwrap();
+        let end = r#"{"type":"assistant","message":{"id":"z","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"done"}]}}"#;
+        let mut lines = vec![HUMAN.to_string()];
+        for i in 0..60 {
+            lines.push(tool(
+                &format!("t{i}"),
+                "Grep",
+                &format!(r#"{{"pattern":"p{i}"}}"#),
+            ));
+        }
+        fn refs(l: &[String]) -> Vec<&str> {
+            l.iter().map(String::as_str).collect()
+        }
+        let s = scan(dir.path(), &refs(&lines));
+        assert_eq!(s.used().len(), 50);
+        assert_eq!(s.used().first().map(String::as_str), Some("Grep: p10"));
+        assert_eq!(s.used().last().map(String::as_str), Some("Grep: p59"));
+        lines.push(end.to_string());
+        let s = scan(dir.path(), &refs(&lines));
+        assert!(s.used().is_empty());
     }
 
     #[test]

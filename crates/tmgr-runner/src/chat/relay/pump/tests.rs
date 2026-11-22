@@ -254,6 +254,33 @@ fn forward_skips_relay_origin_and_survives_a_full_queue_and_a_closed_subscriptio
 }
 
 #[test]
+fn forward_receives_zero_activity_events() {
+    let dir = tempfile::tempdir().unwrap();
+    let chat = Chat::open(dir.path());
+    let activity = |i: u32| tmgr_ipc::chat::ChatActivity {
+        v: 1,
+        room: chat.session_room("s_abcdefghij"),
+        state: tmgr_ipc::chat::ActivityState::Working,
+        current: Some(format!("Bash: {i}")),
+        used: vec!["Read: a".into()],
+    };
+    let (queue_tx, queue_rx) = mpsc::sync_channel(8);
+    let polled = AtomicUsize::new(0);
+    forward(
+        &|| {
+            let rx = chat.subscribe();
+            for i in 0..10 {
+                chat.publish_activity(&activity(i));
+            }
+            rx
+        },
+        &queue_tx,
+        &|| polled.fetch_add(1, Ordering::SeqCst) >= 2,
+    );
+    assert!(queue_rx.try_recv().is_err());
+}
+
+#[test]
 fn send_wait_is_capped_at_five_minutes() {
     let m = msg(AuthorKind::Manager, MACHINE, None);
     let relay = ScriptedRelay::new(

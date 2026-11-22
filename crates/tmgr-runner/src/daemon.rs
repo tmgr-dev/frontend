@@ -1950,7 +1950,7 @@ struct Conn {
     attached: AtomicBool,
     client: String,
     pending_rx: Mutex<Option<Receiver<Value>>>,
-    chat_rx: Mutex<Option<Receiver<tmgr_ipc::chat::ChatPush>>>,
+    chat_rx: Mutex<Option<chat::ChatSub>>,
 }
 
 impl Conn {

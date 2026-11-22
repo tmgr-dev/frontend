@@ -1,5 +1,5 @@
 use crate::api::{ErrorCode, EventMsg, ScreenPush};
-use crate::chat::ChatPush;
+use crate::chat::{ChatActivity, ChatPush};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -143,6 +143,7 @@ pub enum ServerMsg {
     Screen(Value),
     Event(Value),
     Chat(Value),
+    ChatActivity(Value),
     Closed {
         reason: String,
     },
@@ -161,6 +162,13 @@ impl ServerMsg {
     pub fn chat(&self) -> Option<ChatPush> {
         match self {
             ServerMsg::Chat(v) => serde_json::from_value(v.clone()).ok(),
+            _ => None,
+        }
+    }
+
+    pub fn chat_activity(&self) -> Option<ChatActivity> {
+        match self {
+            ServerMsg::ChatActivity(v) => serde_json::from_value(v.clone()).ok(),
             _ => None,
         }
     }
@@ -269,6 +277,34 @@ mod tests {
         let new: Hello =
             serde_json::from_value(json!({"proto": 1, "config_dir": "/x/tmgr"})).unwrap();
         assert_eq!(new.config_dir.as_deref(), Some("/x/tmgr"));
+    }
+
+    #[test]
+    fn chat_activity_has_the_flat_shape_and_old_clients_decode_it_as_unknown() {
+        use crate::chat::{ActivityState, RoomRef};
+        let activity = ChatActivity {
+            v: 1,
+            room: RoomRef::manager("mx_0123456789abcdef"),
+            state: ActivityState::Working,
+            current: Some("Bash: ls".into()),
+            used: vec!["Read: a.rs".into()],
+        };
+        let wire = serde_json::to_value(ServerMsg::ChatActivity(
+            serde_json::to_value(&activity).unwrap(),
+        ))
+        .unwrap();
+        assert_eq!(wire["type"], "chat_activity");
+        assert_eq!(wire["state"], "working");
+        assert_eq!(wire["current"], "Bash: ls");
+        assert_eq!(wire["used"], json!(["Read: a.rs"]));
+        let back: ServerMsg = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(back.chat_activity(), Some(activity));
+        assert_eq!(back.chat(), None);
+        let mut idle = wire;
+        idle["state"] = json!("idle");
+        idle["current"] = Value::Null;
+        let back: ServerMsg = serde_json::from_value(idle).unwrap();
+        assert_eq!(back.chat_activity().unwrap().state, ActivityState::Idle);
     }
 
     #[test]

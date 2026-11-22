@@ -10,12 +10,12 @@ use crate::mgr_rpc::relay::{
 use crate::mgr_rpc::{Dispatcher, FileAudit};
 use std::sync::mpsc::RecvTimeoutError as ChatRecv;
 use tmgr_ipc::chat::{
-    method as chat_method, CancelParams, ChatPush, HistoryParams, QueuedParams, SearchParams,
-    SendParams,
+    method as chat_method, CancelParams, HistoryParams, QueuedParams, SearchParams, SendParams,
 };
 use tmgr_ipc::manager::wrap_untrusted;
 
 const CAPTURE_EVERY: Duration = Duration::from_secs(3);
+const ACTIVITY_TICK: Duration = Duration::from_millis(250);
 const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
 const RELAY_SOURCE: &str = "phone or another device via chat relay";
@@ -335,9 +335,14 @@ impl Runner {
                 })
             }
             chat_method::SUBSCRIBE => {
+                let activity = p.get("activity").and_then(Value::as_bool) == Some(true);
                 let mut slot = lock(&conn.chat_rx);
-                if slot.is_none() {
-                    *slot = Some(self.chat.subscribe());
+                let sub = slot.get_or_insert_with(|| chat::ChatSub {
+                    rx: self.chat.subscribe(),
+                    activity: None,
+                });
+                if activity && sub.activity.is_none() {
+                    sub.activity = Some(self.chat.subscribe_activity());
                 }
                 Ok(Value::Null)
             }
@@ -345,12 +350,28 @@ impl Runner {
         }
     }
 
-    pub(super) fn chat_pusher(&self, conn: &Arc<Conn>, rx: Receiver<ChatPush>) {
+    pub(super) fn chat_pusher(&self, conn: &Arc<Conn>, sub: chat::ChatSub) {
+        let chat::ChatSub { rx, activity } = sub;
         let fail = |conn: &Conn| {
             let _ = lock(&conn.w).shutdown(std::net::Shutdown::Both);
         };
+        let tick = if activity.is_some() {
+            ACTIVITY_TICK
+        } else {
+            Duration::from_secs(1)
+        };
         while !conn.closed.load(Ordering::SeqCst) {
-            match rx.recv_timeout(Duration::from_secs(1)) {
+            if let Some(a) = &activity {
+                for event in a.take(Duration::ZERO) {
+                    if conn
+                        .write(&ServerMsg::ChatActivity(to_json(&event)))
+                        .is_err()
+                    {
+                        return fail(conn);
+                    }
+                }
+            }
+            match rx.recv_timeout(tick) {
                 Ok(push) => {
                     if conn.write(&ServerMsg::Chat(to_json(&push))).is_err() {
                         return fail(conn);
@@ -846,6 +867,51 @@ mod tests {
         assert_eq!(v["message"]["body_md"], "ping");
         c.closed.store(true, Ordering::SeqCst);
         h.join().unwrap();
+    }
+
+    fn activity_event(rt: &Runner, current: &str) -> tmgr_ipc::chat::ChatActivity {
+        tmgr_ipc::chat::ChatActivity {
+            v: 1,
+            room: rt.chat.session_room("s_abcdefghij"),
+            state: tmgr_ipc::chat::ActivityState::Working,
+            current: Some(current.into()),
+            used: vec!["Read: a.rs".into()],
+        }
+    }
+
+    #[test]
+    fn a_subscriber_that_opts_in_receives_activity_in_the_wire_shape() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let (c, mut peer) = conn(CLIENT_DESKTOP);
+        call(&rt, &c, chat_method::SUBSCRIBE, json!({"activity": true})).unwrap();
+        let sub = lock(&c.chat_rx).take().unwrap();
+        let (rt2, c2) = (rt.clone(), c.clone());
+        let h = thread::spawn(move || rt2.chat_pusher(&c2, sub));
+        rt.chat.publish_activity(&activity_event(&rt, "Bash: ls"));
+        peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let Some(Frame::Json(v)) = read_frame(&mut peer).unwrap() else {
+            panic!("json frame expected");
+        };
+        assert_eq!(v["type"], "chat_activity");
+        assert_eq!(v["v"], 1);
+        assert_eq!(v["state"], "working");
+        assert_eq!(v["current"], "Bash: ls");
+        assert_eq!(v["used"], json!(["Read: a.rs"]));
+        assert_eq!(v["room"]["session"], "s_abcdefghij");
+        c.closed.store(true, Ordering::SeqCst);
+        h.join().unwrap();
+    }
+
+    #[test]
+    fn a_plain_subscriber_gets_no_activity() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let (c, _peer) = conn(CLIENT_DESKTOP);
+        call(&rt, &c, chat_method::SUBSCRIBE, Value::Null).unwrap();
+        let sub = lock(&c.chat_rx).take().unwrap();
+        assert!(sub.activity.is_none());
+        assert_eq!(rt.chat.activity_subscribers(), 0);
     }
 
     #[test]

@@ -1,8 +1,10 @@
+mod activity;
 pub mod queue;
 pub mod relay;
 pub mod store;
 pub mod tail;
 
+pub use activity::ActivityRx;
 pub use queue::Submit;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
@@ -16,8 +18,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use store::Store;
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
-    message_id_at, valid_message_id, Attachment, Author, AuthorKind, ChatMessage, ChatPush,
-    MessageKind, RelaySelf, RoomInfo, RoomRef, CHAT_V,
+    message_id_at, valid_message_id, Attachment, Author, AuthorKind, ChatActivity, ChatMessage,
+    ChatPush, MessageKind, RelaySelf, RoomInfo, RoomRef, CHAT_V,
 };
 
 use crate::mgr_rpc::relay::RpcClient;
@@ -133,11 +135,17 @@ pub(super) fn normalize(text: &str) -> String {
     text.replace('\r', "").trim().to_string()
 }
 
+pub struct ChatSub {
+    pub rx: Receiver<ChatPush>,
+    pub activity: Option<ActivityRx>,
+}
+
 pub struct Chat {
     machine: String,
     store: Option<Store>,
     write: Mutex<()>,
     subs: Mutex<Vec<SyncSender<ChatPush>>>,
+    activity_subs: Mutex<Vec<Arc<activity::Slot>>>,
     seq: AtomicU16,
     tails: Mutex<HashMap<String, tail::Tail>>,
     sent: Mutex<VecDeque<(String, String, Instant)>>,
@@ -162,6 +170,7 @@ impl Chat {
             store,
             write: Mutex::new(()),
             subs: Mutex::new(Vec::new()),
+            activity_subs: Mutex::new(Vec::new()),
             seq: AtomicU16::new(0),
             tails: Mutex::new(HashMap::new()),
             sent: Mutex::new(VecDeque::new()),
@@ -447,6 +456,25 @@ impl Chat {
         rx
     }
 
+    pub fn subscribe_activity(&self) -> ActivityRx {
+        let slot = Arc::new(activity::Slot::default());
+        lock(&self.activity_subs).push(slot.clone());
+        ActivityRx(slot)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn activity_subscribers(&self) -> usize {
+        lock(&self.activity_subs).len()
+    }
+
+    pub(crate) fn publish_activity(&self, event: &ChatActivity) {
+        let mut subs = lock(&self.activity_subs);
+        subs.retain(|s| Arc::strong_count(s) > 1);
+        for s in subs.iter() {
+            s.put(event);
+        }
+    }
+
     pub fn history(
         &self,
         room: &RoomRef,
@@ -722,6 +750,34 @@ mod tests {
         assert!(ids.windows(2).all(|w| w[0] < w[1]));
         let pushed: Vec<String> = rx.try_iter().map(|p| p.message.id).collect();
         assert_eq!(pushed, ids);
+    }
+
+    #[test]
+    fn a_slow_activity_subscriber_is_never_evicted_and_the_latest_event_per_room_wins() {
+        let (_t, c) = chat();
+        let rx = c.subscribe_activity();
+        let rooms = [c.manager_room(), c.session_room("s_abcdefghij")];
+        for i in 0..5000 {
+            for room in &rooms {
+                c.publish_activity(&ChatActivity {
+                    v: 1,
+                    room: room.clone(),
+                    state: tmgr_ipc::chat::ActivityState::Working,
+                    current: Some(format!("Bash: step {i}")),
+                    used: Vec::new(),
+                });
+            }
+        }
+        assert_eq!(lock(&c.activity_subs).len(), 1);
+        let got = rx.take(Duration::ZERO);
+        assert_eq!(got.len(), 2);
+        assert!(got
+            .iter()
+            .all(|e| e.current.as_deref() == Some("Bash: step 4999")));
+        assert!(rx.take(Duration::ZERO).is_empty());
+        drop(rx);
+        c.publish_activity(&got[0]);
+        assert!(lock(&c.activity_subs).is_empty());
     }
 
     #[test]

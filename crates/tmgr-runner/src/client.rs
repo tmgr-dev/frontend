@@ -448,6 +448,17 @@ impl Client {
         })
     }
 
+    /// Like `chat_subscribe`, and the runner also sends live tool activity (`ChatStream::recv_item`).
+    pub fn chat_subscribe_activity(mut self) -> io::Result<ChatStream> {
+        self.call(
+            wire_chat::method::SUBSCRIBE,
+            serde_json::json!({"activity": true}),
+        )?;
+        Ok(ChatStream {
+            stream: self.stream,
+        })
+    }
+
     /// Turns this connection into an attach stream; open another `Client` for further calls.
     pub fn attach(mut self, ids: &[String]) -> io::Result<AttachStream> {
         self.call(method::ATTACH_OPEN, to_params(&attach_params(ids))?)?;
@@ -485,11 +496,26 @@ impl ChatStream {
 
     pub fn recv(&mut self) -> io::Result<Option<wire_chat::ChatMessage>> {
         loop {
+            match self.recv_item()? {
+                None => return Ok(None),
+                Some(ChatItem::Message(m)) => return Ok(Some(*m)),
+                Some(ChatItem::Activity(_)) => {}
+            }
+        }
+    }
+
+    pub fn recv_item(&mut self) -> io::Result<Option<ChatItem>> {
+        loop {
             match read_frame(&mut &self.stream)? {
                 None => return Ok(None),
                 Some(Frame::Json(v)) => match from_value::<ServerMsg>(v)? {
                     ServerMsg::Chat(push) => {
-                        return from_value::<wire_chat::ChatPush>(push).map(|p| Some(p.message))
+                        return from_value::<wire_chat::ChatPush>(push)
+                            .map(|p| Some(ChatItem::Message(Box::new(p.message))))
+                    }
+                    ServerMsg::ChatActivity(a) => {
+                        return from_value::<wire_chat::ChatActivity>(a)
+                            .map(|a| Some(ChatItem::Activity(a)))
                     }
                     ServerMsg::Closed { .. } => return Ok(None),
                     _ => {}
@@ -498,6 +524,11 @@ impl ChatStream {
             }
         }
     }
+}
+
+pub enum ChatItem {
+    Message(Box<wire_chat::ChatMessage>),
+    Activity(wire_chat::ChatActivity),
 }
 
 pub struct AttachReader {
@@ -708,6 +739,26 @@ mod tests {
         write_json(&mut w, &json!({"type": "closed", "reason": "bye"})).unwrap();
         let mut stream = ChatStream { stream: b };
         assert_eq!(stream.recv().unwrap().unwrap().body_md, "hello");
+        assert!(stream.recv().unwrap().is_none());
+    }
+
+    #[test]
+    fn the_plain_chat_stream_skips_activity_and_recv_item_yields_it() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let mut w = &a;
+        let activity = json!({
+            "type": "chat_activity", "v": 1,
+            "room": {"kind": "manager", "machine": "mx_0123456789abcdef"},
+            "state": "working", "current": "Bash: ls", "used": []
+        });
+        write_json(&mut w, &activity).unwrap();
+        write_json(&mut w, &activity).unwrap();
+        write_json(&mut w, &json!({"type": "closed", "reason": "bye"})).unwrap();
+        let mut stream = ChatStream { stream: b };
+        match stream.recv_item().unwrap() {
+            Some(ChatItem::Activity(x)) => assert_eq!(x.current.as_deref(), Some("Bash: ls")),
+            _ => panic!("activity expected"),
+        }
         assert!(stream.recv().unwrap().is_none());
     }
 }

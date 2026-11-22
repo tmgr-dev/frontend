@@ -9,11 +9,12 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
-    limits, Author, AuthorKind, ChatMessage, MessageKind, RoomRef, SessionMeta, CHAT_V,
+    limits, ActivityState, Author, AuthorKind, ChatActivity, ChatMessage, MessageKind, RoomRef,
+    SessionMeta, CHAT_V,
 };
 use tmgr_session::{switch, tail, Agent};
 
-use crate::attach::{Format, TitleScan};
+use crate::attach::{Format, StatusScan, TitleScan};
 
 const RESOLVE_EVERY: Duration = Duration::from_secs(30);
 const BACKFILL_BYTES: u64 = 4 << 20;
@@ -40,6 +41,8 @@ pub struct Tail {
     resolve_at: Instant,
     pub(super) meta: SessionMeta,
     title: Option<TitleScan>,
+    status: Option<StatusScan>,
+    sent: Option<ChatActivity>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -258,7 +261,39 @@ fn resolve_log(s: &SessionInfo, agent: Agent, home: &Path) -> Option<PathBuf> {
 
 pub fn capture(chat: &Chat, sessions: &[SessionInfo]) -> Vec<(String, String)> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    capture_with(chat, sessions, &|s, a| resolve_log(s, a, home.as_deref()?))
+    let consent = tmgr_usage::consent::consent_read_only(&tmgr_usage::paths::Env::from_process());
+    capture_consenting(
+        chat,
+        sessions,
+        &|s, a| resolve_log(s, a, home.as_deref()?),
+        &|agent| {
+            let tool = match agent {
+                Agent::Claude => tmgr_usage::Tool::Claude,
+                Agent::Codex => tmgr_usage::Tool::Codex,
+            };
+            consent.as_ref().is_some_and(|c| c.allows(tool, false))
+        },
+    )
+}
+
+fn activity_of(room: &RoomRef, s: &SessionInfo, scan: Option<&StatusScan>) -> ChatActivity {
+    let working = s.state.kind == StateKind::Working;
+    let short = |label: &str| crate::attach::status::mask_secrets(label);
+    let current = scan
+        .filter(|_| working)
+        .and_then(|sc| sc.status().activity)
+        .map(|l| short(&l));
+    ChatActivity {
+        v: 1,
+        room: room.clone(),
+        state: if working {
+            ActivityState::Working
+        } else {
+            ActivityState::Idle
+        },
+        current,
+        used: scan.map_or_else(Vec::new, |sc| sc.used().iter().map(|l| short(l)).collect()),
+    }
 }
 
 fn title_scan(agent: Agent, path: &Path) -> Option<TitleScan> {
@@ -278,6 +313,15 @@ pub fn capture_with(
     chat: &Chat,
     sessions: &[SessionInfo],
     resolve: &dyn Fn(&SessionInfo, Agent) -> Option<PathBuf>,
+) -> Vec<(String, String)> {
+    capture_consenting(chat, sessions, resolve, &|_| false)
+}
+
+pub fn capture_consenting(
+    chat: &Chat,
+    sessions: &[SessionInfo],
+    resolve: &dyn Fn(&SessionInfo, Agent) -> Option<PathBuf>,
+    reading_allowed: &dyn Fn(Agent) -> bool,
 ) -> Vec<(String, String)> {
     let mut titles = Vec::new();
     let Some(store) = chat.store.as_ref() else {
@@ -318,6 +362,8 @@ pub fn capture_with(
                     };
                     let mut t = Tail {
                         title: title_scan(agent, &path),
+                        status: None,
+                        sent: None,
                         path,
                         offset,
                         resolve_at: Instant::now() + RESOLVE_EVERY,
@@ -365,6 +411,25 @@ pub fn capture_with(
             if let Some(found) = scan.title("").filter(|_| scan.caught_up()) {
                 titles.push((s.id.clone(), found.text));
             }
+        }
+        if reading_allowed(agent) {
+            if t.status.is_none() && agent == Agent::Claude {
+                t.status = t
+                    .path
+                    .parent()
+                    .map(|root| StatusScan::new(root.to_path_buf(), t.path.clone()));
+            }
+            if let Some(scan) = t.status.as_mut() {
+                scan.poll();
+            }
+            let event = activity_of(&room, s, t.status.as_ref());
+            if t.sent.as_ref() != Some(&event) {
+                chat.publish_activity(&event);
+                t.sent = Some(event);
+            }
+        } else {
+            t.status = None;
+            t.sent = None;
         }
         let Ok(batch) = tail::read_new(&t.path, agent, t.offset, tail::WINDOW) else {
             continue;
@@ -455,6 +520,149 @@ mod tests {
             capture_with(&chat, &s, &resolve),
             [(SID.to_string(), "Mine".to_string())]
         );
+    }
+
+    fn tool_line(id: &str, name: &str, input: serde_json::Value) -> String {
+        json!({"type": "assistant", "message": {"id": format!("m{id}"), "content": [
+            {"type": "tool_use", "id": id, "name": name, "input": input}]}})
+        .to_string()
+            + "\n"
+    }
+
+    fn drain(rx: &super::super::ActivityRx) -> Vec<ChatActivity> {
+        rx.take(Duration::ZERO)
+    }
+
+    #[test]
+    fn activity_needs_consent_and_a_revoked_one_drops_the_scan() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let rx = chat.subscribe_activity();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        let allowed = Cell::new(false);
+        let consent = |_: Agent| allowed.get();
+        capture_consenting(&chat, &s, &resolve, &consent);
+        append(&log, &tool_line("a", "Bash", json!({"command": "ls"})));
+        capture_consenting(&chat, &s, &resolve, &consent);
+        assert!(drain(&rx).is_empty());
+        assert!(lock(&chat.tails).get(SID).unwrap().status.is_none());
+
+        allowed.set(true);
+        capture_consenting(&chat, &s, &resolve, &consent);
+        let got = drain(&rx);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].room, chat.session_room(SID));
+        assert_eq!(got[0].state, ActivityState::Working);
+        assert_eq!(got[0].current.as_deref(), Some("Bash: ls"));
+        assert_eq!(got[0].used, ["Bash: ls"]);
+        capture_consenting(&chat, &s, &resolve, &consent);
+        assert!(drain(&rx).is_empty());
+
+        allowed.set(false);
+        capture_consenting(&chat, &s, &resolve, &consent);
+        assert!(lock(&chat.tails).get(SID).unwrap().status.is_none());
+        append(&log, &tool_line("b", "Bash", json!({"command": "rm"})));
+        capture_consenting(&chat, &s, &resolve, &consent);
+        assert!(drain(&rx).is_empty());
+    }
+
+    #[test]
+    fn activity_is_never_a_chat_message_and_never_reaches_chat_subscribers() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let pushes = chat.subscribe();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        let before = bodies(&chat, SID);
+        let rx = chat.subscribe_activity();
+        append(&log, &tool_line("a", "Bash", json!({"command": "ls"})));
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        assert_eq!(drain(&rx).len(), 1);
+        assert_eq!(bodies(&chat, SID), before);
+        assert!(pushes.try_iter().all(|p| p.message.body_md != "Bash: ls"));
+        assert_eq!(pushes.try_iter().count(), 0);
+    }
+
+    #[test]
+    fn the_idle_state_has_no_current_tool_and_a_codex_session_gets_state_only() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let rx = chat.subscribe_activity();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        let claude = [info(SID, "claude-code", "working")];
+        append(&log, &tool_line("a", "Bash", json!({"command": "ls"})));
+        capture_consenting(&chat, &claude, &resolve, &|_| true);
+        drain(&rx);
+        let waiting = [info(SID, "claude-code", "waiting")];
+        capture_consenting(&chat, &waiting, &resolve, &|_| true);
+        let got = drain(&rx);
+        assert_eq!(got[0].state, ActivityState::Idle);
+        assert_eq!(got[0].current, None);
+
+        let codex_id = "s_codexcodex";
+        let codex = [info(codex_id, "codex", "working")];
+        capture_consenting(&chat, &codex, &resolve, &|_| true);
+        let got = drain(&rx);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].state, ActivityState::Working);
+        assert_eq!(got[0].current, None);
+        assert!(got[0].used.is_empty());
+        assert!(lock(&chat.tails).get(codex_id).unwrap().status.is_none());
+    }
+
+    #[test]
+    fn activity_labels_are_short_masked_and_carry_no_contents_or_output() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let rx = chat.subscribe_activity();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        let long = "x".repeat(500);
+        append(
+            &log,
+            &tool_line(
+                "a",
+                "Bash",
+                json!({"command": format!("curl -H 'Authorization: Bearer abc123' {long}")}),
+            ),
+        );
+        append(
+            &log,
+            &tool_line(
+                "b",
+                "Write",
+                json!({"file_path": "/x/notes.txt", "content": "FILECONTENTS"}),
+            ),
+        );
+        append(
+            &log,
+            &(json!({"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "b", "content": "TOOLOUTPUT"}]}})
+            .to_string()
+                + "\n"),
+        );
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        let got = drain(&rx);
+        let wire = serde_json::to_string(&got).unwrap();
+        for leaked in ["SECRETVALUE", "FILECONTENTS", "TOOLOUTPUT"] {
+            assert!(!wire.contains(leaked), "{leaked}");
+        }
+        assert!(got[0].used.len() == 2 && got[0].used[1] == "Write: notes.txt");
+        assert!(got[0]
+            .used
+            .iter()
+            .all(|l| l.chars().count() <= crate::attach::status::ACTIVITY_MAX));
     }
 
     fn manager_info() -> SessionInfo {
