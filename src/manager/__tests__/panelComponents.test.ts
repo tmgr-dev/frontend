@@ -161,6 +161,10 @@ describe('manager detail panel components', () => {
 	it('HierarchyTab lists the Manager first, then sessions per machine', async () => {
 		const html = await render('HierarchyTab', {
 			rooms,
+			machines: [
+				{ machine: 'mac', role: 'top' },
+				{ machine: 'studio', role: 'sub' },
+			],
 			activeKey: 'session:mac:s1',
 		});
 		expect(html.indexOf('Manager')).toBeLessThan(html.indexOf('claude'));
