@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "machine": "mx_0123456789abcdef",
+  "machine_label": "Studio",
+  "role": "top",
+  "followers": ["mx_fedcba9876543210"],
+  "rooms": [
+    {"room": {"kind": "manager", "machine": "mx_0123456789abcdef"}, "title": "Manager", "state": "idle", "context_pct": 12, "last_ts": 1763800000000},
+    {"room": {"kind": "session", "machine": "mx_0123456789abcdef", "session": "s_abc"}, "title": "fix login", "state": "running", "context_pct": null, "last_ts": null}
+  ]
+}

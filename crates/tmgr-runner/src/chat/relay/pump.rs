@@ -10,10 +10,11 @@ use tmgr_chat_relay::engine::{
     retry_after_secs, ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Slot, SpawnKeySink,
     SpawnOkSink, Transport,
 };
-use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind};
+use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind, RoomInfo, RoomRef};
 
 use crate::mgr_rpc::relay::{RpcInbox, RpcSend};
 
+use super::rooms_sync::{host_label, OwnerSink, RoomsSync, Snapshot};
 use super::store::RelayDir;
 use crate::chat::{Incoming, IngestError, Ingested};
 
@@ -26,6 +27,7 @@ const WAIT_BROKEN: Duration = Duration::from_secs(60);
 const OUT_QUEUE: usize = 1024;
 const SEND_ATTEMPTS: u32 = 5;
 const RECV_TICK: Duration = Duration::from_secs(1);
+const ROOMS_EVERY: Duration = Duration::from_secs(5);
 const SLEEP_TICK: Duration = Duration::from_millis(250);
 const RECIPIENT_FULL: &str = "the recipient's relay queue is full";
 const PERMANENT: [&str; 2] = [
@@ -223,6 +225,7 @@ pub fn run_send(
     }
 }
 
+pub type HistoryFn = Arc<dyn Fn(&RoomRef, u32) -> Vec<ChatMessage> + Send + Sync>;
 pub type OnDevice = Arc<dyn Fn(Option<(String, String)>) + Send + Sync>;
 
 pub struct Setup {
@@ -237,6 +240,8 @@ pub struct Setup {
     pub spawnok: Option<Arc<dyn SpawnOkSink>>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
     pub on_device: OnDevice,
+    pub rooms: Arc<dyn Fn() -> Vec<RoomInfo> + Send + Sync>,
+    pub history: HistoryFn,
 }
 
 type Engine = RelayEngine<DynTransport, RelayDir, RelaySink>;
@@ -322,17 +327,59 @@ fn serve(engine: Arc<Engine>, setup: &Setup) {
         let engine = engine.clone();
         Arc::new(move |device, kind, id, payload| engine.send_rpc(device, kind, id, payload))
     };
+    let rooms_sync = thread::Builder::new()
+        .name("chat-relay-rooms".into())
+        .spawn({
+            let (engine, stop) = (engine.clone(), stop.clone());
+            let (dir, machine) = (setup.dir.clone(), setup.machine.clone());
+            let (rooms, history) = (setup.rooms.clone(), setup.history.clone());
+            move || {
+                let sleep = sleeper(stop.clone());
+                run_rooms_sync(&*engine, &dir, &machine, &*rooms, &*history, &*stop, &sleep)
+            }
+        });
     (setup.on_device)(engine.own_device());
     let rpc_server = (setup.serve_rpc)(rpc_send);
     crate::daemon::log("chat relay: pump started");
     run_poll(&*engine, &*stop, &sleeper(stop.clone()));
-    for h in [forwarder.ok(), sender.ok(), rpc_server]
+    for h in [forwarder.ok(), sender.ok(), rooms_sync.ok(), rpc_server]
         .into_iter()
         .flatten()
     {
         let _ = h.join();
     }
     (setup.on_device)(None);
+}
+
+pub fn run_rooms_sync(
+    sink: &dyn OwnerSink,
+    dir: &std::path::Path,
+    machine: &str,
+    rooms: &dyn Fn() -> Vec<RoomInfo>,
+    history: &dyn Fn(&RoomRef, u32) -> Vec<ChatMessage>,
+    stop: &dyn Fn() -> bool,
+    sleep: &dyn Fn(Duration),
+) {
+    let label = host_label();
+    let snapshot = || {
+        let followers = crate::mgr_rpc::machines::Machines::load(dir)
+            .rows()
+            .into_iter()
+            .map(|(id, _)| id.to_owned())
+            .collect();
+        Snapshot {
+            machine: machine.to_owned(),
+            label: label.clone(),
+            top: crate::mgr_rpc::top::is_top(dir),
+            followers,
+            rooms: rooms(),
+        }
+    };
+    let mut sync = RoomsSync::new();
+    while !stop() {
+        sync.tick(sink, dir, &snapshot, history);
+        sleep(ROOMS_EVERY);
+    }
 }
 
 pub fn spawn(setup: Setup) -> std::io::Result<JoinHandle<()>> {

@@ -81,6 +81,21 @@ impl Fake {
         self.0.lock().unwrap().posts
     }
 
+    fn visible_text(&self) -> String {
+        let s = self.0.lock().unwrap();
+        let mut out = String::new();
+        for m in &s.msgs {
+            out.push_str(&format!("{} {} {} {}\n", m.msg_id, m.from, m.to, m.body));
+        }
+        for d in &s.devices {
+            out.push_str(&format!("{} {} {}\n", d.id, d.kind, d.label));
+        }
+        for p in &s.puts {
+            out.push_str(&format!("{} {} {}\n", p.0, p.1, p.2));
+        }
+        out
+    }
+
     fn set_post_error(&self, e: Option<&str>) {
         self.0.lock().unwrap().post_error = e.map(str::to_owned);
     }
@@ -4007,4 +4022,104 @@ fn spawnok_before_joining_is_dropped() {
     r.lock().st.joined = false;
     post_spawnok(&a, &r, &spawnok_payload(&fp_of(&a)));
     assert_eq!(sink.n(), 0);
+}
+
+fn rooms_world() -> (Fake, Clock, Engine, Engine, Engine, Engine) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let desktop = engine_with(&fake, &clock, "Desktop A");
+    let runner = join_as(&fake, &clock, &desktop, "Runner 1", "runner");
+    let mobile = join_as(&fake, &clock, &desktop, "Phone", "mobile");
+    let other = join_as(&fake, &clock, &desktop, "Runner 2", "runner");
+    runner.poll_once().unwrap();
+    (fake, clock, runner, desktop, mobile, other)
+}
+
+#[test]
+fn rooms_is_sealed_only_to_owner_devices_and_carries_no_label_visible_to_the_server() {
+    let (fake, _c, runner, desktop, mobile, other) = rooms_world();
+    let (did, mid, oid) = (my_id(&desktop), my_id(&mobile), my_id(&other));
+    let before = (
+        fake.queue_len(&did),
+        fake.queue_len(&mid),
+        fake.queue_len(&oid),
+    );
+    let id = rpc_id("rooms");
+    let payload = json!({"v": 1, "machine_label": "Secret Studio Name"});
+    runner
+        .send_sealed_to_owners("rooms", &id, &payload, None)
+        .unwrap();
+    assert_eq!(
+        (
+            fake.queue_len(&did),
+            fake.queue_len(&mid),
+            fake.queue_len(&oid)
+        ),
+        (before.0 + 1, before.1 + 1, before.2)
+    );
+    assert!(!fake.visible_text().contains("Secret Studio Name"));
+    assert_eq!(runner.owner_device_ids().unwrap().len(), 2);
+}
+
+#[test]
+fn rooms_can_be_restricted_to_a_subset_and_refuses_when_none_match() {
+    let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    let (bd, bm) = (fake.queue_len(&did), fake.queue_len(&mid));
+    runner
+        .send_sealed_to_owners(
+            "rooms",
+            &rpc_id("rooms"),
+            &json!({"v": 1}),
+            Some(std::slice::from_ref(&mid)),
+        )
+        .unwrap();
+    assert_eq!((fake.queue_len(&did), fake.queue_len(&mid)), (bd, bm + 1));
+    let none = vec!["00000000-0000-4000-8000-000000000000".to_owned()];
+    assert!(runner
+        .send_sealed_to_owners("rooms", &rpc_id("rooms"), &json!({}), Some(&none))
+        .is_err());
+}
+
+#[test]
+fn rooms_is_runner_only_and_validates_kind_and_id_prefix() {
+    let (_fake, _c, runner, desktop, _mobile, _other) = rooms_world();
+    assert!(desktop
+        .send_sealed_to_owners("rooms", &rpc_id("rooms"), &json!({}), None)
+        .is_err());
+    assert!(runner
+        .send_sealed_to_owners("mgr_req", &rpc_id("mgr_req"), &json!({}), None)
+        .is_err());
+    assert!(runner
+        .send_sealed_to_owners("rooms", &rpc_id("blob"), &json!({}), None)
+        .is_err());
+    let big = json!({"x": "a".repeat(ROOMS_MAX_BYTES)});
+    assert!(runner
+        .send_sealed_to_owners("rooms", &rpc_id("rooms"), &big, None)
+        .is_err());
+}
+
+#[test]
+fn send_chat_to_owners_reaches_only_the_chosen_owner_device() {
+    let (fake, _c, runner, desktop, mobile, other) = rooms_world();
+    let (did, mid, oid) = (my_id(&desktop), my_id(&mobile), my_id(&other));
+    let before = (
+        fake.queue_len(&did),
+        fake.queue_len(&mid),
+        fake.queue_len(&oid),
+    );
+    let msg = text_msg(new_message_id(), "old message");
+    runner
+        .send_chat_to_owners(&msg, std::slice::from_ref(&mid))
+        .unwrap();
+    assert_eq!(
+        (
+            fake.queue_len(&did),
+            fake.queue_len(&mid),
+            fake.queue_len(&oid)
+        ),
+        (before.0, before.1 + 1, before.2)
+    );
+    assert!(runner
+        .send_chat_to_owners(&msg, std::slice::from_ref(&oid))
+        .is_err());
 }

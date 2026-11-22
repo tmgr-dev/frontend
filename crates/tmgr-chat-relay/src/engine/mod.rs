@@ -36,6 +36,7 @@ const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_SEEN: usize = 5000;
 const MAX_RPC_SEEN: usize = 2000;
+const ROOMS_MAX_BYTES: usize = 256 * 1024;
 const MAX_GAPS: usize = 100;
 const MAX_HELD: usize = 200;
 const HOLD_MS: u64 = 60_000;
@@ -1547,6 +1548,79 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .cloned()
                 .ok_or_else(|| "the target is not a trusted runner device".to_owned())?;
         self.seal_and_post(c, kind, msg_id, payload, &[target], false)?;
+        self.save_now(c)
+    }
+
+    fn owner_targets(c: &Core, own_id: &str, only: Option<&[String]>) -> Vec<Dev> {
+        c.st.trusted
+            .iter()
+            .filter(|d| d.id != own_id)
+            .filter(|d| may_vouch(c.st.kind_of(&d.id, &d.fp)))
+            .filter(|d| only.is_none_or(|o| o.contains(&d.id)))
+            .cloned()
+            .collect()
+    }
+
+    pub fn owner_device_ids(&self) -> Result<Vec<String>, String> {
+        let g = self.lock();
+        let Some(own_id) = g.identity.as_ref().map(|i| i.device_id.clone()) else {
+            return Ok(Vec::new());
+        };
+        if !g.st.joined {
+            return Ok(Vec::new());
+        }
+        Ok(Self::owner_targets(&g, &own_id, None)
+            .into_iter()
+            .map(|d| d.id)
+            .collect())
+    }
+
+    pub fn send_sealed_to_owners(
+        &self,
+        kind: &str,
+        msg_id: &str,
+        payload: &Value,
+        only: Option<&[String]>,
+    ) -> Result<(), String> {
+        if kind != "rooms" || !msg_id.starts_with("i_") {
+            return Err("unsupported sealed kind".into());
+        }
+        if self.kind != "runner" {
+            return Err("only a runner can send the rooms index".into());
+        }
+        if serde_json::to_vec(payload).map_err(err)?.len() > ROOMS_MAX_BYTES {
+            return Err("the rooms payload is too large".into());
+        }
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (id, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        let targets = Self::owner_targets(c, &id.device_id, only);
+        if targets.is_empty() {
+            return Err("there are no other trusted devices to send to".into());
+        }
+        self.seal_and_post(c, kind, msg_id, payload, &targets, false)?;
+        self.save_now(c)
+    }
+
+    pub fn send_chat_to_owners(&self, msg: &ChatMessage, only: &[String]) -> Result<(), String> {
+        msg.validate()?;
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (id, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        let targets = Self::owner_targets(c, &id.device_id, Some(only));
+        if targets.is_empty() {
+            return Err("there are no other trusted devices to send to".into());
+        }
+        let payload = serde_json::to_value(msg).map_err(err)?;
+        self.seal_and_post(c, "chat", &msg.id, &payload, &targets, false)?;
         self.save_now(c)
     }
 
