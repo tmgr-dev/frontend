@@ -236,6 +236,15 @@ describe('manager components', () => {
 			info: { ...rooms[0], model: undefined },
 		});
 		expect(off).not.toContain('mdlp');
+		const manager = await render('ChatHeader', {
+			info: {
+				room: mgrRoom,
+				title: 'Manager',
+				agent: 'claude-code',
+				model: 'claude-opus-4-1',
+			},
+		});
+		expect(manager).not.toContain('mdlp');
 	});
 
 	it('ChatHeader shows the Unrestricted badge only for unrestricted rooms', async () => {
