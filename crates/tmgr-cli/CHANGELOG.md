@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.160
+
+- Added: `tmgr chat join --json` prints the runner's chat identity (`id`, `device_id`, `fp`, `already_joined`) as its first line, so the desktop app can pair its own machine's runner in one step.
+- Added: the runner sends a sealed list of its rooms (manager and sessions) to your trusted desktop and phone, and a short history of recent messages to a newly paired device. The server cannot read either.
+- Changed: a new `manager-remote.toml` without an `allow` list now permits `list`, `read` and `room`.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.159
 
 - Security: text that reaches an agent from outside this machine is now marked as relayed. Messages from the phone or another device through the chat relay, and `send`, `ask` and spawn prompts from a manager on another machine, arrive inside a block that names the source and the sender and asks the agent to check risky actions with you. Control and invisible characters are removed from that text. Text you type on this machine is unchanged.
