@@ -96,6 +96,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		rooms: [] as RoomInfo[],
 		activeKey: null as string | null,
 		messagesByRoom: {} as Record<string, ChatMessage[]>,
+		shownRooms: new Set<string>(),
 		unreadByRoom: unread,
 		unreadTotal: computed(() =>
 			Object.values(unread).reduce((a, b) => a + b, 0),

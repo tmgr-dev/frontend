@@ -5,7 +5,14 @@ import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import ts from 'typescript';
-import { createApp, createSSRApp, h, type Component } from 'vue';
+import {
+	createApp,
+	createSSRApp,
+	h,
+	nextTick,
+	reactive,
+	type Component,
+} from 'vue';
 import { createI18n } from 'vue-i18n';
 import { renderToString } from 'vue/server-renderer';
 import manager from '../../locales/en/manager.json';
@@ -68,6 +75,7 @@ const localRequire = (id: string): unknown => {
 	if (id === './trust/trustHelpers')
 		return require('../components/trust/trustHelpers');
 	if (id === '../types') return require('../types');
+	if (id === '../scrollLogic') return require('../scrollLogic');
 	return require(id);
 };
 
@@ -440,5 +448,144 @@ describe('MessageBubble copy buttons', () => {
 		});
 		expect(mounted.el.querySelector('.blk-copy')).toBeNull();
 		mounted.unmount();
+	});
+});
+
+describe('MessageList scroll behaviour', () => {
+	const mounted: Array<() => void> = [];
+	const settle = async () => {
+		for (let i = 0; i < 3; i++) await nextTick();
+	};
+
+	const mountList = (
+		initial: ChatMessage[],
+		extra: Record<string, unknown> = {},
+	) => {
+		const state = reactive({ messages: initial, roomKey: 'r1' });
+		const shownRooms = new Set<string>();
+		const el = document.createElement('div');
+		document.body.appendChild(el);
+		const app = createApp({
+			render: () =>
+				h(load('MessageList'), {
+					messages: state.messages,
+					roomKey: state.roomKey,
+					shownRooms,
+					...extra,
+				}),
+		}).use(i18n);
+		app.mount(el);
+		const scroller = el.querySelector('.scroll') as HTMLElement;
+		const metrics = { scrollTop: 0, scrollHeight: 1000, clientHeight: 400 };
+		for (const key of ['scrollTop', 'scrollHeight', 'clientHeight'] as const) {
+			Object.defineProperty(scroller, key, {
+				configurable: true,
+				get: () => metrics[key],
+				set: (v: number) => {
+					metrics[key] = v;
+				},
+			});
+		}
+		const scrollTo = (top: number) => {
+			metrics.scrollTop = top;
+			scroller.dispatchEvent(new Event('scroll'));
+		};
+		const jump = () =>
+			el.querySelector('button.jump') as HTMLButtonElement | null;
+		mounted.push(() => {
+			app.unmount();
+			el.remove();
+		});
+		return { el, state, scroller, metrics, scrollTo, jump };
+	};
+
+	afterEach(() => {
+		mounted.splice(0).forEach((unmount) => unmount());
+	});
+
+	const older = (id: string) => msg({ id, ts_ms: T0 - 60_000, body_md: id });
+	const base = [msg({ id: 'a' }), msg({ id: 'b', ts_ms: T0 + 60_000 })];
+
+	it('pins to the last message the first time a chat is shown', async () => {
+		const { metrics } = mountList(base);
+		await settle();
+		expect(metrics.scrollTop).toBe(1000);
+	});
+
+	it('shows no jump button while pinned to the bottom', async () => {
+		const { jump } = mountList(base);
+		await settle();
+		expect(jump()).toBeNull();
+	});
+
+	it('keeps the position and counts arrivals when scrolled up', async () => {
+		const { state, metrics, scrollTo, jump } = mountList(base);
+		await settle();
+		scrollTo(100);
+		state.messages = [...state.messages, msg({ id: 'c', ts_ms: T0 + 90_000 })];
+		await settle();
+		expect(metrics.scrollTop).toBe(100);
+		expect(jump()?.getAttribute('aria-label')).toBe('1 new message');
+		expect(jump()?.textContent).toContain('↓');
+		expect(jump()?.textContent).toContain('1');
+	});
+
+	it('does not count own messages and scrolls to them', async () => {
+		const { state, metrics, scrollTo, jump } = mountList(base);
+		await settle();
+		scrollTo(100);
+		state.messages = [
+			...state.messages,
+			msg({
+				id: 'd',
+				author: { kind: 'owner', id: 'me' },
+				ts_ms: T0 + 90_000,
+			}),
+		];
+		await settle();
+		expect(metrics.scrollTop).toBe(1000);
+		expect(jump()).toBeNull();
+	});
+
+	it('smooth-scrolls to the bottom and resets the count on click', async () => {
+		const { state, scroller, scrollTo, jump } = mountList(base);
+		await settle();
+		scrollTo(100);
+		state.messages = [...state.messages, msg({ id: 'c', ts_ms: T0 + 90_000 })];
+		await settle();
+		const scrollToSpy = jest.fn();
+		(scroller as HTMLElement & { scrollTo: unknown }).scrollTo = scrollToSpy;
+		jump()!.click();
+		await settle();
+		expect(scrollToSpy).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
+		expect(jump()).toBeNull();
+	});
+
+	it('requests older history once while busy and keeps the position', async () => {
+		let resolveOlder: (grew: boolean) => void = () => undefined;
+		const loadOlder = jest.fn(
+			() => new Promise<boolean>((resolve) => (resolveOlder = resolve)),
+		);
+		const { state, metrics, scrollTo } = mountList(base, { loadOlder });
+		await settle();
+		scrollTo(0);
+		scrollTo(0);
+		expect(loadOlder).toHaveBeenCalledTimes(1);
+		state.messages = [older('z'), ...state.messages];
+		metrics.scrollHeight = 1300;
+		resolveOlder(true);
+		await settle();
+		expect(metrics.scrollTop).toBe(300);
+	});
+
+	it('stops requesting history after a page adds nothing', async () => {
+		const loadOlder = jest.fn(async () => false);
+		const { scrollTo } = mountList(base, { loadOlder });
+		await settle();
+		scrollTo(0);
+		await settle();
+		scrollTo(0);
+		await settle();
+		expect(loadOlder).toHaveBeenCalledTimes(1);
 	});
 });

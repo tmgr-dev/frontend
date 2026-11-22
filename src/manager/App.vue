@@ -61,7 +61,9 @@
 					"
 					@reply="store.setReply"
 					@copy="copy"
-					@older="store.loadOlder"
+					:room-key="store.activeKey ?? ''"
+					:shown-rooms="store.shownRooms"
+					:load-older="store.loadOlder"
 				>
 					<template #decision="{ message }">
 						<template v-if="message.decision?.card_id">

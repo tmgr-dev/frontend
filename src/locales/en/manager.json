@@ -60,7 +60,8 @@
 		"manager": "Manager",
 		"system": "System",
 		"today": "Today",
-		"yesterday": "Yesterday"
+		"yesterday": "Yesterday",
+		"newBelow": "{count} new message | {count} new messages"
 	},
 	"composer": {
 		"placeholder": "Message the Manager, or type / for commands",
