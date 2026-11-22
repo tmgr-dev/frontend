@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.190 — 2026-11-22
+
+- Manager window: approval cards show what exactly is being asked. A shield title says what the Manager wants to do, red and amber chips warn about actions that cannot be undone or that bypass permissions, a table lists the machine, target, effect and undo, and an Exact payload block shows the request as it is signed. Cards for stopping a session and for a session asking to type into another one use the same layout. After the decision the card collapses to Approved, Rejected or Expired. Approval itself still happens on your phone.
+
 ## 0.9.189 — 2026-11-22
 
 - Manager window: the sidebar now reads like a control room. It is titled "Agents", session rows show the agent and task, the context as used / max with a percent, a Bypass chip for sessions without restrictions, and an orange unread count. Under Pinned there are counters of working, waiting and failed sessions, and a "Needs you" list that jumps to a session waiting for you or failed.
