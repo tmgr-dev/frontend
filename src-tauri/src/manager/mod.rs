@@ -96,10 +96,14 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     (Some(runner), Some(local)) => {
       let handle = app.clone();
       let resync_handle = app.clone();
+      let activity_handle = app.clone();
       bridge::spawn(
         Arc::new(bridge::RunnerSource(runner.inner().clone())),
         move |message| {
           let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
+        },
+        move |event| {
+          let _ = tauri::Emitter::emit_to(&activity_handle, LABEL, "manager://activity", event);
         },
         move || {
           let _ = tauri::Emitter::emit_to(&resync_handle, LABEL, "manager://resync", ());

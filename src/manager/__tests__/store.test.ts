@@ -1,6 +1,7 @@
 import { createManagerStore, type ManagerApi } from '../store';
 import {
 	roomKey,
+	type ActivityEvent,
 	type ChatMessage,
 	type RoomInfo,
 	type RoomRef,
@@ -39,6 +40,7 @@ const commands: SlashCommand[] = [
 
 const setup = (over: Partial<ManagerApi> = {}) => {
 	let push: (m: ChatMessage) => void = () => {};
+	let pushActivity: (e: ActivityEvent) => void = () => {};
 	const api: ManagerApi = {
 		rooms: jest.fn(async () => [info(S1), info(MGR)]),
 		history: jest.fn(async ({ room }) => range(1, 3, room)),
@@ -57,10 +59,19 @@ const setup = (over: Partial<ManagerApi> = {}) => {
 			push = h;
 			return () => {};
 		}),
+		onActivity: jest.fn(async (h) => {
+			pushActivity = h;
+			return () => {};
+		}),
 		...over,
 	};
 	const store = createManagerStore(api);
-	return { api, store, emit: (m: ChatMessage) => push(m) };
+	return {
+		api,
+		store,
+		emit: (m: ChatMessage) => push(m),
+		emitActivity: (e: ActivityEvent) => pushActivity(e),
+	};
 };
 
 const ids = (list: ChatMessage[]) => list.map((m) => m.id);
@@ -928,5 +939,105 @@ describe('queued messages', () => {
 		await flush();
 		await store.cancelQueued('m050');
 		expect(store.error).toBe('runner is down');
+	});
+});
+
+describe('live tool activity', () => {
+	beforeEach(() => jest.useFakeTimers());
+	afterEach(() => jest.useRealTimers());
+
+	const act = (
+		room: RoomRef,
+		state: 'working' | 'idle',
+		current: string | null,
+		used: string[],
+	): ActivityEvent => ({ v: 1, room, state, current, used });
+
+	it('subscribes to activity on init and keeps the latest event per room', async () => {
+		const { api, store, emitActivity } = setup();
+		await store.init();
+		expect(api.onActivity).toHaveBeenCalled();
+		emitActivity(act(S1, 'working', 'Read: a.ts', ['Read: a.ts']));
+		emitActivity(
+			act(S1, 'working', 'Bash: cargo test', [
+				'Read: a.ts',
+				'Bash: cargo test',
+			]),
+		);
+		expect(store.activityByRoom[S1_KEY]).toEqual({
+			state: 'working',
+			current: 'Bash: cargo test',
+			used: ['Read: a.ts', 'Bash: cargo test'],
+		});
+		expect(store.activityByRoom[MGR_KEY]).toBeUndefined();
+	});
+
+	it('drops the live entry on idle', async () => {
+		const { store, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 'Read: a.ts', ['Read: a.ts']));
+		emitActivity(act(S1, 'idle', null, ['Read: a.ts']));
+		expect(store.activityByRoom[S1_KEY]).toBeUndefined();
+	});
+
+	it('expires a stale live entry after 60 s without an update', async () => {
+		const { store, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 'Read: a.ts', ['Read: a.ts']));
+		jest.advanceTimersByTime(59_000);
+		expect(store.activityByRoom[S1_KEY]).toBeDefined();
+		emitActivity(
+			act(S1, 'working', 'Read: b.ts', ['Read: a.ts', 'Read: b.ts']),
+		);
+		jest.advanceTimersByTime(59_000);
+		expect(store.activityByRoom[S1_KEY]).toBeDefined();
+		jest.advanceTimersByTime(2_000);
+		expect(store.activityByRoom[S1_KEY]).toBeUndefined();
+	});
+
+	it('snapshots the used tools onto the next agent message and clears the live entry', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 'Bash: ls', ['Read: a.ts', 'Bash: ls']));
+		emit(msg(10, S1, 'session'));
+		expect(store.toolsByMessage.m010).toEqual(['Read: a.ts', 'Bash: ls']);
+		expect(store.activityByRoom[S1_KEY]).toBeUndefined();
+	});
+
+	it('still snapshots when idle arrives before the reply', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 'Bash: ls', ['Bash: ls']));
+		emitActivity(act(S1, 'idle', null, ['Bash: ls']));
+		emit(msg(10, S1, 'session'));
+		expect(store.toolsByMessage.m010).toEqual(['Bash: ls']);
+	});
+
+	it('does not snapshot for owner messages, empty tool lists, other rooms, or stale activity', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 'Bash: ls', ['Bash: ls']));
+		emit(msg(10, S1, 'owner'));
+		emit(msg(11, MGR, 'manager'));
+		expect(store.toolsByMessage).toEqual({});
+		emitActivity(act(MGR, 'working', null, []));
+		emit(msg(12, MGR, 'manager'));
+		expect(store.toolsByMessage).toEqual({});
+		jest.advanceTimersByTime(61_000);
+		emit(msg(13, S1, 'session'));
+		expect(store.toolsByMessage).toEqual({});
+	});
+
+	it('does not snapshot twice for a replayed message and caps the list at 50', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		const many = Array.from({ length: 60 }, (_, i) => `Read: ${i}`);
+		emitActivity(act(S1, 'working', 'Read: 59', many));
+		emit(msg(10, S1, 'session'));
+		expect(store.toolsByMessage.m010).toHaveLength(50);
+		emitActivity(act(S1, 'working', 'Read: z', ['Read: z']));
+		emit(msg(10, S1, 'session'));
+		expect(store.toolsByMessage.m010).toHaveLength(50);
+		expect(store.activityByRoom[S1_KEY]).toBeDefined();
 	});
 });

@@ -88,12 +88,22 @@ pub struct ChatFeed {
   stream: Sock,
 }
 
+pub enum Push {
+  Chat(Value),
+  Activity(tmgr_ipc::chat::ChatActivity),
+}
+
 impl ChatFeed {
-  pub fn next_push(&mut self) -> Result<Option<Value>, String> {
+  pub fn next_push(&mut self) -> Result<Option<Push>, String> {
     loop {
       match read_frame(&mut self.stream).map_err(|e| sanitize::text(&e.to_string(), 200))? {
         Some(Frame::Json(v)) => match serde_json::from_value::<ServerMsg>(v) {
-          Ok(ServerMsg::Chat(push)) => return Ok(Some(push)),
+          Ok(ServerMsg::Chat(push)) => return Ok(Some(Push::Chat(push))),
+          Ok(msg @ ServerMsg::ChatActivity(_)) => {
+            if let Some(activity) = msg.chat_activity() {
+              return Ok(Some(Push::Activity(activity)));
+            }
+          }
           Ok(ServerMsg::Closed { reason }) => return Err(sanitize::text(&reason, 200)),
           _ => {}
         },
@@ -188,8 +198,14 @@ impl Runner {
 
   pub fn chat_subscribe(&self) -> Result<ChatFeed, String> {
     self.gate()?;
-    let (mut conn, _) = self.connect()?;
-    conn.call("chat.subscribe", Value::Null).map_err(err)?;
+    let (mut conn, welcome) = self.connect()?;
+    let with_activity = welcome.has(caps::CHAT_ACTIVITY_V1) && conn.call("chat.subscribe", json!({"activity": true})).is_ok();
+    if !with_activity {
+      if welcome.has(caps::CHAT_ACTIVITY_V1) {
+        conn = self.connect()?.0;
+      }
+      conn.call("chat.subscribe", Value::Null).map_err(err)?;
+    }
     let _ = conn.stream.set_read_timeout(None);
     Ok(ChatFeed { stream: conn.stream })
   }
@@ -559,6 +575,78 @@ mod tests {
       runner.set_enabled(true).unwrap();
     }
     (runner, calls, servers, dir)
+  }
+
+  fn subscribe_params(tune: impl Fn(&mut Mock) + Send + Sync + 'static) -> (usize, Vec<Value>) {
+    let dir = tempfile::tempdir().unwrap();
+    let servers: Servers = Arc::default();
+    let s = servers.clone();
+    let connector: Connector = Arc::new(move || {
+      let (a, b) = UnixStream::pair().unwrap();
+      a.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+      let mut m = Mock::new("secret");
+      tune(&mut m);
+      s.lock().unwrap().push(mock::spawn(b, m));
+      Conn::handshake(a, "secret", "desktop")
+    });
+    let runner = Runner::new(dir.path().join("runner.json"), connector);
+    runner.set_enabled(true).unwrap();
+    drop(runner.chat_subscribe().unwrap());
+    let handles: Vec<_> = servers.lock().unwrap().drain(..).collect();
+    let logs: Vec<mock::Log> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let params = logs.iter().flat_map(|l| l.requests.iter()).filter(|r| r["method"] == "chat.subscribe").map(|r| r["params"].clone()).collect();
+    (logs.len(), params)
+  }
+
+  fn without_activity(m: &mut Mock) {
+    m.caps = Some(caps::ALL.iter().filter(|c| **c != caps::CHAT_ACTIVITY_V1).map(|c| c.to_string()).collect());
+  }
+
+  #[test]
+  fn subscribe_opts_in_to_activity_when_the_runner_has_the_capability() {
+    let (_, params) = subscribe_params(|_| {});
+    assert_eq!(params, [json!({"activity": true})]);
+  }
+
+  #[test]
+  fn subscribe_sends_no_activity_param_to_a_runner_without_the_capability() {
+    let (_, params) = subscribe_params(without_activity);
+    assert_eq!(params, [Value::Null]);
+  }
+
+  #[test]
+  fn subscribe_retries_plain_on_a_fresh_connection_when_the_opt_in_is_refused() {
+    let (connections, params) = subscribe_params(|m| m.reject_activity = true);
+    assert_eq!(connections, 2);
+    assert_eq!(params, [json!({"activity": true}), Value::Null]);
+  }
+
+  #[test]
+  fn next_push_surfaces_activity_and_chat_and_skips_malformed_activity() {
+    let (a, b) = UnixStream::pair().unwrap();
+    a.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let room = json!({"kind": "session", "machine": "mac", "session": SID});
+    let server = {
+      let room = room.clone();
+      mock::spawn_scripted(b, "secret", move |s| {
+        let _ = write_json(s, &json!({"type": "chat_activity", "v": 1, "room": room, "state": "bogus"}));
+        let _ = write_json(s, &json!({"type": "chat_activity", "v": 1, "room": room, "state": "working", "current": "Read: x.ts", "used": ["Read: x.ts"]}));
+        let _ = write_json(s, &json!({"type": "chat", "message": {"id": "m_1"}}));
+        let _ = read_frame(s);
+      })
+    };
+    let (conn, _) = Conn::handshake(a, "secret", "desktop").unwrap();
+    let mut feed = ChatFeed { stream: conn.stream };
+    match feed.next_push().unwrap() {
+      Some(Push::Activity(act)) => {
+        assert_eq!(act.current.as_deref(), Some("Read: x.ts"));
+        assert_eq!(act.used, ["Read: x.ts"]);
+      }
+      _ => panic!("expected activity"),
+    }
+    assert!(matches!(feed.next_push().unwrap(), Some(Push::Chat(v)) if v["message"]["id"] == "m_1"));
+    drop(feed);
+    server.join().unwrap();
   }
 
   #[test]

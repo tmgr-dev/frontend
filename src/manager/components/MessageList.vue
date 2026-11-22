@@ -21,6 +21,7 @@
 						:reply-to="row.replyTo"
 						:grouped="row.grouped"
 						:queued="queuedIds.includes(row.message.id)"
+						:tools="toolsByMessage[row.message.id]"
 						@reply="$emit('reply', $event)"
 						@copy="$emit('copy', $event)"
 						@cancel-queued="$emit('cancel-queued', $event)"
@@ -30,6 +31,12 @@
 						</template>
 					</MessageBubble>
 				</template>
+				<div v-if="working" class="live" role="status" aria-live="polite">
+					<span class="live-dot" aria-hidden="true"></span>
+					<span class="live-text">{{
+						activity?.current ?? $t('manager.activity.working')
+					}}</span>
+				</div>
 			</div>
 		</div>
 		<button
@@ -46,7 +53,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import type { ChatMessage } from '../types';
+	import type { ActivityView, ChatMessage } from '../types';
 	import {
 		anchoredScrollTop,
 		arrivalsAfter,
@@ -81,6 +88,14 @@
 			queuedIds: {
 				type: Array as PropType<string[]>,
 				default: () => [],
+			},
+			toolsByMessage: {
+				type: Object as PropType<Record<string, string[]>>,
+				default: () => ({}),
+			},
+			activity: {
+				type: Object as PropType<ActivityView | null>,
+				default: null,
 			},
 			roomKey: { type: String, default: '' },
 			shownRooms: {
@@ -255,6 +270,9 @@
 			},
 		},
 		computed: {
+			working(): boolean {
+				return this.activity?.state === 'working';
+			},
 			rows(): Row[] {
 				const byId = new Map(this.messages.map((m) => [m.id, m]));
 				const labels = {

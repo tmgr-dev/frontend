@@ -17,11 +17,12 @@ pub struct Mock {
   pub folder_id: Option<(u64, u64)>,
   pub sessions: Vec<Value>,
   pub login_problem: Option<String>,
+  pub reject_activity: bool,
 }
 
 impl Mock {
   pub fn new(secret: &str) -> Mock {
-    Mock { secret: secret.into(), bad_server_proof: false, reject_proto: false, welcome_proto: 1, caps: None, busy: false, folder_id: None, sessions: Vec::new(), login_problem: None }
+    Mock { secret: secret.into(), bad_server_proof: false, reject_proto: false, welcome_proto: 1, caps: None, busy: false, folder_id: None, sessions: Vec::new(), login_problem: None, reject_activity: false }
   }
 
   fn standard(&self) -> bool {
@@ -132,6 +133,8 @@ fn handle(mock: &Mock, method: &str, params: &Value) -> Result<Value, ErrorBody>
       Some("pause" | "resume" | "stop" | "suspend") => Ok(json!({"seq": 7})),
       _ => Err(err(ErrorCode::InvalidParams, "bad command")),
     },
+    "chat.subscribe" if mock.reject_activity && params["activity"] == true => Err(err(ErrorCode::InvalidParams, "unknown param")),
+    "chat.subscribe" => Ok(Value::Null),
     "attach.open" | "attach.set" => Ok(Value::Null),
     other => Err(err(ErrorCode::UnknownMethod, other)),
   }

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+	ActivityEvent,
 	AuditEntry,
 	ChatMessage,
 	HistoryParams,
@@ -47,6 +48,13 @@ export const onManagerMessage = (
 	handler: (message: ChatMessage) => void,
 ): Promise<UnlistenFn> =>
 	listen<ChatMessage>('manager://message', (event) => handler(event.payload));
+
+export const onManagerActivity = (
+	handler: (event: ActivityEvent) => void,
+): Promise<UnlistenFn> =>
+	listen<ActivityEvent>('manager://activity', (event) =>
+		handler(event.payload),
+	);
 
 export const onManagerResync = (handler: () => void): Promise<UnlistenFn> =>
 	listen('manager://resync', () => handler());

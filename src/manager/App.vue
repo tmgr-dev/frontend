@@ -71,6 +71,10 @@
 							: undefined
 					"
 					:queued-ids="store.queuedIds"
+					:tools-by-message="store.toolsByMessage"
+					:activity="
+						store.activeKey ? store.activityByRoom[store.activeKey] : null
+					"
 					@reply="store.setReply"
 					@copy="copy"
 					:room-key="store.activeKey ?? ''"

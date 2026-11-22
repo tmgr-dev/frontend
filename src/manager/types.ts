@@ -69,6 +69,20 @@ export interface RoomInfo {
 	unrestricted?: boolean;
 }
 
+export interface ActivityEvent {
+	v: number;
+	room: RoomRef;
+	state: 'working' | 'idle';
+	current: string | null;
+	used: string[];
+}
+
+export interface ActivityView {
+	state: 'working' | 'idle';
+	current: string | null;
+	used: string[];
+}
+
 export interface HistoryParams {
 	room: RoomRef;
 	before?: string;

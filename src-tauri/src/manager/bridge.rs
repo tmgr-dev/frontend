@@ -4,15 +4,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
+use tmgr_ipc::chat::ChatActivity;
 
 use super::backend::ChatMessage;
+pub use crate::runner::Push;
 
 const SEEN_CAP: usize = 512;
 const BACKOFF_MIN: Duration = Duration::from_millis(500);
 const BACKOFF_MAX: Duration = Duration::from_secs(30);
 
 pub trait Feed: Send {
-  fn next_push(&mut self) -> Result<Option<Value>, String>;
+  fn next_push(&mut self) -> Result<Option<Push>, String>;
 }
 
 pub trait Source: Send + Sync {
@@ -65,7 +67,7 @@ impl Backoff {
   }
 }
 
-pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), resync: &dyn Fn(), stop: &AtomicBool, sleep: &dyn Fn(Duration)) {
+pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), activity: &dyn Fn(ChatActivity), resync: &dyn Fn(), stop: &AtomicBool, sleep: &dyn Fn(Duration)) {
   let mut seen = Seen::default();
   let mut backoff = Backoff::new();
   let mut connected_before = false;
@@ -85,13 +87,14 @@ pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), resync: &dyn Fn(), s
           break;
         }
         match feed.next_push() {
-          Ok(Some(push)) => {
+          Ok(Some(Push::Chat(push))) => {
             if let Some(message) = parse_push(&push) {
               if seen.first_time(&message.id) {
                 emit(message);
               }
             }
           }
+          Ok(Some(Push::Activity(event))) => activity(event),
           Ok(None) | Err(_) => break,
         }
       }
@@ -103,9 +106,9 @@ pub fn run(source: &dyn Source, emit: &dyn Fn(ChatMessage), resync: &dyn Fn(), s
   }
 }
 
-pub fn spawn(source: Arc<dyn Source>, emit: impl Fn(ChatMessage) + Send + 'static, resync: impl Fn() + Send + 'static) {
+pub fn spawn(source: Arc<dyn Source>, emit: impl Fn(ChatMessage) + Send + 'static, activity: impl Fn(ChatActivity) + Send + 'static, resync: impl Fn() + Send + 'static) {
   let spawned = std::thread::Builder::new().name("manager-bridge".into()).spawn(move || {
-    run(&*source, &emit, &resync, &AtomicBool::new(false), &std::thread::sleep);
+    run(&*source, &emit, &activity, &resync, &AtomicBool::new(false), &std::thread::sleep);
   });
   if let Err(e) = spawned {
     log::error!("[manager] live bridge did not start: {e}");
@@ -125,7 +128,7 @@ impl Source for RunnerSource {
 }
 
 impl Feed for crate::runner::ChatFeed {
-  fn next_push(&mut self) -> Result<Option<Value>, String> {
+  fn next_push(&mut self) -> Result<Option<Push>, String> {
     crate::runner::ChatFeed::next_push(self)
   }
 }
@@ -136,10 +139,10 @@ mod tests {
   use serde_json::json;
   use std::sync::Mutex;
 
-  struct Script(VecDeque<Result<Value, String>>);
+  struct Script(VecDeque<Result<Push, String>>);
 
   impl Feed for Script {
-    fn next_push(&mut self) -> Result<Option<Value>, String> {
+    fn next_push(&mut self) -> Result<Option<Push>, String> {
       match self.0.pop_front() {
         Some(Ok(v)) => Ok(Some(v)),
         Some(Err(e)) => Err(e),
@@ -148,7 +151,7 @@ mod tests {
     }
   }
 
-  type Opened = Result<Vec<Result<Value, String>>, String>;
+  type Opened = Result<Vec<Result<Push, String>>, String>;
 
   struct Fake {
     opens: Mutex<VecDeque<Opened>>,
@@ -175,25 +178,35 @@ mod tests {
     }
   }
 
-  fn push(id: &str) -> Value {
-    json!({"message": {
+  fn push(id: &str) -> Push {
+    Push::Chat(json!({"message": {
       "v": 1, "id": id, "room": {"kind": "manager", "machine": "mac"},
       "author": {"kind": "manager", "id": "m"}, "ts_ms": 1, "kind": "text", "body_md": "hi"
-    }})
+    }}))
   }
 
-  fn drive(opens: Vec<Result<Vec<Result<Value, String>>, String>>) -> (Vec<String>, Vec<Duration>) {
+  fn working(current: &str) -> Push {
+    Push::Activity(ChatActivity {
+      v: 1,
+      room: tmgr_ipc::chat::RoomRef { kind: tmgr_ipc::chat::RoomKind::Manager, machine: "mac".into(), session: None },
+      state: tmgr_ipc::chat::ActivityState::Working,
+      current: Some(current.into()),
+      used: vec![current.into()],
+    })
+  }
+
+  fn drive(opens: Vec<Result<Vec<Result<Push, String>>, String>>) -> (Vec<String>, Vec<Duration>) {
     let (got, sleeps, _) = drive_resync(opens);
     (got, sleeps)
   }
 
-  fn drive_resync(opens: Vec<Result<Vec<Result<Value, String>>, String>>) -> (Vec<String>, Vec<Duration>, u32) {
+  fn drive_resync(opens: Vec<Result<Vec<Result<Push, String>>, String>>) -> (Vec<String>, Vec<Duration>, u32) {
     let stop = Arc::new(AtomicBool::new(false));
     let fake = Fake { opens: Mutex::new(opens.into()), stop: stop.clone(), on: Arc::new(AtomicBool::new(true)), opened: Mutex::new(0) };
     let got = Mutex::new(Vec::new());
     let sleeps = Mutex::new(Vec::new());
     let resyncs = Mutex::new(0);
-    run(&fake, &|m| got.lock().unwrap().push(m.id), &|| *resyncs.lock().unwrap() += 1, &stop, &|d| sleeps.lock().unwrap().push(d));
+    run(&fake, &|m| got.lock().unwrap().push(m.id), &|_| {}, &|| *resyncs.lock().unwrap() += 1, &stop, &|d| sleeps.lock().unwrap().push(d));
     (got.into_inner().unwrap(), sleeps.into_inner().unwrap(), resyncs.into_inner().unwrap())
   }
 
@@ -217,7 +230,7 @@ mod tests {
         stop.store(true, Ordering::SeqCst);
       }
     };
-    run(&fake, &|_| {}, &|| {}, &stop, &sleep);
+    run(&fake, &|_| {}, &|_| {}, &|| {}, &stop, &sleep);
     assert_eq!(*fake.opened.lock().unwrap(), 0);
     let got = Mutex::new(Vec::new());
     let stop2 = Arc::new(AtomicBool::new(false));
@@ -226,13 +239,34 @@ mod tests {
     run(&fake, &|m| {
       got.lock().unwrap().push(m.id);
       on.store(false, Ordering::SeqCst);
-    }, &|| {}, &stop2, &|_| stop2.store(true, Ordering::SeqCst));
+    }, &|_| {}, &|| {}, &stop2, &|_| stop2.store(true, Ordering::SeqCst));
     assert_eq!(*got.lock().unwrap(), ["m_1"]);
   }
 
   #[test]
+  fn activity_frames_reach_the_activity_callback_and_leave_messages_alone() {
+    let stop = Arc::new(AtomicBool::new(false));
+    let fake = Fake { opens: Mutex::new(vec![Ok(vec![Ok(working("Read: a.ts")), Ok(push("m_1")), Ok(working("Bash: cargo test"))])].into()), stop: stop.clone(), on: Arc::new(AtomicBool::new(true)), opened: Mutex::new(0) };
+    let messages = Mutex::new(Vec::new());
+    let activity = Mutex::new(Vec::new());
+    run(&fake, &|m| messages.lock().unwrap().push(m.id), &|a| activity.lock().unwrap().push(a.current.unwrap()), &|| {}, &stop, &|_| {});
+    assert_eq!(*messages.lock().unwrap(), ["m_1"]);
+    assert_eq!(*activity.lock().unwrap(), ["Read: a.ts", "Bash: cargo test"]);
+  }
+
+  #[test]
+  fn activity_is_not_deduplicated_like_messages() {
+    let stop = Arc::new(AtomicBool::new(false));
+    let fake = Fake { opens: Mutex::new(vec![Ok(vec![Ok(working("x")), Ok(working("x"))])].into()), stop: stop.clone(), on: Arc::new(AtomicBool::new(true)), opened: Mutex::new(0) };
+    let count = Mutex::new(0);
+    run(&fake, &|_| {}, &|_| *count.lock().unwrap() += 1, &|| {}, &stop, &|_| {});
+    assert_eq!(*count.lock().unwrap(), 2);
+  }
+
+  #[test]
   fn parses_the_wire_push_and_ignores_garbage() {
-    assert_eq!(parse_push(&push("m_1")).unwrap().body_md, "hi");
+    let Push::Chat(wire) = push("m_1") else { unreachable!() };
+    assert_eq!(parse_push(&wire).unwrap().body_md, "hi");
     assert!(parse_push(&json!({"message": {"id": 5}})).is_none());
     assert!(parse_push(&json!({"nope": 1})).is_none());
   }
@@ -240,7 +274,7 @@ mod tests {
   #[test]
   fn emits_each_message_once_even_across_reconnects() {
     let (got, _) = drive(vec![
-      Ok(vec![Ok(push("m_1")), Ok(push("m_1")), Ok(json!({"x": 1})), Ok(push("m_2"))]),
+      Ok(vec![Ok(push("m_1")), Ok(push("m_1")), Ok(Push::Chat(json!({"x": 1}))), Ok(push("m_2"))]),
       Ok(vec![Ok(push("m_2")), Ok(push("m_3"))]),
     ]);
     assert_eq!(got, ["m_1", "m_2", "m_3"]);

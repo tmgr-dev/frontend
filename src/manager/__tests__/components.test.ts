@@ -21,6 +21,7 @@ import { speechSynthesisEngine, type TtsEngine } from '../tts/engine';
 import { setEngine } from '../tts/speaker';
 import {
 	roomKey,
+	type ActivityView,
 	type ChatMessage,
 	type RoomInfo,
 	type SlashCommand,
@@ -512,7 +513,11 @@ describe('MessageList scroll behaviour', () => {
 		initial: ChatMessage[] = long,
 		extra: Record<string, unknown> = {},
 	) => {
-		const state = reactive({ messages: initial, roomKey: 'r1' });
+		const state = reactive({
+			messages: initial,
+			roomKey: 'r1',
+			activity: null as ActivityView | null,
+		});
 		const shownRooms = new Set<string>();
 		const el = document.createElement('div');
 		document.body.appendChild(el);
@@ -521,6 +526,7 @@ describe('MessageList scroll behaviour', () => {
 				h(load('MessageList'), {
 					messages: state.messages,
 					roomKey: state.roomKey,
+					activity: state.activity,
 					shownRooms,
 					...extra,
 				}),
@@ -962,5 +968,136 @@ describe('MessageBubble speak button', () => {
 		});
 		expect(speakBtn(unavailable.el)).toBeNull();
 		unavailable.unmount();
+	});
+});
+
+describe('live tool activity UI', () => {
+	it('MessageBubble lists the used tools as plain text in a collapsed details element', () => {
+		const { el, unmount } = mountDom('MessageBubble', {
+			message: msg({ id: 'a1' }),
+			tools: ['Read: x.ts', '<img src=x onerror=alert(1)>'],
+		});
+		const details = el.querySelector('details.tools') as HTMLDetailsElement;
+		expect(details.open).toBe(false);
+		expect(details.querySelector('summary')?.textContent).toBe(
+			'Tools used (2)',
+		);
+		const items = [...details.querySelectorAll('li')].map(
+			(li) => li.textContent,
+		);
+		expect(items).toEqual(['Read: x.ts', '<img src=x onerror=alert(1)>']);
+		expect(details.querySelector('img')).toBeNull();
+		unmount();
+	});
+
+	it('MessageBubble shows no tools list without tools or for owner messages', () => {
+		const none = mountDom('MessageBubble', { message: msg({ id: 'a2' }) });
+		expect(none.el.querySelector('details.tools')).toBeNull();
+		none.unmount();
+		const owner = mountDom('MessageBubble', {
+			message: msg({ id: 'a3', author: { kind: 'owner', id: 'me' } }),
+			tools: ['Read: x.ts'],
+		});
+		expect(owner.el.querySelector('details.tools')).toBeNull();
+		owner.unmount();
+	});
+
+	it('MessageList shows the live line only while working, with the current label or a fallback', async () => {
+		const html = (activity: ActivityView | null) =>
+			render('MessageList', { messages: [msg({ id: 'a1' })], activity });
+		const live = await html({
+			state: 'working',
+			current: 'Bash: cargo test',
+			used: ['Bash: cargo test'],
+		});
+		expect(live).toContain('class="live"');
+		expect(live).toContain('aria-live="polite"');
+		expect(live).toContain('Bash: cargo test');
+		const fallback = await html({ state: 'working', current: null, used: [] });
+		expect(fallback).toContain('Working…');
+		expect(await html(null)).not.toContain('class="live"');
+	});
+
+	describe('pinned scrolling', () => {
+		const ROW = 100;
+		const VIEW = 400;
+		const settle = async () => {
+			for (let i = 0; i < 3; i++) await nextTick();
+		};
+		const working: ActivityView = {
+			state: 'working',
+			current: 'Read: x.ts',
+			used: ['Read: x.ts'],
+		};
+
+		const mountScrolled = () => {
+			const state = reactive({
+				activity: null as ActivityView | null,
+			});
+			const messages = Array.from({ length: 10 }, (_, i) =>
+				msg({ id: `m${i}`, ts_ms: T0 + i * 60_000 }),
+			);
+			const el = document.createElement('div');
+			document.body.appendChild(el);
+			const app = createApp({
+				render: () =>
+					h(load('MessageList'), {
+						messages,
+						roomKey: 'r1',
+						shownRooms: new Set<string>(),
+						activity: state.activity,
+					}),
+			}).use(i18n);
+			app.mount(el);
+			const scroller = el.querySelector('.scroll') as HTMLElement;
+			let stored = 0;
+			const height = () =>
+				(scroller.querySelector('.inner') as HTMLElement).children.length * ROW;
+			Object.defineProperties(scroller, {
+				scrollHeight: { configurable: true, get: height },
+				clientHeight: { configurable: true, get: () => VIEW },
+				scrollTop: {
+					configurable: true,
+					get: () => (stored = Math.min(stored, Math.max(0, height() - VIEW))),
+					set: (v: number) => {
+						stored = Math.max(0, Math.min(v, Math.max(0, height() - VIEW)));
+					},
+				},
+			});
+			return { el, app, state, scroller, height };
+		};
+
+		it('a live line appearing and disappearing does not move or unpin a scrolled-up list', async () => {
+			const { el, app, state, scroller } = mountScrolled();
+			await settle();
+			scroller.scrollTop = 100;
+			scroller.dispatchEvent(new Event('scroll'));
+			state.activity = working;
+			await settle();
+			expect(el.querySelector('.live')).not.toBeNull();
+			expect(scroller.scrollTop).toBe(100);
+			expect(el.querySelector('button.jump')).toBeNull();
+			state.activity = null;
+			await settle();
+			expect(el.querySelector('.live')).toBeNull();
+			expect(scroller.scrollTop).toBe(100);
+			app.unmount();
+			el.remove();
+		});
+
+		it('stays pinned to the bottom across a live line', async () => {
+			const { el, app, state, scroller, height } = mountScrolled();
+			await settle();
+			const bottom = () => height() - VIEW;
+			expect(scroller.scrollTop).toBe(bottom());
+			state.activity = working;
+			await settle();
+			state.activity = null;
+			await settle();
+			expect(el.querySelector('button.jump')).toBeNull();
+			expect(scroller.scrollTop).toBe(bottom());
+			app.unmount();
+			el.remove();
+		});
 	});
 });

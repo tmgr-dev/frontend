@@ -246,5 +246,9 @@
 		"handoff": "The new agent gets a handoff packet with the goal and a summary of the last messages.",
 		"stopped": "The current session is stopped.",
 		"submit": "Switch to {agent} · {model}"
+	},
+	"activity": {
+		"working": "Working…",
+		"toolsUsed": "Tools used ({count})"
 	}
 }

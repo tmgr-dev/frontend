@@ -5,6 +5,8 @@ import {
 	MAX_ATTACHMENTS,
 	MAX_BODY_BYTES,
 	roomKey,
+	type ActivityEvent,
+	type ActivityView,
 	type Attachment,
 	type AuditEntry,
 	type ChatMessage,
@@ -26,6 +28,7 @@ export interface ManagerApi {
 	cancel: typeof realApi.managerCancel;
 	agentModels: typeof realApi.managerAgentModels;
 	onMessage: typeof realApi.onManagerMessage;
+	onActivity: typeof realApi.onManagerActivity;
 	audit: typeof realApi.managerAudit;
 	spawn: typeof realApi.managerSpawnSession;
 	switchAgent: typeof realApi.managerSwitchAgent;
@@ -70,6 +73,8 @@ export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_JUMP_PAGES = 20;
 const QUEUE_POLL_MS = 2000;
 const POST_SEND_POLLS = 3;
+const ACTIVITY_TTL_MS = 60_000;
+const MAX_TOOLS = 50;
 
 const byTime = (a: ChatMessage, b: ChatMessage) =>
 	a.ts_ms - b.ts_ms || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -102,6 +107,15 @@ export const createManagerStore = (api: ManagerApi) => {
 	const unread = reactive({} as Record<string, number>);
 	let queueTimer: ReturnType<typeof setInterval> | null = null;
 	let postSendPolls = 0;
+	const activityTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	const lastUsed = new Map<string, { used: string[]; at: number }>();
+
+	const dropActivity = (key: string) => {
+		const timer = activityTimers.get(key);
+		if (timer) clearTimeout(timer);
+		activityTimers.delete(key);
+		delete store.activityByRoom[key];
+	};
 
 	const stopQueuePoll = () => {
 		if (queueTimer) clearInterval(queueTimer);
@@ -152,6 +166,8 @@ export const createManagerStore = (api: ManagerApi) => {
 			Object.values(unread).reduce((a, b) => a + b, 0),
 		),
 		queuedIds: [] as string[],
+		activityByRoom: {} as Record<string, ActivityView>,
+		toolsByMessage: {} as Record<string, string[]>,
 		replyTo: null as ChatMessage | null,
 		draft: { text: '', attachments: [] as Attachment[] },
 		slash: {
@@ -216,6 +232,18 @@ export const createManagerStore = (api: ManagerApi) => {
 			const next = merge(list, [message]);
 			if (next.length === before) return;
 			store.messagesByRoom[key] = next;
+			if (
+				message.kind === 'text' &&
+				message.author.kind !== 'owner' &&
+				!message.user_turn
+			) {
+				const seen = lastUsed.get(key);
+				if (seen && Date.now() - seen.at <= ACTIVITY_TTL_MS) {
+					store.toolsByMessage[message.id] = seen.used;
+				}
+				lastUsed.delete(key);
+				dropActivity(key);
+			}
 			const info = store.rooms.find((r) => roomKey(r.room) === key);
 			if (info && (!info.last || byTime(info.last, message) <= 0)) {
 				info.last = message;
@@ -229,6 +257,27 @@ export const createManagerStore = (api: ManagerApi) => {
 			}
 			if (key === store.activeKey) void store.refreshQueued();
 			if (!info) void store.loadRooms();
+		},
+
+		ingestActivity(event: ActivityEvent) {
+			const key = roomKey(event.room);
+			const used = event.used.slice(0, MAX_TOOLS);
+			if (used.length) lastUsed.set(key, { used, at: Date.now() });
+			if (event.state === 'idle') {
+				dropActivity(key);
+				return;
+			}
+			store.activityByRoom[key] = {
+				state: event.state,
+				current: event.current,
+				used,
+			};
+			const timer = activityTimers.get(key);
+			if (timer) clearTimeout(timer);
+			activityTimers.set(
+				key,
+				setTimeout(() => dropActivity(key), ACTIVITY_TTL_MS),
+			);
 		},
 
 		async refreshQueued() {
@@ -285,6 +334,7 @@ export const createManagerStore = (api: ManagerApi) => {
 						: { ...message, fresh: true },
 				),
 			);
+			await api.onActivity((event) => store.ingestActivity(event));
 			const first = store.rooms[0];
 			if (first) await store.select(roomKey(first.room));
 		},
@@ -615,6 +665,7 @@ export const useManagerStore = (): ManagerStore => {
 		cancel: realApi.managerCancel,
 		agentModels: realApi.managerAgentModels,
 		onMessage: realApi.onManagerMessage,
+		onActivity: realApi.onManagerActivity,
 		audit: realApi.managerAudit,
 		spawn: realApi.managerSpawnSession,
 		switchAgent: realApi.managerSwitchAgent,

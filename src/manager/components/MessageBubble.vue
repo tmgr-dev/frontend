@@ -55,6 +55,14 @@
 					></div>
 					<div v-else class="txt plain">{{ message.body_md }}</div>
 				</template>
+				<details v-if="tools?.length" class="tools">
+					<summary>
+						{{ $t('manager.activity.toolsUsed', { count: tools.length }) }}
+					</summary>
+					<ul>
+						<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
+					</ul>
+				</details>
 			</div>
 		</div>
 		<div class="macts">
@@ -136,6 +144,7 @@
 			replyTo: { type: Object as PropType<ChatMessage>, default: undefined },
 			grouped: { type: Boolean, default: false },
 			queued: { type: Boolean, default: false },
+			tools: { type: Array as PropType<string[]>, default: undefined },
 		},
 		emits: ['reply', 'copy', 'cancel-queued'],
 		computed: {
