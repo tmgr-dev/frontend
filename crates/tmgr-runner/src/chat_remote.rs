@@ -22,6 +22,7 @@ pub fn rooms(link: &dyn Link) -> Vec<RoomInfo> {
             state: None,
             context_pct: None,
             context_tokens: None,
+            model: None,
             last: None,
             unrestricted: false,
         })

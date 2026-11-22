@@ -1,5 +1,5 @@
 use super::join_code::read_join_text;
-use super::transport::HttpRelayTransport;
+use super::transport::{HttpRelayTransport, STATUS_KEY};
 use crate::ctx::Ctx;
 use crate::interact::is_interactive;
 use crate::out::Output;
@@ -8,6 +8,7 @@ use std::time::Duration;
 use tmgr_chat_relay::engine::{
     ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Transport,
 };
+use tmgr_core::api::map_error;
 use tmgr_core::error::{Error, Result};
 use tmgr_ipc::chat::{ChatMessage, RelaySelf};
 use tmgr_runner::chat::relay::store::{RelayConfig, RelayDir};
@@ -147,6 +148,17 @@ pub fn private_runner_dir() -> Result<std::path::PathBuf> {
     Ok(dir)
 }
 
+const SCOPE: &str = "chat:devices";
+
+fn join_error(e: &str) -> Error {
+    let body = serde_json::from_str::<serde_json::Value>(e).unwrap_or_default();
+    match body.get(STATUS_KEY).and_then(serde_json::Value::as_u64) {
+        Some(status @ (401 | 403)) => map_error(status as u16, &body, SCOPE),
+        _ => Error::internal(e)
+            .hint("run tmgr chat join again with a fresh code if it cannot recover"),
+    }
+}
+
 pub fn run(ctx: &Ctx) -> Result<Output> {
     let client = ctx.cloud_client()?;
     let user_id = client
@@ -186,9 +198,8 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
         let _ = out.flush();
     };
     let on_identity: Option<OnIdentity> = if ctx.json { Some(&announce) } else { None };
-    let outcome = drive(&engine, &code, &|d| std::thread::sleep(d), on_identity).map_err(|e| {
-        Error::internal(e).hint("run tmgr chat join again with a fresh code if it cannot recover")
-    })?;
+    let outcome = drive(&engine, &code, &|d| std::thread::sleep(d), on_identity)
+        .map_err(|e| join_error(&e))?;
     RelayDir::open(&dir)
         .and_then(|d| d.save_config(&RelayConfig { server, user_id }))
         .map_err(Error::internal)?;
@@ -203,6 +214,23 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
 mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
+
+    #[test]
+    fn insufficient_scope_from_the_relay_hints_the_missing_scope() {
+        let e = join_error(r#"{"error":"insufficient_scope","http_status":403}"#);
+        assert_eq!(e.kind, tmgr_core::error::Kind::Forbidden);
+        assert_eq!(e.hint.unwrap(), tmgr_core::api::scopes_hint(SCOPE));
+    }
+
+    #[test]
+    fn other_relay_refusals_keep_their_own_message() {
+        let e = join_error(r#"{"error":"revoked","message":"device revoked","http_status":403}"#);
+        assert!(e.hint.is_none());
+        assert_eq!(
+            join_error(r#"{"http_status":401}"#).hint.unwrap(),
+            "tmgr login"
+        );
+    }
 
     struct Mock {
         peers: Cell<usize>,

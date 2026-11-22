@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.163
+
+- Fixed: `tmgr chat join` with a login that lacks the `chat:devices` scope no longer ends in a bare 403. It says what is missing and prints the `tmgr login --scopes ...` command that fixes it.
+- Added: the runner reports each session's model in the room list, so the desktop Manager can show it in the session header.
+
 ## 1.0.162
 
 - Added: `tmgr link chat-enroll <follower>` enrols a follower machine into this machine's manager chat over `tmgr link`. The join code is read from stdin, never from the command line. The follower's runner then shows up as a sub-manager with its sessions on your desktop and phone, with `list`, `read`, `room`, `ask` and `send` allowed for this leader.

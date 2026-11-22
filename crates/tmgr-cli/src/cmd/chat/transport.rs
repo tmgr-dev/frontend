@@ -43,6 +43,8 @@ fn origin(base: &str) -> Result<String, String> {
     Ok(base.to_owned())
 }
 
+pub(super) const STATUS_KEY: &str = "http_status";
+
 fn failure(status: u16, retry_after: Option<u64>, body: String) -> String {
     if let (429, Some(secs)) = (status, retry_after) {
         let mut map = match serde_json::from_str::<Value>(&body) {
@@ -51,6 +53,15 @@ fn failure(status: u16, retry_after: Option<u64>, body: String) -> String {
         };
         map.insert("retry_after".into(), secs.into());
         return Value::Object(map).to_string();
+    }
+    if matches!(status, 401 | 403) {
+        if let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(&body) {
+            map.insert(STATUS_KEY.into(), status.into());
+            return Value::Object(map).to_string();
+        }
+        if body.trim().is_empty() {
+            return serde_json::json!({ STATUS_KEY: status }).to_string();
+        }
     }
     if body.trim().is_empty() {
         format!("the relay answered HTTP {status}")
@@ -212,7 +223,7 @@ mod tests {
         let err = transport(base)
             .call(&request(Auth::Login), None)
             .unwrap_err();
-        assert_eq!(err, "{\"error\":\"scope\"}");
+        assert_eq!(err, "{\"error\":\"scope\",\"http_status\":403}");
     }
 
     #[test]
