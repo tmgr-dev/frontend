@@ -3,6 +3,8 @@ pub mod backend;
 pub mod bridge;
 pub mod composite;
 pub mod local;
+pub mod machines;
+pub mod pair;
 pub mod relay;
 
 use std::sync::Arc;
@@ -292,6 +294,32 @@ pub async fn manager_join_with_code<R: Runtime>(app: AppHandle<R>, code: String)
   blocking(move || relay.join_with_code(&code)).await?;
   trust_changed(&app);
   Ok(())
+}
+
+static PAIR_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+pub async fn manager_pair_local_runner<R: Runtime>(app: AppHandle<R>) -> Result<pair::PairResult, String> {
+  let relay = relay_of(&app)?;
+  let runner = app.try_state::<crate::runner::Runner>().map(|r| r.inner().clone());
+  let out = blocking(move || {
+    let Some(runner) = runner else { return Ok(pair::PairResult { state: "no_runner".into(), message: Some("the runner is not available".into()), ..Default::default() }) };
+    Ok(pair::pair_local_runner(relay.as_ref(), &runner, &pair::CliSpawner, &PAIR_BUSY, pair::Timeouts::default()))
+  })
+  .await?;
+  trust_changed(&app);
+  Ok(out)
+}
+
+#[tauri::command]
+pub async fn manager_machines<R: Runtime>(app: AppHandle<R>) -> Result<Vec<machines::MachineInfo>, String> {
+  let relay = relay_of(&app)?;
+  let runner = app.try_state::<crate::runner::Runner>().map(|r| r.inner().clone());
+  blocking(move || {
+    let local = runner.and_then(|r| local::LocalPort::machine(&local::RunnerLocal::new(Arc::new(r))).ok());
+    Ok(machines::machines(local, machines::host_name(), relay.machine_indexes()))
+  })
+  .await
 }
 
 fn valid_card_id(id: &str) -> bool {

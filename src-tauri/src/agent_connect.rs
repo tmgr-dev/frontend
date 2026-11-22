@@ -48,6 +48,7 @@ mod imp {
   pub enum CliName {
     Claude,
     Codex,
+    Tmgr,
   }
 
   impl CliName {
@@ -55,6 +56,7 @@ mod imp {
       match self {
         CliName::Claude => "claude",
         CliName::Codex => "codex",
+        CliName::Tmgr => "tmgr",
       }
     }
   }
@@ -1254,6 +1256,17 @@ mod imp {
       assert_eq!(json["agents"][0]["found"], false);
     }
   }
+}
+
+#[cfg(unix)]
+pub fn resolve_tmgr_cli() -> Option<std::path::PathBuf> {
+  let resolved = imp::resolved(true);
+  imp::resolve_cli(imp::CliName::Tmgr, &resolved.search, resolved.uid)
+}
+
+#[cfg(not(unix))]
+pub fn resolve_tmgr_cli() -> Option<std::path::PathBuf> {
+  None
 }
 
 #[cfg(unix)]

@@ -569,6 +569,20 @@ pub fn lowers_kind(have: &str, new: &str) -> bool {
     new == "runner" && have != "runner"
 }
 
+pub fn expected_join_matches(
+    expected_id: &str,
+    expected_fp: &str,
+    pending_id: &str,
+    pending_fp: &str,
+    pending_kind: &str,
+) -> bool {
+    pending_kind == "runner"
+        && !expected_id.is_empty()
+        && !expected_fp.is_empty()
+        && expected_id == pending_id
+        && expected_fp == pending_fp
+}
+
 pub fn may_vouch(kind: Option<&str>) -> bool {
     matches!(kind, Some("desktop" | "mobile"))
 }
@@ -977,6 +991,20 @@ pub fn trusted_set_by_kind(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expected_join_needs_exact_id_fp_and_runner_kind() {
+        assert!(expected_join_matches("d1", "fp1", "d1", "fp1", "runner"));
+        assert!(!expected_join_matches("d1", "fp1", "d2", "fp1", "runner"));
+        assert!(!expected_join_matches("d1", "fp1", "d1", "fp2", "runner"));
+        for kind in ["desktop", "mobile", "", "Runner"] {
+            assert!(
+                !expected_join_matches("d1", "fp1", "d1", "fp1", kind),
+                "{kind}"
+            );
+        }
+        assert!(!expected_join_matches("", "", "", "", "runner"));
+    }
 
     const U: u64 = 42;
     const IDS: [&str; 5] = [

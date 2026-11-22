@@ -29,6 +29,8 @@
 		"allow-manager-open-join-code",
 		"allow-manager-close-join-code",
 		"allow-manager-join-with-code",
+		"allow-manager-pair-local-runner",
+		"allow-manager-machines",
 		"allow-decisions-get",
 		"allow-decisions-answer"
 	]

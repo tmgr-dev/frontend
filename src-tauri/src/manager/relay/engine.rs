@@ -11,7 +11,7 @@ use tmgr_chat_relay::api::{self, Directory, Msg, Request};
 use tmgr_chat_relay::fields::{check_device_id, check_device_kind, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
-  decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
+  decode_join_code, encode_join_code, expected_join_matches, gate_blockers, join_mac, kind_key, lowers_kind, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
   trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
@@ -19,6 +19,7 @@ use tmgr_phone::{b64, b64_decode, h, hex};
 
 use super::port::{DeviceState, PendingJoin, PendingRevoke, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
+use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
 use crate::manager::backend::{
   ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, MAX_ATTACHMENTS, MAX_BODY, MAX_HISTORY, MAX_QUERY,
 };
@@ -95,6 +96,13 @@ struct OpenCode {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+struct ExpectedJoin {
+  device_id: String,
+  fp: String,
+  exp_ms: u64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 struct JoinRec {
   device_id: String,
   label: String,
@@ -154,6 +162,10 @@ struct State {
   republish_intros: bool,
   #[serde(default)]
   bindings: BTreeMap<String, String>,
+  #[serde(default)]
+  expected: Option<ExpectedJoin>,
+  #[serde(default)]
+  rooms: BTreeMap<String, StoredRooms>,
 }
 
 impl State {
@@ -203,6 +215,7 @@ struct Core {
   acked: u64,
   hold_since: BTreeMap<String, u64>,
   pass_cap: Option<usize>,
+  auto_join_error: Option<String>,
 }
 
 fn trust_key(st: &State) -> String {
@@ -881,6 +894,25 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     stored.flatten()
   }
 
+  fn claim_machine(c: &mut Core, from: &str, machine: &str, now: u64) -> bool {
+    let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
+    match c.st.bindings.get(machine) {
+      Some(d) if d == from => true,
+      Some(_) => {
+        record_alert(c, "room_conflict", from, now);
+        false
+      }
+      None if bound_elsewhere => {
+        record_alert(c, "room_conflict", from, now);
+        false
+      }
+      None => {
+        c.st.bindings.insert(machine.to_owned(), from.to_owned());
+        true
+      }
+    }
+  }
+
   fn authorized_author(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) -> bool {
     let kind = c.st.kind_of_trusted(from).map(str::to_owned);
     match msg.author.kind.as_str() {
@@ -889,23 +921,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         if kind.as_deref() != Some("runner") || msg.author.machine.as_ref().is_some_and(|m| *m != msg.room.machine) {
           return false;
         }
-        let machine = &msg.room.machine;
-        let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
-        match c.st.bindings.get(machine) {
-          Some(d) if d == from => true,
-          Some(_) => {
-            record_alert(c, "room_conflict", from, now);
-            false
-          }
-          None if bound_elsewhere => {
-            record_alert(c, "room_conflict", from, now);
-            false
-          }
-          None => {
-            c.st.bindings.insert(machine.clone(), from.to_owned());
-            true
-          }
-        }
+        Self::claim_machine(c, from, &msg.room.machine, now)
       }
       _ => {
         record_alert(c, "unknown_author_kind", from, now);
@@ -954,6 +970,16 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         c.st.join_code = None;
         c.st.pending_joins.retain(|j| j.device_id != opened.from);
         c.st.pending_joins.push(JoinRec { device_id: opened.from.clone(), label, fp: opened.from_fp.clone(), kind: entry.kind.clone(), requested_at_ms: now, v });
+        self.auto_approve(c, now);
+      }
+      "rooms" if sender_trusted && c.st.joined => {
+        let index = serde_json::from_value::<RoomsIndex>(opened.payload.clone()).ok().filter(|i| valid_index_msg_id(&opened.id) && i.is_valid());
+        let from_runner = c.st.kind_of_trusted(&opened.from) == Some("runner");
+        if let Some(index) = index.filter(|_| from_runner) {
+          if Self::claim_machine(c, &opened.from, &index.machine, now) {
+            c.st.rooms.insert(index.machine.clone(), StoredRooms { from: opened.from.clone(), index });
+          }
+        }
       }
       "join_ok" if sender_trusted && !c.st.joined && c.st.base.iter().any(|d| d.id == opened.from) => {
         let root = c.st.base.iter().find(|d| d.id == opened.from)?.clone();
@@ -1045,7 +1071,31 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       };
       rooms.push(RoomInfo { room: m.room.clone(), title, agent: None, state: None, context_pct: None, context_tokens: None, last, local: false });
     }
-    rooms.sort_by(|a, b| b.last.as_ref().map(|m| m.ts_ms).cmp(&a.last.as_ref().map(|m| m.ts_ms)).then(a.title.cmp(&b.title)));
+    let mut index_ts: Vec<(RoomRef, u64)> = Vec::new();
+    for ir in self.live_indexes(&g).into_iter().flat_map(|r| r.index.rooms.iter()).filter(|ir| self.owns(&ir.room)) {
+      if let Some(ts) = ir.last_ts {
+        index_ts.push((ir.room.clone(), ts));
+      }
+      match rooms.iter_mut().find(|r| r.room == ir.room) {
+        Some(r) => {
+          r.title = ir.title.clone();
+          r.state = ir.state.clone();
+          r.context_pct = ir.context_pct;
+        }
+        None => rooms.push(RoomInfo {
+          room: ir.room.clone(),
+          title: ir.title.clone(),
+          agent: None,
+          state: ir.state.clone(),
+          context_pct: ir.context_pct,
+          context_tokens: None,
+          last: None,
+          local: false,
+        }),
+      }
+    }
+    let ts_of = |r: &RoomInfo| r.last.as_ref().map(|m| m.ts_ms).or_else(|| index_ts.iter().find(|(room, _)| *room == r.room).map(|(_, ts)| *ts));
+    rooms.sort_by(|a, b| ts_of(b).cmp(&ts_of(a)).then(a.title.cmp(&b.title)));
     Ok(rooms)
   }
 
@@ -1177,6 +1227,8 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       key_mismatch: g.st.mismatch.clone(),
       seq_gaps: g.st.seq_gaps.clone(),
       alerts: g.st.alerts.iter().filter(|a| self.now().saturating_sub(a.at_ms) < ALERT_TTL_MS).cloned().collect(),
+      gate_blockers: gate_blocked(&g, self.cfg.user_id).into_iter().map(|d| d.label).collect(),
+      auto_join_error: g.auto_join_error.clone(),
       joining: g.identity.is_some() && !joined,
       can_join_with_code: g.identity.is_none() || !joined || g.st.trusted.len() <= 1,
     })
@@ -1185,66 +1237,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   fn decide_join(&self, device_id: &str, accept: bool) -> Result<(), String> {
     let mut g = self.lock();
     let c = &mut *g;
-    let rec = c.st.pending_joins.iter().find(|j| j.device_id == device_id).cloned().ok_or_else(|| "no such join request".to_owned())?;
-    if !accept {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
-      return self.save_now(c);
-    }
-    if c.st.revoked.contains(&rec.fp) {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
-      self.save_now(c)?;
-      return Err("this device was revoked".into());
-    }
-    if c.st.revoked_devs.iter().any(|r| r.id == rec.device_id && r.fp != rec.fp)
-      || c.st.pinned_for_other_fp(&rec.device_id, &rec.fp)
-      || c.st.trusted.iter().any(|d| d.id == rec.device_id && d.fp != rec.fp)
-    {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
-      record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
-      self.save_now(c)?;
-      return Err("this device id belonged to another device".into());
-    }
-    let contradicts = c.st.kinds.iter().any(|(k, v)| k.split_once(':').is_some_and(|(id, fp)| (id == rec.device_id || fp == rec.fp) && *v != rec.kind));
-    if contradicts {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
-      record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
-      self.save_now(c)?;
-      return Err("this device kind contradicts a known one".into());
-    }
-    let dir = self.fetch_dir(c)?;
-    let entry = dir
-      .devices
-      .iter()
-      .find(|d| d.device_id == rec.device_id && fingerprint(&d.sign_pub, &d.kex_pub) == rec.fp)
-      .ok_or_else(|| "the device keys changed, ask it to join again".to_owned())?;
-    let mut dev = dev_from(entry);
-    dev.kind = rec.kind.clone();
-    let blocked = gate_blocked(c, self.cfg.user_id);
-    if rec.kind == "runner" {
-      if rec.v < 2 {
-        return Err("the runner must join with a code from an updated app".into());
-      }
-      if !blocked.is_empty() {
-        let labels: Vec<&str> = blocked.iter().map(|d| d.label.as_str()).collect();
-        return Err(format!("update these devices first: {}", labels.join(", ")));
-      }
-    } else if rec.v < 2 && runner_trusted(c) {
-      return Err("update the app first".into());
-    }
-    let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, &rec.kind))?;
-    self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
-    c.st.intros.push(intro);
-    pin_kind(c, &dev.id, &dev.fp, &rec.kind, self.now());
-    if !c.st.trusted.iter().any(|d| d.id == dev.id) {
-      c.st.trusted.push(dev.clone());
-    }
-    stamp_pins(c, self.now());
-    self.save_now(c)?;
-    let msg_id = random_msg_id("join_ok").map_err(err)?;
-    let payload = json!({ "revoked": c.st.revoked, "kind": self.kind });
-    self.seal_and_post(c, "join_ok", &msg_id, &payload, &[dev], false)?;
-    c.st.pending_joins.retain(|j| j.device_id != device_id);
-    self.save_now(c)
+    self.decide_join_locked(c, device_id, accept)
   }
 
   fn confirm_device_kind(&self, device_id: &str, kind: &str) -> Result<(), String> {
@@ -1327,6 +1320,14 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     RelayEngine::close_join_code(self, expires_at_ms)
   }
 
+  fn expect_join(&self, device_id: &str, fp: &str) -> Result<(), String> {
+    RelayEngine::expect_join(self, device_id, fp)
+  }
+
+  fn machine_indexes(&self) -> Vec<MachineIndex> {
+    RelayEngine::machine_indexes(self)
+  }
+
   fn reset_identity(&self) -> Result<(), String> {
     let mut g = self.lock();
     let c = &mut *g;
@@ -1369,6 +1370,128 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
 }
 
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
+  fn decide_join_locked(&self, c: &mut Core, device_id: &str, accept: bool) -> Result<(), String> {
+    if c.st.expected.as_ref().is_some_and(|e| e.device_id == device_id) {
+      c.st.expected = None;
+    }
+    let rec = c.st.pending_joins.iter().find(|j| j.device_id == device_id).cloned().ok_or_else(|| "no such join request".to_owned())?;
+    if !accept {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      return self.save_now(c);
+    }
+    if c.st.revoked.contains(&rec.fp) {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      self.save_now(c)?;
+      return Err("this device was revoked".into());
+    }
+    if c.st.revoked_devs.iter().any(|r| r.id == rec.device_id && r.fp != rec.fp)
+      || c.st.pinned_for_other_fp(&rec.device_id, &rec.fp)
+      || c.st.trusted.iter().any(|d| d.id == rec.device_id && d.fp != rec.fp)
+    {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
+      self.save_now(c)?;
+      return Err("this device id belonged to another device".into());
+    }
+    let contradicts = c.st.kinds.iter().any(|(k, v)| k.split_once(':').is_some_and(|(id, fp)| (id == rec.device_id || fp == rec.fp) && *v != rec.kind));
+    if contradicts {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
+      self.save_now(c)?;
+      return Err("this device kind contradicts a known one".into());
+    }
+    let dir = self.fetch_dir(c)?;
+    let entry = dir
+      .devices
+      .iter()
+      .find(|d| d.device_id == rec.device_id && fingerprint(&d.sign_pub, &d.kex_pub) == rec.fp)
+      .ok_or_else(|| "the device keys changed, ask it to join again".to_owned())?;
+    let mut dev = dev_from(entry);
+    dev.kind = rec.kind.clone();
+    let blocked = gate_blocked(c, self.cfg.user_id);
+    if rec.kind == "runner" {
+      if rec.v < 2 {
+        return Err("the runner must join with a code from an updated app".into());
+      }
+      if !blocked.is_empty() {
+        let labels: Vec<&str> = blocked.iter().map(|d| d.label.as_str()).collect();
+        return Err(format!("update these devices first: {}", labels.join(", ")));
+      }
+    } else if rec.v < 2 && runner_trusted(c) {
+      return Err("update the app first".into());
+    }
+    let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, &rec.kind))?;
+    self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
+    c.st.intros.push(intro);
+    pin_kind(c, &dev.id, &dev.fp, &rec.kind, self.now());
+    if !c.st.trusted.iter().any(|d| d.id == dev.id) {
+      c.st.trusted.push(dev.clone());
+    }
+    stamp_pins(c, self.now());
+    self.save_now(c)?;
+    let msg_id = random_msg_id("join_ok").map_err(err)?;
+    let payload = json!({ "revoked": c.st.revoked, "kind": self.kind });
+    self.seal_and_post(c, "join_ok", &msg_id, &payload, &[dev], false)?;
+    c.st.pending_joins.retain(|j| j.device_id != device_id);
+    self.save_now(c)
+  }
+
+  fn auto_approve(&self, c: &mut Core, now: u64) {
+    if c.st.expected.as_ref().is_some_and(|e| now >= e.exp_ms) {
+      c.st.expected = None;
+    }
+    let Some(exp) = c.st.expected.clone() else { return };
+    let Some(rec) = c.st.pending_joins.iter().find(|j| j.device_id == exp.device_id).cloned() else { return };
+    c.st.expected = None;
+    if !expected_join_matches(&exp.device_id, &exp.fp, &rec.device_id, &rec.fp, &rec.kind) {
+      record_alert(c, "expected_join_mismatch", &rec.device_id, now);
+      return;
+    }
+    match self.decide_join_locked(c, &rec.device_id, true) {
+      Ok(()) => c.auto_join_error = None,
+      Err(e) => {
+        record_alert(c, "auto_join_failed", &rec.device_id, now);
+        c.auto_join_error = Some(e);
+      }
+    }
+  }
+
+  pub fn expect_join(&self, device_id: &str, fp: &str) -> Result<(), String> {
+    check_device_id(device_id).map_err(|_| "invalid device id".to_owned())?;
+    check_fp(fp).map_err(|_| "invalid fingerprint".to_owned())?;
+    let mut g = self.lock();
+    let c = &mut *g;
+    let now = self.now();
+    let exp_ms = match c.st.join_code.as_ref().filter(|j| now < j.exp_ms) {
+      Some(j) => j.exp_ms,
+      None => c
+        .st
+        .pending_joins
+        .iter()
+        .find(|j| j.device_id == device_id)
+        .map(|j| j.requested_at_ms + JOIN_TTL_MS)
+        .filter(|exp| now < *exp)
+        .ok_or_else(|| "the join code is not open".to_owned())?,
+    };
+    c.st.expected = Some(ExpectedJoin { device_id: device_id.to_owned(), fp: fp.to_owned(), exp_ms });
+    c.auto_join_error = None;
+    self.auto_approve(c, now);
+    self.save_now(c)
+  }
+
+  fn live_indexes<'a>(&self, c: &'a Core) -> Vec<&'a StoredRooms> {
+    c.st.rooms.values().filter(|r| c.st.kind_of_trusted(&r.from) == Some("runner")).collect()
+  }
+
+  pub fn machine_indexes(&self) -> Vec<MachineIndex> {
+    let g = self.lock();
+    self
+      .live_indexes(&g)
+      .into_iter()
+      .map(|r| MachineIndex { machine: r.index.machine.clone(), label: r.index.machine_label.clone(), role: r.index.role.clone(), followers: r.index.followers.clone() })
+      .collect()
+  }
+
   fn ack_if_stored(&self, c: &mut Core) -> Result<(), String> {
     self.persist(c, false)?;
     if !c.log_dirty && c.st.cursor > c.acked {

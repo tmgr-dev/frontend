@@ -168,6 +168,12 @@ impl RelayPort for SwitchRelay {
   fn close_join_code(&self, expires_at_ms: u64) -> Result<(), String> {
     self.cur().close_join_code(expires_at_ms)
   }
+  fn expect_join(&self, device_id: &str, fp: &str) -> Result<(), String> {
+    self.cur().expect_join(device_id, fp)
+  }
+  fn machine_indexes(&self) -> Vec<super::rooms::MachineIndex> {
+    self.cur().machine_indexes()
+  }
   fn reset_identity(&self) -> Result<(), String> {
     self.cur().reset_identity()
   }

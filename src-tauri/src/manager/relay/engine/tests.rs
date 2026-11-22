@@ -2468,3 +2468,325 @@ fn closing_with_another_expiry_leaves_the_open_code_alone() {
   a.poll_once().unwrap();
   assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
 }
+
+fn runner_ready(fake: &Fake, clock: &Clock) -> (Engine, String, String) {
+  let r = engine_with(fake, clock, "Runner").with_kind("runner");
+  r.register().unwrap();
+  let (id, fp) = (my_id(&r), fp_of(&r));
+  (r, id, fp)
+}
+
+fn is_trusted(e: &Engine, id: &str) -> bool {
+  e.trust_state().unwrap().devices.iter().any(|d| d.id == id && d.state == DeviceState::Trusted)
+}
+
+#[test]
+fn join_first_then_expectation_approves_once() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  a.expect_join(&rid, &fp).unwrap();
+  assert!(a.trust_state().unwrap().pending_joins.is_empty());
+  assert!(is_trusted(&a, &rid));
+  assert_eq!(fake.queue_len(&rid), 1);
+  assert!(a.expect_join(&rid, &fp).is_err());
+  a.poll_once().unwrap();
+  assert_eq!(fake.queue_len(&rid), 1);
+  r.poll_once().unwrap();
+  assert!(r.lock().st.joined);
+}
+
+#[test]
+fn expectation_first_then_join_approves_once() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  let code = a.open_join_code().unwrap();
+  a.expect_join(&rid, &fp).unwrap();
+  assert!(!is_trusted(&a, &rid));
+  r.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().pending_joins.is_empty());
+  assert!(is_trusted(&a, &rid));
+  assert_eq!(fake.queue_len(&rid), 1);
+  a.poll_once().unwrap();
+  assert_eq!(fake.queue_len(&rid), 1);
+  assert_eq!(kind_pin(&a, &rid).as_deref(), Some("runner"));
+}
+
+#[test]
+fn a_mismatched_fp_falls_back_to_the_dialog_and_alerts() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (r, rid, _) = runner_ready(&fake, &clock);
+  a.register().unwrap();
+  let other_fp = fp_of(&a);
+  let code = a.open_join_code().unwrap();
+  a.expect_join(&rid, &other_fp).unwrap();
+  r.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  assert!(!is_trusted(&a, &rid));
+  assert!(alert_kinds(&a).contains(&"expected_join_mismatch".to_owned()));
+}
+
+#[test]
+fn a_non_runner_with_the_expected_id_and_fp_falls_back_and_alerts() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.register().unwrap();
+  let (bid, bfp) = (my_id(&b), fp_of(&b));
+  let code = a.open_join_code().unwrap();
+  a.expect_join(&bid, &bfp).unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  assert!(!is_trusted(&a, &bid));
+  assert!(alert_kinds(&a).contains(&"expected_join_mismatch".to_owned()));
+}
+
+#[test]
+fn a_join_without_an_expectation_stays_pending_without_an_alert() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (r, rid, _) = runner_ready(&fake, &clock);
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  assert!(!is_trusted(&a, &rid));
+  assert!(alert_kinds(&a).is_empty());
+}
+
+#[test]
+fn an_expectation_for_an_expired_or_used_code_is_refused() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (_, rid, fp) = runner_ready(&fake, &clock);
+  assert!(a.expect_join(&rid, &fp).is_err());
+  a.open_join_code().unwrap();
+  clock.set(T0 + 11 * 60 * 1000);
+  assert!(a.expect_join(&rid, &fp).is_err());
+  clock.set(T0 + 12 * 60 * 1000);
+  let code = a.open_join_code().unwrap();
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  assert!(a.expect_join(&rid, &fp).is_err());
+  assert!(a.expect_join("not-an-id", &fp).is_err());
+}
+
+#[test]
+fn an_expectation_expires_with_its_code() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  let code = a.open_join_code().unwrap();
+  a.expect_join(&rid, &fp).unwrap();
+  r.join_with_code(&code).unwrap();
+  clock.set(T0 + 11 * 60 * 1000);
+  a.poll_once().unwrap();
+  assert!(!is_trusted(&a, &rid));
+}
+
+#[test]
+fn a_closed_gate_blocks_the_auto_approval_and_names_the_devices() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  take_intros_by(&fake, &bid, &bid);
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  a.expect_join(&rid, &fp).unwrap();
+  let ts = a.trust_state().unwrap();
+  assert_eq!(ts.pending_joins.len(), 1);
+  assert!(!is_trusted(&a, &rid));
+  assert_eq!(ts.gate_blockers, ["Desktop B"]);
+  let e = ts.auto_join_error.unwrap();
+  assert!(e.contains("update these devices first") && e.contains("Desktop B"), "{e}");
+  assert!(alert_kinds(&a).contains(&"auto_join_failed".to_owned()));
+}
+
+#[test]
+fn gate_blockers_are_empty_with_a_healthy_fleet() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  a.poll_once().unwrap();
+  assert!(a.trust_state().unwrap().gate_blockers.is_empty());
+  assert!(a.trust_state().unwrap().auto_join_error.is_none());
+}
+
+fn rooms_payload(machine: &str, role: &str, rooms: Value) -> Value {
+  json!({ "v": 1, "machine": machine, "machine_label": "Studio", "role": role, "followers": if role == "top" { json!(["mx_fedcba9876543210"]) } else { json!([]) }, "rooms": rooms })
+}
+
+fn manager_room(machine: &str) -> Value {
+  json!({ "room": { "kind": "manager", "machine": machine }, "title": "Manager", "state": "idle", "context_pct": 12, "last_ts": 1_763_800_000_000u64 })
+}
+
+fn session_room(machine: &str, session: &str) -> Value {
+  json!({ "room": { "kind": "session", "machine": machine, "session": session }, "title": "fix login", "state": "running", "context_pct": null, "last_ts": null })
+}
+
+const IDX_ID: &str = "i_0123456789abcdef0123456789abcdef";
+
+fn post_rooms(from: &Engine, to_id: &str, msg_id: &str, payload: &Value) {
+  let mut g = from.lock();
+  let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
+  from.seal_and_post(&mut g, "rooms", msg_id, payload, &target, false).unwrap();
+}
+
+fn indexed(a: &Engine) -> Vec<String> {
+  a.machine_indexes().into_iter().map(|m| m.machine).collect()
+}
+
+#[test]
+fn a_valid_rooms_index_from_a_trusted_runner_is_stored_and_merged_into_the_room_list() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let aid = my_id(&a);
+  post_rooms(&r, &aid, IDX_ID, &rooms_payload("mx_0123456789abcdef", "top", json!([manager_room("mx_0123456789abcdef"), session_room("mx_0123456789abcdef", "s_abc")])));
+  assert!(a.poll_once().unwrap().is_empty());
+  let m = a.machine_indexes();
+  assert_eq!((m.len(), m[0].label.as_str(), m[0].role.as_str(), m[0].followers.clone()), (1, "Studio", "top", vec!["mx_fedcba9876543210".to_owned()]));
+  let rooms = a.rooms().unwrap();
+  assert_eq!(rooms.len(), 2);
+  assert_eq!(rooms[0].title, "Manager");
+  assert_eq!(rooms[0].state.as_deref(), Some("idle"));
+  assert_eq!(rooms[0].context_pct, Some(12));
+  assert!(rooms.iter().all(|r| !r.local && r.last.is_none()));
+  assert_eq!(rooms[1].title, "fix login");
+}
+
+#[test]
+fn a_rooms_index_keeps_the_last_message_of_a_room_and_replaces_the_previous_index() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let aid = my_id(&a);
+  let mx = "mx_0123456789abcdef";
+  let mut m = msg_n(2, "manager");
+  m.room = RoomRef { kind: RoomKind::Manager, machine: mx.into(), session: None };
+  post_chat(&r, &aid, &m);
+  post_rooms(&r, &aid, IDX_ID, &rooms_payload(mx, "top", json!([manager_room(mx), session_room(mx, "s_abc")])));
+  a.poll_once().unwrap();
+  let rooms = a.rooms().unwrap();
+  assert_eq!(rooms.len(), 2);
+  assert_eq!(rooms.iter().find(|r| r.room.session.is_none()).unwrap().last.as_ref().unwrap().id, m.id);
+  post_rooms(&r, &aid, "i_fedcba9876543210fedcba9876543210", &rooms_payload(mx, "sub", json!([manager_room(mx)])));
+  a.poll_once().unwrap();
+  assert_eq!(a.rooms().unwrap().len(), 1);
+  assert_eq!(a.machine_indexes()[0].role, "sub");
+}
+
+#[test]
+fn a_rooms_index_of_the_local_machine_adds_no_rooms_but_is_listed_as_a_machine() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  post_rooms(&r, &my_id(&a), IDX_ID, &rooms_payload("mx_local", "top", json!([manager_room("mx_local")])));
+  a.poll_once().unwrap();
+  assert!(a.rooms().unwrap().is_empty());
+  assert_eq!(indexed(&a), ["mx_local"]);
+}
+
+#[test]
+fn a_rooms_index_from_a_non_runner_is_ignored() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  post_rooms(&b, &my_id(&a), IDX_ID, &rooms_payload("mx_0123456789abcdef", "top", json!([manager_room("mx_0123456789abcdef")])));
+  a.poll_once().unwrap();
+  assert!(indexed(&a).is_empty());
+  assert!(a.rooms().unwrap().is_empty());
+}
+
+#[test]
+fn a_rooms_index_for_a_machine_bound_to_another_runner_is_dropped_and_alerted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+  let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+  let aid = my_id(&a);
+  let mx = "mx_0123456789abcdef";
+  post_rooms(&r1, &aid, IDX_ID, &rooms_payload(mx, "top", json!([manager_room(mx)])));
+  a.poll_once().unwrap();
+  post_rooms(&r2, &aid, "i_fedcba9876543210fedcba9876543210", &rooms_payload(mx, "top", json!([session_room(mx, "evil")])));
+  a.poll_once().unwrap();
+  assert_eq!(a.rooms().unwrap().len(), 1);
+  assert_eq!(a.rooms().unwrap()[0].title, "Manager");
+  assert!(alert_kinds(&a).contains(&"room_conflict".to_owned()));
+}
+
+#[test]
+fn invalid_rooms_indexes_are_ignored() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let aid = my_id(&a);
+  let mx = "mx_0123456789abcdef";
+  let mut bad: Vec<(String, Value)> = Vec::new();
+  bad.push(("i_00000000000000000000000000000001".into(), rooms_payload(mx, "top", json!([manager_room("mx_other0000000000")]))));
+  let mut v2 = rooms_payload(mx, "top", json!([manager_room(mx)]));
+  v2["v"] = json!(2);
+  bad.push(("i_00000000000000000000000000000002".into(), v2));
+  bad.push(("i_00000000000000000000000000000003".into(), rooms_payload(mx, "boss", json!([]))));
+  let mut empty_label = rooms_payload(mx, "top", json!([]));
+  empty_label["machine_label"] = json!("");
+  bad.push(("i_00000000000000000000000000000004".into(), empty_label));
+  let mut ctl = rooms_payload(mx, "top", json!([]));
+  ctl["machine_label"] = json!("a\nb");
+  bad.push(("i_00000000000000000000000000000005".into(), ctl));
+  let mut sub_followers = rooms_payload(mx, "sub", json!([]));
+  sub_followers["followers"] = json!(["mx_fedcba9876543210"]);
+  bad.push(("i_00000000000000000000000000000006".into(), sub_followers));
+  bad.push(("i_00000000000000000000000000000007".into(), json!({ "nonsense": true })));
+  bad.push(("i_00000000000000000000000000000008".into(), rooms_payload(mx, "top", json!([{ "room": { "kind": "session", "machine": mx }, "title": "x" }]))));
+  let many: Vec<Value> = (0..201).map(|i| session_room(mx, &format!("s{i}"))).collect();
+  bad.push(("i_00000000000000000000000000000009".into(), rooms_payload(mx, "top", Value::Array(many))));
+  bad.push(("m_00000000000000000000000000000010".into(), rooms_payload(mx, "top", json!([manager_room(mx)]))));
+  for (id, payload) in &bad {
+    post_rooms(&r, &aid, id, payload);
+  }
+  a.poll_once().unwrap();
+  assert!(indexed(&a).is_empty());
+  assert!(a.rooms().unwrap().is_empty());
+  assert!(a.trust_state().unwrap().alerts.is_empty());
+  post_rooms(&r, &aid, "i_0000000000000000000000000000000a", &rooms_payload(mx, "top", json!([manager_room(mx)])));
+  a.poll_once().unwrap();
+  assert_eq!(indexed(&a), [mx]);
+}
+
+#[test]
+fn a_revoked_runner_drops_out_of_the_machine_list() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let (aid, rid) = (my_id(&a), my_id(&r));
+  let mx = "mx_0123456789abcdef";
+  post_rooms(&r, &aid, IDX_ID, &rooms_payload(mx, "top", json!([manager_room(mx)])));
+  a.poll_once().unwrap();
+  assert_eq!(indexed(&a), [mx]);
+  a.revoke(&rid).unwrap();
+  assert!(indexed(&a).is_empty());
+  assert!(a.rooms().unwrap().is_empty());
+}
+
+#[test]
+fn rooms_indexes_survive_a_restart() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let mx = "mx_0123456789abcdef";
+  post_rooms(&r, &my_id(&a), IDX_ID, &rooms_payload(mx, "top", json!([manager_room(mx)])));
+  a.poll_once().unwrap();
+  clock.set(T0 + 31_000);
+  a.poll_once().unwrap();
+  let again = engine_on(&fake, &clock, store, "mx_local");
+  assert_eq!(indexed(&again), [mx]);
+}

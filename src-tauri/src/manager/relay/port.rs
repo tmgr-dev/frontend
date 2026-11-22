@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::rooms::MachineIndex;
 use crate::manager::backend::{ChatMessage, HistoryParams, RoomInfo, RoomRef, SearchParams, SendParams};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -76,6 +77,10 @@ pub struct TrustState {
   #[serde(default)]
   pub alerts: Vec<TrustAlert>,
   #[serde(default)]
+  pub gate_blockers: Vec<String>,
+  #[serde(default)]
+  pub auto_join_error: Option<String>,
+  #[serde(default)]
   pub joining: bool,
   #[serde(default)]
   pub can_join_with_code: bool,
@@ -105,6 +110,12 @@ pub trait RelayPort: Send + Sync {
   }
   fn close_join_code(&self, _expires_at_ms: u64) -> Result<(), String> {
     Ok(())
+  }
+  fn expect_join(&self, _device_id: &str, _fp: &str) -> Result<(), String> {
+    Err("chat sync is not set up".into())
+  }
+  fn machine_indexes(&self) -> Vec<MachineIndex> {
+    vec![]
   }
   fn reset_identity(&self) -> Result<(), String>;
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String>;

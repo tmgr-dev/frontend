@@ -189,6 +189,8 @@ const APP_COMMANDS: &[&str] = &[
   "manager_open_join_code",
   "manager_close_join_code",
   "manager_join_with_code",
+  "manager_pair_local_runner",
+  "manager_machines",
   "manager_set_relay_auth",
   "manager_clear_relay_auth",
   "decisions_pending_actions",
