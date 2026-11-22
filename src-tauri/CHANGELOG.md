@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.184 — 2026-11-22
+
+- Manager window: this computer's runner is paired with the manager chat automatically on first open (a notice says so, and you can revoke it in Devices). Needs `tmgr` CLI 1.0.160 or later.
+- Manager window: the chat list groups rooms by machine: the main machine's manager and sessions first, then each follower machine with its sub-manager and sessions.
+- Manager window: a banner names the devices that block new runner joins when the gate is closed.
+
 ## 0.9.183 — 2026-11-22
 
 - Manager window: Exo 2 bold and extra-bold and JetBrains Mono now ship with the app. Tables, quotes and code blocks in messages are styled in light and dark, and new messages flash briefly (off with reduced motion).
