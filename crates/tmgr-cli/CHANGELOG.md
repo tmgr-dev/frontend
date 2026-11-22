@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.165
+
+- Added: the desktop Manager can approve, edit or reject a spawn card proposed by the local manager. The runner accepts these decisions only from the local desktop app, checks that the request matches the card exactly, and runs only what was approved. An edit closes the card and issues a new one, which must be approved again; the folder must be trusted, and an edit cannot switch to bypass mode.
+- Fixed: a card that was approved but whose session then failed to start is reported as failed (not rejected), also after the desktop reloads.
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.164
 
 - Added: the runner streams live tool activity (the current tool and the tools used so far) of a manager chat session to the local desktop Manager only. Nothing is sent to the relay or the server.
