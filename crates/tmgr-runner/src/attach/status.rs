@@ -1052,6 +1052,7 @@ mod tests {
     #[test]
     fn labels_for_models_and_modes() {
         assert_eq!(model_label("claude-3-5-haiku-20241022"), "haiku");
+        assert_eq!(model_label("claude-fable-5-2"), "fable");
         assert_eq!(model_label("claude-foo-9"), "foo");
         assert_eq!(model_label("???"), "?");
         assert_eq!(mode_label("bypassPermissions"), "bypass");
