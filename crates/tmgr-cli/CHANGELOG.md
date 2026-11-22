@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.164
+
+- Added: the runner streams live tool activity (the current tool and the tools used so far) of a manager chat session to the local desktop Manager only. Nothing is sent to the relay or the server.
+- Security: activity is sent only while transcript-reading consent is granted, shows a program name or file base name, never arguments or paths, and ends with an idle event when consent is revoked or the turn ends.
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.163
 
 - Fixed: `tmgr chat join` with a login that lacks the `chat:devices` scope no longer ends in a bare 403. It says what is missing and prints the `tmgr login --scopes ...` command that fixes it.
