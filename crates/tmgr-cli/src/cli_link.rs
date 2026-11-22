@@ -18,6 +18,8 @@ pub enum LinkCommand {
     Remove { name: String },
     /// Connect to a follower and run the handshake
     Test { name: String },
+    /// Enrol a follower machine into the manager chat; the join code is read from stdin
+    ChatEnroll(ChatEnrollArgs),
     /// Show the local link audit log, or verify its hash chain
     Audit(AuditArgs),
     /// The follower PIN that gates remote bypass and no-sandbox starts (local, interactive)
@@ -33,6 +35,18 @@ pub enum PinCommand {
     Reset,
     /// Show whether a PIN is set and whether it is locked (never the PIN)
     Status,
+}
+
+#[derive(Args)]
+pub struct ChatEnrollArgs {
+    /// Link name of the follower
+    pub follower: String,
+    #[arg(hide = true, value_parser = reject_argv_code)]
+    pub code: Option<String>,
+}
+
+fn reject_argv_code(_: &str) -> Result<String, String> {
+    Err("a join code must not be passed as an argument; pipe it in on stdin".into())
 }
 
 #[derive(Args)]
@@ -86,6 +100,9 @@ pub struct TrustArgs {
     /// Enrol the key as a jump host key: it may only forward to these HOST:PORT (at most 4)
     #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "HOST:PORT")]
     pub as_jump_for: Vec<String>,
+    /// Do not let the leader enrol this machine into the manager chat (default: allowed)
+    #[arg(long)]
+    pub no_chat_enroll: bool,
 }
 
 #[derive(Args)]
@@ -117,6 +134,9 @@ pub struct ScopeArgs {
     /// on|off. Let this leader start sessions with --no-sandbox: the agent gets full access to this machine's files, network and keychain-accessible data as your user. Needs remote control on and the follower PIN at each start. Turning it on needs a terminal and a typed confirmation; turning it off is always allowed
     #[arg(long, value_enum, value_name = "on|off")]
     pub allow_no_sandbox: Option<Switch>,
+    /// Let this leader enrol this machine into the manager chat with a join code (widening needs a terminal)
+    #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true")]
+    pub chat_enroll: Option<bool>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

@@ -463,6 +463,7 @@ fn session_with(
             connect: &connect,
             resolver: &LocalRefs,
             titles,
+            enroll: None,
         };
         let mut chan = Framed::new(Cursor::new(frames(items)), &mut out);
         let _ = serve_with(
@@ -1154,6 +1155,7 @@ fn live(w: &World, name: &'static str, enr: &'static str, fake: &Fake) -> Live {
             connect: &connect,
             resolver: &LocalRefs,
             titles: &tmgr_link::worker::NoTitles,
+            enroll: None,
         };
         let mut chan = Timed::spawn(
             w_in_r,
@@ -1962,6 +1964,7 @@ fn a_slow_handshake_and_a_slow_list_still_answer_inside_the_deadline() {
             connect: &connect,
             resolver: &LocalRefs,
             titles: &tmgr_link::worker::NoTitles,
+            enroll: None,
         };
         let mut chan = Framed::new(Cursor::new(frames(&[create(&w, json!({}))])), &mut out);
         let _ = serve_with(
@@ -3062,7 +3065,7 @@ fn hello_lists_start_and_carries_the_scope_and_unknown_methods_keep_the_connecti
     assert!(methods.contains(&json!("runs.start")));
     assert_eq!(
         r[0]["result"]["scope"],
-        json!({"repos":[w.repo.clone()],"agents":["codex"],"max":3})
+        json!({"repos":[w.repo.clone()],"agents":["codex"],"max":3,"chat_enroll":false})
     );
     assert_eq!(r[1]["error"], "unknown_method");
     assert!(r[2]["result"]["runs"].is_array());

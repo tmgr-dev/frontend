@@ -2,6 +2,7 @@ pub mod attach;
 pub mod audit;
 pub mod authkeys;
 pub mod cycle;
+pub mod enroll;
 pub mod fence;
 pub mod follower;
 pub mod grammar;

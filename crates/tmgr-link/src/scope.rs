@@ -25,6 +25,8 @@ pub struct Scope {
     pub allow_bypass: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub allow_no_sandbox: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chat_enroll: bool,
 }
 
 pub fn is_bypass_session(s: &tmgr_ipc::api::SessionInfo) -> bool {
@@ -64,11 +66,12 @@ impl Scope {
         let models = !old.models.is_empty()
             && (self.models.is_empty() || self.models.iter().any(|m| !old.models.contains(m)));
         let input = self.allow_attach_input && !old.allow_attach_input;
+        let enroll = self.chat_enroll && !old.chat_enroll;
         let remote = (self.remote_control && !old.remote_control)
             || (self.include_bypass && !old.include_bypass)
             || (self.allow_bypass && !old.allow_bypass)
             || (self.allow_no_sandbox && !old.allow_no_sandbox);
-        repos || agents || models || self.max > old.max || from || input || remote
+        repos || agents || models || self.max > old.max || from || input || remote || enroll
     }
 
     pub fn summary(&self) -> String {
@@ -108,8 +111,13 @@ impl Scope {
             (true, false) => "forbidden (needs remote control)",
             (false, _) => "forbidden",
         };
+        let enroll = if self.chat_enroll {
+            "chat enroll: allowed"
+        } else {
+            "chat enroll: forbidden"
+        };
         format!(
-            "{repos} · {agents} · {models} · max {} running · {from} · {input} · {remote} · bypass-permissions: {} · no-sandbox: {}",
+            "{repos} · {agents} · {models} · max {} running · {from} · {input} · {remote} · bypass-permissions: {} · no-sandbox: {} · {enroll}",
             self.max,
             privileged(self.allow_bypass),
             privileged(self.allow_no_sandbox)
@@ -900,6 +908,25 @@ mod tests {
         };
         let back: Scope = toml::from_str(&toml::to_string(&on).unwrap()).unwrap();
         assert_eq!(back, on);
+    }
+
+    #[test]
+    fn chat_enroll_defaults_off_for_old_records_is_not_written_when_off_and_widens_when_turned_on()
+    {
+        let old: Scope = toml::from_str("max = 1").unwrap();
+        assert!(!old.chat_enroll);
+        assert!(!toml::to_string(&old).unwrap().contains("chat_enroll"));
+        let on = Scope {
+            chat_enroll: true,
+            ..old.clone()
+        };
+        assert!(toml::to_string(&on).unwrap().contains("chat_enroll = true"));
+        let back: Scope = toml::from_str(&toml::to_string(&on).unwrap()).unwrap();
+        assert!(back.chat_enroll);
+        assert!(on.widens(&old));
+        assert!(!old.widens(&on));
+        assert!(old.summary().contains("chat enroll: forbidden"));
+        assert!(on.summary().contains("chat enroll: allowed"));
     }
 
     #[test]

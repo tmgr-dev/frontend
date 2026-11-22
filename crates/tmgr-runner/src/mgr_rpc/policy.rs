@@ -1,5 +1,6 @@
+use super::files::write_private_atomic;
 use crate::login::openat_nofollow;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::Read;
@@ -11,6 +12,7 @@ use tmgr_ipc::mgr_rpc::{valid_machine_id, Op};
 pub const POLICY_FILE: &str = "manager-remote.toml";
 const MAX_POLICY_BYTES: u64 = 16 * 1024;
 const DEFAULT_ALLOW: [Op; 3] = [Op::List, Op::Read, Op::Room];
+pub const ENROLL_ALLOW: [Op; 5] = [Op::List, Op::Read, Op::Room, Op::Ask, Op::Send];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
@@ -68,6 +70,39 @@ impl Policy {
     pub fn allows(&self, op: Op) -> bool {
         self.allow.contains(&op)
     }
+}
+
+#[derive(Serialize)]
+struct PolicyOut<'a> {
+    accept_from: &'a [String],
+    allow: &'a [Op],
+}
+
+pub fn enroll_leader(runner_dir: &Path, machine: &str) -> Result<(), String> {
+    if !valid_machine_id(machine) {
+        return Err("policy: the leader machine id is not valid".into());
+    }
+    let _held = super::pairing::lock(runner_dir)?;
+    let mut accept_from = match read_private(runner_dir, POLICY_FILE, MAX_POLICY_BYTES) {
+        Ok(text) => {
+            Policy::parse(&text)?;
+            toml::from_str::<PolicyFile>(&text)
+                .map_err(|e| format!("policy: {}", e.message()))?
+                .accept_from
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(format!("policy: {e}")),
+    };
+    if !accept_from.iter().any(|m| m == machine) {
+        accept_from.push(machine.to_string());
+    }
+    let text = toml::to_string(&PolicyOut {
+        accept_from: &accept_from,
+        allow: &ENROLL_ALLOW,
+    })
+    .map_err(|e| format!("policy: {e}"))?;
+    write_private_atomic(runner_dir, POLICY_FILE, text.as_bytes())
+        .map_err(|e| format!("{POLICY_FILE} was not written: {e}"))
 }
 
 pub(super) fn read_private(runner_dir: &Path, name: &str, max: u64) -> std::io::Result<String> {
@@ -214,6 +249,81 @@ mod tests {
         let d = dir();
         put(d.path(), "accept_from = [\"nope\"]", 0o600);
         assert!(!Policy::load(d.path()).accepts(A));
+    }
+
+    const B: &str = "mx_fedcba9876543210";
+
+    fn mode(d: &Path) -> u32 {
+        std::fs::metadata(d.join(POLICY_FILE))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    #[test]
+    fn the_enroll_allow_list_is_the_one_constant() {
+        assert_eq!(
+            ENROLL_ALLOW,
+            [Op::List, Op::Read, Op::Room, Op::Ask, Op::Send]
+        );
+    }
+
+    #[test]
+    fn enrolling_a_leader_writes_a_private_policy_that_accepts_it_with_the_constant_ops() {
+        let d = dir();
+        enroll_leader(d.path(), A).unwrap();
+        assert_eq!(mode(d.path()), 0o600);
+        let p = Policy::try_load(d.path()).unwrap();
+        assert!(p.accepts(A) && !p.accepts(B));
+        for op in Op::ALL {
+            assert_eq!(p.allows(op), ENROLL_ALLOW.contains(&op), "{op:?}");
+        }
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn enrolling_keeps_other_leaders_and_a_rerun_gives_the_same_file() {
+        let d = dir();
+        put(
+            d.path(),
+            &format!("accept_from = [\"{B}\"]\nallow = [\"list\"]"),
+            0o644,
+        );
+        enroll_leader(d.path(), A).unwrap();
+        let once = std::fs::read_to_string(d.path().join(POLICY_FILE)).unwrap();
+        let p = Policy::parse(&once).unwrap();
+        assert!(p.accepts(A) && p.accepts(B));
+        assert!(p.allows(Op::Ask) && p.allows(Op::Send));
+        assert_eq!(mode(d.path()), 0o600);
+        enroll_leader(d.path(), A).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(d.path().join(POLICY_FILE)).unwrap(),
+            once
+        );
+    }
+
+    #[test]
+    fn an_invalid_or_unsafe_existing_policy_is_an_error_and_is_not_overwritten() {
+        for text in ["accept_from = [", "accept_from = [\"nope\"]", "extra = 1"] {
+            let d = dir();
+            put(d.path(), text, 0o600);
+            assert!(enroll_leader(d.path(), A).is_err(), "{text}");
+            assert_eq!(
+                std::fs::read_to_string(d.path().join(POLICY_FILE)).unwrap(),
+                text
+            );
+        }
+        let d = dir();
+        put(d.path(), "accept_from = []", 0o666);
+        assert!(enroll_leader(d.path(), A).is_err());
+        let d = dir();
+        let real = d.path().join("real.toml");
+        std::fs::write(&real, "accept_from = []").unwrap();
+        symlink(&real, d.path().join(POLICY_FILE)).unwrap();
+        assert!(enroll_leader(d.path(), A).is_err());
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "accept_from = []");
+        assert!(enroll_leader(d.path(), "laptop").is_err());
     }
 
     #[test]

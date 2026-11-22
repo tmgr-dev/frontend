@@ -22,6 +22,7 @@ pub struct ScopeInput {
     pub include_bypass: Option<bool>,
     pub allow_bypass: Option<bool>,
     pub allow_no_sandbox: Option<bool>,
+    pub chat_enroll: Option<bool>,
 }
 
 fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
@@ -89,6 +90,9 @@ fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
     if let Some(allow) = input.allow_attach_input {
         scope.allow_attach_input = allow;
     }
+    if let Some(on) = input.chat_enroll {
+        scope.chat_enroll = on;
+    }
     Ok(scope)
 }
 
@@ -130,6 +134,7 @@ pub fn plan_trust(
     let key = grammar::parse_pubkey(&input.pubkey)?;
     let mut scope_input = input.scope.clone();
     scope_input.max.get_or_insert(1);
+    scope_input.chat_enroll.get_or_insert(true);
     let scope = build_scope(&Scope::default(), &scope_input)?;
     let Check {
         verdict,
@@ -378,6 +383,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         "to": plan.new.summary(),
         "allow_bypass": plan.new.allow_bypass,
         "allow_no_sandbox": plan.new.allow_no_sandbox,
+        "chat_enroll": plan.new.chat_enroll,
     });
     if plan.widening {
         audit.append("link.scope.intent", fields.clone())?;
@@ -739,6 +745,7 @@ mod tests {
                 include_bypass: None,
                 allow_bypass: None,
                 allow_no_sandbox: None,
+                chat_enroll: None,
             },
         }
     }
@@ -749,6 +756,42 @@ mod tests {
         let key = plan.key.clone();
         apply_trust(&f.paths, &plan).unwrap();
         (plan, key)
+    }
+
+    #[test]
+    fn a_new_trust_allows_chat_enroll_unless_opted_out_and_the_scope_edit_flips_it() {
+        let f = fx();
+        let k = testkeys::generate();
+        let plan = plan_trust(&f.paths, &input(&f, "laptop", &k), &f.bin, chk(&f)).unwrap();
+        assert!(plan.scope.chat_enroll);
+        let k2 = testkeys::generate();
+        let mut off = input(&f, "desk", &k2);
+        off.scope.chat_enroll = Some(false);
+        let plan = plan_trust(&f.paths, &off, &f.bin, chk(&f)).unwrap();
+        assert!(!plan.scope.chat_enroll);
+        let (plan, _) = trust(&f, "laptop");
+        assert!(plan.scope.chat_enroll);
+        let narrow = plan_scope(
+            &f.paths,
+            "laptop",
+            &ScopeInput {
+                chat_enroll: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(!narrow.widening && !narrow.new.chat_enroll);
+        apply_scope(&f.paths, &narrow, &f.bin).unwrap();
+        let wide = plan_scope(
+            &f.paths,
+            "laptop",
+            &ScopeInput {
+                chat_enroll: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(wide.widening && wide.new.chat_enroll);
     }
 
     #[test]

@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 
 pub const MAX_FRAME: usize = 1 << 20;
 pub const PROTOCOL: u32 = 1;
-pub const METHODS: [&str; 9] = [
+pub const METHODS: [&str; 10] = [
     "hello",
     "runs.list",
     "runs.get",
@@ -13,6 +13,7 @@ pub const METHODS: [&str; 9] = [
     "runs.rename",
     "runs.paste_image",
     "runs.start",
+    "chat.enroll",
 ];
 
 #[derive(Debug, PartialEq, Eq)]

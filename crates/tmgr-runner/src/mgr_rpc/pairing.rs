@@ -47,7 +47,7 @@ fn save_rows(runner_dir: &Path, rows: Vec<Value>) -> Result<(), String> {
         .map_err(|e| format!("{MACHINES_FILE} was not written: {e}"))
 }
 
-fn lock(runner_dir: &Path) -> Result<std::fs::File, String> {
+pub(super) fn lock(runner_dir: &Path) -> Result<std::fs::File, String> {
     use std::os::fd::AsRawFd;
     let f = std::fs::File::open(runner_dir)
         .map_err(|e| format!("the runner dir could not be opened: {e}"))?;
@@ -57,7 +57,7 @@ fn lock(runner_dir: &Path) -> Result<std::fs::File, String> {
     Ok(f)
 }
 
-pub fn add_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), String> {
+fn parse_peer(line: &str, label: &str) -> Result<PeerLine, String> {
     let peer: PeerLine =
         serde_json::from_str(line).map_err(|_| "the line must be the JSON printed by show")?;
     let n = label.chars().count();
@@ -66,6 +66,11 @@ pub fn add_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), Str
             "the label must be 1 to {MAX_LABEL_CHARS} characters without control characters"
         ));
     }
+    Ok(peer)
+}
+
+pub fn add_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), String> {
+    let peer = parse_peer(line, label)?;
     let _held = lock(runner_dir)?;
     let mut rows = load_rows(runner_dir)?;
     let taken = |key: &str, val: &str| rows.iter().any(|r| r[key].as_str() == Some(val));
@@ -81,6 +86,41 @@ pub fn add_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), Str
         "device_id": peer.device_id,
         "fp": peer.fp,
     }));
+    save_rows(runner_dir, rows)
+}
+
+pub fn ensure_machine(runner_dir: &Path, line: &str, label: &str) -> Result<(), String> {
+    let peer = parse_peer(line, label)?;
+    let _held = lock(runner_dir)?;
+    let mut rows = load_rows(runner_dir)?;
+    let new_row = json!({
+        "id": peer.id,
+        "label": label,
+        "device_id": peer.device_id,
+        "fp": peer.fp,
+    });
+    if let Some(i) = rows.iter().position(|r| r["id"].as_str() == Some(&peer.id)) {
+        let same = |k: &str| rows[i][k] == new_row[k];
+        if same("device_id") && same("fp") {
+            return Ok(());
+        }
+        if rows
+            .iter()
+            .enumerate()
+            .any(|(j, r)| j != i && r["device_id"].as_str() == Some(&peer.device_id))
+        {
+            return Err("that relay device is already paired".into());
+        }
+        rows[i] = new_row;
+    } else {
+        if rows
+            .iter()
+            .any(|r| r["device_id"].as_str() == Some(&peer.device_id))
+        {
+            return Err("that relay device is already paired".into());
+        }
+        rows.push(new_row);
+    }
     save_rows(runner_dir, rows)
 }
 
@@ -212,6 +252,66 @@ mod tests {
         }
         assert!(!d.path().join(MACHINES_FILE).exists());
         assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn ensuring_a_new_machine_adds_it_and_the_same_one_again_changes_nothing() {
+        let d = dir();
+        ensure_machine(d.path(), &line(A, DEV_A, FP_A), "first").unwrap();
+        let before = file_text(d.path());
+        ensure_machine(d.path(), &line(A, DEV_A, FP_A), "renamed").unwrap();
+        assert_eq!(file_text(d.path()), before);
+        assert_eq!(rows(d.path()), [(A.into(), "first".into())]);
+        assert_eq!(mode(d.path()), 0o600);
+        let m = Machines::parse(&file_text(d.path())).unwrap();
+        assert_eq!(m.machine_for(DEV_A, FP_A), Some(A));
+    }
+
+    #[test]
+    fn ensuring_a_repaired_machine_replaces_its_row_and_keeps_the_others() {
+        let d = dir();
+        ensure_machine(d.path(), &line(A, DEV_A, FP_A), "first").unwrap();
+        ensure_machine(d.path(), &line(B, DEV_B, FP_B), "second").unwrap();
+        let dev_c = "cccccccc-7777-8888-9999-aaaaaaaaaaaa";
+        ensure_machine(d.path(), &line(A, dev_c, FP_B), "first again").unwrap();
+        assert_eq!(
+            rows(d.path()),
+            [
+                (A.into(), "first again".into()),
+                (B.into(), "second".into())
+            ]
+        );
+        let m = Machines::parse(&file_text(d.path())).unwrap();
+        assert_eq!(m.machine_for(dev_c, FP_B), Some(A));
+        assert_eq!(m.machine_for(DEV_A, FP_A), None);
+        assert_eq!(m.machine_for(DEV_B, FP_B), Some(B));
+    }
+
+    #[test]
+    fn ensuring_refuses_a_device_that_belongs_to_another_machine_and_the_manual_add_still_refuses_a_repeat(
+    ) {
+        let d = dir();
+        ensure_machine(d.path(), &line(A, DEV_A, FP_A), "first").unwrap();
+        ensure_machine(d.path(), &line(B, DEV_B, FP_B), "second").unwrap();
+        let before = file_text(d.path());
+        assert!(ensure_machine(d.path(), &line("mx_00000000000000cc", DEV_A, FP_A), "x").is_err());
+        assert!(ensure_machine(d.path(), &line(B, DEV_A, FP_B), "x").is_err());
+        assert!(ensure_machine(d.path(), &line(A, DEV_A, FP_A), "").is_err());
+        assert_eq!(file_text(d.path()), before);
+        assert!(add_machine(d.path(), &line(A, DEV_A, FP_A), "again").is_err());
+    }
+
+    #[test]
+    fn ensuring_never_overwrites_an_invalid_file() {
+        let d = dir();
+        std::fs::write(d.path().join(MACHINES_FILE), "garbage").unwrap();
+        std::fs::set_permissions(
+            d.path().join(MACHINES_FILE),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        assert!(ensure_machine(d.path(), &line(A, DEV_A, FP_A), "x").is_err());
+        assert_eq!(file_text(d.path()), "garbage");
     }
 
     #[test]

@@ -744,7 +744,8 @@ fn leader_talks_to_the_worker_over_a_pipe_pair() {
             "attach.open",
             "runs.rename",
             "runs.paste_image",
-            "runs.start"
+            "runs.start",
+            "chat.enroll"
         ])
     );
 

@@ -50,10 +50,19 @@ pub fn run() -> i32 {
         Some(t) => t,
         None => &NoTitles,
     };
+    #[cfg(feature = "runner")]
+    let enroller = super::link_enroll::CliEnroller::new();
+    #[cfg(feature = "runner")]
+    let enroll: Option<&dyn tmgr_link::enroll::Enroller> = enroller
+        .as_ref()
+        .map(|e| e as &dyn tmgr_link::enroll::Enroller);
+    #[cfg(not(feature = "runner"))]
+    let enroll: Option<&dyn tmgr_link::enroll::Enroller> = None;
     let rt = Runtime {
         connect: &connect,
         resolver: &LocalRefs,
         titles,
+        enroll,
     };
     match serve_with(
         &paths,

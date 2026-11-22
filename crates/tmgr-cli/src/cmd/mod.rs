@@ -18,6 +18,8 @@ pub mod hook;
 pub mod hookinstall;
 pub mod init;
 pub mod link;
+#[cfg(feature = "runner")]
+pub mod link_enroll;
 pub mod log;
 pub mod mcp;
 pub mod note;

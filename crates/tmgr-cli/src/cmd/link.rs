@@ -1,5 +1,6 @@
 use crate::cli_link::{
-    AddArgs, AuditArgs, InitArgs, LinkCommand, PinCommand, RevokeArgs, ScopeArgs, Switch, TrustArgs,
+    AddArgs, AuditArgs, ChatEnrollArgs, InitArgs, LinkCommand, PinCommand, RevokeArgs, ScopeArgs,
+    Switch, TrustArgs,
 };
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
@@ -31,6 +32,7 @@ pub fn run(ctx: &Ctx, cmd: &LinkCommand) -> Result<Output> {
         LinkCommand::Revoke(a) => revoke(&paths, a),
         LinkCommand::Remove { name } => remove(&paths, name),
         LinkCommand::Test { name } => test(ctx, &paths, name),
+        LinkCommand::ChatEnroll(a) => chat_enroll(ctx, &paths, a),
         LinkCommand::Audit(a) => audit(ctx, &paths, a),
         LinkCommand::Pin(c) => pin(&paths, c),
     }
@@ -242,7 +244,7 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
 }
 
 fn scope_json(s: &Scope) -> Value {
-    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "remote_control": s.remote_control, "include_bypass": s.include_bypass, "allow_bypass": s.allow_bypass, "allow_no_sandbox": s.allow_no_sandbox})
+    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "remote_control": s.remote_control, "include_bypass": s.include_bypass, "allow_bypass": s.allow_bypass, "allow_no_sandbox": s.allow_no_sandbox, "chat_enroll": s.chat_enroll})
 }
 
 fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
@@ -276,6 +278,7 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
             include_bypass: None,
             allow_bypass: None,
             allow_no_sandbox: None,
+            chat_enroll: Some(!a.no_chat_enroll),
         },
     };
     let plan = follower::plan_trust(paths, &input, &bin, check)?;
@@ -448,6 +451,7 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         include_bypass: a.include_bypass.map(Switch::is_on),
         allow_bypass: a.allow_bypass.map(Switch::is_on),
         allow_no_sandbox: a.allow_no_sandbox.map(Switch::is_on),
+        chat_enroll: a.chat_enroll,
     };
     let plan = follower::plan_scope(paths, &a.name, &input)?;
     let changes = a.repos.is_some()
@@ -459,7 +463,8 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         || a.remote_control.is_some()
         || a.include_bypass.is_some()
         || a.allow_bypass.is_some()
-        || a.allow_no_sandbox.is_some();
+        || a.allow_no_sandbox.is_some()
+        || a.chat_enroll.is_some();
     if !changes {
         return Ok(Output::new(
             json!({"link": plan.name, "scope": scope_json(&plan.new)}),
@@ -780,13 +785,38 @@ fn test(ctx: &Ctx, paths: &Paths, name: &str) -> Result<Output> {
     let hello = client.hello()?;
     let ms = started.elapsed().as_millis() as u64;
     let version = sanitize_line(hello.get("version").and_then(Value::as_str).unwrap_or("?"));
+    let chat_enroll = hello.pointer("/scope/chat_enroll").and_then(Value::as_bool);
     Ok(Output::new(
-        json!({"link": name, "rtt_ms": ms, "follower_version": version}),
+        json!({"link": name, "rtt_ms": ms, "follower_version": version, "chat_enroll": chat_enroll}),
         format!(
             "{} {name}: handshake ok in {ms} ms (follower tmgr {version})",
             ctx.style.good("✓")
         ),
     ))
+}
+
+#[cfg(feature = "runner")]
+fn chat_enroll(ctx: &Ctx, paths: &Paths, a: &ChatEnrollArgs) -> Result<Output> {
+    grammar::link_name(&a.follower)?;
+    let code = super::chat::join_code::read_join_text(
+        std::io::stdin().lock(),
+        crate::interact::is_interactive(),
+        || rpassword::prompt_password("Join code: "),
+    )?;
+    let dir =
+        tmgr_ipc::dirs::runner_dir().map_err(|e| Error::internal(format!("runner dir: {e}")))?;
+    let leader_machine = tmgr_runner::chat::machine_id(&dir)
+        .map_err(|e| Error::internal(format!("machine id: {e}")))?;
+    let (mut client, _key) = Client::dial(paths, &cred(ctx, paths), &a.follower)?;
+    let reply = super::link_enroll::leader_call(&mut client, &code, &leader_machine)?;
+    let data = super::link_enroll::finish(&dir, &a.follower, &reply)?;
+    let human = data.to_string();
+    Ok(Output::new(data, human))
+}
+
+#[cfg(not(feature = "runner"))]
+fn chat_enroll(_: &Ctx, _: &Paths, _: &ChatEnrollArgs) -> Result<Output> {
+    Err(Error::usage("this build of tmgr has no runner support"))
 }
 
 fn audit(ctx: &Ctx, paths: &Paths, a: &AuditArgs) -> Result<Output> {

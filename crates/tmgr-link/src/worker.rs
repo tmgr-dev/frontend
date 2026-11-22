@@ -62,6 +62,7 @@ pub struct Runtime<'a> {
     pub connect: Connector<'a>,
     pub resolver: &'a dyn TaskResolver,
     pub titles: &'a dyn Titles,
+    pub enroll: Option<&'a dyn crate::enroll::Enroller>,
 }
 
 fn no_runner(
@@ -76,6 +77,7 @@ impl Runtime<'static> {
             connect: &no_runner,
             resolver: &LocalRefs,
             titles: &NoTitles,
+            enroll: None,
         }
     }
 }
@@ -580,6 +582,7 @@ fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) 
                     "repos": scope.repos,
                     "agents": scope.agents,
                     "max": scope.max,
+                    "chat_enroll": scope.chat_enroll,
                 });
             }
             if let Ok(Some(own)) = crate::cycle::own_key(conn.paths) {
@@ -591,6 +594,7 @@ fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) 
         | "runs.paste_image" | "runs.start" => {
             crate::runs::run_method(conn, state, chan, &req, &scope)
         }
+        crate::enroll::METHOD => crate::enroll::chat_enroll(conn, &req, &scope),
         other => {
             let shown = tmgr_core::text::truncate_chars(
                 &other
@@ -1422,6 +1426,7 @@ mod tests {
             connect: &connect,
             resolver: &LocalRefs,
             titles: &NoTitles,
+            enroll: None,
         };
         let mut chan = Paced {
             paths: &f.paths,

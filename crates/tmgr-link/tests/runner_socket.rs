@@ -198,6 +198,7 @@ fn the_worker_speaks_to_the_runner_as_worker_and_never_calls_sessions_create() {
         connect: &connect,
         resolver: &LocalRefs,
         titles: &tmgr_link::worker::NoTitles,
+        enroll: None,
     };
     let items = [
         json!({"id":1,"method":"runs.create","params":{"task":"w1:7","repo":w.repo,"agent":"codex"}}),
