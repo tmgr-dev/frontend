@@ -116,6 +116,7 @@ mod tests {
             scope: Default::default(),
             enrollment: String::new(),
             authorized_keys: String::new(),
+            chat_leader_machine: None,
         }
     }
 

@@ -1,5 +1,6 @@
 use crate::proto::{self, Request};
 use crate::scope::Scope;
+use crate::store::Store;
 use crate::worker::{Conn, Step};
 use serde_json::{json, Value};
 
@@ -43,6 +44,29 @@ fn params(p: &Value) -> Result<(&str, &str), &'static str> {
     Ok((code, machine))
 }
 
+fn bound_leader(conn: &Conn) -> tmgr_core::error::Result<Option<String>> {
+    let store = Store::load(conn.paths)?;
+    Ok(store
+        .leaders
+        .get(conn.name)
+        .filter(|l| l.enrollment == conn.enrollment)
+        .and_then(|l| l.chat_leader_machine.clone()))
+}
+
+fn bind_leader(conn: &Conn, machine: &str) -> tmgr_core::error::Result<()> {
+    Store::update(conn.paths, |s| {
+        if let Some(l) = s
+            .leaders
+            .get_mut(conn.name)
+            .filter(|l| l.enrollment == conn.enrollment)
+        {
+            l.chat_leader_machine
+                .get_or_insert_with(|| machine.to_string());
+        }
+        Ok(())
+    })
+}
+
 pub(crate) fn chat_enroll(conn: &Conn, req: &Request, scope: &Scope) -> Step {
     let id = Some(req.id);
     let deny = |args: Value, code: &str, reason: &str| {
@@ -66,11 +90,25 @@ pub(crate) fn chat_enroll(conn: &Conn, req: &Request, scope: &Scope) -> Step {
     let Some(enroller) = conn.rt.enroll else {
         return deny(args, "not_available", "chat enrolment is not available");
     };
+    match bound_leader(conn) {
+        Ok(Some(b)) if b != machine => {
+            return deny(
+                args,
+                "forbidden",
+                "this link is bound to a different leader machine",
+            )
+        }
+        Ok(_) => {}
+        Err(_) => return deny(args, "refused", "link state is unavailable"),
+    }
     if conn.record(METHOD, args.clone(), "accepted", "").is_err() {
         return audit_down();
     }
     match enroller.enroll(code, machine) {
         Ok(i) => {
+            if bind_leader(conn, machine).is_err() {
+                return deny(args, "refused", "link state is unavailable");
+            }
             let done = json!({"leader_machine": machine, "machine": i.id});
             if conn.note("worker.chat_enrolled", done).is_err() {
                 return audit_down();

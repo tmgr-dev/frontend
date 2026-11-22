@@ -338,6 +338,7 @@ fn rig() -> Option<Rig> {
                 added: "2026-10-13T00:00:00Z".into(),
                 enrollment: ENR.into(),
                 authorized_keys: authorized.display().to_string(),
+                chat_leader_machine: None,
                 scope: Scope {
                     repos: vec![repo.display().to_string()],
                     agents: vec!["fakeagent".into()],

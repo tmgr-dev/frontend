@@ -399,6 +399,7 @@ fn world() -> World {
                     scope: scope(&repo, false),
                     enrollment: enr.into(),
                     authorized_keys: String::new(),
+                    chat_leader_machine: None,
                 },
             );
         }
@@ -1591,6 +1592,7 @@ fn revoke_fixes_the_cutoff_and_a_retry_never_touches_a_re_trusted_link() {
             scope: scope(&w.repo, false),
             enrollment: E3.into(),
             authorized_keys: String::new(),
+            chat_leader_machine: None,
         };
         l.scope.max = 2;
         s.leaders.insert("laptop".into(), l);

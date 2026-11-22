@@ -162,6 +162,9 @@ pub fn enroll_with(
         return Err(OLD_CODE_MSG.into());
     }
     let own = tmgr_runner::chat::machine_id(dir).map_err(|e| format!("machine id: {e}"))?;
+    if leader_machine == own {
+        return Err("the leader machine is this runner itself".into());
+    }
     let line = spawner.first_line(code, FIRST_LINE_WAIT)?;
     let identity = parse_identity(&line)?;
     if identity.id != own {
@@ -354,6 +357,17 @@ mod tests {
         assert_eq!(mode, 0o600);
         enroll_with(d.path(), &f, &c, LEADER).unwrap();
         assert_eq!(Policy::try_load(d.path()).unwrap(), p);
+    }
+
+    #[test]
+    fn the_leader_being_this_runner_is_refused_before_the_join_and_writes_nothing() {
+        let d = dir();
+        let own = tmgr_runner::chat::machine_id(d.path()).unwrap();
+        let f = fake(Ok(id_line(&own, "")));
+        let e = enroll_with(d.path(), &f, &code(2), &own).unwrap_err();
+        assert!(e.contains("this runner itself"), "{e}");
+        assert!(f.calls.borrow().is_empty());
+        assert!(!d.path().join(POLICY_FILE).exists());
     }
 
     #[test]

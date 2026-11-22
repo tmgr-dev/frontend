@@ -772,6 +772,7 @@ mod tests {
                     },
                     enrollment: ENR.into(),
                     authorized_keys: String::new(),
+                    chat_leader_machine: None,
                 },
             );
             Ok(())

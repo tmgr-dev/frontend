@@ -83,6 +83,8 @@ pub struct Leader {
     pub enrollment: String,
     #[serde(default)]
     pub authorized_keys: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_leader_machine: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -308,6 +310,7 @@ mod tests {
             },
             enrollment: "ab".repeat(16),
             authorized_keys: "/home/u/.ssh/authorized_keys".into(),
+            chat_leader_machine: None,
         }
     }
 

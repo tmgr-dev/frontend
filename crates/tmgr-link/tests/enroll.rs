@@ -62,6 +62,7 @@ fn world(chat_enroll: bool) -> World {
                 },
                 enrollment: ENR.into(),
                 authorized_keys: String::new(),
+                chat_leader_machine: None,
             },
         );
         Ok(())
@@ -245,4 +246,60 @@ fn a_build_without_an_enroller_says_not_available() {
 #[test]
 fn hello_lists_the_method() {
     assert!(proto::METHODS.contains(&"chat.enroll"));
+}
+
+const OTHER: &str = "mx_aaaaaaaaaaaaaaaa";
+
+fn bound(w: &World) -> Option<String> {
+    Store::load(&w.paths).unwrap().leaders["laptop"]
+        .chat_leader_machine
+        .clone()
+}
+
+#[test]
+fn the_first_enroll_binds_the_leader_machine_and_the_same_machine_may_repeat() {
+    let w = world(true);
+    assert_eq!(bound(&w), None);
+    let fake = Fake::ok();
+    assert!(call(&w, Some(&fake), good()).get("result").is_some());
+    assert_eq!(bound(&w).as_deref(), Some(LEADER));
+    assert!(call(&w, Some(&fake), good()).get("result").is_some());
+    assert_eq!(fake.calls.borrow().len(), 2);
+}
+
+#[test]
+fn a_different_leader_machine_on_a_bound_link_is_refused_audited_and_never_enrolls() {
+    let w = world(true);
+    let fake = Fake::ok();
+    call(&w, Some(&fake), good());
+    let r = call(
+        &w,
+        Some(&fake),
+        json!({"code": SECRET_CODE, "leader_machine": OTHER}),
+    );
+    assert_eq!(r["error"], "forbidden");
+    assert!(r["message"].as_str().unwrap().contains("different leader"));
+    assert_eq!(fake.calls.borrow().len(), 1);
+    assert_eq!(bound(&w).as_deref(), Some(LEADER));
+    let log = audit_text(&w);
+    assert!(log.contains("rejected") && !log.contains("SECRET"));
+}
+
+#[test]
+fn a_failed_first_enroll_does_not_bind() {
+    let w = world(true);
+    let fake = Fake {
+        calls: RefCell::default(),
+        result: Err("no".into()),
+    };
+    call(&w, Some(&fake), good());
+    assert_eq!(bound(&w), None);
+}
+
+#[test]
+fn an_old_record_without_the_field_loads_unbound() {
+    let w = world(true);
+    let text = std::fs::read_to_string(w.paths.links_toml()).unwrap();
+    assert!(!text.contains("chat_leader_machine"));
+    assert_eq!(bound(&w), None);
 }

@@ -290,6 +290,7 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
             scope: plan.scope.clone(),
             enrollment: plan.enrollment.clone(),
             authorized_keys: plan.target.display().to_string(),
+            chat_leader_machine: None,
         },
     );
     if plan.jump_for.is_empty() {
