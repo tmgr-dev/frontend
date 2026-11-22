@@ -1292,6 +1292,19 @@ impl Session {
         }
     }
 
+    fn settled_without_idle_rules(&self, i: &Inner, now: Instant) -> bool {
+        if i.matcher.as_ref().is_some_and(Matcher::has_idle) {
+            return false;
+        }
+        let state = self.effective(i);
+        let ahead = now.saturating_duration_since(Instant::now()).as_millis() as u64;
+        state.kind == StateKind::Waiting
+            && now_ms()
+                .saturating_add(ahead)
+                .saturating_sub(state.since_ms)
+                >= SEND_SETTLE.as_millis() as u64
+    }
+
     fn input_at_prompt(self: &Arc<Self>, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
         self.input_at_prompt_after(bytes, now, SUBMIT_DELAY)
     }
@@ -1333,7 +1346,8 @@ impl Session {
                 }
             });
             if self.effective(&i).kind == StateKind::Blocked
-                || !prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
+                || !(prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
+                    || self.settled_without_idle_rules(&i, now))
                 || i.input_sent_at
                     .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
                 || !idle_queue
@@ -5812,6 +5826,8 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     rt.start_relay_pump();
     let capturer = rt.clone();
     thread::spawn(move || capturer.chat_capture_loop());
+    let drainer = rt.clone();
+    thread::spawn(move || drainer.chat_queue_loop());
     let card_ticker = rt.clone();
     thread::spawn(move || card_ticker.spawn_card_loop());
     let managers = rt.clone();
@@ -6341,6 +6357,14 @@ mod tests {
         cols: u16,
         rows: u16,
     ) -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
+        lone_session_for("claude-code", cols, rows)
+    }
+
+    fn lone_session_for(
+        profile: &str,
+        cols: u16,
+        rows: u16,
+    ) -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
         let t = tempfile::tempdir().unwrap();
         let cfg = RunnerConfig {
             dir: t.path().join("run"),
@@ -6380,12 +6404,12 @@ mod tests {
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({
             "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),
-            "profile": "claude-code", "created_ms": 0, "cols": cols, "rows": rows,
+            "profile": profile, "created_ms": 0, "cols": cols, "rows": rows,
             "shim_pid": 1, "child_pid": 2,
         }))
         .unwrap();
         let (set, _) = ProfileSet::load(None);
-        let matcher = Matcher::new(set.get("claude-code").unwrap()).ok();
+        let matcher = Matcher::new(set.get(profile).unwrap()).ok();
         let sdir = t.path().join("s1");
         fs::create_dir_all(&sdir).unwrap();
         let s = rt.new_session(meta, matcher, &sdir);
@@ -6634,6 +6658,56 @@ mod tests {
         assert!(!send_at_prompt(&s, b"note\r", settled()));
         drain(&s, &rx);
         assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    fn waiting_since(s: &Session, ago_ms: u64) {
+        let t = now_ms() - ago_ms;
+        let mut i = lock(&s.inner);
+        i.det.on_output(t);
+        i.det.tick(t + 2000);
+    }
+
+    #[test]
+    fn a_profile_without_idle_rules_is_ready_once_waiting_for_the_settle_time() {
+        let (_t, s, _rx) = lone_session_for("aider", 100, 24);
+        assert!(lock(&s.inner)
+            .matcher
+            .as_ref()
+            .is_some_and(|m| !m.has_idle()));
+        s.feed(b"some output\r\n", true);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+        waiting_since(&s, 20_000);
+        assert_eq!(s.state().kind, StateKind::Waiting);
+        assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_profile_without_idle_rules_refuses_while_working_or_just_turned_waiting() {
+        let (_t, s, _rx) = lone_session_for("aider", 100, 24);
+        {
+            let mut i = lock(&s.inner);
+            i.det.on_output(now_ms());
+        }
+        assert_eq!(s.state().kind, StateKind::Working);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+        waiting_since(&s, 3_000);
+        assert_eq!(s.state().kind, StateKind::Waiting);
+        assert!(!send_at_prompt(&s, b"note\r", Instant::now()));
+    }
+
+    #[test]
+    fn a_profile_with_idle_rules_still_needs_its_prompt_even_when_waiting() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(b"plain output\r\n", true);
+        waiting_since(&s, 20_000);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn an_idle_prompt_session_accepts_the_first_send_straight_away() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"hello\r", Instant::now()));
     }
 
     fn credit(rb: u64, rf: u64, qb: u64, qf: u64) -> InputCredit {
