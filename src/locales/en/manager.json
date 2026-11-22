@@ -70,20 +70,55 @@
 		"send": "Send"
 	},
 	"spawn": {
-		"title": "Start {profile} session",
+		"title": "Manager wants to start a {profile} session",
 		"cwd": "Folder",
-		"mode": "Mode",
+		"mode": "Permissions",
 		"task": "Task",
 		"name": "Name",
 		"target": "Machine",
-		"bypass": "Permissions bypassed",
+		"bypass": "Bypass permissions: no confirmation before edits or commands",
 		"waiting": "Waiting for approval on your phone · {left} left",
 		"expired": "Not approved: the card expired",
 		"approved": "Approved. Starting the session…",
 		"claimed": "Starting the session…",
 		"spawned": "Started session {session}",
 		"refused": "Not approved: {reason}",
-		"unavailable": "Status unavailable"
+		"unavailable": "Status unavailable",
+		"titleStop": "Manager wants to stop a session",
+		"titleSend": "A session wants to type into {session}",
+		"sandbox": "Sandbox",
+		"session": "Session",
+		"text": "Text",
+		"effect": "Effect",
+		"undo": "Undo",
+		"effectSpawn": "A new session starts on this machine",
+		"effectStop": "Session ends, working state is lost",
+		"effectSend": "Text is typed into the session as if you typed it",
+		"undoSpawn": "Stop the session",
+		"undoNone": "Not possible",
+		"proposedByManager": "Proposed by Manager",
+		"requestedBySession": "Requested by session {session}, not by you",
+		"payload": "Exact payload",
+		"chip": {
+			"irreversible": "Cannot be undone, session state is lost",
+			"bypass": "Bypass permissions: no confirmation before edits or commands",
+			"foreign": "Typed into a session you are not talking to",
+			"mismatch": "Target differs from the signed request",
+			"hidden": "Payload contains hidden characters"
+		},
+		"state": {
+			"pending": "Waiting",
+			"approved": "Approved",
+			"rejected": "Rejected",
+			"expired": "Expired",
+			"failed": "Failed"
+		},
+		"resolved": {
+			"approved": "Approved",
+			"rejected": "Rejected",
+			"expired": "Expired",
+			"failed": "Approved, then failed"
+		}
 	},
 	"messages": {
 		"label": "Messages",

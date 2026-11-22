@@ -10,7 +10,7 @@
 			<div class="dc-title">
 				<Icon
 					v-if="isPermission"
-					:name="mode === 'final' ? 'check' : 'hand'"
+					:name="mode === 'final' ? 'check' : 'shield'"
 				/>{{ state.card.title }}
 			</div>
 			<div v-if="state.card.question" class="dc-q">

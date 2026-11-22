@@ -140,6 +140,15 @@ export const ICONS: Record<
 	check: { body: '<path d="M5 12l5 5 9-10"/>', sw: 2.5 },
 	x: { body: '<path d="M6 6l12 12M18 6L6 18"/>', sw: 2.5 },
 	bolt: { body: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>', fill: true },
+	shield: {
+		body: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M12 8v4M12 15v.5"/>',
+	},
+	alert: {
+		body: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
+	},
+	info: {
+		body: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/>',
+	},
 	hand: {
 		body: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>',
 	},
