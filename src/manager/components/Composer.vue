@@ -3,6 +3,11 @@
 		<div class="cin">
 			<slot name="popover"></slot>
 			<div class="cbox" @dragover.prevent @drop.prevent="onDrop">
+				<div v-if="hint" class="hintbar">
+					<b class="mono">/{{ hint.name.replace(/^\//, '') }}</b>
+					<span class="mono">{{ hint.args }}</span>
+					<em>{{ hint.description }}</em>
+				</div>
 				<div v-if="replyTo" class="rbar">
 					<span class="rbi"><Icon name="reply" /></span>
 					<div class="rq">
@@ -73,7 +78,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import type { Attachment, ChatMessage } from '../types';
+	import type { Attachment, ChatMessage, SlashCommand } from '../types';
 	import Icon from './Icon.vue';
 	import { authorLabel, truncate } from './viewHelpers';
 
@@ -86,6 +91,7 @@
 			replyTo: { type: Object as PropType<ChatMessage>, default: undefined },
 			attachments: { type: Array as PropType<Attachment[]>, default: () => [] },
 			disabled: { type: Boolean, default: false },
+			hint: { type: Object as PropType<SlashCommand>, default: undefined },
 		},
 		emits: [
 			'update:modelValue',

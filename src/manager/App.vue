@@ -54,6 +54,7 @@
 			<ChatHeader
 				v-if="activeInfo"
 				:info="activeInfo"
+				:sub="subtitle"
 				@search="store.openSearch(store.activeKey ?? undefined)"
 				:busy="store.control.busy"
 				@switch="store.openSwitch()"
@@ -124,6 +125,8 @@
 					v-model="store.draft.text"
 					:reply-to="store.replyTo ?? undefined"
 					:attachments="store.draft.attachments"
+					:placeholder="placeholder"
+					:hint="hint"
 					@update:model-value="store.onInput"
 					@send="store.send"
 					@clear-reply="store.setReply(null)"
@@ -157,6 +160,11 @@
 			@tab="store.setTab"
 			@select="store.selectFromHierarchy"
 			@devices="trust.openPanel()"
+		/>
+		<StatusBar
+			:scope="$t('manager.statusbar.scope')"
+			:chat="activeInfo?.title ?? ''"
+			:live="live"
 		/>
 		<div
 			class="rz rz-left"
@@ -300,10 +308,10 @@
 	import { defineComponent } from 'vue';
 	import { onManagerResync } from './api';
 	import ChatHeader from './components/ChatHeader.vue';
-	import ControlDialog from './components/ControlDialog.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
 	import ConnectFollowers from './components/ConnectFollowers.vue';
+	import ControlDialog from './components/ControlDialog.vue';
 	import DecisionCard from './components/DecisionCard.vue';
 	import DetailPanel from './components/DetailPanel.vue';
 	import GateBlockersBanner from './components/GateBlockersBanner.vue';
@@ -314,6 +322,7 @@
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
 	import SpawnApprovalCard from './components/SpawnApprovalCard.vue';
+	import StatusBar from './components/StatusBar.vue';
 	import SwitchAgentDialog from './components/SwitchAgentDialog.vue';
 	import ConfirmKindDialog from './components/trust/ConfirmKindDialog.vue';
 	import DevicesPanel from './components/trust/DevicesPanel.vue';
@@ -321,6 +330,11 @@
 	import PairDeviceDialog from './components/trust/PairDeviceDialog.vue';
 	import ResetIdentityDialog from './components/trust/ResetIdentityDialog.vue';
 	import RevokeConfirmDialog from './components/trust/RevokeConfirmDialog.vue';
+	import {
+		composerPlaceholder,
+		headerSubtitle,
+		slashHint,
+	} from './components/viewHelpers';
 	import { useFollowersStore } from './followersStore';
 	import { renderBody } from './format';
 	import { sharedWithPhone } from './machineTree';
@@ -370,6 +384,7 @@
 			RevokeConfirmDialog,
 			SearchPanel,
 			SlashMenu,
+			StatusBar,
 			SwitchAgentDialog,
 		},
 		setup() {
@@ -426,6 +441,25 @@
 				return this.store.rooms.find(
 					(r) => roomKey(r.room) === this.store.activeKey,
 				);
+			},
+			subtitle(): string {
+				return this.activeInfo
+					? headerSubtitle(this.activeInfo, this.store.rooms)
+					: '';
+			},
+			placeholder(): string {
+				return composerPlaceholder(this.activeInfo, (k, p) =>
+					this.$t(k, p ?? {}),
+				);
+			},
+			hint() {
+				return (
+					slashHint(this.store.slash.picked, this.store.draft.text) ?? undefined
+				);
+			},
+			live(): boolean {
+				const key = this.store.activeKey;
+				return !!key && this.store.activityByRoom[key]?.state === 'working';
 			},
 			messages() {
 				return this.store.activeKey

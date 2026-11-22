@@ -144,11 +144,17 @@
 	},
 	"composer": {
 		"placeholder": "Message the Manager, or type / for commands",
+		"placeholderSession": "Instruct {agent} (it will act), or type / for its commands",
 		"send": "Send",
 		"attach": "Attach a file",
 		"removeAttachment": "Remove {name}",
 		"replyingTo": "Replying to {who}",
 		"cancelReply": "Cancel reply"
+	},
+	"statusbar": {
+		"scope": "Personal",
+		"live": "Live",
+		"dnd": "Do not disturb"
 	},
 	"slash": {
 		"label": "Commands",

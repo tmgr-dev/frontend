@@ -207,6 +207,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			query: '',
 			items: [] as SlashCommand[],
 			index: 0,
+			picked: null as SlashCommand | null,
 		},
 		search: {
 			open: false,
@@ -559,6 +560,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (!command) return;
 			store.draft.text = `/${slashName(command)} `;
 			store.closeSlash();
+			store.slash.picked = command;
 		},
 
 		openSearch(scopeKey?: string) {

@@ -247,6 +247,35 @@ describe('manager components', () => {
 		expect(manager).not.toContain('mdlp');
 	});
 
+	it('StatusBar shows scope, chat and Live only when live', async () => {
+		const on = await render('StatusBar', {
+			scope: 'Personal',
+			chat: 'Manager',
+			live: true,
+		});
+		expect(on).toContain('Personal');
+		expect(on).toContain('Manager');
+		expect(on).toContain('Live');
+		const off = await render('StatusBar', { scope: 'Personal', chat: 'M' });
+		expect(off).not.toContain('Live');
+		expect(off).not.toContain('Do not disturb');
+	});
+
+	it('Composer shows the slash argument hint bar only with a hint', async () => {
+		const cmd: SlashCommand = {
+			name: 'model',
+			description: 'Switch model',
+			args: '<name>',
+			group: 'g',
+			dangerous: false,
+		};
+		const on = await render('Composer', { modelValue: '/model ', hint: cmd });
+		expect(on).toContain('hintbar');
+		expect(on).toContain('&lt;name&gt;');
+		const off = await render('Composer', { modelValue: '' });
+		expect(off).not.toContain('hintbar');
+	});
+
 	it('ChatHeader shows the Unrestricted badge only for unrestricted rooms', async () => {
 		const on = await render('ChatHeader', {
 			info: { ...rooms[0], unrestricted: true },

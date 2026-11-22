@@ -1,4 +1,4 @@
-import type { Author, ChatMessage, RoomInfo } from '../types';
+import type { Author, ChatMessage, RoomInfo, SlashCommand } from '../types';
 
 const AGENT_COLORS: Record<string, string> = {
 	claude: '#c77b2d',
@@ -200,4 +200,39 @@ export const authorLabel = (
 	if (author.kind === 'manager') return t('manager.messages.manager');
 	if (author.kind === 'session') return author.agent ?? author.id;
 	return t('manager.messages.system');
+};
+
+const plural = (n: number, one: string): string =>
+	`${n} ${one}${n === 1 ? '' : 's'}`;
+
+export const headerSubtitle = (info: RoomInfo, rooms: RoomInfo[]): string => {
+	if (info.room.kind === 'session') return info.task ?? '';
+	const sessions = rooms.filter((r) => r.room.kind === 'session');
+	if (sessions.length === 0) return '';
+	const machines = new Set(rooms.map((r) => r.room.machine));
+	const parts = [plural(sessions.length, 'session')];
+	if (machines.size > 1) parts.push(plural(machines.size, 'machine'));
+	return parts.join(' \u00b7 ');
+};
+
+export const agentShortName = (agent?: string): string =>
+	agent ? agent.replace(/-code$/, '') : '';
+
+export const composerPlaceholder = (
+	info: RoomInfo | undefined,
+	t: (key: string, params?: Record<string, string>) => string,
+): string =>
+	info?.room.kind === 'session' && info.agent
+		? t('manager.composer.placeholderSession', {
+				agent: agentShortName(info.agent),
+			})
+		: t('manager.composer.placeholder');
+
+export const slashHint = (
+	picked: SlashCommand | null,
+	text: string,
+): SlashCommand | null => {
+	if (!picked?.args) return null;
+	const name = `/${picked.name.replace(/^\//, '')}`;
+	return text === `${name} ` || text.startsWith(`${name} `) ? picked : null;
 };
