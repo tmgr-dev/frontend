@@ -64,6 +64,8 @@ const localRequire = (id: string): unknown => {
 	if (id.endsWith('.vue'))
 		return load(id.replace(/^.*\//, '').replace('.vue', ''));
 	if (id === './viewHelpers') return require('../components/viewHelpers');
+	if (id === './trust/trustHelpers')
+		return require('../components/trust/trustHelpers');
 	if (id === '../types') return require('../types');
 	return require(id);
 };
@@ -151,6 +153,25 @@ describe('manager components', () => {
 		});
 		(el.querySelectorAll('button.crow')[1] as HTMLElement).click();
 		expect(onSelect).toHaveBeenCalledWith(roomKey(sessRoom));
+		unmount();
+	});
+
+	it('SwitchAgentDialog chip shows the model label and emits the alias', () => {
+		const onUpdate = jest.fn();
+		const { el, unmount } = mountDom('SwitchAgentDialog', {
+			agent: 'claude',
+			model: 'opus',
+			models: ['opus', 'sonnet', 'haiku', 'fable'],
+			current: 'claude',
+			currentModel: 'opus',
+			'onUpdate:model': onUpdate,
+		});
+		const chip = Array.from(
+			el.querySelectorAll<HTMLButtonElement>('button.mchip'),
+		).find((b) => b.textContent?.trim() === 'Sonnet 5.5');
+		expect(chip).toBeDefined();
+		chip!.click();
+		expect(onUpdate).toHaveBeenCalledWith('sonnet');
 		unmount();
 	});
 

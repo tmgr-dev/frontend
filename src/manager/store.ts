@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue';
 import * as realApi from './api';
+import { CLAUDE_MODEL_LABELS } from './models';
 import {
 	MAX_ATTACHMENTS,
 	MAX_BODY_BYTES,
@@ -29,7 +30,7 @@ export interface ManagerApi {
 export type PanelTab = 'session' | 'hierarchy' | 'audit' | 'encryption';
 
 export const AGENT_MODELS: Record<SpawnAgent, string[]> = {
-	claude: ['opus', 'sonnet', 'haiku'],
+	claude: Object.keys(CLAUDE_MODEL_LABELS),
 	codex: ['gpt-5', 'gpt-5-mini'],
 	opencode: ['default'],
 	agy: ['default'],

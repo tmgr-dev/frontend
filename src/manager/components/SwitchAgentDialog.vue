@@ -40,7 +40,7 @@
 					:aria-pressed="model === m"
 					@click="$emit('update:model', m)"
 				>
-					{{ m }}
+					{{ modelLabel(agent, m) }}
 				</button>
 			</div>
 			<p v-if="cliOnly(agent)" class="hint">
@@ -82,6 +82,7 @@
 	import { SPAWN_AGENTS } from '../types';
 	import Avatar from './Avatar.vue';
 	import { dialogKeydown, focusInitial } from './trust/trustHelpers';
+	import { modelLabel } from '../models';
 
 	export default defineComponent({
 		name: 'ManagerSwitchAgentDialog',
@@ -102,6 +103,7 @@
 		},
 		methods: {
 			cliOnly: (a: string) => a === 'opencode' || a === 'agy',
+			modelLabel,
 			onKey(e: KeyboardEvent) {
 				dialogKeydown(this.$refs.dialog as HTMLElement, e, () =>
 					this.$emit('cancel'),

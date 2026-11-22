@@ -262,4 +262,17 @@ describe('manager dialogs', () => {
 		expect(html).toContain('Switch to agy · default');
 		expect(html).toContain('Use the tmgr CLI.');
 	});
+
+	it('SwitchAgentDialog shows claude model labels and keeps the alias in the submit text', async () => {
+		const html = await render('SwitchAgentDialog', {
+			agent: 'claude',
+			model: 'fable',
+			models: ['opus', 'sonnet', 'haiku', 'fable'],
+			current: 'claude',
+			currentModel: 'opus',
+		});
+		for (const label of ['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.2'])
+			expect(html).toContain(label);
+		expect(html).toContain('Switch to claude · fable');
+	});
 });
