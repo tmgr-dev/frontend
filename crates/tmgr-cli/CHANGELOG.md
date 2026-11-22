@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.158
+
+- Fixed: messages the Manager and the chat sent into a session were not always submitted: the text and the Enter key arrived in one burst, and Codex took the Enter for part of a paste and added a new line instead of sending. The runner now writes the text first and presses Enter separately a moment later.
+- Restart the runner after updating (`tmgr runner restart`); running sessions do not need to be restarted.
+
 ## 1.0.157
 
 - Fixed: replies of the manager that it wrote in its terminal instead of calling `post_message` did not show in the Manager chat; they appeared only in a separate "manager" session room. They now appear in the Manager chat, and the manager's own session no longer has a second room in the list. Terminal replies are not shared with other machines through the `room` operation of the manager RPC.
