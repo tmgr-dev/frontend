@@ -1726,7 +1726,7 @@ impl Session {
             let i = lock(&self.inner);
             (i.meta.cols, i.meta.rows)
         };
-        let alt = if cols > 1 { cols - 1 } else { cols + 1 };
+        let alt = if cols > 2 { cols - 1 } else { cols + 1 };
         self.shim_msg(&ToShim::Resize { cols: alt, rows });
         thread::sleep(Duration::from_millis(50));
         self.shim_msg(&ToShim::Resize { cols, rows });
@@ -5092,7 +5092,8 @@ impl Runner {
         Ok(session.info())
     }
 
-    fn new_session(&self, meta: Meta, matcher: Option<Matcher>, sdir: &Path) -> Arc<Session> {
+    fn new_session(&self, mut meta: Meta, matcher: Option<Matcher>, sdir: &Path) -> Arc<Session> {
+        (meta.cols, meta.rows) = clamp_size(meta.cols, meta.rows);
         let screen = ScreenModel::new(meta.rows, meta.cols, SCROLLBACK);
         let home = if meta.no_sandbox {
             std::env::var_os("HOME")

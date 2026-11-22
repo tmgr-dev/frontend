@@ -577,7 +577,7 @@ fn rejects_unauthorized_and_invalid_requests() {
     w.writer.resize(&info.id, 0, 0).unwrap();
     thread::sleep(Duration::from_millis(300));
     let now = c.list().unwrap().remove(0);
-    assert_eq!((now.cols, now.rows), (1, 1));
+    assert_eq!((now.cols, now.rows), (80, 24));
     assert_eq!(c.status().unwrap().sessions, 1);
 
     for _ in 1..16 {
