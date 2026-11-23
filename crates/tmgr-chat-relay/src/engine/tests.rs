@@ -314,8 +314,22 @@ impl Transport for Fake {
 }
 
 fn rand_n() -> u64 {
-    static N: AtomicU64 = AtomicU64::new(1);
+    static N: AtomicU64 = AtomicU64::new(1 << 32);
     N.fetch_add(1, Ordering::SeqCst)
+}
+
+#[test]
+fn fake_device_ids_never_collide_with_hand_written_ids() {
+    let fixed = [
+        "0000000000aa",
+        "0000000000dd",
+        "0000000000ee",
+        "0000000000ff",
+    ];
+    for _ in 0..300 {
+        let id = format!("{:012x}", rand_n());
+        assert!(!fixed.contains(&id.as_str()), "fake handed out {id}");
+    }
 }
 
 struct Clock(Arc<AtomicU64>);
