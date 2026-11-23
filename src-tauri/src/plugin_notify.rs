@@ -11,6 +11,7 @@ pub enum Target {
   Decision(String),
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Reply {
   Click,
@@ -18,12 +19,14 @@ pub enum Reply {
   Other,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
   Plugin(String),
   Decision(String),
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub fn outcome(target: Target, reply: Reply) -> Option<Outcome> {
   match (target, reply) {
     (Target::Plugin(token), Reply::Click) => Some(Outcome::Plugin(token)),
