@@ -3431,3 +3431,35 @@ fn the_same_message_id_cannot_be_sent_twice_at_once() {
   assert_eq!(results.1.unwrap_err(), "this message is already being sent");
   assert_eq!(b.poll_once().unwrap().len(), 1);
 }
+
+#[test]
+fn a_dropped_chat_for_a_room_of_this_machine_names_the_kind_sender_and_room_machine() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let mut msg = msg_n(4, "owner");
+  msg.room.machine = "mx_local".into();
+  post_chat(&b, &my_id(&a), &msg);
+  a.poll_once().unwrap();
+  let lines = a.drop_lines();
+  assert_eq!(lines.len(), 1);
+  let sender: String = my_id(&b).chars().take(8).collect();
+  assert!(lines[0].contains("room not owned by this machine"), "{}", lines[0]);
+  assert!(lines[0].contains("kind=chat"), "{}", lines[0]);
+  assert!(lines[0].contains(&format!("sender={sender}")), "{}", lines[0]);
+  assert!(lines[0].contains("room_machine=mx_local"), "{}", lines[0]);
+  assert!(!lines[0].contains(&msg.body_md));
+}
+
+#[test]
+fn a_receipt_is_handed_out_before_the_page_is_stored_and_acked() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let sent = send(&a, "hello").unwrap();
+  post_receipt(&r, &my_id(&a), "r_1", receipt_of(&sent.id, "delivered"));
+  let aid = my_id(&a);
+  let seen = Mutex::new(vec![]);
+  let sink = |r: Receipt| seen.lock().unwrap().push((r.id, fake.queue_len(&aid)));
+  a.poll_with_receipts(&sink).unwrap();
+  assert_eq!(*seen.lock().unwrap(), [(sent.id, 1)]);
+  assert!(a.take_receipts().is_empty());
+}

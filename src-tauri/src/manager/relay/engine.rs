@@ -206,7 +206,7 @@ struct Hold {
   stuck: Option<u64>,
   blocked: BTreeSet<String>,
   held: usize,
-  drops: Vec<(u64, &'static str)>,
+  drops: Vec<(u64, &'static str, String)>,
 }
 
 enum Inbound {
@@ -243,6 +243,7 @@ struct Core {
   pass_cap: Option<usize>,
   auto_join_error: Option<String>,
   drop_reason: Option<&'static str>,
+  drop_detail: Option<String>,
   receipts: Vec<Receipt>,
 }
 
@@ -262,6 +263,14 @@ struct Snapshot {
   state: Option<String>,
   trust: String,
   at: u64,
+}
+
+fn drop_line(reason: &str, detail: &str) -> String {
+  format!("[manager] relay dropped a message ({reason}) {detail}").trim_end().to_owned()
+}
+
+fn short_id(id: &str) -> String {
+  id.chars().take(8).collect()
 }
 
 fn trust_key(st: &State) -> String {
@@ -602,6 +611,8 @@ pub struct RelayEngine<T: Transport, K: KeyStore> {
   send_budget: Duration,
   #[cfg(test)]
   drops: Mutex<Vec<&'static str>>,
+  #[cfg(test)]
+  drop_lines: Mutex<Vec<String>>,
 }
 
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
@@ -637,6 +648,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       send_budget: SEND_BUDGET,
       #[cfg(test)]
       drops: Mutex::default(),
+      #[cfg(test)]
+      drop_lines: Mutex::default(),
     })
   }
 
@@ -670,10 +683,19 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     (self.now)()
   }
 
-  fn report_drop(&self, reason: &'static str) {
-    log::warn!("[manager] relay dropped a message ({reason})");
+  fn report_drop(&self, reason: &'static str, detail: &str) {
+    let line = drop_line(reason, detail);
+    log::warn!("{line}");
     #[cfg(test)]
-    self.drops.lock().unwrap_or_else(|p| p.into_inner()).push(reason);
+    {
+      self.drops.lock().unwrap_or_else(|p| p.into_inner()).push(reason);
+      self.drop_lines.lock().unwrap_or_else(|p| p.into_inner()).push(line);
+    }
+  }
+
+  #[cfg(test)]
+  fn drop_lines(&self) -> Vec<String> {
+    self.drop_lines.lock().unwrap_or_else(|p| p.into_inner()).clone()
   }
 
   #[cfg(test)]
@@ -1223,6 +1245,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         }
         if !self.owns(&msg.room) {
           c.drop_reason = Some("room not owned by this machine");
+          c.drop_detail = Some(format!("room_machine={}", msg.room.machine));
           return None;
         }
         if !Self::authorized_author(c, &opened.from, &msg, now) {
@@ -1334,11 +1357,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       match self.open_one(c, m, now) {
         Ok(i) => {
           if matches!(i, Inbound::Consumed { .. }) {
-            hold.drops.push((cursor, "outside the time window"));
+            hold.drops.push((cursor, "outside the time window", format!("sender={}", short_id(&m.from))));
           }
           opened.push((cursor, i));
         }
-        Err(Some(reason)) => hold.drops.push((cursor, reason)),
+        Err(Some(reason)) => hold.drops.push((cursor, reason, format!("sender={}", short_id(&m.from)))),
         Err(None) => {}
       }
     }
@@ -1375,9 +1398,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         c.st.last_seen.insert(from, now);
       }
       c.drop_reason = None;
+      c.drop_detail = None;
+      let who = format!("kind={} sender={}", o.kind, short_id(&o.from));
       out.extend(self.apply(c, o, now));
       if let Some(reason) = c.drop_reason.take() {
-        hold.drops.push((cursor, reason));
+        let detail = c.drop_detail.take().map_or(who.clone(), |d| format!("{who} {d}"));
+        hold.drops.push((cursor, reason, detail));
       }
       if std::mem::take(&mut c.joined_now) {
         self.finish_join(c)?;
@@ -1714,6 +1740,16 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   }
 
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
+    self.poll_inner(None)
+  }
+
+  fn poll_with_receipts(&self, on_receipt: &dyn Fn(Receipt)) -> Result<Vec<ChatMessage>, String> {
+    self.poll_inner(Some(on_receipt))
+  }
+}
+
+impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
+  fn poll_inner(&self, on_receipt: Option<&dyn Fn(Receipt)>) -> Result<Vec<ChatMessage>, String> {
     let (token, dir_gen) = {
       let mut g = self.lock();
       self.ensure_registered(&mut g)?;
@@ -1745,6 +1781,15 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         break;
       };
       self.process_page(&mut g, &inbox.messages, now, &mut hold, &mut out)?;
+      if let Some(emit) = on_receipt.filter(|_| !g.receipts.is_empty()) {
+        let fresh = std::mem::take(&mut g.receipts);
+        drop(g);
+        fresh.into_iter().for_each(emit);
+        g = self.lock();
+        if !Self::is_identity(&g, &token) {
+          return Ok(out);
+        }
+      }
       after = last;
       g.st.cursor = g.st.cursor.max(hold.stuck.map_or(last, |s| s.saturating_sub(1)));
       self.release_drops(&mut hold, g.st.cursor);
@@ -1911,10 +1956,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn release_drops(&self, hold: &mut Hold, passed: u64) {
-    hold.drops.retain(|&(cursor, reason)| {
-      let past = cursor <= passed;
+    hold.drops.retain(|(cursor, reason, detail)| {
+      let past = *cursor <= passed;
       if past {
-        self.report_drop(reason);
+        self.report_drop(reason, detail);
       }
       !past
     });

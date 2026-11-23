@@ -102,6 +102,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     let handle = app.clone();
     let trust_handle = app.clone();
     let receipt_handle = app.clone();
+    let visible_handle = app.clone();
     relay::switch::spawn_poll(
       &switch,
       move |message| {
@@ -111,9 +112,14 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
         let _ = tauri::Emitter::emit_to(&receipt_handle, LABEL, "manager://receipt", receipt);
       },
       move || trust_changed(&trust_handle),
+      move || manager_window_visible(&visible_handle),
     );
   }
   app.manage(ManagerState { backend, relay, switch });
+}
+
+fn manager_window_visible<R: Runtime>(app: &AppHandle<R>) -> bool {
+  app.get_webview_window(LABEL).is_some_and(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
 }
 
 fn switch_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<relay::switch::SwitchRelay>, String> {

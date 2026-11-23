@@ -139,6 +139,9 @@ pub trait RelayPort: Send + Sync {
     vec![]
   }
   fn flush(&self) {}
+  fn poll_with_receipts(&self, _on_receipt: &dyn Fn(Receipt)) -> Result<Vec<ChatMessage>, String> {
+    self.poll_once()
+  }
 }
 
 pub struct NoRelay;
