@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tmgr_chat_relay::api::Request;
@@ -14,9 +14,10 @@ use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind, RoomInfo, R
 
 use crate::mgr_rpc::relay::{RpcInbox, RpcSend};
 
+use super::activity::{run_activity, Clock, Leases};
 use super::rooms_sync::{host_label, OwnerSink, RoomsSync, Snapshot};
 use super::store::RelayDir;
-use crate::chat::{Incoming, IngestError, Ingested};
+use crate::chat::{ActivityRx, Incoming, IngestError, Ingested};
 
 const LABEL: &str = "Runner";
 const CADENCE: Duration = Duration::from_secs(5);
@@ -137,15 +138,15 @@ fn error_class(e: &str) -> &'static str {
 }
 
 #[derive(Default)]
-struct FailureLog(Option<&'static str>);
+pub(super) struct FailureLog(Option<&'static str>);
 
 impl FailureLog {
-    fn note(&mut self, e: &str) -> Option<&'static str> {
+    pub(super) fn note(&mut self, e: &str) -> Option<&'static str> {
         let class = error_class(e);
         (self.0.replace(class) != Some(class)).then_some(class)
     }
 
-    fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.0 = None;
     }
 }
@@ -247,6 +248,7 @@ pub struct Setup {
     pub ingest:
         Arc<dyn Fn(Incoming, Option<RoomRef>) -> Result<Ingested, IngestError> + Send + Sync>,
     pub subscribe: Arc<dyn Fn() -> Receiver<ChatPush> + Send + Sync>,
+    pub subscribe_activity: Arc<dyn Fn() -> ActivityRx + Send + Sync>,
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
     pub rpc: Arc<RpcInbox>,
     pub spawnkey: Arc<dyn SpawnKeySink>,
@@ -260,7 +262,7 @@ pub struct Setup {
 
 type Engine = RelayEngine<DynTransport, RelayDir, RelaySink>;
 
-fn build(setup: &Setup) -> Result<Option<Engine>, String> {
+fn build(setup: &Setup, leases: &Arc<Leases>) -> Result<Option<Engine>, String> {
     let dir = RelayDir::open(&setup.dir)?;
     let Some(cfg) = dir.load_config()? else {
         return Ok(None);
@@ -281,7 +283,8 @@ fn build(setup: &Setup) -> Result<Option<Engine>, String> {
             .with_kind("runner")
             .with_room_scope(RoomScope::Local)
             .with_rpc_sink(setup.rpc.clone())
-            .with_spawnkey_sink(setup.spawnkey.clone());
+            .with_spawnkey_sink(setup.spawnkey.clone())
+            .with_activity_sub_sink(leases.clone());
         Some(match &setup.spawnok {
             Some(sink) => e.with_spawnok_sink(sink.clone()),
             None => e,
@@ -304,9 +307,12 @@ fn run(setup: Setup) {
     let stop = setup.stop.clone();
     let sleep = sleeper(stop.clone());
     let mut warned = false;
+    let started = Instant::now();
+    let clock: Clock = Arc::new(move || started.elapsed().as_millis() as u64);
+    let leases = Arc::new(Leases::new(clock.clone()));
     while !stop() {
-        match build(&setup) {
-            Ok(Some(engine)) => return serve(Arc::new(engine), &setup),
+        match build(&setup, &leases) {
+            Ok(Some(engine)) => return serve(Arc::new(engine), &setup, &leases, clock),
             Ok(None) => sleep(WAIT_SETUP),
             Err(e) => {
                 if !warned {
@@ -319,7 +325,7 @@ fn run(setup: Setup) {
     }
 }
 
-fn serve(engine: Arc<Engine>, setup: &Setup) {
+fn serve(engine: Arc<Engine>, setup: &Setup, leases: &Arc<Leases>, clock: Clock) {
     let (tx, rx) = mpsc::sync_channel(OUT_QUEUE);
     let (stop, subscribe) = (setup.stop.clone(), setup.subscribe.clone());
     let forwarder = thread::Builder::new()
@@ -352,6 +358,16 @@ fn serve(engine: Arc<Engine>, setup: &Setup) {
                 run_rooms_sync(&*engine, &dir, &machine, &*rooms, &*history, &*stop, &sleep)
             }
         });
+    let activity = thread::Builder::new()
+        .name("chat-relay-activity".into())
+        .spawn({
+            let (engine, stop, leases) = (engine.clone(), stop.clone(), leases.clone());
+            let (machine, rx) = (setup.machine.clone(), (setup.subscribe_activity)());
+            move || {
+                let sleep = sleeper(stop.clone());
+                run_activity(&machine, &rx, &leases, &*clock, &*engine, &*stop, &sleep)
+            }
+        });
     (setup.on_device)(engine.own_device());
     let weak = Arc::downgrade(&engine);
     (setup.on_owners)(Arc::new(move || {
@@ -362,9 +378,15 @@ fn serve(engine: Arc<Engine>, setup: &Setup) {
     let rpc_server = (setup.serve_rpc)(rpc_send);
     crate::daemon::log("chat relay: pump started");
     run_poll(&*engine, &*stop, &sleeper(stop.clone()));
-    for h in [forwarder.ok(), sender.ok(), rooms_sync.ok(), rpc_server]
-        .into_iter()
-        .flatten()
+    for h in [
+        forwarder.ok(),
+        sender.ok(),
+        rooms_sync.ok(),
+        activity.ok(),
+        rpc_server,
+    ]
+    .into_iter()
+    .flatten()
     {
         let _ = h.join();
     }

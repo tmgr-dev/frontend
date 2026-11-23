@@ -23,7 +23,7 @@ mod place;
 mod prompts;
 mod push;
 mod qmenu;
-mod redact;
+pub(crate) mod redact;
 mod render;
 mod signal;
 pub(crate) mod status;

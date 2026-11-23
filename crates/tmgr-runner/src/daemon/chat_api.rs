@@ -103,6 +103,7 @@ impl Runner {
             return;
         };
         let (ingest_rt, sub_rt, stop_rt) = (self.clone(), self.clone(), self.clone());
+        let act_rt = self.clone();
         let rpc = Arc::new(RpcInbox::new());
         let (serve_rt, serve_inbox, device_rt) = (self.clone(), rpc.clone(), self.clone());
         let (rooms_rt, history_rt, owners_rt) = (self.clone(), self.clone(), self.clone());
@@ -129,6 +130,7 @@ impl Runner {
                 },
             ),
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
+            subscribe_activity: Arc::new(move || act_rt.chat.subscribe_activity()),
             stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
             rpc,
             spawnkey: self.start_spawnkey_intake(),
