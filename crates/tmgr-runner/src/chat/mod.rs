@@ -1858,6 +1858,30 @@ mod tests {
     }
 
     #[test]
+    fn a_queued_message_typed_before_a_crash_is_not_typed_again_on_redelivery() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        six_with_the_first_delivered(&c, &room);
+        assert_eq!(drain_all(&c, NOW + 1), ["m2", "m3", "m4", "m5", "m6"]);
+        drop(c);
+        let c = Chat::open(t.path());
+        for n in 1..=6 {
+            let r = c
+                .ingest(
+                    incoming(room.clone(), n, NOW, &format!("m{n}")),
+                    NOW + 2,
+                    no_session,
+                    |_| -> Delivery { panic!("redelivery must not type") },
+                )
+                .unwrap();
+            assert!(r.duplicate && !r.delivered);
+        }
+        assert!(c.queued_ids(&room).is_empty());
+        assert!(drain_all(&c, NOW + 3).is_empty());
+    }
+
+    #[test]
     fn a_message_stored_but_never_queued_before_a_crash_is_queued_once_on_redelivery() {
         let t = tempfile::tempdir().unwrap();
         let c = Chat::open(t.path());
