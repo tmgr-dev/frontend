@@ -74,6 +74,9 @@ impl ManagerBackend for CompositeBackend {
     }
     let mut rooms = local.unwrap_or_default();
     let own = self.local.machine().ok();
+    if let Some(own) = &own {
+      rooms.iter_mut().filter(|r| &r.room.machine != own).for_each(|r| r.local = false);
+    }
     let pinned = |r: &RoomInfo| r.room.kind == RoomKind::Manager && own.as_deref() == Some(r.room.machine.as_str());
     rooms.sort_by_key(|r| !pinned(r));
     rooms.extend(relay.unwrap_or_default().into_iter().map(|r| RoomInfo { local: false, mention: None, unrestricted: false, last: r.last.map(without_mention), ..r }));
@@ -366,6 +369,14 @@ mod tests {
   fn only_relay_rooms_are_marked_not_local() {
     let local = FakeLocal { rooms: vec![info(mine())], ..Default::default() };
     let (c, ..) = build(local, relay_with_far());
+    let flags: Vec<(RoomRef, bool)> = c.rooms().unwrap().into_iter().map(|r| (r.room, r.local)).collect();
+    assert_eq!(flags, vec![(mine(), true), (far_mgr(), false), (far_sess(), false)]);
+  }
+
+  #[test]
+  fn a_room_of_another_machine_in_the_local_list_is_not_marked_local() {
+    let local = FakeLocal { rooms: vec![info(mine()), info(far_mgr()), info(far_sess())], ..Default::default() };
+    let (c, ..) = build(local, FakeRelay::default());
     let flags: Vec<(RoomRef, bool)> = c.rooms().unwrap().into_iter().map(|r| (r.room, r.local)).collect();
     assert_eq!(flags, vec![(mine(), true), (far_mgr(), false), (far_sess(), false)]);
   }
