@@ -39,6 +39,8 @@ pub struct RoomsIndex {
     pub rooms: Vec<RoomEntry>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub activity: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub blob: bool,
 }
 
 impl RoomsIndex {
@@ -171,6 +173,17 @@ mod tests {
         let on = with(|v| v["activity"] = json!(true));
         let idx = RoomsIndex::parse(on.clone()).unwrap();
         assert!(idx.activity);
+        assert_eq!(serde_json::to_value(&idx).unwrap(), on);
+    }
+
+    #[test]
+    fn the_blob_flag_defaults_to_false_and_round_trips_when_set() {
+        let idx = RoomsIndex::parse(fixture()).unwrap();
+        assert!(!idx.blob);
+        assert!(fixture().get("blob").is_none());
+        let on = with(|v| v["blob"] = json!(true));
+        let idx = RoomsIndex::parse(on.clone()).unwrap();
+        assert!(idx.blob);
         assert_eq!(serde_json::to_value(&idx).unwrap(), on);
     }
 }

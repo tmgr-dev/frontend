@@ -94,6 +94,7 @@ pub fn build_index(s: &Snapshot) -> RoomsIndex {
         followers: s.top.then(|| s.followers.clone()),
         rooms,
         activity: true,
+        blob: true,
     }
 }
 
