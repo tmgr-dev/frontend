@@ -18,22 +18,22 @@ const context = (): AudioContext => {
 	return audio;
 };
 
-const stopBackend = async (): Promise<void> => {
+const stopBackend = async (through: number): Promise<void> => {
 	try {
-		await invoke('tts_stop');
+		await invoke('tts_stop', { run: through });
 	} catch {
 		return;
 	}
 };
 
 const halt = (): void => {
-	run++;
+	const through = run++;
 	const playing = sources;
 	sources = [];
 	playing.forEach((s) => s.stop());
 	if (active) {
 		active = false;
-		void stopBackend();
+		void stopBackend(through);
 	}
 };
 

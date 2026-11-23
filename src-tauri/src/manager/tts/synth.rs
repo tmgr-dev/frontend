@@ -46,23 +46,25 @@ impl Engine {
     self.lexicon.phonemize(text)
   }
 
-  pub fn synthesize(&self, text: &str, generation: &Arc<AtomicU64>) -> Result<Vec<f32>, String> {
-    let started = generation.load(Ordering::SeqCst);
+  pub fn synthesize(&self, text: &str, run: u64, stopped_through: &Arc<AtomicU64>) -> Result<Vec<f32>, String> {
+    let live = stopped_through.clone();
+    if live.load(Ordering::SeqCst) >= run {
+      return Ok(Vec::new());
+    }
     let phonemized = self.lexicon.phonemize(text);
     if phonemized.sentences.is_empty() {
       return Ok(Vec::new());
     }
     let config = GenerationConfig { phoneme_codepoints: Some(phonemized.sentences), ..Default::default() };
-    let live = generation.clone();
     let audio = self
       .tts
       .generate_with_config(
         "",
         &config,
-        Some(move |_: &[f32], _: f32| live.load(Ordering::SeqCst) == started),
+        Some(move |_: &[f32], _: f32| live.load(Ordering::SeqCst) < run),
       )
       .ok_or_else(|| "speech generation failed".to_owned())?;
-    if generation.load(Ordering::SeqCst) != started {
+    if stopped_through.load(Ordering::SeqCst) >= run {
       return Ok(Vec::new());
     }
     Ok(audio.samples().to_vec())
@@ -79,9 +81,9 @@ mod tests {
     let dir = std::env::var("TMGR_TTS_PACK_DIR").expect("TMGR_TTS_PACK_DIR");
     let engine = Engine::load(Path::new(&dir)).unwrap();
     assert_eq!(engine.tts.sample_rate(), 22050);
-    let generation = Arc::new(AtomicU64::new(0));
+    let stopped = Arc::new(AtomicU64::new(0));
     let started = std::time::Instant::now();
-    let samples = engine.synthesize("The build finished, and the release is ready. Please check the logs.", &generation).unwrap();
+    let samples = engine.synthesize("The build finished, and the release is ready. Please check the logs.", 1, &stopped).unwrap();
     let seconds = samples.len() as f32 / 22050.0;
     assert!(seconds > 3.0 && seconds < 12.0, "{seconds}");
     assert!(samples.iter().any(|s| s.abs() > 0.05));
@@ -93,15 +95,15 @@ mod tests {
   fn stopping_the_generation_returns_no_samples() {
     let dir = std::env::var("TMGR_TTS_PACK_DIR").expect("TMGR_TTS_PACK_DIR");
     let engine = Engine::load(Path::new(&dir)).unwrap();
-    let generation = Arc::new(AtomicU64::new(0));
-    let bump = generation.clone();
+    let stopped = Arc::new(AtomicU64::new(0));
+    let bump = stopped.clone();
     let long = "This is a fairly long sentence that takes a while to say. ".repeat(6);
     let handle = std::thread::spawn({
-      let generation = generation.clone();
-      move || engine.synthesize(&long, &generation)
+      let stopped = stopped.clone();
+      move || engine.synthesize(&long, 1, &stopped)
     });
     std::thread::sleep(std::time::Duration::from_millis(150));
-    bump.fetch_add(1, Ordering::SeqCst);
+    bump.fetch_max(1, Ordering::SeqCst);
     assert!(handle.join().unwrap().unwrap().is_empty());
   }
 }
