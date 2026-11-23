@@ -173,19 +173,12 @@ impl ChatSink for RelaySink {
         }
     }
 
-    fn deliver_blob(&self, _from_device: &str, part: BlobPart) -> Result<(), String> {
+    fn deliver_blob(&self, from_device: &str, part: BlobPart) -> Result<(), String> {
         let Some(blobs) = &self.blobs else {
             self.dropped("files are not supported here");
             return Ok(());
         };
-        match blobs.put_part(&part) {
-            Ok(_) => Ok(()),
-            Err(e) if e.is_retryable() => Err(e.to_string()),
-            Err(e) => {
-                crate::daemon::log(&format!("chat relay: file part refused: {e}"));
-                Ok(())
-            }
-        }
+        blobs.deliver_relay(from_device, &part)
     }
 
     fn dropped(&self, reason: &'static str) {
@@ -388,6 +381,7 @@ pub struct Setup {
     pub ingest:
         Arc<dyn Fn(Incoming, Option<RoomRef>) -> Result<Ingested, IngestError> + Send + Sync>,
     pub give_up: SharedGiveUpFn,
+    pub blobs: Option<Arc<BlobStore>>,
     pub subscribe: Arc<dyn Fn() -> Receiver<ChatPush> + Send + Sync>,
     pub subscribe_activity: Arc<dyn Fn() -> ActivityRx + Send + Sync>,
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
@@ -418,8 +412,8 @@ fn build(setup: &Setup, leases: &Arc<Leases>) -> Result<Option<Engine>, String> 
     let give_up = setup.give_up.clone();
     let mut sink = RelaySink::new(setup.machine.clone(), Box::new(move |i, t| ingest(i, t)))
         .with_give_up(Box::new(move |device, id| give_up(device, id)));
-    if let Ok(blobs) = BlobStore::open(&setup.dir) {
-        sink = sink.with_blobs(Arc::new(blobs));
+    if let Some(blobs) = &setup.blobs {
+        sink = sink.with_blobs(blobs.clone());
     }
     let engine_cfg = EngineConfig {
         user_id: cfg.user_id,

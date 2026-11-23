@@ -233,7 +233,7 @@ impl Chat {
             receipt_sink: Mutex::new(None),
             receipts_sent: Mutex::new(VecDeque::new()),
             blobs: blobs::BlobStore::open(runner_dir)
-                .map(|b| Arc::new(b.with_max_size(tmgr_chat_relay::engine::blob::MAX_LOCAL_BYTES)))
+                .map(Arc::new)
                 .map_err(|e| crate::daemon::log(&format!("chat: blob store unavailable: {e}")))
                 .ok(),
             attach_target: Mutex::new(None),

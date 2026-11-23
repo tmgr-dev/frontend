@@ -1,12 +1,15 @@
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use sha2::{Digest, Sha256};
-use tmgr_chat_relay::engine::blob::{valid_sha, BlobPart, MAX_RELAY_BYTES, PART_BYTES};
+use tmgr_chat_relay::engine::blob::{
+    valid_sha, BlobPart, MAX_LOCAL_BYTES, MAX_RELAY_BYTES, PART_BYTES,
+};
 use tmgr_ipc::dirs::ensure_private_dir;
 
 pub const PARTIAL_QUOTA: u64 = 64 << 20;
@@ -14,6 +17,26 @@ pub const COMPLETE_QUOTA: u64 = 1 << 30;
 pub const PARTIAL_TTL: Duration = Duration::from_secs(3600);
 const SWEEP_EVERY: Duration = Duration::from_secs(60);
 const META: &str = "meta";
+const RETRY_TRIES: u32 = 5;
+const RETRY_WINDOW: Duration = Duration::from_secs(600);
+const RETRY_KEYS: usize = 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Relay,
+    Local,
+}
+
+impl Source {
+    fn dir(self) -> &'static str {
+        match self {
+            Source::Relay => "relay",
+            Source::Local => "local",
+        }
+    }
+}
+
+type RetryKey = (String, String, u32);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlobError {
@@ -37,7 +60,25 @@ impl std::fmt::Display for BlobError {
 
 impl From<io::Error> for BlobError {
     fn from(e: io::Error) -> Self {
-        BlobError::Retryable(format!("blob store: {e}"))
+        use io::ErrorKind as K;
+        let transient = matches!(
+            e.kind(),
+            K::StorageFull
+                | K::QuotaExceeded
+                | K::Interrupted
+                | K::WouldBlock
+                | K::TimedOut
+                | K::Other
+        ) || matches!(
+            e.raw_os_error(),
+            Some(libc::ENOSPC | libc::EDQUOT | libc::EIO)
+        );
+        let msg = format!("blob store: {e}");
+        if transient {
+            BlobError::Retryable(msg)
+        } else {
+            BlobError::Rejected(msg)
+        }
     }
 }
 
@@ -53,10 +94,10 @@ pub enum PutOutcome {
 
 pub struct BlobStore {
     root: PathBuf,
-    max_size: u64,
     partial_quota: u64,
     complete_quota: u64,
     state: Mutex<Option<SystemTime>>,
+    retries: Mutex<HashMap<RetryKey, (u32, Instant)>>,
 }
 
 impl BlobStore {
@@ -64,28 +105,21 @@ impl BlobStore {
         let root = runner_dir.join("chat").join("blobs");
         ensure_private_dir(&root)?;
         ensure_private_dir(&root.join("partial"))?;
+        ensure_private_dir(&root.join("partial").join(Source::Relay.dir()))?;
+        ensure_private_dir(&root.join("partial").join(Source::Local.dir()))?;
         Ok(BlobStore {
             root,
-            max_size: MAX_RELAY_BYTES,
             partial_quota: PARTIAL_QUOTA,
             complete_quota: COMPLETE_QUOTA,
             state: Mutex::new(None),
+            retries: Mutex::new(HashMap::new()),
         })
-    }
-
-    pub fn with_max_size(mut self, max_size: u64) -> Self {
-        self.max_size = max_size;
-        self
     }
 
     pub fn with_quotas(mut self, partial: u64, complete: u64) -> Self {
         self.partial_quota = partial;
         self.complete_quota = complete;
         self
-    }
-
-    pub fn max_size(&self) -> u64 {
-        self.max_size
     }
 
     pub fn get(&self, sha: &str) -> Option<PathBuf> {
@@ -99,8 +133,61 @@ impl BlobStore {
             .map(|_| path)
     }
 
-    pub fn put_part(&self, part: &BlobPart) -> Result<PutOutcome, BlobError> {
-        part.check(self.max_size).map_err(rejected)?;
+    pub fn deliver_relay(&self, from_device: &str, part: &BlobPart) -> Result<(), String> {
+        self.deliver_with(from_device, part, Instant::now(), || {
+            self.put_part(part, Source::Relay, MAX_RELAY_BYTES)
+        })
+    }
+
+    fn deliver_with(
+        &self,
+        from_device: &str,
+        part: &BlobPart,
+        now: Instant,
+        put: impl FnOnce() -> Result<PutOutcome, BlobError>,
+    ) -> Result<(), String> {
+        let key = (from_device.to_owned(), part.sha256.clone(), part.part);
+        let mut retries = self.retries.lock().unwrap_or_else(|e| e.into_inner());
+        match put() {
+            Ok(_) => {
+                retries.remove(&key);
+                Ok(())
+            }
+            Err(e) if !e.is_retryable() => {
+                retries.remove(&key);
+                crate::daemon::log(&format!("chat relay: file part refused: {e}"));
+                Ok(())
+            }
+            Err(e) => {
+                retries.retain(|k, (_, first)| {
+                    *k == key || now.saturating_duration_since(*first) < RETRY_WINDOW
+                });
+                if retries.len() >= RETRY_KEYS {
+                    retries.clear();
+                }
+                let entry = retries.entry(key.clone()).or_insert((0, now));
+                entry.0 += 1;
+                if entry.0 >= RETRY_TRIES || now.saturating_duration_since(entry.1) >= RETRY_WINDOW
+                {
+                    retries.remove(&key);
+                    crate::daemon::log(&format!(
+                        "chat relay: file part dropped after retries: {e}"
+                    ));
+                    Ok(())
+                } else {
+                    Err(e.to_string())
+                }
+            }
+        }
+    }
+
+    pub fn put_part(
+        &self,
+        part: &BlobPart,
+        source: Source,
+        max_size: u64,
+    ) -> Result<PutOutcome, BlobError> {
+        part.check(max_size).map_err(rejected)?;
         let mut last = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let now = SystemTime::now();
         if last.is_none_or(|t| now.duration_since(t).is_ok_and(|d| d >= SWEEP_EVERY)) {
@@ -110,16 +197,14 @@ impl BlobStore {
         if let Some(path) = self.get(&part.sha256) {
             return Ok(PutOutcome::Complete(path));
         }
-        let dir = self.partial_dir(&part.sha256)?;
+        let dir = self.partial_dir(source, &part.sha256)?;
         self.check_meta(&dir, part)?;
         let path = dir.join(part.part.to_string());
         match read_existing(&path)? {
             Some(old) if old == part.data => {}
             Some(_) => return Err(rejected("a stored part differs from the new one")),
             None => {
-                if self.partial_bytes() + part.data.len() as u64 > self.partial_quota {
-                    return Err(rejected("too many incomplete files are waiting"));
-                }
+                self.make_room(source, &dir, part.data.len() as u64)?;
                 write_atomic(&dir, &part.part.to_string(), &part.data)?;
             }
         }
@@ -136,7 +221,7 @@ impl BlobStore {
     }
 
     pub fn put_bytes(&self, sha: &str, data: &[u8]) -> Result<PathBuf, BlobError> {
-        if !valid_sha(sha) || data.is_empty() || data.len() as u64 > self.max_size {
+        if !valid_sha(sha) || data.is_empty() || data.len() as u64 > MAX_LOCAL_BYTES {
             return Err(rejected("malformed file"));
         }
         if hex_sha(data) != sha {
@@ -149,10 +234,11 @@ impl BlobStore {
     }
 
     pub fn sweep(&self, now: SystemTime) {
-        let partial = self.root.join("partial");
-        for entry in read_dir(&partial) {
-            if older_than(&entry.path(), now, PARTIAL_TTL) {
-                remove_tree(&entry.path());
+        for source in [Source::Relay, Source::Local] {
+            for entry in read_dir(&self.root.join("partial").join(source.dir())) {
+                if older_than(&entry.path(), now, PARTIAL_TTL) {
+                    remove_tree(&entry.path());
+                }
             }
         }
         for entry in read_dir(&self.root) {
@@ -165,8 +251,8 @@ impl BlobStore {
         }
     }
 
-    fn partial_dir(&self, sha: &str) -> Result<PathBuf, BlobError> {
-        let base = self.root.join("partial");
+    fn partial_dir(&self, source: Source, sha: &str) -> Result<PathBuf, BlobError> {
+        let base = self.root.join("partial").join(source.dir());
         ensure_private_dir(&base)?;
         let dir = base.join(sha);
         if let Ok(m) = fs::symlink_metadata(&dir) {
@@ -236,16 +322,36 @@ impl BlobStore {
         }
     }
 
-    fn partial_bytes(&self) -> u64 {
-        read_dir(&self.root.join("partial"))
-            .map(|d| {
-                read_dir(&d.path())
-                    .filter_map(|f| fs::symlink_metadata(f.path()).ok())
-                    .filter(|m| m.file_type().is_file())
-                    .map(|m| m.len())
-                    .sum::<u64>()
-            })
-            .sum()
+    fn make_room(&self, source: Source, keep: &Path, incoming: u64) -> Result<(), BlobError> {
+        let base = self.root.join("partial").join(source.dir());
+        let mut used: u64 = 0;
+        let mut dirs: Vec<(SystemTime, u64, PathBuf)> = Vec::new();
+        for d in read_dir(&base) {
+            let size: u64 = read_dir(&d.path())
+                .filter_map(|f| fs::symlink_metadata(f.path()).ok())
+                .filter(|m| m.file_type().is_file())
+                .map(|m| m.len())
+                .sum();
+            used += size;
+            if d.path() != keep {
+                let at = fs::symlink_metadata(d.path())
+                    .and_then(|m| m.modified())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                dirs.push((at, size, d.path()));
+            }
+        }
+        dirs.sort();
+        for (_, size, path) in dirs {
+            if used + incoming <= self.partial_quota {
+                break;
+            }
+            remove_tree(&path);
+            used -= size;
+        }
+        if used + incoming > self.partial_quota {
+            return Err(rejected("the file is too big to wait for its other parts"));
+        }
+        Ok(())
     }
 }
 
@@ -356,6 +462,14 @@ mod tests {
             .collect()
     }
 
+    fn rput(s: &BlobStore, p: &BlobPart) -> Result<PutOutcome, BlobError> {
+        s.put_part(p, Source::Relay, MAX_RELAY_BYTES)
+    }
+
+    fn lput(s: &BlobStore, p: &BlobPart) -> Result<PutOutcome, BlobError> {
+        s.put_part(p, Source::Local, MAX_LOCAL_BYTES)
+    }
+
     fn mode(p: &Path) -> u32 {
         fs::metadata(p).unwrap().mode() & 0o777
     }
@@ -366,12 +480,12 @@ mod tests {
         let s = store(&t);
         let bytes = data(1000, 1);
         let p = &parts_of(&bytes)[0];
-        let PutOutcome::Complete(path) = s.put_part(p).unwrap() else {
+        let PutOutcome::Complete(path) = rput(&s, p).unwrap() else {
             panic!("not complete");
         };
         assert_eq!(fs::read(&path).unwrap(), bytes);
         assert_eq!(s.get(&p.sha256), Some(path));
-        assert!(!s.root.join("partial").join(&p.sha256).exists());
+        assert!(!s.root.join("partial/relay").join(&p.sha256).exists());
         assert_eq!(s.get(&"0".repeat(64)), None);
         assert_eq!(s.get("../etc"), None);
     }
@@ -384,24 +498,24 @@ mod tests {
         let parts = parts_of(&bytes);
         assert_eq!(parts.len(), 3);
         assert_eq!(
-            s.put_part(&parts[2]).unwrap(),
+            rput(&s, &parts[2]).unwrap(),
             PutOutcome::Partial { have: 1, parts: 3 }
         );
         assert_eq!(
-            s.put_part(&parts[2]).unwrap(),
+            rput(&s, &parts[2]).unwrap(),
             PutOutcome::Partial { have: 1, parts: 3 }
         );
         assert_eq!(
-            s.put_part(&parts[0]).unwrap(),
+            rput(&s, &parts[0]).unwrap(),
             PutOutcome::Partial { have: 2, parts: 3 }
         );
-        let PutOutcome::Complete(path) = s.put_part(&parts[1]).unwrap() else {
+        let PutOutcome::Complete(path) = rput(&s, &parts[1]).unwrap() else {
             panic!("not complete");
         };
         assert_eq!(fs::read(&path).unwrap(), bytes);
-        assert!(!s.root.join("partial").join(&parts[0].sha256).exists());
+        assert!(!s.root.join("partial/relay").join(&parts[0].sha256).exists());
         assert!(matches!(
-            s.put_part(&parts[1]).unwrap(),
+            rput(&s, &parts[1]).unwrap(),
             PutOutcome::Complete(_)
         ));
     }
@@ -412,14 +526,14 @@ mod tests {
         let s = store(&t);
         let bytes = data(PART_BYTES + 5, 3);
         let mut parts = parts_of(&bytes);
-        s.put_part(&parts[0]).unwrap();
+        rput(&s, &parts[0]).unwrap();
         parts[0].data[0] ^= 1;
-        let e = s.put_part(&parts[0]).unwrap_err();
+        let e = rput(&s, &parts[0]).unwrap_err();
         assert!(!e.is_retryable());
         let mut other = parts_of(&bytes)[1].clone();
         other.size += 1;
         other.data.push(0);
-        assert!(!s.put_part(&other).unwrap_err().is_retryable());
+        assert!(!rput(&s, &other).unwrap_err().is_retryable());
     }
 
     #[test]
@@ -430,10 +544,10 @@ mod tests {
         let mut parts = parts_of(&bytes);
         let sha = parts[0].sha256.clone();
         parts[1].data[0] ^= 1;
-        s.put_part(&parts[0]).unwrap();
-        let e = s.put_part(&parts[1]).unwrap_err();
+        rput(&s, &parts[0]).unwrap();
+        let e = rput(&s, &parts[1]).unwrap_err();
         assert!(!e.is_retryable());
-        assert!(!s.root.join("partial").join(&sha).exists());
+        assert!(!s.root.join("partial/relay").join(&sha).exists());
         assert_eq!(s.get(&sha), None);
     }
 
@@ -443,7 +557,7 @@ mod tests {
         let s = store(&t);
         let mut p = parts_of(&data(10, 5))[0].clone();
         p.sha256 = "../x".into();
-        assert!(!s.put_part(&p).unwrap_err().is_retryable());
+        assert!(!rput(&s, &p).unwrap_err().is_retryable());
         let big = BlobPart {
             sha256: "ab".repeat(32),
             size: MAX_RELAY_BYTES + 1,
@@ -451,36 +565,139 @@ mod tests {
             parts: 9,
             data: vec![0; PART_BYTES],
         };
-        assert!(s.put_part(&big).is_err());
-        assert!(!s.root.join("partial").join("ab".repeat(32)).exists());
+        assert!(rput(&s, &big).is_err());
+        assert!(!s.root.join("partial/relay").join("ab".repeat(32)).exists());
     }
 
     #[test]
-    fn the_size_limit_is_a_parameter() {
+    fn the_size_limit_is_a_parameter_of_each_put() {
         let t = tempfile::tempdir().unwrap();
-        let s = store(&t).with_max_size(25 << 20);
+        let s = store(&t);
         let bytes = data(PART_BYTES * 9 + 17, 6);
         let mut last = None;
         for p in parts_of(&bytes) {
-            last = Some(s.put_part(&p).unwrap());
+            last = Some(lput(&s, &p).unwrap());
         }
         assert!(matches!(last, Some(PutOutcome::Complete(_))));
         let t2 = tempfile::tempdir().unwrap();
         let strict = store(&t2);
-        assert!(strict.put_part(&parts_of(&bytes)[0]).is_err());
+        assert!(rput(&strict, &parts_of(&bytes)[0]).is_err());
     }
 
     #[test]
-    fn new_partials_beyond_the_quota_are_refused() {
+    fn a_full_partial_quota_evicts_the_oldest_partial_of_that_source() {
         let t = tempfile::tempdir().unwrap();
         let s = store(&t).with_quotas(1_000_000, COMPLETE_QUOTA);
         let a = parts_of(&data(PART_BYTES + 5, 7));
         let b = parts_of(&data(PART_BYTES + 5, 8));
-        s.put_part(&a[0]).unwrap();
-        let e = s.put_part(&b[0]).unwrap_err();
-        assert!(!e.is_retryable());
-        assert!(matches!(s.put_part(&a[1]), Ok(PutOutcome::Complete(_))));
-        assert!(s.put_part(&b[0]).is_ok());
+        rput(&s, &a[0]).unwrap();
+        rput(&s, &b[0]).unwrap();
+        assert!(!s.root.join("partial/relay").join(&a[0].sha256).exists());
+        assert!(s.root.join("partial/relay").join(&b[0].sha256).exists());
+        assert!(matches!(
+            rput(&s, &a[1]),
+            Ok(PutOutcome::Partial { have: 1, parts: 2 })
+        ));
+    }
+
+    #[test]
+    fn relay_and_local_partials_have_separate_quotas_and_never_clash() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(&t).with_quotas(1_000_000, COMPLETE_QUOTA);
+        let relay = parts_of(&data(PART_BYTES + 5, 9));
+        let local = parts_of(&data(PART_BYTES + 5, 10));
+        let more = parts_of(&data(PART_BYTES + 5, 11));
+        rput(&s, &relay[0]).unwrap();
+        lput(&s, &local[0]).unwrap();
+        lput(&s, &more[0]).unwrap();
+        assert!(s.root.join("partial/relay").join(&relay[0].sha256).exists());
+        assert!(!s.root.join("partial/local").join(&local[0].sha256).exists());
+        assert!(s.root.join("partial/local").join(&more[0].sha256).exists());
+
+        let mut grown = relay[0].clone();
+        grown.size = 20 << 20;
+        grown.parts = (grown.size as usize).div_ceil(PART_BYTES) as u32;
+        let r = lput(&s, &grown);
+        assert!(r.is_ok(), "{r:?}");
+        assert!(matches!(rput(&s, &relay[1]), Ok(PutOutcome::Complete(_))));
+    }
+
+    #[test]
+    fn only_transient_io_errors_are_retryable() {
+        use io::ErrorKind as K;
+        for k in [
+            K::StorageFull,
+            K::QuotaExceeded,
+            K::Interrupted,
+            K::WouldBlock,
+            K::TimedOut,
+            K::Other,
+        ] {
+            assert!(BlobError::from(io::Error::from(k)).is_retryable(), "{k:?}");
+        }
+        assert!(BlobError::from(io::Error::from_raw_os_error(libc::ENOSPC)).is_retryable());
+        assert!(BlobError::from(io::Error::from_raw_os_error(libc::EDQUOT)).is_retryable());
+        for k in [
+            K::PermissionDenied,
+            K::IsADirectory,
+            K::NotADirectory,
+            K::InvalidFilename,
+            K::AlreadyExists,
+            K::InvalidInput,
+            K::NotFound,
+        ] {
+            assert!(!BlobError::from(io::Error::from(k)).is_retryable(), "{k:?}");
+        }
+    }
+
+    fn retry() -> Result<PutOutcome, BlobError> {
+        Err(BlobError::Retryable("disk".into()))
+    }
+
+    #[test]
+    fn a_part_that_keeps_failing_is_dropped_after_five_tries() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(&t);
+        let part = parts_of(&data(10, 50)).remove(0);
+        let now = Instant::now();
+        for _ in 0..4 {
+            assert!(s.deliver_with("dev", &part, now, retry).is_err());
+        }
+        assert!(s.deliver_with("dev", &part, now, retry).is_ok());
+        assert!(s.deliver_with("dev", &part, now, retry).is_err());
+    }
+
+    #[test]
+    fn a_failing_part_is_dropped_after_ten_minutes_and_budgets_are_per_sender_and_part() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(&t);
+        let parts = parts_of(&data(PART_BYTES + 5, 51));
+        let now = Instant::now();
+        assert!(s.deliver_with("dev", &parts[0], now, retry).is_err());
+        assert!(s.deliver_with("dev", &parts[1], now, retry).is_err());
+        assert!(s.deliver_with("other", &parts[0], now, retry).is_err());
+        let later = now + Duration::from_secs(601);
+        assert!(s.deliver_with("dev", &parts[0], later, retry).is_ok());
+    }
+
+    #[test]
+    fn success_and_rejection_clear_the_retry_budget() {
+        let t = tempfile::tempdir().unwrap();
+        let s = store(&t);
+        let part = parts_of(&data(10, 52)).remove(0);
+        let now = Instant::now();
+        for _ in 0..3 {
+            assert!(s.deliver_with("dev", &part, now, retry).is_err());
+        }
+        assert!(s.deliver_relay("dev", &part).is_ok());
+        for _ in 0..4 {
+            assert!(s.deliver_with("dev", &part, now, retry).is_err());
+        }
+        let rejected = || Err(BlobError::Rejected("no".into()));
+        assert!(s.deliver_with("dev", &part, now, rejected).is_ok());
+        for _ in 0..4 {
+            assert!(s.deliver_with("dev", &part, now, retry).is_err());
+        }
     }
 
     #[test]
@@ -488,8 +705,8 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let s = store(&t);
         let parts = parts_of(&data(PART_BYTES + 5, 9));
-        s.put_part(&parts[0]).unwrap();
-        let dir = s.root.join("partial").join(&parts[0].sha256);
+        rput(&s, &parts[0]).unwrap();
+        let dir = s.root.join("partial/relay").join(&parts[0].sha256);
         let stale = s.root.join("tmp-0011");
         fs::write(&stale, b"x").unwrap();
         let now = SystemTime::now();
@@ -537,13 +754,15 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let s = store(&t);
         let parts = parts_of(&data(PART_BYTES + 5, 31));
-        s.put_part(&parts[0]).unwrap();
-        let dir = s.root.join("partial").join(&parts[0].sha256);
+        rput(&s, &parts[0]).unwrap();
+        let dir = s.root.join("partial/relay").join(&parts[0].sha256);
         assert_eq!(mode(&s.root), 0o700);
         assert_eq!(mode(&s.root.join("partial")), 0o700);
+        assert_eq!(mode(&s.root.join("partial/relay")), 0o700);
+        assert_eq!(mode(&s.root.join("partial/local")), 0o700);
         assert_eq!(mode(&dir), 0o700);
         assert_eq!(mode(&dir.join("0")), 0o600);
-        let PutOutcome::Complete(path) = s.put_part(&parts[1]).unwrap() else {
+        let PutOutcome::Complete(path) = rput(&s, &parts[1]).unwrap() else {
             panic!("not complete");
         };
         assert_eq!(mode(&path), 0o600);
@@ -557,12 +776,12 @@ mod tests {
         let parts = parts_of(&data(PART_BYTES + 5, 32));
         symlink(
             outside.path(),
-            s.root.join("partial").join(&parts[0].sha256),
+            s.root.join("partial/relay").join(&parts[0].sha256),
         )
         .unwrap();
-        s.put_part(&parts[0]).unwrap();
+        rput(&s, &parts[0]).unwrap();
         assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
-        assert!(matches!(s.put_part(&parts[1]), Ok(PutOutcome::Complete(_))));
+        assert!(matches!(rput(&s, &parts[1]), Ok(PutOutcome::Complete(_))));
     }
 
     #[test]
@@ -573,13 +792,13 @@ mod tests {
         fs::write(&target, b"keep").unwrap();
         let s = store(&t);
         let parts = parts_of(&data(PART_BYTES + 5, 33));
-        let dir = s.root.join("partial").join(&parts[0].sha256);
+        let dir = s.root.join("partial/relay").join(&parts[0].sha256);
         ensure_private_dir(&dir).unwrap();
         symlink(&target, dir.join("0")).unwrap();
         symlink(&target, s.root.join(&parts[0].sha256)).unwrap();
         assert_eq!(s.get(&parts[0].sha256), None);
-        s.put_part(&parts[0]).unwrap();
-        let PutOutcome::Complete(path) = s.put_part(&parts[1]).unwrap() else {
+        rput(&s, &parts[0]).unwrap();
+        let PutOutcome::Complete(path) = rput(&s, &parts[1]).unwrap() else {
             panic!("not complete");
         };
         assert_eq!(fs::read(&target).unwrap(), b"keep");
@@ -616,16 +835,16 @@ mod tests {
     }
 
     #[test]
-    fn the_relay_sink_reports_storage_failures_as_retryable_errors() {
+    fn the_relay_sink_does_not_block_the_channel_on_a_permission_error() {
         use std::os::unix::fs::PermissionsExt;
         use tmgr_chat_relay::engine::ChatSink;
         let t = tempfile::tempdir().unwrap();
         let sink = sink(&t);
-        let partial = t.path().join("chat/blobs/partial");
+        let partial = t.path().join("chat/blobs/partial/relay");
         fs::set_permissions(&partial, fs::Permissions::from_mode(0o500)).unwrap();
         let part = parts_of(&data(PART_BYTES + 5, 42)).remove(0);
         let r = sink.deliver_blob("dev", part);
         fs::set_permissions(&partial, fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(r.is_err());
+        assert!(r.is_ok());
     }
 }

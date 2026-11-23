@@ -1,6 +1,6 @@
 use super::manager::ManagerHost;
 use super::*;
-use crate::chat::blobs::PutOutcome;
+use crate::chat::blobs::{PutOutcome, Source};
 use crate::chat::{self, tail};
 use crate::chat_remote;
 use crate::manager_remote::Live;
@@ -185,6 +185,7 @@ impl Runner {
                 },
             ),
             give_up: Arc::new(move |device, id| give_up_rt.chat.reject_relay(device, id)),
+            blobs: self.chat.blobs().cloned(),
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
             subscribe_activity: Arc::new(move || act_rt.chat.subscribe_activity()),
             stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
@@ -426,7 +427,7 @@ impl Runner {
                         "files are not available",
                     )
                 })?;
-                match blobs.put_part(&part) {
+                match blobs.put_part(&part, Source::Local, MAX_LOCAL_BYTES) {
                     Ok(PutOutcome::Partial { have, parts }) => Ok(to_json(&BlobPutResult {
                         have: Some(have),
                         parts: Some(parts),
@@ -1591,40 +1592,23 @@ mod tests {
         }
 
         #[test]
-        fn the_relay_cap_and_the_local_cap_share_one_root_without_mixing_sizes() {
+        fn the_relay_cap_and_the_local_cap_apply_to_one_shared_store() {
             let (_t, rt) = rig();
             let (c, _p) = conn(CLIENT_DESKTOP);
-            let relay = crate::chat::blobs::BlobStore::open(&rt.cfg.dir).unwrap();
-            let small = bytes(PART_BYTES + 10, 5);
-            let sha = sha_of(&small);
-            relay
-                .put_part(&BlobPart {
-                    sha256: sha.clone(),
-                    size: small.len() as u64,
-                    part: 0,
-                    parts: 2,
-                    data: small[..PART_BYTES].to_vec(),
-                })
-                .unwrap();
-            let mut grown = put_params(&small, 0);
-            grown.size = 20 * 1024 * 1024;
-            grown.parts = (grown.size as u32).div_ceil(PART_BYTES as u32);
-            let e = put(&rt, &c, &grown).unwrap_err();
-            assert!(e.msg.contains("disagree"), "{}", e.msg);
-            assert_eq!(
-                put(&rt, &c, &put_params(&small, 1)).unwrap().complete,
-                Some(true)
-            );
-
+            let relay = rt.chat.blobs().unwrap();
             let big = bytes(PART_BYTES * 9 + 5, 6);
             put(&rt, &c, &put_params(&big, 0)).unwrap();
-            let refused = relay.put_part(&BlobPart {
-                sha256: sha_of(&big),
-                size: big.len() as u64,
-                part: 1,
-                parts: 10,
-                data: big[PART_BYTES..PART_BYTES * 2].to_vec(),
-            });
+            let refused = relay.put_part(
+                &BlobPart {
+                    sha256: sha_of(&big),
+                    size: big.len() as u64,
+                    part: 1,
+                    parts: 10,
+                    data: big[PART_BYTES..PART_BYTES * 2].to_vec(),
+                },
+                Source::Relay,
+                tmgr_chat_relay::engine::blob::MAX_RELAY_BYTES,
+            );
             assert!(refused.is_err());
         }
 
