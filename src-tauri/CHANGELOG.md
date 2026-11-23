@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.200 — 2026-11-23
+
+- Tray popover: at most 3 decision cards are shown, with a last item "Open Decisions" ("+N more" when there are more) that opens the Decisions window.
+- Decision notifications: the toast and the system notification have an "Open in Decisions" button, and clicking the notification opens the Decisions window on that card.
+- Decisions window: a copy button on every code block, quote and agent message; code without a language (or text/plaintext) wraps long lines.
+- Global hotkeys for Manager and Decisions are now set in Settings → Desktop → Keyboard shortcuts, with record, reset and on/off. New defaults are ⌥⇧M for Manager and ⌥⇧D for Decisions (Alt+Shift+M and Alt+Shift+D on Windows and Linux), because ⌘⇧M and ⌘⇧D clash with Warp, browsers and editors. A key taken by another app is shown in Settings. The tray and popover show the current keys.
+
 ## 0.9.199 — 2026-11-23
 
 - Approvals: when a manager session wants to stop another session or type into it, an approval card appears ("Requested by session X", with the text for a send). Nothing happens until you approve it; Reject or expiry leaves the session as it is. Your own Stop and input work as before, without a card. Stop and send cards are approved on the desktop; the phone cannot approve them yet. Needs tmgr CLI 1.0.173 or newer; restart the runner after updating.
