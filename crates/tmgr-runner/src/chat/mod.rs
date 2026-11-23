@@ -1828,7 +1828,7 @@ mod tests {
         drop(c);
         let c = Chat::open(t.path());
         assert_eq!(c.queued_ids(&room), restart_ids(&room, 2..=6));
-        assert_eq!(drain_all(&c, NOW + 1), ["m2", "m3", "m4", "m5", "m6"]);
+        assert_eq!(drain_all(&c, NOW + 1), ["m2\n\nm3\n\nm4\n\nm5\n\nm6"]);
         assert!(drain_all(&c, NOW + 2).is_empty());
         drop(c);
         let c = Chat::open(t.path());
@@ -1863,10 +1863,42 @@ mod tests {
         let c = Chat::open(t.path());
         let room = c.manager_room();
         six_with_the_first_delivered(&c, &room);
-        assert_eq!(drain_all(&c, NOW + 1), ["m2", "m3", "m4", "m5", "m6"]);
+        assert_eq!(drain_all(&c, NOW + 1), ["m2\n\nm3\n\nm4\n\nm5\n\nm6"]);
         drop(c);
         let c = Chat::open(t.path());
         for n in 1..=6 {
+            let r = c
+                .ingest(
+                    incoming(room.clone(), n, NOW, &format!("m{n}")),
+                    NOW + 2,
+                    no_session,
+                    |_| -> Delivery { panic!("redelivery must not type") },
+                )
+                .unwrap();
+            assert!(r.duplicate && !r.delivered);
+        }
+        assert!(c.queued_ids(&room).is_empty());
+        assert!(drain_all(&c, NOW + 3).is_empty());
+    }
+
+    #[test]
+    fn a_batch_typed_before_a_restart_is_neither_retyped_nor_requeued_on_redelivery() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        for n in 1..=5 {
+            ingest_busy(&c, &room, n).unwrap();
+        }
+        let calls = std::cell::RefCell::new(0);
+        c.drain_queue(NOW + 1, |_, _, _, _, _| {
+            *calls.borrow_mut() += 1;
+            Delivery::Typed("typed".into())
+        });
+        assert_eq!(*calls.borrow(), 1);
+        drop(c);
+        let c = Chat::open(t.path());
+        assert!(c.queued_ids(&room).is_empty());
+        for n in 1..=5 {
             let r = c
                 .ingest(
                     incoming(room.clone(), n, NOW, &format!("m{n}")),

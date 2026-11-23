@@ -13,6 +13,8 @@ pub const QUEUE_CAP: usize = 20;
 pub const DEFAULT_TTL_MS: u64 = 30 * 60 * 1000;
 const FINISHED_REMEMBERED: usize = 512;
 const QUEUE_FILE: &str = "queue.json";
+const BATCH_MAX: usize = 10;
+const BATCH_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Submit {
@@ -201,6 +203,30 @@ impl Queue {
             self.rooms.remove(room);
         }
         self.finish(&e.id, e.durable);
+    }
+
+    fn pop_n(&mut self, room: &RoomRef, n: usize) {
+        let Some(entries) = self.rooms.get_mut(room) else {
+            return;
+        };
+        let mut any = false;
+        let mut ids = Vec::new();
+        for _ in 0..n {
+            let Some(e) = entries.pop_front() else { break };
+            if e.durable {
+                any = true;
+                ids.push(e.id);
+            }
+        }
+        if entries.is_empty() {
+            self.rooms.remove(room);
+        }
+        for id in &ids {
+            self.mark_finished(id);
+        }
+        if any {
+            self.save_logged();
+        }
     }
 }
 
@@ -427,10 +453,6 @@ impl Chat {
         lock(&self.queue).finish(id, true);
     }
 
-    fn receipt_for(&self, it: &Item, state: ReceiptState) {
-        self.receipt(it.client, it.device, it.id, state, None);
-    }
-
     pub fn drain_queue(
         &self,
         now_ms: u64,
@@ -473,44 +495,104 @@ impl Chat {
                     if front.owner_device && !owners_ready {
                         break;
                     }
+                    let effective_owner = |e: &Entry| {
+                        e.owner_device
+                            && now_ms.saturating_sub(e.enq_ms) < super::FRESH_PAST_MS
+                            && e.device.as_ref().is_some_and(|d| owners.contains(d))
+                    };
+                    let solo = |e: &Entry| !e.durable || self.is_mention_open(&e.id);
+                    let mut batch = 1;
+                    let mut joined = String::new();
+                    if !solo(front) {
+                        let mut size = front.body_md.len();
+                        let entries = q.rooms.get(room).into_iter().flatten().skip(1);
+                        for e in entries.take(BATCH_MAX - 1) {
+                            if e.client != front.client
+                                || e.device != front.device
+                                || e.owner_device != front.owner_device
+                                || effective_owner(e) != effective_owner(front)
+                                || solo(e)
+                                || now_ms.saturating_sub(e.enq_ms) >= e.ttl_ms
+                                || size + 2 + e.body_md.len() > BATCH_BYTES
+                            {
+                                break;
+                            }
+                            size += 2 + e.body_md.len();
+                            batch += 1;
+                        }
+                        if batch > 1 {
+                            joined = q
+                                .rooms
+                                .get(room)
+                                .into_iter()
+                                .flatten()
+                                .take(batch)
+                                .map(|e| e.body_md.as_str())
+                                .collect::<Vec<_>>()
+                                .join("\n\n");
+                        }
+                    }
+                    let body = if batch > 1 {
+                        joined.as_str()
+                    } else {
+                        front.body_md.as_str()
+                    };
                     let item = Item {
                         room,
                         id: &front.id,
-                        body: &front.body_md,
+                        body,
                         client: &front.client,
                         device: front.device.as_deref(),
-                        owner_device: front.owner_device
-                            && now_ms.saturating_sub(front.enq_ms) < super::FRESH_PAST_MS
-                            && front.device.as_ref().is_some_and(|d| owners.contains(d)),
+                        owner_device: effective_owner(front),
                     };
                     match deliver(&item) {
                         Delivery::Delivered => {
                             self.remember_delivered(room, item.body);
                             on_delivered(&item, item.body);
-                            self.receipt_for(&item, ReceiptState::Delivered);
-                            q.pop(room);
+                            for e in q.rooms.get(room).into_iter().flatten().take(batch) {
+                                self.receipt(
+                                    &e.client,
+                                    e.device.as_deref(),
+                                    &e.id,
+                                    ReceiptState::Delivered,
+                                    None,
+                                );
+                            }
+                            q.pop_n(room, batch);
                         }
                         Delivery::Typed(typed) => {
                             self.remember_delivered(room, &typed);
                             on_delivered(&item, &typed);
-                            self.receipt_for(&item, ReceiptState::Delivered);
-                            q.pop(room);
+                            for e in q.rooms.get(room).into_iter().flatten().take(batch) {
+                                self.receipt(
+                                    &e.client,
+                                    e.device.as_deref(),
+                                    &e.id,
+                                    ReceiptState::Delivered,
+                                    None,
+                                );
+                            }
+                            q.pop_n(room, batch);
                         }
                         Delivery::Refused(why) => {
-                            notes.push(Note::of(room, front, why.to_string()));
-                            ends.push((front.id.clone(), QueueEnd::Refused(why.to_string())));
-                            q.pop(room);
+                            for e in q.rooms.get(room).into_iter().flatten().take(batch) {
+                                notes.push(Note::of(room, e, why.to_string()));
+                                ends.push((e.id.clone(), QueueEnd::Refused(why.to_string())));
+                            }
+                            q.pop_n(room, batch);
                         }
                         Delivery::Busy(why) => {
                             stalled = Some(why);
                             break;
                         }
                         Delivery::Gone(r) => {
-                            let mut note = Note::of(room, front, format!("Not delivered: {r}."));
-                            note.reason = gone_reason(&r);
-                            notes.push(note);
-                            ends.push((front.id.clone(), QueueEnd::Gone(r)));
-                            q.pop(room);
+                            for e in q.rooms.get(room).into_iter().flatten().take(batch) {
+                                let mut note = Note::of(room, e, format!("Not delivered: {r}."));
+                                note.reason = gone_reason(&r);
+                                notes.push(note);
+                                ends.push((e.id.clone(), QueueEnd::Gone(r.clone())));
+                            }
+                            q.pop_n(room, batch);
                         }
                     }
                 }
@@ -745,7 +827,7 @@ mod tests {
         c.set_relay_owners(Some(std::sync::Arc::new(|| vec!["d_other".to_owned()])));
         c.submit(&room, "m3", "hi", "relay", Some("d_phone1"), true, T0, busy);
         drain();
-        assert_eq!(*seen.borrow(), [false, false, false]);
+        assert_eq!(*seen.borrow(), [false, false]);
     }
 
     #[test]
@@ -820,7 +902,7 @@ mod tests {
             order.borrow_mut().push(body.to_string());
             Delivery::Delivered
         });
-        assert_eq!(*order.borrow(), ["one", "two"]);
+        assert_eq!(*order.borrow(), ["one\n\ntwo"]);
     }
 
     #[test]
@@ -828,7 +910,17 @@ mod tests {
         let (_t, c) = chat();
         let room = c.session_room("s_abcdefghij");
         for (i, b) in ["a", "b", "c"].iter().enumerate() {
-            c.submit(&room, &format!("m{i}"), b, "relay", None, false, T0, busy);
+            let dev = format!("d_phone{i}");
+            c.submit(
+                &room,
+                &format!("m{i}"),
+                b,
+                "relay",
+                Some(&dev),
+                false,
+                T0,
+                busy,
+            );
         }
         let n = RefCell::new(0);
         c.drain_queue(T0 + 1, |_, _, _, _, _| {
@@ -1401,9 +1493,16 @@ mod tests {
     fn a_queued_message_that_ends_refused_gone_expired_or_cancelled_sends_failed() {
         let (_t, c) = chat();
         let room = c.session_room("s_abcdefghij");
-        let dev = Some("d_phone1");
         for n in 1..=4 {
-            submit_as(&c, &room, &mid(n), "relay", dev, Delivery::Busy(None));
+            let dev = format!("d_phone{n}");
+            submit_as(
+                &c,
+                &room,
+                &mid(n),
+                "relay",
+                Some(&dev),
+                Delivery::Busy(None),
+            );
         }
         let r = rec(&c);
         let mut n = 0;
@@ -1500,5 +1599,169 @@ mod tests {
         );
         c.drain_queue(T0 + 2, |_, _, _, _, _| Delivery::Busy(None));
         assert!(c.queued_why(&room).is_empty());
+    }
+
+    fn queue_as(c: &Chat, room: &RoomRef, id: &str, body: &str, client: &str, dev: Option<&str>) {
+        c.submit(room, id, body, client, dev, false, T0, busy);
+    }
+
+    fn drain_calls(c: &Chat, now: u64) -> Vec<String> {
+        let calls = RefCell::new(Vec::new());
+        c.drain_queue(now, |_, body, _, _, _| {
+            calls.borrow_mut().push(body.to_string());
+            Delivery::Delivered
+        });
+        calls.into_inner()
+    }
+
+    #[test]
+    fn compatible_queued_entries_are_typed_in_one_call_with_a_receipt_each() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        for n in 1..=5 {
+            queue_as(
+                &c,
+                &room,
+                &mid(n),
+                &format!("b{n}"),
+                "relay",
+                Some("d_phone1"),
+            );
+        }
+        let r = rec(&c);
+        assert_eq!(drain_calls(&c, T0 + 1), ["b1\n\nb2\n\nb3\n\nb4\n\nb5"]);
+        assert!(c.queued_ids(&room).is_empty());
+        assert_eq!(
+            got(&r),
+            (1..=5)
+                .map(|n| (mid(n), ReceiptState::Delivered, None))
+                .collect::<Vec<_>>()
+        );
+        assert!((1..=5).all(|n| c.is_pending(&room, &mid(n))));
+    }
+
+    #[test]
+    fn a_batch_stops_at_a_different_device_client_or_owner_flag() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        queue_as(&c, &room, "m1", "a", "relay", Some("d_phone1"));
+        queue_as(&c, &room, "m2", "b", "relay", Some("d_phone1"));
+        queue_as(&c, &room, "m3", "c", "relay", Some("d_phone2"));
+        queue_as(&c, &room, "m4", "d", "relay", Some("d_phone2"));
+        queue_as(&c, &room, "m5", "e", "desktop", Some("d_phone2"));
+        queue_as(&c, &room, "m6", "f", "desktop", Some("d_phone2"));
+        assert_eq!(drain_calls(&c, T0 + 1), ["a\n\nb", "c\n\nd", "e\n\nf"]);
+
+        c.set_relay_owners(Some(std::sync::Arc::new(Vec::new)));
+        c.submit(&room, "m7", "g", "relay", Some("d_p"), true, T0 + 2, busy);
+        c.submit(&room, "m8", "h", "relay", Some("d_p"), false, T0 + 2, busy);
+        c.submit(&room, "m9", "i", "relay", Some("d_p"), false, T0 + 2, busy);
+        assert_eq!(drain_calls(&c, T0 + 3), ["g", "h\n\ni"]);
+    }
+
+    #[test]
+    fn a_mention_entry_is_never_merged_with_anything() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.mention_open(mention_spec(&c, MID));
+        queue_as(&c, &room, "m1", "a", "desktop", None);
+        queue_as(&c, &room, "m2", "b", "desktop", None);
+        c.submit_with(
+            &room,
+            MID,
+            "q",
+            "desktop",
+            None,
+            false,
+            T0,
+            DEFAULT_TTL_MS,
+            |_| Delivery::Busy(None),
+            |_, _| {},
+        );
+        queue_as(&c, &room, "m3", "c", "desktop", None);
+        queue_as(&c, &room, "m4", "d", "desktop", None);
+        assert_eq!(drain_calls(&c, T0 + 1), ["a\n\nb", "q", "c\n\nd"]);
+    }
+
+    #[test]
+    fn a_batch_holds_at_ten_entries_and_sixteen_kib() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        for n in 1..=12 {
+            queue_as(&c, &room, &mid(n), "x", "desktop", None);
+        }
+        let sizes: Vec<usize> = drain_calls(&c, T0 + 1)
+            .iter()
+            .map(|b| b.split("\n\n").count())
+            .collect();
+        assert_eq!(sizes, [10, 2]);
+
+        let long = "y".repeat(7000);
+        for n in 1..=3 {
+            queue_as(&c, &room, &mid(100 + n), &long, "desktop", None);
+        }
+        let lens: Vec<usize> = drain_calls(&c, T0 + 2).iter().map(String::len).collect();
+        assert_eq!(lens, [14_002, 7000]);
+    }
+
+    #[test]
+    fn a_busy_target_keeps_the_whole_batch_and_a_later_drain_types_it_once() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        for n in 1..=4 {
+            queue_as(
+                &c,
+                &room,
+                &mid(n),
+                &format!("b{n}"),
+                "relay",
+                Some("d_phone1"),
+            );
+        }
+        let r = rec(&c);
+        c.drain_queue(T0 + 1, |_, _, _, _, _| Delivery::Busy(Some("settle")));
+        assert_eq!(c.queued_ids(&room).len(), 4);
+        assert!(got(&r).iter().all(|g| g.1 != ReceiptState::Delivered));
+        assert_eq!(drain_calls(&c, T0 + 2), ["b1\n\nb2\n\nb3\n\nb4"]);
+        assert!(c.queued_ids(&room).is_empty());
+    }
+
+    #[test]
+    fn a_refused_batch_fails_every_entry() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        for n in 1..=3 {
+            queue_as(&c, &room, &mid(n), "x", "relay", Some("d_phone1"));
+        }
+        let r = rec(&c);
+        c.drain_queue(T0 + 1, |_, _, _, _, _| {
+            Delivery::Refused("Not delivered: nope.")
+        });
+        assert!(c.queued_ids(&room).is_empty());
+        assert_eq!(
+            got(&r)
+                .iter()
+                .filter(|g| g.1 == ReceiptState::Failed)
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn the_remembered_sent_text_is_the_combined_typed_text() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        for (n, b) in [(1, "a"), (2, "b"), (3, "c")] {
+            queue_as(&c, &room, &mid(n), b, "relay", Some("d_phone1"));
+        }
+        let seen = RefCell::new(String::new());
+        c.drain_queue(T0 + 1, |_, body, _, _, _| {
+            *seen.borrow_mut() = body.to_string();
+            Delivery::Typed(format!("[wrapped]\n\n{body}"))
+        });
+        assert_eq!(*seen.borrow(), "a\n\nb\n\nc");
+        assert!(!c.take_sent("s_abcdefghij", "a"));
+        assert!(c.take_sent("s_abcdefghij", "[wrapped]\n\na\n\nb\n\nc\n"));
+        assert!(!c.take_sent("s_abcdefghij", "[wrapped]\n\na\n\nb\n\nc\n"));
     }
 }
