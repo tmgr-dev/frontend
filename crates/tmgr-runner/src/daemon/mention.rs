@@ -3,6 +3,8 @@ use super::*;
 use crate::chat::mention::{self, Facts, Probe, Spec, Via};
 use crate::chat::queue::Item;
 use crate::chat::tail::agent_named;
+use crate::manager_remote::Link;
+use crate::mention_remote;
 use tmgr_ipc::chat::{
     ChatMessage, MentionInjectParams, MentionRef, MentionReq, MentionState, MentionTarget,
     RoomInfo, RoomKind, RoomRef, SendParams,
@@ -64,14 +66,24 @@ impl Runner {
         }
     }
 
-    fn mention_target(&self, req: &RoomRef) -> Result<RoomRef, ApiErr> {
+    fn mention_target(&self, req: &RoomRef, local: bool) -> Result<RoomRef, ApiErr> {
+        self.mention_target_with(&self.remote_link(), req, local)
+    }
+
+    fn mention_target_with(
+        &self,
+        link: &dyn Link,
+        req: &RoomRef,
+        local: bool,
+    ) -> Result<RoomRef, ApiErr> {
         req.validate()
             .map_err(|e| api(ErrorCode::InvalidParams, e))?;
         if req.machine != self.chat.machine() {
-            return Err(api(
-                ErrorCode::InvalidParams,
-                "mentions reach only sessions on this machine",
-            ));
+            if !local {
+                return Err(api(ErrorCode::InvalidParams, mention_remote::NOT_LOCAL));
+            }
+            mention_remote::target_ok(link, req).map_err(|e| api(ErrorCode::InvalidParams, e))?;
+            return Ok(req.clone());
         }
         Ok(match req.kind {
             RoomKind::Manager => self.chat.manager_room(),
@@ -92,7 +104,7 @@ impl Runner {
         if q.room.machine != self.chat.machine() {
             return Err(bad("mentions are not available in rooms of other machines"));
         }
-        let target = self.mention_target(&req.target)?;
+        let target = self.mention_target(&req.target, true)?;
         let title = self.mention_title(&target);
         let make = |id: &str| MentionRef {
             id: id.into(),
@@ -148,7 +160,7 @@ impl Runner {
         target: RoomRef,
     ) -> Result<chat::Ingested, chat::IngestError> {
         let target = self
-            .mention_target(&target)
+            .mention_target(&target, false)
             .map_err(|e| chat::IngestError::Invalid(e.msg))?;
         let r = MentionRef {
             id: m.id.clone(),
@@ -175,6 +187,55 @@ impl Runner {
     }
 
     fn route_mention(&self, msg: &ChatMessage, via: Via, confirmed_risky: bool) {
+        self.route_mention_with(&self.remote_link(), msg, via, confirmed_risky);
+    }
+
+    fn route_follower(
+        &self,
+        link: &dyn Link,
+        r: &MentionRef,
+        via: &Via,
+        question: &str,
+        busy: bool,
+    ) {
+        let finish = |state: MentionState, why: &str| {
+            self.chat.mention_finish(&r.id, state, Some(why.into()));
+        };
+        if !matches!(via, Via::Local { .. }) {
+            return finish(MentionState::Refused, mention_remote::NOT_LOCAL);
+        }
+        if let Err(why) = mention_remote::target_ok(link, &r.target) {
+            return finish(MentionState::Offline, &why);
+        }
+        if busy {
+            return finish(MentionState::Busy, "the manager has other messages waiting");
+        }
+        match mention_remote::ask(link, &r.target.machine, question) {
+            Ok(asked) => {
+                let now = now_ms();
+                self.chat
+                    .follower_track(&r.target.machine, &r.id, &asked, now);
+                self.chat.mention_delivered(&r.id, question, now);
+            }
+            Err(why) => finish(MentionState::Refused, &why),
+        }
+    }
+
+    pub(super) fn follower_poll(&self, link: &dyn Link, now: u64) {
+        for (machine, asked) in self.chat.follower_due(now) {
+            let fetched = mention_remote::fetch(link, &machine, &asked);
+            self.chat.follower_fed(&machine, fetched, now);
+        }
+        self.chat.follower_finish(now);
+    }
+
+    fn route_mention_with(
+        &self,
+        link: &dyn Link,
+        msg: &ChatMessage,
+        via: Via,
+        confirmed_risky: bool,
+    ) {
         let Some(r) = msg.mention.as_ref() else {
             return;
         };
@@ -223,6 +284,9 @@ impl Runner {
         let Some(question) = question else {
             return refuse(MentionState::Refused, "the question is empty");
         };
+        if target.machine != self.chat.machine() {
+            return self.route_follower(link, r, &via, &question, busy);
+        }
         let Some(s) = self.mention_session(&target) else {
             return refuse(MentionState::Offline, "the session no longer exists");
         };
@@ -337,6 +401,14 @@ impl Runner {
 
     pub(super) fn mention_tick(&self) {
         self.chat.mention_tick(now_ms(), &|room| {
+            if room.machine != self.chat.machine() {
+                return Some(Probe {
+                    exited: false,
+                    waiting: false,
+                    working_seen: 0,
+                    input_gen: 0,
+                });
+            }
             let s = self.mention_session(room)?;
             Some(Probe {
                 exited: s.is_exited(),
@@ -1138,5 +1210,261 @@ mod tests {
             rt.mention_deliver(&item),
             chat::Delivery::Refused(_)
         ));
+    }
+
+    mod follower {
+        use super::*;
+        use crate::mgr_rpc::machines::Machines;
+        use tmgr_ipc::mgr_rpc::{Op, RpcRes};
+
+        const PEER: &str = "mx_00000000000000bb";
+        const DEV: &str = "66666666-7777-8888-9999-aaaaaaaaaaaa";
+        const FP: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const ASKED: &str = "m_0000000000000000000000000000aaaa";
+
+        struct Net {
+            top: bool,
+            ready: bool,
+            ask: Mutex<RpcRes>,
+            room: Mutex<Value>,
+            calls: Mutex<Vec<(Op, Value)>>,
+        }
+
+        impl Net {
+            fn new() -> Net {
+                Net {
+                    top: true,
+                    ready: true,
+                    ask: Mutex::new(RpcRes::ok("r", json!({"id": ASKED, "queued": true}))),
+                    room: Mutex::new(json!([])),
+                    calls: Mutex::default(),
+                }
+            }
+
+            fn asked(&self, r: RpcRes) {
+                *self.ask.lock().unwrap() = r;
+            }
+
+            fn rows(&self, v: Value) {
+                *self.room.lock().unwrap() = v;
+            }
+
+            fn count(&self, op: Op) -> usize {
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|c| c.0 == op)
+                    .count()
+            }
+        }
+
+        impl Link for Net {
+            fn top(&self) -> bool {
+                self.top
+            }
+            fn machines(&self) -> Machines {
+                Machines::parse(&format!(
+                    r#"{{"machines":[{{"id":"{PEER}","label":"laptop","device_id":"{DEV}","fp":"{FP}"}}]}}"#
+                ))
+                .unwrap()
+            }
+            fn relay_ready(&self) -> bool {
+                self.ready
+            }
+            fn call(&self, _m: &str, op: Op, args: Value) -> Result<RpcRes, String> {
+                self.calls.lock().unwrap().push((op, args));
+                Ok(match op {
+                    Op::Ask => self.ask.lock().unwrap().clone(),
+                    _ => RpcRes::ok("r", self.room.lock().unwrap().clone()),
+                })
+            }
+        }
+
+        fn row(id: &str, kind: &str, author: &str, body: &str, room: &RoomRef) -> Value {
+            json!({"v": 1, "id": id, "room": room, "author": {"kind": kind, "id": author},
+                   "ts_ms": 1, "kind": "text", "body_md": body})
+        }
+
+        fn follow(rt: &Arc<Runner>, link: &Net, via: Via) -> String {
+            let target = RoomRef::manager(PEER);
+            let msg = rt
+                .chat
+                .post_mention(
+                    rt.chat.session_room(A),
+                    "@laptop what is the status?".into(),
+                    None,
+                    Vec::new(),
+                    |id| MentionRef {
+                        id: id.into(),
+                        target: target.clone(),
+                        target_title: "Manager".into(),
+                        state: MentionState::Queued,
+                        hop: mention::HOP,
+                    },
+                )
+                .unwrap();
+            rt.route_mention_with(link, &msg, via, false);
+            msg.id
+        }
+
+        fn local() -> Via {
+            Via::Local {
+                client: "desktop".into(),
+            }
+        }
+
+        fn last(rt: &Arc<Runner>) -> (MentionState, Option<String>) {
+            let rows = rt
+                .chat
+                .history(&rt.chat.session_room(A), None, None)
+                .unwrap();
+            let m = rows.iter().rev().find(|m| m.mention.is_some()).unwrap();
+            (m.mention.as_ref().unwrap().state, Some(m.body_md.clone()))
+        }
+
+        #[test]
+        fn a_local_mention_to_a_ready_follower_manager_is_accepted() {
+            let (_t, rt) = rig(json!({}));
+            let r = rt.mention_target_with(&Net::new(), &RoomRef::manager(PEER), true);
+            assert_eq!(r.unwrap(), RoomRef::manager(PEER));
+        }
+
+        #[test]
+        fn a_phone_mention_to_a_follower_is_refused() {
+            let (_t, rt) = rig(json!({}));
+            let e = rt
+                .mention_target_with(&Net::new(), &RoomRef::manager(PEER), false)
+                .unwrap_err();
+            assert_eq!(e.msg, "phone mentions reach only this machine");
+        }
+
+        #[test]
+        fn a_follower_session_room_is_refused() {
+            let (_t, rt) = rig(json!({}));
+            let room = RoomRef::session(PEER, "s_cccccccccc");
+            assert!(rt.mention_target_with(&Net::new(), &room, true).is_err());
+        }
+
+        #[test]
+        fn a_follower_that_is_not_connected_is_refused() {
+            let (_t, rt) = rig(json!({}));
+            let mut net = Net::new();
+            net.ready = false;
+            let room = RoomRef::manager(PEER);
+            assert!(rt.mention_target_with(&net, &room, true).is_err());
+            net.ready = true;
+            net.top = false;
+            assert!(rt.mention_target_with(&net, &room, true).is_err());
+            let unknown = RoomRef::manager("mx_00000000000000cc");
+            assert!(rt.mention_target_with(&Net::new(), &unknown, true).is_err());
+        }
+
+        #[test]
+        fn delivery_asks_the_follower_with_the_bare_question_and_marks_the_mention_sent() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            follow(&rt, &net, local());
+            assert_eq!(last(&rt).0, MentionState::Sent);
+            let calls = net.calls.lock().unwrap();
+            assert_eq!(calls[0].0, Op::Ask);
+            assert_eq!(calls[0].1, json!({"text": "what is the status?"}));
+        }
+
+        #[test]
+        fn an_answer_without_the_queued_marker_refuses_the_mention() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            net.asked(RpcRes::ok("r", json!({"id": ASKED})));
+            follow(&rt, &net, local());
+            let (state, body) = last(&rt);
+            assert_eq!(state, MentionState::Refused);
+            assert!(body.unwrap().contains(mention_remote::OLD_CLI));
+        }
+
+        #[test]
+        fn a_follower_error_refuses_the_mention_with_its_message() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            net.asked(RpcRes::err(
+                "r",
+                tmgr_ipc::mgr_rpc::ErrorCode::Refused,
+                "manager is unrestricted",
+            ));
+            follow(&rt, &net, local());
+            let (state, body) = last(&rt);
+            assert_eq!(state, MentionState::Refused);
+            assert!(body.unwrap().contains("manager is unrestricted"));
+        }
+
+        #[test]
+        fn a_phone_origin_is_refused_at_delivery_without_calling_the_follower() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            follow(
+                &rt,
+                &net,
+                Via::Relay {
+                    device: "d_phone1".into(),
+                    owner_device: true,
+                },
+            );
+            assert_eq!(last(&rt).0, MentionState::Refused);
+            assert_eq!(net.count(Op::Ask), 0);
+        }
+
+        #[test]
+        fn the_poller_answers_after_the_quiet_period_and_ignores_remote_rows() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            let id = follow(&rt, &net, local());
+            let room = RoomRef::manager(PEER);
+            net.rows(json!([
+                row(
+                    "m_0000000000000000000000000000bbbb",
+                    "session",
+                    "s_cccccccccc",
+                    "all green",
+                    &room
+                ),
+                row(
+                    "m_0000000000000000000000000000cccc",
+                    "manager",
+                    "remote",
+                    "echo",
+                    &room
+                ),
+            ]));
+            let t0 = now_ms();
+            rt.follower_poll(&net, t0);
+            assert_eq!(last(&rt).0, MentionState::Sent);
+            assert_eq!(net.calls.lock().unwrap()[1].1["since"], ASKED);
+            rt.follower_poll(&net, t0 + 20_000);
+            let (state, body) = last(&rt);
+            assert_eq!(state, MentionState::Answered);
+            assert!(body.unwrap().ends_with("all green"));
+            assert_eq!(net.count(Op::Room), 2);
+            assert!(!rt.chat.is_mention_open(&id));
+            rt.follower_poll(&net, t0 + 60_000);
+            assert_eq!(net.count(Op::Room), 2);
+        }
+
+        #[test]
+        fn a_follower_that_never_answers_times_out() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            let id = follow(&rt, &net, local());
+            rt.chat
+                .mention_tick(now_ms() + mention::ANSWER_TIMEOUT_MS, &|_| {
+                    Some(Probe {
+                        exited: false,
+                        waiting: false,
+                        working_seen: 0,
+                        input_gen: 0,
+                    })
+                });
+            assert_eq!(last(&rt).0, MentionState::Timeout);
+            assert!(!rt.chat.is_mention_open(&id));
+        }
     }
 }

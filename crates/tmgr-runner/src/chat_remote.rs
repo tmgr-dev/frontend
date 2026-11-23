@@ -1,7 +1,8 @@
 use crate::manager_remote::{plain, ready, remote_result, Link};
 use serde_json::{json, Value};
 use tmgr_ipc::chat::{
-    limits, Author, AuthorKind, ChatMessage, MessageKind, RoomInfo, RoomKind, RoomRef, CHAT_V,
+    limits, Author, AuthorKind, ChatMessage, MentionTarget, MessageKind, RoomInfo, RoomKind,
+    RoomRef, CHAT_V,
 };
 use tmgr_ipc::manager::limits as rpc_limits;
 use tmgr_ipc::mgr_rpc::Op;
@@ -25,7 +26,18 @@ pub fn rooms(link: &dyn Link) -> Vec<RoomInfo> {
             model: None,
             last: None,
             unrestricted: false,
-            mention: None,
+            mention: Some(match ready(link, id) {
+                Ok(()) => MentionTarget {
+                    ok: true,
+                    reason: None,
+                    risky: false,
+                },
+                Err(why) => MentionTarget {
+                    ok: false,
+                    reason: Some(why),
+                    risky: false,
+                },
+            }),
         })
         .collect()
 }
@@ -247,6 +259,18 @@ mod tests {
         assert_eq!(r[1].title, STRANGER);
         assert!(r.iter().all(|i| i.last.is_none()));
         assert!(net.calls().is_empty());
+    }
+
+    #[test]
+    fn rooms_carry_a_mention_verdict_that_follows_the_relay() {
+        let r = rooms(&Net::top());
+        assert!(r.iter().all(|i| i.mention.as_ref().unwrap().ok));
+        let net = Net {
+            ready: false,
+            ..Net::top()
+        };
+        let r = rooms(&net);
+        assert!(r.iter().all(|i| !i.mention.as_ref().unwrap().ok));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use super::mention::{Mentions, Probe, QueueEnd, Spec, Transition, Via};
 use super::{lock, now_ms, Chat};
+use crate::mention_remote::{Fetch, Track};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -264,6 +265,32 @@ impl Chat {
     pub fn mention_tick(&self, now: u64, probe: &dyn Fn(&RoomRef) -> Option<Probe>) {
         let ts = lock(&self.mentions).tick(now, probe);
         self.apply_mentions(ts);
+    }
+
+    pub fn mention_answer_with(&self, id: &str, text: &str) {
+        let t = lock(&self.mentions).answer_with(id, text);
+        self.apply_mentions(t.into_iter().collect());
+    }
+
+    pub fn follower_track(&self, machine: &str, mention: &str, asked: &str, now: u64) {
+        lock(&self.followers).track(machine, Track::new(mention, asked, now));
+    }
+
+    pub fn follower_due(&self, now: u64) -> Vec<(String, String)> {
+        let mut f = lock(&self.followers);
+        f.keep_open(|id| self.is_mention_open(id));
+        f.due(now)
+    }
+
+    pub fn follower_fed(&self, machine: &str, fetched: Fetch, now: u64) {
+        lock(&self.followers).fed(machine, fetched, now);
+    }
+
+    pub fn follower_finish(&self, now: u64) {
+        let done = lock(&self.followers).finished(now);
+        for (id, text) in done {
+            self.mention_answer_with(&id, &text);
+        }
     }
 
     pub fn mention_reply(&self, id: &str, origin: &RoomRef) -> Option<(Spec, String)> {

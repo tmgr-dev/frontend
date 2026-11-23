@@ -157,6 +157,7 @@ pub struct Chat {
     rpc_client: Mutex<Option<Arc<RpcClient>>>,
     relay_device: Mutex<Option<(String, String)>>,
     mentions: Mutex<mention::Mentions>,
+    followers: Mutex<crate::mention_remote::Followers>,
     persist_lock: Mutex<()>,
     relay_owners: Mutex<Option<OwnersFn>>,
 }
@@ -188,6 +189,7 @@ impl Chat {
             rpc_client: Mutex::new(None),
             relay_device: Mutex::new(None),
             mentions: mention_io::new_mentions(),
+            followers: Mutex::default(),
             persist_lock: Mutex::new(()),
             relay_owners: Mutex::new(None),
         };

@@ -233,7 +233,7 @@ impl Runner {
             .ok()
     }
 
-    fn remote_link(&self) -> Live<'_> {
+    pub(super) fn remote_link(&self) -> Live<'_> {
         Live {
             dir: &self.cfg.dir,
             chat: &self.chat,
@@ -466,6 +466,13 @@ impl Runner {
                 },
                 |it, typed| self.chat.mention_delivered(it.id, typed, now_ms()),
             );
+        }
+    }
+
+    pub(super) fn follower_poll_loop(&self) {
+        while !self.stop.load(Ordering::SeqCst) {
+            thread::sleep(QUEUE_EVERY);
+            self.follower_poll(&self.remote_link(), now_ms());
         }
     }
 

@@ -346,6 +346,16 @@ impl Mentions {
         Some(tr(&e.spec, MentionState::Answered, None, Some(text)))
     }
 
+    pub fn answer_with(&mut self, id: &str, text: &str) -> Option<Transition> {
+        let e = self.entries.get_mut(id)?;
+        if !matches!(e.phase, Phase::Sent(_)) {
+            return None;
+        }
+        let text = clip_reply(text);
+        e.phase = Phase::Done(Some(text.clone()));
+        Some(tr(&e.spec, MentionState::Answered, None, Some(text)))
+    }
+
     pub fn reply(&self, id: &str, origin: &RoomRef) -> Option<(&Spec, &str)> {
         let e = self.entries.get(id)?;
         match &e.phase {

@@ -5896,6 +5896,8 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     thread::spawn(move || capturer.chat_capture_loop());
     let drainer = rt.clone();
     thread::spawn(move || drainer.chat_queue_loop());
+    let follower_poller = rt.clone();
+    thread::spawn(move || follower_poller.follower_poll_loop());
     let card_ticker = rt.clone();
     thread::spawn(move || card_ticker.spawn_card_loop());
     let managers = rt.clone();

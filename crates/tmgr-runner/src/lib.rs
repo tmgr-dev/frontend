@@ -48,6 +48,8 @@ pub mod hostview;
 #[cfg(unix)]
 pub mod humantime;
 #[cfg(unix)]
+pub mod mention_remote;
+#[cfg(unix)]
 pub mod mgr_rpc;
 #[cfg(unix)]
 pub mod objectmodes;
