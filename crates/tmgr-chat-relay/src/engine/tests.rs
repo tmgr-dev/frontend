@@ -332,6 +332,7 @@ impl Clock {
 #[derive(Clone, Default)]
 struct Rec {
     got: Arc<Mutex<Vec<(String, ChatMessage)>>>,
+    kinds: Arc<Mutex<Vec<Option<String>>>>,
     fail: Arc<AtomicBool>,
 }
 
@@ -351,10 +352,11 @@ impl Rec {
 }
 
 impl ChatSink for Rec {
-    fn deliver(&self, from: &str, _: Option<&str>, msg: ChatMessage) -> Result<(), String> {
+    fn deliver(&self, from: &str, kind: Option<&str>, msg: ChatMessage) -> Result<(), String> {
         if self.fail.load(Ordering::SeqCst) {
             return Err("sink is down".into());
         }
+        self.kinds.lock().unwrap().push(kind.map(str::to_owned));
         self.got.lock().unwrap().push((from.to_owned(), msg));
         Ok(())
     }
@@ -1202,8 +1204,63 @@ fn runner_cannot_author_owner_messages_but_may_author_manager_messages() {
     let aid = my_id(&a);
     post_chat(&r, &aid, &msg_n(2, AuthorKind::Owner));
     assert!(a.poll_once().unwrap().is_empty());
+    assert!(a.s.kinds.lock().unwrap().is_empty());
     post_chat(&r, &aid, &msg_n(3, AuthorKind::Manager));
     assert_eq!(a.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn a_desktop_senders_chat_reaches_the_sink_with_its_kind() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    send(&b, "from the desktop").unwrap();
+    a.poll_once().unwrap();
+    assert_eq!(*a.s.kinds.lock().unwrap(), [Some("desktop".to_owned())]);
+}
+
+#[test]
+fn a_sender_with_a_pending_revoke_reaches_the_sink_without_a_kind() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let c = engine_with(&fake, &clock, "Desktop C");
+    c.join_with_code(&a.open_join_code().unwrap()).unwrap();
+    a.poll_once().unwrap();
+    let cid = my_id(&c);
+    a.decide_join(&cid, true).unwrap();
+    c.poll_once().unwrap();
+    b.poll_once().unwrap();
+    let bid = my_id(&b);
+    send(&c, "sent before the revoke arrived").unwrap();
+    let (msg_id, from, body) = fake.first_body(&bid);
+    a.revoke(&cid).unwrap();
+    b.poll_once().unwrap();
+    assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+    assert!(b.s.kinds.lock().unwrap().is_empty());
+    fake.inject(&bid, &msg_id, &from, &body);
+    b.poll_once().unwrap();
+    assert_eq!(*b.s.kinds.lock().unwrap(), [None]);
+}
+
+#[test]
+fn owner_devices_lists_trusted_desktops_and_phones_but_not_runners_or_pending_revokes() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let c = engine_with(&fake, &clock, "Desktop C");
+    c.join_with_code(&a.open_join_code().unwrap()).unwrap();
+    a.poll_once().unwrap();
+    let cid = my_id(&c);
+    a.decide_join(&cid, true).unwrap();
+    c.poll_once().unwrap();
+    b.poll_once().unwrap();
+    let r = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    b.poll_once().unwrap();
+    let owners = b.owner_devices();
+    assert!(owners.contains(&cid) && owners.contains(&my_id(&a)));
+    assert!(!owners.contains(&my_id(&r)));
+    a.revoke(&cid).unwrap();
+    b.poll_once().unwrap();
+    assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+    assert!(!b.owner_devices().contains(&cid));
 }
 
 #[test]

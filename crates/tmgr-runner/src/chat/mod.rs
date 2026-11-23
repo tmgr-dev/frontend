@@ -158,7 +158,10 @@ pub struct Chat {
     relay_device: Mutex<Option<(String, String)>>,
     mentions: Mutex<mention::Mentions>,
     persist_lock: Mutex<()>,
+    relay_owners: Mutex<Option<OwnersFn>>,
 }
+
+pub type OwnersFn = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
 
 impl Chat {
     pub fn open(runner_dir: &Path) -> Chat {
@@ -186,6 +189,7 @@ impl Chat {
             relay_device: Mutex::new(None),
             mentions: mention_io::new_mentions(),
             persist_lock: Mutex::new(()),
+            relay_owners: Mutex::new(None),
         };
         chat.expire_open_mentions();
         chat
@@ -205,6 +209,10 @@ impl Chat {
 
     pub fn set_relay_device(&self, device: Option<(String, String)>) {
         *lock(&self.relay_device) = device;
+    }
+
+    pub fn set_relay_owners(&self, owners: Option<OwnersFn>) {
+        *lock(&self.relay_owners) = owners;
     }
 
     pub fn relay_self(&self) -> Option<RelaySelf> {
@@ -393,7 +401,7 @@ impl Chat {
         if !exists {
             return Err(NotFound("no such room".into()));
         }
-        let (client, device) = (m.client, m.device.clone());
+        let (client, device, owner_device) = (m.client, m.device.clone(), m.owner_device);
         let msg = ChatMessage {
             v: CHAT_V,
             id: m.id,
@@ -465,8 +473,9 @@ impl Chat {
             &msg.body_md,
             &client,
             device.as_deref(),
+            owner_device,
             now_ms,
-            |body, _, _| deliver.take().map_or(Delivery::Busy, |d| d(body)),
+            |body, _, _, _| deliver.take().map_or(Delivery::Busy, |d| d(body)),
         );
         self.note_undelivered(&msg.room, &outcome);
         let delivered = outcome == Submit::Delivered;
@@ -1134,7 +1143,7 @@ mod tests {
         assert_eq!(c.queued_ids(&room), std::slice::from_ref(&r.message.id));
         assert_eq!(texts(&c, &room).len(), 1);
         let got = std::cell::RefCell::new(Vec::new());
-        c.drain_queue(NOW + 1, |_, body, client, _| {
+        c.drain_queue(NOW + 1, |_, body, client, _, _| {
             got.borrow_mut()
                 .push((body.to_string(), client.to_string()));
             Delivery::Delivered

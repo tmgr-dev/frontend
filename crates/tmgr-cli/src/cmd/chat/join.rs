@@ -23,7 +23,7 @@ const TIMEOUT: &str = "no trusted device approved the join within 10 minutes";
 pub struct RefuseSink;
 
 impl ChatSink for RefuseSink {
-    fn deliver(&self, _: &str, _: ChatMessage) -> std::result::Result<(), String> {
+    fn deliver(&self, _: &str, _: Option<&str>, _: ChatMessage) -> std::result::Result<(), String> {
         Err(PENDING.into())
     }
 }

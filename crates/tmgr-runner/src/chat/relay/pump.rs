@@ -253,6 +253,7 @@ pub struct Setup {
     pub spawnok: Option<Arc<dyn SpawnOkSink>>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
     pub on_device: OnDevice,
+    pub on_owners: Arc<dyn Fn(crate::chat::OwnersFn) + Send + Sync>,
     pub rooms: Arc<dyn Fn() -> Vec<RoomInfo> + Send + Sync>,
     pub history: HistoryFn,
 }
@@ -352,6 +353,12 @@ fn serve(engine: Arc<Engine>, setup: &Setup) {
             }
         });
     (setup.on_device)(engine.own_device());
+    let weak = Arc::downgrade(&engine);
+    (setup.on_owners)(Arc::new(move || {
+        weak.upgrade()
+            .map(|e| e.owner_devices())
+            .unwrap_or_default()
+    }));
     let rpc_server = (setup.serve_rpc)(rpc_send);
     crate::daemon::log("chat relay: pump started");
     run_poll(&*engine, &*stop, &sleeper(stop.clone()));

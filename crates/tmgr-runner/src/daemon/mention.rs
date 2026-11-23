@@ -246,9 +246,12 @@ impl Runner {
         if busy {
             return refuse(MentionState::Busy, "the session has other messages waiting");
         }
-        let (client, device) = match &via {
-            Via::Local { client } => (client.as_str(), None),
-            Via::Relay { device, .. } => ("relay", Some(device.as_str())),
+        let (client, device, owner_device) = match &via {
+            Via::Local { client } => (client.as_str(), None, false),
+            Via::Relay {
+                device,
+                owner_device,
+            } => ("relay", Some(device.as_str()), *owner_device),
         };
         let outcome = self.chat.submit_with(
             &target,
@@ -256,6 +259,7 @@ impl Runner {
             &question,
             client,
             device,
+            owner_device,
             now,
             mention::QUEUE_TTL_MS,
             |it| self.mention_deliver(it),
@@ -292,7 +296,8 @@ impl Runner {
         if !mention::target_ok(&facts).ok {
             return chat::Delivery::Refused(NOT_ASKABLE);
         }
-        let allowed = mention_may_be_risky(&spec.via, spec.confirmed_risky);
+        let allowed = mention_may_be_risky(&spec.via, spec.confirmed_risky)
+            && (it.owner_device || matches!(spec.via, Via::Local { .. }));
         if facts.risky && !allowed {
             return chat::Delivery::Refused(RISKY_REFUSAL);
         }
@@ -697,6 +702,38 @@ mod tests {
     }
 
     #[test]
+    fn a_queued_owner_phone_mention_is_refused_at_drain_once_its_device_is_no_longer_an_owner() {
+        let (_t, rt) = unrestricted_manager_rig();
+        let target = rt.chat.manager_room();
+        let id = "m_0190a1b2c3d4aabbccddeeff00113abc";
+        let mut m = incoming(&rt, id);
+        m.owner_device = true;
+        let device = m.device.clone().unwrap();
+        rt.relay_mention(m, target.clone()).unwrap();
+        assert_eq!(rt.chat.queued_ids(&target), [id]);
+        let drain = || {
+            let mut out = Vec::new();
+            rt.chat.drain_queue_with(
+                super::now_ms(),
+                |it| {
+                    let d = rt.mention_deliver(it);
+                    out.push(matches!(d, chat::Delivery::Refused(_)));
+                    d
+                },
+                |_, _| {},
+            );
+            out
+        };
+        rt.chat
+            .set_relay_owners(Some(Arc::new(move || vec![device.clone()])));
+        assert_eq!(drain(), [false]);
+        assert_eq!(rt.chat.queued_ids(&target), [id]);
+        rt.chat.set_relay_owners(Some(Arc::new(Vec::new)));
+        assert_eq!(drain(), [true]);
+        assert!(rt.chat.queued_ids(&target).is_empty());
+    }
+
+    #[test]
     fn an_owner_row_from_a_runner_or_unknown_kind_device_never_reaches_the_router() {
         let (_t, rt) = unrestricted_manager_rig();
         let seen = Arc::new(Mutex::new(0usize));
@@ -1051,6 +1088,7 @@ mod tests {
         };
         rt.chat.mention_open(sp.clone());
         let item = Item {
+            owner_device: false,
             room: &b,
             id: ID,
             body: "q",
@@ -1088,6 +1126,7 @@ mod tests {
         });
         let wrong = rt.chat.session_room("s_cccccccccc");
         let item = Item {
+            owner_device: false,
             room: &wrong,
             id: ID,
             body: "q",

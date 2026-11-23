@@ -64,6 +64,24 @@ fn owner_message_for_this_machine_is_ingested_with_the_sender_device() {
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].id, id);
     assert_eq!(seen[0].device.as_deref(), Some("dev-1"));
+    assert!(seen[0].owner_device);
+}
+
+#[test]
+fn owner_rows_from_other_kinds_are_dropped_and_desktop_or_mobile_reach_ingest() {
+    let (sink, seen) = recording_sink(stored);
+    for kind in [Some("runner"), None, Some("weird")] {
+        sink.deliver("dev-1", kind, msg(AuthorKind::Owner, MACHINE, None))
+            .unwrap();
+    }
+    assert!(seen.lock().unwrap().is_empty());
+    for kind in ["desktop", "mobile"] {
+        sink.deliver("dev-1", Some(kind), msg(AuthorKind::Owner, MACHINE, None))
+            .unwrap();
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2);
+    assert!(seen.iter().all(|i| i.owner_device));
 }
 
 #[test]

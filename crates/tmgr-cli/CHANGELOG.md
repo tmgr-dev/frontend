@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.169
+
+- Changed: an unrestricted manager now takes chat messages that you type on your own paired phone or desktop; they are delivered with the relay label. Messages from other machines' managers, followers, agents and devices that are not your verified phone or desktop are still refused, and so is a device whose revoke has arrived.
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.168
 
 - Added: the runner sends what each tool call of a manager chat session does (the Bash command, file path, search pattern, URL, MCP arguments) and, for listing and build commands, the first lines of the output, to the local desktop Manager only. Nothing is sent to the relay or the server.

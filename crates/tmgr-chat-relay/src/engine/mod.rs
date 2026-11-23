@@ -1188,8 +1188,16 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             return Ok(None);
         };
         if let Some(msg) = &chat {
-            let kind = c.st.kind_of_trusted(&opened.from).map(str::to_owned);
-            self.s.deliver(&opened.from, kind.as_deref(), msg.clone())?;
+            let revoke_pending =
+                c.st.pending_revokes
+                    .iter()
+                    .any(|p| p.target_fp == opened.from_fp);
+            let from_kind = if revoke_pending {
+                None
+            } else {
+                c.st.kind_of(&opened.from, &opened.from_fp)
+            };
+            self.s.deliver(&opened.from, from_kind, msg.clone())?;
             c.unsaved = true;
         }
         c.st.seen.push(Seen {
@@ -1474,6 +1482,16 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             g.identity.as_ref()?.device_id.clone(),
             g.keys.as_ref()?.fingerprint(),
         ))
+    }
+
+    pub fn owner_devices(&self) -> Vec<String> {
+        let g = self.lock();
+        g.st.trusted
+            .iter()
+            .filter(|d| matches!(g.st.kind_of(&d.id, &d.fp), Some("desktop" | "mobile")))
+            .filter(|d| !g.st.pending_revokes.iter().any(|p| p.target_fp == d.fp))
+            .map(|d| d.id.clone())
+            .collect()
     }
 
     pub fn owns(&self, room: &RoomRef) -> bool {

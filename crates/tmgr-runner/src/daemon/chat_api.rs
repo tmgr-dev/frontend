@@ -20,7 +20,7 @@ const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
 pub(super) const RELAY_SOURCE: &str = "phone or another device via chat relay";
 pub(super) const UNRESTRICTED_REFUSAL: &str =
-    "Not delivered: an unrestricted manager takes input only from this machine's keyboard.";
+    "Not delivered: an unrestricted manager takes input only from this machine's keyboard and the owner's paired devices.";
 
 fn bad(msg: String) -> ApiErr {
     api(ErrorCode::InvalidParams, msg)
@@ -70,20 +70,21 @@ impl Runner {
         &self,
         room: &tmgr_ipc::chat::RoomRef,
         device: Option<&str>,
+        owner_device: bool,
         body: &str,
     ) -> chat::Delivery {
         let target = match room.session.as_deref() {
             Some(id) => self.session(id),
             None => self.live_manager(),
         };
-        if target.is_some_and(|s| super::manager::is_unrestricted(&s)) {
+        if !owner_device && target.is_some_and(|s| super::manager::is_unrestricted(&s)) {
             return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
         }
         let t = match self.chat_target(room) {
             Ok(t) => t,
             Err(d) => return d,
         };
-        if super::manager::is_unrestricted(&t) {
+        if !owner_device && super::manager::is_unrestricted(&t) {
             return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
         }
         let typed = wrap_untrusted(RELAY_SOURCE, device.unwrap_or("unknown device"), body);
@@ -104,7 +105,7 @@ impl Runner {
         let (ingest_rt, sub_rt, stop_rt) = (self.clone(), self.clone(), self.clone());
         let rpc = Arc::new(RpcInbox::new());
         let (serve_rt, serve_inbox, device_rt) = (self.clone(), rpc.clone(), self.clone());
-        let (rooms_rt, history_rt) = (self.clone(), self.clone());
+        let (rooms_rt, history_rt, owners_rt) = (self.clone(), self.clone(), self.clone());
         let setup = chat::relay::pump::Setup {
             dir: self.cfg.dir.clone(),
             machine: self.chat.machine().to_owned(),
@@ -116,11 +117,14 @@ impl Runner {
                     }
                     let room = m.room.clone();
                     let device = m.device.clone();
+                    let owner_device = m.owner_device;
                     ingest_rt.chat.ingest(
                         m,
                         now_ms(),
                         |s| ingest_rt.session(s).is_some(),
-                        |body| ingest_rt.relay_deliver(&room, device.as_deref(), body),
+                        |body| {
+                            ingest_rt.relay_deliver(&room, device.as_deref(), owner_device, body)
+                        },
                     )
                 },
             ),
@@ -131,6 +135,7 @@ impl Runner {
             spawnok: Some(self.start_spawnok_intake()),
             serve_rpc: Arc::new(move |send| serve_rt.spawn_rpc_server(serve_inbox.clone(), send)),
             on_device: Arc::new(move |d| device_rt.chat.set_relay_device(d)),
+            on_owners: Arc::new(move |f| owners_rt.chat.set_relay_owners(Some(f))),
             rooms: Arc::new(move || {
                 let sessions: Vec<SessionInfo> = rooms_rt.all().iter().map(|s| s.info()).collect();
                 let mut rooms = rooms_rt.chat.rooms(&sessions, None);
@@ -322,8 +327,9 @@ impl Runner {
                     &posted.body_md,
                     &conn.client,
                     None,
+                    false,
                     now_ms(),
-                    |body, client, _| self.chat_deliver(&posted.room, body, client),
+                    |body, client, _, _| self.chat_deliver(&posted.room, body, client),
                 );
                 self.chat.note_undelivered(&posted.room, &outcome);
                 Ok(to_json(&posted))
@@ -415,7 +421,7 @@ impl Runner {
                         return self.mention_deliver(it);
                     }
                     let delivery = if it.client == "relay" {
-                        self.relay_deliver(it.room, it.device, it.body)
+                        self.relay_deliver(it.room, it.device, it.owner_device, it.body)
                     } else {
                         self.chat_deliver(it.room, it.body, it.client)
                     };
@@ -721,14 +727,45 @@ mod tests {
     }
 
     #[test]
-    fn an_unrestricted_manager_refuses_relay_input_and_posts_a_note() {
+    fn an_unrestricted_manager_does_not_refuse_owner_device_relay_input() {
         let (_t, rt) = manager_rig(
             json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
         );
         let room = rt.chat.manager_room();
         for room in [room.clone(), rt.chat.session_room("s_aaaaaaaaaa")] {
             assert_eq!(
-                rt.relay_deliver(&room, Some("d_phone1"), "hi"),
+                rt.relay_deliver(&room, Some("d_phone1"), true, "hi"),
+                chat::Delivery::Busy
+            );
+        }
+        let mut m = relay_msg(room.clone(), "hello");
+        m.owner_device = true;
+        let r = rt
+            .chat
+            .ingest(
+                m,
+                now_ms(),
+                |s| rt.session(s).is_some(),
+                |body| rt.relay_deliver(&room, Some("d_phone1"), true, body),
+            )
+            .unwrap();
+        assert!(!r.delivered);
+        assert_eq!(rt.chat.queued_ids(&room), [r.message.id]);
+        let h = rt.chat.history(&room, None, None).unwrap();
+        assert!(h
+            .iter()
+            .all(|m| m.author.kind != tmgr_ipc::chat::AuthorKind::System));
+    }
+
+    #[test]
+    fn an_unrestricted_manager_still_refuses_non_owner_relay_input_and_posts_a_note() {
+        let (_t, rt) = manager_rig(
+            json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
+        );
+        let room = rt.chat.manager_room();
+        for room in [room.clone(), rt.chat.session_room("s_aaaaaaaaaa")] {
+            assert_eq!(
+                rt.relay_deliver(&room, Some("d_phone1"), false, "hi"),
                 chat::Delivery::Refused(UNRESTRICTED_REFUSAL)
             );
         }
@@ -738,7 +775,7 @@ mod tests {
                 relay_msg(room.clone(), "hi"),
                 now_ms(),
                 |s| rt.session(s).is_some(),
-                |body| rt.relay_deliver(&room, Some("d_phone1"), body),
+                |body| rt.relay_deliver(&room, Some("d_phone1"), false, body),
             )
             .unwrap();
         assert!(!r.delivered);
@@ -756,7 +793,7 @@ mod tests {
             rt.chat.session_room("s_cccccccccc"),
         ] {
             assert!(!matches!(
-                rt.relay_deliver(&room, None, "hi"),
+                rt.relay_deliver(&room, None, false, "hi"),
                 chat::Delivery::Refused(_)
             ));
         }
@@ -764,7 +801,7 @@ mod tests {
             json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
         );
         assert!(!matches!(
-            rt.relay_deliver(&rt.chat.session_room("s_cccccccccc"), None, "hi"),
+            rt.relay_deliver(&rt.chat.session_room("s_cccccccccc"), None, false, "hi"),
             chat::Delivery::Refused(_)
         ));
     }

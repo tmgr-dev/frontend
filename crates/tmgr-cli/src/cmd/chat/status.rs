@@ -16,7 +16,12 @@ impl Transport for Offline {
 struct NoSink;
 
 impl tmgr_chat_relay::engine::ChatSink for NoSink {
-    fn deliver(&self, _: &str, _: tmgr_ipc::chat::ChatMessage) -> std::result::Result<(), String> {
+    fn deliver(
+        &self,
+        _: &str,
+        _: Option<&str>,
+        _: tmgr_ipc::chat::ChatMessage,
+    ) -> std::result::Result<(), String> {
         Err("status does not take chat".into())
     }
 }
