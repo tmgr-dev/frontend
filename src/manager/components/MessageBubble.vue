@@ -76,7 +76,7 @@
 						</button>
 					</template>
 					<template v-else-if="voicePack.installed">
-						<button type="button" @click="voicePack.remove()">
+						<button type="button" @click="onRemoveVoice">
 							{{ $t('manager.messages.removeEnglishVoice') }}
 						</button>
 					</template>
@@ -265,6 +265,10 @@
 		},
 		methods: {
 			truncate,
+			onRemoveVoice() {
+				speaker.stop();
+				void voicePack.remove();
+			},
 			onSpeak() {
 				speaker.toggle(this.message.id, this.message.body_md);
 			},

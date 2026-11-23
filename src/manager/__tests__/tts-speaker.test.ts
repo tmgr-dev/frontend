@@ -162,6 +162,13 @@ describe('speaker', () => {
 			expect(speaker.speakingId).toBe('a');
 		});
 
+		it('is available through Piper when the OS voice is not', () => {
+			setEngine(makeFake(false).engine);
+			expect(speaker.available).toBe(true);
+			voicePack.installed = false;
+			expect(speaker.available).toBe(false);
+		});
+
 		it('keeps the OS voice for Russian even when the pack is installed', () => {
 			const fake = makeFake();
 			setEngine(fake.engine);

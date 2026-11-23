@@ -35,7 +35,7 @@ export const speaker: Speaker = {
 		return state.errorId;
 	},
 	get available() {
-		return engine.isAvailable();
+		return engine.isAvailable() || (voicePack.supported && voicePack.installed);
 	},
 	toggle(messageId, bodyMd) {
 		if (state.speakingId === messageId) {

@@ -121,6 +121,9 @@ pub fn tts_cancel_install<R: Runtime>(app: AppHandle<R>) {
 #[tauri::command]
 pub async fn tts_remove<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
   let state = app.state::<TtsState>();
+  if state.install.lock().map_err(|e| e.to_string())?.is_some() {
+    return Err("the English voice is being installed".to_owned());
+  }
   state.stopped_through.fetch_max(state.last_run.load(Ordering::SeqCst), Ordering::SeqCst);
   let dir = dir_of(&app)?;
   state.engine.lock().map_err(|e| e.to_string())?.take();
