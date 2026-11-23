@@ -103,7 +103,9 @@ impl SwitchRelay {
     if !self.enabled {
       return false;
     }
-    let Some(key) = self.auth.key() else { return false };
+    let Some(key) = self.auth.key() else {
+      return false;
+    };
     if self.slot.read().unwrap_or_else(|p| p.into_inner()).built_for.as_ref() == Some(&key) {
       return true;
     }
@@ -139,7 +141,15 @@ impl RelayPort for SwitchRelay {
     self.cur().search(params)
   }
   fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
-    self.cur().send(params)
+    let relay = self.cur();
+    let sent = relay.send(params);
+    if sent.is_ok() {
+      let spawned = std::thread::Builder::new().name("manager-relay-flush".into()).spawn(move || relay.flush());
+      if let Err(e) = spawned {
+        log::warn!("[manager] chat store flush did not start: {e}");
+      }
+    }
+    sent
   }
   fn owns(&self, room: &RoomRef) -> bool {
     self.cur().owns(room)
@@ -182,6 +192,9 @@ impl RelayPort for SwitchRelay {
   }
   fn take_receipts(&self) -> Vec<Receipt> {
     self.cur().take_receipts()
+  }
+  fn flush(&self) {
+    self.cur().flush()
   }
 }
 

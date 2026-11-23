@@ -138,6 +138,7 @@ pub trait RelayPort: Send + Sync {
   fn take_receipts(&self) -> Vec<Receipt> {
     vec![]
   }
+  fn flush(&self) {}
 }
 
 pub struct NoRelay;

@@ -3,7 +3,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -42,6 +44,9 @@ const AUTO_REVOKE_SILENCE_MS: u64 = 30 * 24 * 3600 * 1000;
 const KINDS_V: u32 = 3;
 pub const OLD_CODE_MSG: &str = "This join code is from an older app version. Update the desktop or mobile app that showed it and generate a new code.";
 const BUSY_PREFIX: &str = "relay is busy, retry in ";
+const SEND_BUDGET: Duration = Duration::from_secs(15);
+const RETRY_AFTER_CAP_SECS: u64 = 2;
+pub const SEND_TIMEOUT_MSG: &str = "The relay did not answer in time; the message may not have been sent. Retry is safe.";
 
 #[cfg(test)]
 mod tests;
@@ -167,7 +172,7 @@ struct State {
   bindings: BTreeMap<String, String>,
   #[serde(default)]
   expected: Option<ExpectedJoin>,
-  #[serde(default)]
+  #[serde(default, skip_serializing)]
   rooms: BTreeMap<String, StoredRooms>,
 }
 
@@ -224,7 +229,9 @@ struct Core {
   keys: Option<DeviceKeys>,
   st: State,
   log: Vec<LogEntry>,
-  log_dirty: bool,
+  committed_gen: u64,
+  seq_reserved: BTreeMap<String, u64>,
+  sending: BTreeSet<String>,
   dir: Option<Directory>,
   dir_gen: u64,
   joined_now: bool,
@@ -237,6 +244,24 @@ struct Core {
   auto_join_error: Option<String>,
   drop_reason: Option<&'static str>,
   receipts: Vec<Receipt>,
+}
+
+struct Sealed {
+  items: Vec<(String, String, u64)>,
+  kinds: BTreeMap<String, String>,
+}
+
+struct Posted {
+  done: Vec<(String, u64)>,
+  outcome: Result<(), String>,
+}
+
+struct Snapshot {
+  gen: u64,
+  log: Option<(u64, String)>,
+  state: Option<String>,
+  trust: String,
+  at: u64,
 }
 
 fn trust_key(st: &State) -> String {
@@ -531,7 +556,9 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
   if p.user_id != uid || expect_fp.is_some_and(|f| f != p.target_fp) {
     return;
   }
-  let Some(revoker) = c.st.trusted.iter().find(|d| d.fp == p.revoker_fp).cloned() else { return };
+  let Some(revoker) = c.st.trusted.iter().find(|d| d.fp == p.revoker_fp).cloned() else {
+    return;
+  };
   if verify_revoke(json, uid, &revoker.sign_pub, &revoker.kex_pub).is_err() {
     return;
   }
@@ -568,6 +595,11 @@ pub struct RelayEngine<T: Transport, K: KeyStore> {
   kind: String,
   now: Box<dyn Fn() -> u64 + Send + Sync>,
   core: Mutex<Core>,
+  writer: Mutex<u64>,
+  log_rev: AtomicU64,
+  stored_log_rev: AtomicU64,
+  next_gen: AtomicU64,
+  send_budget: Duration,
   #[cfg(test)]
   drops: Mutex<Vec<&'static str>>,
 }
@@ -591,13 +623,33 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       core.acked = core.st.cursor;
     }
     let now = Box::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
-    Ok(Self { t, k, cfg, kind: "desktop".into(), now, core: Mutex::new(core), #[cfg(test)] drops: Mutex::default() })
+    Ok(Self {
+      t,
+      k,
+      cfg,
+      kind: "desktop".into(),
+      now,
+      core: Mutex::new(core),
+      writer: Mutex::new(0),
+      log_rev: AtomicU64::new(0),
+      stored_log_rev: AtomicU64::new(0),
+      next_gen: AtomicU64::new(0),
+      send_budget: SEND_BUDGET,
+      #[cfg(test)]
+      drops: Mutex::default(),
+    })
   }
 
   pub fn with_kind(mut self, kind: &str) -> Self {
     self.kind = kind.to_owned();
     let c = self.core.get_mut().unwrap_or_else(|p| p.into_inner());
     backfill_self(c, kind);
+    self
+  }
+
+  #[cfg(test)]
+  fn with_send_budget(mut self, budget: Duration) -> Self {
+    self.send_budget = budget;
     self
   }
 
@@ -633,37 +685,96 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     self.t.call(&req, c.identity.as_ref().map(|i| i.token.as_str()))
   }
 
-  fn save_now(&self, c: &mut Core) -> Result<(), String> {
-    self.persist(c, true).map(|_| ())
+  fn mark_log(&self) {
+    self.log_rev.fetch_add(1, Ordering::SeqCst);
   }
 
-  /// Poll-time writes are throttled unless trust changed; a message is acked only once the log holding it is stored.
-  fn persist(&self, c: &mut Core, force: bool) -> Result<bool, String> {
+  fn log_unstored(&self) -> bool {
+    self.log_rev.load(Ordering::SeqCst) > self.stored_log_rev.load(Ordering::SeqCst)
+  }
+
+  fn writer(&self) -> MutexGuard<'_, u64> {
+    self.writer.lock().unwrap_or_else(|p| p.into_inner())
+  }
+
+  fn save_now(&self, c: &mut Core) -> Result<(), String> {
+    if let Some(snap) = self.plan(c, true)? {
+      if self.write(&snap)? {
+        Self::commit(c, snap);
+      }
+    }
+    Ok(())
+  }
+
+  /// Under the core lock: decides what to write and serializes it. Poll-time writes are throttled unless trust changed.
+  fn plan(&self, c: &mut Core, force: bool) -> Result<Option<Snapshot>, String> {
     let st = serde_json::to_string(&c.st).map_err(err)?;
     let state_changed = st != c.written_state;
-    if !state_changed && !c.log_dirty {
-      return Ok(true);
+    let log_rev = self.log_rev.load(Ordering::SeqCst);
+    let log_dirty = log_rev > self.stored_log_rev.load(Ordering::SeqCst);
+    if !state_changed && !log_dirty {
+      return Ok(None);
     }
     let now = self.now();
     let trust = trust_key(&c.st);
     if !force && trust == c.written_trust && now.abs_diff(c.last_write) < WRITE_EVERY_MS {
-      return Ok(false);
+      return Ok(None);
     }
-    if c.log_dirty {
+    let log = if log_dirty {
       if c.log.len() > MAX_LOG {
         let cut = c.log.len() - MAX_LOG;
         c.log.drain(..cut);
       }
-      self.k.save(Slot::Log, &serde_json::to_string(&c.log).map_err(err)?)?;
-      c.log_dirty = false;
+      Some((log_rev, serde_json::to_string(&c.log).map_err(err)?))
+    } else {
+      None
+    };
+    let gen = self.next_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    Ok(Some(Snapshot { gen, log, state: state_changed.then_some(st), trust, at: now }))
+  }
+
+  /// Without the core lock: one writer at a time, and a snapshot older than one already written is dropped (the newer one carries everything).
+  fn write(&self, snap: &Snapshot) -> Result<bool, String> {
+    let mut last = self.writer();
+    if snap.gen < *last {
+      return Ok(false);
     }
-    if state_changed {
-      self.k.save(Slot::State, &st)?;
+    if let Some((rev, json)) = &snap.log {
+      self.k.save(Slot::Log, json)?;
+      self.stored_log_rev.fetch_max(*rev, Ordering::SeqCst);
+    }
+    if let Some(st) = &snap.state {
+      self.k.save(Slot::State, st)?;
+    }
+    *last = snap.gen;
+    Ok(true)
+  }
+
+  fn commit(c: &mut Core, snap: Snapshot) {
+    if snap.gen <= c.committed_gen {
+      return;
+    }
+    c.committed_gen = snap.gen;
+    if let Some(st) = snap.state {
       c.written_state = st;
     }
-    c.written_trust = trust;
-    c.last_write = now;
-    Ok(true)
+    c.written_trust = snap.trust;
+    c.last_write = snap.at;
+  }
+
+  /// A message is acked only once the log holding it is stored, so the keychain write runs with the core lock released.
+  fn persist_out<'a>(&'a self, g: MutexGuard<'a, Core>, force: bool) -> Result<MutexGuard<'a, Core>, String> {
+    let mut g = g;
+    let Some(snap) = self.plan(&mut g, force)? else {
+      return Ok(g);
+    };
+    drop(g);
+    let written = self.write(&snap)?;
+    let mut g = self.lock();
+    if written {
+      Self::commit(&mut g, snap);
+    }
+    Ok(g)
   }
 
   fn own(c: &Core) -> Result<(&Identity, &DeviceKeys), String> {
@@ -697,7 +808,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.st.kinds_v = KINDS_V;
     c.st.kinds.insert(kind_key(&me.id, &me.fp), self.kind.clone());
     c.log.clear();
-    c.log_dirty = true;
+    self.mark_log();
     c.acked = 0;
     self.save_now(c)
   }
@@ -746,13 +857,23 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(())
   }
 
-  fn seal_and_post(&self, c: &mut Core, kind: &str, msg_id: &str, payload: &Value, targets: &[Dev], push: bool) -> Result<(), String> {
-    let (id, keys) = Self::own(c)?;
+  fn next_seq(c: &Core, to: &str) -> u64 {
+    c.st.seq_out.get(to).copied().unwrap_or(0).max(c.seq_reserved.get(to).copied().unwrap_or(0)) + 1
+  }
+
+  /// Under the core lock: seals one body per target and reserves its seq so a concurrent send cannot reuse it.
+  fn seal_items(&self, c: &mut Core, kind: &str, msg_id: &str, payload: &Value, targets: &[Dev]) -> Result<Sealed, String> {
+    Self::own(c)?;
     let now = self.now();
     let mut items: Vec<(String, String, u64)> = Vec::new();
     for t in targets {
-      check_device_id(&t.id).map_err(|_| "invalid recipient device id".to_owned())?;
-      let seq = c.st.seq_out.get(&t.id).copied().unwrap_or(0) + 1;
+      if check_device_id(&t.id).is_err() {
+        Self::settle(c, &items, &[]);
+        return Err("invalid recipient device id".into());
+      }
+      let seq = Self::next_seq(c, &t.id);
+      c.seq_reserved.insert(t.id.clone(), seq);
+      let (id, keys) = Self::own(c)?;
       let body = seal_message(
         keys,
         &SealParams {
@@ -766,56 +887,107 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           payload: payload.clone(),
         },
       )
-      .map_err(err)?;
-      items.push((t.id.clone(), body, seq));
+      .map_err(err);
+      match body {
+        Ok(body) => items.push((t.id.clone(), body, seq)),
+        Err(e) => {
+          Self::settle(c, &items, &[]);
+          c.seq_reserved.remove(&t.id);
+          return Err(e);
+        }
+      }
     }
+    let kinds = targets.iter().map(|t| (t.id.clone(), c.st.kind_of(&t.id, &t.fp).unwrap_or(&t.kind).to_owned())).collect();
+    Ok(Sealed { items, kinds })
+  }
+
+  /// Under the core lock again: delivered seqs become `seq_out`; a failed seq is handed back only if no later one was reserved.
+  fn settle(c: &mut Core, items: &[(String, String, u64)], done: &[(String, u64)]) {
+    for (to, seq) in done {
+      let out = c.st.seq_out.entry(to.clone()).or_insert(0);
+      *out = (*out).max(*seq);
+    }
+    for (to, _, seq) in items {
+      if c.seq_reserved.get(to) == Some(seq) {
+        c.seq_reserved.remove(to);
+      }
+    }
+  }
+
+  fn post_phase(&self, token: Option<&str>, msg_id: &str, push: bool, sealed: &Sealed, deadline: Option<Instant>) -> Posted {
+    let mut done: Vec<(String, u64)> = Vec::new();
     let mut delivered = false;
     let mut skipped = false;
-    for chunk in items.chunks(api::MAX_ITEMS) {
-      match self.post_items(c, msg_id, push, chunk) {
+    for chunk in sealed.items.chunks(api::MAX_ITEMS) {
+      match self.post_items(token, msg_id, push, chunk, deadline) {
         Ok(()) => {
-          for (to, _, seq) in chunk {
-            c.st.seq_out.insert(to.clone(), *seq);
-          }
+          done.extend(chunk.iter().map(|(to, _, seq)| (to.clone(), *seq)));
           delivered = true;
           continue;
         }
         Err(e) if e == RECIPIENT_FULL_MSG && chunk.len() > 1 => {}
-        Err(e) => return Err(e),
+        Err(e) => return Posted { done, outcome: Err(e) },
       }
       for item in chunk {
-        match self.post_items(c, msg_id, push, std::slice::from_ref(item)) {
+        match self.post_items(token, msg_id, push, std::slice::from_ref(item), deadline) {
           Ok(()) => {
-            c.st.seq_out.insert(item.0.clone(), item.2);
+            done.push((item.0.clone(), item.2));
             delivered = true;
           }
           Err(e) if e == RECIPIENT_FULL_MSG => {
-            let kind = targets
-              .iter()
-              .find(|t| t.id == item.0)
-              .map(|t| c.st.kind_of(&t.id, &t.fp).unwrap_or(&t.kind).to_owned())
-              .unwrap_or_default();
+            let kind = sealed.kinds.get(&item.0).cloned().unwrap_or_default();
             if kind != "desktop" && kind != "mobile" {
-              return Err(e);
+              return Posted { done, outcome: Err(e) };
             }
             log::warn!("[chat-relay] skipped {kind} {}: its relay queue is full", item.0.chars().take(8).collect::<String>());
             skipped = true;
           }
-          Err(e) => return Err(e),
+          Err(e) => return Posted { done, outcome: Err(e) },
         }
       }
     }
-    if skipped && !delivered {
-      return Err(RECIPIENT_FULL_MSG.into());
-    }
-    Ok(())
+    let outcome = if skipped && !delivered { Err(RECIPIENT_FULL_MSG.into()) } else { Ok(()) };
+    Posted { done, outcome }
   }
 
-  fn post_items(&self, c: &Core, msg_id: &str, push: bool, items: &[(String, String, u64)]) -> Result<(), String> {
+  fn seal_and_post(&self, c: &mut Core, kind: &str, msg_id: &str, payload: &Value, targets: &[Dev], push: bool) -> Result<(), String> {
+    let sealed = self.seal_items(c, kind, msg_id, payload, targets)?;
+    let token = c.identity.as_ref().map(|i| i.token.clone());
+    let posted = self.post_phase(token.as_deref(), msg_id, push, &sealed, None);
+    Self::settle(c, &sealed.items, &posted.done);
+    posted.outcome
+  }
+
+  fn post_items(&self, token: Option<&str>, msg_id: &str, push: bool, items: &[(String, String, u64)], deadline: Option<Instant>) -> Result<(), String> {
     let refs: Vec<(&str, &str)> = items.iter().map(|(to, body, _)| (to.as_str(), body.as_str())).collect();
     let req = api::post_messages(msg_id, push, &refs).map_err(err)?;
-    api::parse_posted(&self.call(c, req).map_err(post_error)?).map_err(err)?;
-    Ok(())
+    let mut retried = false;
+    loop {
+      let reply = match deadline {
+        None => self.t.call(&req, token),
+        Some(d) => {
+          let left = d.saturating_duration_since(Instant::now());
+          if left.is_zero() {
+            return Err(SEND_TIMEOUT_MSG.into());
+          }
+          self.t.call_within(&req, token, left)
+        }
+      };
+      match reply.map_err(post_error).and_then(|raw| api::parse_posted(&raw).map(drop).map_err(err)) {
+        Ok(()) => return Ok(()),
+        Err(e) => {
+          if let (Some(d), Some(secs), false) = (deadline, retry_after_secs(&e), retried) {
+            let wait = Duration::from_secs(secs);
+            if secs <= RETRY_AFTER_CAP_SECS && Instant::now() + wait < d {
+              retried = true;
+              std::thread::sleep(wait);
+              continue;
+            }
+          }
+          return Err(if deadline.is_some_and(|d| Instant::now() >= d) { SEND_TIMEOUT_MSG.into() } else { e });
+        }
+      }
+    }
   }
 
   fn intro_json(&self, c: &Core, version: u8, target: (&str, &str, &str)) -> Result<String, String> {
@@ -840,7 +1012,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let (own_id, own_fp) = (id.device_id.clone(), keys.fingerprint());
     let mut signed = Vec::new();
     for t in c.st.trusted.iter().filter(|t| t.id != own_id) {
-      let Some(kind) = c.st.kind_of(&t.id, &t.fp) else { continue };
+      let Some(kind) = c.st.kind_of(&t.id, &t.fp) else {
+        continue;
+      };
       signed.push((t.id.clone(), self.intro_json(c, 2, (&t.id, &t.fp, kind))?));
     }
     signed.push((own_id.clone(), self.intro_json(c, 2, (&own_id, &own_fp, &self.kind))?));
@@ -955,8 +1129,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     }
     let kind_hint = serde_json::from_str::<Value>(&m.body).ok().and_then(|v| v.get("kind")?.as_str().map(str::to_owned));
     let join_open = kind_hint.as_deref() == Some("join");
-    let Some(dir) = c.dir.as_ref() else { return Err(None) };
-    let Ok((id, keys)) = Self::own(c) else { return Err(None) };
+    let Some(dir) = c.dir.as_ref() else {
+      return Err(None);
+    };
+    let Ok((id, keys)) = Self::own(c) else {
+      return Err(None);
+    };
     let trusted: Vec<Trusted> = c.st.trusted.iter().map(to_trusted).collect();
     let opened = open_message_checked(keys, self.cfg.user_id, &id.device_id, &m.from, &m.msg_id, &m.body, now, &trusted, |from| {
       join_open
@@ -979,7 +1157,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   fn apply(&self, c: &mut Core, opened: Opened, now: u64) -> Option<ChatMessage> {
     let stored = self.handle(c, &opened, now);
-    if stored.is_some() {
+    if stored.is_some() && opened.kind != "rooms" {
       c.st.seen.push(Seen { from: opened.from, id: opened.id, at: opened.sent_at });
       c.st.seen.retain(|s| s.at + SEEN_TTL_MS >= now);
       if c.st.seen.len() > MAX_SEEN {
@@ -1053,7 +1231,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         }
         if !c.log.iter().any(|x| x.from == opened.from && x.msg.id == msg.id) {
           c.log.push(LogEntry { from: opened.from.clone(), msg: msg.clone() });
-          c.log_dirty = true;
+          self.mark_log();
           stored = Some(msg);
         }
       }
@@ -1304,54 +1482,75 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     if !self.owns(&params.room) {
       return Err("unknown room".into());
     }
+    let deadline = Instant::now() + self.send_budget;
+    let (msg, own_id, token, sealed) = {
+      let mut g = self.lock();
+      let c = &mut *g;
+      self.ensure_registered(c)?;
+      let own_id = c.identity.as_ref().map(|i| i.device_id.clone()).unwrap_or_default();
+      if let Some(stored) = params.id.as_deref().and_then(|i| c.log.iter().find(|e| e.msg.id == i && (e.from == own_id || e.from.is_empty())).map(|e| &e.msg)) {
+        let same = stored.room == params.room && stored.body_md == params.body_md && stored.reply_to == params.reply_to;
+        return if same { Ok(stored.clone()) } else { Err("conflict".into()) };
+      }
+      let (id, _) = Self::own(c)?;
+      if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+        return Err("this device is not a trusted member of the chat yet".into());
+      }
+      let targets: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id).cloned().collect();
+      if targets.is_empty() {
+        return Err("there are no other trusted devices to send to".into());
+      }
+      let msg_id = match params.id {
+        Some(i) => i,
+        None => {
+          let mut rnd = [0u8; 16];
+          getrandom::fill(&mut rnd).map_err(err)?;
+          format!("m_{}", hex(&rnd))
+        }
+      };
+      let now = self.now();
+      let msg = ChatMessage {
+        v: 1,
+        id: msg_id,
+        room: params.room,
+        author: crate::manager::backend::Author { kind: "owner".into(), id: "owner".into(), machine: None, agent: None },
+        ts_ms: params.ts_ms.unwrap_or(now),
+        kind: "text".into(),
+        body_md: params.body_md,
+        attachments: vec![],
+        reply_to: params.reply_to,
+        decision: None,
+        mention: None,
+      };
+      validate_chat(&msg)?;
+      let payload = serde_json::to_value(&msg).map_err(err)?;
+      if !c.sending.insert(msg.id.clone()) {
+        return Err("this message is already being sent".into());
+      }
+      let sealed = match self.seal_items(c, "chat", &msg.id, &payload, &targets) {
+        Ok(sealed) => sealed,
+        Err(e) => {
+          c.sending.remove(&msg.id);
+          return Err(e);
+        }
+      };
+      (msg, own_id, Self::token_of(c)?, sealed)
+    };
+    let posted = self.post_phase(Some(&token), &msg.id, true, &sealed, Some(deadline));
     let mut g = self.lock();
     let c = &mut *g;
-    self.ensure_registered(c)?;
-    let own_id = c.identity.as_ref().map(|i| i.device_id.clone()).unwrap_or_default();
-    if let Some(stored) = params.id.as_deref().and_then(|i| c.log.iter().find(|e| e.msg.id == i && (e.from == own_id || e.from.is_empty())).map(|e| &e.msg)) {
-      let same = stored.room == params.room && stored.body_md == params.body_md && stored.reply_to == params.reply_to;
-      return if same { Ok(stored.clone()) } else { Err("conflict".into()) };
+    c.sending.remove(&msg.id);
+    if !Self::is_identity(c, &token) {
+      return Err("the chat identity changed while sending".into());
     }
-    let (id, _) = Self::own(c)?;
-    if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
-      return Err("this device is not a trusted member of the chat yet".into());
-    }
-    let targets: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id).cloned().collect();
-    if targets.is_empty() {
-      return Err("there are no other trusted devices to send to".into());
-    }
-    let msg_id = match params.id {
-      Some(i) => i,
-      None => {
-        let mut rnd = [0u8; 16];
-        getrandom::fill(&mut rnd).map_err(err)?;
-        format!("m_{}", hex(&rnd))
-      }
-    };
-    let now = self.now();
-    let msg = ChatMessage {
-      v: 1,
-      id: msg_id,
-      room: params.room,
-      author: crate::manager::backend::Author { kind: "owner".into(), id: "owner".into(), machine: None, agent: None },
-      ts_ms: params.ts_ms.unwrap_or(now),
-      kind: "text".into(),
-      body_md: params.body_md,
-      attachments: vec![],
-      reply_to: params.reply_to,
-      decision: None,
-      mention: None,
-    };
-    validate_chat(&msg)?;
-    let payload = serde_json::to_value(&msg).map_err(err)?;
-    self.seal_and_post(c, "chat", &msg.id, &payload, &targets, true)?;
-    c.st.seen.push(Seen { from: own_id.clone(), id: msg.id.clone(), at: now });
+    Self::settle(c, &sealed.items, &posted.done);
+    posted.outcome?;
+    c.st.seen.push(Seen { from: own_id.clone(), id: msg.id.clone(), at: self.now() });
     if c.st.seen.len() > MAX_SEEN {
       c.st.seen.remove(0);
     }
     c.log.push(LogEntry { from: own_id, msg: msg.clone() });
-    c.log_dirty = true;
-    self.save_now(c)?;
+    self.mark_log();
     Ok(msg)
   }
 
@@ -1494,7 +1693,10 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         let _ = self.call(c, req);
       }
     }
-    self.k.clear()?;
+    {
+      let _writing = self.writer();
+      self.k.clear()?;
+    }
     *c = Core::default();
     self.ensure_registered(c)?;
     notice.map_err(|e| format!("the old identity was wiped, but the other devices were not told: {e}"))
@@ -1502,6 +1704,13 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
 
   fn take_receipts(&self) -> Vec<Receipt> {
     std::mem::take(&mut self.lock().receipts)
+  }
+
+  fn flush(&self) {
+    let g = self.lock();
+    if let Err(e) = self.persist_out(g, true) {
+      log::warn!("[manager] chat store write failed: {e}");
+    }
   }
 
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
@@ -1532,7 +1741,9 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         return Ok(out);
       }
       let inbox = api::parse_inbox(&raw).map_err(err)?;
-      let Some(last) = inbox.messages.iter().map(|m| m.cursor as u64).max() else { break };
+      let Some(last) = inbox.messages.iter().map(|m| m.cursor as u64).max() else {
+        break;
+      };
       self.process_page(&mut g, &inbox.messages, now, &mut hold, &mut out)?;
       after = last;
       g.st.cursor = g.st.cursor.max(hold.stuck.map_or(last, |s| s.saturating_sub(1)));
@@ -1620,8 +1831,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     if c.st.expected.as_ref().is_some_and(|e| now >= e.exp_ms) {
       c.st.expected = None;
     }
-    let Some(exp) = c.st.expected.clone() else { return };
-    let Some(rec) = c.st.pending_joins.iter().find(|j| j.device_id == exp.device_id).cloned() else { return };
+    let Some(exp) = c.st.expected.clone() else {
+      return;
+    };
+    let Some(rec) = c.st.pending_joins.iter().find(|j| j.device_id == exp.device_id).cloned() else {
+      return;
+    };
     c.st.expected = None;
     if !expected_join_matches(&exp.device_id, &exp.fp, &rec.device_id, &rec.fp, &rec.kind) {
       record_alert(c, "expected_join_mismatch", &rec.device_id, now);
@@ -1680,9 +1895,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.identity.as_ref().is_some_and(|i| i.token == token)
   }
 
-  fn ack_stored<'a>(&'a self, mut g: MutexGuard<'a, Core>, token: &str) -> Result<MutexGuard<'a, Core>, String> {
-    self.persist(&mut g, false)?;
-    if g.log_dirty || g.st.cursor <= g.acked {
+  fn ack_stored<'a>(&'a self, g: MutexGuard<'a, Core>, token: &str) -> Result<MutexGuard<'a, Core>, String> {
+    let g = self.persist_out(g, false)?;
+    if self.log_unstored() || g.st.cursor <= g.acked {
       return Ok(g);
     }
     let through = g.st.cursor;
@@ -1706,8 +1921,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn ack_if_stored(&self, c: &mut Core) -> Result<(), String> {
-    self.persist(c, false)?;
-    if !c.log_dirty && c.st.cursor > c.acked {
+    if let Some(snap) = self.plan(c, false)? {
+      if self.write(&snap)? {
+        Self::commit(c, snap);
+      }
+    }
+    if !self.log_unstored() && c.st.cursor > c.acked {
       self.call(c, api::ack_messages(c.st.cursor).map_err(err)?)?;
       c.acked = c.st.cursor;
     }
@@ -1715,7 +1934,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn announce_reset(&self, c: &mut Core) -> Result<(), String> {
-    let (Some(id), Some(keys)) = (&c.identity, &c.keys) else { return Ok(()) };
+    let (Some(id), Some(keys)) = (&c.identity, &c.keys) else {
+      return Ok(());
+    };
     let others: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id).cloned().collect();
     if !c.st.joined || others.is_empty() {
       return Ok(());

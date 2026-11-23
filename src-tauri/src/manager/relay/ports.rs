@@ -2,11 +2,16 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use tmgr_chat_relay::api::Request;
 
 pub trait Transport: Send + Sync {
   fn call(&self, req: &Request, device_token: Option<&str>) -> Result<String, String>;
+
+  fn call_within(&self, req: &Request, device_token: Option<&str>, _timeout: Duration) -> Result<String, String> {
+    self.call(req, device_token)
+  }
 }
 
 // STUB: backend chat-relay (Liquibase 230) is not shipped yet
@@ -131,7 +136,9 @@ fn chunk_name(name: &str, version: Option<u64>, i: usize) -> String {
 
 /// The pointer `<name>.n` is `"<version>:<count>"`; a bare `"<count>"` is the unversioned legacy layout.
 fn pointer(cells: &dyn Cells, name: &str) -> Result<Option<(Option<u64>, usize)>, String> {
-  let Some(raw) = cells.get(&format!("{name}.n"))? else { return Ok(None) };
+  let Some(raw) = cells.get(&format!("{name}.n"))? else {
+    return Ok(None);
+  };
   match raw.split_once(':') {
     Some((v, n)) => Ok(Some((Some(v.parse().map_err(|_| unreadable())?), n.parse().map_err(|_| unreadable())?))),
     None => Ok(Some((None, raw.parse().map_err(|_| unreadable())?))),
@@ -150,7 +157,9 @@ fn drop_chunks(cells: &dyn Cells, name: &str, version: Option<u64>) -> Result<()
 // Values are split into chunks because a Windows credential holds only ~2.5 KB. A save writes a new chunk set
 // and only then flips the pointer, so a crash leaves either the old value or the new one, never a mix.
 fn load_chunked(cells: &dyn Cells, name: &str) -> Result<Option<String>, String> {
-  let Some((version, count)) = pointer(cells, name)? else { return Ok(None) };
+  let Some((version, count)) = pointer(cells, name)? else {
+    return Ok(None);
+  };
   let mut out = String::new();
   for i in 0..count {
     out.push_str(&cells.get(&chunk_name(name, version, i))?.ok_or_else(unreadable)?);

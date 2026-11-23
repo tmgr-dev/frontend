@@ -1,6 +1,6 @@
 //! Real HTTP implementation of `Transport`. The wire sits behind `HttpClient` so tests never touch the network.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use serde_json::Value;
@@ -19,6 +19,10 @@ pub struct HttpResponse {
 
 pub trait HttpClient: Send + Sync {
   fn send(&self, method: &str, url: &str, headers: &[(&str, String)], body: Option<String>) -> Result<HttpResponse, String>;
+
+  fn send_within(&self, method: &str, url: &str, headers: &[(&str, String)], body: Option<String>, _timeout: Duration) -> Result<HttpResponse, String> {
+    self.send(method, url, headers, body)
+  }
 }
 
 pub trait LoginToken: Send + Sync {
@@ -33,22 +37,40 @@ impl LoginToken for NoLogin {
   }
 }
 
-pub struct ReqwestClient;
+#[derive(Default)]
+pub struct ReqwestClient {
+  client: OnceLock<reqwest::Client>,
+  #[cfg(test)]
+  builds: std::sync::atomic::AtomicUsize,
+}
 
-impl HttpClient for ReqwestClient {
-  fn send(&self, method: &str, url: &str, headers: &[(&str, String)], body: Option<String>) -> Result<HttpResponse, String> {
-    let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|_| UNREACHABLE.to_owned())?;
+impl ReqwestClient {
+  fn client(&self) -> Result<reqwest::Client, String> {
+    if let Some(c) = self.client.get() {
+      return Ok(c.clone());
+    }
     crate::local_move::ensure_tls_provider();
+    let built = reqwest::Client::builder()
+      .connect_timeout(Duration::from_secs(5))
+      .timeout(Duration::from_secs(20))
+      .redirect(reqwest::redirect::Policy::none())
+      .build()
+      .map_err(|_| UNREACHABLE.to_owned())?;
+    #[cfg(test)]
+    self.builds.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Ok(self.client.get_or_init(|| built).clone())
+  }
+
+  fn run(&self, method: &str, url: &str, headers: &[(&str, String)], body: Option<String>, timeout: Option<Duration>) -> Result<HttpResponse, String> {
+    let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|_| UNREACHABLE.to_owned())?;
+    let client = self.client()?;
     let (url, headers) = (url.to_owned(), headers.to_vec());
     tauri::async_runtime::block_on(async move {
       let unreachable = |_| UNREACHABLE.to_owned();
-      let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(unreachable)?;
       let mut req = client.request(method, url).header(reqwest::header::ACCEPT, "application/json");
+      if let Some(t) = timeout {
+        req = req.timeout(t);
+      }
       for (name, value) in headers {
         req = req.header(name, value);
       }
@@ -67,6 +89,16 @@ impl HttpClient for ReqwestClient {
       }
       Ok(HttpResponse { status, retry_after, body: String::from_utf8_lossy(&out).into_owned() })
     })
+  }
+}
+
+impl HttpClient for ReqwestClient {
+  fn send(&self, method: &str, url: &str, headers: &[(&str, String)], body: Option<String>) -> Result<HttpResponse, String> {
+    self.run(method, url, headers, body, None)
+  }
+
+  fn send_within(&self, method: &str, url: &str, headers: &[(&str, String)], body: Option<String>, timeout: Duration) -> Result<HttpResponse, String> {
+    self.run(method, url, headers, body, Some(timeout))
   }
 }
 
@@ -96,7 +128,7 @@ pub(crate) fn checked_origin(base: &str) -> Result<String, String> {
 
 impl HttpTransport {
   pub fn new(base_url: &str, login: Arc<dyn LoginToken>) -> Result<Self, String> {
-    Self::with_client(base_url, login, Arc::new(ReqwestClient))
+    Self::with_client(base_url, login, Arc::new(ReqwestClient::default()))
   }
 
   pub fn with_client(base_url: &str, login: Arc<dyn LoginToken>, client: Arc<dyn HttpClient>) -> Result<Self, String> {
@@ -133,18 +165,32 @@ fn failure(resp: HttpResponse) -> String {
   }
 }
 
-impl Transport for HttpTransport {
-  fn call(&self, req: &Request, device_token: Option<&str>) -> Result<String, String> {
+impl HttpTransport {
+  fn exchange(&self, req: &Request, device_token: Option<&str>, timeout: Option<Duration>) -> Result<String, String> {
     let bearer = self.bearer(req.auth, device_token)?;
     let url = format!("{}{}", self.base_url, req.path);
     let headers = [("Authorization", format!("Bearer {bearer}"))];
     let body = req.body.as_ref().map(Value::to_string);
-    let resp = self.client.send(req.method.as_str(), &url, &headers, body).map_err(|_| UNREACHABLE.to_owned())?;
+    let sent = match timeout {
+      Some(t) => self.client.send_within(req.method.as_str(), &url, &headers, body, t),
+      None => self.client.send(req.method.as_str(), &url, &headers, body),
+    };
+    let resp = sent.map_err(|_| UNREACHABLE.to_owned())?;
     if (200..300).contains(&resp.status) {
       Ok(resp.body)
     } else {
       Err(failure(resp))
     }
+  }
+}
+
+impl Transport for HttpTransport {
+  fn call(&self, req: &Request, device_token: Option<&str>) -> Result<String, String> {
+    self.exchange(req, device_token, None)
+  }
+
+  fn call_within(&self, req: &Request, device_token: Option<&str>, timeout: Duration) -> Result<String, String> {
+    self.exchange(req, device_token, Some(timeout))
   }
 }
 
@@ -193,6 +239,34 @@ mod tests {
 
   fn auth_of(fake: &Fake) -> String {
     fake.sent.lock().unwrap()[0].2[0].1.clone()
+  }
+
+  #[test]
+  fn call_within_passes_the_timeout_to_the_client() {
+    struct Timed(Mutex<Option<Duration>>);
+    impl HttpClient for Timed {
+      fn send(&self, _: &str, _: &str, _: &[(&str, String)], _: Option<String>) -> Result<HttpResponse, String> {
+        Err("no timeout".into())
+      }
+      fn send_within(&self, _: &str, _: &str, _: &[(&str, String)], _: Option<String>, timeout: Duration) -> Result<HttpResponse, String> {
+        *self.0.lock().unwrap() = Some(timeout);
+        Ok(HttpResponse { status: 200, retry_after: None, body: "{}".into() })
+      }
+    }
+    let client = Arc::new(Timed(Mutex::new(None)));
+    let t = HttpTransport::with_client("https://api.example.com", Arc::new(NoLogin), client.clone()).unwrap();
+    let req = tmgr_chat_relay::api::list_devices();
+    assert_eq!(t.call_within(&req, Some("d"), Duration::from_secs(9)).unwrap(), "{}");
+    assert_eq!(*client.0.lock().unwrap(), Some(Duration::from_secs(9)));
+  }
+
+  #[test]
+  fn the_reqwest_client_is_built_once_and_reused() {
+    let c = ReqwestClient::default();
+    let first = c.client().unwrap();
+    let second = c.client().unwrap();
+    drop((first, second));
+    assert_eq!(c.builds.load(std::sync::atomic::Ordering::SeqCst), 1);
   }
 
   #[test]

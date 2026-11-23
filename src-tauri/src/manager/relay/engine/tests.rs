@@ -43,6 +43,8 @@ struct Server {
   last_seen: BTreeMap<String, u64>,
   puts: Vec<(String, String, String)>,
   slow_ms: u64,
+  post_slow_ms: u64,
+  post_error_once: Option<String>,
   full: Option<String>,
   on_devices: Option<Box<dyn FnOnce() + Send>>,
 }
@@ -118,8 +120,23 @@ fn wrap(v: Value) -> Result<String, String> {
 }
 
 impl Transport for Fake {
+  fn call_within(&self, req: &Request, token: Option<&str>, timeout: std::time::Duration) -> Result<String, String> {
+    let slow = std::time::Duration::from_millis(self.0.lock().unwrap().post_slow_ms);
+    if req.method == Method::Post && req.path.ends_with("/messages") && slow > timeout {
+      std::thread::sleep(timeout);
+      return Err("relay unreachable".into());
+    }
+    self.call(req, token)
+  }
+
   fn call(&self, req: &Request, token: Option<&str>) -> Result<String, String> {
-    let slow_ms = self.0.lock().unwrap().slow_ms;
+    let (slow_ms, post_slow_ms) = {
+      let s = self.0.lock().unwrap();
+      (s.slow_ms, s.post_slow_ms)
+    };
+    if post_slow_ms > 0 && req.method == Method::Post && req.path.ends_with("/messages") {
+      std::thread::sleep(std::time::Duration::from_millis(post_slow_ms));
+    }
     if slow_ms > 0 && !(req.method == Method::Post && req.path.ends_with("/messages")) {
       std::thread::sleep(std::time::Duration::from_millis(slow_ms));
     }
@@ -172,6 +189,9 @@ impl Transport for Fake {
       (Method::Post, ["messages"]) => {
         let from = caller.ok_or("401")?;
         s.posts += 1;
+        if let Some(e) = s.post_error_once.take() {
+          return Err(e);
+        }
         if let Some(e) = s.post_error.clone() {
           return Err(e);
         }
@@ -2883,7 +2903,7 @@ fn a_revoked_runner_drops_out_of_the_machine_list() {
 }
 
 #[test]
-fn rooms_indexes_survive_a_restart() {
+fn rooms_indexes_are_not_persisted_and_leave_no_trace_in_seen() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let store = Arc::new(MemKeyStore::default());
   let a = engine_on(&fake, &clock, store.clone(), "mx_local");
@@ -2891,10 +2911,28 @@ fn rooms_indexes_survive_a_restart() {
   let mx = "mx_0123456789abcdef";
   post_rooms(&r, &my_id(&a), IDX_ID, &rooms_payload(mx, "top", json!([manager_room(mx)])));
   a.poll_once().unwrap();
+  assert_eq!(indexed(&a), [mx]);
+  assert!(a.lock().st.seen.iter().all(|s| s.id != IDX_ID));
   clock.set(T0 + 31_000);
   a.poll_once().unwrap();
+  let saved = store.load(Slot::State).unwrap().unwrap();
+  assert!(!saved.contains("\"rooms\""));
   let again = engine_on(&fake, &clock, store, "mx_local");
-  assert_eq!(indexed(&again), [mx]);
+  assert!(indexed(&again).is_empty());
+}
+
+#[test]
+fn a_state_saved_with_rooms_by_an_older_build_still_loads() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  a.register().unwrap();
+  let mut v: Value = serde_json::from_str(&store.load(Slot::State).unwrap().unwrap()).unwrap();
+  let mx = "mx_0123456789abcdef";
+  v["rooms"] = json!({ mx: { "from": "d", "index": rooms_payload(mx, "top", json!([manager_room(mx)])) } });
+  store.save(Slot::State, &v.to_string()).unwrap();
+  let again = engine_on(&fake, &clock, store, "mx_local");
+  assert_eq!(again.lock().st.rooms.len(), 1);
 }
 
 fn post_receipt(from: &Engine, to_id: &str, relay_id: &str, payload: Value) {
@@ -3119,4 +3157,277 @@ fn a_directory_fetched_before_a_trust_change_does_not_overwrite_the_newer_one() 
   }));
   a.poll_once().unwrap();
   assert_eq!(a.lock().dir.as_ref().unwrap().devices.len(), 2);
+}
+
+struct SlowStore {
+  inner: Arc<MemKeyStore>,
+  delay_ms: AtomicU64,
+  saves: Mutex<Vec<(Slot, std::time::Instant)>>,
+}
+
+impl SlowStore {
+  fn new(delay_ms: u64) -> Arc<Self> {
+    Arc::new(Self { inner: Arc::default(), delay_ms: AtomicU64::new(delay_ms), saves: Mutex::default() })
+  }
+
+  fn count(&self, slot: Slot) -> usize {
+    self.saves.lock().unwrap().iter().filter(|s| s.0 == slot).count()
+  }
+}
+
+impl KeyStore for Arc<SlowStore> {
+  fn load(&self, slot: Slot) -> Result<Option<String>, String> {
+    self.inner.load(slot)
+  }
+  fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
+    std::thread::sleep(std::time::Duration::from_millis(self.delay_ms.load(Ordering::SeqCst)));
+    self.saves.lock().unwrap().push((slot, std::time::Instant::now()));
+    self.inner.save(slot, value)
+  }
+  fn clear(&self) -> Result<(), String> {
+    self.inner.clear()
+  }
+}
+
+type SlowEngine = RelayEngine<Fake, Arc<SlowStore>>;
+
+fn slow_engine(fake: &Fake, clock: &Clock, store: &Arc<SlowStore>) -> SlowEngine {
+  let c = clock.0.clone();
+  RelayEngine::new(fake.clone(), store.clone(), EngineConfig { user_id: USER, label: "Slow".into(), local_machine: "mx_local".into() })
+    .unwrap()
+    .with_clock(move || c.load(Ordering::SeqCst))
+}
+
+fn slow_pair(fake: &Fake, clock: &Clock, store: &Arc<SlowStore>) -> (SlowEngine, Engine) {
+  let a = slow_engine(fake, clock, store);
+  let b = engine_with(fake, clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  (a, b)
+}
+
+fn millis<R>(f: impl FnOnce() -> R) -> (R, u128) {
+  let t = std::time::Instant::now();
+  let r = f();
+  (r, t.elapsed().as_millis())
+}
+
+#[test]
+fn send_returns_before_the_slow_store_write_and_reads_do_not_wait_for_it() {
+  const SAVE: u64 = 600;
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = SlowStore::new(0);
+  let (a, b) = slow_pair(&fake, &clock, &store);
+  store.delay_ms.store(SAVE, Ordering::SeqCst);
+  let logs = store.count(Slot::Log);
+  let (sent, took) = millis(|| send(&a, "fast").unwrap());
+  assert!(took < u128::from(SAVE) / 2, "send took {took} ms");
+  assert_eq!(store.count(Slot::Log), logs);
+  std::thread::scope(|s| {
+    let flush = s.spawn(|| a.flush());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let (_, took) = millis(|| {
+      assert_eq!(history(&a), ["fast"]);
+      a.rooms().unwrap();
+      a.search(&SearchParams { query: "fast".into(), room: None, limit: None }).unwrap();
+      a.trust_state().unwrap();
+    });
+    assert!(took < u128::from(SAVE) / 2, "reads took {took} ms behind a slow save");
+    flush.join().unwrap();
+  });
+  assert_eq!(store.count(Slot::Log), logs + 1);
+  let restarted = slow_engine(&fake, &clock, &store);
+  assert_eq!(history(&restarted), ["fast"]);
+  assert_eq!(b.poll_once().unwrap()[0].id, sent.id);
+}
+
+#[test]
+fn a_poll_acks_only_after_its_slow_log_write_finished_and_reads_stay_free() {
+  const SAVE: u64 = 600;
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = SlowStore::new(0);
+  let (a, b) = slow_pair(&fake, &clock, &store);
+  let aid = my_id(&a);
+  send(&b, "inbound").unwrap();
+  clock.set(T0 + 31_000);
+  assert_eq!(fake.queue_len(&aid), 1);
+  store.delay_ms.store(SAVE, Ordering::SeqCst);
+  std::thread::scope(|s| {
+    let poll = s.spawn(|| a.poll_once().unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let (_, took) = millis(|| assert_eq!(history(&a), ["inbound"]));
+    assert!(took < u128::from(SAVE) / 2, "history took {took} ms behind a slow save");
+    assert_eq!(fake.queue_len(&aid), 1, "acked before the log was stored");
+    poll.join().unwrap();
+  });
+  assert_eq!(fake.queue_len(&aid), 0);
+  assert_eq!(slow_engine(&fake, &clock, &store).history(&HistoryParams { room: room(), before: None, limit: None }).unwrap().len(), 1);
+}
+
+#[test]
+fn an_older_snapshot_never_overwrites_a_newer_one() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = SlowStore::new(0);
+  let (a, _b) = slow_pair(&fake, &clock, &store);
+  send(&a, "one").unwrap();
+  let older = a.plan(&mut a.lock(), true).unwrap().unwrap();
+  send(&a, "two").unwrap();
+  let newer = a.plan(&mut a.lock(), true).unwrap().unwrap();
+  assert!(a.write(&newer).unwrap());
+  assert!(!a.write(&older).unwrap());
+  let log: Vec<LogEntry> = serde_json::from_str(&store.load(Slot::Log).unwrap().unwrap()).unwrap();
+  assert_eq!(log.iter().map(|e| e.msg.body_md.as_str()).collect::<Vec<_>>(), ["one", "two"]);
+}
+
+#[test]
+fn a_failed_log_write_keeps_the_message_on_the_server() {
+  struct Broken(Arc<MemKeyStore>, std::sync::atomic::AtomicBool);
+  impl KeyStore for Arc<Broken> {
+    fn load(&self, slot: Slot) -> Result<Option<String>, String> {
+      self.0.load(slot)
+    }
+    fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
+      if self.1.load(Ordering::SeqCst) && slot == Slot::Log {
+        return Err("keychain locked".into());
+      }
+      self.0.save(slot, value)
+    }
+    fn clear(&self) -> Result<(), String> {
+      self.0.clear()
+    }
+  }
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let broken = Arc::new(Broken(Arc::default(), std::sync::atomic::AtomicBool::new(false)));
+  let c = clock.0.clone();
+  let a = RelayEngine::new(fake.clone(), broken.clone(), EngineConfig { user_id: USER, label: "A".into(), local_machine: "mx_local".into() })
+    .unwrap()
+    .with_clock(move || c.load(Ordering::SeqCst));
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  send(&b, "inbound").unwrap();
+  clock.set(T0 + 31_000);
+  broken.1.store(true, Ordering::SeqCst);
+  assert!(a.poll_once().is_err());
+  assert_eq!(fake.queue_len(&my_id(&a)), 1);
+  broken.1.store(false, Ordering::SeqCst);
+  a.poll_once().unwrap();
+  assert_eq!(fake.queue_len(&my_id(&a)), 0);
+}
+
+#[test]
+fn history_and_rooms_answer_while_a_send_post_is_in_flight() {
+  const POST: u64 = 500;
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  fake.0.lock().unwrap().post_slow_ms = POST;
+  std::thread::scope(|s| {
+    let sending = s.spawn(|| send(&a, "slow wire").unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let (_, took) = millis(|| {
+      assert!(history(&a).is_empty());
+      a.rooms().unwrap();
+      a.trust_state().unwrap();
+    });
+    assert!(took < u128::from(POST) / 2, "reads took {took} ms behind a POST");
+    sending.join().unwrap();
+  });
+  assert_eq!(history(&a), ["slow wire"]);
+}
+
+#[test]
+fn concurrent_sends_reserve_distinct_seqs_per_recipient() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let before = seq_out(&a, &bid);
+  fake.0.lock().unwrap().post_slow_ms = 200;
+  std::thread::scope(|s| {
+    let one = s.spawn(|| send(&a, "one").unwrap());
+    let two = s.spawn(|| send(&a, "two").unwrap());
+    one.join().unwrap();
+    two.join().unwrap();
+  });
+  assert_eq!(seq_out(&a, &bid), before + 2);
+  assert!(a.lock().seq_reserved.is_empty());
+  assert_eq!(b.poll_once().unwrap().len(), 2);
+  assert!(b.lock().st.seq_gaps.is_empty());
+}
+
+#[test]
+fn a_failed_send_hands_its_seq_back_when_no_later_one_was_reserved() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let before = seq_out(&a, &bid);
+  fake.set_post_error(Some("boom"));
+  assert!(send(&a, "lost").is_err());
+  assert_eq!(seq_out(&a, &bid), before);
+  assert_eq!(RelayEngine::<Fake, Arc<MemKeyStore>>::next_seq(&a.lock(), &bid), before + 1);
+  fake.set_post_error(None);
+  send(&a, "kept").unwrap();
+  assert_eq!(seq_out(&a, &bid), before + 1);
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  assert!(b.lock().st.seq_gaps.is_empty());
+}
+
+#[test]
+fn a_send_that_gets_no_answer_in_time_fails_clearly_and_a_retry_with_the_same_id_succeeds() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let a = a.with_send_budget(std::time::Duration::from_millis(300));
+  fake.0.lock().unwrap().post_slow_ms = 5_000;
+  let id = format!("m_{}", "5".repeat(32));
+  let (e, took) = millis(|| send_with(&a, &id, T0, "hello").unwrap_err());
+  assert_eq!(e, SEND_TIMEOUT_MSG);
+  assert!(took < 1_500, "send took {took} ms");
+  assert!(a.lock().sending.is_empty());
+  fake.0.lock().unwrap().post_slow_ms = 0;
+  send_with(&a, &id, T0, "hello").unwrap();
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  assert_eq!(history(&a), ["hello"]);
+}
+
+#[test]
+fn a_rate_limited_send_retries_once_after_a_short_retry_after() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  fake.0.lock().unwrap().post_error_once = Some(r#"{"error":"rate_limited","retry_after":1}"#.into());
+  let posts = fake.posts();
+  let (sent, took) = millis(|| send(&a, "again").unwrap());
+  assert_eq!(fake.posts(), posts + 2);
+  assert!((900..4_000).contains(&took), "retry waited {took} ms");
+  assert_eq!(b.poll_once().unwrap()[0].id, sent.id);
+}
+
+#[test]
+fn a_long_retry_after_is_reported_not_slept() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  fake.0.lock().unwrap().post_error_once = Some(r#"{"error":"rate_limited","retry_after":30}"#.into());
+  let (e, took) = millis(|| send(&a, "later").unwrap_err());
+  assert_eq!(retry_after_secs(&e), Some(30));
+  assert!(took < 500);
+}
+
+#[test]
+fn the_same_message_id_cannot_be_sent_twice_at_once() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  fake.0.lock().unwrap().post_slow_ms = 300;
+  let id = format!("m_{}", "6".repeat(32));
+  let results = std::thread::scope(|s| {
+    let first = s.spawn(|| send_with(&a, &id, T0, "x"));
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    let second = send_with(&a, &id, T0, "x");
+    (first.join().unwrap(), second)
+  });
+  assert!(results.0.is_ok());
+  assert_eq!(results.1.unwrap_err(), "this message is already being sent");
+  assert_eq!(b.poll_once().unwrap().len(), 1);
 }
