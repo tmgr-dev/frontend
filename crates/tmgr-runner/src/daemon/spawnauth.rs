@@ -878,6 +878,7 @@ struct Carried {
     id: String,
     reply: String,
     note: String,
+    audit: Option<String>,
 }
 
 fn kind_word(kind: ProposalKind) -> &'static str {
@@ -1096,6 +1097,10 @@ impl Runner {
             ));
         }
         self.card_reply(card, &session.reply);
+        if let Some(audit) = &session.audit {
+            self.card_reply(card, audit);
+            log(&format!("spawn approval: {audit}"));
+        }
         self.prompt_manager(
             proposer.as_deref(),
             &format!("{word} card {card} was approved; {}.", session.note),
@@ -1136,6 +1141,7 @@ impl Runner {
                     id: id.into(),
                     reply: format!("Stopped session {id}"),
                     note: format!("session {id} was stopped"),
+                    audit: None,
                 })
             }
             ProposalKind::Send => {
@@ -1148,20 +1154,31 @@ impl Runner {
                     && proposer
                         .and_then(|m| self.session(m))
                         .is_some_and(|m| super::manager::is_unrestricted(&m));
-                if !unrestricted
-                    && (info.permission_mode.as_deref() == Some("bypass") || info.no_sandbox)
-                {
+                let risky = info.permission_mode.as_deref() == Some("bypass") || info.no_sandbox;
+                if !remote && !unrestricted && risky {
                     return Err(
                         "sessions in bypass mode or without the sandbox cannot be written to"
                             .into(),
                     );
                 }
+                let audit = (remote && risky).then(|| {
+                    let from = proposer
+                        .and_then(|p| p.strip_prefix(REMOTE_PREFIX))
+                        .unwrap_or_default();
+                    let kind = if info.permission_mode.as_deref() == Some("bypass") {
+                        "bypass"
+                    } else {
+                        "no-sandbox"
+                    };
+                    format!("manager on {from} wrote into {kind} session {id}")
+                });
                 let s = self.live(id).map_err(|e| e.msg)?;
                 match s.input_at_prompt(&crate::manager::prompt_bytes(text), Instant::now()) {
                     Ok(()) => Ok(Carried {
                         id: id.into(),
                         reply: format!("Delivered to session {id}"),
                         note: format!("the text was delivered to session {id}"),
+                        audit,
                     }),
                     Err(_) => {
                         self.mgr.queue_prompt(id, text, now);
@@ -1173,6 +1190,7 @@ impl Runner {
                             note: format!(
                                 "the text is queued for session {id} and is delivered when the agent is at its prompt"
                             ),
+                            audit,
                         })
                     }
                 }
@@ -3657,6 +3675,55 @@ mod tests {
         assert!(decide(&e, &card, "approve").is_err());
         assert!(decide(&e, &card, "reject").is_err());
         assert_eq!(typed(&rx), "");
+    }
+
+    fn remote_send_card(h: &TestHost, e: &Env, text: &str) -> String {
+        let remote = As::remote(h);
+        let req = SpoolReq {
+            v: 1,
+            id: "x".into(),
+            tool: "send_to_session".into(),
+            args: serde_json::json!({"session": TARGET, "text": text}),
+        };
+        core::execute(&remote, &e.rt.mgr, &req).unwrap()["card_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    #[test]
+    fn a_remote_send_into_a_bypass_or_unsandboxed_session_is_delivered_and_audited() {
+        for (extra, kind) in [
+            (serde_json::json!({"permission_mode": "bypass"}), "bypass"),
+            (serde_json::json!({"no_sandbox": true}), "no-sandbox"),
+        ] {
+            let e = env();
+            let (_s, rx) = add_live(&e, TARGET, extra);
+            let h = TestHost::new(&e);
+            let card = remote_send_card(&h, &e, "hello remote");
+            decide(&e, &card, "approve").unwrap();
+            assert_eq!(typed(&rx), "hello remote\r");
+            let msg = card_msg(&e, &card);
+            let got = replies(&e, &msg.id);
+            assert_eq!(
+                got.last().unwrap(),
+                &format!("manager on {PEER} wrote into {kind} session {TARGET}")
+            );
+        }
+    }
+
+    #[test]
+    fn a_remote_send_into_a_normal_session_leaves_no_audit_note() {
+        let e = env();
+        let (_s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let card = remote_send_card(&h, &e, "hello remote");
+        decide(&e, &card, "approve").unwrap();
+        assert_eq!(typed(&rx), "hello remote\r");
+        let msg = card_msg(&e, &card);
+        assert!(replies(&e, &msg.id)
+            .iter()
+            .all(|r| !r.contains("wrote into")));
     }
 
     #[test]

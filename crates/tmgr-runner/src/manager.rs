@@ -903,7 +903,8 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                 return Err(format!("text must be 1 to {SEND_CARD_MAX} bytes"));
             }
             let s = find_target(host, id, "written to")?;
-            if !host.unrestricted()
+            if host.remote_caller().is_none()
+                && !host.unrestricted()
                 && (s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox)
             {
                 return Err(
@@ -2067,6 +2068,17 @@ mod tests {
         open.no_sandbox = true;
         h.list.extend([bypass, open]);
         h
+    }
+
+    #[test]
+    fn a_remote_caller_may_write_to_bypass_or_unsandboxed_sessions() {
+        let mut h = with_risky_sessions();
+        h.remote = Some("mx_2".into());
+        for id in ["s_hhhhhhhhhh", "s_iiiiiiiiii"] {
+            let v = send_to(&h, id).unwrap();
+            assert!(v["card_id"].as_str().is_some(), "{id}");
+        }
+        assert_eq!(h.proposed.lock().unwrap().len(), 2);
     }
 
     #[test]

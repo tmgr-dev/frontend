@@ -837,23 +837,36 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn the_mgr_rpc_host_never_writes_to_a_bypass_session_even_under_an_unrestricted_manager() {
-        let (_t, rt) = unrestricted_pair(unrestricted_flags());
-        let manager = rt.live_manager().unwrap();
-        assert!(is_unrestricted(&manager));
-        let host = ManagerHost {
-            rt: &rt,
-            me: manager.id.as_str(),
-            unrestricted: false,
-        };
-        let req = SpoolReq {
-            v: 1,
-            id: "1-1-a".into(),
-            tool: "send_to_session".into(),
-            args: json!({"session": RISKY, "text": "hi"}),
-        };
-        let e = core::execute(&host, &rt.mgr, &req).unwrap_err();
-        assert!(e.contains("bypass mode or without"), "{e}");
+    fn the_mgr_rpc_host_writes_to_a_bypass_session_for_a_restricted_and_an_unrestricted_manager() {
+        for flags in [unrestricted_flags(), json!({})] {
+            let (_t, rt) = unrestricted_pair(flags);
+            let manager = rt.live_manager().unwrap();
+            let local = ManagerHost {
+                rt: &rt,
+                me: manager.id.as_str(),
+                unrestricted: false,
+            };
+            let rpc = crate::mgr_rpc::dispatch::RpcHost {
+                inner: &local,
+                from: "mx_00000000000000bb",
+                proposer: "remote:mx_00000000000000bb".into(),
+            };
+            let req = SpoolReq {
+                v: 1,
+                id: "1-1-a".into(),
+                tool: "send_to_session".into(),
+                args: json!({"session": RISKY, "text": "hi"}),
+            };
+            let e = core::execute(&rpc, &rt.mgr, &req);
+            assert!(
+                !e.as_ref()
+                    .err()
+                    .is_some_and(|e| e.contains("bypass mode or without")),
+                "{e:?}"
+            );
+            let local_err = core::execute(&local, &rt.mgr, &req).unwrap_err();
+            assert!(local_err.contains("bypass mode or without"), "{local_err}");
+        }
     }
 
     #[test]

@@ -556,10 +556,10 @@ fn durable(op: Op) -> bool {
     )
 }
 
-struct RpcHost<'a> {
-    inner: &'a dyn Host,
-    from: &'a str,
-    proposer: String,
+pub(crate) struct RpcHost<'a> {
+    pub(crate) inner: &'a dyn Host,
+    pub(crate) from: &'a str,
+    pub(crate) proposer: String,
 }
 
 impl Host for RpcHost<'_> {
@@ -1952,16 +1952,9 @@ mod tests {
     #[test]
     fn send_keeps_every_local_refusal() {
         let r = rig();
-        for (i, id) in [
-            LINKED,
-            TEAMMATE,
-            BYPASS,
-            UNSANDBOXED,
-            EXITED,
-            "s_yyyyyyyyyy",
-        ]
-        .into_iter()
-        .enumerate()
+        for (i, id) in [LINKED, TEAMMATE, EXITED, "s_yyyyyyyyyy"]
+            .into_iter()
+            .enumerate()
         {
             let res = r.call(
                 &open(),
@@ -2124,15 +2117,12 @@ mod tests {
     }
 
     #[test]
-    fn remote_send_stays_refused_for_bypass_unsandboxed_and_manager_sessions() {
+    fn remote_send_issues_a_card_for_bypass_and_unsandboxed_sessions_but_never_for_managers() {
         let r = rig();
         r.host
             .unrestricted_manager
             .store(true, std::sync::atomic::Ordering::SeqCst);
-        for (i, id) in [BYPASS, UNSANDBOXED, MANAGER, OTHER_MANAGER]
-            .into_iter()
-            .enumerate()
-        {
+        for (i, id) in [MANAGER, OTHER_MANAGER].into_iter().enumerate() {
             let res = r.call(
                 &open(),
                 &format!("u{i}"),
@@ -2142,6 +2132,16 @@ mod tests {
             assert_eq!(code(&res), ErrorCode::Refused, "{id}");
         }
         assert!(r.host.cards.lock().unwrap().is_empty());
+        for (i, id) in [BYPASS, UNSANDBOXED].into_iter().enumerate() {
+            let res = r.call(
+                &open(),
+                &format!("b{i}"),
+                "send",
+                json!({"session": id, "text": "x"}),
+            );
+            assert!(res.ok, "{id}: {res:?}");
+        }
+        assert_eq!(r.host.cards.lock().unwrap().len(), 2);
     }
 
     #[test]
