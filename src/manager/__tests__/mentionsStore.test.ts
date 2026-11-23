@@ -158,7 +158,10 @@ describe('composer mentions', () => {
 		await store.onInput('@bypass-one run it');
 		await store.send();
 		expect(send).not.toHaveBeenCalled();
-		expect(store.mention.confirm).toEqual({ kind: 'send' });
+		expect(store.mention.confirm).toMatchObject({
+			kind: 'send',
+			body: 'run it',
+		});
 		store.cancelMention();
 		expect(send).not.toHaveBeenCalled();
 		await store.send();
@@ -169,6 +172,55 @@ describe('composer mentions', () => {
 			body_md: 'run it',
 			mention: { target: RISKY, confirmed_risky: true },
 		});
+	});
+
+	const riskyDraft = async () => {
+		const ctx = await ready();
+		await ctx.store.onInput('@bypass');
+		ctx.store.pickMention();
+		await ctx.store.onInput('@bypass-one run it');
+		await ctx.store.send();
+		return ctx;
+	};
+	const flush = () => new Promise((r) => setTimeout(r, 0));
+
+	it('sends exactly the snapshot taken when the dialog opened', async () => {
+		const { store, send } = await riskyDraft();
+		store.confirmMention();
+		await flush();
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(send.mock.calls[0][0]).toMatchObject({
+			room: MGR,
+			body_md: 'run it',
+			mention: { target: RISKY, confirmed_risky: true },
+		});
+	});
+
+	it('aborts when the draft changed behind the dialog', async () => {
+		const { store, send } = await riskyDraft();
+		store.draft.text = '@bypass-one something else';
+		store.confirmMention();
+		await flush();
+		expect(send).not.toHaveBeenCalled();
+		expect(store.error).toMatch(/changed/);
+	});
+
+	it('aborts when the chat was switched behind the dialog', async () => {
+		const { store, send } = await riskyDraft();
+		await store.select(roomKey(A));
+		store.draft.text = '@bypass-one run it';
+		store.confirmMention();
+		await flush();
+		expect(send).not.toHaveBeenCalled();
+	});
+
+	it('aborts when the target is no longer a confirmed-risky target', async () => {
+		const { store, send } = await riskyDraft();
+		const info = store.rooms.find((r) => roomKey(r.room) === roomKey(RISKY))!;
+		info.mention = { ok: false, reason: 'Exited' };
+		store.confirmMention();
+		await flush();
+		expect(send).not.toHaveBeenCalled();
 	});
 
 	it('refuses to send a mention once the capability is gone', async () => {
@@ -227,6 +279,15 @@ describe('Add to context', () => {
 		store.requestInject(reply(RISKY));
 		expect(store.mention.confirm).toMatchObject({ kind: 'inject' });
 		expect(mentionInject).not.toHaveBeenCalled();
+	});
+
+	it('is not callable without the capability', async () => {
+		const ctx = setup(['chat.v1']);
+		await ctx.store.init();
+		ctx.store.requestInject(reply(A));
+		await ctx.store.runInject(reply(A), true);
+		expect(ctx.mentionInject).not.toHaveBeenCalled();
+		expect(ctx.store.mention.confirm).toBeNull();
 	});
 
 	it('is refused for an unrestricted origin', async () => {

@@ -155,14 +155,22 @@ describe('mention components', () => {
 		const local = await render('MentionReply', {
 			message: reply,
 			latest: ref('answered'),
+			supported: true,
 			origin: { room: mgr, title: 'Manager' },
 		});
 		expect(local).toContain('Reply from @build-fix');
 		expect(local).toContain('Add to context');
 		expect(local).toContain('Open @build-fix');
+		const unsupported = await render('MentionReply', {
+			message: reply,
+			latest: ref('answered'),
+			origin: { room: mgr, title: 'Manager' },
+		});
+		expect(unsupported).not.toContain('Add to context');
 		const remote = await render('MentionReply', {
 			message: reply,
 			latest: ref('answered'),
+			supported: true,
 			origin: { room: mgr, title: 'Manager', local: false },
 		});
 		expect(remote).not.toContain('Add to context');
@@ -170,6 +178,7 @@ describe('mention components', () => {
 		const locked = await render('MentionReply', {
 			message: reply,
 			latest: ref('answered'),
+			supported: true,
 			origin: { room: mgr, title: 'Manager', unrestricted: true },
 		});
 		expect(locked).toContain('Not available for unrestricted sessions yet');

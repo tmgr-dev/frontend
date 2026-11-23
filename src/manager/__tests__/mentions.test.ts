@@ -258,17 +258,22 @@ describe('injectGate: Add to context is local only', () => {
 	});
 
 	it('is hidden without an origin, on relay rooms and on non-reply rows', () => {
-		expect(injectGate(undefined, reply()).show).toBe(false);
-		expect(injectGate(origin({ local: false }), reply()).show).toBe(false);
+		expect(injectGate(undefined, reply(), true).show).toBe(false);
+		expect(injectGate(origin({ local: false }), reply(), true).show).toBe(
+			false,
+		);
 		expect(
-			injectGate(origin(), row('s', 1, { mention: ref('m_q', 'sent') })).show,
+			injectGate(origin(), row('s', 1, { mention: ref('m_q', 'sent') }), true)
+				.show,
 		).toBe(false);
-		expect(injectGate(origin({ room: sess('zz') }), reply()).show).toBe(false);
+		expect(injectGate(origin({ room: sess('zz') }), reply(), true).show).toBe(
+			false,
+		);
 	});
 
 	it('shows for a local session origin without confirmation', () => {
 		const r = reply(sess('a'));
-		expect(injectGate(origin({ room: sess('a') }), r)).toEqual({
+		expect(injectGate(origin({ room: sess('a') }), r, true)).toEqual({
 			show: true,
 			refused: false,
 			confirm: false,
@@ -276,18 +281,26 @@ describe('injectGate: Add to context is local only', () => {
 	});
 
 	it('needs confirmation for a manager or risky origin', () => {
-		expect(injectGate(origin(), reply()).confirm).toBe(true);
+		expect(injectGate(origin(), reply(), true).confirm).toBe(true);
 		const r = reply(sess('a'));
 		expect(
 			injectGate(
 				origin({ room: sess('a'), mention: { ok: true, risky: true } }),
 				r,
+				true,
 			).confirm,
 		).toBe(true);
 	});
 
+	it('is hidden without the capability, whatever the origin', () => {
+		expect(injectGate(origin(), reply(), false).show).toBe(false);
+		expect(
+			injectGate(origin({ unrestricted: true }), reply(), false).show,
+		).toBe(false);
+	});
+
 	it('refuses an unrestricted origin', () => {
-		const g = injectGate(origin({ unrestricted: true }), reply());
+		const g = injectGate(origin({ unrestricted: true }), reply(), true);
 		expect(g).toEqual({ show: true, refused: true, confirm: false });
 	});
 });

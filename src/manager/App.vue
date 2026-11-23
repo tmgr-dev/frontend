@@ -106,6 +106,7 @@
 					:load-older="store.loadOlder"
 					@cancel-queued="store.cancelQueued"
 					:origin="activeInfo"
+					:mention-supported="store.mention.supported"
 					:mention-busy="store.mention.injecting"
 					:mention-done="store.mention.injected"
 					@open-room="openRoom"

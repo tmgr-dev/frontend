@@ -62,6 +62,7 @@
 			message: { type: Object as PropType<ChatMessage>, required: true },
 			latest: { type: Object as PropType<MentionRef>, required: true },
 			origin: { type: Object as PropType<RoomInfo>, default: undefined },
+			supported: { type: Boolean, default: false },
 			busy: { type: Boolean, default: false },
 			injected: { type: Boolean, default: false },
 		},
@@ -82,7 +83,7 @@
 				return KNOWN.has(this.mention.state) ? this.mention.state : 'other';
 			},
 			gate(): InjectGate {
-				return injectGate(this.origin, this.message);
+				return injectGate(this.origin, this.message, this.supported);
 			},
 		},
 	});

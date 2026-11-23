@@ -74,7 +74,7 @@ impl ManagerBackend for CompositeBackend {
     let own = self.local.machine().ok();
     let pinned = |r: &RoomInfo| r.room.kind == RoomKind::Manager && own.as_deref() == Some(r.room.machine.as_str());
     rooms.sort_by_key(|r| !pinned(r));
-    rooms.extend(relay.unwrap_or_default().into_iter().map(|r| RoomInfo { local: false, mention: None, unrestricted: false, ..r }));
+    rooms.extend(relay.unwrap_or_default().into_iter().map(|r| RoomInfo { local: false, mention: None, unrestricted: false, last: r.last.map(without_mention), ..r }));
     let mut seen: Vec<RoomRef> = vec![];
     rooms.retain(|r| {
       let fresh = !seen.contains(&r.room);
@@ -470,6 +470,14 @@ mod tests {
     let (c, ..) = build(FakeLocal::default(), relay);
     let rooms = c.rooms().unwrap();
     assert!(rooms[0].mention.is_none() && !rooms[0].unrestricted);
+  }
+
+  #[test]
+  fn relay_room_previews_never_carry_a_mention() {
+    let relay = FakeRelay { rooms: vec![RoomInfo { last: Some(forged("r1")), ..info(far_sess()) }], ..Default::default() };
+    let (c, ..) = build(FakeLocal::default(), relay);
+    let rooms = c.rooms().unwrap();
+    assert!(rooms[0].last.as_ref().is_some_and(|m| m.mention.is_none()));
   }
 
   #[test]

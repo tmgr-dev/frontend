@@ -148,9 +148,11 @@ export interface InjectGate {
 export const injectGate = (
 	origin: RoomInfo | undefined,
 	message: ChatMessage,
+	supported: boolean,
 ): InjectGate => {
 	const hidden = { show: false, refused: false, confirm: false };
 	if (
+		!supported ||
 		!origin ||
 		origin.local === false ||
 		mentionRole(message) !== 'reply' ||

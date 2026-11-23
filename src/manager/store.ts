@@ -122,7 +122,6 @@ export const createManagerStore = (api: ManagerApi) => {
 	let queueSeq = 0;
 	const modelsRequested = new Set<string>();
 	let modelTouched = false;
-	let sendConfirmed = false;
 
 	const unread = reactive({} as Record<string, number>);
 	let queueTimer: ReturnType<typeof setInterval> | null = null;
@@ -204,6 +203,46 @@ export const createManagerStore = (api: ManagerApi) => {
 		}, QUEUE_POLL_MS);
 	};
 
+	const deliver = async (job: {
+		key: string;
+		room: RoomRef;
+		text: string;
+		body: string;
+		mention?: MentionReq;
+		attachments: Attachment[];
+		replyTo?: string;
+	}) => {
+		const { key, room, text, body, mention } = job;
+		if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
+			store.error = 'Message is larger than 64 KiB';
+			return;
+		}
+		try {
+			const sent = await api.send({
+				room,
+				body_md: body,
+				reply_to: job.replyTo,
+				attachments: job.attachments,
+				...(mention ? { mention } : {}),
+			});
+			if (store.activeKey === key && store.draft.text === text) {
+				store.draft.text = '';
+				store.draft.attachments = [];
+				store.replyTo = null;
+				store.closeSlash();
+				store.mention.picked = null;
+				store.closeMention();
+			}
+			store.error = null;
+			store.slash.picked = null;
+			store.ingest(sent);
+			postSendPolls = POST_SEND_POLLS;
+			void store.refreshQueued();
+		} catch (e) {
+			store.error = errorText(e);
+		}
+	};
+
 	const store = reactive({
 		rooms: [] as RoomInfo[],
 		activeKey: null as string | null,
@@ -232,7 +271,18 @@ export const createManagerStore = (api: ManagerApi) => {
 			index: 0,
 			picked: null as MentionItem | null,
 			confirm: null as
-				{ kind: 'send' } | { kind: 'inject'; message: ChatMessage } | null,
+				| {
+						kind: 'send';
+						key: string;
+						room: RoomRef;
+						text: string;
+						body: string;
+						target: MentionItem;
+						attachments: Attachment[];
+						replyTo?: string;
+				  }
+				| { kind: 'inject'; message: ChatMessage }
+				| null,
 			injected: {} as Record<string, boolean>,
 			injecting: {} as Record<string, boolean>,
 		},
@@ -529,8 +579,6 @@ export const createManagerStore = (api: ManagerApi) => {
 			const key = store.activeKey;
 			const room = key && store.roomRef(key);
 			const text = store.draft.text;
-			const confirmed = sendConfirmed;
-			sendConfirmed = false;
 			if (!key || !room) return;
 			if (!text.trim() && !store.draft.attachments.length) return;
 			let body = text;
@@ -550,41 +598,31 @@ export const createManagerStore = (api: ManagerApi) => {
 					store.error = 'Write a question after the @name';
 					return;
 				}
-				if (picked.risky && !confirmed) {
-					store.mention.confirm = { kind: 'send' };
-					return;
-				}
 				body = rest;
 				mention = { target: picked.room, confirmed_risky: picked.risky };
-			}
-			if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
-				store.error = 'Message is larger than 64 KiB';
-				return;
-			}
-			try {
-				const sent = await api.send({
-					room,
-					body_md: body,
-					reply_to: store.replyTo?.id,
-					attachments: [...store.draft.attachments],
-					...(mention ? { mention } : {}),
-				});
-				if (store.activeKey === key && store.draft.text === text) {
-					store.draft.text = '';
-					store.draft.attachments = [];
-					store.replyTo = null;
-					store.closeSlash();
-					store.mention.picked = null;
-					store.closeMention();
+				if (picked.risky) {
+					store.mention.confirm = {
+						kind: 'send',
+						key,
+						room,
+						text,
+						body,
+						target: picked,
+						attachments: [...store.draft.attachments],
+						replyTo: store.replyTo?.id,
+					};
+					return;
 				}
-				store.error = null;
-				store.slash.picked = null;
-				store.ingest(sent);
-				postSendPolls = POST_SEND_POLLS;
-				void store.refreshQueued();
-			} catch (e) {
-				store.error = errorText(e);
 			}
+			await deliver({
+				key,
+				room,
+				text,
+				body,
+				mention,
+				attachments: [...store.draft.attachments],
+				replyTo: store.replyTo?.id,
+			});
 		},
 
 		originLocal(key: string | null): boolean {
@@ -636,12 +674,35 @@ export const createManagerStore = (api: ManagerApi) => {
 			const pending = store.mention.confirm;
 			store.mention.confirm = null;
 			if (!pending) return;
-			if (pending.kind === 'send') {
-				sendConfirmed = true;
-				void store.send();
-			} else {
+			if (pending.kind === 'inject') {
 				void store.runInject(pending.message, true);
+				return;
 			}
+			const info = store.roomInfo(pending.target.room);
+			const unchanged =
+				store.activeKey === pending.key &&
+				store.draft.text === pending.text &&
+				store.mention.picked?.key === pending.target.key &&
+				store.replyTo?.id === pending.replyTo &&
+				JSON.stringify(store.draft.attachments) ===
+					JSON.stringify(pending.attachments) &&
+				store.mention.supported &&
+				store.originLocal(pending.key) &&
+				info?.mention?.ok === true &&
+				info.mention.risky === true;
+			if (!unchanged) {
+				store.error = 'The message changed. Send it again.';
+				return;
+			}
+			void deliver({
+				key: pending.key,
+				room: pending.room,
+				text: pending.text,
+				body: pending.body,
+				mention: { target: pending.target.room, confirmed_risky: true },
+				attachments: pending.attachments,
+				replyTo: pending.replyTo,
+			});
 		},
 
 		cancelMention() {
@@ -649,7 +710,11 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		requestInject(message: ChatMessage) {
-			const gate = injectGate(store.roomInfo(message.room), message);
+			const gate = injectGate(
+				store.roomInfo(message.room),
+				message,
+				store.mention.supported,
+			);
 			if (!gate.show) return;
 			if (gate.refused) {
 				store.error = 'Not available for unrestricted sessions yet';
@@ -664,7 +729,11 @@ export const createManagerStore = (api: ManagerApi) => {
 
 		async runInject(message: ChatMessage, confirmed: boolean) {
 			const id = message.mention?.id;
-			const gate = injectGate(store.roomInfo(message.room), message);
+			const gate = injectGate(
+				store.roomInfo(message.room),
+				message,
+				store.mention.supported,
+			);
 			if (!id || !api.mentionInject || !gate.show || gate.refused) return;
 			if (store.mention.injecting[id]) return;
 			store.mention.injecting[id] = true;

@@ -35,6 +35,7 @@
 						:message="row.message"
 						:latest="mentionOf(row.message)!"
 						:origin="origin"
+						:supported="mentionSupported"
 						:busy="!!mentionBusy[row.message.mention!.id]"
 						:injected="!!mentionDone[row.message.mention!.id]"
 						@open="$emit('open-room', $event)"
@@ -120,6 +121,7 @@
 				default: () => new Set<string>(),
 			},
 			origin: { type: Object as PropType<RoomInfo>, default: undefined },
+			mentionSupported: { type: Boolean, default: false },
 			mentionBusy: {
 				type: Object as PropType<Record<string, boolean>>,
 				default: () => ({}),
