@@ -4,6 +4,8 @@
 
 - Fixed: replies and session updates from the runner stopped reaching the desktop on other machines when the phone app had not been opened for a while. The runner sent the session list to the phone every few seconds while it changed; with the app in the background these piled up until the phone's relay queue was full, and then every message the runner sent to your devices was refused. The session list now goes only to devices seen in the last 3 minutes, and a device that comes back gets the current list once.
 - Fixed: a desktop or phone whose relay queue is full no longer blocks a message to your other devices. It is skipped, and the runner log says so (search `runner.log` for `skipped mobile` or `skipped desktop`).
+- A message that waits in the runner queue now says why: the agent is busy with a turn, a dialog is open in the session, or the session prompt has not appeared yet.
+- Faster delivery: the runner checks for new chat messages every second while it has live sessions, and every 5 seconds after 2 minutes without any.
 - Restart the runner after updating (`tmgr runner restart`).
 
 ## 1.0.175

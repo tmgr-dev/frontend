@@ -6,6 +6,9 @@ workflow copies that section into the GitHub release and the in-app update notes
 ## 0.9.201 — 2026-11-23
 
 - Fixed: a message from the Manager no longer fails for all your devices when the phone app has been in the background long enough for its relay queue to fill up. A desktop or phone with a full queue is skipped, and the others still get the message. For replies from sessions on other machines, also update the tmgr CLI to 1.0.176 and restart the runner.
+- Fixed: a Manager message to a session on another machine could stay in "Sending" for minutes. Sending no longer waits for the chat history to be saved or for incoming messages to be processed. If the relay does not answer within 30 seconds, the message shows as not sent, and retrying it does not create a duplicate.
+- Faster updates: while the Manager window is open, new messages and delivery states are checked every second.
+- A queued message now says why it waits (the agent is busy, a dialog is open, or the session prompt has not appeared yet).
 
 ## 0.9.200 — 2026-11-23
 
