@@ -69,6 +69,7 @@ mod chat_api;
 mod checkpoints;
 mod handoff;
 mod manager;
+mod mention;
 mod spawnauth;
 mod spawnkeys;
 mod switch;
@@ -741,6 +742,8 @@ struct Session {
     fg: Mutex<Option<(i32, Instant)>>,
     cards: Mutex<Cards>,
     team_stop: Mutex<Option<(Instant, Instant)>>,
+    input_gen: AtomicU64,
+    working_seen: AtomicU64,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -950,6 +953,9 @@ impl Session {
         };
         self.persist();
         self.cp_note(&states);
+        if states.iter().any(|s| s.kind == StateKind::Working) {
+            self.working_seen.fetch_add(1, Ordering::SeqCst);
+        }
         for state in states {
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
@@ -1323,6 +1329,16 @@ impl Session {
         now: Instant,
         delay: Duration,
     ) -> Result<(), ApiErr> {
+        self.input_at_prompt_noted(bytes, now, delay, |_| {})
+    }
+
+    fn input_at_prompt_noted(
+        self: &Arc<Self>,
+        bytes: &[u8],
+        now: Instant,
+        delay: Duration,
+        done: impl FnOnce(u64) + Send + 'static,
+    ) -> Result<(), ApiErr> {
         let (text, submit) = match bytes.strip_suffix(b"\r") {
             Some(text) => (text, true),
             None => (bytes, false),
@@ -1335,7 +1351,10 @@ impl Session {
                 if !s.input(b"\r") {
                     log(&format!("session {}: submit key not delivered", s.id));
                 }
+                done(s.input_gen.load(Ordering::SeqCst));
             });
+        } else {
+            done(self.input_gen.load(Ordering::SeqCst));
         }
         Ok(())
     }
@@ -1370,6 +1389,7 @@ impl Session {
             }
             if !bytes.is_empty() {
                 i.input_sent_at = Some(now);
+                self.input_gen.fetch_add(1, Ordering::SeqCst);
             }
         }
         if !bytes.is_empty() {
@@ -1384,6 +1404,7 @@ impl Session {
             let ok = self.shim_input(bytes);
             if ok && !bytes.is_empty() {
                 i.input_sent_at = Some(Instant::now());
+                self.input_gen.fetch_add(1, Ordering::SeqCst);
             }
             ok
         };
@@ -5196,6 +5217,8 @@ impl Runner {
             fg: Mutex::new(None),
             cards: Mutex::new(Cards::default()),
             team_stop: Mutex::new(None),
+            input_gen: AtomicU64::new(0),
+            working_seen: AtomicU64::new(0),
         });
         session.cp_refresh();
         session
@@ -6618,6 +6641,41 @@ mod tests {
         s.input_at_prompt(b"poll\r", Instant::now()).unwrap();
         assert_eq!(queued(&rx), vec![b"poll".to_vec()]);
         assert_eq!(queued_by(&rx, 1), vec![b"\r".to_vec()]);
+    }
+
+    #[test]
+    fn the_noted_input_generation_includes_the_routers_own_submit_key_and_later_input_exceeds_it() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        let (tx, got) = std::sync::mpsc::channel();
+        s.input_at_prompt_noted(
+            b"ask\r",
+            Instant::now(),
+            Duration::from_millis(20),
+            move |g| {
+                let _ = tx.send(g);
+            },
+        )
+        .unwrap();
+        let noted = got.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(noted, s.input_gen.load(Ordering::SeqCst));
+        assert_eq!(noted, 2);
+        drain(&s, &rx);
+        assert!(s.input(b"x"));
+        assert!(s.input_gen.load(Ordering::SeqCst) > noted);
+    }
+
+    #[test]
+    fn a_working_phase_is_counted_even_when_the_state_has_moved_on_before_anyone_polls() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(b"some output\r\n", true);
+        waiting_since(&s, 20_000);
+        assert_eq!(s.state().kind, StateKind::Waiting);
+        let before = s.working_seen.load(Ordering::SeqCst);
+        s.feed(b"more output\r\n", true);
+        waiting_since(&s, 20_000);
+        assert_eq!(s.state().kind, StateKind::Waiting);
+        assert!(s.working_seen.load(Ordering::SeqCst) > before);
     }
 
     #[test]

@@ -1,4 +1,6 @@
 mod activity;
+pub mod mention;
+mod mention_io;
 pub mod queue;
 pub mod relay;
 pub mod store;
@@ -19,7 +21,7 @@ use store::Store;
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
     message_id_at, valid_message_id, Attachment, Author, AuthorKind, ChatActivity, ChatMessage,
-    ChatPush, MessageKind, RelaySelf, RoomInfo, RoomRef, CHAT_V,
+    ChatPush, MentionRef, MessageKind, RelaySelf, RoomInfo, RoomRef, CHAT_V,
 };
 
 use crate::mgr_rpc::relay::RpcClient;
@@ -153,6 +155,7 @@ pub struct Chat {
     queue: Mutex<queue::Queue>,
     rpc_client: Mutex<Option<Arc<RpcClient>>>,
     relay_device: Mutex<Option<(String, String)>>,
+    mentions: Mutex<mention::Mentions>,
 }
 
 impl Chat {
@@ -166,7 +169,7 @@ impl Chat {
         let store = Store::open(runner_dir)
             .map_err(|e| crate::daemon::log(&format!("chat: store unavailable: {e}")))
             .ok();
-        Chat {
+        let chat = Chat {
             machine,
             store,
             write: Mutex::new(()),
@@ -179,7 +182,10 @@ impl Chat {
             queue: Mutex::new(queue::Queue::default()),
             rpc_client: Mutex::new(None),
             relay_device: Mutex::new(None),
-        }
+            mentions: mention_io::new_mentions(),
+        };
+        chat.expire_open_mentions();
+        chat
     }
 
     pub fn machine(&self) -> &str {
@@ -265,6 +271,34 @@ impl Chat {
         self.append(msg)
     }
 
+    pub fn post_mention(
+        &self,
+        room: RoomRef,
+        body_md: String,
+        reply_to: Option<String>,
+        attachments: Vec<Attachment>,
+        make: impl FnOnce(&str) -> MentionRef,
+    ) -> Result<ChatMessage, String> {
+        self.own(&room)?;
+        let id = self.mint_id();
+        let mention = Some(make(&id));
+        self.append(ChatMessage {
+            v: CHAT_V,
+            id,
+            room,
+            author: Chat::owner(),
+            ts_ms: now_ms(),
+            kind: MessageKind::Text,
+            body_md,
+            attachments,
+            reply_to,
+            decision: None,
+            session_meta: None,
+            user_turn: false,
+            mention,
+        })
+    }
+
     pub fn append(&self, msg: ChatMessage) -> Result<ChatMessage, String> {
         self.own(&msg.room)?;
         {
@@ -272,6 +306,7 @@ impl Chat {
             self.store()?.append(&msg)?;
         }
         self.publish(&msg);
+        self.mention_observe_manager_row(&msg);
         Ok(msg)
     }
 
@@ -331,6 +366,17 @@ impl Chat {
         known_session: impl Fn(&str) -> bool,
         deliver: impl FnOnce(&str) -> Delivery,
     ) -> Result<Ingested, IngestError> {
+        self.ingest_with(m, None, now_ms, known_session, deliver)
+    }
+
+    pub fn ingest_with(
+        &self,
+        m: Incoming,
+        mention: Option<MentionRef>,
+        now_ms: u64,
+        known_session: impl Fn(&str) -> bool,
+        deliver: impl FnOnce(&str) -> Delivery,
+    ) -> Result<Ingested, IngestError> {
         use IngestError::{Conflict, Invalid, NotFound};
         if !valid_message_id(&m.id) {
             return Err(Invalid("invalid message id".into()));
@@ -364,13 +410,14 @@ impl Chat {
             decision: None,
             session_meta: None,
             user_turn: false,
-            mention: None,
+            mention,
         };
         msg.validate().map_err(Invalid)?;
+        let routed = msg.mention.is_some();
         {
             let _g = lock(&self.write);
             match store.get(&msg.room, &msg.id).map_err(Invalid)? {
-                Some(old) if old == msg => {
+                Some(old) if same_content(&old, &msg) => {
                     return Ok(Ingested {
                         message: old,
                         delivered: false,
@@ -382,6 +429,13 @@ impl Chat {
             }
         }
         self.publish(&msg);
+        if routed {
+            return Ok(Ingested {
+                message: msg,
+                delivered: false,
+                duplicate: false,
+            });
+        }
         if msg.ts_ms < now_ms && now_ms - msg.ts_ms > FRESH_PAST_MS {
             self.note(&msg.room, "Not delivered: older than 10 minutes.");
             return Ok(Ingested {
@@ -595,13 +649,20 @@ fn state_name(kind: StateKind, asking: bool) -> &'static str {
 }
 
 impl crate::manager::ChatPort for std::sync::Arc<Chat> {
-    fn post(&self, msg: ChatMessage) -> Result<ChatMessage, String> {
+    fn post(&self, mut msg: ChatMessage) -> Result<ChatMessage, String> {
+        msg.mention = None;
         self.append(msg)
     }
 
     fn history(&self, room: &RoomRef, limit: u32) -> Result<Vec<ChatMessage>, String> {
         Chat::history(self, room, None, Some(limit))
     }
+}
+
+fn same_content(a: &ChatMessage, b: &ChatMessage) -> bool {
+    let mut a = a.clone();
+    a.mention = b.mention.clone();
+    a == *b
 }
 
 fn system_message(room: &RoomRef, id: String, ts_ms: u64, text: &str) -> ChatMessage {
@@ -1312,5 +1373,78 @@ mod tests {
         let room = c.manager_room();
         assert!(c.system_once(&room, "m_short", NOW, "x").is_err());
         assert!(c.history(&room, None, None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn ingest_with_a_mention_stores_it_and_never_calls_deliver_and_a_plain_ingest_stores_none() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(t.path());
+        let room = chat.session_room("s_abcdefghij");
+        let ts = now_ms();
+        let incoming = |id: &str| Incoming {
+            room: room.clone(),
+            id: id.into(),
+            ts_ms: ts,
+            body_md: "hi".into(),
+            reply_to: None,
+            attachments: Vec::new(),
+            device: None,
+            client: "relay".into(),
+        };
+        let id = chat.mint_id();
+        let r = MentionRef {
+            id: id.clone(),
+            target: chat.session_room("s_target0001"),
+            target_title: "t".into(),
+            state: tmgr_ipc::chat::MentionState::Queued,
+            hop: 1,
+        };
+        let out = chat
+            .ingest_with(
+                incoming(&id),
+                Some(r.clone()),
+                now_ms(),
+                |_| true,
+                |_| panic!("a mention is never delivered to its origin"),
+            )
+            .unwrap();
+        assert_eq!(out.message.mention, Some(r.clone()));
+        assert!(!out.delivered && !out.duplicate);
+        let again = chat
+            .ingest_with(
+                incoming(&id),
+                Some(r),
+                now_ms(),
+                |_| true,
+                |_| panic!("a duplicate never routes"),
+            )
+            .unwrap();
+        assert!(again.duplicate);
+        let plain = chat.mint_id();
+        let out = chat
+            .ingest(
+                incoming(&plain),
+                now_ms(),
+                |_| true,
+                |_| Delivery::Delivered,
+            )
+            .unwrap();
+        assert!(out.message.mention.is_none() && out.delivered);
+    }
+
+    #[test]
+    fn the_manager_chat_port_drops_a_mention_the_caller_set() {
+        use crate::manager::ChatPort;
+        let t = tempfile::tempdir().unwrap();
+        let chat = std::sync::Arc::new(Chat::open(t.path()));
+        let mut m = system_message(&chat.manager_room(), chat.mint_id(), now_ms(), "x");
+        m.mention = Some(MentionRef {
+            id: chat.mint_id(),
+            target: chat.manager_room(),
+            target_title: "x".into(),
+            state: tmgr_ipc::chat::MentionState::Answered,
+            hop: 1,
+        });
+        assert!(ChatPort::post(&chat, m).unwrap().mention.is_none());
     }
 }

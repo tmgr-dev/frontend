@@ -54,6 +54,19 @@ struct Saved {
 }
 
 impl Tail {
+    #[cfg(test)]
+    pub(crate) fn placeholder() -> Tail {
+        Tail {
+            path: PathBuf::new(),
+            offset: 0,
+            resolve_at: Instant::now(),
+            meta: SessionMeta::default(),
+            title: None,
+            status: None,
+            sent: None,
+        }
+    }
+
     pub(super) fn asking(&self) -> bool {
         self.status.as_ref().is_some_and(StatusScan::is_asking)
     }
@@ -158,6 +171,7 @@ fn post(
     turn: tail::Turn,
 ) -> Result<(), String> {
     let text = clip(turn.text);
+    chat.mention_observe(room, turn.user, &text);
     if turn.user && chat.take_sent(&s.id, &text) {
         return Ok(());
     }
@@ -474,6 +488,8 @@ pub fn capture_consenting(
             t.offset = batch.offset;
             save(dir, &s.id, t);
         }
+        let caught_up = !failed && tail::len(&t.path).is_ok_and(|len| len <= t.offset);
+        chat.mention_pass(&room, caught_up);
     }
     tails.retain(|id, _| {
         sessions

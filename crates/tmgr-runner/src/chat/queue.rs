@@ -1,3 +1,4 @@
+use super::mention::QueueEnd;
 use super::{lock, Chat, Delivery};
 use std::collections::{HashMap, VecDeque};
 use tmgr_ipc::chat::RoomRef;
@@ -28,6 +29,14 @@ pub(super) struct Queue {
     rooms: HashMap<RoomRef, VecDeque<Entry>>,
 }
 
+pub struct Item<'a> {
+    pub room: &'a RoomRef,
+    pub id: &'a str,
+    pub body: &'a str,
+    pub client: &'a str,
+    pub device: Option<&'a str>,
+}
+
 impl Chat {
     #[allow(clippy::too_many_arguments)]
     pub fn submit(
@@ -40,16 +49,51 @@ impl Chat {
         now_ms: u64,
         mut deliver: impl FnMut(&str, &str, Option<&str>) -> Delivery,
     ) -> Submit {
+        self.submit_with(
+            room,
+            id,
+            body,
+            client,
+            device,
+            now_ms,
+            DEFAULT_TTL_MS,
+            |it| deliver(it.body, it.client, it.device),
+            |_, _| {},
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn submit_with(
+        &self,
+        room: &RoomRef,
+        id: &str,
+        body: &str,
+        client: &str,
+        device: Option<&str>,
+        now_ms: u64,
+        ttl_ms: u64,
+        mut deliver: impl FnMut(&Item) -> Delivery,
+        mut on_delivered: impl FnMut(&Item, &str),
+    ) -> Submit {
         let mut q = lock(&self.queue);
         let backlog = q.rooms.get(room).map_or(0, VecDeque::len);
         if backlog == 0 {
-            match deliver(body, client, device) {
+            let item = Item {
+                room,
+                id,
+                body,
+                client,
+                device,
+            };
+            match deliver(&item) {
                 Delivery::Delivered => {
                     self.remember_delivered(room, body);
+                    on_delivered(&item, body);
                     return Submit::Delivered;
                 }
                 Delivery::Typed(typed) => {
                     self.remember_delivered(room, &typed);
+                    on_delivered(&item, &typed);
                     return Submit::Delivered;
                 }
                 Delivery::Gone(r) => return Submit::Gone(r),
@@ -66,7 +110,7 @@ impl Chat {
             client: client.into(),
             device: device.map(String::from),
             enq_ms: now_ms,
-            ttl_ms: DEFAULT_TTL_MS,
+            ttl_ms,
         });
         Submit::Queued
     }
@@ -76,7 +120,21 @@ impl Chat {
         now_ms: u64,
         mut deliver: impl FnMut(&RoomRef, &str, &str, Option<&str>) -> Delivery,
     ) {
+        self.drain_queue_with(
+            now_ms,
+            |it| deliver(it.room, it.body, it.client, it.device),
+            |_, _| {},
+        );
+    }
+
+    pub fn drain_queue_with(
+        &self,
+        now_ms: u64,
+        mut deliver: impl FnMut(&Item) -> Delivery,
+        mut on_delivered: impl FnMut(&Item, &str),
+    ) {
         let mut notes: Vec<(RoomRef, String)> = Vec::new();
+        let mut ends: Vec<(String, QueueEnd)> = Vec::new();
         {
             let mut q = lock(&self.queue);
             for (room, entries) in q.rooms.iter_mut() {
@@ -87,25 +145,37 @@ impl Chat {
                             room.clone(),
                             format!("Not delivered: expired after {mins} minutes in the queue."),
                         ));
+                        ends.push((front.id.clone(), QueueEnd::Expired));
                         entries.pop_front();
                         continue;
                     }
-                    match deliver(room, &front.body_md, &front.client, front.device.as_deref()) {
+                    let item = Item {
+                        room,
+                        id: &front.id,
+                        body: &front.body_md,
+                        client: &front.client,
+                        device: front.device.as_deref(),
+                    };
+                    match deliver(&item) {
                         Delivery::Delivered => {
-                            self.remember_delivered(room, &front.body_md);
+                            self.remember_delivered(room, item.body);
+                            on_delivered(&item, item.body);
                             entries.pop_front();
                         }
                         Delivery::Typed(typed) => {
                             self.remember_delivered(room, &typed);
+                            on_delivered(&item, &typed);
                             entries.pop_front();
                         }
                         Delivery::Refused(why) => {
                             notes.push((room.clone(), why.to_string()));
+                            ends.push((front.id.clone(), QueueEnd::Refused(why.to_string())));
                             entries.pop_front();
                         }
                         Delivery::Busy => break,
                         Delivery::Gone(r) => {
                             notes.push((room.clone(), format!("Not delivered: {r}.")));
+                            ends.push((front.id.clone(), QueueEnd::Gone(r)));
                             entries.pop_front();
                         }
                     }
@@ -115,6 +185,9 @@ impl Chat {
         }
         for (room, text) in notes {
             self.note(&room, &text);
+        }
+        for (id, end) in ends {
+            self.mention_queue_end(&id, end);
         }
     }
 
@@ -143,6 +216,7 @@ impl Chat {
         };
         if removed {
             self.note(room, "Not delivered: cancelled.");
+            self.mention_queue_end(id, QueueEnd::Cancelled);
         }
         removed
     }
@@ -400,5 +474,140 @@ mod tests {
         });
         assert_eq!(r, Submit::Delivered);
         assert_eq!(c.queued_ids(&a), ["m1"]);
+    }
+
+    const MID: &str = "m_0190a1b2c3d4aabbccddeeff00112233";
+
+    fn mention_spec(c: &Chat, id: &str) -> super::super::mention::Spec {
+        use super::super::mention::{Spec, Via};
+        Spec {
+            id: id.into(),
+            origin: c.session_room("s_originaaaa"),
+            target: c.session_room("s_abcdefghij"),
+            title: "build-fix".into(),
+            hop: 1,
+            question: "q".into(),
+            via: Via::Local {
+                client: "desktop".into(),
+            },
+            confirmed_risky: false,
+        }
+    }
+
+    fn mention_states(c: &Chat) -> Vec<tmgr_ipc::chat::MentionState> {
+        c.history(&c.session_room("s_originaaaa"), None, None)
+            .unwrap()
+            .into_iter()
+            .filter_map(|m| m.mention.map(|r| r.state))
+            .collect()
+    }
+
+    #[test]
+    fn a_mention_entry_expires_after_its_own_ttl_not_the_default_one() {
+        use tmgr_ipc::chat::MentionState;
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.mention_open(mention_spec(&c, MID));
+        let item = |_: &Item| Delivery::Busy;
+        assert_eq!(
+            c.submit_with(
+                &room,
+                MID,
+                "q",
+                "desktop",
+                None,
+                T0,
+                120_000,
+                item,
+                |_, _| {}
+            ),
+            Submit::Queued
+        );
+        c.drain_queue_with(T0 + 119_999, item, |_, _| {});
+        assert_eq!(c.queued_ids(&room), [MID]);
+        c.drain_queue_with(T0 + 120_000, item, |_, _| {});
+        assert!(c.queued_ids(&room).is_empty());
+        assert_eq!(mention_states(&c), [MentionState::Busy]);
+        assert!(!c.is_mention_open(MID));
+    }
+
+    #[test]
+    fn cancelling_a_queued_mention_ends_it_as_cancelled() {
+        use tmgr_ipc::chat::MentionState;
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.mention_open(mention_spec(&c, MID));
+        c.submit_with(
+            &room,
+            MID,
+            "q",
+            "desktop",
+            None,
+            T0,
+            120_000,
+            |_| Delivery::Busy,
+            |_, _| {},
+        );
+        assert!(c.cancel(&room, MID));
+        assert_eq!(mention_states(&c), [MentionState::Cancelled]);
+    }
+
+    #[test]
+    fn the_delivered_callback_gets_the_typed_text_and_starts_the_mention_clock() {
+        use tmgr_ipc::chat::MentionState;
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.mention_open(mention_spec(&c, MID));
+        c.submit_with(
+            &room,
+            MID,
+            "q",
+            "desktop",
+            None,
+            T0,
+            120_000,
+            |_| Delivery::Busy,
+            |_, _| {},
+        );
+        let typed = RefCell::new(None);
+        c.drain_queue_with(
+            T0 + 1,
+            |_| Delivery::Typed("wrapped q".into()),
+            |it, t| {
+                *typed.borrow_mut() = Some((it.id.to_string(), t.to_string()));
+                c.mention_delivered(it.id, t, T0 + 1);
+            },
+        );
+        assert_eq!(
+            *typed.borrow(),
+            Some((MID.to_string(), "wrapped q".to_string()))
+        );
+        assert_eq!(mention_states(&c), [MentionState::Sent]);
+        assert!(c.take_sent("s_abcdefghij", "wrapped q"));
+    }
+
+    #[test]
+    fn a_refused_or_gone_queued_mention_ends_with_the_reason() {
+        use tmgr_ipc::chat::MentionState;
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.mention_open(mention_spec(&c, MID));
+        c.submit_with(
+            &room,
+            MID,
+            "q",
+            "desktop",
+            None,
+            T0,
+            120_000,
+            |_| Delivery::Busy,
+            |_, _| {},
+        );
+        c.drain_queue_with(
+            T0 + 1,
+            |_| Delivery::Gone("the session has exited".into()),
+            |_, _| {},
+        );
+        assert_eq!(mention_states(&c), [MentionState::Offline]);
     }
 }

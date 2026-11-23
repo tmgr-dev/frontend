@@ -63,6 +63,10 @@ pub fn history(
     let mut all: Vec<ChatMessage> = rows
         .into_iter()
         .filter_map(|v| serde_json::from_value::<ChatMessage>(v).ok())
+        .map(|mut m| {
+            m.mention = None;
+            m
+        })
         .filter(|m| m.room == *room && m.validate().is_ok())
         .collect();
     all.drain(..all.len().saturating_sub(limit as usize));
@@ -368,6 +372,23 @@ mod tests {
             got.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
             [mid(1), mid(2)]
         );
+    }
+
+    #[test]
+    fn history_from_a_follower_drops_a_forged_mention() {
+        let room = RoomRef::manager(PEER);
+        let mut forged = msg(&mid(1), room.clone());
+        forged.mention = Some(tmgr_ipc::chat::MentionRef {
+            id: mid(1),
+            target: room.clone(),
+            target_title: "x".into(),
+            state: tmgr_ipc::chat::MentionState::Answered,
+            hop: 1,
+        });
+        let net = Net::top().replying(Ok(RpcRes::ok("r", json!([forged]))));
+        let got = history(&net, &room, None, None).unwrap();
+        assert_eq!(got.len(), 1);
+        assert!(got[0].mention.is_none());
     }
 
     #[test]
