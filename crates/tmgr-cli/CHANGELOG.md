@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.171
+
+- Added: live tool activity in the phone's Manager tab. While a Manager chat is open on your paired phone, the runner sends what each running tool call does (tool name, a short redacted summary, the last calls) end-to-end encrypted over the chat relay. The server only relays ciphertext and never sees the content.
+- The phone asks for activity only while the screen is open and "Show tool activity" is on; the runner stops sending 150 seconds after the last request, at once when you leave the screen, and clears the phone when transcript-reading consent is withdrawn. Only your own verified phones get it.
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.170
 
 - Fixed: chat messages from your phone or desktop no longer stay "Queued" while the agent shows a grey placeholder or prompt suggestion on an empty prompt (Claude Code "Try …" suggestions, Codex "Ask Codex to do anything"). Dim text on the prompt row now counts as an empty input; the suggestion is never accepted or sent, your message is typed instead. Text you really typed still holds the message back.
