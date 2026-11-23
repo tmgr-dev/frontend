@@ -1158,7 +1158,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 48);
+    assert_eq!(w.caps.len(), 49);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1824,7 +1824,7 @@ fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
 fn switch_method_cap_and_shapes() {
     assert_eq!(method::SESSIONS_SWITCH, "sessions.switch");
     assert_eq!(caps::SWITCH_V1, "switch.v1");
-    assert_eq!(caps::ALL[caps::ALL.len() - 6], caps::SWITCH_V1);
+    assert_eq!(caps::ALL[caps::ALL.len() - 7], caps::SWITCH_V1);
     let req = SwitchReq {
         session: "s_aaaaaaaaaa".into(),
         to: "codex".into(),

@@ -336,8 +336,8 @@ impl Mentions {
             let Some(e) = self.entries.get_mut(&id) else {
                 continue;
             };
-            match &mut e.phase {
-                Phase::Sent(s) => {
+            if let Phase::Sent(s) = &mut e.phase {
+                {
                     let spec = e.spec.clone();
                     let p = probe(&spec.target);
                     let verdict = match p {
@@ -365,7 +365,6 @@ impl Mentions {
                         out.extend(self.finish(&id, state, reason));
                     }
                 }
-                _ => {}
             }
         }
         out
