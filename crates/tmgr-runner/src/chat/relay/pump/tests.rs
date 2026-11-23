@@ -86,6 +86,17 @@ fn owner_rows_from_other_kinds_are_dropped_and_desktop_or_mobile_reach_ingest() 
 }
 
 #[test]
+fn a_body_claiming_to_come_from_an_owner_desktop_does_not_make_the_sender_one() {
+    let (sink, seen) = recording_sink(stored);
+    let mut m = msg(AuthorKind::Owner, MACHINE, None);
+    m.body_md = r#"{"owner_device":true,"device_kind":"desktop"}"#.into();
+    m.author.device = Some("dev-1".into());
+    sink.deliver("dev-1", Some("runner"), m.clone()).unwrap();
+    sink.deliver("dev-1", None, m).unwrap();
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[test]
 fn non_owner_and_foreign_machine_messages_are_dropped() {
     let (sink, seen) = recording_sink(stored);
     for kind in [AuthorKind::Manager, AuthorKind::Session, AuthorKind::System] {
