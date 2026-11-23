@@ -1,4 +1,4 @@
-use super::chat_api::UNRESTRICTED_REFUSAL;
+use super::chat_api::{relay_typed, UNRESTRICTED_REFUSAL};
 use super::*;
 use crate::chat::mention::{self, Facts, Probe, Spec, Via};
 use crate::chat::queue::Item;
@@ -373,10 +373,7 @@ impl Runner {
         if !allowed && super::manager::is_unrestricted(&t) {
             return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
         }
-        let typed = match &spec.via {
-            Via::Relay { device, .. } => phone_question(device, it.body),
-            Via::Local { .. } => it.body.to_string(),
-        };
+        let typed = mention_typed(&spec.via, it.owner_device, it.body);
         if t.is_exited() {
             return chat::Delivery::Gone("the session has exited".into());
         }
@@ -460,6 +457,14 @@ impl Runner {
         s.input_at_prompt(&chat::prompt_bytes(&wrapped), Instant::now())?;
         self.chat.remember_sent(&s.id, &wrapped);
         Ok(Value::Bool(true))
+    }
+}
+
+fn mention_typed(via: &Via, owner_device: bool, body: &str) -> String {
+    match via {
+        Via::Relay { device, .. } if owner_device => phone_question(device, body),
+        Via::Relay { device, .. } => relay_typed(false, Some(device), body),
+        Via::Local { .. } => body.to_string(),
     }
 }
 
@@ -884,6 +889,21 @@ mod tests {
         replay.ts_ms = ts;
         assert!(rt.relay_mention(replay, b.clone()).unwrap().duplicate);
         assert!(rt.chat.queued_ids(&b).is_empty());
+    }
+
+    #[test]
+    fn a_relayed_mention_from_a_downgraded_sender_stays_wrapped_and_an_owner_one_gets_the_label() {
+        let via = |owner_device| Via::Relay {
+            device: "d_phone1".into(),
+            owner_device,
+        };
+        let wrapped = mention_typed(&via(false), false, "run it");
+        assert!(wrapped.starts_with("[relayed message "), "{wrapped}");
+        assert!(!wrapped.contains(PHONE_LABEL));
+        assert_eq!(
+            mention_typed(&via(true), true, "run it"),
+            "[from the owner's phone (d_phone1)]\n\nrun it"
+        );
     }
 
     #[test]

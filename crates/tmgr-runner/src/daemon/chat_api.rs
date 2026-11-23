@@ -26,7 +26,7 @@ const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
 pub(super) const RELAY_SOURCE: &str = "phone or another device via chat relay";
 
-fn relay_typed(owner_device: bool, device: Option<&str>, body: &str) -> String {
+pub(super) fn relay_typed(owner_device: bool, device: Option<&str>, body: &str) -> String {
     if owner_device {
         body.to_owned()
     } else {
