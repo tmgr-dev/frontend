@@ -3,7 +3,7 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
-## 0.9.197 — 2026-11-23
+## 0.9.198 — 2026-11-23
 
 - Manager window: each accepted leader machine has an "Allow asks from <name>" switch. When it is on, `@` mentions from that leader can reach this machine's manager chat. The desktop can only turn it off; turning it on needs `tmgr chat remote allow-ask` with the follower PIN. Needs tmgr CLI 1.0.172 or newer; restart the runner after updating.
 
