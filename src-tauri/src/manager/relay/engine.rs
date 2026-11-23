@@ -125,6 +125,16 @@ fn join_v1() -> u8 {
   1
 }
 
+fn trim_seen(st: &mut State) {
+  if st.seen.len() > MAX_SEEN {
+    let cut = st.seen.len() - MAX_SEEN;
+    for s in st.seen.drain(..cut) {
+      let f = st.seen_floor.entry(s.from).or_insert(0);
+      *f = (*f).max(s.at);
+    }
+  }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct Seen {
   from: String,
@@ -147,6 +157,8 @@ struct State {
   pending_revokes: Vec<PendingRevoke>,
   declined: Vec<String>,
   seen: Vec<Seen>,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  seen_floor: BTreeMap<String, u64>,
   mismatch: Vec<String>,
   #[serde(default)]
   seq_in: BTreeMap<String, u64>,
@@ -1201,14 +1213,15 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn apply(&self, c: &mut Core, opened: Opened, now: u64) -> Option<ChatMessage> {
+    if opened.trusted && c.st.seen_floor.get(&opened.from).is_some_and(|f| opened.sent_at <= *f) {
+      c.drop_reason = Some("replayed or too old");
+      return None;
+    }
     let stored = self.handle(c, &opened, now);
     if stored.is_some() && opened.kind != "rooms" {
       c.st.seen.push(Seen { from: opened.from, id: opened.id, at: opened.sent_at });
       c.st.seen.retain(|s| s.at + SEEN_TTL_MS >= now);
-      if c.st.seen.len() > MAX_SEEN {
-        let cut = c.st.seen.len() - MAX_SEEN;
-        c.st.seen.drain(..cut);
-      }
+      trim_seen(&mut c.st);
     }
     stored.flatten()
   }
@@ -1602,9 +1615,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       return Err(e);
     }
     c.st.seen.push(Seen { from: own_id.clone(), id: msg.id.clone(), at: self.now() });
-    if c.st.seen.len() > MAX_SEEN {
-      c.st.seen.remove(0);
-    }
+    trim_seen(&mut c.st);
     c.log.push(LogEntry { from: own_id, msg: msg.clone() });
     self.mark_log();
     Ok(msg)

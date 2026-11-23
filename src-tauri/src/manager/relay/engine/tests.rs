@@ -1352,6 +1352,29 @@ fn seen_is_capped_at_5000_dropping_the_oldest() {
   assert!(g.st.seen.iter().all(|s| s.id != "old0"));
 }
 
+#[test]
+fn a_message_evicted_by_the_seen_cap_cannot_be_replayed() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  send(&a, "victim").unwrap();
+  let (msg_id, from, body) = fake.first_body(&bid);
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  clock.set(T0 + 1000);
+  {
+    let mut g = b.lock();
+    for i in 0..5000 {
+      g.st.seen.push(Seen { from: "x".into(), id: format!("old{i}"), at: T0 + 1000 });
+    }
+  }
+  send(&a, "next").unwrap();
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  fake.inject(&bid, &msg_id, &from, &body);
+  assert!(b.poll_once().unwrap().is_empty());
+  assert_eq!(history(&b), ["victim", "next"]);
+  assert_eq!(b.drops().last(), Some(&"replayed or too old"));
+}
+
 const DAY: u64 = 24 * 3600 * 1000;
 
 fn silence_setup() -> (Fake, Clock, Engine, Engine, Engine) {
