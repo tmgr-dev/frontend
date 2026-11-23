@@ -4227,6 +4227,21 @@ fn activity_on_from_a_trusted_phone_reaches_the_sink() {
 }
 
 #[test]
+fn a_stale_activity_on_is_dropped() {
+    let (_f, clock, a, r, sink) = activity_world_from("mobile");
+    raw_post(
+        &a,
+        &my_id(&r),
+        "activity_on",
+        &rpc_id("activity_on"),
+        &json!({"v": 1, "on": true}),
+    );
+    clock.set(T0 + 6 * 60 * 1000);
+    r.poll_once().unwrap();
+    assert!(sink.got().is_empty());
+}
+
+#[test]
 fn activity_on_from_desktop_and_runner_kinds_is_dropped() {
     for kind in ["desktop", "runner"] {
         let (_f, _c, a, r, sink) = activity_world_from("mobile");

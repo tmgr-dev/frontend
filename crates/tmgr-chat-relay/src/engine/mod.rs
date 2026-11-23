@@ -39,6 +39,7 @@ const MAX_SEEN: usize = 5000;
 const MAX_RPC_SEEN: usize = 2000;
 const ROOMS_MAX_BYTES: usize = 256 * 1024;
 const ACTIVITY_MAX_BYTES: usize = 48 * 1024;
+const ACTIVITY_ON_MAX_AGE_MS: u64 = 5 * 60 * 1000;
 const MAX_GAPS: usize = 100;
 const MAX_HELD: usize = 200;
 const HOLD_MS: u64 = 60_000;
@@ -1423,6 +1424,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     || dev.fp != opened.from_fp
                     || c.st.revoked.contains(&dev.fp)
                     || c.st.kind_of(&dev.id, &dev.fp) != Some("mobile")
+                    || now.saturating_sub(opened.sent_at) > ACTIVITY_ON_MAX_AGE_MS
                 {
                     return None;
                 }
