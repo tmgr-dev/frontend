@@ -214,7 +214,7 @@
           "trusted": true
         }
       },
-      "now_ms": 1799999690000
+      "now_ms": 1797321590000
     },
     {
       "name": "window_too_far_in_future",
@@ -223,7 +223,7 @@
       "expect": {
         "error": "bad_window"
       },
-      "now_ms": 1799999689999
+      "now_ms": 1797321589999
     }
   ],
   "intro_vectors": [

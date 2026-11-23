@@ -7,7 +7,6 @@ use serde_json::Value;
 use tmgr_phone::{b64_decode, h, hex, open_ctx, seal_ctx_with, sign, verify_der, Entropy, Sealed};
 
 const MAX_AGE_MS: u64 = 31 * 24 * 3600 * 1000;
-const MAX_SKEW_MS: u64 = 5 * 60 * 1000;
 const PAD_BUCKETS: [usize; 6] = [1 << 10, 4 << 10, 16 << 10, 64 << 10, 256 << 10, 1 << 20];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -328,7 +327,7 @@ where
         &plain.body,
     )?;
     verify_der(&b64_decode(&sender_sign)?, &signed, &plain.sig)?;
-    if inner.sent_at < now_ms.saturating_sub(MAX_AGE_MS) || inner.sent_at > now_ms + MAX_SKEW_MS {
+    if inner.sent_at < now_ms.saturating_sub(MAX_AGE_MS) || inner.sent_at > now_ms.saturating_add(MAX_AGE_MS) {
         return Err(Rejected {
             error: Error::BadWindow,
             verified: is_trusted.then(|| (body.from.clone(), inner.seq)),
@@ -846,8 +845,13 @@ mod tests {
         let day = 24 * 3600 * 1000;
         let r = open_as(&w, &w.bob, B, 42, A, "m_1", &body, NOW + 32 * day);
         assert_eq!(r.err(), Some(Error::BadWindow));
-        let r = open_as(&w, &w.bob, B, 42, A, "m_1", &body, NOW - 6 * 60 * 1000);
+        let r = open_as(&w, &w.bob, B, 42, A, "m_1", &body, NOW - 32 * day);
         assert_eq!(r.err(), Some(Error::BadWindow));
+        let hour = 3600 * 1000;
+        for now in [NOW + hour + 6 * 60 * 1000, NOW - hour - 6 * 60 * 1000] {
+            let r = open_as(&w, &w.bob, B, 42, A, "m_1", &body, now);
+            assert!(r.is_ok());
+        }
     }
 
     fn checked(
@@ -864,7 +868,7 @@ mod tests {
         let w = world();
         let body = seal_to_bob(&w);
         let t = [trusted_alice(&w)];
-        let r = checked(&w, &body, NOW - 6 * 60 * 1000, &t).unwrap_err();
+        let r = checked(&w, &body, NOW - 32 * 24 * 3600 * 1000, &t).unwrap_err();
         assert_eq!(r.error, Error::BadWindow);
         assert_eq!(r.verified, Some((A.to_owned(), 1)));
     }
@@ -901,7 +905,7 @@ mod tests {
             A,
             "j_1",
             &join,
-            NOW - 6 * 60 * 1000,
+            NOW - 32 * 24 * 3600 * 1000,
             &[],
             |_| Some(peer(A, &dir_alice)),
         )

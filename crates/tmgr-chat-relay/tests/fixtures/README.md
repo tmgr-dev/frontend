@@ -77,7 +77,7 @@ STANDARD padded, secrets are test keys only.
   `Error::code()`: `bad_json`, `bad_format`, `open_failed`, `bad_key`, `bad_window`, `id_mismatch`) or
   `{ok: {seq, trusted}}`. An intro vector is `verify_intro(intro_json, user_id, signer.device_id,
   signer.sign_pub, signer.kex_pub)`. The 10-minute freshness rule for runner input is not part of this crate and
-  has no vector; the 31-day and 5-minute `sent_at` window edges do.
+  has no vector; the 31-day `sent_at` window edges (past and future) do.
 
 ## Unknown fields
 

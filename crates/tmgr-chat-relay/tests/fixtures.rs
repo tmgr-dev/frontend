@@ -22,7 +22,6 @@ const USER: u64 = 42;
 const NOW: u64 = 1_800_000_000_000;
 const SENT_AT: u64 = 1_799_999_990_000;
 const MAX_AGE_MS: u64 = 31 * 24 * 3600 * 1000;
-const MAX_SKEW_MS: u64 = 5 * 60 * 1000;
 const NEG_MSG_ID: &str = "m_00000000000000000000000000000002";
 const IDS: [&str; 5] = [
     "00000000-0000-4000-8000-00000000000a",
@@ -936,12 +935,12 @@ fn negative_fixture() -> Value {
         ),
         (
             "window_future_edge_accepted",
-            SENT_AT - MAX_SKEW_MS,
+            SENT_AT - MAX_AGE_MS,
             ok_open(true),
         ),
         (
             "window_too_far_in_future",
-            SENT_AT - MAX_SKEW_MS - 1,
+            SENT_AT - MAX_AGE_MS - 1,
             err(Error::BadWindow),
         ),
     ] {

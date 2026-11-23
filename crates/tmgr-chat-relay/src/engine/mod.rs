@@ -1292,7 +1292,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             id: o.id.clone(),
             at: o.sent_at,
         });
-        c.st.rpc_seen.retain(|s| s.at + SEEN_TTL_MS >= now);
+        c.st.rpc_seen.retain(|s| s.at.saturating_add(SEEN_TTL_MS) >= now);
         if c.st.rpc_seen.len() > MAX_RPC_SEEN {
             let cut = c.st.rpc_seen.len() - MAX_RPC_SEEN;
             c.st.rpc_seen.drain(..cut);
@@ -1335,7 +1335,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             } else {
                 SEEN_TTL_MS
             };
-            s.at + ttl >= now
+            s.at.saturating_add(ttl) >= now
         });
         if c.st.seen.len() > MAX_SEEN {
             let cut = c.st.seen.len() - MAX_SEEN;
