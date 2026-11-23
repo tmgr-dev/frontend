@@ -226,6 +226,14 @@ fn mgr_req_ts_is_converted_and_mgr_res_is_not() {
         &my_id(&r2),
         "mgr_req",
         &rpc_id("mgr_req"),
+        &json!({"op": "first", "ts_ms": sent}),
+    )
+    .unwrap();
+    r2.poll_once().unwrap();
+    r1.send_rpc(
+        &my_id(&r2),
+        "mgr_req",
+        &rpc_id("mgr_req"),
         &json!({"op": "x", "ts_ms": sent}),
     )
     .unwrap();
@@ -239,10 +247,14 @@ fn mgr_req_ts_is_converted_and_mgr_res_is_not() {
     r2.poll_once().unwrap();
     let got = sink.0.lock().unwrap().clone();
     let ts = |kind: &str| {
-        got.iter().find(|g| g.2 == kind).unwrap().4["ts_ms"]
+        got.iter().rfind(|g| g.2 == kind).unwrap().4["ts_ms"]
             .as_u64()
             .unwrap()
     };
+    let first = got.iter().find(|g| g.2 == "mgr_req").unwrap().4["ts_ms"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(first, sent);
     assert!(close(ts("mgr_req"), at(&clock)));
     assert_eq!(ts("mgr_res"), sent);
 }

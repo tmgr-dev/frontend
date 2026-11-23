@@ -1733,7 +1733,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             }
             c.drop_reason = None;
             let sample = o.trusted.then(|| PeerClock::sample(o.sent_at, now));
-            let offset = sample.map_or(0, |d| c.st.clocks.get(&from).map_or(d, |p| p.cur));
+            let offset = c.st.clocks.get(&from).map_or(0, |p| p.cur);
             let applied = self.apply(c, o, now, offset);
             let dropped = c.drop_reason.take();
             if let Some(reason) = dropped {
