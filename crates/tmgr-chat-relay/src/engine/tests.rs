@@ -4196,6 +4196,36 @@ fn a_runner_seals_nothing_to_a_device_with_a_pending_revoke() {
 }
 
 #[test]
+fn owner_sends_skip_a_revoked_desktop_but_reach_a_normal_owner_desktop() {
+    let (fake, clock, runner, desktop, _mobile, _other) = rooms_world();
+    let second = join_as(&fake, &clock, &desktop, "Desktop B", "desktop");
+    runner.poll_once().unwrap();
+    let (did, sid) = (my_id(&desktop), my_id(&second));
+    desktop.revoke(&sid).unwrap();
+    runner.poll_once().unwrap();
+    assert_eq!(runner.trust_state().unwrap().pending_revokes.len(), 1);
+    let (bd, bs) = (fake.queue_len(&did), fake.queue_len(&sid));
+    let only = [did.clone(), sid.clone()];
+    let mid = new_message_id();
+    runner
+        .send_chat_to_owners(&text_msg(new_message_id(), "hi"), &only)
+        .unwrap();
+    runner
+        .send_receipt(&did, &mid, ReceiptState::Delivered, None)
+        .unwrap();
+    assert!(runner
+        .send_receipt(&sid, &mid, ReceiptState::Delivered, None)
+        .is_err());
+    assert!(runner
+        .send_chat_to_owners(&text_msg(new_message_id(), "x"), std::slice::from_ref(&sid))
+        .is_err());
+    assert_eq!(fake.queue_len(&did), bd + 2);
+    assert_eq!(fake.queue_len(&sid), bs);
+    let owners = runner.owner_device_ids().unwrap();
+    assert!(owners.contains(&did) && !owners.contains(&sid));
+}
+
+#[test]
 fn rooms_can_be_restricted_to_a_subset_and_refuses_when_none_match() {
     let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
     let (did, mid) = (my_id(&desktop), my_id(&mobile));
