@@ -109,6 +109,8 @@ pub fn msg_id_from(kind: &str, random: &[u8; 16]) -> Result<String> {
         "mgr_req" => "g",
         "mgr_res" => "h",
         "rooms" => "i",
+        "activity" => "t",
+        "activity_on" => "u",
         _ => return Err(Error::UnexpectedKind),
     };
     Ok(format!("{prefix}_{}", hex(random)))
@@ -816,6 +818,8 @@ mod tests {
             ("mgr_req", "g"),
             ("mgr_res", "h"),
             ("rooms", "i"),
+            ("activity", "t"),
+            ("activity_on", "u"),
         ] {
             assert_eq!(msg_id_from(kind, &r).unwrap(), format!("{p}_{hexs}"));
             let id = random_msg_id(kind).unwrap();

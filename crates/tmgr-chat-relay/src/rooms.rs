@@ -37,6 +37,8 @@ pub struct RoomsIndex {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub followers: Option<Vec<String>>,
     pub rooms: Vec<RoomEntry>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub activity: bool,
 }
 
 impl RoomsIndex {
@@ -159,5 +161,16 @@ mod tests {
             v.as_object_mut().unwrap().remove("followers");
         });
         assert!(RoomsIndex::parse(top).is_ok());
+    }
+
+    #[test]
+    fn the_activity_flag_defaults_to_false_and_round_trips_when_set() {
+        let idx = RoomsIndex::parse(fixture()).unwrap();
+        assert!(!idx.activity);
+        assert!(fixture().get("activity").is_none());
+        let on = with(|v| v["activity"] = json!(true));
+        let idx = RoomsIndex::parse(on.clone()).unwrap();
+        assert!(idx.activity);
+        assert_eq!(serde_json::to_value(&idx).unwrap(), on);
     }
 }

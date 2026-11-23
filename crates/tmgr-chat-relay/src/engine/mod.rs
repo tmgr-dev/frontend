@@ -23,7 +23,8 @@ use crate::trust::{
 use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
 
 pub use ports::{
-    ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, SpawnKeySink, SpawnOkSink, Transport,
+    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, SpawnKeySink, SpawnOkSink,
+    Transport,
 };
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
@@ -37,6 +38,7 @@ const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_SEEN: usize = 5000;
 const MAX_RPC_SEEN: usize = 2000;
 const ROOMS_MAX_BYTES: usize = 256 * 1024;
+const ACTIVITY_MAX_BYTES: usize = 48 * 1024;
 const MAX_GAPS: usize = 100;
 const MAX_HELD: usize = 200;
 const HOLD_MS: u64 = 60_000;
@@ -685,6 +687,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore, S: ChatSink> {
     rpc: Option<Arc<dyn RpcSink>>,
     spawnkey: Option<Arc<dyn SpawnKeySink>>,
     spawnok: Option<Arc<dyn SpawnOkSink>>,
+    activity_sub: Option<Arc<dyn ActivitySubSink>>,
     core: Mutex<Core>,
 }
 
@@ -725,6 +728,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             rpc: None,
             spawnkey: None,
             spawnok: None,
+            activity_sub: None,
             core: Mutex::new(core),
         })
     }
@@ -751,6 +755,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     pub fn with_spawnok_sink(mut self, sink: Arc<dyn SpawnOkSink>) -> Self {
         self.spawnok = Some(sink);
+        self
+    }
+
+    pub fn with_activity_sub_sink(mut self, sink: Arc<dyn ActivitySubSink>) -> Self {
+        self.activity_sub = Some(sink);
         self
     }
 
@@ -1403,6 +1412,27 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 }
                 sink.deliver_spawnok(&dev.id, &dev.fp, &signed);
             }
+            "activity_on" if sender_trusted && c.st.joined => {
+                let sink = self.activity_sub.as_ref()?;
+                if self.kind != "runner" {
+                    return None;
+                }
+                let own = c.identity.as_ref().map(|i| i.device_id.as_str());
+                let dev = c.st.trusted.iter().find(|d| d.id == opened.from)?;
+                if Some(dev.id.as_str()) == own
+                    || dev.fp != opened.from_fp
+                    || c.st.revoked.contains(&dev.fp)
+                    || c.st.kind_of(&dev.id, &dev.fp) != Some("mobile")
+                {
+                    return None;
+                }
+                let obj = opened.payload.as_object()?;
+                if obj.get("v").and_then(Value::as_u64) != Some(1) {
+                    return None;
+                }
+                let on = obj.get("on")?.as_bool()?;
+                sink.deliver_activity_on(&dev.id, on);
+            }
             _ => return None,
         }
         Some(stored)
@@ -1622,6 +1652,39 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             return Err("there are no other trusted devices to send to".into());
         }
         self.seal_and_post(c, kind, msg_id, payload, &targets, false)?;
+        self.save_now(c)
+    }
+
+    pub fn send_activity(
+        &self,
+        msg_id: &str,
+        payload: &Value,
+        only: &[String],
+    ) -> Result<(), String> {
+        if !msg_id.starts_with("t_") {
+            return Err("unsupported sealed kind".into());
+        }
+        if self.kind != "runner" {
+            return Err("only a runner can send activity".into());
+        }
+        if serde_json::to_vec(payload).map_err(err)?.len() > ACTIVITY_MAX_BYTES {
+            return Err("the activity payload is too large".into());
+        }
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (id, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        let targets: Vec<Dev> = Self::owner_targets(c, &id.device_id, Some(only))
+            .into_iter()
+            .filter(|d| c.st.kind_of(&d.id, &d.fp) == Some("mobile"))
+            .collect();
+        if targets.is_empty() {
+            return Err("there are no other trusted devices to send to".into());
+        }
+        self.seal_and_post(c, "activity", msg_id, payload, &targets, false)?;
         self.save_now(c)
     }
 

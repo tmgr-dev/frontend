@@ -103,3 +103,9 @@ pub trait SpawnKeySink: Send + Sync {
 pub trait SpawnOkSink: Send + Sync {
     fn deliver_spawnok(&self, from_device: &str, from_fp: &str, signed: &SignedSpawn);
 }
+
+/// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
+/// The sender is a trusted, joined, non-revoked device other than ourselves, pinned as a phone.
+pub trait ActivitySubSink: Send + Sync {
+    fn deliver_activity_on(&self, from_device: &str, on: bool);
+}

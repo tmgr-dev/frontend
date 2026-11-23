@@ -4181,3 +4181,234 @@ fn send_chat_to_owners_reaches_only_the_chosen_owner_device() {
         .send_chat_to_owners(&msg, std::slice::from_ref(&oid))
         .is_err());
 }
+
+#[derive(Clone, Default)]
+struct ActRec(Arc<Mutex<Vec<(String, bool)>>>);
+
+impl ActRec {
+    fn got(&self) -> Vec<(String, bool)> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl ActivitySubSink for ActRec {
+    fn deliver_activity_on(&self, from_device: &str, on: bool) {
+        self.0.lock().unwrap().push((from_device.into(), on));
+    }
+}
+
+fn activity_world_from(kind: &str) -> (Fake, Clock, Engine, Engine, ActRec) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Phone").with_kind(kind);
+    let mut r = join_as(&fake, &clock, &a, "Runner", "runner");
+    r.poll_once().unwrap();
+    let sink = ActRec::default();
+    r.activity_sub = Some(Arc::new(sink.clone()));
+    (fake, clock, a, r, sink)
+}
+
+fn post_activity_on(from: &Engine, to: &Engine, payload: &Value) {
+    raw_post(
+        from,
+        &my_id(to),
+        "activity_on",
+        &rpc_id("activity_on"),
+        payload,
+    );
+    to.poll_once().unwrap();
+}
+
+#[test]
+fn activity_on_from_a_trusted_phone_reaches_the_sink() {
+    let (_f, _c, a, r, sink) = activity_world_from("mobile");
+    post_activity_on(&a, &r, &json!({"v": 1, "on": true}));
+    post_activity_on(&a, &r, &json!({"v": 1, "on": false}));
+    assert_eq!(sink.got(), [(my_id(&a), true), (my_id(&a), false)]);
+}
+
+#[test]
+fn activity_on_from_desktop_and_runner_kinds_is_dropped() {
+    for kind in ["desktop", "runner"] {
+        let (_f, _c, a, r, sink) = activity_world_from("mobile");
+        set_pin(&r, &my_id(&a), kind);
+        post_activity_on(&a, &r, &json!({"v": 1, "on": true}));
+        assert!(sink.got().is_empty(), "{kind}");
+    }
+}
+
+#[test]
+fn activity_on_from_a_device_without_a_pinned_kind_is_dropped() {
+    let (_f, _c, a, r, sink) = activity_world_from("mobile");
+    drop_pin(&r, &my_id(&a));
+    post_activity_on(&a, &r, &json!({"v": 1, "on": true}));
+    assert!(sink.got().is_empty());
+}
+
+#[test]
+fn activity_on_from_a_revoked_sender_is_dropped() {
+    let (_f, _c, a, r, sink) = activity_world_from("mobile");
+    let fp = fp_of(&a);
+    let target: Vec<Dev> = {
+        let g = a.lock();
+        g.st.trusted
+            .iter()
+            .filter(|d| d.id == my_id(&r))
+            .cloned()
+            .collect()
+    };
+    {
+        let mut g = r.lock();
+        g.st.revoked.push(fp.clone());
+        g.st.trusted.retain(|d| d.fp != fp);
+    }
+    a.seal_and_post(
+        &mut a.lock(),
+        "activity_on",
+        &rpc_id("activity_on"),
+        &json!({"v": 1, "on": true}),
+        &target,
+        false,
+    )
+    .unwrap();
+    r.poll_once().unwrap();
+    assert!(sink.got().is_empty());
+}
+
+#[test]
+fn activity_on_from_an_untrusted_device_is_dropped() {
+    let (fake, clock, _a, r, sink) = activity_world_from("mobile");
+    let stranger = engine_with(&fake, &clock, "Stranger").with_kind("mobile");
+    stranger.ensure_registered(&mut stranger.lock()).unwrap();
+    let rid = my_id(&r);
+    let dev = {
+        let g = r.lock();
+        g.st.trusted.iter().find(|d| d.id == rid).cloned().unwrap()
+    };
+    stranger
+        .seal_and_post(
+            &mut stranger.lock(),
+            "activity_on",
+            &rpc_id("activity_on"),
+            &json!({"v": 1, "on": true}),
+            &[dev],
+            false,
+        )
+        .unwrap();
+    r.poll_once().unwrap();
+    assert!(sink.got().is_empty());
+}
+
+#[test]
+fn activity_on_with_a_bad_payload_is_dropped() {
+    let (_f, _c, a, r, sink) = activity_world_from("mobile");
+    for p in [
+        json!({"v": 2, "on": true}),
+        json!({"on": true}),
+        json!({"v": 1, "on": "yes"}),
+        json!({"v": 1, "on": 1}),
+        json!({"v": 1}),
+        json!([1]),
+    ] {
+        post_activity_on(&a, &r, &p);
+    }
+    assert!(sink.got().is_empty());
+}
+
+#[test]
+fn activity_on_from_the_own_device_is_dropped() {
+    let (_f, _c, _a, r, sink) = activity_world_from("mobile");
+    let rid = my_id(&r);
+    let me: Vec<Dev> = r
+        .lock()
+        .st
+        .trusted
+        .iter()
+        .filter(|d| d.id == rid)
+        .cloned()
+        .collect();
+    r.seal_and_post(
+        &mut r.lock(),
+        "activity_on",
+        &rpc_id("activity_on"),
+        &json!({"v": 1, "on": true}),
+        &me,
+        false,
+    )
+    .unwrap();
+    r.poll_once().unwrap();
+    assert!(sink.got().is_empty());
+}
+
+#[test]
+fn activity_on_without_a_sink_still_advances_the_sequence() {
+    let (_f, _c, a, r, sink) = activity_world_from("mobile");
+    r.lock().st.joined = true;
+    let r2 = {
+        let mut r = r;
+        r.activity_sub = None;
+        r
+    };
+    post_activity_on(&a, &r2, &json!({"v": 1, "on": true}));
+    let m = text_msg(new_message_id(), "after");
+    a.send_chat(&m, true).unwrap();
+    let got = r2.poll_once().unwrap();
+    assert_eq!(got.len(), 1);
+    assert!(sink.got().is_empty());
+}
+
+fn last_body_to(fake: &Fake, to: &str) -> (String, String, String) {
+    let s = fake.0.lock().unwrap();
+    let m = s.msgs.iter().rev().find(|m| m.to == to).unwrap();
+    (m.msg_id.clone(), m.from.clone(), m.body.clone())
+}
+
+#[test]
+fn send_activity_round_trips_to_a_phone_only() {
+    let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    let dbefore = fake.queue_len(&did);
+    let id = rpc_id("activity");
+    let payload = json!({"v": 1, "items": [{"k": "tool", "t": "ls"}]});
+    runner
+        .send_activity(&id, &payload, std::slice::from_ref(&mid))
+        .unwrap();
+    assert_eq!(fake.queue_len(&did), dbefore);
+    let (msg_id, from, body) = last_body_to(&fake, &mid);
+    let opened = mobile
+        .open_one(
+            &mobile.lock(),
+            &Msg {
+                cursor: 1,
+                msg_id,
+                from,
+                body,
+                created_at: Value::Null,
+            },
+            T0,
+        )
+        .unwrap();
+    assert_eq!(opened.kind, "activity");
+    assert!(opened.id.starts_with("t_"));
+    assert_eq!(opened.payload, payload);
+}
+
+#[test]
+fn send_activity_refuses_desktop_only_targets_and_bad_input() {
+    let (_fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    let p = json!({"v": 1});
+    let err = runner
+        .send_activity(&rpc_id("activity"), &p, std::slice::from_ref(&did))
+        .unwrap_err();
+    assert_eq!(err, "there are no other trusted devices to send to");
+    let big = json!({"x": "a".repeat(ACTIVITY_MAX_BYTES)});
+    assert!(runner
+        .send_activity(&rpc_id("activity"), &big, std::slice::from_ref(&mid))
+        .is_err());
+    assert!(desktop
+        .send_activity(&rpc_id("activity"), &p, std::slice::from_ref(&mid))
+        .is_err());
+    assert!(runner
+        .send_activity(&rpc_id("rooms"), &p, std::slice::from_ref(&mid))
+        .is_err());
+}

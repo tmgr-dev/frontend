@@ -92,6 +92,7 @@ pub fn build_index(s: &Snapshot) -> RoomsIndex {
         role: if s.top { Role::Top } else { Role::Sub },
         followers: s.top.then(|| s.followers.clone()),
         rooms,
+        activity: false,
     }
 }
 
