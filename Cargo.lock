@@ -4221,6 +4221,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tmgr-e2e-device"
+version = "1.0.175"
+dependencies = [
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tmgr-chat-relay",
+ "tmgr-ipc",
+]
+
+[[package]]
 name = "tmgr-fuzzy"
 version = "1.0.192"
 

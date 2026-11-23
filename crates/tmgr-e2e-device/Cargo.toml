@@ -1,0 +1,21 @@
+[package]
+name = "tmgr-e2e-device"
+description = "Headless desktop or phone stand-in for end-to-end chat checks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "tmgr-e2e-device"
+path = "src/main.rs"
+
+[dependencies]
+tmgr-chat-relay.workspace = true
+tmgr-ipc.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
