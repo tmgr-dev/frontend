@@ -48,8 +48,9 @@
 	},
 	"remotePolicy": {
 		"allowAsk": "Allow asks from {name}",
-		"hint": "Lets that machine put questions to this machine's manager. Without it the machine can only list and read.",
-		"failed": "Could not change the setting: {message}"
+		"hint": "Lets that machine put questions to this machine's manager. Turning it off stops new questions.",
+		"failed": "Could not change the setting: {message}",
+		"turnOn": "To allow asks, run tmgr chat remote allow-ask {machine} on in a terminal. It asks for the follower PIN."
 	},
 	"header": {
 		"search": "Search in chat",

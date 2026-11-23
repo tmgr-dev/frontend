@@ -171,10 +171,16 @@ impl Client {
         from_value(self.call(method::MANAGER_REMOTE_POLICY, serde_json::json!({}))?)
     }
 
-    pub fn remote_policy_set(&mut self, leader: &str, ask: bool) -> io::Result<RemotePolicyInfo> {
+    pub fn remote_policy_set(
+        &mut self,
+        leader: &str,
+        ask: bool,
+        pin: Option<String>,
+    ) -> io::Result<RemotePolicyInfo> {
         let req = RemotePolicySetReq {
             leader: leader.into(),
             ask,
+            pin,
         };
         from_value(self.call(method::MANAGER_REMOTE_POLICY_SET, to_params(&req)?)?)
     }

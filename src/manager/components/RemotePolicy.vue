@@ -8,13 +8,20 @@
 			<input
 				type="checkbox"
 				:checked="l.ask"
-				:disabled="busy"
+				:disabled="busy || !l.ask"
 				@change="onChange(l.machine, $event)"
 			/>
 			<span>{{
 				$t('manager.remotePolicy.allowAsk', { name: nameOf(l.machine) })
 			}}</span>
 		</label>
+		<p
+			v-for="l in leaders.filter((x) => !x.ask)"
+			:key="`on-${l.machine}`"
+			class="mgr-followers-line"
+		>
+			{{ $t('manager.remotePolicy.turnOn', { machine: l.machine }) }}
+		</p>
 		<p v-if="error" class="mgr-followers-line" role="alert">
 			{{ $t('manager.remotePolicy.failed', { message: error }) }}
 		</p>

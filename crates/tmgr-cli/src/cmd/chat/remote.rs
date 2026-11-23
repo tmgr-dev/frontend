@@ -32,6 +32,20 @@ fn leader_id(s: &str) -> std::result::Result<String, String> {
     }
 }
 
+fn pin_for(on: bool, read: &mut dyn FnMut(&str) -> Result<String>) -> Result<Option<String>> {
+    if !on {
+        return Ok(None);
+    }
+    let pin = read("Follower PIN (input hidden): ")?;
+    if pin.is_empty() {
+        return Err(Error::new(
+            Kind::Interrupted,
+            "no PIN entered, nothing was changed",
+        ));
+    }
+    Ok(Some(pin))
+}
+
 fn guard(session_id_set: bool) -> Result<()> {
     if session_id_set {
         return Err(Error::new(Kind::Forbidden, IN_SESSION));
@@ -64,9 +78,14 @@ pub fn run(cmd: &RemoteCommand) -> Result<Output> {
     let cfg = runner_config()?;
     let mut client = connect(&cfg)?;
     let info = match cmd {
-        RemoteCommand::AllowAsk { leader, state } => client
-            .remote_policy_set(leader, *state == Toggle::On)
-            .map_err(rerr)?,
+        RemoteCommand::AllowAsk { leader, state } => {
+            let on = *state == Toggle::On;
+            let pin = pin_for(on, &mut |prompt| {
+                rpassword::prompt_password(prompt)
+                    .map_err(|_| Error::new(Kind::Interrupted, "could not read the PIN"))
+            })?;
+            client.remote_policy_set(leader, on, pin).map_err(rerr)?
+        }
         RemoteCommand::Policy => client.remote_policy().map_err(rerr)?,
     };
     Ok(render(&info))
@@ -114,6 +133,23 @@ mod tests {
     }
 
     #[test]
+    fn only_turning_asks_on_reads_a_pin() {
+        let mut asked = 0;
+        let mut read = |_: &str| {
+            asked += 1;
+            Ok("correct horse battery".to_string())
+        };
+        assert_eq!(pin_for(false, &mut read).unwrap(), None);
+        assert_eq!(
+            pin_for(true, &mut read).unwrap().as_deref(),
+            Some("correct horse battery")
+        );
+        assert_eq!(asked, 1);
+        let e = pin_for(true, &mut |_| Ok(String::new())).unwrap_err();
+        assert_eq!(e.kind, Kind::Interrupted);
+    }
+
+    #[test]
     fn refuses_when_the_session_id_is_set() {
         let e = guard(true).unwrap_err();
         assert_eq!(e.kind, Kind::Forbidden);
@@ -133,7 +169,7 @@ mod tests {
         };
         let out = render(&info);
         assert!(out.human.contains("mac-1: asks off, ops: list, room"));
-        assert!(out.human.contains("Legacy"));
+        assert!(out.human.contains("Older policy file"));
         assert_eq!(out.data["leaders"][0]["machine"], "mac-1");
     }
 }

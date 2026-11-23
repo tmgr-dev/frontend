@@ -154,11 +154,24 @@ impl std::fmt::Debug for ManagerUnrestrictedReq {
 }
 
 /// Params of `manager.remote_policy_set` (`client: "cli"` or `"desktop"`, never from inside a session).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// `ask: true` is accepted only from `cli` with the follower `pin`.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RemotePolicySetReq {
     pub leader: String,
     pub ask: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<String>,
+}
+
+impl std::fmt::Debug for RemotePolicySetReq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemotePolicySetReq")
+            .field("leader", &self.leader)
+            .field("ask", &self.ask)
+            .field("pin", &self.pin.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

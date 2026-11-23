@@ -14,6 +14,20 @@ fn wipe(s: String) {
     std::hint::black_box(&b);
 }
 
+pub(super) struct Wiped(pub(super) String);
+
+impl Wiped {
+    pub(super) fn take(mut self) -> String {
+        std::mem::take(&mut self.0)
+    }
+}
+
+impl Drop for Wiped {
+    fn drop(&mut self) {
+        wipe(std::mem::take(&mut self.0));
+    }
+}
+
 fn refuse(code: ErrorCode, msg: &str) -> ApiErr {
     api(code, msg)
 }
@@ -109,6 +123,11 @@ impl Runner {
                 return Err(e);
             }
         };
+        self.check_follower_pin(pin, "manager unrestricted start")?;
+        Ok((unrestricted_run(run), PinGrant(())))
+    }
+
+    pub(super) fn check_follower_pin(&self, pin: String, what: &str) -> Result<(), ApiErr> {
         let verdict = (|| {
             let Some(check) = self.cfg.pin_check.clone() else {
                 return Err(refuse(
@@ -132,16 +151,16 @@ impl Runner {
         })();
         wipe(pin);
         match verdict? {
-            PinVerdict::Ok => Ok((unrestricted_run(run), PinGrant(()))),
+            PinVerdict::Ok => Ok(()),
             PinVerdict::Wrong { left } => {
-                log("manager unrestricted start refused: pin wrong");
+                log(&format!("{what} refused: pin wrong"));
                 Err(refuse(
                     ErrorCode::Forbidden,
                     &format!("wrong PIN, {left} tries left"),
                 ))
             }
             PinVerdict::Locked => {
-                log("manager unrestricted start refused: pin locked");
+                log(&format!("{what} refused: pin locked"));
                 Err(refuse(
                     ErrorCode::Forbidden,
                     "the PIN is locked after too many wrong tries; reset it with `tmgr link pin reset`",

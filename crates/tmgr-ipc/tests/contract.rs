@@ -1879,6 +1879,16 @@ fn manager_remote_policy_shapes() {
         serde_json::from_value(json!({"leader": "mac-1", "ask": true})).unwrap();
     assert_eq!(set.leader, "mac-1");
     assert!(set.ask);
+    assert_eq!(set.pin, None);
+    let with_pin: RemotePolicySetReq =
+        serde_json::from_value(json!({"leader": "mac-1", "ask": true, "pin": "hunter2hunter2"}))
+            .unwrap();
+    assert_eq!(with_pin.pin.as_deref(), Some("hunter2hunter2"));
+    assert!(!format!("{with_pin:?}").contains("hunter2"));
+    assert_eq!(
+        serde_json::to_value(&set).unwrap(),
+        json!({"leader": "mac-1", "ask": true})
+    );
     assert!(serde_json::from_value::<RemotePolicySetReq>(
         json!({"leader": "mac-1", "ask": true, "x": 1})
     )

@@ -16,6 +16,9 @@ pub fn set_ask(call: &dyn ChatCall, leader: &str, ask: bool) -> Result<RemotePol
   if !tmgr_ipc::mgr_rpc::valid_machine_id(leader) {
     return Err("invalid machine id".to_owned());
   }
+  if ask {
+    return Err(format!("turn asks on from a terminal: tmgr chat remote allow-ask {leader} on"));
+  }
   read(call.call(method::MANAGER_REMOTE_POLICY_SET, json!({ "leader": leader, "ask": ask })).map_err(outdated)?)
 }
 
@@ -65,6 +68,14 @@ mod tests {
   }
 
   #[test]
+  fn turning_asks_on_never_reaches_the_runner() {
+    let f = fake(Ok(info()));
+    let e = set_ask(&f, A, true).unwrap_err();
+    assert!(e.contains("tmgr chat remote allow-ask"), "{e}");
+    assert!(f.log.lock().unwrap().is_empty());
+  }
+
+  #[test]
   fn a_bad_machine_id_never_reaches_the_runner() {
     let f = fake(Ok(info()));
     assert_eq!(set_ask(&f, "mx_zz", true).unwrap_err(), "invalid machine id");
@@ -74,7 +85,7 @@ mod tests {
   #[test]
   fn an_old_runner_is_reported_as_outdated_and_refusals_pass_through() {
     assert_eq!(get(&fake(Err("unknown method: manager.remote_policy".into()))).unwrap_err(), "runner_outdated");
-    let e = set_ask(&fake(Err("forbidden: inside a session".into())), A, true).unwrap_err();
+    let e = set_ask(&fake(Err("forbidden: inside a session".into())), A, false).unwrap_err();
     assert_eq!(e, "forbidden: inside a session");
   }
 }

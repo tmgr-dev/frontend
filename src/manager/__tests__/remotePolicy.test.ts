@@ -92,17 +92,30 @@ describe('RemotePolicy toggle', () => {
 		unmount();
 	});
 
-	it('emits the leader and the new state when toggled', () => {
+	it('emits the leader when asks are turned off', () => {
 		const onToggle = jest.fn();
 		const { el, unmount } = mount({
-			leaders: info(false, false).leaders,
+			leaders: info(true, false).leaders,
 			machines,
 			onToggle,
 		});
 		const box = el.querySelectorAll('input')[0] as HTMLInputElement;
-		box.checked = true;
+		box.checked = false;
 		box.dispatchEvent(new Event('change'));
-		expect(onToggle).toHaveBeenCalledWith(A, true);
+		expect(onToggle).toHaveBeenCalledWith(A, false);
+		unmount();
+	});
+
+	it('cannot turn asks on and points to the terminal command', () => {
+		const { el, unmount } = mount({
+			leaders: info(true, false).leaders,
+			machines,
+		});
+		const boxes = el.querySelectorAll('input');
+		expect((boxes[0] as HTMLInputElement).disabled).toBe(false);
+		expect((boxes[1] as HTMLInputElement).disabled).toBe(true);
+		expect(el.textContent).toContain(`tmgr chat remote allow-ask ${B} on`);
+		expect(el.textContent).not.toContain(`allow-ask ${A} on`);
 		unmount();
 	});
 
