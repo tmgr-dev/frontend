@@ -422,8 +422,10 @@
 				return pendingDecisions(this.decisions);
 			},
 			expandedId(): string | null {
-				const open = this.pending.find((c) => c.id === this.openDecisionId);
-				return open ? open.id : (this.pending[0]?.id ?? null);
+				const open = this.shownDecisions.find(
+					(c) => c.id === this.openDecisionId,
+				);
+				return open ? open.id : (this.shownDecisions[0]?.id ?? null);
 			},
 			resumeTarget(): string {
 				const last = this.model?.recent[0];
