@@ -743,6 +743,20 @@ mod tests {
     }
 
     #[test]
+    fn no_manager_tool_reaches_the_remote_policy() {
+        for top in [Some(false), Some(true), None] {
+            for name in names(&listed(top)) {
+                assert!(!name.contains("policy"), "{name}");
+                assert!(!name.contains("allow_ask"), "{name}");
+            }
+        }
+        assert!(tool::ALL
+            .iter()
+            .chain(&tool::TOP_ONLY)
+            .all(|t| !t.contains("policy")));
+    }
+
+    #[test]
     fn the_sub_tool_list_is_exactly_the_local_manager_tools() {
         for top in [Some(false), None] {
             let tools = listed(top);

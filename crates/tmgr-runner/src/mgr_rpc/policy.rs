@@ -71,6 +71,14 @@ impl Policy {
         self.accept_from.contains(machine)
     }
 
+    pub fn leaders(&self) -> Vec<String> {
+        self.accept_from.iter().cloned().collect()
+    }
+
+    pub fn is_legacy(&self) -> bool {
+        self.ask_from.is_none()
+    }
+
     pub fn ops_for(&self, leader: &str) -> BTreeSet<Op> {
         if !self.accepts(leader) {
             return BTreeSet::new();

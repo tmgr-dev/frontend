@@ -103,10 +103,7 @@ mod tests {
             RemoteCommand::AllowAsk { state, .. } => assert_eq!(state, Toggle::Off),
             _ => panic!("wrong command"),
         }
-        assert!(matches!(
-            parse(&["policy"]).unwrap(),
-            RemoteCommand::Policy
-        ));
+        assert!(matches!(parse(&["policy"]).unwrap(), RemoteCommand::Policy));
     }
 
     #[test]

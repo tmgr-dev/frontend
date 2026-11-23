@@ -70,6 +70,7 @@ mod checkpoints;
 mod handoff;
 mod manager;
 mod mention;
+mod remote_policy;
 mod spawnauth;
 mod spawnkeys;
 mod switch;
@@ -1990,6 +1991,7 @@ struct Conn {
     closed: AtomicBool,
     attached: AtomicBool,
     client: String,
+    peer_pid: Option<i32>,
     pending_rx: Mutex<Option<Receiver<Value>>>,
     chat_rx: Mutex<Option<chat::ChatSub>>,
     chat_subscribed: AtomicBool,
@@ -2895,6 +2897,10 @@ impl Runner {
             method::MANAGER_UNRESTRICTED => self
                 .manager_unrestricted(&conn.client, p)
                 .map(|i| to_json(&i)),
+            method::MANAGER_REMOTE_POLICY => self.remote_policy(&conn.client),
+            method::MANAGER_REMOTE_POLICY_SET => {
+                self.remote_policy_set(&conn.client, conn.peer_pid, p)
+            }
             method::ORCHESTRATOR_CREATE => {
                 if conn.client != CLIENT_CLI {
                     return Err(api(
@@ -5606,7 +5612,13 @@ impl Runner {
         }
     }
 
-    fn serve_conn(self: &Arc<Self>, stream: UnixStream, conn_slot: Slot, pending: Slot) {
+    fn serve_conn(
+        self: &Arc<Self>,
+        stream: UnixStream,
+        peer_pid: Option<i32>,
+        conn_slot: Slot,
+        pending: Slot,
+    ) {
         let _slot = conn_slot;
         let hello = match server::handshake_server(&stream, &self.secret, &self.cfg.version) {
             Ok(h) => h,
@@ -5628,6 +5640,7 @@ impl Runner {
             closed: AtomicBool::new(false),
             attached: AtomicBool::new(false),
             client: hello.client,
+            peer_pid,
             pending_rx: Mutex::new(None),
             chat_rx: Mutex::new(None),
             chat_subscribed: AtomicBool::new(false),
@@ -5907,10 +5920,10 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
                 if stream.set_nonblocking(false).is_err() {
                     continue;
                 }
-                if server::accept_check(&stream).is_err() {
+                let Ok(cred) = server::accept_check(&stream) else {
                     rt.log_reject("other user");
                     continue;
-                }
+                };
                 let Some(pending) = Slot::take(&rt.pending, MAX_PENDING) else {
                     rt.log_reject("too many pending connections");
                     continue;
@@ -5920,7 +5933,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
                     continue;
                 };
                 let rt = rt.clone();
-                thread::spawn(move || rt.serve_conn(stream, conn_slot, pending));
+                thread::spawn(move || rt.serve_conn(stream, cred.pid, conn_slot, pending));
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(30));

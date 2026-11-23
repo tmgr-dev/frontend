@@ -939,6 +939,28 @@ mod tests {
     }
 
     #[test]
+    fn no_op_string_changes_the_policy() {
+        for name in [
+            "remote_policy",
+            "remote_policy_set",
+            "manager.remote_policy_set",
+            "set_ask",
+            "allow_ask",
+            "policy",
+            "enroll",
+        ] {
+            assert!(
+                parse(&body("r1", name, json!({"leader": PEER, "ask": true}), T0)).is_none(),
+                "{name}"
+            );
+        }
+        for op in Op::ALL {
+            assert!(!op.as_str().contains("policy"), "{op:?}");
+            assert!(!op.as_str().contains("ask_from"), "{op:?}");
+        }
+    }
+
+    #[test]
     fn a_missing_policy_accepts_nobody_for_every_op() {
         let r = rig();
         for op in Op::ALL {

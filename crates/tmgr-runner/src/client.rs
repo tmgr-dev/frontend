@@ -13,9 +13,9 @@ use tmgr_ipc::api::{
     CheckpointRestoreParams, CheckpointRestored, CreateReq, DiffAgainst, EventMsg, ForkParams,
     HandoffFinishReq, HandoffFinishResp, HandoffPrepareReq, HandoffPrepareResp, IdParams,
     KillParams, LayoutSetParams, Line, LookupParams, ManagerUnrestrictedReq, OrchestratorCreateReq,
-    PermissionAnswer, PermissionCard, RemotePolicyInfo, RemotePolicySetReq, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
-    RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
-    Welcome, WorkSummary, CLIENT_CLI,
+    PermissionAnswer, PermissionCard, RemotePolicyInfo, RemotePolicySetReq, RenameParams,
+    RestoredRun, ResumeParams, RunCreateReq, RunStatus, ScreenPush, SendParams, SessionInfo,
+    SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::chat as wire_chat;
 use tmgr_ipc::endpoint::{self, Endpoint};

@@ -231,6 +231,7 @@ pub(super) mod tests {
             closed: AtomicBool::new(false),
             attached: AtomicBool::new(false),
             client: client.into(),
+            peer_pid: None,
             pending_rx: Mutex::new(None),
             chat_rx: Mutex::new(None),
             chat_subscribed: AtomicBool::new(false),
