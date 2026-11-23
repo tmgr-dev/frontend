@@ -118,11 +118,10 @@ pub mod tool {
     pub const READ_SUBMANAGER: &str = "read_submanager";
     pub const CAPS: &str = "__caps";
     pub const TOP_ONLY: [&str; 3] = [LIST_MACHINES, ASK_SUBMANAGER, READ_SUBMANAGER];
-    pub const MACHINE_SCOPED: [&str; 7] = [
+    pub const MACHINE_SCOPED: [&str; 6] = [
         LIST_SESSIONS,
         READ_SESSION,
         SEND_TO_SESSION,
-        STOP_SESSION,
         PROPOSE_SPAWN,
         SPAWN_SESSION,
         SWITCH_AGENT,
@@ -223,7 +222,6 @@ mod tests {
                 tool::LIST_SESSIONS,
                 tool::READ_SESSION,
                 tool::SEND_TO_SESSION,
-                tool::STOP_SESSION,
                 tool::PROPOSE_SPAWN,
                 tool::SPAWN_SESSION,
                 tool::SWITCH_AGENT
