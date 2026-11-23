@@ -2037,6 +2037,7 @@ struct Runner {
     clock: Mutex<humantime::Clock>,
     mgr: Arc<crate::manager::State>,
     spawn_gate: spawnauth::SpawnGate,
+    capture_fast_until: Mutex<Option<Instant>>,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -5842,6 +5843,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         clock: Mutex::new(clock),
         mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
         spawn_gate: spawnauth::SpawnGate::default(),
+        capture_fast_until: Mutex::new(None),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -6544,6 +6546,7 @@ mod tests {
             clock: Mutex::new(humantime::Clock::new(0)),
             mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
             spawn_gate: spawnauth::SpawnGate::default(),
+            capture_fast_until: Mutex::new(None),
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({
             "id": "s1", "name": "n", "argv": ["claude"], "cwd": t.path(),

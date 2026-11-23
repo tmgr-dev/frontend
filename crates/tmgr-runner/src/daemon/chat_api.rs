@@ -18,6 +18,9 @@ use tmgr_ipc::chat::{
 use tmgr_ipc::manager::wrap_untrusted;
 
 const CAPTURE_EVERY: Duration = Duration::from_secs(3);
+const CAPTURE_TICK: Duration = Duration::from_millis(250);
+const CAPTURE_FAST_AFTER_INPUT: Duration = Duration::from_secs(20);
+const CAPTURE_FAST_AFTER_WORKING: Duration = Duration::from_secs(5);
 const ACTIVITY_TICK: Duration = Duration::from_millis(250);
 const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
@@ -27,6 +30,17 @@ const REMOTE_UNRESTRICTED_REFUSAL: &str =
     "Not delivered: an unrestricted manager takes input only from this machine's keyboard.";
 pub(super) const UNRESTRICTED_REFUSAL: &str =
     "Not delivered: an unrestricted manager takes input only from this machine's keyboard and the owner's paired devices.";
+
+fn capture_due(
+    now: Instant,
+    last: Instant,
+    fast_until: Option<Instant>,
+    any_working: bool,
+) -> bool {
+    any_working
+        || fast_until.is_some_and(|u| now < u)
+        || now.saturating_duration_since(last) >= CAPTURE_EVERY
+}
 
 fn bad(msg: String) -> ApiErr {
     api(ErrorCode::InvalidParams, msg)
@@ -65,6 +79,7 @@ impl Runner {
         match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
             Ok(()) => {
                 t.note_input_from(client);
+                self.capture_fast();
                 chat::Delivery::Delivered
             }
             Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
@@ -97,6 +112,7 @@ impl Runner {
         match t.input_at_prompt(&chat::prompt_bytes(&typed), Instant::now()) {
             Ok(()) => {
                 t.note_input_from("relay");
+                self.capture_fast();
                 chat::Delivery::Typed(typed)
             }
             Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
@@ -122,6 +138,7 @@ impl Runner {
         match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
             Ok(()) => {
                 t.note_input_from(REMOTE_CLIENT);
+                self.capture_fast();
                 chat::Delivery::Delivered
             }
             Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
@@ -545,17 +562,37 @@ impl Runner {
         }
     }
 
+    pub(super) fn capture_fast(&self) {
+        *lock(&self.capture_fast_until) = Some(Instant::now() + CAPTURE_FAST_AFTER_INPUT);
+    }
+
     pub(super) fn chat_capture_loop(&self) {
         let mut last = Instant::now();
+        let mut names_last = last;
+        let mut working_until: Option<Instant> = None;
+        let mut titles: Vec<(String, String)> = Vec::new();
         while !self.stop.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(250));
-            if last.elapsed() < CAPTURE_EVERY {
+            thread::sleep(CAPTURE_TICK);
+            let now = Instant::now();
+            let sessions: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
+            let any_working = sessions.iter().any(|s| s.state.kind == StateKind::Working);
+            if any_working {
+                working_until = Some(now + CAPTURE_FAST_AFTER_WORKING);
+            }
+            let input_until = *lock(&self.capture_fast_until);
+            let fast_until = input_until.max(working_until);
+            if !capture_due(now, last, fast_until, any_working) {
                 continue;
             }
-            last = Instant::now();
-            let sessions: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
-            let titles = tail::capture(&self.chat, &sessions);
-            self.apply_auto_names(&titles);
+            last = now;
+            for (id, title) in tail::capture(&self.chat, &sessions) {
+                titles.retain(|(t, _)| *t != id);
+                titles.push((id, title));
+            }
+            if names_last.elapsed() >= CAPTURE_EVERY {
+                names_last = Instant::now();
+                self.apply_auto_names(&std::mem::take(&mut titles));
+            }
         }
     }
 
@@ -628,6 +665,28 @@ mod tests {
     use std::os::unix::net::UnixStream;
     use tmgr_ipc::chat::{ChatMessage, RoomRef};
 
+    #[test]
+    fn capture_cadence_is_slow_when_idle_and_fast_when_it_matters() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        assert!(!capture_due(at(250), t0, None, false));
+        assert!(!capture_due(at(2999), t0, None, false));
+        assert!(capture_due(at(3000), t0, None, false));
+        assert!(capture_due(at(250), t0, None, true));
+        assert!(capture_due(at(250), t0, Some(at(5000)), false));
+        assert!(!capture_due(at(5250), at(5000), Some(at(5000)), false));
+        assert!(capture_due(at(8000), at(5000), Some(at(5000)), false));
+    }
+
+    #[test]
+    fn chat_input_arms_the_fast_capture_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = runner(dir.path());
+        assert!(lock(&rt.capture_fast_until).is_none());
+        rt.capture_fast();
+        assert!(lock(&rt.capture_fast_until).is_some_and(|u| u > Instant::now()));
+    }
+
     fn runner(dir: &Path) -> Arc<Runner> {
         let cfg = RunnerConfig {
             dir: dir.join("run"),
@@ -646,6 +705,7 @@ mod tests {
             chat: chat_store.clone(),
             mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
             spawn_gate: spawnauth::SpawnGate::default(),
+            capture_fast_until: Mutex::new(None),
             cfg,
             secret: String::new(),
             started: Instant::now(),

@@ -183,6 +183,7 @@ pub(super) mod tests {
             rename_lock: Mutex::new(()),
             switch_lock: Mutex::new(HashSet::new()),
             spawn_gate: super::spawnauth::SpawnGate::default(),
+            capture_fast_until: Mutex::new(None),
             chat: chat_store.clone(),
             mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
             cfg,

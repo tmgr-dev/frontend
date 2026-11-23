@@ -397,6 +397,7 @@ impl Runner {
         ) {
             Ok(()) => {
                 t.note_input_from(it.client);
+                self.capture_fast();
                 chat::Delivery::Typed(typed)
             }
             Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(None),
