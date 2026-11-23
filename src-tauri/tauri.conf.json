@@ -98,6 +98,9 @@
 			"minimumSystemVersion": "13.3",
 			"entitlements": "Entitlements.plist"
 		},
+		"resources": {
+			"resources/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
+		},
 		"createUpdaterArtifacts": true
 	},
 	"plugins": {
