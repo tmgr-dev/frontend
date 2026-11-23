@@ -85,8 +85,10 @@ const SHIM_CREDIT_FRAMES: u64 = 1024;
 const LIMIT_CONFIRM: Duration = Duration::from_secs(3);
 const SHIM_LINK_SILENT: Duration = Duration::from_secs(5);
 const ATTACH_INPUT_WAIT: Duration = Duration::from_secs(2);
-// A note typed into the agent only shows on screen after its next redraw; wait that long before the next one.
+// Longest wait for the agent to redraw after our input, before judging its screen again.
 const SEND_SETTLE: Duration = Duration::from_secs(5);
+const SETTLE_QUIET: Duration = Duration::from_millis(300);
+const SETTLE_FLOOR: Duration = Duration::from_millis(500);
 const SUBMIT_DELAY: Duration = Duration::from_millis(250);
 const MAX_REPLIES_PER_SEC: u32 = 32;
 const MAX_PENDING: usize = 16;
@@ -595,6 +597,7 @@ struct Inner {
     fixed: Option<State>,
     size_owner: Option<u64>,
     input_sent_at: Option<Instant>,
+    output_at: Option<Instant>,
     limit_first: Option<Instant>,
     last_busy: Option<&'static str>,
 }
@@ -1080,6 +1083,9 @@ impl Session {
         let mut replies = Vec::new();
         self.change(|i, now, out| {
             let r = i.screen.feed(bytes);
+            if live && !bytes.is_empty() {
+                i.output_at = Some(Instant::now());
+            }
             if live {
                 replies = r.replies;
                 out.extend(i.det.on_output(now));
@@ -1393,10 +1399,14 @@ impl Session {
                 } else {
                     Some("not at an empty prompt")
                 }
-            } else if i
-                .input_sent_at
-                .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
-            {
+            } else if i.input_sent_at.is_some_and(|at| {
+                let since = now.saturating_duration_since(at);
+                let redrawn = since >= SETTLE_FLOOR
+                    && i.output_at.is_some_and(|out| {
+                        out > at && now.saturating_duration_since(out) >= SETTLE_QUIET
+                    });
+                since < SEND_SETTLE && !redrawn
+            }) {
                 Some("previous input settling")
             } else if !idle_queue {
                 Some("input still queued")
@@ -5226,6 +5236,7 @@ impl Runner {
                 fixed: None,
                 size_owner: None,
                 input_sent_at: None,
+                output_at: None,
                 limit_first: None,
                 last_busy: None,
             }),
@@ -6936,6 +6947,118 @@ mod tests {
         drain(&s, &rx);
         s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
         assert!(send_at_prompt(&s, b"two\r", settled()));
+    }
+
+    fn redrawn_session(
+        output_ms: u64,
+        screen: &[u8],
+    ) -> (
+        tempfile::TempDir,
+        Arc<Session>,
+        mpsc::Receiver<Frame>,
+        Instant,
+    ) {
+        let (t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        let base = Instant::now();
+        assert!(send_at_prompt(&s, b"one\r", base));
+        drain(&s, &rx);
+        s.feed(screen, true);
+        {
+            let mut i = lock(&s.inner);
+            i.input_sent_at = Some(base);
+            i.output_at = Some(base + Duration::from_millis(output_ms));
+        }
+        (t, s, rx, base)
+    }
+
+    const REDRAWN: &[u8] = b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n";
+
+    #[test]
+    fn a_second_send_goes_through_once_the_agent_redrew_and_went_quiet() {
+        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
+        assert!(send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(700)
+        ));
+    }
+
+    #[test]
+    fn a_second_send_is_refused_until_the_cap_when_nothing_was_redrawn() {
+        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
+        lock(&s.inner).output_at = None;
+        assert!(!send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(4_900)
+        ));
+        assert_eq!(s.busy_code(), Some("turn"));
+        assert!(send_at_prompt(&s, b"two\r", base + SEND_SETTLE));
+    }
+
+    #[test]
+    fn output_from_before_the_input_does_not_end_the_settle() {
+        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
+        lock(&s.inner).output_at = Some(base - Duration::from_secs(1));
+        assert!(!send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(2_000)
+        ));
+    }
+
+    #[test]
+    fn a_second_send_waits_while_the_agent_is_still_printing() {
+        let (_t, s, _rx, base) = redrawn_session(2_000, REDRAWN);
+        assert!(!send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(2_100)
+        ));
+        assert_eq!(s.busy_code(), Some("turn"));
+        assert!(send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(2_300)
+        ));
+    }
+
+    #[test]
+    fn a_second_send_waits_for_the_floor_even_when_the_screen_is_quiet() {
+        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
+        assert!(!send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(400)
+        ));
+        assert!(send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(500)
+        ));
+    }
+
+    #[test]
+    fn a_redraw_that_leaves_text_in_the_box_is_refused_as_a_draft() {
+        let (_t, s, _rx, base) =
+            redrawn_session(100, "\x1b[2J\x1b[Hdone\r\n\r\n\u{276f} one\r\n".as_bytes());
+        assert!(!send_at_prompt(
+            &s,
+            b"two\r",
+            base + Duration::from_millis(1_000)
+        ));
+        assert_eq!(s.busy_code(), Some("draft"));
+    }
+
+    #[test]
+    fn attach_keys_reach_a_session_right_after_a_chat_send() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(send_at_prompt(&s, b"one\r", Instant::now()));
+        drain(&s, &rx);
+        assert!(s.input(b"x"));
+        assert!(!queued(&rx).is_empty());
     }
 
     fn tall_footer_session(
