@@ -24,3 +24,8 @@ export const decisionsOpenLink = (url: string) =>
 
 export const onDecisionsChanged = (handler: () => void): Promise<UnlistenFn> =>
 	listen('decisions://changed', () => handler());
+
+export const onDecisionsFocus = (
+	handler: (payload: unknown) => void,
+): Promise<UnlistenFn> =>
+	listen('decisions://focus', (event) => handler(event.payload));

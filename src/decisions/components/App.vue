@@ -204,6 +204,7 @@
 		decisionsMessage,
 		decisionsOpenLink,
 		onDecisionsChanged,
+		onDecisionsFocus,
 	} from '../api';
 	import {
 		beginRequest,
@@ -239,6 +240,11 @@
 		streakMessage,
 		streakMilestone,
 	} from '../eggs';
+	import {
+		focusIdFromPayload,
+		focusIdFromSearch,
+		resolveFocus,
+	} from '../focus';
 	import { isHttpUrl, recommendedOption } from '../format';
 	import { burst, flyOut } from '../fx';
 	import { resolveKey } from '../keys';
@@ -283,6 +289,8 @@
 				resolvedHere: [] as string[],
 				confirmingClear: false,
 				selectedId: null as string | null,
+				focusId: null as string | null,
+				unlistenFocus: null as null | (() => void),
 				query: '',
 				tab: 'diff' as Tab,
 				loaded: false,
@@ -427,6 +435,15 @@
 			} catch {
 				this.unlisten = null;
 			}
+			this.focusId = focusIdFromSearch(window.location.search);
+			try {
+				this.unlistenFocus = await onDecisionsFocus((payload) => {
+					this.focusId = focusIdFromPayload(payload);
+					void this.refresh();
+				});
+			} catch {
+				this.unlistenFocus = null;
+			}
 			await this.refresh();
 		},
 		beforeUnmount() {
@@ -436,6 +453,7 @@
 			window.clearTimeout(this.doomModeTimer);
 			window.clearInterval(this.clock);
 			this.unlisten?.();
+			this.unlistenFocus?.();
 			this.stopLocale?.();
 		},
 		methods: {
@@ -465,6 +483,7 @@
 					this.loaded = true;
 					this.refreshing = false;
 				}
+				this.applyFocus();
 				if (!this.awaitsShown && doomAwaits(this.progress.pending)) {
 					this.awaitsShown = true;
 					this.doomNotify(t('decisions.doom.awaits'));
@@ -482,6 +501,13 @@
 				} catch {
 					await this.refresh();
 				}
+			},
+			applyFocus() {
+				const id = resolveFocus(this.cards, this.focusId);
+				if (!id) return;
+				this.focusId = null;
+				this.query = '';
+				this.selectedId = id;
 			},
 			ensureSelection() {
 				if (this.order.some((card) => card.id === this.selectedId)) return;
