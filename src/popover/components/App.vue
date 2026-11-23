@@ -113,9 +113,9 @@
 							<span class="chev">›</span>
 						</button>
 					</div>
+					<div class="sep"></div>
 				</template>
 
-				<div class="sep"></div>
 				<div class="sec top0">
 					<RunningTimer
 						v-for="task in model.running"
