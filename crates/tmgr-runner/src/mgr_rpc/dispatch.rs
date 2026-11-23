@@ -611,7 +611,17 @@ impl Host for RpcHost<'_> {
         proposer: Option<&str>,
         prompt: Option<&str>,
     ) -> Result<Proposed, String> {
-        self.inner.propose_spawn(proposal, proposer, prompt)
+        if proposal.kind != tmgr_spawn_auth::ProposalKind::Send {
+            return self.inner.propose_spawn(proposal, proposer, prompt);
+        }
+        let mut wrapped = proposal.clone();
+        wrapped.text = wrapped
+            .text
+            .map(|t| wrap_untrusted(REMOTE_MANAGER_SOURCE, self.from, &t));
+        wrapped
+            .validate()
+            .map_err(|_| "text is too long once the relay header is added".to_string())?;
+        self.inner.propose_spawn(&wrapped, proposer, prompt)
     }
     fn spawn_failed(&self, card_id: &str, reason: &str) {
         self.inner.spawn_failed(card_id, reason)
@@ -974,7 +984,7 @@ mod tests {
             );
             assert!(res.is_none(), "{op:?}");
         }
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -1192,7 +1202,7 @@ mod tests {
         let default = policy(&["list", "read", "ask"]);
         let res = r.call(&default, "r1", "send", valid_args("send"));
         assert_eq!(code(&res), ErrorCode::OpDenied);
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
         for op in [
             "list",
             "read",
@@ -1217,7 +1227,7 @@ mod tests {
         .unwrap();
         let res = r.call(&p, "w-ask", "ask", valid_args("ask"));
         assert_eq!(code(&res), ErrorCode::OpDenied);
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
         assert!(r.host.asked.lock().unwrap().is_empty());
         let res = r.call(&p, "w-list", "list", valid_args("list"));
         assert!(res.ok);
@@ -1701,7 +1711,7 @@ mod tests {
             let res = r.call(&open(), &format!("b{i}"), op, args.clone());
             assert_eq!(code(&res), ErrorCode::BadRequest, "{op} {args}");
         }
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -1714,7 +1724,7 @@ mod tests {
             let res = r.call(&open(), &format!("ap-{op}"), op, args);
             assert_eq!(code(&res), ErrorCode::BadRequest, "{op}");
         }
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -1724,7 +1734,7 @@ mod tests {
         assert!(first.ok);
         let again = r.call(&open(), "dup", "send", valid_args("send"));
         assert_eq!(first, again);
-        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
+        assert_eq!(r.host.cards.lock().unwrap().len(), 1);
     }
 
     #[test]
@@ -1733,8 +1743,8 @@ mod tests {
         r.call(&open(), "dup", "send", valid_args("send"));
         let again = r.call(&open(), "dup", "list", json!({}));
         assert!(again.ok);
-        assert_eq!(data(&again), &json!({"sent": true}));
-        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
+        assert_eq!(data(&again)["pending"], true);
+        assert_eq!(r.host.cards.lock().unwrap().len(), 1);
     }
 
     #[test]
@@ -1747,7 +1757,7 @@ mod tests {
         let p = body("same", "send", valid_args("send"), T0);
         assert!(r.call_at(&both, PEER, &p).unwrap().ok);
         assert!(r.call_at(&both, OTHER, &p).unwrap().ok);
-        assert_eq!(r.host.sent.lock().unwrap().len(), 2);
+        assert_eq!(r.host.cards.lock().unwrap().len(), 2);
     }
 
     #[test]
@@ -1797,12 +1807,12 @@ mod tests {
         r.host.set_now(T0 + 2 * limits::FRESH_MS);
         let again = r.call_at(&open(), PEER, &p).unwrap();
         assert!(again.ok);
-        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
+        assert_eq!(r.host.cards.lock().unwrap().len(), 1);
         r.host
             .set_now(T0 + limits::FRESH_MS + limits::FRESH_MS + limits::SEEN_MARGIN_MS + 1);
         let late = r.call_at(&open(), PEER, &p).unwrap();
         assert_eq!(code(&late), ErrorCode::Stale);
-        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
+        assert_eq!(r.host.cards.lock().unwrap().len(), 1);
     }
 
     #[test]
@@ -1895,15 +1905,22 @@ mod tests {
             "send",
             json!({"session": WORKER, "text": "do it"}),
         );
-        assert_eq!(data(&res), &json!({"sent": true}));
-        let sent = r.host.sent.lock().unwrap();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].0, WORKER);
-        assert!(sent[0].1.starts_with("[relayed message "), "{}", sent[0].1);
-        assert!(sent[0].1.contains(&format!(
+        assert_eq!(data(&res)["pending"], true);
+        assert!(r.host.sent.lock().unwrap().is_empty());
+        let cards = r.host.cards.lock().unwrap();
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].kind, tmgr_spawn_auth::ProposalKind::Send);
+        assert_eq!(cards[0].session.as_deref(), Some(WORKER));
+        assert_eq!(
+            cards[0].from.as_deref(),
+            Some(format!("remote:{PEER}").as_str())
+        );
+        let text = cards[0].text.as_deref().unwrap();
+        assert!(text.starts_with("[relayed message "), "{text}");
+        assert!(text.contains(&format!(
             "source: manager on another machine | from: {PEER}]"
         )));
-        assert!(sent[0].1.contains("\n\ndo it\n\n[end of relayed message "));
+        assert!(text.contains("\n\ndo it\n\n[end of relayed message "));
     }
 
     #[test]
@@ -1928,7 +1945,7 @@ mod tests {
             );
             assert_eq!(code(&res), ErrorCode::Refused, "{id}");
         }
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -1944,7 +1961,7 @@ mod tests {
             assert_eq!(code(&res), ErrorCode::Refused);
             assert!(res.error.unwrap().message.contains("ask"));
         }
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2098,7 +2115,7 @@ mod tests {
             );
             assert_eq!(code(&res), ErrorCode::Refused, "{id}");
         }
-        assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2232,6 +2249,7 @@ mod tests {
             proposer: Option<&str>,
             prompt: Option<&str>,
         ) -> Result<crate::manager::Proposed, String> {
+            (self.on_send)();
             self.inner.propose_spawn(proposal, proposer, prompt)
         }
         fn spawn_failed(&self, card_id: &str, reason: &str) {
@@ -2298,8 +2316,8 @@ mod tests {
             .handle(&open(), &second_host, PEER, &send_body("dup"))
             .unwrap();
         assert_eq!(first, again);
-        assert_eq!(first_host.sent.lock().unwrap().len(), 1);
-        assert!(second_host.sent.lock().unwrap().is_empty());
+        assert_eq!(first_host.cards.lock().unwrap().len(), 1);
+        assert!(second_host.cards.lock().unwrap().is_empty());
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
     }
@@ -2346,7 +2364,7 @@ mod tests {
             .handle(&open(), &fresh_host, PEER, &send_body("dup"))
             .unwrap();
         assert_eq!(code(&res), ErrorCode::Stale);
-        assert!(fresh_host.sent.lock().unwrap().is_empty());
+        assert!(fresh_host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2362,7 +2380,7 @@ mod tests {
             .unwrap();
         assert_eq!(code(&res), ErrorCode::Unavailable);
         assert_eq!(res.error.unwrap().message, "request history unreadable");
-        assert!(host.sent.lock().unwrap().is_empty());
+        assert!(host.cards.lock().unwrap().is_empty());
         let later = T0 + 2 * limits::FRESH_MS + limits::SEEN_MARGIN_MS;
         host.set_now(later);
         let res = dispatcher
@@ -2374,7 +2392,7 @@ mod tests {
             )
             .unwrap();
         assert!(res.ok);
-        assert_eq!(host.sent.lock().unwrap().len(), 1);
+        assert_eq!(host.cards.lock().unwrap().len(), 1);
     }
 
     #[test]
@@ -2392,7 +2410,7 @@ mod tests {
             .handle(&open(), &host, PEER, &send_body("dup"))
             .unwrap();
         assert_eq!(code(&res), ErrorCode::Unavailable);
-        assert!(host.sent.lock().unwrap().is_empty());
+        assert!(host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2404,7 +2422,7 @@ mod tests {
             .handle(&open(), &host, PEER, &send_body("dup"))
             .unwrap();
         assert_eq!(code(&res), ErrorCode::Unavailable);
-        assert!(host.sent.lock().unwrap().is_empty());
+        assert!(host.cards.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2434,9 +2452,9 @@ mod tests {
             barrier.wait();
             assert!(first.join().unwrap().unwrap().ok);
         });
-        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
+        assert_eq!(r.host.cards.lock().unwrap().len(), 1);
         let again = r.d.handle(&p, &host, PEER, &payload).unwrap();
         assert!(again.ok);
-        assert_eq!(r.host.sent.lock().unwrap().len(), 1);
+        assert_eq!(r.host.cards.lock().unwrap().len(), 1);
     }
 }

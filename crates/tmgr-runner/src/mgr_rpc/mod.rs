@@ -44,6 +44,7 @@ pub(crate) mod testkit {
     pub struct Fake {
         pub list: Mutex<Vec<SessionInfo>>,
         pub sent: Mutex<Vec<(String, String)>>,
+        pub cards: Mutex<Vec<tmgr_spawn_auth::SpawnProposal>>,
         pub spawned: Mutex<Vec<SpawnSpec>>,
         pub switched: Mutex<Vec<String>>,
         pub verified: Mutex<Vec<(String, Option<String>)>>,
@@ -103,6 +104,7 @@ pub(crate) mod testkit {
                     raw,
                 ]),
                 sent: Mutex::default(),
+                cards: Mutex::default(),
                 spawned: Mutex::default(),
                 switched: Mutex::default(),
                 verified: Mutex::default(),
@@ -211,6 +213,7 @@ pub(crate) mod testkit {
             prompt: Option<&str>,
         ) -> Result<crate::manager::Proposed, String> {
             let card = format!("card_{}", self.proposed.lock().unwrap().len() + 1);
+            self.cards.lock().unwrap().push(p.clone());
             self.proposed.lock().unwrap().push((
                 card.clone(),
                 proposer.map(String::from),

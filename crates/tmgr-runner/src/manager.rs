@@ -746,6 +746,7 @@ pub const REMOTE_MANAGER_SOURCE: &str = "manager on another machine";
 pub enum CardMiss {
     Pending,
     Gone,
+    NotSpawn,
 }
 
 impl CardMiss {
@@ -753,6 +754,7 @@ impl CardMiss {
         match self {
             CardMiss::Pending => "this card is not approved yet",
             CardMiss::Gone => "this card has expired or is closed; propose the spawn again",
+            CardMiss::NotSpawn => "this card is not a spawn card",
         }
     }
 }
@@ -801,6 +803,56 @@ fn find(host: &dyn Host, id: &str) -> Result<SessionInfo, String> {
         .ok_or_else(|| "no such session".to_string())
 }
 
+const SEND_CARD_MAX: usize = 8192;
+
+fn find_target(host: &dyn Host, id: &str, verb: &str) -> Result<SessionInfo, String> {
+    if id == host.me() {
+        let act = if verb == "stopped" { "stop" } else { "send to" };
+        return Err(format!("a manager cannot {act} itself"));
+    }
+    let s = find(host, id)?;
+    if s.origin.is_some() {
+        return Err(format!("sessions started by a link cannot be {verb}"));
+    }
+    if s.team.is_some() || s.managed {
+        return Err(format!(
+            "worker sessions of a team or queue cannot be {verb}"
+        ));
+    }
+    if s.state.kind == StateKind::Exited {
+        return Err("the session has exited".into());
+    }
+    Ok(s)
+}
+
+fn action_proposal(host: &dyn Host) -> SpawnProposal {
+    SpawnProposal {
+        v: 1,
+        profile: String::new(),
+        cwd: String::new(),
+        mode: SpawnMode::Ask,
+        prompt_sha256: None,
+        name: None,
+        task: None,
+        target_id: host.machine(),
+        kind: tmgr_spawn_auth::ProposalKind::Spawn,
+        session: None,
+        from: None,
+        text: None,
+    }
+}
+
+fn issue_action_card(host: &dyn Host, p: &SpawnProposal, by: &str) -> Result<Value, String> {
+    p.validate().map_err(|r| r.to_string())?;
+    let c = host.propose_spawn(p, Some(by), None)?;
+    Ok(json!({
+        "card_id": c.card_id,
+        "exp_ms": c.exp_ms,
+        "pending": true,
+        "note": "Waiting for the owner to approve. The runner carries it out after approval; do not call again."
+    }))
+}
+
 fn row(s: &SessionInfo, me: &str) -> Value {
     json!({
         "id": s.id,
@@ -845,16 +897,10 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
         tool::SEND_TO_SESSION => {
             let id = session_id(a)?;
             let text = need(a, "text", 1, limits::MAX_SEND_BYTES)?;
-            if id == host.me() {
-                return Err("a manager cannot send to itself".into());
+            if text.len() > SEND_CARD_MAX {
+                return Err(format!("text must be 1 to {SEND_CARD_MAX} bytes"));
             }
-            let s = find(host, id)?;
-            if s.origin.is_some() {
-                return Err("sessions started by a link cannot be written to".into());
-            }
-            if s.team.is_some() || s.managed {
-                return Err("worker sessions of a team or queue cannot be written to".into());
-            }
+            let s = find_target(host, id, "written to")?;
             if !host.unrestricted()
                 && (s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox)
             {
@@ -862,11 +908,30 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                     "sessions in bypass mode or without the sandbox cannot be written to".into(),
                 );
             }
-            if s.state.kind == StateKind::Exited {
-                return Err("the session has exited".into());
-            }
-            host.send(id, text)?;
-            Ok(json!({"sent": true}))
+            let from = host
+                .proposer()
+                .ok_or("a send card needs a proposing manager")?;
+            let proposal = SpawnProposal {
+                kind: tmgr_spawn_auth::ProposalKind::Send,
+                session: Some(id.into()),
+                from: Some(from.clone()),
+                text: Some(text.into()),
+                ..action_proposal(host)
+            };
+            issue_action_card(host, &proposal, &from)
+        }
+        tool::STOP_SESSION => {
+            let id = session_id(a)?;
+            find_target(host, id, "stopped")?;
+            let proposal = SpawnProposal {
+                kind: tmgr_spawn_auth::ProposalKind::Stop,
+                session: Some(id.into()),
+                ..action_proposal(host)
+            };
+            let by = host
+                .proposer()
+                .ok_or("a stop card needs a proposing manager")?;
+            issue_action_card(host, &proposal, &by)
         }
         tool::SPAWN_SESSION => spawn(host, st, a),
         tool::SWITCH_AGENT => switch(host, st, a),
@@ -1967,10 +2032,8 @@ mod tests {
             json!({"session": "s_bbbbbbbbbb", "text": "hi"}),
         )
         .unwrap();
-        assert_eq!(
-            h.sent.lock().unwrap()[0],
-            ("s_bbbbbbbbbb".to_string(), "hi".to_string())
-        );
+        assert!(h.sent.lock().unwrap().is_empty());
+        assert_eq!(h.proposed.lock().unwrap()[0].text.as_deref(), Some("hi"));
     }
 
     fn send_to(h: &Fake, id: &str) -> Result<Value, String> {
@@ -1993,6 +2056,109 @@ mod tests {
     }
 
     #[test]
+    fn send_to_session_issues_a_send_card_and_does_not_deliver() {
+        let h = Fake::new();
+        let v = call(
+            &h,
+            &State::default(),
+            "send_to_session",
+            json!({"session": "s_bbbbbbbbbb", "text": "line one\nline two"}),
+        )
+        .unwrap();
+        assert!(h.sent.lock().unwrap().is_empty());
+        assert_eq!(v["card_id"], "card_x");
+        assert_eq!(v["pending"], true);
+        let p = h.proposed.lock().unwrap();
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].kind, tmgr_spawn_auth::ProposalKind::Send);
+        assert_eq!(p[0].session.as_deref(), Some("s_bbbbbbbbbb"));
+        assert_eq!(p[0].from.as_deref(), Some("s_aaaaaaaaaa"));
+        assert_eq!(p[0].text.as_deref(), Some("line one\nline two"));
+        assert_eq!(p[0].target_id, "mx_1");
+        assert_eq!(
+            h.asked.lock().unwrap()[0].0.as_deref(),
+            Some("s_aaaaaaaaaa")
+        );
+    }
+
+    #[test]
+    fn send_text_above_eight_kib_is_refused_and_exactly_eight_kib_passes() {
+        let h = Fake::new();
+        let big = "a".repeat(8193);
+        let e = call(
+            &h,
+            &State::default(),
+            "send_to_session",
+            json!({"session": "s_bbbbbbbbbb", "text": big}),
+        )
+        .unwrap_err();
+        assert!(e.contains("8192"), "{e}");
+        assert!(h.proposed.lock().unwrap().is_empty());
+        call(
+            &h,
+            &State::default(),
+            "send_to_session",
+            json!({"session": "s_bbbbbbbbbb", "text": "a".repeat(8192)}),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_remote_send_issues_a_card_from_the_remote_proposer() {
+        let h = Fake::remote("mx_2");
+        let v = call(
+            &h,
+            &State::default(),
+            "send_to_session",
+            json!({"session": "s_bbbbbbbbbb", "text": "hi"}),
+        )
+        .unwrap();
+        assert_eq!(v["pending"], true);
+        assert!(h.sent.lock().unwrap().is_empty());
+        assert_eq!(
+            h.proposed.lock().unwrap()[0].from.as_deref(),
+            Some("remote:mx_2")
+        );
+    }
+
+    fn stop(h: &Fake, id: &str) -> Result<Value, String> {
+        call(h, &State::default(), "stop_session", json!({"session": id}))
+    }
+
+    #[test]
+    fn stop_session_issues_a_stop_card() {
+        let h = Fake::new();
+        let v = stop(&h, "s_bbbbbbbbbb").unwrap();
+        assert_eq!(v["card_id"], "card_x");
+        assert_eq!(v["pending"], true);
+        let p = h.proposed.lock().unwrap();
+        assert_eq!(p[0].kind, tmgr_spawn_auth::ProposalKind::Stop);
+        assert_eq!(p[0].session.as_deref(), Some("s_bbbbbbbbbb"));
+        assert_eq!((p[0].from.as_deref(), p[0].text.as_deref()), (None, None));
+        assert!(h.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stop_session_refuses_itself_link_team_managed_exited_and_unknown_sessions() {
+        let mut h = Fake::new();
+        let mut managed = info("s_jjjjjjjjjj");
+        managed.managed = true;
+        h.list.push(managed);
+        for id in [
+            "s_aaaaaaaaaa",
+            "s_cccccccccc",
+            "s_dddddddddd",
+            "s_eeeeeeeeee",
+            "s_gggggggggg",
+            "s_jjjjjjjjjj",
+            "../x",
+        ] {
+            assert!(stop(&h, id).is_err(), "{id}");
+        }
+        assert!(h.proposed.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn a_restricted_host_cannot_write_to_bypass_or_unsandboxed_sessions() {
         let h = with_risky_sessions();
         for id in ["s_hhhhhhhhhh", "s_iiiiiiiiii"] {
@@ -2009,7 +2175,7 @@ mod tests {
         for id in ["s_hhhhhhhhhh", "s_iiiiiiiiii"] {
             send_to(&h, id).unwrap();
         }
-        assert_eq!(h.sent.lock().unwrap().len(), 2);
+        assert_eq!(h.proposed.lock().unwrap().len(), 2);
     }
 
     #[test]

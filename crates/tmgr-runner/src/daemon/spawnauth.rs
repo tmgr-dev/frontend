@@ -19,7 +19,9 @@ use tmgr_ipc::api::{
 use tmgr_ipc::chat::{
     Author, AuthorKind, ChatMessage, DecisionRef, MessageKind, SpawnCard, CHAT_V,
 };
-use tmgr_spawn_auth::{b64_encode, OfferOutcome, Refusal, SignedSpawn, SpawnProposal, TrustStatus};
+use tmgr_spawn_auth::{
+    b64_encode, OfferOutcome, ProposalKind, Refusal, SignedSpawn, SpawnProposal, TrustStatus,
+};
 
 const CHALLENGES_PER_MINUTE: usize = 10;
 const NO_ACCOUNT: &str = "spawn approval is not available: this machine is not linked to an account through the chat relay";
@@ -74,6 +76,7 @@ struct CardRt {
     exp_ms: u64,
     started_noted: bool,
     failed: bool,
+    not_spawn: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -110,6 +113,18 @@ fn clip(mut s: String, max: usize) -> String {
 }
 
 fn card_summary(p: &SpawnProposal) -> String {
+    let session = p.session.as_deref().unwrap_or_default();
+    match p.kind {
+        ProposalKind::Stop => return clip(format!("Stop session {session}"), SUMMARY_MAX),
+        ProposalKind::Send => {
+            let from = p.from.as_deref().unwrap_or_default();
+            return clip(
+                format!("Send text to session {session} (from {from})"),
+                SUMMARY_MAX,
+            );
+        }
+        ProposalKind::Spawn => {}
+    }
     let mode = match p.mode {
         tmgr_spawn_auth::SpawnMode::Ask => "ask",
         tmgr_spawn_auth::SpawnMode::AcceptEdits => "accept-edits",
@@ -288,6 +303,12 @@ impl Runner {
             ));
         }
         let q: SpawnChallengeParams = params(p)?;
+        if q.proposal.kind != ProposalKind::Spawn {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "only a spawn proposal can be challenged here",
+            ));
+        }
         self.spawn_challenge_within(&q.card_id, &q.proposal, Budget::Human)
             .map(|r| to_json(&r))
     }
@@ -456,6 +477,11 @@ impl Runner {
             .and_then(|b| String::from_utf8(b).ok())
             .unwrap_or_default();
         let summary = card_summary(proposal);
+        let prompt = if proposal.kind == ProposalKind::Send {
+            proposal.text.as_deref()
+        } else {
+            prompt
+        };
         let remote = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX));
         let machine = self.chat.machine().to_owned();
         let msg = ChatMessage {
@@ -471,7 +497,12 @@ impl Runner {
             },
             ts_ms: now_ms(),
             kind: MessageKind::Decision,
-            body_md: self.card_body(&summary, proposer, prompt),
+            body_md: self.card_body(
+                &summary,
+                proposer,
+                prompt,
+                proposal.kind == ProposalKind::Send,
+            ),
             attachments: Vec::new(),
             reply_to: None,
             decision: Some(DecisionRef {
@@ -518,6 +549,7 @@ impl Runner {
                 msg_id,
                 proposer: proposer.map(String::from),
                 exp_ms: c.exp_ms,
+                not_spawn: proposal.kind != ProposalKind::Spawn,
                 ..CardRt::default()
             },
         );
@@ -537,16 +569,24 @@ impl Runner {
         }
     }
 
-    fn card_body(&self, summary: &str, proposer: Option<&str>, prompt: Option<&str>) -> String {
-        let Some(from) = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX)) else {
+    fn card_body(
+        &self,
+        summary: &str,
+        proposer: Option<&str>,
+        prompt: Option<&str>,
+        show_local: bool,
+    ) -> String {
+        let remote = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX));
+        if remote.is_none() && !(show_local && prompt.is_some()) {
             return summary.to_owned();
+        }
+        let mut body = match remote {
+            Some(from) => format!(
+                "Proposed by the top manager on {}.\n\n{summary}",
+                self.proposer_name(from)
+            ),
+            None => summary.to_owned(),
         };
-        let mut body = format!(
-            "Proposed by the top manager on {}.",
-            self.proposer_name(from)
-        );
-        body.push_str("\n\n");
-        body.push_str(summary);
         if let Some(p) = prompt {
             let longest = p
                 .split(|c| c != '`')
@@ -579,6 +619,9 @@ impl Runner {
             let card = cards.get(card_id).ok_or(CardMiss::Gone)?;
             if !card_belongs_to(card.proposer.as_deref(), proposer) {
                 return Err(CardMiss::Gone);
+            }
+            if card.not_spawn {
+                return Err(CardMiss::NotSpawn);
             }
             (card.approval.clone(), card.exp_ms)
         };
@@ -624,18 +667,19 @@ impl Runner {
         let manager_card = match auth.cards().state(card) {
             Ok(Some(CardState::Issued {
                 budget: CardBudget::Manager,
+                proposal,
                 ..
-            })) => true,
-            Ok(_) => false,
+            })) => Some(proposal.kind),
+            Ok(_) => None,
             Err(_) => {
                 log("spawn approval: an answer was dropped, the card store is not available");
                 return;
             }
         };
-        if !manager_card {
+        let Some(kind) = manager_card else {
             log("spawn approval: an answer was dropped, the card is unknown or not waiting");
             return;
-        }
+        };
         match auth.check(card, signed, now) {
             Ok(CheckOutcome::Valid) => {}
             Ok(_) | Err(_) => {
@@ -661,6 +705,11 @@ impl Runner {
             entry.approval = Some(Approval::Signed(signed.clone()));
             entry.proposer.clone()
         };
+        if kind != ProposalKind::Spawn {
+            self.card_reply(card, "Approved on your phone.");
+            self.execute_card(card, now);
+            return;
+        }
         match proposer.as_deref() {
             Some(p) if p.starts_with(REMOTE_PREFIX) => {
                 self.card_reply(
@@ -815,6 +864,20 @@ fn spawn_call_args(card_id: &str, p: &SpawnProposal) -> String {
     format!("{args}{prompt}")
 }
 
+struct Carried {
+    id: String,
+    reply: String,
+    note: String,
+}
+
+fn kind_word(kind: ProposalKind) -> &'static str {
+    match kind {
+        ProposalKind::Spawn => "Spawn",
+        ProposalKind::Stop => "Stop",
+        ProposalKind::Send => "Send",
+    }
+}
+
 fn decide_refusal(msg: &str) -> ApiErr {
     api(ErrorCode::InvalidParams, msg)
 }
@@ -879,6 +942,9 @@ impl Runner {
                     });
                 }
                 SpawnDecision::Reject | SpawnDecision::Edit => {
+                    if q.decision == SpawnDecision::Edit && proposal.kind != ProposalKind::Spawn {
+                        return Err(decide_refusal("only a spawn card can be edited"));
+                    }
                     let local_manager = proposer.as_deref().is_some_and(|p| {
                         !p.starts_with(REMOTE_PREFIX) && tmgr_ipc::proto::valid_session_id(p)
                     });
@@ -897,6 +963,14 @@ impl Runner {
         match q.decision {
             SpawnDecision::Approve => {
                 self.card_reply(card, "Approved on the desktop.");
+                if proposal.kind != ProposalKind::Spawn {
+                    self.execute_card(card, now);
+                    return Ok(to_json(&SpawnDecideResult {
+                        state: "approved".into(),
+                        card_id: None,
+                        exp_ms: None,
+                    }));
+                }
                 self.prompt_manager(
                     proposer.as_deref(),
                     &format!(
@@ -916,7 +990,10 @@ impl Runner {
                 self.card_reply(card, "Rejected on the desktop.");
                 self.prompt_manager(
                     proposer.as_deref(),
-                    &format!("Spawn card {card} was rejected by the owner; do not retry it."),
+                    &format!(
+                        "{} card {card} was rejected by the owner; do not retry it.",
+                        kind_word(proposal.kind)
+                    ),
                     now,
                 );
                 Ok(to_json(&SpawnDecideResult {
@@ -959,6 +1036,138 @@ impl Runner {
                     }
                 }
             }
+        }
+    }
+
+    fn execute_card(&self, card: &str, now: u64) {
+        let Ok(auth) = self.spawn_gate.auth(self) else {
+            return;
+        };
+        let (approval, proposer) = {
+            let cards = lock(&self.spawn_gate.cards);
+            match cards.get(card) {
+                Some(c) => (c.approval.clone(), c.proposer.clone()),
+                None => return,
+            }
+        };
+        let Some(approval) = approval else {
+            return;
+        };
+        let proposal = match auth.cards().state(card) {
+            Ok(Some(CardState::Issued { proposal, .. })) => *proposal,
+            _ => return,
+        };
+        let word = kind_word(proposal.kind);
+        let fail = |why: &str| {
+            let why = clip(why.trim_end_matches('.').to_owned(), 200);
+            self.card_reply(card, &format!("Not done: {why}"));
+            self.prompt_manager(
+                proposer.as_deref(),
+                &format!("{word} card {card} was approved but not carried out: {why}."),
+                now,
+            );
+        };
+        match self.verify_spawn(&approval, &proposal, proposer.as_deref()) {
+            Ok(Verdict::Verified) => {}
+            Ok(Verdict::Existing(_)) => return,
+            Err(e) => return fail(&e),
+        }
+        let session = match self.carry_out(&proposal, proposer.as_deref(), now) {
+            Ok(done) => done,
+            Err(e) => return fail(&e),
+        };
+        if auth
+            .cards()
+            .mark_spawned(card, &session.id, now_ms())
+            .is_err()
+        {
+            log(&format!(
+                "spawn approval: card {card} was carried out but not marked"
+            ));
+        }
+        self.card_reply(card, &session.reply);
+        self.prompt_manager(
+            proposer.as_deref(),
+            &format!("{word} card {card} was approved; {}.", session.note),
+            now,
+        );
+    }
+
+    fn carry_out(
+        &self,
+        p: &SpawnProposal,
+        proposer: Option<&str>,
+        now: u64,
+    ) -> Result<Carried, String> {
+        let id = p.session.as_deref().ok_or("the card has no session")?;
+        if proposer == Some(id) {
+            return Err("a manager cannot act on itself".into());
+        }
+        let target = self.session(id).ok_or("no such session")?;
+        let info = target.info();
+        if info.state.kind == StateKind::Exited {
+            return Err("the session has exited".into());
+        }
+        if info.origin.is_some() {
+            return Err("sessions started by a link cannot be changed".into());
+        }
+        if info.team.is_some() || info.managed {
+            return Err("worker sessions of a team or queue cannot be changed".into());
+        }
+        match p.kind {
+            ProposalKind::Stop => {
+                let s = self.live(id).map_err(|e| e.msg)?;
+                self.signal_session(
+                    &s,
+                    libc::SIGTERM,
+                    Some("stopped by the manager after approval"),
+                );
+                Ok(Carried {
+                    id: id.into(),
+                    reply: format!("Stopped session {id}"),
+                    note: format!("session {id} was stopped"),
+                })
+            }
+            ProposalKind::Send => {
+                let text = p.text.as_deref().ok_or("the card has no text")?;
+                let remote = proposer.is_some_and(|p| p.starts_with(REMOTE_PREFIX));
+                if remote && info.manager {
+                    return Err("manager sessions cannot be written to".into());
+                }
+                let unrestricted = !remote
+                    && proposer
+                        .and_then(|m| self.session(m))
+                        .is_some_and(|m| super::manager::is_unrestricted(&m));
+                if !unrestricted
+                    && (info.permission_mode.as_deref() == Some("bypass") || info.no_sandbox)
+                {
+                    return Err(
+                        "sessions in bypass mode or without the sandbox cannot be written to"
+                            .into(),
+                    );
+                }
+                let s = self.live(id).map_err(|e| e.msg)?;
+                match s.input_at_prompt(&crate::manager::prompt_bytes(text), Instant::now()) {
+                    Ok(()) => Ok(Carried {
+                        id: id.into(),
+                        reply: format!("Delivered to session {id}"),
+                        note: format!("the text was delivered to session {id}"),
+                    }),
+                    Err(_) => {
+                        self.mgr.queue_prompt(id, text, now);
+                        Ok(Carried {
+                            id: id.into(),
+                            reply: format!(
+                                "Queued for session {id}; it is delivered when the agent is at its prompt"
+                            ),
+                            note: format!(
+                                "the text is queued for session {id} and is delivered when the agent is at its prompt"
+                            ),
+                        })
+                    }
+                }
+            }
+            ProposalKind::Spawn => Err("this is a spawn card".into()),
         }
     }
 
@@ -3213,5 +3422,403 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::UnknownMethod);
         assert_eq!(err.msg, "unknown method spawn.nope");
+    }
+
+    const TARGET: &str = "s_bbbbbbbbbb";
+
+    fn add_live(e: &Env, id: &str, extra: Value) -> (Arc<Session>, mpsc::Receiver<Frame>) {
+        let mut meta = serde_json::json!({
+            "id": id, "name": id, "argv": ["claude"], "cwd": e.work,
+            "profile": "claude-code", "created_ms": 0, "cols": 100, "rows": 24,
+            "shim_pid": 1, "child_pid": 2,
+        });
+        meta.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let meta: Meta = serde_json::from_value(meta).unwrap();
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get("claude-code").unwrap()).ok();
+        let sdir = e.work.join("sessions").join(id);
+        fs::create_dir_all(&sdir).unwrap();
+        let s = e.rt.new_session(meta, matcher, &sdir);
+        let (tx, rx) = mpsc::sync_channel::<Frame>(SHIM_QUEUE);
+        *lock(&s.shim) = Some(ShimLink {
+            tx,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            queued_frames: Arc::new(AtomicUsize::new(0)),
+            credit: None,
+        });
+        s.feed("done\r\n\r\n\u{276f}\r\n".as_bytes(), true);
+        lock(&e.rt.sessions).insert(id.to_string(), s.clone());
+        (s, rx)
+    }
+
+    fn typed(rx: &mpsc::Receiver<Frame>) -> String {
+        thread::sleep(SUBMIT_DELAY + Duration::from_millis(150));
+        let mut out = Vec::new();
+        while let Ok(frame) = rx.try_recv() {
+            if let Frame::Bin(b) = frame {
+                out.extend_from_slice(&b.data);
+            }
+        }
+        String::from_utf8(out).unwrap()
+    }
+
+    fn send_card(h: &TestHost, e: &Env, text: &str) -> String {
+        run(
+            h,
+            e,
+            "send_to_session",
+            serde_json::json!({"session": TARGET, "text": text}),
+        )
+        .unwrap()["card_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    fn stop_card(h: &TestHost, e: &Env) -> String {
+        run(h, e, "stop_session", serde_json::json!({"session": TARGET})).unwrap()["card_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    fn card_kind_state(e: &Env, card: &str) -> &'static str {
+        match e.auth.cards().state(card).unwrap() {
+            Some(CardState::Issued { .. }) => "issued",
+            Some(CardState::Claimed { .. }) => "claimed",
+            Some(CardState::Spawned { .. }) => "spawned",
+            Some(CardState::Refused { .. }) => "refused",
+            None => "none",
+        }
+    }
+
+    #[test]
+    fn a_send_card_delivers_nothing_before_approval_and_the_summary_names_the_target() {
+        let e = env();
+        let (_s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let card = send_card(&h, &e, "do the thing\nsecond line");
+        let msg = card_msg(&e, &card);
+        let spawn = msg.decision.as_ref().unwrap().spawn.as_ref().unwrap();
+        assert_eq!(
+            spawn.summary,
+            format!("Send text to session {TARGET} (from {MGR})")
+        );
+        assert!(msg.body_md.contains("do the thing\nsecond line"));
+        assert!(spawn.request.contains("\"kind\":\"send\""));
+        assert_eq!(typed(&rx), "");
+        assert_eq!(card_kind_state(&e, &card), "issued");
+    }
+
+    #[test]
+    fn a_desktop_approve_of_a_send_card_delivers_the_stored_text_once() {
+        let e = env();
+        let (_s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let card = send_card(&h, &e, "hello there");
+        decide(&e, &card, "approve").unwrap();
+        assert_eq!(typed(&rx), "hello there\r");
+        assert_eq!(card_kind_state(&e, &card), "spawned");
+        let msg = card_msg(&e, &card);
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec![
+                "Approved on the desktop.".to_string(),
+                format!("Delivered to session {TARGET}")
+            ]
+        );
+        let notes = manager_prompts(&e);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].0, MGR);
+        assert!(notes[0].1.contains(&card) && !notes[0].1.contains("spawn_session"));
+        assert!(decide(&e, &card, "approve").is_err());
+        assert!(decide(&e, &card, "reject").is_err());
+        assert_eq!(typed(&rx), "");
+    }
+
+    #[test]
+    fn a_stop_card_signals_the_session_only_after_a_desktop_approve() {
+        let e = env();
+        let (s, _rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let card = stop_card(&h, &e);
+        let msg = card_msg(&e, &card);
+        assert_eq!(
+            msg.decision
+                .as_ref()
+                .unwrap()
+                .spawn
+                .as_ref()
+                .unwrap()
+                .summary,
+            format!("Stop session {TARGET}")
+        );
+        assert!(!s.halted.load(Ordering::SeqCst));
+        decide(&e, &card, "approve").unwrap();
+        assert!(s.halted.load(Ordering::SeqCst));
+        assert_eq!(card_kind_state(&e, &card), "spawned");
+        assert!(replies(&e, &msg.id).contains(&format!("Stopped session {TARGET}")));
+        let notes = manager_prompts(&e);
+        assert!(notes[0].1.contains("was stopped") && !notes[0].1.contains("spawn_session"));
+        assert!(decide(&e, &card, "approve").is_err());
+    }
+
+    #[test]
+    fn a_rejected_send_or_stop_card_does_nothing() {
+        let e = env();
+        let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "nope");
+        let stop = stop_card(&h, &e);
+        decide(&e, &send, "reject").unwrap();
+        decide(&e, &stop, "reject").unwrap();
+        assert_eq!(typed(&rx), "");
+        assert!(!s.halted.load(Ordering::SeqCst));
+        assert_eq!(card_kind_state(&e, &send), "refused");
+        assert_eq!(card_kind_state(&e, &stop), "refused");
+    }
+
+    #[test]
+    fn an_expired_send_or_stop_card_does_nothing_even_with_a_late_answer() {
+        let e = env();
+        let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "late");
+        let stop = stop_card(&h, &e);
+        let late: Vec<SignedSpawn> = [&send, &stop]
+            .iter()
+            .map(|c| phone_answer(&e, &card_msg(&e, c)))
+            .collect();
+        let exp = [&send, &stop]
+            .iter()
+            .map(|c| card_msg(&e, c).decision.unwrap().spawn.unwrap().exp_ms)
+            .max()
+            .unwrap();
+        e.rt.card_tick(exp + 1);
+        for signed in &late {
+            e.rt.accept_spawnok(signed, exp + 2);
+        }
+        assert_eq!(typed(&rx), "");
+        assert!(!s.halted.load(Ordering::SeqCst));
+        assert_eq!(card_kind_state(&e, &send), "refused");
+        assert_eq!(card_kind_state(&e, &stop), "refused");
+    }
+
+    #[test]
+    fn a_signed_phone_approval_of_a_send_card_executes_once_and_a_replay_does_not() {
+        let e = env();
+        let (_s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let card = send_card(&h, &e, "from the phone");
+        let signed = phone_answer(&e, &card_msg(&e, &card));
+        e.rt.accept_spawnok(&signed, now_ms());
+        assert_eq!(typed(&rx), "from the phone\r");
+        assert_eq!(card_kind_state(&e, &card), "spawned");
+        let msg = card_msg(&e, &card);
+        assert_eq!(
+            replies(&e, &msg.id),
+            vec![
+                "Approved on your phone.".to_string(),
+                format!("Delivered to session {TARGET}")
+            ]
+        );
+        let notes = manager_prompts(&e);
+        assert_eq!(notes.len(), 1);
+        assert!(!notes[0].1.contains("spawn_session"));
+        e.rt.accept_spawnok(&signed, now_ms());
+        assert_eq!(typed(&rx), "");
+        assert!(manager_prompts(&e).is_empty());
+        assert!(decide(&e, &card, "approve").is_err());
+        assert_eq!(typed(&rx), "");
+    }
+
+    #[test]
+    fn a_signed_phone_approval_of_a_stop_card_signals_once() {
+        let e = env();
+        let (s, _rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let card = stop_card(&h, &e);
+        e.rt.accept_spawnok(&phone_answer(&e, &card_msg(&e, &card)), now_ms());
+        assert!(s.halted.load(Ordering::SeqCst));
+        assert_eq!(card_kind_state(&e, &card), "spawned");
+        assert_eq!(manager_prompts(&e).len(), 1);
+    }
+
+    #[test]
+    fn a_forged_phone_signature_executes_nothing() {
+        let e = env();
+        let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "forged");
+        let stop = stop_card(&h, &e);
+        for card in [&send, &stop] {
+            let good = phone_answer(&e, &card_msg(&e, card));
+            let mut other_key = good.clone();
+            other_key.sig = sign(&secret(4), "tmgr-spawn:v1:forged");
+            let mut other_request = good.clone();
+            other_request.req_sha256 = "00".repeat(32);
+            let mut other_card = good.clone();
+            other_card.card_id = if card == &send {
+                stop.clone()
+            } else {
+                send.clone()
+            };
+            for bad in [other_key, other_request, other_card] {
+                e.rt.accept_spawnok(&bad, now_ms());
+            }
+        }
+        assert_eq!(typed(&rx), "");
+        assert!(!s.halted.load(Ordering::SeqCst));
+        assert_eq!(card_kind_state(&e, &send), "issued");
+        assert_eq!(card_kind_state(&e, &stop), "issued");
+        assert!(manager_prompts(&e).is_empty());
+    }
+
+    #[test]
+    fn a_tampered_req_sha256_on_decide_is_refused_and_executes_nothing() {
+        let e = env();
+        let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "tampered");
+        let stop = stop_card(&h, &e);
+        for card in [&send, &stop] {
+            let err = decide_raw(
+                &e,
+                CLIENT_DESKTOP,
+                serde_json::json!({
+                    "card_id": card, "req_sha256": "00".repeat(32), "decision": "approve"
+                }),
+            )
+            .unwrap_err();
+            assert_eq!(err.code, ErrorCode::InvalidParams);
+            assert!(is_issued(&e, card));
+        }
+        assert_eq!(typed(&rx), "");
+        assert!(!s.halted.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn spawn_session_never_spawns_from_a_send_or_stop_card() {
+        let e = env();
+        with_dirs(&e);
+        let (_s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "x");
+        let stop = stop_card(&h, &e);
+        for card in [&send, &stop] {
+            let err = run(&h, &e, "spawn_session", card_args(&e, card)).unwrap_err();
+            assert_eq!(err, "this card is not a spawn card");
+            let mut signed = card_args(&e, card);
+            signed["approval"] = approval(&e, card);
+            assert!(run(&h, &e, "spawn_session", signed).is_err());
+        }
+        decide(&e, &send, "approve").unwrap();
+        decide(&e, &stop, "approve").unwrap();
+        for card in [&send, &stop] {
+            assert!(run(&h, &e, "spawn_session", card_args(&e, card)).is_err());
+        }
+        assert!(h.spawned.lock().unwrap().is_empty());
+        assert_eq!(typed(&rx), "x\r");
+    }
+
+    #[test]
+    fn a_send_or_stop_card_is_never_edited() {
+        let e = env();
+        with_dirs(&e);
+        let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "x");
+        let stop = stop_card(&h, &e);
+        for card in [&send, &stop] {
+            let err = edit(
+                &e,
+                card,
+                serde_json::json!({"cwd": e.work.join("a"), "mode": "ask"}),
+            )
+            .unwrap_err();
+            assert_eq!(err.code, ErrorCode::InvalidParams);
+            assert!(err.msg.contains("only a spawn card"), "{}", err.msg);
+            assert!(is_issued(&e, card));
+        }
+        assert_eq!(typed(&rx), "");
+        assert!(!s.halted.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn spawn_challenge_refuses_stop_and_send_proposals() {
+        let e = env();
+        for (kind, extra) in [
+            ("stop", serde_json::json!({"session": TARGET})),
+            (
+                "send",
+                serde_json::json!({"session": TARGET, "from": MGR, "text": "x"}),
+            ),
+        ] {
+            let mut proposal = serde_json::json!({
+                "v": 1, "kind": kind, "target_id": e.rt.chat.machine()
+            });
+            proposal
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let (c, _peer) = conn(CLIENT_CLI);
+            let err =
+                e.rt.dispatch(
+                    &c,
+                    &Request {
+                        id: 1,
+                        method: method::SPAWN_CHALLENGE.into(),
+                        params: serde_json::json!({"card_id": "card_k", "proposal": proposal}),
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::InvalidParams, "{kind}");
+            assert!(e.auth.cards().state("card_k").unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn a_target_that_exited_before_approval_is_not_touched_and_reported() {
+        let e = env();
+        let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "too late");
+        let stop = stop_card(&h, &e);
+        lock(&s.inner).fixed = Some(State {
+            kind: StateKind::Exited,
+            since_ms: 1,
+            detail: None,
+            exit_code: Some(0),
+        });
+        assert!(s.is_exited());
+        decide(&e, &send, "approve").unwrap();
+        decide(&e, &stop, "approve").unwrap();
+        assert_eq!(typed(&rx), "");
+        assert!(!s.halted.load(Ordering::SeqCst));
+        for card in [&send, &stop] {
+            assert_eq!(card_kind_state(&e, card), "claimed");
+            let msg = card_msg(&e, card);
+            assert!(replies(&e, &msg.id)
+                .iter()
+                .any(|r| r.starts_with("Not done: ")));
+        }
+        assert!(manager_prompts(&e).iter().all(|p| p.1.contains("not")));
+    }
+
+    #[test]
+    fn a_target_that_became_a_team_worker_or_risky_is_refused_at_approval() {
+        let e = env();
+        let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+        let h = TestHost::new(&e);
+        let send = send_card(&h, &e, "x");
+        lock(&s.inner).meta.no_sandbox = true;
+        decide(&e, &send, "approve").unwrap();
+        assert_eq!(typed(&rx), "");
+        let msg = card_msg(&e, &send);
+        assert!(replies(&e, &msg.id)
+            .iter()
+            .any(|r| r.starts_with("Not done: ")));
     }
 }
