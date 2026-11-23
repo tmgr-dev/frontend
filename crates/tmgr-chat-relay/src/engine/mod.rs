@@ -31,6 +31,7 @@ pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
 };
 
+pub mod blob;
 pub mod ports;
 pub mod trust_state;
 
@@ -1303,6 +1304,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         if opened.kind == KIND_REQ || opened.kind == KIND_RES {
             self.apply_rpc(c, &opened, now);
             return Ok(None);
+        }
+        if opened.kind == "blob" {
+            return self.apply_blob(c, &opened).map(|()| None);
         }
         let Some(chat) = self.handle(c, &opened, now) else {
             return Ok(None);

@@ -369,6 +369,7 @@ struct Rec {
     fail: Arc<AtomicBool>,
     drops: Arc<Mutex<Vec<&'static str>>>,
     skipped: Arc<Mutex<Vec<(String, String)>>>,
+    blobs: Arc<Mutex<Vec<(String, crate::engine::blob::BlobPart)>>>,
 }
 
 impl Rec {
@@ -397,6 +398,14 @@ impl ChatSink for Rec {
         }
         self.kinds.lock().unwrap().push(kind.map(str::to_owned));
         self.got.lock().unwrap().push((from.to_owned(), msg));
+        Ok(())
+    }
+
+    fn deliver_blob(&self, from: &str, part: crate::engine::blob::BlobPart) -> Result<(), String> {
+        if self.fail.load(Ordering::SeqCst) {
+            return Err("sink is down".into());
+        }
+        self.blobs.lock().unwrap().push((from.to_owned(), part));
         Ok(())
     }
 
@@ -4603,6 +4612,7 @@ fn send_activity_refuses_desktop_only_targets_and_bad_input() {
         .is_err());
 }
 
+mod blobs;
 mod receipt;
 mod repro;
 

@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use tmgr_ipc::chat::ChatMessage;
 
+use super::blob::BlobPart;
 use crate::api::Request;
 use crate::trust::SpawnKey;
 use tmgr_spawn_auth::SignedSpawn;
@@ -70,6 +71,10 @@ pub trait ChatSink: Send + Sync {
         from_kind: Option<&str>,
         msg: ChatMessage,
     ) -> Result<(), String>;
+
+    fn deliver_blob(&self, _from_device: &str, _part: BlobPart) -> Result<(), String> {
+        Ok(())
+    }
 
     fn dropped(&self, _reason: &'static str) {}
 
