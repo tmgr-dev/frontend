@@ -230,7 +230,8 @@ struct Core {
   st: State,
   log: Vec<LogEntry>,
   committed_gen: u64,
-  seq_reserved: BTreeMap<String, u64>,
+  seq_reserved: BTreeMap<String, BTreeSet<u64>>,
+  seq_holes: BTreeMap<String, BTreeSet<u64>>,
   sending: BTreeSet<String>,
   dir: Option<Directory>,
   dir_gen: u64,
@@ -879,8 +880,32 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(())
   }
 
-  fn next_seq(c: &Core, to: &str) -> u64 {
-    c.st.seq_out.get(to).copied().unwrap_or(0).max(c.seq_reserved.get(to).copied().unwrap_or(0)) + 1
+  fn seq_top(c: &Core, to: &str) -> u64 {
+    let reserved = c.seq_reserved.get(to).and_then(|s| s.last().copied()).unwrap_or(0);
+    c.st.seq_out.get(to).copied().unwrap_or(0).max(reserved)
+  }
+
+  /// A seq left behind by a failed send below a later one is reused first, so the recipient does not hold later messages or report a gap.
+  fn reserve_seq(c: &mut Core, to: &str) -> u64 {
+    let hole = c.seq_holes.get_mut(to).and_then(BTreeSet::pop_first);
+    if c.seq_holes.get(to).is_some_and(BTreeSet::is_empty) {
+      c.seq_holes.remove(to);
+    }
+    let seq = hole.unwrap_or_else(|| Self::seq_top(c, to) + 1);
+    c.seq_reserved.entry(to.to_owned()).or_default().insert(seq);
+    seq
+  }
+
+  fn release_seq(c: &mut Core, to: &str, seq: u64, delivered: bool) {
+    if let Some(set) = c.seq_reserved.get_mut(to) {
+      set.remove(&seq);
+      if set.is_empty() {
+        c.seq_reserved.remove(to);
+      }
+    }
+    if !delivered && seq < Self::seq_top(c, to) {
+      c.seq_holes.entry(to.to_owned()).or_default().insert(seq);
+    }
   }
 
   /// Under the core lock: seals one body per target and reserves its seq so a concurrent send cannot reuse it.
@@ -893,8 +918,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         Self::settle(c, &items, &[]);
         return Err("invalid recipient device id".into());
       }
-      let seq = Self::next_seq(c, &t.id);
-      c.seq_reserved.insert(t.id.clone(), seq);
+      let seq = Self::reserve_seq(c, &t.id);
       let (id, keys) = Self::own(c)?;
       let body = seal_message(
         keys,
@@ -914,7 +938,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         Ok(body) => items.push((t.id.clone(), body, seq)),
         Err(e) => {
           Self::settle(c, &items, &[]);
-          c.seq_reserved.remove(&t.id);
+          Self::release_seq(c, &t.id, seq, false);
           return Err(e);
         }
       }
@@ -923,16 +947,15 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(Sealed { items, kinds })
   }
 
-  /// Under the core lock again: delivered seqs become `seq_out`; a failed seq is handed back only if no later one was reserved.
+  /// Under the core lock again: delivered seqs become `seq_out`, each reservation is released, and a failed seq below a later one becomes a hole.
   fn settle(c: &mut Core, items: &[(String, String, u64)], done: &[(String, u64)]) {
     for (to, seq) in done {
       let out = c.st.seq_out.entry(to.clone()).or_insert(0);
       *out = (*out).max(*seq);
     }
     for (to, _, seq) in items {
-      if c.seq_reserved.get(to) == Some(seq) {
-        c.seq_reserved.remove(to);
-      }
+      let delivered = done.iter().any(|(d, s)| d == to && s == seq);
+      Self::release_seq(c, to, *seq, delivered);
     }
   }
 
@@ -1570,7 +1593,14 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       return Err("the chat identity changed while sending".into());
     }
     Self::settle(c, &sealed.items, &posted.done);
-    posted.outcome?;
+    if let Err(e) = posted.outcome {
+      if !posted.done.is_empty() {
+        if let Err(w) = self.persist_out(g, true) {
+          log::warn!("[manager] chat store write failed: {w}");
+        }
+      }
+      return Err(e);
+    }
     c.st.seen.push(Seen { from: own_id.clone(), id: msg.id.clone(), at: self.now() });
     if c.st.seen.len() > MAX_SEEN {
       c.st.seen.remove(0);

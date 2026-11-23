@@ -3368,12 +3368,88 @@ fn a_failed_send_hands_its_seq_back_when_no_later_one_was_reserved() {
   fake.set_post_error(Some("boom"));
   assert!(send(&a, "lost").is_err());
   assert_eq!(seq_out(&a, &bid), before);
-  assert_eq!(RelayEngine::<Fake, Arc<MemKeyStore>>::next_seq(&a.lock(), &bid), before + 1);
+  assert_eq!(RelayEngine::<Fake, Arc<MemKeyStore>>::seq_top(&a.lock(), &bid), before);
+  assert!(a.lock().seq_holes.is_empty());
   fake.set_post_error(None);
   send(&a, "kept").unwrap();
   assert_eq!(seq_out(&a, &bid), before + 1);
   assert_eq!(b.poll_once().unwrap().len(), 1);
   assert!(b.lock().st.seq_gaps.is_empty());
+}
+
+type E = RelayEngine<Fake, Arc<MemKeyStore>>;
+
+fn item(to: &str, seq: u64) -> (String, String, u64) {
+  (to.into(), String::new(), seq)
+}
+
+#[test]
+fn a_later_send_failing_does_not_free_the_seq_of_an_earlier_one_still_in_flight() {
+  let mut c = Core::default();
+  let first = E::reserve_seq(&mut c, "d");
+  let second = E::reserve_seq(&mut c, "d");
+  E::settle(&mut c, &[item("d", second)], &[]);
+  let third = E::reserve_seq(&mut c, "d");
+  assert_ne!(third, first);
+  E::settle(&mut c, &[item("d", first)], &[("d".into(), first)]);
+  E::settle(&mut c, &[item("d", third)], &[("d".into(), third)]);
+  assert_eq!((first, third), (1, 2));
+  assert_eq!(c.st.seq_out.get("d"), Some(&2));
+  assert!(c.seq_reserved.is_empty() && c.seq_holes.is_empty());
+}
+
+#[test]
+fn a_failed_seq_below_a_later_one_is_reused_by_the_next_send() {
+  let mut c = Core::default();
+  let first = E::reserve_seq(&mut c, "d");
+  let second = E::reserve_seq(&mut c, "d");
+  E::settle(&mut c, &[item("d", first)], &[]);
+  E::settle(&mut c, &[item("d", second)], &[("d".into(), second)]);
+  let retry = E::reserve_seq(&mut c, "d");
+  assert_eq!(retry, first);
+  E::settle(&mut c, &[item("d", retry)], &[("d".into(), retry)]);
+  assert_eq!(E::reserve_seq(&mut c, "d"), 3);
+  assert!(c.seq_holes.is_empty());
+}
+
+#[test]
+fn a_retry_after_a_failed_send_overtaken_by_a_later_one_leaves_the_recipient_without_a_gap() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let lost = {
+    let mut g = a.lock();
+    let seq = E::reserve_seq(&mut g, &bid);
+    E::settle(&mut g, &[item(&bid, seq)], &[]);
+    seq
+  };
+  assert!(a.lock().seq_holes.is_empty());
+  let held = E::reserve_seq(&mut a.lock(), &bid);
+  send(&a, "later").unwrap();
+  E::settle(&mut a.lock(), &[item(&bid, held)], &[]);
+  assert_eq!(a.lock().seq_holes.get(&bid).map(|h| h.iter().copied().collect::<Vec<_>>()), Some(vec![held]));
+  send(&a, "retry").unwrap();
+  assert!(a.lock().seq_holes.is_empty());
+  clock.set(T0 + 60_000);
+  assert_eq!(b.poll_once().unwrap().len(), 2);
+  assert!(b.lock().st.seq_gaps.is_empty());
+  assert_eq!(lost, held);
+}
+
+#[test]
+fn a_send_that_reached_some_devices_before_failing_stores_their_seq() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let m = join_as(&fake, &clock, &a, "Phone", "mobile");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let mid = my_id(&m);
+  let before = seq_out(&a, &mid);
+  fake.set_full(Some(&my_id(&r)));
+  assert_eq!(send(&a, "half").unwrap_err(), "the recipient's relay queue is full");
+  assert_eq!(seq_out(&a, &mid), before + 1);
+  let saved: Value = serde_json::from_str(&store.load(Slot::State).unwrap().unwrap()).unwrap();
+  assert_eq!(saved["seq_out"][&mid].as_u64(), Some(before + 1));
 }
 
 #[test]

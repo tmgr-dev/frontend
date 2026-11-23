@@ -9,6 +9,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 - Fixed: a Manager message to a session on another machine could stay in "Sending" for minutes. Sending no longer waits for the chat history to be saved or for incoming messages to be processed. If the relay does not answer within 30 seconds, the message shows as not sent, and retrying it does not create a duplicate.
 - Faster updates: while the Manager window is open, new messages and delivery states are checked every second.
 - A queued message now says why it waits (the agent is busy, a dialog is open, or the session prompt has not appeared yet).
+- Fixed: after a failed send, other devices no longer warn that messages may be missing, and later messages are not held back.
 
 ## 0.9.200 — 2026-11-23
 
