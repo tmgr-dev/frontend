@@ -5895,6 +5895,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         }
     });
 
+    rt.wire_chat_attach();
     rt.start_relay_pump();
     let capturer = rt.clone();
     thread::spawn(move || capturer.chat_capture_loop());

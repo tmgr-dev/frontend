@@ -1,4 +1,5 @@
 mod activity;
+pub mod attach;
 pub mod blobs;
 pub mod mention;
 mod mention_io;
@@ -180,7 +181,11 @@ pub struct Chat {
     relay_owners: Mutex<Option<OwnersFn>>,
     receipt_sink: Mutex<Option<ReceiptFn>>,
     receipts_sent: Mutex<VecDeque<(String, ReceiptState)>>,
+    blobs: Option<Arc<blobs::BlobStore>>,
+    attach_target: Mutex<Option<AttachTargetFn>>,
 }
+
+pub type AttachTargetFn = Arc<dyn Fn(&RoomRef) -> Option<attach::Target> + Send + Sync>;
 
 pub type OwnersFn = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
 
@@ -227,6 +232,11 @@ impl Chat {
             relay_owners: Mutex::new(None),
             receipt_sink: Mutex::new(None),
             receipts_sent: Mutex::new(VecDeque::new()),
+            blobs: blobs::BlobStore::open(runner_dir)
+                .map(|b| Arc::new(b.with_max_size(tmgr_chat_relay::engine::blob::MAX_LOCAL_BYTES)))
+                .map_err(|e| crate::daemon::log(&format!("chat: blob store unavailable: {e}")))
+                .ok(),
+            attach_target: Mutex::new(None),
         };
         chat.expire_open_mentions();
         chat
@@ -250,6 +260,23 @@ impl Chat {
 
     pub fn set_relay_owners(&self, owners: Option<OwnersFn>) {
         *lock(&self.relay_owners) = owners;
+    }
+
+    pub fn blobs(&self) -> Option<&Arc<blobs::BlobStore>> {
+        self.blobs.as_ref()
+    }
+
+    pub fn set_attach_target(&self, f: Option<AttachTargetFn>) {
+        *lock(&self.attach_target) = f;
+    }
+
+    pub fn turn_body(&self, room: &RoomRef, body: &str, atts: &[Attachment]) -> String {
+        if atts.is_empty() {
+            return body.to_owned();
+        }
+        let f = lock(&self.attach_target).clone();
+        let target = f.and_then(|f| f(room));
+        attach::turn_text(body, atts, self.blobs.as_deref(), target.as_ref())
     }
 
     pub fn set_receipt_sink(&self, sink: Option<ReceiptFn>) {
@@ -578,10 +605,11 @@ impl Chat {
             });
         }
         let mut deliver = Some(deliver);
+        let turn = self.turn_body(&msg.room, &msg.body_md, &msg.attachments);
         let outcome = self.submit(
             &msg.room,
             &msg.id,
-            &msg.body_md,
+            &turn,
             &client,
             device.as_deref(),
             owner_device,

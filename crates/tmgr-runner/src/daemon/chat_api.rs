@@ -1,5 +1,6 @@
 use super::manager::ManagerHost;
 use super::*;
+use crate::chat::blobs::PutOutcome;
 use crate::chat::{self, tail};
 use crate::chat_remote;
 use crate::manager_remote::Live;
@@ -9,8 +10,10 @@ use crate::mgr_rpc::relay::{
 };
 use crate::mgr_rpc::{Dispatcher, FileAudit};
 use std::sync::mpsc::RecvTimeoutError as ChatRecv;
+use tmgr_chat_relay::engine::blob::MAX_LOCAL_BYTES;
 use tmgr_ipc::chat::{
-    method as chat_method, CancelParams, HistoryParams, QueuedParams, SearchParams, SendParams,
+    method as chat_method, BlobPutParams, BlobPutResult, CancelParams, HistoryParams, QueuedParams,
+    SearchParams, SendParams,
 };
 use tmgr_ipc::manager::wrap_untrusted;
 
@@ -124,6 +127,29 @@ impl Runner {
             Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
             Err(e) => chat::Delivery::Gone(e.msg),
         }
+    }
+
+    fn attach_target(&self, room: &tmgr_ipc::chat::RoomRef) -> Option<chat::attach::Target> {
+        let s = match room.session.as_deref() {
+            Some(id) => self.session(id),
+            None => self.live_manager(),
+        }?;
+        if s.is_exited() {
+            return None;
+        }
+        Some(chat::attach::resolve(
+            &self.cfg.homes,
+            &tmgr_ipc::dirs::paste_dir(&self.cfg.dir),
+            &s.id,
+            s.info().no_sandbox,
+        ))
+    }
+
+    pub(super) fn wire_chat_attach(self: &Arc<Self>) {
+        let rt = Arc::downgrade(self);
+        self.chat.set_attach_target(Some(Arc::new(move |room| {
+            rt.upgrade()?.attach_target(room)
+        })));
     }
 
     pub(super) fn start_relay_pump(self: &Arc<Self>) {
@@ -358,10 +384,13 @@ impl Runner {
                         q.attachments,
                     )
                     .map_err(bad)?;
+                let turn = self
+                    .chat
+                    .turn_body(&posted.room, &posted.body_md, &posted.attachments);
                 let outcome = self.chat.submit(
                     &posted.room,
                     &posted.id,
-                    &posted.body_md,
+                    &turn,
                     &conn.client,
                     None,
                     false,
@@ -386,6 +415,32 @@ impl Runner {
                 let q: CancelParams = params(p)?;
                 q.room.validate().map_err(bad)?;
                 Ok(to_json(&self.chat.cancel(&q.room, &q.id)))
+            }
+            chat_method::BLOB_PUT => {
+                let _: BlobPutParams = params(p)?;
+                let part = tmgr_chat_relay::engine::blob::BlobPart::parse(p, MAX_LOCAL_BYTES)
+                    .map_err(|e| bad(e.into()))?;
+                let blobs = self.chat.blobs().ok_or_else(|| {
+                    api(
+                        ErrorCode::Other("storage".into()),
+                        "files are not available",
+                    )
+                })?;
+                match blobs.put_part(&part) {
+                    Ok(PutOutcome::Partial { have, parts }) => Ok(to_json(&BlobPutResult {
+                        have: Some(have),
+                        parts: Some(parts),
+                        complete: None,
+                    })),
+                    Ok(PutOutcome::Complete(_)) => Ok(to_json(&BlobPutResult {
+                        complete: Some(true),
+                        ..BlobPutResult::default()
+                    })),
+                    Err(e) if e.is_retryable() => {
+                        Err(api(ErrorCode::Other("storage".into()), e.to_string()))
+                    }
+                    Err(e) => Err(bad(e.to_string())),
+                }
             }
             chat_method::MENTION_INJECT => self.mention_inject(params(p)?),
             chat_method::RELAY_SELF => {
@@ -1398,5 +1453,297 @@ mod tests {
         add_named(&rt, t.path(), "e", "claude", "/work/app", 5);
         rt.apply_auto_names(&[("e".into(), "Fix the build".into())]);
         assert_eq!(name_of(&rt, "e"), "Fix the build 2");
+    }
+
+    mod files {
+        use super::*;
+        use base64::engine::general_purpose::STANDARD;
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        use tmgr_chat_relay::engine::blob::{BlobPart, PART_BYTES};
+        use tmgr_ipc::chat::{Attachment, BlobPutParams, BlobPutResult};
+
+        fn sha_of(b: &[u8]) -> String {
+            Sha256::digest(b)
+                .iter()
+                .map(|x| format!("{x:02x}"))
+                .collect()
+        }
+
+        fn bytes(n: usize, seed: u8) -> Vec<u8> {
+            (0..n)
+                .map(|i| (i as u8).wrapping_mul(7).wrapping_add(seed))
+                .collect()
+        }
+
+        fn put_params(all: &[u8], part: usize) -> BlobPutParams {
+            let chunk = all.chunks(PART_BYTES).nth(part).unwrap();
+            BlobPutParams {
+                v: 1,
+                sha256: sha_of(all),
+                size: all.len() as u64,
+                part: part as u32,
+                parts: all.len().div_ceil(PART_BYTES) as u32,
+                data: STANDARD.encode(chunk),
+            }
+        }
+
+        fn put(
+            rt: &Arc<Runner>,
+            c: &Arc<Conn>,
+            p: &BlobPutParams,
+        ) -> Result<BlobPutResult, ApiErr> {
+            call(rt, c, chat_method::BLOB_PUT, to_json(p))
+                .map(|v| serde_json::from_value(v).unwrap())
+        }
+
+        fn rig() -> (tempfile::TempDir, Arc<Runner>) {
+            let t = tempfile::Builder::new()
+                .prefix("cb")
+                .tempdir_in("/tmp")
+                .unwrap();
+            let rt = runner(t.path());
+            rt.wire_chat_attach();
+            (t, rt)
+        }
+
+        fn stored(rt: &Arc<Runner>, data: &[u8]) -> Attachment {
+            let sha = sha_of(data);
+            rt.chat.blobs().unwrap().put_bytes(&sha, data).unwrap();
+            Attachment {
+                name: "report.txt".into(),
+                mime: "text/plain".into(),
+                size: data.len() as u64,
+                sha256: sha,
+            }
+        }
+
+        #[test]
+        fn blob_put_assembles_parts_and_reports_progress() {
+            let (_t, rt) = rig();
+            let (c, _p) = conn(CLIENT_DESKTOP);
+            let all = bytes(PART_BYTES * 2 + 10, 3);
+            let r = put(&rt, &c, &put_params(&all, 2)).unwrap();
+            assert_eq!((r.have, r.parts, r.complete), (Some(1), Some(3), None));
+            let r = put(&rt, &c, &put_params(&all, 0)).unwrap();
+            assert_eq!(r.have, Some(2));
+            let r = put(&rt, &c, &put_params(&all, 1)).unwrap();
+            assert_eq!(r.complete, Some(true));
+            let path = rt.chat.blobs().unwrap().get(&sha_of(&all)).unwrap();
+            assert_eq!(fs::read(path).unwrap(), all);
+            assert_eq!(
+                put(&rt, &c, &put_params(&all, 0)).unwrap().complete,
+                Some(true)
+            );
+        }
+
+        #[test]
+        fn blob_put_rejects_bad_parts_and_other_clients() {
+            let (_t, rt) = rig();
+            let (c, _p) = conn(CLIENT_CLI);
+            let all = bytes(PART_BYTES + 10, 4);
+            let bad = |f: &dyn Fn(&mut BlobPutParams)| {
+                let mut p = put_params(&all, 0);
+                f(&mut p);
+                put(&rt, &c, &p).unwrap_err().code
+            };
+            assert_eq!(bad(&|p| p.sha256 = "zz".into()), ErrorCode::InvalidParams);
+            assert_eq!(bad(&|p| p.part = 5), ErrorCode::InvalidParams);
+            assert_eq!(bad(&|p| p.parts = 7), ErrorCode::InvalidParams);
+            assert_eq!(bad(&|p| p.v = 2), ErrorCode::InvalidParams);
+            assert_eq!(bad(&|p| p.data = "!!".into()), ErrorCode::InvalidParams);
+            assert_eq!(
+                bad(&|p| p.size = 26 * 1024 * 1024),
+                ErrorCode::InvalidParams
+            );
+            assert_eq!(
+                call(&rt, &c, chat_method::BLOB_PUT, json!({"v": 1}))
+                    .unwrap_err()
+                    .code,
+                ErrorCode::InvalidParams
+            );
+            let mut wrong = put_params(&all, 0);
+            wrong.data = STANDARD.encode(bytes(PART_BYTES, 9));
+            put(&rt, &c, &wrong).unwrap();
+            let mut other = put_params(&all, 0);
+            other.data = STANDARD.encode(bytes(PART_BYTES, 8));
+            assert_eq!(
+                put(&rt, &c, &other).unwrap_err().code,
+                ErrorCode::InvalidParams
+            );
+            let (w, _p) = conn("worker");
+            assert_eq!(
+                put(&rt, &w, &put_params(&all, 0)).unwrap_err().code,
+                ErrorCode::Forbidden
+            );
+        }
+
+        #[test]
+        fn a_full_part_fits_one_ipc_frame() {
+            let all = bytes(PART_BYTES * 2, 1);
+            let req = Request {
+                id: 1,
+                method: chat_method::BLOB_PUT.into(),
+                params: to_json(&put_params(&all, 0)),
+            };
+            let n = serde_json::to_vec(&req).unwrap().len();
+            assert!(n < tmgr_ipc::frame::MAX_JSON, "{n}");
+        }
+
+        #[test]
+        fn the_relay_cap_and_the_local_cap_share_one_root_without_mixing_sizes() {
+            let (_t, rt) = rig();
+            let (c, _p) = conn(CLIENT_DESKTOP);
+            let relay = crate::chat::blobs::BlobStore::open(&rt.cfg.dir).unwrap();
+            let small = bytes(PART_BYTES + 10, 5);
+            let sha = sha_of(&small);
+            relay
+                .put_part(&BlobPart {
+                    sha256: sha.clone(),
+                    size: small.len() as u64,
+                    part: 0,
+                    parts: 2,
+                    data: small[..PART_BYTES].to_vec(),
+                })
+                .unwrap();
+            let mut grown = put_params(&small, 0);
+            grown.size = 20 * 1024 * 1024;
+            grown.parts = (grown.size as u32).div_ceil(PART_BYTES as u32);
+            let e = put(&rt, &c, &grown).unwrap_err();
+            assert!(e.msg.contains("disagree"), "{}", e.msg);
+            assert_eq!(
+                put(&rt, &c, &put_params(&small, 1)).unwrap().complete,
+                Some(true)
+            );
+
+            let big = bytes(PART_BYTES * 9 + 5, 6);
+            put(&rt, &c, &put_params(&big, 0)).unwrap();
+            let refused = relay.put_part(&BlobPart {
+                sha256: sha_of(&big),
+                size: big.len() as u64,
+                part: 1,
+                parts: 10,
+                data: big[PART_BYTES..PART_BYTES * 2].to_vec(),
+            });
+            assert!(refused.is_err());
+        }
+
+        #[test]
+        fn a_local_send_hands_the_session_the_file_paths_and_stores_the_message_unchanged() {
+            let (t, rt) = rig();
+            add_named(&rt, t.path(), "s_abcdefghij", "claude", "/work/app", 1);
+            let home = rt.cfg.homes.join("s_abcdefghij");
+            fs::create_dir_all(&home).unwrap();
+            let att = stored(&rt, b"file bytes");
+            let room = rt.chat.session_room("s_abcdefghij");
+            let (c, _p) = conn(CLIENT_DESKTOP);
+            let sent: ChatMessage = serde_json::from_value(
+                call(
+                    &rt,
+                    &c,
+                    chat_method::SEND,
+                    to_json(&SendParams {
+                        room: room.clone(),
+                        body_md: "see this".into(),
+                        reply_to: None,
+                        attachments: vec![att.clone()],
+                        id: None,
+                        ts_ms: None,
+                        mention: None,
+                    }),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(sent.body_md, "see this");
+            let mut got = Vec::new();
+            rt.chat.drain_queue_with(
+                now_ms(),
+                |it| {
+                    got.push(it.body.to_owned());
+                    chat::Delivery::Delivered
+                },
+                |_, _| {},
+            );
+            let path = home
+                .join("tmgr-attachments")
+                .join(format!("{}-report.txt", &att.sha256[..12]));
+            assert_eq!(
+                got,
+                [format!(
+                    "see this\n\nAttached files:\n- report.txt (text/plain, 10 B): {}",
+                    path.display()
+                )]
+            );
+            assert_eq!(fs::read(path).unwrap(), b"file bytes");
+        }
+
+        #[test]
+        fn a_relay_ingest_delivers_the_file_lines_with_the_body() {
+            let (t, rt) = rig();
+            add_named(&rt, t.path(), "s_abcdefghij", "claude", "/work/app", 1);
+            let home = rt.cfg.homes.join("s_abcdefghij");
+            fs::create_dir_all(&home).unwrap();
+            let have = stored(&rt, b"abc");
+            let mut gone = have.clone();
+            gone.name = "missing.bin".into();
+            gone.sha256 = "b".repeat(64);
+            let room = rt.chat.session_room("s_abcdefghij");
+            let mut m = relay_msg(room, "");
+            m.attachments = vec![have, gone];
+            let mut body = String::new();
+            let r = rt
+                .chat
+                .ingest(
+                    m,
+                    now_ms(),
+                    |s| rt.session(s).is_some(),
+                    |b| {
+                        body = b.to_owned();
+                        chat::Delivery::Delivered
+                    },
+                )
+                .unwrap();
+            assert!(r.delivered);
+            assert!(
+                body.starts_with("Attached files:\n- report.txt (text/plain, 3 B): "),
+                "{body}"
+            );
+            assert!(body.ends_with("- missing.bin: (not received)"));
+            assert!(r.message.body_md.is_empty());
+            let wrapped = wrap_untrusted(RELAY_SOURCE, "d_phone1", &body);
+            assert!(wrapped.contains("Attached files:") && wrapped.contains("(not received)"));
+        }
+
+        #[test]
+        fn the_target_is_the_home_or_the_private_fallback_for_a_run_without_the_sandbox() {
+            let (t, rt) = rig();
+            add_named(&rt, t.path(), "s_abcdefghij", "claude", "/work/app", 1);
+            crate::daemon::manager::tests::add_meta(
+                &rt,
+                t.path(),
+                "s_cccccccccc",
+                json!({"no_sandbox": true}),
+            );
+            let sandboxed = rt.attach_target(&rt.chat.session_room("s_abcdefghij"));
+            assert_eq!(
+                sandboxed,
+                Some(chat::attach::Target::Home(
+                    rt.cfg.homes.join("s_abcdefghij")
+                ))
+            );
+            let open = rt.attach_target(&rt.chat.session_room("s_cccccccccc"));
+            assert_eq!(
+                open,
+                Some(chat::attach::Target::Fallback {
+                    root: tmgr_ipc::dirs::paste_dir(&rt.cfg.dir),
+                    id: "s_cccccccccc".into()
+                })
+            );
+            assert_eq!(
+                rt.attach_target(&rt.chat.session_room("s_zzzzzzzzzz")),
+                None
+            );
+        }
     }
 }
