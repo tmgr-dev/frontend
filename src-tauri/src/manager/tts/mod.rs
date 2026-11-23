@@ -19,7 +19,7 @@ const PROGRESS_EVENT: &str = "manager://tts-progress";
 
 #[derive(Default)]
 pub struct TtsState {
-  generation: Arc<AtomicU64>,
+  stopped_through: Arc<AtomicU64>,
   last_run: AtomicU64,
   engine: Mutex<Option<Arc<synth::Engine>>>,
   install: Mutex<Option<Arc<AtomicBool>>>,
@@ -121,7 +121,7 @@ pub fn tts_cancel_install<R: Runtime>(app: AppHandle<R>) {
 #[tauri::command]
 pub async fn tts_remove<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
   let state = app.state::<TtsState>();
-  state.generation.fetch_add(1, Ordering::SeqCst);
+  state.stopped_through.fetch_max(state.last_run.load(Ordering::SeqCst), Ordering::SeqCst);
   let dir = dir_of(&app)?;
   state.engine.lock().map_err(|e| e.to_string())?.take();
   tauri::async_runtime::spawn_blocking(move || pack::remove(&dir)).await.map_err(|e| e.to_string())?
@@ -152,10 +152,10 @@ pub async fn tts_synthesize<R: Runtime>(app: AppHandle<R>, text: String, run: u6
   if state.last_run.fetch_max(run, Ordering::SeqCst) > run {
     return Ok(Response::new(Vec::new()));
   }
-  let generation = state.generation.clone();
+  let stopped_through = state.stopped_through.clone();
   let samples = tauri::async_runtime::spawn_blocking(move || {
     let engine = engine_of(&app)?;
-    engine.synthesize(&text, &generation)
+    engine.synthesize(&text, run, &stopped_through)
   })
   .await
   .map_err(|e| e.to_string())??;
@@ -167,6 +167,6 @@ pub async fn tts_synthesize<R: Runtime>(app: AppHandle<R>, text: String, run: u6
 }
 
 #[tauri::command]
-pub fn tts_stop<R: Runtime>(app: AppHandle<R>) {
-  app.state::<TtsState>().generation.fetch_add(1, Ordering::SeqCst);
+pub fn tts_stop<R: Runtime>(app: AppHandle<R>, run: u64) {
+  app.state::<TtsState>().stopped_through.fetch_max(run, Ordering::SeqCst);
 }

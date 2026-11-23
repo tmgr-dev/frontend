@@ -17,7 +17,7 @@ impl Engine {
     Phonemized::default()
   }
 
-  pub fn synthesize(&self, _text: &str, _generation: &Arc<AtomicU64>) -> Result<Vec<f32>, String> {
+  pub fn synthesize(&self, _text: &str, _run: u64, _stopped_through: &Arc<AtomicU64>) -> Result<Vec<f32>, String> {
     Err("English voice is not available on this platform".to_owned())
   }
 }

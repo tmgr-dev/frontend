@@ -220,7 +220,10 @@ describe('piperEngine', () => {
 		release(pcm(4));
 		await flush();
 		expect(ctx().sources).toHaveLength(0);
-		expect(invokeMock).toHaveBeenCalledWith('tts_stop');
+		expect(invokeMock).toHaveBeenCalledWith(
+			'tts_stop',
+			expect.objectContaining({ run: expect.any(Number) }),
+		);
 		expect(h.onEnd).not.toHaveBeenCalled();
 		expect(h.onError).not.toHaveBeenCalled();
 	});
