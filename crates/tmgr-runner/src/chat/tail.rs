@@ -1191,6 +1191,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             device: Some("d_phone1".into()),
+            owner_device: false,
             client: "relay".into(),
         };
         let typed_back = typed.clone();

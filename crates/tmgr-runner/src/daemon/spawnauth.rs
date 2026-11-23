@@ -56,7 +56,12 @@ impl Transport for Offline {
 struct Discard;
 
 impl ChatSink for Discard {
-    fn deliver(&self, _: &str, _: tmgr_ipc::chat::ChatMessage) -> Result<(), String> {
+    fn deliver(
+        &self,
+        _: &str,
+        _: Option<&str>,
+        _: tmgr_ipc::chat::ChatMessage,
+    ) -> Result<(), String> {
         Ok(())
     }
 }

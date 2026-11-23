@@ -1188,7 +1188,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             return Ok(None);
         };
         if let Some(msg) = &chat {
-            self.s.deliver(&opened.from, msg.clone())?;
+            let kind = c.st.kind_of_trusted(&opened.from).map(str::to_owned);
+            self.s.deliver(&opened.from, kind.as_deref(), msg.clone())?;
             c.unsaved = true;
         }
         c.st.seen.push(Seen {

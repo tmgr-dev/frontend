@@ -59,7 +59,7 @@ fn owner_message_for_this_machine_is_ingested_with_the_sender_device() {
     let (sink, seen) = recording_sink(stored);
     let m = msg(AuthorKind::Owner, MACHINE, None);
     let id = m.id.clone();
-    sink.deliver("dev-1", m).unwrap();
+    sink.deliver("dev-1", Some("mobile"), m).unwrap();
     let seen = seen.lock().unwrap();
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].id, id);
@@ -70,24 +70,29 @@ fn owner_message_for_this_machine_is_ingested_with_the_sender_device() {
 fn non_owner_and_foreign_machine_messages_are_dropped() {
     let (sink, seen) = recording_sink(stored);
     for kind in [AuthorKind::Manager, AuthorKind::Session, AuthorKind::System] {
-        sink.deliver("dev-1", msg(kind, MACHINE, None)).unwrap();
+        sink.deliver("dev-1", Some("mobile"), msg(kind, MACHINE, None))
+            .unwrap();
     }
-    sink.deliver("dev-1", msg(AuthorKind::Owner, "mx_ffffffffffffffff", None))
-        .unwrap();
+    sink.deliver(
+        "dev-1",
+        Some("mobile"),
+        msg(AuthorKind::Owner, "mx_ffffffffffffffff", None),
+    )
+    .unwrap();
     assert!(seen.lock().unwrap().is_empty());
 }
 
 #[test]
 fn not_found_and_conflict_are_acked_but_invalid_is_retried() {
     let (sink, _) = recording_sink(|| Err(IngestError::NotFound("no room".into())));
-    sink.deliver("d", msg(AuthorKind::Owner, MACHINE, None))
+    sink.deliver("d", Some("mobile"), msg(AuthorKind::Owner, MACHINE, None))
         .unwrap();
     let (sink, _) = recording_sink(|| Err(IngestError::Conflict("differs".into())));
-    sink.deliver("d", msg(AuthorKind::Owner, MACHINE, None))
+    sink.deliver("d", Some("mobile"), msg(AuthorKind::Owner, MACHINE, None))
         .unwrap();
     let (sink, _) = recording_sink(|| Err(IngestError::Invalid("store down".into())));
     assert_eq!(
-        sink.deliver("d", msg(AuthorKind::Owner, MACHINE, None)),
+        sink.deliver("d", Some("mobile"), msg(AuthorKind::Owner, MACHINE, None)),
         Err("store down".into())
     );
 }
@@ -115,8 +120,8 @@ fn redelivery_is_deduped_by_the_chat_store() {
         }),
     );
     let m = msg(AuthorKind::Owner, &machine, None);
-    sink.deliver("dev-1", m.clone()).unwrap();
-    sink.deliver("dev-1", m.clone()).unwrap();
+    sink.deliver("dev-1", Some("mobile"), m.clone()).unwrap();
+    sink.deliver("dev-1", Some("mobile"), m.clone()).unwrap();
     assert_eq!(delivered.load(Ordering::SeqCst), 1);
     let history = chat.history(&m.room, None, None).unwrap();
     assert_eq!(history.len(), 1);
@@ -343,8 +348,12 @@ fn the_sink_hands_the_ingest_only_the_mention_target_never_the_forged_state() {
         state: tmgr_ipc::chat::MentionState::Answered,
         hop: 9,
     });
-    sink.deliver("dev-1", m).unwrap();
-    sink.deliver("dev-1", msg(AuthorKind::Owner, MACHINE, None))
-        .unwrap();
+    sink.deliver("dev-1", Some("mobile"), m).unwrap();
+    sink.deliver(
+        "dev-1",
+        Some("mobile"),
+        msg(AuthorKind::Owner, MACHINE, None),
+    )
+    .unwrap();
     assert_eq!(*targets.lock().unwrap(), [Some(target), None]);
 }

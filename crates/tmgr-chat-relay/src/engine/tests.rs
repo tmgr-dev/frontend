@@ -351,7 +351,7 @@ impl Rec {
 }
 
 impl ChatSink for Rec {
-    fn deliver(&self, from: &str, msg: ChatMessage) -> Result<(), String> {
+    fn deliver(&self, from: &str, _: Option<&str>, msg: ChatMessage) -> Result<(), String> {
         if self.fail.load(Ordering::SeqCst) {
             return Err("sink is down".into());
         }

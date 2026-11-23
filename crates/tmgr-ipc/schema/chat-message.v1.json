@@ -90,7 +90,7 @@
         "target_title": { "type": "string" },
         "state": {
           "type": "string",
-          "examples": ["needs_confirmation", "queued", "sent", "answering", "answered", "busy", "offline", "timeout", "interrupted", "expired", "refused", "rate_limited", "cancelled"]
+          "examples": ["queued", "sent", "answering", "answered", "busy", "offline", "timeout", "interrupted", "expired", "refused", "rate_limited", "cancelled"]
         },
         "hop": { "type": "integer", "minimum": 0, "maximum": 255 }
       }

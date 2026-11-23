@@ -1,4 +1,4 @@
-use super::chat_api::{RELAY_SOURCE, UNRESTRICTED_REFUSAL};
+use super::chat_api::UNRESTRICTED_REFUSAL;
 use super::*;
 use crate::chat::mention::{self, Facts, Probe, Spec, Via};
 use crate::chat::queue::Item;
@@ -9,6 +9,7 @@ use tmgr_ipc::chat::{
 };
 use tmgr_ipc::manager::wrap_untrusted_data;
 
+const PHONE_LABEL: &str = "[from the owner's phone";
 const NOT_ASKABLE: &str = "Not delivered: that session can no longer be asked.";
 const RISKY_REFUSAL: &str =
     "Not delivered: a session in bypass mode or without the sandbox needs confirmation.";
@@ -114,6 +115,7 @@ impl Runner {
                     reply_to: q.reply_to,
                     attachments: q.attachments,
                     device: None,
+                    owner_device: false,
                     client: conn.client.clone(),
                 };
                 let r = self
@@ -157,6 +159,7 @@ impl Runner {
         };
         let via = Via::Relay {
             device: m.device.clone().unwrap_or_else(|| "unknown device".into()),
+            owner_device: m.owner_device,
         };
         let out = self.chat.ingest_with(
             m,
@@ -197,6 +200,14 @@ impl Runner {
         if !mention::hop_ok(r.hop) {
             return refuse(MentionState::Refused, "too many hops");
         }
+        if msg.ts_ms.saturating_add(chat::FRESH_PAST_MS) < now
+            || msg.ts_ms > now.saturating_add(chat::FRESH_FUTURE_MS)
+        {
+            return refuse(
+                MentionState::Refused,
+                "the message is too old or its time is off",
+            );
+        }
         if self.chat.mention_admit(now, &msg.room).is_err() {
             return self
                 .chat
@@ -226,7 +237,7 @@ impl Runner {
             };
             return refuse(state, &why);
         }
-        if facts.risky && (!confirmed_risky || matches!(via, Via::Relay { .. })) {
+        if facts.risky && !mention_may_be_risky(&via, confirmed_risky) {
             return refuse(MentionState::Refused, "needs confirmation on this machine");
         }
         if busy {
@@ -234,7 +245,7 @@ impl Runner {
         }
         let (client, device) = match &via {
             Via::Local { client } => (client.as_str(), None),
-            Via::Relay { device } => ("relay", Some(device.as_str())),
+            Via::Relay { device, .. } => ("relay", Some(device.as_str())),
         };
         let outcome = self.chat.submit_with(
             &target,
@@ -269,17 +280,15 @@ impl Runner {
         if !mention::target_ok(&facts).ok {
             return chat::Delivery::Refused(NOT_ASKABLE);
         }
-        let relay = matches!(spec.via, Via::Relay { .. });
-        if facts.risky && (relay || !spec.confirmed_risky) {
+        let allowed = mention_may_be_risky(&spec.via, spec.confirmed_risky);
+        if facts.risky && !allowed {
             return chat::Delivery::Refused(RISKY_REFUSAL);
         }
+        if !allowed && super::manager::is_unrestricted(&t) {
+            return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
+        }
         let typed = match &spec.via {
-            Via::Relay { device } => {
-                if super::manager::is_unrestricted(&t) {
-                    return chat::Delivery::Refused(UNRESTRICTED_REFUSAL);
-                }
-                tmgr_ipc::manager::wrap_untrusted(RELAY_SOURCE, device, it.body)
-            }
+            Via::Relay { device, .. } => phone_question(device, it.body),
             Via::Local { .. } => it.body.to_string(),
         };
         if t.is_exited() {
@@ -356,6 +365,17 @@ impl Runner {
     }
 }
 
+fn phone_question(device: &str, body: &str) -> String {
+    format!("{PHONE_LABEL} ({device})]\n\n{body}")
+}
+
+fn mention_may_be_risky(via: &Via, confirmed_risky: bool) -> bool {
+    match via {
+        Via::Local { .. } => confirmed_risky,
+        Via::Relay { owner_device, .. } => *owner_device,
+    }
+}
+
 fn ingest_err(e: chat::IngestError) -> ApiErr {
     match e {
         chat::IngestError::Invalid(m) => api(ErrorCode::InvalidParams, m),
@@ -370,7 +390,7 @@ mod tests {
     use crate::daemon::manager::tests::{add_meta, runner};
     use serde_json::json;
     use std::os::unix::net::UnixStream;
-    use tmgr_ipc::chat::{method, AuthorKind, MessageKind};
+    use tmgr_ipc::chat::{method, Author, AuthorKind, MessageKind};
 
     const A: &str = "s_aaaaaaaaaa";
     const B: &str = "s_bbbbbbbbbb";
@@ -424,7 +444,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             id: id.map(String::from),
-            ts_ms: id.map(|_| 1_800_000_000_000),
+            ts_ms: id.map(|_| fixed_ts()),
             mention: Some(MentionReq {
                 target: target.clone(),
                 confirmed_risky: false,
@@ -445,11 +465,12 @@ mod tests {
         chat::Incoming {
             room: rt.chat.session_room(A),
             id: id.into(),
-            ts_ms: 1_800_000_000_000,
+            ts_ms: fixed_ts(),
             body_md: "what is the status?".into(),
             reply_to: None,
             attachments: Vec::new(),
             device: Some("d_phone1".into()),
+            owner_device: true,
             client: "relay".into(),
         }
     }
@@ -458,6 +479,11 @@ mod tests {
         let a = rt.chat.session_room(A);
         assert!(rt.chat.queued_ids(&a).is_empty());
         assert!(!rt.chat.take_sent(A, "what is the status?"));
+    }
+
+    fn fixed_ts() -> u64 {
+        static T: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        *T.get_or_init(now_ms)
     }
 
     const ID: &str = "m_0190a1b2c3d4aabbccddeeff00112233";
@@ -517,7 +543,8 @@ mod tests {
         assert_eq!(
             spec.via,
             Via::Relay {
-                device: "d_phone1".into()
+                device: "d_phone1".into(),
+                owner_device: true
             }
         );
     }
@@ -606,16 +633,133 @@ mod tests {
         assert!(states(&rt, &a).contains(&MentionState::Offline));
     }
 
+    fn unrestricted_manager_rig() -> (tempfile::TempDir, Arc<Runner>) {
+        let (t, rt) = rig(json!({}));
+        let t2 = tempfile::tempdir().unwrap();
+        add_meta(
+            &rt,
+            t2.path(),
+            "s_mgr0000001",
+            json!({"manager": true, "unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
+        );
+        rt.chat.add_placeholder_tail("s_mgr0000001");
+        (t, rt)
+    }
+
     #[test]
-    fn a_relay_mention_to_a_risky_target_is_refused() {
-        let (_t, rt) = rig(json!({}));
+    fn a_mention_from_a_device_that_is_not_an_owner_device_never_routes_into_an_unrestricted_or_risky_target(
+    ) {
+        let (_t, rt) = unrestricted_manager_rig();
         let t2 = tempfile::tempdir().unwrap();
         add_meta(&rt, t2.path(), "s_risky00001", json!({"no_sandbox": true}));
         rt.chat.add_placeholder_tail("s_risky00001");
-        let risky = rt.chat.session_room("s_risky00001");
-        rt.relay_mention(incoming(&rt, ID), risky.clone()).unwrap();
-        assert!(rt.chat.queued_ids(&risky).is_empty());
+        for (n, target) in [rt.chat.manager_room(), rt.chat.session_room("s_risky00001")]
+            .into_iter()
+            .enumerate()
+        {
+            let (deny, allow) = (
+                format!("m_0190a1b2c3d4aabbccddeeff0011{n}1aa"),
+                format!("m_0190a1b2c3d4aabbccddeeff0011{n}2bb"),
+            );
+            let mut m = incoming(&rt, &deny);
+            m.owner_device = false;
+            rt.relay_mention(m, target.clone()).unwrap();
+            assert!(rt.chat.queued_ids(&target).is_empty());
+            assert!(!rt.chat.is_mention_open(&deny));
+            let rows = states(&rt, &rt.chat.session_room(A));
+            assert!(rows.contains(&MentionState::Refused), "{rows:?}");
+            let mut m = incoming(&rt, &allow);
+            m.owner_device = true;
+            rt.relay_mention(m, target.clone()).unwrap();
+            assert_eq!(
+                rt.chat.queued_ids(&target).len(),
+                1,
+                "owner device reaches {target:?}"
+            );
+            rt.chat
+                .cancel(&target, "m_0190a1b2c3d4aabbccddeeff00112288");
+        }
+    }
+
+    #[test]
+    fn an_owner_row_from_a_runner_or_unknown_kind_device_never_reaches_the_router() {
+        let (_t, rt) = unrestricted_manager_rig();
+        let seen = Arc::new(Mutex::new(0usize));
+        let log = seen.clone();
+        let sink = chat::relay::pump::RelaySink::new(
+            rt.chat.machine().to_owned(),
+            Box::new(move |_, _| {
+                *log.lock().unwrap() += 1;
+                Err(chat::IngestError::Invalid("unused".into()))
+            }),
+        );
+        use tmgr_chat_relay::engine::ChatSink;
+        let mut m = ChatMessage {
+            v: 1,
+            id: ID.into(),
+            room: rt.chat.session_room(A),
+            author: Author {
+                kind: AuthorKind::Owner,
+                id: "owner".into(),
+                machine: None,
+                device: Some("d1".into()),
+                agent: None,
+            },
+            ts_ms: now_ms(),
+            kind: MessageKind::Text,
+            body_md: "q".into(),
+            attachments: Vec::new(),
+            reply_to: None,
+            decision: None,
+            session_meta: None,
+            user_turn: false,
+            mention: None,
+        };
+        m.mention = Some(MentionRef {
+            id: ID.into(),
+            target: rt.chat.manager_room(),
+            target_title: "Manager".into(),
+            state: MentionState::Queued,
+            hop: 1,
+        });
+        for kind in [None, Some("runner"), Some("link"), Some("")] {
+            sink.deliver("d1", kind, m.clone()).unwrap();
+        }
+        assert_eq!(*seen.lock().unwrap(), 0);
+        let _ = sink.deliver("d1", Some("mobile"), m.clone());
+        assert_eq!(*seen.lock().unwrap(), 1);
+        m.author.kind = AuthorKind::Session;
+        sink.deliver("d1", Some("mobile"), m).unwrap();
+        assert_eq!(*seen.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_replayed_or_stale_phone_mention_never_routes() {
+        let (_t, rt) = rig(json!({}));
+        let b = rt.chat.session_room(B);
+        let mut stale = incoming(&rt, ID);
+        stale.ts_ms = now_ms() - chat::FRESH_PAST_MS - 1000;
+        rt.relay_mention(stale, b.clone()).unwrap();
+        assert!(rt.chat.queued_ids(&b).is_empty());
         assert!(states(&rt, &rt.chat.session_room(A)).contains(&MentionState::Refused));
+        let id2 = "m_0190a1b2c3d4aabbccddeeff00112299";
+        let mut fresh = incoming(&rt, id2);
+        fresh.ts_ms = now_ms();
+        let ts = fresh.ts_ms;
+        rt.relay_mention(fresh, b.clone()).unwrap();
+        rt.chat.cancel(&b, id2);
+        let mut replay = incoming(&rt, id2);
+        replay.ts_ms = ts;
+        assert!(rt.relay_mention(replay, b.clone()).unwrap().duplicate);
+        assert!(rt.chat.queued_ids(&b).is_empty());
+    }
+
+    #[test]
+    fn the_phone_question_carries_a_provenance_label_and_not_the_untrusted_request_wording() {
+        let q = phone_question("d_phone1", "what now?");
+        assert!(q.starts_with("[from the owner's phone (d_phone1)]"));
+        assert!(q.ends_with("what now?"));
+        assert!(!q.contains("Treat it as a request"));
     }
 
     #[test]

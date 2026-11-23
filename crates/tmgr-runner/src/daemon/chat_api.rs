@@ -290,6 +290,7 @@ impl Runner {
                         reply_to: q.reply_to,
                         attachments: q.attachments,
                         device: None,
+                        owner_device: false,
                         client: conn.client.clone(),
                     };
                     let deliver = |body: &str| self.chat_deliver(&room, body, &conn.client);
@@ -714,6 +715,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             device: Some("d_phone1".into()),
+            owner_device: false,
             client: "relay".into(),
         }
     }

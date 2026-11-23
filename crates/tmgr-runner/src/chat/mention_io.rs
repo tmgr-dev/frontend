@@ -34,7 +34,6 @@ pub fn mention_ref(spec: &Spec, state: MentionState) -> MentionRef {
 fn state_text(t: &Transition) -> String {
     let who = &t.spec.title;
     let default = match t.state {
-        MentionState::NeedsConfirmation => format!("Waiting for confirmation to ask @{who}"),
         MentionState::Queued => format!("Queued, waiting for @{who} to be free"),
         MentionState::Sent => format!("Sent to @{who}"),
         MentionState::Answering => format!("@{who} is answering"),

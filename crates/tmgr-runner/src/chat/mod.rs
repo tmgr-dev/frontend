@@ -104,6 +104,7 @@ pub struct Incoming {
     pub reply_to: Option<String>,
     pub attachments: Vec<Attachment>,
     pub device: Option<String>,
+    pub owner_device: bool,
     pub client: String,
 }
 
@@ -985,6 +986,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             device: Some("d_phone1".into()),
+            owner_device: false,
             client: "relay".into(),
         }
     }
@@ -1389,6 +1391,7 @@ mod tests {
             reply_to: None,
             attachments: Vec::new(),
             device: None,
+            owner_device: false,
             client: "relay".into(),
         };
         let id = chat.mint_id();

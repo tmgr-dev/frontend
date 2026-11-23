@@ -71,8 +71,16 @@ impl RelaySink {
 }
 
 impl ChatSink for RelaySink {
-    fn deliver(&self, from_device: &str, msg: ChatMessage) -> Result<(), String> {
-        if msg.author.kind != AuthorKind::Owner || msg.room.machine != self.machine {
+    fn deliver(
+        &self,
+        from_device: &str,
+        from_kind: Option<&str>,
+        msg: ChatMessage,
+    ) -> Result<(), String> {
+        if msg.author.kind != AuthorKind::Owner
+            || msg.room.machine != self.machine
+            || !matches!(from_kind, Some("desktop" | "mobile"))
+        {
             crate::daemon::log(
                 "chat relay: dropped a message that is not owner input for this machine",
             );
@@ -87,6 +95,7 @@ impl ChatSink for RelaySink {
             reply_to: msg.reply_to,
             attachments: msg.attachments,
             device: Some(from_device.to_owned()),
+            owner_device: true,
             client: "relay".into(),
         };
         match (self.ingest)(incoming, target) {

@@ -15,7 +15,7 @@ const KEEP_DONE: usize = 64;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Via {
     Local { client: String },
-    Relay { device: String },
+    Relay { device: String, owner_device: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
