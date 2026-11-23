@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.178
+
+- Fixed: chat messages sent from the phone or another computer while the agent was busy were lost if the runner stopped or restarted before typing them. The runner now saves its chat queue to disk and types each message exactly once after a restart.
+- Faster chat: an agent's reply reaches your other devices in about a second (was about 3 seconds), and a burst of messages sent while the agent is busy is typed as one turn instead of one message every few seconds (20 messages: about 9 seconds, was about 110).
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.177
 
 - Added: files and photos you attach in the Manager chat reach the agent. The runner accepts them only from your trusted phone and desktop, checks each file against its sha256, copies it into the session's `tmgr-attachments` folder and lists its path in the agent's turn. A file that did not arrive is listed as "(not received)". Limits: 6 MiB per file from the phone, 25 MiB from the desktop on the same machine. Files are end-to-end encrypted; the server never sees their content.
