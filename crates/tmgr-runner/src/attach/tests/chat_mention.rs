@@ -177,11 +177,8 @@ fn titles_equal_ignoring_case_are_ambiguous_until_a_session_id_is_used() {
 }
 
 #[test]
-fn unknown_unavailable_and_empty_mentions_send_nothing() {
+fn unavailable_and_empty_mentions_send_nothing() {
     let mut v = view(ready(true, false));
-    assert!(type_and_enter(&mut v, "@nobody hi").is_empty());
-    assert_eq!(status(&v), "No session named @nobody");
-    v.edit_chat(b"\x15");
     assert!(type_and_enter(&mut v, "@gone hi").is_empty());
     assert_eq!(status(&v), "Cannot ask @gone: Exited");
     v.edit_chat(b"\x15");
@@ -459,4 +456,101 @@ fn the_menu_stays_closed_without_the_capability() {
     v.edit_chat(b"@d");
     v.edit_chat(b"\t");
     assert_eq!(v.chat.as_ref().unwrap().input_text(), "@d ");
+}
+
+#[test]
+fn an_unmatched_at_message_is_sent_as_a_plain_message() {
+    for cap in [true, false] {
+        let mut v = view(ready(cap, false));
+        assert_eq!(
+            type_and_enter(&mut v, "@nobody hi"),
+            vec![ChatAction::Send {
+                room: room(A),
+                body: "@nobody hi".into(),
+                mention: None,
+            }]
+        );
+    }
+}
+
+#[test]
+fn an_exact_title_beats_a_longer_title_it_prefixes_and_an_id_beats_a_title() {
+    let mut c = ready(true, false);
+    c.set_rooms({
+        let mut r = rooms();
+        r.push(info(
+            room("s_ffffffffff"),
+            "docs v2",
+            "codex",
+            verdict(true, false),
+        ));
+        r
+    });
+    c.sel = c.rooms.iter().position(|r| r.info.room == room(A)).unwrap();
+    let mut v = view(c);
+    assert_eq!(
+        type_and_enter(&mut v, "@docs v2 why"),
+        vec![ChatAction::Send {
+            room: room(A),
+            body: "why".into(),
+            mention: mention_send(room("s_ffffffffff"), false),
+        }]
+    );
+    let mut c = ready(true, false);
+    c.set_rooms({
+        let mut r = rooms();
+        r.push(info(room("s_gggggggggg"), A, "codex", verdict(true, false)));
+        r
+    });
+    c.sel = c.rooms.iter().position(|r| r.info.room == room(A)).unwrap();
+    let mut v = view(c);
+    assert_eq!(
+        type_and_enter(&mut v, &format!("@{A} hi")),
+        vec![ChatAction::Send {
+            room: room(A),
+            body: "hi".into(),
+            mention: mention_send(room(A), false),
+        }]
+    );
+}
+
+#[test]
+fn a_late_y_by_the_key_clock_is_refused_even_without_a_poll() {
+    let mut c = ready(true, false);
+    c.poll(1_000);
+    let mut v = view(c);
+    v.edit_chat_at(b"@danger run it", 1_000);
+    v.edit_chat_at(b"\r", 1_000);
+    assert!(v.chat.as_ref().unwrap().awaiting_confirm());
+    assert!(v.edit_chat_at(b"y", 1_000 + 30_001).is_empty());
+    assert_eq!(status(&v), "Confirmation expired");
+}
+
+#[test]
+fn a_confirmation_is_dropped_when_another_room_is_selected() {
+    let mut c = with_answers(manager(), &["m1"]);
+    c.sel = c
+        .rooms
+        .iter()
+        .position(|r| r.info.room == manager())
+        .unwrap();
+    c.poll(5_000);
+    let mut v = view(c);
+    type_and_enter(&mut v, ":add");
+    assert!(v.chat.as_ref().unwrap().awaiting_confirm());
+    v.chat.as_mut().unwrap().sel = 1;
+    assert!(v.edit_chat(b"y").is_empty());
+    assert!(!v.chat.as_ref().unwrap().awaiting_confirm());
+    assert_eq!(status(&v), "Confirmation dropped: the room changed");
+}
+
+#[test]
+fn an_async_confirmation_demand_for_a_room_that_is_no_longer_selected_is_not_armed() {
+    let mut c = ready(true, false);
+    c.injected(
+        &manager(),
+        "m1",
+        Err("forbidden: this session needs confirmation before it takes the reply".into()),
+    );
+    assert!(!c.awaiting_confirm());
 }

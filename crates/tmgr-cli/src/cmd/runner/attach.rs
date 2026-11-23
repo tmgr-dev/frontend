@@ -2713,7 +2713,7 @@ impl App {
                 self.dirty = true;
             }
             (Route::Chat, Action::Forward(data)) => {
-                let actions = self.view.edit_chat(&data);
+                let actions = self.view.edit_chat_at(&data, now_ms());
                 self.chat_actions(actions);
             }
             (Route::Chat, Action::Paste { data, .. } | Action::Drop(data)) => {

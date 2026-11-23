@@ -465,7 +465,9 @@ impl ChatState {
             return None;
         }
         if body.starts_with('@') {
-            return self.submit_mention(room, &body);
+            if let Some(handled) = self.submit_mention(room.clone(), &body) {
+                return handled;
+            }
         }
         self.sending = true;
         self.say("Sending...", false);
@@ -553,6 +555,14 @@ impl ViewState {
     }
 
     pub fn edit_chat(&mut self, data: &[u8]) -> Vec<ChatAction> {
+        let now = self.chat.as_ref().map_or(0, |c| c.now_ms);
+        self.edit_chat_at(data, now)
+    }
+
+    pub fn edit_chat_at(&mut self, data: &[u8], now_ms: u64) -> Vec<ChatAction> {
+        if let Some(c) = self.chat.as_mut() {
+            c.now_ms = c.now_ms.max(now_ms);
+        }
         let mut out = Vec::new();
         for key in split_chat_keys(data) {
             let Some(chat) = self.chat.as_mut() else {
