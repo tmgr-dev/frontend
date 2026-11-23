@@ -1983,14 +1983,26 @@ fn a_send_skips_a_full_mobile_and_still_reaches_the_other_devices() {
 }
 
 #[test]
-fn a_full_runner_among_the_targets_fails_the_send() {
+fn a_full_target_runner_fails_the_send() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
-  let a = engine_with(&fake, &clock, "Desktop A");
-  let r = join_as(&fake, &clock, &a, "Runner", "runner");
-  let m = join_as(&fake, &clock, &a, "Phone", "mobile");
-  let _ = m;
+  let (a, r) = runner_pair(&fake, &clock);
+  let _m = join_as(&fake, &clock, &a, "Phone", "mobile");
   fake.set_full(Some(&my_id(&r)));
   assert_eq!(send(&a, "hello").unwrap_err(), "the recipient's relay queue is full");
+}
+
+#[test]
+fn a_full_runner_of_another_machine_does_not_block_the_send() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let other = join_as(&fake, &clock, &a, "Other runner", "runner");
+  let m = join_as(&fake, &clock, &a, "Phone", "mobile");
+  fake.set_full(Some(&my_id(&other)));
+  let sent = send(&a, "hello").unwrap();
+  assert_eq!(sent.body_md, "hello");
+  let posted: Vec<String> = fake.0.lock().unwrap().msgs.iter().map(|x| x.to.clone()).collect();
+  assert!(posted.contains(&my_id(&r)) && posted.contains(&my_id(&m)));
+  assert!(!posted.contains(&my_id(&other)));
 }
 
 #[test]

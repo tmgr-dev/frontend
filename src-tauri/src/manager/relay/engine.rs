@@ -1558,7 +1558,19 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
         return Err("this device is not a trusted member of the chat yet".into());
       }
-      let targets: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id).cloned().collect();
+      let bound = c.st.bindings.get(&params.room.machine).cloned();
+      let targets: Vec<Dev> = c
+        .st
+        .trusted
+        .iter()
+        .filter(|d| d.id != id.device_id)
+        .filter(|d| match (&bound, c.st.kind_of(&d.id, &d.fp).unwrap_or(&d.kind)) {
+          (_, "desktop" | "mobile") => true,
+          (Some(runner), _) => &d.id == runner,
+          (None, _) => true,
+        })
+        .cloned()
+        .collect();
       if targets.is_empty() {
         return Err("there are no other trusted devices to send to".into());
       }
