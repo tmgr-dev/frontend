@@ -288,6 +288,7 @@ mod tests {
             state: ActivityState::Working,
             current: Some("Bash: ls".into()),
             used: vec!["Read: a.rs".into()],
+            calls: Vec::new(),
         };
         let wire = serde_json::to_value(ServerMsg::ChatActivity(
             serde_json::to_value(&activity).unwrap(),
@@ -305,6 +306,32 @@ mod tests {
         idle["current"] = Value::Null;
         let back: ServerMsg = serde_json::from_value(idle).unwrap();
         assert_eq!(back.chat_activity().unwrap().state, ActivityState::Idle);
+    }
+
+    #[test]
+    fn chat_activity_calls_are_optional_in_both_directions() {
+        use crate::chat::ToolCall;
+        let old = json!({"v": 1, "room": {"kind": "manager", "machine": "mx_0123456789abcdef"},
+            "state": "working", "current": null, "used": []});
+        let decoded: ChatActivity = serde_json::from_value(old).unwrap();
+        assert!(decoded.calls.is_empty());
+        let wire = serde_json::to_value(&decoded).unwrap();
+        assert!(wire.get("calls").is_none());
+        let mut new = wire;
+        new["calls"] = json!([{"name": "Bash", "summary": "ls", "future": 1}]);
+        new["extra"] = json!(true);
+        let decoded: ChatActivity = serde_json::from_value(new).unwrap();
+        assert_eq!(
+            decoded.calls,
+            vec![ToolCall {
+                n: 0,
+                name: "Bash".into(),
+                summary: "ls".into(),
+                result: None,
+                running: false,
+                error: false
+            }]
+        );
     }
 
     #[test]

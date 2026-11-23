@@ -1,3 +1,4 @@
+use super::redact;
 use super::title::{clean_title, clip, contains, open_under, LINE_CAP, PASS_CAP};
 use super::view::ViewState;
 use serde_json::Value;
@@ -6,6 +7,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use tmgr_ipc::api::StateKind;
+use tmgr_ipc::chat::ToolCall;
 
 const TAIL_BYTES: u64 = 1 << 20;
 const MAX_PASSES: usize = 4;
@@ -286,7 +288,11 @@ pub struct StatusScan {
     skipping: bool,
     pending: Vec<(String, String, String)>,
     used: Vec<String>,
+    calls: Vec<(String, ToolCall)>,
+    seq: u32,
+    no_result: HashSet<String>,
     finished: Option<Vec<String>>,
+    finished_calls: Vec<ToolCall>,
     todo: Option<(u32, u32)>,
     subs: Vec<Sub>,
     asking: Option<(String, String)>,
@@ -318,7 +324,11 @@ impl StatusScan {
             skipping: false,
             pending: Vec::new(),
             used: Vec::new(),
+            calls: Vec::new(),
+            seq: 0,
+            no_result: HashSet::new(),
             finished: None,
+            finished_calls: Vec::new(),
             todo: None,
             subs: Vec::new(),
             asking: None,
@@ -338,6 +348,23 @@ impl StatusScan {
 
     pub fn used(&self) -> &[String] {
         &self.used
+    }
+
+    pub fn take_finished_calls(&mut self) -> Vec<ToolCall> {
+        std::mem::take(&mut self.finished_calls)
+    }
+
+    pub fn calls(&self) -> Vec<ToolCall> {
+        let mut calls: Vec<ToolCall> = self
+            .calls
+            .iter()
+            .map(|(id, c)| ToolCall {
+                running: self.pending.iter().any(|(p, _, _)| p == id),
+                ..c.clone()
+            })
+            .collect();
+        redact::trim_results(&mut calls);
+        calls
     }
 
     pub fn is_for(&self, path: &Path) -> bool {
@@ -402,7 +429,10 @@ impl StatusScan {
         self.skipping = false;
         self.pending.clear();
         self.used.clear();
+        self.calls.clear();
+        self.no_result.clear();
         self.finished = None;
+        self.finished_calls.clear();
         self.todo = None;
         self.windowed = false;
         self.asking = None;
@@ -523,8 +553,11 @@ impl StatusScan {
                     == Some("end_turn")
                 {
                     let done = std::mem::take(&mut self.used);
+                    let calls = std::mem::take(&mut self.calls);
                     if !done.is_empty() {
                         self.finished = Some(done);
+                        self.finished_calls = calls.into_iter().map(|(_, c)| c).collect();
+                        redact::trim_results(&mut self.finished_calls);
                     }
                 }
             }
@@ -628,6 +661,16 @@ impl StatusScan {
             if self.used.len() > MAX_USED {
                 self.used.remove(0);
             }
+            self.seq = self.seq.wrapping_add(1);
+            let mut call = redact::tool_call(name, input);
+            call.n = self.seq;
+            self.calls.push((id.to_string(), call));
+            if !redact::result_allowed(name, input) {
+                self.no_result.insert(id.to_string());
+            }
+            if self.calls.len() > MAX_USED {
+                self.calls.remove(0);
+            }
             self.pending.push((id.to_string(), label, event));
             if self.pending.len() > MAX_PENDING {
                 self.pending.remove(0);
@@ -638,6 +681,8 @@ impl StatusScan {
     fn human(&mut self) {
         self.pending.clear();
         self.used.clear();
+        self.calls.clear();
+        self.no_result.clear();
         self.asking = None;
         self.subs.retain(|s| s.agent.is_some());
     }
@@ -670,14 +715,32 @@ impl StatusScan {
             self.human();
             return;
         };
-        let results: Vec<&str> = blocks
+        let result_blocks: Vec<&Value> = blocks
             .iter()
             .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+            .collect();
+        let results: Vec<&str> = result_blocks
+            .iter()
             .filter_map(|b| b.get("tool_use_id").and_then(Value::as_str))
             .collect();
         if results.is_empty() {
             self.human();
             return;
+        }
+        for b in &result_blocks {
+            let Some(id) = b.get("tool_use_id").and_then(Value::as_str) else {
+                continue;
+            };
+            let shown = !self.no_result.remove(id);
+            if let Some((_, call)) = self.calls.iter_mut().find(|(i, _)| i == id) {
+                call.error = b.get("is_error").and_then(Value::as_bool) == Some(true);
+                if shown {
+                    call.result = b
+                        .get("content")
+                        .and_then(redact::result_text)
+                        .and_then(|t| redact::excerpt(&t));
+                }
+            }
         }
         self.pending
             .retain(|(id, _, _)| !results.contains(&id.as_str()));

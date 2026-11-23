@@ -192,6 +192,7 @@ mod tests {
       state: tmgr_ipc::chat::ActivityState::Working,
       current: Some(current.into()),
       used: vec![current.into()],
+      calls: Vec::new(),
     })
   }
 

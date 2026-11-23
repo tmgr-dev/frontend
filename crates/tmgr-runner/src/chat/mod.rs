@@ -883,6 +883,7 @@ mod tests {
                     state: tmgr_ipc::chat::ActivityState::Working,
                     current: Some(format!("Bash: step {i}")),
                     used: Vec::new(),
+                    calls: Vec::new(),
                 });
             }
         }
@@ -905,6 +906,7 @@ mod tests {
             state: tmgr_ipc::chat::ActivityState::Working,
             current: Some(current.into()),
             used: Vec::new(),
+            calls: Vec::new(),
         }
     }
 

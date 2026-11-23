@@ -335,6 +335,23 @@ pub struct ChatActivity {
     pub state: ActivityState,
     pub current: Option<String>,
     pub used: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<ToolCall>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCall {
+    #[serde(default)]
+    pub n: u32,
+    pub name: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub running: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub error: bool,
 }
 
 pub fn new_message_id() -> String {

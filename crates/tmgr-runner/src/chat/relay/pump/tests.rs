@@ -270,6 +270,7 @@ fn forward_receives_zero_activity_events() {
         state: tmgr_ipc::chat::ActivityState::Working,
         current: Some(format!("Bash: {i}")),
         used: vec!["Read: a".into()],
+        calls: Vec::new(),
     };
     let (queue_tx, queue_rx) = mpsc::sync_channel(8);
     let polled = AtomicUsize::new(0);

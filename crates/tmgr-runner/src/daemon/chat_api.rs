@@ -906,6 +906,7 @@ mod tests {
             state: tmgr_ipc::chat::ActivityState::Working,
             current: Some(current.into()),
             used: vec!["Read: a.rs".into()],
+            calls: Vec::new(),
         }
     }
 

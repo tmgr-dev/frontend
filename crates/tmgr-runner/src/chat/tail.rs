@@ -318,6 +318,7 @@ fn activity_of(room: &RoomRef, s: &SessionInfo, scan: Option<&StatusScan>) -> Ch
         },
         current,
         used: scan.map_or_else(Vec::new, |sc| sc.used().iter().map(|l| short(l)).collect()),
+        calls: scan.map_or_else(Vec::new, StatusScan::calls),
     }
 }
 
@@ -450,9 +451,10 @@ pub fn capture_consenting(
             let finished = t.status.as_mut().and_then(|scan| {
                 scan.poll();
                 scan.take_finished()
+                    .map(|done| (done, scan.take_finished_calls()))
             });
             let event = match finished {
-                Some(done) => ChatActivity {
+                Some((done, finished_calls)) => ChatActivity {
                     v: 1,
                     room: room.clone(),
                     state: ActivityState::Idle,
@@ -461,6 +463,7 @@ pub fn capture_consenting(
                         .iter()
                         .map(|l| crate::attach::status::mask_secrets(l))
                         .collect(),
+                    calls: finished_calls,
                 },
                 None => activity_of(&room, s, t.status.as_ref()),
             };
@@ -714,6 +717,48 @@ mod tests {
             .used
             .iter()
             .all(|l| l.chars().count() <= crate::attach::status::ACTIVITY_MAX));
+    }
+
+    #[test]
+    fn calls_carry_masked_summaries_and_results_only_for_listing_tools() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let rx = chat.subscribe_activity();
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("hi"));
+        let s = [info(SID, "claude-code", "working")];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        append(
+            &log,
+            &tool_line("a", "Bash", json!({"command": "ls -la token=abcdefgh1234"})),
+        );
+        append(
+            &log,
+            &tool_line("b", "Read", json!({"file_path": "/x/notes.txt"})),
+        );
+        append(
+            &log,
+            &(json!({"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "a", "content": "file1\nfile2"},
+                {"type": "tool_result", "tool_use_id": "b", "content": "FILECONTENTS"}]}})
+            .to_string()
+                + "\n"),
+        );
+        append(&log, &tool_line("c", "Grep", json!({"pattern": "fn main"})));
+        capture_consenting(&chat, &s, &resolve, &|_| true);
+        let got = drain(&rx);
+        let calls = &got[0].calls;
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].summary, "ls -la token=…");
+        assert_eq!(calls[0].result.as_deref(), Some("file1\nfile2"));
+        assert!(!calls[0].running);
+        assert_eq!(calls[1].summary, "/x/notes.txt");
+        assert_eq!(calls[1].result, None);
+        assert!(calls[2].running && calls[2].result.is_none());
+        assert_eq!(calls.iter().map(|c| c.n).collect::<Vec<_>>(), [1, 2, 3]);
+        let wire = serde_json::to_string(&got).unwrap();
+        assert!(!wire.contains("abcdefgh1234") && !wire.contains("FILECONTENTS"));
     }
 
     #[test]

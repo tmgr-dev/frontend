@@ -13,11 +13,12 @@ pub(crate) fn blank_idle(room: &RoomRef) -> ChatActivity {
         state: ActivityState::Idle,
         current: None,
         used: Vec::new(),
+        calls: Vec::new(),
     }
 }
 
 fn carries_nothing(e: &ChatActivity) -> bool {
-    e.state == ActivityState::Idle && e.current.is_none() && e.used.is_empty()
+    e.state == ActivityState::Idle && e.current.is_none() && e.used.is_empty() && e.calls.is_empty()
 }
 
 pub(super) struct Slot {
