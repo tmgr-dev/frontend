@@ -38,31 +38,38 @@ impl BlobPart {
         let parts =
             u32::try_from(obj.get("parts").and_then(Value::as_u64).ok_or(BAD)?).map_err(|_| BAD)?;
         let data = obj.get("data").and_then(Value::as_str).ok_or(BAD)?;
-        if !valid_sha(sha256) || size == 0 || size > max_size {
-            return Err(BAD);
-        }
-        if u64::from(parts) != parts_for(size) || part >= parts {
-            return Err(BAD);
-        }
         if data.len() > PART_BYTES.div_ceil(3) * 4 {
             return Err(BAD);
         }
         let data = b64_decode(data).map_err(|_| BAD)?;
-        let expected = if part + 1 == parts {
-            size - PART_BYTES as u64 * u64::from(parts - 1)
-        } else {
-            PART_BYTES as u64
-        };
-        if data.len() as u64 != expected {
-            return Err(BAD);
-        }
-        Ok(BlobPart {
+        let part = BlobPart {
             sha256: sha256.to_owned(),
             size,
             part,
             parts,
             data,
-        })
+        };
+        part.check(max_size)?;
+        Ok(part)
+    }
+
+    pub fn check(&self, max_size: u64) -> Result<(), &'static str> {
+        const BAD: &str = "malformed blob payload";
+        if !valid_sha(&self.sha256) || self.size == 0 || self.size > max_size {
+            return Err(BAD);
+        }
+        if u64::from(self.parts) != parts_for(self.size) || self.part >= self.parts {
+            return Err(BAD);
+        }
+        let expected = if self.part + 1 == self.parts {
+            self.size - PART_BYTES as u64 * u64::from(self.parts - 1)
+        } else {
+            PART_BYTES as u64
+        };
+        if self.data.len() as u64 != expected {
+            return Err(BAD);
+        }
+        Ok(())
     }
 }
 

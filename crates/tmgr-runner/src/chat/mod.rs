@@ -1,4 +1,5 @@
 mod activity;
+pub mod blobs;
 pub mod mention;
 mod mention_io;
 pub mod queue;
