@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.173
+
+- Changed: a manager session can no longer stop or type into another session on its own. `send_to_session` and the new `stop_session` tool create an approval card ("Requested by session X", with the text for a send); the runner acts only after you approve it on the desktop. Deny or expiry does nothing. Cards are signed and checked like spawn cards, so forged, replayed, edited or wrong-kind cards are refused.
+- Changed: a send from a manager on another machine also needs an approval card on the target machine. Send text is limited to 8 KiB.
+- Note: your own Stop and input from the desktop or CLI work as before, without a card. The phone cannot approve stop or send cards yet; approve them on the desktop. `stop_session` only stops sessions on this machine.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.172
 
 - Added: @mentions to a follower machine's manager. From the CLI or desktop on the leader, `@<machine>` asks that machine's manager; the follower queues the question into its manager chat as untrusted data and the leader posts the manager's reply back. Phone mentions to follower machines are refused, and so are asks into an unrestricted follower manager.
