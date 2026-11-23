@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.180
+
+- Fixed: Manager chat messages from a phone or desktop whose clock is off by more than 5 minutes were silently dropped by the runner, and the runner's replies were dropped by that device. Clocks may now differ by up to 31 days. The runner learns each device's clock offset and converts message times to its own clock, so freshness checks still work.
+- Replay protection is kept: each message is accepted once, including after a runner restart, and a message pushed out of the runner's 5000-entry history cannot be replayed.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.179
 
 - Fixed: the Manager said "Queued: the agent is busy" forever for an idle session whose input box sat above a tall footer (many background tasks). The runner now finds the input box and types the message.

@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.208 — 2026-11-24
+
+- Fixed: Manager chat replies from a runner whose clock is more than 5 minutes ahead of this computer were silently dropped. Clocks may now differ by up to 31 days. For messages from this desktop to a runner with a different clock, also update the tmgr CLI to 1.0.180 and restart the runner.
+
 ## 0.9.207 — 2026-11-23
 
 - Manager: a message waiting because the session's input box has unsent text now says "Waiting: the input box has unsent text" instead of "the agent is busy". Needs tmgr CLI 1.0.179.
