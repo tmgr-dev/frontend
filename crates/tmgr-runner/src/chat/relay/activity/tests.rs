@@ -302,7 +302,10 @@ fn blank_idle_is_sent_once_then_forgotten() {
     rig.leases.deliver_activity_on("p2", true);
     rig.advance(3_000);
     rig.tick();
-    assert_eq!(rig.rec.count(), 0);
+    let sent = rig.rec.take();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0["snapshot"], true);
+    assert!(sent[0].0["rooms"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -322,7 +325,9 @@ fn rooms_of_another_machine_are_never_sent() {
     rig.tick();
     rig.advance(60_000);
     rig.tick();
-    assert_eq!(rig.rec.count(), 0);
+    for (p, _) in rig.rec.take() {
+        assert!(p["rooms"].as_array().unwrap().is_empty());
+    }
 }
 
 #[test]
@@ -461,5 +466,40 @@ fn revoked_consent_clears_phones_and_a_new_lease_gets_no_stale_state() {
     rig.leases.deliver_activity_on("p2", true);
     rig.advance(3_000);
     rig.tick();
+    let sent = rig.rec.take();
+    assert_eq!(sent.len(), 1);
+    assert!(sent[0].0["rooms"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_new_lease_gets_an_empty_snapshot_when_nothing_is_active() {
+    let mut rig = Rig::new();
+    rig.leases.deliver_activity_on("p1", true);
+    rig.tick();
+    let sent = rig.rec.take();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0["snapshot"], true);
+    assert_eq!(sent[0].0["machine"], rig.chat.machine());
+    assert!(sent[0].0["rooms"].as_array().unwrap().is_empty());
+    rig.advance(3_000);
+    rig.tick();
     assert_eq!(rig.rec.count(), 0);
+}
+
+#[test]
+fn a_failed_send_makes_the_next_flush_a_full_snapshot() {
+    let machine = "mx_0123456789abcdef";
+    let leased = ["p1".to_owned()];
+    let mut f = Flusher::new(machine.into());
+    f.ingest(vec![big_room(machine, 1, 1, 1, 0)]);
+    collect(machine, &mut f, &leased, 0);
+    f.ingest(vec![crate::chat::activity::blank_idle(
+        &big_room(machine, 1, 1, 1, 0).room,
+    )]);
+    let err = f.flush(&leased, 3_000, &mut |_, _| Err("429".into()));
+    assert!(err.is_some());
+    let sent = collect(machine, &mut f, &leased, 6_000);
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].1["snapshot"], true);
+    assert!(sent[0].1["rooms"].as_array().unwrap().is_empty());
 }

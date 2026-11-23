@@ -230,6 +230,7 @@ impl Flusher {
         self.peers.retain(|d, _| leased.iter().any(|l| l == d));
         let busy = self.rooms.iter().any(|e| working(&e.event));
         let mut first_err = None;
+        let mut failed = Vec::new();
         for device in leased {
             let new = !self.peers.contains_key(device);
             let peer = self.peers.entry(device.clone()).or_insert(Peer {
@@ -253,14 +254,19 @@ impl Flusher {
             if snapshot {
                 peer.snapshot_at = now;
             }
-            if rooms.is_empty() {
+            if rooms.is_empty() && !snapshot {
                 continue;
             }
             for p in envelopes(&self.machine, snapshot, &rooms) {
                 if let Err(e) = send(device, &p) {
                     first_err.get_or_insert(e);
+                    failed.push(device.clone());
+                    break;
                 }
             }
+        }
+        for device in failed {
+            self.peers.remove(&device);
         }
         self.rooms.retain(|e| !blank(&e.event));
         first_err
