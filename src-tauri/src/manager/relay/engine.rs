@@ -952,8 +952,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   fn claim_machine(c: &mut Core, from: &str, machine: &str, now: u64) -> bool {
     let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
-    let holder = c.st.bindings.get(machine).filter(|d| c.st.trusted.iter().any(|t| &t.id == *d));
-    match holder {
+    match c.st.bindings.get(machine) {
       Some(d) if d == from => true,
       Some(_) => {
         record_alert(c, "room_conflict", from, now);

@@ -94,6 +94,13 @@ pub fn machine_id(runner_dir: &Path) -> io::Result<String> {
     }
 }
 
+pub const RELAY_CLIENT: &str = "relay";
+pub const RELAY_MOBILE_CLIENT: &str = "relay-mobile";
+
+pub fn is_relay_client(client: &str) -> bool {
+    client == RELAY_CLIENT || client == RELAY_MOBILE_CLIENT
+}
+
 pub const FRESH_PAST_MS: u64 = 10 * 60 * 1000;
 pub const FRESH_FUTURE_MS: u64 = 5 * 60 * 1000;
 
@@ -259,7 +266,7 @@ impl Chat {
         state: ReceiptState,
         reason: Option<&str>,
     ) {
-        let (true, Some(device)) = (client == "relay", device) else {
+        let (true, Some(device)) = (client == RELAY_CLIENT, device) else {
             return;
         };
         let Some(sink) = lock(&self.receipt_sink).clone() else {
@@ -1246,6 +1253,29 @@ mod tests {
         assert_eq!(*got.borrow(), [("hello".to_string(), "relay".to_string())]);
         assert!(c.queued_ids(&room).is_empty());
         assert_eq!(texts(&c, &room).len(), 1);
+    }
+
+    #[test]
+    fn both_relay_clients_take_the_untrusted_relay_delivery_path_but_only_desktops_get_receipts() {
+        assert!(is_relay_client(RELAY_CLIENT));
+        assert!(is_relay_client(RELAY_MOBILE_CLIENT));
+        assert!(!is_relay_client("remote"));
+        assert!(!is_relay_client("desktop"));
+        let (_t, c) = chat();
+        let got = std::sync::Arc::new(std::sync::Mutex::new(0));
+        let g = got.clone();
+        c.set_receipt_sink(Some(std::sync::Arc::new(move |_| {
+            *g.lock().unwrap() += 1;
+            true
+        })));
+        c.receipt(
+            RELAY_MOBILE_CLIENT,
+            Some("d1"),
+            "m_00000000000000000000000000000001",
+            ReceiptState::Queued,
+            None,
+        );
+        assert_eq!(*got.lock().unwrap(), 0);
     }
 
     #[test]

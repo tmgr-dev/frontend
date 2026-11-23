@@ -138,7 +138,12 @@ impl ChatSink for RelaySink {
             attachments: msg.attachments,
             device: Some(from_device.to_owned()),
             owner_device: true,
-            client: if desktop { "relay" } else { "relay-mobile" }.into(),
+            client: if desktop {
+                crate::chat::RELAY_CLIENT
+            } else {
+                crate::chat::RELAY_MOBILE_CLIENT
+            }
+            .into(),
         };
         match (self.ingest)(incoming, target) {
             Ok(_) => Ok(()),

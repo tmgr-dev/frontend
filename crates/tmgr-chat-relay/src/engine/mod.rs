@@ -1310,11 +1310,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 }
                 let machine = &msg.room.machine;
                 let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
-                let holder =
-                    c.st.bindings
-                        .get(machine)
-                        .filter(|d| c.st.trusted.iter().any(|t| &t.id == *d));
-                match holder {
+                match c.st.bindings.get(machine) {
                     Some(d) if d == from => true,
                     Some(_) => {
                         record_alert(c, "room_conflict", from, now);

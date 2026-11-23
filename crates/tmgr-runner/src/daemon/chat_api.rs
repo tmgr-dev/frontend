@@ -457,7 +457,7 @@ impl Runner {
                     if self.chat.is_mention_open(it.id) {
                         return self.mention_deliver(it);
                     }
-                    let delivery = if it.client == "relay" {
+                    let delivery = if chat::is_relay_client(it.client) {
                         self.relay_deliver(it.room, it.device, it.owner_device, it.body)
                     } else if it.client == REMOTE_CLIENT {
                         self.remote_deliver(it.room, it.body)
