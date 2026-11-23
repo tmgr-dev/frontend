@@ -97,7 +97,14 @@ pub async fn install(
     let _ = fs::remove_dir_all(&part);
     return Err(e);
   }
-  let _ = fs::remove_dir_all(dir);
+  match fs::remove_dir_all(dir) {
+    Ok(()) => {}
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+    Err(e) => {
+      let _ = fs::remove_dir_all(&part);
+      return Err(e.to_string());
+    }
+  }
   fs::rename(&part, dir).map_err(|e| {
     let _ = fs::remove_dir_all(&part);
     e.to_string()

@@ -255,4 +255,16 @@ describe('piperEngine', () => {
 		expect(h.onEnd).toHaveBeenCalledTimes(1);
 		expect(h.onError).not.toHaveBeenCalled();
 	});
+
+	it('keeps speaking after a chunk that produced no audio', async () => {
+		let n = 0;
+		invokeMock.mockImplementation(async (cmd: string) => {
+			if (cmd === 'tts_check') return { ok: true, oov: [] };
+			return n++ === 0 ? new ArrayBuffer(0) : new Float32Array(100).buffer;
+		});
+		const h = hooks();
+		piperEngine.speak(['...', 'Hello.'], 'en', h);
+		await flush();
+		expect(ctx().sources).toHaveLength(1);
+	});
 });
