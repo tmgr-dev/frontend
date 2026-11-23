@@ -1,15 +1,18 @@
 import {
-	CONFIRM_MS,
-	MAX_TRACKED,
 	canRetry,
+	CONFIRM_MS,
 	createDeliveryTracker,
 	failureReason,
 	isFailureNote,
+	MAX_TRACKED,
 	newMessageId,
 	onAccepted,
 	onConfirmTimeout,
 	onReceipt,
 	onRejected,
+	onSendTimeout,
+	SEND_TIMEOUT_REASON,
+	SENDING_MS,
 	startDelivery,
 	type Delivery,
 } from '../delivery';
@@ -41,6 +44,14 @@ describe('delivery transitions', () => {
 		expect(queued).toMatchObject({ state: 'queued', reason: 'turn' });
 		expect(onReceipt(queued, 'queued').reason).toBeUndefined();
 		expect(onReceipt(queued, 'delivered').reason).toBeUndefined();
+	});
+
+	it('a message still sending fails with the timeout reason and can be retried', () => {
+		const d = onSendTimeout(startDelivery(true));
+		expect(d).toMatchObject({ state: 'failed', reason: SEND_TIMEOUT_REASON });
+		expect(canRetry(d)).toBe(true);
+		const sent = onAccepted(startDelivery(true));
+		expect(onSendTimeout(sent)).toBe(sent);
 	});
 
 	it('times out only remote sent messages', () => {
@@ -92,9 +103,37 @@ describe('delivery tracker', () => {
 		});
 		t.begin('a', true);
 		t.accepted('a');
-		expect(times).toEqual([CONFIRM_MS]);
-		handles[0]();
+		expect(times).toEqual([SENDING_MS, CONFIRM_MS]);
+		handles[1]();
 		expect(t.get('a')?.state).toBe('unconfirmed');
+	});
+
+	it('fails a message that is still sending after the sending timeout, for local rows too', () => {
+		const t = createDeliveryTracker(() => undefined);
+		t.begin('a', true);
+		t.begin('b', false);
+		jest.advanceTimersByTime(SENDING_MS - 1);
+		expect(t.get('a')?.state).toBe('sending');
+		jest.advanceTimersByTime(1);
+		expect(t.get('a')).toMatchObject({
+			state: 'failed',
+			reason: SEND_TIMEOUT_REASON,
+		});
+		expect(t.get('b')).toMatchObject({
+			state: 'failed',
+			reason: SEND_TIMEOUT_REASON,
+		});
+	});
+
+	it('an accepted or rejected message never gets the sending timeout', () => {
+		const t = createDeliveryTracker(() => undefined);
+		t.begin('a', true);
+		t.accepted('a');
+		t.begin('b', true);
+		t.rejected('b', 'down');
+		jest.advanceTimersByTime(SENDING_MS + 1);
+		expect(t.get('a')?.state).toBe('unconfirmed');
+		expect(t.get('b')).toMatchObject({ state: 'failed', reason: 'down' });
 	});
 
 	it('uses fake timers by default and cancels on receipt', () => {
@@ -147,7 +186,7 @@ describe('delivery tracker', () => {
 		for (let i = 0; i < MAX_TRACKED; i++) t.begin(`m${i}`, true);
 		expect(t.get('first')).toBeUndefined();
 		expect(t.get('m0')?.state).toBe('sending');
-		expect(cleared).toEqual(['h']);
+		expect(cleared).toEqual(['h', 'h']);
 		expect(seen.filter(([id, d]) => id === 'first' && !d)).toHaveLength(1);
 	});
 

@@ -156,7 +156,12 @@
 
 <script lang="ts">
 	import { defineComponent, h, type PropType } from 'vue';
-	import { canRetry, isQueuedWhy, type Delivery } from '../delivery';
+	import {
+		canRetry,
+		isQueuedWhy,
+		SEND_TIMEOUT_REASON,
+		type Delivery,
+	} from '../delivery';
 	import {
 		addCopyButtons,
 		copyBlockText,
@@ -237,6 +242,8 @@
 				const d = this.delivery;
 				if (!d) return '';
 				if (d.retried) return this.$t('manager.messages.delivery.retried');
+				if (d.state === 'failed' && d.reason === SEND_TIMEOUT_REASON)
+					return this.$t('manager.messages.delivery.sendTimeout');
 				if (d.state === 'failed' && d.reason)
 					return this.$t('manager.messages.delivery.failedReason', {
 						reason: d.reason,

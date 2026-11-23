@@ -164,6 +164,7 @@
 			"delivered": "Delivered",
 			"failed": "Not delivered",
 			"failedReason": "Not delivered: {reason}",
+			"sendTimeout": "Not delivered: no confirmation within 30 seconds. It may not have been sent, retry is safe",
 			"unconfirmed": "Sent, not confirmed",
 			"retried": "Sent again",
 			"retry": "Retry",

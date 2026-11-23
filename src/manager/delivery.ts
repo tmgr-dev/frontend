@@ -22,6 +22,8 @@ export interface Delivery {
 }
 
 export const CONFIRM_MS = 20_000;
+export const SENDING_MS = 30_000;
+export const SEND_TIMEOUT_REASON = 'send_timeout';
 export const MAX_TRACKED = 200;
 
 export const startDelivery = (remote: boolean): Delivery => ({
@@ -49,6 +51,11 @@ export const onReceipt = (
 	else delete next.reason;
 	return next;
 };
+
+export const onSendTimeout = (d: Delivery): Delivery =>
+	d.state === 'sending'
+		? { ...d, state: 'failed', reason: SEND_TIMEOUT_REASON }
+		: d;
 
 export const onConfirmTimeout = (d: Delivery): Delivery =>
 	d.state === 'sent' && d.remote ? { ...d, state: 'unconfirmed' } : d;
@@ -91,6 +98,7 @@ export const createDeliveryTracker = (
 	onChange: (id: string, d: Delivery | undefined) => void,
 	timers: Timers = globalTimers,
 	confirmMs: number = CONFIRM_MS,
+	sendingMs: number = SENDING_MS,
 ): DeliveryTracker => {
 	const items = new Map<string, Delivery>();
 	const handles = new Map<string, unknown>();
@@ -123,6 +131,13 @@ export const createDeliveryTracker = (
 		begin(id, remote) {
 			disarm(id);
 			put(id, startDelivery(remote));
+			handles.set(
+				id,
+				timers.set(() => {
+					handles.delete(id);
+					update(id, onSendTimeout);
+				}, sendingMs),
+			);
 		},
 		accepted(id) {
 			const cur = items.get(id);

@@ -5,6 +5,8 @@ import {
 	failureReason,
 	isFailureNote,
 	newMessageId,
+	SEND_TIMEOUT_REASON,
+	SENDING_MS,
 	type Delivery,
 	type Receipt,
 } from './delivery';
@@ -143,6 +145,11 @@ const merge = (
 
 const slashName = (command: SlashCommand) => command.name.replace(/^\//, '');
 
+class SendTimeout extends Error {}
+
+const SEND_TIMEOUT_TEXT =
+	'The message was not confirmed as sent in time; it may not have been sent. Retry is safe.';
+
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export const createManagerStore = (api: ManagerApi) => {
@@ -254,6 +261,23 @@ export const createManagerStore = (api: ManagerApi) => {
 		store.messagesByRoom[key] = [...rest, next].sort(byTime);
 	};
 
+	const unsent = new Set<string>();
+
+	const sendWithin = (ms: number, params: Parameters<ManagerApi['send']>[0]) =>
+		new Promise<ChatMessage>((resolve, reject) => {
+			const timer = setTimeout(() => reject(new SendTimeout()), ms);
+			api.send(params).then(
+				(sent) => {
+					clearTimeout(timer);
+					resolve(sent);
+				},
+				(e) => {
+					clearTimeout(timer);
+					reject(e);
+				},
+			);
+		});
+
 	const deliver = async (job: {
 		key: string;
 		room: RoomRef;
@@ -264,6 +288,8 @@ export const createManagerStore = (api: ManagerApi) => {
 		replyTo?: string;
 		fromDraft?: boolean;
 		retryOf?: string;
+		reuseId?: boolean;
+		tsMs?: number;
 	}) => {
 		const { key, room, text, body, mention } = job;
 		const fromDraft = job.fromDraft !== false;
@@ -271,7 +297,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			store.error = 'Message is larger than 64 KiB';
 			return;
 		}
-		const id = newMessageId();
+		const id = job.reuseId && job.retryOf ? job.retryOf : newMessageId();
 		const draftAttachments = [...job.attachments];
 		const draftReply = store.replyTo;
 		const optimistic: ChatMessage = {
@@ -279,7 +305,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			id,
 			room,
 			author: { kind: 'owner', id: 'owner' },
-			ts_ms: Date.now(),
+			ts_ms: job.tsMs ?? Date.now(),
 			kind: 'text',
 			body_md: body,
 			...(job.attachments.length ? { attachments: job.attachments } : {}),
@@ -289,7 +315,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			optimistic,
 		]);
 		tracker.begin(id, !store.originLocal(key));
-		if (job.retryOf) tracker.retried(job.retryOf);
+		if (job.retryOf && !job.reuseId) tracker.retried(job.retryOf);
 		const cleared =
 			fromDraft && store.activeKey === key && store.draft.text === text;
 		if (cleared) {
@@ -301,7 +327,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			store.closeMention();
 		}
 		try {
-			const sent = await api.send({
+			const sent = await sendWithin(SENDING_MS, {
 				id,
 				ts_ms: optimistic.ts_ms,
 				room,
@@ -312,14 +338,17 @@ export const createManagerStore = (api: ManagerApi) => {
 			});
 			store.error = null;
 			store.slash.picked = null;
+			unsent.delete(id);
 			if (sent.id !== id) tracker.rename(id, sent.id);
 			replaceRow(key, id, sent);
 			tracker.accepted(sent.id);
 			postSendPolls = POST_SEND_POLLS;
 			void store.refreshQueued();
 		} catch (e) {
-			const reason = errorText(e);
-			store.error = reason;
+			const timedOut = e instanceof SendTimeout;
+			const reason = timedOut ? SEND_TIMEOUT_REASON : errorText(e);
+			store.error = timedOut ? SEND_TIMEOUT_TEXT : reason;
+			unsent.add(id);
 			tracker.rejected(id, reason);
 			if (cleared && store.activeKey === key && !store.draft.text) {
 				store.draft.text = text;
@@ -505,6 +534,8 @@ export const createManagerStore = (api: ManagerApi) => {
 					replyTo: m.reply_to,
 					fromDraft: false,
 					retryOf: id,
+					reuseId: unsent.has(id),
+					tsMs: m.ts_ms,
 				});
 				return;
 			}

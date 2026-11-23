@@ -1544,6 +1544,75 @@ describe('delivery', () => {
 		expect(t.store.draft.text).toBe('two');
 	});
 
+	it('retry of a message the relay rejected reuses its id and ts_ms', async () => {
+		let fail = true;
+		const t = remoteSetup({
+			send: jest.fn(
+				async (p: { id?: string; room: RoomRef; body_md: string }) => {
+					if (fail) throw new Error('relay down');
+					return {
+						...msg(1, p.room, 'owner'),
+						id: p.id as string,
+						body_md: p.body_md,
+					};
+				},
+			),
+		});
+		await sendRemote(t, 'again');
+		const first = own(t)[0];
+		fail = false;
+		await t.store.retry(first.id);
+		const calls = (t.api.send as jest.Mock).mock.calls.map((c) => c[0]);
+		expect(calls).toHaveLength(2);
+		expect(calls[1].id).toBe(first.id);
+		expect(calls[1].ts_ms).toBe(first.ts_ms);
+		expect(own(t)).toHaveLength(1);
+		expect(t.store.delivery[first.id].state).toBe('sent');
+	});
+
+	it('a send that never answers fails after 30 s with the timeout reason, and retry reuses the id', async () => {
+		let hang = true;
+		const t = remoteSetup({
+			send: jest.fn((p: { id?: string; room: RoomRef; body_md: string }) =>
+				hang
+					? new Promise<ChatMessage>(() => {})
+					: Promise.resolve({
+							...msg(1, p.room, 'owner'),
+							id: p.id as string,
+							body_md: p.body_md,
+						}),
+			),
+		});
+		await t.store.init();
+		await t.store.select(S1_KEY);
+		t.store.draft.text = 'slow';
+		const pending = t.store.send();
+		const id = own(t)[0].id;
+		expect(t.store.delivery[id].state).toBe('sending');
+		jest.advanceTimersByTime(30_000);
+		await pending;
+		expect(t.store.delivery[id]).toMatchObject({
+			state: 'failed',
+			reason: 'send_timeout',
+		});
+		hang = false;
+		await t.store.retry(id);
+		const ids = (t.api.send as jest.Mock).mock.calls.map((c) => c[0].id);
+		expect(ids).toEqual([id, id]);
+		expect(t.store.delivery[id].state).toBe('sent');
+	});
+
+	it('retry of a message the relay accepted but nobody confirmed still sends a new message', async () => {
+		const t = remoteSetup();
+		await sendRemote(t, 'unsure');
+		const first = own(t)[0].id;
+		jest.advanceTimersByTime(20_000);
+		expect(t.store.delivery[first].state).toBe('unconfirmed');
+		await t.store.retry(first);
+		const calls = (t.api.send as jest.Mock).mock.calls;
+		expect(calls[1][0].id).not.toBe(first);
+	});
+
 	it('retry sends the same text as a new message with a new id and marks the old row retried', async () => {
 		const t = remoteSetup();
 		await sendRemote(t, 'again');
