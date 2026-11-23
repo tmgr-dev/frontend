@@ -5,6 +5,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 ## 0.9.200 — 2026-11-23
 
+- Fixed: messages in the Manager failed with "ts_ms is required with id" (0.9.199 regression).
 - Tray popover: at most 3 decision cards are shown, with a last item "Open Decisions" ("+N more" when there are more) that opens the Decisions window.
 - Decision notifications: the toast and the system notification have an "Open in Decisions" button, and clicking the notification opens the Decisions window on that card.
 - Decisions window: a copy button on every code block, quote and agent message; code without a language (or text/plaintext) wraps long lines.
