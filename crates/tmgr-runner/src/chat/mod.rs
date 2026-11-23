@@ -213,6 +213,7 @@ impl Chat {
         let store = Store::open(runner_dir)
             .map_err(|e| crate::daemon::log(&format!("chat: store unavailable: {e}")))
             .ok();
+        let queue = queue::Queue::open(store.as_ref().map(Store::dir));
         let chat = Chat {
             machine,
             store,
@@ -223,7 +224,7 @@ impl Chat {
             seq: AtomicU16::new(0),
             tails: Mutex::new(HashMap::new()),
             sent: Mutex::new(VecDeque::new()),
-            queue: Mutex::new(queue::Queue::default()),
+            queue: Mutex::new(queue),
             rpc_client: Mutex::new(None),
             relay_device: Mutex::new(None),
             mentions: mention_io::new_mentions(),
@@ -548,21 +549,27 @@ impl Chat {
         };
         msg.validate().map_err(Invalid)?;
         let routed = msg.mention.is_some();
+        let mut redelivered = false;
         {
             let _g = lock(&self.write);
             match store.get(&msg.room, &msg.id).map_err(Storage)? {
                 Some(old) if same_content(&old, &msg) => {
-                    return Ok(Ingested {
-                        message: old,
-                        delivered: false,
-                        duplicate: true,
-                    });
+                    if routed || !fresh(msg.ts_ms, now_ms) || self.is_pending(&msg.room, &msg.id) {
+                        return Ok(Ingested {
+                            message: old,
+                            delivered: false,
+                            duplicate: true,
+                        });
+                    }
+                    redelivered = true;
                 }
                 Some(_) => return Err(Conflict("that message id holds different content".into())),
                 None => store.append(&msg).map_err(Storage)?,
             }
         }
-        self.publish(&msg);
+        if !redelivered {
+            self.publish(&msg);
+        }
         if routed {
             return Ok(Ingested {
                 message: msg,
@@ -571,6 +578,7 @@ impl Chat {
             });
         }
         if msg.ts_ms < now_ms && now_ms - msg.ts_ms > FRESH_PAST_MS {
+            self.finish_id(&msg.id);
             self.note_for(&msg.room, "Not delivered: older than 10 minutes.", &msg.id);
             self.receipt(
                 &client,
@@ -586,6 +594,7 @@ impl Chat {
             });
         }
         if msg.ts_ms > now_ms + FRESH_FUTURE_MS {
+            self.finish_id(&msg.id);
             self.note_for(
                 &msg.room,
                 "Not delivered: its time is too far ahead of this machine's clock.",
@@ -606,16 +615,21 @@ impl Chat {
         }
         let mut deliver = Some(deliver);
         let turn = self.turn_body(&msg.room, &msg.body_md, &msg.attachments);
-        let outcome = self.submit(
-            &msg.room,
-            &msg.id,
-            &turn,
-            &client,
-            device.as_deref(),
-            owner_device,
-            now_ms,
-            |body, _, _, _| deliver.take().map_or(Delivery::Busy(None), |d| d(body)),
-        );
+        let outcome = self
+            .submit_inner(
+                &msg.room,
+                &msg.id,
+                &turn,
+                &client,
+                device.as_deref(),
+                owner_device,
+                now_ms,
+                queue::DEFAULT_TTL_MS,
+                true,
+                |it| deliver.take().map_or(Delivery::Busy(None), |d| d(it.body)),
+                |_, _| {},
+            )
+            .map_err(Storage)?;
         self.note_undelivered(&msg.room, &msg.id, &outcome);
         let delivered = outcome == Submit::Delivered;
         Ok(Ingested {
@@ -808,6 +822,10 @@ impl crate::manager::ChatPort for std::sync::Arc<Chat> {
     fn history(&self, room: &RoomRef, limit: u32) -> Result<Vec<ChatMessage>, String> {
         Chat::history(self, room, None, Some(limit))
     }
+}
+
+fn fresh(ts_ms: u64, now_ms: u64) -> bool {
+    !(ts_ms < now_ms && now_ms - ts_ms > FRESH_PAST_MS) && ts_ms <= now_ms + FRESH_FUTURE_MS
 }
 
 fn same_content(a: &ChatMessage, b: &ChatMessage) -> bool {
@@ -1762,5 +1780,211 @@ mod tests {
             hop: 1,
         });
         assert!(ChatPort::post(&chat, m).unwrap().mention.is_none());
+    }
+    fn restart_ids(room: &RoomRef, range: std::ops::RangeInclusive<u64>) -> Vec<String> {
+        range
+            .map(|n| incoming(room.clone(), n, NOW, "x").id)
+            .collect()
+    }
+
+    fn ingest_busy(c: &Chat, room: &RoomRef, n: u64) -> Result<Ingested, IngestError> {
+        c.ingest(
+            incoming(room.clone(), n, NOW, &format!("m{n}")),
+            NOW,
+            no_session,
+            |_| Delivery::Busy(None),
+        )
+    }
+
+    fn drain_all(c: &Chat, now: u64) -> Vec<String> {
+        let got = std::cell::RefCell::new(Vec::new());
+        c.drain_queue(now, |_, body, _, _, _| {
+            got.borrow_mut().push(body.to_string());
+            Delivery::Delivered
+        });
+        got.into_inner()
+    }
+
+    fn six_with_the_first_delivered(c: &Chat, room: &RoomRef) {
+        c.ingest(
+            incoming(room.clone(), 1, NOW, "m1"),
+            NOW,
+            no_session,
+            |_| Delivery::Delivered,
+        )
+        .unwrap();
+        for n in 2..=6 {
+            ingest_busy(c, room, n).unwrap();
+        }
+    }
+
+    #[test]
+    fn queued_relay_messages_survive_a_runner_restart_and_are_typed_once_in_order() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        six_with_the_first_delivered(&c, &room);
+        assert_eq!(c.queued_ids(&room), restart_ids(&room, 2..=6));
+        drop(c);
+        let c = Chat::open(t.path());
+        assert_eq!(c.queued_ids(&room), restart_ids(&room, 2..=6));
+        assert_eq!(drain_all(&c, NOW + 1), ["m2", "m3", "m4", "m5", "m6"]);
+        assert!(drain_all(&c, NOW + 2).is_empty());
+        drop(c);
+        let c = Chat::open(t.path());
+        assert!(c.queued_ids(&room).is_empty());
+    }
+
+    #[test]
+    fn a_relay_redelivery_after_a_restart_neither_requeues_nor_retypes() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        six_with_the_first_delivered(&c, &room);
+        drop(c);
+        let c = Chat::open(t.path());
+        for n in 1..=6 {
+            let r = c
+                .ingest(
+                    incoming(room.clone(), n, NOW, &format!("m{n}")),
+                    NOW + 1,
+                    no_session,
+                    |_| -> Delivery { panic!("redelivery must not type") },
+                )
+                .unwrap();
+            assert!(r.duplicate && !r.delivered);
+        }
+        assert_eq!(c.queued_ids(&room), restart_ids(&room, 2..=6));
+    }
+
+    #[test]
+    fn a_message_stored_but_never_queued_before_a_crash_is_queued_once_on_redelivery() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        ingest_busy(&c, &room, 1).unwrap();
+        drop(c);
+        fs::remove_file(t.path().join("chat").join("queue.json")).unwrap();
+        let c = Chat::open(t.path());
+        assert!(c.queued_ids(&room).is_empty());
+        for _ in 0..2 {
+            let r = ingest_busy(&c, &room, 1).unwrap();
+            assert!(!r.delivered);
+        }
+        assert_eq!(c.queued_ids(&room), restart_ids(&room, 1..=1));
+        assert_eq!(drain_all(&c, NOW + 1), ["m1"]);
+    }
+
+    #[test]
+    fn a_stale_stored_message_is_not_requeued_on_redelivery() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        ingest_busy(&c, &room, 1).unwrap();
+        drop(c);
+        fs::remove_file(t.path().join("chat").join("queue.json")).unwrap();
+        let c = Chat::open(t.path());
+        let r = c
+            .ingest(
+                incoming(room.clone(), 1, NOW, "m1"),
+                NOW + FRESH_PAST_MS + 1,
+                no_session,
+                |_| Delivery::Busy(None),
+            )
+            .unwrap();
+        assert!(r.duplicate);
+        assert!(c.queued_ids(&room).is_empty());
+    }
+
+    #[test]
+    fn mention_routed_queue_entries_are_not_restored_as_plain_input() {
+        use mention::{Spec, Via, QUEUE_TTL_MS};
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        let id = c.mint_id();
+        c.mention_open(Spec {
+            id: id.clone(),
+            origin: room.clone(),
+            origin_session: None,
+            target: room.clone(),
+            title: "t".into(),
+            hop: 1,
+            question: "q".into(),
+            via: Via::Local {
+                client: "desktop".into(),
+            },
+            confirmed_risky: false,
+        });
+        c.submit_with(
+            &room,
+            &id,
+            "q",
+            "desktop",
+            None,
+            false,
+            NOW,
+            QUEUE_TTL_MS,
+            |_| Delivery::Busy(None),
+            |_, _| {},
+        );
+        ingest_busy(&c, &room, 1).unwrap();
+        assert_eq!(c.queued_ids(&room).len(), 2);
+        drop(c);
+        let c = Chat::open(t.path());
+        assert_eq!(c.queued_ids(&room), restart_ids(&room, 1..=1));
+    }
+
+    #[test]
+    fn a_restored_owner_device_message_waits_for_the_owner_list_then_keeps_its_flag() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        let mut m = incoming(room.clone(), 1, NOW, "m1");
+        m.owner_device = true;
+        c.ingest(m, NOW, no_session, |_| Delivery::Busy(None))
+            .unwrap();
+        drop(c);
+        let c = Chat::open(t.path());
+        let seen = std::cell::RefCell::new(Vec::new());
+        let drain = |now: u64| {
+            c.drain_queue(now, |_, _, _, _, owner| {
+                seen.borrow_mut().push(owner);
+                Delivery::Delivered
+            });
+        };
+        drain(NOW + 1);
+        assert!(seen.borrow().is_empty());
+        assert_eq!(c.queued_ids(&room).len(), 1);
+        c.set_relay_owners(Some(Arc::new(|| vec!["d_phone1".to_owned()])));
+        drain(NOW + 2);
+        assert_eq!(*seen.borrow(), [true]);
+        assert!(c.queued_ids(&room).is_empty());
+    }
+
+    #[test]
+    fn the_queue_file_is_private() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        ingest_busy(&c, &c.manager_room(), 1).unwrap();
+        let mode = |p: std::path::PathBuf| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(t.path().join("chat")), 0o700);
+        assert_eq!(mode(t.path().join("chat").join("queue.json")), 0o600);
+    }
+
+    #[test]
+    fn a_queue_that_cannot_be_saved_fails_the_ingest_so_the_relay_retries() {
+        let t = tempfile::tempdir().unwrap();
+        let c = Chat::open(t.path());
+        let room = c.manager_room();
+        let path = t.path().join("chat").join("queue.json");
+        fs::create_dir(&path).unwrap();
+        let err = ingest_busy(&c, &room, 1).unwrap_err();
+        assert!(matches!(err, IngestError::Storage(_)), "{err:?}");
+        assert!(c.queued_ids(&room).is_empty());
+        fs::remove_dir(&path).unwrap();
+        let r = ingest_busy(&c, &room, 1).unwrap();
+        assert!(!r.delivered);
+        assert_eq!(c.queued_ids(&room), restart_ids(&room, 1..=1));
     }
 }

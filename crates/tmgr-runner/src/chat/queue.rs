@@ -1,11 +1,18 @@
 use super::mention::QueueEnd;
 use super::{lock, Chat, Delivery, NOT_DELIVERED};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+use std::fs::{self, OpenOptions};
+use std::io::{self, Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
 use tmgr_chat_relay::engine::ReceiptState;
 use tmgr_ipc::chat::RoomRef;
 
 pub const QUEUE_CAP: usize = 20;
 pub const DEFAULT_TTL_MS: u64 = 30 * 60 * 1000;
+const FINISHED_REMEMBERED: usize = 512;
+const QUEUE_FILE: &str = "queue.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Submit {
@@ -25,11 +32,176 @@ pub(super) struct Entry {
     enq_ms: u64,
     ttl_ms: u64,
     why: Option<&'static str>,
+    durable: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Row {
+    id: String,
+    room: RoomRef,
+    body_md: String,
+    client: String,
+    device: Option<String>,
+    owner_device: bool,
+    enq_ms: u64,
+    ttl_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct Saved {
+    #[serde(default)]
+    queue: Vec<Row>,
+    #[serde(default)]
+    finished: Vec<String>,
 }
 
 #[derive(Default)]
 pub(super) struct Queue {
     rooms: HashMap<RoomRef, VecDeque<Entry>>,
+    finished: VecDeque<String>,
+    path: Option<PathBuf>,
+}
+
+impl Queue {
+    pub(super) fn open(dir: Option<&Path>) -> Self {
+        let mut q = Queue {
+            path: dir.map(|d| d.join(QUEUE_FILE)),
+            ..Queue::default()
+        };
+        let Some(path) = q.path.clone() else { return q };
+        let read = || -> io::Result<Option<Saved>> {
+            let mut f = match OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(&path)
+            {
+                Ok(f) => f,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf)?;
+            serde_json::from_slice(&buf)
+                .map(Some)
+                .map_err(io::Error::other)
+        };
+        match read() {
+            Ok(Some(saved)) => {
+                q.finished = saved.finished.into_iter().collect();
+                for r in saved.queue {
+                    q.rooms.entry(r.room).or_default().push_back(Entry {
+                        id: r.id,
+                        body_md: r.body_md,
+                        client: r.client,
+                        device: r.device,
+                        owner_device: r.owner_device,
+                        enq_ms: r.enq_ms,
+                        ttl_ms: r.ttl_ms,
+                        why: None,
+                        durable: true,
+                    });
+                }
+            }
+            Ok(None) => {}
+            Err(e) => crate::daemon::log(&format!("chat: queue not restored: {e}")),
+        }
+        q
+    }
+
+    fn queued(&self, room: &RoomRef, id: &str) -> bool {
+        self.rooms
+            .get(room)
+            .is_some_and(|e| e.iter().any(|e| e.id == id))
+    }
+
+    fn mark_finished(&mut self, id: &str) {
+        if self.finished.iter().any(|i| i == id) {
+            return;
+        }
+        if self.finished.len() >= FINISHED_REMEMBERED {
+            self.finished.pop_front();
+        }
+        self.finished.push_back(id.to_owned());
+    }
+
+    fn save(&self) -> io::Result<()> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        let queue: Vec<Row> = self
+            .rooms
+            .iter()
+            .flat_map(|(room, entries)| {
+                entries.iter().filter(|e| e.durable).map(move |e| Row {
+                    id: e.id.clone(),
+                    room: room.clone(),
+                    body_md: e.body_md.clone(),
+                    client: e.client.clone(),
+                    device: e.device.clone(),
+                    owner_device: e.owner_device,
+                    enq_ms: e.enq_ms,
+                    ttl_ms: e.ttl_ms,
+                })
+            })
+            .collect();
+        if queue.is_empty() && self.finished.is_empty() {
+            return match fs::remove_file(path) {
+                Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            };
+        }
+        let saved = Saved {
+            queue,
+            finished: self.finished.iter().cloned().collect(),
+        };
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let tmp = path.with_extension(format!(
+            "json.{}.{}.tmp",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let write = || -> io::Result<()> {
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(&tmp)?;
+            f.write_all(&serde_json::to_vec(&saved).map_err(io::Error::other)?)?;
+            f.sync_all()?;
+            fs::rename(&tmp, path)
+        };
+        let r = write();
+        if r.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        r
+    }
+
+    fn save_logged(&self) {
+        if let Err(e) = self.save() {
+            crate::daemon::log(&format!("chat: queue not saved: {e}"));
+        }
+    }
+
+    fn finish(&mut self, id: &str, durable: bool) {
+        if durable {
+            self.mark_finished(id);
+            self.save_logged();
+        }
+    }
+
+    fn pop(&mut self, room: &RoomRef) {
+        let Some(entries) = self.rooms.get_mut(room) else {
+            return;
+        };
+        let Some(e) = entries.pop_front() else { return };
+        if entries.is_empty() {
+            self.rooms.remove(room);
+        }
+        self.finish(&e.id, e.durable);
+    }
 }
 
 struct Note {
@@ -118,10 +290,45 @@ impl Chat {
         owner_device: bool,
         now_ms: u64,
         ttl_ms: u64,
+        deliver: impl FnMut(&Item) -> Delivery,
+        on_delivered: impl FnMut(&Item, &str),
+    ) -> Submit {
+        self.submit_inner(
+            room,
+            id,
+            body,
+            client,
+            device,
+            owner_device,
+            now_ms,
+            ttl_ms,
+            false,
+            deliver,
+            on_delivered,
+        )
+        .unwrap_or(Submit::Queued)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn submit_inner(
+        &self,
+        room: &RoomRef,
+        id: &str,
+        body: &str,
+        client: &str,
+        device: Option<&str>,
+        owner_device: bool,
+        now_ms: u64,
+        ttl_ms: u64,
+        strict: bool,
         mut deliver: impl FnMut(&Item) -> Delivery,
         mut on_delivered: impl FnMut(&Item, &str),
-    ) -> Submit {
+    ) -> Result<Submit, String> {
         let mut q = lock(&self.queue);
+        if q.queued(room, id) {
+            return Ok(Submit::Queued);
+        }
+        let durable = !self.is_mention_open(id);
         let backlog = q.rooms.get(room).map_or(0, VecDeque::len);
         let mut busy_why = q
             .rooms
@@ -141,16 +348,19 @@ impl Chat {
                 Delivery::Delivered => {
                     self.remember_delivered(room, body);
                     on_delivered(&item, body);
+                    q.finish(id, durable);
                     self.receipt(client, device, id, ReceiptState::Delivered, None);
-                    return Submit::Delivered;
+                    return Ok(Submit::Delivered);
                 }
                 Delivery::Typed(typed) => {
                     self.remember_delivered(room, &typed);
                     on_delivered(&item, &typed);
+                    q.finish(id, durable);
                     self.receipt(client, device, id, ReceiptState::Delivered, None);
-                    return Submit::Delivered;
+                    return Ok(Submit::Delivered);
                 }
                 Delivery::Gone(r) => {
+                    q.finish(id, durable);
                     self.receipt(
                         client,
                         device,
@@ -158,16 +368,18 @@ impl Chat {
                         ReceiptState::Failed,
                         Some(&gone_reason(&r)),
                     );
-                    return Submit::Gone(r);
+                    return Ok(Submit::Gone(r));
                 }
                 Delivery::Refused(why) => {
+                    q.finish(id, durable);
                     self.receipt(client, device, id, ReceiptState::Failed, Some(why));
-                    return Submit::Refused(why);
+                    return Ok(Submit::Refused(why));
                 }
                 Delivery::Busy(why) => busy_why = why,
             }
         }
         if backlog >= QUEUE_CAP {
+            q.finish(id, durable);
             self.receipt(
                 client,
                 device,
@@ -175,7 +387,7 @@ impl Chat {
                 ReceiptState::Failed,
                 Some(&full_reason()),
             );
-            return Submit::Full;
+            return Ok(Submit::Full);
         }
         q.rooms.entry(room.clone()).or_default().push_back(Entry {
             id: id.into(),
@@ -186,9 +398,33 @@ impl Chat {
             enq_ms: now_ms,
             ttl_ms,
             why: busy_why,
+            durable,
         });
+        if durable {
+            if let Err(e) = q.save() {
+                if strict {
+                    if let Some(entries) = q.rooms.get_mut(room) {
+                        entries.pop_back();
+                        if entries.is_empty() {
+                            q.rooms.remove(room);
+                        }
+                    }
+                    return Err(format!("queue not saved: {e}"));
+                }
+                crate::daemon::log(&format!("chat: queue not saved: {e}"));
+            }
+        }
         self.receipt(client, device, id, ReceiptState::Queued, busy_why);
-        Submit::Queued
+        Ok(Submit::Queued)
+    }
+
+    pub(super) fn is_pending(&self, room: &RoomRef, id: &str) -> bool {
+        let q = lock(&self.queue);
+        q.queued(room, id) || q.finished.iter().any(|i| i == id)
+    }
+
+    pub(super) fn finish_id(&self, id: &str) {
+        lock(&self.queue).finish(id, true);
     }
 
     fn receipt_for(&self, it: &Item, state: ReceiptState) {
@@ -216,11 +452,13 @@ impl Chat {
         let mut notes: Vec<Note> = Vec::new();
         let mut ends: Vec<(String, QueueEnd)> = Vec::new();
         let owners = self.current_owners();
+        let owners_ready = lock(&self.relay_owners).is_some();
         {
             let mut q = lock(&self.queue);
-            for (room, entries) in q.rooms.iter_mut() {
+            let rooms: Vec<RoomRef> = q.rooms.keys().cloned().collect();
+            for room in &rooms {
                 let mut stalled = None;
-                while let Some(front) = entries.front() {
+                while let Some(front) = q.rooms.get(room).and_then(VecDeque::front) {
                     if now_ms.saturating_sub(front.enq_ms) >= front.ttl_ms {
                         let mins = front.ttl_ms / 60_000;
                         notes.push(Note::of(
@@ -229,8 +467,11 @@ impl Chat {
                             format!("Not delivered: expired after {mins} minutes in the queue."),
                         ));
                         ends.push((front.id.clone(), QueueEnd::Expired));
-                        entries.pop_front();
+                        q.pop(room);
                         continue;
+                    }
+                    if front.owner_device && !owners_ready {
+                        break;
                     }
                     let item = Item {
                         room,
@@ -247,18 +488,18 @@ impl Chat {
                             self.remember_delivered(room, item.body);
                             on_delivered(&item, item.body);
                             self.receipt_for(&item, ReceiptState::Delivered);
-                            entries.pop_front();
+                            q.pop(room);
                         }
                         Delivery::Typed(typed) => {
                             self.remember_delivered(room, &typed);
                             on_delivered(&item, &typed);
                             self.receipt_for(&item, ReceiptState::Delivered);
-                            entries.pop_front();
+                            q.pop(room);
                         }
                         Delivery::Refused(why) => {
                             notes.push(Note::of(room, front, why.to_string()));
                             ends.push((front.id.clone(), QueueEnd::Refused(why.to_string())));
-                            entries.pop_front();
+                            q.pop(room);
                         }
                         Delivery::Busy(why) => {
                             stalled = Some(why);
@@ -269,15 +510,16 @@ impl Chat {
                             note.reason = gone_reason(&r);
                             notes.push(note);
                             ends.push((front.id.clone(), QueueEnd::Gone(r)));
-                            entries.pop_front();
+                            q.pop(room);
                         }
                     }
                 }
                 if let Some(why) = stalled {
-                    entries.iter_mut().for_each(|e| e.why = why);
+                    if let Some(entries) = q.rooms.get_mut(room) {
+                        entries.iter_mut().for_each(|e| e.why = why);
+                    }
                 }
             }
-            q.rooms.retain(|_, e| !e.is_empty());
         }
         for n in notes {
             self.note_for(&n.room, &n.text, &n.id);
@@ -339,6 +581,9 @@ impl Chat {
             let entry = entries.remove(pos);
             if entries.is_empty() {
                 q.rooms.remove(room);
+            }
+            if let Some(e) = &entry {
+                q.finish(&e.id, e.durable);
             }
             entry
         };
