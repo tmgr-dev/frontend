@@ -415,6 +415,16 @@ impl Client {
         body_md: &str,
         reply_to: Option<&str>,
     ) -> io::Result<wire_chat::ChatMessage> {
+        self.chat_send_with(room, body_md, reply_to, None)
+    }
+
+    pub fn chat_send_with(
+        &mut self,
+        room: &wire_chat::RoomRef,
+        body_md: &str,
+        reply_to: Option<&str>,
+        mention: Option<wire_chat::MentionReq>,
+    ) -> io::Result<wire_chat::ChatMessage> {
         let params = wire_chat::SendParams {
             room: room.clone(),
             body_md: body_md.into(),
@@ -422,9 +432,24 @@ impl Client {
             attachments: Vec::new(),
             id: None,
             ts_ms: None,
-            mention: None,
+            mention,
         };
         from_value(self.call(wire_chat::method::SEND, to_params(&params)?)?)
+    }
+
+    pub fn chat_mention_inject(
+        &mut self,
+        room: &wire_chat::RoomRef,
+        mention_id: &str,
+        confirmed_risky: bool,
+    ) -> io::Result<()> {
+        let params = wire_chat::MentionInjectParams {
+            room: room.clone(),
+            mention_id: mention_id.into(),
+            confirmed_risky,
+        };
+        self.call(wire_chat::method::MENTION_INJECT, to_params(&params)?)
+            .map(drop)
     }
 
     pub fn chat_search(

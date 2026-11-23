@@ -208,7 +208,8 @@ fn typing_and_editing_build_the_send_request() {
         actions,
         vec![ChatAction::Send {
             room: manager_room(),
-            body: "hell".into()
+            body: "hell".into(),
+            mention: None
         }]
     );
     assert_eq!(v.chat.as_ref().unwrap().status(), "Sending...");

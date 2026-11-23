@@ -1,3 +1,5 @@
+mod mention;
+
 use super::mouse::{Kind, MouseEvent};
 use super::render::{dim, put};
 use super::theme::colors;
@@ -8,7 +10,10 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
-use tmgr_ipc::chat::{Author, AuthorKind, ChatMessage, MessageKind, RoomInfo, RoomKind, RoomRef};
+use tmgr_ipc::chat::{
+    Author, AuthorKind, ChatMessage, MentionReq, MentionState, MessageKind, RoomInfo, RoomKind,
+    RoomRef,
+};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub const HISTORY_LIMIT: u32 = 200;
@@ -38,6 +43,12 @@ pub enum ChatAction {
     Send {
         room: RoomRef,
         body: String,
+        mention: Option<MentionReq>,
+    },
+    Inject {
+        room: RoomRef,
+        mention_id: String,
+        confirmed_risky: bool,
     },
     Close,
 }
@@ -72,6 +83,11 @@ pub struct ChatState {
     sending: bool,
     offset_secs: i32,
     metrics: Cell<(usize, usize)>,
+    mention_cap: bool,
+    agent_session: bool,
+    pending: Option<mention::Pending>,
+    menu_sel: usize,
+    now_ms: u64,
 }
 
 fn is_manager(info: &RoomInfo) -> bool {
@@ -132,6 +148,11 @@ impl ChatState {
             sending: false,
             offset_secs: offset,
             metrics: Cell::new((0, 0)),
+            mention_cap: false,
+            agent_session: false,
+            pending: None,
+            menu_sel: 0,
+            now_ms: 0,
         }
     }
 
@@ -176,6 +197,8 @@ impl ChatState {
     }
 
     pub fn poll(&mut self, now_ms: u64) -> Option<ChatAction> {
+        self.now_ms = now_ms;
+        self.expire_pending();
         if self.phase != ChatPhase::Ready {
             return None;
         }
@@ -434,18 +457,48 @@ impl ChatState {
         if body.is_empty() {
             return None;
         }
+        if let Some(n) = mention::parse_add(&body) {
+            return self.submit_add(room, n);
+        }
         if self.sending {
             self.say("Still sending the previous message", false);
             return None;
         }
+        if body.starts_with('@') {
+            return self.submit_mention(room, &body);
+        }
         self.sending = true;
         self.say("Sending...", false);
-        Some(ChatAction::Send { room, body })
+        Some(ChatAction::Send {
+            room,
+            body,
+            mention: None,
+        })
     }
 
     fn key(&mut self, key: &[u8]) -> Option<ChatAction> {
         if self.phase != ChatPhase::Ready {
             return None;
+        }
+        if self.pending.is_some() {
+            return self.confirm_key(key);
+        }
+        if self.menu_open() {
+            match key {
+                b"\x1b[A" | b"\x1bOA" => {
+                    self.menu_move(false);
+                    return None;
+                }
+                b"\x1b[B" | b"\x1bOB" => {
+                    self.menu_move(true);
+                    return None;
+                }
+                b"\t" | b"\r" | b"\n" => {
+                    self.menu_accept();
+                    return None;
+                }
+                _ => {}
+            }
         }
         match key {
             b"\x1b[A" | b"\x1bOA" => return self.select(self.sel.saturating_sub(1)),
@@ -594,7 +647,18 @@ fn author_style(m: &ChatMessage) -> Style {
 
 pub(super) fn message_rows(chat: &ChatState, msgs: &[ChatMessage], width: usize) -> Vec<Row> {
     let mut rows = Vec::new();
+    let latest = mention::latest_states(msgs);
+    let questions: HashSet<&str> = msgs
+        .iter()
+        .filter(|m| mention::is_question(m))
+        .map(|m| m.id.as_str())
+        .collect();
     for m in msgs {
+        if let Some(r) = m.mention.as_ref().filter(|_| !mention::is_question(m)) {
+            if r.state != MentionState::Answered && questions.contains(r.id.as_str()) {
+                continue;
+            }
+        }
         let sys = system_like(m);
         let label = if sys {
             "System".to_string()
@@ -611,6 +675,17 @@ pub(super) fn message_rows(chat: &ChatState, msgs: &[ChatMessage], width: usize)
         let body = m.body_md.replace('\r', "").replace('\t', "    ");
         for line in wrap_words(&body, width) {
             rows.push(vec![(line, body_style)]);
+        }
+        if let Some(r) = m.mention.as_ref().filter(|_| mention::is_question(m)) {
+            let state = latest.get(r.id.as_str()).copied().unwrap_or(r.state);
+            rows.push(vec![(
+                format!(
+                    "\u{21b3} @{}: {}",
+                    r.target_title,
+                    mention::state_label(state)
+                ),
+                dim(),
+            )]);
         }
         rows.push(Vec::new());
     }
@@ -925,6 +1000,7 @@ fn draw_ready(buf: &mut Buffer, f: &Frame, chat: &ChatState) {
     } else {
         dim()
     };
+    draw_menu(buf, f.msgs, chat);
     put(
         buf,
         f.status.x,
@@ -934,4 +1010,37 @@ fn draw_ready(buf: &mut Buffer, f: &Frame, chat: &ChatState) {
         f.status.width,
     );
     draw_input(buf, f.input, chat);
+}
+
+fn draw_menu(buf: &mut Buffer, area: Rect, chat: &ChatState) {
+    let items = chat.menu_items();
+    let n = items.len().min(usize::from(area.height));
+    if n == 0 {
+        return;
+    }
+    let sel = chat.menu_sel.min(items.len() - 1);
+    for (i, idx) in items.iter().take(n).enumerate() {
+        let y = area.bottom() - (n - i) as u16;
+        let style = if i == sel {
+            Style::new().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::new()
+        };
+        put(
+            buf,
+            area.x,
+            y,
+            &" ".repeat(area.width.into()),
+            style,
+            area.width,
+        );
+        put(
+            buf,
+            area.x,
+            y,
+            &format!(" @{}", chat.menu_line(*idx)),
+            style,
+            area.width,
+        );
+    }
 }

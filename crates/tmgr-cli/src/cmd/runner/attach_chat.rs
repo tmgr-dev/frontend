@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tmgr_ipc::chat::{ChatMessage, RoomRef};
+use tmgr_ipc::chat::{ChatMessage, MentionReq, RoomRef};
 use tmgr_runner::attach::HISTORY_LIMIT;
 use tmgr_runner::client::ChatCloser;
 use tmgr_runner::daemon::RunnerConfig;
@@ -108,14 +108,40 @@ pub(super) fn load_history(
     });
 }
 
-pub(super) fn send(cfg: RunnerConfig, tx: SyncSender<Msg>, room: RoomRef, body: String) {
+pub(super) fn send(
+    cfg: RunnerConfig,
+    tx: SyncSender<Msg>,
+    room: RoomRef,
+    body: String,
+    mention: Option<MentionReq>,
+) {
     thread::spawn(move || {
         let result: Result<ChatMessage, (bool, String)> = connect(&cfg)
             .map_err(|e| (false, clean(&e)))
             .and_then(|mut c| {
-                c.chat_send(&room, &body, None)
+                c.chat_send_with(&room, &body, None, mention)
                     .map_err(|e| (e.to_string().starts_with("busy: "), clean(&e)))
             });
         let _ = tx.send(Msg::ChatSent { room, result });
+    });
+}
+
+pub(super) fn inject(
+    cfg: RunnerConfig,
+    tx: SyncSender<Msg>,
+    room: RoomRef,
+    mention_id: String,
+    confirmed_risky: bool,
+) {
+    thread::spawn(move || {
+        let result = connect(&cfg).map_err(|e| clean(&e)).and_then(|mut c| {
+            c.chat_mention_inject(&room, &mention_id, confirmed_risky)
+                .map_err(|e| clean(&e))
+        });
+        let _ = tx.send(Msg::ChatInjected {
+            room,
+            mention_id,
+            result,
+        });
     });
 }

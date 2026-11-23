@@ -190,6 +190,11 @@ pub(super) enum Msg {
         room: tmgr_ipc::chat::RoomRef,
         result: std::result::Result<tmgr_ipc::chat::ChatMessage, (bool, String)>,
     },
+    ChatInjected {
+        room: tmgr_ipc::chat::RoomRef,
+        mention_id: String,
+        result: std::result::Result<(), String>,
+    },
     ChatPush(Box<tmgr_ipc::chat::ChatMessage>),
     ChatDown(String),
     Pushed(std::result::Result<(), String>),
@@ -407,6 +412,7 @@ struct App {
     writer: AttachWriter,
     human_time: bool,
     chat_cap: bool,
+    chat_mention_cap: bool,
     chat_sub: Option<ChatSub>,
     window_focused: bool,
     focus_seen: bool,
@@ -694,6 +700,16 @@ impl App {
                 self.dirty = true;
                 if let Some(c) = self.view.chat.as_mut() {
                     c.sent(&room, result);
+                }
+            }
+            Msg::ChatInjected {
+                room,
+                mention_id,
+                result,
+            } => {
+                self.dirty = true;
+                if let Some(c) = self.view.chat.as_mut() {
+                    c.injected(&room, &mention_id, result);
                 }
             }
             Msg::ChatPush(message) => {
@@ -1511,7 +1527,10 @@ impl App {
                 .open_chat(tmgr_runner::attach::ChatState::unsupported());
             return;
         }
-        self.view.open_chat(tmgr_runner::attach::ChatState::new());
+        let state = tmgr_runner::attach::ChatState::new()
+            .with_mention_cap(self.chat_mention_cap)
+            .with_agent_session(std::env::var_os("TMGR_SESSION_ID").is_some());
+        self.view.open_chat(state);
         self.chat_sub = Some(ChatSub::start(&self.cfg, self.tx.clone()));
         attach_chat::load_rooms(self.cfg.clone(), self.tx.clone());
     }
@@ -1524,8 +1543,25 @@ impl App {
                 ChatAction::Load { room, before } => {
                     attach_chat::load_history(self.cfg.clone(), self.tx.clone(), room, before);
                 }
-                ChatAction::Send { room, body } => {
-                    attach_chat::send(self.cfg.clone(), self.tx.clone(), room, body);
+                ChatAction::Send {
+                    room,
+                    body,
+                    mention,
+                } => {
+                    attach_chat::send(self.cfg.clone(), self.tx.clone(), room, body, mention);
+                }
+                ChatAction::Inject {
+                    room,
+                    mention_id,
+                    confirmed_risky,
+                } => {
+                    attach_chat::inject(
+                        self.cfg.clone(),
+                        self.tx.clone(),
+                        room,
+                        mention_id,
+                        confirmed_risky,
+                    );
                 }
                 ChatAction::Close => self.close_chat(),
             }
@@ -5154,6 +5190,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         .caps
         .iter()
         .any(|c| c == caps::CHAT_V1);
+    let chat_mention_cap = attach_client
+        .welcome()
+        .caps
+        .iter()
+        .any(|c| c == caps::CHAT_MENTION_V1);
     let (reader, writer) = attach_client
         .attach(&split_local(view.panes()))
         .map_err(rerr)?
@@ -5343,6 +5384,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         writer,
         human_time,
         chat_cap,
+        chat_mention_cap,
         chat_sub: None,
         window_focused: true,
         focus_seen: false,

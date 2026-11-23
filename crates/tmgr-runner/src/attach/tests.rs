@@ -10,6 +10,7 @@ use tmgr_ipc::api::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
 use tmgr_ipc::api::{MouseEncoding, MouseLevel, MouseMode, State, StateKind};
 
 mod chat;
+mod chat_mention;
 mod checkpoints;
 
 fn forward(b: &[u8]) -> Action {
