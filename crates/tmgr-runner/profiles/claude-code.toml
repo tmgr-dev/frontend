@@ -33,6 +33,7 @@ blocked = [
   '(?i)trust this folder',
 ]
 idle = ['^\s*❯\s*$']
+draft = ['^\s*❯\s+\S']
 
 [prompt]
 mode = "arg"

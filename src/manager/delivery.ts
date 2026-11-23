@@ -3,7 +3,7 @@ export type DeliveryState =
 
 export type ReceiptState = 'delivered' | 'queued' | 'failed';
 
-const QUEUED_WHY = ['turn', 'dialog', 'prompt'];
+const QUEUED_WHY = ['turn', 'dialog', 'prompt', 'draft'];
 
 export const isQueuedWhy = (why: string | undefined): boolean =>
 	!!why && QUEUED_WHY.includes(why);

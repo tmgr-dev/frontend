@@ -20,6 +20,8 @@ pub struct StatusRules {
     pub blocked: Vec<String>,
     #[serde(default)]
     pub idle: Vec<String>,
+    #[serde(default)]
+    pub draft: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -706,6 +708,7 @@ fn check_declarations(p: &Profile, home: Option<&Path>) -> Result<(), String> {
 
 pub struct Matcher {
     rules: Vec<(String, Regex)>,
+    drafts: Vec<Regex>,
 }
 
 impl Matcher {
@@ -714,6 +717,7 @@ impl Matcher {
         for (kind, patterns) in [
             ("blocked", &profile.status.blocked),
             ("idle", &profile.status.idle),
+            ("draft", &profile.status.draft),
         ] {
             for (i, pattern) in patterns.iter().enumerate() {
                 let re = RegexBuilder::new(pattern)
@@ -724,11 +728,40 @@ impl Matcher {
                 rules.push((format!("{kind}[{i}]"), re));
             }
         }
-        Ok(Matcher { rules })
+        let (drafts, rules): (Vec<_>, Vec<_>) = rules
+            .into_iter()
+            .partition(|(id, _)| id.starts_with("draft"));
+        let drafts = drafts
+            .into_iter()
+            .map(|(_, re): (String, Regex)| re)
+            .collect();
+        Ok(Matcher { rules, drafts })
     }
 
     pub fn has_idle(&self) -> bool {
         self.rules.iter().any(|(id, _)| id.starts_with("idle"))
+    }
+
+    pub fn idle_in(&self, lines: &[String]) -> bool {
+        self.rules
+            .iter()
+            .any(|(id, re)| id.starts_with("idle") && lines.iter().any(|l| re.is_match(l)))
+    }
+
+    pub fn draft_in(&self, lines: &[String]) -> bool {
+        lines.iter().rev().find_map(|l| {
+            if self
+                .rules
+                .iter()
+                .any(|(id, re)| id.starts_with("idle") && re.is_match(l))
+            {
+                Some(false)
+            } else if self.drafts.iter().any(|re| re.is_match(l)) {
+                Some(true)
+            } else {
+                None
+            }
+        }) == Some(true)
     }
 
     pub fn check(&self, lines: &[String]) -> Option<(String, String)> {

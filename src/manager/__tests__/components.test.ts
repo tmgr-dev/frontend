@@ -517,6 +517,7 @@ describe('manager components', () => {
 			['turn', 'Queued: the agent is busy, sends when its turn ends'],
 			['dialog', 'Queued: waiting on a dialog in the session'],
 			['prompt', 'Queued: waiting for the session prompt'],
+			['draft', 'Waiting: the input box has unsent text'],
 		];
 		for (const [queuedWhy, text] of cases) {
 			const html = await render('MessageBubble', {

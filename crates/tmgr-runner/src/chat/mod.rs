@@ -121,8 +121,9 @@ pub struct Incoming {
 pub fn busy_code(why: &str) -> &'static str {
     match why {
         "blocked on a dialog" => "dialog",
-        "input still queued" => "prompt",
-        _ => "turn",
+        "input box has unsent text" => "draft",
+        "prompt not idle" | "previous input settling" => "turn",
+        _ => "prompt",
     }
 }
 
@@ -870,6 +871,17 @@ pub fn prompt_bytes(body: &str) -> Vec<u8> {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn only_a_working_agent_is_reported_as_mid_turn() {
+        assert_eq!(busy_code("prompt not idle"), "turn");
+        assert_eq!(busy_code("previous input settling"), "turn");
+        assert_eq!(busy_code("blocked on a dialog"), "dialog");
+        assert_eq!(busy_code("input box has unsent text"), "draft");
+        assert_eq!(busy_code("input still queued"), "prompt");
+        assert_eq!(busy_code("not at an empty prompt"), "prompt");
+        assert_eq!(busy_code("something new"), "prompt");
+    }
 
     fn client_for(dir: &Path) -> std::sync::Arc<crate::mgr_rpc::relay::RpcClient> {
         use crate::mgr_rpc::relay::{MachinesCache, RpcClient, RpcInbox};

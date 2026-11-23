@@ -1371,7 +1371,7 @@ impl Session {
     fn write_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
         {
             let mut i = lock(&self.inner);
-            let bottom = i.screen.bottom_text_without_ghosts(10);
+            let lines = i.screen.bottom_text_without_ghosts(usize::MAX);
             let rows = i.screen.text_lines(None).3;
             let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
             let idle_queue = lock(&self.shim).as_ref().is_some_and(|l| {
@@ -1383,10 +1383,16 @@ impl Session {
             });
             let busy = if self.effective(&i).kind == StateKind::Blocked {
                 Some("blocked on a dialog")
-            } else if !(prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
+            } else if !(prompt_ready(i.matcher.as_ref(), agent, &lines, &rows)
                 || self.settled_without_idle_rules(&i, now, agent, &rows))
             {
-                Some("prompt not idle")
+                if i.matcher.as_ref().is_some_and(|m| prompt_draft(m, &lines)) {
+                    Some("input box has unsent text")
+                } else if self.effective(&i).kind == StateKind::Working {
+                    Some("prompt not idle")
+                } else {
+                    Some("not at an empty prompt")
+                }
             } else if i
                 .input_sent_at
                 .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
@@ -6180,16 +6186,44 @@ fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<(
     Ok(())
 }
 
+const PROMPT_ROWS: usize = 10;
+
+fn bottom_rows(lines: &[String]) -> &[String] {
+    &lines[lines.len().saturating_sub(PROMPT_ROWS)..]
+}
+
+// The input box (a ruled frame) can sit above a footer taller than PROMPT_ROWS.
+fn prompt_box(lines: &[String]) -> &[String] {
+    let rule = |l: &String| {
+        let t = l.trim();
+        t.chars().count() >= 20 && t.chars().all(|c| matches!(c, '─' | '━' | '═' | '╌'))
+    };
+    (1..lines.len())
+        .rev()
+        .find(|&c| rule(&lines[c]) && lines[c.saturating_sub(PROMPT_ROWS)..c].iter().any(rule))
+        .map_or(&[], |close| {
+            &lines[(close + 1).saturating_sub(PROMPT_ROWS)..=close]
+        })
+}
+
 fn prompt_ready(
     matcher: Option<&Matcher>,
     agent: Option<permit::Agent>,
-    bottom: &[String],
+    lines: &[String],
     rows: &[String],
 ) -> bool {
-    matcher
-        .and_then(|m| m.check(bottom))
-        .is_some_and(|(rule, _)| rule.starts_with("idle"))
-        && agent.is_none_or(|a| permit::parse_dialog(a, rows).is_none())
+    let Some(m) = matcher else {
+        return false;
+    };
+    let idle = match m.check(bottom_rows(lines)) {
+        Some((rule, _)) => rule.starts_with("idle"),
+        None => m.idle_in(prompt_box(lines)),
+    };
+    idle && agent.is_none_or(|a| permit::parse_dialog(a, rows).is_none())
+}
+
+fn prompt_draft(m: &Matcher, lines: &[String]) -> bool {
+    m.draft_in(bottom_rows(lines)) || m.draft_in(prompt_box(lines))
 }
 
 #[cfg(test)]
@@ -6279,9 +6313,9 @@ mod tests {
         let (set, _) = ProfileSet::load(None);
         let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
         let mut screen = screen_of(text);
-        let bottom = screen.bottom_text_without_ghosts(10);
+        let lines = screen.bottom_text_without_ghosts(usize::MAX);
         let rows = screen.text_lines(None).3;
-        prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
+        prompt_ready(Some(&matcher), permit::agent_of(profile), &lines, &rows)
     }
 
     fn forbidden() -> Vec<PathBuf> {
@@ -6421,14 +6455,40 @@ mod tests {
         assert!(ready("claude-code", "done\n\n❯\n"));
     }
 
+    fn claude_box(prompt: &str, footer: usize) -> String {
+        let rule = "─".repeat(80);
+        let mut s = format!("● Done.\n\n{rule}\n{prompt}\n{rule}\n");
+        s.push_str("  ⏵⏵ bypass permissions on (shift+tab to cycle) · 6 background tasks\n");
+        for n in 1..footer {
+            s.push_str(&format!("  ◼ agent-{n} · running tests\n"));
+        }
+        s
+    }
+
+    #[test]
+    fn at_prompt_finds_the_input_box_above_a_tall_footer() {
+        assert!(ready("claude-code", &claude_box("❯ ", 10)));
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_draft_above_a_tall_footer() {
+        assert!(!ready("claude-code", &claude_box("❯ fix the build", 10)));
+    }
+
+    #[test]
+    fn at_prompt_ignores_a_blocked_phrase_above_a_tall_footer_box() {
+        let screen = claude_box("❯ ", 10).replace("● Done.", "● Do you want to proceed?");
+        assert!(ready("claude-code", &screen));
+    }
+
     fn ready_ansi(profile: &str, bytes: &[u8]) -> bool {
         let (set, _) = ProfileSet::load(None);
         let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
         let mut screen = ScreenModel::new(40, 120, 100);
         screen.feed(bytes);
-        let bottom = screen.bottom_text_without_ghosts(10);
+        let lines = screen.bottom_text_without_ghosts(usize::MAX);
         let rows = screen.text_lines(None).3;
-        prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
+        prompt_ready(Some(&matcher), permit::agent_of(profile), &lines, &rows)
     }
 
     #[test]
@@ -6876,6 +6936,51 @@ mod tests {
         drain(&s, &rx);
         s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
         assert!(send_at_prompt(&s, b"two\r", settled()));
+    }
+
+    fn tall_footer_session(
+        prompt: &str,
+    ) -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
+        let (t, s, rx) = lone_session_sized(100, 30);
+        s.feed(
+            claude_box(prompt, 12).replace('\n', "\r\n").as_bytes(),
+            true,
+        );
+        (t, s, rx)
+    }
+
+    #[test]
+    fn an_idle_session_whose_box_sits_above_a_tall_footer_takes_chat_input() {
+        let (_t, s, rx) = tall_footer_session("❯ ");
+        assert!(send_at_prompt(&s, b"hi", settled()));
+        assert_eq!(s.busy_code(), None);
+        assert!(!queued(&rx).is_empty());
+    }
+
+    #[test]
+    fn a_draft_in_the_box_is_never_typed_over_and_says_so() {
+        let (_t, s, rx) = tall_footer_session("❯ half a sentence");
+        assert!(!send_at_prompt(&s, b"hi", settled()));
+        assert_eq!(s.busy_code(), Some("draft"));
+        assert!(queued(&rx).is_empty());
+    }
+
+    #[test]
+    fn an_idle_session_off_its_prompt_is_not_reported_as_mid_turn() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(b"/model picker\r\n  Opus\r\n", true);
+        let later = Instant::now() + Duration::from_secs(2);
+        s.change(|i, _, out| out.extend(i.det.tick(now_ms() + 2_000)));
+        assert!(!send_at_prompt(&s, b"hi", later));
+        assert_eq!(s.busy_code(), Some("prompt"));
+    }
+
+    #[test]
+    fn attach_keys_reach_a_session_whose_box_holds_a_draft() {
+        let (_t, s, rx) = tall_footer_session("❯ half a sentence");
+        assert!(!send_at_prompt(&s, b"hi", settled()));
+        assert!(s.input(b"x"));
+        assert!(!queued(&rx).is_empty());
     }
 
     #[test]
