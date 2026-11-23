@@ -131,6 +131,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `spawn_decide.v1` | method `spawn.decide` (desktop only) |
 | `manager.unrestricted.v1` | method `manager.unrestricted` (CLI only, follower PIN; section 5, "Unrestricted manager") |
 | `manager.remote_policy.v1` | methods `manager.remote_policy` (read) and `manager.remote_policy_set {leader, ask, pin?}`; `cli` and `desktop` only, `_set` is refused unless the caller's parent chain reaches init without passing a live session, and `ask: true` needs `cli` plus the follower PIN (same throttle and tries as `manager.unrestricted`) |
+| `chat.blob.v1` | method `chat.blob.put` (`cli` and `desktop` only; section 5, "Chat") |
 | `chat.activity.v1` | `{"activity": true}` on `chat.subscribe`; push `chat_activity` (section 5, "Chat activity") |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
@@ -714,6 +715,7 @@ optional; readers ignore the object when it is absent.
 | `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`; `state`, `context_pct` and `context_tokens` of the live manager session when there is one), then one room per session except the live manager, whose terminal replies are posted into the Manager room as `session` messages without `reply_to` and whose user turns are not mirrored (`title` = session name, `agent` = profile, `state`, `last`, and `context_pct`, `context_tokens` and `model` once the session's transcript reported usage since the runner started) |
 | `chat.history` | `{room, before?, limit?}` (`limit` 1 to 500, default 500) | `[ChatMessage]`, oldest first: the newest `limit` messages stored before the message with id `before` (store order, which is append order); an unknown `before` gives `[]` |
 | `chat.send` | `{room, body_md, reply_to?, attachments?, id?, ts_ms?}` | the stored `ChatMessage`, author `{kind: owner, id: owner}` |
+| `chat.blob.put` | `{v: 1, sha256, size, part, parts, data}` | `{have, parts}` while parts are missing, `{complete: true}` once the file is stored |
 | `chat.search` | `{query, room?, limit?}` (`query` 1 to 256 characters, `limit` default 50, max 500) | `[ChatMessage]`, newest first: case-insensitive substring match on `body_md` |
 | `chat.subscribe` | none | `null`; the connection then also receives a `chat` push |
 | `chat.relay_self` | none | `{id, device_id, fp}`: this runner's machine id and its public relay device id and fingerprint (no keys); `not_found` when the relay is not configured or not ready |
@@ -724,6 +726,8 @@ session is not at its prompt), `forbidden`.
 `room.machine` must be this runner's machine id: `mx_` and 16 lowercase hex characters, created once in the
 runner directory (`machine.id`, mode 0600). It is never a hostname. Read it from the `room.machine` of the first
 `chat.rooms` entry.
+
+`chat.blob.put` uploads one part of a file attached to a message (`chat.blob.v1`). `sha256` is the lowercase hex digest of the whole file, `size` its length (1 byte to 25 MiB), `parts` must equal `ceil(size / 737280)`, `part` is the zero-based index, and `data` is the standard base64 of exactly 737280 bytes (the last part holds the rest), so one request stays under the 1 MiB frame limit. Parts may arrive in any order and may be repeated; the runner verifies the whole file against `sha256` when the last part lands and refuses parts that disagree on `size` or `parts` with stored ones. Send the parts first, then `chat.send` with `attachments` carrying the same `sha256`. When a message with attachments is handed to a session, the runner copies each stored file into the session's `tmgr-attachments/` directory (in its private home, or a private runner folder for a run without the sandbox) and appends `Attached files:` lines with the paths to the text the agent receives; a file that is not stored shows as `(not received)`. The stored message is not changed.
 
 With `id` (a valid `m_<32hex>`, and then `ts_ms` is required) `chat.send` ingests an owner message written on
 another device. The id and `ts_ms` are kept, the author is always `{kind: owner, id: owner}`. A `device` sent over IPC is ignored: only the in-process relay pump sets

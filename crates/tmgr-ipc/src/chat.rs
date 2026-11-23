@@ -21,6 +21,7 @@ pub mod method {
     pub const QUEUED_WHY: &str = "chat.queued_why";
     pub const CANCEL: &str = "chat.cancel";
     pub const MENTION_INJECT: &str = "chat.mention_inject";
+    pub const BLOB_PUT: &str = "chat.blob.put";
 }
 
 pub mod limits {
@@ -288,6 +289,26 @@ pub struct SendParams {
     pub ts_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mention: Option<MentionReq>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlobPutParams {
+    pub v: u32,
+    pub sha256: String,
+    pub size: u64,
+    pub part: u32,
+    pub parts: u32,
+    pub data: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlobPutResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub have: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parts: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complete: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

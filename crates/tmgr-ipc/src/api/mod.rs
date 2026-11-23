@@ -77,6 +77,7 @@ pub mod caps {
     pub const MANAGER_V1: &str = "manager.v1";
     pub const CHAT_ACTIVITY_V1: &str = "chat.activity.v1";
     pub const CHAT_MENTION_V1: &str = "chat.mention.v1";
+    pub const CHAT_BLOB_V1: &str = "chat.blob.v1";
     pub const RUN_PROMPT_V1: &str = "run_prompt.v1";
     pub const HANDOFF_V1: &str = "handoff.v1";
     pub const SWITCH_V1: &str = "switch.v1";
@@ -86,7 +87,7 @@ pub mod caps {
     pub const SPAWN_DECIDE_V1: &str = "spawn_decide.v1";
     pub const MANAGER_REMOTE_POLICY_V1: &str = "manager.remote_policy.v1";
 
-    pub const ALL: [&str; 50] = [
+    pub const ALL: [&str; 51] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -137,6 +138,7 @@ pub mod caps {
         SPAWN_DECIDE_V1,
         CHAT_MENTION_V1,
         MANAGER_REMOTE_POLICY_V1,
+        CHAT_BLOB_V1,
     ];
 }
 
