@@ -32,6 +32,15 @@ export const managerHistory = (params: HistoryParams) =>
 export const managerSend = (params: SendParams) =>
 	invoke<ChatMessage>('manager_send', { params });
 
+export const managerPutBlob = (
+	room: RoomRef,
+	sha256: string,
+	bytes: Uint8Array,
+) =>
+	invoke<void>('manager_put_blob', bytes, {
+		headers: { 'x-tmgr-blob': JSON.stringify({ room, sha256 }) },
+	});
+
 export const managerSearch = (params: SearchParams) =>
 	invoke<ChatMessage[]>('manager_search', { params });
 

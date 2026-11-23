@@ -340,7 +340,6 @@
 <script lang="ts">
 	import { defineComponent } from 'vue';
 	import { onManagerResync } from './api';
-	import { externalVoice } from './tts/externalVoice';
 	import ChatHeader from './components/ChatHeader.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
@@ -388,6 +387,7 @@
 	import { useRemotePolicyStore } from './remotePolicyStore';
 	import { MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
+	import { externalVoice } from './tts/externalVoice';
 	import { roomKey, type RoomRef } from './types';
 
 	const sha256Hex = async (file: File): Promise<string> => {
@@ -518,7 +518,7 @@
 				return this.activeInfo
 					? headerSubtitle(this.activeInfo, this.store.rooms, (k, n) =>
 							this.$t(k, { count: n }, n),
-						)
+					  )
 					: '';
 			},
 			placeholder(): string {
@@ -537,7 +537,7 @@
 			},
 			messages() {
 				return this.store.activeKey
-					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
+					? this.store.messagesByRoom[this.store.activeKey] ?? []
 					: [];
 			},
 			bodyHtml(): Record<string, string> {
@@ -685,8 +685,8 @@
 					scope === 'chat'
 						? this.store.activeKey
 						: scope === 'manager'
-							? this.managerKey
-							: null;
+						? this.managerKey
+						: null;
 				void this.store.runSearch(this.store.search.text);
 			},
 			async onHit(hit: Parameters<typeof this.store.jumpToHit>[0]) {
@@ -715,6 +715,7 @@
 						type: file.type || 'application/octet-stream',
 						size: file.size,
 						sha256: await sha256Hex(file),
+						blob: file,
 					});
 				}
 			},

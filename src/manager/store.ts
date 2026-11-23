@@ -46,6 +46,7 @@ export interface ManagerApi {
 	rooms: typeof realApi.managerRooms;
 	history: typeof realApi.managerHistory;
 	send: typeof realApi.managerSend;
+	putBlob?: typeof realApi.managerPutBlob;
 	commands: typeof realApi.managerCommands;
 	search: typeof realApi.managerSearch;
 	queued: typeof realApi.managerQueued;
@@ -65,7 +66,11 @@ export interface ManagerApi {
 }
 
 export type PanelTab =
-	'session' | 'hierarchy' | 'audit' | 'encryption' | 'voice';
+	| 'session'
+	| 'hierarchy'
+	| 'audit'
+	| 'encryption'
+	| 'voice';
 
 export const AGENT_MODELS: Record<SpawnAgent, string[]> = {
 	claude: Object.keys(CLAUDE_MODEL_LABELS),
@@ -97,10 +102,15 @@ export interface FileLike {
 	type: string;
 	size: number;
 	sha256: string;
+	blob?: Blob;
 }
 
 const PAGE = 50;
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const BLOB_CAP = 'chat.blob.v1';
+const BLOBS_NEED_LOCAL = 'Attachments to another machine are not supported yet';
+const BLOBS_NEED_UPDATE = 'Update tmgr on this machine to send files';
+const BLOBS_NO_MENTION = 'Files cannot be sent with a mention';
 const MAX_JUMP_PAGES = 20;
 const QUEUE_POLL_MS = 2000;
 const POST_SEND_POLLS = 3;
@@ -123,7 +133,7 @@ const capCalls = (calls: ToolCall[] | undefined): ToolCall[] =>
 						: undefined,
 				running: c.running === true,
 				error: c.error === true,
-			}))
+		  }))
 		: [];
 
 const byTime = (a: ChatMessage, b: ChatMessage) =>
@@ -277,6 +287,7 @@ export const createManagerStore = (api: ManagerApi) => {
 				},
 			);
 		});
+	const heldFiles = new Map<string, Blob>();
 
 	const deliver = async (job: {
 		key: string;
@@ -296,6 +307,20 @@ export const createManagerStore = (api: ManagerApi) => {
 		if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
 			store.error = 'Message is larger than 64 KiB';
 			return;
+		}
+		const files = job.attachments.filter((a) => heldFiles.has(a.sha256));
+		if (files.length) {
+			const refusal = !store.originLocal(key)
+				? BLOBS_NEED_LOCAL
+				: mention
+				? BLOBS_NO_MENTION
+				: !store.blobSupported
+				? BLOBS_NEED_UPDATE
+				: null;
+			if (refusal) {
+				store.error = refusal;
+				return;
+			}
 		}
 		const id = job.reuseId && job.retryOf ? job.retryOf : newMessageId();
 		const draftAttachments = [...job.attachments];
@@ -327,6 +352,12 @@ export const createManagerStore = (api: ManagerApi) => {
 			store.closeMention();
 		}
 		try {
+			for (const sha of new Set(files.map((a) => a.sha256))) {
+				const blob = heldFiles.get(sha);
+				if (!blob) continue;
+				if (!api.putBlob) throw new Error(BLOBS_NEED_UPDATE);
+				await api.putBlob(room, sha, new Uint8Array(await blob.arrayBuffer()));
+			}
 			const sent = await sendWithin(SENDING_MS, {
 				id,
 				ts_ms: optimistic.ts_ms,
@@ -339,6 +370,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			store.error = null;
 			store.slash.picked = null;
 			unsent.delete(id);
+			for (const a of files) heldFiles.delete(a.sha256);
 			if (sent.id !== id) tracker.rename(id, sent.id);
 			replaceRow(key, id, sent);
 			tracker.accepted(sent.id);
@@ -370,6 +402,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		),
 		queuedIds: [] as string[],
 		queuedWhy: {} as Record<string, string>,
+		blobSupported: false,
 		delivery: {} as Record<string, Delivery>,
 		activityByRoom: {} as Record<string, ActivityView>,
 		toolsByMessage: {} as Record<string, string[]>,
@@ -646,11 +679,14 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		async loadCaps() {
+			let caps: string[] = [];
 			try {
-				store.mention.supported = mentionSupported((await api.caps?.()) ?? []);
+				caps = (await api.caps?.()) ?? [];
 			} catch {
-				store.mention.supported = false;
+				caps = [];
 			}
+			store.mention.supported = mentionSupported(caps);
+			store.blobSupported = caps.includes(BLOB_CAP);
 			if (!store.mention.supported) store.closeMention();
 		},
 
@@ -738,7 +774,12 @@ export const createManagerStore = (api: ManagerApi) => {
 				store.error = `${file.name} is larger than 25 MiB`;
 				return;
 			}
+			if (file.blob && file.size === 0) {
+				store.error = `${file.name} is empty`;
+				return;
+			}
 			store.error = null;
+			if (file.blob) heldFiles.set(file.sha256, file.blob);
 			store.draft.attachments.push({
 				name: file.name,
 				mime: file.type,
@@ -748,7 +789,12 @@ export const createManagerStore = (api: ManagerApi) => {
 		},
 
 		removeAttachment(index: number) {
-			store.draft.attachments.splice(index, 1);
+			const [gone] = store.draft.attachments.splice(index, 1);
+			if (
+				gone &&
+				!store.draft.attachments.some((a) => a.sha256 === gone.sha256)
+			)
+				heldFiles.delete(gone.sha256);
 		},
 
 		async send() {
@@ -1221,6 +1267,7 @@ export const useManagerStore = (): ManagerStore => {
 		rooms: realApi.managerRooms,
 		history: realApi.managerHistory,
 		send: realApi.managerSend,
+		putBlob: realApi.managerPutBlob,
 		commands: realApi.managerCommands,
 		search: realApi.managerSearch,
 		queued: realApi.managerQueued,
