@@ -211,6 +211,16 @@ impl Flusher {
         }
     }
 
+    pub fn blank_all(&mut self) {
+        let blanks = self
+            .rooms
+            .iter()
+            .filter(|e| !blank(&e.event))
+            .map(|e| crate::chat::activity::blank_idle(&e.event.room))
+            .collect();
+        self.ingest(blanks);
+    }
+
     pub fn flush(
         &mut self,
         leased: &[String],
@@ -266,6 +276,9 @@ pub(super) fn tick(
     failures: &mut FailureLog,
 ) {
     flusher.ingest(rx.take(Duration::ZERO));
+    if !rx.consented() {
+        flusher.blank_all();
+    }
     let leased = leases.active();
     let err = flusher.flush(&leased, clock(), &mut |device, p| {
         sender.send(p, std::slice::from_ref(&device.to_owned()))

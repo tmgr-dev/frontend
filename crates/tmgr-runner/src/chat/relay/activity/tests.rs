@@ -440,3 +440,26 @@ fn only_the_last_10_calls_and_50_labels_are_kept() {
     assert_eq!(calls.len(), 10);
     assert_eq!(calls[9]["n"], 24);
 }
+
+#[test]
+fn revoked_consent_clears_phones_and_a_new_lease_gets_no_stale_state() {
+    let mut rig = Rig::new();
+    rig.leases.deliver_activity_on("p1", true);
+    rig.publish(ActivityState::Working, "Bash: secret work");
+    rig.tick();
+    rig.rec.take();
+
+    rig.chat.set_activity_consent(false);
+    rig.advance(3_000);
+    rig.tick();
+    let sent = rig.rec.take();
+    assert_eq!(sent.len(), 1);
+    let room = &sent[0].0["rooms"][0];
+    assert_eq!(room["state"], "idle");
+    assert!(room["current"].is_null());
+
+    rig.leases.deliver_activity_on("p2", true);
+    rig.advance(3_000);
+    rig.tick();
+    assert_eq!(rig.rec.count(), 0);
+}

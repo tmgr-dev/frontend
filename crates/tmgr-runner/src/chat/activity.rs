@@ -69,6 +69,10 @@ impl Slot {
 pub struct ActivityRx(pub(super) Arc<Slot>);
 
 impl ActivityRx {
+    pub fn consented(&self) -> bool {
+        self.0.on.load(Ordering::SeqCst)
+    }
+
     pub fn take(&self, wait: Duration) -> Vec<ChatActivity> {
         let mut latest = lock(&self.0.latest);
         if latest.is_empty() && !wait.is_zero() {
