@@ -18,80 +18,151 @@ struct Rules {
     bearer: Regex,
     cookie: Regex,
     flag: Regex,
-    short_user: Regex,
+    user_flag: Regex,
+    pass_flag: Regex,
+    prog_pass: Regex,
+    htpasswd: Regex,
+    config_set: Regex,
     named: Regex,
+    pass_named: Regex,
     json_named: Regex,
     header_named: Regex,
+    xml_named: Regex,
     literal: Regex,
+    userinfo_pw: Regex,
     userinfo: Regex,
     query: Regex,
     bot: Regex,
-    pass_flag: Regex,
     reminder: Regex,
     hex: Regex,
     blob: Regex,
 }
 
+const VALUE: &str = r#""[^"]*"|'[^']*'|[^\s'"&;,]+"#;
+const WORDS: &str = "secret|token|passw(?:or)?d|pwd|credential|api[_-]?key|apikey|access[_-]?key|private[_-]?key|signing[_-]?key|session[_-]?id|signature";
+const SEGMENTS: &str = "key|auth|session|cookie|dsn|private";
+
 fn rules() -> &'static Rules {
     static R: OnceLock<Rules> = OnceLock::new();
     R.get_or_init(|| {
         let re = |p: &str| Regex::new(p).expect("redaction pattern");
-        let name = r"[A-Za-z0-9_.-]*(?:secret|token|passw(?:or)?d|passwd|pwd|key|credential|auth|session|cookie|dsn|signature|private)[A-Za-z0-9_.-]*";
+        let name = format!(
+            r"(?:[A-Za-z0-9_.-]*(?:{WORDS})[A-Za-z0-9_.-]*|(?:[A-Za-z0-9_.-]*[_.-])?(?:{SEGMENTS})(?:[_.-][A-Za-z0-9_.-]*)?)"
+        );
+        let json_name = format!(
+            r#"["'](?:[^"']*(?:{WORDS})[^"']*|(?:[^"']*[_.-])?(?:{SEGMENTS}|pass|pw)(?:[_.-][^"']*)?)["']"#
+        );
+        let flag_words = "password|passwd|pass|secret|token|api-?key|auth(?:orization|-?token|-?key|-?secret)|cookie|key|credential|signature|dsn";
         Rules {
-            pem: re(r"(?s)-----BEGIN [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----.*?(?:-----END [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----|$)"),
+            pem: re(r"(?s)-----BEGIN [A-Z ]*(?:PRIVATE KEY(?: BLOCK)?|CERTIFICATE)-----.*?(?:-----END [A-Z ]*(?:PRIVATE KEY(?: BLOCK)?|CERTIFICATE)-----|$)"),
             auth: re(r#"(?i)\b((?:proxy-)?authorization\s*[:=]\s*)(?:(?:bearer|basic|token|digest)\s+)?[^\s'"]+"#),
-            bearer: re(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{6,}"),
-            cookie: re(r#"(?i)\b((?:set-)?cookie\s*:\s*)[^\r\n'"]*"#),
-            flag: re(
-                r#"(?i)(\s--[a-z0-9-]*(?:password|passwd|pass|secret|token|api-?key|auth|cookie|key|credential|signature|dsn)[a-z0-9-]*(?:=|\s+))("[^"]*"|'[^']*'|\S+)"#,
-            ),
-            short_user: re(r#"(\s(?:-u|--user|-b)\s+)("[^"]*"|'[^']*'|\S+)"#),
-            named: re(&format!(
-                r#"(?i)\b({name}\s*=\s*)("[^"]*"|'[^']*'|[^\s'"&;,]+)"#
+            bearer: re(r"(?i)\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})"),
+            cookie: re(r#"(?i)\b((?:set-)?cookie\s*:[ \t]*)[^\r\n'"]*"#),
+            flag: re(&format!(
+                r#"(?i)((?:^|[\s='"])--[a-z0-9-]*(?:{flag_words})[a-z0-9-]*(?:=|\s+))("[^"]*"|'[^']*'|\S+)"#
             )),
-            json_named: re(
-                r#"(?i)("[^"]*(?:secret|token|passw|key|credential|auth|session|cookie|dsn|signature|private)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[^,}\s]+)"#,
-            ),
+            user_flag: re(r#"((?:^|\s)(?:-u|--user|--proxy-user|-b|--cookie))(?:=|\s+)?("[^"]*"|'[^']*'|\S+)"#),
+            pass_flag: re(r#"((?:^|\s)-p)\s*("[^"]*"|'[^']*'|\S+)"#),
+            prog_pass: re(r#"(?i)((?:^|\s)-(?:a|P|N|pass|passin|passout|storepass|keypass|srcstorepass|deststorepass)\s+)("[^"]*"|'[^']*'|\S+)"#),
+            htpasswd: re(r"(\bhtpasswd\s+(?:-[A-Za-z]+\s+)*\S+\s+\S+\s+)\S+"),
+            config_set: re(&format!(
+                r#"(?i)\b((?:config|export|set|setenv|secret\s+set)\s+(?:--?[a-z-]+\s+)*[A-Za-z0-9_.:/@-]*(?:{WORDS}|_?authtoken)[A-Za-z0-9_.:/@-]*\s+)("[^"]*"|'[^']*'|\S+)"#
+            )),
+            named: re(&format!(r#"(?i)\b({name}\s*(?:=>|=)\s*)({VALUE})"#)),
+            pass_named: re(&format!(
+                r#"(?i)((?:^|[^A-Za-z0-9])(?:[A-Za-z0-9]+[_.-])*(?:pass|passphrase|pw)\s*(?:=>|=)\s*)({VALUE})"#
+            )),
+            json_named: re(&format!(
+                r#"(?i)({json_name}\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,{{}}\s\[\]"']+)"#
+            )),
             header_named: re(
-                r#"(?i)\b([a-z0-9_-]*(?:api[_-]?key|token|secret|passw(?:or)?d)[a-z0-9_-]*\s*:\s*)[^\s'",}]+"#,
+                r#"(?i)\b([a-z0-9_-]*(?:api[_-]?key|token|secret|passw(?:or)?d|pass|pwd|passphrase)[a-z0-9_-]*[ \t]*:[ \t]*)("[^"]*"|'[^']*'|[^\s'",}]+)"#,
             ),
+            xml_named: re(r"(?i)(<[a-z0-9_.-]*(?:password|passwd|secret|token|apikey|credential)[a-z0-9_.-]*>)[^<]+"),
             literal: re(concat!(
                 r"\b(?:ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9]{8,}",
                 r"|\bgithub_pat_[A-Za-z0-9_]{8,}",
                 r"|\bsk-[A-Za-z0-9_-]{8,}",
                 r"|\bxox[abprs]-[A-Za-z0-9-]{8,}",
-                r"|\b(?:AKIA|ASIA)[A-Z0-9]{12,}",
-                r"|\bAIza[0-9A-Za-z_-]{20,}",
-                r"|\bglpat-[A-Za-z0-9_-]{8,}",
-                r"|\bnpm_[A-Za-z0-9]{20,}",
-                r"|\b[sr]k_(?:live|test)_[A-Za-z0-9]{8,}",
                 r"|\bxapp-[A-Za-z0-9-]{8,}",
                 r"|\bpypi-[A-Za-z0-9_-]{16,}",
                 r"|\bhf_[A-Za-z0-9]{16,}",
                 r"|\bSG\.[A-Za-z0-9_-]{16,}",
                 r"|\bAGE-SECRET-KEY-[A-Z0-9]{8,}",
+                r"|\bhvs\.[A-Za-z0-9_-]{16,}",
+                r"|\bya29\.[A-Za-z0-9_-]{16,}",
+                r"|\bglsa_[A-Za-z0-9_]{16,}",
+                r"|\bdop_v1_[A-Za-z0-9]{16,}",
+                r"|\bshp(?:at|ss|ca)_[A-Za-z0-9]{16,}",
+                r"|\bHRKU-[A-Za-z0-9-]{16,}",
+                r"|\bglc_[A-Za-z0-9+/=]{16,}",
+                r"|\blin_api_[A-Za-z0-9]{16,}",
+                r"|\bsq0atp-[A-Za-z0-9_-]{16,}",
+                r"|\bpat-na1-[A-Za-z0-9-]{16,}",
                 r"|hooks\.slack\.com/services/[A-Za-z0-9/]+",
+                r"|\b(?:AKIA|ASIA)[A-Z0-9]{12,}",
+                r"|\bAIza[0-9A-Za-z_-]{20,}",
+                r"|\bglpat-[A-Za-z0-9_-]{8,}",
+                r"|\bnpm_[A-Za-z0-9]{20,}",
+                r"|\b[sr]k_(?:live|test)_[A-Za-z0-9]{8,}",
                 r"|\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.?[A-Za-z0-9_-]*",
             )),
+            userinfo_pw: re(r"(\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s/?#'\x22@]*:[^\s'\x22]*@"),
             userinfo: re(r"(\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@'\x22]+@"),
             query: re(r"(\b[a-z][a-z0-9+.-]*://[^\s'\x22?#]*)\?[^\s'\x22#]*"),
             bot: re(r"(?i)(\bbot)[0-9]{5,}:[A-Za-z0-9_-]{20,}"),
-            pass_flag: re(r#"(\s-p)(?:\s+("[^"]*"|'[^']*'|\S+)|(\S+))"#),
             reminder: re(r"(?s)<system-reminder>.*?(?:</system-reminder>|$)"),
-            hex: re(r"\b[0-9a-fA-F]{32,}\b"),
+            hex: re(r"[0-9a-fA-F]{32,}"),
             blob: re(r"[A-Za-z0-9+/=_-]{32,}"),
         }
     })
 }
 
-fn mixed(s: &str) -> bool {
-    s.bytes().any(|b| b.is_ascii_lowercase())
-        && s.bytes().any(|b| b.is_ascii_uppercase())
-        && s.bytes().any(|b| b.is_ascii_digit())
+fn blob_secret(s: &str) -> bool {
+    let upper = s.bytes().any(|b| b.is_ascii_uppercase());
+    let lower = s.bytes().any(|b| b.is_ascii_lowercase());
+    let digits = s.bytes().filter(|b| b.is_ascii_digit()).count();
+    let plain = s.bytes().all(|b| b.is_ascii_alphanumeric());
+    if s.len() == 40
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return false;
+    }
+    if s.contains('/') {
+        return upper && lower && digits >= 2;
+    }
+    if plain {
+        return digits > 0 && (upper || lower);
+    }
+    upper && lower && digits > 0
 }
 
 fn keep_prefix(c: &Captures) -> String {
     format!("{}{MASK}", &c[1])
+}
+
+fn has_word(text: &str, words: &[&str]) -> bool {
+    text.split_whitespace()
+        .any(|t| words.iter().any(|w| t.eq_ignore_ascii_case(w)))
+}
+
+fn replace_ctx(re: &Regex, s: &str, f: impl Fn(&str, bool, bool) -> Option<String>) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut last = 0;
+    for m in re.find_iter(s) {
+        let before = m.start() > 0 && bytes[m.start() - 1].is_ascii_alphanumeric();
+        let after = m.end() < bytes.len() && bytes[m.end()].is_ascii_alphanumeric();
+        out.push_str(&s[last..m.start()]);
+        match f(m.as_str(), before, after) {
+            Some(r) => out.push_str(&r),
+            None => out.push_str(m.as_str()),
+        }
+        last = m.end();
+    }
+    out.push_str(&s[last..]);
+    out
 }
 
 fn normalize(text: &str) -> String {
@@ -124,15 +195,74 @@ pub(crate) fn mask(text: &str) -> String {
     let r = rules();
     let text = normalize(text);
     let mut s = r.pem.replace_all(&text, MASK).into_owned();
-    for re in [
-        &r.auth,
-        &r.bearer,
-        &r.cookie,
-        &r.flag,
-        &r.short_user,
-        &r.named,
-        &r.header_named,
-    ] {
+    for re in [&r.auth, &r.cookie, &r.flag, &r.htpasswd, &r.config_set] {
+        s = re
+            .replace_all(&s, |c: &Captures| keep_prefix(c))
+            .into_owned();
+    }
+    s = r
+        .bearer
+        .replace_all(&s, |c: &Captures| {
+            let v = &c[2];
+            if v.len() >= 20 || v.bytes().any(|b| b.is_ascii_digit()) {
+                keep_prefix(c)
+            } else {
+                c[0].to_string()
+            }
+        })
+        .into_owned();
+    if has_word(&s, &["curl", "wget", "http", "https"]) || s.contains("http") {
+        s = r
+            .user_flag
+            .replace_all(&s, |c: &Captures| {
+                let v = c[2].trim_matches(|ch| ch == '\'' || ch == '"');
+                if v.contains(':') || v.contains('=') {
+                    format!("{} {MASK}", &c[1])
+                } else {
+                    c[0].to_string()
+                }
+            })
+            .into_owned();
+    }
+    if has_word(
+        &s,
+        &[
+            "sshpass", "mysql", "mariadb", "mongo", "mongosh", "ftp", "lftp", "7z", "7za", "unzip",
+            "zip", "login",
+        ],
+    ) {
+        s = r
+            .pass_flag
+            .replace_all(&s, |c: &Captures| {
+                let v = c[2].trim_matches(|ch| ch == '\'' || ch == '"');
+                if v.bytes().all(|b| b.is_ascii_digit()) {
+                    c[0].to_string()
+                } else {
+                    format!("{} {MASK}", &c[1])
+                }
+            })
+            .into_owned();
+    }
+    if has_word(
+        &s,
+        &[
+            "redis-cli",
+            "openssl",
+            "keytool",
+            "zip",
+            "unzip",
+            "7z",
+            "7za",
+            "ssh-keygen",
+            "sqlcmd",
+        ],
+    ) {
+        s = r
+            .prog_pass
+            .replace_all(&s, |c: &Captures| keep_prefix(c))
+            .into_owned();
+    }
+    for re in [&r.pass_named, &r.named, &r.header_named] {
         s = re
             .replace_all(&s, |c: &Captures| keep_prefix(c))
             .into_owned();
@@ -140,6 +270,10 @@ pub(crate) fn mask(text: &str) -> String {
     s = r
         .json_named
         .replace_all(&s, |c: &Captures| format!("{}\"{MASK}\"", &c[1]))
+        .into_owned();
+    s = r
+        .xml_named
+        .replace_all(&s, |c: &Captures| keep_prefix(c))
         .into_owned();
     s = r
         .bot
@@ -150,33 +284,18 @@ pub(crate) fn mask(text: &str) -> String {
         .query
         .replace_all(&s, |c: &Captures| format!("{}?{MASK}", &c[1]))
         .into_owned();
-    if ["sshpass", "docker login", "mysql", "mongo", "psql", "ftp"]
-        .iter()
-        .any(|p| s.contains(p))
-    {
-        s = r
-            .pass_flag
-            .replace_all(&s, |c: &Captures| format!("{} {MASK}", &c[1]))
+    for re in [&r.userinfo_pw, &r.userinfo] {
+        s = re
+            .replace_all(&s, |c: &Captures| format!("{}{MASK}@", &c[1]))
             .into_owned();
     }
-    s = r
-        .userinfo
-        .replace_all(&s, |c: &Captures| format!("{}{MASK}@", &c[1]))
-        .into_owned();
-    s = r
-        .hex
-        .replace_all(&s, |c: &Captures| {
-            let m = &c[0];
-            if m.len() == 40 && !m.bytes().any(|b| b.is_ascii_uppercase()) {
-                m.to_string()
-            } else {
-                MASK.to_string()
-            }
-        })
-        .into_owned();
+    s = replace_ctx(&r.hex, &s, |m, before, after| {
+        let sha = m.len() == 40 && !before && !after && !m.bytes().any(|b| b.is_ascii_uppercase());
+        (!sha).then(|| MASK.to_string())
+    });
     r.blob
         .replace_all(&s, |c: &Captures| {
-            if mixed(&c[0]) && !c[0].starts_with('/') {
+            if blob_secret(&c[0]) {
                 MASK.to_string()
             } else {
                 c[0].to_string()
@@ -211,22 +330,77 @@ pub(crate) fn trim_results(calls: &mut [ToolCall]) {
     }
 }
 
-const SECRET_COMMANDS: [&str; 14] = [
-    "printenv",
-    "env ",
-    "gh auth token",
-    "aws configure",
-    "security find",
-    "op read",
-    "vault ",
-    "kubectl get secret",
+const LISTING_HEADS: [&str; 7] = ["ls", "find", "tree", "du", "df", "pwd", "cd"];
+const FLAG_HEADS: [&str; 5] = ["wc", "head", "tail", "sort", "uniq"];
+const BUILD_HEADS: [&str; 9] = [
+    "cargo", "npm", "pnpm", "yarn", "go", "make", "pytest", "jest", "npx",
+];
+const BUILD_SUBS: [&str; 9] = [
+    "test",
+    "build",
+    "check",
+    "clippy",
+    "fmt",
+    "lint",
+    "typecheck",
+    "vitest",
+    "jest",
+];
+const GIT_LISTING: [&str; 4] = ["status", "branch", "ls-files", "rev-parse"];
+const GIT_STAT_ONLY: [&str; 4] = ["diff", "show", "stash", "log"];
+const SENSITIVE: [&str; 13] = [
+    "secret",
+    "password",
+    "passwd",
+    "token",
+    "credential",
     ".env",
+    ".ssh",
+    ".kube",
+    ".aws",
+    ".pem",
+    "key",
     ".netrc",
     ".npmrc",
-    ".pypirc",
-    "id_rsa",
-    "id_ed25519",
 ];
+
+fn segment_allowed(seg: &str) -> bool {
+    let words: Vec<&str> = seg.split_whitespace().collect();
+    let Some(head) = words.first().copied() else {
+        return true;
+    };
+    let rest = &words[1..];
+    match head {
+        "true" | "pwd" => true,
+        "find" => !rest
+            .iter()
+            .any(|w| matches!(*w, "-exec" | "-execdir" | "-ok" | "-okdir" | "-delete")),
+        h if LISTING_HEADS.contains(&h) => true,
+        h if FLAG_HEADS.contains(&h) => rest
+            .iter()
+            .all(|w| w.starts_with('-') || w.bytes().all(|b| b.is_ascii_digit())),
+        "git" => match rest.first().copied() {
+            Some(sub) if GIT_LISTING.contains(&sub) => true,
+            Some(sub) if GIT_STAT_ONLY.contains(&sub) => {
+                rest.iter()
+                    .any(|w| matches!(*w, "--stat" | "--name-only" | "--name-status" | "--oneline"))
+                    && !rest.iter().any(|w| {
+                        matches!(*w, "-p" | "--patch" | "-u" | "--cc" | "--no-index")
+                            || w.contains(':')
+                    })
+            }
+            _ => false,
+        },
+        "rg" | "grep" => rest.iter().any(|w| {
+            matches!(
+                *w,
+                "-l" | "-c" | "--files" | "--files-with-matches" | "--count"
+            )
+        }),
+        h if BUILD_HEADS.contains(&h) => rest.first().is_some_and(|s| BUILD_SUBS.contains(s)),
+        _ => false,
+    }
+}
 
 pub(crate) fn result_allowed(name: &str, input: &Value) -> bool {
     match name {
@@ -234,13 +408,16 @@ pub(crate) fn result_allowed(name: &str, input: &Value) -> bool {
             let cmd = first_str(input, &["command"])
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            let sensitive = SECRET_COMMANDS.iter().any(|p| cmd.contains(p))
-                || cmd.trim() == "env"
-                || cmd.trim() == "set"
-                || cmd.contains(".pem")
-                || cmd.contains("kubeconfig")
-                || cmd.contains("credentials");
-            !sensitive
+            if cmd.contains(['$', '`', '<']) || SENSITIVE.iter().any(|p| cmd.contains(p)) {
+                return false;
+            }
+            let flat = cmd
+                .replace("2>&1", " ")
+                .replace(">&", " ")
+                .replace("&&", ";")
+                .replace("||", ";")
+                .replace(['|', '\n', '&'], ";");
+            flat.split(';').all(|seg| segment_allowed(seg.trim()))
         }
         "Glob" => true,
         "Grep" => input.get("output_mode").and_then(Value::as_str) != Some("content"),
@@ -313,7 +490,12 @@ fn arg_value(v: &Value) -> Option<String> {
         Value::Bool(b) => b.to_string(),
         _ => return None,
     };
-    Some(clip_chars(&flat(cap_input(&text, 512)), ARG_MAX))
+    Some(clip_chars(&flat(&mask(cap_input(&text, 512))), ARG_MAX))
+}
+
+fn secret_key(key: &str) -> bool {
+    let probe = format!("{key}=x");
+    mask(&probe) != probe
 }
 
 fn key_args(input: &Value) -> String {
@@ -321,7 +503,12 @@ fn key_args(input: &Value) -> String {
         return String::new();
     };
     map.iter()
-        .filter_map(|(k, v)| arg_value(v).map(|v| format!("{k}={v}")))
+        .filter_map(|(k, v)| {
+            if secret_key(k) {
+                return arg_value(v).map(|_| format!("{k}={MASK}"));
+            }
+            arg_value(v).map(|v| format!("{k}={v}"))
+        })
         .take(MAX_ARGS)
         .collect::<Vec<_>>()
         .join(" ")
@@ -396,7 +583,7 @@ mod tests {
                 "curl -H \"authorization: Basic dXNlcjpwYXNz\" x".into(),
                 "dXNlcjpwYXNz",
             ),
-            ("echo Bearer abcdefghijkl".into(), "abcdefghijkl"),
+            ("echo Bearer abcdefghijk1".into(), "abcdefghijk1"),
             ("login --password hunter2hunter2".into(), "hunter2hunter2"),
             ("login --password=hunter2hunter2".into(), "hunter2hunter2"),
             ("mysql --pass 'my secret pw'".into(), "secret pw"),
@@ -497,6 +684,32 @@ mod tests {
                 "cat <<EOF > .env\nDB_PASSWORD=hunter2hunter2\nEOF".into(),
                 "hunter2hunter2",
             ),
+            ("-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF\n-----END PGP PRIVATE KEY BLOCK-----".into(), "lQOYBF"),
+            ("password: \"hunter2hunter2\"".into(), "hunter2hunter2"),
+            ("  db_password: 'hunter2hunter2'".into(), "hunter2hunter2"),
+            (":password => 'hunter2hunter2'".into(), "hunter2hunter2"),
+            ("--password hunter2hunter2 login".into(), "hunter2hunter2"),
+            ("DB_PASS=hunter2hunter2 run".into(), "hunter2hunter2"),
+            ("echo \"pw=hunter2hunter2\"".into(), "hunter2hunter2"),
+            ("curl --user=admin:hunter2hunter2 https://x.io".into(), "hunter2hunter2"),
+            ("curl -uadmin:hunter2hunter2 https://x.io".into(), "hunter2hunter2"),
+            ("redis-cli -a hunter2hunter2 ping".into(), "hunter2hunter2"),
+            ("openssl enc -pass pass:hunter2hunter2 -in a".into(), "hunter2hunter2"),
+            ("zip -P hunter2hunter2 a.zip b".into(), "hunter2hunter2"),
+            ("keytool -storepass hunter2hunter2 -list".into(), "hunter2hunter2"),
+            ("htpasswd -b file user hunter2hunter2".into(), "hunter2hunter2"),
+            ("npm config set //r.example/:_authToken hunter2hunter2".into(), "hunter2hunter2"),
+            ("git config user.token hunter2hunter2".into(), "hunter2hunter2"),
+            (format!("shp{}", "at_0123456789abcdef0123456789abcdef"), "0123456789abcdef0123456789abcdef"),
+            ("vault login hvs.CAESabcdefghijklmnopqrstuv".into(), "CAESabcdefghijklmnopqrstuv"),
+            ("https://admin:ab/cd+ef@db.example.com/x".into(), "ab/cd+ef"),
+            ("mysql://root:p@ss:w0rd@h/db".into(), "w0rd"),
+            ("<password>hunter2hunter2</password>".into(), "hunter2hunter2"),
+            ("{\"credentials\": {\"secret\": \"hunter2hunter2\"}}".into(), "hunter2hunter2"),
+            ("{'password': 'hunter2hunter2'}".into(), "hunter2hunter2"),
+            ("ssh-keygen -N hunter2hunter2 -f k".into(), "hunter2hunter2"),
+            ("tok glc_abcdefghijklmnopqrstuv".into(), "glc_abcdefghijklmnopqrstuv"),
+            ("token\n0123456789abcdefghijklmnopqrstuvwxyz".into(), "0123456789abcdefghijklmnopqrstuvwxyz"),
         ];
         for (input, secret) in cases {
             let out = mask(&input);
@@ -518,6 +731,14 @@ mod tests {
             "mkdir -p /tmp/a/b",
             "git show 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
             "ssh -p 22 host",
+            "git checkout -b feature/x",
+            "git push -u origin main",
+            "mkdir -p /tmp/mysql-data",
+            "psql -p 5432 db",
+            "cat crates/tmgr-runner/src/attach/RedactRules2Helper.rs",
+            "git log --author=bob",
+            "{\"primaryKey\": \"id\", \"keywords\": [\"cli\"]}",
+            "bearer tokens and Bearer authentication",
         ];
         for c in cases {
             assert_eq!(mask(c), c);
@@ -606,6 +827,9 @@ mod tests {
     fn results_are_shown_only_for_listing_tools_and_never_for_secret_sources() {
         let yes = [
             ("Bash", json!({"command": "cargo test"})),
+            ("Bash", json!({"command": "cd a && git status | head -5"})),
+            ("Bash", json!({"command": "cargo test 2>&1 | tail -20"})),
+            ("Bash", json!({"command": "git diff --stat"})),
             ("Glob", json!({"pattern": "*.rs"})),
             ("Grep", json!({"pattern": "x"})),
         ];
@@ -621,6 +845,29 @@ mod tests {
             ("Agent", json!({})),
             ("Grep", json!({"pattern": "x", "output_mode": "content"})),
             ("Bash", json!({"command": "cat .env"})),
+            ("Bash", json!({"command": "head config/app.yml"})),
+            ("Bash", json!({"command": "sort ~/.pgpass"})),
+            ("Bash", json!({"command": "npm run env"})),
+            ("Bash", json!({"command": "git diff"})),
+            (
+                "Bash",
+                json!({"command": "git show HEAD:config/database.yml"}),
+            ),
+            ("Bash", json!({"command": "git log -p"})),
+            ("Bash", json!({"command": "ls & cat config/app.yml"})),
+            ("Bash", json!({"command": "sort < config/database.yml"})),
+            ("Bash", json!({"command": "find . -exec cat {} \\;"})),
+            ("Bash", json!({"command": "echo $DB_PASSWORD"})),
+            ("Bash", json!({"command": "cat config/app.yml"})),
+            (
+                "Bash",
+                json!({"command": "kubectl -n prod get secret db -o yaml"}),
+            ),
+            ("Bash", json!({"command": "ls && printenv"})),
+            (
+                "Bash",
+                json!({"command": "aws ssm get-parameter --with-decryption"}),
+            ),
             ("Bash", json!({"command": "env"})),
             ("Bash", json!({"command": "printenv | sort"})),
             ("Bash", json!({"command": "kubectl get secret x -o yaml"})),
@@ -630,6 +877,15 @@ mod tests {
         for (n, i) in no {
             assert!(!result_allowed(n, &i), "{n} {i}");
         }
+    }
+
+    #[test]
+    fn a_secret_mcp_key_never_shows_its_value() {
+        let c = tool_call(
+            "mcp__x__login",
+            &json!({"password": "correct horse battery staple", "user": "bob"}),
+        );
+        assert_eq!(c.summary, "password=… user=bob");
     }
 
     #[test]

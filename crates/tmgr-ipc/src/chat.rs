@@ -343,6 +343,7 @@ pub struct ChatActivity {
 pub struct ToolCall {
     #[serde(default)]
     pub n: u32,
+    #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub summary: String,

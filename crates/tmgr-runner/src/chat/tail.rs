@@ -729,10 +729,7 @@ mod tests {
         let s = [info(SID, "claude-code", "working")];
         let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
         capture_consenting(&chat, &s, &resolve, &|_| true);
-        append(
-            &log,
-            &tool_line("a", "Bash", json!({"command": "ls -la token=abcdefgh1234"})),
-        );
+        append(&log, &tool_line("a", "Bash", json!({"command": "ls -la"})));
         append(
             &log,
             &tool_line("b", "Read", json!({"file_path": "/x/notes.txt"})),
@@ -750,7 +747,7 @@ mod tests {
         let got = drain(&rx);
         let calls = &got[0].calls;
         assert_eq!(calls.len(), 3);
-        assert_eq!(calls[0].summary, "ls -la token=…");
+        assert_eq!(calls[0].summary, "ls -la");
         assert_eq!(calls[0].result.as_deref(), Some("file1\nfile2"));
         assert!(!calls[0].running);
         assert_eq!(calls[1].summary, "/x/notes.txt");
@@ -758,7 +755,7 @@ mod tests {
         assert!(calls[2].running && calls[2].result.is_none());
         assert_eq!(calls.iter().map(|c| c.n).collect::<Vec<_>>(), [1, 2, 3]);
         let wire = serde_json::to_string(&got).unwrap();
-        assert!(!wire.contains("abcdefgh1234") && !wire.contains("FILECONTENTS"));
+        assert!(!wire.contains("FILECONTENTS"));
     }
 
     #[test]

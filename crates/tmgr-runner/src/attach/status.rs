@@ -554,6 +554,7 @@ impl StatusScan {
                 {
                     let done = std::mem::take(&mut self.used);
                     let calls = std::mem::take(&mut self.calls);
+                    self.no_result.clear();
                     if !done.is_empty() {
                         self.finished = Some(done);
                         self.finished_calls = calls.into_iter().map(|(_, c)| c).collect();
@@ -731,7 +732,7 @@ impl StatusScan {
             let Some(id) = b.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
-            let shown = !self.no_result.remove(id);
+            let shown = !self.no_result.contains(id);
             if let Some((_, call)) = self.calls.iter_mut().find(|(i, _)| i == id) {
                 call.error = b.get("is_error").and_then(Value::as_bool) == Some(true);
                 if shown {
