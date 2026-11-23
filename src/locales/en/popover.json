@@ -4,7 +4,9 @@
 	},
 	"header": {
 		"workspace": "Workspace",
-		"open": "Open TMGR"
+		"open": "Open TMGR",
+		"decisions": "Open Decisions window",
+		"manager": "Open Manager chats window"
 	},
 	"quickAdd": {
 		"label": "Quick add task",

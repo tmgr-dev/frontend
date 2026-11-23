@@ -188,12 +188,12 @@ export const hasUsage = (usage: PopoverUsage | undefined): boolean =>
 
 export const visibleSections = (model: PopoverModel): PopoverSection[] => {
 	const sections: PopoverSection[] = [];
+	if (hasUsage(model.extras.usage)) sections.push('ai');
 	if (model.decisionsAvailable) sections.push('decisions');
 	if (model.missed.length > 0) sections.push('missed');
 	if (model.recent.length > 0) sections.push('switch');
 	if (model.extras.today) sections.push('today');
 	if ((model.extras.machines ?? []).length > 0) sections.push('machines');
-	if (hasUsage(model.extras.usage)) sections.push('ai');
 	if (model.pluginSections.length > 0) sections.push('plugins');
 	return sections;
 };
@@ -235,3 +235,18 @@ export const markBusy = (busy: readonly string[], id: string): string[] =>
 
 export const usageBarPct = (bar: UsageBar): number =>
 	Math.min(100, Math.max(0, Math.round(bar.pct)));
+
+export const SWITCH_CAP = 3;
+
+export const visibleSwitchTasks = (
+	tasks: readonly PopoverTask[],
+): PopoverTask[] => tasks.slice(0, SWITCH_CAP);
+
+export type HeaderAction = { id: 'decisions' | 'manager' };
+
+export const headerActions = (model: PopoverModel): HeaderAction[] => {
+	const actions: HeaderAction[] = [];
+	if (model.decisionsAvailable) actions.push({ id: 'decisions' });
+	actions.push({ id: 'manager' });
+	return actions;
+};

@@ -13,6 +13,21 @@
 					<b>{{ workspaceName }}</b>
 					<span>{{ $t('popover.header.workspace') }}</span>
 				</div>
+				<button
+					v-for="action in actions"
+					:key="action.id"
+					type="button"
+					class="ibtn"
+					data-nav
+					:title="$t(`popover.header.${action.id}`)"
+					:aria-label="$t(`popover.header.${action.id}`)"
+					@click="run(action.id)"
+				>
+					<svg viewBox="0 0 16 16" aria-hidden="true">
+						<path v-if="action.id === 'decisions'" d="M3 8.5l3 3 7-7" />
+						<path v-else d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" />
+					</svg>
+				</button>
 				<button type="button" class="btn" data-nav @click="run('open')">
 					{{ $t('popover.header.open') }}
 				</button>
@@ -30,6 +45,75 @@
 						@keydown.enter.prevent="quickAdd"
 					/>
 				</div>
+
+				<template v-if="show('ai')">
+					<div class="sep"></div>
+					<div class="sec">
+						<div class="label">{{ $t('popover.usage.title') }}</div>
+						<div class="ai">
+							<div
+								v-for="provider in usage.providers ?? []"
+								:key="provider.tool"
+								class="prov"
+							>
+								<div class="ph">
+									<b>{{ $t(`popover.usage.${provider.tool}`) }}</b>
+									<span v-if="provider.plan" class="plan">{{
+										provider.plan
+									}}</span>
+									<span class="pt">
+										<template v-if="provider.todayCost !== undefined">
+											{{ moneyText(provider.todayCost) }}
+										</template>
+										<template v-if="provider.todayTokens !== undefined">
+											· {{ tokensText(provider.todayTokens) }}
+											{{ $t('popover.usage.tokens') }}
+										</template>
+									</span>
+								</div>
+								<UsageBar
+									v-if="provider.fiveHour"
+									:label="$t('popover.usage.fiveHour')"
+									:bar="provider.fiveHour"
+									:now="model.now"
+								/>
+								<UsageBar
+									v-if="provider.week"
+									:label="$t('popover.usage.week')"
+									:bar="provider.week"
+									:now="model.now"
+								/>
+							</div>
+							<div class="tot">
+								<span v-if="usage.todayCost !== undefined">
+									{{ $t('popover.usage.today') }}
+									<b>{{ moneyText(usage.todayCost) }}</b>
+								</span>
+								<span v-if="usage.todayTokens !== undefined">
+									<b>{{ tokensText(usage.todayTokens) }}</b>
+									{{ $t('popover.usage.tokens') }}
+								</span>
+								<span v-if="usage.weekCost !== undefined">
+									{{ $t('popover.usage.weekTotal') }}
+									<b>{{ moneyText(usage.weekCost) }}</b>
+								</span>
+								<span v-if="usage.runningCost !== undefined">
+									{{ runningLabel }}
+									<b>{{ moneyText(usage.runningCost) }}</b>
+								</span>
+							</div>
+						</div>
+						<button
+							type="button"
+							class="row"
+							data-nav
+							@click="run('open-usage')"
+						>
+							<span class="t">{{ $t('popover.usage.open') }}</span>
+							<span class="chev">›</span>
+						</button>
+					</div>
+				</template>
 
 				<div class="sec top0">
 					<RunningTimer
@@ -90,7 +174,7 @@
 					<div class="sec top0">
 						<div class="label">{{ $t('popover.switch.title') }}</div>
 						<button
-							v-for="task in model.recent"
+							v-for="task in switchTasks"
 							:key="`${task.workspaceId}:${task.id}`"
 							type="button"
 							class="row"
@@ -219,75 +303,6 @@
 					</button>
 				</div>
 
-				<template v-if="show('ai')">
-					<div class="sep"></div>
-					<div class="sec">
-						<div class="label">{{ $t('popover.usage.title') }}</div>
-						<div class="ai">
-							<div
-								v-for="provider in usage.providers ?? []"
-								:key="provider.tool"
-								class="prov"
-							>
-								<div class="ph">
-									<b>{{ $t(`popover.usage.${provider.tool}`) }}</b>
-									<span v-if="provider.plan" class="plan">{{
-										provider.plan
-									}}</span>
-									<span class="pt">
-										<template v-if="provider.todayCost !== undefined">
-											{{ moneyText(provider.todayCost) }}
-										</template>
-										<template v-if="provider.todayTokens !== undefined">
-											· {{ tokensText(provider.todayTokens) }}
-											{{ $t('popover.usage.tokens') }}
-										</template>
-									</span>
-								</div>
-								<UsageBar
-									v-if="provider.fiveHour"
-									:label="$t('popover.usage.fiveHour')"
-									:bar="provider.fiveHour"
-									:now="model.now"
-								/>
-								<UsageBar
-									v-if="provider.week"
-									:label="$t('popover.usage.week')"
-									:bar="provider.week"
-									:now="model.now"
-								/>
-							</div>
-							<div class="tot">
-								<span v-if="usage.todayCost !== undefined">
-									{{ $t('popover.usage.today') }}
-									<b>{{ moneyText(usage.todayCost) }}</b>
-								</span>
-								<span v-if="usage.todayTokens !== undefined">
-									<b>{{ tokensText(usage.todayTokens) }}</b>
-									{{ $t('popover.usage.tokens') }}
-								</span>
-								<span v-if="usage.weekCost !== undefined">
-									{{ $t('popover.usage.weekTotal') }}
-									<b>{{ moneyText(usage.weekCost) }}</b>
-								</span>
-								<span v-if="usage.runningCost !== undefined">
-									{{ runningLabel }}
-									<b>{{ moneyText(usage.runningCost) }}</b>
-								</span>
-							</div>
-						</div>
-						<button
-							type="button"
-							class="row"
-							data-nav
-							@click="run('open-usage')"
-						>
-							<span class="t">{{ $t('popover.usage.open') }}</span>
-							<span class="chev">›</span>
-						</button>
-					</div>
-				</template>
-
 				<template v-if="show('plugins')">
 					<div class="sep"></div>
 					<div class="sec">
@@ -337,13 +352,13 @@
 </template>
 
 <script lang="ts">
-	import { defineComponent } from 'vue';
 	import {
 		decisionsAnswer,
 		decisionsList,
 		onDecisionsChanged,
 	} from '@/decisions/api';
 	import type { Answer, CardView } from '@/decisions/types';
+	import { defineComponent } from 'vue';
 	import {
 		onPopoverModel,
 		onPopoverShown,
@@ -352,32 +367,34 @@
 		popoverResize,
 		popoverState,
 	} from '../api';
-	import DecisionCard from './DecisionCard.vue';
-	import RunningTimer from './RunningTimer.vue';
-	import UsageBar from './UsageBar.vue';
 	import {
 		actionIds,
 		BUSY_MS,
+		durationText,
 		FALLBACK_MAX_HEIGHT,
+		headerActions,
+		hiddenDecisionCount,
+		hotkeyText,
 		markBusy,
 		moneyText,
 		nextIndex,
-		hotkeyText,
 		nextResize,
 		panelMaxHeight,
-		hiddenDecisionCount,
 		pendingDecisions,
 		stripTicket,
 		ticketCode,
-		durationText,
-		visibleDecisions,
 		todayEntries,
 		tokensText,
+		visibleDecisions,
 		visibleSections,
+		visibleSwitchTasks,
 		type PopoverSection,
 		type PopoverUsage,
 	} from '../model';
 	import type { PopoverModel, PopoverTask } from '../types';
+	import DecisionCard from './DecisionCard.vue';
+	import RunningTimer from './RunningTimer.vue';
+	import UsageBar from './UsageBar.vue';
 
 	const NAV_SELECTOR = '[data-nav]:not([disabled])';
 
@@ -420,6 +437,12 @@
 					this.model?.hotkeys.decisions,
 					this.model?.platform ?? 'macos',
 				);
+			},
+			actions() {
+				return this.model ? headerActions(this.model) : [];
+			},
+			switchTasks(): PopoverTask[] {
+				return visibleSwitchTasks(this.model?.recent ?? []);
 			},
 			sections(): PopoverSection[] {
 				return this.model ? visibleSections(this.model) : [];
@@ -589,7 +612,9 @@
 				const state = this.machineState(machine.state);
 				return machine.sessions === null
 					? state
-					: `${this.$t('popover.machines.sessions', { count: machine.sessions })} · ${state}`;
+					: `${this.$t('popover.machines.sessions', {
+							count: machine.sessions,
+						})} · ${state}`;
 			},
 			machineState(state: string): string {
 				switch (state) {

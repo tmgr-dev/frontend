@@ -5,6 +5,7 @@ import {
 	durationText,
 	formatClock,
 	hasUsage,
+	headerActions,
 	hiddenDecisionCount,
 	hotkeyText,
 	isAnswerable,
@@ -25,6 +26,7 @@ import {
 	usageLevel,
 	visibleDecisions,
 	visibleSections,
+	visibleSwitchTasks,
 } from '../model';
 import type { PopoverModel } from '../types';
 
@@ -275,12 +277,12 @@ describe('section visibility', () => {
 			},
 		});
 		expect(visibleSections(full)).toEqual([
+			'ai',
 			'decisions',
 			'missed',
 			'switch',
 			'today',
 			'machines',
-			'ai',
 			'plugins',
 		]);
 	});
@@ -415,5 +417,33 @@ describe('hotkey text in the popover', () => {
 	it('is empty without a shortcut', () => {
 		expect(hotkeyText(null, 'macos')).toBe('');
 		expect(hotkeyText(undefined, 'windows')).toBe('');
+	});
+});
+
+describe('switch list', () => {
+	const task = (id: number) => ({
+		id,
+		workspaceId: 1,
+		title: `TM-${id}: x`,
+		commonTime: 0,
+		startTime: 0,
+	});
+
+	it('shows at most three tasks', () => {
+		const tasks = [1, 2, 3, 4, 5].map(task);
+		expect(visibleSwitchTasks(tasks).map((t) => t.id)).toEqual([1, 2, 3]);
+		expect(visibleSwitchTasks(tasks.slice(0, 2))).toHaveLength(2);
+	});
+});
+
+describe('header actions', () => {
+	it('offers decisions and manager when decisions are available', () => {
+		expect(
+			headerActions(model({ decisionsAvailable: true })).map((a) => a.id),
+		).toEqual(['decisions', 'manager']);
+	});
+
+	it('drops decisions where they are unavailable', () => {
+		expect(headerActions(model()).map((a) => a.id)).toEqual(['manager']);
 	});
 });

@@ -147,6 +147,35 @@ html.dark .popover-root {
 	flex: none;
 }
 
+.ibtn {
+	width: 26px;
+	height: 26px;
+	border: 0;
+	border-radius: 6px;
+	background: none;
+	color: var(--muted);
+	display: grid;
+	place-items: center;
+	flex: none;
+	cursor: pointer;
+}
+
+.ibtn:hover,
+.ibtn:focus-visible {
+	background: var(--hover);
+	color: var(--fg);
+}
+
+.ibtn svg {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
 .btn:hover {
 	background: var(--hover);
 }
@@ -362,6 +391,7 @@ button.row:disabled {
 
 .row .t {
 	flex: 1;
+	text-align: left;
 	min-width: 0;
 	white-space: nowrap;
 	overflow: hidden;
