@@ -272,7 +272,7 @@ impl Dispatcher {
         let rpc = req.rpc.as_str();
         let res = cap_size(
             rpc,
-            match self.exec(host, from, rpc, args) {
+            match self.exec(host, from, rpc, args, policy.asks(from)) {
                 Ok(data) => {
                     match req.op {
                         Op::SpawnChallenge => {
@@ -405,7 +405,14 @@ impl Dispatcher {
         Some(Admit::Run(Box::new(req), args))
     }
 
-    fn exec(&self, host: &dyn Host, from: &str, rpc: &str, args: Args) -> Result<Value, Refusal> {
+    fn exec(
+        &self,
+        host: &dyn Host,
+        from: &str,
+        rpc: &str,
+        args: Args,
+        asks: bool,
+    ) -> Result<Value, Refusal> {
         let run = |h: &dyn Host, name: &str, args: Value| {
             execute(
                 h,
@@ -490,7 +497,7 @@ impl Dispatcher {
                     .history(&room, chat::limits::MAX_HISTORY)
                     .map_err(refused)?
                     .into_iter()
-                    .filter(|m| m.author.kind != AuthorKind::Session)
+                    .filter(|m| asks || m.author.kind != AuthorKind::Session)
                     .collect::<Vec<_>>();
                 let start = since
                     .as_deref()
@@ -1568,6 +1575,64 @@ mod tests {
             .map(|m| m["body_md"].as_str().unwrap())
             .collect();
         assert_eq!(bodies, ["posted"]);
+    }
+
+    fn row_bodies(v: &Value) -> Vec<&str> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["body_md"].as_str().unwrap())
+            .collect()
+    }
+
+    fn post_session_row(r: &Rig, text: &str) {
+        r.d.state()
+            .chat
+            .post(ChatMessage {
+                v: chat::CHAT_V,
+                id: chat::new_message_id(),
+                room: RoomRef::manager(ME),
+                author: Author {
+                    kind: AuthorKind::Session,
+                    id: "s_aaaaaaaaaa".into(),
+                    machine: Some(ME.into()),
+                    device: None,
+                    agent: None,
+                },
+                ts_ms: 2,
+                kind: MessageKind::Text,
+                body_md: text.into(),
+                attachments: Vec::new(),
+                reply_to: None,
+                decision: None,
+                session_meta: None,
+                user_turn: false,
+                mention: None,
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn room_returns_session_rows_only_to_leaders_that_may_ask() {
+        let r = rig();
+        post_to(&r, RoomRef::manager(ME), "posted");
+        post_session_row(&r, "terminal reply");
+        let allow = "allow = [\"room\", \"ask\", \"send\"]";
+        let asking = Policy::parse(&format!(
+            "accept_from = [\"{PEER}\"]\nask_from = [\"{PEER}\"]\n{allow}"
+        ))
+        .unwrap();
+        let res = r.call(&asking, "ra1", "room", json!({}));
+        assert_eq!(row_bodies(data(&res)), ["posted", "terminal reply"]);
+        let plain = Policy::parse(&format!(
+            "accept_from = [\"{PEER}\"]\nask_from = []\n{allow}"
+        ))
+        .unwrap();
+        let res = r.call(&plain, "ra2", "room", json!({}));
+        assert_eq!(row_bodies(data(&res)), ["posted"]);
+        let legacy = Policy::parse(&format!("accept_from = [\"{PEER}\"]\n{allow}")).unwrap();
+        let res = r.call(&legacy, "ra3", "room", json!({}));
+        assert_eq!(row_bodies(data(&res)), ["posted", "terminal reply"]);
     }
 
     #[test]
