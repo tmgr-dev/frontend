@@ -736,7 +736,7 @@ session room exists when the session is known or the room already has a file (`n
 the same stored message (every field) is a no-op that returns the stored message and delivers nothing; the same id with
 other content is `conflict` and never overwrites. The message is delivered only when `now - ts_ms` is at most 10 minutes and
 `ts_ms` is at most 5 minutes ahead of `now`; otherwise a system message ("Not delivered: older than 10 minutes." or a
-clock-skew note) is stored after it. A live target that is not at its prompt gets the system message "Not delivered: the
+clock-skew note) is stored after it. For a message from the relay pump, `ts_ms` was already moved to this machine's clock by the relay engine's per-sender clock offset (the highest `sent_at - now` seen in the last 30 minutes, at most 24 hours; 0 before the first message from that sender), so a sender whose clock is off still passes these checks; the first message from a sender with no history is checked unconverted. A live target that is not at its prompt gets the system message "Not delivered: the
 session was busy." and nothing is queued; ingest never answers `busy`. Without a live target the message is only stored.
 In process the relay pump calls `Chat::ingest`.
 
