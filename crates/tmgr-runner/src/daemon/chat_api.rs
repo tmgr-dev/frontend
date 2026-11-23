@@ -1503,6 +1503,11 @@ mod tests {
                 .prefix("cb")
                 .tempdir_in("/tmp")
                 .unwrap();
+            std::fs::set_permissions(
+                t.path(),
+                std::os::unix::fs::PermissionsExt::from_mode(0o700),
+            )
+            .unwrap();
             let rt = runner(t.path());
             rt.wire_chat_attach();
             (t, rt)

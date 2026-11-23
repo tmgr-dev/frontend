@@ -436,6 +436,16 @@ mod tests {
     use super::*;
     use std::os::unix::fs::{symlink, MetadataExt};
 
+    fn tmp() -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        fs::set_permissions(
+            t.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
+        t
+    }
+
     fn store(t: &tempfile::TempDir) -> BlobStore {
         BlobStore::open(t.path()).unwrap()
     }
@@ -476,7 +486,7 @@ mod tests {
 
     #[test]
     fn a_single_part_file_is_stored_and_found() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let bytes = data(1000, 1);
         let p = &parts_of(&bytes)[0];
@@ -492,7 +502,7 @@ mod tests {
 
     #[test]
     fn parts_arrive_out_of_order_and_duplicates_are_no_ops() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let bytes = data(PART_BYTES * 2 + 5, 2);
         let parts = parts_of(&bytes);
@@ -522,7 +532,7 @@ mod tests {
 
     #[test]
     fn a_conflicting_part_is_rejected_and_not_retryable() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let bytes = data(PART_BYTES + 5, 3);
         let mut parts = parts_of(&bytes);
@@ -538,7 +548,7 @@ mod tests {
 
     #[test]
     fn a_hash_mismatch_drops_the_partial_and_is_not_retryable() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let bytes = data(PART_BYTES + 5, 4);
         let mut parts = parts_of(&bytes);
@@ -553,7 +563,7 @@ mod tests {
 
     #[test]
     fn malformed_parts_are_rejected() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let mut p = parts_of(&data(10, 5))[0].clone();
         p.sha256 = "../x".into();
@@ -571,7 +581,7 @@ mod tests {
 
     #[test]
     fn the_size_limit_is_a_parameter_of_each_put() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let bytes = data(PART_BYTES * 9 + 17, 6);
         let mut last = None;
@@ -579,14 +589,14 @@ mod tests {
             last = Some(lput(&s, &p).unwrap());
         }
         assert!(matches!(last, Some(PutOutcome::Complete(_))));
-        let t2 = tempfile::tempdir().unwrap();
+        let t2 = tmp();
         let strict = store(&t2);
         assert!(rput(&strict, &parts_of(&bytes)[0]).is_err());
     }
 
     #[test]
     fn a_full_partial_quota_evicts_the_oldest_partial_of_that_source() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t).with_quotas(1_000_000, COMPLETE_QUOTA);
         let a = parts_of(&data(PART_BYTES + 5, 7));
         let b = parts_of(&data(PART_BYTES + 5, 8));
@@ -602,7 +612,7 @@ mod tests {
 
     #[test]
     fn relay_and_local_partials_have_separate_quotas_and_never_clash() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t).with_quotas(1_000_000, COMPLETE_QUOTA);
         let relay = parts_of(&data(PART_BYTES + 5, 9));
         let local = parts_of(&data(PART_BYTES + 5, 10));
@@ -656,7 +666,7 @@ mod tests {
 
     #[test]
     fn a_part_that_keeps_failing_is_dropped_after_five_tries() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let part = parts_of(&data(10, 50)).remove(0);
         let now = Instant::now();
@@ -669,7 +679,7 @@ mod tests {
 
     #[test]
     fn a_failing_part_is_dropped_after_ten_minutes_and_budgets_are_per_sender_and_part() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let parts = parts_of(&data(PART_BYTES + 5, 51));
         let now = Instant::now();
@@ -682,7 +692,7 @@ mod tests {
 
     #[test]
     fn success_and_rejection_clear_the_retry_budget() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let part = parts_of(&data(10, 52)).remove(0);
         let now = Instant::now();
@@ -702,7 +712,7 @@ mod tests {
 
     #[test]
     fn sweep_removes_only_old_partials_and_stale_temp_files() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let parts = parts_of(&data(PART_BYTES + 5, 9));
         rput(&s, &parts[0]).unwrap();
@@ -718,7 +728,7 @@ mod tests {
 
     #[test]
     fn the_oldest_complete_blobs_are_evicted_first() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t).with_quotas(PARTIAL_QUOTA, 130);
         let items: Vec<(String, Vec<u8>)> = (0..3)
             .map(|i| (i, data(60, 20 + i)))
@@ -739,7 +749,7 @@ mod tests {
 
     #[test]
     fn put_bytes_checks_the_hash_and_is_idempotent() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let d = data(500, 30);
         let sha = hex_sha(&d);
@@ -751,7 +761,7 @@ mod tests {
 
     #[test]
     fn directories_are_private_and_files_are_owner_only() {
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let s = store(&t);
         let parts = parts_of(&data(PART_BYTES + 5, 31));
         rput(&s, &parts[0]).unwrap();
@@ -770,8 +780,8 @@ mod tests {
 
     #[test]
     fn a_symlink_planted_at_the_partial_dir_is_not_followed() {
-        let t = tempfile::tempdir().unwrap();
-        let outside = tempfile::tempdir().unwrap();
+        let t = tmp();
+        let outside = tmp();
         let s = store(&t);
         let parts = parts_of(&data(PART_BYTES + 5, 32));
         symlink(
@@ -786,8 +796,8 @@ mod tests {
 
     #[test]
     fn a_symlink_planted_at_a_part_or_the_final_name_is_not_followed() {
-        let t = tempfile::tempdir().unwrap();
-        let outside = tempfile::tempdir().unwrap();
+        let t = tmp();
+        let outside = tmp();
         let target = outside.path().join("victim");
         fs::write(&target, b"keep").unwrap();
         let s = store(&t);
@@ -820,7 +830,7 @@ mod tests {
     #[test]
     fn the_relay_sink_stores_parts_and_swallows_permanent_failures() {
         use tmgr_chat_relay::engine::ChatSink;
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let sink = sink(&t);
         let bytes = data(PART_BYTES + 5, 40);
         let parts = parts_of(&bytes);
@@ -838,7 +848,7 @@ mod tests {
     fn the_relay_sink_does_not_block_the_channel_on_a_permission_error() {
         use std::os::unix::fs::PermissionsExt;
         use tmgr_chat_relay::engine::ChatSink;
-        let t = tempfile::tempdir().unwrap();
+        let t = tmp();
         let sink = sink(&t);
         let partial = t.path().join("chat/blobs/partial/relay");
         fs::set_permissions(&partial, fs::Permissions::from_mode(0o500)).unwrap();
