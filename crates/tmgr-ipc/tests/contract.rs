@@ -1874,10 +1874,7 @@ fn manager_remote_policy_shapes() {
         method::MANAGER_REMOTE_POLICY_SET,
         "manager.remote_policy_set"
     );
-    assert_eq!(
-        caps::MANAGER_REMOTE_POLICY_V1,
-        "manager.remote_policy.v1"
-    );
+    assert_eq!(caps::MANAGER_REMOTE_POLICY_V1, "manager.remote_policy.v1");
     let set: RemotePolicySetReq =
         serde_json::from_value(json!({"leader": "mac-1", "ask": true})).unwrap();
     assert_eq!(set.leader, "mac-1");
