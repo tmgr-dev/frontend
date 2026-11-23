@@ -66,11 +66,7 @@ export interface ManagerApi {
 }
 
 export type PanelTab =
-	| 'session'
-	| 'hierarchy'
-	| 'audit'
-	| 'encryption'
-	| 'voice';
+	'session' | 'hierarchy' | 'audit' | 'encryption' | 'voice';
 
 export const AGENT_MODELS: Record<SpawnAgent, string[]> = {
 	claude: Object.keys(CLAUDE_MODEL_LABELS),
@@ -133,7 +129,7 @@ const capCalls = (calls: ToolCall[] | undefined): ToolCall[] =>
 						: undefined,
 				running: c.running === true,
 				error: c.error === true,
-		  }))
+			}))
 		: [];
 
 const byTime = (a: ChatMessage, b: ChatMessage) =>
@@ -313,10 +309,10 @@ export const createManagerStore = (api: ManagerApi) => {
 			const refusal = !store.originLocal(key)
 				? BLOBS_NEED_LOCAL
 				: mention
-				? BLOBS_NO_MENTION
-				: !store.blobSupported
-				? BLOBS_NEED_UPDATE
-				: null;
+					? BLOBS_NO_MENTION
+					: !store.blobSupported
+						? BLOBS_NEED_UPDATE
+						: null;
 			if (refusal) {
 				store.error = refusal;
 				return;
