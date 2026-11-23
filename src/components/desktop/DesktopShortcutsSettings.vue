@@ -102,6 +102,16 @@
 			labelKey: 'desktop.shortcuts.actions.selection.label',
 			hintKey: 'desktop.shortcuts.actions.selection.hint',
 		},
+		{
+			id: 'manager',
+			labelKey: 'desktop.shortcuts.actions.manager.label',
+			hintKey: 'desktop.shortcuts.actions.manager.hint',
+		},
+		{
+			id: 'decisions',
+			labelKey: 'desktop.shortcuts.actions.decisions.label',
+			hintKey: 'desktop.shortcuts.actions.decisions.hint',
+		},
 	];
 
 	const LABELS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.labelKey]));

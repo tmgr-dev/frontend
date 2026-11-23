@@ -217,6 +217,7 @@ pub fn run() {
     .manage(manager::tts::TtsState::default())
     .manage(tray::TrayStore::default())
     .manage(tray::DndStore::default())
+    .manage(tray::HotkeyStore::default())
     .manage(popover::PopoverStore::default())
     .manage(toast::ToastStore::default())
     .manage(quick_add::QuickAddStore::default())
@@ -246,6 +247,8 @@ pub fn run() {
       usage::usage_task,
       tray::tray_update,
       tray::dnd_update,
+      tray::hotkeys_update,
+      tray::hotkey_open,
       popover::popover_state,
       popover::popover_action,
       popover::popover_quick_add,

@@ -235,9 +235,16 @@ pub struct PopoverModel {
   pub updater_enabled: bool,
   pub decisions_available: bool,
   pub open_decisions: usize,
+  pub hotkeys: PopoverHotkeys,
   pub extras: Value,
   pub missed: Vec<Value>,
   pub max_height: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct PopoverHotkeys {
+  pub manager: Option<String>,
+  pub decisions: Option<String>,
 }
 
 pub struct Inputs {
@@ -246,6 +253,7 @@ pub struct Inputs {
   pub updater_enabled: bool,
   pub decisions_available: bool,
   pub open_decisions: usize,
+  pub hotkeys: PopoverHotkeys,
   pub extras: Value,
   pub missed: Vec<Value>,
   pub max_height: f64,
@@ -300,6 +308,7 @@ pub fn build_model(state: &TrayState, inputs: Inputs) -> PopoverModel {
     updater_enabled: inputs.updater_enabled,
     decisions_available: inputs.decisions_available,
     open_decisions: inputs.open_decisions,
+    hotkeys: inputs.hotkeys,
     extras: inputs.extras,
     missed: inputs.missed,
     max_height: inputs.max_height,
@@ -402,6 +411,7 @@ fn gather<R: Runtime>(app: &AppHandle<R>) -> Inputs {
     updater_enabled: crate::updater_enabled() && cfg!(not(target_os = "macos")),
     decisions_available: cfg!(unix),
     open_decisions: open_decisions(),
+    hotkeys: hotkeys(app),
     extras,
     missed: crate::toast::missed_records(app),
     max_height: current_max_height(app),
@@ -417,6 +427,12 @@ fn current_max_height<R: Runtime>(app: &AppHandle<R>) -> f64 {
     .and_then(|store| *store.anchor.lock().unwrap())
     .map(|a| a.work.h / a.scale);
   max_window_height(work_height)
+}
+
+fn hotkeys<R: Runtime>(app: &AppHandle<R>) -> PopoverHotkeys {
+  let (manager, decisions) =
+    app.try_state::<crate::tray::HotkeyStore>().map(|s| s.0.lock().unwrap().clone()).unwrap_or_default();
+  PopoverHotkeys { manager, decisions }
 }
 
 fn open_decisions() -> usize {
@@ -1179,6 +1195,7 @@ mod tests {
       updater_enabled: false,
       decisions_available: true,
       open_decisions: 3,
+      hotkeys: PopoverHotkeys { manager: Some("Alt+Shift+M".into()), decisions: None },
       extras: json!({}),
       missed: Vec::new(),
       max_height: 900.0,
@@ -1228,11 +1245,13 @@ mod tests {
     let keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
     for key in [
       "platform", "version", "now", "running", "recent", "pluginSections", "dnd", "autostart", "updaterEnabled",
-      "decisionsAvailable", "openDecisions", "extras", "missed", "maxHeight",
+      "decisionsAvailable", "openDecisions", "hotkeys", "extras", "missed", "maxHeight",
     ] {
       assert!(keys.contains(&key), "{key} missing");
     }
-    assert_eq!(keys.len(), 14);
+    assert_eq!(keys.len(), 15);
+    assert_eq!(value["hotkeys"]["manager"], "Alt+Shift+M");
+    assert_eq!(value["hotkeys"]["decisions"], Value::Null);
     assert_eq!(value["running"][0]["workspaceId"], 1);
     assert_eq!(value["running"][0]["commonTime"], 0);
     assert_eq!(value["pluginSections"][0]["pluginName"], "Board");

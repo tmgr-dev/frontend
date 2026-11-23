@@ -15,6 +15,28 @@ use crate::native_i18n::{decisions_label, tr, Key};
 const DND_OPTIONS: [(&str, Key); 4] =
   [("off", Key::DndOff), ("1h", Key::Dnd1h), ("3h", Key::Dnd3h), ("tomorrow", Key::DndTomorrow)];
 
+#[derive(Default)]
+pub struct HotkeyStore(pub Mutex<(Option<String>, Option<String>)>);
+
+pub(crate) fn menu_accelerator(raw: Option<&str>) -> Option<String> {
+  let raw = raw?.trim();
+  raw.parse::<tauri_plugin_global_shortcut::Shortcut>().ok().map(|_| raw.to_owned())
+}
+
+fn with_accelerator<R: Runtime>(
+  app: &AppHandle<R>,
+  id: &str,
+  label: String,
+  accelerator: Option<&str>,
+) -> tauri::Result<tauri::menu::MenuItem<R>> {
+  if let Some(accelerator) = accelerator {
+    if let Ok(item) = MenuItemBuilder::with_id(id, label.clone()).accelerator(accelerator).build(app) {
+      return Ok(item);
+    }
+  }
+  MenuItemBuilder::with_id(id, label).build(app)
+}
+
 pub struct DndStore(pub Mutex<String>, pub Mutex<Option<i64>>);
 
 impl Default for DndStore {
@@ -294,14 +316,17 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &TrayState) -> tauri::Resul
         .build(app)?,
     );
   }
+  let (manager_key, decisions_key) = app.try_state::<HotkeyStore>().map(|s| s.0.lock().unwrap().clone()).unwrap_or_default();
   menu = menu.item(&MenuItemBuilder::with_id("open", tr(Key::OpenApp)).build(app)?);
   #[cfg(unix)]
   {
     let label = decisions_label(crate::decisions::open_count());
-    menu = menu.item(&MenuItemBuilder::with_id(crate::decisions::TRAY_ID, label).build(app)?);
+    menu = menu.item(&with_accelerator(app, crate::decisions::TRAY_ID, label, decisions_key.as_deref())?);
   }
+  #[cfg(not(unix))]
+  let _ = decisions_key;
   menu = menu
-    .item(&MenuItemBuilder::with_id(crate::manager::TRAY_ID, crate::manager::TITLE).build(app)?)
+    .item(&with_accelerator(app, crate::manager::TRAY_ID, crate::manager::TITLE.to_owned(), manager_key.as_deref())?)
     .item(&dnd_menu.build()?)
     .item(&MenuItemBuilder::with_id("shortcuts", tr(Key::Shortcuts)).build(app)?)
     .item(
@@ -523,9 +548,49 @@ pub fn dnd_update<R: Runtime>(
   refresh(&app, &state);
 }
 
+#[tauri::command]
+pub fn hotkeys_update<R: Runtime>(
+  app: AppHandle<R>,
+  hotkeys: State<'_, HotkeyStore>,
+  manager: Option<String>,
+  decisions: Option<String>,
+) {
+  let next = (menu_accelerator(manager.as_deref()), menu_accelerator(decisions.as_deref()));
+  {
+    let mut current = hotkeys.0.lock().unwrap();
+    if *current == next {
+      return;
+    }
+    *current = next;
+  }
+  refresh_current(&app);
+}
+
+#[tauri::command]
+pub fn hotkey_open<R: Runtime>(app: AppHandle<R>, target: String) -> Result<(), String> {
+  match target.as_str() {
+    "manager" => crate::manager::open_window(&app),
+    #[cfg(unix)]
+    "decisions" => crate::decisions::open_window(&app),
+    _ => return Err(format!("unknown hotkey target {target}")),
+  }
+  Ok(())
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn menu_accelerator_keeps_only_strings_the_tray_can_parse() {
+    for ok in ["Alt+Shift+M", "Command+Shift+K", "Control+Alt+D", "CommandOrControl+Shift+K", "Super+Alt+M"] {
+      assert_eq!(menu_accelerator(Some(ok)).as_deref(), Some(ok));
+    }
+    assert_eq!(menu_accelerator(Some(" Alt+Shift+M ")).as_deref(), Some("Alt+Shift+M"));
+    assert_eq!(menu_accelerator(Some("Hyper+Nope")), None);
+    assert_eq!(menu_accelerator(Some("")), None);
+    assert_eq!(menu_accelerator(None), None);
+  }
 
   fn task(id: i64, title: &str, common_time: i64, start_time: i64) -> TrayTask {
     TrayTask { id, title: title.into(), common_time, start_time, workspace_id: 0 }
