@@ -24,7 +24,7 @@ export interface Delivery {
 export const CONFIRM_MS = 20_000;
 export const SENDING_MS = 30_000;
 export const SEND_TIMEOUT_REASON = 'send_timeout';
-export const NOT_TRUSTED_REASON = 'not_trusted';
+export const REVOKE_PENDING_REASON = 'revoke_pending';
 export const MAX_TRACKED = 200;
 
 export const startDelivery = (remote: boolean): Delivery => ({

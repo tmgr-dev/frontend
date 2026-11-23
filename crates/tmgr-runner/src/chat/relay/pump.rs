@@ -137,7 +137,7 @@ impl ChatSink for RelaySink {
         if !matches!(from_kind, Some("desktop" | "mobile")) {
             self.dropped("sender is not a pinned desktop or phone");
             if let Some(give_up) = &self.give_up {
-                give_up(from_device, &msg.id, crate::chat::REJECT_NOT_TRUSTED);
+                give_up(from_device, &msg.id, crate::chat::REJECT_REVOKE_PENDING);
             }
             return Ok(());
         }

@@ -602,15 +602,15 @@ describe('manager components', () => {
 			expect(html).toContain('role="status"');
 		});
 
-		it('tells a device the runner does not trust to re-pair, naming the machine', async () => {
+		it('tells a device with a pending revoke so, naming the machine', async () => {
 			const html = await render('MessageBubble', {
 				message: own,
-				delivery: { state: 'failed', remote: true, reason: 'not_trusted' },
+				delivery: { state: 'failed', remote: true, reason: 'revoke_pending' },
 				deliveryWho: 'claude on mx_1',
 				deliveryMachine: 'Studio Mac',
 			});
-			expect(html).toContain('Device not trusted on Studio Mac, re-pair');
-			expect(html).not.toContain('not_trusted');
+			expect(html).toContain('Device revoke pending on Studio Mac');
+			expect(html).not.toContain('revoke_pending');
 		});
 
 		it('shows no status line without a delivery', async () => {

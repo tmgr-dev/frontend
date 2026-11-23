@@ -159,7 +159,7 @@
 	import {
 		canRetry,
 		isQueuedWhy,
-		NOT_TRUSTED_REASON,
+		REVOKE_PENDING_REASON,
 		SEND_TIMEOUT_REASON,
 		type Delivery,
 	} from '../delivery';
@@ -246,8 +246,8 @@
 				if (d.retried) return this.$t('manager.messages.delivery.retried');
 				if (d.state === 'failed' && d.reason === SEND_TIMEOUT_REASON)
 					return this.$t('manager.messages.delivery.sendTimeout');
-				if (d.state === 'failed' && d.reason === NOT_TRUSTED_REASON)
-					return this.$t('manager.messages.delivery.notTrusted', {
+				if (d.state === 'failed' && d.reason === REVOKE_PENDING_REASON)
+					return this.$t('manager.messages.delivery.revokePending', {
 						machine: this.deliveryMachine,
 					});
 				if (d.state === 'failed' && d.reason)

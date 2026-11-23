@@ -174,7 +174,7 @@ fn input_from_an_unpinned_or_unknown_kind_is_failed_back_to_the_sender_once_per_
         assert_eq!(sink.deliver("dev-9", kind, m.clone()), Ok(()));
         assert_eq!(
             *told.lock().unwrap(),
-            [("dev-9".to_owned(), m.id, "not_trusted".to_owned())],
+            [("dev-9".to_owned(), m.id, "revoke_pending".to_owned())],
             "{kind:?}"
         );
     }
@@ -195,7 +195,7 @@ fn input_that_is_not_owner_input_for_this_machine_gets_no_failed_receipt() {
 }
 
 #[test]
-fn an_unpinned_senders_failed_receipt_reaches_the_outbound_queue_with_the_not_trusted_reason() {
+fn an_unpinned_senders_failed_receipt_reaches_the_outbound_queue_with_the_revoke_pending_reason() {
     let dir = tempfile::tempdir().unwrap();
     let chat = Arc::new(Chat::open(dir.path()));
     let machine = chat.machine().to_owned();
@@ -227,7 +227,7 @@ fn an_unpinned_senders_failed_receipt_reaches_the_outbound_queue_with_the_not_tr
             "dev-1",
             m.id.as_str(),
             ReceiptState::Failed,
-            Some("not_trusted")
+            Some("revoke_pending")
         )
     );
 }

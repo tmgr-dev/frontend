@@ -97,7 +97,7 @@ pub fn machine_id(runner_dir: &Path) -> io::Result<String> {
 }
 
 pub const REJECT_INVALID: &str = "invalid message";
-pub const REJECT_NOT_TRUSTED: &str = "not_trusted";
+pub const REJECT_REVOKE_PENDING: &str = "revoke_pending";
 pub const RELAY_CLIENT: &str = "relay";
 pub const RELAY_MOBILE_CLIENT: &str = "relay-mobile";
 
