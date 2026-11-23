@@ -38,7 +38,7 @@ const RECIPIENT_FULL: &str = "the recipient's relay queue is full";
 const PERMANENT: [&str; 3] = [
     "there are no other trusted devices",
     "this device is not a trusted member",
-    "the target is not a trusted desktop",
+    "the target is not a trusted owner device",
 ];
 
 pub type IngestFn =

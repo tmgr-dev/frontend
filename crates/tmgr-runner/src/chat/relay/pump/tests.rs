@@ -177,11 +177,11 @@ fn receipts_after(kind: &str, ts_ms: u64) -> (usize, Vec<Out>) {
 }
 
 #[test]
-fn a_message_from_a_phone_produces_no_receipt_and_never_enters_the_outbound_queue() {
+fn a_queued_or_refused_message_from_a_phone_produces_one_receipt() {
     let (n, _) = receipts_after("mobile", 1_800_000_000_000);
-    assert_eq!(n, 0);
+    assert_eq!(n, 1);
     let (n, _) = receipts_after("mobile", 1_000);
-    assert_eq!(n, 0);
+    assert_eq!(n, 1);
 }
 
 #[test]
@@ -444,7 +444,7 @@ fn full_recipient_and_untrusted_states_drop_without_retry() {
         RECIPIENT_FULL,
         "there are no other trusted devices to send to",
         "this device is not a trusted member of the chat yet",
-        "the target is not a trusted desktop",
+        "the target is not a trusted owner device",
     ] {
         let m = msg(AuthorKind::Owner, MACHINE, None);
         let relay = ScriptedRelay::new(vec![], vec![Err(e.into())]);
@@ -616,7 +616,7 @@ fn the_sink_hands_the_ingest_only_the_mention_target_never_the_forged_state() {
 #[test]
 fn a_receipt_the_target_cannot_take_is_dropped_without_retry() {
     let relay = ScriptedRelay::new(vec![], vec![]);
-    *relay.receipts.lock().unwrap() = vec![Err("the target is not a trusted desktop".into())];
+    *relay.receipts.lock().unwrap() = vec![Err("the target is not a trusted owner device".into())];
     send_receipt_one(
         &relay,
         &receipt(ReceiptState::Delivered),

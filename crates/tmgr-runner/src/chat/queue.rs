@@ -375,14 +375,14 @@ impl Chat {
                     self.remember_delivered(room, body);
                     on_delivered(&item, body);
                     q.finish(id, durable);
-                    self.receipt(client, device, id, ReceiptState::Delivered, None);
+                    self.delivered_now(client, device, id);
                     return Ok(Submit::Delivered);
                 }
                 Delivery::Typed(typed) => {
                     self.remember_delivered(room, &typed);
                     on_delivered(&item, &typed);
                     q.finish(id, durable);
-                    self.receipt(client, device, id, ReceiptState::Delivered, None);
+                    self.delivered_now(client, device, id);
                     return Ok(Submit::Delivered);
                 }
                 Delivery::Gone(r) => {

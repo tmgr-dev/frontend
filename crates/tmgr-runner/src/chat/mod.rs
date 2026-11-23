@@ -304,7 +304,7 @@ impl Chat {
         state: ReceiptState,
         reason: Option<&str>,
     ) {
-        let (true, Some(device)) = (client == RELAY_CLIENT, device) else {
+        let (true, Some(device)) = (is_relay_client(client), device) else {
             return;
         };
         let Some(sink) = lock(&self.receipt_sink).clone() else {
@@ -327,6 +327,13 @@ impl Chat {
             sent.pop_front();
         }
         sent.push_back((id.to_owned(), state));
+    }
+
+    // A phone already shows "sent"; it needs a receipt only once a message waited.
+    pub(super) fn delivered_now(&self, client: &str, device: Option<&str>, id: &str) {
+        if client != RELAY_MOBILE_CLIENT {
+            self.receipt(client, device, id, ReceiptState::Delivered, None);
+        }
     }
 
     pub fn reject_relay(&self, device: &str, id: &str) {
@@ -1323,7 +1330,7 @@ mod tests {
     }
 
     #[test]
-    fn both_relay_clients_take_the_untrusted_relay_delivery_path_but_only_desktops_get_receipts() {
+    fn both_relay_clients_take_the_untrusted_relay_delivery_path_and_both_get_receipts() {
         assert!(is_relay_client(RELAY_CLIENT));
         assert!(is_relay_client(RELAY_MOBILE_CLIENT));
         assert!(!is_relay_client("remote"));
@@ -1342,7 +1349,7 @@ mod tests {
             ReceiptState::Queued,
             None,
         );
-        assert_eq!(*got.lock().unwrap(), 0);
+        assert_eq!(*got.lock().unwrap(), 1);
     }
 
     #[test]
@@ -1439,6 +1446,80 @@ mod tests {
             .unwrap();
         }
         assert_eq!(receipts_of(&r).len(), 1);
+    }
+
+    fn from_phone(room: RoomRef, n: u64) -> Incoming {
+        Incoming {
+            client: RELAY_MOBILE_CLIENT.into(),
+            ..incoming(room, n, NOW, "hello")
+        }
+    }
+
+    #[test]
+    fn a_phone_gets_queued_delivered_and_failed_receipts_but_none_for_an_instant_delivery() {
+        let (_t, c) = chat();
+        let r = c.capture_receipts();
+        let room = c.manager_room();
+        let now = from_phone(room.clone(), 1);
+        let late = from_phone(room.clone(), 2);
+        let gone = from_phone(room.clone(), 3);
+        let (late_id, gone_id) = (late.id.clone(), gone.id.clone());
+        c.ingest(now, NOW, no_session, |_| Delivery::Delivered)
+            .unwrap();
+        c.ingest(late, NOW, no_session, |_| Delivery::Busy(Some("draft")))
+            .unwrap();
+        c.drain_queue(NOW + 1, |_, _, _, _, _| Delivery::Delivered);
+        c.ingest(gone, NOW, no_session, |_| {
+            Delivery::Gone("no manager is running".into())
+        })
+        .unwrap();
+        assert_eq!(
+            receipts_of(&r),
+            [
+                (late_id.clone(), ReceiptState::Queued, Some("draft".into())),
+                (late_id, ReceiptState::Delivered, None),
+                (
+                    gone_id,
+                    ReceiptState::Failed,
+                    Some("no manager is running.".into())
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_desktop_still_gets_a_receipt_for_an_instant_delivery() {
+        let (_t, c) = chat();
+        let r = c.capture_receipts();
+        let inc = incoming(c.manager_room(), 1, NOW, "hello");
+        let id = inc.id.clone();
+        c.ingest(inc, NOW, no_session, |_| Delivery::Delivered)
+            .unwrap();
+        assert_eq!(receipts_of(&r), [(id, ReceiptState::Delivered, None)]);
+    }
+
+    #[test]
+    fn a_queued_burst_of_20_from_a_phone_costs_at_most_two_receipts_per_message() {
+        let (_t, c) = chat();
+        let r = c.capture_receipts();
+        let room = c.manager_room();
+        for n in 1..=20 {
+            c.ingest(from_phone(room.clone(), n), NOW, no_session, |_| {
+                Delivery::Busy(None)
+            })
+            .unwrap();
+        }
+        while !c.queued_ids(&room).is_empty() {
+            c.drain_queue(NOW + 1, |_, _, _, _, _| Delivery::Delivered);
+        }
+        let got = receipts_of(&r);
+        assert_eq!(got.len(), 40);
+        assert_eq!(
+            got.iter()
+                .filter(|(_, s, _)| *s == ReceiptState::Queued)
+                .count(),
+            20
+        );
     }
 
     fn note_replies(c: &Chat, room: &RoomRef) -> Vec<Option<String>> {
