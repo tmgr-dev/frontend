@@ -152,11 +152,11 @@ impl RuLexicon {
     if allowed.is_empty() {
       return Err("tokens.txt has no symbols".to_owned());
     }
-    let file = File::open(dir.join("lexicon-ru.txt.gz")).map_err(|e| format!("lexicon-ru.txt.gz: {e}"))?;
-    let words = parse_lexicon(BufReader::new(GzDecoder::new(file)), &allowed);
-    if words.is_empty() {
-      return Err("the Russian lexicon is empty".to_owned());
-    }
+    let words = match File::open(dir.join("lexicon-ru.txt.gz")) {
+      Ok(file) => parse_lexicon(BufReader::new(GzDecoder::new(file)), &allowed),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+      Err(e) => return Err(format!("lexicon-ru.txt.gz: {e}")),
+    };
     Ok(Self { words, allowed })
   }
 
@@ -376,6 +376,18 @@ mod tests {
     let p = lex.phonemize("Привет, мир.", None);
     assert_eq!(decode(&p.sentences[0]), "prʲivʲˈet, mʲˈir.");
     assert!(p.guessed.is_empty() && p.oov.is_empty());
+  }
+
+  #[test]
+  fn works_without_any_lexicon() {
+    let lex = RuLexicon::from_tsv("");
+    for w in ["раннер", "релиза", "спринта"] {
+      assert!(!say(&lex, w).is_empty(), "{w}");
+    }
+    let p = lex.phonemize(PARAGRAPH, None);
+    let words = PARAGRAPH.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).count();
+    assert_eq!(p.words, words);
+    assert!(p.sentences.iter().all(|s| !s.is_empty()));
   }
 
   #[test]

@@ -77,11 +77,10 @@ pub const EN_FILES: [PackFile; 4] = [
   PackFile { name: "LICENSES.txt", sha256: "aff8dbd3d2f8830a9798cb846fc257520b5d064688d022c861d14def8b88b0c8", size: 2_148 },
 ];
 
-pub const RU_FILES: [PackFile; 4] = [
+pub const RU_FILES: [PackFile; 3] = [
   PackFile { name: "model.onnx", sha256: "4834628dc805fb73b0456c4b42a9ffbd6c9c05f64d868ef5627f9911a8b7069f", size: 63_222_141 },
   PackFile { name: "tokens.txt", sha256: "e8a50ae0c75612d18cfcf3f90800dca79f961e3ed97f9574f3535194469187fd", size: 968 },
-  PackFile { name: "lexicon-ru.txt.gz", sha256: "58289ddcac35720f1e1218d11cf6aedfbe48512cdf0d3ee475d2d9163300dd9e", size: 3_714_028 },
-  PackFile { name: "LICENSES.txt", sha256: "48704d1662d12c8eebed61af81c6a01a4fcf1dcc4d8a4375463ce911c06d028b", size: 562 },
+  PackFile { name: "LICENSES.txt", sha256: "a28d94ea167ca663354ac3967605c2ce7ba18c4e1f5b92afd453181f9bef2c27", size: 395 },
 ];
 
 pub fn total_size(files: &[PackFile]) -> u64 {
@@ -368,7 +367,7 @@ mod tests {
   fn the_pinned_manifest_matches_the_documented_size() {
     assert_eq!(total_size(&EN_FILES), 19_349_795 + 940 + 3_618_488 + 2_148);
     assert!(EN_FILES.iter().all(|f| f.sha256.len() == 64));
-    assert_eq!(total_size(&RU_FILES), 63_222_141 + 968 + 3_714_028 + 562);
+    assert_eq!(total_size(&RU_FILES), 63_222_141 + 968 + 395);
     assert!(RU_FILES.iter().all(|f| f.sha256.len() == 64 && f.size > 0));
   }
 }

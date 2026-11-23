@@ -110,12 +110,16 @@ def write_lexicon(entries, allowed, out):
     return kept
 
 
-def licenses(out):
+def licenses(out, lexicon=True):
     text = (
         "Voice: ru_RU denis (medium), Piper voice from rhasspy/piper-voices.\n"
         "Dataset: OHF-Voice voice-datasets, license CC0. Base model: rdh (CC0).\n"
         "Model prepared for sherpa-onnx (metadata and tokens.txt, same as sherpa-onnx scripts/piper/add_meta_data.py, Apache-2.0).\n\n"
-        "Pronunciation lexicon: word list from gruut-lang-ru (MIT); pronunciations generated once offline with espeak-ng\n"
+    )
+    text += (
+        "Pronunciation: rule-based grapheme-to-phoneme conversion written for TMGR. No espeak-ng code, data or output is used or distributed.\n"
+        if not lexicon
+        else "Pronunciation lexicon: word list from gruut-lang-ru (MIT); pronunciations generated once offline with espeak-ng\n"
         "(GPL-3.0-or-later). Only the generated word-to-phoneme data is included; no espeak-ng code or data files are\n"
         "distributed. Whether this data is a derivative work of espeak-ng is undecided.\n"
     )
@@ -124,6 +128,8 @@ def licenses(out):
 
 def digest(out):
     for name in ("model.onnx", "tokens.txt", "lexicon-ru.txt.gz", "LICENSES.txt"):
+        if not os.path.exists(os.path.join(out, name)):
+            continue
         data = open(os.path.join(out, name), "rb").read()
         print(f'{hashlib.sha256(data).hexdigest()}  {len(data)}  {name}')
 
@@ -133,6 +139,7 @@ def main():
     parser.add_argument("out")
     parser.add_argument("--raw", help="reuse a previous raw tsv of word<TAB>space separated tokens")
     parser.add_argument("--procs", type=int, default=4)
+    parser.add_argument("--no-lexicon", action="store_true", help="ship the voice only; every word goes through the rule-based converter")
     args = parser.parse_args()
     os.makedirs(args.out, exist_ok=True)
     work = os.path.join(args.out, ".work")
@@ -141,6 +148,10 @@ def main():
         if not os.path.exists(os.path.join(work, name)):
             fetch(name, work)
     allowed = prepare_model(work, args.out)
+    if args.no_lexicon:
+        licenses(args.out, lexicon=False)
+        digest(args.out)
+        return
     if args.raw:
         entries = [(w, t.split(" ")) for w, t in (l.rstrip("\n").split("\t") for l in open(args.raw, encoding="utf-8") if "\t" in l)]
     else:
