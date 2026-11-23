@@ -7,8 +7,8 @@ pub mod local;
 pub mod machines;
 pub mod pair;
 pub mod relay;
-pub mod tts;
 pub mod remote_policy;
+pub mod tts;
 
 use std::sync::Arc;
 
