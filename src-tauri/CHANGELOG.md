@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.199 — 2026-11-23
+
+- Approvals: when a manager session wants to stop another session or type into it, an approval card appears ("Requested by session X", with the text for a send). Nothing happens until you approve it; Reject or expiry leaves the session as it is. Your own Stop and input work as before, without a card. Stop and send cards are approved on the desktop; the phone cannot approve them yet. Needs tmgr CLI 1.0.173 or newer; restart the runner after updating.
+
 ## 0.9.198 — 2026-11-23
 
 - Manager window: new Voice tab. Read replies aloud with your own voice program: an OpenAI-compatible speech server on this computer (a remote server only after an explicit switch and a confirmation) or a local command that turns text on standard input into a WAV file. Use "Test voice" to check it; errors stay visible and the next message uses the next voice. Guide: docs/tts-external.md ("How to use Silero locally"). Nothing from Silero is bundled.
