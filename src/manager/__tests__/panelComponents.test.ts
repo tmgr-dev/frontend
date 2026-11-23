@@ -240,13 +240,19 @@ describe('manager detail panel components', () => {
 		expect(html).toContain('What the AI provider sees');
 	});
 
-	it('DetailPanel renders four tabs and the selected one', async () => {
+	it('DetailPanel renders five tabs and the selected one', async () => {
 		const html = await render('DetailPanel', {
 			tab: 'hierarchy',
 			rooms,
 			activeKey: null,
 		});
-		for (const t of ['Session', 'Hierarchy', 'Audit log', 'Encryption'])
+		for (const t of [
+			'Session',
+			'Hierarchy',
+			'Audit log',
+			'Encryption',
+			'Voice',
+		])
 			expect(html).toContain(t);
 		expect(html).toContain('aria-selected="true"');
 		expect(html).toContain('class="hier"');

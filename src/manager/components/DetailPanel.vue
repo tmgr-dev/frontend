@@ -28,11 +28,12 @@
 				:error="auditError"
 			/>
 			<EncryptionTab
-				v-else
+				v-else-if="tab === 'encryption'"
 				:self-fp="trust?.self_fp ?? ''"
 				:devices="trust?.devices ?? []"
 				@devices="$emit('devices')"
 			/>
+			<VoiceTab v-else />
 		</div>
 	</aside>
 </template>
@@ -50,12 +51,13 @@
 	import EncryptionTab from './EncryptionTab.vue';
 	import HierarchyTab from './HierarchyTab.vue';
 	import SessionTab from './SessionTab.vue';
+	import VoiceTab from './VoiceTab.vue';
 
-	const TABS = ['session', 'hierarchy', 'audit', 'encryption'];
+	const TABS = ['session', 'hierarchy', 'audit', 'encryption', 'voice'];
 
 	export default defineComponent({
 		name: 'ManagerDetailPanel',
-		components: { AuditTab, EncryptionTab, HierarchyTab, SessionTab },
+		components: { AuditTab, EncryptionTab, HierarchyTab, SessionTab, VoiceTab },
 		props: {
 			tab: { type: String, required: true },
 			rooms: { type: Array as PropType<RoomInfo[]>, required: true },

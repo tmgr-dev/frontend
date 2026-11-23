@@ -1,10 +1,17 @@
 import { reactive } from 'vue';
 import { speechSynthesisEngine, type TtsEngine, type TtsHooks } from './engine';
+import { externalEngine } from './externalEngine';
+import { externalVoice } from './externalVoice';
 import { piperEngine } from './piperEngine';
-import { prepareSpeech } from './prepareText';
-import { voicePack } from './voicePack';
+import { prepareSpeech, type SpeechLang } from './prepareText';
+import { voicePacks } from './voicePack';
 
 const CANCELLED = ['canceled', 'interrupted'];
+
+const piperReady = (lang: SpeechLang): boolean =>
+	voicePacks[lang].supported && voicePacks[lang].installed;
+
+const anyPackReady = (): boolean => piperReady('en') || piperReady('ru');
 
 interface Speaker {
 	readonly speakingId: string | null;
@@ -35,7 +42,7 @@ export const speaker: Speaker = {
 		return state.errorId;
 	},
 	get available() {
-		return engine.isAvailable() || (voicePack.supported && voicePack.installed);
+		return externalVoice.usable || anyPackReady() || engine.isAvailable();
 	},
 	toggle(messageId, bodyMd) {
 		if (state.speakingId === messageId) {
@@ -44,11 +51,8 @@ export const speaker: Speaker = {
 		}
 		speaker.stop();
 		const { lang, chunks } = prepareSpeech(bodyMd);
-		const piper = lang === 'en' && voicePack.supported && voicePack.installed;
-		if (!piper && !engine.isAvailable()) return;
-		if (!chunks.length) return;
-		const token = ++run;
-		state.speakingId = messageId;
+		const steps: Array<() => void> = [];
+		let token = 0;
 		const hooks: TtsHooks = {
 			onEnd() {
 				if (token === run) state.speakingId = null;
@@ -61,23 +65,51 @@ export const speaker: Speaker = {
 				state.errorId = messageId;
 			},
 		};
-		if (!piper) {
-			engine.speak(chunks, lang, hooks);
-			return;
-		}
-		piperEngine.speak(chunks, 'en', {
+		const advance = (reason: string) => {
+			const next = steps.shift();
+			if (!next) {
+				hooks.onError(reason);
+				return;
+			}
+			next();
+		};
+		const chained = (fallback: string, afterFail?: () => void): TtsHooks => ({
 			onEnd: hooks.onEnd,
 			onError(reason) {
-				if (reason === 'piper-fallback' && token === run) {
-					engine.speak(chunks, lang, hooks);
+				if (token !== run) return;
+				if (reason === fallback || reason.endsWith('-error')) afterFail?.();
+				if (reason === fallback) {
+					advance(reason);
 					return;
 				}
 				hooks.onError(reason);
 			},
 		});
+		if (externalVoice.usable && externalEngine.isAvailable()) {
+			steps.push(() =>
+				externalEngine.speak(
+					chunks,
+					lang,
+					chained('external-fallback', () => externalVoice.markUnhealthy()),
+				),
+			);
+		}
+		if (piperReady(lang) && piperEngine.isAvailable()) {
+			steps.push(() =>
+				piperEngine.speak(chunks, lang, chained('piper-fallback')),
+			);
+		}
+		if (engine.isAvailable()) {
+			steps.push(() => engine.speak(chunks, lang, hooks));
+		}
+		if (!steps.length || !chunks.length) return;
+		token = ++run;
+		state.speakingId = messageId;
+		advance('no-voice');
 	},
 	stop() {
 		run++;
+		externalEngine.stop();
 		piperEngine.stop();
 		engine.stop();
 		state.speakingId = null;

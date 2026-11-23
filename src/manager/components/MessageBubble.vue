@@ -65,32 +65,33 @@
 					</ul>
 				</details>
 				<div v-if="showVoice" class="voice">
-					<template v-if="voicePack.installing">
+					<template v-if="pack.installing">
 						<span>{{
 							$t('manager.messages.voiceDownloading', {
 								percent: voicePercent,
 							})
 						}}</span>
-						<button type="button" @click="voicePack.cancel()">
+						<button type="button" @click="pack.cancel()">
 							{{ $t('manager.messages.cancelVoiceDownload') }}
 						</button>
 					</template>
-					<template v-else-if="voicePack.installed">
+					<template v-else-if="pack.installed">
 						<button type="button" @click="onRemoveVoice">
-							{{ $t('manager.messages.removeEnglishVoice') }}
+							{{ $t('manager.messages.removeVoice', { language }) }}
 						</button>
 					</template>
 					<template v-else>
-						<span v-if="voicePack.error">{{
-							$t('manager.messages.voiceDownloadFailed')
+						<span v-if="pack.error">{{
+							$t('manager.messages.voiceDownloadFailed', { language })
 						}}</span>
 						<button
 							type="button"
 							:title="$t('manager.messages.voiceOnDevice')"
-							@click="voicePack.install()"
+							@click="pack.install()"
 						>
 							{{
-								$t('manager.messages.downloadEnglishVoice', {
+								$t('manager.messages.downloadVoice', {
+									language,
 									size: voiceSizeMb,
 								})
 							}}
@@ -140,7 +141,8 @@
 	} from '../format';
 	import { prepareSpeech } from '../tts/prepareText';
 	import { speaker } from '../tts/speaker';
-	import { voicePack } from '../tts/voicePack';
+	import { voicePacks } from '../tts/voicePack';
+	import { externalVoice } from '../tts/externalVoice';
 	import type { Attachment, ChatMessage, ToolCall } from '../types';
 	import Avatar from './Avatar.vue';
 	import Icon from './Icon.vue';
@@ -187,12 +189,12 @@
 		},
 		emits: ['reply', 'copy', 'cancel-queued'],
 		data() {
-			return { voicePack };
+			return { externalVoice };
 		},
 		mounted() {
-			if (this.voiceEligible && !this.voicePack.statusRequested) {
-				this.voicePack.statusRequested = true;
-				void this.voicePack.refresh();
+			if (this.voiceEligible && !this.pack.statusRequested) {
+				this.pack.statusRequested = true;
+				void this.pack.refresh();
 			}
 		},
 		computed: {
@@ -201,18 +203,26 @@
 					!this.isSystem &&
 					!this.isOwner &&
 					!this.isDecision &&
-					this.message.body_md.trim().length > 0 &&
-					prepareSpeech(this.message.body_md).lang === 'en'
+					this.message.body_md.trim().length > 0
 				);
 			},
+			voiceLang(): 'en' | 'ru' {
+				return prepareSpeech(this.message.body_md).lang;
+			},
+			pack() {
+				return voicePacks[this.voiceLang];
+			},
+			language(): string {
+				return this.$t(`manager.messages.languageName.${this.voiceLang}`);
+			},
 			showVoice(): boolean {
-				return this.voiceEligible && this.voicePack.supported;
+				return this.voiceEligible && this.pack.supported;
 			},
 			voiceSizeMb(): number {
-				return Math.round(this.voicePack.sizeBytes / 1024 / 1024);
+				return Math.round(this.pack.sizeBytes / 1024 / 1024);
 			},
 			voicePercent(): number {
-				return Math.round(this.voicePack.progress * 100);
+				return Math.round(this.pack.progress * 100);
 			},
 			isSystem(): boolean {
 				return (
@@ -250,9 +260,14 @@
 			},
 			speakTitle(): string {
 				if (speaker.errorId !== this.message.id) return this.speakLabel;
-				return speaker.error === 'no-voice'
-					? this.$t('manager.messages.noVoice')
-					: this.$t('manager.messages.speakFailed');
+				if (speaker.error === 'no-voice')
+					return this.$t('manager.messages.noVoice');
+				if (speaker.error?.startsWith('external-')) {
+					const reason = this.externalVoice.health?.lastError;
+					const base = this.$t('manager.messages.externalVoiceFailed');
+					return reason ? `${base}: ${reason}` : base;
+				}
+				return this.$t('manager.messages.speakFailed');
 			},
 			copyableHtml(): string | undefined {
 				return this.html
@@ -267,7 +282,7 @@
 			truncate,
 			onRemoveVoice() {
 				speaker.stop();
-				void voicePack.remove();
+				void this.pack.remove();
 			},
 			onSpeak() {
 				speaker.toggle(this.message.id, this.message.body_md);

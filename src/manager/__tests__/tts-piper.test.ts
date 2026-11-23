@@ -114,6 +114,7 @@ describe('piperEngine', () => {
 				normalizeEnglish('First chunk.'),
 				normalizeEnglish('Second chunk.'),
 			],
+			lang: 'en',
 		});
 		const synth = invokeMock.mock.calls.filter(([c]) => c === 'tts_synthesize');
 		expect(synth.map(([, a]) => a.text)).toEqual([
@@ -121,6 +122,7 @@ describe('piperEngine', () => {
 			normalizeEnglish('Second chunk.'),
 		]);
 		expect(new Set(synth.map(([, a]) => a.run)).size).toBe(1);
+		expect(synth.every(([, a]) => a.lang === 'en')).toBe(true);
 
 		const [a, b] = ctx().sources;
 		expect(a.startedAt).toBe(0);
@@ -266,5 +268,46 @@ describe('piperEngine', () => {
 		piperEngine.speak(['...', 'Hello.'], 'en', h);
 		await flush();
 		expect(ctx().sources).toHaveLength(1);
+	});
+
+	it('speaks Russian with the Russian pack rate and passes lang to the backend', async () => {
+		const ruPack = (require('../tts/voicePack') as PackModule).voicePacks.ru;
+		ruPack.sampleRate = 8;
+		invokeMock.mockImplementation(async (cmd: string) => {
+			if (cmd === 'tts_check') return { ok: true, oov: [] };
+			return pcm(8);
+		});
+		const h = hooks();
+		piperEngine.speak(['Привет.'], 'ru', h);
+		await flush();
+		expect(invokeMock).toHaveBeenCalledWith('tts_check', {
+			chunks: ['Привет.'],
+			lang: 'ru',
+		});
+		expect(invokeMock).toHaveBeenCalledWith('tts_synthesize', {
+			text: 'Привет.',
+			run: expect.any(Number),
+			lang: 'ru',
+		});
+		const [a] = ctx().sources;
+		expect(a.buffer?.duration).toBe(1);
+		a.onended?.();
+		expect(h.onEnd).toHaveBeenCalledTimes(1);
+		ruPack.sampleRate = 0;
+	});
+
+	it('reports piper-error once audio has started and stops the rest', async () => {
+		let n = 0;
+		invokeMock.mockImplementation(async (cmd: string) => {
+			if (cmd === 'tts_check') return { ok: true, oov: [] };
+			if (n++ === 0) return pcm(4);
+			throw new Error('boom');
+		});
+		const h = hooks();
+		piperEngine.speak(['One.', 'Two.'], 'en', h);
+		await flush();
+		expect(h.onError).toHaveBeenCalledWith('piper-error');
+		expect(ctx().sources[0].stop).toHaveBeenCalled();
+		expect(h.onEnd).not.toHaveBeenCalled();
 	});
 });

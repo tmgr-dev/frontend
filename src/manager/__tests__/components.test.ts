@@ -18,8 +18,9 @@ import { renderToString } from 'vue/server-renderer';
 import manager from '../../locales/en/manager.json';
 import { renderBody } from '../format';
 import { speechSynthesisEngine, type TtsEngine } from '../tts/engine';
-import { setEngine } from '../tts/speaker';
-import { voicePack } from '../tts/voicePack';
+import { externalVoice } from '../tts/externalVoice';
+import { setEngine, speaker } from '../tts/speaker';
+import { voicePack, voicePacks } from '../tts/voicePack';
 import {
 	roomKey,
 	type ActivityView,
@@ -1544,5 +1545,132 @@ describe('MessageBubble English voice control', () => {
 		a.unmount();
 		b.unmount();
 		c.unmount();
+	});
+});
+
+describe('MessageBubble Russian voice control', () => {
+	const MB = 61 * 1024 * 1024;
+	const ru = voicePacks.ru;
+	const box = (el: HTMLElement) => el.querySelector<HTMLElement>('.voice');
+	const byText = (el: HTMLElement, text: string) =>
+		Array.from(el.querySelectorAll<HTMLButtonElement>('.voice button')).find(
+			(b) => b.textContent?.trim() === text,
+		);
+	const russianReply = (id: string) =>
+		mountDom('MessageBubble', {
+			message: msg({ id, body_md: 'Привет, как дела?' }),
+			html: renderBody('Привет, как дела?'),
+		});
+	let refreshRu: jest.SpyInstance;
+	let refreshEn: jest.SpyInstance;
+
+	beforeEach(() => {
+		ru.supported = true;
+		ru.installed = false;
+		ru.installing = false;
+		ru.progress = 0;
+		ru.error = null;
+		ru.sizeBytes = MB;
+		ru.statusRequested = false;
+		voicePacks.en.statusRequested = false;
+		refreshRu = jest.spyOn(ru, 'refresh').mockResolvedValue();
+		refreshEn = jest.spyOn(voicePacks.en, 'refresh').mockResolvedValue();
+	});
+
+	afterEach(() => {
+		refreshRu.mockRestore();
+		refreshEn.mockRestore();
+		ru.supported = false;
+		ru.installed = false;
+		ru.installing = false;
+		ru.error = null;
+	});
+
+	it('offers the Russian download and installs only the Russian pack', () => {
+		const install = jest.spyOn(ru, 'install').mockResolvedValue();
+		const installEn = jest.spyOn(voicePacks.en, 'install').mockResolvedValue();
+		const mounted = russianReply('ru1');
+		expect(refreshRu).toHaveBeenCalledTimes(1);
+		expect(refreshEn).not.toHaveBeenCalled();
+		byText(mounted.el, 'Download Russian voice (61 MB)')!.click();
+		expect(install).toHaveBeenCalledTimes(1);
+		expect(installEn).not.toHaveBeenCalled();
+		install.mockRestore();
+		installEn.mockRestore();
+		mounted.unmount();
+	});
+
+	it('shows Russian progress with cancel and removal', () => {
+		const cancel = jest.spyOn(ru, 'cancel').mockResolvedValue();
+		ru.installing = true;
+		ru.progress = 0.5;
+		const downloading = russianReply('ru2');
+		expect(box(downloading.el)?.textContent).toContain('Downloading 50%');
+		byText(downloading.el, 'Cancel')!.click();
+		expect(cancel).toHaveBeenCalledTimes(1);
+		cancel.mockRestore();
+		downloading.unmount();
+
+		const remove = jest.spyOn(ru, 'remove').mockResolvedValue();
+		ru.installing = false;
+		ru.installed = true;
+		const installed = russianReply('ru3');
+		byText(installed.el, 'Remove Russian voice')!.click();
+		expect(remove).toHaveBeenCalledTimes(1);
+		remove.mockRestore();
+		installed.unmount();
+	});
+
+	it('shows a Russian download failure', () => {
+		ru.error = 'disk full';
+		const mounted = russianReply('ru4');
+		expect(box(mounted.el)?.textContent).toContain(
+			'Russian voice download failed',
+		);
+		mounted.unmount();
+	});
+
+	it('is hidden when the Russian pack is unsupported', () => {
+		ru.supported = false;
+		const mounted = russianReply('ru5');
+		expect(box(mounted.el)).toBeNull();
+		mounted.unmount();
+	});
+});
+
+describe('MessageBubble external voice failure', () => {
+	afterEach(() => {
+		setEngine(speechSynthesisEngine);
+		externalVoice.health = null;
+	});
+
+	it('shows the failure reason in the Speak button tooltip', async () => {
+		externalVoice.health = {
+			configured: true,
+			mode: 'http',
+			healthy: false,
+			lastError: 'connection refused',
+		};
+		const fake: TtsEngine = {
+			id: 'fake',
+			isAvailable: () => true,
+			speak: (_c, _l, hooks) => hooks.onError('external-error'),
+			stop: jest.fn(),
+		};
+		setEngine(fake);
+		const m = msg({ id: 'ext1', body_md: 'Hello there.' });
+		const mounted = mountDom('MessageBubble', {
+			message: m,
+			html: renderBody(m.body_md),
+		});
+		speaker.toggle(m.id, m.body_md);
+		await nextTick();
+		expect(speaker.error).toBe('external-error');
+		const btn = mounted.el.querySelector<HTMLButtonElement>('.macts button');
+		expect(btn?.getAttribute('title')).toBe(
+			'External voice failed: connection refused',
+		);
+		speaker.stop();
+		mounted.unmount();
 	});
 });

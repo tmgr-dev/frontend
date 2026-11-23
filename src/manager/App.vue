@@ -336,6 +336,7 @@
 <script lang="ts">
 	import { defineComponent } from 'vue';
 	import { onManagerResync } from './api';
+	import { externalVoice } from './tts/externalVoice';
 	import ChatHeader from './components/ChatHeader.vue';
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
@@ -555,6 +556,7 @@
 			void this.pairing.start().then(() => this.trust.refresh());
 			void this.followers.refresh();
 			void this.remotePolicy.refresh();
+			void externalVoice.load();
 			this.stopMachines = this.pairing.watch(5000);
 			window.addEventListener('keydown', this.onGlobalKey);
 			window.addEventListener('focus', this.onWindowFocus);

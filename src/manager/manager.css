@@ -2477,3 +2477,36 @@ html.dark .manager .call-row:hover:not(:disabled) {
 html.dark .manager .call-out {
 	background: rgba(255, 255, 255, 0.06);
 }
+
+.manager .vt-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-top: 8px;
+}
+.manager .vt-row input[type='text'],
+.manager .vt-row input[type='number'],
+.manager .vt-row select {
+	flex: 1;
+	min-width: 0;
+}
+.manager .vt-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+.manager .vt-warn {
+	color: var(--warn, #b45309);
+	font-size: 12px;
+	margin-top: 6px;
+}
+.manager .linklike {
+	background: none;
+	border: 0;
+	padding: 0;
+	margin-top: 10px;
+	color: inherit;
+	text-decoration: underline;
+	cursor: pointer;
+	font: inherit;
+}

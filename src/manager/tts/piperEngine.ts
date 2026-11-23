@@ -1,22 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
+import { openPlayback, type Playback } from './audioPlayback';
 import type { TtsEngine, TtsHooks } from './engine';
 import { normalizeEnglish } from './normalizeEn';
-import { voicePack } from './voicePack';
+import { normalizeRussian } from './normalizeRu';
+import { voicePacks } from './voicePack';
 
 interface Check {
 	ok: boolean;
 	oov: string[];
 }
 
-let audio: AudioContext | null = null;
 let run = Date.now();
 let active = false;
-let sources: AudioBufferSourceNode[] = [];
-
-const context = (): AudioContext => {
-	if (!audio || audio.state === 'closed') audio = new AudioContext();
-	return audio;
-};
+let playback: Playback | null = null;
 
 const stopBackend = async (through: number): Promise<void> => {
 	try {
@@ -28,9 +24,9 @@ const stopBackend = async (through: number): Promise<void> => {
 
 const halt = (): void => {
 	const through = run++;
-	const playing = sources;
-	sources = [];
-	playing.forEach((s) => s.stop());
+	const playing = playback;
+	playback = null;
+	playing?.stop();
 	if (active) {
 		active = false;
 		void stopBackend(through);
@@ -42,10 +38,6 @@ export const piperEngine: TtsEngine = {
 	isAvailable: () => typeof AudioContext !== 'undefined',
 	speak(chunks, lang, hooks: TtsHooks) {
 		halt();
-		if (lang !== 'en') {
-			hooks.onError('piper-fallback');
-			return;
-		}
 		if (!chunks.length) {
 			hooks.onEnd();
 			return;
@@ -53,55 +45,34 @@ export const piperEngine: TtsEngine = {
 		const gen = ++run;
 		const current = () => gen === run;
 
-		let ctx: AudioContext;
-		let ready: Promise<unknown>;
+		let mine: Playback;
 		try {
-			ctx = context();
-			ready = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve();
+			mine = openPlayback(() => {
+				if (!current()) return;
+				active = false;
+				hooks.onEnd();
+			});
 		} catch {
 			hooks.onError('piper-fallback');
 			return;
 		}
-
+		playback = mine;
 		active = true;
-		let started = false;
-		let finished = false;
-		let pending = 0;
-		let nextAt = 0;
 
-		const endIfDone = () => {
-			if (!finished || pending > 0 || !current()) return;
-			active = false;
-			hooks.onEnd();
-		};
 		const fail = () => {
 			if (!current()) return;
 			active = false;
-			hooks.onError(started ? 'piper-error' : 'piper-fallback');
-		};
-		const schedule = (samples: Float32Array) => {
-			const buffer = ctx.createBuffer(1, samples.length, voicePack.sampleRate);
-			buffer.getChannelData(0).set(samples);
-			const source = ctx.createBufferSource();
-			source.buffer = buffer;
-			source.connect(ctx.destination);
-			const when = Math.max(nextAt, ctx.currentTime);
-			source.onended = () => {
-				pending--;
-				endIfDone();
-			};
-			source.start(when);
-			nextAt = when + buffer.duration;
-			pending++;
-			started = true;
-			sources.push(source);
+			const reason = mine.started ? 'piper-error' : 'piper-fallback';
+			mine.stop();
+			hooks.onError(reason);
 		};
 
 		void (async () => {
 			try {
-				await ready;
-				const texts = chunks.map(normalizeEnglish);
-				const check = await invoke<Check>('tts_check', { chunks: texts });
+				await mine.ready;
+				const normalize = lang === 'ru' ? normalizeRussian : normalizeEnglish;
+				const texts = chunks.map(normalize);
+				const check = await invoke<Check>('tts_check', { chunks: texts, lang });
 				if (!current()) return;
 				if (!check.ok) {
 					fail();
@@ -111,13 +82,13 @@ export const piperEngine: TtsEngine = {
 					const bytes = await invoke<ArrayBuffer>('tts_synthesize', {
 						text,
 						run: gen,
+						lang,
 					});
 					if (!current()) return;
 					if (bytes.byteLength === 0) continue;
-					schedule(new Float32Array(bytes));
+					mine.schedule(new Float32Array(bytes), voicePacks[lang].sampleRate);
 				}
-				finished = true;
-				endIfDone();
+				mine.finish();
 			} catch {
 				fail();
 			}

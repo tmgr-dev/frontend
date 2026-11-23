@@ -52,7 +52,8 @@ export interface ManagerApi {
 	mentionInject?: typeof realApi.managerMentionInject;
 }
 
-export type PanelTab = 'session' | 'hierarchy' | 'audit' | 'encryption';
+export type PanelTab =
+	'session' | 'hierarchy' | 'audit' | 'encryption' | 'voice';
 
 export const AGENT_MODELS: Record<SpawnAgent, string[]> = {
 	claude: Object.keys(CLAUDE_MODEL_LABELS),

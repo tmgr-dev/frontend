@@ -42,7 +42,7 @@ describe('voicePack', () => {
 		invokeMock.mockResolvedValue(status({ installed: true }));
 		const pack = loadPack().voicePack;
 		await pack.refresh();
-		expect(invokeMock).toHaveBeenCalledWith('tts_status');
+		expect(invokeMock).toHaveBeenCalledWith('tts_status', { lang: 'en' });
 		expect(pack).toMatchObject({
 			supported: true,
 			installed: true,
@@ -127,11 +127,13 @@ describe('voicePack', () => {
 		});
 		pack.installed = true;
 		await pack.remove();
-		expect(invokeMock).toHaveBeenCalledWith('tts_remove');
+		expect(invokeMock).toHaveBeenCalledWith('tts_remove', { lang: 'en' });
 		expect(pack.installed).toBe(false);
 
 		await pack.cancel();
-		expect(invokeMock).toHaveBeenCalledWith('tts_cancel_install');
+		expect(invokeMock).toHaveBeenCalledWith('tts_cancel_install', {
+			lang: 'en',
+		});
 	});
 
 	it('does not start a second install while one is running', async () => {
@@ -152,5 +154,55 @@ describe('voicePack', () => {
 		).toHaveLength(1);
 		finish();
 		await first;
+	});
+
+	it('keeps English and Russian packs independent and queries each language', async () => {
+		invokeMock.mockImplementation(
+			async (_cmd: string, args: { lang: string }) =>
+				status({
+					installed: args.lang === 'ru',
+					sampleRate: args.lang === 'ru' ? 24000 : 22050,
+				}),
+		);
+		const { voicePacks, voicePack } = loadPack();
+		await voicePacks.en.refresh();
+		await voicePacks.ru.refresh();
+		expect(invokeMock).toHaveBeenCalledWith('tts_status', { lang: 'ru' });
+		expect(voicePacks.en.installed).toBe(false);
+		expect(voicePacks.ru.installed).toBe(true);
+		expect(voicePacks.ru.sampleRate).toBe(24000);
+		expect(voicePack).toBe(voicePacks.en);
+	});
+
+	it('routes progress events and install calls by language', async () => {
+		const { voicePacks } = loadPack();
+		invokeMock.mockImplementation(async (cmd: string) => {
+			if (cmd === 'tts_install') {
+				progressHandler?.({
+					payload: { lang: 'en', received: 100, total: 100 },
+				});
+				progressHandler?.({
+					payload: { lang: 'ru', received: 50, total: 200 },
+				});
+				return undefined;
+			}
+			return status({ installed: true });
+		});
+		await voicePacks.ru.install();
+		expect(invokeMock).toHaveBeenCalledWith('tts_install', { lang: 'ru' });
+		expect(voicePacks.ru.progress).toBe(0.25);
+		expect(voicePacks.en.progress).toBe(0);
+		expect(voicePacks.en.installing).toBe(false);
+	});
+
+	it('cancels and removes the Russian pack', async () => {
+		const { voicePacks } = loadPack();
+		invokeMock.mockResolvedValue(status());
+		await voicePacks.ru.cancel();
+		await voicePacks.ru.remove();
+		expect(invokeMock).toHaveBeenCalledWith('tts_cancel_install', {
+			lang: 'ru',
+		});
+		expect(invokeMock).toHaveBeenCalledWith('tts_remove', { lang: 'ru' });
 	});
 });

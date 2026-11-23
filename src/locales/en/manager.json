@@ -156,12 +156,17 @@
 		"stopSpeaking": "Stop speaking",
 		"noVoice": "No voice for this language",
 		"speakFailed": "Could not read this message aloud",
-		"downloadEnglishVoice": "Download English voice ({size} MB)",
+		"downloadVoice": "Download {language} voice ({size} MB)",
+		"languageName": {
+			"en": "English",
+			"ru": "Russian"
+		},
+		"externalVoiceFailed": "External voice failed",
 		"voiceOnDevice": "Speech is generated on this device",
 		"voiceDownloading": "Downloading {percent}%",
 		"cancelVoiceDownload": "Cancel",
-		"voiceDownloadFailed": "English voice download failed",
-		"removeEnglishVoice": "Remove English voice",
+		"voiceDownloadFailed": "{language} voice download failed",
+		"removeVoice": "Remove {language} voice",
 		"empty": "Nothing here yet",
 		"emptyHint": "No messages in this chat.",
 		"emptySession": "Shows the agent's replies from the moment the runner started following this session. Earlier history and your own prompts stay in the terminal.",
@@ -306,7 +311,8 @@
 			"session": "Session",
 			"hierarchy": "Hierarchy",
 			"audit": "Audit log",
-			"encryption": "Encryption"
+			"encryption": "Encryption",
+			"voice": "Voice"
 		},
 		"unknownAgent": "Unknown agent",
 		"agent": "Agent",
@@ -427,5 +433,36 @@
 			"injectBody": "The reply is text from another chat. It will be added to this chat as data, but this chat runs without the usual safeguards.",
 			"injectAction": "Add to context"
 		}
+	},
+	"voice": {
+		"title": "External voice",
+		"intro": "Read messages aloud with a speech server or program you run yourself.",
+		"mode": "Mode",
+		"modeOff": "Off",
+		"modeHttp": "OpenAI-compatible server",
+		"modeCommand": "Local command",
+		"baseUrl": "Base URL",
+		"model": "Model",
+		"voice": "Voice",
+		"allowRemote": "Allow non-local server",
+		"remoteWarning": "Chat text will be sent to this server",
+		"argv": "Command and arguments",
+		"argument": "Argument {n}",
+		"addArgument": "Add argument",
+		"removeArgument": "Remove argument {n}",
+		"timeout": "Timeout (seconds)",
+		"commandNote": "The text is passed on standard input; the program must write a WAV file to standard output.",
+		"save": "Save",
+		"saving": "Saving",
+		"test": "Test voice",
+		"testing": "Playing",
+		"status": "Status",
+		"statusOff": "Off",
+		"statusNotConfigured": "Not configured",
+		"statusReady": "Ready",
+		"statusFailing": "Not working",
+		"lastError": "Last error: {error}",
+		"silero": "How to use Silero locally",
+		"sileroHint": "See docs/tts-external.md in the TMGR repository for running Silero as a local server."
 	}
 }
