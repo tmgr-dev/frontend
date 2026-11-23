@@ -1215,7 +1215,14 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             id: opened.id,
             at: opened.sent_at,
         });
-        c.st.seen.retain(|s| s.at + SEEN_TTL_MS >= now);
+        c.st.seen.retain(|s| {
+            let ttl = if s.id.starts_with("u_") {
+                ACTIVITY_ON_MAX_AGE_MS
+            } else {
+                SEEN_TTL_MS
+            };
+            s.at + ttl >= now
+        });
         if c.st.seen.len() > MAX_SEEN {
             let cut = c.st.seen.len() - MAX_SEEN;
             c.st.seen.drain(..cut);

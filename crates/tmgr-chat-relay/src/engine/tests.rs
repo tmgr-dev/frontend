@@ -4227,6 +4227,19 @@ fn activity_on_from_a_trusted_phone_reaches_the_sink() {
 }
 
 #[test]
+fn activity_on_leases_do_not_fill_the_seen_list() {
+    let (_f, clock, a, r, sink) = activity_world_from("mobile");
+    let before = r.lock().st.seen.len();
+    for _ in 0..5 {
+        post_activity_on(&a, &r, &json!({"v": 1, "on": true}));
+    }
+    clock.set(T0 + 6 * 60 * 1000);
+    post_activity_on(&a, &r, &json!({"v": 1, "on": true}));
+    assert_eq!(sink.got().len(), 6);
+    assert_eq!(r.lock().st.seen.len(), before + 1);
+}
+
+#[test]
 fn a_stale_activity_on_is_dropped() {
     let (_f, clock, a, r, sink) = activity_world_from("mobile");
     raw_post(
