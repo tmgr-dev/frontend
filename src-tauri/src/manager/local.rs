@@ -7,6 +7,11 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
+use base64::Engine as _;
+use sha2::{Digest, Sha256};
+use tmgr_chat_relay::engine::blob::{parts_for, MAX_LOCAL_BYTES, PART_BYTES};
+use tmgr_ipc::chat::{BlobPutParams, BlobPutResult};
+
 use super::backend::{ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, StopOutcome, MAX_HISTORY};
 
 pub trait LocalPort: Send + Sync {
@@ -23,6 +28,7 @@ pub trait LocalPort: Send + Sync {
   fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
   fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String>;
+  fn blob_put(&self, sha256: &str, bytes: &[u8]) -> Result<(), String>;
 }
 
 pub trait ChatCall: Send + Sync {
@@ -236,6 +242,36 @@ impl LocalPort for RunnerLocal {
       }
       other => other,
     }
+  }
+
+  fn blob_put(&self, sha256: &str, bytes: &[u8]) -> Result<(), String> {
+    let size = bytes.len() as u64;
+    if size == 0 {
+      return Err("The file is empty".to_owned());
+    }
+    if size > MAX_LOCAL_BYTES {
+      return Err("The file is larger than 25 MiB".to_owned());
+    }
+    let digest: String = Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect();
+    if digest != sha256 {
+      return Err("The file changed while it was being sent".to_owned());
+    }
+    let parts = parts_for(size) as u32;
+    for (index, chunk) in bytes.chunks(PART_BYTES).enumerate() {
+      let part = BlobPutParams {
+        v: 1,
+        sha256: sha256.to_owned(),
+        size,
+        part: index as u32,
+        parts,
+        data: base64::engine::general_purpose::STANDARD.encode(chunk),
+      };
+      let result: BlobPutResult = self.request("chat.blob.put", &part)?;
+      if index as u32 + 1 == parts && result.complete != Some(true) {
+        return Err("The runner did not store the file".to_owned());
+      }
+    }
+    Ok(())
   }
 }
 
@@ -703,5 +739,78 @@ mod tests {
       assert_eq!(l.stop(&sess_room(), false).unwrap_err(), "Agent runner is not running");
       assert_eq!(l.remove(&sess_room()).unwrap_err(), "Agent runner is not running");
     }
+  }
+
+  fn blob_reply() -> impl Fn(&str, &Value) -> Result<Value, String> + Send + Sync {
+    |_, p| {
+      let last = p["part"].as_u64() == Some(p["parts"].as_u64().unwrap() - 1);
+      Ok(if last { json!({"complete": true}) } else { json!({"have": p["part"], "parts": p["parts"]}) })
+    }
+  }
+
+  fn digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+  }
+
+  #[test]
+  fn blob_put_sends_each_part_with_the_wire_shape_in_order() {
+    let bytes = vec![7u8; PART_BYTES + 1];
+    let sha = digest(&bytes);
+    let (l, fake) = local(blob_reply());
+    l.blob_put(&sha, &bytes).unwrap();
+    let log = fake.log.lock().unwrap();
+    assert_eq!(log.len(), 2);
+    assert!(log.iter().all(|c| c.0 == "chat.blob.put"));
+    assert_eq!(log[0].1["v"], 1);
+    assert_eq!(log[0].1["sha256"], sha);
+    assert_eq!(log[0].1["size"], bytes.len());
+    assert_eq!((log[0].1["part"].clone(), log[0].1["parts"].clone()), (json!(0), json!(2)));
+    assert_eq!(log[1].1["part"], 1);
+    let first = base64::engine::general_purpose::STANDARD.decode(log[0].1["data"].as_str().unwrap()).unwrap();
+    let second = base64::engine::general_purpose::STANDARD.decode(log[1].1["data"].as_str().unwrap()).unwrap();
+    assert_eq!((first.len(), second.len()), (PART_BYTES, 1));
+    assert!(serde_json::to_vec(&log[0].1).unwrap().len() < 1024 * 1024);
+  }
+
+  #[test]
+  fn blob_put_of_exactly_one_part_is_a_single_call() {
+    let bytes = vec![1u8; PART_BYTES];
+    let (l, fake) = local(blob_reply());
+    l.blob_put(&digest(&bytes), &bytes).unwrap();
+    assert_eq!(fake.log.lock().unwrap().len(), 1);
+  }
+
+  #[test]
+  fn blob_put_accepts_the_largest_file_in_36_parts() {
+    let bytes = vec![3u8; MAX_LOCAL_BYTES as usize];
+    let (l, fake) = local(blob_reply());
+    l.blob_put(&digest(&bytes), &bytes).unwrap();
+    assert_eq!(fake.log.lock().unwrap().len(), 36);
+  }
+
+  #[test]
+  fn blob_put_refuses_empty_oversized_and_mismatched_files_without_calling_the_runner() {
+    let (l, fake) = local(blob_reply());
+    assert!(l.blob_put(&digest(&[]), &[]).is_err());
+    let big = vec![0u8; MAX_LOCAL_BYTES as usize + 1];
+    assert!(l.blob_put(&digest(&big), &big).is_err());
+    assert!(l.blob_put(&digest(b"other"), b"data").unwrap_err().contains("changed"));
+    assert!(fake.log.lock().unwrap().is_empty());
+  }
+
+  #[test]
+  fn blob_put_stops_at_the_first_error() {
+    let bytes = vec![5u8; PART_BYTES * 3];
+    let (l, fake) = local(|_, p| if p["part"] == 1 { Err("disk full".into()) } else { Ok(json!({"have": 1, "parts": 3})) });
+    assert_eq!(l.blob_put(&digest(&bytes), &bytes).unwrap_err(), "disk full");
+    assert_eq!(fake.log.lock().unwrap().len(), 2);
+  }
+
+  #[test]
+  fn blob_put_fails_when_the_last_part_does_not_report_complete() {
+    let bytes = vec![5u8; 10];
+    let (l, _) = local(|_, _| Ok(json!({"have": 0, "parts": 1})));
+    assert!(l.blob_put(&digest(&bytes), &bytes).is_err());
   }
 }

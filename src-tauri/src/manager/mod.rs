@@ -170,6 +170,24 @@ pub async fn manager_send<R: Runtime>(app: AppHandle<R>, params: SendParams) -> 
 }
 
 #[tauri::command]
+pub async fn manager_put_blob<R: Runtime>(app: AppHandle<R>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+  let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
+    return Err("file body must be raw bytes".into());
+  };
+  let target = request.headers().get("x-tmgr-blob").and_then(|v| v.to_str().ok()).ok_or("missing file target")?;
+  let BlobTarget { room, sha256 } = serde_json::from_str(target).map_err(|e| format!("bad file target: {e}"))?;
+  let backend = backend_of(&app)?;
+  let body = body.clone();
+  blocking(move || backend.blob_put(&room, &sha256, &body)).await
+}
+
+#[derive(serde::Deserialize)]
+struct BlobTarget {
+  room: RoomRef,
+  sha256: String,
+}
+
+#[tauri::command]
 pub async fn manager_mention_inject<R: Runtime>(app: AppHandle<R>, room: RoomRef, mention_id: String, confirmed_risky: bool) -> Result<(), String> {
   let backend = backend_of(&app)?;
   blocking(move || backend.mention_inject(&room, &mention_id, confirmed_risky)).await

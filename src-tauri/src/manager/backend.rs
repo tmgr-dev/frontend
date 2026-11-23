@@ -191,6 +191,7 @@ pub trait ManagerBackend: Send + Sync {
   fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
   fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String>;
+  fn blob_put(&self, room: &RoomRef, sha256: &str, bytes: &[u8]) -> Result<(), String>;
 }
 
 fn valid_attachment(a: &Attachment) -> Result<(), String> {
@@ -420,6 +421,10 @@ impl ManagerBackend for StubBackend {
 
   fn mention_inject(&self, _room: &RoomRef, _mention_id: &str, _confirmed_risky: bool) -> Result<(), String> {
     Err("mentions need the local runner".into())
+  }
+
+  fn blob_put(&self, _room: &RoomRef, _sha256: &str, _bytes: &[u8]) -> Result<(), String> {
+    Err("files need the local runner".into())
   }
 }
 

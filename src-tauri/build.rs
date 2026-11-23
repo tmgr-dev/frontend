@@ -176,6 +176,7 @@ const APP_COMMANDS: &[&str] = &[
   "manager_rooms",
   "manager_history",
   "manager_send",
+  "manager_put_blob",
   "manager_search",
   "manager_commands",
   "manager_queued",

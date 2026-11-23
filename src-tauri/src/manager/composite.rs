@@ -17,6 +17,8 @@ pub fn without_mention(mut m: ChatMessage) -> ChatMessage {
   m
 }
 
+const BLOB_LOCAL_ONLY: &str = "Attachments to another machine are not supported yet";
+
 const CONTROL_LOCAL_ONLY: &str = "only this machine's chats can be stopped or deleted here";
 
 enum Route {
@@ -168,6 +170,13 @@ impl ManagerBackend for CompositeBackend {
       Route::Relay => Err(MENTION_LOCAL_ONLY.into()),
     }
   }
+
+  fn blob_put(&self, room: &RoomRef, sha256: &str, bytes: &[u8]) -> Result<(), String> {
+    match self.route(room)? {
+      Route::Local => self.local.blob_put(sha256, bytes),
+      Route::Relay => Err(BLOB_LOCAL_ONLY.into()),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -267,6 +276,10 @@ mod tests {
     }
     fn mention_inject(&self, _: &RoomRef, _: &str, _: bool) -> Result<(), String> {
       self.note("inject");
+      self.up()
+    }
+    fn blob_put(&self, _: &str, _: &[u8]) -> Result<(), String> {
+      self.note("blob");
       self.up()
     }
   }
@@ -386,6 +399,17 @@ mod tests {
     assert_eq!(c.history(HistoryParams { room: other.clone(), before: None, limit: None }).unwrap_err(), "unknown room");
     assert!(c.send(params(other.clone())).is_err());
     assert!(c.commands(&other).is_err());
+  }
+
+  #[test]
+  fn blobs_go_to_the_local_runner_and_are_refused_for_another_machine() {
+    let (c, l, r) = build(FakeLocal::default(), relay_with_far());
+    c.blob_put(&mine(), "sha", b"x").unwrap();
+    assert_eq!(l.calls.lock().unwrap().as_slice(), ["blob"]);
+    let err = c.blob_put(&far_mgr(), "sha", b"x").unwrap_err();
+    assert_eq!(err, "Attachments to another machine are not supported yet");
+    assert_eq!(l.calls.lock().unwrap().len(), 1);
+    assert!(r.calls.lock().unwrap().is_empty());
   }
 
   #[test]

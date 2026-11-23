@@ -443,6 +443,7 @@ pub fn run() {
       manager::manager_rooms,
       manager::manager_history,
       manager::manager_send,
+      manager::manager_put_blob,
       manager::manager_search,
       manager::manager_commands,
       manager::manager_queued,
