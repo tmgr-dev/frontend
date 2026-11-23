@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.170
+
+- Fixed: chat messages from your phone or desktop no longer stay "Queued" while the agent shows a grey placeholder or prompt suggestion on an empty prompt (Claude Code "Try …" suggestions, Codex "Ask Codex to do anything"). Dim text on the prompt row now counts as an empty input; the suggestion is never accepted or sent, your message is typed instead. Text you really typed still holds the message back.
+- Fixed: Codex counts as idle when its footer shows notices after "? for shortcuts" (for example "⚠ 3 warnings · f2 to view").
+- The runner log now says once why a session is not at its prompt (a dialog, not idle, input still settling or queued).
+- Also contains the runner and relay part of tool activity for paired phones (TM-1071).
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.169
 
 - Changed: an unrestricted manager now takes chat messages that you type on your own paired phone or desktop; they are delivered with the relay label. Messages from other machines' managers, followers, agents and devices that are not your verified phone or desktop are still refused, and so is a device whose revoke has arrived.
