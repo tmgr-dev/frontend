@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.195 — 2026-11-23
+
+- Manager window: type `@` in the composer to ask another local chat a question. The answer comes back under your question with its status. "Add to context" passes it to your agent as data, and bypass, no-sandbox and manager chats ask you to confirm first. Needs CLI 1.0.167 or newer; restart the runner after updating.
+
 ## 0.9.194 — 2026-11-23
 
 - Manager window: messages you type into a Claude Code session show as yours in the chat list preview ("You: ...") and no longer count as new messages in the open chat.
