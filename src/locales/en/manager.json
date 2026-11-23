@@ -46,6 +46,11 @@
 		"failed": "{message}",
 		"scopeHint": "{name}: scope does not allow chat enroll — run tmgr link scope on that machine"
 	},
+	"remotePolicy": {
+		"allowAsk": "Allow asks from {name}",
+		"hint": "Lets that machine put questions to this machine's manager. Without it the machine can only list and read.",
+		"failed": "Could not change the setting: {message}"
+	},
 	"header": {
 		"search": "Search in chat",
 		"encrypted": "End-to-end encrypted",

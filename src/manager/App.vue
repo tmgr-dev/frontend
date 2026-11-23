@@ -35,6 +35,13 @@
 				:results="followers.results"
 				@connect="followers.connect()"
 			/>
+			<RemotePolicy
+				:leaders="remotePolicy.leaders"
+				:machines="pairing.machines"
+				:busy="remotePolicy.busy"
+				:error="remotePolicy.error"
+				@toggle="remotePolicy.setAsk"
+			/>
 			<ChatList
 				:rooms="store.rooms"
 				:machines="pairing.machines"
@@ -333,6 +340,7 @@
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
 	import ConnectFollowers from './components/ConnectFollowers.vue';
+	import RemotePolicy from './components/RemotePolicy.vue';
 	import ControlDialog from './components/ControlDialog.vue';
 	import DecisionCard from './components/DecisionCard.vue';
 	import DetailPanel from './components/DetailPanel.vue';
@@ -360,6 +368,7 @@
 		slashHint,
 	} from './components/viewHelpers';
 	import { useFollowersStore } from './followersStore';
+	import { useRemotePolicyStore } from './remotePolicyStore';
 	import { renderBody } from './format';
 	import { sharedWithPhone } from './machineTree';
 	import { usePairingStore } from './pairingStore';
@@ -399,6 +408,7 @@
 			DetailPanel,
 			DevicesPanel,
 			ConnectFollowers,
+			RemotePolicy,
 			GateBlockersBanner,
 			PairDeviceDialog,
 			Icon,
@@ -423,6 +433,7 @@
 				RIGHT_PANEL_HIDE_AT,
 				trust,
 				pairing,
+				remotePolicy: useRemotePolicyStore(),
 				followers: useFollowersStore(async () => {
 					await pairing.refreshMachines();
 					await trust.refresh();
@@ -543,6 +554,7 @@
 			void this.trust.init();
 			void this.pairing.start().then(() => this.trust.refresh());
 			void this.followers.refresh();
+			void this.remotePolicy.refresh();
 			this.stopMachines = this.pairing.watch(5000);
 			window.addEventListener('keydown', this.onGlobalKey);
 			window.addEventListener('focus', this.onWindowFocus);

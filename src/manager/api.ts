@@ -10,6 +10,7 @@ import type {
 	ManagerMachine,
 	ModelChoice,
 	PairResult,
+	RemotePolicyInfo,
 	RoomInfo,
 	RoomRef,
 	SearchParams,
@@ -193,3 +194,16 @@ export const managerConnectFollowers = async (): Promise<
 		throw e;
 	}
 };
+
+export const managerRemotePolicy =
+	async (): Promise<RemotePolicyInfo | null> => {
+		try {
+			return await invoke<RemotePolicyInfo>('manager_remote_policy');
+		} catch (e) {
+			if (commandMissing(e)) return null;
+			throw e;
+		}
+	};
+
+export const managerRemotePolicySet = (leader: string, ask: boolean) =>
+	invoke<RemotePolicyInfo>('manager_remote_policy_set', { leader, ask });

@@ -271,6 +271,17 @@ export interface FollowerInfo {
 	chat_enroll: boolean | null;
 }
 
+export interface RemotePolicyLeader {
+	machine: string;
+	ask: boolean;
+	ops: string[];
+}
+
+export interface RemotePolicyInfo {
+	leaders: RemotePolicyLeader[];
+	legacy: boolean;
+}
+
 export interface FollowerResult {
 	follower: string;
 	state: FollowerState;
