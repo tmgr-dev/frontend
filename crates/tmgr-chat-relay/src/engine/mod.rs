@@ -26,8 +26,8 @@ use crate::wire::{open_message_checked, random_msg_id, seal_message, Opened, Pee
 use tmgr_phone::Error;
 
 pub use ports::{
-    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, RoomsSink, RpcSink, Slot,
-    SpawnKeySink, SpawnOkSink, Transport,
+    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, ReceiptSink, RoomsSink, RpcSink,
+    Slot, SpawnKeySink, SpawnOkSink, Transport,
 };
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
@@ -941,6 +941,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore, S: ChatSink> {
     permitok: Option<Arc<dyn PermitOkSink>>,
     activity_sub: Option<Arc<dyn ActivitySubSink>>,
     rooms: Option<Arc<dyn RoomsSink>>,
+    receipt: Option<Arc<dyn ReceiptSink>>,
     core: Mutex<Core>,
 }
 
@@ -985,6 +986,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             permitok: None,
             activity_sub: None,
             rooms: None,
+            receipt: None,
             core: Mutex::new(core),
         })
     }
@@ -1030,6 +1032,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     pub fn with_rooms_sink(mut self, sink: Arc<dyn RoomsSink>) -> Self {
         self.rooms = Some(sink);
+        self
+    }
+
+    pub fn with_receipt_sink(mut self, sink: Arc<dyn ReceiptSink>) -> Self {
+        self.receipt = Some(sink);
         self
     }
 
@@ -1847,6 +1854,21 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     return None;
                 }
                 sink.deliver_rooms(&opened.from, index);
+            }
+            "receipt" if sender_trusted && c.st.joined => {
+                let sink = self.receipt.as_ref()?;
+                if self.kind == "runner" {
+                    return None;
+                }
+                let obj = opened.payload.as_object()?;
+                let id = obj.get("id")?.as_str()?;
+                let state = obj.get("state")?.as_str()?;
+                sink.deliver_receipt(
+                    &opened.from,
+                    id,
+                    state,
+                    obj.get("reason").and_then(Value::as_str),
+                );
             }
             "activity_on" if sender_trusted && c.st.joined => {
                 let sink = self.activity_sub.as_ref()?;

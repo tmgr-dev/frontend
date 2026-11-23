@@ -153,3 +153,8 @@ pub trait ActivitySubSink: Send + Sync {
 pub trait RoomsSink: Send + Sync {
     fn deliver_rooms(&self, from_device: &str, index: RoomsIndex);
 }
+
+/// The sender is a trusted, joined device; only non-runner engines receive receipts.
+pub trait ReceiptSink: Send + Sync {
+    fn deliver_receipt(&self, from_device: &str, id: &str, state: &str, reason: Option<&str>);
+}
