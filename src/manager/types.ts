@@ -130,7 +130,7 @@ export interface ActivityView {
 	state: 'working' | 'idle';
 	current: string | null;
 	used: string[];
-	calls: ToolCall[];
+	calls?: ToolCall[];
 }
 
 export interface HistoryParams {

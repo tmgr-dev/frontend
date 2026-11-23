@@ -1023,7 +1023,7 @@ describe('live tool activity', () => {
 				},
 			],
 		});
-		const live = store.activityByRoom[S1_KEY].calls;
+		const live = store.activityByRoom[S1_KEY].calls ?? [];
 		expect(live).toHaveLength(1);
 		expect(live[0].summary).toHaveLength(200);
 		expect(live[0].running).toBe(true);
