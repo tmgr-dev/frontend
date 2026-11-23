@@ -30,6 +30,16 @@
 							<slot name="decision" :message="slotProps.message"></slot>
 						</template>
 					</MessageBubble>
+					<MentionReply
+						v-if="mentionOf(row.message)"
+						:message="row.message"
+						:latest="mentionOf(row.message)!"
+						:origin="origin"
+						:busy="!!mentionBusy[row.message.mention!.id]"
+						:injected="!!mentionDone[row.message.mention!.id]"
+						@open="$emit('open-room', $event)"
+						@inject="$emit('inject', $event)"
+					/>
 				</template>
 				<div v-if="working" class="live" role="status" aria-live="polite">
 					<span class="live-dot" aria-hidden="true"></span>
@@ -53,7 +63,12 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import type { ActivityView, ChatMessage } from '../types';
+	import type {
+		ActivityView,
+		ChatMessage,
+		MentionRef,
+		RoomInfo,
+	} from '../types';
 	import {
 		anchoredScrollTop,
 		arrivalsAfter,
@@ -61,7 +76,9 @@
 		newBelowCount,
 		shouldLoadOlder,
 	} from '../scrollLogic';
+	import { isMentionStateRow, latestMentions, mentionRole } from '../mentions';
 	import Icon from './Icon.vue';
+	import MentionReply from './MentionReply.vue';
 	import MessageBubble from './MessageBubble.vue';
 	import { dayKey, formatDay, isGrouped, isOwnerMessage } from './viewHelpers';
 
@@ -76,7 +93,7 @@
 
 	export default defineComponent({
 		name: 'ManagerMessageList',
-		components: { Icon, MessageBubble },
+		components: { Icon, MentionReply, MessageBubble },
 		props: {
 			messages: { type: Array as PropType<ChatMessage[]>, required: true },
 			bodyHtml: {
@@ -102,12 +119,21 @@
 				type: Object as PropType<Set<string>>,
 				default: () => new Set<string>(),
 			},
+			origin: { type: Object as PropType<RoomInfo>, default: undefined },
+			mentionBusy: {
+				type: Object as PropType<Record<string, boolean>>,
+				default: () => ({}),
+			},
+			mentionDone: {
+				type: Object as PropType<Record<string, boolean>>,
+				default: () => ({}),
+			},
 			loadOlder: {
 				type: Function as PropType<() => Promise<boolean | null>>,
 				default: undefined,
 			},
 		},
-		emits: ['reply', 'copy', 'cancel-queued'],
+		emits: ['reply', 'copy', 'cancel-queued', 'open-room', 'inject'],
 		data() {
 			return {
 				pinned: true,
@@ -147,6 +173,12 @@
 			clearTimeout(this.jumpTimer);
 		},
 		methods: {
+			mentionOf(message: ChatMessage): MentionRef | undefined {
+				const m = message.mention;
+				if (!m || !mentionRole(message) || mentionRole(message) === 'state')
+					return undefined;
+				return this.latestMention.get(m.id) ?? m;
+			},
 			sync() {
 				const list = this.messages;
 				if (this.roomKey !== this.trackedKey) this.switchRoom(list);
@@ -273,14 +305,18 @@
 			working(): boolean {
 				return this.activity?.state === 'working';
 			},
+			latestMention(): Map<string, MentionRef> {
+				return latestMentions(this.messages);
+			},
 			rows(): Row[] {
 				const byId = new Map(this.messages.map((m) => [m.id, m]));
 				const labels = {
 					today: this.$t('manager.messages.today'),
 					yesterday: this.$t('manager.messages.yesterday'),
 				};
-				return this.messages.map((message, i) => {
-					const prev = this.messages[i - 1];
+				const shown = this.messages.filter((m) => !isMentionStateRow(m));
+				return shown.map((message, i) => {
+					const prev = shown[i - 1];
 					const newDay = !prev || dayKey(prev.ts_ms) !== dayKey(message.ts_ms);
 					return {
 						message,

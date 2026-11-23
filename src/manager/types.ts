@@ -42,6 +42,40 @@ export interface DecisionRef {
 	spawn?: SpawnCardWire;
 }
 
+export type MentionState =
+	| 'queued'
+	| 'sent'
+	| 'answering'
+	| 'answered'
+	| 'busy'
+	| 'offline'
+	| 'timeout'
+	| 'interrupted'
+	| 'expired'
+	| 'refused'
+	| 'rate_limited'
+	| 'cancelled'
+	| 'other';
+
+export interface MentionRef {
+	id: string;
+	target: RoomRef;
+	target_title: string;
+	state: MentionState;
+	hop: number;
+}
+
+export interface MentionReq {
+	target: RoomRef;
+	confirmed_risky?: boolean;
+}
+
+export interface MentionTarget {
+	ok: boolean;
+	reason?: string;
+	risky?: boolean;
+}
+
 export interface ChatMessage {
 	v: 1;
 	id: string;
@@ -53,6 +87,7 @@ export interface ChatMessage {
 	attachments?: Attachment[];
 	reply_to?: string;
 	decision?: DecisionRef;
+	mention?: MentionRef;
 	user_turn?: boolean;
 	fresh?: boolean;
 }
@@ -68,6 +103,7 @@ export interface RoomInfo {
 	last?: ChatMessage;
 	local?: boolean;
 	unrestricted?: boolean;
+	mention?: MentionTarget;
 	task?: string;
 	stuck?: string;
 }
@@ -97,6 +133,7 @@ export interface SendParams {
 	body_md: string;
 	reply_to?: string;
 	attachments?: Attachment[];
+	mention?: MentionReq;
 }
 
 export interface SearchParams {

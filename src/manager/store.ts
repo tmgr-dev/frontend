@@ -1,5 +1,17 @@
 import { computed, reactive } from 'vue';
 import * as realApi from './api';
+import {
+	firstEnabled,
+	injectGate,
+	isMentionStateRow,
+	mentionCandidates,
+	mentionHandleText,
+	mentionQuery,
+	mentionSupported,
+	nextEnabled,
+	stripMention,
+	type MentionItem,
+} from './mentions';
 import { CLAUDE_MODEL_LABELS } from './models';
 import {
 	MAX_ATTACHMENTS,
@@ -10,6 +22,7 @@ import {
 	type Attachment,
 	type AuditEntry,
 	type ChatMessage,
+	type MentionReq,
 	type ModelChoice,
 	type RoomInfo,
 	type RoomRef,
@@ -34,6 +47,8 @@ export interface ManagerApi {
 	switchAgent: typeof realApi.managerSwitchAgent;
 	stop: typeof realApi.managerStop;
 	remove: typeof realApi.managerRemove;
+	caps?: typeof realApi.runnerCaps;
+	mentionInject?: typeof realApi.managerMentionInject;
 }
 
 export type PanelTab = 'session' | 'hierarchy' | 'audit' | 'encryption';
@@ -107,6 +122,7 @@ export const createManagerStore = (api: ManagerApi) => {
 	let queueSeq = 0;
 	const modelsRequested = new Set<string>();
 	let modelTouched = false;
+	let sendConfirmed = false;
 
 	const unread = reactive({} as Record<string, number>);
 	let queueTimer: ReturnType<typeof setInterval> | null = null;
@@ -209,6 +225,17 @@ export const createManagerStore = (api: ManagerApi) => {
 			index: 0,
 			picked: null as SlashCommand | null,
 		},
+		mention: {
+			supported: false,
+			open: false,
+			items: [] as MentionItem[],
+			index: 0,
+			picked: null as MentionItem | null,
+			confirm: null as
+				{ kind: 'send' } | { kind: 'inject'; message: ChatMessage } | null,
+			injected: {} as Record<string, boolean>,
+			injecting: {} as Record<string, boolean>,
+		},
 		search: {
 			open: false,
 			text: '',
@@ -291,7 +318,8 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (
 				key !== store.activeKey &&
 				message.author.kind !== 'owner' &&
-				!message.user_turn
+				!message.user_turn &&
+				!isMentionStateRow(message)
 			) {
 				store.unreadByRoom[key] = (store.unreadByRoom[key] ?? 0) + 1;
 			}
@@ -379,6 +407,7 @@ export const createManagerStore = (api: ManagerApi) => {
 
 		async init() {
 			await store.loadRooms();
+			await store.loadCaps();
 			await api.onMessage((message) =>
 				store.ingest(
 					message.author.kind === 'owner' || message.user_turn
@@ -391,8 +420,18 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (first) await store.select(roomKey(first.room));
 		},
 
+		async loadCaps() {
+			try {
+				store.mention.supported = mentionSupported((await api.caps?.()) ?? []);
+			} catch {
+				store.mention.supported = false;
+			}
+			if (!store.mention.supported) store.closeMention();
+		},
+
 		async refreshActive() {
 			await store.loadRooms().catch(() => undefined);
+			await store.loadCaps();
 			const key = store.activeKey;
 			const room = key && store.roomRef(key);
 			if (!key || !room) return;
@@ -412,6 +451,8 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (!room) return;
 			store.activeKey = key;
 			store.slash.picked = null;
+			store.mention.picked = null;
+			store.closeMention();
 			if (store.control.key !== key) {
 				store.control.open = null;
 				store.control.error = '';
@@ -488,24 +529,53 @@ export const createManagerStore = (api: ManagerApi) => {
 			const key = store.activeKey;
 			const room = key && store.roomRef(key);
 			const text = store.draft.text;
+			const confirmed = sendConfirmed;
+			sendConfirmed = false;
 			if (!key || !room) return;
 			if (!text.trim() && !store.draft.attachments.length) return;
-			if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
+			let body = text;
+			let mention: MentionReq | undefined;
+			const picked = store.mention.picked;
+			const rest = picked ? stripMention(text, picked.handle) : null;
+			if (picked && rest !== null) {
+				if (!store.mention.supported || !store.originLocal(key)) {
+					store.error = 'Mentions are not available in this chat';
+					return;
+				}
+				if (!picked.ok) {
+					store.error = picked.reason ?? 'This chat cannot be mentioned';
+					return;
+				}
+				if (rest === '') {
+					store.error = 'Write a question after the @name';
+					return;
+				}
+				if (picked.risky && !confirmed) {
+					store.mention.confirm = { kind: 'send' };
+					return;
+				}
+				body = rest;
+				mention = { target: picked.room, confirmed_risky: picked.risky };
+			}
+			if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
 				store.error = 'Message is larger than 64 KiB';
 				return;
 			}
 			try {
 				const sent = await api.send({
 					room,
-					body_md: text,
+					body_md: body,
 					reply_to: store.replyTo?.id,
 					attachments: [...store.draft.attachments],
+					...(mention ? { mention } : {}),
 				});
 				if (store.activeKey === key && store.draft.text === text) {
 					store.draft.text = '';
 					store.draft.attachments = [];
 					store.replyTo = null;
 					store.closeSlash();
+					store.mention.picked = null;
+					store.closeMention();
 				}
 				store.error = null;
 				store.slash.picked = null;
@@ -515,6 +585,103 @@ export const createManagerStore = (api: ManagerApi) => {
 			} catch (e) {
 				store.error = errorText(e);
 			}
+		},
+
+		originLocal(key: string | null): boolean {
+			const info = store.rooms.find((r) => roomKey(r.room) === key);
+			return !!info && info.local !== false;
+		},
+
+		closeMention() {
+			store.mention.open = false;
+			store.mention.items = [];
+			store.mention.index = 0;
+		},
+
+		updateMention(text: string, key: string): boolean {
+			const query = mentionQuery(text);
+			const picked = store.mention.picked;
+			if (
+				query === null ||
+				!store.mention.supported ||
+				!store.originLocal(key) ||
+				(picked && stripMention(text, picked.handle) !== null)
+			) {
+				store.closeMention();
+				return false;
+			}
+			const items = mentionCandidates(store.rooms, key, query);
+			store.mention.items = items;
+			store.mention.index = firstEnabled(items);
+			store.mention.open = items.length > 0;
+			return true;
+		},
+
+		moveMention(step: 1 | -1) {
+			const m = store.mention;
+			if (!m.items.length) return;
+			m.index = nextEnabled(m.items, m.index, step);
+		},
+
+		pickMention(
+			item: MentionItem | undefined = store.mention.items[store.mention.index],
+		) {
+			if (!item || !item.ok) return;
+			store.draft.text = mentionHandleText(item);
+			store.mention.picked = item;
+			store.closeMention();
+		},
+
+		confirmMention() {
+			const pending = store.mention.confirm;
+			store.mention.confirm = null;
+			if (!pending) return;
+			if (pending.kind === 'send') {
+				sendConfirmed = true;
+				void store.send();
+			} else {
+				void store.runInject(pending.message, true);
+			}
+		},
+
+		cancelMention() {
+			store.mention.confirm = null;
+		},
+
+		requestInject(message: ChatMessage) {
+			const gate = injectGate(store.roomInfo(message.room), message);
+			if (!gate.show) return;
+			if (gate.refused) {
+				store.error = 'Not available for unrestricted sessions yet';
+				return;
+			}
+			if (gate.confirm) {
+				store.mention.confirm = { kind: 'inject', message };
+				return;
+			}
+			void store.runInject(message, false);
+		},
+
+		async runInject(message: ChatMessage, confirmed: boolean) {
+			const id = message.mention?.id;
+			const gate = injectGate(store.roomInfo(message.room), message);
+			if (!id || !api.mentionInject || !gate.show || gate.refused) return;
+			if (store.mention.injecting[id]) return;
+			store.mention.injecting[id] = true;
+			try {
+				await api.mentionInject(message.room, id, confirmed);
+				store.mention.injected[id] = true;
+				store.error = null;
+			} catch (e) {
+				store.error = errorText(e);
+			} finally {
+				delete store.mention.injecting[id];
+			}
+		},
+
+		roomInfo(room: RoomRef): RoomInfo | undefined {
+			const key = roomKey(room);
+			return store.rooms.find((r) => roomKey(r.room) === key);
 		},
 
 		closeSlash() {
@@ -528,6 +695,14 @@ export const createManagerStore = (api: ManagerApi) => {
 			store.draft.text = text;
 			const key = store.activeKey;
 			const room = key && store.roomRef(key);
+			const picked = store.mention.picked;
+			if (picked && stripMention(text, picked.handle) === null) {
+				store.mention.picked = null;
+			}
+			if (key && room && store.updateMention(text, key)) {
+				store.closeSlash();
+				return;
+			}
 			if (!key || !room || !/^\/\S*$/.test(text)) {
 				store.closeSlash();
 				return;
@@ -813,6 +988,8 @@ export const useManagerStore = (): ManagerStore => {
 		switchAgent: realApi.managerSwitchAgent,
 		stop: realApi.managerStop,
 		remove: realApi.managerRemove,
+		caps: realApi.runnerCaps,
+		mentionInject: realApi.managerMentionInject,
 	});
 	return singleton;
 };

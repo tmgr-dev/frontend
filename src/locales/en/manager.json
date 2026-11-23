@@ -382,5 +382,38 @@
 		"confirmDelete": "Delete",
 		"working": "Working...",
 		"busyHint": "Working... please wait for it to finish."
+	},
+	"mention": {
+		"menuLabel": "Chats to mention",
+		"needsConfirmation": "asks you first",
+		"unavailable": "Not available",
+		"replyFrom": "Reply from {who}",
+		"open": "Open {who}",
+		"addToContext": "Add to context",
+		"added": "Added to context",
+		"unrestricted": "Not available for unrestricted sessions yet",
+		"state": {
+			"queued": "Queued, waiting for {who} to be free",
+			"sent": "Sent to {who}",
+			"answering": "{who} is answering…",
+			"answered": "Answered by {who}",
+			"busy": "{who} is busy, try again later",
+			"offline": "{who} is offline",
+			"timeout": "No answer from {who} in 10 min",
+			"interrupted": "Interrupted: someone else typed into {who}",
+			"expired": "Expired",
+			"refused": "{who} cannot be mentioned",
+			"rate_limited": "Too many mentions, wait a minute",
+			"cancelled": "Cancelled",
+			"other": "Status updated"
+		},
+		"confirm": {
+			"sendTitle": "Mention an unrestricted chat?",
+			"sendBody": "The target runs in bypass or no-sandbox mode. Your question will be typed into it and it can act without asking.",
+			"sendAction": "Send anyway",
+			"injectTitle": "Add this reply to the context?",
+			"injectBody": "The reply is text from another chat. It will be added to this chat as data, but this chat runs without the usual safeguards.",
+			"injectAction": "Add to context"
+		}
 	}
 }

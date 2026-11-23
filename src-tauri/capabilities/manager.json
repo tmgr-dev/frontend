@@ -19,6 +19,7 @@
 		"allow-manager-commands",
 		"allow-manager-queued",
 		"allow-manager-cancel",
+		"allow-manager-mention-inject",
 		"allow-manager-agent-models",
 		"allow-manager-stop",
 		"allow-manager-remove",

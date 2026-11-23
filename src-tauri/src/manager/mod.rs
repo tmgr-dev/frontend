@@ -120,7 +120,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     relay::switch::spawn_poll(
       &switch,
       move |message| {
-        let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", message);
+        let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", composite::without_mention(message));
       },
       move || trust_changed(&trust_handle),
     );
@@ -174,6 +174,12 @@ pub async fn manager_history<R: Runtime>(app: AppHandle<R>, params: HistoryParam
 pub async fn manager_send<R: Runtime>(app: AppHandle<R>, params: SendParams) -> Result<ChatMessage, String> {
   let backend = backend_of(&app)?;
   blocking(move || backend.send(params)).await
+}
+
+#[tauri::command]
+pub async fn manager_mention_inject<R: Runtime>(app: AppHandle<R>, room: RoomRef, mention_id: String, confirmed_risky: bool) -> Result<(), String> {
+  let backend = backend_of(&app)?;
+  blocking(move || backend.mention_inject(&room, &mention_id, confirmed_risky)).await
 }
 
 #[tauri::command]

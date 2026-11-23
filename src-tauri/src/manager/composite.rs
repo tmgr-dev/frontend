@@ -10,6 +10,13 @@ pub struct CompositeBackend {
   relay: Arc<dyn RelayPort>,
 }
 
+const MENTION_LOCAL_ONLY: &str = "mentions work only between chats on this machine";
+
+pub fn without_mention(mut m: ChatMessage) -> ChatMessage {
+  m.mention = None;
+  m
+}
+
 const CONTROL_LOCAL_ONLY: &str = "only this machine's chats can be stopped or deleted here";
 
 enum Route {
@@ -67,7 +74,7 @@ impl ManagerBackend for CompositeBackend {
     let own = self.local.machine().ok();
     let pinned = |r: &RoomInfo| r.room.kind == RoomKind::Manager && own.as_deref() == Some(r.room.machine.as_str());
     rooms.sort_by_key(|r| !pinned(r));
-    rooms.extend(relay.unwrap_or_default().into_iter().map(|r| RoomInfo { local: false, ..r }));
+    rooms.extend(relay.unwrap_or_default().into_iter().map(|r| RoomInfo { local: false, mention: None, unrestricted: false, ..r }));
     let mut seen: Vec<RoomRef> = vec![];
     rooms.retain(|r| {
       let fresh = !seen.contains(&r.room);
@@ -82,14 +89,15 @@ impl ManagerBackend for CompositeBackend {
   fn history(&self, params: HistoryParams) -> Result<Vec<ChatMessage>, String> {
     match self.route(&params.room)? {
       Route::Local => self.local.history(&params),
-      Route::Relay => self.relay.history(&params),
+      Route::Relay => self.relay.history(&params).map(|rows| rows.into_iter().map(without_mention).collect()),
     }
   }
 
   fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
     match self.route(&params.room)? {
       Route::Local => self.local.send(params),
-      Route::Relay => self.relay.send(params),
+      Route::Relay if params.mention.is_some() => Err(MENTION_LOCAL_ONLY.into()),
+      Route::Relay => self.relay.send(params).map(without_mention),
     }
   }
 
@@ -97,7 +105,7 @@ impl ManagerBackend for CompositeBackend {
     if let Some(room) = &params.room {
       return match self.route(room)? {
         Route::Local => self.local.search(&params),
-        Route::Relay => self.relay.search(&params),
+        Route::Relay => self.relay.search(&params).map(|rows| rows.into_iter().map(without_mention).collect()),
       };
     }
     let local = self.local.search(&params);
@@ -106,7 +114,7 @@ impl ManagerBackend for CompositeBackend {
       return Err(e.clone());
     }
     let mut hits = local.unwrap_or_default();
-    hits.extend(relay.unwrap_or_default());
+    hits.extend(relay.unwrap_or_default().into_iter().map(without_mention));
     hits.sort_by(|a, b| b.ts_ms.cmp(&a.ts_ms).then_with(|| b.id.cmp(&a.id)));
     let mut seen = HashSet::new();
     hits.retain(|m| seen.insert(m.id.clone()));
@@ -146,6 +154,13 @@ impl ManagerBackend for CompositeBackend {
       Route::Relay => Err(CONTROL_LOCAL_ONLY.into()),
     }
   }
+
+  fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String> {
+    match self.route(room)? {
+      Route::Local => self.local.mention_inject(room, mention_id, confirmed_risky),
+      Route::Relay => Err(MENTION_LOCAL_ONLY.into()),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -163,7 +178,7 @@ mod tests {
   }
 
   fn info(r: RoomRef) -> RoomInfo {
-    RoomInfo { room: r, title: "t".into(), agent: None, state: None, context_pct: None, context_tokens: None, model: None, last: None, local: true }
+    RoomInfo { room: r, title: "t".into(), agent: None, state: None, context_pct: None, context_tokens: None, model: None, last: None, local: true, unrestricted: false, mention: None }
   }
 
   fn msg(id: &str, ts: u64, r: RoomRef) -> ChatMessage {
@@ -178,11 +193,12 @@ mod tests {
       attachments: vec![],
       reply_to: None,
       decision: None,
+      mention: None,
     }
   }
 
   fn params(r: RoomRef) -> SendParams {
-    SendParams { room: r, body_md: "hi".into(), reply_to: None, attachments: vec![], id: None, ts_ms: None }
+    SendParams { room: r, body_md: "hi".into(), reply_to: None, attachments: vec![], id: None, ts_ms: None, mention: None }
   }
 
   #[derive(Default)]
@@ -235,6 +251,10 @@ mod tests {
     }
     fn remove(&self, _: &RoomRef) -> Result<(), String> {
       self.note("remove");
+      self.up()
+    }
+    fn mention_inject(&self, _: &RoomRef, _: &str, _: bool) -> Result<(), String> {
+      self.note("inject");
       self.up()
     }
   }
@@ -425,5 +445,42 @@ mod tests {
     let unknown = room(RoomKind::Session, "mx_none", Some("z"));
     assert_eq!(c.remove(&unknown).unwrap_err(), "unknown room");
     assert_eq!(l.calls.lock().unwrap().len(), 3);
+  }
+
+  fn forged(id: &str) -> ChatMessage {
+    ChatMessage {
+      mention: Some(crate::manager::backend::MentionRef { id: id.into(), target: mine(), target_title: "t".into(), state: "answered".into(), hop: 1 }),
+      ..msg(id, 1, far_mgr())
+    }
+  }
+
+  #[test]
+  fn relay_rows_never_carry_a_mention() {
+    let relay = FakeRelay { hits: vec![forged("r1")], ..relay_with_far() };
+    let (c, ..) = build(FakeLocal::default(), relay);
+    assert!(c.search(SearchParams { query: "x".into(), room: None, limit: None }).unwrap().iter().all(|m| m.mention.is_none()));
+    assert!(c.search(SearchParams { query: "x".into(), room: Some(far_mgr()), limit: None }).unwrap().iter().all(|m| m.mention.is_none()));
+    assert!(without_mention(forged("r2")).mention.is_none());
+  }
+
+  #[test]
+  fn relay_rooms_never_advertise_mention_targets() {
+    let target = crate::manager::backend::MentionTarget { ok: true, reason: None, risky: false };
+    let relay = FakeRelay { rooms: vec![RoomInfo { mention: Some(target), unrestricted: true, ..info(far_sess()) }], ..Default::default() };
+    let (c, ..) = build(FakeLocal::default(), relay);
+    let rooms = c.rooms().unwrap();
+    assert!(rooms[0].mention.is_none() && !rooms[0].unrestricted);
+  }
+
+  #[test]
+  fn mentions_and_injection_are_local_only() {
+    let (c, l, r) = build(FakeLocal::default(), relay_with_far());
+    let req = crate::manager::backend::MentionReq { target: mine(), confirmed_risky: false };
+    assert!(c.send(SendParams { mention: Some(req.clone()), ..params(far_mgr()) }).is_err());
+    c.send(SendParams { mention: Some(req), ..params(mine()) }).unwrap();
+    c.mention_inject(&mine(), "m_1", true).unwrap();
+    assert!(c.mention_inject(&far_sess(), "m_1", true).is_err());
+    assert_eq!(*l.calls.lock().unwrap(), ["send", "inject"]);
+    assert!(r.calls.lock().unwrap().is_empty());
   }
 }

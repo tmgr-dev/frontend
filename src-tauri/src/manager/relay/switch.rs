@@ -487,6 +487,7 @@ mod tests {
       attachments: vec![],
       reply_to: None,
       decision: None,
+      mention: None,
     }
   }
 

@@ -2337,3 +2337,49 @@ html.dark .manager .tools ul {
 		transition: none;
 	}
 }
+
+.manager .pop button.off {
+	opacity: 0.55;
+	cursor: default;
+}
+.manager .pop button.off:hover {
+	background: transparent;
+}
+.manager .pop small span + span {
+	margin-left: 6px;
+}
+.manager .mention {
+	margin: 2px 16px 8px 52px;
+	padding: 6px 10px;
+	border-radius: var(--r-sm);
+	background: var(--sunken);
+	font-size: 12px;
+}
+.manager .mention .mstate {
+	margin: 0;
+	color: var(--subtle);
+}
+.manager .mention[data-role='reply'] .mstate {
+	font-weight: 600;
+	color: var(--text);
+}
+.manager .mention .mact {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 6px;
+}
+.manager .mention .btn {
+	padding: 4px 10px;
+	border-radius: var(--r-sm);
+	background: var(--raised);
+	font-size: 12px;
+	font-weight: 600;
+}
+.manager .mention .btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.manager .mention .mnote {
+	color: var(--subtle);
+}

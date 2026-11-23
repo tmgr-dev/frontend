@@ -42,6 +42,13 @@ export const managerQueued = (room: RoomRef) =>
 export const managerCancel = (room: RoomRef, id: string) =>
 	invoke<boolean>('manager_cancel', { room, id });
 
+export const managerMentionInject = (
+	room: RoomRef,
+	mentionId: string,
+	confirmedRisky: boolean,
+) =>
+	invoke<void>('manager_mention_inject', { room, mentionId, confirmedRisky });
+
 export const managerAgentModels = (agent: string) =>
 	invoke<ModelChoice[]>('manager_agent_models', { agent });
 

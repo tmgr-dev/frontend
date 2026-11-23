@@ -18,6 +18,7 @@ pub trait LocalPort: Send + Sync {
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
   fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
+  fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String>;
 }
 
 pub trait ChatCall: Send + Sync {
@@ -210,6 +211,11 @@ impl LocalPort for RunnerLocal {
     self.runner.call("sessions.remove", serde_json::json!({ "id": id })).map(drop).map_err(control_error)
   }
 
+  fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String> {
+    let params = serde_json::json!({ "room": room, "mention_id": mention_id, "confirmed_risky": confirmed_risky });
+    self.runner.call("chat.mention_inject", params).map(drop)
+  }
+
   fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
     match self.request("chat.send", &params) {
       Err(e) if is_conflict(&e) => {
@@ -270,11 +276,12 @@ mod tests {
       attachments: vec![],
       reply_to: None,
       decision: None,
+      mention: None,
     }
   }
 
   fn send_params(id: Option<&str>) -> SendParams {
-    SendParams { room: room(), body_md: "hi".into(), reply_to: None, attachments: vec![], id: id.map(Into::into), ts_ms: None }
+    SendParams { room: room(), body_md: "hi".into(), reply_to: None, attachments: vec![], id: id.map(Into::into), ts_ms: None, mention: None }
   }
 
   #[test]
@@ -342,6 +349,27 @@ mod tests {
     assert_eq!(log[0].1["room"]["kind"], "manager");
     assert_eq!(log[1].0, "chat.cancel");
     assert_eq!(log[1].1["id"], "m_1");
+  }
+
+  #[test]
+  fn mention_inject_calls_the_runner_with_the_risk_flag() {
+    let (l, fake) = local(|_, _| Ok(Value::Null));
+    l.mention_inject(&room(), "m_1", true).unwrap();
+    let log = fake.log.lock().unwrap();
+    assert_eq!(log[0].0, "chat.mention_inject");
+    assert_eq!((log[0].1["mention_id"].as_str(), log[0].1["confirmed_risky"].as_bool()), (Some("m_1"), Some(true)));
+  }
+
+  #[test]
+  fn mention_rides_on_chat_send_untouched() {
+    let m = serde_json::to_value(msg("m_1")).unwrap();
+    let (l, fake) = local(move |_, _| Ok(m.clone()));
+    let mut p = send_params(None);
+    p.mention = Some(crate::manager::backend::MentionReq { target: room(), confirmed_risky: true });
+    l.send(p).unwrap();
+    let sent = fake.log.lock().unwrap()[0].1.clone();
+    assert_eq!(sent["mention"]["confirmed_risky"], true);
+    assert_eq!(sent["mention"]["target"]["kind"], "manager");
   }
 
   #[test]

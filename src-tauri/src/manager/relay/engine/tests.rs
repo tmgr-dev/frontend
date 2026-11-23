@@ -248,7 +248,7 @@ fn room() -> RoomRef {
 }
 
 fn send<K: KeyStore>(e: &RelayEngine<Fake, K>, text: &str) -> Result<ChatMessage, String> {
-  e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![], id: None, ts_ms: None })
+  e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![], id: None, ts_ms: None, mention: None })
 }
 
 fn history<K: KeyStore>(e: &RelayEngine<Fake, K>) -> Vec<String> {
@@ -528,6 +528,7 @@ fn chat_validation_rejects_bad_ids_and_rooms() {
     attachments: vec![],
     reply_to: None,
     decision: None,
+    mention: None,
   };
   assert!(validate_chat(&m).is_ok());
   m.id = "m_short".into();
@@ -628,6 +629,7 @@ fn same_id_msg() -> ChatMessage {
     attachments: vec![],
     reply_to: None,
     decision: None,
+    mention: None,
   }
 }
 
@@ -974,7 +976,7 @@ fn transient_errors_keep_the_pending_join_and_revoke() {
 }
 
 fn send_with(e: &Engine, id: &str, ts: u64, text: &str) -> Result<ChatMessage, String> {
-  e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![], id: Some(id.into()), ts_ms: Some(ts) })
+  e.send(SendParams { room: room(), body_md: text.into(), reply_to: None, attachments: vec![], id: Some(id.into()), ts_ms: Some(ts), mention: None })
 }
 
 #[test]

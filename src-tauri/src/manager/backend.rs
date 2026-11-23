@@ -57,6 +57,31 @@ pub struct DecisionRef {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MentionRef {
+  pub id: String,
+  pub target: RoomRef,
+  pub target_title: String,
+  pub state: String,
+  pub hop: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MentionReq {
+  pub target: RoomRef,
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub confirmed_risky: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MentionTarget {
+  pub ok: bool,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub reason: Option<String>,
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub risky: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ChatMessage {
   pub v: u32,
   pub id: String,
@@ -71,6 +96,8 @@ pub struct ChatMessage {
   pub reply_to: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub decision: Option<DecisionRef>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub mention: Option<MentionRef>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -91,6 +118,10 @@ pub struct RoomInfo {
   pub last: Option<ChatMessage>,
   #[serde(default = "yes")]
   pub local: bool,
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub unrestricted: bool,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub mention: Option<MentionTarget>,
 }
 
 fn yes() -> bool {
@@ -115,6 +146,8 @@ pub struct SendParams {
   pub id: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub ts_ms: Option<u64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub mention: Option<MentionReq>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -153,6 +186,7 @@ pub trait ManagerBackend: Send + Sync {
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
   fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
+  fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String>;
 }
 
 fn valid_attachment(a: &Attachment) -> Result<(), String> {
@@ -190,6 +224,7 @@ fn message(n: u64, room: RoomRef, who: Author, body: &str) -> ChatMessage {
     attachments: vec![],
     reply_to: None,
     decision: None,
+    mention: None,
   }
 }
 
@@ -247,6 +282,8 @@ impl ManagerBackend for StubBackend {
         model: None,
         last: last(&manager_room()),
         local: true,
+        unrestricted: false,
+        mention: None,
       }];
       let mut sessions: Vec<RoomInfo> = s
         .sessions
@@ -261,6 +298,8 @@ impl ManagerBackend for StubBackend {
           model: None,
           last: last(&session_room(id)),
           local: true,
+          unrestricted: false,
+          mention: None,
         })
         .collect();
       sessions.sort_by(|a, b| {
@@ -374,6 +413,10 @@ impl ManagerBackend for StubBackend {
   fn remove(&self, _room: &RoomRef) -> Result<(), String> {
     Err("controlling chats needs the local runner".into())
   }
+
+  fn mention_inject(&self, _room: &RoomRef, _mention_id: &str, _confirmed_risky: bool) -> Result<(), String> {
+    Err("mentions need the local runner".into())
+  }
 }
 
 #[cfg(test)]
@@ -381,7 +424,7 @@ mod tests {
   use super::*;
 
   fn send(room: RoomRef, body: &str) -> SendParams {
-    SendParams { room, body_md: body.into(), reply_to: None, attachments: vec![], id: None, ts_ms: None }
+    SendParams { room, body_md: body.into(), reply_to: None, attachments: vec![], id: None, ts_ms: None, mention: None }
   }
 
   fn hist(room: RoomRef, before: Option<String>, limit: u32) -> HistoryParams {

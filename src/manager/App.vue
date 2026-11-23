@@ -105,6 +105,11 @@
 					:shown-rooms="store.shownRooms"
 					:load-older="store.loadOlder"
 					@cancel-queued="store.cancelQueued"
+					:origin="activeInfo"
+					:mention-busy="store.mention.injecting"
+					:mention-done="store.mention.injected"
+					@open-room="openRoom"
+					@inject="store.requestInject"
 				>
 					<template #decision="{ message }">
 						<template v-if="message.decision?.card_id">
@@ -141,7 +146,12 @@
 							v-if="store.slash.open"
 							:commands="store.slash.items"
 							:active-index="store.slash.index"
-							@select="store.pickSlash"
+							@select="store.pickSlash" /><MentionMenu
+							v-if="store.mention.open"
+							:items="store.mention.items"
+							:active-index="store.mention.index"
+							@hover="store.mention.index = $event"
+							@select="store.pickMention"
 					/></template>
 				</Composer>
 			</template>
@@ -208,6 +218,12 @@
 					: store.forceStopActive()
 			"
 			@cancel="store.closeControl()"
+		/>
+		<MentionConfirmDialog
+			v-else-if="store.mention.confirm"
+			:kind="store.mention.confirm.kind"
+			@confirm="store.confirmMention()"
+			@cancel="store.cancelMention()"
 		/>
 		<SwitchAgentDialog
 			v-else-if="store.switcher.open"
@@ -320,6 +336,8 @@
 	import DetailPanel from './components/DetailPanel.vue';
 	import GateBlockersBanner from './components/GateBlockersBanner.vue';
 	import Icon from './components/Icon.vue';
+	import MentionConfirmDialog from './components/MentionConfirmDialog.vue';
+	import MentionMenu from './components/MentionMenu.vue';
 	import MessageList from './components/MessageList.vue';
 	import NewSessionDialog from './components/NewSessionDialog.vue';
 	import RunnerAddedNotice from './components/RunnerAddedNotice.vue';
@@ -354,7 +372,7 @@
 	} from './panelWidths';
 	import { MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
-	import { roomKey } from './types';
+	import { roomKey, type RoomRef } from './types';
 
 	const sha256Hex = async (file: File): Promise<string> => {
 		const digest = await crypto.subtle.digest(
@@ -383,6 +401,8 @@
 			PairDeviceDialog,
 			Icon,
 			JoinConfirmDialog,
+			MentionConfirmDialog,
+			MentionMenu,
 			MessageList,
 			NewSessionDialog,
 			ResetIdentityDialog,
@@ -600,7 +620,25 @@
 					this.store.closeSearch();
 				}
 			},
+			openRoom(room: RoomRef) {
+				void this.store.select(roomKey(room));
+			},
 			onKey(e: KeyboardEvent) {
+				if (this.store.mention.open) {
+					if (e.key === 'ArrowDown') {
+						e.preventDefault();
+						this.store.moveMention(1);
+					} else if (e.key === 'ArrowUp') {
+						e.preventDefault();
+						this.store.moveMention(-1);
+					} else if (e.key === 'Tab' || e.key === 'Enter') {
+						e.preventDefault();
+						this.store.pickMention();
+					} else if (e.key === 'Escape') {
+						this.store.closeMention();
+					}
+					return;
+				}
 				if (!this.store.slash.open) return;
 				if (e.key === 'ArrowDown') {
 					e.preventDefault();

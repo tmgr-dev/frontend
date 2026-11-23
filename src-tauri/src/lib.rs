@@ -443,6 +443,7 @@ pub fn run() {
       manager::manager_commands,
       manager::manager_queued,
       manager::manager_cancel,
+      manager::manager_mention_inject,
       manager::manager_agent_models,
       manager::manager_stop,
       manager::manager_remove,
