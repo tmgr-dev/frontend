@@ -43,6 +43,7 @@ struct Server {
   last_seen: BTreeMap<String, u64>,
   puts: Vec<(String, String, String)>,
   slow_ms: u64,
+  on_devices: Option<Box<dyn FnOnce() + Send>>,
 }
 
 #[derive(Clone, Default)]
@@ -141,7 +142,13 @@ impl Transport for Fake {
           .map(|d| json!({ "device_id": d.id, "kind": d.kind, "label": d.label, "sign_pub": d.sign_pub, "kex_pub": d.kex_pub, "intros": d.intros.iter().map(|i| i.1.clone()).collect::<Vec<_>>(), "last_seen_at": s.last_seen.get(&d.id) }))
           .collect();
         let revs: Vec<Value> = s.revocations.iter().map(|r| json!({ "target_fp": r.0, "statement": r.2 })).collect();
-        wrap(json!({ "devices": devices, "revocations": revs }))
+        let out = wrap(json!({ "devices": devices, "revocations": revs }));
+        let hook = s.on_devices.take();
+        drop(s);
+        if let Some(hook) = hook {
+          hook();
+        }
+        out
       }
       (Method::Put, ["devices", target, "intros", "self"]) => {
         let by = caller.ok_or("401")?;
@@ -2826,9 +2833,15 @@ fn post_receipt(from: &Engine, to_id: &str, relay_id: &str, payload: Value) {
   from.seal_and_post(&mut g, "receipt", relay_id, &payload, &target, false).unwrap();
 }
 
+fn bind_room_machine(a: &Engine, runner: &Engine) {
+  let id = my_id(runner);
+  a.lock().st.bindings.insert(room().machine, id);
+}
+
 fn runner_pair(fake: &Fake, clock: &Clock) -> (Engine, Engine) {
   let a = engine_with(fake, clock, "Desktop A");
   let r = join_as(fake, clock, &a, "Runner", "runner");
+  bind_room_machine(&a, &r);
   (a, r)
 }
 
@@ -2869,6 +2882,7 @@ fn rejected_receipt(sender_is_runner: bool, payload: impl FnOnce(&str) -> Value)
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let a = engine_with(&fake, &clock, "Desktop A");
   let other = join_as(&fake, &clock, &a, "Other", if sender_is_runner { "runner" } else { "desktop" });
+  bind_room_machine(&a, &other);
   let sent = send(&a, "hello").unwrap();
   post_receipt(&other, &my_id(&a), "r_1", payload(&sent.id));
   a.poll_once().unwrap();
@@ -2972,4 +2986,57 @@ fn a_poll_interrupted_by_a_reset_applies_nothing_from_the_old_identity() {
   });
   assert_ne!(my_id(&b), old_id);
   assert!(history(&b).is_empty());
+}
+
+#[test]
+fn a_chat_before_this_device_has_joined_is_dropped_as_not_joined() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  b.lock().st.joined = false;
+  post_chat(&a, &my_id(&b), &msg_n(3, "owner"));
+  b.poll_once().unwrap();
+  assert_eq!(b.drops(), ["this device has not joined"]);
+}
+
+#[test]
+fn a_receipt_from_a_trusted_runner_of_another_machine_is_dropped() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, owner) = runner_pair(&fake, &clock);
+  let other = join_as(&fake, &clock, &a, "Other runner", "runner");
+  let sent = send(&a, "hello").unwrap();
+  post_receipt(&other, &my_id(&a), "r_1", receipt_of(&sent.id, "delivered"));
+  a.poll_once().unwrap();
+  assert!(a.take_receipts().is_empty());
+  assert_eq!(a.drops(), ["receipt from a runner of another machine"]);
+  post_receipt(&owner, &my_id(&a), "r_2", receipt_of(&sent.id, "delivered"));
+  a.poll_once().unwrap();
+  assert_eq!(a.take_receipts().len(), 1);
+}
+
+#[test]
+fn a_receipt_for_a_room_machine_no_runner_has_claimed_is_dropped() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let sent = send(&a, "hello").unwrap();
+  post_receipt(&r, &my_id(&a), "r_1", receipt_of(&sent.id, "delivered"));
+  a.poll_once().unwrap();
+  assert!(a.take_receipts().is_empty());
+  assert_eq!(a.drops(), ["receipt from a runner of another machine"]);
+}
+
+#[test]
+fn a_directory_fetched_before_a_trust_change_does_not_overwrite_the_newer_one() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = Arc::new(engine_with(&fake, &clock, "Desktop A"));
+  a.register().unwrap();
+  let fresh = engine_with(&fake, &clock, "Fresh");
+  let a2 = a.clone();
+  fake.0.lock().unwrap().on_devices = Some(Box::new(move || {
+    fresh.register().unwrap();
+    let mut g = a2.lock();
+    a2.fetch_dir(&mut g).unwrap();
+  }));
+  a.poll_once().unwrap();
+  assert_eq!(a.lock().dir.as_ref().unwrap().devices.len(), 2);
 }

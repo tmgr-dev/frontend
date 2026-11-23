@@ -135,7 +135,7 @@ impl Runner {
         let rpc = Arc::new(RpcInbox::new());
         let (serve_rt, serve_inbox, device_rt) = (self.clone(), rpc.clone(), self.clone());
         let (rooms_rt, history_rt, owners_rt) = (self.clone(), self.clone(), self.clone());
-        let receipts_rt = self.clone();
+        let (receipts_rt, give_up_rt) = (self.clone(), self.clone());
         let setup = chat::relay::pump::Setup {
             dir: self.cfg.dir.clone(),
             machine: self.chat.machine().to_owned(),
@@ -158,6 +158,7 @@ impl Runner {
                     )
                 },
             ),
+            give_up: Arc::new(move |device, id| give_up_rt.chat.reject_relay(device, id)),
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
             subscribe_activity: Arc::new(move || act_rt.chat.subscribe_activity()),
             stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
@@ -337,6 +338,9 @@ impl Runner {
                         .map(|r| to_json(&r.message))
                         .map_err(|e| match e {
                             chat::IngestError::Invalid(m) => bad(m),
+                            chat::IngestError::Storage(m) => {
+                                api(ErrorCode::Other("storage".into()), m)
+                            }
                             chat::IngestError::NotFound(m) => api(ErrorCode::NotFound, m),
                             chat::IngestError::Conflict(m) => {
                                 api(ErrorCode::Other("conflict".into()), m)

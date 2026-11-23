@@ -224,6 +224,7 @@ struct Core {
   log: Vec<LogEntry>,
   log_dirty: bool,
   dir: Option<Directory>,
+  dir_gen: u64,
   joined_now: bool,
   written_state: String,
   written_trust: String,
@@ -712,6 +713,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   fn take_dir(c: &mut Core, raw: &str) -> Result<Directory, String> {
     let dir = api::parse_directory(raw).map_err(err)?;
     c.dir = Some(dir.clone());
+    c.dir_gen += 1;
     Ok(dir)
   }
 
@@ -1028,8 +1030,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           return None;
         };
         let own_id = c.identity.as_ref().map(|i| i.device_id.as_str()).unwrap_or_default();
-        if !c.log.iter().any(|x| x.from == own_id && x.msg.id == receipt.id) {
+        let Some(entry) = c.log.iter().find(|x| x.from == own_id && x.msg.id == receipt.id) else {
           c.drop_reason = Some("receipt for a message this device did not send");
+          return None;
+        };
+        if c.st.bindings.get(&entry.msg.room.machine) != Some(&opened.from) {
+          c.drop_reason = Some("receipt from a runner of another machine");
           return None;
         }
         c.receipts.push(receipt);
@@ -1093,7 +1099,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         ingest_revoke(c, self.cfg.user_id, now, &json, None, &mut BTreeMap::new());
       }
       "chat" | "receipt" => {
-        c.drop_reason = Some("sender is not a trusted member");
+        c.drop_reason = Some(if sender_trusted { "this device has not joined" } else { "sender is not a trusted member" });
         return None;
       }
       _ => return None,
@@ -1459,18 +1465,20 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   }
 
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
-    let token = {
+    let (token, dir_gen) = {
       let mut g = self.lock();
       self.ensure_registered(&mut g)?;
-      Self::token_of(&g)?
+      (Self::token_of(&g)?, g.dir_gen)
     };
     let raw_dir = self.t.call(&api::list_devices(), Some(&token))?;
     let mut g = self.lock();
     if !Self::is_identity(&g, &token) {
       return Ok(vec![]);
     }
-    let dir = Self::take_dir(&mut g, &raw_dir)?;
-    self.sync_with(&mut g, dir)?;
+    if g.dir_gen == dir_gen {
+      let dir = Self::take_dir(&mut g, &raw_dir)?;
+      self.sync_with(&mut g, dir)?;
+    }
     let now = self.now();
     let mut out = Vec::new();
     let mut hold = Hold::default();

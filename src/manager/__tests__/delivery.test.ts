@@ -1,5 +1,6 @@
 import {
 	CONFIRM_MS,
+	MAX_TRACKED,
 	canRetry,
 	createDeliveryTracker,
 	failureReason,
@@ -125,5 +126,21 @@ describe('delivery tracker', () => {
 		t.rejected('a', 'e');
 		t.retried('a');
 		expect(t.get('a')?.retried).toBe(true);
+	});
+
+	it('drops the oldest entry past the cap and clears its confirm timer', () => {
+		const cleared: unknown[] = [];
+		const seen: Array<[string, Delivery | undefined]> = [];
+		const t = createDeliveryTracker((id, d) => seen.push([id, d]), {
+			set: (_, __) => 'h',
+			clear: (h) => cleared.push(h),
+		});
+		t.begin('first', true);
+		t.accepted('first');
+		for (let i = 0; i < MAX_TRACKED; i++) t.begin(`m${i}`, true);
+		expect(t.get('first')).toBeUndefined();
+		expect(t.get('m0')?.state).toBe('sending');
+		expect(cleared).toEqual(['h']);
+		expect(seen.filter(([id, d]) => id === 'first' && !d)).toHaveLength(1);
 	});
 });

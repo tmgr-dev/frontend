@@ -476,6 +476,7 @@ fn mention_may_be_risky(via: &Via, confirmed_risky: bool) -> bool {
 fn ingest_err(e: chat::IngestError) -> ApiErr {
     match e {
         chat::IngestError::Invalid(m) => api(ErrorCode::InvalidParams, m),
+        chat::IngestError::Storage(m) => api(ErrorCode::Other("storage".into()), m),
         chat::IngestError::NotFound(m) => api(ErrorCode::NotFound, m),
         chat::IngestError::Conflict(m) => api(ErrorCode::Other("conflict".into()), m),
     }

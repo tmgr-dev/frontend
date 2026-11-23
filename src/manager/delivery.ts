@@ -17,6 +17,7 @@ export interface Delivery {
 }
 
 export const CONFIRM_MS = 20_000;
+export const MAX_TRACKED = 200;
 
 export const startDelivery = (remote: boolean): Delivery => ({
 	state: 'sending',
@@ -87,6 +88,12 @@ export const createDeliveryTracker = (
 	};
 
 	const put = (id: string, d: Delivery) => {
+		if (!items.has(id) && items.size >= MAX_TRACKED) {
+			const oldest = items.keys().next().value as string;
+			disarm(oldest);
+			items.delete(oldest);
+			onChange(oldest, undefined);
+		}
 		items.set(id, d);
 		onChange(id, d);
 	};

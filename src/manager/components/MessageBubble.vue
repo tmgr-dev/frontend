@@ -225,7 +225,7 @@
 		},
 		computed: {
 			showRetry(): boolean {
-				return canRetry(this.delivery);
+				return canRetry(this.delivery) && !this.message.mention;
 			},
 			deliveryText(): string {
 				const d = this.delivery;

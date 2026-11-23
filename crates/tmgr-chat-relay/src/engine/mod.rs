@@ -1514,7 +1514,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 sink.deliver_activity_on(&dev.id, on);
             }
             "chat" => {
-                c.drop_reason = Some("sender is not a trusted member");
+                c.drop_reason = Some(if sender_trusted {
+                    "this device has not joined"
+                } else {
+                    "sender is not a trusted member"
+                });
                 return None;
             }
             _ => return None,

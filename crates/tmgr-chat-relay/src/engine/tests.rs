@@ -4477,3 +4477,13 @@ fn send_activity_refuses_desktop_only_targets_and_bad_input() {
 
 mod receipt;
 mod repro;
+
+#[test]
+fn a_chat_before_this_device_has_joined_is_dropped_as_not_joined() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    b.lock().st.joined = false;
+    post_chat(&a, &my_id(&b), &msg_n(3, AuthorKind::Owner));
+    b.poll_once().unwrap();
+    assert_eq!(b.s.drops(), ["this device has not joined"]);
+}

@@ -121,6 +121,7 @@ pub enum Delivery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IngestError {
     Invalid(String),
+    Storage(String),
     NotFound(String),
     Conflict(String),
 }
@@ -175,7 +176,7 @@ pub struct Receipt {
     pub reason: Option<String>,
 }
 
-pub type ReceiptFn = Arc<dyn Fn(Receipt) + Send + Sync>;
+pub type ReceiptFn = Arc<dyn Fn(Receipt) -> bool + Send + Sync>;
 
 const RECEIPTS_REMEMBERED: usize = 512;
 const NOT_DELIVERED: &str = "Not delivered: ";
@@ -243,7 +244,10 @@ impl Chat {
     pub(crate) fn capture_receipts(&self) -> Arc<Mutex<Vec<Receipt>>> {
         let got = Arc::new(Mutex::new(Vec::new()));
         let log = got.clone();
-        self.set_receipt_sink(Some(Arc::new(move |r| lock(&log).push(r))));
+        self.set_receipt_sink(Some(Arc::new(move |r| {
+            lock(&log).push(r);
+            true
+        })));
         got
     }
 
@@ -261,22 +265,33 @@ impl Chat {
         let Some(sink) = lock(&self.receipt_sink).clone() else {
             return;
         };
-        {
-            let mut sent = lock(&self.receipts_sent);
-            if sent.iter().any(|(i, s)| i == id && *s == state) {
-                return;
-            }
-            if sent.len() >= RECEIPTS_REMEMBERED {
-                sent.pop_front();
-            }
-            sent.push_back((id.to_owned(), state));
+        let mut sent = lock(&self.receipts_sent);
+        if sent.iter().any(|(i, s)| i == id && *s == state) {
+            return;
         }
-        sink(Receipt {
+        let accepted = sink(Receipt {
             device: device.to_owned(),
             id: id.to_owned(),
             state,
             reason: reason.map(|r| r.strip_prefix(NOT_DELIVERED).unwrap_or(r).to_owned()),
         });
+        if !accepted {
+            return;
+        }
+        if sent.len() >= RECEIPTS_REMEMBERED {
+            sent.pop_front();
+        }
+        sent.push_back((id.to_owned(), state));
+    }
+
+    pub fn reject_relay(&self, device: &str, id: &str) {
+        self.receipt(
+            "relay",
+            Some(device),
+            id,
+            ReceiptState::Failed,
+            Some("invalid message"),
+        );
     }
 
     pub fn relay_self(&self) -> Option<RelaySelf> {
@@ -453,12 +468,12 @@ impl Chat {
         known_session: impl Fn(&str) -> bool,
         deliver: impl FnOnce(&str) -> Delivery,
     ) -> Result<Ingested, IngestError> {
-        use IngestError::{Conflict, Invalid, NotFound};
+        use IngestError::{Conflict, Invalid, NotFound, Storage};
         if !valid_message_id(&m.id) {
             return Err(Invalid("invalid message id".into()));
         }
         self.own(&m.room).map_err(Invalid)?;
-        let store = self.store().map_err(Invalid)?;
+        let store = self.store().map_err(Storage)?;
         let exists = match m.room.session.as_deref() {
             None => true,
             Some(s) => known_session(s) || store.exists(&m.room),
@@ -492,7 +507,7 @@ impl Chat {
         let routed = msg.mention.is_some();
         {
             let _g = lock(&self.write);
-            match store.get(&msg.room, &msg.id).map_err(Invalid)? {
+            match store.get(&msg.room, &msg.id).map_err(Storage)? {
                 Some(old) if same_content(&old, &msg) => {
                     return Ok(Ingested {
                         message: old,
@@ -501,7 +516,7 @@ impl Chat {
                     });
                 }
                 Some(_) => return Err(Conflict("that message id holds different content".into())),
-                None => store.append(&msg).map_err(Invalid)?,
+                None => store.append(&msg).map_err(Storage)?,
             }
         }
         self.publish(&msg);
@@ -1491,6 +1506,55 @@ mod tests {
             Err(IngestError::NotFound(_))
         ));
         assert!(c.history(&ghost, None, None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unavailable_store_is_a_storage_error_not_an_invalid_message() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("not-a-dir");
+        fs::write(&file, b"x").unwrap();
+        let c = Chat::open(&file);
+        let m = incoming(c.manager_room(), 1, NOW, "x");
+        assert!(matches!(
+            c.ingest(m, NOW, no_session, |_| Delivery::Delivered),
+            Err(IngestError::Storage(_))
+        ));
+    }
+
+    #[test]
+    fn a_receipt_the_sink_could_not_take_is_offered_again_until_it_is_accepted() {
+        let (_t, c) = chat();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let log = calls.clone();
+        let accept = Arc::new(AtomicBool::new(false));
+        let gate = accept.clone();
+        c.set_receipt_sink(Some(Arc::new(move |r| {
+            lock(&log).push(r.id);
+            gate.load(Ordering::SeqCst)
+        })));
+        let send = || c.receipt("relay", Some("d_phone1"), "m1", ReceiptState::Queued, None);
+        send();
+        accept.store(true, Ordering::SeqCst);
+        send();
+        send();
+        assert_eq!(lock(&calls).len(), 2);
+    }
+
+    #[test]
+    fn rejecting_a_relay_message_sends_one_failed_receipt_with_a_fixed_reason() {
+        let (_t, c) = chat();
+        let r = c.capture_receipts();
+        c.reject_relay("d_phone1", "m1");
+        c.reject_relay("d_phone1", "m1");
+        assert_eq!(
+            *lock(&r),
+            [Receipt {
+                device: "d_phone1".into(),
+                id: "m1".into(),
+                state: ReceiptState::Failed,
+                reason: Some("invalid message".into()),
+            }]
+        );
     }
 
     #[test]

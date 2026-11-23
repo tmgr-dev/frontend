@@ -34,6 +34,7 @@ pub(super) struct Queue {
 struct Note {
     room: RoomRef,
     text: String,
+    reason: String,
     id: String,
     client: String,
     device: Option<String>,
@@ -43,11 +44,25 @@ impl Note {
     fn of(room: &RoomRef, e: &Entry, text: String) -> Self {
         Self {
             room: room.clone(),
+            reason: text.clone(),
             text,
             id: e.id.clone(),
             client: e.client.clone(),
             device: e.device.clone(),
         }
+    }
+}
+
+fn gone_reason(r: &str) -> String {
+    const KNOWN: [&str; 3] = [
+        "the session no longer exists",
+        "no manager is running",
+        "the session has exited",
+    ];
+    if KNOWN.contains(&r) {
+        format!("{r}.")
+    } else {
+        "the message could not be typed into the session.".into()
     }
 }
 
@@ -135,7 +150,7 @@ impl Chat {
                         device,
                         id,
                         ReceiptState::Failed,
-                        Some(&format!("{r}.")),
+                        Some(&gone_reason(&r)),
                     );
                     return Submit::Gone(r);
                 }
@@ -239,7 +254,9 @@ impl Chat {
                         }
                         Delivery::Busy => break,
                         Delivery::Gone(r) => {
-                            notes.push(Note::of(room, front, format!("Not delivered: {r}.")));
+                            let mut note = Note::of(room, front, format!("Not delivered: {r}."));
+                            note.reason = gone_reason(&r);
+                            notes.push(note);
                             ends.push((front.id.clone(), QueueEnd::Gone(r)));
                             entries.pop_front();
                         }
@@ -255,7 +272,7 @@ impl Chat {
                 n.device.as_deref(),
                 &n.id,
                 ReceiptState::Failed,
-                Some(&n.text),
+                Some(&n.reason),
             );
         }
         for (id, end) in ends {
@@ -1000,6 +1017,60 @@ mod tests {
                 mid(1),
                 ReceiptState::Failed,
                 Some("the queue for this session is full (20 messages).".into())
+            )]
+        );
+    }
+
+    #[test]
+    fn an_internal_error_text_stays_in_the_note_and_never_reaches_the_receipt() {
+        let (_t, c) = chat();
+        let r = rec(&c);
+        let room = c.session_room("s_abcdefghij");
+        let gone = submit_as(
+            &c,
+            &room,
+            &mid(1),
+            "relay",
+            Some("d_phone1"),
+            Delivery::Gone("pty write failed: /dev/ttys004: EIO".into()),
+        );
+        c.note_undelivered(&room, &mid(1), &gone);
+        assert_eq!(
+            got(&r),
+            [(
+                mid(1),
+                ReceiptState::Failed,
+                Some("the message could not be typed into the session.".into())
+            )]
+        );
+        let notes = c.history(&room, None, None).unwrap();
+        assert!(notes
+            .iter()
+            .any(|m| m.body_md.contains("pty write failed: /dev/ttys004: EIO")));
+    }
+
+    #[test]
+    fn a_queued_message_that_hits_an_internal_error_gets_the_fixed_reason() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        submit_as(
+            &c,
+            &room,
+            &mid(1),
+            "relay",
+            Some("d_phone1"),
+            Delivery::Busy,
+        );
+        let r = rec(&c);
+        c.drain_queue(T0 + 1, |_, _, _, _, _| {
+            Delivery::Gone("pty write failed: EIO".into())
+        });
+        assert_eq!(
+            got(&r),
+            [(
+                mid(1),
+                ReceiptState::Failed,
+                Some("the message could not be typed into the session.".into())
             )]
         );
     }

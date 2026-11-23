@@ -140,6 +140,36 @@ fn invalid_is_retried_a_bounded_number_of_times_then_dropped_to_unblock_the_send
 }
 
 #[test]
+fn storage_errors_are_retried_forever_and_never_dropped() {
+    let (sink, seen) = recording_sink(|| Err(IngestError::Storage("disk full".into())));
+    let m = msg(AuthorKind::Owner, MACHINE, None);
+    for _ in 0..(INVALID_ATTEMPTS * 3) {
+        assert_eq!(
+            sink.deliver("d", Some("mobile"), m.clone()),
+            Err("disk full".into())
+        );
+    }
+    assert_eq!(seen.lock().unwrap().len(), (INVALID_ATTEMPTS * 3) as usize);
+}
+
+#[test]
+fn giving_up_on_an_invalid_message_tells_the_sending_device_once() {
+    let (sink, _) = recording_sink(|| Err(IngestError::Invalid("bad".into())));
+    let told = Arc::new(Mutex::new(Vec::new()));
+    let log = told.clone();
+    let sink = sink.with_give_up(Box::new(move |device, id| {
+        log.lock().unwrap().push((device.to_owned(), id.to_owned()))
+    }));
+    let m = msg(AuthorKind::Owner, MACHINE, None);
+    for _ in 0..(INVALID_ATTEMPTS - 1) {
+        assert!(sink.deliver("dev-9", Some("mobile"), m.clone()).is_err());
+    }
+    assert!(told.lock().unwrap().is_empty());
+    assert_eq!(sink.deliver("dev-9", Some("mobile"), m.clone()), Ok(()));
+    assert_eq!(*told.lock().unwrap(), [("dev-9".to_owned(), m.id)]);
+}
+
+#[test]
 fn a_transient_invalid_that_recovers_resets_its_attempts() {
     let fail = Arc::new(AtomicBool::new(true));
     let f = fail.clone();
@@ -315,8 +345,8 @@ fn run_send_carries_chat_and_receipts_in_order_on_one_thread() {
 fn a_full_outbound_queue_drops_the_receipt_without_blocking() {
     let (tx, rx) = mpsc::sync_channel::<Out>(1);
     let sink = receipt_queue(tx);
-    sink(receipt(ReceiptState::Queued));
-    sink(receipt(ReceiptState::Delivered));
+    assert!(sink(receipt(ReceiptState::Queued)));
+    assert!(!sink(receipt(ReceiptState::Delivered)));
     assert!(matches!(rx.try_recv(), Ok(Out::Receipt(r)) if r.state == ReceiptState::Queued));
     assert!(rx.try_recv().is_err());
 }

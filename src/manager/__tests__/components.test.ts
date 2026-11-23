@@ -590,6 +590,23 @@ describe('manager components', () => {
 			expect(html).toContain('The first copy may still arrive');
 		});
 
+		it('hides Retry and Resend for a failed mention message', async () => {
+			const mention = {
+				id: 'd1',
+				target: { kind: 'session', machine: 'mx', session: 's1' },
+				state: 'queued',
+				hop: 0,
+			};
+			for (const state of ['failed', 'unconfirmed']) {
+				const html = await render('MessageBubble', {
+					message: { ...own, mention },
+					delivery: { state, remote: true },
+				});
+				expect(html).not.toContain('Retry');
+				expect(html).not.toContain('Resend');
+			}
+		});
+
 		it('hides Retry for sent, delivered and already retried rows', async () => {
 			for (const delivery of [
 				{ state: 'sent', remote: true },

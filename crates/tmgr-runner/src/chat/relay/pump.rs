@@ -59,10 +59,13 @@ impl From<ChatMessage> for Out {
 }
 
 pub fn receipt_queue(queue: SyncSender<Out>) -> ReceiptFn {
-    Arc::new(move |r| {
-        if let Err(TrySendError::Full(_)) = queue.try_send(Out::Receipt(r)) {
+    Arc::new(move |r| match queue.try_send(Out::Receipt(r)) {
+        Ok(()) => true,
+        Err(TrySendError::Full(_)) => {
             crate::daemon::log("chat relay: outbound queue full, receipt not sent");
+            false
         }
+        Err(TrySendError::Disconnected(_)) => false,
     })
 }
 
@@ -88,9 +91,13 @@ fn wants_push(msg: &ChatMessage) -> bool {
 const INVALID_ATTEMPTS: u32 = 3;
 const MAX_TRACKED: usize = 64;
 
+pub type GiveUpFn = Box<dyn Fn(&str, &str) + Send + Sync>;
+pub type SharedGiveUpFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 pub struct RelaySink {
     machine: String,
     ingest: IngestFn,
+    give_up: Option<GiveUpFn>,
     invalid: Mutex<VecDeque<(String, u32)>>,
 }
 
@@ -99,8 +106,14 @@ impl RelaySink {
         Self {
             machine,
             ingest,
+            give_up: None,
             invalid: Mutex::new(VecDeque::new()),
         }
+    }
+
+    pub fn with_give_up(mut self, give_up: GiveUpFn) -> Self {
+        self.give_up = Some(give_up);
+        self
     }
 
     fn invalid_attempts(&self) -> std::sync::MutexGuard<'_, VecDeque<(String, u32)>> {
@@ -175,9 +188,13 @@ impl ChatSink for RelaySink {
                 crate::daemon::log(&format!("chat relay: message not stored: {e}"));
                 Ok(())
             }
+            Err(IngestError::Storage(e)) => Err(e),
             Err(IngestError::Invalid(e)) => {
                 if self.give_up_on_invalid(&id) {
                     crate::daemon::log("chat relay: message dropped (invalid)");
+                    if let Some(give_up) = &self.give_up {
+                        give_up(from_device, &id);
+                    }
                     return Ok(());
                 }
                 Err(e)
@@ -346,6 +363,7 @@ pub struct Setup {
     pub transport: TransportFactory,
     pub ingest:
         Arc<dyn Fn(Incoming, Option<RoomRef>) -> Result<Ingested, IngestError> + Send + Sync>,
+    pub give_up: SharedGiveUpFn,
     pub subscribe: Arc<dyn Fn() -> Receiver<ChatPush> + Send + Sync>,
     pub subscribe_activity: Arc<dyn Fn() -> ActivityRx + Send + Sync>,
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
@@ -372,7 +390,9 @@ fn build(setup: &Setup, leases: &Arc<Leases>) -> Result<Option<Engine>, String> 
     }
     let transport = (setup.transport)(&cfg.server)?;
     let ingest = setup.ingest.clone();
-    let sink = RelaySink::new(setup.machine.clone(), Box::new(move |i, t| ingest(i, t)));
+    let give_up = setup.give_up.clone();
+    let sink = RelaySink::new(setup.machine.clone(), Box::new(move |i, t| ingest(i, t)))
+        .with_give_up(Box::new(move |device, id| give_up(device, id)));
     let engine_cfg = EngineConfig {
         user_id: cfg.user_id,
         label: LABEL.to_owned(),
