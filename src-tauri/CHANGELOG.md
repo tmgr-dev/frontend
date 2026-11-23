@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.201 — 2026-11-23
+
+- Fixed: a message from the Manager no longer fails for all your devices when the phone app has been in the background long enough for its relay queue to fill up. A desktop or phone with a full queue is skipped, and the others still get the message. For replies from sessions on other machines, also update the tmgr CLI to 1.0.176 and restart the runner.
+
 ## 0.9.200 — 2026-11-23
 
 - Fixed: messages in the Manager failed with "ts_ms is required with id" (0.9.199 regression).
