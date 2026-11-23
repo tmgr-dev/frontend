@@ -917,15 +917,11 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                         false
                     }
                 };
-                let kind = if s.permission_mode.as_deref() == Some("bypass") {
-                    "bypass "
-                } else if s.no_sandbox {
-                    "no-sandbox "
-                } else {
-                    ""
-                };
-                host.audit_remote_write(&format!(
-                    "manager on {from} wrote into {kind}session {id}"
+                host.audit_remote_write(&remote_write_note(
+                    from,
+                    s.permission_mode.as_deref(),
+                    s.no_sandbox,
+                    id,
                 ));
                 return Ok(if delivered {
                     json!({"delivered": true})
@@ -1039,6 +1035,30 @@ struct SpawnArgs<'a> {
 const NO_SANDBOX_NEEDS_UNRESTRICTED: &str =
     "no_sandbox needs a manager that runs without the sandbox";
 
+pub fn remote_write_note(
+    from: &str,
+    permission_mode: Option<&str>,
+    no_sandbox: bool,
+    id: &str,
+) -> String {
+    let kind = if permission_mode == Some("bypass") {
+        "bypass "
+    } else if no_sandbox {
+        "no-sandbox "
+    } else {
+        ""
+    };
+    format!("manager on {from} wrote into {kind}session {id}")
+}
+
+fn no_sandbox_flag(a: &Value) -> Result<bool, String> {
+    match a.get("no_sandbox") {
+        None | Some(Value::Bool(false)) => Ok(false),
+        Some(Value::Bool(true)) => Ok(true),
+        Some(_) => Err("no_sandbox must be true or false".into()),
+    }
+}
+
 fn truthy(a: &Value, key: &str) -> bool {
     a.get(key)
         .is_some_and(|v| !v.is_null() && *v != Value::Bool(false))
@@ -1085,7 +1105,7 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnAr
             )
         }
     };
-    let no_sandbox = truthy(a, "no_sandbox");
+    let no_sandbox = no_sandbox_flag(a)?;
     let dir = host
         .trusted_dir(cwd)
         .map_err(|e| if remote { REMOTE_CWD.to_string() } else { e })?;
@@ -1116,7 +1136,7 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnAr
 }
 
 fn propose_spawn(host: &dyn Host, a: &Value) -> Result<Value, String> {
-    if truthy(a, "no_sandbox") && host.remote_caller().is_none() && !host.unrestricted() {
+    if no_sandbox_flag(a)? && host.remote_caller().is_none() && !host.unrestricted() {
         return Err(NO_SANDBOX_NEEDS_UNRESTRICTED.into());
     }
     let args = spawn_args(host, a, true)?;
@@ -1163,8 +1183,12 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
     if remote && approval.is_none() {
         return Err("this card is not approved yet".into());
     }
-    if approval.is_none() && truthy(a, "no_sandbox") {
+    let wants_no_sandbox = no_sandbox_flag(a)?;
+    if approval.is_none() && wants_no_sandbox {
         return Err("a spawn without the sandbox needs an owner approval".into());
+    }
+    if wants_no_sandbox && !remote && !host.unrestricted() {
+        return Err(NO_SANDBOX_NEEDS_UNRESTRICTED.into());
     }
     if approval.is_some() && truthy(a, "manager") {
         return Err("a manager session cannot be spawned, even with an approval".into());
@@ -2304,7 +2328,8 @@ mod tests {
 
     #[test]
     fn spawn_by_card_id_uses_the_stored_approval_or_refuses() {
-        let h = Fake::new();
+        let mut h = Fake::new();
+        h.unrestricted = true;
         let st = State::default();
         let signed: SignedSpawn = serde_json::from_value(json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"card_9","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"})).unwrap();
         let args = json!({"profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass", "card_id": "card_9"});
@@ -2494,8 +2519,39 @@ mod tests {
     }
 
     #[test]
+    fn a_restricted_local_host_cannot_spawn_from_an_approved_no_sandbox_card() {
+        let signed: SignedSpawn = serde_json::from_value(json!({"v":1,"user_id":"7","device_fp":"d","target_id":"mx_1","target_fp":"f","card_id":"card_9","nonce":"n","ts_ms":1,"exp_ms":2,"req_sha256":"r","alg":"es256","sig":"s"})).unwrap();
+        let args = json!({"profile": "claude-code", "cwd": "/tmp/ok", "permission_mode": "bypass", "card_id": "card_9", "no_sandbox": true});
+        let mut h = Fake::new();
+        h.approved.lock().unwrap().insert("card_9".into(), signed);
+        let e = call(&h, &State::default(), "spawn_session", args.clone()).unwrap_err();
+        assert_eq!(e, NO_SANDBOX_NEEDS_UNRESTRICTED);
+        assert!(h.spawned.lock().unwrap().is_empty());
+        h.unrestricted = true;
+        call(&h, &State::default(), "spawn_session", args).unwrap();
+        assert_eq!(*h.no_sandbox_spawns.lock().unwrap(), vec![true]);
+    }
+
+    #[test]
+    fn a_local_no_sandbox_argument_must_be_exactly_true_or_false() {
+        let mut h = Fake::new();
+        h.unrestricted = true;
+        let st = State::default();
+        for bad in [json!("true"), json!(1), json!(null), json!([true])] {
+            for tool in ["propose_spawn", "spawn_session"] {
+                let args = json!({"profile": "claude-code", "cwd": "/tmp/ok", "no_sandbox": bad});
+                let e = call(&h, &st, tool, signed_args(args)).unwrap_err();
+                assert_eq!(e, "no_sandbox must be true or false", "{tool} {bad}");
+            }
+        }
+        assert!(h.proposed.lock().unwrap().is_empty());
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn a_signed_no_sandbox_spawn_puts_the_flag_into_the_verified_proposal() {
-        let h = Fake::new();
+        let mut h = Fake::new();
+        h.unrestricted = true;
         let st = State::default();
         call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
         call(

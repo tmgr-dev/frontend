@@ -6,6 +6,14 @@ use crate::switch::Target;
 use tmgr_ipc::manager::{tool, SpoolReq, SpoolResp};
 
 impl Runner {
+    pub(super) fn audit_remote_write(&self, note: &str) {
+        let room = self.chat.manager_room();
+        if let Err(e) = self.chat.reply_system(&room, None, note) {
+            log(&format!("manager: audit note not posted: {e}"));
+        }
+        log(&format!("manager: {note}"));
+    }
+
     pub(super) fn live_manager(&self) -> Option<Arc<Session>> {
         self.all()
             .into_iter()
@@ -328,11 +336,7 @@ impl core::Host for ManagerHost<'_> {
     }
 
     fn audit_remote_write(&self, note: &str) {
-        let room = self.rt.chat.manager_room();
-        if let Err(e) = self.rt.chat.reply_system(&room, None, note) {
-            log(&format!("manager: audit note not posted: {e}"));
-        }
-        log(&format!("manager: {note}"));
+        self.rt.audit_remote_write(note);
     }
 
     fn local_manager_unrestricted(&self) -> bool {

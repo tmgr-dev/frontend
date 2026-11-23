@@ -1156,6 +1156,14 @@ impl Runner {
                     );
                 }
                 let s = self.live(id).map_err(|e| e.msg)?;
+                if let Some(from) = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX)) {
+                    self.audit_remote_write(&crate::manager::remote_write_note(
+                        from,
+                        info.permission_mode.as_deref(),
+                        info.no_sandbox,
+                        id,
+                    ));
+                }
                 match s.input_at_prompt(&crate::manager::prompt_bytes(text), Instant::now()) {
                     Ok(()) => Ok(Carried {
                         id: id.into(),
@@ -1735,7 +1743,8 @@ mod tests {
     fn no_sandbox_is_refused_when_the_signed_proposal_lacks_the_flag_and_keeps_the_card() {
         let e = env();
         with_dirs(&e);
-        let h = TestHost::new(&e);
+        let mut h = TestHost::new(&e);
+        h.inner.unrestricted = true;
         let card = propose(&h, &e, "bypass", "a");
         let mut args = spawn_args(&e, "bypass", "a", &card);
         args["no_sandbox"] = serde_json::json!(true);
@@ -1747,6 +1756,28 @@ mod tests {
             e.auth.cards().state(&card).unwrap(),
             Some(CardState::Issued { .. })
         ));
+    }
+
+    #[test]
+    fn a_restricted_local_manager_cannot_take_over_an_approved_no_sandbox_card() {
+        let e = env();
+        with_dirs(&e);
+        let mut proposer = TestHost::new(&e);
+        proposer.inner.unrestricted = true;
+        let card = propose_no_sandbox(&proposer, &e, "a");
+        let mut args = spawn_args(&e, "bypass", "a", &card);
+        args["no_sandbox"] = serde_json::json!(true);
+        let restricted = TestHost::new(&e);
+        assert!(run(&restricted, &e, "spawn_session", args.clone())
+            .unwrap_err()
+            .contains("no_sandbox needs a manager"));
+        assert!(restricted.spawned.lock().unwrap().is_empty());
+        assert!(matches!(
+            e.auth.cards().state(&card).unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+        run(&proposer, &e, "spawn_session", args).unwrap();
+        assert_eq!(proposer.spawned.lock().unwrap().len(), 1);
     }
 
     #[test]
@@ -3925,6 +3956,50 @@ mod tests {
                 .any(|r| r.starts_with("Not done: ")));
         }
         assert!(manager_prompts(&e).iter().all(|p| p.1.contains("not")));
+    }
+
+    #[test]
+    fn a_remote_send_card_to_a_risky_session_is_audited_in_the_manager_room_when_carried_out() {
+        for (flag, kind) in [(true, "no-sandbox "), (false, "")] {
+            let e = env();
+            let (s, rx) = add_live(&e, TARGET, serde_json::json!({}));
+            lock(&s.inner).meta.no_sandbox = flag;
+            let h = TestHost::new(&e);
+            let proposal = SpawnProposal {
+                v: 1,
+                profile: String::new(),
+                cwd: String::new(),
+                mode: tmgr_spawn_auth::SpawnMode::Ask,
+                sandbox: None,
+                prompt_sha256: None,
+                name: None,
+                task: None,
+                target_id: h.machine(),
+                kind: ProposalKind::Send,
+                session: Some(TARGET.into()),
+                from: Some(MGR.into()),
+                text: Some("hello".into()),
+            };
+            let card = As::remote(&h)
+                .propose_spawn(&proposal, Some(&format!("remote:{PEER}")), None)
+                .unwrap()
+                .card_id;
+            decide(&e, &card, "approve").unwrap();
+            assert_eq!(typed(&rx), "hello\r");
+            let notes: Vec<String> =
+                e.rt.chat
+                    .history(&e.rt.chat.manager_room(), None, Some(50))
+                    .unwrap()
+                    .into_iter()
+                    .map(|m| m.body_md)
+                    .collect();
+            assert!(
+                notes.contains(&format!(
+                    "manager on {PEER} wrote into {kind}session {TARGET}"
+                )),
+                "{notes:?}"
+            );
+        }
     }
 
     #[test]
