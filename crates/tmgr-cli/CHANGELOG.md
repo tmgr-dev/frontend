@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.168
+
+- Added: the runner sends what each tool call of a manager chat session does (the Bash command, file path, search pattern, URL, MCP arguments) and, for listing and build commands, the first lines of the output, to the local desktop Manager only. Nothing is sent to the relay or the server.
+- Security: this is sent only while transcript-reading consent is granted. Secrets (tokens, keys, passwords, Authorization headers, connection strings) are masked in the runner and every line is cut to 200 characters; output is never sent for file reads, edits, web fetches, MCP tools or commands that could print secrets.
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.167
 
 - Added: @mentions between chats. In the `tmgr attach` chat pane, type `@` at the start of a message to pick another local chat. The runner types the question into that chat, waits for the answer and posts it back as a reply. Nothing reaches your own agent until you run `:add`, which adds the reply to its context as data, not instructions. Bypass and no-sandbox targets need a `y` confirmation, and unrestricted chats never take an added reply.

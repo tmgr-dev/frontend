@@ -166,7 +166,8 @@ export const createManagerStore = (api: ManagerApi) => {
 		calls: ToolCall[],
 	) => {
 		store.toolsByMessage[id] = used;
-		if (calls.length) store.callsByMessage[id] = calls;
+		if (calls.length)
+			store.callsByMessage[id] = calls.map((c) => ({ ...c, running: false }));
 		toolRoom.set(id, key);
 		toolOrder.push(id);
 		while (toolOrder.length > MAX_TOOL_MESSAGES) {
