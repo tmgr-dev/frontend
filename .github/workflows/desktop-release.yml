@@ -179,6 +179,10 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then export TAURI_SIGNING_PRIVATE_KEY="$DRY_RUN_KEY"; fi
           npx tauri build --bundles ${{ matrix.bundles }}
 
+      - name: no espeak in the release binary
+        run: |
+          bash scripts/check-no-espeak.sh
+
       - name: verify widget in the macOS bundle
         if: matrix.name == 'macos'
         run: |
