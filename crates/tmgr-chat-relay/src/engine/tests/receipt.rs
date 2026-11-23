@@ -92,7 +92,7 @@ fn only_a_failed_receipt_carries_a_reason_and_it_is_cut_to_200_chars() {
 }
 
 #[test]
-fn send_receipt_refuses_runners_unknown_devices_self_and_bad_ids() {
+fn send_receipt_refuses_runners_phones_unknown_devices_self_and_bad_ids() {
     let (fake, _c, runner, desktop, mobile, other) = rooms_world();
     let (did, mid, oid) = (my_id(&desktop), my_id(&mobile), my_id(&other));
     let posts = fake.posts();
@@ -117,9 +117,12 @@ fn send_receipt_refuses_runners_unknown_devices_self_and_bad_ids() {
     assert!(runner
         .send_receipt(&did, "r_abc", ReceiptState::Delivered, None)
         .is_err());
+    assert!(runner
+        .send_receipt(&mid, &id, ReceiptState::Queued, None)
+        .is_err());
     assert_eq!(fake.posts(), posts);
     runner
-        .send_receipt(&mid, &id, ReceiptState::Queued, None)
+        .send_receipt(&did, &id, ReceiptState::Queued, None)
         .unwrap();
     assert_eq!(fake.posts(), posts + 1);
 }

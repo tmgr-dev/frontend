@@ -1820,8 +1820,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
         let target = Self::owner_targets(c, &own.device_id, Some(&[to_device.to_owned()]))
             .into_iter()
-            .find(|d| matches!(c.st.kind_of(&d.id, &d.fp), Some("desktop" | "mobile")))
-            .ok_or_else(|| "the target is not a trusted owner device".to_owned())?;
+            .find(|d| matches!(c.st.kind_of(&d.id, &d.fp), Some("desktop")))
+            .ok_or_else(|| "the target is not a trusted desktop".to_owned())?;
         self.seal_and_post(c, "receipt", &msg_id, &payload, &[target], false)?;
         self.save_now(c)
     }
