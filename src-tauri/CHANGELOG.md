@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.193 — 2026-11-23
+
+- Manager window: spawn cards from the local manager have Approve, Edit and Reject buttons. Edit lets you change the folder, permissions, name and task; the runner then issues a new card for you to approve. Needs tmgr CLI 1.0.165 or newer; with an older CLI the buttons are disabled and say to update it.
+- Manager window: a card that was approved but whose session failed to start shows "Failed" after a reload instead of "Rejected".
+
 ## 0.9.192 — 2026-11-22
 
 - Manager window: below 1100 px the chat no longer leaves an empty column where the right panel was.
