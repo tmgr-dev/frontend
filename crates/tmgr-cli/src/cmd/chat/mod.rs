@@ -2,6 +2,7 @@
 
 pub mod join;
 pub mod join_code;
+pub mod remote;
 pub mod status;
 pub mod transport;
 
@@ -16,6 +17,11 @@ pub enum ChatCommand {
     Join(JoinArgs),
     /// Show whether this runner is paired with the chat relay
     Status,
+    /// What leader machines may do on this runner's manager
+    Remote {
+        #[command(subcommand)]
+        command: remote::RemoteCommand,
+    },
 }
 
 #[derive(Args)]
@@ -28,5 +34,6 @@ pub fn run(ctx: &Ctx, cmd: &ChatCommand) -> Result<Output> {
     match cmd {
         ChatCommand::Join(_) => join::run(ctx),
         ChatCommand::Status => status::run(),
+        ChatCommand::Remote { command } => remote::run(command),
     }
 }
