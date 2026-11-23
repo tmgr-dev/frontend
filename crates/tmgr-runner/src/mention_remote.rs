@@ -47,8 +47,8 @@ pub enum Fetch {
     Failed,
 }
 
-pub fn fetch(link: &dyn Link, machine: &str, since: &str) -> Fetch {
-    let args = json!({"since": since, "limit": rpc_limits::MAX_ROOM_LIMIT});
+pub fn fetch(link: &dyn Link, machine: &str) -> Fetch {
+    let args = json!({"limit": rpc_limits::MAX_ROOM_LIMIT});
     let Ok(res) = link.call(machine, Op::Room, args) else {
         return Fetch::Failed;
     };
@@ -75,6 +75,8 @@ pub struct Track {
     pub asked: String,
     replies: Vec<(String, String)>,
     last_change: u64,
+    found: bool,
+    gone: bool,
 }
 
 impl Track {
@@ -84,16 +86,20 @@ impl Track {
             asked: asked.into(),
             replies: Vec::new(),
             last_change: now,
+            found: false,
+            gone: false,
         }
     }
 }
 
 pub fn fold(t: &mut Track, rows: &[ChatMessage], now: u64) {
-    let after = rows
-        .iter()
-        .position(|m| m.id == t.asked)
-        .map_or(0, |i| i + 1);
-    for m in &rows[after..] {
+    let Some(at) = rows.iter().position(|m| m.id == t.asked) else {
+        t.gone = t.found;
+        return;
+    };
+    t.found = true;
+    t.gone = false;
+    for m in &rows[at + 1..] {
         let reply = m.author.kind == AuthorKind::Session && m.author.id != REMOTE_AUTHOR;
         if reply && !m.body_md.trim().is_empty() && !t.replies.iter().any(|(id, _)| *id == m.id) {
             t.replies.push((m.id.clone(), m.body_md.clone()));
@@ -103,7 +109,7 @@ pub fn fold(t: &mut Track, rows: &[ChatMessage], now: u64) {
 }
 
 pub fn quiet_reply(t: &Track, now: u64) -> Option<String> {
-    if t.replies.is_empty() || now.saturating_sub(t.last_change) < QUIET_MS {
+    if t.replies.is_empty() || (!t.gone && now.saturating_sub(t.last_change) < QUIET_MS) {
         return None;
     }
     let joined: Vec<&str> = t.replies.iter().map(|(_, b)| b.as_str()).collect();
@@ -153,11 +159,11 @@ impl Followers {
         self.tracks.retain(|_, t| is_open(&t.mention));
     }
 
-    pub fn due(&mut self, now: u64) -> Vec<(String, String)> {
+    pub fn due(&mut self, now: u64) -> Vec<String> {
         let mut out = Vec::new();
-        for (machine, t) in &self.tracks {
+        for machine in self.tracks.keys() {
             if self.pace.entry(machine.clone()).or_default().admit(now) {
-                out.push((machine.clone(), t.asked.clone()));
+                out.push(machine.clone());
             }
         }
         out
@@ -256,16 +262,58 @@ mod tests {
     }
 
     #[test]
+    fn rows_without_the_asked_id_give_no_answer() {
+        let mut t = Track::new("m_x", &asked(), 0);
+        let rows = [
+            row(7, AuthorKind::Session, "s_aaaaaaaaaa", "newest"),
+            row(8, AuthorKind::Session, "s_aaaaaaaaaa", "newer"),
+        ];
+        fold(&mut t, &rows, 1_000);
+        assert!(quiet_reply(&t, 1_000_000).is_none());
+    }
+
+    #[test]
+    fn an_asked_row_that_scrolled_out_finishes_with_the_text_collected_so_far() {
+        let mut t = Track::new("m_x", &asked(), 0);
+        let a = row(2, AuthorKind::Session, "s_aaaaaaaaaa", "kept");
+        fold(
+            &mut t,
+            &[row(1, AuthorKind::Manager, "remote", "q"), a],
+            1_000,
+        );
+        assert!(quiet_reply(&t, 1_001).is_none());
+        fold(
+            &mut t,
+            &[row(9, AuthorKind::Session, "s_aaaaaaaaaa", "unrelated")],
+            2_000,
+        );
+        assert_eq!(quiet_reply(&t, 2_000).unwrap(), "kept");
+    }
+
+    #[test]
+    fn a_scrolled_out_asked_row_with_no_text_keeps_waiting() {
+        let mut t = Track::new("m_x", &asked(), 0);
+        fold(&mut t, &[row(1, AuthorKind::Manager, "remote", "q")], 1_000);
+        fold(
+            &mut t,
+            &[row(9, AuthorKind::Session, "s_aaaaaaaaaa", "x")],
+            2_000,
+        );
+        assert!(quiet_reply(&t, 1_000_000).is_none());
+    }
+
+    #[test]
     fn completion_waits_for_a_quiet_period_after_the_last_new_row() {
         let mut t = Track::new("m_x", &asked(), 0);
         assert!(quiet_reply(&t, 1_000_000).is_none());
+        let q = row(1, AuthorKind::Manager, "remote", "q");
         let a = row(2, AuthorKind::Session, "s_aaaaaaaaaa", "a");
-        fold(&mut t, std::slice::from_ref(&a), 1_000);
+        fold(&mut t, &[q.clone(), a.clone()], 1_000);
         assert!(quiet_reply(&t, 1_000 + QUIET_MS - 1).is_none());
         let b = row(3, AuthorKind::Session, "s_aaaaaaaaaa", "b");
-        fold(&mut t, &[a.clone(), b], 15_000);
+        fold(&mut t, &[q.clone(), a.clone(), b], 15_000);
         assert!(quiet_reply(&t, 1_000 + QUIET_MS).is_none());
-        fold(&mut t, &[a], 30_000);
+        fold(&mut t, &[q, a], 30_000);
         assert!(quiet_reply(&t, 15_000 + QUIET_MS).is_some());
     }
 
@@ -308,7 +356,10 @@ mod tests {
         f.track(M, Track::new("m_x", &asked(), 0));
         f.fed(
             M,
-            Fetch::Rows(vec![row(2, AuthorKind::Session, "s_aaaaaaaaaa", "hi")]),
+            Fetch::Rows(vec![
+                row(1, AuthorKind::Manager, "remote", "q"),
+                row(2, AuthorKind::Session, "s_aaaaaaaaaa", "hi"),
+            ]),
             100,
         );
         assert!(f.finished(100 + QUIET_MS - 1).is_empty());

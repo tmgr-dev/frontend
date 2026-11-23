@@ -222,8 +222,8 @@ impl Runner {
     }
 
     pub(super) fn follower_poll(&self, link: &dyn Link, now: u64) {
-        for (machine, asked) in self.chat.follower_due(now) {
-            let fetched = mention_remote::fetch(link, &machine, &asked);
+        for machine in self.chat.follower_due(now) {
+            let fetched = mention_remote::fetch(link, &machine);
             self.chat.follower_fed(&machine, fetched, now);
         }
         self.chat.follower_finish(now);
@@ -1420,6 +1420,7 @@ mod tests {
             let id = follow(&rt, &net, local());
             let room = RoomRef::manager(PEER);
             net.rows(json!([
+                row(ASKED, "manager", "remote", "the question", &room),
                 row(
                     "m_0000000000000000000000000000bbbb",
                     "session",
@@ -1438,7 +1439,7 @@ mod tests {
             let t0 = now_ms();
             rt.follower_poll(&net, t0);
             assert_eq!(last(&rt).0, MentionState::Sent);
-            assert_eq!(net.calls.lock().unwrap()[1].1["since"], ASKED);
+            assert!(net.calls.lock().unwrap()[1].1.get("since").is_none());
             rt.follower_poll(&net, t0 + 20_000);
             let (state, body) = last(&rt);
             assert_eq!(state, MentionState::Answered);
