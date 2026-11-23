@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.167
+
+- Added: @mentions between chats. In the `tmgr attach` chat pane, type `@` at the start of a message to pick another local chat. The runner types the question into that chat, waits for the answer and posts it back as a reply. Nothing reaches your own agent until you run `:add`, which adds the reply to its context as data, not instructions. Bypass and no-sandbox targets need a `y` confirmation, and unrestricted chats never take an added reply.
+- Mentions sent from your paired phone or desktop over the relay are routed only for your own trusted devices. They are labelled as coming from your phone, and replays or messages older than 10 minutes are refused.
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.166
 
 - Added: the runner reports a session with an open agent question as `asking` in the room list, so the desktop Manager lists it under "Needs you". Only the state is sent, never the question text, and only while transcript-reading consent is granted.
