@@ -1871,7 +1871,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             return Err("invalid message id".into());
         }
         let mut payload = json!({ "id": id, "state": state.wire() });
-        if let (ReceiptState::Failed, Some(r)) = (state, reason.filter(|r| !r.is_empty())) {
+        if let (ReceiptState::Failed | ReceiptState::Queued, Some(r)) =
+            (state, reason.filter(|r| !r.is_empty()))
+        {
             payload["reason"] = json!(r.chars().take(RECEIPT_REASON_MAX).collect::<String>());
         }
         let msg_id = format!("rc_{}_{}", &h(id)[..24], state.letter());

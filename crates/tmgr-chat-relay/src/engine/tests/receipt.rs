@@ -51,6 +51,27 @@ fn a_receipt_reaches_only_the_sending_device_without_push_and_decodes_to_the_con
 }
 
 #[test]
+fn a_queued_receipt_carries_its_reason_on_the_wire() {
+    let (fake, _c, runner, desktop, _m, _o) = rooms_world();
+    let id = orig();
+    runner
+        .send_receipt(&my_id(&desktop), &id, ReceiptState::Queued, Some("turn"))
+        .unwrap();
+    let o = open_last(&fake, &desktop);
+    assert_eq!(
+        o.payload,
+        json!({"id": id, "state": "queued", "reason": "turn"})
+    );
+    runner
+        .send_receipt(&my_id(&desktop), &id, ReceiptState::Delivered, Some("turn"))
+        .unwrap();
+    assert_eq!(
+        open_last(&fake, &desktop).payload,
+        json!({"id": id, "state": "delivered"})
+    );
+}
+
+#[test]
 fn receipt_ids_differ_per_state_and_per_message_and_pass_the_wire_check() {
     let (fake, _c, runner, desktop, _m, _o) = rooms_world();
     let did = my_id(&desktop);

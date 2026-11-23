@@ -1364,6 +1364,10 @@ impl Session {
         Ok(())
     }
 
+    pub(crate) fn busy_code(&self) -> Option<&'static str> {
+        lock(&self.inner).last_busy.map(chat::busy_code)
+    }
+
     fn write_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
         {
             let mut i = lock(&self.inner);

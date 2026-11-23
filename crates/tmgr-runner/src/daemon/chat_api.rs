@@ -44,7 +44,7 @@ impl Runner {
             return Err(gone("the session has exited"));
         }
         if !s.has_shim() {
-            return Err(chat::Delivery::Busy);
+            return Err(chat::Delivery::Busy(Some("prompt")));
         }
         Ok(s)
     }
@@ -64,7 +64,7 @@ impl Runner {
                 t.note_input_from(client);
                 chat::Delivery::Delivered
             }
-            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
             Err(e) => chat::Delivery::Gone(e.msg),
         }
     }
@@ -96,7 +96,7 @@ impl Runner {
                 t.note_input_from("relay");
                 chat::Delivery::Typed(typed)
             }
-            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
             Err(e) => chat::Delivery::Gone(e.msg),
         }
     }
@@ -121,7 +121,7 @@ impl Runner {
                 t.note_input_from(REMOTE_CLIENT);
                 chat::Delivery::Delivered
             }
-            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
             Err(e) => chat::Delivery::Gone(e.msg),
         }
     }
@@ -376,6 +376,11 @@ impl Runner {
                 q.room.validate().map_err(bad)?;
                 Ok(to_json(&self.chat.queued_ids(&q.room)))
             }
+            chat_method::QUEUED_WHY => {
+                let q: QueuedParams = params(p)?;
+                q.room.validate().map_err(bad)?;
+                Ok(to_json(&self.chat.queued_why(&q.room)))
+            }
             chat_method::CANCEL => {
                 let q: CancelParams = params(p)?;
                 q.room.validate().map_err(bad)?;
@@ -466,7 +471,7 @@ impl Runner {
                     };
                     match delivery {
                         chat::Delivery::Gone(_) if it.room.session.is_none() => {
-                            chat::Delivery::Busy
+                            chat::Delivery::Busy(None)
                         }
                         d => d,
                     }
@@ -782,7 +787,7 @@ mod tests {
         for room in [room.clone(), rt.chat.session_room("s_aaaaaaaaaa")] {
             assert_eq!(
                 rt.relay_deliver(&room, Some("d_phone1"), true, "hi"),
-                chat::Delivery::Busy
+                chat::Delivery::Busy(Some("prompt"))
             );
         }
         let mut m = relay_msg(room.clone(), "hello");
@@ -1282,6 +1287,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(queued, std::slice::from_ref(&posted.id));
+        let why: std::collections::HashMap<String, String> = serde_json::from_value(
+            call(
+                &rt,
+                &c,
+                chat_method::QUEUED_WHY,
+                to_json(&QueuedParams { room: room.clone() }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(why.get(&posted.id).map(String::as_str), Some("prompt"));
         let cancel = |id: &str| -> bool {
             serde_json::from_value(
                 call(

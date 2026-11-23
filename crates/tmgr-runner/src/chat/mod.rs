@@ -116,11 +116,19 @@ pub struct Incoming {
     pub client: String,
 }
 
+pub fn busy_code(why: &str) -> &'static str {
+    match why {
+        "blocked on a dialog" => "dialog",
+        "input still queued" => "prompt",
+        _ => "turn",
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Delivery {
     Delivered,
     Typed(String),
-    Busy,
+    Busy(Option<&'static str>),
     Refused(&'static str),
     Gone(String),
 }
@@ -577,7 +585,7 @@ impl Chat {
             device.as_deref(),
             owner_device,
             now_ms,
-            |body, _, _, _| deliver.take().map_or(Delivery::Busy, |d| d(body)),
+            |body, _, _, _| deliver.take().map_or(Delivery::Busy(None), |d| d(body)),
         );
         self.note_undelivered(&msg.room, &msg.id, &outcome);
         let delivered = outcome == Submit::Delivered;
@@ -1238,7 +1246,7 @@ mod tests {
                 incoming(room.clone(), 1, NOW, "hello"),
                 NOW,
                 no_session,
-                |_| Delivery::Busy,
+                |_| Delivery::Busy(None),
             )
             .unwrap();
         assert!(!r.delivered);
@@ -1287,7 +1295,7 @@ mod tests {
                 incoming(room.clone(), 1, NOW, "hello"),
                 NOW,
                 no_session,
-                |_| Delivery::Busy,
+                |_| Delivery::Busy(None),
             )
             .unwrap();
         }
@@ -1300,7 +1308,7 @@ mod tests {
         let room = c.manager_room();
         for n in 1..=21 {
             c.ingest(incoming(room.clone(), n, NOW, "x"), NOW, no_session, |_| {
-                Delivery::Busy
+                Delivery::Busy(None)
             })
             .unwrap();
         }
@@ -1348,7 +1356,7 @@ mod tests {
                 ReceiptState::Failed,
                 Some("no manager is running."),
             ),
-            (4, NOW, Delivery::Busy, ReceiptState::Queued, None),
+            (4, NOW, Delivery::Busy(None), ReceiptState::Queued, None),
         ] {
             let inc = incoming(room.clone(), n, ts, "hello");
             want.push((inc.id.clone(), state, reason.map(str::to_owned)));

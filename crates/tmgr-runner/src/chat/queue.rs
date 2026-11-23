@@ -24,6 +24,7 @@ pub(super) struct Entry {
     owner_device: bool,
     enq_ms: u64,
     ttl_ms: u64,
+    why: Option<&'static str>,
 }
 
 #[derive(Default)]
@@ -122,6 +123,11 @@ impl Chat {
     ) -> Submit {
         let mut q = lock(&self.queue);
         let backlog = q.rooms.get(room).map_or(0, VecDeque::len);
+        let mut busy_why = q
+            .rooms
+            .get(room)
+            .and_then(|e| e.front())
+            .and_then(|e| e.why);
         if backlog == 0 {
             let item = Item {
                 room,
@@ -158,7 +164,7 @@ impl Chat {
                     self.receipt(client, device, id, ReceiptState::Failed, Some(why));
                     return Submit::Refused(why);
                 }
-                Delivery::Busy => {}
+                Delivery::Busy(why) => busy_why = why,
             }
         }
         if backlog >= QUEUE_CAP {
@@ -179,8 +185,9 @@ impl Chat {
             owner_device,
             enq_ms: now_ms,
             ttl_ms,
+            why: busy_why,
         });
-        self.receipt(client, device, id, ReceiptState::Queued, None);
+        self.receipt(client, device, id, ReceiptState::Queued, busy_why);
         Submit::Queued
     }
 
@@ -212,6 +219,7 @@ impl Chat {
         {
             let mut q = lock(&self.queue);
             for (room, entries) in q.rooms.iter_mut() {
+                let mut stalled = None;
                 while let Some(front) = entries.front() {
                     if now_ms.saturating_sub(front.enq_ms) >= front.ttl_ms {
                         let mins = front.ttl_ms / 60_000;
@@ -252,7 +260,10 @@ impl Chat {
                             ends.push((front.id.clone(), QueueEnd::Refused(why.to_string())));
                             entries.pop_front();
                         }
-                        Delivery::Busy => break,
+                        Delivery::Busy(why) => {
+                            stalled = Some(why);
+                            break;
+                        }
                         Delivery::Gone(r) => {
                             let mut note = Note::of(room, front, format!("Not delivered: {r}."));
                             note.reason = gone_reason(&r);
@@ -261,6 +272,9 @@ impl Chat {
                             entries.pop_front();
                         }
                     }
+                }
+                if let Some(why) = stalled {
+                    entries.iter_mut().for_each(|e| e.why = why);
                 }
             }
             q.rooms.retain(|_, e| !e.is_empty());
@@ -298,6 +312,18 @@ impl Chat {
             .rooms
             .get(room)
             .map(|e| e.iter().map(|e| e.id.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn queued_why(&self, room: &RoomRef) -> HashMap<String, String> {
+        lock(&self.queue)
+            .rooms
+            .get(room)
+            .map(|e| {
+                e.iter()
+                    .filter_map(|e| Some((e.id.clone(), e.why?.to_owned())))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -384,7 +410,7 @@ mod tests {
     }
 
     fn busy(_: &str, _: &str, _: Option<&str>, _: bool) -> Delivery {
-        Delivery::Busy
+        Delivery::Busy(None)
     }
 
     fn drain_with(c: &Chat, now: u64, d: Delivery, got: &RefCell<Vec<String>>) {
@@ -520,7 +546,7 @@ mod tests {
         let room = c.session_room("s_abcdefghij");
         c.submit(&room, "m1", "hi", "desktop", None, false, T0, busy);
         let got = RefCell::new(Vec::new());
-        drain_with(&c, T0 + 1, Delivery::Busy, &got);
+        drain_with(&c, T0 + 1, Delivery::Busy(None), &got);
         assert_eq!(c.queued_ids(&room), ["m1"]);
         drain_with(&c, T0 + 2, Delivery::Delivered, &got);
         assert_eq!(*got.borrow(), ["hi"]);
@@ -565,7 +591,7 @@ mod tests {
             if *n.borrow() == 1 {
                 Delivery::Delivered
             } else {
-                Delivery::Busy
+                Delivery::Busy(None)
             }
         });
         assert_eq!(*n.borrow(), 2);
@@ -699,7 +725,7 @@ mod tests {
         let (_t, c) = chat();
         let room = c.session_room("s_abcdefghij");
         c.mention_open(mention_spec(&c, MID));
-        let item = |_: &Item| Delivery::Busy;
+        let item = |_: &Item| Delivery::Busy(None);
         assert_eq!(
             c.submit_with(
                 &room,
@@ -738,7 +764,7 @@ mod tests {
             false,
             T0,
             120_000,
-            |_| Delivery::Busy,
+            |_| Delivery::Busy(None),
             |_, _| {},
         );
         assert!(c.cancel(&room, MID));
@@ -760,7 +786,7 @@ mod tests {
             false,
             T0,
             120_000,
-            |_| Delivery::Busy,
+            |_| Delivery::Busy(None),
             |_, _| {},
         );
         let typed = RefCell::new(None);
@@ -795,7 +821,7 @@ mod tests {
             false,
             T0,
             120_000,
-            |_| Delivery::Busy,
+            |_| Delivery::Busy(None),
             |_, _| {},
         );
         c.drain_queue_with(
@@ -977,7 +1003,7 @@ mod tests {
             dev,
             Delivery::Refused("Not delivered: nope."),
         );
-        submit_as(&c, &room, &mid(5), "relay", dev, Delivery::Busy);
+        submit_as(&c, &room, &mid(5), "relay", dev, Delivery::Busy(None));
         assert_eq!(
             got(&r),
             [
@@ -1000,7 +1026,14 @@ mod tests {
         let (_t, c) = chat();
         let room = c.session_room("s_abcdefghij");
         for i in 0..QUEUE_CAP {
-            submit_as(&c, &room, &mid(100 + i as u64), "cli", None, Delivery::Busy);
+            submit_as(
+                &c,
+                &room,
+                &mid(100 + i as u64),
+                "cli",
+                None,
+                Delivery::Busy(None),
+            );
         }
         let r = rec(&c);
         submit_as(
@@ -1009,7 +1042,7 @@ mod tests {
             &mid(1),
             "relay",
             Some("d_phone1"),
-            Delivery::Busy,
+            Delivery::Busy(None),
         );
         assert_eq!(
             got(&r),
@@ -1059,7 +1092,7 @@ mod tests {
             &mid(1),
             "relay",
             Some("d_phone1"),
-            Delivery::Busy,
+            Delivery::Busy(None),
         );
         let r = rec(&c);
         c.drain_queue(T0 + 1, |_, _, _, _, _| {
@@ -1089,7 +1122,7 @@ mod tests {
             Delivery::Delivered,
         );
         submit_as(&c, &room, &mid(2), "relay", None, Delivery::Delivered);
-        submit_as(&c, &room, &mid(3), "desktop", None, Delivery::Busy);
+        submit_as(&c, &room, &mid(3), "desktop", None, Delivery::Busy(None));
         c.drain_queue(T0 + 1, |_, _, _, _, _| Delivery::Delivered);
         assert!(got(&r).is_empty());
     }
@@ -1105,9 +1138,9 @@ mod tests {
             &mid(1),
             "relay",
             Some("d_phone1"),
-            Delivery::Busy,
+            Delivery::Busy(None),
         );
-        c.drain_queue(T0 + 1, |_, _, _, _, _| Delivery::Busy);
+        c.drain_queue(T0 + 1, |_, _, _, _, _| Delivery::Busy(None));
         c.drain_queue(T0 + 2, |_, _, _, _, _| Delivery::Typed("x".into()));
         c.drain_queue(T0 + 3, |_, _, _, _, _| Delivery::Delivered);
         assert_eq!(
@@ -1125,7 +1158,7 @@ mod tests {
         let room = c.session_room("s_abcdefghij");
         let dev = Some("d_phone1");
         for n in 1..=4 {
-            submit_as(&c, &room, &mid(n), "relay", dev, Delivery::Busy);
+            submit_as(&c, &room, &mid(n), "relay", dev, Delivery::Busy(None));
         }
         let r = rec(&c);
         let mut n = 0;
@@ -1134,11 +1167,11 @@ mod tests {
             match n {
                 1 => Delivery::Refused("Not delivered: nope."),
                 2 => Delivery::Gone("the session no longer exists".into()),
-                _ => Delivery::Busy,
+                _ => Delivery::Busy(None),
             }
         });
         assert!(c.cancel(&room, &mid(3)));
-        c.drain_queue(T0 + DEFAULT_TTL_MS, |_, _, _, _, _| Delivery::Busy);
+        c.drain_queue(T0 + DEFAULT_TTL_MS, |_, _, _, _, _| Delivery::Busy(None));
         assert_eq!(
             got(&r),
             [
@@ -1174,5 +1207,53 @@ mod tests {
             );
         }
         assert_eq!(got(&r).len(), 1);
+    }
+
+    #[test]
+    fn a_queued_receipt_carries_the_busy_reason_and_later_entries_inherit_it() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let r = rec(&c);
+        let dev = Some("d_phone1");
+        submit_as(
+            &c,
+            &room,
+            &mid(1),
+            "relay",
+            dev,
+            Delivery::Busy(Some("turn")),
+        );
+        submit_as(&c, &room, &mid(2), "relay", dev, Delivery::Busy(None));
+        assert_eq!(
+            got(&r),
+            [
+                (mid(1), ReceiptState::Queued, Some("turn".into())),
+                (mid(2), ReceiptState::Queued, Some("turn".into())),
+            ]
+        );
+        let why = c.queued_why(&room);
+        assert_eq!(why.get(&mid(1)).map(String::as_str), Some("turn"));
+        assert_eq!(why.get(&mid(2)).map(String::as_str), Some("turn"));
+    }
+
+    #[test]
+    fn a_drain_that_stays_busy_refreshes_the_reason_of_the_queued_entries() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        submit_as(
+            &c,
+            &room,
+            &mid(1),
+            "cli",
+            None,
+            Delivery::Busy(Some("turn")),
+        );
+        c.drain_queue(T0 + 1, |_, _, _, _, _| Delivery::Busy(Some("dialog")));
+        assert_eq!(
+            c.queued_why(&room).get(&mid(1)).map(String::as_str),
+            Some("dialog")
+        );
+        c.drain_queue(T0 + 2, |_, _, _, _, _| Delivery::Busy(None));
+        assert!(c.queued_why(&room).is_empty());
     }
 }

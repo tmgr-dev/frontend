@@ -167,7 +167,7 @@ fn receipts_after(kind: &str, ts_ms: u64) -> (usize, Vec<Out>) {
     let c = chat.clone();
     let sink = RelaySink::new(
         machine.clone(),
-        Box::new(move |i, _| c.ingest(i, 1_800_000_000_000, |_| false, |_| Delivery::Busy)),
+        Box::new(move |i, _| c.ingest(i, 1_800_000_000_000, |_| false, |_| Delivery::Busy(None))),
     );
     let mut m = msg(AuthorKind::Owner, &machine, None);
     m.ts_ms = ts_ms;

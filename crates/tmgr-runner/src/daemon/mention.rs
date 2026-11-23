@@ -137,7 +137,7 @@ impl Runner {
                         Some(make(&id)),
                         now_ms(),
                         |s| self.session(s).is_some(),
-                        |_| chat::Delivery::Busy,
+                        |_| chat::Delivery::Busy(None),
                     )
                     .map_err(ingest_err)?;
                 if r.duplicate {
@@ -178,7 +178,7 @@ impl Runner {
             Some(r),
             now_ms(),
             |s| self.session(s).is_some(),
-            |_| chat::Delivery::Busy,
+            |_| chat::Delivery::Busy(None),
         )?;
         if !out.duplicate {
             self.route_mention(&out.message, via, false);
@@ -381,7 +381,7 @@ impl Runner {
             return chat::Delivery::Gone("the session has exited".into());
         }
         if !t.has_shim() {
-            return chat::Delivery::Busy;
+            return chat::Delivery::Busy(None);
         }
         self.chat.mention_prepare(
             it.id,
@@ -399,7 +399,7 @@ impl Runner {
                 t.note_input_from(it.client);
                 chat::Delivery::Typed(typed)
             }
-            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(None),
             Err(e) => chat::Delivery::Gone(e.msg),
         }
     }
@@ -1183,7 +1183,7 @@ mod tests {
         sp.id = other.into();
         rt.chat.mention_open(sp);
         let item = Item { id: other, ..item };
-        assert_eq!(rt.mention_deliver(&item), chat::Delivery::Busy);
+        assert_eq!(rt.mention_deliver(&item), chat::Delivery::Busy(None));
     }
 
     #[test]

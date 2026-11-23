@@ -18,6 +18,7 @@ pub mod method {
     pub const SUBSCRIBE: &str = "chat.subscribe";
     pub const RELAY_SELF: &str = "chat.relay_self";
     pub const QUEUED: &str = "chat.queued";
+    pub const QUEUED_WHY: &str = "chat.queued_why";
     pub const CANCEL: &str = "chat.cancel";
     pub const MENTION_INJECT: &str = "chat.mention_inject";
 }
