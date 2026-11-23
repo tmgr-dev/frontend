@@ -107,6 +107,7 @@ pub mod tool {
     pub const LIST_SESSIONS: &str = "list_sessions";
     pub const READ_SESSION: &str = "read_session";
     pub const SEND_TO_SESSION: &str = "send_to_session";
+    pub const STOP_SESSION: &str = "stop_session";
     pub const SPAWN_SESSION: &str = "spawn_session";
     pub const POST_MESSAGE: &str = "post_message";
     pub const READ_ROOM: &str = "read_room";
@@ -117,19 +118,21 @@ pub mod tool {
     pub const READ_SUBMANAGER: &str = "read_submanager";
     pub const CAPS: &str = "__caps";
     pub const TOP_ONLY: [&str; 3] = [LIST_MACHINES, ASK_SUBMANAGER, READ_SUBMANAGER];
-    pub const MACHINE_SCOPED: [&str; 6] = [
+    pub const MACHINE_SCOPED: [&str; 7] = [
         LIST_SESSIONS,
         READ_SESSION,
         SEND_TO_SESSION,
+        STOP_SESSION,
         PROPOSE_SPAWN,
         SPAWN_SESSION,
         SWITCH_AGENT,
     ];
     pub const READ_ONLY: [&str; 3] = [LIST_SESSIONS, READ_SESSION, READ_ROOM];
-    pub const ALL: [&str; 8] = [
+    pub const ALL: [&str; 9] = [
         LIST_SESSIONS,
         READ_SESSION,
         SEND_TO_SESSION,
+        STOP_SESSION,
         SPAWN_SESSION,
         POST_MESSAGE,
         READ_ROOM,
@@ -220,6 +223,7 @@ mod tests {
                 tool::LIST_SESSIONS,
                 tool::READ_SESSION,
                 tool::SEND_TO_SESSION,
+                tool::STOP_SESSION,
                 tool::PROPOSE_SPAWN,
                 tool::SPAWN_SESSION,
                 tool::SWITCH_AGENT
