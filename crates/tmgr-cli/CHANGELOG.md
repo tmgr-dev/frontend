@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.166
+
+- Added: the runner reports a session with an open agent question as `asking` in the room list, so the desktop Manager lists it under "Needs you". Only the state is sent, never the question text, and only while transcript-reading consent is granted.
+- Update the CLI, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.165
 
 - Added: the desktop Manager can approve, edit or reject a spawn card proposed by the local manager. The runner accepts these decisions only from the local desktop app, checks that the request matches the card exactly, and runs only what was approved. An edit closes the card and issues a new one, which must be approved again; the folder must be trusted, and an edit cannot switch to bypass mode.
