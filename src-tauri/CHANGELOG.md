@@ -6,6 +6,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 ## 0.9.199 — 2026-11-23
 
 - Approvals: when a manager session wants to stop another session or type into it, an approval card appears ("Requested by session X", with the text for a send). Nothing happens until you approve it; Reject or expiry leaves the session as it is. Your own Stop and input work as before, without a card. Stop and send cards are approved on the desktop; the phone cannot approve them yet. Needs tmgr CLI 1.0.173 or newer; restart the runner after updating.
+- Manager window: a message you send to a session on another machine shows whether it is sending, was delivered (typed in or queued while the agent is busy) or was not delivered, with a short reason. Needs tmgr CLI 1.0.175 or newer on the receiving machine; older runners send no states, and the message looks as before.
 
 ## 0.9.198 — 2026-11-23
 
