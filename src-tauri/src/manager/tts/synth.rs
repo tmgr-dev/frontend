@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use sherpa_onnx::{GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsModelConfig, OfflineTtsVitsModelConfig};
 
@@ -17,6 +17,7 @@ pub const SUPPORTED: bool = true;
 pub struct Engine {
   tts: OfflineTts,
   lexicon: Lexicon,
+  busy: Mutex<()>,
 }
 
 impl Engine {
@@ -39,7 +40,7 @@ impl Engine {
       ..Default::default()
     };
     let tts = OfflineTts::create(&config).ok_or_else(|| "the voice model failed to load".to_owned())?;
-    Ok(Self { tts, lexicon: Lexicon::parse(&dict) })
+    Ok(Self { tts, lexicon: Lexicon::parse(&dict), busy: Mutex::new(()) })
   }
 
   pub fn phonemize(&self, text: &str) -> Phonemized {
@@ -47,6 +48,7 @@ impl Engine {
   }
 
   pub fn synthesize(&self, text: &str, run: u64, stopped_through: &Arc<AtomicU64>) -> Result<Vec<f32>, String> {
+    let _turn = self.busy.lock().map_err(|e| e.to_string())?;
     let live = stopped_through.clone();
     if live.load(Ordering::SeqCst) >= run {
       return Ok(Vec::new());

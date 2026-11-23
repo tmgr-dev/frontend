@@ -9,7 +9,7 @@ interface Check {
 }
 
 let audio: AudioContext | null = null;
-let run = 0;
+let run = Date.now();
 let active = false;
 let sources: AudioBufferSourceNode[] = [];
 
@@ -113,7 +113,7 @@ export const piperEngine: TtsEngine = {
 						run: gen,
 					});
 					if (!current()) return;
-					if (bytes.byteLength === 0) break;
+					if (bytes.byteLength === 0) continue;
 					schedule(new Float32Array(bytes));
 				}
 				finished = true;
