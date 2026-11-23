@@ -83,11 +83,11 @@ impl Policy {
         if !self.accepts(leader) {
             return BTreeSet::new();
         }
-        let wide = self.ask_from.as_ref().is_none_or(|a| a.contains(leader));
+        let asks = self.ask_from.as_ref().is_some_and(|a| a.contains(leader));
         self.allow
             .iter()
             .copied()
-            .filter(|op| wide || DEFAULT_ALLOW.contains(op))
+            .filter(|op| asks || *op != Op::Ask)
             .collect()
     }
 
@@ -131,9 +131,7 @@ pub fn enroll_leader(runner_dir: &Path, machine: &str) -> Result<(), String> {
             Ok(text) => {
                 let p = Policy::parse(&text)?;
                 let accept: Vec<String> = p.accept_from.iter().cloned().collect();
-                let ask = p
-                    .ask_from
-                    .map_or_else(|| accept.clone(), |a| a.into_iter().collect());
+                let ask = p.ask_from.unwrap_or_default().into_iter().collect();
                 (accept, p.allow.into_iter().collect(), ask)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -156,12 +154,11 @@ pub fn set_ask(runner_dir: &Path, leader: &str, on: bool) -> Result<(), String> 
     if !p.accepts(leader) {
         return Err("policy: that machine is not an accepted leader".into());
     }
-    let mut ask = p.ask_from.unwrap_or_else(|| p.accept_from.clone());
+    let mut ask = p.ask_from.unwrap_or_default();
     let mut allow = p.allow;
     if on {
         ask.insert(leader.to_string());
         allow.insert(Op::Ask);
-        allow.insert(Op::Send);
     } else {
         ask.remove(leader);
     }
@@ -351,19 +348,23 @@ mod tests {
     }
 
     #[test]
-    fn a_legacy_file_keeps_old_leaders_and_gives_the_new_one_d3() {
+    fn a_legacy_file_lets_nobody_ask_and_keeps_the_other_ops() {
         let d = dir();
-        put(
-            d.path(),
-            &format!("accept_from = [\"{B}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\"]"),
-            0o644,
+        let old = format!(
+            "accept_from = [\"{B}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\"]"
         );
+        let legacy = Policy::parse(&old).unwrap();
+        let no_ask: BTreeSet<Op> = [Op::List, Op::Read, Op::Room, Op::Send].into_iter().collect();
+        assert!(!legacy.asks(B));
+        assert_eq!(legacy.ops_for(B), no_ask);
+        put(d.path(), &old, 0o644);
         enroll_leader(d.path(), A).unwrap();
         let once = read_policy(d.path());
         let p = Policy::parse(&once).unwrap();
         assert!(p.accepts(A) && p.accepts(B));
-        assert!(p.asks(B) && p.ops_for(B).contains(&Op::Send));
-        assert_eq!(p.ops_for(A), d3());
+        assert!(!p.asks(A) && !p.asks(B));
+        assert_eq!(p.ops_for(B), no_ask);
+        assert_eq!(p.ops_for(A), no_ask);
         assert_eq!(mode(d.path()), 0o600);
         enroll_leader(d.path(), A).unwrap();
         assert_eq!(read_policy(d.path()), once);
@@ -388,19 +389,23 @@ mod tests {
         put(d.path(), &wide, 0o600);
         enroll_leader(d.path(), A).unwrap();
         let p = Policy::parse(&read_policy(d.path())).unwrap();
-        assert!(p.accepts(A) && p.accepts(B) && p.ops_for(B).contains(&Op::Spawn));
-        assert_eq!(p.ops_for(A), d3());
+        assert!(p.accepts(A) && p.accepts(B) && p.asks(B));
+        assert!(!p.asks(A));
+        enroll_leader(d.path(), B).unwrap();
+        assert_eq!(Policy::parse(&read_policy(d.path())).unwrap(), p);
     }
 
     #[test]
-    fn ask_from_parses_and_cuts_other_leaders_to_d3() {
+    fn ask_from_gates_only_ask() {
         let p = Policy::parse(&format!(
             "accept_from = [\"{A}\", \"{B}\"]\nask_from = [\"{A}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\", \"spawn\"]"
         ))
         .unwrap();
         assert!(p.asks(A) && !p.asks(B));
         assert!(p.ops_for(A).contains(&Op::Spawn));
-        assert_eq!(p.ops_for(B), d3());
+        let mut b = p.ops_for(A);
+        b.remove(&Op::Ask);
+        assert_eq!(p.ops_for(B), b);
         assert!(p.ops_for("mx_ffffffffffffffff").is_empty());
         assert!(Policy::parse(&format!("accept_from = [\"{A}\"]\nask_from = [\"nope\"]")).is_err());
         assert!(Policy::parse(&format!("accept_from = [\"{A}\"]\nask_fromm = []")).is_err());
@@ -414,17 +419,44 @@ mod tests {
         set_ask(d.path(), A, true).unwrap();
         let p = Policy::try_load(d.path()).unwrap();
         assert!(p.asks(A) && !p.asks(B));
-        assert!(p.ops_for(A).contains(&Op::Send));
+        let mut want = d3();
+        want.insert(Op::Ask);
+        assert_eq!(p.ops_for(A), want);
+        assert_eq!(p.ops_for(B), d3());
         assert_eq!(mode(d.path()), 0o600);
         set_ask(d.path(), A, false).unwrap();
         let p = Policy::try_load(d.path()).unwrap();
         assert!(!p.asks(A));
         assert_eq!(p.ops_for(A), d3());
-        assert!(p.allow.contains(&Op::Ask) && p.allow.contains(&Op::Send));
     }
 
     #[test]
-    fn set_ask_on_a_legacy_file_keeps_the_other_leaders() {
+    fn set_ask_never_changes_another_leader() {
+        let d = dir();
+        put(
+            d.path(),
+            &format!("accept_from = [\"{A}\", \"{B}\"]\nask_from = [\"{B}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\"]"),
+            0o600,
+        );
+        let before = Policy::try_load(d.path()).unwrap().ops_for(B);
+        set_ask(d.path(), A, true).unwrap();
+        set_ask(d.path(), A, false).unwrap();
+        set_ask(d.path(), A, true).unwrap();
+        let p = Policy::try_load(d.path()).unwrap();
+        assert_eq!(p.ops_for(B), before);
+        assert!(!p.allow.contains(&Op::Send));
+        let d = dir();
+        put(
+            d.path(),
+            &format!("accept_from = [\"{A}\", \"{B}\"]\nask_from = []\nallow = [\"list\", \"read\", \"room\"]"),
+            0o600,
+        );
+        set_ask(d.path(), A, true).unwrap();
+        assert_eq!(Policy::try_load(d.path()).unwrap().ops_for(B), d3());
+    }
+
+    #[test]
+    fn set_ask_on_a_legacy_file_grants_only_that_leader() {
         let d = dir();
         put(
             d.path(),
@@ -433,9 +465,10 @@ mod tests {
             ),
             0o600,
         );
-        set_ask(d.path(), A, false).unwrap();
+        set_ask(d.path(), A, true).unwrap();
         let p = Policy::try_load(d.path()).unwrap();
-        assert!(!p.asks(A) && p.asks(B));
+        assert!(p.asks(A) && !p.asks(B));
+        assert!(!p.is_legacy());
     }
 
     #[test]

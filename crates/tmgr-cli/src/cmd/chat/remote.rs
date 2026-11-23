@@ -54,7 +54,7 @@ pub fn render(info: &RemotePolicyInfo) -> Output {
         ));
     }
     if info.legacy {
-        human.push_str("Legacy policy file: every enrolled leader keeps its old rights.\n");
+        human.push_str("Older policy file: no leader may ask until you allow it.\n");
     }
     Output::new(info, human.trim_end())
 }

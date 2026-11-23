@@ -884,7 +884,10 @@ mod tests {
             .map(|a| format!("\"{a}\""))
             .collect::<Vec<_>>()
             .join(",");
-        Policy::parse(&format!("accept_from = [\"{PEER}\"]\nallow = [{list}]")).unwrap()
+        Policy::parse(&format!(
+            "accept_from = [\"{PEER}\"]\nask_from = [\"{PEER}\"]\nallow = [{list}]"
+        ))
+        .unwrap()
     }
 
     fn open() -> Policy {
@@ -1206,17 +1209,16 @@ mod tests {
     }
 
     #[test]
-    fn a_leader_outside_ask_from_is_cut_to_d3_before_anything_runs() {
+    fn a_leader_outside_ask_from_cannot_ask_before_anything_runs() {
         let r = rig();
         let p = Policy::parse(&format!(
             "accept_from = [\"{PEER}\"]\nask_from = []\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\"]"
         ))
         .unwrap();
-        for op in ["ask", "send"] {
-            let res = r.call(&p, &format!("w-{op}"), op, valid_args(op));
-            assert_eq!(code(&res), ErrorCode::OpDenied, "{op}");
-        }
+        let res = r.call(&p, "w-ask", "ask", valid_args("ask"));
+        assert_eq!(code(&res), ErrorCode::OpDenied);
         assert!(r.host.sent.lock().unwrap().is_empty());
+        assert!(r.host.asked.lock().unwrap().is_empty());
         let res = r.call(&p, "w-list", "list", valid_args("list"));
         assert!(res.ok);
     }
@@ -1659,7 +1661,7 @@ mod tests {
         assert_eq!(row_bodies(data(&res)), ["posted"]);
         let legacy = Policy::parse(&format!("accept_from = [\"{PEER}\"]\n{allow}")).unwrap();
         let res = r.call(&legacy, "ra3", "room", json!({}));
-        assert_eq!(row_bodies(data(&res)), ["posted", "terminal reply"]);
+        assert_eq!(row_bodies(data(&res)), ["posted"]);
     }
 
     #[test]

@@ -315,7 +315,7 @@ mod tests {
         let a = info.leaders.iter().find(|l| l.machine == A).unwrap();
         let b = info.leaders.iter().find(|l| l.machine == B).unwrap();
         assert!(a.ask && a.ops.contains(&Op::Ask));
-        assert!(!b.ask && b.ops == vec![Op::List, Op::Read, Op::Room]);
+        assert!(!b.ask && b.ops == vec![Op::List, Op::Read, Op::Send, Op::Room]);
 
         let (_t, rt) = env(&format!(
             "accept_from = [\"{A}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\"]\n"
@@ -323,6 +323,7 @@ mod tests {
         let info: RemotePolicyInfo =
             serde_json::from_value(rt.remote_policy(CLIENT_CLI).unwrap()).unwrap();
         assert!(info.legacy);
-        assert!(info.leaders[0].ask);
+        assert!(!info.leaders[0].ask);
+        assert!(!info.leaders[0].ops.contains(&Op::Ask));
     }
 }
