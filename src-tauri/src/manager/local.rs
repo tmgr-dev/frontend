@@ -216,7 +216,10 @@ impl LocalPort for RunnerLocal {
     self.runner.call("chat.mention_inject", params).map(drop)
   }
 
-  fn send(&self, params: SendParams) -> Result<ChatMessage, String> {
+  fn send(&self, mut params: SendParams) -> Result<ChatMessage, String> {
+    if params.id.is_some() && params.ts_ms.is_none() {
+      params.ts_ms = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
+    }
     match self.request("chat.send", &params) {
       Err(e) if is_conflict(&e) => {
         let id = params.id.clone().ok_or(e)?;
@@ -316,6 +319,28 @@ mod tests {
     let params = fake.log.lock().unwrap()[0].1.clone();
     assert_eq!(params["id"], "m_1");
     assert!(params.get("device").is_none());
+  }
+
+  #[test]
+  fn a_send_with_an_id_and_no_ts_ms_gets_the_current_time_before_it_reaches_the_runner() {
+    let m = serde_json::to_value(msg("m_1")).unwrap();
+    let (l, fake) = local(move |_, _| Ok(m.clone()));
+    l.send(send_params(Some("m_1"))).unwrap();
+    let ts = fake.log.lock().unwrap()[0].1["ts_ms"].as_u64().expect("ts_ms is filled");
+    assert!(ts > 1_700_000_000_000);
+  }
+
+  #[test]
+  fn a_send_keeps_the_ts_ms_it_was_given_and_adds_none_without_an_id() {
+    let m = serde_json::to_value(msg("m_1")).unwrap();
+    let (l, fake) = local(move |_, _| Ok(m.clone()));
+    let mut p = send_params(Some("m_1"));
+    p.ts_ms = Some(42);
+    l.send(p).unwrap();
+    l.send(send_params(None)).unwrap();
+    let log = fake.log.lock().unwrap();
+    assert_eq!(log[0].1["ts_ms"], 42);
+    assert!(log[1].1.get("ts_ms").is_none());
   }
 
   #[test]

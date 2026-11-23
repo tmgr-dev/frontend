@@ -302,6 +302,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		try {
 			const sent = await api.send({
 				id,
+				ts_ms: optimistic.ts_ms,
 				room,
 				body_md: body,
 				reply_to: job.replyTo,

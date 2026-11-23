@@ -246,6 +246,7 @@ describe('send', () => {
 		await store.send();
 		expect(api.send).toHaveBeenCalledWith({
 			id: expect.stringMatching(/^m_[0-9a-f]{32}$/),
+			ts_ms: expect.any(Number),
 			room: MGR,
 			body_md: 'hello',
 			reply_to: 'm002',
@@ -1470,6 +1471,23 @@ describe('delivery', () => {
 		await sendRemote(t);
 		const id = (t.api.send as jest.Mock).mock.calls[0][0].id;
 		expect(own(t).map((m) => m.id)).toEqual([id]);
+	});
+
+	it('sends ts_ms with every id, on the first send and on retry', async () => {
+		const t = remoteSetup({
+			send: jest.fn(async () => {
+				throw new Error('relay down');
+			}),
+		});
+		await sendRemote(t, 'hello');
+		const first = own(t)[0];
+		await t.store.retry(first.id);
+		const calls = (t.api.send as jest.Mock).mock.calls.map((c) => c[0]);
+		expect(calls).toHaveLength(2);
+		for (const params of calls) {
+			expect(typeof params.id).toBe('string');
+			expect(typeof params.ts_ms).toBe('number');
+		}
 	});
 
 	it('keeps the text, marks the row failed and offers retry when send fails', async () => {
