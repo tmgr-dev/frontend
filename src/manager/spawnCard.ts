@@ -37,7 +37,13 @@ export interface SpawnLine {
 }
 
 export interface SpawnChip {
-	key: 'irreversible' | 'bypass' | 'foreign' | 'mismatch' | 'hidden';
+	key:
+		| 'irreversible'
+		| 'bypass'
+		| 'noSandbox'
+		| 'foreign'
+		| 'mismatch'
+		| 'hidden';
 	tone: 'danger' | 'warn';
 }
 
@@ -66,7 +72,12 @@ export interface SpawnStatusText {
 	final: boolean;
 	tone: 'wait' | 'ok' | 'fail';
 	outcome:
-		'pending' | 'approved' | 'rejected' | 'replaced' | 'expired' | 'failed';
+		| 'pending'
+		| 'approved'
+		| 'rejected'
+		| 'replaced'
+		| 'expired'
+		| 'failed';
 }
 
 const str = (v: unknown): string | undefined =>
@@ -197,19 +208,23 @@ const buildView = (spawn: SpawnCardWire): SpawnView => {
 		};
 	}
 	const bypass = p.mode === 'bypass';
+	const noSandbox = p.sandbox === 'off';
+	const chips: SpawnChip[] = [];
+	if (bypass) chips.push({ key: 'bypass', tone: 'warn' });
+	if (noSandbox) chips.push({ key: 'noSandbox', tone: 'danger' });
 	return {
 		...base,
 		kind: 'spawn',
 		profile: p.profile,
 		title: { key: 'manager.spawn.title', params: { profile: p.profile } },
-		chips: bypass ? [{ key: 'bypass', tone: 'warn' }] : [],
+		chips,
 		proposer: { key: 'manager' },
 		target: { label: p.name ?? p.profile, machine },
 		lines: [
 			...row('target', machine),
 			...row('cwd', p.cwd),
 			...row('mode', p.mode, bypass),
-			...row('sandbox', p.sandbox),
+			...row('sandbox', p.sandbox, noSandbox),
 			...row('task', p.task),
 			...row('name', p.name),
 			{ key: 'effect', i18n: 'manager.spawn.effectSpawn' },
@@ -289,7 +304,7 @@ export const spawnStatusText = (
 						final: false,
 						tone: 'wait',
 						outcome: 'pending',
-					};
+				  };
 		case 'approved':
 			return {
 				key: 'manager.spawn.approved',
@@ -320,8 +335,8 @@ export const spawnStatusText = (
 				status.reason === 'rejected'
 					? 'rejected'
 					: status.reason === 'edited'
-						? 'replaced'
-						: 'failed';
+					? 'replaced'
+					: 'failed';
 			return {
 				key: 'manager.spawn.refused',
 				params: { reason: status.reason ?? 'refused' },

@@ -58,6 +58,14 @@ describe('spawn card view', () => {
 		expect(view.lines.find((l) => l.key === 'mode')?.warn).toBe(true);
 	});
 
+	it('warns with a danger chip when the sandbox is off', () => {
+		const view = spawnView(wire(request({ sandbox: 'off' })));
+		expect(view.chips).toEqual([{ key: 'noSandbox', tone: 'danger' }]);
+		expect(view.lines.find((l) => l.key === 'sandbox')?.warn).toBe(true);
+		const both = spawnView(wire(request({ mode: 'bypass', sandbox: 'off' })));
+		expect(both.chips.map((c) => c.key)).toEqual(['bypass', 'noSandbox']);
+	});
+
 	it('falls back to the summary on bad JSON or missing fields', () => {
 		expect(parseSpawnRequest('{nope')).toBeNull();
 		expect(parseSpawnRequest('{"profile":"claude"}')).toBeNull();

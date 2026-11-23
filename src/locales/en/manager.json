@@ -113,6 +113,7 @@
 		"chip": {
 			"irreversible": "Cannot be undone, session state is lost",
 			"bypass": "Bypass permissions: no confirmation before edits or commands",
+			"noSandbox": "No sandbox: the session runs with full access to this machine",
 			"foreign": "Typed into a session you are not talking to",
 			"mismatch": "Target differs from the signed request",
 			"hidden": "Payload contains hidden characters"
