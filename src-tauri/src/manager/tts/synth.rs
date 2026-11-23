@@ -6,6 +6,8 @@ use std::sync::{Arc, Mutex};
 use sherpa_onnx::{GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsModelConfig, OfflineTtsVitsModelConfig};
 
 use super::g2p::{Lexicon, Phonemized};
+use super::pack::Lang;
+use super::ru::RuLexicon;
 
 const NOISE_SCALE: f32 = 0.5;
 const NOISE_SCALE_W: f32 = 0.333;
@@ -14,15 +16,23 @@ const THREADS: i32 = 2;
 
 pub const SUPPORTED: bool = true;
 
+enum Phon {
+  En(Lexicon),
+  Ru(RuLexicon),
+}
+
 pub struct Engine {
   tts: OfflineTts,
-  lexicon: Lexicon,
+  phon: Phon,
   busy: Mutex<()>,
 }
 
 impl Engine {
-  pub fn load(dir: &Path) -> Result<Self, String> {
-    let dict = fs::read_to_string(dir.join("cmudict.dict")).map_err(|e| e.to_string())?;
+  pub fn load(dir: &Path, lang: Lang) -> Result<Self, String> {
+    let phon = match lang {
+      Lang::En => Phon::En(Lexicon::parse(&fs::read_to_string(dir.join("cmudict.dict")).map_err(|e| e.to_string())?)),
+      Lang::Ru => Phon::Ru(RuLexicon::load(dir)?),
+    };
     let path = |n: &str| dir.join(n).to_str().map(str::to_owned).ok_or_else(|| "the voice path is not valid UTF-8".to_owned());
     let config = OfflineTtsConfig {
       model: OfflineTtsModelConfig {
@@ -40,20 +50,30 @@ impl Engine {
       ..Default::default()
     };
     let tts = OfflineTts::create(&config).ok_or_else(|| "the voice model failed to load".to_owned())?;
-    Ok(Self { tts, lexicon: Lexicon::parse(&dict), busy: Mutex::new(()) })
+    Ok(Self { tts, phon, busy: Mutex::new(()) })
   }
 
-  pub fn phonemize(&self, text: &str) -> Phonemized {
-    self.lexicon.phonemize(text)
+  pub fn english(&self) -> Option<&Lexicon> {
+    match &self.phon {
+      Phon::En(l) => Some(l),
+      Phon::Ru(_) => None,
+    }
   }
 
-  pub fn synthesize(&self, text: &str, run: u64, stopped_through: &Arc<AtomicU64>) -> Result<Vec<f32>, String> {
+  pub fn phonemize(&self, text: &str, latin: Option<&Lexicon>) -> Phonemized {
+    match &self.phon {
+      Phon::En(l) => l.phonemize(text),
+      Phon::Ru(r) => r.phonemize(text, latin),
+    }
+  }
+
+  pub fn synthesize(&self, text: &str, run: u64, stopped_through: &Arc<AtomicU64>, latin: Option<&Lexicon>) -> Result<Vec<f32>, String> {
     let _turn = self.busy.lock().map_err(|e| e.to_string())?;
     let live = stopped_through.clone();
     if live.load(Ordering::SeqCst) >= run {
       return Ok(Vec::new());
     }
-    let phonemized = self.lexicon.phonemize(text);
+    let phonemized = self.phonemize(text, latin);
     if phonemized.sentences.is_empty() {
       return Ok(Vec::new());
     }
@@ -81,11 +101,11 @@ mod tests {
   #[ignore = "needs TMGR_TTS_PACK_DIR pointing at a built voice pack"]
   fn speaks_a_sentence_with_the_real_pack() {
     let dir = std::env::var("TMGR_TTS_PACK_DIR").expect("TMGR_TTS_PACK_DIR");
-    let engine = Engine::load(Path::new(&dir)).unwrap();
+    let engine = Engine::load(Path::new(&dir), Lang::En).unwrap();
     assert_eq!(engine.tts.sample_rate(), 22050);
     let stopped = Arc::new(AtomicU64::new(0));
     let started = std::time::Instant::now();
-    let samples = engine.synthesize("The build finished, and the release is ready. Please check the logs.", 1, &stopped).unwrap();
+    let samples = engine.synthesize("The build finished, and the release is ready. Please check the logs.", 1, &stopped, None).unwrap();
     let seconds = samples.len() as f32 / 22050.0;
     assert!(seconds > 3.0 && seconds < 12.0, "{seconds}");
     assert!(samples.iter().any(|s| s.abs() > 0.05));
@@ -96,13 +116,13 @@ mod tests {
   #[ignore = "needs TMGR_TTS_PACK_DIR pointing at a built voice pack"]
   fn stopping_the_generation_returns_no_samples() {
     let dir = std::env::var("TMGR_TTS_PACK_DIR").expect("TMGR_TTS_PACK_DIR");
-    let engine = Engine::load(Path::new(&dir)).unwrap();
+    let engine = Engine::load(Path::new(&dir), Lang::En).unwrap();
     let stopped = Arc::new(AtomicU64::new(0));
     let bump = stopped.clone();
     let long = "This is a fairly long sentence that takes a while to say. ".repeat(6);
     let handle = std::thread::spawn({
       let stopped = stopped.clone();
-      move || engine.synthesize(&long, 1, &stopped)
+      move || engine.synthesize(&long, 1, &stopped, None)
     });
     std::thread::sleep(std::time::Duration::from_millis(150));
     bump.fetch_max(1, Ordering::SeqCst);

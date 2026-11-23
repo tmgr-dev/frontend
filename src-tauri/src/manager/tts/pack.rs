@@ -6,8 +6,63 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-pub const PACK_ID: &str = "en-ljspeech-medium-1";
-pub const BASE_URL: &str = "https://github.com/tmgr-dev/frontend/releases/download/tts-voices-en-1";
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Lang {
+  En,
+  Ru,
+}
+
+impl Lang {
+  pub fn parse(code: Option<&str>) -> Result<Self, String> {
+    match code {
+      None | Some("en") => Ok(Self::En),
+      Some("ru") => Ok(Self::Ru),
+      Some(other) => Err(format!("unknown voice language: {other}")),
+    }
+  }
+
+  pub fn code(self) -> &'static str {
+    match self {
+      Self::En => "en",
+      Self::Ru => "ru",
+    }
+  }
+
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::En => "English",
+      Self::Ru => "Russian",
+    }
+  }
+}
+
+pub struct PackSpec {
+  pub id: &'static str,
+  pub base_url: &'static str,
+  pub files: &'static [PackFile],
+  pub sample_rate: i32,
+}
+
+pub fn spec(lang: Lang) -> &'static PackSpec {
+  match lang {
+    Lang::En => &EN_SPEC,
+    Lang::Ru => &RU_SPEC,
+  }
+}
+
+static EN_SPEC: PackSpec = PackSpec {
+  id: "en-ljspeech-medium-1",
+  base_url: "https://github.com/tmgr-dev/frontend/releases/download/tts-voices-en-1",
+  files: &EN_FILES,
+  sample_rate: 22050,
+};
+
+static RU_SPEC: PackSpec = PackSpec {
+  id: "ru-denis-medium-1",
+  base_url: "https://github.com/tmgr-dev/frontend/releases/download/tts-voices-ru-1",
+  files: &RU_FILES,
+  sample_rate: 22050,
+};
 
 pub struct PackFile {
   pub name: &'static str,
@@ -15,19 +70,26 @@ pub struct PackFile {
   pub size: u64,
 }
 
-pub const FILES: [PackFile; 4] = [
+pub const EN_FILES: [PackFile; 4] = [
   PackFile { name: "model.onnx", sha256: "206a8403baad4df7642156918a6ebe205798290d82f24d0d0119d7afa8a2738e", size: 19_349_795 },
   PackFile { name: "tokens.txt", sha256: "ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d", size: 940 },
   PackFile { name: "cmudict.dict", sha256: "81917843c7f44ce2b094ac63873c2c7a4cf802040792c455ba3ca406891c3d22", size: 3_618_488 },
   PackFile { name: "LICENSES.txt", sha256: "aff8dbd3d2f8830a9798cb846fc257520b5d064688d022c861d14def8b88b0c8", size: 2_148 },
 ];
 
+pub const RU_FILES: [PackFile; 4] = [
+  PackFile { name: "model.onnx", sha256: "0000000000000000000000000000000000000000000000000000000000000000", size: 0 },
+  PackFile { name: "tokens.txt", sha256: "0000000000000000000000000000000000000000000000000000000000000000", size: 0 },
+  PackFile { name: "lexicon-ru.txt.gz", sha256: "0000000000000000000000000000000000000000000000000000000000000000", size: 0 },
+  PackFile { name: "LICENSES.txt", sha256: "0000000000000000000000000000000000000000000000000000000000000000", size: 0 },
+];
+
 pub fn total_size(files: &[PackFile]) -> u64 {
   files.iter().map(|f| f.size).sum()
 }
 
-pub fn pack_dir(app_data: &Path) -> PathBuf {
-  app_data.join("tts").join(PACK_ID)
+pub fn pack_dir(app_data: &Path, lang: Lang) -> PathBuf {
+  app_data.join("tts").join(spec(lang).id)
 }
 
 fn part_dir(dir: &Path) -> PathBuf {
@@ -304,7 +366,7 @@ mod tests {
 
   #[test]
   fn the_pinned_manifest_matches_the_documented_size() {
-    assert_eq!(total_size(&FILES), 19_349_795 + 940 + 3_618_488 + 2_148);
-    assert!(FILES.iter().all(|f| f.sha256.len() == 64));
+    assert_eq!(total_size(&EN_FILES), 19_349_795 + 940 + 3_618_488 + 2_148);
+    assert!(EN_FILES.iter().all(|f| f.sha256.len() == 64));
   }
 }

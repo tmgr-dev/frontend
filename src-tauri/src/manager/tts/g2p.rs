@@ -4,6 +4,7 @@ const SPACE: &str = " ";
 const SENTENCE_END: &[char] = &['.', '!', '?', ';', ':'];
 const PAUSE: &[char] = &[','];
 const OOV_SHARE_LIMIT_PERCENT: usize = 10;
+const GUESSED_SHARE_LIMIT_PERCENT: usize = 40;
 const MAX_WORD_LEN: usize = 24;
 
 const LETTERS: [&str; 26] = [
@@ -92,11 +93,12 @@ pub struct Phonemized {
   pub sentences: Vec<Vec<i32>>,
   pub words: usize,
   pub oov: Vec<String>,
+  pub guessed: Vec<String>,
 }
 
 impl Phonemized {
   pub fn too_many_unknown(&self) -> bool {
-    self.words > 0 && self.oov.len() * 100 > self.words * OOV_SHARE_LIMIT_PERCENT
+    self.words > 0 && (self.oov.len() * 100 > self.words * OOV_SHARE_LIMIT_PERCENT || self.guessed.len() * 100 > self.words * GUESSED_SHARE_LIMIT_PERCENT)
   }
 }
 

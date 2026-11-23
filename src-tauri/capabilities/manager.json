@@ -48,6 +48,11 @@
 		"allow-tts-stop",
 		"allow-manager-remote-policy",
 		"allow-manager-remote-policy-set",
+		"allow-tts-settings-get",
+		"allow-tts-settings-set",
+		"allow-tts-external-synthesize",
+		"allow-tts-external-test",
+		"allow-tts-external-health",
 		"allow-decisions-get",
 		"allow-decisions-answer"
 	]
