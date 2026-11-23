@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.194 — 2026-11-23
+
+- Manager window: messages you type into a Claude Code session show as yours in the chat list preview ("You: ...") and no longer count as new messages in the open chat.
+
 ## 0.9.193 — 2026-11-23
 
 - Manager window: spawn cards from the local manager have Approve, Edit and Reject buttons. Edit lets you change the folder, permissions, name and task; the runner then issues a new card for you to approve. Needs tmgr CLI 1.0.165 or newer; with an older CLI the buttons are disabled and say to update it.
