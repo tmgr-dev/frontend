@@ -1,3 +1,4 @@
+use super::chat_api::REMOTE_CLIENT;
 use super::switch::SwitchOpts;
 use super::*;
 use crate::manager as core;
@@ -325,6 +326,31 @@ impl core::Host for ManagerHost<'_> {
 
     fn local_manager_unrestricted(&self) -> bool {
         self.rt.live_manager().is_some_and(|m| is_unrestricted(&m))
+    }
+
+    fn queue_remote_ask(
+        &self,
+        room: &tmgr_ipc::chat::RoomRef,
+        id: &str,
+        body: &str,
+    ) -> Result<(), String> {
+        let outcome = self.rt.chat.submit(
+            room,
+            id,
+            body,
+            REMOTE_CLIENT,
+            None,
+            false,
+            now_ms(),
+            |body, _, _, _| self.rt.remote_deliver(room, body),
+        );
+        self.rt.chat.note_undelivered(room, &outcome);
+        match outcome {
+            chat::Submit::Delivered | chat::Submit::Queued => Ok(()),
+            chat::Submit::Gone(r) => Err(r),
+            chat::Submit::Refused(why) => Err(why.into()),
+            chat::Submit::Full => Err("the manager's input queue is full".into()),
+        }
     }
 }
 

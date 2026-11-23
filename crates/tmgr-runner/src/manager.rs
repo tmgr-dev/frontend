@@ -735,6 +735,9 @@ pub trait Host {
     fn local_manager_unrestricted(&self) -> bool {
         false
     }
+    fn queue_remote_ask(&self, _room: &RoomRef, _id: &str, _body: &str) -> Result<(), String> {
+        Err("manager input is not available on this host".into())
+    }
 }
 
 pub const REMOTE_MANAGER_SOURCE: &str = "manager on another machine";

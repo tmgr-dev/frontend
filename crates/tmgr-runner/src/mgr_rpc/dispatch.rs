@@ -524,8 +524,8 @@ impl Dispatcher {
                     room: RoomRef::manager(&self.machine),
                     author: Author {
                         kind: AuthorKind::Manager,
-                        id: "manager".into(),
-                        machine: Some(self.machine.clone()),
+                        id: "remote".into(),
+                        machine: Some(from.to_string()),
                         device: None,
                         agent: None,
                     },
@@ -541,7 +541,9 @@ impl Dispatcher {
                 };
                 msg.validate().map_err(refused)?;
                 let sent = self.state.chat.post(msg).map_err(refused)?;
-                Ok(json!({"id": sent.id}))
+                host.queue_remote_ask(&sent.room, &sent.id, &sent.body_md)
+                    .map_err(refused)?;
+                Ok(json!({"id": sent.id, "queued": true}))
             }
         }
     }
@@ -632,6 +634,9 @@ impl Host for RpcHost<'_> {
     }
     fn local_manager_unrestricted(&self) -> bool {
         self.inner.local_manager_unrestricted()
+    }
+    fn queue_remote_ask(&self, room: &RoomRef, id: &str, body: &str) -> Result<(), String> {
+        self.inner.queue_remote_ask(room, id, body)
     }
 }
 
@@ -1934,7 +1939,7 @@ mod tests {
     }
 
     #[test]
-    fn ask_posts_once_with_provenance_and_this_machine_as_author_machine() {
+    fn ask_posts_once_with_provenance_and_the_leader_as_author_machine() {
         let r = rig();
         let res = r.call(&open(), "q1", "ask", json!({"text": "status please"}));
         assert!(data(&res)["id"].as_str().unwrap().starts_with("m_"));
@@ -1942,7 +1947,7 @@ mod tests {
         assert_eq!(msgs.len(), 1);
         let m = &msgs[0];
         assert_eq!(m.author.kind, AuthorKind::Manager);
-        assert_eq!(m.author.machine.as_deref(), Some(ME));
+        assert_eq!(m.author.machine.as_deref(), Some(PEER));
         assert_eq!(m.room, RoomRef::manager(ME));
         assert!(m.body_md.starts_with("[relayed message "), "{}", m.body_md);
         assert!(m.body_md.contains(&format!(
@@ -1952,6 +1957,76 @@ mod tests {
             .body_md
             .contains("\n\nstatus please\n\n[end of relayed message "));
         m.validate().unwrap();
+    }
+
+    #[test]
+    fn ask_posts_a_remote_authored_row_and_queues_the_wrapped_text_once() {
+        let r = rig();
+        let res = r.call(&open(), "q1", "ask", json!({"text": "status please"}));
+        let out = data(&res);
+        assert_eq!(out["queued"], json!(true));
+        let id = out["id"].as_str().unwrap();
+        let msgs = r.d.state().chat.history(&RoomRef::manager(ME), 10).unwrap();
+        assert_eq!(msgs.len(), 1);
+        let m = &msgs[0];
+        assert_eq!(m.id, id);
+        assert_eq!(m.author.kind, AuthorKind::Manager);
+        assert_eq!(m.author.id, "remote");
+        assert_eq!(m.author.machine.as_deref(), Some(PEER));
+        m.validate().unwrap();
+        let asked = r.host.asked.lock().unwrap().clone();
+        assert_eq!(asked, vec![(id.to_string(), m.body_md.clone())]);
+        assert!(m.body_md.contains("status please"));
+        let again = r.call(&open(), "q1", "ask", json!({"text": "status please"}));
+        assert_eq!(again, res);
+        assert_eq!(r.host.asked.lock().unwrap().len(), 1);
+        assert_eq!(
+            r.d.state()
+                .chat
+                .history(&RoomRef::manager(ME), 10)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_ask_from_a_leader_without_ask_from_queues_nothing() {
+        let r = rig();
+        let p = Policy::parse(&format!(
+            "accept_from = [\"{PEER}\"]\nask_from = []\nallow = [\"room\", \"ask\", \"send\"]"
+        ))
+        .unwrap();
+        let res = r.call(&p, "q1", "ask", json!({"text": "hi"}));
+        assert_eq!(code(&res), ErrorCode::OpDenied);
+        assert!(r.host.asked.lock().unwrap().is_empty());
+        assert!(r
+            .d
+            .state()
+            .chat
+            .history(&RoomRef::manager(ME), 10)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn an_unrestricted_manager_queues_nothing() {
+        let r = rig();
+        r.host
+            .unrestricted_manager
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let res = r.call(&open(), "q1", "ask", json!({"text": "hi"}));
+        assert_eq!(code(&res), ErrorCode::Refused);
+        assert!(r.host.asked.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_failed_queue_is_a_refusal_not_a_queued_answer() {
+        let r = rig();
+        *r.host.ask_error.lock().unwrap() = Some("no manager is running".into());
+        let res = r.call(&open(), "q1", "ask", json!({"text": "hi"}));
+        assert_eq!(code(&res), ErrorCode::Refused);
+        assert!(res.error.unwrap().message.contains("no manager is running"));
     }
 
     #[test]
@@ -2178,14 +2253,12 @@ mod tests {
     }
 
     #[test]
-    fn ask_author_machine_equals_the_room_machine() {
+    fn ask_author_machine_is_the_sender_and_the_room_stays_this_machine() {
         let r = rig();
         r.call(&open(), "q1", "ask", valid_args("ask"));
         let msgs = r.d.state().chat.history(&RoomRef::manager(ME), 10).unwrap();
-        assert_eq!(
-            msgs[0].author.machine.as_deref(),
-            Some(msgs[0].room.machine.as_str())
-        );
+        assert_eq!(msgs[0].author.machine.as_deref(), Some(PEER));
+        assert_eq!(msgs[0].room.machine, ME);
     }
 
     #[test]

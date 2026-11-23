@@ -19,6 +19,9 @@ const ACTIVITY_TICK: Duration = Duration::from_millis(250);
 const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
 pub(super) const RELAY_SOURCE: &str = "phone or another device via chat relay";
+pub(super) const REMOTE_CLIENT: &str = "remote";
+const REMOTE_UNRESTRICTED_REFUSAL: &str =
+    "Not delivered: an unrestricted manager takes input only from this machine's keyboard.";
 pub(super) const UNRESTRICTED_REFUSAL: &str =
     "Not delivered: an unrestricted manager takes input only from this machine's keyboard and the owner's paired devices.";
 
@@ -92,6 +95,31 @@ impl Runner {
             Ok(()) => {
                 t.note_input_from("relay");
                 chat::Delivery::Typed(typed)
+            }
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
+            Err(e) => chat::Delivery::Gone(e.msg),
+        }
+    }
+
+    pub(super) fn remote_deliver(
+        &self,
+        room: &tmgr_ipc::chat::RoomRef,
+        body: &str,
+    ) -> chat::Delivery {
+        if self
+            .live_manager()
+            .is_some_and(|m| super::manager::is_unrestricted(&m))
+        {
+            return chat::Delivery::Refused(REMOTE_UNRESTRICTED_REFUSAL);
+        }
+        let t = match self.chat_target(room) {
+            Ok(t) => t,
+            Err(d) => return d,
+        };
+        match t.input_at_prompt(&chat::prompt_bytes(body), Instant::now()) {
+            Ok(()) => {
+                t.note_input_from(REMOTE_CLIENT);
+                chat::Delivery::Delivered
             }
             Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy,
             Err(e) => chat::Delivery::Gone(e.msg),
@@ -424,6 +452,8 @@ impl Runner {
                     }
                     let delivery = if it.client == "relay" {
                         self.relay_deliver(it.room, it.device, it.owner_device, it.body)
+                    } else if it.client == REMOTE_CLIENT {
+                        self.remote_deliver(it.room, it.body)
                     } else {
                         self.chat_deliver(it.room, it.body, it.client)
                     };
@@ -784,6 +814,23 @@ mod tests {
         let h = rt.chat.history(&room, None, None).unwrap();
         assert_eq!(h[0].body_md, "hi");
         assert_eq!(h[1].body_md, UNRESTRICTED_REFUSAL);
+    }
+
+    #[test]
+    fn remote_delivery_rechecks_unrestricted_and_queues_while_the_manager_is_not_ready() {
+        let (_t, rt) = manager_rig(
+            json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
+        );
+        let room = rt.chat.manager_room();
+        assert_eq!(
+            rt.remote_deliver(&room, "hi"),
+            chat::Delivery::Refused(REMOTE_UNRESTRICTED_REFUSAL)
+        );
+        let (_t, rt) = manager_rig(json!({}));
+        assert!(!matches!(
+            rt.remote_deliver(&rt.chat.manager_room(), "hi"),
+            chat::Delivery::Refused(_)
+        ));
     }
 
     #[test]
