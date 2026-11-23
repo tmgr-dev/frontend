@@ -38,12 +38,7 @@ export interface SpawnLine {
 
 export interface SpawnChip {
 	key:
-		| 'irreversible'
-		| 'bypass'
-		| 'noSandbox'
-		| 'foreign'
-		| 'mismatch'
-		| 'hidden';
+		'irreversible' | 'bypass' | 'noSandbox' | 'foreign' | 'mismatch' | 'hidden';
 	tone: 'danger' | 'warn';
 }
 
@@ -72,12 +67,7 @@ export interface SpawnStatusText {
 	final: boolean;
 	tone: 'wait' | 'ok' | 'fail';
 	outcome:
-		| 'pending'
-		| 'approved'
-		| 'rejected'
-		| 'replaced'
-		| 'expired'
-		| 'failed';
+		'pending' | 'approved' | 'rejected' | 'replaced' | 'expired' | 'failed';
 }
 
 const str = (v: unknown): string | undefined =>
@@ -304,7 +294,7 @@ export const spawnStatusText = (
 						final: false,
 						tone: 'wait',
 						outcome: 'pending',
-				  };
+					};
 		case 'approved':
 			return {
 				key: 'manager.spawn.approved',
@@ -335,8 +325,8 @@ export const spawnStatusText = (
 				status.reason === 'rejected'
 					? 'rejected'
 					: status.reason === 'edited'
-					? 'replaced'
-					: 'failed';
+						? 'replaced'
+						: 'failed';
 			return {
 				key: 'manager.spawn.refused',
 				params: { reason: status.reason ?? 'refused' },
