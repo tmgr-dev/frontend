@@ -1089,7 +1089,10 @@ impl Session {
                 out.extend(i.det.on_output(now));
             }
             if let Some(m) = &i.matcher {
-                match m.check(&i.screen.bottom_text_without_ghosts(10)) {
+                let blocked = m
+                    .check(&i.screen.bottom_text(10))
+                    .filter(|(rule, _)| rule.starts_with("blocked"));
+                match blocked.or_else(|| m.check(&i.screen.bottom_text_without_ghosts(10))) {
                     Some((rule, line)) if rule.starts_with("blocked") => {
                         out.extend(i.det.on_idle(now, false));
                         out.extend(i.det.on_blocked(now, &rule, &line))
@@ -6727,6 +6730,20 @@ mod tests {
             assert_eq!(err.code, ErrorCode::Busy);
             assert!(queued(&rx).is_empty());
         }
+    }
+
+    #[test]
+    fn a_dialog_with_a_dim_tail_still_blocks_a_chat_message() {
+        let (_t, s, rx) = lone_session_for("claude-code", 120, 40);
+        s.feed(
+            b"Allow \x1b[2mBash(ls)?\x1b[22m\r\n\r\n\xe2\x9d\xaf\r\n",
+            true,
+        );
+        let err = s
+            .input_at_prompt(b"hello from the phone\r", Instant::now())
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Busy);
+        assert!(queued(&rx).is_empty());
     }
 
     #[test]
