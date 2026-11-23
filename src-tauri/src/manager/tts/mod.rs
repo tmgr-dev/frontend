@@ -1,8 +1,9 @@
 pub mod external;
 pub mod g2p;
+pub mod host;
 pub mod pack;
 pub mod ru;
-pub mod host;
+pub mod ru_rules;
 pub mod wav;
 
 #[cfg_attr(not(any(target_os = "macos", target_os = "linux", all(target_os = "windows", target_arch = "x86_64"))), path = "synth_stub.rs")]
