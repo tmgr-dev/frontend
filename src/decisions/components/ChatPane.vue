@@ -15,6 +15,7 @@
 						$t('decisions.chat.you')
 					}}</template>
 					<template v-else><i></i>{{ $t('decisions.chat.agent') }}</template>
+					<CopyButton v-if="isAgent(message)" :text="message.text" />
 				</div>
 				<div
 					v-if="isAgent(message)"
@@ -52,11 +53,14 @@
 	import { defineComponent, type PropType } from 'vue';
 	import { agentWaitNotice } from '../diff';
 	import { isSubmitKey } from '../keys';
-	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
+	import { copyClick, renderWithCopy } from '../copy';
+	import { clickedHttpLink, isAgentMessage } from '../markdown';
+	import CopyButton from './CopyButton.vue';
 	import type { CardMessage } from '../types';
 
 	export default defineComponent({
 		name: 'ChatPane',
+		components: { CopyButton },
 		props: {
 			messages: { type: Array as PropType<CardMessage[]>, required: true },
 			canReply: { type: Boolean, required: true },
@@ -108,8 +112,9 @@
 		},
 		methods: {
 			isAgent: isAgentMessage,
-			render: renderMarkdown,
+			render: renderWithCopy,
 			onMarkdownClick(event: MouseEvent) {
+				if (copyClick(event)) return;
 				const href = clickedHttpLink(event);
 				if (href) this.$emit('open-link', href);
 			},

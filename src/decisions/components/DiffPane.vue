@@ -91,6 +91,7 @@
 										<template v-else
 											><i></i>{{ $t('decisions.diff.agent') }}</template
 										>
+										<CopyButton v-if="isAgent(message)" :text="message.text" />
 									</div>
 									<div
 										v-if="isAgent(message)"
@@ -224,7 +225,9 @@
 		type DiffRows,
 	} from '../diffRows';
 	import { isSubmitKey } from '../keys';
-	import { clickedHttpLink, isAgentMessage, renderMarkdown } from '../markdown';
+	import { copyClick, renderWithCopy } from '../copy';
+	import { clickedHttpLink, isAgentMessage } from '../markdown';
+	import CopyButton from './CopyButton.vue';
 	import type {
 		CardMessage,
 		DiffGroup,
@@ -254,6 +257,7 @@
 
 	export default defineComponent({
 		name: 'DiffPane',
+		components: { CopyButton },
 		props: {
 			diff: { type: Object as PropType<DiffSlot | null>, default: null },
 			hasDiff: { type: Boolean, required: true },
@@ -372,8 +376,9 @@
 		},
 		methods: {
 			isAgent: isAgentMessage,
-			render: renderMarkdown,
+			render: renderWithCopy,
 			onMarkdownClick(event: MouseEvent) {
+				if (copyClick(event)) return;
 				const href = clickedHttpLink(event);
 				if (href) this.$emit('open-link', href);
 			},

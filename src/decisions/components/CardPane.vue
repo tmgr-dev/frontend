@@ -26,12 +26,10 @@
 			<span>{{ $t('decisions.card.position', { position, total }) }}</span>
 		</div>
 		<h1>{{ card.title }}</h1>
-		<div
-			v-if="contextHtml"
-			class="md"
-			@click="onContextClick"
-			v-html="contextHtml"
-		></div>
+		<div v-if="contextHtml" class="ctx-copyable">
+			<CopyButton :text="card.context ?? ''" />
+			<div class="md" @click="onContextClick" v-html="contextHtml"></div>
+		</div>
 		<div v-if="sections.length" class="links">
 			<div v-for="section in sections" :key="section.title" class="lg">
 				<span class="lh">{{ section.title }}</span>
@@ -225,7 +223,9 @@
 		updatedLabel,
 	} from '../format';
 	import { isSubmitKey } from '../keys';
-	import { clickedHttpLink, renderMarkdown } from '../markdown';
+	import { copyClick, renderWithCopy } from '../copy';
+	import { clickedHttpLink } from '../markdown';
+	import CopyButton from './CopyButton.vue';
 	import { reconcileSelection } from '../selection';
 	import ActionPanel from './ActionPanel.vue';
 	import type { AnswerChoice, CardOption, CardView } from '../types';
@@ -235,7 +235,7 @@
 
 	export default defineComponent({
 		name: 'CardPane',
-		components: { ActionPanel },
+		components: { ActionPanel, CopyButton },
 		props: {
 			card: { type: Object as PropType<CardView>, required: true },
 			position: { type: Number, required: true },
@@ -285,7 +285,7 @@
 				);
 			},
 			contextHtml(): string {
-				return renderMarkdown(this.card.context ?? '');
+				return renderWithCopy(this.card.context ?? '');
 			},
 			finalTitle(): string {
 				const { state, answer } = this.card;
@@ -350,6 +350,8 @@
 				this.$emit('open-link', url);
 			},
 			onContextClick(event: MouseEvent) {
+				if (copyClick(event)) return;
+				if (copyClick(event)) return;
 				const href = clickedHttpLink(event);
 				if (href) this.openLink(href);
 			},
