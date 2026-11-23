@@ -117,7 +117,7 @@ def licenses(out):
         "Model prepared for sherpa-onnx (metadata and tokens.txt, same as sherpa-onnx scripts/piper/add_meta_data.py, Apache-2.0).\n\n"
         "Pronunciation lexicon: word list from gruut-lang-ru (MIT); pronunciations generated once offline with espeak-ng\n"
         "(GPL-3.0-or-later). Only the generated word-to-phoneme data is included; no espeak-ng code or data files are\n"
-        "distributed. Whether this data is a derivative work of espeak-ng is undecided; the owner of TMGR accepted the use.\n"
+        "distributed. Whether this data is a derivative work of espeak-ng is undecided.\n"
     )
     open(os.path.join(out, "LICENSES.txt"), "w", encoding="utf-8").write(text)
 
