@@ -77,7 +77,9 @@ html.dark .manager {
 	--cb: var(--progress-bg);
 	--cf: var(--progress-fg);
 }
-.manager .st-waiting {
+.manager .st-waiting,
+.manager .st-blocked,
+.manager .st-asking {
 	--c: var(--testing);
 	--cb: var(--testing-bg);
 	--cf: var(--testing-fg);
@@ -1531,7 +1533,9 @@ body:has(.manager.app-shell) {
 .manager .hs.st-working .dt {
 	background: var(--progress);
 }
-.manager .hs.st-waiting .dt {
+.manager .hs.st-waiting .dt,
+.manager .hs.st-blocked .dt,
+.manager .hs.st-asking .dt {
 	background: var(--testing);
 }
 .manager .hs.st-done .dt {

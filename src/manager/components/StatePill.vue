@@ -11,11 +11,21 @@
 	const ICON_BY_STATE: Record<string, string> = {
 		working: 'bolt',
 		waiting: 'hand',
+		blocked: 'hand',
+		asking: 'hand',
 		failed: 'x',
 		idle: 'dot',
 		done: 'check',
 	};
-	const KNOWN = ['working', 'waiting', 'failed', 'idle', 'done'];
+	const KNOWN = [
+		'working',
+		'waiting',
+		'blocked',
+		'asking',
+		'failed',
+		'idle',
+		'done',
+	];
 
 	export default defineComponent({
 		name: 'ManagerStatePill',

@@ -23,7 +23,8 @@
 			"failed": "failed"
 		},
 		"tag": {
-			"waiting": "Waiting for you",
+			"permission": "Permission",
+			"question": "Question",
 			"failed": "Failed"
 		}
 	},
@@ -60,6 +61,8 @@
 	"state": {
 		"working": "Working",
 		"waiting": "Waiting for you",
+		"blocked": "Needs permission",
+		"asking": "Asked a question",
 		"failed": "Failed",
 		"idle": "Idle",
 		"done": "Done"

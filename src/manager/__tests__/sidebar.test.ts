@@ -43,17 +43,42 @@ describe('stateCounts', () => {
 });
 
 describe('needsYou', () => {
-	it('lists waiting before failed and skips other states', () => {
+	it('lists permission, question and failed in that order', () => {
 		const rows = needsYou([
 			sess('f', { state: 'failed' }),
-			sess('w', { state: 'waiting' }),
-			sess('x', { state: 'working' }),
+			sess('q', { state: 'asking' }),
+			sess('p', { state: 'blocked' }),
 			mgr,
 		]);
 		expect(rows.map((r) => [r.key, r.tag])).toEqual([
-			['session:m:w', 'waiting'],
+			['session:m:p', 'permission'],
+			['session:m:q', 'question'],
 			['session:m:f', 'failed'],
 		]);
+	});
+
+	it('skips idle waiting, working and unknown states', () => {
+		expect(
+			needsYou([
+				sess('w', { state: 'waiting' }),
+				sess('x', { state: 'working' }),
+				sess('s', { state: 'starting' }),
+				sess('e', { state: 'exited' }),
+				sess('n'),
+			]),
+		).toEqual([]);
+	});
+});
+
+describe('stateCounts for sessions that need the owner', () => {
+	it('counts blocked and asking sessions as waiting', () => {
+		expect(
+			stateCounts([
+				sess('a', { state: 'blocked' }),
+				sess('b', { state: 'asking' }),
+				sess('c', { state: 'waiting' }),
+			]).waiting,
+		).toBe(3);
 	});
 });
 
