@@ -197,6 +197,8 @@ const APP_COMMANDS: &[&str] = &[
   "manager_machines",
   "manager_connect_followers",
   "manager_followers",
+  "manager_remote_policy",
+  "manager_remote_policy_set",
   "manager_set_relay_auth",
   "manager_clear_relay_auth",
   "tts_status",

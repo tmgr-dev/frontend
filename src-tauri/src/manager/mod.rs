@@ -8,6 +8,7 @@ pub mod machines;
 pub mod pair;
 pub mod relay;
 pub mod tts;
+pub mod remote_policy;
 
 use std::sync::Arc;
 
@@ -420,6 +421,33 @@ fn outdated(err: String) -> String {
   } else {
     err
   }
+}
+
+fn runner_of<R: Runtime>(app: &AppHandle<R>) -> Result<crate::runner::Runner, String> {
+  app.try_state::<crate::runner::Runner>().map(|r| r.inner().clone()).ok_or_else(|| "the runner is not available".to_owned())
+}
+
+#[tauri::command]
+pub async fn manager_remote_policy<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>) -> Result<tmgr_ipc::api::RemotePolicyInfo, String> {
+  if window.label() != LABEL {
+    return Err("not allowed from this window".to_owned());
+  }
+  let runner = runner_of(&app)?;
+  blocking(move || remote_policy::get(&runner)).await
+}
+
+#[tauri::command]
+pub async fn manager_remote_policy_set<R: Runtime>(
+  window: tauri::WebviewWindow<R>,
+  app: AppHandle<R>,
+  leader: String,
+  ask: bool,
+) -> Result<tmgr_ipc::api::RemotePolicyInfo, String> {
+  if window.label() != LABEL {
+    return Err("not allowed from this window".to_owned());
+  }
+  let runner = runner_of(&app)?;
+  blocking(move || remote_policy::set_ask(&runner, &leader, ask)).await
 }
 
 #[tauri::command]

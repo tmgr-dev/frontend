@@ -46,6 +46,8 @@
 		"allow-tts-check",
 		"allow-tts-synthesize",
 		"allow-tts-stop",
+		"allow-manager-remote-policy",
+		"allow-manager-remote-policy-set",
 		"allow-decisions-get",
 		"allow-decisions-answer"
 	]

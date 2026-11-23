@@ -470,6 +470,8 @@ pub fn run() {
       manager::manager_machines,
       manager::manager_connect_followers,
       manager::manager_followers,
+      manager::manager_remote_policy,
+      manager::manager_remote_policy_set,
       manager::manager_set_relay_auth,
       manager::manager_clear_relay_auth
     ])
