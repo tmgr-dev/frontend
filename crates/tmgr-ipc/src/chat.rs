@@ -20,8 +20,6 @@ pub mod method {
     pub const QUEUED: &str = "chat.queued";
     pub const CANCEL: &str = "chat.cancel";
     pub const MENTION_INJECT: &str = "chat.mention_inject";
-    pub const MENTION_CONFIRM: &str = "chat.mention_confirm";
-    pub const MENTION_PENDING: &str = "chat.mention_pending";
 }
 
 pub mod limits {
@@ -110,32 +108,6 @@ pub struct MentionInjectParams {
     pub mention_id: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub confirmed_risky: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MentionConfirmParams {
-    pub room: RoomRef,
-    pub message_id: String,
-    pub accept: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub confirmed_risky: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MentionPendingParams {
-    pub room: RoomRef,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MentionPending {
-    pub message_id: String,
-    pub body_md: String,
-    pub target: RoomRef,
-    pub target_title: String,
-    pub target_agent: Option<String>,
-    pub device: Option<String>,
-    pub risky: bool,
-    pub exp_ms: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
