@@ -595,6 +595,7 @@ struct Inner {
     size_owner: Option<u64>,
     input_sent_at: Option<Instant>,
     limit_first: Option<Instant>,
+    last_busy: Option<&'static str>,
 }
 
 #[derive(Default)]
@@ -1088,7 +1089,7 @@ impl Session {
                 out.extend(i.det.on_output(now));
             }
             if let Some(m) = &i.matcher {
-                match m.check(&i.screen.bottom_text(10)) {
+                match m.check(&i.screen.bottom_text_without_ghosts(10)) {
                     Some((rule, line)) if rule.starts_with("blocked") => {
                         out.extend(i.det.on_idle(now, false));
                         out.extend(i.det.on_blocked(now, &rule, &line))
@@ -1362,7 +1363,7 @@ impl Session {
     fn write_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
         {
             let mut i = lock(&self.inner);
-            let bottom = i.screen.bottom_text(10);
+            let bottom = i.screen.bottom_text_without_ghosts(10);
             let rows = i.screen.text_lines(None).3;
             let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
             let idle_queue = lock(&self.shim).as_ref().is_some_and(|l| {
@@ -1372,13 +1373,29 @@ impl Session {
                     _ => l.queued_frames.load(Ordering::SeqCst) == 0,
                 }
             });
-            if self.effective(&i).kind == StateKind::Blocked
-                || !(prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
-                    || self.settled_without_idle_rules(&i, now, agent, &rows))
-                || i.input_sent_at
-                    .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
-                || !idle_queue
+            let busy = if self.effective(&i).kind == StateKind::Blocked {
+                Some("blocked on a dialog")
+            } else if !(prompt_ready(i.matcher.as_ref(), agent, &bottom, &rows)
+                || self.settled_without_idle_rules(&i, now, agent, &rows))
             {
+                Some("prompt not idle")
+            } else if i
+                .input_sent_at
+                .is_some_and(|at| now.saturating_duration_since(at) < SEND_SETTLE)
+            {
+                Some("previous input settling")
+            } else if !idle_queue {
+                Some("input still queued")
+            } else {
+                None
+            };
+            if busy != i.last_busy {
+                if let Some(why) = busy {
+                    log(&format!("session {}: not at its prompt: {why}", self.id));
+                }
+                i.last_busy = busy;
+            }
+            if busy.is_some() {
                 return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
             }
             if self.input_dropped.swap(false, Ordering::SeqCst) || !self.shim_input(bytes) {
@@ -5190,6 +5207,7 @@ impl Runner {
                 size_owner: None,
                 input_sent_at: None,
                 limit_first: None,
+                last_busy: None,
             }),
             version: AtomicU64::new(0),
             shim: Mutex::new(None),
@@ -6236,7 +6254,7 @@ mod tests {
         let (set, _) = ProfileSet::load(None);
         let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
         let mut screen = screen_of(text);
-        let bottom = screen.bottom_text(10);
+        let bottom = screen.bottom_text_without_ghosts(10);
         let rows = screen.text_lines(None).3;
         prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
     }
@@ -6376,6 +6394,40 @@ mod tests {
     #[test]
     fn at_prompt_accepts_the_idle_prompt_alone_on_the_bottom_line() {
         assert!(ready("claude-code", "done\n\n❯\n"));
+    }
+
+    fn ready_ansi(profile: &str, bytes: &[u8]) -> bool {
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
+        let mut screen = ScreenModel::new(40, 120, 100);
+        screen.feed(bytes);
+        let bottom = screen.bottom_text_without_ghosts(10);
+        let rows = screen.text_lines(None).3;
+        prompt_ready(Some(&matcher), permit::agent_of(profile), &bottom, &rows)
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_dim_prompt_suggestion_above_the_status_line() {
+        let screen = include_bytes!("../profiles/screens/claude-suggestion.ansi");
+        assert!(ready_ansi("claude-code", screen));
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_typed_draft() {
+        let screen = include_bytes!("../profiles/screens/claude-draft.ansi");
+        assert!(!ready_ansi("claude-code", screen));
+    }
+
+    #[test]
+    fn at_prompt_accepts_the_codex_placeholder_with_footer_notices() {
+        let screen = include_bytes!("../profiles/screens/codex-placeholder.ansi");
+        assert!(ready_ansi("codex", screen));
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_codex_draft() {
+        let screen = include_bytes!("../profiles/screens/codex-draft.ansi");
+        assert!(!ready_ansi("codex", screen));
     }
 
     #[test]
@@ -6632,6 +6684,49 @@ mod tests {
             .unwrap();
         assert_eq!(queued(&rx), vec![b"\x1b[200~a\nb\x1b[201~".to_vec()]);
         assert_eq!(queued_by(&rx, 1), vec![b"\r".to_vec()]);
+    }
+
+    #[test]
+    fn a_chat_message_is_typed_over_a_ghost_placeholder_and_never_accepts_it() {
+        for (profile, screen) in [
+            (
+                "claude-code",
+                &include_bytes!("../profiles/screens/claude-suggestion.ansi")[..],
+            ),
+            (
+                "codex",
+                &include_bytes!("../profiles/screens/codex-placeholder.ansi")[..],
+            ),
+        ] {
+            let (_t, s, rx) = lone_session_for(profile, 120, 40);
+            s.feed(screen, true);
+            s.input_at_prompt(b"hello from the phone\r", Instant::now())
+                .unwrap();
+            assert_eq!(queued(&rx), vec![b"hello from the phone".to_vec()]);
+            assert_eq!(queued_by(&rx, 1), vec![b"\r".to_vec()]);
+        }
+    }
+
+    #[test]
+    fn a_chat_message_waits_while_a_typed_draft_is_on_the_prompt() {
+        for (profile, screen) in [
+            (
+                "claude-code",
+                &include_bytes!("../profiles/screens/claude-draft.ansi")[..],
+            ),
+            (
+                "codex",
+                &include_bytes!("../profiles/screens/codex-draft.ansi")[..],
+            ),
+        ] {
+            let (_t, s, rx) = lone_session_for(profile, 120, 40);
+            s.feed(screen, true);
+            let err = s
+                .input_at_prompt(b"hello from the phone\r", Instant::now())
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::Busy);
+            assert!(queued(&rx).is_empty());
+        }
     }
 
     #[test]

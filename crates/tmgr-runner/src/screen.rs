@@ -308,6 +308,45 @@ impl ScreenModel {
         let skip = lines.len().saturating_sub(n);
         lines.split_off(skip)
     }
+
+    pub fn bottom_text_without_ghosts(&self, n: usize) -> Vec<String> {
+        let screen = self.parser.screen();
+        let (rows, cols) = screen.size();
+        let mut lines: Vec<String> = (0..rows)
+            .map(|r| sanitize_text(row_without_ghost(screen, r, cols).trim_end()).into_owned())
+            .collect();
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        let skip = lines.len().saturating_sub(n);
+        lines.split_off(skip)
+    }
+}
+
+// Drops trailing dim placeholder text (e.g. a prompt suggestion), its first cell inverse under the cursor.
+fn row_without_ghost(screen: &vt100::Screen, row: u16, cols: u16) -> String {
+    let cells: Vec<&vt100::Cell> = (0..cols)
+        .filter_map(|c| screen.cell(row, c))
+        .filter(|c| !c.is_wide_continuation())
+        .collect();
+    let blank = |c: &vt100::Cell| !c.has_contents() || c.contents().trim().is_empty();
+    let mut cut = cells.len();
+    while cut > 0 && (blank(cells[cut - 1]) || cells[cut - 1].dim()) {
+        cut -= 1;
+    }
+    let ghost = cells[cut..].iter().any(|c| c.dim() && !blank(c));
+    if ghost && cut > 0 && cells[cut - 1].inverse() && !blank(cells[cut - 1]) {
+        cut -= 1;
+    }
+    let keep = if ghost && cells[..cut].iter().any(|c| !blank(c)) {
+        cut
+    } else {
+        cells.len()
+    };
+    cells[..keep]
+        .iter()
+        .map(|c| if c.has_contents() { c.contents() } else { " " })
+        .collect()
 }
 
 fn row_texts(screen: &vt100::Screen, cols: u16) -> impl Iterator<Item = (String, bool)> + '_ {
@@ -711,6 +750,31 @@ mod tests {
         m.resize(5, 40);
         let c = m.snapshot(0);
         assert_eq!(changed_lines(&b, &c), vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn dim_placeholder_after_the_prompt_is_not_input() {
+        let mut m = model();
+        m.feed(
+            "\x1b[38;5;246m\u{276f}\u{a0}\x1b[39m\x1b[7mh\x1b[27m\x1b[2mow to restart?\x1b[22m\r\n"
+                .as_bytes(),
+        );
+        m.feed("\x1b[2m  status line\x1b[22m".as_bytes());
+        assert_eq!(
+            m.bottom_text_without_ghosts(10),
+            vec!["\u{276f}".to_string(), "  status line".to_string()]
+        );
+        assert_eq!(m.bottom_text(10)[0], "\u{276f}\u{a0}how to restart?");
+    }
+
+    #[test]
+    fn typed_text_after_the_prompt_stays() {
+        let mut m = model();
+        m.feed("\x1b[38;5;246m\u{276f}\u{a0}\x1b[38;5;231mreal draft\x1b[7m \x1b[27m".as_bytes());
+        assert_eq!(
+            m.bottom_text_without_ghosts(10),
+            vec!["\u{276f}\u{a0}real draft".to_string()]
+        );
     }
 
     #[test]

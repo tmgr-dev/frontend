@@ -1,1 +1,2 @@
 *.sh text eol=lf
+crates/tmgr-runner/profiles/screens/*.ansi -text
