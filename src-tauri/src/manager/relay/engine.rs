@@ -50,12 +50,14 @@ fn err<E: Display>(e: E) -> String {
   e.to_string()
 }
 
+const RECIPIENT_FULL_MSG: &str = "the recipient's relay queue is full";
+
 /// Transport errors are the response body of a failed call; for a 429 with Retry-After the transport adds `"retry_after": <secs>`.
 fn post_error(e: String) -> String {
   let v: Value = serde_json::from_str(&e).unwrap_or(Value::Null);
   match (v["error"].as_str(), v["retry_after"].as_u64()) {
     (Some("user_full"), _) => "relay storage is full".into(),
-    (Some("recipient_full"), _) => "the recipient's relay queue is full".into(),
+    (Some("recipient_full"), _) => RECIPIENT_FULL_MSG.into(),
     (_, Some(secs)) => format!("{BUSY_PREFIX}{secs}s"),
     _ => e,
   }
@@ -767,14 +769,52 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       .map_err(err)?;
       items.push((t.id.clone(), body, seq));
     }
+    let mut delivered = false;
+    let mut skipped = false;
     for chunk in items.chunks(api::MAX_ITEMS) {
-      let refs: Vec<(&str, &str)> = chunk.iter().map(|(to, body, _)| (to.as_str(), body.as_str())).collect();
-      let req = api::post_messages(msg_id, push, &refs).map_err(err)?;
-      api::parse_posted(&self.call(c, req).map_err(post_error)?).map_err(err)?;
-      for (to, _, seq) in chunk {
-        c.st.seq_out.insert(to.clone(), *seq);
+      match self.post_items(c, msg_id, push, chunk) {
+        Ok(()) => {
+          for (to, _, seq) in chunk {
+            c.st.seq_out.insert(to.clone(), *seq);
+          }
+          delivered = true;
+          continue;
+        }
+        Err(e) if e == RECIPIENT_FULL_MSG && chunk.len() > 1 => {}
+        Err(e) => return Err(e),
+      }
+      for item in chunk {
+        match self.post_items(c, msg_id, push, std::slice::from_ref(item)) {
+          Ok(()) => {
+            c.st.seq_out.insert(item.0.clone(), item.2);
+            delivered = true;
+          }
+          Err(e) if e == RECIPIENT_FULL_MSG => {
+            let kind = targets
+              .iter()
+              .find(|t| t.id == item.0)
+              .map(|t| c.st.kind_of(&t.id, &t.fp).unwrap_or(&t.kind).to_owned())
+              .unwrap_or_default();
+            if kind != "desktop" && kind != "mobile" {
+              return Err(e);
+            }
+            log::warn!("[chat-relay] skipped {kind} {}: its relay queue is full", item.0.chars().take(8).collect::<String>());
+            skipped = true;
+          }
+          Err(e) => return Err(e),
+        }
       }
     }
+    if skipped && !delivered {
+      return Err(RECIPIENT_FULL_MSG.into());
+    }
+    Ok(())
+  }
+
+  fn post_items(&self, c: &Core, msg_id: &str, push: bool, items: &[(String, String, u64)]) -> Result<(), String> {
+    let refs: Vec<(&str, &str)> = items.iter().map(|(to, body, _)| (to.as_str(), body.as_str())).collect();
+    let req = api::post_messages(msg_id, push, &refs).map_err(err)?;
+    api::parse_posted(&self.call(c, req).map_err(post_error)?).map_err(err)?;
     Ok(())
   }
 

@@ -46,6 +46,7 @@ struct Server {
     puts: Vec<(String, String, String)>,
     fail_after_store: bool,
     slow_ms: u64,
+    full: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -100,6 +101,10 @@ impl Fake {
 
     fn set_post_error(&self, e: Option<&str>) {
         self.0.lock().unwrap().post_error = e.map(str::to_owned);
+    }
+
+    fn set_full(&self, id: Option<&str>) {
+        self.0.lock().unwrap().full = id.map(str::to_owned);
     }
 
     fn set_last_seen(&self, id: &str, ms: u64) {
@@ -247,6 +252,11 @@ impl Transport for Fake {
                 }
                 let msg_id = body["msg_id"].as_str().unwrap().to_owned();
                 let items = body["items"].as_array().unwrap().clone();
+                if let Some(full) = s.full.clone() {
+                    if items.iter().any(|i| i["to"].as_str() == Some(&full)) {
+                        return Err(r#"{"error":"recipient_full"}"#.into());
+                    }
+                }
                 if items
                     .iter()
                     .any(|i| !s.devices.iter().any(|d| d.id == i["to"].as_str().unwrap()))
@@ -358,6 +368,7 @@ struct Rec {
     kinds: Arc<Mutex<Vec<Option<String>>>>,
     fail: Arc<AtomicBool>,
     drops: Arc<Mutex<Vec<&'static str>>>,
+    skipped: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl Rec {
@@ -391,6 +402,13 @@ impl ChatSink for Rec {
 
     fn dropped(&self, reason: &'static str) {
         self.drops.lock().unwrap().push(reason);
+    }
+
+    fn skipped_full(&self, device_id: &str, kind: &str) {
+        self.skipped
+            .lock()
+            .unwrap()
+            .push((device_id.into(), kind.into()));
     }
 }
 
@@ -4211,6 +4229,91 @@ fn send_chat_to_owners_reaches_only_the_chosen_owner_device() {
     assert!(runner
         .send_chat_to_owners(&msg, std::slice::from_ref(&oid))
         .is_err());
+}
+
+fn seq_out(e: &Engine, id: &str) -> u64 {
+    e.lock().st.seq_out.get(id).copied().unwrap_or(0)
+}
+
+#[test]
+fn a_full_owner_device_is_skipped_and_the_rest_still_get_the_message() {
+    let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    let (bd, bm) = (fake.queue_len(&did), fake.queue_len(&mid));
+    let (sd, sm) = (seq_out(&runner, &did), seq_out(&runner, &mid));
+    fake.set_full(Some(&mid));
+    runner
+        .send_sealed_to_owners("rooms", &rpc_id("rooms"), &json!({"v": 1}), None)
+        .unwrap();
+    assert_eq!((fake.queue_len(&did), fake.queue_len(&mid)), (bd + 1, bm));
+    assert_eq!(seq_out(&runner, &did), sd + 1);
+    assert_eq!(seq_out(&runner, &mid), sm);
+    assert_eq!(
+        runner.s.skipped.lock().unwrap().clone(),
+        [(mid.clone(), "mobile".to_owned())]
+    );
+    let both = [did.clone(), mid.clone()];
+    runner
+        .send_chat_to_owners(&text_msg(new_message_id(), "x"), &both)
+        .unwrap();
+    assert_eq!(seq_out(&runner, &did), sd + 2);
+    assert_eq!(seq_out(&runner, &mid), sm);
+    fake.set_full(None);
+    runner
+        .send_sealed_to_owners("rooms", &rpc_id("rooms"), &json!({"v": 1}), None)
+        .unwrap();
+    assert_eq!(seq_out(&runner, &mid), sm + 1);
+}
+
+#[test]
+fn a_chat_to_owners_skips_a_full_desktop_too() {
+    let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    let bm = fake.queue_len(&mid);
+    fake.set_full(Some(&did));
+    let both = [did.clone(), mid.clone()];
+    runner
+        .send_chat_to_owners(&text_msg(new_message_id(), "x"), &both)
+        .unwrap();
+    assert_eq!(
+        runner.s.skipped.lock().unwrap().clone(),
+        [(did, "desktop".to_owned())]
+    );
+    assert_eq!(fake.queue_len(&mid), bm + 1);
+}
+
+#[test]
+fn when_every_owner_device_is_full_the_send_fails() {
+    let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    fake.0.lock().unwrap().post_error = Some(r#"{"error":"recipient_full"}"#.into());
+    let both = [did.clone(), mid.clone()];
+    assert_eq!(
+        runner
+            .send_chat_to_owners(&text_msg(new_message_id(), "x"), &both)
+            .unwrap_err(),
+        RECIPIENT_FULL_MSG
+    );
+    fake.0.lock().unwrap().post_error = None;
+    fake.set_full(Some(&did));
+    let only = [did];
+    assert_eq!(
+        runner
+            .send_chat_to_owners(&text_msg(new_message_id(), "x"), &only)
+            .unwrap_err(),
+        RECIPIENT_FULL_MSG
+    );
+}
+
+#[test]
+fn a_full_runner_among_the_targets_still_fails_the_send() {
+    let (fake, _c, _runner, desktop, mobile, other) = rooms_world();
+    let oid = my_id(&other);
+    fake.set_full(Some(&oid));
+    let _ = mobile;
+    let m = text_msg(new_message_id(), "x");
+    let err = desktop.send_chat(&m, false).unwrap_err();
+    assert_eq!(err, RECIPIENT_FULL_MSG);
 }
 
 #[test]

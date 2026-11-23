@@ -43,6 +43,7 @@ struct Server {
   last_seen: BTreeMap<String, u64>,
   puts: Vec<(String, String, String)>,
   slow_ms: u64,
+  full: Option<String>,
   on_devices: Option<Box<dyn FnOnce() + Send>>,
 }
 
@@ -70,6 +71,10 @@ impl Fake {
 
   fn set_post_error(&self, e: Option<&str>) {
     self.0.lock().unwrap().post_error = e.map(str::to_owned);
+  }
+
+  fn set_full(&self, id: Option<&str>) {
+    self.0.lock().unwrap().full = id.map(str::to_owned);
   }
 
   fn set_last_seen(&self, id: &str, ms: u64) {
@@ -172,6 +177,11 @@ impl Transport for Fake {
         }
         let msg_id = body["msg_id"].as_str().unwrap().to_owned();
         let items = body["items"].as_array().unwrap().clone();
+        if let Some(full) = s.full.clone() {
+          if items.iter().any(|i| i["to"].as_str() == Some(&full)) {
+            return Err(r#"{"error":"recipient_full"}"#.into());
+          }
+        }
         if items.iter().any(|i| !s.devices.iter().any(|d| d.id == i["to"].as_str().unwrap())) {
           return Err(r#"{"error":"recipient_unknown"}"#.into());
         }
@@ -1908,6 +1918,45 @@ fn a_failed_join_keeps_a_kind_that_was_pinned_before_and_drops_one_it_added() {
   b.lock().st.kinds.insert(kind_key(&aid, &a_fp), "desktop".into());
   assert!(b.join_with_code(&code).is_err());
   assert_eq!(b.lock().st.kinds.get(&kind_key(&aid, &a_fp)).map(String::as_str), Some("desktop"));
+}
+
+fn seq_out(e: &Engine, id: &str) -> u64 {
+  e.lock().st.seq_out.get(id).copied().unwrap_or(0)
+}
+
+#[test]
+fn a_send_skips_a_full_mobile_and_still_reaches_the_other_devices() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = join_as(&fake, &clock, &a, "Desktop B", "desktop");
+  let m = join_as(&fake, &clock, &a, "Phone", "mobile");
+  let (bid, mid) = (my_id(&b), my_id(&m));
+  let (qb, qm) = (fake.queue_len(&bid), fake.queue_len(&mid));
+  let (sb, sm) = (seq_out(&a, &bid), seq_out(&a, &mid));
+  fake.set_full(Some(&mid));
+  send(&a, "hello").unwrap();
+  assert_eq!((fake.queue_len(&bid), fake.queue_len(&mid)), (qb + 1, qm));
+  assert_eq!((seq_out(&a, &bid), seq_out(&a, &mid)), (sb + 1, sm));
+}
+
+#[test]
+fn a_full_runner_among_the_targets_fails_the_send() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let m = join_as(&fake, &clock, &a, "Phone", "mobile");
+  let _ = m;
+  fake.set_full(Some(&my_id(&r)));
+  assert_eq!(send(&a, "hello").unwrap_err(), "the recipient's relay queue is full");
+}
+
+#[test]
+fn a_send_to_only_a_full_mobile_fails() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let m = join_as(&fake, &clock, &a, "Phone", "mobile");
+  fake.set_full(Some(&my_id(&m)));
+  assert_eq!(send(&a, "hello").unwrap_err(), "the recipient's relay queue is full");
 }
 
 fn legacy_state_with_kinds(store: &Arc<MemKeyStore>, e: &Engine, kinds: Value, intros: Vec<String>) {

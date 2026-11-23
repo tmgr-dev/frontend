@@ -165,6 +165,13 @@ impl ChatSink for RelaySink {
     fn dropped(&self, reason: &'static str) {
         crate::daemon::log(&format!("chat relay: dropped a message ({reason})"));
     }
+
+    fn skipped_full(&self, device_id: &str, kind: &str) {
+        let short: String = device_id.chars().take(8).collect();
+        crate::daemon::log(&format!(
+            "chat relay: skipped {kind} {short}: its relay queue is full"
+        ));
+    }
 }
 
 struct DynTransport(Box<dyn Transport>);

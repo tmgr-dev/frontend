@@ -72,6 +72,8 @@ pub trait ChatSink: Send + Sync {
     ) -> Result<(), String>;
 
     fn dropped(&self, _reason: &'static str) {}
+
+    fn skipped_full(&self, _device_id: &str, _kind: &str) {}
 }
 
 /// Runs under the engine lock: implementations must only enqueue (try_send) and never call back into the engine.
