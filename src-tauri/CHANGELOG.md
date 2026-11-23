@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.202 — 2026-11-23
+
+- Added: attach files and photos in the Manager chat to a session on this machine (up to 25 MiB per file). The agent gets their paths in its turn. Sending files to a session on another machine is not supported yet. Needs tmgr CLI 1.0.177; with an older CLI the Manager says "Update tmgr on this machine to send files".
+
 ## 0.9.201 — 2026-11-23
 
 - Fixed: a message from the Manager no longer fails for all your devices when the phone app has been in the background long enough for its relay queue to fill up. A desktop or phone with a full queue is skipped, and the others still get the message. For replies from sessions on other machines, also update the tmgr CLI to 1.0.176 and restart the runner.

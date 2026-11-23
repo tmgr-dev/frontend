@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.177
+
+- Added: files and photos you attach in the Manager chat reach the agent. The runner accepts them only from your trusted phone and desktop, checks each file against its sha256, copies it into the session's `tmgr-attachments` folder and lists its path in the agent's turn. A file that did not arrive is listed as "(not received)". Limits: 6 MiB per file from the phone, 25 MiB from the desktop on the same machine. Files are end-to-end encrypted; the server never sees their content.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.176
 
 - Fixed: replies and session updates from the runner stopped reaching the desktop on other machines when the phone app had not been opened for a while. The runner sent the session list to the phone every few seconds while it changed; with the app in the background these piled up until the phone's relay queue was full, and then every message the runner sent to your devices was refused. The session list now goes only to devices seen in the last 3 minutes, and a device that comes back gets the current list once.
