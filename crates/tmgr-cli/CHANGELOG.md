@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.174
+
+- Fixed: chat messages from your phone or desktop to a Codex session no longer wait in the queue when Codex shows `← for agents · ? for shortcuts`, `? for shortcuts` with the mode label right after it, or no shortcuts hint at all (narrow terminal, crowded footer). An empty `›` prompt row now counts as idle; a draft you typed still holds the message back.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.173
 
 - Changed: a manager session can no longer stop or type into another session on its own. `send_to_session` and the new `stop_session` tool create an approval card ("Requested by session X", with the text for a send); the runner acts only after you approve it on the desktop. Deny or expiry does nothing. Cards are signed and checked like spawn cards, so forged, replayed, edited or wrong-kind cards are refused.
