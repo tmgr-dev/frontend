@@ -96,6 +96,7 @@
 					"
 					:queued-ids="store.queuedIds"
 					:tools-by-message="store.toolsByMessage"
+					:calls-by-message="store.callsByMessage"
 					:activity="
 						store.activeKey ? store.activityByRoom[store.activeKey] : null
 					"

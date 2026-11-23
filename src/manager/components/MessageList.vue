@@ -22,6 +22,7 @@
 						:grouped="row.grouped"
 						:queued="queuedIds.includes(row.message.id)"
 						:tools="toolsByMessage[row.message.id]"
+						:calls="callsByMessage[row.message.id]"
 						@reply="$emit('reply', $event)"
 						@copy="$emit('copy', $event)"
 						@cancel-queued="$emit('cancel-queued', $event)"
@@ -48,6 +49,11 @@
 						activity?.current ?? $t('manager.activity.working')
 					}}</span>
 				</div>
+				<ToolCallList
+					v-if="working && activity?.calls?.length"
+					class="live-calls"
+					:calls="liveCalls"
+				/>
 			</div>
 		</div>
 		<button
@@ -69,6 +75,7 @@
 		ChatMessage,
 		MentionRef,
 		RoomInfo,
+		ToolCall,
 	} from '../types';
 	import {
 		anchoredScrollTop,
@@ -81,6 +88,7 @@
 	import Icon from './Icon.vue';
 	import MentionReply from './MentionReply.vue';
 	import MessageBubble from './MessageBubble.vue';
+	import ToolCallList from './ToolCallList.vue';
 	import { dayKey, formatDay, isGrouped, isOwnerMessage } from './viewHelpers';
 
 	interface Row {
@@ -92,9 +100,11 @@
 
 	const isOwn = isOwnerMessage;
 
+	const LIVE_CALLS = 5;
+
 	export default defineComponent({
 		name: 'ManagerMessageList',
-		components: { Icon, MentionReply, MessageBubble },
+		components: { Icon, MentionReply, MessageBubble, ToolCallList },
 		props: {
 			messages: { type: Array as PropType<ChatMessage[]>, required: true },
 			bodyHtml: {
@@ -109,6 +119,10 @@
 			},
 			toolsByMessage: {
 				type: Object as PropType<Record<string, string[]>>,
+				default: () => ({}),
+			},
+			callsByMessage: {
+				type: Object as PropType<Record<string, ToolCall[]>>,
 				default: () => ({}),
 			},
 			activity: {
@@ -304,6 +318,9 @@
 			},
 		},
 		computed: {
+			liveCalls(): ToolCall[] {
+				return this.activity?.calls?.slice(-LIVE_CALLS) ?? [];
+			},
 			working(): boolean {
 				return this.activity?.state === 'working';
 			},

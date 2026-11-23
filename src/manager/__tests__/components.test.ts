@@ -1265,6 +1265,41 @@ describe('live tool activity UI', () => {
 		unmount();
 	});
 
+	it('MessageBubble shows call rows with a monospace summary and expands the result on click', () => {
+		const { el, unmount } = mountDom('MessageBubble', {
+			message: msg({ id: 'a1' }),
+			tools: ['Bash: ls', 'Read: x.ts'],
+			calls: [
+				{
+					n: 1,
+					name: 'Bash',
+					summary: 'ls -la <img src=x onerror=alert(1)>',
+					result: 'file1\nfile2',
+				},
+				{ n: 2, name: 'Read', summary: '/a/x.ts' },
+			],
+		});
+		const details = el.querySelector('details.tools') as HTMLDetailsElement;
+		const rows = [...details.querySelectorAll('li.call')];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].querySelector('.call-name')?.textContent).toBe('Bash');
+		expect(rows[0].querySelector('code.call-sum')?.textContent).toBe(
+			'ls -la <img src=x onerror=alert(1)>',
+		);
+		expect(details.querySelector('img')).toBeNull();
+		expect(rows[0].querySelector('pre')).toBeNull();
+		(rows[0].querySelector('button') as HTMLButtonElement).click();
+		return Promise.resolve()
+			.then(() => Promise.resolve())
+			.then(() => {
+				expect(rows[0].querySelector('pre.call-out')?.textContent).toBe(
+					'file1\nfile2',
+				);
+				expect(rows[0].classList.contains('open')).toBe(true);
+				unmount();
+			});
+	});
+
 	it('MessageBubble shows no tools list without tools or for owner messages', () => {
 		const none = mountDom('MessageBubble', { message: msg({ id: 'a2' }) });
 		expect(none.el.querySelector('details.tools')).toBeNull();

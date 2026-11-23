@@ -970,6 +970,7 @@ describe('live tool activity', () => {
 			state: 'working',
 			current: 'Bash: cargo test',
 			used: ['Read: a.ts', 'Bash: cargo test'],
+			calls: [],
 		});
 		expect(store.activityByRoom[MGR_KEY]).toBeUndefined();
 	});
@@ -1004,6 +1005,40 @@ describe('live tool activity', () => {
 		emit(msg(10, S1, 'session'));
 		expect(store.toolsByMessage.m010).toEqual(['Read: a.ts', 'Bash: ls']);
 		expect(store.activityByRoom[S1_KEY]).toBeUndefined();
+	});
+
+	it('keeps capped call details live and snapshots them onto the next agent message', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		const long = 'x'.repeat(500);
+		emitActivity({
+			...act(S1, 'working', 'Bash: ls', ['Bash: ls']),
+			calls: [
+				{
+					n: 1,
+					name: 'Bash',
+					summary: long,
+					result: 'y'.repeat(3000),
+					running: true,
+				},
+			],
+		});
+		const live = store.activityByRoom[S1_KEY].calls;
+		expect(live).toHaveLength(1);
+		expect(live[0].summary).toHaveLength(200);
+		expect(live[0].running).toBe(true);
+		emit(msg(10, S1, 'session'));
+		expect(store.callsByMessage.m010[0].name).toBe('Bash');
+		expect(store.callsByMessage.m010[0].result).toHaveLength(1608);
+	});
+
+	it('treats an event without calls as an empty list', async () => {
+		const { store, emit, emitActivity } = setup();
+		await store.init();
+		emitActivity(act(S1, 'working', 'Bash: ls', ['Bash: ls']));
+		expect(store.activityByRoom[S1_KEY].calls).toEqual([]);
+		emit(msg(10, S1, 'session'));
+		expect(store.callsByMessage).toEqual({});
 	});
 
 	it('still snapshots when idle arrives before the reply', async () => {

@@ -108,18 +108,29 @@ export interface RoomInfo {
 	stuck?: string;
 }
 
+export interface ToolCall {
+	n?: number;
+	name: string;
+	summary?: string;
+	result?: string;
+	running?: boolean;
+	error?: boolean;
+}
+
 export interface ActivityEvent {
 	v: number;
 	room: RoomRef;
 	state: 'working' | 'idle';
 	current: string | null;
 	used: string[];
+	calls?: ToolCall[];
 }
 
 export interface ActivityView {
 	state: 'working' | 'idle';
 	current: string | null;
 	used: string[];
+	calls: ToolCall[];
 }
 
 export interface HistoryParams {

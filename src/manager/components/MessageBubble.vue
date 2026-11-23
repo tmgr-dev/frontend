@@ -59,7 +59,8 @@
 					<summary>
 						{{ $t('manager.activity.toolsUsed', { count: tools.length }) }}
 					</summary>
-					<ul>
+					<ToolCallList v-if="calls?.length" :calls="calls" />
+					<ul v-else>
 						<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
 					</ul>
 				</details>
@@ -98,15 +99,17 @@
 
 <script lang="ts">
 	import { defineComponent, h, type PropType } from 'vue';
-	import type { Attachment, ChatMessage } from '../types';
-	import Avatar from './Avatar.vue';
-	import Icon from './Icon.vue';
 	import {
 		addCopyButtons,
 		copyBlockText,
 		copyText,
 		flashCopied,
 	} from '../format';
+	import { speaker } from '../tts/speaker';
+	import type { Attachment, ChatMessage, ToolCall } from '../types';
+	import Avatar from './Avatar.vue';
+	import Icon from './Icon.vue';
+	import ToolCallList from './ToolCallList.vue';
 	import {
 		authorLabel,
 		formatClock,
@@ -114,7 +117,6 @@
 		isOwnerMessage,
 		truncate,
 	} from './viewHelpers';
-	import { speaker } from '../tts/speaker';
 
 	const Attachments = defineComponent({
 		name: 'ManagerAttachments',
@@ -138,7 +140,7 @@
 
 	export default defineComponent({
 		name: 'ManagerMessageBubble',
-		components: { Attachments, Avatar, Icon },
+		components: { Attachments, Avatar, Icon, ToolCallList },
 		props: {
 			message: { type: Object as PropType<ChatMessage>, required: true },
 			html: { type: String, default: undefined },
@@ -146,6 +148,7 @@
 			grouped: { type: Boolean, default: false },
 			queued: { type: Boolean, default: false },
 			tools: { type: Array as PropType<string[]>, default: undefined },
+			calls: { type: Array as PropType<ToolCall[]>, default: undefined },
 		},
 		emits: ['reply', 'copy', 'cancel-queued'],
 		computed: {

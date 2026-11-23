@@ -29,6 +29,7 @@ import {
 	type SlashCommand,
 	type SpawnAgent,
 	type SpawnRequest,
+	type ToolCall,
 } from './types';
 
 export interface ManagerApi {
@@ -93,7 +94,24 @@ const POST_SEND_POLLS = 3;
 const ACTIVITY_TTL_MS = 60_000;
 const MAX_TOOLS = 50;
 const MAX_LABEL = 80;
+const MAX_SUMMARY = 200;
+const MAX_RESULT = 8 * (MAX_SUMMARY + 1);
 const MAX_TOOL_MESSAGES = 200;
+
+const capCalls = (calls: ToolCall[] | undefined): ToolCall[] =>
+	Array.isArray(calls)
+		? calls.slice(-MAX_TOOLS).map((c) => ({
+				n: typeof c.n === 'number' ? c.n : undefined,
+				name: String(c.name ?? '').slice(0, 60),
+				summary: String(c.summary ?? '').slice(0, MAX_SUMMARY),
+				result:
+					typeof c.result === 'string'
+						? c.result.slice(0, MAX_RESULT)
+						: undefined,
+				running: c.running === true,
+				error: c.error === true,
+			}))
+		: [];
 
 const byTime = (a: ChatMessage, b: ChatMessage) =>
 	a.ts_ms - b.ts_ms || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -127,18 +145,28 @@ export const createManagerStore = (api: ManagerApi) => {
 	let queueTimer: ReturnType<typeof setInterval> | null = null;
 	let postSendPolls = 0;
 	const activityTimers = new Map<string, ReturnType<typeof setTimeout>>();
-	const lastUsed = new Map<string, { used: string[]; at: number }>();
+	const lastUsed = new Map<
+		string,
+		{ used: string[]; calls: ToolCall[]; at: number }
+	>();
 
 	const toolOrder: string[] = [];
 	const toolRoom = new Map<string, string>();
 
 	const dropTools = (id: string) => {
 		delete store.toolsByMessage[id];
+		delete store.callsByMessage[id];
 		toolRoom.delete(id);
 	};
 
-	const rememberTools = (id: string, key: string, used: string[]) => {
+	const rememberTools = (
+		id: string,
+		key: string,
+		used: string[],
+		calls: ToolCall[],
+	) => {
 		store.toolsByMessage[id] = used;
+		if (calls.length) store.callsByMessage[id] = calls;
 		toolRoom.set(id, key);
 		toolOrder.push(id);
 		while (toolOrder.length > MAX_TOOL_MESSAGES) {
@@ -255,6 +283,7 @@ export const createManagerStore = (api: ManagerApi) => {
 		queuedIds: [] as string[],
 		activityByRoom: {} as Record<string, ActivityView>,
 		toolsByMessage: {} as Record<string, string[]>,
+		callsByMessage: {} as Record<string, ToolCall[]>,
 		replyTo: null as ChatMessage | null,
 		draft: { text: '', attachments: [] as Attachment[] },
 		slash: {
@@ -356,7 +385,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			) {
 				const seen = lastUsed.get(key);
 				if (seen && Date.now() - seen.at <= ACTIVITY_TTL_MS) {
-					rememberTools(message.id, key, seen.used);
+					rememberTools(message.id, key, seen.used, seen.calls);
 				}
 				lastUsed.delete(key);
 				dropActivity(key);
@@ -381,14 +410,16 @@ export const createManagerStore = (api: ManagerApi) => {
 			const key = roomKey(event.room);
 			const cap = (text: string) => text.slice(0, MAX_LABEL);
 			const used = event.used.slice(0, MAX_TOOLS).map(cap);
+			const calls = capCalls(event.calls);
 			dropActivity(key);
-			if (used.length) lastUsed.set(key, { used, at: Date.now() });
+			if (used.length) lastUsed.set(key, { used, calls, at: Date.now() });
 			else if (event.state === 'idle') lastUsed.delete(key);
 			if (event.state === 'working') {
 				store.activityByRoom[key] = {
 					state: event.state,
 					current: event.current === null ? null : cap(event.current),
 					used,
+					calls,
 				};
 			}
 			if (event.state === 'working' || used.length) {
