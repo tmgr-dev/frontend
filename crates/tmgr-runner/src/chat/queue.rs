@@ -1,6 +1,7 @@
 use super::mention::QueueEnd;
-use super::{lock, Chat, Delivery};
+use super::{lock, Chat, Delivery, NOT_DELIVERED};
 use std::collections::{HashMap, VecDeque};
+use tmgr_chat_relay::engine::ReceiptState;
 use tmgr_ipc::chat::RoomRef;
 
 pub const QUEUE_CAP: usize = 20;
@@ -28,6 +29,30 @@ pub(super) struct Entry {
 #[derive(Default)]
 pub(super) struct Queue {
     rooms: HashMap<RoomRef, VecDeque<Entry>>,
+}
+
+struct Note {
+    room: RoomRef,
+    text: String,
+    id: String,
+    client: String,
+    device: Option<String>,
+}
+
+impl Note {
+    fn of(room: &RoomRef, e: &Entry, text: String) -> Self {
+        Self {
+            room: room.clone(),
+            text,
+            id: e.id.clone(),
+            client: e.client.clone(),
+            device: e.device.clone(),
+        }
+    }
+}
+
+fn full_reason() -> String {
+    format!("the queue for this session is full ({QUEUE_CAP} messages).")
 }
 
 pub struct Item<'a> {
@@ -95,19 +120,40 @@ impl Chat {
                 Delivery::Delivered => {
                     self.remember_delivered(room, body);
                     on_delivered(&item, body);
+                    self.receipt(client, device, id, ReceiptState::Delivered, None);
                     return Submit::Delivered;
                 }
                 Delivery::Typed(typed) => {
                     self.remember_delivered(room, &typed);
                     on_delivered(&item, &typed);
+                    self.receipt(client, device, id, ReceiptState::Delivered, None);
                     return Submit::Delivered;
                 }
-                Delivery::Gone(r) => return Submit::Gone(r),
-                Delivery::Refused(why) => return Submit::Refused(why),
+                Delivery::Gone(r) => {
+                    self.receipt(
+                        client,
+                        device,
+                        id,
+                        ReceiptState::Failed,
+                        Some(&format!("{r}.")),
+                    );
+                    return Submit::Gone(r);
+                }
+                Delivery::Refused(why) => {
+                    self.receipt(client, device, id, ReceiptState::Failed, Some(why));
+                    return Submit::Refused(why);
+                }
                 Delivery::Busy => {}
             }
         }
         if backlog >= QUEUE_CAP {
+            self.receipt(
+                client,
+                device,
+                id,
+                ReceiptState::Failed,
+                Some(&full_reason()),
+            );
             return Submit::Full;
         }
         q.rooms.entry(room.clone()).or_default().push_back(Entry {
@@ -119,7 +165,12 @@ impl Chat {
             enq_ms: now_ms,
             ttl_ms,
         });
+        self.receipt(client, device, id, ReceiptState::Queued, None);
         Submit::Queued
+    }
+
+    fn receipt_for(&self, it: &Item, state: ReceiptState) {
+        self.receipt(it.client, it.device, it.id, state, None);
     }
 
     pub fn drain_queue(
@@ -140,7 +191,7 @@ impl Chat {
         mut deliver: impl FnMut(&Item) -> Delivery,
         mut on_delivered: impl FnMut(&Item, &str),
     ) {
-        let mut notes: Vec<(RoomRef, String)> = Vec::new();
+        let mut notes: Vec<Note> = Vec::new();
         let mut ends: Vec<(String, QueueEnd)> = Vec::new();
         let owners = self.current_owners();
         {
@@ -149,8 +200,9 @@ impl Chat {
                 while let Some(front) = entries.front() {
                     if now_ms.saturating_sub(front.enq_ms) >= front.ttl_ms {
                         let mins = front.ttl_ms / 60_000;
-                        notes.push((
-                            room.clone(),
+                        notes.push(Note::of(
+                            room,
+                            front,
                             format!("Not delivered: expired after {mins} minutes in the queue."),
                         ));
                         ends.push((front.id.clone(), QueueEnd::Expired));
@@ -171,21 +223,23 @@ impl Chat {
                         Delivery::Delivered => {
                             self.remember_delivered(room, item.body);
                             on_delivered(&item, item.body);
+                            self.receipt_for(&item, ReceiptState::Delivered);
                             entries.pop_front();
                         }
                         Delivery::Typed(typed) => {
                             self.remember_delivered(room, &typed);
                             on_delivered(&item, &typed);
+                            self.receipt_for(&item, ReceiptState::Delivered);
                             entries.pop_front();
                         }
                         Delivery::Refused(why) => {
-                            notes.push((room.clone(), why.to_string()));
+                            notes.push(Note::of(room, front, why.to_string()));
                             ends.push((front.id.clone(), QueueEnd::Refused(why.to_string())));
                             entries.pop_front();
                         }
                         Delivery::Busy => break,
                         Delivery::Gone(r) => {
-                            notes.push((room.clone(), format!("Not delivered: {r}.")));
+                            notes.push(Note::of(room, front, format!("Not delivered: {r}.")));
                             ends.push((front.id.clone(), QueueEnd::Gone(r)));
                             entries.pop_front();
                         }
@@ -194,8 +248,15 @@ impl Chat {
             }
             q.rooms.retain(|_, e| !e.is_empty());
         }
-        for (room, text) in notes {
-            self.note(&room, &text);
+        for n in notes {
+            self.note_for(&n.room, &n.text, &n.id);
+            self.receipt(
+                &n.client,
+                n.device.as_deref(),
+                &n.id,
+                ReceiptState::Failed,
+                Some(&n.text),
+            );
         }
         for (id, end) in ends {
             self.mention_queue_end(&id, end);
@@ -232,29 +293,31 @@ impl Chat {
             let Some(pos) = entries.iter().position(|e| e.id == id) else {
                 return false;
             };
-            entries.remove(pos);
+            let entry = entries.remove(pos);
             if entries.is_empty() {
                 q.rooms.remove(room);
             }
-            true
+            entry
         };
-        if removed {
-            self.note(room, "Not delivered: cancelled.");
-            self.mention_queue_end(id, QueueEnd::Cancelled);
+        self.note_for(room, "Not delivered: cancelled.", id);
+        if let Some(e) = &removed {
+            self.receipt(
+                &e.client,
+                e.device.as_deref(),
+                id,
+                ReceiptState::Failed,
+                Some("cancelled."),
+            );
         }
-        removed
+        self.mention_queue_end(id, QueueEnd::Cancelled);
+        true
     }
 
-    pub fn note_undelivered(&self, room: &RoomRef, outcome: &Submit) {
+    pub fn note_undelivered(&self, room: &RoomRef, id: &str, outcome: &Submit) {
         match outcome {
-            Submit::Gone(r) => self.note(room, &format!("Not delivered: {r}.")),
-            Submit::Refused(why) => self.note(room, why),
-            Submit::Full => self.note(
-                room,
-                &format!(
-                    "Not delivered: the queue for this session is full ({QUEUE_CAP} messages)."
-                ),
-            ),
+            Submit::Gone(r) => self.note_for(room, &format!("Not delivered: {r}."), id),
+            Submit::Refused(why) => self.note_for(room, why, id),
+            Submit::Full => self.note_for(room, &format!("{NOT_DELIVERED}{}", full_reason()), id),
             Submit::Delivered | Submit::Queued => {}
         }
     }
@@ -271,6 +334,7 @@ mod tests {
     use super::*;
     use crate::chat::FRESH_PAST_MS;
     use std::cell::RefCell;
+    use tmgr_chat_relay::engine::ReceiptState;
 
     const T0: u64 = 1_800_000_000_000;
 
@@ -286,6 +350,19 @@ mod tests {
             .into_iter()
             .filter(|m| m.author.kind == tmgr_ipc::chat::AuthorKind::System)
             .map(|m| m.body_md)
+            .collect()
+    }
+
+    fn mid(n: u64) -> String {
+        tmgr_ipc::chat::message_id_at(n, [7; 10])
+    }
+
+    fn note_replies(c: &Chat, room: &RoomRef) -> Vec<Option<String>> {
+        c.history(room, None, None)
+            .unwrap()
+            .into_iter()
+            .filter(|m| m.author.kind == tmgr_ipc::chat::AuthorKind::System)
+            .map(|m| m.reply_to)
             .collect()
     }
 
@@ -504,7 +581,7 @@ mod tests {
         }
         let r = c.submit(&room, "m_over", "x", "relay", None, false, T0, busy);
         assert_eq!(r, Submit::Full);
-        c.note_undelivered(&room, &r);
+        c.note_undelivered(&room, "m1", &r);
         assert_eq!(
             systems(&c, &room),
             ["Not delivered: the queue for this session is full (20 messages)."]
@@ -544,7 +621,7 @@ mod tests {
             Delivery::Gone("the session has exited".into())
         });
         assert_eq!(r, Submit::Gone("the session has exited".into()));
-        c.note_undelivered(&room, &r);
+        c.note_undelivered(&room, "m1", &r);
         c.submit(&room, "m2", "y", "relay", None, false, T0, busy);
         c.drain_queue(T0 + 1, |_, _, _, _, _| {
             Delivery::Gone("the session no longer exists".into())
@@ -710,5 +787,321 @@ mod tests {
             |_, _| {},
         );
         assert_eq!(mention_states(&c), [MentionState::Offline]);
+    }
+
+    #[test]
+    fn submit_outcome_notes_point_at_the_message() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        let gone = c.submit(
+            &room,
+            &mid(1),
+            "x",
+            "relay",
+            None,
+            false,
+            T0,
+            |_, _, _, _| Delivery::Gone("the session has exited".into()),
+        );
+        c.note_undelivered(&room, &mid(1), &gone);
+        let refused = c.submit(
+            &room,
+            &mid(2),
+            "x",
+            "relay",
+            None,
+            false,
+            T0,
+            |_, _, _, _| Delivery::Refused("Not delivered: nope."),
+        );
+        c.note_undelivered(&room, &mid(2), &refused);
+        for i in 0..QUEUE_CAP {
+            c.submit(
+                &room,
+                &mid(100 + i as u64),
+                "x",
+                "relay",
+                None,
+                false,
+                T0,
+                busy,
+            );
+        }
+        let full = c.submit(&room, &mid(3), "x", "relay", None, false, T0, busy);
+        assert_eq!(full, Submit::Full);
+        c.note_undelivered(&room, &mid(3), &full);
+        assert_eq!(
+            note_replies(&c, &room),
+            [Some(mid(1)), Some(mid(2)), Some(mid(3))]
+        );
+    }
+
+    #[test]
+    fn drain_and_cancel_notes_point_at_the_message() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.submit(&room, &mid(1), "old", "relay", None, false, T0, busy);
+        c.submit(
+            &room,
+            &mid(2),
+            "b",
+            "relay",
+            None,
+            false,
+            T0 + DEFAULT_TTL_MS,
+            busy,
+        );
+        c.submit(
+            &room,
+            &mid(3),
+            "c",
+            "relay",
+            None,
+            false,
+            T0 + DEFAULT_TTL_MS,
+            busy,
+        );
+        c.submit(
+            &room,
+            &mid(4),
+            "d",
+            "relay",
+            None,
+            false,
+            T0 + DEFAULT_TTL_MS,
+            busy,
+        );
+        let mut n = 0;
+        c.drain_queue(T0 + DEFAULT_TTL_MS, |_, _, _, _, _| {
+            n += 1;
+            if n == 1 {
+                Delivery::Refused("Not delivered: nope.")
+            } else {
+                Delivery::Gone("the session no longer exists".into())
+            }
+        });
+        c.submit(
+            &room,
+            &mid(5),
+            "e",
+            "relay",
+            None,
+            false,
+            T0 + DEFAULT_TTL_MS,
+            busy,
+        );
+        assert!(c.cancel(&room, &mid(5)));
+        assert_eq!(
+            note_replies(&c, &room),
+            [
+                Some(mid(1)),
+                Some(mid(2)),
+                Some(mid(3)),
+                Some(mid(4)),
+                Some(mid(5))
+            ]
+        );
+    }
+    fn rec(c: &Chat) -> std::sync::Arc<std::sync::Mutex<Vec<crate::chat::Receipt>>> {
+        c.capture_receipts()
+    }
+
+    fn got(
+        r: &std::sync::Arc<std::sync::Mutex<Vec<crate::chat::Receipt>>>,
+    ) -> Vec<(String, ReceiptState, Option<String>)> {
+        r.lock()
+            .unwrap()
+            .iter()
+            .map(|r| (r.id.clone(), r.state, r.reason.clone()))
+            .collect()
+    }
+
+    fn submit_as(
+        c: &Chat,
+        room: &RoomRef,
+        id: &str,
+        client: &str,
+        device: Option<&str>,
+        d: Delivery,
+    ) -> Submit {
+        c.submit(room, id, "x", client, device, false, T0, |_, _, _, _| {
+            d.clone()
+        })
+    }
+
+    #[test]
+    fn submit_outcomes_map_to_receipts_for_relay_messages_with_a_device() {
+        let (_t, c) = chat();
+        let r = rec(&c);
+        let room = c.session_room("s_abcdefghij");
+        let dev = Some("d_phone1");
+        submit_as(&c, &room, &mid(1), "relay", dev, Delivery::Delivered);
+        submit_as(
+            &c,
+            &room,
+            &mid(2),
+            "relay",
+            dev,
+            Delivery::Typed("y".into()),
+        );
+        submit_as(
+            &c,
+            &room,
+            &mid(3),
+            "relay",
+            dev,
+            Delivery::Gone("the session has exited".into()),
+        );
+        submit_as(
+            &c,
+            &room,
+            &mid(4),
+            "relay",
+            dev,
+            Delivery::Refused("Not delivered: nope."),
+        );
+        submit_as(&c, &room, &mid(5), "relay", dev, Delivery::Busy);
+        assert_eq!(
+            got(&r),
+            [
+                (mid(1), ReceiptState::Delivered, None),
+                (mid(2), ReceiptState::Delivered, None),
+                (
+                    mid(3),
+                    ReceiptState::Failed,
+                    Some("the session has exited.".into())
+                ),
+                (mid(4), ReceiptState::Failed, Some("nope.".into())),
+                (mid(5), ReceiptState::Queued, None),
+            ]
+        );
+        assert!(r.lock().unwrap().iter().all(|r| r.device == "d_phone1"));
+    }
+
+    #[test]
+    fn a_full_queue_sends_a_failed_receipt_with_the_note_text() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        for i in 0..QUEUE_CAP {
+            submit_as(&c, &room, &mid(100 + i as u64), "cli", None, Delivery::Busy);
+        }
+        let r = rec(&c);
+        submit_as(
+            &c,
+            &room,
+            &mid(1),
+            "relay",
+            Some("d_phone1"),
+            Delivery::Busy,
+        );
+        assert_eq!(
+            got(&r),
+            [(
+                mid(1),
+                ReceiptState::Failed,
+                Some("the queue for this session is full (20 messages).".into())
+            )]
+        );
+    }
+
+    #[test]
+    fn messages_from_other_clients_or_without_a_device_get_no_receipt() {
+        let (_t, c) = chat();
+        let r = rec(&c);
+        let room = c.session_room("s_abcdefghij");
+        submit_as(
+            &c,
+            &room,
+            &mid(1),
+            "cli",
+            Some("d_phone1"),
+            Delivery::Delivered,
+        );
+        submit_as(&c, &room, &mid(2), "relay", None, Delivery::Delivered);
+        submit_as(&c, &room, &mid(3), "desktop", None, Delivery::Busy);
+        c.drain_queue(T0 + 1, |_, _, _, _, _| Delivery::Delivered);
+        assert!(got(&r).is_empty());
+    }
+
+    #[test]
+    fn a_queued_message_later_delivered_sends_delivered_once() {
+        let (_t, c) = chat();
+        let r = rec(&c);
+        let room = c.session_room("s_abcdefghij");
+        submit_as(
+            &c,
+            &room,
+            &mid(1),
+            "relay",
+            Some("d_phone1"),
+            Delivery::Busy,
+        );
+        c.drain_queue(T0 + 1, |_, _, _, _, _| Delivery::Busy);
+        c.drain_queue(T0 + 2, |_, _, _, _, _| Delivery::Typed("x".into()));
+        c.drain_queue(T0 + 3, |_, _, _, _, _| Delivery::Delivered);
+        assert_eq!(
+            got(&r),
+            [
+                (mid(1), ReceiptState::Queued, None),
+                (mid(1), ReceiptState::Delivered, None)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_queued_message_that_ends_refused_gone_expired_or_cancelled_sends_failed() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        let dev = Some("d_phone1");
+        for n in 1..=4 {
+            submit_as(&c, &room, &mid(n), "relay", dev, Delivery::Busy);
+        }
+        let r = rec(&c);
+        let mut n = 0;
+        c.drain_queue(T0 + 1, |_, _, _, _, _| {
+            n += 1;
+            match n {
+                1 => Delivery::Refused("Not delivered: nope."),
+                2 => Delivery::Gone("the session no longer exists".into()),
+                _ => Delivery::Busy,
+            }
+        });
+        assert!(c.cancel(&room, &mid(3)));
+        c.drain_queue(T0 + DEFAULT_TTL_MS, |_, _, _, _, _| Delivery::Busy);
+        assert_eq!(
+            got(&r),
+            [
+                (mid(1), ReceiptState::Failed, Some("nope.".into())),
+                (
+                    mid(2),
+                    ReceiptState::Failed,
+                    Some("the session no longer exists.".into())
+                ),
+                (mid(3), ReceiptState::Failed, Some("cancelled.".into())),
+                (
+                    mid(4),
+                    ReceiptState::Failed,
+                    Some("expired after 30 minutes in the queue.".into())
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_same_id_and_state_is_never_sent_twice() {
+        let (_t, c) = chat();
+        let r = rec(&c);
+        let room = c.session_room("s_abcdefghij");
+        for _ in 0..3 {
+            submit_as(
+                &c,
+                &room,
+                &mid(1),
+                "relay",
+                Some("d_phone1"),
+                Delivery::Delivered,
+            );
+        }
+        assert_eq!(got(&r).len(), 1);
     }
 }

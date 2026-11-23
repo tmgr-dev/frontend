@@ -57,6 +57,21 @@ pub struct Opened {
     pub trusted: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rejected {
+    pub error: Error,
+    pub verified: Option<(String, u64)>,
+}
+
+impl From<Error> for Rejected {
+    fn from(error: Error) -> Self {
+        Self {
+            error,
+            verified: None,
+        }
+    }
+}
+
 pub fn chat_ctx(
     user_id: u64,
     from_id: &str,
@@ -235,17 +250,46 @@ pub fn open_message<'a, F>(
 where
     F: FnOnce(&str) -> Option<Peer<'a>>,
 {
+    open_message_checked(
+        me,
+        user_id,
+        own_device_id,
+        server_from,
+        server_msg_id,
+        body_json,
+        now_ms,
+        trusted,
+        join_sender,
+    )
+    .map_err(|r| r.error)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn open_message_checked<'a, F>(
+    me: &DeviceKeys,
+    user_id: u64,
+    own_device_id: &str,
+    server_from: &str,
+    server_msg_id: &str,
+    body_json: &str,
+    now_ms: u64,
+    trusted: &[Trusted],
+    join_sender: F,
+) -> std::result::Result<Opened, Rejected>
+where
+    F: FnOnce(&str) -> Option<Peer<'a>>,
+{
     let body: Body = parse_strict(body_json)?;
     if body.v != 1 {
-        return Err(Error::BadFormat);
+        return Err(Error::BadFormat.into());
     }
     let ctx = chat_ctx(user_id, &body.from, own_device_id, &body.kind, &body.id)?;
     if body.id != server_msg_id || body.from != server_from {
-        return Err(Error::IdMismatch);
+        return Err(Error::IdMismatch.into());
     }
     let known = trusted.iter().find(|t| t.device_id == body.from);
     if known.is_none() && body.kind != "join" {
-        return Err(Error::BadKey);
+        return Err(Error::BadKey.into());
     }
     let sealed = Sealed {
         v: body.v,
@@ -259,14 +303,14 @@ where
     let plain: Plain = parse_strict(std::str::from_utf8(&plain).map_err(|_| Error::BadJson)?)?;
     let inner: Inner = parse_strict(&plain.body)?;
     if inner.v != 1 || inner.kind != body.kind || inner.id != body.id || inner.seq == 0 {
-        return Err(Error::IdMismatch);
+        return Err(Error::IdMismatch.into());
     }
     let (sender_sign, sender_kex, is_trusted) = match known {
         Some(t) => (t.sign_pub.clone(), t.kex_pub.clone(), true),
         None => {
             let p = join_sender(&body.from).ok_or(Error::BadKey)?;
             if p.device_id != body.from {
-                return Err(Error::BadKey);
+                return Err(Error::BadKey.into());
             }
             (p.sign_pub_b64.to_string(), p.kex_pub_b64.to_string(), false)
         }
@@ -285,7 +329,10 @@ where
     )?;
     verify_der(&b64_decode(&sender_sign)?, &signed, &plain.sig)?;
     if inner.sent_at < now_ms.saturating_sub(MAX_AGE_MS) || inner.sent_at > now_ms + MAX_SKEW_MS {
-        return Err(Error::BadWindow);
+        return Err(Rejected {
+            error: Error::BadWindow,
+            verified: is_trusted.then(|| (body.from.clone(), inner.seq)),
+        });
     }
     Ok(Opened {
         from: body.from,
@@ -801,6 +848,65 @@ mod tests {
         assert_eq!(r.err(), Some(Error::BadWindow));
         let r = open_as(&w, &w.bob, B, 42, A, "m_1", &body, NOW - 6 * 60 * 1000);
         assert_eq!(r.err(), Some(Error::BadWindow));
+    }
+
+    fn checked(
+        w: &World,
+        body: &str,
+        now: u64,
+        t: &[Trusted],
+    ) -> std::result::Result<Opened, Rejected> {
+        open_message_checked(&w.bob, 42, B, A, "m_1", body, now, t, |_| None)
+    }
+
+    #[test]
+    fn window_rejection_of_a_trusted_verified_sender_reports_from_and_seq() {
+        let w = world();
+        let body = seal_to_bob(&w);
+        let t = [trusted_alice(&w)];
+        let r = checked(&w, &body, NOW - 6 * 60 * 1000, &t).unwrap_err();
+        assert_eq!(r.error, Error::BadWindow);
+        assert_eq!(r.verified, Some((A.to_owned(), 1)));
+    }
+
+    #[test]
+    fn no_other_rejection_reports_a_verified_seq() {
+        let w = world();
+        let body = seal_to_bob(&w);
+        let t = [trusted_alice(&w)];
+        let wrong_key = [Trusted::new(A, &w.carol.sign_pub_b64(), &w.carol.kex_pub_b64()).unwrap()];
+        let r = checked(&w, &body, NOW, &wrong_key).unwrap_err();
+        assert_eq!((r.error, r.verified), (Error::BadSignature, None));
+        let r = checked(&w, &body, NOW, &[]).unwrap_err();
+        assert_eq!((r.error, r.verified), (Error::BadKey, None));
+        let r = checked(&w, "garbage", NOW, &t).unwrap_err();
+        assert_eq!(r.verified, None);
+        let r =
+            open_message_checked(&w.carol, 42, B, A, "m_1", &body, NOW, &t, |_| None).unwrap_err();
+        assert_eq!(r.verified, None);
+        let r =
+            open_message_checked(&w.bob, 42, B, A, "m_2", &body, NOW, &t, |_| None).unwrap_err();
+        assert_eq!((r.error, r.verified), (Error::IdMismatch, None));
+    }
+
+    #[test]
+    fn window_rejection_of_an_untrusted_join_sender_reports_nothing_verified() {
+        let w = world();
+        let join = seal_kind(&w, "join", "j_1");
+        let dir_alice = pubs(&w.alice);
+        let r = open_message_checked(
+            &w.bob,
+            42,
+            B,
+            A,
+            "j_1",
+            &join,
+            NOW - 6 * 60 * 1000,
+            &[],
+            |_| Some(peer(A, &dir_alice)),
+        )
+        .unwrap_err();
+        assert_eq!((r.error, r.verified), (Error::BadWindow, None));
     }
 
     #[test]

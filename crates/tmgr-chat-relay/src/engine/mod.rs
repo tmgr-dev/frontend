@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tmgr_ipc::chat::{AuthorKind, ChatMessage, RoomRef};
+use tmgr_ipc::chat::{valid_message_id, AuthorKind, ChatMessage, RoomRef};
 use tmgr_ipc::mgr_rpc::{limits, KIND_REQ, KIND_RES};
 use tmgr_phone::{b64, b64_decode, h};
 
@@ -20,7 +20,8 @@ use crate::trust::{
     v2_self_markers, verify_join_mac, verify_revoke, verify_spawnkey, DirEntry, IntroStatement,
     JoinCode, JoinMacInput, KindCtx, RevokeStatement, SpawnKey, Trusted,
 };
-use crate::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
+use crate::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
+use tmgr_phone::Error;
 
 pub use ports::{
     ActivitySubSink, ChatSink, KeyStore, MemKeyStore, RpcSink, Slot, SpawnKeySink, SpawnOkSink,
@@ -42,7 +43,7 @@ const ACTIVITY_MAX_BYTES: usize = 48 * 1024;
 const ACTIVITY_ON_MAX_AGE_MS: u64 = 5 * 60 * 1000;
 const MAX_GAPS: usize = 100;
 const MAX_HELD: usize = 200;
-const HOLD_MS: u64 = 60_000;
+const HOLD_MS: u64 = 15_000;
 const WRITE_EVERY_MS: u64 = 30_000;
 const MAX_INTROS: usize = 200;
 const MAX_REVOKES_PER_DEVICE: usize = 50;
@@ -198,12 +199,54 @@ impl State {
     }
 }
 
+const RECEIPT_REASON_MAX: usize = 200;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiptState {
+    Delivered,
+    Queued,
+    Failed,
+}
+
+impl ReceiptState {
+    fn wire(self) -> &'static str {
+        match self {
+            Self::Delivered => "delivered",
+            Self::Queued => "queued",
+            Self::Failed => "failed",
+        }
+    }
+
+    fn letter(self) -> char {
+        match self {
+            Self::Delivered => 'd',
+            Self::Queued => 'q',
+            Self::Failed => 'f',
+        }
+    }
+}
+
 #[derive(Default)]
 struct Hold {
     stuck: Option<u64>,
     blocked: BTreeSet<String>,
     held: usize,
     sink_err: Option<String>,
+    drops: Vec<(u64, &'static str)>,
+}
+
+enum Inbound {
+    Opened(Opened),
+    Consumed { from: String, seq: u64 },
+}
+
+impl Inbound {
+    fn key(&self) -> (&str, u64) {
+        match self {
+            Inbound::Opened(o) => (&o.from, o.seq),
+            Inbound::Consumed { from, seq } => (from, *seq),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -220,6 +263,7 @@ struct Core {
     acked: u64,
     hold_since: BTreeMap<String, u64>,
     pass_cap: Option<usize>,
+    drop_reason: Option<&'static str>,
 }
 
 fn trust_key(st: &State) -> String {
@@ -1117,22 +1161,26 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         res
     }
 
-    fn open_one(&self, c: &Core, m: &Msg, now: u64) -> Option<Opened> {
+    fn open_one(&self, c: &Core, m: &Msg, now: u64) -> Result<Inbound, Option<&'static str>> {
         if c.st
             .seen
             .iter()
             .any(|s| s.from == m.from && s.id == m.msg_id)
         {
-            return None;
+            return Err(None);
         }
         let kind_hint = serde_json::from_str::<Value>(&m.body)
             .ok()
             .and_then(|v| v.get("kind")?.as_str().map(str::to_owned));
         let join_open = kind_hint.as_deref() == Some("join");
-        let dir = c.dir.as_ref()?;
-        let (id, keys) = Self::own(c).ok()?;
+        let Some(dir) = c.dir.as_ref() else {
+            return Err(None);
+        };
+        let Ok((id, keys)) = Self::own(c) else {
+            return Err(None);
+        };
         let trusted: Vec<Trusted> = c.st.trusted.iter().map(to_trusted).collect();
-        open_message(
+        let opened = open_message_checked(
             keys,
             self.cfg.user_id,
             &id.device_id,
@@ -1151,8 +1199,24 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                         kex_pub_b64: &d.kex_pub,
                     })
             },
-        )
-        .ok()
+        );
+        match opened {
+            Ok(o) => Ok(Inbound::Opened(o)),
+            Err(r) => match r.verified {
+                Some((from, seq)) => Ok(Inbound::Consumed { from, seq }),
+                None => Err(Some(match r.error {
+                    Error::BadKey
+                        if !join_open && !trusted.iter().any(|t| t.device_id == m.from) =>
+                    {
+                        "unknown sender"
+                    }
+                    Error::BadKey | Error::IdMismatch | Error::BadSignature => {
+                        "bad signature or key"
+                    }
+                    _ => "undecryptable or malformed",
+                })),
+            },
+        }
     }
 
     fn apply_rpc(&self, c: &mut Core, o: &Opened, now: u64) {
@@ -1281,12 +1345,19 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     if unknown_author && opened.payload["id"].as_str() == Some(opened.id.as_str()) {
                         record_alert(c, "unknown_author_kind", &opened.from, now);
                     }
+                    c.drop_reason = Some("malformed chat payload");
                     return None;
                 };
-                if msg.validate().is_err() || msg.id != opened.id || !self.owns(&msg.room) {
+                if msg.validate().is_err() || msg.id != opened.id {
+                    c.drop_reason = Some("malformed chat payload");
+                    return None;
+                }
+                if !self.owns(&msg.room) {
+                    c.drop_reason = Some("room not owned by this machine");
                     return None;
                 }
                 if !Self::authorized_author(c, &opened.from, &msg, now) {
+                    c.drop_reason = Some("unauthorized author");
                     return None;
                 }
                 if !c
@@ -1442,6 +1513,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 let on = obj.get("on")?.as_bool()?;
                 sink.deliver_activity_on(&dev.id, on);
             }
+            "chat" => {
+                c.drop_reason = Some("sender is not a trusted member");
+                return None;
+            }
             _ => return None,
         }
         Some(stored)
@@ -1457,17 +1532,29 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         out: &mut Vec<ChatMessage>,
     ) -> Result<(), String> {
         stamp_pins(c, now);
-        let mut opened: Vec<(u64, Opened)> = msgs
-            .iter()
-            .filter_map(|m| Some((m.cursor as u64, self.open_one(c, m, now)?)))
-            .collect();
-        opened.sort_by(|a, b| (&a.1.from, a.1.seq, a.0).cmp(&(&b.1.from, b.1.seq, b.0)));
-        for (cursor, o) in opened {
-            let from = o.from.clone();
+        let mut opened: Vec<(u64, Inbound)> = Vec::new();
+        for m in msgs {
+            let cursor = m.cursor as u64;
+            match self.open_one(c, m, now) {
+                Ok(i) => {
+                    if matches!(i, Inbound::Consumed { .. }) {
+                        hold.drops.push((cursor, "outside the time window"));
+                    }
+                    opened.push((cursor, i));
+                }
+                Err(Some(reason)) => hold.drops.push((cursor, reason)),
+                Err(None) => {}
+            }
+        }
+        opened.sort_by(|a, b| (a.1.key(), a.0).cmp(&(b.1.key(), b.0)));
+        for (cursor, item) in opened {
+            let (from, seq, trusted) = match &item {
+                Inbound::Opened(o) => (o.from.clone(), o.seq, o.trusted),
+                Inbound::Consumed { from, seq } => (from.clone(), *seq, true),
+            };
             let mut defer = hold.blocked.contains(&from);
-            if !defer && o.trusted {
-                if let Some(expected) = c.st.seq_in.get(&from).map(|l| l + 1).filter(|e| o.seq > *e)
-                {
+            if !defer && trusted {
+                if let Some(expected) = c.st.seq_in.get(&from).map(|l| l + 1).filter(|e| seq > *e) {
                     let since = *c.hold_since.entry(from.clone()).or_insert(now);
                     if now.saturating_sub(since) < HOLD_MS && hold.held < MAX_HELD {
                         defer = true;
@@ -1475,7 +1562,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                         c.st.seq_gaps.push(SeqGap {
                             from_device: from.clone(),
                             expected,
-                            got: o.seq,
+                            got: seq,
                         });
                         if c.st.seq_gaps.len() > MAX_GAPS {
                             c.st.seq_gaps.remove(0);
@@ -1489,13 +1576,21 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 hold.stuck = Some(hold.stuck.map_or(cursor, |s| s.min(cursor)));
                 continue;
             }
+            let prev_seq = c.st.seq_in.get(&from).copied();
+            let entry = c.st.seq_in.entry(from.clone()).or_insert(0);
+            *entry = (*entry).max(seq);
+            let Inbound::Opened(o) = item else {
+                continue;
+            };
             if o.trusted {
                 c.st.last_seen.insert(from.clone(), now);
             }
-            let prev_seq = c.st.seq_in.get(&from).copied();
-            let entry = c.st.seq_in.entry(from.clone()).or_insert(0);
-            *entry = (*entry).max(o.seq);
-            match self.apply(c, o, now) {
+            c.drop_reason = None;
+            let applied = self.apply(c, o, now);
+            if let Some(reason) = c.drop_reason.take() {
+                hold.drops.push((cursor, reason));
+            }
+            match applied {
                 Ok(delivered) => out.extend(delivered),
                 Err(e) => {
                     match prev_seq {
@@ -1694,6 +1789,36 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             return Err("there are no other trusted devices to send to".into());
         }
         self.seal_and_post(c, "activity", msg_id, payload, &targets, false)?;
+        self.save_now(c)
+    }
+
+    pub fn send_receipt(
+        &self,
+        to_device: &str,
+        id: &str,
+        state: ReceiptState,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
+        if !valid_message_id(id) {
+            return Err("invalid message id".into());
+        }
+        let mut payload = json!({ "id": id, "state": state.wire() });
+        if let (ReceiptState::Failed, Some(r)) = (state, reason.filter(|r| !r.is_empty())) {
+            payload["reason"] = json!(r.chars().take(RECEIPT_REASON_MAX).collect::<String>());
+        }
+        let msg_id = format!("rc_{}_{}", &h(id)[..24], state.letter());
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (own, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == own.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        let target = Self::owner_targets(c, &own.device_id, Some(&[to_device.to_owned()]))
+            .into_iter()
+            .find(|d| matches!(c.st.kind_of(&d.id, &d.fp), Some("desktop" | "mobile")))
+            .ok_or_else(|| "the target is not a trusted owner device".to_owned())?;
+        self.seal_and_post(c, "receipt", &msg_id, &payload, &[target], false)?;
         self.save_now(c)
     }
 
@@ -2040,6 +2165,14 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             c.st.cursor =
                 c.st.cursor
                     .max(hold.stuck.map_or(last, |s| s.saturating_sub(1)));
+            let passed = c.st.cursor;
+            hold.drops.retain(|&(cursor, reason)| {
+                let past = cursor <= passed;
+                if past {
+                    self.s.dropped(reason);
+                }
+                !past
+            });
             self.ack_if_stored(c)?;
             if !inbox.more {
                 break;

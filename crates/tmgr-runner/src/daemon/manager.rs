@@ -344,7 +344,7 @@ impl core::Host for ManagerHost<'_> {
             now_ms(),
             |body, _, _, _| self.rt.remote_deliver(room, body),
         );
-        self.rt.chat.note_undelivered(room, &outcome);
+        self.rt.chat.note_undelivered(room, id, &outcome);
         match outcome {
             chat::Submit::Delivered | chat::Submit::Queued => Ok(()),
             chat::Submit::Gone(r) => Err(r),

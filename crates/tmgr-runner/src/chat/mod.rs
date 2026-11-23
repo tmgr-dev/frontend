@@ -18,6 +18,7 @@ use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use store::Store;
+use tmgr_chat_relay::engine::ReceiptState;
 use tmgr_ipc::api::{SessionInfo, StateKind};
 use tmgr_ipc::chat::{
     message_id_at, valid_message_id, Attachment, Author, AuthorKind, ChatActivity, ChatMessage,
@@ -160,9 +161,24 @@ pub struct Chat {
     followers: Mutex<crate::mention_remote::Followers>,
     persist_lock: Mutex<()>,
     relay_owners: Mutex<Option<OwnersFn>>,
+    receipt_sink: Mutex<Option<ReceiptFn>>,
+    receipts_sent: Mutex<VecDeque<(String, ReceiptState)>>,
 }
 
 pub type OwnersFn = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Receipt {
+    pub device: String,
+    pub id: String,
+    pub state: ReceiptState,
+    pub reason: Option<String>,
+}
+
+pub type ReceiptFn = Arc<dyn Fn(Receipt) + Send + Sync>;
+
+const RECEIPTS_REMEMBERED: usize = 512;
+const NOT_DELIVERED: &str = "Not delivered: ";
 
 impl Chat {
     pub fn open(runner_dir: &Path) -> Chat {
@@ -192,6 +208,8 @@ impl Chat {
             followers: Mutex::default(),
             persist_lock: Mutex::new(()),
             relay_owners: Mutex::new(None),
+            receipt_sink: Mutex::new(None),
+            receipts_sent: Mutex::new(VecDeque::new()),
         };
         chat.expire_open_mentions();
         chat
@@ -215,6 +233,50 @@ impl Chat {
 
     pub fn set_relay_owners(&self, owners: Option<OwnersFn>) {
         *lock(&self.relay_owners) = owners;
+    }
+
+    pub fn set_receipt_sink(&self, sink: Option<ReceiptFn>) {
+        *lock(&self.receipt_sink) = sink;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn capture_receipts(&self) -> Arc<Mutex<Vec<Receipt>>> {
+        let got = Arc::new(Mutex::new(Vec::new()));
+        let log = got.clone();
+        self.set_receipt_sink(Some(Arc::new(move |r| lock(&log).push(r))));
+        got
+    }
+
+    pub(super) fn receipt(
+        &self,
+        client: &str,
+        device: Option<&str>,
+        id: &str,
+        state: ReceiptState,
+        reason: Option<&str>,
+    ) {
+        let (true, Some(device)) = (client == "relay", device) else {
+            return;
+        };
+        let Some(sink) = lock(&self.receipt_sink).clone() else {
+            return;
+        };
+        {
+            let mut sent = lock(&self.receipts_sent);
+            if sent.iter().any(|(i, s)| i == id && *s == state) {
+                return;
+            }
+            if sent.len() >= RECEIPTS_REMEMBERED {
+                sent.pop_front();
+            }
+            sent.push_back((id.to_owned(), state));
+        }
+        sink(Receipt {
+            device: device.to_owned(),
+            id: id.to_owned(),
+            state,
+            reason: reason.map(|r| r.strip_prefix(NOT_DELIVERED).unwrap_or(r).to_owned()),
+        });
     }
 
     pub fn relay_self(&self) -> Option<RelaySelf> {
@@ -330,8 +392,9 @@ impl Chat {
         lock(&self.subs).retain(|s| s.try_send(push.clone()).is_ok());
     }
 
-    fn note(&self, room: &RoomRef, text: &str) {
-        let msg = system_message(room, self.mint_id(), now_ms(), text);
+    fn note_for(&self, room: &RoomRef, text: &str, reply_to: &str) {
+        let mut msg = system_message(room, self.mint_id(), now_ms(), text);
+        msg.reply_to = valid_message_id(reply_to).then(|| reply_to.to_owned());
         if let Err(e) = self.append(msg) {
             crate::daemon::log(&format!("chat: note not stored: {e}"));
         }
@@ -450,7 +513,14 @@ impl Chat {
             });
         }
         if msg.ts_ms < now_ms && now_ms - msg.ts_ms > FRESH_PAST_MS {
-            self.note(&msg.room, "Not delivered: older than 10 minutes.");
+            self.note_for(&msg.room, "Not delivered: older than 10 minutes.", &msg.id);
+            self.receipt(
+                &client,
+                device.as_deref(),
+                &msg.id,
+                ReceiptState::Failed,
+                Some("older than 10 minutes."),
+            );
             return Ok(Ingested {
                 message: msg,
                 delivered: false,
@@ -458,9 +528,17 @@ impl Chat {
             });
         }
         if msg.ts_ms > now_ms + FRESH_FUTURE_MS {
-            self.note(
+            self.note_for(
                 &msg.room,
                 "Not delivered: its time is too far ahead of this machine's clock.",
+                &msg.id,
+            );
+            self.receipt(
+                &client,
+                device.as_deref(),
+                &msg.id,
+                ReceiptState::Failed,
+                Some("its time is too far ahead of this machine's clock."),
             );
             return Ok(Ingested {
                 message: msg,
@@ -479,7 +557,7 @@ impl Chat {
             now_ms,
             |body, _, _, _| deliver.take().map_or(Delivery::Busy, |d| d(body)),
         );
-        self.note_undelivered(&msg.room, &outcome);
+        self.note_undelivered(&msg.room, &msg.id, &outcome);
         let delivered = outcome == Submit::Delivered;
         Ok(Ingested {
             message: msg,
@@ -1187,6 +1265,95 @@ mod tests {
             "Not delivered: the queue for this session is full (20 messages)."
         );
         assert!(h.iter().all(|(_, t)| !t.contains("busy")));
+    }
+
+    fn receipts_of(r: &Arc<Mutex<Vec<Receipt>>>) -> Vec<(String, ReceiptState, Option<String>)> {
+        lock(r)
+            .iter()
+            .map(|r| (r.id.clone(), r.state, r.reason.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn ingest_sends_a_receipt_per_outcome_including_the_time_refusals() {
+        let (_t, c) = chat();
+        let r = c.capture_receipts();
+        let room = c.manager_room();
+        let mut want = Vec::new();
+        for (n, ts, deliver, state, reason) in [
+            (
+                1,
+                NOW - FRESH_PAST_MS - 1,
+                Delivery::Delivered,
+                ReceiptState::Failed,
+                Some("older than 10 minutes."),
+            ),
+            (
+                2,
+                NOW + FRESH_FUTURE_MS + 1,
+                Delivery::Delivered,
+                ReceiptState::Failed,
+                Some("its time is too far ahead of this machine's clock."),
+            ),
+            (3, NOW, Delivery::Delivered, ReceiptState::Delivered, None),
+            (
+                5,
+                NOW,
+                Delivery::Gone("no manager is running".into()),
+                ReceiptState::Failed,
+                Some("no manager is running."),
+            ),
+            (4, NOW, Delivery::Busy, ReceiptState::Queued, None),
+        ] {
+            let inc = incoming(room.clone(), n, ts, "hello");
+            want.push((inc.id.clone(), state, reason.map(str::to_owned)));
+            c.ingest(inc, NOW, no_session, |_| deliver).unwrap();
+        }
+        assert_eq!(receipts_of(&r), want);
+    }
+
+    #[test]
+    fn a_duplicate_ingest_sends_no_second_receipt() {
+        let (_t, c) = chat();
+        let r = c.capture_receipts();
+        let room = c.manager_room();
+        for _ in 0..2 {
+            c.ingest(
+                incoming(room.clone(), 1, NOW, "hi"),
+                NOW,
+                no_session,
+                |_| Delivery::Delivered,
+            )
+            .unwrap();
+        }
+        assert_eq!(receipts_of(&r).len(), 1);
+    }
+
+    fn note_replies(c: &Chat, room: &RoomRef) -> Vec<Option<String>> {
+        c.history(room, None, None)
+            .unwrap()
+            .into_iter()
+            .filter(|m| m.author.kind == AuthorKind::System)
+            .map(|m| m.reply_to)
+            .collect()
+    }
+
+    #[test]
+    fn not_delivered_notes_from_ingest_point_at_the_owner_message() {
+        let (_t, c) = chat();
+        let room = c.manager_room();
+        let mut want = Vec::new();
+        for (n, ts, deliver) in [
+            (1, NOW - FRESH_PAST_MS - 1, Delivery::Delivered),
+            (2, NOW + FRESH_FUTURE_MS + 1, Delivery::Delivered),
+            (3, NOW, Delivery::Refused("Not delivered: nope.")),
+            (4, NOW, Delivery::Gone("no manager is running".into())),
+        ] {
+            let inc = incoming(room.clone(), n, ts, "hello");
+            want.push(Some(inc.id.clone()));
+            c.ingest(inc, NOW, no_session, |_| deliver).unwrap();
+        }
+        assert_eq!(note_replies(&c, &room), want);
     }
 
     #[test]

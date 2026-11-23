@@ -44,6 +44,8 @@ struct Server {
     pushes: Vec<bool>,
     last_seen: BTreeMap<String, u64>,
     puts: Vec<(String, String, String)>,
+    fail_after_store: bool,
+    slow_ms: u64,
 }
 
 #[derive(Clone, Default)]
@@ -164,6 +166,10 @@ fn wrap(v: Value) -> Result<String, String> {
 
 impl Transport for Fake {
     fn call(&self, req: &Request, token: Option<&str>) -> Result<String, String> {
+        let slow_ms = self.0.lock().unwrap().slow_ms;
+        if slow_ms > 0 && !(req.method == Method::Post && req.path.ends_with("/messages")) {
+            std::thread::sleep(std::time::Duration::from_millis(slow_ms));
+        }
         let mut s = self.0.lock().unwrap();
         let path = req.path.trim_start_matches("/api/chat-relay").to_owned();
         let caller = token.and_then(|t| {
@@ -268,6 +274,9 @@ impl Transport for Fake {
                     });
                     stored += 1;
                 }
+                if s.fail_after_store {
+                    return Err("timed out after the server stored the message".into());
+                }
                 wrap(json!({ "stored": stored, "duplicates": duplicates }))
             }
             (Method::Get, ["messages"]) => {
@@ -348,9 +357,14 @@ struct Rec {
     got: Arc<Mutex<Vec<(String, ChatMessage)>>>,
     kinds: Arc<Mutex<Vec<Option<String>>>>,
     fail: Arc<AtomicBool>,
+    drops: Arc<Mutex<Vec<&'static str>>>,
 }
 
 impl Rec {
+    fn drops(&self) -> Vec<&'static str> {
+        self.drops.lock().unwrap().clone()
+    }
+
     fn bodies(&self) -> Vec<String> {
         self.got
             .lock()
@@ -373,6 +387,10 @@ impl ChatSink for Rec {
         self.kinds.lock().unwrap().push(kind.map(str::to_owned));
         self.got.lock().unwrap().push((from.to_owned(), msg));
         Ok(())
+    }
+
+    fn dropped(&self, reason: &'static str) {
+        self.drops.lock().unwrap().push(reason);
     }
 }
 
@@ -691,10 +709,9 @@ fn stale_and_replayed_messages_are_dropped() {
 
     clock.set(T0 + 1000);
     send(&a, "fresh").unwrap();
-    assert!(b.poll_once().unwrap().is_empty());
-    clock.set(T0 + 62_000);
     assert_eq!(b.poll_once().unwrap().len(), 1);
     assert_eq!(history(&b), ["fresh"]);
+    assert_eq!(b.s.drops(), ["outside the time window"]);
 }
 
 #[test]
@@ -1592,9 +1609,9 @@ fn a_missing_message_is_held_briefly_then_reported_as_a_gap() {
     assert_eq!(b.poll_once().unwrap().len(), 1);
     assert!(b.trust_state().unwrap().seq_gaps.is_empty());
     assert_eq!(fake.queue_len(&bid), 2);
-    clock.set(T0 + 30_000);
+    clock.set(T0 + 10_000);
     assert!(b.poll_once().unwrap().is_empty());
-    clock.set(T0 + 61_000);
+    clock.set(T0 + 16_000);
     assert_eq!(b.poll_once().unwrap().len(), 1);
     let mut shown = history(&b);
     shown.sort();
@@ -4428,7 +4445,10 @@ fn send_activity_round_trips_to_a_phone_only() {
             },
             T0,
         )
-        .unwrap();
+        .ok();
+    let Some(Inbound::Opened(opened)) = opened else {
+        panic!("not opened");
+    };
     assert_eq!(opened.kind, "activity");
     assert!(opened.id.starts_with("t_"));
     assert_eq!(opened.payload, payload);
@@ -4454,3 +4474,6 @@ fn send_activity_refuses_desktop_only_targets_and_bad_input() {
         .send_activity(&rpc_id("rooms"), &p, std::slice::from_ref(&mid))
         .is_err());
 }
+
+mod receipt;
+mod repro;

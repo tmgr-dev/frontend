@@ -1,8 +1,9 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use super::*;
 use crate::chat::{Chat, Delivery};
+use tmgr_chat_relay::engine::ReceiptState;
 use tmgr_ipc::chat::{new_message_id, Author, MessageKind, RoomRef, CHAT_V};
 
 const MACHINE: &str = "mx_0123456789abcdef";
@@ -116,6 +117,63 @@ fn not_found_and_conflict_are_acked_but_invalid_is_retried() {
 }
 
 #[test]
+fn invalid_is_retried_a_bounded_number_of_times_then_dropped_to_unblock_the_sender() {
+    let (sink, seen) = recording_sink(|| Err(IngestError::Invalid("store down".into())));
+    let m = msg(AuthorKind::Owner, MACHINE, None);
+    for _ in 0..2 {
+        assert_eq!(
+            sink.deliver("d", Some("mobile"), m.clone()),
+            Err("store down".into())
+        );
+    }
+    assert_eq!(sink.deliver("d", Some("mobile"), m.clone()), Ok(()));
+    assert_eq!(seen.lock().unwrap().len(), 3);
+    let other = ChatMessage {
+        id: new_message_id(),
+        ..m
+    };
+    assert_eq!(
+        sink.deliver("d", Some("mobile"), other),
+        Err("store down".into()),
+        "attempts are counted per message"
+    );
+}
+
+#[test]
+fn a_transient_invalid_that_recovers_resets_its_attempts() {
+    let fail = Arc::new(AtomicBool::new(true));
+    let f = fail.clone();
+    let (sink, _) = recording_sink(move || {
+        if f.load(Ordering::SeqCst) {
+            Err(IngestError::Invalid("store down".into()))
+        } else {
+            stored()
+        }
+    });
+    let m = msg(AuthorKind::Owner, MACHINE, None);
+    for _ in 0..2 {
+        assert!(sink.deliver("d", Some("mobile"), m.clone()).is_err());
+    }
+    fail.store(false, Ordering::SeqCst);
+    assert_eq!(sink.deliver("d", Some("mobile"), m.clone()), Ok(()));
+    fail.store(true, Ordering::SeqCst);
+    assert!(sink.deliver("d", Some("mobile"), m).is_err());
+}
+
+#[test]
+fn the_attempt_map_stays_bounded() {
+    let (sink, _) = recording_sink(|| Err(IngestError::Invalid("store down".into())));
+    for _ in 0..(MAX_TRACKED * 3) {
+        let m = ChatMessage {
+            id: new_message_id(),
+            ..msg(AuthorKind::Owner, MACHINE, None)
+        };
+        let _ = sink.deliver("d", Some("mobile"), m);
+    }
+    assert!(sink.tracked() <= MAX_TRACKED);
+}
+
+#[test]
 fn redelivery_is_deduped_by_the_chat_store() {
     let dir = tempfile::tempdir().unwrap();
     let chat = Arc::new(Chat::open(dir.path()));
@@ -150,6 +208,9 @@ struct ScriptedRelay {
     polls: Mutex<Vec<Result<(), String>>>,
     sends: Mutex<Vec<Result<(), String>>>,
     sent: Mutex<Vec<String>>,
+    receipts: Mutex<Vec<Result<(), String>>>,
+    receipts_sent: Mutex<Vec<(String, ReceiptState)>>,
+    gate: Mutex<()>,
 }
 
 impl ScriptedRelay {
@@ -158,6 +219,9 @@ impl ScriptedRelay {
             polls: Mutex::new(polls),
             sends: Mutex::new(sends),
             sent: Mutex::new(Vec::new()),
+            receipts: Mutex::new(Vec::new()),
+            receipts_sent: Mutex::new(Vec::new()),
+            gate: Mutex::new(()),
         }
     }
 }
@@ -171,6 +235,126 @@ impl Relay for ScriptedRelay {
         self.sent.lock().unwrap().push(m.id.clone());
         self.sends.lock().unwrap().remove(0)
     }
+
+    fn send_receipt(&self, r: &Receipt) -> Result<(), String> {
+        let _engine = self.gate.lock().unwrap();
+        self.receipts_sent
+            .lock()
+            .unwrap()
+            .push((r.id.clone(), r.state));
+        let mut scripted = self.receipts.lock().unwrap();
+        if scripted.is_empty() {
+            return Ok(());
+        }
+        scripted.remove(0)
+    }
+}
+
+fn receipt(state: ReceiptState) -> Receipt {
+    Receipt {
+        device: "dev-1".into(),
+        id: new_message_id(),
+        state,
+        reason: None,
+    }
+}
+
+#[test]
+fn a_receipt_is_retried_with_backoff_and_dropped_without_retry_when_permanent() {
+    let relay = ScriptedRelay::new(vec![], vec![]);
+    *relay.receipts.lock().unwrap() = vec![Err("relay unreachable".into()), Ok(())];
+    let sleeps = Mutex::new(Vec::new());
+    send_receipt_one(&relay, &receipt(ReceiptState::Queued), &|| false, &|d| {
+        sleeps.lock().unwrap().push(d.as_secs())
+    });
+    assert_eq!(*sleeps.lock().unwrap(), [5]);
+    assert_eq!(relay.receipts_sent.lock().unwrap().len(), 2);
+
+    let relay = ScriptedRelay::new(vec![], vec![]);
+    *relay.receipts.lock().unwrap() = vec![Err(RECIPIENT_FULL.into())];
+    send_receipt_one(
+        &relay,
+        &receipt(ReceiptState::Delivered),
+        &|| false,
+        &|_| panic!("must not wait"),
+    );
+    assert_eq!(relay.receipts_sent.lock().unwrap().len(), 1);
+
+    let relay = ScriptedRelay::new(vec![], vec![]);
+    *relay.receipts.lock().unwrap() = vec![Err("relay unreachable".into()); 10];
+    send_receipt_one(
+        &relay,
+        &receipt(ReceiptState::Delivered),
+        &|| false,
+        &|_| {},
+    );
+    assert_eq!(
+        relay.receipts_sent.lock().unwrap().len(),
+        SEND_ATTEMPTS as usize
+    );
+}
+
+#[test]
+fn run_send_carries_chat_and_receipts_in_order_on_one_thread() {
+    let (tx, rx) = mpsc::sync_channel::<Out>(8);
+    let m = msg(AuthorKind::Owner, MACHINE, None);
+    let r = receipt(ReceiptState::Delivered);
+    tx.send(Out::Receipt(r.clone())).unwrap();
+    tx.send(Out::Chat(Box::new(m.clone()))).unwrap();
+    drop(tx);
+    let relay = ScriptedRelay::new(vec![], vec![Ok(())]);
+    run_send(&relay, &rx, &|| false, &|_| {});
+    assert_eq!(
+        *relay.receipts_sent.lock().unwrap(),
+        [(r.id, ReceiptState::Delivered)]
+    );
+    assert_eq!(*relay.sent.lock().unwrap(), [m.id]);
+}
+
+#[test]
+fn a_full_outbound_queue_drops_the_receipt_without_blocking() {
+    let (tx, rx) = mpsc::sync_channel::<Out>(1);
+    let sink = receipt_queue(tx);
+    sink(receipt(ReceiptState::Queued));
+    sink(receipt(ReceiptState::Delivered));
+    assert!(matches!(rx.try_recv(), Ok(Out::Receipt(r)) if r.state == ReceiptState::Queued));
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn an_ingest_inside_the_engine_lock_queues_the_receipt_and_the_send_thread_sends_it_later() {
+    let dir = tempfile::tempdir().unwrap();
+    let chat = Arc::new(Chat::open(dir.path()));
+    let machine = chat.machine().to_owned();
+    let (tx, rx) = mpsc::sync_channel::<Out>(8);
+    chat.set_receipt_sink(Some(receipt_queue(tx.clone())));
+    let c = chat.clone();
+    let sink = RelaySink::new(
+        machine.clone(),
+        Box::new(move |i, _| c.ingest(i, 1_800_000_000_000, |_| false, |_| Delivery::Delivered)),
+    );
+    let relay = ScriptedRelay::new(vec![], vec![]);
+    let m = msg(AuthorKind::Owner, &machine, None);
+    {
+        let _engine_lock = relay.gate.lock().unwrap();
+        sink.deliver("dev-1", Some("mobile"), m.clone()).unwrap();
+        assert!(relay.receipts_sent.lock().unwrap().is_empty());
+        assert!(matches!(rx.try_recv(), Ok(Out::Receipt(_))));
+        sink.deliver(
+            "dev-1",
+            Some("mobile"),
+            msg(AuthorKind::Owner, &machine, None),
+        )
+        .unwrap();
+    }
+    drop(tx);
+    chat.set_receipt_sink(None);
+    run_send(&relay, &rx, &|| false, &|_| {});
+    assert_eq!(relay.receipts_sent.lock().unwrap().len(), 1);
+    assert_eq!(
+        relay.receipts_sent.lock().unwrap()[0].1,
+        ReceiptState::Delivered
+    );
 }
 
 #[test]
@@ -261,7 +445,7 @@ fn forward_skips_relay_origin_and_survives_a_full_queue_and_a_closed_subscriptio
     tx_a.send(push(local.clone())).unwrap();
     drop(tx_a);
     tx_b.send(push(second.clone())).unwrap();
-    let (queue_tx, queue_rx) = mpsc::sync_channel(1);
+    let (queue_tx, queue_rx) = mpsc::sync_channel::<ChatMessage>(1);
     let polled = AtomicUsize::new(0);
     forward(
         &|| {
@@ -278,6 +462,34 @@ fn forward_skips_relay_origin_and_survives_a_full_queue_and_a_closed_subscriptio
 }
 
 #[test]
+fn forward_sends_a_system_note_that_replies_to_an_owner_message_and_it_validates() {
+    let (tx, rx) = mpsc::sync_channel::<ChatPush>(8);
+    let mut note = msg(AuthorKind::System, MACHINE, None);
+    note.reply_to = Some(new_message_id());
+    note.validate().unwrap();
+    tx.send(ChatPush {
+        message: note.clone(),
+    })
+    .unwrap();
+    drop(tx);
+    let (queue_tx, queue_rx) = mpsc::sync_channel::<ChatMessage>(1);
+    let rx = Mutex::new(Some(rx));
+    let polled = AtomicUsize::new(0);
+    forward(
+        &|| {
+            rx.lock()
+                .unwrap()
+                .take()
+                .unwrap_or_else(|| mpsc::sync_channel(1).1)
+        },
+        &queue_tx,
+        &|| polled.fetch_add(1, Ordering::SeqCst) >= 2,
+    );
+    let sent = queue_rx.try_recv().unwrap();
+    assert_eq!(sent.reply_to, note.reply_to);
+}
+
+#[test]
 fn forward_receives_zero_activity_events() {
     let dir = tempfile::tempdir().unwrap();
     let chat = Chat::open(dir.path());
@@ -290,7 +502,7 @@ fn forward_receives_zero_activity_events() {
         used: vec!["Read: a".into()],
         calls: Vec::new(),
     };
-    let (queue_tx, queue_rx) = mpsc::sync_channel(8);
+    let (queue_tx, queue_rx) = mpsc::sync_channel::<ChatMessage>(8);
     let polled = AtomicUsize::new(0);
     forward(
         &|| {

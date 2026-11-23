@@ -1,6 +1,7 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -17,7 +18,7 @@ use crate::mgr_rpc::relay::{RpcInbox, RpcSend};
 use super::activity::{run_activity, Clock, Leases};
 use super::rooms_sync::{host_label, OwnerSink, RoomsSync, Snapshot};
 use super::store::RelayDir;
-use crate::chat::{ActivityRx, Incoming, IngestError, Ingested};
+use crate::chat::{ActivityRx, Incoming, IngestError, Ingested, Receipt, ReceiptFn};
 
 const LABEL: &str = "Runner";
 const CADENCE: Duration = Duration::from_secs(5);
@@ -43,6 +44,26 @@ pub type TransportFactory = Arc<dyn Fn(&str) -> Result<Box<dyn Transport>, Strin
 pub trait Relay: Send + Sync {
     fn poll(&self) -> Result<(), String>;
     fn send(&self, msg: &ChatMessage) -> Result<(), String>;
+    fn send_receipt(&self, receipt: &Receipt) -> Result<(), String>;
+}
+
+pub enum Out {
+    Chat(Box<ChatMessage>),
+    Receipt(Receipt),
+}
+
+impl From<ChatMessage> for Out {
+    fn from(m: ChatMessage) -> Self {
+        Out::Chat(Box::new(m))
+    }
+}
+
+pub fn receipt_queue(queue: SyncSender<Out>) -> ReceiptFn {
+    Arc::new(move |r| {
+        if let Err(TrySendError::Full(_)) = queue.try_send(Out::Receipt(r)) {
+            crate::daemon::log("chat relay: outbound queue full, receipt not sent");
+        }
+    })
 }
 
 impl<T: Transport, K: KeyStore, S: ChatSink> Relay for RelayEngine<T, K, S> {
@@ -53,6 +74,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> Relay for RelayEngine<T, K, S> {
     fn send(&self, msg: &ChatMessage) -> Result<(), String> {
         self.send_chat(msg, wants_push(msg))
     }
+
+    fn send_receipt(&self, r: &Receipt) -> Result<(), String> {
+        RelayEngine::send_receipt(self, &r.device, &r.id, r.state, r.reason.as_deref())
+    }
 }
 
 fn wants_push(msg: &ChatMessage) -> bool {
@@ -60,14 +85,57 @@ fn wants_push(msg: &ChatMessage) -> bool {
         && msg.kind == MessageKind::Decision
 }
 
+const INVALID_ATTEMPTS: u32 = 3;
+const MAX_TRACKED: usize = 64;
+
 pub struct RelaySink {
     machine: String,
     ingest: IngestFn,
+    invalid: Mutex<VecDeque<(String, u32)>>,
 }
 
 impl RelaySink {
     pub fn new(machine: String, ingest: IngestFn) -> Self {
-        Self { machine, ingest }
+        Self {
+            machine,
+            ingest,
+            invalid: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    fn invalid_attempts(&self) -> std::sync::MutexGuard<'_, VecDeque<(String, u32)>> {
+        self.invalid.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn give_up_on_invalid(&self, id: &str) -> bool {
+        let mut seen = self.invalid_attempts();
+        let n = match seen.iter_mut().find(|(i, _)| i == id) {
+            Some((_, n)) => {
+                *n += 1;
+                *n
+            }
+            None => {
+                if seen.len() >= MAX_TRACKED {
+                    seen.pop_front();
+                }
+                seen.push_back((id.to_owned(), 1));
+                1
+            }
+        };
+        if n >= INVALID_ATTEMPTS {
+            seen.retain(|(i, _)| i != id);
+            return true;
+        }
+        false
+    }
+
+    fn forget(&self, id: &str) {
+        self.invalid_attempts().retain(|(i, _)| i != id);
+    }
+
+    #[cfg(test)]
+    fn tracked(&self) -> usize {
+        self.invalid_attempts().len()
     }
 }
 
@@ -82,11 +150,10 @@ impl ChatSink for RelaySink {
             || msg.room.machine != self.machine
             || !matches!(from_kind, Some("desktop" | "mobile"))
         {
-            crate::daemon::log(
-                "chat relay: dropped a message that is not owner input for this machine",
-            );
+            self.dropped("not owner input for this machine");
             return Ok(());
         }
+        let id = msg.id.clone();
         let target = msg.mention.map(|m| m.target);
         let incoming = Incoming {
             room: msg.room,
@@ -100,13 +167,26 @@ impl ChatSink for RelaySink {
             client: "relay".into(),
         };
         match (self.ingest)(incoming, target) {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.forget(&id);
+                Ok(())
+            }
             Err(IngestError::NotFound(e) | IngestError::Conflict(e)) => {
                 crate::daemon::log(&format!("chat relay: message not stored: {e}"));
                 Ok(())
             }
-            Err(IngestError::Invalid(e)) => Err(e),
+            Err(IngestError::Invalid(e)) => {
+                if self.give_up_on_invalid(&id) {
+                    crate::daemon::log("chat relay: message dropped (invalid)");
+                    return Ok(());
+                }
+                Err(e)
+            }
         }
+    }
+
+    fn dropped(&self, reason: &'static str) {
+        crate::daemon::log(&format!("chat relay: dropped a message ({reason})"));
     }
 }
 
@@ -172,9 +252,9 @@ pub fn run_poll(relay: &dyn Relay, stop: &dyn Fn() -> bool, sleep: &dyn Fn(Durat
     }
 }
 
-pub fn forward(
+pub fn forward<T: From<ChatMessage>>(
     subscribe: &dyn Fn() -> Receiver<ChatPush>,
-    queue: &SyncSender<ChatMessage>,
+    queue: &SyncSender<T>,
     stop: &dyn Fn() -> bool,
 ) {
     let mut rx = subscribe();
@@ -183,7 +263,7 @@ pub fn forward(
             Ok(push)
                 if push.message.author.device.is_some()
                     || push.message.author.kind == AuthorKind::Owner => {}
-            Ok(push) => match queue.try_send(push.message) {
+            Ok(push) => match queue.try_send(push.message.into()) {
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) => {
                     crate::daemon::log("chat relay: outbound queue full, message not sent");
@@ -199,22 +279,22 @@ pub fn forward(
     }
 }
 
-fn send_one(
-    relay: &dyn Relay,
-    msg: &ChatMessage,
+fn retry_send(
+    what: &str,
+    mut attempt_send: impl FnMut() -> Result<(), String>,
     stop: &dyn Fn() -> bool,
     sleep: &dyn Fn(Duration),
 ) {
     let mut backoff = BACKOFF_START;
     for attempt in 1..=SEND_ATTEMPTS {
-        let Err(e) = relay.send(msg) else { return };
+        let Err(e) = attempt_send() else { return };
         if e == RECIPIENT_FULL || PERMANENT.iter().any(|p| e.starts_with(p)) {
-            crate::daemon::log(&format!("chat relay: message dropped: {e}"));
+            crate::daemon::log(&format!("chat relay: {what} dropped: {e}"));
             return;
         }
         if attempt == SEND_ATTEMPTS || stop() {
             crate::daemon::log(&format!(
-                "chat relay: message dropped after {attempt} tries: {e}"
+                "chat relay: {what} dropped after {attempt} tries: {e}"
             ));
             return;
         }
@@ -223,15 +303,34 @@ fn send_one(
     }
 }
 
+fn send_one(
+    relay: &dyn Relay,
+    msg: &ChatMessage,
+    stop: &dyn Fn() -> bool,
+    sleep: &dyn Fn(Duration),
+) {
+    retry_send("message", || relay.send(msg), stop, sleep);
+}
+
+fn send_receipt_one(
+    relay: &dyn Relay,
+    receipt: &Receipt,
+    stop: &dyn Fn() -> bool,
+    sleep: &dyn Fn(Duration),
+) {
+    retry_send("receipt", || relay.send_receipt(receipt), stop, sleep);
+}
+
 pub fn run_send(
     relay: &dyn Relay,
-    queue: &Receiver<ChatMessage>,
+    queue: &Receiver<Out>,
     stop: &dyn Fn() -> bool,
     sleep: &dyn Fn(Duration),
 ) {
     while !stop() {
         match queue.recv_timeout(RECV_TICK) {
-            Ok(msg) => send_one(relay, &msg, stop, sleep),
+            Ok(Out::Chat(msg)) => send_one(relay, &msg, stop, sleep),
+            Ok(Out::Receipt(r)) => send_receipt_one(relay, &r, stop, sleep),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -256,6 +355,7 @@ pub struct Setup {
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
     pub on_device: OnDevice,
     pub on_owners: Arc<dyn Fn(crate::chat::OwnersFn) + Send + Sync>,
+    pub on_receipts: Arc<dyn Fn(Option<ReceiptFn>) + Send + Sync>,
     pub rooms: Arc<dyn Fn() -> Vec<RoomInfo> + Send + Sync>,
     pub history: HistoryFn,
 }
@@ -326,7 +426,8 @@ fn run(setup: Setup) {
 }
 
 fn serve(engine: Arc<Engine>, setup: &Setup, leases: &Arc<Leases>, clock: Clock) {
-    let (tx, rx) = mpsc::sync_channel(OUT_QUEUE);
+    let (tx, rx) = mpsc::sync_channel::<Out>(OUT_QUEUE);
+    (setup.on_receipts)(Some(receipt_queue(tx.clone())));
     let (stop, subscribe) = (setup.stop.clone(), setup.subscribe.clone());
     let forwarder = thread::Builder::new()
         .name("chat-relay-forward".into())
@@ -391,6 +492,7 @@ fn serve(engine: Arc<Engine>, setup: &Setup, leases: &Arc<Leases>, clock: Clock)
         let _ = h.join();
     }
     (setup.on_device)(None);
+    (setup.on_receipts)(None);
 }
 
 pub fn run_rooms_sync(

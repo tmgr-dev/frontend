@@ -135,6 +135,7 @@ impl Runner {
         let rpc = Arc::new(RpcInbox::new());
         let (serve_rt, serve_inbox, device_rt) = (self.clone(), rpc.clone(), self.clone());
         let (rooms_rt, history_rt, owners_rt) = (self.clone(), self.clone(), self.clone());
+        let receipts_rt = self.clone();
         let setup = chat::relay::pump::Setup {
             dir: self.cfg.dir.clone(),
             machine: self.chat.machine().to_owned(),
@@ -166,6 +167,7 @@ impl Runner {
             serve_rpc: Arc::new(move |send| serve_rt.spawn_rpc_server(serve_inbox.clone(), send)),
             on_device: Arc::new(move |d| device_rt.chat.set_relay_device(d)),
             on_owners: Arc::new(move |f| owners_rt.chat.set_relay_owners(Some(f))),
+            on_receipts: Arc::new(move |f| receipts_rt.chat.set_receipt_sink(f)),
             rooms: Arc::new(move || {
                 let sessions: Vec<SessionInfo> = rooms_rt.all().iter().map(|s| s.info()).collect();
                 let mut rooms = rooms_rt.chat.rooms(&sessions, None);
@@ -361,7 +363,8 @@ impl Runner {
                     now_ms(),
                     |body, client, _, _| self.chat_deliver(&posted.room, body, client),
                 );
-                self.chat.note_undelivered(&posted.room, &outcome);
+                self.chat
+                    .note_undelivered(&posted.room, &posted.id, &outcome);
                 Ok(to_json(&posted))
             }
             chat_method::QUEUED => {
