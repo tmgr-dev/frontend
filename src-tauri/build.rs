@@ -179,6 +179,7 @@ const APP_COMMANDS: &[&str] = &[
   "manager_search",
   "manager_commands",
   "manager_queued",
+  "manager_queued_why",
   "manager_cancel",
   "manager_mention_inject",
   "manager_agent_models",
