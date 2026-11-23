@@ -53,6 +53,12 @@ struct Saved {
     backfilled: bool,
 }
 
+impl Tail {
+    pub(super) fn asking(&self) -> bool {
+        self.status.as_ref().is_some_and(StatusScan::is_asking)
+    }
+}
+
 pub(crate) fn agent_named(profile: Option<&str>, argv0: &str) -> Option<Agent> {
     match profile {
         Some("claude-code") => Some(Agent::Claude),

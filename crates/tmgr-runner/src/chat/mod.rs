@@ -526,13 +526,19 @@ impl Chat {
         let live = sessions
             .iter()
             .find(|s| s.manager && s.state.kind != StateKind::Exited);
-        let live_meta = live.and_then(|s| lock(&self.tails).get(&s.id).map(|t| t.meta.clone()));
+        let (live_meta, live_asking) = live
+            .and_then(|s| {
+                lock(&self.tails)
+                    .get(&s.id)
+                    .map(|t| (t.meta.clone(), t.asking()))
+            })
+            .unzip();
         let mut out = vec![RoomInfo {
             last: last(&manager),
             room: manager,
             title: "Manager".into(),
             agent: None,
-            state: live.map(|s| state_name(s.state.kind).into()),
+            state: live.map(|s| state_name(s.state.kind, live_asking == Some(true)).into()),
             context_pct: live_meta.as_ref().and_then(|m| m.context_pct),
             context_tokens: live_meta.and_then(|m| m.context_tokens),
             model: None,
@@ -553,13 +559,16 @@ impl Chat {
             if room.validate().is_err() {
                 continue;
             }
-            let meta = lock(&self.tails).get(&s.id).map(|t| t.meta.clone());
+            let (meta, asking) = lock(&self.tails)
+                .get(&s.id)
+                .map(|t| (t.meta.clone(), t.asking()))
+                .unzip();
             out.push(RoomInfo {
                 last: last(&room),
                 room,
                 title: s.name.clone(),
                 agent: s.profile.clone(),
-                state: Some(state_name(s.state.kind).into()),
+                state: Some(state_name(s.state.kind, asking == Some(true)).into()),
                 context_pct: meta.as_ref().and_then(|m| m.context_pct),
                 context_tokens: meta.as_ref().and_then(|m| m.context_tokens),
                 model: meta.and_then(|m| m.model),
@@ -570,9 +579,10 @@ impl Chat {
     }
 }
 
-fn state_name(kind: StateKind) -> &'static str {
+fn state_name(kind: StateKind, asking: bool) -> &'static str {
     match kind {
         StateKind::Starting => "starting",
+        StateKind::Working | StateKind::Waiting if asking => "asking",
         StateKind::Working => "working",
         StateKind::Waiting => "waiting",
         StateKind::Blocked => "blocked",
@@ -634,6 +644,21 @@ mod tests {
             std::sync::Arc::new(|_, _, _, _| Ok(())),
             std::sync::Arc::new(|| 0),
         ))
+    }
+
+    #[test]
+    fn an_open_question_shows_as_asking_only_for_a_live_turn() {
+        for (kind, asking, want) in [
+            (StateKind::Starting, true, "starting"),
+            (StateKind::Working, true, "asking"),
+            (StateKind::Waiting, true, "asking"),
+            (StateKind::Blocked, true, "blocked"),
+            (StateKind::Exited, true, "exited"),
+            (StateKind::Working, false, "working"),
+            (StateKind::Waiting, false, "waiting"),
+        ] {
+            assert_eq!(state_name(kind, asking), want, "{kind:?} asking={asking}");
+        }
     }
 
     #[test]

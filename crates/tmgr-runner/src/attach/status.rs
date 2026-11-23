@@ -344,6 +344,10 @@ impl StatusScan {
         self.path == path
     }
 
+    pub fn is_asking(&self) -> bool {
+        self.asking.is_some()
+    }
+
     pub fn status(&self) -> SessionStatus {
         SessionStatus {
             activity: self.pending.last().map(|(_, label, _)| label.clone()),
