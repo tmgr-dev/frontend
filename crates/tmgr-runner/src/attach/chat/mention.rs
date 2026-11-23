@@ -115,7 +115,6 @@ pub(super) fn latest_states(msgs: &[ChatMessage]) -> HashMap<&str, MentionState>
 
 pub(super) fn state_label(s: MentionState) -> &'static str {
     match s {
-        MentionState::NeedsConfirmation => "needs confirmation",
         MentionState::Queued => "queued",
         MentionState::Sent => "sent",
         MentionState::Answering => "answering",
