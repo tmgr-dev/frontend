@@ -75,6 +75,7 @@ pub struct Track {
     pub asked: String,
     replies: Vec<(String, String)>,
     last_change: u64,
+    polled: u64,
     found: bool,
     gone: bool,
 }
@@ -86,6 +87,7 @@ impl Track {
             asked: asked.into(),
             replies: Vec::new(),
             last_change: now,
+            polled: now,
             found: false,
             gone: false,
         }
@@ -94,9 +96,11 @@ impl Track {
 
 pub fn fold(t: &mut Track, rows: &[ChatMessage], now: u64) {
     let Some(at) = rows.iter().position(|m| m.id == t.asked) else {
+        t.polled = now;
         t.gone = t.found;
         return;
     };
+    t.polled = now;
     t.found = true;
     t.gone = false;
     for m in &rows[at + 1..] {
@@ -109,7 +113,9 @@ pub fn fold(t: &mut Track, rows: &[ChatMessage], now: u64) {
 }
 
 pub fn quiet_reply(t: &Track, now: u64) -> Option<String> {
-    if t.replies.is_empty() || (!t.gone && now.saturating_sub(t.last_change) < QUIET_MS) {
+    if t.replies.is_empty()
+        || (!t.gone && now.min(t.polled).saturating_sub(t.last_change) < QUIET_MS)
+    {
         return None;
     }
     let joined: Vec<&str> = t.replies.iter().map(|(_, b)| b.as_str()).collect();
@@ -153,6 +159,10 @@ pub struct Followers {
 impl Followers {
     pub fn track(&mut self, machine: &str, t: Track) {
         self.tracks.insert(machine.into(), t);
+    }
+
+    pub fn admit(&mut self, machine: &str, now: u64) -> bool {
+        self.pace.entry(machine.into()).or_default().admit(now)
     }
 
     pub fn keep_open(&mut self, is_open: impl Fn(&str) -> bool) {
@@ -243,6 +253,7 @@ mod tests {
             row(5, AuthorKind::Session, "s_aaaaaaaaaa", "second"),
         ];
         fold(&mut t, &rows, 1_000);
+        fold(&mut t, &rows, 1_000 + QUIET_MS);
         assert_eq!(
             quiet_reply(&t, 1_000 + QUIET_MS).unwrap(),
             "first\n\nsecond"
@@ -258,6 +269,7 @@ mod tests {
             row(2, AuthorKind::Session, "s_aaaaaaaaaa", "new"),
         ];
         fold(&mut t, &rows, 5);
+        fold(&mut t, &rows, 5 + QUIET_MS);
         assert_eq!(quiet_reply(&t, 5 + QUIET_MS).unwrap(), "new");
     }
 
@@ -313,7 +325,9 @@ mod tests {
         let b = row(3, AuthorKind::Session, "s_aaaaaaaaaa", "b");
         fold(&mut t, &[q.clone(), a.clone(), b], 15_000);
         assert!(quiet_reply(&t, 1_000 + QUIET_MS).is_none());
-        fold(&mut t, &[q, a], 30_000);
+        fold(&mut t, &[q.clone(), a.clone()], 30_000);
+        assert!(quiet_reply(&t, 15_000 + QUIET_MS).is_none());
+        fold(&mut t, &[q, a], 15_000 + QUIET_MS);
         assert!(quiet_reply(&t, 15_000 + QUIET_MS).is_some());
     }
 
@@ -351,17 +365,46 @@ mod tests {
     }
 
     #[test]
+    fn a_reply_finishes_only_after_a_successful_poll_saw_the_quiet_period() {
+        let mut f = Followers::default();
+        f.track(M, Track::new("m_x", &asked(), 0));
+        let rows = vec![
+            row(1, AuthorKind::Manager, "remote", "q"),
+            row(2, AuthorKind::Session, "s_aaaaaaaaaa", "partial"),
+        ];
+        f.fed(M, Fetch::Rows(rows.clone()), 100);
+        f.fed(M, Fetch::Failed, 100 + QUIET_MS);
+        assert!(f.finished(100 + 5 * QUIET_MS).is_empty());
+        f.fed(M, Fetch::Rows(rows), 100 + 6 * QUIET_MS);
+        assert_eq!(
+            f.finished(100 + 6 * QUIET_MS),
+            [("m_x".to_string(), "partial".to_string())]
+        );
+    }
+
+    #[test]
+    fn an_ask_is_charged_to_the_pace() {
+        let mut f = Followers::default();
+        assert!(f.admit(M, 0));
+        f.track(M, Track::new("m_x", &asked(), 0));
+        assert!(f.due(1).is_empty());
+        assert_eq!(f.due(POLL_EVERY_MS).len(), 1);
+        let p = f.pace.get_mut(M).unwrap();
+        p.next_at = 0;
+        p.calls = (0..BUDGET_PER_MIN as u64).map(|i| 50_000 + i).collect();
+        assert!(!f.admit(M, 59_999));
+    }
+
+    #[test]
     fn finished_returns_each_quiet_mention_once() {
         let mut f = Followers::default();
         f.track(M, Track::new("m_x", &asked(), 0));
-        f.fed(
-            M,
-            Fetch::Rows(vec![
-                row(1, AuthorKind::Manager, "remote", "q"),
-                row(2, AuthorKind::Session, "s_aaaaaaaaaa", "hi"),
-            ]),
-            100,
-        );
+        let rows = vec![
+            row(1, AuthorKind::Manager, "remote", "q"),
+            row(2, AuthorKind::Session, "s_aaaaaaaaaa", "hi"),
+        ];
+        f.fed(M, Fetch::Rows(rows.clone()), 100);
+        f.fed(M, Fetch::Rows(rows), 100 + QUIET_MS);
         assert!(f.finished(100 + QUIET_MS - 1).is_empty());
         assert_eq!(
             f.finished(100 + QUIET_MS),

@@ -276,6 +276,10 @@ impl Chat {
         lock(&self.followers).track(machine, Track::new(mention, asked, now));
     }
 
+    pub fn follower_admit(&self, machine: &str, now: u64) -> bool {
+        lock(&self.followers).admit(machine, now)
+    }
+
     pub fn follower_due(&self, now: u64) -> Vec<String> {
         let mut f = lock(&self.followers);
         f.keep_open(|id| self.is_mention_open(id));

@@ -210,9 +210,14 @@ impl Runner {
         if busy {
             return finish(MentionState::Busy, "the manager has other messages waiting");
         }
+        let now = now_ms();
+        if !self.chat.follower_admit(&r.target.machine, now) {
+            return self
+                .chat
+                .mention_finish(&r.id, MentionState::RateLimited, None);
+        }
         match mention_remote::ask(link, &r.target.machine, question) {
             Ok(asked) => {
-                let now = now_ms();
                 self.chat
                     .follower_track(&r.target.machine, &r.id, &asked, now);
                 self.chat.mention_delivered(&r.id, question, now);
@@ -1436,7 +1441,7 @@ mod tests {
                     &room
                 ),
             ]));
-            let t0 = now_ms();
+            let t0 = now_ms() + mention_remote::POLL_EVERY_MS;
             rt.follower_poll(&net, t0);
             assert_eq!(last(&rt).0, MentionState::Sent);
             assert!(net.calls.lock().unwrap()[1].1.get("since").is_none());
@@ -1448,6 +1453,28 @@ mod tests {
             assert!(!rt.chat.is_mention_open(&id));
             rt.follower_poll(&net, t0 + 60_000);
             assert_eq!(net.count(Op::Room), 2);
+        }
+
+        #[test]
+        fn the_ask_is_charged_so_the_first_poll_waits_the_interval() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            follow(&rt, &net, local());
+            let t0 = now_ms();
+            rt.follower_poll(&net, t0);
+            assert_eq!(net.count(Op::Room), 0);
+            rt.follower_poll(&net, t0 + mention_remote::POLL_EVERY_MS);
+            assert_eq!(net.count(Op::Room), 1);
+        }
+
+        #[test]
+        fn a_second_mention_while_the_follower_answers_is_busy_and_never_asked() {
+            let (_t, rt) = rig(json!({}));
+            let net = Net::new();
+            follow(&rt, &net, local());
+            follow(&rt, &net, local());
+            assert_eq!(last(&rt).0, MentionState::Busy);
+            assert_eq!(net.count(Op::Ask), 1);
         }
 
         #[test]
