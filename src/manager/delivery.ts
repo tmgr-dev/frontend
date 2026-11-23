@@ -3,6 +3,11 @@ export type DeliveryState =
 
 export type ReceiptState = 'delivered' | 'queued' | 'failed';
 
+const QUEUED_WHY = ['turn', 'dialog', 'prompt'];
+
+export const isQueuedWhy = (why: string | undefined): boolean =>
+	!!why && QUEUED_WHY.includes(why);
+
 export interface Receipt {
 	id: string;
 	state: ReceiptState;
@@ -39,7 +44,8 @@ export const onReceipt = (
 	reason?: string,
 ): Delivery => {
 	const next: Delivery = { ...d, state };
-	if (state === 'failed') next.reason = reason;
+	if (state === 'failed' || (state === 'queued' && reason))
+		next.reason = reason;
 	else delete next.reason;
 	return next;
 };

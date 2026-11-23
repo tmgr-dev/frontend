@@ -41,6 +41,9 @@ export const managerCommands = (room: RoomRef) =>
 export const managerQueued = (room: RoomRef) =>
 	invoke<string[]>('manager_queued', { room });
 
+export const managerQueuedWhy = (room: RoomRef) =>
+	invoke<Record<string, string>>('manager_queued_why', { room });
+
 export const managerCancel = (room: RoomRef, id: string) =>
 	invoke<boolean>('manager_cancel', { room, id });
 

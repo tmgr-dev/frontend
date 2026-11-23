@@ -842,6 +842,25 @@ describe('queued messages', () => {
 		expect(store.queuedIds).toEqual([]);
 	});
 
+	it('loads why the queued messages wait and survives an older runner', async () => {
+		const queuedWhy = jest.fn(async () => ({ m050: 'turn' }));
+		const { store } = setup({ queued: async () => ['m050'], queuedWhy });
+		await store.init();
+		await flush();
+		expect(queuedWhy).toHaveBeenCalledWith(MGR);
+		expect(store.queuedWhy).toEqual({ m050: 'turn' });
+		const failing = setup({
+			queued: async () => ['m050'],
+			queuedWhy: async () => {
+				throw new Error('unknown method');
+			},
+		});
+		await failing.store.init();
+		await flush();
+		expect(failing.store.queuedIds).toEqual(['m050']);
+		expect(failing.store.queuedWhy).toEqual({});
+	});
+
 	it('polls every 2 seconds only while messages are queued', async () => {
 		const queued = jest.fn(async () => ['m050']);
 		const { store } = setup({ queued });

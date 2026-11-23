@@ -47,6 +47,7 @@ export interface ManagerApi {
 	commands: typeof realApi.managerCommands;
 	search: typeof realApi.managerSearch;
 	queued: typeof realApi.managerQueued;
+	queuedWhy?: typeof realApi.managerQueuedWhy;
 	cancel: typeof realApi.managerCancel;
 	agentModels: typeof realApi.managerAgentModels;
 	onMessage: typeof realApi.onManagerMessage;
@@ -339,6 +340,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			Object.values(unread).reduce((a, b) => a + b, 0),
 		),
 		queuedIds: [] as string[],
+		queuedWhy: {} as Record<string, string>,
 		delivery: {} as Record<string, Delivery>,
 		activityByRoom: {} as Record<string, ActivityView>,
 		toolsByMessage: {} as Record<string, string[]>,
@@ -541,12 +543,20 @@ export const createManagerStore = (api: ManagerApi) => {
 			const room = key && store.roomRef(key);
 			if (!key || !room) {
 				store.queuedIds = [];
+				store.queuedWhy = {};
 				syncQueuePoll();
 				return;
 			}
 			const ids = await api.queued(room).catch(() => null);
 			if (seq !== queueSeq || store.activeKey !== key) return;
-			if (ids) store.queuedIds = ids;
+			if (ids) {
+				const why = ids.length
+					? await api.queuedWhy?.(room).catch(() => ({}))
+					: {};
+				if (seq !== queueSeq || store.activeKey !== key) return;
+				store.queuedIds = ids;
+				store.queuedWhy = why ?? {};
+			}
 			syncQueuePoll();
 		},
 
@@ -643,6 +653,7 @@ export const createManagerStore = (api: ManagerApi) => {
 				store.control.stillRunning = false;
 			}
 			store.queuedIds = [];
+			store.queuedWhy = {};
 			postSendPolls = 0;
 			stopQueuePoll();
 			void store.refreshQueued();
@@ -1182,6 +1193,7 @@ export const useManagerStore = (): ManagerStore => {
 		commands: realApi.managerCommands,
 		search: realApi.managerSearch,
 		queued: realApi.managerQueued,
+		queuedWhy: realApi.managerQueuedWhy,
 		cancel: realApi.managerCancel,
 		agentModels: realApi.managerAgentModels,
 		onMessage: realApi.onManagerMessage,

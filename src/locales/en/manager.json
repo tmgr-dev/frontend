@@ -152,6 +152,11 @@
 		"queued": "Queued",
 		"cancelQueued": "Cancel",
 		"queuedHint": "Waiting for the session to be at its prompt",
+		"queuedWhy": {
+			"turn": "Queued: the agent is busy, sends when its turn ends",
+			"dialog": "Queued: waiting on a dialog in the session",
+			"prompt": "Queued: waiting for the session prompt"
+		},
 		"delivery": {
 			"sending": "Sending…",
 			"sent": "Sent",

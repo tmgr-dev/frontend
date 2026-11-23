@@ -36,6 +36,13 @@ describe('delivery transitions', () => {
 		expect(ok.reason).toBeUndefined();
 	});
 
+	it('a queued receipt keeps its reason and a later one without it drops it', () => {
+		const queued = onReceipt(startDelivery(true), 'queued', 'turn');
+		expect(queued).toMatchObject({ state: 'queued', reason: 'turn' });
+		expect(onReceipt(queued, 'queued').reason).toBeUndefined();
+		expect(onReceipt(queued, 'delivered').reason).toBeUndefined();
+	});
+
 	it('times out only remote sent messages', () => {
 		const sent: Delivery = { state: 'sent', remote: true };
 		expect(onConfirmTimeout(sent).state).toBe('unconfirmed');

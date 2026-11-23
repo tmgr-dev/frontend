@@ -17,7 +17,7 @@
 				{{ clock }}
 				<template v-if="queued">
 					<span :title="$t('manager.messages.queuedHint')">{{
-						$t('manager.messages.queued')
+						queuedText
 					}}</span>
 					<button
 						type="button"
@@ -156,7 +156,7 @@
 
 <script lang="ts">
 	import { defineComponent, h, type PropType } from 'vue';
-	import { canRetry, type Delivery } from '../delivery';
+	import { canRetry, isQueuedWhy, type Delivery } from '../delivery';
 	import {
 		addCopyButtons,
 		copyBlockText,
@@ -208,6 +208,7 @@
 			replyTo: { type: Object as PropType<ChatMessage>, default: undefined },
 			grouped: { type: Boolean, default: false },
 			queued: { type: Boolean, default: false },
+			queuedWhy: { type: String, default: undefined },
 			tools: { type: Array as PropType<string[]>, default: undefined },
 			calls: { type: Array as PropType<ToolCall[]>, default: undefined },
 			delivery: { type: Object as PropType<Delivery>, default: undefined },
@@ -227,6 +228,11 @@
 			showRetry(): boolean {
 				return canRetry(this.delivery) && !this.message.mention;
 			},
+			queuedText(): string {
+				return isQueuedWhy(this.queuedWhy)
+					? this.$t(`manager.messages.queuedWhy.${this.queuedWhy}`)
+					: this.$t('manager.messages.queued');
+			},
 			deliveryText(): string {
 				const d = this.delivery;
 				if (!d) return '';
@@ -235,6 +241,8 @@
 					return this.$t('manager.messages.delivery.failedReason', {
 						reason: d.reason,
 					});
+				if (d.state === 'queued' && isQueuedWhy(d.reason))
+					return this.$t(`manager.messages.queuedWhy.${d.reason}`);
 				return this.$t(`manager.messages.delivery.${d.state}`, {
 					who: this.deliveryWho,
 				});

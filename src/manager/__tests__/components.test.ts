@@ -507,6 +507,37 @@ describe('manager components', () => {
 		expect(html).toContain('Waiting for the session to be at its prompt');
 	});
 
+	it('MessageBubble says why a message is queued and falls back to plain Queued', async () => {
+		const message = msg({
+			id: 'q1',
+			author: { kind: 'owner', id: 'me' },
+			body_md: 'Run the tests',
+		});
+		const cases: Array<[string | undefined, string]> = [
+			['turn', 'Queued: the agent is busy, sends when its turn ends'],
+			['dialog', 'Queued: waiting on a dialog in the session'],
+			['prompt', 'Queued: waiting for the session prompt'],
+		];
+		for (const [queuedWhy, text] of cases) {
+			const html = await render('MessageBubble', {
+				message,
+				queued: true,
+				queuedWhy,
+			});
+			expect(html).toContain(text);
+			expect(html).toContain('Cancel');
+		}
+		for (const queuedWhy of [undefined, 'something_new']) {
+			const html = await render('MessageBubble', {
+				message,
+				queued: true,
+				queuedWhy,
+			});
+			expect(html).not.toContain('Queued:');
+			expect(html).toContain('Waiting for the session to be at its prompt');
+		}
+	});
+
 	it('MessageBubble drops the queue label once the message has left the queue', async () => {
 		const html = await render('MessageBubble', {
 			message: msg({
@@ -542,6 +573,14 @@ describe('manager components', () => {
 			[{ state: 'sent', remote: true }, 'Sent'],
 			[
 				{ state: 'queued', remote: true },
+				'Queued on claude on mac, waiting for the agent',
+			],
+			[
+				{ state: 'queued', remote: true, reason: 'turn' },
+				'Queued: the agent is busy, sends when its turn ends',
+			],
+			[
+				{ state: 'queued', remote: true, reason: 'something_new' },
 				'Queued on claude on mac, waiting for the agent',
 			],
 			[{ state: 'delivered', remote: true }, 'Delivered'],

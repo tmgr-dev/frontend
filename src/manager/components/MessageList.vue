@@ -21,6 +21,7 @@
 						:reply-to="row.replyTo"
 						:grouped="row.grouped"
 						:queued="queuedIds.includes(row.message.id)"
+						:queued-why="queuedWhy[row.message.id]"
 						:tools="toolsByMessage[row.message.id]"
 						:calls="callsByMessage[row.message.id]"
 						:delivery="deliveryById[row.message.id]"
@@ -120,6 +121,10 @@
 			queuedIds: {
 				type: Array as PropType<string[]>,
 				default: () => [],
+			},
+			queuedWhy: {
+				type: Object as PropType<Record<string, string>>,
+				default: () => ({}),
 			},
 			toolsByMessage: {
 				type: Object as PropType<Record<string, string[]>>,

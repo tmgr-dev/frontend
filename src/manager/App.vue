@@ -102,6 +102,7 @@
 							: undefined
 					"
 					:queued-ids="store.queuedIds"
+					:queued-why="store.queuedWhy"
 					:delivery-by-id="store.delivery"
 					:delivery-who="deliveryWho"
 					@retry="store.retry"
