@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.181
+
+- Added: a manager on one machine can ask another paired machine to start a session without the sandbox. This works only when the asking manager itself runs unrestricted and you approve the card, which shows "sandbox off".
+- Changed: agent writes from a paired machine's manager are delivered without a Send card, and each one leaves an audit note in the manager room.
+- Fixed: a message from a desktop that the machine does not trust now comes back as failed instead of disappearing.
+- Fixed: your own messages from the desktop or phone reach the agent without the untrusted-device warning.
+- Fixed: a device with a pending revoke no longer receives runner chat output.
+- Fixed: mentions relayed from a device that is not yours stay marked untrusted.
+
 ## 1.0.180
 
 - Fixed: Manager chat messages from a phone or desktop whose clock is off by more than 5 minutes were silently dropped by the runner, and the runner's replies were dropped by that device. Clocks may now differ by up to 31 days. The runner learns each device's clock offset and converts message times to its own clock, so freshness checks still work.

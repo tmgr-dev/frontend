@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.209 — 2026-11-24
+
+- Added: spawn cards that start a session without the sandbox now show a red "No sandbox" chip, so you can see it before you approve.
+- Fixed: a stale runner on another machine no longer blocks sending.
+- Added: the Manager shows "Device not trusted on <machine>, re-pair" when a machine refuses a message.
+- Fixed: the other machine's Manager room now shows delivery states.
+- Added: the Manager shows "Device revoke pending on <machine>" when a machine refuses a message because a device there is being revoked.
+
 ## 0.9.208 — 2026-11-24
 
 - Fixed: Manager chat replies from a runner whose clock is more than 5 minutes ahead of this computer were silently dropped. Clocks may now differ by up to 31 days. For messages from this desktop to a runner with a different clock, also update the tmgr CLI to 1.0.180 and restart the runner.
