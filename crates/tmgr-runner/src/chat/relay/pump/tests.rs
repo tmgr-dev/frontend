@@ -38,7 +38,7 @@ fn recording_sink(
     let log = seen.clone();
     let sink = RelaySink::new(
         MACHINE.into(),
-        Box::new(move |i| {
+        Box::new(move |i, _| {
             log.lock().unwrap().push(i);
             result()
         }),
@@ -101,7 +101,7 @@ fn redelivery_is_deduped_by_the_chat_store() {
     let (c, n) = (chat.clone(), delivered.clone());
     let sink = RelaySink::new(
         machine.clone(),
-        Box::new(move |i| {
+        Box::new(move |i, _| {
             let n = n.clone();
             c.ingest(
                 i,
@@ -321,4 +321,30 @@ fn only_agent_decision_cards_push() {
     assert!(!wants_push(&m));
     m.author.kind = AuthorKind::System;
     assert!(!wants_push(&m));
+}
+
+#[test]
+fn the_sink_hands_the_ingest_only_the_mention_target_never_the_forged_state() {
+    let targets = Arc::new(Mutex::new(Vec::new()));
+    let log = targets.clone();
+    let sink = RelaySink::new(
+        MACHINE.into(),
+        Box::new(move |_, t| {
+            log.lock().unwrap().push(t);
+            stored()
+        }),
+    );
+    let target = RoomRef::session(MACHINE, "s_target0001");
+    let mut m = msg(AuthorKind::Owner, MACHINE, None);
+    m.mention = Some(tmgr_ipc::chat::MentionRef {
+        id: new_message_id(),
+        target: target.clone(),
+        target_title: "forged".into(),
+        state: tmgr_ipc::chat::MentionState::Answered,
+        hop: 9,
+    });
+    sink.deliver("dev-1", m).unwrap();
+    sink.deliver("dev-1", msg(AuthorKind::Owner, MACHINE, None))
+        .unwrap();
+    assert_eq!(*targets.lock().unwrap(), [Some(target), None]);
 }

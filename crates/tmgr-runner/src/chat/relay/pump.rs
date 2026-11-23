@@ -35,7 +35,8 @@ const PERMANENT: [&str; 2] = [
     "this device is not a trusted member",
 ];
 
-pub type IngestFn = Box<dyn Fn(Incoming) -> Result<Ingested, IngestError> + Send + Sync>;
+pub type IngestFn =
+    Box<dyn Fn(Incoming, Option<RoomRef>) -> Result<Ingested, IngestError> + Send + Sync>;
 pub type TransportFactory = Arc<dyn Fn(&str) -> Result<Box<dyn Transport>, String> + Send + Sync>;
 
 pub trait Relay: Send + Sync {
@@ -77,6 +78,7 @@ impl ChatSink for RelaySink {
             );
             return Ok(());
         }
+        let target = msg.mention.map(|m| m.target);
         let incoming = Incoming {
             room: msg.room,
             id: msg.id,
@@ -87,7 +89,7 @@ impl ChatSink for RelaySink {
             device: Some(from_device.to_owned()),
             client: "relay".into(),
         };
-        match (self.ingest)(incoming) {
+        match (self.ingest)(incoming, target) {
             Ok(_) => Ok(()),
             Err(IngestError::NotFound(e) | IngestError::Conflict(e)) => {
                 crate::daemon::log(&format!("chat relay: message not stored: {e}"));
@@ -233,7 +235,8 @@ pub struct Setup {
     pub dir: PathBuf,
     pub machine: String,
     pub transport: TransportFactory,
-    pub ingest: Arc<dyn Fn(Incoming) -> Result<Ingested, IngestError> + Send + Sync>,
+    pub ingest:
+        Arc<dyn Fn(Incoming, Option<RoomRef>) -> Result<Ingested, IngestError> + Send + Sync>,
     pub subscribe: Arc<dyn Fn() -> Receiver<ChatPush> + Send + Sync>,
     pub stop: Arc<dyn Fn() -> bool + Send + Sync>,
     pub rpc: Arc<RpcInbox>,
@@ -257,7 +260,7 @@ fn build(setup: &Setup) -> Result<Option<Engine>, String> {
     }
     let transport = (setup.transport)(&cfg.server)?;
     let ingest = setup.ingest.clone();
-    let sink = RelaySink::new(setup.machine.clone(), Box::new(move |i| ingest(i)));
+    let sink = RelaySink::new(setup.machine.clone(), Box::new(move |i, t| ingest(i, t)));
     let engine_cfg = EngineConfig {
         user_id: cfg.user_id,
         label: LABEL.to_owned(),

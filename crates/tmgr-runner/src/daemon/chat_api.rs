@@ -18,8 +18,8 @@ const CAPTURE_EVERY: Duration = Duration::from_secs(3);
 const ACTIVITY_TICK: Duration = Duration::from_millis(250);
 const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
-const RELAY_SOURCE: &str = "phone or another device via chat relay";
-const UNRESTRICTED_REFUSAL: &str =
+pub(super) const RELAY_SOURCE: &str = "phone or another device via chat relay";
+pub(super) const UNRESTRICTED_REFUSAL: &str =
     "Not delivered: an unrestricted manager takes input only from this machine's keyboard.";
 
 fn bad(msg: String) -> ApiErr {
@@ -109,16 +109,21 @@ impl Runner {
             dir: self.cfg.dir.clone(),
             machine: self.chat.machine().to_owned(),
             transport,
-            ingest: Arc::new(move |m: chat::Incoming| {
-                let room = m.room.clone();
-                let device = m.device.clone();
-                ingest_rt.chat.ingest(
-                    m,
-                    now_ms(),
-                    |s| ingest_rt.session(s).is_some(),
-                    |body| ingest_rt.relay_deliver(&room, device.as_deref(), body),
-                )
-            }),
+            ingest: Arc::new(
+                move |m: chat::Incoming, target: Option<tmgr_ipc::chat::RoomRef>| {
+                    if let Some(target) = target {
+                        return ingest_rt.relay_mention(m, target);
+                    }
+                    let room = m.room.clone();
+                    let device = m.device.clone();
+                    ingest_rt.chat.ingest(
+                        m,
+                        now_ms(),
+                        |s| ingest_rt.session(s).is_some(),
+                        |body| ingest_rt.relay_deliver(&room, device.as_deref(), body),
+                    )
+                },
+            ),
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
             stop: Arc::new(move || stop_rt.stop.load(Ordering::SeqCst)),
             rpc,
@@ -128,7 +133,9 @@ impl Runner {
             on_device: Arc::new(move |d| device_rt.chat.set_relay_device(d)),
             rooms: Arc::new(move || {
                 let sessions: Vec<SessionInfo> = rooms_rt.all().iter().map(|s| s.info()).collect();
-                rooms_rt.chat.rooms(&sessions, None)
+                let mut rooms = rooms_rt.chat.rooms(&sessions, None);
+                rooms_rt.mention_decorate(&mut rooms);
+                rooms
             }),
             history: Arc::new(move |room, limit| {
                 history_rt
@@ -220,6 +227,7 @@ impl Runner {
                         .as_ref()
                         .map(|m| m.id.as_str()),
                 );
+                self.mention_decorate(&mut rooms);
                 rooms.extend(chat_remote::rooms(&self.remote_link()));
                 Ok(to_json(&rooms))
             }
@@ -249,9 +257,12 @@ impl Runner {
                     .map_err(bad)
             }
             chat_method::SEND => {
-                let q: SendParams = params(p)?;
+                let mut q: SendParams = params(p)?;
                 if q.body_md.trim().is_empty() && q.attachments.is_empty() {
                     return Err(bad("body_md is empty".into()));
+                }
+                if let Some(req) = q.mention.take() {
+                    return self.send_mention(conn, q, req);
                 }
                 q.room.validate().map_err(bad)?;
                 if q.room.machine != self.chat.machine() {
@@ -326,6 +337,7 @@ impl Runner {
                 q.room.validate().map_err(bad)?;
                 Ok(to_json(&self.chat.cancel(&q.room, &q.id)))
             }
+            chat_method::MENTION_INJECT => self.mention_inject(params(p)?),
             chat_method::RELAY_SELF => {
                 self.chat.relay_self().map(|r| to_json(&r)).ok_or_else(|| {
                     api(
@@ -394,18 +406,27 @@ impl Runner {
     pub(super) fn chat_queue_loop(&self) {
         while !self.stop.load(Ordering::SeqCst) {
             thread::sleep(QUEUE_EVERY);
-            self.chat
-                .drain_queue(now_ms(), |room, body, client, device| {
-                    let delivery = if client == "relay" {
-                        self.relay_deliver(room, device, body)
+            self.mention_tick();
+            self.chat.drain_queue_with(
+                now_ms(),
+                |it| {
+                    if self.chat.is_mention_open(it.id) {
+                        return self.mention_deliver(it);
+                    }
+                    let delivery = if it.client == "relay" {
+                        self.relay_deliver(it.room, it.device, it.body)
                     } else {
-                        self.chat_deliver(room, body, client)
+                        self.chat_deliver(it.room, it.body, it.client)
                     };
                     match delivery {
-                        chat::Delivery::Gone(_) if room.session.is_none() => chat::Delivery::Busy,
+                        chat::Delivery::Gone(_) if it.room.session.is_none() => {
+                            chat::Delivery::Busy
+                        }
                         d => d,
                     }
-                });
+                },
+                |it, typed| self.chat.mention_delivered(it.id, typed, now_ms()),
+            );
         }
     }
 

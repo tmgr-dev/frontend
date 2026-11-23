@@ -24,6 +24,8 @@ pub struct RoomEntry {
     pub context_pct: Option<u8>,
     #[serde(default)]
     pub last_ts: Option<u64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mention_ok: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

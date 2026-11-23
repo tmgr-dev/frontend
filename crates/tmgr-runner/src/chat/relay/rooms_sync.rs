@@ -82,6 +82,7 @@ pub fn build_index(s: &Snapshot) -> RoomsIndex {
             state: r.state.clone(),
             context_pct: r.context_pct,
             last_ts: r.last.as_ref().map(|m| m.ts_ms),
+            mention_ok: r.mention.as_ref().is_some_and(|m| m.ok),
         })
         .collect();
     RoomsIndex {
