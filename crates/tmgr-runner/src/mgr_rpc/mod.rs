@@ -151,6 +151,9 @@ pub(crate) mod testkit {
         fn local_manager_unrestricted(&self) -> bool {
             self.unrestricted_manager.load(Ordering::SeqCst)
         }
+        fn unrestricted(&self) -> bool {
+            self.unrestricted_manager.load(Ordering::SeqCst)
+        }
         fn queue_remote_ask(
             &self,
             _: &tmgr_ipc::chat::RoomRef,

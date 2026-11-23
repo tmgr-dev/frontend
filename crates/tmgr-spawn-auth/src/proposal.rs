@@ -35,6 +35,7 @@ pub struct SpawnProposal {
     pub profile: String,
     pub cwd: String,
     pub mode: SpawnMode,
+    pub sandbox: Option<String>,
     pub prompt_sha256: Option<String>,
     pub name: Option<String>,
     pub task: Option<String>,
@@ -56,6 +57,8 @@ struct WireProposal {
     cwd: String,
     #[serde(default)]
     mode: Option<SpawnMode>,
+    #[serde(default)]
+    sandbox: Option<String>,
     #[serde(default)]
     prompt_sha256: Option<String>,
     #[serde(default)]
@@ -84,6 +87,7 @@ impl TryFrom<WireProposal> for SpawnProposal {
             profile: w.profile,
             cwd: w.cwd,
             mode: w.mode.unwrap_or_default(),
+            sandbox: w.sandbox,
             prompt_sha256: w.prompt_sha256,
             name: w.name,
             task: w.task,
@@ -98,7 +102,7 @@ impl TryFrom<WireProposal> for SpawnProposal {
 impl Serialize for SpawnProposal {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         let spawn = self.kind == ProposalKind::Spawn;
-        let mut st = ser.serialize_struct("SpawnProposal", 11)?;
+        let mut st = ser.serialize_struct("SpawnProposal", 12)?;
         st.serialize_field("v", &self.v)?;
         if !spawn {
             st.serialize_field("kind", &self.kind)?;
@@ -107,6 +111,9 @@ impl Serialize for SpawnProposal {
             st.serialize_field("profile", &self.profile)?;
             st.serialize_field("cwd", &self.cwd)?;
             st.serialize_field("mode", &self.mode)?;
+            if let Some(v) = &self.sandbox {
+                st.serialize_field("sandbox", v)?;
+            }
             if let Some(h) = &self.prompt_sha256 {
                 st.serialize_field("prompt_sha256", h)?;
             }
@@ -145,6 +152,7 @@ impl SpawnProposal {
 
     fn spawn_ok(&self) -> bool {
         is_token(&self.profile)
+            && self.sandbox.as_deref().is_none_or(|v| v == "off")
             && is_text(&self.cwd, MAX_CWD_BYTES)
             && self
                 .name
@@ -168,6 +176,7 @@ impl SpawnProposal {
             && self.profile.is_empty()
             && self.cwd.is_empty()
             && self.mode == SpawnMode::default()
+            && self.sandbox.is_none()
             && self.prompt_sha256.is_none()
             && self.name.is_none()
             && self.task.is_none()
@@ -240,6 +249,7 @@ mod tests {
             profile: "claude".into(),
             cwd: "/work/app".into(),
             mode: SpawnMode::AcceptEdits,
+            sandbox: None,
             prompt_sha256: None,
             name: Some("fix \"login\"".into()),
             task: None,
@@ -258,6 +268,37 @@ mod tests {
             got,
             r#"{"v":1,"profile":"claude","cwd":"/work/app","mode":"accept-edits","name":"fix \"login\"","target_id":"mx_0123456789abcdef"}"#
         );
+    }
+
+    #[test]
+    fn sandbox_off_is_serialized_after_mode_and_round_trips() {
+        let mut p = sample();
+        p.mode = SpawnMode::Bypass;
+        p.sandbox = Some("off".into());
+        let got = String::from_utf8(p.canonical_bytes()).unwrap();
+        assert_eq!(
+            got,
+            r#"{"v":1,"profile":"claude","cwd":"/work/app","mode":"bypass","sandbox":"off","name":"fix \"login\"","target_id":"mx_0123456789abcdef"}"#
+        );
+        assert_eq!(p.validate(), Ok(()));
+        let back: SpawnProposal = serde_json::from_str(&got).unwrap();
+        assert_eq!(back, p);
+        assert_ne!(p.req_sha256(), sample().req_sha256());
+    }
+
+    #[test]
+    fn sandbox_accepts_only_off_and_only_on_spawn() {
+        let mut p = sample();
+        p.sandbox = Some("on".into());
+        assert_eq!(p.validate(), Err(Refusal::BadToken));
+        p.sandbox = Some(String::new());
+        assert_eq!(p.validate(), Err(Refusal::BadToken));
+        let mut s = stop();
+        s.sandbox = Some("off".into());
+        assert_eq!(s.validate(), Err(Refusal::BadToken));
+        let mut s = send();
+        s.sandbox = Some("off".into());
+        assert_eq!(s.validate(), Err(Refusal::BadToken));
     }
 
     #[test]
@@ -413,6 +454,7 @@ mod tests {
             profile: String::new(),
             cwd: String::new(),
             mode: SpawnMode::default(),
+            sandbox: None,
             prompt_sha256: None,
             name: None,
             task: None,

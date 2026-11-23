@@ -40,6 +40,8 @@ impl Link for Live<'_> {
 }
 
 const NOT_AVAILABLE: &str = "not available";
+const NO_SANDBOX_REFUSED: &str =
+    "no_sandbox needs a requesting manager that runs without the sandbox";
 const MAX_ERR_CHARS: usize = 200;
 
 pub fn execute(
@@ -84,7 +86,7 @@ pub fn execute(
     }
     let mut rest = args.clone();
     let machine = take_machine(&mut rest)?;
-    let (op, op_args) = map_call(tool, rest)?;
+    let (op, op_args) = map_call(host, tool, rest)?;
     ready(link, &machine)?;
     let res = link.call(&machine, op, op_args)?;
     answer(&machine, op, res)
@@ -165,7 +167,7 @@ fn count(a: &Map<String, Value>, key: &str, max: u32) -> Result<Option<u32>, Str
     }
 }
 
-fn map_call(tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
+fn map_call(host: &dyn Host, tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
     match tool {
         tool::LIST_SESSIONS => {
             only(&a, &[])?;
@@ -206,14 +208,14 @@ fn map_call(tool: &str, a: Map<String, Value>) -> Result<(Op, Value), String> {
             let out = json!({"session": session(&a)?, "to": text(&a, "to", 32)?});
             Ok((Op::Switch, out))
         }
-        tool::PROPOSE_SPAWN => Ok((Op::SpawnChallenge, spawn_args(&a, false)?)),
-        tool::SPAWN_SESSION => Ok((Op::Spawn, spawn_args(&a, true)?)),
+        tool::PROPOSE_SPAWN => Ok((Op::SpawnChallenge, spawn_args(host, &a, false)?)),
+        tool::SPAWN_SESSION => Ok((Op::Spawn, spawn_args(host, &a, true)?)),
         _ => Err(NOT_AVAILABLE.into()),
     }
 }
 
-fn spawn_args(a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
-    for k in ["approval", "no_sandbox", "manager"] {
+fn spawn_args(host: &dyn Host, a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
+    for k in ["approval", "manager"] {
         if a.contains_key(k) {
             return Err(format!("{k} is not allowed for a remote spawn"));
         }
@@ -225,6 +227,7 @@ fn spawn_args(a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
         "name",
         "task",
         "permission_mode",
+        "no_sandbox",
     ];
     if claim {
         keys.push("card_id");
@@ -246,6 +249,12 @@ fn spawn_args(a: &Map<String, Value>, claim: bool) -> Result<Value, String> {
     }
     if out["prompt"].as_str().is_some_and(|p| !remote_prompt_ok(p)) {
         return Err(REMOTE_PROMPT_CHARS.into());
+    }
+    match a.get("no_sandbox") {
+        None | Some(Value::Bool(false)) => {}
+        Some(Value::Bool(true)) if host.unrestricted() => out["no_sandbox"] = json!(true),
+        Some(Value::Bool(true)) => return Err(NO_SANDBOX_REFUSED.into()),
+        Some(_) => return Err("no_sandbox must be true or false".into()),
     }
     if claim {
         out["card_id"] = json!(text(a, "card_id", 128).map_err(|_| {
@@ -668,7 +677,7 @@ mod tests {
             ),
             (
                 tool::SPAWN_SESSION,
-                spawn_case("", json!({"card_id": "c", "no_sandbox": true})),
+                spawn_case("", json!({"card_id": "c", "no_sandbox": "yes"})),
             ),
             (
                 tool::SPAWN_SESSION,
@@ -688,7 +697,7 @@ mod tests {
             (tool::PROPOSE_SPAWN, spawn_case("", json!({"approval": {}}))),
             (
                 tool::PROPOSE_SPAWN,
-                spawn_case("", json!({"no_sandbox": false})),
+                spawn_case("", json!({"no_sandbox": 1})),
             ),
             (
                 tool::PROPOSE_SPAWN,
@@ -743,6 +752,60 @@ mod tests {
         )
         .unwrap();
         assert_eq!(sent(&net).len(), 1);
+    }
+
+    fn run_as(net: &Net, host: &Fake, tool: &str, args: Value) -> Result<Value, String> {
+        let req = SpoolReq {
+            v: 1,
+            id: "i".into(),
+            tool: tool.into(),
+            args,
+        };
+        execute(net, host, &State::default(), &req)
+    }
+
+    #[test]
+    fn no_sandbox_is_forwarded_only_for_an_unrestricted_requesting_manager() {
+        let refusal = NO_SANDBOX_REFUSED;
+        for (t, extra) in [
+            (tool::PROPOSE_SPAWN, json!({"no_sandbox": true})),
+            (
+                tool::SPAWN_SESSION,
+                json!({"card_id": "c", "no_sandbox": true}),
+            ),
+        ] {
+            let net = Net::top();
+            let host = Fake::new();
+            let e = run_as(&net, &host, t, spawn_case("", extra.clone())).unwrap_err();
+            assert_eq!(e, refusal, "{t}");
+            assert!(sent(&net).is_empty());
+
+            host.unrestricted_manager
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            run_as(&net, &host, t, spawn_case("", extra)).unwrap();
+            let calls = sent(&net);
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].2["no_sandbox"], json!(true), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_false_no_sandbox_is_dropped_and_not_forwarded() {
+        for unrestricted in [false, true] {
+            let net = Net::top();
+            let host = Fake::new();
+            host.unrestricted_manager
+                .store(unrestricted, std::sync::atomic::Ordering::SeqCst);
+            run_as(
+                &net,
+                &host,
+                tool::PROPOSE_SPAWN,
+                spawn_case("", json!({"no_sandbox": false})),
+            )
+            .unwrap();
+            let calls = sent(&net);
+            assert!(calls[0].2.get("no_sandbox").is_none());
+        }
     }
 
     #[test]

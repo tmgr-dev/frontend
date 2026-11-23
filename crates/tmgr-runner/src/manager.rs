@@ -658,6 +658,7 @@ pub struct SpawnSpec {
     pub cwd: PathBuf,
     pub name: Option<String>,
     pub mode: String,
+    pub no_sandbox: bool,
     pub parent: Option<String>,
     pub card: Option<String>,
     pub pin: Option<CwdPin>,
@@ -831,6 +832,7 @@ fn action_proposal(host: &dyn Host) -> SpawnProposal {
         profile: String::new(),
         cwd: String::new(),
         mode: SpawnMode::Ask,
+        sandbox: None,
         prompt_sha256: None,
         name: None,
         task: None,
@@ -1002,8 +1004,12 @@ struct SpawnArgs<'a> {
     prompt: Option<&'a str>,
     name: Option<&'a str>,
     mode: &'a str,
+    no_sandbox: bool,
     proposal: SpawnProposal,
 }
+
+const NO_SANDBOX_NEEDS_UNRESTRICTED: &str =
+    "no_sandbox needs a manager that runs without the sandbox";
 
 fn truthy(a: &Value, key: &str) -> bool {
     a.get(key)
@@ -1051,6 +1057,7 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnAr
             )
         }
     };
+    let no_sandbox = truthy(a, "no_sandbox");
     let dir = host
         .trusted_dir(cwd)
         .map_err(|e| if remote { REMOTE_CWD.to_string() } else { e })?;
@@ -1059,6 +1066,7 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnAr
         profile: profile.into(),
         cwd: dir.path.display().to_string(),
         mode: spawn_mode,
+        sandbox: no_sandbox.then(|| "off".to_string()),
         prompt_sha256: prompt.map(|p| sha256_hex(p.as_bytes())),
         name: name.map(String::from),
         task: task.map(String::from),
@@ -1074,11 +1082,15 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnAr
         prompt,
         name,
         mode,
+        no_sandbox,
         proposal,
     })
 }
 
 fn propose_spawn(host: &dyn Host, a: &Value) -> Result<Value, String> {
+    if truthy(a, "no_sandbox") && host.remote_caller().is_none() && !host.unrestricted() {
+        return Err(NO_SANDBOX_NEEDS_UNRESTRICTED.into());
+    }
     let args = spawn_args(host, a, true)?;
     args.proposal.validate().map_err(|r| r.to_string())?;
     let proposer = host.proposer();
@@ -1123,13 +1135,11 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
     if remote && approval.is_none() {
         return Err("this card is not approved yet".into());
     }
-    if approval.is_some() {
-        if truthy(a, "no_sandbox") {
-            return Err("a spawn without the sandbox is not allowed, even with an approval".into());
-        }
-        if truthy(a, "manager") {
-            return Err("a manager session cannot be spawned, even with an approval".into());
-        }
+    if approval.is_none() && truthy(a, "no_sandbox") {
+        return Err("a spawn without the sandbox needs an owner approval".into());
+    }
+    if approval.is_some() && truthy(a, "manager") {
+        return Err("a manager session cannot be spawned, even with an approval".into());
     }
     let args = spawn_args(host, a, approval.is_some())?;
     let spec = SpawnSpec {
@@ -1137,6 +1147,7 @@ fn spawn(host: &dyn Host, st: &State, a: &Value) -> Result<Value, String> {
         cwd: args.dir.path.clone(),
         name: args.name.map(String::from),
         mode: args.mode.into(),
+        no_sandbox: args.no_sandbox,
         parent: (!remote && host.me() != "-").then(|| host.me().to_string()),
         card: approval.as_ref().map(|s| s.card_id().to_owned()),
         pin: Some(args.dir.pin),
@@ -1698,6 +1709,7 @@ mod tests {
         trusted: Vec<String>,
         now: u64,
         verified: Mutex<Vec<SpawnProposal>>,
+        no_sandbox_spawns: Mutex<Vec<bool>>,
         verdict: Mutex<Result<bool, String>>,
         done: Mutex<Vec<(String, String)>>,
         proposed: Mutex<Vec<SpawnProposal>>,
@@ -1756,6 +1768,7 @@ mod tests {
                 trusted: vec!["/tmp/ok".into()],
                 now: 1_000_000,
                 verified: Mutex::default(),
+                no_sandbox_spawns: Mutex::default(),
                 verdict: Mutex::new(Ok(true)),
                 done: Mutex::default(),
                 proposed: Mutex::default(),
@@ -1829,6 +1842,7 @@ mod tests {
                 spec.mode,
                 spec.parent.as_deref().unwrap_or("none")
             ));
+            self.no_sandbox_spawns.lock().unwrap().push(spec.no_sandbox);
             self.pins.lock().unwrap().push(spec.pin);
             let mut i = info("s_ffffffffff");
             i.permission_mode = Some(if self.downgrade {
@@ -2231,9 +2245,20 @@ mod tests {
         assert!(call(&h, &st, "spawn_session", other)
             .unwrap_err()
             .contains("different cards"));
-        let mut refused = args;
-        refused["no_sandbox"] = json!(true);
-        assert!(call(&h, &st, "spawn_session", refused).is_err());
+        let mut flagged = args;
+        flagged["no_sandbox"] = json!(true);
+        call(&h, &st, "spawn_session", flagged).unwrap();
+        assert_eq!(
+            h.verified
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .sandbox
+                .as_deref(),
+            Some("off")
+        );
+        assert_eq!(*h.no_sandbox_spawns.lock().unwrap(), vec![false, true]);
     }
 
     #[test]
@@ -2275,7 +2300,12 @@ mod tests {
             .unwrap_err()
             .contains("trusted"));
         assert!(call(&h, &st, "spawn_session", with("profile", json!("custom"))).is_err());
-        assert!(call(&h, &st, "spawn_session", with("no_sandbox", json!(true))).is_ok());
+        assert!(
+            call(&h, &st, "spawn_session", with("no_sandbox", json!(true)))
+                .unwrap_err()
+                .contains("owner approval")
+        );
+        assert!(call(&h, &st, "spawn_session", with("no_sandbox", json!(false))).is_ok());
         assert_eq!(h.spawned.lock().unwrap().len(), 1);
         let v = call(
             &h,
@@ -2373,14 +2403,47 @@ mod tests {
     }
 
     #[test]
-    fn no_sandbox_and_manager_are_refused_before_verification_even_when_signed() {
+    fn manager_is_refused_before_verification_even_when_signed() {
         let h = Fake::new();
         let st = State::default();
-        for k in ["no_sandbox", "manager"] {
-            call(&h, &st, "spawn_session", signed_args(json!({k: true}))).unwrap_err();
-        }
+        call(
+            &h,
+            &st,
+            "spawn_session",
+            signed_args(json!({"manager": true})),
+        )
+        .unwrap_err();
         assert!(h.verified.lock().unwrap().is_empty());
         assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_signed_no_sandbox_spawn_puts_the_flag_into_the_verified_proposal() {
+        let h = Fake::new();
+        let st = State::default();
+        call(&h, &st, "spawn_session", signed_args(json!({}))).unwrap();
+        call(
+            &h,
+            &st,
+            "spawn_session",
+            signed_args(json!({"no_sandbox": true})),
+        )
+        .unwrap();
+        let verified = h.verified.lock().unwrap();
+        assert_eq!(verified[0].sandbox, None);
+        assert_eq!(verified[1].sandbox.as_deref(), Some("off"));
+        assert_eq!(*h.no_sandbox_spawns.lock().unwrap(), vec![false, true]);
+    }
+
+    #[test]
+    fn propose_spawn_carries_no_sandbox_for_an_unrestricted_manager_only() {
+        let mut h = Fake::new();
+        let args = json!({"profile": "claude-code", "cwd": "/tmp/ok", "no_sandbox": true});
+        let st = State::default();
+        assert!(call(&h, &st, "propose_spawn", args.clone()).is_err());
+        h.unrestricted = true;
+        call(&h, &st, "propose_spawn", args).unwrap();
+        assert_eq!(h.proposed.lock().unwrap().len(), 1);
     }
 
     #[test]

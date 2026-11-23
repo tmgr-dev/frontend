@@ -823,21 +823,23 @@ fn parse_args(op: Op, a: &Value, from: &str) -> Option<Args> {
     }
 }
 
-const SPAWN_KEYS: [&str; 6] = [
+const SPAWN_KEYS: [&str; 7] = [
     "profile",
     "cwd",
     "permission_mode",
     "prompt",
     "name",
     "task",
+    "no_sandbox",
 ];
-const SPAWN_KEYS_WITH_CARD: [&str; 7] = [
+const SPAWN_KEYS_WITH_CARD: [&str; 8] = [
     "profile",
     "cwd",
     "permission_mode",
     "prompt",
     "name",
     "task",
+    "no_sandbox",
     "card_id",
 ];
 
@@ -852,7 +854,11 @@ fn spawn_object(m: &serde_json::Map<String, Value>) -> Option<Value> {
     m.get("profile")?;
     m.get("cwd")?;
     for (k, v) in m {
-        text_in(v, max(k))?;
+        if k == "no_sandbox" {
+            (*v == Value::Bool(true)).then_some(())?;
+        } else {
+            text_in(v, max(k))?;
+        }
     }
     Some(Value::Object(m.clone()))
 }
@@ -1310,6 +1316,23 @@ mod tests {
     }
 
     #[test]
+    fn no_sandbox_true_is_accepted_for_both_spawn_ops() {
+        let r = rig();
+        let res = r.call(
+            &open(),
+            "ns-c",
+            "spawn_challenge",
+            json!({"profile": "codex", "cwd": "/tmp/ok", "no_sandbox": true}),
+        );
+        assert!(res.ok);
+        approve(&r, "card_1", Some(&remote_peer()));
+        let mut args = spawn_args("card_1");
+        args["no_sandbox"] = json!(true);
+        assert!(r.call(&open(), "ns-s", "spawn", args).ok);
+        assert!(r.host.spawned.lock().unwrap()[0].no_sandbox);
+    }
+
+    #[test]
     fn spawn_arguments_are_strict() {
         let r = rig();
         let with = |k: &str, v: Value| {
@@ -1325,7 +1348,9 @@ mod tests {
             with("card_id", json!(7)),
             with("approval", json!({"v": 1})),
             with("approval", Value::Null),
-            with("no_sandbox", json!(true)),
+            with("no_sandbox", json!(false)),
+            with("no_sandbox", json!("true")),
+            with("no_sandbox", Value::Null),
             with("manager", json!(true)),
             with("machine", json!(PEER)),
             with("extra", json!("x")),
@@ -1343,7 +1368,8 @@ mod tests {
         for (i, args) in [
             json!({"profile": "codex", "cwd": "/tmp/ok", "card_id": "card_1"}),
             json!({"profile": "codex", "cwd": "/tmp/ok", "approval": {}}),
-            json!({"profile": "codex", "cwd": "/tmp/ok", "no_sandbox": true}),
+            json!({"profile": "codex", "cwd": "/tmp/ok", "no_sandbox": "yes"}),
+            json!({"profile": "codex", "cwd": "/tmp/ok", "no_sandbox": false}),
             json!({"profile": "codex", "cwd": "/tmp/ok", "machine": ME}),
         ]
         .into_iter()

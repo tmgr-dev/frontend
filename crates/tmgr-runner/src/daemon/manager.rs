@@ -161,7 +161,7 @@ fn builtin<'a>(set: &'a ProfileSet, id: &str) -> Result<&'a Profile, String> {
 }
 
 fn spawn_req(spec: &core::SpawnSpec) -> Result<RunCreateReq, String> {
-    serde_json::from_value(serde_json::json!({
+    let mut req = serde_json::json!({
         "profile": spec.profile,
         "cwd": spec.cwd.display().to_string(),
         "name": spec.name,
@@ -169,8 +169,11 @@ fn spawn_req(spec: &core::SpawnSpec) -> Result<RunCreateReq, String> {
         "parent_session": spec.parent,
         "spawn_card": spec.card,
         "cwd_pin": spec.pin,
-    }))
-    .map_err(|e| e.to_string())
+    });
+    if spec.no_sandbox {
+        req["no_sandbox"] = serde_json::json!({});
+    }
+    serde_json::from_value(req).map_err(|e| e.to_string())
 }
 
 pub(super) struct ManagerHost<'a> {
@@ -221,7 +224,7 @@ impl core::Host for ManagerHost<'_> {
             &spawn_req(spec)?,
             &None,
             false,
-            true,
+            !spec.no_sandbox,
             sandbox::network_restriction_enforced(),
         )
         .map(|_| ())
@@ -701,6 +704,7 @@ pub(super) mod tests {
             cwd: dir.clone(),
             name: None,
             mode: "ask".into(),
+            no_sandbox: false,
             parent: Some(MGR.into()),
             card: None,
             pin: Some(pin),
@@ -710,6 +714,24 @@ pub(super) mod tests {
         fs::create_dir_all(&dir).unwrap();
         let err = host.spawn(spec(trusted.pin)).unwrap_err();
         assert_eq!(err, "approved folder changed");
+    }
+
+    #[test]
+    fn spawn_req_carries_no_sandbox_only_when_asked() {
+        let spec = |no_sandbox| core::SpawnSpec {
+            profile: "claude-code".into(),
+            cwd: "/w".into(),
+            name: None,
+            mode: "bypass".into(),
+            no_sandbox,
+            parent: None,
+            card: Some("card_1".into()),
+            pin: None,
+        };
+        assert!(spawn_req(&spec(false)).unwrap().no_sandbox.is_none());
+        let req = spawn_req(&spec(true)).unwrap();
+        assert_eq!(req.no_sandbox, Some(Default::default()));
+        assert_eq!(req.spawn_card.as_deref(), Some("card_1"));
     }
 
     #[test]
@@ -725,6 +747,7 @@ pub(super) mod tests {
             cwd: t.path().to_path_buf(),
             name: None,
             mode: mode.into(),
+            no_sandbox: false,
             parent: Some(MGR.into()),
             card: card.map(String::from),
             pin: None,

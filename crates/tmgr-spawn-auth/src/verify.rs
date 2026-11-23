@@ -227,6 +227,7 @@ mod tests {
             profile: "claude".into(),
             cwd: "/work/app".into(),
             mode: SpawnMode::Bypass,
+            sandbox: None,
             prompt_sha256: None,
             name: None,
             task: None,

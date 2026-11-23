@@ -130,7 +130,12 @@ fn card_summary(p: &SpawnProposal) -> String {
         tmgr_spawn_auth::SpawnMode::AcceptEdits => "accept-edits",
         tmgr_spawn_auth::SpawnMode::Bypass => "bypass",
     };
-    let mut line = format!("Start {} in {} ({mode})", p.profile, p.cwd);
+    let flags = if p.sandbox.is_some() {
+        format!("{mode}, sandbox off")
+    } else {
+        mode.to_string()
+    };
+    let mut line = format!("Start {} in {} ({flags})", p.profile, p.cwd);
     if let Some(what) = p.task.as_deref().or(p.name.as_deref()) {
         line.push_str(&format!(" - {what}"));
     }
@@ -237,7 +242,7 @@ impl SpawnGate {
 }
 
 enum Claim {
-    Verified(SpawnProposal),
+    Verified(Box<SpawnProposal>),
     Rejected(Refusal),
     Already(CardResult),
     Dead,
@@ -362,7 +367,9 @@ impl Runner {
         }
         let claim = match approval {
             Approval::Signed(wire) => match auth.claim(card, wire, now).map_err(card_error)? {
-                ClaimOutcome::Verified(approved) => Claim::Verified(approved.proposal().clone()),
+                ClaimOutcome::Verified(approved) => {
+                    Claim::Verified(Box::new(approved.proposal().clone()))
+                }
                 ClaimOutcome::Rejected(r) => Claim::Rejected(r),
                 ClaimOutcome::AlreadyClaimed(r) => Claim::Already(r),
                 ClaimOutcome::Dead { .. } => Claim::Dead,
@@ -374,7 +381,7 @@ impl Runner {
                     .claim_local(card, req_sha256, now)
                     .map_err(card_error)?
                 {
-                    LocalClaim::Claimed(p) => Claim::Verified(*p),
+                    LocalClaim::Claimed(p) => Claim::Verified(p),
                     LocalClaim::Rejected(r) => Claim::Rejected(r),
                     LocalClaim::AlreadyClaimed(r) => Claim::Already(r),
                     LocalClaim::Dead { .. } => Claim::Dead,
@@ -384,7 +391,7 @@ impl Runner {
         };
         match claim {
             Claim::Verified(approved) => {
-                if approved != *proposal {
+                if *approved != *proposal {
                     return Err(mismatch());
                 }
                 Ok(Verdict::Verified)
@@ -850,6 +857,9 @@ fn spawn_call_args(card_id: &str, p: &SpawnProposal) -> String {
         "cwd": p.cwd,
         "permission_mode": mode,
     });
+    if p.sandbox.is_some() {
+        args["no_sandbox"] = true.into();
+    }
     if let Some(name) = &p.name {
         args["name"] = name.clone().into();
     }
@@ -1574,6 +1584,9 @@ mod tests {
         fn spawned_for(&self, session: &str, from: &str) -> bool {
             self.inner.spawned_for(session, from)
         }
+        fn unrestricted(&self) -> bool {
+            self.inner.unrestricted()
+        }
         fn switch(&self, id: &str, to: &str) -> Result<core::SwitchResult, String> {
             self.inner.switch(id, to)
         }
@@ -1592,6 +1605,17 @@ mod tests {
     fn propose(h: &TestHost, e: &Env, mode: &str, dir: &str) -> String {
         let args = serde_json::json!({
             "profile": "claude-code", "cwd": e.work.join(dir), "permission_mode": mode, "prompt": "go"
+        });
+        run(h, e, "propose_spawn", args).unwrap()["card_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    fn propose_no_sandbox(h: &TestHost, e: &Env, dir: &str) -> String {
+        let args = serde_json::json!({
+            "profile": "claude-code", "cwd": e.work.join(dir), "permission_mode": "bypass",
+            "prompt": "go", "no_sandbox": true
         });
         run(h, e, "propose_spawn", args).unwrap()["card_id"]
             .as_str()
@@ -1693,21 +1717,117 @@ mod tests {
     }
 
     #[test]
-    fn no_sandbox_and_manager_are_refused_even_when_signed_and_keep_the_card() {
+    fn manager_is_refused_even_when_signed_and_keeps_the_card() {
         let e = env();
         with_dirs(&e);
         let h = TestHost::new(&e);
         let card = propose(&h, &e, "bypass", "a");
-        for k in ["no_sandbox", "manager"] {
-            let mut args = spawn_args(&e, "bypass", "a", &card);
-            args[k] = serde_json::json!(true);
-            assert!(run(&h, &e, "spawn_session", args).is_err());
-        }
+        let mut args = spawn_args(&e, "bypass", "a", &card);
+        args["manager"] = serde_json::json!(true);
+        assert!(run(&h, &e, "spawn_session", args).is_err());
         assert!(h.spawned.lock().unwrap().is_empty());
         assert!(matches!(
             e.auth.cards().state(&card).unwrap(),
             Some(CardState::Issued { .. })
         ));
+    }
+
+    #[test]
+    fn no_sandbox_is_refused_when_the_signed_proposal_lacks_the_flag_and_keeps_the_card() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let card = propose(&h, &e, "bypass", "a");
+        let mut args = spawn_args(&e, "bypass", "a", &card);
+        args["no_sandbox"] = serde_json::json!(true);
+        assert!(run(&h, &e, "spawn_session", args)
+            .unwrap_err()
+            .contains("does not match"));
+        assert!(h.spawned.lock().unwrap().is_empty());
+        assert!(matches!(
+            e.auth.cards().state(&card).unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+    }
+
+    #[test]
+    fn a_flagged_card_refuses_a_spawn_without_the_flag_and_allows_it_with_the_flag() {
+        let e = env();
+        with_dirs(&e);
+        let mut h = TestHost::new(&e);
+        h.inner.unrestricted = true;
+        let card = propose_no_sandbox(&h, &e, "a");
+        let plain = spawn_args(&e, "bypass", "a", &card);
+        assert!(run(&h, &e, "spawn_session", plain)
+            .unwrap_err()
+            .contains("does not match"));
+        assert!(matches!(
+            e.auth.cards().state(&card).unwrap(),
+            Some(CardState::Issued { .. })
+        ));
+        let mut flagged = spawn_args(&e, "bypass", "a", &card);
+        flagged["no_sandbox"] = serde_json::json!(true);
+        run(&h, &e, "spawn_session", flagged).unwrap();
+        assert_eq!(h.spawned.lock().unwrap().len(), 1);
+        assert!(matches!(
+            e.auth.cards().state(&card).unwrap(),
+            Some(CardState::Spawned { .. })
+        ));
+    }
+
+    #[test]
+    fn a_restricted_local_manager_cannot_propose_no_sandbox_and_an_unapproved_spawn_is_refused() {
+        let e = env();
+        with_dirs(&e);
+        let h = TestHost::new(&e);
+        let args = serde_json::json!({
+            "profile": "claude-code", "cwd": e.work.join("a"), "permission_mode": "ask",
+            "no_sandbox": true
+        });
+        assert!(run(&h, &e, "propose_spawn", args.clone()).is_err());
+        assert!(run(&h, &e, "spawn_session", args).is_err());
+        assert!(h.spawned.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_card_and_the_carry_out_instruction_show_the_sandbox_flag() {
+        let mut p: SpawnProposal = serde_json::from_value(serde_json::json!({
+            "v": 1, "profile": "claude", "cwd": "/w", "mode": "bypass",
+            "target_id": "mx_00"
+        }))
+        .unwrap();
+        assert_eq!(card_summary(&p), "Start claude in /w (bypass)");
+        assert!(!spawn_call_args("c", &p).contains("no_sandbox"));
+        p.sandbox = Some("off".into());
+        assert_eq!(card_summary(&p), "Start claude in /w (bypass, sandbox off)");
+        assert!(spawn_call_args("c", &p).contains("\"no_sandbox\":true"));
+    }
+
+    #[test]
+    fn an_edited_flagged_card_still_shows_sandbox_off() {
+        let e = env();
+        with_dirs(&e);
+        trust(&e, "b");
+        let mut h = TestHost::new(&e);
+        h.inner.unrestricted = true;
+        let card = propose_no_sandbox(&h, &e, "a");
+        let out = edit(
+            &e,
+            &card,
+            serde_json::json!({"cwd": e.work.join("b"), "mode": "accept-edits"}),
+        )
+        .unwrap();
+        let new = out["card_id"].as_str().unwrap().to_owned();
+        let Some(CardState::Issued { proposal, .. }) = e.auth.cards().state(&new).unwrap() else {
+            panic!("new card is not issued")
+        };
+        assert_eq!(proposal.sandbox.as_deref(), Some("off"));
+        let shown = card_msg(&e, &new).decision.unwrap().spawn.unwrap();
+        assert!(
+            shown.summary.contains("accept-edits, sandbox off"),
+            "{}",
+            shown.summary
+        );
     }
 
     #[test]
@@ -2364,6 +2484,7 @@ mod tests {
             profile: "claude-code".into(),
             cwd: e.work.join("a").display().to_string(),
             mode: tmgr_spawn_auth::SpawnMode::Bypass,
+            sandbox: None,
             prompt_sha256: Some(tmgr_spawn_auth::sha256_hex(b"go")),
             name: None,
             task: None,

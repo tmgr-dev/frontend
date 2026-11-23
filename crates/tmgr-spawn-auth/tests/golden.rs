@@ -91,6 +91,7 @@ fn proposal() -> SpawnProposal {
         profile: "claude".into(),
         cwd: "/work/app".into(),
         mode: SpawnMode::AcceptEdits,
+        sandbox: None,
         prompt_sha256: Some(sha256_hex(b"fix the login bug")),
         name: Some("fix \"login\" \u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}".into()),
         task: None,

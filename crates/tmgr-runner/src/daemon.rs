@@ -516,7 +516,7 @@ fn check_no_sandbox_admission(req: &RunCreateReq, manual: bool) -> Result<(), Ap
             ))
         };
     }
-    if manual {
+    if manual || req.spawn_card.is_some() {
         return Ok(());
     }
     Err(api(
@@ -7634,6 +7634,24 @@ mod tests {
         assert!(e.msg.contains("only for a manual run"), "{}", e.msg);
         assert!(check_no_sandbox_admission(&req, true).is_ok());
         assert!(check_no_sandbox_admission(&link_req(None, None), false).is_ok());
+    }
+
+    #[test]
+    fn a_spawn_card_admits_no_sandbox_and_the_audit_note_says_so() {
+        let mut req = plan_req("bypass", false);
+        req.agent_work = false;
+        req.no_sandbox = Some(Default::default());
+        let e = check_no_sandbox_admission(&req, false).err().unwrap();
+        assert!(matches!(e.code, ErrorCode::Forbidden));
+        req.spawn_card = Some("card_1".into());
+        assert!(check_no_sandbox_admission(&req, false).is_ok());
+        let (set, _) = ProfileSet::load(None);
+        let prof = set.get("claude-code").unwrap();
+        let plan = plan_mode(prof, &req, &None, false, false, true).unwrap();
+        assert_eq!(
+            agentwork::audit_note(plan.mode.as_deref(), req.no_sandbox.is_some(), None).as_deref(),
+            Some("mode: bypass, sandbox: off")
+        );
     }
 
     #[test]
