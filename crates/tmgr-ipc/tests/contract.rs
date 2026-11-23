@@ -1021,7 +1021,8 @@ fn constants_are_pinned() {
             "manager.unrestricted.v1",
             "chat.activity.v1",
             "spawn_decide.v1",
-            "chat.mention.v1"
+            "chat.mention.v1",
+            "manager.remote_policy.v1"
         ]
     );
     let methods = [
@@ -1158,7 +1159,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 49);
+    assert_eq!(w.caps.len(), 50);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1824,7 +1825,7 @@ fn an_assignment_is_hashed_only_when_present_and_is_size_limited() {
 fn switch_method_cap_and_shapes() {
     assert_eq!(method::SESSIONS_SWITCH, "sessions.switch");
     assert_eq!(caps::SWITCH_V1, "switch.v1");
-    assert_eq!(caps::ALL[caps::ALL.len() - 7], caps::SWITCH_V1);
+    assert_eq!(caps::ALL[caps::ALL.len() - 8], caps::SWITCH_V1);
     let req = SwitchReq {
         session: "s_aaaaaaaaaa".into(),
         to: "codex".into(),
@@ -1864,4 +1865,37 @@ fn manager_unrestricted_shape_hides_the_pin() {
         "yes": true
     }));
     assert!(extra.is_err());
+}
+
+#[test]
+fn manager_remote_policy_shapes() {
+    assert_eq!(method::MANAGER_REMOTE_POLICY, "manager.remote_policy");
+    assert_eq!(
+        method::MANAGER_REMOTE_POLICY_SET,
+        "manager.remote_policy_set"
+    );
+    assert_eq!(
+        caps::MANAGER_REMOTE_POLICY_V1,
+        "manager.remote_policy.v1"
+    );
+    let set: RemotePolicySetReq =
+        serde_json::from_value(json!({"leader": "mac-1", "ask": true})).unwrap();
+    assert_eq!(set.leader, "mac-1");
+    assert!(set.ask);
+    assert!(serde_json::from_value::<RemotePolicySetReq>(
+        json!({"leader": "mac-1", "ask": true, "x": 1})
+    )
+    .is_err());
+    let info = RemotePolicyInfo {
+        leaders: vec![RemotePolicyLeader {
+            machine: "mac-1".into(),
+            ask: false,
+            ops: vec![tmgr_ipc::mgr_rpc::Op::List, tmgr_ipc::mgr_rpc::Op::Room],
+        }],
+        legacy: false,
+    };
+    assert_eq!(
+        serde_json::to_value(&info).unwrap(),
+        json!({"leaders": [{"machine": "mac-1", "ask": false, "ops": ["list", "room"]}], "legacy": false})
+    );
 }

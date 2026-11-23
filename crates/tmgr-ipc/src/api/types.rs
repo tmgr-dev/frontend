@@ -153,6 +153,28 @@ impl std::fmt::Debug for ManagerUnrestrictedReq {
     }
 }
 
+/// Params of `manager.remote_policy_set` (`client: "cli"` or `"desktop"`, never from inside a session).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemotePolicySetReq {
+    pub leader: String,
+    pub ask: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotePolicyLeader {
+    pub machine: String,
+    pub ask: bool,
+    pub ops: Vec<crate::mgr_rpc::Op>,
+}
+
+/// Result of `manager.remote_policy`; `legacy` is true while the policy file has no `ask_from` key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotePolicyInfo {
+    pub leaders: Vec<RemotePolicyLeader>,
+    pub legacy: bool,
+}
+
 /// Params of `orchestrator.create` (`client: "cli"` only): the runner builds the command and the prompt itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

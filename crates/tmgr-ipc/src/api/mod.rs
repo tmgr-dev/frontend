@@ -84,8 +84,9 @@ pub mod caps {
     pub const OBJECT_EXEMPT_V1: &str = "object_exempt.v1";
     pub const MANAGER_UNRESTRICTED_V1: &str = "manager.unrestricted.v1";
     pub const SPAWN_DECIDE_V1: &str = "spawn_decide.v1";
+    pub const MANAGER_REMOTE_POLICY_V1: &str = "manager.remote_policy.v1";
 
-    pub const ALL: [&str; 49] = [
+    pub const ALL: [&str; 50] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -135,6 +136,7 @@ pub mod caps {
         CHAT_ACTIVITY_V1,
         SPAWN_DECIDE_V1,
         CHAT_MENTION_V1,
+        MANAGER_REMOTE_POLICY_V1,
     ];
 }
 
@@ -152,6 +154,8 @@ pub mod method {
     pub const SESSIONS_WORKLOG: &str = "sessions.worklog";
     pub const RUNS_CREATE: &str = "runs.create";
     pub const MANAGER_UNRESTRICTED: &str = "manager.unrestricted";
+    pub const MANAGER_REMOTE_POLICY: &str = "manager.remote_policy";
+    pub const MANAGER_REMOTE_POLICY_SET: &str = "manager.remote_policy_set";
     pub const LAYOUT_GET: &str = "layout.get";
     pub const LAYOUT_SET: &str = "layout.set";
     pub const ATTACH_OPEN: &str = "attach.open";

@@ -130,6 +130,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `spawnauth.v1` | method `spawn.challenge` (CLI and desktop only) |
 | `spawn_decide.v1` | method `spawn.decide` (desktop only) |
 | `manager.unrestricted.v1` | method `manager.unrestricted` (CLI only, follower PIN; section 5, "Unrestricted manager") |
+| `manager.remote_policy.v1` | methods `manager.remote_policy` (read) and `manager.remote_policy_set {leader, ask}`; `cli` and `desktop` only, and `_set` is refused from a process that descends from a live session |
 | `chat.activity.v1` | `{"activity": true}` on `chat.subscribe`; push `chat_activity` (section 5, "Chat activity") |
 | `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
