@@ -530,6 +530,7 @@ impl Dispatcher {
                     decision: None,
                     session_meta: None,
                     user_turn: false,
+                    mention: None,
                 };
                 msg.validate().map_err(refused)?;
                 let sent = self.state.chat.post(msg).map_err(refused)?;
@@ -1447,6 +1448,7 @@ mod tests {
                 decision: None,
                 session_meta: None,
                 user_turn: false,
+                mention: None,
             })
             .unwrap();
         id
@@ -1539,6 +1541,7 @@ mod tests {
                 decision: None,
                 session_meta: None,
                 user_turn: false,
+                mention: None,
             })
             .unwrap();
         let res = r.call(&p, "rt", "room", json!({}));

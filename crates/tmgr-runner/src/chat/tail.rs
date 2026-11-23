@@ -202,6 +202,7 @@ fn post(
         decision: None,
         session_meta: Some(meta.clone()),
         user_turn: turn.user,
+        mention: None,
     })
     .map(|_| ())
 }

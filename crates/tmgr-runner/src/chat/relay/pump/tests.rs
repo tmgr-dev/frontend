@@ -27,6 +27,7 @@ fn msg(kind: AuthorKind, machine: &str, device: Option<&str>) -> ChatMessage {
         decision: None,
         session_meta: None,
         user_turn: false,
+        mention: None,
     }
 }
 

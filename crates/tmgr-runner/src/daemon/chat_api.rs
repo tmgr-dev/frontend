@@ -568,6 +568,7 @@ mod tests {
             attachments: Vec::new(),
             id: None,
             ts_ms: None,
+            mention: None,
         })
     }
 
@@ -601,6 +602,7 @@ mod tests {
             attachments: Vec::new(),
             id: None,
             ts_ms: None,
+            mention: None,
         })
     }
 
@@ -834,6 +836,7 @@ mod tests {
             attachments: Vec::new(),
             id: None,
             ts_ms: None,
+            mention: None,
         });
         for p in [
             foreign,
@@ -1057,6 +1060,7 @@ mod tests {
             attachments: Vec::new(),
             id: Some(tmgr_ipc::chat::message_id_at(2, [3; 10])),
             ts_ms: Some(ts),
+            mention: None,
         });
         assert_eq!(
             call(&rt, &c, chat_method::SEND, ghost).unwrap_err().code,
@@ -1100,6 +1104,7 @@ mod tests {
                 attachments: Vec::new(),
                 id: None,
                 ts_ms: None,
+                mention: None,
             }),
         )
         .unwrap()

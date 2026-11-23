@@ -19,6 +19,9 @@ pub mod method {
     pub const RELAY_SELF: &str = "chat.relay_self";
     pub const QUEUED: &str = "chat.queued";
     pub const CANCEL: &str = "chat.cancel";
+    pub const MENTION_INJECT: &str = "chat.mention_inject";
+    pub const MENTION_CONFIRM: &str = "chat.mention_confirm";
+    pub const MENTION_PENDING: &str = "chat.mention_pending";
 }
 
 pub mod limits {
@@ -52,6 +55,87 @@ pub struct ChatMessage {
     pub session_meta: Option<SessionMeta>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub user_turn: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mention: Option<MentionRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MentionRef {
+    pub id: String,
+    pub target: RoomRef,
+    pub target_title: String,
+    pub state: MentionState,
+    pub hop: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MentionState {
+    NeedsConfirmation,
+    Queued,
+    Sent,
+    Answering,
+    Answered,
+    Busy,
+    Offline,
+    Timeout,
+    Interrupted,
+    Expired,
+    Refused,
+    RateLimited,
+    Cancelled,
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MentionReq {
+    pub target: RoomRef,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub confirmed_risky: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MentionTarget {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub risky: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MentionInjectParams {
+    pub room: RoomRef,
+    pub mention_id: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub confirmed_risky: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MentionConfirmParams {
+    pub room: RoomRef,
+    pub message_id: String,
+    pub accept: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub confirmed_risky: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MentionPendingParams {
+    pub room: RoomRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MentionPending {
+    pub message_id: String,
+    pub body_md: String,
+    pub target: RoomRef,
+    pub target_title: String,
+    pub target_agent: Option<String>,
+    pub device: Option<String>,
+    pub risky: bool,
+    pub exp_ms: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,6 +289,8 @@ pub struct RoomInfo {
     pub last: Option<ChatMessage>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unrestricted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mention: Option<MentionTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -228,6 +314,8 @@ pub struct SendParams {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ts_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mention: Option<MentionReq>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -399,6 +487,12 @@ impl ChatMessage {
         if let Some(meta) = &self.session_meta {
             meta.validate()?;
         }
+        if let Some(m) = &self.mention {
+            m.target.validate()?;
+            if !valid_message_id(&m.id) {
+                return Err("invalid mention id".into());
+            }
+        }
         match (&self.kind, &self.decision) {
             (MessageKind::Decision, None) => {
                 Err("a decision message needs decision.card_id".into())
@@ -457,6 +551,16 @@ mod tests {
                 "ts_ms": 1795000000300u64, "kind": "system", "body_md": "Session s_abcdefghij exited",
                 "future_field": {"x": 1}
             }),
+            json!({
+                "v": 1, "id": "m_0190a1b2c3d8aabbccddeeff00112233",
+                "room": {"kind": "session", "machine": "mx_7f3a", "session": "s_abcdefghij"},
+                "author": {"kind": "system", "id": "runner"},
+                "ts_ms": 1795000000400u64, "kind": "system", "body_md": "sent",
+                "reply_to": "m_0190a1b2c3d4aabbccddeeff00112233",
+                "mention": {"id": "m_0190a1b2c3d4aabbccddeeff00112233",
+                    "target": {"kind": "session", "machine": "mx_7f3a", "session": "s_target0001"},
+                    "target_title": "build-fix", "state": "sent", "hop": 1}
+            }),
         ]
     }
 
@@ -497,6 +601,7 @@ mod tests {
                 "decision",
                 "id",
                 "kind",
+                "mention",
                 "reply_to",
                 "room",
                 "session_meta",
@@ -686,5 +791,31 @@ mod tests {
         e["kind"] = json!("text");
         let m: ChatMessage = serde_json::from_value(e).unwrap();
         assert!(m.validate().is_err());
+    }
+
+    #[test]
+    fn an_unknown_mention_state_decodes_to_other() {
+        let r: MentionRef = serde_json::from_value(json!({
+            "id": "m_0190a1b2c3d4aabbccddeeff00112233",
+            "target": {"kind": "session", "machine": "mx", "session": "s1"},
+            "target_title": "t", "state": "from_the_future", "hop": 1
+        }))
+        .unwrap();
+        assert_eq!(r.state, MentionState::Other);
+    }
+
+    #[test]
+    fn mention_fields_are_omitted_when_absent() {
+        let p: SendParams = serde_json::from_value(json!({
+            "room": {"kind": "session", "machine": "mx", "session": "s1"}, "body_md": "x"
+        }))
+        .unwrap();
+        assert!(p.mention.is_none());
+        assert!(serde_json::to_value(&p).unwrap().get("mention").is_none());
+        let req: MentionReq = serde_json::from_value(json!({
+            "target": {"kind": "session", "machine": "mx", "session": "s2"}
+        }))
+        .unwrap();
+        assert!(!req.confirmed_risky);
     }
 }

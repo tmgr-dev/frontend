@@ -25,6 +25,7 @@ pub fn rooms(link: &dyn Link) -> Vec<RoomInfo> {
             model: None,
             last: None,
             unrestricted: false,
+            mention: None,
         })
         .collect()
 }
@@ -120,6 +121,7 @@ pub fn send(
         decision: None,
         session_meta: None,
         user_turn: false,
+        mention: None,
     })
 }
 
@@ -212,6 +214,7 @@ mod tests {
             decision: None,
             session_meta: None,
             user_turn: false,
+            mention: None,
         }
     }
 

@@ -292,6 +292,7 @@ mod tests {
             decision: None,
             session_meta: None,
             user_turn: false,
+            mention: None,
         };
         m.validate().unwrap();
     }

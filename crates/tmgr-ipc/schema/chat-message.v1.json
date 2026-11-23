@@ -72,6 +72,29 @@
       }
     },
     "user_turn": { "type": "boolean" },
+    "mention": {
+      "description": "Runner-owned state of an @mention between chats. Never trust it from a relay, a follower or remote history. Unknown states decode to other.",
+      "type": "object",
+      "required": ["id", "target", "target_title", "state", "hop"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^m_[0-9a-f]{32}$" },
+        "target": {
+          "type": "object",
+          "required": ["kind", "machine"],
+          "properties": {
+            "kind": { "enum": ["manager", "session"] },
+            "machine": { "$ref": "#/$defs/token" },
+            "session": { "$ref": "#/$defs/token" }
+          }
+        },
+        "target_title": { "type": "string" },
+        "state": {
+          "type": "string",
+          "examples": ["needs_confirmation", "queued", "sent", "answering", "answered", "busy", "offline", "timeout", "interrupted", "expired", "refused", "rate_limited", "cancelled"]
+        },
+        "hop": { "type": "integer", "minimum": 0, "maximum": 255 }
+      }
+    },
     "session_meta": {
       "description": "Runner-filled state of the session that wrote the message. Every field is optional.",
       "type": "object",

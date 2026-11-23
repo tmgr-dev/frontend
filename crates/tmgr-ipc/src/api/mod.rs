@@ -76,6 +76,7 @@ pub mod caps {
     pub const CHAT_V1: &str = "chat.v1";
     pub const MANAGER_V1: &str = "manager.v1";
     pub const CHAT_ACTIVITY_V1: &str = "chat.activity.v1";
+    pub const CHAT_MENTION_V1: &str = "chat.mention.v1";
     pub const RUN_PROMPT_V1: &str = "run_prompt.v1";
     pub const HANDOFF_V1: &str = "handoff.v1";
     pub const SWITCH_V1: &str = "switch.v1";
@@ -84,7 +85,7 @@ pub mod caps {
     pub const MANAGER_UNRESTRICTED_V1: &str = "manager.unrestricted.v1";
     pub const SPAWN_DECIDE_V1: &str = "spawn_decide.v1";
 
-    pub const ALL: [&str; 48] = [
+    pub const ALL: [&str; 49] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -133,6 +134,7 @@ pub mod caps {
         MANAGER_UNRESTRICTED_V1,
         CHAT_ACTIVITY_V1,
         SPAWN_DECIDE_V1,
+        CHAT_MENTION_V1,
     ];
 }
 

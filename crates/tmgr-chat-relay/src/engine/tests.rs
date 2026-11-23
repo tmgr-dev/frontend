@@ -418,6 +418,7 @@ fn text_msg(id: String, text: &str) -> ChatMessage {
         decision: None,
         session_meta: None,
         user_turn: false,
+        mention: None,
     }
 }
 

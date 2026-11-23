@@ -260,6 +260,7 @@ impl Chat {
             decision: None,
             session_meta: None,
             user_turn: false,
+            mention: None,
         };
         self.append(msg)
     }
@@ -363,6 +364,7 @@ impl Chat {
             decision: None,
             session_meta: None,
             user_turn: false,
+            mention: None,
         };
         msg.validate().map_err(Invalid)?;
         {
@@ -543,6 +545,7 @@ impl Chat {
             context_tokens: live_meta.and_then(|m| m.context_tokens),
             model: None,
             unrestricted: unrestricted.is_some(),
+            mention: None,
         }];
         let live_id = live.map(|s| s.id.as_str());
         let mut sessions: Vec<&SessionInfo> = sessions
@@ -573,6 +576,7 @@ impl Chat {
                 context_tokens: meta.as_ref().and_then(|m| m.context_tokens),
                 model: meta.and_then(|m| m.model),
                 unrestricted: unrestricted == Some(s.id.as_str()),
+                mention: None,
             });
         }
         out
@@ -620,6 +624,7 @@ fn system_message(room: &RoomRef, id: String, ts_ms: u64, text: &str) -> ChatMes
         decision: None,
         session_meta: None,
         user_turn: false,
+        mention: None,
     }
 }
 

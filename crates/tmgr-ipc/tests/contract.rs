@@ -1020,7 +1020,8 @@ fn constants_are_pinned() {
             "object_exempt.v1",
             "manager.unrestricted.v1",
             "chat.activity.v1",
-            "spawn_decide.v1"
+            "spawn_decide.v1",
+            "chat.mention.v1"
         ]
     );
     let methods = [

@@ -124,6 +124,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `team.multi.v1` | `team` together with `clones` on `runs.create`: the run folder is `<primary>-worktrees/queue/<pickup id>/lead` or `.../wK` and holds one clone per repository |
 | `profiles_login_check.v1` | `profiles.login_check` |
 | `chat.v1` | `chat.rooms`, `chat.history`, `chat.send`, `chat.search`, `chat.subscribe`, `chat.relay_self` |
+| `chat.mention.v1` | `chat.mention_pending`, `chat.mention_confirm`, `chat.mention_inject`; `SendParams.mention`, `RoomInfo.mention`, `ChatMessage.mention` (`cli` and `desktop` only) |
 | `manager.v1` | `manager` on `runs.create` and `SessionInfo` (section 5, "Manager session") |
 | `run_prompt.v1` | `prompt` on `runs.create` |
 | `spawnauth.v1` | method `spawn.challenge` (CLI and desktop only) |

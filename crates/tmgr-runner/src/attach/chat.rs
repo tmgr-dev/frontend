@@ -352,6 +352,7 @@ impl ChatState {
                     model: None,
                     last: None,
                     unrestricted: false,
+                    mention: None,
                     room: room.clone(),
                 },
                 unread: false,

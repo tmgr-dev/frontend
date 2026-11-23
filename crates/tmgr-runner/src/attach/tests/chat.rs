@@ -31,6 +31,7 @@ fn info(room: RoomRef, title: &str, agent: Option<&str>, pct: Option<u8>) -> Roo
         model: None,
         last: None,
         unrestricted: false,
+        mention: None,
     }
 }
 
@@ -67,6 +68,7 @@ fn msg(n: u64, room: RoomRef, author: AuthorKind, kind: MessageKind, body: &str)
         decision: None,
         session_meta: None,
         user_turn: false,
+        mention: None,
     }
 }
 

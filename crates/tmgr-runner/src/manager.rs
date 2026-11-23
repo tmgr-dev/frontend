@@ -891,6 +891,7 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                 decision: None,
                 session_meta: None,
                 user_turn: false,
+                mention: None,
             };
             msg.validate()?;
             let sent = st.chat.post(msg)?;
