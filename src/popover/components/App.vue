@@ -73,6 +73,7 @@
 					/>
 					<button type="button" class="row" data-nav @click="run('decisions')">
 						<span class="t">{{ openDecisionsLabel }}</span>
+						<span v-if="decisionsHotkey" class="m">{{ decisionsHotkey }}</span>
 					</button>
 				</div>
 
@@ -411,6 +412,12 @@
 			managerHotkey(): string {
 				return hotkeyText(
 					this.model?.hotkeys.manager,
+					this.model?.platform ?? 'macos',
+				);
+			},
+			decisionsHotkey(): string {
+				return hotkeyText(
+					this.model?.hotkeys.decisions,
 					this.model?.platform ?? 'macos',
 				);
 			},
