@@ -354,7 +354,9 @@ mod tests {
             "accept_from = [\"{B}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\"]"
         );
         let legacy = Policy::parse(&old).unwrap();
-        let no_ask: BTreeSet<Op> = [Op::List, Op::Read, Op::Room, Op::Send].into_iter().collect();
+        let no_ask: BTreeSet<Op> = [Op::List, Op::Read, Op::Room, Op::Send]
+            .into_iter()
+            .collect();
         assert!(!legacy.asks(B));
         assert_eq!(legacy.ops_for(B), no_ask);
         put(d.path(), &old, 0o644);
