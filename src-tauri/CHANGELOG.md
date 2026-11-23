@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.196 — 2026-11-23
+
+- Manager window: English agent messages can be read aloud by a natural Piper voice. Press Speak on a message, then choose "Download English voice" (about 23 MB, downloaded once after you click, speech is generated on this device). Without the voice, or for Russian, the system voice is used as before. The voice can be removed from the same place.
+
 ## 0.9.195 — 2026-11-23
 
 - Manager window: type `@` in the composer to ask another local chat a question. The answer comes back under your question with its status. "Add to context" passes it to your agent as data, and bypass, no-sandbox and manager chats ask you to confirm first. Needs CLI 1.0.167 or newer; restart the runner after updating.
