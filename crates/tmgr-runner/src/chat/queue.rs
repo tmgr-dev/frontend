@@ -13,7 +13,7 @@ pub const QUEUE_CAP: usize = 20;
 pub const DEFAULT_TTL_MS: u64 = 30 * 60 * 1000;
 const FINISHED_REMEMBERED: usize = 512;
 const QUEUE_FILE: &str = "queue.json";
-const BATCH_MAX: usize = 10;
+const BATCH_MAX: usize = QUEUE_CAP;
 const BATCH_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1684,17 +1684,17 @@ mod tests {
     }
 
     #[test]
-    fn a_batch_holds_at_ten_entries_and_sixteen_kib() {
+    fn a_batch_takes_a_full_queue_and_holds_at_sixteen_kib() {
         let (_t, c) = chat();
         let room = c.session_room("s_abcdefghij");
-        for n in 1..=12 {
+        for n in 1..=QUEUE_CAP as u64 {
             queue_as(&c, &room, &mid(n), "x", "desktop", None);
         }
         let sizes: Vec<usize> = drain_calls(&c, T0 + 1)
             .iter()
             .map(|b| b.split("\n\n").count())
             .collect();
-        assert_eq!(sizes, [10, 2]);
+        assert_eq!(sizes, [QUEUE_CAP]);
 
         let long = "y".repeat(7000);
         for n in 1..=3 {
