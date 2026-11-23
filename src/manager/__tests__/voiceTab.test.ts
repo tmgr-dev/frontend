@@ -164,7 +164,7 @@ describe('VoiceTab', () => {
 		m.unmount();
 	});
 
-	it('shows the server fields and the remote warning in http mode', async () => {
+	it('shows the server fields in http mode without the warning for a loopback server', async () => {
 		backend(settings('http'));
 		const m = mountDom();
 		await flush();
@@ -175,7 +175,7 @@ describe('VoiceTab', () => {
 		expect(q<HTMLInputElement>(m.el, '.vt-voice')?.value).toBe('xenia');
 		expect(q<HTMLInputElement>(m.el, '.vt-remote')?.checked).toBe(false);
 		expect(m.el.textContent).toContain('Allow non-local server');
-		expect(m.el.textContent).toContain('Chat text will be sent to this server');
+		expect(q(m.el, '.vt-warn')).toBeNull();
 		expect(q(m.el, '.vt-arg')).toBeNull();
 		expect(m.el.textContent).toContain('Ready');
 		m.unmount();
@@ -328,6 +328,159 @@ describe('VoiceTab', () => {
 		expect(created).toHaveLength(1);
 		expect(q(m.el, '.vt-test-error')).toBeNull();
 		delete g.AudioContext;
+		m.unmount();
+	});
+
+	it.each([
+		['http://127.0.0.1:8000/v1', false, false],
+		['http://localhost:8000', false, false],
+		['http://[::1]:8000', false, false],
+		['https://tts.example.com/v1', false, true],
+		['http://127.0.0.1:8000', true, true],
+		['not a url', false, true],
+	])('warning for %s with allowRemote=%s is %s', async (url, remote, shown) => {
+		const base = settings('http');
+		backend({
+			...base,
+			http: { ...base.http, baseUrl: url, allowRemote: remote },
+		});
+		const m = mountDom();
+		await flush();
+		expect(q(m.el, '.vt-warn') !== null).toBe(shown);
+		if (shown)
+			expect(q(m.el, '.vt-warn')?.textContent).toContain(
+				'Chat text will be sent to this server',
+			);
+		m.unmount();
+	});
+
+	it('shows the warning once the remote box is ticked', async () => {
+		backend(settings('http'));
+		const m = mountDom();
+		await flush();
+		expect(q(m.el, '.vt-warn')).toBeNull();
+		await click(q(m.el, '.vt-remote'));
+		expect(q(m.el, '.vt-warn')).not.toBeNull();
+		m.unmount();
+	});
+
+	it('disables Test voice while the form has unsaved changes and says it uses saved settings', async () => {
+		backend(settings('http'));
+		const m = mountDom();
+		await flush();
+		expect(q(m.el, '.vt-test-note')?.textContent).toContain(
+			'Test uses saved settings',
+		);
+		expect(q<HTMLButtonElement>(m.el, '.vt-test')?.disabled).toBe(false);
+		await type(q<HTMLInputElement>(m.el, '.vt-model')!, 'other');
+		expect(q<HTMLButtonElement>(m.el, '.vt-test')?.disabled).toBe(true);
+		await click(q(m.el, '.vt-save'));
+		expect(q<HTMLButtonElement>(m.el, '.vt-test')?.disabled).toBe(false);
+		m.unmount();
+	});
+
+	it('sends the test phrase, prefilled and editable', async () => {
+		backend(settings('http'));
+		const m = mountDom();
+		await flush();
+		const phrase = q<HTMLInputElement>(m.el, '.vt-phrase')!;
+		expect(phrase.value).toBe('This is a test of the external voice.');
+		await click(q(m.el, '.vt-test'));
+		expect(invoke).toHaveBeenCalledWith('tts_external_test', {
+			text: 'This is a test of the external voice.',
+		});
+		await type(phrase, 'Custom words.');
+		await click(q(m.el, '.vt-test'));
+		expect(invoke).toHaveBeenCalledWith('tts_external_test', {
+			text: 'Custom words.',
+		});
+		m.unmount();
+	});
+
+	it('limits the timeout input and falls back to 30 when it is empty', async () => {
+		backend(settings('command'), { mode: 'command' });
+		const m = mountDom();
+		await flush();
+		const t = q<HTMLInputElement>(m.el, '.vt-timeout')!;
+		expect(t.min).toBe('1');
+		expect(t.max).toBe('120');
+		await type(t, '');
+		await click(q(m.el, '.vt-save'));
+		expect(invoke).toHaveBeenCalledWith('tts_settings_set', {
+			settings: expect.objectContaining({
+				command: { argv: ['/usr/bin/piper', '--fast'], timeoutSecs: 30 },
+			}),
+		});
+		m.unmount();
+	});
+
+	it.each(['0', '121', '2.5'])(
+		'blocks saving an invalid timeout %s',
+		async (value) => {
+			backend(settings('command'), { mode: 'command' });
+			const m = mountDom();
+			await flush();
+			await type(q<HTMLInputElement>(m.el, '.vt-timeout')!, value);
+			expect(q(m.el, '.vt-timeout-error')?.textContent).toContain(
+				'whole number from 1 to 120',
+			);
+			expect(q<HTMLButtonElement>(m.el, '.vt-save')?.disabled).toBe(true);
+			m.unmount();
+		},
+	);
+
+	it('trims arguments, drops empty ones and says so', async () => {
+		backend(settings('command'), { mode: 'command' });
+		const m = mountDom();
+		await flush();
+		expect(q(m.el, '.vt-empty-note')?.textContent).toContain(
+			'Empty arguments are removed',
+		);
+		await click(q(m.el, '.vt-add'));
+		await click(q(m.el, '.vt-add'));
+		const args = m.el.querySelectorAll<HTMLInputElement>('.vt-arg');
+		await type(args[1], '  --slow  ');
+		await type(args[2], '   ');
+		await click(q(m.el, '.vt-save'));
+		expect(invoke).toHaveBeenCalledWith('tts_settings_set', {
+			settings: expect.objectContaining({
+				command: { argv: ['/usr/bin/piper', '--slow'], timeoutSecs: 20 },
+			}),
+		});
+		m.unmount();
+	});
+
+	it('groups the arguments in a fieldset and announces status politely', async () => {
+		backend(settings('command'), { mode: 'command' });
+		const m = mountDom();
+		await flush();
+		expect(q(m.el, 'fieldset.vt-argv legend')?.textContent).toBe('Arguments');
+		expect(q(m.el, 'fieldset.vt-argv .vt-arg')).not.toBeNull();
+		expect(q(m.el, '.vt-status')?.getAttribute('aria-live')).toBe('polite');
+		m.unmount();
+	});
+
+	it('keeps edits in progress when settings are loaded again', async () => {
+		backend(settings('http'));
+		const m = mountDom();
+		await flush();
+		await type(q<HTMLInputElement>(m.el, '.vt-model')!, 'typing');
+		await externalVoice.load();
+		await flush();
+		expect(q<HTMLInputElement>(m.el, '.vt-model')?.value).toBe('typing');
+		m.unmount();
+	});
+
+	it('applies reloaded settings when the form is untouched', async () => {
+		backend(settings('http'));
+		const m = mountDom();
+		await flush();
+		const next = settings('http');
+		next.http.model = 'fresh';
+		backend(next);
+		await externalVoice.load();
+		await flush();
+		expect(q<HTMLInputElement>(m.el, '.vt-model')?.value).toBe('fresh');
 		m.unmount();
 	});
 

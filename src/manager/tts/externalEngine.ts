@@ -1,6 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { openPlayback, type Playback } from './audioPlayback';
 import type { TtsEngine, TtsHooks } from './engine';
+import { normalizeEnglish } from './normalizeEn';
+import { normalizeRussian } from './normalizeRu';
+import { nextRun } from './runCounter';
 
 export interface Decoded {
 	sampleRate: number;
@@ -13,7 +16,7 @@ export const decodeExternal = (bytes: ArrayBuffer): Decoded | null => {
 	return { sampleRate, samples: new Float32Array(bytes, 4) };
 };
 
-let run = Date.now();
+let latest = 0;
 let active = false;
 let playback: Playback | null = null;
 
@@ -26,7 +29,8 @@ const stopBackend = async (through: number): Promise<void> => {
 };
 
 const halt = (): void => {
-	const through = run++;
+	const through = latest;
+	latest = nextRun();
 	const playing = playback;
 	playback = null;
 	playing?.stop();
@@ -39,14 +43,17 @@ const halt = (): void => {
 export const externalEngine: TtsEngine = {
 	id: 'external',
 	isAvailable: () => typeof AudioContext !== 'undefined',
-	speak(chunks, _lang, hooks: TtsHooks) {
+	speak(rawChunks, lang, hooks: TtsHooks) {
 		halt();
+		const normalize = lang === 'ru' ? normalizeRussian : normalizeEnglish;
+		const chunks = rawChunks.map(normalize).filter((c) => c.length > 0);
 		if (!chunks.length) {
 			hooks.onEnd();
 			return;
 		}
-		const gen = ++run;
-		const current = () => gen === run;
+		const gen = nextRun();
+		latest = gen;
+		const current = () => gen === latest;
 
 		let mine: Playback;
 		try {

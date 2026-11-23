@@ -74,7 +74,7 @@ const markUnhealthy = (): void => {
 	void refreshHealth();
 };
 
-const test = async (): Promise<void> => {
+const test = async (phrase?: string): Promise<void> => {
 	if (store.testing) return;
 	store.testing = true;
 	store.testError = null;
@@ -90,7 +90,7 @@ const test = async (): Promise<void> => {
 	try {
 		await playback?.ready;
 		const decoded = decodeExternal(
-			await invoke<ArrayBuffer>('tts_external_test'),
+			await invoke<ArrayBuffer>('tts_external_test', { text: phrase }),
 		);
 		if (decoded && !playback) throw unavailable;
 		if (decoded && playback) {

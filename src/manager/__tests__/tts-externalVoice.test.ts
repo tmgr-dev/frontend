@@ -150,6 +150,16 @@ describe('externalVoice', () => {
 		expect(externalVoice.testError).toBeNull();
 	});
 
+	it('test sends the phrase to the backend', async () => {
+		invokeMock.mockImplementation(async (cmd: string) =>
+			cmd === 'tts_external_test' ? payload() : health(),
+		);
+		await externalVoice.test('Hello there.');
+		expect(invokeMock).toHaveBeenCalledWith('tts_external_test', {
+			text: 'Hello there.',
+		});
+	});
+
 	it('test shows the backend error text and refreshes health', async () => {
 		invokeMock.mockImplementation(async (cmd: string) => {
 			if (cmd === 'tts_external_test') throw 'connection refused';

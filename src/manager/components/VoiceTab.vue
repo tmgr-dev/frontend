@@ -32,10 +32,13 @@
 					/>
 					<span>{{ $t('manager.voice.allowRemote') }}</span>
 				</label>
-				<p class="vt-warn">{{ $t('manager.voice.remoteWarning') }}</p>
+				<p v-if="showRemoteWarning" class="vt-warn">
+					{{ $t('manager.voice.remoteWarning') }}
+				</p>
 			</template>
 			<template v-else-if="draft.mode === 'command'">
-				<div class="vt-argv">
+				<fieldset class="vt-argv">
+					<legend>{{ $t('manager.voice.arguments') }}</legend>
 					<span>{{ $t('manager.voice.argv') }}</span>
 					<div v-for="(_, i) in draft.command.argv" :key="i" class="vt-row">
 						<input
@@ -60,7 +63,10 @@
 					>
 						{{ $t('manager.voice.addArgument') }}
 					</button>
-				</div>
+				</fieldset>
+				<p class="hint vt-empty-note">
+					{{ $t('manager.voice.emptyArgumentsNote') }}
+				</p>
 				<label class="vt-row">
 					<span>{{ $t('manager.voice.timeout') }}</span>
 					<input
@@ -68,15 +74,20 @@
 						class="vt-timeout"
 						type="number"
 						min="1"
+						max="120"
+						step="1"
 					/>
 				</label>
+				<p v-if="timeoutInvalid" class="mgr-error vt-timeout-error">
+					{{ $t('manager.voice.timeoutInvalid') }}
+				</p>
 				<p class="hint vt-note">{{ $t('manager.voice.commandNote') }}</p>
 			</template>
 			<div class="vt-actions">
 				<button
 					type="button"
 					class="btn sm vt-save"
-					:disabled="store.saving"
+					:disabled="store.saving || timeoutInvalid"
 					@click="onSave"
 				>
 					{{ $t(store.saving ? 'manager.voice.saving' : 'manager.voice.save') }}
@@ -84,24 +95,33 @@
 				<button
 					type="button"
 					class="btn sm vt-test"
-					:disabled="store.testing"
-					@click="store.test()"
+					:disabled="store.testing || dirty"
+					@click="onTest"
 				>
 					{{
 						$t(store.testing ? 'manager.voice.testing' : 'manager.voice.test')
 					}}
 				</button>
 			</div>
+			<label class="vt-row">
+				<span>{{ $t('manager.voice.testPhrase') }}</span>
+				<input v-model="phrase" class="vt-phrase" type="text" />
+			</label>
+			<p class="hint vt-test-note">{{ $t('manager.voice.testNote') }}</p>
 			<p v-if="store.saveError" class="mgr-error vt-save-error" role="alert">
 				{{ store.saveError }}
 			</p>
 			<p v-if="store.testError" class="mgr-error vt-test-error" role="alert">
 				{{ store.testError }}
 			</p>
-			<p class="vt-status">
+			<p class="vt-status" aria-live="polite">
 				<b>{{ $t('manager.voice.status') }}:</b> {{ statusText }}
 			</p>
-			<p v-if="store.health?.lastError" class="mgr-error vt-last-error">
+			<p
+				v-if="store.health?.lastError"
+				class="mgr-error vt-last-error"
+				aria-live="polite"
+			>
 				{{ $t('manager.voice.lastError', { error: store.health.lastError }) }}
 			</p>
 			<button type="button" class="linklike vt-silero" @click="hint = !hint">
@@ -118,8 +138,29 @@
 	import { defineComponent } from 'vue';
 	import { externalVoice, type ExternalSettings } from '../tts/externalVoice';
 
+	const DEFAULT_TIMEOUT = 30;
+	const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/i;
+
 	const clone = (s: ExternalSettings): ExternalSettings =>
 		JSON.parse(JSON.stringify(s));
+
+	const same = (a: ExternalSettings, b: ExternalSettings): boolean =>
+		JSON.stringify(a) === JSON.stringify(b);
+
+	const isLoopback = (baseUrl: string): boolean => {
+		try {
+			return LOOPBACK.test(new URL(baseUrl).hostname);
+		} catch {
+			return false;
+		}
+	};
+
+	const timeoutValue = (v: unknown): number | null | 'empty' => {
+		if (v === '' || v === null || v === undefined) return 'empty';
+		return Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 120
+			? (v as number)
+			: null;
+	};
 
 	export default defineComponent({
 		name: 'ManagerVoiceTab',
@@ -128,9 +169,24 @@
 				store: externalVoice,
 				draft: clone(externalVoice.settings),
 				hint: false,
+				phrase: this.$t('manager.voice.testPhraseDefault') as string,
 			};
 		},
 		computed: {
+			dirty(): boolean {
+				return !same(this.draft, this.store.settings);
+			},
+			showRemoteWarning(): boolean {
+				const http = this.draft.http;
+				if (http.allowRemote) return true;
+				return http.baseUrl.trim() !== '' && !isLoopback(http.baseUrl.trim());
+			},
+			timeoutInvalid(): boolean {
+				return (
+					this.draft.mode === 'command' &&
+					timeoutValue(this.draft.command.timeoutSecs) === null
+				);
+			},
 			statusText(): string {
 				const h = this.store.health;
 				if (!h || h.mode === 'off') return this.$t('manager.voice.statusOff');
@@ -141,8 +197,8 @@
 			},
 		},
 		watch: {
-			'store.settings'(next: ExternalSettings) {
-				this.draft = clone(next);
+			'store.settings'(next: ExternalSettings, prev: ExternalSettings) {
+				if (same(this.draft, prev)) this.draft = clone(next);
 			},
 		},
 		mounted() {
@@ -151,8 +207,17 @@
 		methods: {
 			async onSave() {
 				const d = clone(this.draft);
-				d.command.argv = d.command.argv.filter((a) => a.length > 0);
-				await this.store.save(d);
+				d.command.argv = d.command.argv
+					.map((a) => a.trim())
+					.filter((a) => a.length > 0);
+				const timeout = timeoutValue(d.command.timeoutSecs);
+				d.command.timeoutSecs =
+					typeof timeout === 'number' ? timeout : DEFAULT_TIMEOUT;
+				if (await this.store.save(d)) this.draft = clone(this.store.settings);
+			},
+			onTest() {
+				const text = this.phrase.trim();
+				void this.store.test(text || undefined);
 			},
 		},
 	});

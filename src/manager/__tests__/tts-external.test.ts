@@ -163,4 +163,32 @@ describe('externalEngine', () => {
 		expect(h.onEnd).not.toHaveBeenCalled();
 		expect(ctx().sources).toHaveLength(0);
 	});
+
+	it('normalises text for the language and drops chunks that become empty', async () => {
+		invokeMock.mockResolvedValue(payload(4, 4));
+		externalEngine.speak(
+			['Fix 5 bugs & ship', '   ', 'Готово на 5'],
+			'en',
+			hooks(),
+		);
+		await flush();
+		const texts = invokeMock.mock.calls.map((c) => c[1].text);
+		expect(texts).toEqual(['Fix five bugs and ship', 'Готово на five']);
+		invokeMock.mockClear();
+		externalEngine.speak(['Готово на 5'], 'ru', hooks());
+		await flush();
+		expect(
+			invokeMock.mock.calls
+				.filter((c) => c[0] === 'tts_external_synthesize')
+				.map((c) => c[1].text),
+		).toEqual(['Готово на пять']);
+	});
+
+	it('ends at once when every chunk normalises to nothing', async () => {
+		const h = hooks();
+		externalEngine.speak(['  ', ''], 'en', h);
+		await flush();
+		expect(h.onEnd).toHaveBeenCalledTimes(1);
+		expect(invokeMock).not.toHaveBeenCalled();
+	});
 });

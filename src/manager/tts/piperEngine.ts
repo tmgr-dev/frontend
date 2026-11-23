@@ -3,6 +3,7 @@ import { openPlayback, type Playback } from './audioPlayback';
 import type { TtsEngine, TtsHooks } from './engine';
 import { normalizeEnglish } from './normalizeEn';
 import { normalizeRussian } from './normalizeRu';
+import { nextRun } from './runCounter';
 import { voicePacks } from './voicePack';
 
 interface Check {
@@ -10,7 +11,7 @@ interface Check {
 	oov: string[];
 }
 
-let run = Date.now();
+let latest = 0;
 let active = false;
 let playback: Playback | null = null;
 
@@ -23,7 +24,8 @@ const stopBackend = async (through: number): Promise<void> => {
 };
 
 const halt = (): void => {
-	const through = run++;
+	const through = latest;
+	latest = nextRun();
 	const playing = playback;
 	playback = null;
 	playing?.stop();
@@ -42,8 +44,9 @@ export const piperEngine: TtsEngine = {
 			hooks.onEnd();
 			return;
 		}
-		const gen = ++run;
-		const current = () => gen === run;
+		const gen = nextRun();
+		latest = gen;
+		const current = () => gen === latest;
 
 		let mine: Playback;
 		try {

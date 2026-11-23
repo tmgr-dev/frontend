@@ -148,13 +148,85 @@ const readNumber = (token: string): string => {
 		: `${cardinal(whole)} запятая ${spell(fraction)}`;
 };
 
+type Case =
+	| 'nomM'
+	| 'nomF'
+	| 'nomN'
+	| 'accF'
+	| 'genM'
+	| 'datM'
+	| 'prepM'
+	| 'obliqueF'
+	| 'instrPl'
+	| 'genPl'
+	| 'datPl'
+	| 'nomPl';
+
+const CASE_BY_SUFFIX: Record<string, Case> = {
+	й: 'nomM',
+	я: 'nomF',
+	ая: 'nomF',
+	е: 'nomN',
+	ое: 'nomN',
+	ю: 'accF',
+	ую: 'accF',
+	го: 'genM',
+	ого: 'genM',
+	му: 'datM',
+	м: 'prepM',
+	ом: 'prepM',
+	ей: 'obliqueF',
+	ой: 'obliqueF',
+	ми: 'instrPl',
+	х: 'genPl',
+	ых: 'genPl',
+	ым: 'datPl',
+	ые: 'nomPl',
+};
+const HARD_ENDINGS: Record<Case, string> = {
+	nomM: 'ый',
+	nomF: 'ая',
+	nomN: 'ое',
+	accF: 'ую',
+	genM: 'ого',
+	datM: 'ому',
+	prepM: 'ом',
+	obliqueF: 'ой',
+	instrPl: 'ыми',
+	genPl: 'ых',
+	datPl: 'ым',
+	nomPl: 'ые',
+};
+const SOFT_ENDINGS: Record<Case, string> = {
+	nomM: 'ий',
+	nomF: 'ья',
+	nomN: 'ье',
+	accF: 'ью',
+	genM: 'ьего',
+	datM: 'ьему',
+	prepM: 'ьем',
+	obliqueF: 'ьей',
+	instrPl: 'ьими',
+	genPl: 'ьих',
+	datPl: 'ьим',
+	nomPl: 'ьи',
+};
+const ORDINAL_SUFFIXES = Object.keys(CASE_BY_SUFFIX)
+	.sort((x, y) => y.length - x.length)
+	.join('|');
+const ORDINAL_PATTERN = new RegExp(
+	`(?<![\\p{L}\\d])(\\d+)-(${ORDINAL_SUFFIXES})(?![\\p{L}\\d])`,
+	'gu',
+);
+
 const ordinal = (digits: string, suffix: string): string => {
 	const masc = ORDINALS[Number(digits)];
 	if (!masc) return cardinal(digits);
-	if (suffix !== 'я' && suffix !== 'е') return masc;
-	const stem = masc.slice(0, -2);
-	if (masc.endsWith('ий')) return stem + (suffix === 'я' ? 'ья' : 'ье');
-	return stem + (suffix === 'я' ? 'ая' : 'ое');
+	const kind = CASE_BY_SUFFIX[suffix];
+	if (masc.endsWith('ий')) return masc.slice(0, -2) + SOFT_ENDINGS[kind];
+	const stressed = masc.endsWith('ой');
+	if (stressed && kind === 'nomM') return masc;
+	return masc.slice(0, -2) + HARD_ENDINGS[kind];
 };
 
 const time = (hours: string, minutes: string): string => {
@@ -172,9 +244,12 @@ export const normalizeRussian = (text: string): string =>
 		.replace(/(?<=\p{L})-(?=\d)/gu, ' ')
 		.replace(/(?<=\p{L})(?=\d)/gu, ' ')
 		.replace(/(?<![\p{L}\d])-(?=\d)/gu, 'минус ')
-		.replace(
-			/(?<![\p{L}\d])(\d+)-(го|му|й|я|е)(?![\p{L}\d])/gu,
-			(_, d: string, s: string) => ordinal(d, s),
+		.replace(ORDINAL_PATTERN, (_, d: string, s: string) => ordinal(d, s))
+		.replace(/(?<![\d.,])[1-9]\d{0,2}(?:,\d{3})+(?!\d|,\d)/g, (m) =>
+			m.replace(/,/g, ''),
+		)
+		.replace(/(?<![\d.,])[1-9]\d{0,2}(?:[ \u00a0\u202f]\d{3})+(?!\d)/g, (m) =>
+			m.replace(/[ \u00a0\u202f]/g, ''),
 		)
 		.replace(
 			/(?<![\d:])(\d{1,2}):(\d{2})(?![\d:])/g,
