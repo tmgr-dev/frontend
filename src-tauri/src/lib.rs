@@ -446,6 +446,7 @@ pub fn run() {
       manager::manager_search,
       manager::manager_commands,
       manager::manager_queued,
+      manager::manager_queued_why,
       manager::manager_cancel,
       manager::manager_mention_inject,
       manager::manager_agent_models,

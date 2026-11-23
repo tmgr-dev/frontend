@@ -182,6 +182,12 @@ pub async fn manager_commands<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> R
 }
 
 #[tauri::command]
+pub async fn manager_queued_why<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> Result<std::collections::HashMap<String, String>, String> {
+  let backend = backend_of(&app)?;
+  blocking(move || backend.queued_why(&room)).await
+}
+
+#[tauri::command]
 pub async fn manager_queued<R: Runtime>(app: AppHandle<R>, room: RoomRef) -> Result<Vec<String>, String> {
   let backend = backend_of(&app)?;
   blocking(move || backend.queued(&room)).await

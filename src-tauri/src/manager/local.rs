@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::de::DeserializeOwned;
@@ -15,6 +16,9 @@ pub trait LocalPort: Send + Sync {
   fn search(&self, params: &SearchParams) -> Result<Vec<ChatMessage>, String>;
   fn send(&self, params: SendParams) -> Result<ChatMessage, String>;
   fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String>;
+  fn queued_why(&self, _room: &RoomRef) -> Result<HashMap<String, String>, String> {
+    Ok(HashMap::new())
+  }
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
   fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
@@ -181,6 +185,10 @@ impl LocalPort for RunnerLocal {
 
   fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String> {
     self.request("chat.queued", &serde_json::json!({ "room": room }))
+  }
+
+  fn queued_why(&self, room: &RoomRef) -> Result<HashMap<String, String>, String> {
+    Ok(self.request("chat.queued_why", &serde_json::json!({ "room": room })).unwrap_or_default())
   }
 
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String> {
@@ -374,6 +382,15 @@ mod tests {
     assert_eq!(log[0].1["room"]["kind"], "manager");
     assert_eq!(log[1].0, "chat.cancel");
     assert_eq!(log[1].1["id"], "m_1");
+  }
+
+  #[test]
+  fn queued_why_maps_ids_to_reasons_and_is_empty_for_an_older_runner() {
+    let (l, fake) = local(|method, _| if method == "chat.queued_why" { Ok(json!({ "m_1": "turn" })) } else { Err("unknown method".into()) });
+    assert_eq!(l.queued_why(&room()).unwrap()["m_1"], "turn");
+    assert_eq!(fake.log.lock().unwrap()[0].0, "chat.queued_why");
+    let (old, _) = local(|_, _| Err("unknown method chat.queued_why".into()));
+    assert!(old.queued_why(&room()).unwrap().is_empty());
   }
 
   #[test]

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::backend::{ChatMessage, HistoryParams, ManagerBackend, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, SlashCommand, StopOutcome, MAX_HISTORY};
@@ -134,6 +134,13 @@ impl ManagerBackend for CompositeBackend {
     }
   }
 
+  fn queued_why(&self, room: &RoomRef) -> Result<HashMap<String, String>, String> {
+    match self.route(room)? {
+      Route::Local => self.local.queued_why(room),
+      Route::Relay => Ok(HashMap::new()),
+    }
+  }
+
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String> {
     match self.route(room)? {
       Route::Local => self.local.cancel(room, id),
@@ -237,6 +244,11 @@ mod tests {
       self.note("send");
       self.up().map(|_| msg("ls", 9, p.room))
     }
+    fn queued_why(&self, _: &RoomRef) -> Result<HashMap<String, String>, String> {
+      self.note("queued_why");
+      Ok(HashMap::from([("q1".to_owned(), "turn".to_owned())]))
+    }
+
     fn queued(&self, _: &RoomRef) -> Result<Vec<String>, String> {
       self.note("queued");
       self.up().map(|_| self.queue.clone())
@@ -422,6 +434,14 @@ mod tests {
     assert!(c.cancel(&far_sess(), "q1").is_err());
     assert_eq!(*l.calls.lock().unwrap(), ["queued", "cancel"]);
     assert!(r.calls.lock().unwrap().is_empty());
+  }
+
+  #[test]
+  fn queue_reasons_come_only_from_this_machine() {
+    let (c, l, _) = build(FakeLocal::default(), relay_with_far());
+    assert_eq!(c.queued_why(&mine()).unwrap()["q1"], "turn");
+    assert!(c.queued_why(&far_sess()).unwrap().is_empty());
+    assert_eq!(*l.calls.lock().unwrap(), ["queued_why"]);
   }
 
   #[test]

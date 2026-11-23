@@ -2,6 +2,7 @@
 //! STUB: `StubBackend` is the only implementation until the runner IPC client (track A, chat.v1) is wired in.
 //! The wire types mirror crates/tmgr-ipc/src/chat.rs on branch feat/tm-1018-manager.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -183,6 +184,9 @@ pub trait ManagerBackend: Send + Sync {
   fn search(&self, params: SearchParams) -> Result<Vec<ChatMessage>, String>;
   fn commands(&self, room: &RoomRef) -> Result<Vec<SlashCommand>, String>;
   fn queued(&self, room: &RoomRef) -> Result<Vec<String>, String>;
+  fn queued_why(&self, _room: &RoomRef) -> Result<HashMap<String, String>, String> {
+    Ok(HashMap::new())
+  }
   fn cancel(&self, room: &RoomRef, id: &str) -> Result<bool, String>;
   fn stop(&self, room: &RoomRef, force: bool) -> Result<StopOutcome, String>;
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
