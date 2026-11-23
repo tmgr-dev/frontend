@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import type { Receipt } from './delivery';
 import type {
 	ActivityEvent,
 	AuditEntry,
@@ -89,6 +90,18 @@ export const onManagerActivity = (
 	listen<ActivityEvent>('manager://activity', (event) =>
 		handler(event.payload),
 	);
+
+export const onManagerReceipt = async (
+	handler: (receipt: Receipt) => void,
+): Promise<UnlistenFn> => {
+	try {
+		return await listen<Receipt>('manager://receipt', (event) =>
+			handler(event.payload),
+		);
+	} catch {
+		return () => undefined;
+	}
+};
 
 export const onManagerResync = (handler: () => void): Promise<UnlistenFn> =>
 	listen('manager://resync', () => handler());

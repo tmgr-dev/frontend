@@ -1,6 +1,14 @@
 import { computed, reactive } from 'vue';
 import * as realApi from './api';
 import {
+	createDeliveryTracker,
+	failureReason,
+	isFailureNote,
+	newMessageId,
+	type Delivery,
+	type Receipt,
+} from './delivery';
+import {
 	firstEnabled,
 	injectGate,
 	isMentionStateRow,
@@ -43,6 +51,7 @@ export interface ManagerApi {
 	agentModels: typeof realApi.managerAgentModels;
 	onMessage: typeof realApi.onManagerMessage;
 	onActivity: typeof realApi.onManagerActivity;
+	onReceipt?: typeof realApi.onManagerReceipt;
 	audit: typeof realApi.managerAudit;
 	spawn: typeof realApi.managerSpawnSession;
 	switchAgent: typeof realApi.managerSwitchAgent;
@@ -151,6 +160,11 @@ export const createManagerStore = (api: ManagerApi) => {
 		{ used: string[]; calls: ToolCall[]; at: number }
 	>();
 
+	const tracker = createDeliveryTracker((id, d) => {
+		if (d) store.delivery[id] = d;
+		else delete store.delivery[id];
+	});
+
 	const toolOrder: string[] = [];
 	const toolRoom = new Map<string, string>();
 
@@ -233,6 +247,12 @@ export const createManagerStore = (api: ManagerApi) => {
 		}, QUEUE_POLL_MS);
 	};
 
+	const replaceRow = (key: string, id: string, next: ChatMessage) => {
+		const list = store.messagesByRoom[key] ?? [];
+		const rest = list.filter((m) => m.id !== id && m.id !== next.id);
+		store.messagesByRoom[key] = [...rest, next].sort(byTime);
+	};
+
 	const deliver = async (job: {
 		key: string;
 		room: RoomRef;
@@ -241,35 +261,70 @@ export const createManagerStore = (api: ManagerApi) => {
 		mention?: MentionReq;
 		attachments: Attachment[];
 		replyTo?: string;
+		fromDraft?: boolean;
+		retryOf?: string;
 	}) => {
 		const { key, room, text, body, mention } = job;
+		const fromDraft = job.fromDraft !== false;
 		if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
 			store.error = 'Message is larger than 64 KiB';
 			return;
 		}
+		const id = newMessageId();
+		const draftAttachments = [...job.attachments];
+		const draftReply = store.replyTo;
+		const optimistic: ChatMessage = {
+			v: 1,
+			id,
+			room,
+			author: { kind: 'owner', id: 'owner' },
+			ts_ms: Date.now(),
+			kind: 'text',
+			body_md: body,
+			...(job.attachments.length ? { attachments: job.attachments } : {}),
+			...(job.replyTo ? { reply_to: job.replyTo } : {}),
+		};
+		store.messagesByRoom[key] = merge(store.messagesByRoom[key] ?? [], [
+			optimistic,
+		]);
+		tracker.begin(id, !store.originLocal(key));
+		if (job.retryOf) tracker.retried(job.retryOf);
+		const cleared =
+			fromDraft && store.activeKey === key && store.draft.text === text;
+		if (cleared) {
+			store.draft.text = '';
+			store.draft.attachments = [];
+			store.replyTo = null;
+			store.closeSlash();
+			store.mention.picked = null;
+			store.closeMention();
+		}
 		try {
 			const sent = await api.send({
+				id,
 				room,
 				body_md: body,
 				reply_to: job.replyTo,
 				attachments: job.attachments,
 				...(mention ? { mention } : {}),
 			});
-			if (store.activeKey === key && store.draft.text === text) {
-				store.draft.text = '';
-				store.draft.attachments = [];
-				store.replyTo = null;
-				store.closeSlash();
-				store.mention.picked = null;
-				store.closeMention();
-			}
 			store.error = null;
 			store.slash.picked = null;
-			store.ingest(sent);
+			if (sent.id !== id) tracker.rename(id, sent.id);
+			replaceRow(key, id, sent);
+			tracker.accepted(sent.id);
 			postSendPolls = POST_SEND_POLLS;
 			void store.refreshQueued();
 		} catch (e) {
-			store.error = errorText(e);
+			const reason = errorText(e);
+			store.error = reason;
+			tracker.rejected(id, reason);
+			if (cleared && store.activeKey === key && !store.draft.text) {
+				store.draft.text = text;
+				if (!store.draft.attachments.length)
+					store.draft.attachments = draftAttachments;
+				if (!store.replyTo) store.replyTo = draftReply;
+			}
 		}
 	};
 
@@ -283,6 +338,7 @@ export const createManagerStore = (api: ManagerApi) => {
 			Object.values(unread).reduce((a, b) => a + b, 0),
 		),
 		queuedIds: [] as string[],
+		delivery: {} as Record<string, Delivery>,
 		activityByRoom: {} as Record<string, ActivityView>,
 		toolsByMessage: {} as Record<string, string[]>,
 		callsByMessage: {} as Record<string, ToolCall[]>,
@@ -381,6 +437,18 @@ export const createManagerStore = (api: ManagerApi) => {
 			if (next.length === before) return;
 			store.messagesByRoom[key] = next;
 			if (
+				message.author.kind === 'system' &&
+				message.reply_to &&
+				isFailureNote(message.body_md) &&
+				next.some((m) => m.id === message.reply_to && m.author.kind === 'owner')
+			) {
+				store.ingestReceipt({
+					id: message.reply_to,
+					state: 'failed',
+					reason: failureReason(message.body_md),
+				});
+			}
+			if (
 				message.kind === 'text' &&
 				!message.user_turn &&
 				message.author.kind === message.room.kind
@@ -406,6 +474,37 @@ export const createManagerStore = (api: ManagerApi) => {
 			}
 			if (key === store.activeKey) void store.refreshQueued();
 			if (!info) void store.loadRooms();
+		},
+
+		ingestReceipt(receipt: Receipt) {
+			if (!store.delivery[receipt.id]) {
+				const own = Object.values(store.messagesByRoom)
+					.flat()
+					.find((m) => m.id === receipt.id && m.author.kind === 'owner');
+				if (!own) return;
+				tracker.begin(receipt.id, !store.originLocal(roomKey(own.room)));
+			}
+			tracker.receipt(receipt.id, receipt.state, receipt.reason);
+		},
+
+		async retry(id: string) {
+			const d = store.delivery[id];
+			if (!d || d.retried) return;
+			for (const [key, list] of Object.entries(store.messagesByRoom)) {
+				const m = list.find((x) => x.id === id);
+				if (!m || m.mention) continue;
+				await deliver({
+					key,
+					room: m.room,
+					text: m.body_md,
+					body: m.body_md,
+					attachments: [...(m.attachments ?? [])],
+					replyTo: m.reply_to,
+					fromDraft: false,
+					retryOf: id,
+				});
+				return;
+			}
 		},
 
 		ingestActivity(event: ActivityEvent) {
@@ -499,6 +598,7 @@ export const createManagerStore = (api: ManagerApi) => {
 				),
 			);
 			await api.onActivity((event) => store.ingestActivity(event));
+			await api.onReceipt?.((receipt) => store.ingestReceipt(receipt));
 			const first = store.rooms[0];
 			if (first) await store.select(roomKey(first.room));
 		},
@@ -1085,6 +1185,7 @@ export const useManagerStore = (): ManagerStore => {
 		agentModels: realApi.managerAgentModels,
 		onMessage: realApi.onManagerMessage,
 		onActivity: realApi.onManagerActivity,
+		onReceipt: realApi.onManagerReceipt,
 		audit: realApi.managerAudit,
 		spawn: realApi.managerSpawnSession,
 		switchAgent: realApi.managerSwitchAgent,

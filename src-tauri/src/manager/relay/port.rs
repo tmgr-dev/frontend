@@ -48,6 +48,22 @@ pub struct PendingRevoke {
   pub target_fp: String,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReceiptState {
+  Delivered,
+  Queued,
+  Failed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Receipt {
+  pub id: String,
+  pub state: ReceiptState,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub reason: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SeqGap {
   pub from_device: String,
@@ -119,6 +135,9 @@ pub trait RelayPort: Send + Sync {
   }
   fn reset_identity(&self) -> Result<(), String>;
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String>;
+  fn take_receipts(&self) -> Vec<Receipt> {
+    vec![]
+  }
 }
 
 pub struct NoRelay;

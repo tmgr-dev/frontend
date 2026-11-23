@@ -102,6 +102,9 @@
 							: undefined
 					"
 					:queued-ids="store.queuedIds"
+					:delivery-by-id="store.delivery"
+					:delivery-who="deliveryWho"
+					@retry="store.retry"
 					:tools-by-message="store.toolsByMessage"
 					:calls-by-message="store.callsByMessage"
 					:activity="
@@ -341,7 +344,6 @@
 	import ChatList from './components/ChatList.vue';
 	import Composer from './components/Composer.vue';
 	import ConnectFollowers from './components/ConnectFollowers.vue';
-	import RemotePolicy from './components/RemotePolicy.vue';
 	import ControlDialog from './components/ControlDialog.vue';
 	import DecisionCard from './components/DecisionCard.vue';
 	import DetailPanel from './components/DetailPanel.vue';
@@ -351,6 +353,7 @@
 	import MentionMenu from './components/MentionMenu.vue';
 	import MessageList from './components/MessageList.vue';
 	import NewSessionDialog from './components/NewSessionDialog.vue';
+	import RemotePolicy from './components/RemotePolicy.vue';
 	import RunnerAddedNotice from './components/RunnerAddedNotice.vue';
 	import SearchPanel from './components/SearchPanel.vue';
 	import SlashMenu from './components/SlashMenu.vue';
@@ -369,7 +372,6 @@
 		slashHint,
 	} from './components/viewHelpers';
 	import { useFollowersStore } from './followersStore';
-	import { useRemotePolicyStore } from './remotePolicyStore';
 	import { renderBody } from './format';
 	import { sharedWithPhone } from './machineTree';
 	import { usePairingStore } from './pairingStore';
@@ -382,6 +384,7 @@
 		shellColumns,
 		type PanelSide,
 	} from './panelWidths';
+	import { useRemotePolicyStore } from './remotePolicyStore';
 	import { MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
 	import { roomKey, type RoomRef } from './types';
@@ -502,6 +505,13 @@
 				return this.store.rooms.find(
 					(r) => roomKey(r.room) === this.store.activeKey,
 				);
+			},
+			deliveryWho(): string {
+				const info = this.activeInfo;
+				if (!info) return '';
+				return info.agent
+					? `${info.agent} on ${info.room.machine}`
+					: info.room.machine;
 			},
 			subtitle(): string {
 				return this.activeInfo

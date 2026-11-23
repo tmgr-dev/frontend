@@ -119,10 +119,14 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
   if switch.enabled() {
     let handle = app.clone();
     let trust_handle = app.clone();
+    let receipt_handle = app.clone();
     relay::switch::spawn_poll(
       &switch,
       move |message| {
         let _ = tauri::Emitter::emit_to(&handle, LABEL, "manager://message", composite::without_mention(message));
+      },
+      move |receipt| {
+        let _ = tauri::Emitter::emit_to(&receipt_handle, LABEL, "manager://receipt", receipt);
       },
       move || trust_changed(&trust_handle),
     );

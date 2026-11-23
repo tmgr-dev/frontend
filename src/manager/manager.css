@@ -464,6 +464,10 @@ html.dark .manager {
 	gap: 4px;
 	align-items: center;
 }
+.manager .dlv-failed,
+.manager .dlv-unconfirmed {
+	color: var(--fix-fg);
+}
 .manager .qcancel {
 	color: var(--brand);
 	font-size: 11px;

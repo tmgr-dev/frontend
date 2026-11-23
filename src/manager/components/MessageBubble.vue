@@ -27,6 +27,29 @@
 						{{ $t('manager.messages.cancelQueued') }}
 					</button>
 				</template>
+				<span
+					v-if="deliveryText"
+					:class="['dlv', delivery && `dlv-${delivery.state}`]"
+					role="status"
+					>{{ deliveryText }}</span
+				>
+				<button
+					v-if="showRetry"
+					type="button"
+					class="qcancel"
+					:title="
+						delivery?.state === 'unconfirmed'
+							? $t('manager.messages.delivery.resendHint')
+							: undefined
+					"
+					@click="$emit('retry', message.id)"
+				>
+					{{
+						delivery?.state === 'unconfirmed'
+							? $t('manager.messages.delivery.resend')
+							: $t('manager.messages.delivery.retry')
+					}}
+				</button>
 			</div>
 		</div>
 		<div v-else :class="['msg', 'mgr', { grouped }]">
@@ -133,6 +156,7 @@
 
 <script lang="ts">
 	import { defineComponent, h, type PropType } from 'vue';
+	import { canRetry, type Delivery } from '../delivery';
 	import {
 		addCopyButtons,
 		copyBlockText,
@@ -186,8 +210,10 @@
 			queued: { type: Boolean, default: false },
 			tools: { type: Array as PropType<string[]>, default: undefined },
 			calls: { type: Array as PropType<ToolCall[]>, default: undefined },
+			delivery: { type: Object as PropType<Delivery>, default: undefined },
+			deliveryWho: { type: String, default: '' },
 		},
-		emits: ['reply', 'copy', 'cancel-queued'],
+		emits: ['reply', 'copy', 'cancel-queued', 'retry'],
 		data() {
 			return { externalVoice };
 		},
@@ -198,6 +224,21 @@
 			}
 		},
 		computed: {
+			showRetry(): boolean {
+				return canRetry(this.delivery);
+			},
+			deliveryText(): string {
+				const d = this.delivery;
+				if (!d) return '';
+				if (d.retried) return this.$t('manager.messages.delivery.retried');
+				if (d.state === 'failed' && d.reason)
+					return this.$t('manager.messages.delivery.failedReason', {
+						reason: d.reason,
+					});
+				return this.$t(`manager.messages.delivery.${d.state}`, {
+					who: this.deliveryWho,
+				});
+			},
 			voiceEligible(): boolean {
 				return (
 					!this.isSystem &&

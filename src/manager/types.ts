@@ -140,6 +140,7 @@ export interface HistoryParams {
 }
 
 export interface SendParams {
+	id?: string;
 	room: RoomRef;
 	body_md: string;
 	reply_to?: string;

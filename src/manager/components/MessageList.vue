@@ -23,9 +23,12 @@
 						:queued="queuedIds.includes(row.message.id)"
 						:tools="toolsByMessage[row.message.id]"
 						:calls="callsByMessage[row.message.id]"
+						:delivery="deliveryById[row.message.id]"
+						:delivery-who="deliveryWho"
 						@reply="$emit('reply', $event)"
 						@copy="$emit('copy', $event)"
 						@cancel-queued="$emit('cancel-queued', $event)"
+						@retry="$emit('retry', $event)"
 					>
 						<template #decision="slotProps">
 							<slot name="decision" :message="slotProps.message"></slot>
@@ -70,13 +73,8 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import type {
-		ActivityView,
-		ChatMessage,
-		MentionRef,
-		RoomInfo,
-		ToolCall,
-	} from '../types';
+	import type { Delivery } from '../delivery';
+	import { isMentionStateRow, latestMentions, mentionRole } from '../mentions';
 	import {
 		anchoredScrollTop,
 		arrivalsAfter,
@@ -84,7 +82,13 @@
 		newBelowCount,
 		shouldLoadOlder,
 	} from '../scrollLogic';
-	import { isMentionStateRow, latestMentions, mentionRole } from '../mentions';
+	import type {
+		ActivityView,
+		ChatMessage,
+		MentionRef,
+		RoomInfo,
+		ToolCall,
+	} from '../types';
 	import Icon from './Icon.vue';
 	import MentionReply from './MentionReply.vue';
 	import MessageBubble from './MessageBubble.vue';
@@ -125,6 +129,11 @@
 				type: Object as PropType<Record<string, ToolCall[]>>,
 				default: () => ({}),
 			},
+			deliveryById: {
+				type: Object as PropType<Record<string, Delivery>>,
+				default: () => ({}),
+			},
+			deliveryWho: { type: String, default: '' },
 			activity: {
 				type: Object as PropType<ActivityView | null>,
 				default: null,
@@ -149,7 +158,7 @@
 				default: undefined,
 			},
 		},
-		emits: ['reply', 'copy', 'cancel-queued', 'open-room', 'inject'],
+		emits: ['reply', 'copy', 'cancel-queued', 'retry', 'open-room', 'inject'],
 		data() {
 			return {
 				pinned: true,

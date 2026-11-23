@@ -1,3 +1,4 @@
+import type { Receipt } from '../delivery';
 import { createManagerStore, type ManagerApi } from '../store';
 import {
 	roomKey,
@@ -244,6 +245,7 @@ describe('send', () => {
 		store.draft.text = 'hello';
 		await store.send();
 		expect(api.send).toHaveBeenCalledWith({
+			id: expect.stringMatching(/^m_[0-9a-f]{32}$/),
 			room: MGR,
 			body_md: 'hello',
 			reply_to: 'm002',
@@ -1397,5 +1399,207 @@ describe('chat control', () => {
 			expect(t.api.stop).not.toHaveBeenCalled();
 			expect(t.api.remove).not.toHaveBeenCalled();
 		}
+	});
+});
+
+describe('delivery', () => {
+	const REMOTE: RoomInfo = { ...info(S1), local: false };
+	const echo = jest.fn(
+		async (p: { id?: string; room: RoomRef; body_md: string }) => ({
+			...msg(1, p.room, 'owner'),
+			id: p.id as string,
+			body_md: p.body_md,
+		}),
+	);
+	const remoteSetup = (over: Partial<ManagerApi> = {}) => {
+		let receipt: (r: Receipt) => void = () => {};
+		const t = setup({
+			rooms: jest.fn(async () => [REMOTE, info(MGR)]),
+			send: echo,
+			onReceipt: jest.fn(async (h) => {
+				receipt = h;
+				return () => {};
+			}),
+			...over,
+		});
+		return { ...t, receipt: (r: Receipt) => receipt(r) };
+	};
+	const sendRemote = async (t: ReturnType<typeof remoteSetup>, text = 'hi') => {
+		await t.store.init();
+		await t.store.select(S1_KEY);
+		t.store.draft.text = text;
+		return t.store.send();
+	};
+	const own = (t: ReturnType<typeof remoteSetup>) =>
+		t.store.messagesByRoom[S1_KEY].filter((m) => m.author.kind === 'owner');
+
+	beforeEach(() => {
+		echo.mockClear();
+		jest.useFakeTimers();
+	});
+	afterEach(() => jest.useRealTimers());
+
+	it('shows the optimistic row as sending before api.send resolves and clears the draft', async () => {
+		let release: (m: ChatMessage) => void = () => {};
+		const t = remoteSetup({
+			send: jest.fn(
+				(p) =>
+					new Promise<ChatMessage>((res) => {
+						release = () =>
+							res({ ...msg(1, p.room, 'owner'), id: p.id as string });
+					}),
+			),
+		});
+		await t.store.init();
+		await t.store.select(S1_KEY);
+		t.store.draft.text = 'hi';
+		const pending = t.store.send();
+		const row = own(t)[0];
+		expect(row.id).toMatch(/^m_[0-9a-f]{32}$/);
+		expect(row.body_md).toBe('hi');
+		expect(t.store.delivery[row.id].state).toBe('sending');
+		expect(t.store.draft.text).toBe('');
+		release(row);
+		await pending;
+		expect(own(t)).toHaveLength(1);
+		expect(t.store.delivery[row.id].state).toBe('sent');
+	});
+
+	it('passes the generated id to api.send and keeps it for the stored message', async () => {
+		const t = remoteSetup();
+		await sendRemote(t);
+		const id = (t.api.send as jest.Mock).mock.calls[0][0].id;
+		expect(own(t).map((m) => m.id)).toEqual([id]);
+	});
+
+	it('keeps the text, marks the row failed and offers retry when send fails', async () => {
+		const t = remoteSetup({
+			send: jest.fn(async () => {
+				throw new Error('relay down');
+			}),
+		});
+		await sendRemote(t, 'hello');
+		const row = own(t)[0];
+		expect(t.store.draft.text).toBe('hello');
+		expect(t.store.delivery[row.id]).toMatchObject({
+			state: 'failed',
+			reason: 'relay down',
+		});
+	});
+
+	it('does not overwrite a new draft when a send fails', async () => {
+		let fail: (e: Error) => void = () => {};
+		const t = remoteSetup({
+			send: jest.fn(
+				() =>
+					new Promise<ChatMessage>((_, rej) => {
+						fail = rej;
+					}),
+			),
+		});
+		await t.store.init();
+		await t.store.select(S1_KEY);
+		t.store.draft.text = 'one';
+		const pending = t.store.send();
+		t.store.draft.text = 'two';
+		fail(new Error('x'));
+		await pending;
+		expect(t.store.draft.text).toBe('two');
+	});
+
+	it('retry sends the same text as a new message with a new id and marks the old row retried', async () => {
+		const t = remoteSetup();
+		await sendRemote(t, 'again');
+		const first = own(t)[0].id;
+		t.receipt({ id: first, state: 'failed', reason: 'refused' });
+		await t.store.retry(first);
+		const calls = (t.api.send as jest.Mock).mock.calls;
+		expect(calls).toHaveLength(2);
+		expect(calls[1][0].body_md).toBe('again');
+		expect(calls[1][0].id).not.toBe(first);
+		expect(t.store.delivery[first].retried).toBe(true);
+		expect(own(t)).toHaveLength(2);
+	});
+
+	it('applies delivered and queued receipts by id, last event wins', async () => {
+		const t = remoteSetup();
+		await sendRemote(t);
+		await t.store.init();
+		const id = own(t)[0].id;
+		t.receipt({ id, state: 'queued' });
+		expect(t.store.delivery[id].state).toBe('queued');
+		t.receipt({ id, state: 'delivered' });
+		expect(t.store.delivery[id].state).toBe('delivered');
+		t.receipt({ id, state: 'failed', reason: 'expired' });
+		expect(t.store.delivery[id]).toMatchObject({
+			state: 'failed',
+			reason: 'expired',
+		});
+	});
+
+	it('treats a system note replying to an own message as a failure receipt', async () => {
+		const t = remoteSetup();
+		await sendRemote(t);
+		const id = own(t)[0].id;
+		t.emit({
+			...msg(50, S1, 'owner'),
+			id: 'm050',
+			author: { kind: 'system', id: 'runner' },
+			kind: 'text',
+			reply_to: id,
+			body_md: 'Not delivered: session is busy',
+		});
+		expect(t.store.delivery[id]).toMatchObject({
+			state: 'failed',
+			reason: 'session is busy',
+		});
+	});
+
+	it('ignores system notes that do not start with Not delivered', async () => {
+		const t = remoteSetup();
+		await sendRemote(t);
+		const id = own(t)[0].id;
+		t.emit({
+			...msg(50, S1),
+			author: { kind: 'system', id: 'runner' },
+			reply_to: id,
+			body_md: 'Typed into the session',
+		});
+		expect(t.store.delivery[id].state).toBe('sent');
+	});
+
+	it('does not duplicate the row when the poll delivers the same id', async () => {
+		const t = remoteSetup();
+		await sendRemote(t);
+		const row = own(t)[0];
+		t.emit({ ...row, ts_ms: row.ts_ms + 5 });
+		expect(own(t)).toHaveLength(1);
+	});
+
+	it('flags a remote message as not confirmed after 20 s without a receipt', async () => {
+		const t = remoteSetup();
+		await sendRemote(t);
+		const id = own(t)[0].id;
+		jest.advanceTimersByTime(19_999);
+		expect(t.store.delivery[id].state).toBe('sent');
+		jest.advanceTimersByTime(1);
+		expect(t.store.delivery[id].state).toBe('unconfirmed');
+	});
+
+	it('does not time out a delivered message', async () => {
+		const t = remoteSetup();
+		await sendRemote(t);
+		const id = own(t)[0].id;
+		t.receipt({ id, state: 'delivered' });
+		jest.advanceTimersByTime(60_000);
+		expect(t.store.delivery[id].state).toBe('delivered');
+	});
+
+	it('local rooms drop the status once the send is accepted', async () => {
+		const t = setup({ send: echo });
+		await t.store.init();
+		t.store.draft.text = 'x';
+		await t.store.send();
+		expect(t.store.delivery).toEqual({});
 	});
 });

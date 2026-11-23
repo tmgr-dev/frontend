@@ -535,6 +535,74 @@ describe('manager components', () => {
 		unmount();
 	});
 
+	describe('MessageBubble delivery status', () => {
+		const own = msg({ id: 'd1', author: { kind: 'owner', id: 'me' } });
+		const states: Array<[Record<string, unknown>, string]> = [
+			[{ state: 'sending', remote: true }, 'Sending…'],
+			[{ state: 'sent', remote: true }, 'Sent'],
+			[
+				{ state: 'queued', remote: true },
+				'Queued on claude on mac, waiting for the agent',
+			],
+			[{ state: 'delivered', remote: true }, 'Delivered'],
+			[
+				{ state: 'failed', remote: true, reason: 'busy' },
+				'Not delivered: busy',
+			],
+			[{ state: 'unconfirmed', remote: true }, 'Sent, not confirmed'],
+		];
+
+		it.each(states)('renders %j as "%s"', async (delivery, text) => {
+			const html = await render('MessageBubble', {
+				message: own,
+				delivery,
+				deliveryWho: 'claude on mac',
+			});
+			expect(html).toContain(text);
+			expect(html).toContain('role="status"');
+		});
+
+		it('shows no status line without a delivery', async () => {
+			const html = await render('MessageBubble', { message: own });
+			expect(html).not.toContain('dlv');
+		});
+
+		it('offers Retry for failed and emits retry with the message id', () => {
+			const onRetry = jest.fn();
+			const { el, unmount } = mountDom('MessageBubble', {
+				message: own,
+				delivery: { state: 'failed', remote: true, reason: 'x' },
+				onRetry,
+			});
+			const btn = el.querySelector('button.qcancel') as HTMLElement;
+			expect(btn.textContent).toContain('Retry');
+			btn.click();
+			expect(onRetry).toHaveBeenCalledWith('d1');
+			unmount();
+		});
+
+		it('labels the not-confirmed action Resend with a title about the first copy', async () => {
+			const html = await render('MessageBubble', {
+				message: own,
+				delivery: { state: 'unconfirmed', remote: true },
+			});
+			expect(html).toContain('Resend');
+			expect(html).toContain('The first copy may still arrive');
+		});
+
+		it('hides Retry for sent, delivered and already retried rows', async () => {
+			for (const delivery of [
+				{ state: 'sent', remote: true },
+				{ state: 'delivered', remote: true },
+				{ state: 'failed', remote: true, retried: true },
+			]) {
+				const html = await render('MessageBubble', { message: own, delivery });
+				expect(html).not.toContain('Retry');
+				expect(html).not.toContain('Resend');
+			}
+		});
+	});
+
 	it('MessageList shows the default empty hint without a custom one', async () => {
 		const html = await render('MessageList', { messages: [] });
 		expect(html).toContain('No messages in this chat.');

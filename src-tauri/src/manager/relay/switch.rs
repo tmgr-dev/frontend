@@ -6,7 +6,7 @@ use std::time::Duration;
 use super::auth::{AuthCell, BoundLogin, RelayAuth};
 use super::engine::{retry_after_secs, EngineConfig, RelayEngine};
 use super::http::{HttpTransport, LoginToken};
-use super::port::{NoRelay, RelayPort, TrustState};
+use super::port::{NoRelay, Receipt, RelayPort, TrustState};
 use super::ports::{KeyStore, KeychainStore};
 use crate::manager::backend::{ChatMessage, HistoryParams, RoomInfo, RoomRef, SearchParams, SendParams};
 
@@ -180,12 +180,18 @@ impl RelayPort for SwitchRelay {
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
     self.cur().poll_once()
   }
+  fn take_receipts(&self) -> Vec<Receipt> {
+    self.cur().take_receipts()
+  }
 }
 
 pub trait Pollee {
   fn alive(&self) -> bool;
   fn active(&self) -> bool;
   fn poll(&self) -> Result<Vec<ChatMessage>, String>;
+  fn take_receipts(&self) -> Vec<Receipt> {
+    vec![]
+  }
 }
 
 impl Pollee for Weak<SwitchRelay> {
@@ -201,13 +207,16 @@ impl Pollee for Weak<SwitchRelay> {
       None => Ok(vec![]),
     }
   }
+  fn take_receipts(&self) -> Vec<Receipt> {
+    self.upgrade().map(|s| s.take_receipts()).unwrap_or_default()
+  }
 }
 
 fn retry_after_of(e: &str) -> Option<u64> {
   retry_after_secs(e).or_else(|| serde_json::from_str::<serde_json::Value>(e).ok()?["retry_after"].as_u64())
 }
 
-pub fn run_poll(src: &dyn Pollee, emit: &dyn Fn(ChatMessage), sleep: &dyn Fn(Duration)) {
+pub fn run_poll(src: &dyn Pollee, emit: &dyn Fn(ChatMessage), emit_receipt: &dyn Fn(Receipt), sleep: &dyn Fn(Duration)) {
   let mut backoff = BACKOFF_START;
   while src.alive() {
     if !src.active() {
@@ -215,7 +224,9 @@ pub fn run_poll(src: &dyn Pollee, emit: &dyn Fn(ChatMessage), sleep: &dyn Fn(Dur
       sleep(CADENCE);
       continue;
     }
-    match src.poll() {
+    let polled = src.poll();
+    src.take_receipts().into_iter().for_each(emit_receipt);
+    match polled {
       Ok(messages) => {
         backoff = BACKOFF_START;
         messages.into_iter().for_each(emit);
@@ -256,13 +267,16 @@ impl<P: Pollee, S: Fn() -> Option<TrustState>, N: Fn()> Pollee for TrustWatch<P,
     }
     polled
   }
+  fn take_receipts(&self) -> Vec<Receipt> {
+    self.inner.take_receipts()
+  }
 }
 
-pub fn spawn_poll(switch: &Arc<SwitchRelay>, emit: impl Fn(ChatMessage) + Send + 'static, on_trust: impl Fn() + Send + 'static) {
+pub fn spawn_poll(switch: &Arc<SwitchRelay>, emit: impl Fn(ChatMessage) + Send + 'static, emit_receipt: impl Fn(Receipt) + Send + 'static, on_trust: impl Fn() + Send + 'static) {
   let weak = Arc::downgrade(switch);
   let snap = weak.clone();
   let watch = TrustWatch { inner: weak, snapshot: move || snap.upgrade()?.trust_state().ok(), notify: on_trust, last: Mutex::new(None) };
-  let spawned = std::thread::Builder::new().name("manager-relay-poll".into()).spawn(move || run_poll(&watch, &emit, &std::thread::sleep));
+  let spawned = std::thread::Builder::new().name("manager-relay-poll".into()).spawn(move || run_poll(&watch, &emit, &emit_receipt, &std::thread::sleep));
   if let Err(e) = spawned {
     log::error!("[manager] relay polling did not start: {e}");
   }
@@ -496,11 +510,12 @@ mod tests {
     active: Cell<bool>,
     polls: Cell<usize>,
     script: RefCell<Vec<Result<Vec<ChatMessage>, String>>>,
+    receipts: RefCell<Vec<Receipt>>,
   }
 
   impl Fake {
     fn new(ticks: usize, active: bool, script: Vec<Result<Vec<ChatMessage>, String>>) -> Self {
-      Self { ticks: Cell::new(ticks), active: Cell::new(active), polls: Cell::new(0), script: RefCell::new(script) }
+      Self { ticks: Cell::new(ticks), active: Cell::new(active), polls: Cell::new(0), script: RefCell::new(script), receipts: RefCell::default() }
     }
   }
 
@@ -518,13 +533,27 @@ mod tests {
       let mut s = self.script.borrow_mut();
       if s.is_empty() { Ok(vec![]) } else { s.remove(0) }
     }
+    fn take_receipts(&self) -> Vec<Receipt> {
+      std::mem::take(&mut self.receipts.borrow_mut())
+    }
   }
 
   fn run(fake: &Fake) -> (Vec<Duration>, Vec<String>) {
     let sleeps = RefCell::new(vec![]);
     let emitted = RefCell::new(vec![]);
-    run_poll(fake, &|m| emitted.borrow_mut().push(m.id), &|d| sleeps.borrow_mut().push(d));
+    run_poll(fake, &|m| emitted.borrow_mut().push(m.id), &|_| {}, &|d| sleeps.borrow_mut().push(d));
     (sleeps.into_inner(), emitted.into_inner())
+  }
+
+  #[test]
+  fn receipts_are_emitted_after_each_poll_even_when_the_poll_failed() {
+    use crate::manager::relay::port::ReceiptState;
+    let fake = Fake::new(2, true, vec![Err("down".into()), Ok(vec![])]);
+    let receipt = Receipt { id: "m_1".into(), state: ReceiptState::Queued, reason: None };
+    fake.receipts.borrow_mut().push(receipt.clone());
+    let got = RefCell::new(vec![]);
+    run_poll(&fake, &|_| {}, &|r| got.borrow_mut().push(r), &|_| {});
+    assert_eq!(got.into_inner(), [receipt]);
   }
 
   #[test]
@@ -600,6 +629,6 @@ mod tests {
     assert!(!weak.active());
     drop(s);
     assert!(!weak.alive());
-    run_poll(&weak, &|_| panic!("no emit"), &|_| panic!("no sleep"));
+    run_poll(&weak, &|_| panic!("no emit"), &|_| panic!("no receipt"), &|_| panic!("no sleep"));
   }
 }

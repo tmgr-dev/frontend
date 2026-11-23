@@ -14,10 +14,10 @@ use tmgr_chat_relay::trust::{
   decode_join_code, encode_join_code, expected_join_matches, gate_blockers, join_mac, kind_key, lowers_kind, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
   trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, Trusted,
 };
-use tmgr_chat_relay::wire::{open_message, random_msg_id, seal_message, Opened, Peer, SealParams};
-use tmgr_phone::{b64, b64_decode, h, hex};
+use tmgr_chat_relay::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
+use tmgr_phone::{b64, b64_decode, h, hex, Error};
 
-use super::port::{DeviceState, PendingJoin, PendingRevoke, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
+use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
 use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
 use crate::manager::backend::{
@@ -31,7 +31,8 @@ const MAX_LOG: usize = 2000;
 const MAX_SEEN: usize = 5000;
 const MAX_GAPS: usize = 100;
 const MAX_HELD: usize = 200;
-const HOLD_MS: u64 = 60_000;
+const HOLD_MS: u64 = 15_000;
+const MAX_RECEIPT_REASON: usize = 200;
 const WRITE_EVERY_MS: u64 = 30_000;
 const MAX_INTROS: usize = 200;
 const MAX_REVOKES_PER_DEVICE: usize = 50;
@@ -198,6 +199,21 @@ struct Hold {
   stuck: Option<u64>,
   blocked: BTreeSet<String>,
   held: usize,
+  drops: Vec<(u64, &'static str)>,
+}
+
+enum Inbound {
+  Opened(Opened),
+  Consumed { from: String, seq: u64 },
+}
+
+impl Inbound {
+  fn key(&self) -> (&str, u64) {
+    match self {
+      Inbound::Opened(o) => (&o.from, o.seq),
+      Inbound::Consumed { from, seq } => (from, *seq),
+    }
+  }
 }
 
 #[derive(Default)]
@@ -216,6 +232,8 @@ struct Core {
   hold_since: BTreeMap<String, u64>,
   pass_cap: Option<usize>,
   auto_join_error: Option<String>,
+  drop_reason: Option<&'static str>,
+  receipts: Vec<Receipt>,
 }
 
 fn trust_key(st: &State) -> String {
@@ -241,8 +259,12 @@ fn intro_matches(i: &str, uid: u64) -> bool {
   parse_intro(i).is_ok_and(|p| p.parsed.user_id == uid)
 }
 
+fn valid_chat_id(id: &str) -> bool {
+  id.len() == 34 && id.starts_with("m_") && id[2..].bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 fn validate_chat(m: &ChatMessage) -> Result<(), String> {
-  let id_ok = m.id.len() == 34 && m.id.starts_with("m_") && m.id[2..].bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'));
+  let id_ok = valid_chat_id(&m.id);
   let room_ok = match m.room.kind {
     RoomKind::Manager => m.room.session.is_none(),
     RoomKind::Session => m.room.session.is_some(),
@@ -543,6 +565,8 @@ pub struct RelayEngine<T: Transport, K: KeyStore> {
   kind: String,
   now: Box<dyn Fn() -> u64 + Send + Sync>,
   core: Mutex<Core>,
+  #[cfg(test)]
+  drops: Mutex<Vec<&'static str>>,
 }
 
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
@@ -564,7 +588,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       core.acked = core.st.cursor;
     }
     let now = Box::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
-    Ok(Self { t, k, cfg, kind: "desktop".into(), now, core: Mutex::new(core) })
+    Ok(Self { t, k, cfg, kind: "desktop".into(), now, core: Mutex::new(core), #[cfg(test)] drops: Mutex::default() })
   }
 
   pub fn with_kind(mut self, kind: &str) -> Self {
@@ -589,6 +613,17 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   fn now(&self) -> u64 {
     (self.now)()
+  }
+
+  fn report_drop(&self, reason: &'static str) {
+    log::warn!("[manager] relay dropped a message ({reason})");
+    #[cfg(test)]
+    self.drops.lock().unwrap_or_else(|p| p.into_inner()).push(reason);
+  }
+
+  #[cfg(test)]
+  fn drops(&self) -> Vec<&'static str> {
+    self.drops.lock().unwrap_or_else(|p| p.into_inner()).clone()
   }
 
   fn call(&self, c: &Core, req: Request) -> Result<String, String> {
@@ -670,13 +705,22 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn fetch_dir(&self, c: &mut Core) -> Result<Directory, String> {
-    let dir = api::parse_directory(&self.call(c, api::list_devices())?).map_err(err)?;
+    let raw = self.call(c, api::list_devices())?;
+    Self::take_dir(c, &raw)
+  }
+
+  fn take_dir(c: &mut Core, raw: &str) -> Result<Directory, String> {
+    let dir = api::parse_directory(raw).map_err(err)?;
     c.dir = Some(dir.clone());
     Ok(dir)
   }
 
   fn sync_dir(&self, c: &mut Core) -> Result<(), String> {
     let dir = self.fetch_dir(c)?;
+    self.sync_with(c, dir)
+  }
+
+  fn sync_with(&self, c: &mut Core, dir: Directory) -> Result<(), String> {
     if !c.st.joined {
       return Ok(());
     }
@@ -863,22 +907,32 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     res
   }
 
-  fn open_one(&self, c: &Core, m: &Msg, now: u64) -> Option<Opened> {
+  fn open_one(&self, c: &Core, m: &Msg, now: u64) -> Result<Inbound, Option<&'static str>> {
     if c.st.seen.iter().any(|s| s.from == m.from && s.id == m.msg_id) {
-      return None;
+      return Err(None);
     }
     let kind_hint = serde_json::from_str::<Value>(&m.body).ok().and_then(|v| v.get("kind")?.as_str().map(str::to_owned));
     let join_open = kind_hint.as_deref() == Some("join");
-    let dir = c.dir.as_ref()?;
-    let (id, keys) = Self::own(c).ok()?;
+    let Some(dir) = c.dir.as_ref() else { return Err(None) };
+    let Ok((id, keys)) = Self::own(c) else { return Err(None) };
     let trusted: Vec<Trusted> = c.st.trusted.iter().map(to_trusted).collect();
-    open_message(keys, self.cfg.user_id, &id.device_id, &m.from, &m.msg_id, &m.body, now, &trusted, |from| {
+    let opened = open_message_checked(keys, self.cfg.user_id, &id.device_id, &m.from, &m.msg_id, &m.body, now, &trusted, |from| {
       join_open
         .then(|| dir.devices.iter().find(|d| d.device_id == from))
         .flatten()
         .map(|d| Peer { device_id: &d.device_id, sign_pub_b64: &d.sign_pub, kex_pub_b64: &d.kex_pub })
-    })
-    .ok()
+    });
+    match opened {
+      Ok(o) => Ok(Inbound::Opened(o)),
+      Err(r) => match r.verified {
+        Some((from, seq)) => Ok(Inbound::Consumed { from, seq }),
+        None => Err(Some(match r.error {
+          Error::BadKey if !join_open && !trusted.iter().any(|t| t.device_id == m.from) => "unknown sender",
+          Error::BadKey | Error::IdMismatch | Error::BadSignature => "bad signature or key",
+          _ => "undecryptable or malformed",
+        })),
+      },
+    }
   }
 
   fn apply(&self, c: &mut Core, opened: Opened, now: u64) -> Option<ChatMessage> {
@@ -939,11 +993,20 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let mut stored = None;
     match opened.kind.as_str() {
       "chat" if sender_trusted && c.st.joined => {
-        let msg: ChatMessage = serde_json::from_value(opened.payload.clone()).ok()?;
-        if validate_chat(&msg).is_err() || msg.id != opened.id || !self.owns(&msg.room) {
+        let Ok(msg) = serde_json::from_value::<ChatMessage>(opened.payload.clone()) else {
+          c.drop_reason = Some("malformed chat payload");
+          return None;
+        };
+        if validate_chat(&msg).is_err() || msg.id != opened.id {
+          c.drop_reason = Some("malformed chat payload");
+          return None;
+        }
+        if !self.owns(&msg.room) {
+          c.drop_reason = Some("room not owned by this machine");
           return None;
         }
         if !Self::authorized_author(c, &opened.from, &msg, now) {
+          c.drop_reason = Some("unauthorized author");
           return None;
         }
         if !c.log.iter().any(|x| x.from == opened.from && x.msg.id == msg.id) {
@@ -951,6 +1014,25 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           c.log_dirty = true;
           stored = Some(msg);
         }
+      }
+      "receipt" if sender_trusted && c.st.joined => {
+        if c.st.kind_of_trusted(&opened.from) != Some("runner") {
+          c.drop_reason = Some("receipt from a device that is not a runner");
+          return None;
+        }
+        let receipt = serde_json::from_value::<Receipt>(opened.payload.clone())
+          .ok()
+          .filter(|r| valid_chat_id(&r.id) && r.reason.as_ref().is_none_or(|x| x.chars().count() <= MAX_RECEIPT_REASON));
+        let Some(receipt) = receipt else {
+          c.drop_reason = Some("malformed receipt");
+          return None;
+        };
+        let own_id = c.identity.as_ref().map(|i| i.device_id.as_str()).unwrap_or_default();
+        if !c.log.iter().any(|x| x.from == own_id && x.msg.id == receipt.id) {
+          c.drop_reason = Some("receipt for a message this device did not send");
+          return None;
+        }
+        c.receipts.push(receipt);
       }
       "join" if !sender_trusted => {
         if !join_open {
@@ -1010,6 +1092,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         let json = json!({ "v": 1, "statement": statement, "sig": sig }).to_string();
         ingest_revoke(c, self.cfg.user_id, now, &json, None, &mut BTreeMap::new());
       }
+      "chat" | "receipt" => {
+        c.drop_reason = Some("sender is not a trusted member");
+        return None;
+      }
       _ => return None,
     }
     Some(stored)
@@ -1018,18 +1104,34 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   /// Per sender, messages are applied in `seq` order; a missing predecessor holds the rest for HOLD_MS, then a gap is recorded.
   fn process_page(&self, c: &mut Core, msgs: &[Msg], now: u64, hold: &mut Hold, out: &mut Vec<ChatMessage>) -> Result<(), String> {
     stamp_pins(c, now);
-    let mut opened: Vec<(u64, Opened)> = msgs.iter().filter_map(|m| Some((m.cursor as u64, self.open_one(c, m, now)?))).collect();
-    opened.sort_by(|a, b| (&a.1.from, a.1.seq, a.0).cmp(&(&b.1.from, b.1.seq, b.0)));
-    for (cursor, o) in opened {
-      let from = o.from.clone();
+    let mut opened: Vec<(u64, Inbound)> = Vec::new();
+    for m in msgs {
+      let cursor = m.cursor as u64;
+      match self.open_one(c, m, now) {
+        Ok(i) => {
+          if matches!(i, Inbound::Consumed { .. }) {
+            hold.drops.push((cursor, "outside the time window"));
+          }
+          opened.push((cursor, i));
+        }
+        Err(Some(reason)) => hold.drops.push((cursor, reason)),
+        Err(None) => {}
+      }
+    }
+    opened.sort_by(|a, b| (a.1.key(), a.0).cmp(&(b.1.key(), b.0)));
+    for (cursor, item) in opened {
+      let (from, seq, trusted) = match &item {
+        Inbound::Opened(o) => (o.from.clone(), o.seq, o.trusted),
+        Inbound::Consumed { from, seq } => (from.clone(), *seq, true),
+      };
       let mut defer = hold.blocked.contains(&from);
-      if !defer && o.trusted {
-        if let Some(expected) = c.st.seq_in.get(&from).map(|l| l + 1).filter(|e| o.seq > *e) {
+      if !defer && trusted {
+        if let Some(expected) = c.st.seq_in.get(&from).map(|l| l + 1).filter(|e| seq > *e) {
           let since = *c.hold_since.entry(from.clone()).or_insert(now);
           if now.saturating_sub(since) < HOLD_MS && hold.held < MAX_HELD {
             defer = true;
           } else {
-            c.st.seq_gaps.push(SeqGap { from_device: from.clone(), expected, got: o.seq });
+            c.st.seq_gaps.push(SeqGap { from_device: from.clone(), expected, got: seq });
             if c.st.seq_gaps.len() > MAX_GAPS {
               c.st.seq_gaps.remove(0);
             }
@@ -1042,12 +1144,17 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         hold.stuck = Some(hold.stuck.map_or(cursor, |s| s.min(cursor)));
         continue;
       }
+      let entry = c.st.seq_in.entry(from.clone()).or_insert(0);
+      *entry = (*entry).max(seq);
+      let Inbound::Opened(o) = item else { continue };
       if o.trusted {
-        c.st.last_seen.insert(from.clone(), now);
+        c.st.last_seen.insert(from, now);
       }
-      let entry = c.st.seq_in.entry(from).or_insert(0);
-      *entry = (*entry).max(o.seq);
+      c.drop_reason = None;
       out.extend(self.apply(c, o, now));
+      if let Some(reason) = c.drop_reason.take() {
+        hold.drops.push((cursor, reason));
+      }
       if std::mem::take(&mut c.joined_now) {
         self.finish_join(c)?;
       }
@@ -1347,28 +1454,49 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     notice.map_err(|e| format!("the old identity was wiped, but the other devices were not told: {e}"))
   }
 
+  fn take_receipts(&self) -> Vec<Receipt> {
+    std::mem::take(&mut self.lock().receipts)
+  }
+
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
+    let token = {
+      let mut g = self.lock();
+      self.ensure_registered(&mut g)?;
+      Self::token_of(&g)?
+    };
+    let raw_dir = self.t.call(&api::list_devices(), Some(&token))?;
     let mut g = self.lock();
-    let c = &mut *g;
-    self.ensure_registered(c)?;
-    self.sync_dir(c)?;
+    if !Self::is_identity(&g, &token) {
+      return Ok(vec![]);
+    }
+    let dir = Self::take_dir(&mut g, &raw_dir)?;
+    self.sync_with(&mut g, dir)?;
     let now = self.now();
     let mut out = Vec::new();
     let mut hold = Hold::default();
-    let mut after = c.st.cursor;
+    let mut after = g.st.cursor;
+    let mut expected_cursor = after;
     loop {
-      let inbox = api::parse_inbox(&self.call(c, api::get_messages(after, 100).map_err(err)?)?).map_err(err)?;
+      drop(g);
+      let raw = self.t.call(&api::get_messages(after, 100).map_err(err)?, Some(&token))?;
+      g = self.lock();
+      if !Self::is_identity(&g, &token) || g.st.cursor != expected_cursor {
+        return Ok(out);
+      }
+      let inbox = api::parse_inbox(&raw).map_err(err)?;
       let Some(last) = inbox.messages.iter().map(|m| m.cursor as u64).max() else { break };
-      self.process_page(c, &inbox.messages, now, &mut hold, &mut out)?;
+      self.process_page(&mut g, &inbox.messages, now, &mut hold, &mut out)?;
       after = last;
-      c.st.cursor = c.st.cursor.max(hold.stuck.map_or(last, |s| s.saturating_sub(1)));
-      self.ack_if_stored(c)?;
+      g.st.cursor = g.st.cursor.max(hold.stuck.map_or(last, |s| s.saturating_sub(1)));
+      self.release_drops(&mut hold, g.st.cursor);
+      g = self.ack_stored(g, &token)?;
+      expected_cursor = g.st.cursor;
       if !inbox.more {
         break;
       }
     }
-    c.hold_since.retain(|k, _| hold.blocked.contains(k));
-    self.ack_if_stored(c)?;
+    g.hold_since.retain(|k, _| hold.blocked.contains(k));
+    self.ack_stored(g, &token).map(drop)?;
     Ok(out)
   }
 }
@@ -1494,6 +1622,39 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       .into_iter()
       .map(|r| MachineIndex { machine: r.index.machine.clone(), label: r.index.machine_label.clone(), role: r.index.role.clone(), followers: r.index.followers.clone() })
       .collect()
+  }
+
+  fn token_of(c: &Core) -> Result<String, String> {
+    c.identity.as_ref().map(|i| i.token.clone()).ok_or_else(|| "chat sync is not set up".to_owned())
+  }
+
+  fn is_identity(c: &Core, token: &str) -> bool {
+    c.identity.as_ref().is_some_and(|i| i.token == token)
+  }
+
+  fn ack_stored<'a>(&'a self, mut g: MutexGuard<'a, Core>, token: &str) -> Result<MutexGuard<'a, Core>, String> {
+    self.persist(&mut g, false)?;
+    if g.log_dirty || g.st.cursor <= g.acked {
+      return Ok(g);
+    }
+    let through = g.st.cursor;
+    drop(g);
+    self.t.call(&api::ack_messages(through).map_err(err)?, Some(token))?;
+    let mut g = self.lock();
+    if Self::is_identity(&g, token) {
+      g.acked = g.acked.max(through);
+    }
+    Ok(g)
+  }
+
+  fn release_drops(&self, hold: &mut Hold, passed: u64) {
+    hold.drops.retain(|&(cursor, reason)| {
+      let past = cursor <= passed;
+      if past {
+        self.report_drop(reason);
+      }
+      !past
+    });
   }
 
   fn ack_if_stored(&self, c: &mut Core) -> Result<(), String> {

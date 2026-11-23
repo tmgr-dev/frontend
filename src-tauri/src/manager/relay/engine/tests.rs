@@ -7,6 +7,7 @@ use tmgr_chat_relay::api::{Method, Request};
 
 use super::*;
 use crate::manager::backend::Author;
+use crate::manager::relay::port::ReceiptState;
 use crate::manager::relay::ports::MemKeyStore;
 
 const T0: u64 = 1_800_000_000_000;
@@ -41,6 +42,7 @@ struct Server {
   posts: usize,
   last_seen: BTreeMap<String, u64>,
   puts: Vec<(String, String, String)>,
+  slow_ms: u64,
 }
 
 #[derive(Clone, Default)]
@@ -111,6 +113,10 @@ fn wrap(v: Value) -> Result<String, String> {
 
 impl Transport for Fake {
   fn call(&self, req: &Request, token: Option<&str>) -> Result<String, String> {
+    let slow_ms = self.0.lock().unwrap().slow_ms;
+    if slow_ms > 0 && !(req.method == Method::Post && req.path.ends_with("/messages")) {
+      std::thread::sleep(std::time::Duration::from_millis(slow_ms));
+    }
     let mut s = self.0.lock().unwrap();
     let path = req.path.trim_start_matches("/api/chat-relay").to_owned();
     let caller = token.and_then(|t| s.devices.iter().find(|d| d.token == t).map(|d| d.id.clone()));
@@ -307,6 +313,28 @@ fn untrusted_sender_is_ignored() {
   assert!(a.poll_once().unwrap().is_empty());
   assert!(history(&a).is_empty());
   assert_eq!(fake.queue_len(&my_id(&a)), 0);
+  assert_eq!(a.drops(), ["unknown sender"]);
+}
+
+#[test]
+fn a_message_that_fails_verification_is_reported_with_a_fixed_reason() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let msg = same_id_msg();
+  let (from, body) = forge_chat(&a, &b, &msg, true);
+  fake.inject(&bid, &msg.id, &from, &body);
+  assert!(b.poll_once().unwrap().is_empty());
+  assert_eq!(b.drops(), ["bad signature or key"]);
+}
+
+#[test]
+fn a_chat_with_an_unauthorized_author_is_reported_with_a_fixed_reason() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  post_chat(&a, &my_id(&b), &msg_n(2, "manager"));
+  assert!(b.poll_once().unwrap().is_empty());
+  assert_eq!(b.drops(), ["unauthorized author"]);
 }
 
 #[test]
@@ -463,10 +491,9 @@ fn stale_and_replayed_messages_are_dropped() {
 
   clock.set(T0 + 1000);
   send(&a, "fresh").unwrap();
-  assert!(b.poll_once().unwrap().is_empty());
-  clock.set(T0 + 62_000);
   assert_eq!(b.poll_once().unwrap().len(), 1);
   assert_eq!(history(&b), ["fresh"]);
+  assert_eq!(b.drops(), ["outside the time window"]);
 }
 
 #[test]
@@ -1159,9 +1186,9 @@ fn a_missing_message_is_held_briefly_then_reported_as_a_gap() {
   assert_eq!(b.poll_once().unwrap().len(), 1);
   assert!(b.trust_state().unwrap().seq_gaps.is_empty());
   assert_eq!(fake.queue_len(&bid), 2);
-  clock.set(T0 + 30_000);
+  clock.set(T0 + 10_000);
   assert!(b.poll_once().unwrap().is_empty());
-  clock.set(T0 + 61_000);
+  clock.set(T0 + 16_000);
   assert_eq!(b.poll_once().unwrap().len(), 1);
   let mut shown = history(&b);
   shown.sort();
@@ -2791,4 +2818,158 @@ fn rooms_indexes_survive_a_restart() {
   a.poll_once().unwrap();
   let again = engine_on(&fake, &clock, store, "mx_local");
   assert_eq!(indexed(&again), [mx]);
+}
+
+fn post_receipt(from: &Engine, to_id: &str, relay_id: &str, payload: Value) {
+  let mut g = from.lock();
+  let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
+  from.seal_and_post(&mut g, "receipt", relay_id, &payload, &target, false).unwrap();
+}
+
+fn runner_pair(fake: &Fake, clock: &Clock) -> (Engine, Engine) {
+  let a = engine_with(fake, clock, "Desktop A");
+  let r = join_as(fake, clock, &a, "Runner", "runner");
+  (a, r)
+}
+
+fn receipt_of(id: &str, state: &str) -> Value {
+  json!({ "id": id, "state": state })
+}
+
+#[test]
+fn a_runner_receipt_for_a_message_this_device_sent_is_surfaced_once() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let sent = send(&a, "hello").unwrap();
+  post_receipt(&r, &my_id(&a), "r_1", json!({ "id": sent.id, "state": "failed", "reason": "no session", "extra": 1 }));
+  let (rid, from, body) = fake.first_body(&my_id(&a));
+  assert!(a.poll_once().unwrap().is_empty());
+  assert_eq!(a.take_receipts(), [Receipt { id: sent.id.clone(), state: ReceiptState::Failed, reason: Some("no session".into()) }]);
+  assert!(a.take_receipts().is_empty());
+  fake.inject(&my_id(&a), &rid, &from, &body);
+  a.poll_once().unwrap();
+  assert!(a.take_receipts().is_empty());
+  assert!(a.drops().is_empty());
+}
+
+#[test]
+fn every_receipt_state_is_accepted_and_the_reason_is_optional() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let sent = send(&a, "hello").unwrap();
+  for (n, state) in ["delivered", "queued", "failed"].into_iter().enumerate() {
+    post_receipt(&r, &my_id(&a), &format!("r_{n}"), receipt_of(&sent.id, state));
+  }
+  a.poll_once().unwrap();
+  let states: Vec<ReceiptState> = a.take_receipts().into_iter().map(|x| x.state).collect();
+  assert_eq!(states, [ReceiptState::Delivered, ReceiptState::Queued, ReceiptState::Failed]);
+}
+
+fn rejected_receipt(sender_is_runner: bool, payload: impl FnOnce(&str) -> Value) -> (Vec<Receipt>, Vec<&'static str>) {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let other = join_as(&fake, &clock, &a, "Other", if sender_is_runner { "runner" } else { "desktop" });
+  let sent = send(&a, "hello").unwrap();
+  post_receipt(&other, &my_id(&a), "r_1", payload(&sent.id));
+  a.poll_once().unwrap();
+  (a.take_receipts(), a.drops())
+}
+
+#[test]
+fn a_receipt_from_a_trusted_non_runner_is_dropped() {
+  let (got, drops) = rejected_receipt(false, |id| receipt_of(id, "delivered"));
+  assert!(got.is_empty());
+  assert_eq!(drops, ["receipt from a device that is not a runner"]);
+}
+
+#[test]
+fn a_receipt_with_an_unknown_state_or_a_long_reason_or_a_bad_id_is_dropped() {
+  for payload in [
+    |id: &str| receipt_of(id, "seen"),
+    |id: &str| json!({ "id": id, "state": "failed", "reason": "x".repeat(201) }),
+    |_: &str| receipt_of("not-an-id", "delivered"),
+    |_: &str| json!({ "state": "delivered" }),
+    |id: &str| json!({ "id": id, "state": "delivered", "reason": 5 }),
+  ] {
+    let (got, drops) = rejected_receipt(true, payload);
+    assert!(got.is_empty());
+    assert_eq!(drops, ["malformed receipt"]);
+  }
+}
+
+#[test]
+fn a_receipt_with_a_200_char_reason_is_accepted() {
+  let (got, drops) = rejected_receipt(true, |id| json!({ "id": id, "state": "failed", "reason": "я".repeat(200) }));
+  assert_eq!(got.len(), 1);
+  assert!(drops.is_empty());
+}
+
+#[test]
+fn a_receipt_for_a_message_this_device_did_not_send_is_dropped() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let foreign = msg_n(7, "manager");
+  post_chat(&r, &my_id(&a), &foreign);
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  post_receipt(&r, &my_id(&a), "r_1", receipt_of(&foreign.id, "delivered"));
+  post_receipt(&r, &my_id(&a), "r_2", receipt_of(&format!("m_{}", "9".repeat(32)), "delivered"));
+  a.poll_once().unwrap();
+  assert!(a.take_receipts().is_empty());
+  assert_eq!(a.drops(), ["receipt for a message this device did not send"; 2]);
+}
+
+#[test]
+fn an_untrusted_sender_cannot_deliver_a_receipt() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  a.register().unwrap();
+  let sent = send(&a, "hello").unwrap_or_else(|_| msg_n(1, "owner"));
+  let stranger = engine_with(&fake, &clock, "Stranger").with_kind("runner");
+  stranger.register().unwrap();
+  let a_dev = a.lock().st.trusted[0].clone();
+  stranger.lock().st.trusted.push(a_dev);
+  post_receipt(&stranger, &my_id(&a), "r_1", receipt_of(&sent.id, "delivered"));
+  a.poll_once().unwrap();
+  assert!(a.take_receipts().is_empty());
+  assert_eq!(a.drops(), ["unknown sender"]);
+}
+
+fn slow_poll_blocks_send() -> (u128, u64) {
+  const SLOW: u64 = 300;
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  fake.0.lock().unwrap().slow_ms = SLOW;
+  let waited = std::thread::scope(|s| {
+    let poll = s.spawn(|| a.poll_once().unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let t = std::time::Instant::now();
+    send(&a, "outbound").unwrap();
+    let waited = t.elapsed().as_millis();
+    poll.join().unwrap();
+    waited
+  });
+  (waited, SLOW)
+}
+
+#[test]
+fn send_does_not_wait_for_the_network_calls_of_an_in_flight_poll() {
+  let (waited, slow) = slow_poll_blocks_send();
+  assert!(waited < u128::from(slow), "send waited {waited} ms behind a poll whose calls take {slow} ms each");
+}
+
+#[test]
+fn a_poll_interrupted_by_a_reset_applies_nothing_from_the_old_identity() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  send(&a, "before reset").unwrap();
+  fake.0.lock().unwrap().slow_ms = 200;
+  let old_id = my_id(&b);
+  std::thread::scope(|s| {
+    let poll = s.spawn(|| b.poll_once());
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    b.reset_identity().unwrap();
+    poll.join().unwrap().ok();
+  });
+  assert_ne!(my_id(&b), old_id);
+  assert!(history(&b).is_empty());
 }
