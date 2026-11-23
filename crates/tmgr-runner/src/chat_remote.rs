@@ -537,6 +537,25 @@ mod tests {
     }
 
     #[test]
+    fn an_attach_send_to_a_paired_manager_is_one_ask_call_and_a_stranger_is_refused() {
+        let net = Net::top().replying(Ok(RpcRes::ok("r", json!({"id": mid(4)}))));
+        send(&net, ME, &RoomRef::manager(PEER), "go", 0, None).unwrap();
+        assert_eq!(net.calls().len(), 1);
+        assert_eq!(net.calls()[0].1, Op::Ask);
+        let err = send(
+            &net,
+            ME,
+            &RoomRef::manager("mx_00000000000000dd"),
+            "go",
+            0,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.starts_with("unknown machine mx_00000000000000dd"));
+        assert_eq!(net.calls().len(), 1);
+    }
+
+    #[test]
     fn send_refuses_attachments_empty_and_oversized_bodies_without_a_call() {
         let net = Net::top();
         let room = RoomRef::manager(PEER);

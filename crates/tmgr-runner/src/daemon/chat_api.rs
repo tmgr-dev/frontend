@@ -1075,6 +1075,68 @@ mod tests {
         ));
     }
 
+    fn cli_send(rt: &Arc<Runner>, room: &RoomRef) -> ChatMessage {
+        let (c, _peer) = conn(CLIENT_CLI);
+        serde_json::from_value(call(rt, &c, chat_method::SEND, send_to(room.clone())).unwrap())
+            .unwrap()
+    }
+
+    #[test]
+    fn an_attach_send_to_a_bypass_no_sandbox_session_room_is_stored_and_queued_not_refused() {
+        let (_t, rt) = manager_rig(json!({}));
+        let room = rt.chat.session_room("s_cccccccccc");
+        assert_eq!(
+            rt.chat_deliver(&room, "hi", CLIENT_CLI),
+            chat::Delivery::Busy(Some("prompt"))
+        );
+        let posted = cli_send(&rt, &room);
+        assert_eq!(posted.room, room);
+        assert_eq!(posted.author.id, "owner");
+        assert_eq!(posted.body_md, "hi");
+        assert_eq!(rt.chat.queued_ids(&room), [posted.id]);
+        assert!(system_notes(&rt, &room).is_empty());
+    }
+
+    #[test]
+    fn an_attach_send_to_the_local_manager_room_is_stored_and_queued_even_when_unrestricted() {
+        for flags in [
+            json!({}),
+            json!({"unrestricted": true, "no_sandbox": true, "permission_mode": "bypass"}),
+        ] {
+            let (_t, rt) = manager_rig(flags);
+            let room = rt.chat.manager_room();
+            assert_eq!(
+                rt.chat_deliver(&room, "hi", CLIENT_CLI),
+                chat::Delivery::Busy(Some("prompt"))
+            );
+            let posted = cli_send(&rt, &room);
+            assert_eq!(posted.room, room);
+            assert_eq!(posted.author.id, "owner");
+            assert_eq!(rt.chat.queued_ids(&room), [posted.id]);
+            assert!(system_notes(&rt, &room).is_empty());
+        }
+    }
+
+    #[test]
+    fn an_attach_send_to_a_paired_machine_manager_room_goes_to_the_relay_not_to_local_storage() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        make_top_with_peer(&rt);
+        let room = RoomRef::manager(PEER);
+        let (c, _peer) = conn(CLIENT_CLI);
+        let e = call(&rt, &c, chat_method::SEND, send_to(room.clone())).unwrap_err();
+        assert_eq!(e.msg, "relay not ready");
+        assert!(rt
+            .chat
+            .history(&rt.chat.manager_room(), None, None)
+            .unwrap()
+            .is_empty());
+        let rooms: Vec<tmgr_ipc::chat::RoomInfo> =
+            serde_json::from_value(call(&rt, &c, chat_method::ROOMS, Value::Null).unwrap())
+                .unwrap();
+        assert!(rooms.iter().any(|r| r.room == room));
+    }
+
     #[test]
     fn a_restricted_manager_and_bypass_workers_are_not_refused_relay_input() {
         let (_t, rt) = manager_rig(json!({}));
