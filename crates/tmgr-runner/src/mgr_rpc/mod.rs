@@ -55,6 +55,7 @@ pub(crate) mod testkit {
         pub failed: Mutex<Vec<(String, String)>>,
         pub explode: std::sync::atomic::AtomicBool,
         pub unrestricted_manager: std::sync::atomic::AtomicBool,
+        pub audits: Mutex<Vec<String>>,
         pub asked: Mutex<Vec<(String, String)>>,
         pub ask_error: Mutex<Option<String>>,
         pub now: AtomicU64,
@@ -115,6 +116,7 @@ pub(crate) mod testkit {
                 failed: Mutex::default(),
                 explode: std::sync::atomic::AtomicBool::new(false),
                 unrestricted_manager: std::sync::atomic::AtomicBool::new(false),
+                audits: Mutex::default(),
                 asked: Mutex::default(),
                 ask_error: Mutex::default(),
                 now: AtomicU64::new(T0),
@@ -153,6 +155,9 @@ pub(crate) mod testkit {
         }
         fn unrestricted(&self) -> bool {
             self.unrestricted_manager.load(Ordering::SeqCst)
+        }
+        fn audit_remote_write(&self, note: &str) {
+            self.audits.lock().unwrap().push(note.into());
         }
         fn queue_remote_ask(
             &self,

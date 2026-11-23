@@ -733,6 +733,7 @@ pub trait Host {
     fn unrestricted(&self) -> bool {
         false
     }
+    fn audit_remote_write(&self, _note: &str) {}
     fn local_manager_unrestricted(&self) -> bool {
         false
     }
@@ -903,10 +904,36 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                 return Err(format!("text must be 1 to {SEND_CARD_MAX} bytes"));
             }
             let s = find_target(host, id, "written to")?;
-            if host.remote_caller().is_none()
-                && !host.unrestricted()
-                && (s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox)
-            {
+            let risky = s.permission_mode.as_deref() == Some("bypass") || s.no_sandbox;
+            if let Some(from) = host.remote_caller() {
+                if s.manager {
+                    return Err("manager sessions cannot be written to".into());
+                }
+                let delivered = match host.send(id, text) {
+                    Ok(()) => true,
+                    Err(_) => {
+                        let wrapped = wrap_untrusted(REMOTE_MANAGER_SOURCE, from, text);
+                        st.queue_prompt(id, &wrapped, host.now_ms());
+                        false
+                    }
+                };
+                let kind = if s.permission_mode.as_deref() == Some("bypass") {
+                    "bypass "
+                } else if s.no_sandbox {
+                    "no-sandbox "
+                } else {
+                    ""
+                };
+                host.audit_remote_write(&format!(
+                    "manager on {from} wrote into {kind}session {id}"
+                ));
+                return Ok(if delivered {
+                    json!({"delivered": true})
+                } else {
+                    json!({"queued": true, "note": "delivered when the agent is at its prompt"})
+                });
+            }
+            if !host.unrestricted() && risky {
                 return Err(
                     "sessions in bypass mode or without the sandbox cannot be written to".into(),
                 );
@@ -1730,6 +1757,8 @@ mod tests {
         gone: Mutex<std::collections::HashSet<String>>,
         asked: Mutex<Vec<(Option<String>, Option<String>)>>,
         unrestricted: bool,
+        audits: Mutex<Vec<String>>,
+        send_fails: bool,
     }
 
     fn info(id: &str) -> SessionInfo {
@@ -1789,6 +1818,8 @@ mod tests {
                 switch_fails: false,
                 asked: Mutex::default(),
                 unrestricted: false,
+                audits: Mutex::default(),
+                send_fails: false,
             }
         }
 
@@ -1816,8 +1847,14 @@ mod tests {
             Ok((0..lines.min(3)).map(|i| format!("line {i}")).collect())
         }
         fn send(&self, id: &str, text: &str) -> Result<(), String> {
+            if self.send_fails {
+                return Err("not at the prompt".into());
+            }
             self.sent.lock().unwrap().push((id.into(), text.into()));
             Ok(())
+        }
+        fn audit_remote_write(&self, note: &str) {
+            self.audits.lock().unwrap().push(note.into());
         }
         fn trusted_dir(&self, cwd: &str) -> Result<TrustedDir, String> {
             if self.trusted.iter().any(|t| t == cwd) {
@@ -2071,14 +2108,59 @@ mod tests {
     }
 
     #[test]
-    fn a_remote_caller_may_write_to_bypass_or_unsandboxed_sessions() {
+    fn a_remote_write_is_delivered_without_a_card_and_audited() {
+        for (id, kind) in [
+            ("s_bbbbbbbbbb", ""),
+            ("s_hhhhhhhhhh", "bypass "),
+            ("s_iiiiiiiiii", "no-sandbox "),
+        ] {
+            let mut h = with_risky_sessions();
+            h.remote = Some("mx_2".into());
+            let v = send_to(&h, id).unwrap();
+            assert_eq!(v["delivered"], true, "{id}");
+            assert_eq!(
+                *h.sent.lock().unwrap(),
+                vec![(id.to_string(), "hi".to_string())]
+            );
+            assert!(h.proposed.lock().unwrap().is_empty());
+            assert_eq!(
+                *h.audits.lock().unwrap(),
+                vec![format!("manager on mx_2 wrote into {kind}session {id}")]
+            );
+        }
+    }
+
+    #[test]
+    fn a_remote_write_queues_when_the_agent_is_not_at_its_prompt() {
+        let mut h = Fake::remote("mx_2");
+        h.send_fails = true;
+        let st = State::default();
+        let v = call(
+            &h,
+            &st,
+            "send_to_session",
+            json!({"session": "s_bbbbbbbbbb", "text": "hi"}),
+        )
+        .unwrap();
+        assert_eq!(v["queued"], true);
+        assert_eq!(h.audits.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_remote_write_into_a_manager_or_a_refused_target_is_not_delivered_or_audited() {
         let mut h = with_risky_sessions();
         h.remote = Some("mx_2".into());
-        for id in ["s_hhhhhhhhhh", "s_iiiiiiiiii"] {
-            let v = send_to(&h, id).unwrap();
-            assert!(v["card_id"].as_str().is_some(), "{id}");
+        for id in ["s_aaaaaaaaaa", "s_ffffffffff", "s_zzzzzzzzzz"] {
+            let _ = send_to(&h, id);
         }
-        assert_eq!(h.proposed.lock().unwrap().len(), 2);
+        let mut manager = info("s_mmmmmmmmmm");
+        manager.manager = true;
+        h.list.push(manager);
+        assert!(send_to(&h, "s_mmmmmmmmmm")
+            .unwrap_err()
+            .contains("manager sessions cannot be written to"));
+        assert!(h.sent.lock().unwrap().is_empty());
+        assert!(h.audits.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2127,24 +2209,6 @@ mod tests {
             json!({"session": "s_bbbbbbbbbb", "text": "a".repeat(8192)}),
         )
         .unwrap();
-    }
-
-    #[test]
-    fn a_remote_send_issues_a_card_from_the_remote_proposer() {
-        let h = Fake::remote("mx_2");
-        let v = call(
-            &h,
-            &State::default(),
-            "send_to_session",
-            json!({"session": "s_bbbbbbbbbb", "text": "hi"}),
-        )
-        .unwrap();
-        assert_eq!(v["pending"], true);
-        assert!(h.sent.lock().unwrap().is_empty());
-        assert_eq!(
-            h.proposed.lock().unwrap()[0].from.as_deref(),
-            Some("remote:mx_2")
-        );
     }
 
     fn stop(h: &Fake, id: &str) -> Result<Value, String> {

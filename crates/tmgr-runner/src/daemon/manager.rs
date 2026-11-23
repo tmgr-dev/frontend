@@ -327,6 +327,14 @@ impl core::Host for ManagerHost<'_> {
         self.unrestricted
     }
 
+    fn audit_remote_write(&self, note: &str) {
+        let room = self.rt.chat.manager_room();
+        if let Err(e) = self.rt.chat.reply_system(&room, None, note) {
+            log(&format!("manager: audit note not posted: {e}"));
+        }
+        log(&format!("manager: {note}"));
+    }
+
     fn local_manager_unrestricted(&self) -> bool {
         self.rt.live_manager().is_some_and(|m| is_unrestricted(&m))
     }
@@ -863,6 +871,22 @@ pub(super) mod tests {
                     .err()
                     .is_some_and(|e| e.contains("bypass mode or without")),
                 "{e:?}"
+            );
+            let room = rt.chat.manager_room();
+            let notes: Vec<String> = rt
+                .chat
+                .history(&room, None, Some(50))
+                .unwrap()
+                .into_iter()
+                .map(|m| m.body_md)
+                .collect();
+            assert!(
+                notes.contains(&format!(
+                    "manager on mx_00000000000000bb wrote into no-sandbox session {RISKY}"
+                )) || notes.contains(&format!(
+                    "manager on mx_00000000000000bb wrote into bypass session {RISKY}"
+                )),
+                "{notes:?}"
             );
             let local_err = core::execute(&local, &rt.mgr, &req).unwrap_err();
             assert!(local_err.contains("bypass mode or without"), "{local_err}");
