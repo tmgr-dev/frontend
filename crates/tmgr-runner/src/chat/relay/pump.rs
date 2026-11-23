@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tmgr_chat_relay::api::Request;
+use tmgr_chat_relay::engine::blob::BlobPart;
 use tmgr_chat_relay::engine::{
     retry_after_secs, ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Slot, SpawnKeySink,
     SpawnOkSink, Transport,
@@ -17,6 +18,7 @@ use crate::mgr_rpc::relay::{RpcInbox, RpcSend};
 use super::activity::{run_activity, Clock, Leases};
 use super::rooms_sync::{host_label, OwnerSink, RoomsSync, Snapshot};
 use super::store::RelayDir;
+use crate::chat::blobs::BlobStore;
 use crate::chat::{ActivityRx, Incoming, IngestError, Ingested, Receipt, ReceiptFn};
 
 const LABEL: &str = "Runner";
@@ -97,6 +99,7 @@ pub struct RelaySink {
     machine: String,
     ingest: IngestFn,
     give_up: Option<GiveUpFn>,
+    blobs: Option<Arc<BlobStore>>,
 }
 
 impl RelaySink {
@@ -105,7 +108,13 @@ impl RelaySink {
             machine,
             ingest,
             give_up: None,
+            blobs: None,
         }
+    }
+
+    pub fn with_blobs(mut self, blobs: Arc<BlobStore>) -> Self {
+        self.blobs = Some(blobs);
+        self
     }
 
     pub fn with_give_up(mut self, give_up: GiveUpFn) -> Self {
@@ -159,6 +168,21 @@ impl ChatSink for RelaySink {
                 if let (true, Some(give_up)) = (desktop, &self.give_up) {
                     give_up(from_device, &id);
                 }
+                Ok(())
+            }
+        }
+    }
+
+    fn deliver_blob(&self, _from_device: &str, part: BlobPart) -> Result<(), String> {
+        let Some(blobs) = &self.blobs else {
+            self.dropped("files are not supported here");
+            return Ok(());
+        };
+        match blobs.put_part(&part) {
+            Ok(_) => Ok(()),
+            Err(e) if e.is_retryable() => Err(e.to_string()),
+            Err(e) => {
+                crate::daemon::log(&format!("chat relay: file part refused: {e}"));
                 Ok(())
             }
         }
@@ -392,8 +416,11 @@ fn build(setup: &Setup, leases: &Arc<Leases>) -> Result<Option<Engine>, String> 
     let transport = (setup.transport)(&cfg.server)?;
     let ingest = setup.ingest.clone();
     let give_up = setup.give_up.clone();
-    let sink = RelaySink::new(setup.machine.clone(), Box::new(move |i, t| ingest(i, t)))
+    let mut sink = RelaySink::new(setup.machine.clone(), Box::new(move |i, t| ingest(i, t)))
         .with_give_up(Box::new(move |device, id| give_up(device, id)));
+    if let Ok(blobs) = BlobStore::open(&setup.dir) {
+        sink = sink.with_blobs(Arc::new(blobs));
+    }
     let engine_cfg = EngineConfig {
         user_id: cfg.user_id,
         label: LABEL.to_owned(),

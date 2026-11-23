@@ -721,4 +721,11 @@ mod tests {
         RoomsSync::new().tick(&sink, dir.path(), &snapshot, &hist);
         assert_eq!(sink.chats_to.borrow().len(), MAX_ROOMS);
     }
+
+    #[test]
+    fn the_index_advertises_blob_support_next_to_activity() {
+        let v = serde_json::to_value(build_index(&snap(two_rooms()))).unwrap();
+        assert_eq!(v["blob"], true);
+        assert_eq!(v["activity"], true);
+    }
 }

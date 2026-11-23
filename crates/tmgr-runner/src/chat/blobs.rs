@@ -589,4 +589,43 @@ mod tests {
             .is_symlink());
         assert_eq!(fs::metadata(&path).unwrap().len(), PART_BYTES as u64 + 5);
     }
+
+    fn sink(t: &tempfile::TempDir) -> crate::chat::relay::pump::RelaySink {
+        crate::chat::relay::pump::RelaySink::new(
+            "mx_0123456789abcdef".into(),
+            Box::new(|_, _| panic!("no chat expected")),
+        )
+        .with_blobs(std::sync::Arc::new(store(t)))
+    }
+
+    #[test]
+    fn the_relay_sink_stores_parts_and_swallows_permanent_failures() {
+        use tmgr_chat_relay::engine::ChatSink;
+        let t = tempfile::tempdir().unwrap();
+        let sink = sink(&t);
+        let bytes = data(PART_BYTES + 5, 40);
+        let parts = parts_of(&bytes);
+        sink.deliver_blob("dev", parts[0].clone()).unwrap();
+        sink.deliver_blob("dev", parts[1].clone()).unwrap();
+        assert!(store(&t).get(&parts[0].sha256).is_some());
+        let mut bad = parts_of(&data(PART_BYTES + 5, 41));
+        bad[1].data[0] ^= 1;
+        sink.deliver_blob("dev", bad[0].clone()).unwrap();
+        sink.deliver_blob("dev", bad[1].clone()).unwrap();
+        assert!(store(&t).get(&bad[0].sha256).is_none());
+    }
+
+    #[test]
+    fn the_relay_sink_reports_storage_failures_as_retryable_errors() {
+        use std::os::unix::fs::PermissionsExt;
+        use tmgr_chat_relay::engine::ChatSink;
+        let t = tempfile::tempdir().unwrap();
+        let sink = sink(&t);
+        let partial = t.path().join("chat/blobs/partial");
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o500)).unwrap();
+        let part = parts_of(&data(PART_BYTES + 5, 42)).remove(0);
+        let r = sink.deliver_blob("dev", part);
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(r.is_err());
+    }
 }
