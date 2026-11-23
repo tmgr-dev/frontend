@@ -6442,6 +6442,40 @@ mod tests {
         assert!(ready_ansi("codex", screen));
     }
 
+    fn codex_screen(footer: &str) -> Vec<u8> {
+        format!(
+            "\x1b[1m\u{203a}\x1b[22m \x1b[2mAsk Codex to do anything\x1b[22m\r\n\r\n  GPT-6-Sol medium \u{b7} /tmp/proj\r\n{footer}"
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_codex_footer_that_lists_agents_before_shortcuts() {
+        let screen = codex_screen("  \u{2190} for agents \u{b7} ? for shortcuts");
+        assert!(ready_ansi("codex", &screen));
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_codex_footer_with_a_one_space_gap_before_the_mode() {
+        let screen = codex_screen("  ? for shortcuts Plan mode (shift+tab to cycle)");
+        assert!(ready_ansi("codex", &screen));
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_codex_footer_that_dropped_the_shortcuts_hint() {
+        let screen = codex_screen("  Plan mode \u{b7} 3 warnings \u{b7} f2 to view");
+        assert!(ready_ansi("codex", &screen));
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_codex_draft_whose_footer_dropped_the_shortcuts_hint() {
+        let screen = codex_screen("  Plan mode");
+        let draft = String::from_utf8(screen)
+            .unwrap()
+            .replace("\x1b[2mAsk Codex to do anything\x1b[22m", "fix the build");
+        assert!(!ready_ansi("codex", draft.as_bytes()));
+    }
+
     #[test]
     fn at_prompt_refuses_a_codex_draft() {
         let screen = include_bytes!("../profiles/screens/codex-draft.ansi");
