@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.182
+
+- Faster: chat messages sent a few seconds apart reach the agent sooner. The runner used to wait a fixed 5 seconds after each message before typing the next one; it now waits until the agent has redrawn its screen, usually under a second.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.181
 
 - Added: a manager on one machine can ask another paired machine to start a session without the sandbox. This works only when the asking manager itself runs unrestricted and you approve the card, which shows "sandbox off".
