@@ -11,7 +11,8 @@ import { AuthCallback, parseAuthCallback } from '@/utils/desktopAuth';
 import { parseTaskLink } from '@/utils/taskLinks';
 import { ref } from 'vue';
 
-export type ShortcutAction = 'quickAdd' | 'timer' | 'screenshot' | 'selection';
+export type ShortcutAction =
+	'quickAdd' | 'timer' | 'screenshot' | 'selection' | 'manager' | 'decisions';
 
 export interface ShortcutSetting {
 	accelerator: string;
@@ -27,6 +28,8 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
 	'timer',
 	'screenshot',
 	'selection',
+	'manager',
+	'decisions',
 ];
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
@@ -34,6 +37,8 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
 	timer: { accelerator: 'Alt+Shift+T', enabled: true },
 	screenshot: { accelerator: 'Alt+Shift+S', enabled: true },
 	selection: { accelerator: 'Alt+Shift+C', enabled: true },
+	manager: { accelerator: 'Alt+Shift+M', enabled: true },
+	decisions: { accelerator: 'Alt+Shift+D', enabled: true },
 };
 
 const PRIMARY_MODIFIERS = [
@@ -88,7 +93,8 @@ export const shortcutActionsFor = (
 	SHORTCUT_ACTIONS.filter(
 		(action) =>
 			(action !== 'selection' || supportsSelectionCapture(platform)) &&
-			(action !== 'screenshot' || supportsScreenCapture(platform)),
+			(action !== 'screenshot' || supportsScreenCapture(platform)) &&
+			(action !== 'decisions' || platform !== 'windows'),
 	);
 
 export const primaryModifiersHint = (
@@ -177,6 +183,15 @@ export const mergeShortcuts = (
 		}),
 		{} as ShortcutConfig,
 	);
+
+export const trayHotkeys = (
+	config: ShortcutConfig,
+	status: Partial<Record<ShortcutAction, ShortcutStatus>>,
+): { manager: string | null; decisions: string | null } => {
+	const shown = (action: 'manager' | 'decisions') =>
+		status[action] === 'ok' ? config[action].accelerator : null;
+	return { manager: shown('manager'), decisions: shown('decisions') };
+};
 
 export const describeAccelerator = (
 	accelerator: string,

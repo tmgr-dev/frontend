@@ -53,7 +53,7 @@
 		"intro": "Global shortcuts work from any app, even when TMGR is hidden. Click a shortcut and press a new combination; Esc cancels.",
 		"pressKeys": "Press keys…",
 		"resetToDefault": "Reset to default",
-		"taken": "Taken by another app — choose a different shortcut",
+		"taken": "Taken by another app — pick another",
 		"systemShortcut": "This is a system shortcut",
 		"alreadyUsed": "Already used for “{label}”",
 		"actions": {
@@ -69,6 +69,14 @@
 				"label": "Screenshot to task",
 				"hint": "Select an area; creates a backlog task with the image",
 				"hintMac": "Select an area; creates a backlog task with the image (needs Screen Recording)"
+			},
+			"manager": {
+				"label": "Open Manager",
+				"hint": "Opens the Manager window from any app"
+			},
+			"decisions": {
+				"label": "Open Decisions",
+				"hint": "Opens the Decisions window from any app"
 			},
 			"selection": {
 				"label": "Selected text to task",

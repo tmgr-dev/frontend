@@ -14,12 +14,10 @@ use std::sync::Arc;
 
 use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use backend::{ChatMessage, HistoryParams, ManagerBackend, RoomInfo, RoomRef, SearchParams, SendParams, SlashCommand, StopOutcome, StubBackend};
 
 pub const LABEL: &str = "manager";
-pub const SHORTCUT: &str = "CmdOrCtrl+Shift+M";
 pub const TRAY_ID: &str = "manager";
 pub const TITLE: &str = "Manager";
 
@@ -64,22 +62,6 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>) {
       let _ = window.set_focus();
     }
     Err(e) => log::error!("[manager] window failed: {e}"),
-  }
-}
-
-fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {
-  let Ok(shortcut) = SHORTCUT.parse::<Shortcut>() else { return };
-  let keys = app.global_shortcut();
-  if keys.is_registered(shortcut) {
-    return;
-  }
-  let result = keys.on_shortcut(shortcut, |app, _, event| {
-    if event.state() == ShortcutState::Pressed {
-      open_window(app);
-    }
-  });
-  if let Err(e) = result {
-    log::warn!("[manager] shortcut {SHORTCUT} not registered: {e}");
   }
 }
 
@@ -128,7 +110,6 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     );
   }
   app.manage(ManagerState { backend, relay, switch });
-  ensure_shortcut(app);
 }
 
 fn switch_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<relay::switch::SwitchRelay>, String> {

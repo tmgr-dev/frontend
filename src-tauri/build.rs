@@ -77,6 +77,8 @@ const APP_COMMANDS: &[&str] = &[
   "take_quick_add",
   "tray_update",
   "dnd_update",
+  "hotkeys_update",
+  "hotkey_open",
   "popover_state",
   "popover_action",
   "popover_quick_add",

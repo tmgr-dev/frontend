@@ -5,6 +5,7 @@ import {
 	durationText,
 	formatClock,
 	hasUsage,
+	hotkeyText,
 	isAnswerable,
 	isStale,
 	markBusy,
@@ -64,6 +65,7 @@ const model = (overrides: Partial<PopoverModel> = {}): PopoverModel => ({
 	updaterEnabled: false,
 	decisionsAvailable: false,
 	openDecisions: 0,
+	hotkeys: { manager: null, decisions: null },
 	extras: {},
 	missed: [],
 	maxHeight: 760,
@@ -371,5 +373,24 @@ describe('markBusy', () => {
 		expect(markBusy(busy, 'b')).toEqual(['a', 'b']);
 		expect(markBusy(['a'], 'a')).toEqual(['a']);
 		expect(busy).toEqual(['a']);
+	});
+});
+
+describe('hotkey text in the popover', () => {
+	it('uses symbols on macOS', () => {
+		expect(hotkeyText('Alt+Shift+M', 'macos')).toBe('⌥⇧M');
+		expect(hotkeyText('Command+Control+K', 'macos')).toBe('⌘⌃K');
+	});
+
+	it('spells keys out on Windows', () => {
+		expect(hotkeyText('Alt+Shift+D', 'windows')).toBe('Alt+Shift+D');
+		expect(hotkeyText('CommandOrControl+Shift+K', 'windows')).toBe(
+			'Ctrl+Shift+K',
+		);
+	});
+
+	it('is empty without a shortcut', () => {
+		expect(hotkeyText(null, 'macos')).toBe('');
+		expect(hotkeyText(undefined, 'windows')).toBe('');
 	});
 });

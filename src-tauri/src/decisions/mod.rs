@@ -13,7 +13,6 @@ use std::time::Duration;
 use serde_json::json;
 use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 use tmgr_ipc::actions::ActionResult;
 use tmgr_ipc::decisions::{decisions_dir, Event, DB};
@@ -25,7 +24,6 @@ pub(crate) use store::AnswerIn;
 use store::{CardView, MessageIn, PendingAction, PendingTaskComment, Store};
 
 pub const LABEL: &str = "decisions";
-pub const SHORTCUT: &str = "CmdOrCtrl+Shift+D";
 pub const TRAY_ID: &str = "decisions";
 const LIVENESS_EVERY: Duration = Duration::from_secs(15);
 
@@ -116,22 +114,6 @@ fn sync_toasts<R: Runtime>(app: &AppHandle<R>) {
   crate::toast::sync_decisions(app, &open);
 }
 
-fn ensure_shortcut<R: Runtime>(app: &AppHandle<R>) {
-  let Ok(shortcut) = SHORTCUT.parse::<Shortcut>() else { return };
-  let keys = app.global_shortcut();
-  if keys.is_registered(shortcut) {
-    return;
-  }
-  let result = keys.on_shortcut(shortcut, |app, _, event| {
-    if event.state() == ShortcutState::Pressed {
-      open_window(app);
-    }
-  });
-  if let Err(e) = result {
-    log::warn!("[decisions] shortcut {SHORTCUT} not registered: {e}");
-  }
-}
-
 pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
   let dir = decisions_dir().map_err(|e| e.to_string())?;
   tmgr_ipc::dirs::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
@@ -161,14 +143,12 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
   app.manage(Decisions { hub: hub.clone(), queue, _server: Mutex::new(server) });
   phone::setup(app, hub.clone(), &dir);
   crate::tray::refresh_current(app);
-  ensure_shortcut(app);
 
-  let (weak, handle) = (Arc::downgrade(&hub), app.clone());
+  let weak = Arc::downgrade(&hub);
   let spawned = std::thread::Builder::new().name("decisions-liveness".into()).spawn(move || loop {
     std::thread::sleep(LIVENESS_EVERY);
     let Some(hub) = weak.upgrade() else { break };
     hub.check_liveness(pid_alive);
-    ensure_shortcut(&handle);
   });
   if spawned.is_err() {
     log::warn!("[decisions] liveness thread failed to start");

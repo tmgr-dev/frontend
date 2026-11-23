@@ -76,6 +76,7 @@
 		registerShortcuts,
 		shortcutConfig,
 		shortcutStatus,
+		trayHotkeys,
 	} from '@/utils/desktopShortcuts';
 	import { loadRecent } from '@/utils/desktopTray';
 	import { showSurface } from '@/utils/moduleSurfaces';
@@ -173,11 +174,18 @@
 				}
 			};
 
+			const openWindow = async (target) => {
+				const { invoke } = await import('@tauri-apps/api/core');
+				await invoke('hotkey_open', { target });
+			};
+
 			const handlers = {
 				quickAdd: () => openQuickAdd(),
 				timer: toggleTimer,
 				screenshot: captureScreenshot,
 				selection: captureSelection,
+				manager: () => openWindow('manager'),
+				decisions: () => openWindow('decisions'),
 			};
 
 			const register = async (config) => {
@@ -189,6 +197,11 @@
 				});
 				registered = result.registered;
 				shortcutStatus.value = result.status;
+				const { invoke } = await import('@tauri-apps/api/core');
+				await invoke(
+					'hotkeys_update',
+					trayHotkeys(config, result.status),
+				).catch((error) => console.error('hotkeys_update failed', error));
 			};
 
 			/** Captured right when a link is accepted, before any await: the run and workspace it is good for. */

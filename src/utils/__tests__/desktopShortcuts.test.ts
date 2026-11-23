@@ -12,6 +12,7 @@ import {
 	sanitizeDeepLinkParams,
 	shortcutActionsFor,
 	splitQuickText,
+	trayHotkeys,
 	validateAccelerator,
 } from '../desktopShortcuts';
 
@@ -396,11 +397,15 @@ describe('registerShortcuts', () => {
 			timer: 'ok',
 			screenshot: 'ok',
 			selection: 'off',
+			manager: 'ok',
+			decisions: 'ok',
 		});
 		expect(result.registered).toEqual([
 			'Alt+Space',
 			'Alt+Shift+T',
 			'Alt+Shift+S',
+			'Alt+Shift+M',
+			'Alt+Shift+D',
 		]);
 	});
 
@@ -427,6 +432,8 @@ describe('registerShortcuts', () => {
 			timer: 'ok',
 			screenshot: 'ok',
 			selection: 'ok',
+			manager: 'ok',
+			decisions: 'ok',
 		});
 		api.grabbed.get('Alt+Space')?.({ state: 'Pressed' });
 		expect(reloadedPage).toEqual(['quickAdd']);
@@ -466,5 +473,70 @@ describe('registerShortcuts', () => {
 
 		expect(result.status.quickAdd).toBe('taken');
 		expect(result.registered).not.toContain('Alt+Space');
+	});
+});
+
+describe('Manager and Decisions hotkeys', () => {
+	it('default to combinations that apps and macOS leave alone', () => {
+		expect(DEFAULT_SHORTCUTS.manager.accelerator).toBe('Alt+Shift+M');
+		expect(DEFAULT_SHORTCUTS.decisions.accelerator).toBe('Alt+Shift+D');
+		const taken = ['Command+Shift+M', 'Command+Shift+D'];
+		expect(taken).not.toContain(DEFAULT_SHORTCUTS.manager.accelerator);
+		expect(taken).not.toContain(DEFAULT_SHORTCUTS.decisions.accelerator);
+	});
+
+	it('are offered where their windows exist', () => {
+		expect(shortcutActionsFor('macos')).toEqual(
+			expect.arrayContaining(['manager', 'decisions']),
+		);
+		expect(shortcutActionsFor('windows')).toContain('manager');
+		expect(shortcutActionsFor('windows')).not.toContain('decisions');
+	});
+
+	it('keep a stored config without the new actions valid', () => {
+		const merged = mergeShortcuts({
+			timer: { accelerator: 'Control+T', enabled: true },
+		});
+		expect(merged.manager).toEqual(DEFAULT_SHORTCUTS.manager);
+		expect(merged.decisions).toEqual(DEFAULT_SHORTCUTS.decisions);
+	});
+
+	it('reject a recorded combination already used by the other window', () => {
+		const config = mergeShortcuts({
+			decisions: { accelerator: 'Alt+Shift+M', enabled: true },
+		});
+		expect(findConflict(config, 'manager', 'Alt+Shift+M')).toBe('decisions');
+	});
+
+	it('are registered with the other shortcuts and report a taken key', async () => {
+		const calls: string[] = [];
+		const api = {
+			unregisterAll: async () => {},
+			register: async (accelerator: string) => {
+				if (accelerator === 'Alt+Shift+M') throw new Error('taken');
+				calls.push(accelerator);
+			},
+		};
+		const result = await registerShortcuts(
+			api,
+			DEFAULT_SHORTCUTS,
+			() => {},
+			'macos',
+		);
+		expect(result.status.manager).toBe('taken');
+		expect(result.status.decisions).toBe('ok');
+		expect(calls).toContain('Alt+Shift+D');
+	});
+
+	it('show only registered hotkeys in the tray', () => {
+		const status = { manager: 'taken', decisions: 'ok' } as const;
+		expect(trayHotkeys(DEFAULT_SHORTCUTS, status)).toEqual({
+			manager: null,
+			decisions: 'Alt+Shift+D',
+		});
+		expect(trayHotkeys(DEFAULT_SHORTCUTS, { decisions: 'off' })).toEqual({
+			manager: null,
+			decisions: null,
+		});
 	});
 });

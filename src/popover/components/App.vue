@@ -211,6 +211,7 @@
 					</button>
 					<button type="button" class="row" data-nav @click="run('manager')">
 						<span class="t">{{ $t('popover.manager') }}</span>
+						<span v-if="managerHotkey" class="m">{{ managerHotkey }}</span>
 					</button>
 				</div>
 
@@ -357,6 +358,7 @@
 		markBusy,
 		moneyText,
 		nextIndex,
+		hotkeyText,
 		nextResize,
 		panelMaxHeight,
 		pendingDecisions,
@@ -400,6 +402,12 @@
 			},
 			workspaceName(): string {
 				return this.model?.extras.workspace?.name ?? 'TMGR';
+			},
+			managerHotkey(): string {
+				return hotkeyText(
+					this.model?.hotkeys.manager,
+					this.model?.platform ?? 'macos',
+				);
 			},
 			sections(): PopoverSection[] {
 				return this.model ? visibleSections(this.model) : [];

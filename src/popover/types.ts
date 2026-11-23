@@ -79,6 +79,7 @@ export type PopoverModel = {
 	updaterEnabled: boolean;
 	decisionsAvailable: boolean;
 	openDecisions: number;
+	hotkeys: { manager: string | null; decisions: string | null };
 	extras: PopoverExtras;
 	missed: PopoverToastRecord[];
 	maxHeight: number;

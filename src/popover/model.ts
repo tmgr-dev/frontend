@@ -136,6 +136,37 @@ export const isAnswerable = (card: CardView): boolean =>
 		card.push !== true
 	);
 
+const MAC_SYMBOLS: Record<string, string> = {
+	Command: '⌘',
+	Cmd: '⌘',
+	Super: '⌘',
+	Control: '⌃',
+	Ctrl: '⌃',
+	Alt: '⌥',
+	Option: '⌥',
+	Shift: '⇧',
+};
+
+const WIN_LABELS: Record<string, string> = {
+	Command: 'Ctrl',
+	CommandOrControl: 'Ctrl',
+	CmdOrCtrl: 'Ctrl',
+	Control: 'Ctrl',
+	Super: 'Win',
+};
+
+export const hotkeyText = (
+	accelerator: string | null | undefined,
+	platform: PopoverModel['platform'],
+): string => {
+	if (!accelerator) return '';
+	const parts = accelerator.split('+');
+	if (platform === 'macos') {
+		return parts.map((part) => MAC_SYMBOLS[part] ?? part).join('');
+	}
+	return parts.map((part) => WIN_LABELS[part] ?? part).join('+');
+};
+
 export const pendingDecisions = (cards: readonly CardView[]): CardView[] =>
 	cards.filter(isPending);
 

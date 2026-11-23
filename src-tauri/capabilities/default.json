@@ -77,6 +77,8 @@
 		"allow-take-quick-add",
 		"allow-tray-update",
 		"allow-dnd-update",
+		"allow-hotkeys-update",
+		"allow-hotkey-open",
 		"allow-native-locale-set",
 		"allow-mark-update-relaunch",
 		"allow-relaunch-after-update",

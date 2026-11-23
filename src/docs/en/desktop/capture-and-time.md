@@ -32,6 +32,8 @@ Global shortcuts work from any app, even when TMGR is hidden. The defaults:
 | **Start / stop timer** | ⌥⇧T | Alt+Shift+T |
 | **Screenshot to task** | ⌥⇧S | not available |
 | **Selected text to task** | ⌥⇧C | not available |
+| **Open Manager** | ⌥⇧M | Alt+Shift+M |
+| **Open Decisions** | ⌥⇧D | not available |
 
 **Start / stop timer** stops the running timers. If none is running, it starts the timer of your last task again.
 
@@ -42,7 +44,7 @@ To change a shortcut, open [Settings → Desktop](/settings?tab=desktop) and fin
 - The arrow button next to it (**Reset to default**) brings the default back.
 - The switch turns the shortcut off.
 
-If another app already uses the keys, you see "Taken by another app — choose a different shortcut".
+If another app already uses the keys, you see "Taken by another app — pick another".
 
 ## Screenshots and selected text {#capture}
 
