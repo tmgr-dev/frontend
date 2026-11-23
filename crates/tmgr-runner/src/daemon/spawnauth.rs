@@ -2159,6 +2159,10 @@ mod tests {
             name: None,
             task: None,
             target_id: h.machine(),
+            kind: tmgr_spawn_auth::ProposalKind::Spawn,
+            session: None,
+            from: None,
+            text: None,
         };
         let Err(err) =
             e.rt.verify_spawn(&Approval::Signed(wire.clone()), &proposal, Some(&remote_by))

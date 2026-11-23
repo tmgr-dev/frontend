@@ -194,7 +194,7 @@ pub(crate) fn verify_der_b64(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proposal::SpawnMode;
+    use crate::proposal::{ProposalKind, SpawnMode};
     use crate::tokens::b64_encode;
     use p256::ecdsa::signature::Signer;
     use p256::ecdsa::SigningKey;
@@ -231,6 +231,10 @@ mod tests {
             name: None,
             task: None,
             target_id: "mx_00aa".into(),
+            kind: ProposalKind::Spawn,
+            session: None,
+            from: None,
+            text: None,
         }
     }
 

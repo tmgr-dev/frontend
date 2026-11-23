@@ -95,6 +95,10 @@ fn proposal() -> SpawnProposal {
         name: Some("fix \"login\" \u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}".into()),
         task: None,
         target_id: "mx_0123456789abcdef".into(),
+        kind: ProposalKind::Spawn,
+        session: None,
+        from: None,
+        text: None,
     }
 }
 

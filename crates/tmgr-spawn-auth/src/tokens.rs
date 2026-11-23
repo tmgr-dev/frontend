@@ -7,6 +7,15 @@ pub fn is_token(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
+pub(crate) fn is_session_id(s: &str) -> bool {
+    s.strip_prefix("s_").is_some_and(|rest| {
+        rest.len() == 10
+            && rest
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || matches!(b, b'2'..=b'7'))
+    })
+}
+
 pub fn is_hex_lower(s: &str, len: usize) -> bool {
     s.len() == len && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }

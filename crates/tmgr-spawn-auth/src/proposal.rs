@@ -1,39 +1,150 @@
 use crate::error::Refusal;
-use crate::tokens::{is_hex_lower, is_target_id, is_token};
-use serde::{Deserialize, Serialize};
+use crate::tokens::{is_hex_lower, is_session_id, is_target_id, is_token};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 const MAX_CWD_BYTES: usize = 4096;
 const MAX_LABEL_BYTES: usize = 128;
+const MAX_SEND_TEXT_BYTES: usize = 8192;
+const MAX_SEND_REQUEST_BYTES: usize = 16384;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SpawnMode {
+    #[default]
     Ask,
     AcceptEdits,
     Bypass,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProposalKind {
+    #[default]
+    Spawn,
+    Stop,
+    Send,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "WireProposal")]
 pub struct SpawnProposal {
     pub v: u32,
+    pub kind: ProposalKind,
     pub profile: String,
     pub cwd: String,
     pub mode: SpawnMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_sha256: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
     pub target_id: String,
+    pub session: Option<String>,
+    pub from: Option<String>,
+    pub text: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireProposal {
+    v: u32,
+    #[serde(default)]
+    kind: ProposalKind,
+    #[serde(default)]
+    profile: String,
+    #[serde(default)]
+    cwd: String,
+    #[serde(default)]
+    mode: Option<SpawnMode>,
+    #[serde(default)]
+    prompt_sha256: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    task: Option<String>,
+    target_id: String,
+    #[serde(default)]
+    session: Option<String>,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    text: Option<String>,
+}
+
+impl TryFrom<WireProposal> for SpawnProposal {
+    type Error = &'static str;
+
+    fn try_from(w: WireProposal) -> Result<Self, Self::Error> {
+        if w.kind == ProposalKind::Spawn && w.mode.is_none() {
+            return Err("missing field `mode`");
+        }
+        Ok(Self {
+            v: w.v,
+            kind: w.kind,
+            profile: w.profile,
+            cwd: w.cwd,
+            mode: w.mode.unwrap_or_default(),
+            prompt_sha256: w.prompt_sha256,
+            name: w.name,
+            task: w.task,
+            target_id: w.target_id,
+            session: w.session,
+            from: w.from,
+            text: w.text,
+        })
+    }
+}
+
+impl Serialize for SpawnProposal {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        let spawn = self.kind == ProposalKind::Spawn;
+        let mut st = ser.serialize_struct("SpawnProposal", 11)?;
+        st.serialize_field("v", &self.v)?;
+        if !spawn {
+            st.serialize_field("kind", &self.kind)?;
+        }
+        if spawn {
+            st.serialize_field("profile", &self.profile)?;
+            st.serialize_field("cwd", &self.cwd)?;
+            st.serialize_field("mode", &self.mode)?;
+            if let Some(h) = &self.prompt_sha256 {
+                st.serialize_field("prompt_sha256", h)?;
+            }
+            if let Some(n) = &self.name {
+                st.serialize_field("name", n)?;
+            }
+            if let Some(t) = &self.task {
+                st.serialize_field("task", t)?;
+            }
+        }
+        st.serialize_field("target_id", &self.target_id)?;
+        if let Some(s) = &self.session {
+            st.serialize_field("session", s)?;
+        }
+        if let Some(f) = &self.from {
+            st.serialize_field("from", f)?;
+        }
+        if let Some(t) = &self.text {
+            st.serialize_field("text", t)?;
+        }
+        st.end()
+    }
 }
 
 impl SpawnProposal {
     pub fn validate(&self) -> Result<(), Refusal> {
         let ok = self.v == 1
-            && is_token(&self.profile)
+            && is_target_id(&self.target_id)
+            && match self.kind {
+                ProposalKind::Spawn => self.spawn_ok(),
+                ProposalKind::Stop => self.stop_ok() && self.from.is_none() && self.text.is_none(),
+                ProposalKind::Send => self.stop_ok() && self.send_ok(),
+            };
+        ok.then_some(()).ok_or(Refusal::BadToken)
+    }
+
+    fn spawn_ok(&self) -> bool {
+        is_token(&self.profile)
             && is_text(&self.cwd, MAX_CWD_BYTES)
             && self
                 .name
@@ -47,8 +158,31 @@ impl SpawnProposal {
                 .prompt_sha256
                 .as_deref()
                 .is_none_or(|h| is_hex_lower(h, 64))
-            && is_target_id(&self.target_id);
-        ok.then_some(()).ok_or(Refusal::BadToken)
+            && self.session.is_none()
+            && self.from.is_none()
+            && self.text.is_none()
+    }
+
+    fn stop_ok(&self) -> bool {
+        self.session.as_deref().is_some_and(is_session_id)
+            && self.profile.is_empty()
+            && self.cwd.is_empty()
+            && self.mode == SpawnMode::default()
+            && self.prompt_sha256.is_none()
+            && self.name.is_none()
+            && self.task.is_none()
+    }
+
+    fn send_ok(&self) -> bool {
+        self.from
+            .as_deref()
+            .is_some_and(|f| is_session_id(f) || f.strip_prefix("remote:").is_some_and(is_token))
+            && self.text.as_deref().is_some_and(|t| {
+                !t.is_empty()
+                    && t.len() <= MAX_SEND_TEXT_BYTES
+                    && t.chars().all(|c| c == '\n' || c == '\t' || !refused(c))
+            })
+            && self.canonical_bytes().len() <= MAX_SEND_REQUEST_BYTES
     }
 
     pub fn canonical_bytes(&self) -> Vec<u8> {
@@ -81,15 +215,15 @@ const REFUSED_CODE_POINTS: [(u32, u32); 18] = [
     (0xe0000, 0xe007f),
 ];
 
+fn refused(c: char) -> bool {
+    let cp = c as u32;
+    REFUSED_CODE_POINTS
+        .iter()
+        .any(|(lo, hi)| (*lo..=*hi).contains(&cp))
+}
+
 fn is_text(s: &str, max_bytes: usize) -> bool {
-    !s.is_empty()
-        && s.len() <= max_bytes
-        && !s.chars().any(|c| {
-            let cp = c as u32;
-            REFUSED_CODE_POINTS
-                .iter()
-                .any(|(lo, hi)| (*lo..=*hi).contains(&cp))
-        })
+    !s.is_empty() && s.len() <= max_bytes && !s.chars().any(refused)
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -110,6 +244,10 @@ mod tests {
             name: Some("fix \"login\"".into()),
             task: None,
             target_id: "mx_0123456789abcdef".into(),
+            kind: ProposalKind::Spawn,
+            session: None,
+            from: None,
+            text: None,
         }
     }
 
@@ -266,5 +404,135 @@ mod tests {
         p.name = Some("привет".into());
         let s = String::from_utf8(p.canonical_bytes()).unwrap();
         assert!(s.contains("\"name\":\"привет\""));
+    }
+
+    fn stop() -> SpawnProposal {
+        SpawnProposal {
+            v: 1,
+            kind: ProposalKind::Stop,
+            profile: String::new(),
+            cwd: String::new(),
+            mode: SpawnMode::default(),
+            prompt_sha256: None,
+            name: None,
+            task: None,
+            target_id: "mx_0123456789abcdef".into(),
+            session: Some("s_abcdefghij".into()),
+            from: None,
+            text: None,
+        }
+    }
+
+    fn send() -> SpawnProposal {
+        SpawnProposal {
+            kind: ProposalKind::Send,
+            from: Some("s_bcdefghijk".into()),
+            text: Some("hi\nthere".into()),
+            ..stop()
+        }
+    }
+
+    #[test]
+    fn stop_and_send_golden_bytes() {
+        assert_eq!(
+            String::from_utf8(stop().canonical_bytes()).unwrap(),
+            r#"{"v":1,"kind":"stop","target_id":"mx_0123456789abcdef","session":"s_abcdefghij"}"#
+        );
+        assert_eq!(
+            String::from_utf8(send().canonical_bytes()).unwrap(),
+            r#"{"v":1,"kind":"send","target_id":"mx_0123456789abcdef","session":"s_abcdefghij","from":"s_bcdefghijk","text":"hi\nthere"}"#
+        );
+    }
+
+    #[test]
+    fn new_kinds_round_trip_and_old_spawn_json_loads() {
+        for p in [sample(), stop(), send()] {
+            let back: SpawnProposal = serde_json::from_slice(&p.canonical_bytes()).unwrap();
+            assert_eq!(back, p);
+        }
+        let old = r#"{"v":1,"profile":"p","cwd":"/","mode":"ask","target_id":"mx_00"}"#;
+        let p: SpawnProposal = serde_json::from_str(old).unwrap();
+        assert_eq!(p.kind, ProposalKind::Spawn);
+        assert_eq!(p.validate(), Ok(()));
+        let no_mode = r#"{"v":1,"profile":"p","cwd":"/","target_id":"mx_00"}"#;
+        assert!(serde_json::from_str::<SpawnProposal>(no_mode).is_err());
+        let extra = r#"{"v":1,"kind":"stop","target_id":"mx_00","session":"s_abcdefghij","x":1}"#;
+        assert!(serde_json::from_str::<SpawnProposal>(extra).is_err());
+    }
+
+    #[test]
+    fn stop_and_send_validation() {
+        assert_eq!(stop().validate(), Ok(()));
+        assert_eq!(send().validate(), Ok(()));
+        let mut remote = send();
+        remote.from = Some("remote:phone-1".into());
+        remote.text = Some("a\tb\nc".into());
+        assert_eq!(remote.validate(), Ok(()));
+
+        type Edit = (&'static str, fn(&mut SpawnProposal));
+        let stops: Vec<Edit> = vec![
+            ("profile", |p| p.profile = "claude".into()),
+            ("cwd", |p| p.cwd = "/".into()),
+            ("mode", |p| p.mode = SpawnMode::Bypass),
+            ("name", |p| p.name = Some("n".into())),
+            ("prompt", |p| p.prompt_sha256 = Some("a".repeat(64))),
+            ("no_session", |p| p.session = None),
+            ("bad_session", |p| p.session = Some("s_ABCDEFGHIJ".into())),
+            ("short_session", |p| p.session = Some("s_abcdefghi".into())),
+            ("digit_1_session", |p| {
+                p.session = Some("s_abcdefghi1".into())
+            }),
+            ("from", |p| p.from = Some("s_bcdefghijk".into())),
+            ("text", |p| p.text = Some("x".into())),
+        ];
+        for (name, e) in stops {
+            let mut p = stop();
+            e(&mut p);
+            assert_eq!(p.validate(), Err(Refusal::BadToken), "stop {name}");
+        }
+        let sends: Vec<Edit> = vec![
+            ("bad_from", |p| p.from = Some("nope".into())),
+            ("remote_empty", |p| p.from = Some("remote:".into())),
+            ("remote_space", |p| p.from = Some("remote:a b".into())),
+            ("no_from", |p| p.from = None),
+            ("no_text", |p| p.text = None),
+            ("empty_text", |p| p.text = Some(String::new())),
+            ("nul", |p| p.text = Some("a\0b".into())),
+            ("cr", |p| p.text = Some("a\rb".into())),
+            ("bidi", |p| p.text = Some("a\u{202e}b".into())),
+            ("zero_width", |p| p.text = Some("a\u{200b}b".into())),
+            ("c1", |p| p.text = Some("a\u{85}b".into())),
+            ("too_long", |p| p.text = Some("a".repeat(8193))),
+            ("mode", |p| p.mode = SpawnMode::Bypass),
+        ];
+        for (name, e) in sends {
+            let mut p = send();
+            e(&mut p);
+            assert_eq!(p.validate(), Err(Refusal::BadToken), "send {name}");
+        }
+        let mut max = send();
+        max.text = Some("a".repeat(8192));
+        assert_eq!(max.validate(), Ok(()));
+    }
+
+    #[test]
+    fn spawn_refuses_new_fields() {
+        for e in [
+            |p: &mut SpawnProposal| p.session = Some("s_abcdefghij".into()),
+            |p: &mut SpawnProposal| p.from = Some("s_abcdefghij".into()),
+            |p: &mut SpawnProposal| p.text = Some("x".into()),
+        ] {
+            let mut p = sample();
+            e(&mut p);
+            assert_eq!(p.validate(), Err(Refusal::BadToken));
+        }
+    }
+
+    #[test]
+    fn kind_is_bound_into_the_hash() {
+        let mut other = stop();
+        other.kind = ProposalKind::Send;
+        assert_ne!(stop().req_sha256(), other.req_sha256());
+        assert_ne!(stop().req_sha256(), send().req_sha256());
     }
 }

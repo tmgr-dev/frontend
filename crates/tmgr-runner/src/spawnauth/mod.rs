@@ -319,6 +319,10 @@ mod tests {
             name: None,
             task: None,
             target_id: TARGET_ID.into(),
+            kind: tmgr_spawn_auth::ProposalKind::Spawn,
+            session: None,
+            from: None,
+            text: None,
         }
     }
 

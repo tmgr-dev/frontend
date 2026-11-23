@@ -998,6 +998,10 @@ fn spawn_args<'a>(host: &dyn Host, a: &'a Value, signed: bool) -> Result<SpawnAr
         name: name.map(String::from),
         task: task.map(String::from),
         target_id: host.machine(),
+        kind: tmgr_spawn_auth::ProposalKind::Spawn,
+        session: None,
+        from: None,
+        text: None,
     };
     Ok(SpawnArgs {
         profile,

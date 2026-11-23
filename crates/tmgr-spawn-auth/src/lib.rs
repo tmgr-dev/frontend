@@ -17,7 +17,7 @@ pub use key_statement::{
 pub use keystore::{
     ApproveError, DeviceFp, KeyBook, KeyState, KeyView, OfferOutcome, RevokeError, RevokedKey,
 };
-pub use proposal::{sha256_hex, SpawnMode, SpawnProposal};
+pub use proposal::{sha256_hex, ProposalKind, SpawnMode, SpawnProposal};
 pub use tokens::{b64_decode_strict, b64_encode, is_hex_lower, is_target_id, is_token};
 pub use verify::{
     signed_string, verify, Approved, ChallengeRecord, PinnedKey, TrustStatus, TrustView,
