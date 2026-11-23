@@ -5,6 +5,7 @@ import {
 	durationText,
 	formatClock,
 	hasUsage,
+	hiddenDecisionCount,
 	isAnswerable,
 	isStale,
 	markBusy,
@@ -21,6 +22,7 @@ import {
 	todayEntries,
 	tokensText,
 	usageLevel,
+	visibleDecisions,
 	visibleSections,
 } from '../model';
 import type { PopoverModel } from '../types';
@@ -371,5 +373,26 @@ describe('markBusy', () => {
 		expect(markBusy(busy, 'b')).toEqual(['a', 'b']);
 		expect(markBusy(['a'], 'a')).toEqual(['a']);
 		expect(busy).toEqual(['a']);
+	});
+});
+
+describe('decision cap in the popover', () => {
+	const many = (n: number) =>
+		Array.from({ length: n }, (_, i) => card({ id: `c${i}` }));
+
+	it('shows at most 3 cards in order', () => {
+		expect(visibleDecisions(many(5)).map((c) => c.id)).toEqual([
+			'c0',
+			'c1',
+			'c2',
+		]);
+		expect(visibleDecisions(many(2))).toHaveLength(2);
+		expect(visibleDecisions([])).toEqual([]);
+	});
+
+	it('counts the cards that do not fit', () => {
+		expect(hiddenDecisionCount(many(5))).toBe(2);
+		expect(hiddenDecisionCount(many(3))).toBe(0);
+		expect(hiddenDecisionCount([])).toBe(0);
 	});
 });

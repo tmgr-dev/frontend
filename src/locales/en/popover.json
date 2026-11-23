@@ -17,7 +17,9 @@
 	},
 	"decisions": {
 		"title": "Decisions",
-		"empty": "No open decisions"
+		"empty": "No open decisions",
+		"open": "Open Decisions",
+		"openMore": "Open Decisions (+{count} more)"
 	},
 	"missed": {
 		"title": "Missed notifications"

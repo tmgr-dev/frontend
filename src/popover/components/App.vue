@@ -64,13 +64,16 @@
 						{{ $t('popover.decisions.empty') }}
 					</p>
 					<DecisionCard
-						v-for="card in pending"
+						v-for="card in shownDecisions"
 						:key="card.id"
 						:card="card"
 						:expanded="card.id === expandedId"
 						@toggle="expandDecision"
 						@answer="answer(card, $event)"
 					/>
+					<button type="button" class="row" data-nav @click="run('decisions')">
+						<span class="t">{{ openDecisionsLabel }}</span>
+					</button>
 				</div>
 
 				<div v-if="show('missed')" class="sec top0">
@@ -359,10 +362,12 @@
 		nextIndex,
 		nextResize,
 		panelMaxHeight,
+		hiddenDecisionCount,
 		pendingDecisions,
 		stripTicket,
 		ticketCode,
 		durationText,
+		visibleDecisions,
 		todayEntries,
 		tokensText,
 		visibleSections,
@@ -403,6 +408,15 @@
 			},
 			sections(): PopoverSection[] {
 				return this.model ? visibleSections(this.model) : [];
+			},
+			shownDecisions(): CardView[] {
+				return visibleDecisions(this.pending);
+			},
+			openDecisionsLabel(): string {
+				const more = hiddenDecisionCount(this.pending);
+				return more > 0
+					? this.$t('popover.decisions.openMore', { count: more })
+					: this.$t('popover.decisions.open');
 			},
 			pending(): CardView[] {
 				return pendingDecisions(this.decisions);

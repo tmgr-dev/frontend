@@ -139,6 +139,14 @@ export const isAnswerable = (card: CardView): boolean =>
 export const pendingDecisions = (cards: readonly CardView[]): CardView[] =>
 	cards.filter(isPending);
 
+export const DECISIONS_CAP = 3;
+
+export const visibleDecisions = (cards: readonly CardView[]): CardView[] =>
+	cards.slice(0, DECISIONS_CAP);
+
+export const hiddenDecisionCount = (cards: readonly CardView[]): number =>
+	Math.max(0, cards.length - DECISIONS_CAP);
+
 export const hasUsage = (usage: PopoverUsage | undefined): boolean =>
 	usage !== undefined &&
 	((usage.providers?.length ?? 0) > 0 ||
