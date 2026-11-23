@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.207 — 2026-11-23
+
+- Manager: a message waiting because the session's input box has unsent text now says "Waiting: the input box has unsent text" instead of "the agent is busy". Needs tmgr CLI 1.0.179.
+
 ## 0.9.206 — 2026-11-23
 
 - Tray popover: AI Usage now sits right under the quick add field. The "Switch to" list shows at most 3 tasks, and titles without a ticket code start at the left edge.

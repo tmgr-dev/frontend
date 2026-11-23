@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.179
+
+- Fixed: the Manager said "Queued: the agent is busy" forever for an idle session whose input box sat above a tall footer (many background tasks). The runner now finds the input box and types the message.
+- Fixed: the runner never types over text you left in a session's input box. The Manager says "Waiting: the input box has unsent text" until the box is empty.
+- Fixed: a session that is idle but not at its prompt (an open menu) is no longer reported as busy.
+- Added: your phone gets delivery receipts. A message that has to wait shows as queued with the reason, then as delivered or failed. Needs the matching TMGR app update.
+- `tmgr attach` input is unchanged.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.178
 
 - Fixed: chat messages sent from the phone or another computer while the agent was busy were lost if the runner stopped or restarted before typing them. The runner now saves its chat queue to disk and types each message exactly once after a restart.
