@@ -61,8 +61,11 @@ impl Chat {
         self.store.as_ref().map(|s| s.dir().join(OPEN_FILE))
     }
 
-    fn persist_open(&self) {
-        let Some(path) = self.open_path() else { return };
+    fn persist_open(&self) -> std::io::Result<()> {
+        let Some(path) = self.open_path() else {
+            return Ok(());
+        };
+        let _serial = lock(&self.persist_lock);
         let rows: Vec<OpenRow> = lock(&self.mentions)
             .open_specs()
             .into_iter()
@@ -76,9 +79,14 @@ impl Chat {
             .collect();
         if rows.is_empty() {
             let _ = fs::remove_file(&path);
-            return;
+            return Ok(());
         }
-        let tmp = path.with_extension("json.tmp");
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let tmp = path.with_extension(format!(
+            "json.{}.{}.tmp",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let write = || -> std::io::Result<()> {
             let mut f = OpenOptions::new()
                 .write(true)
@@ -90,20 +98,22 @@ impl Chat {
             f.write_all(&serde_json::to_vec(&rows).unwrap_or_default())?;
             fs::rename(&tmp, &path)
         };
-        if let Err(e) = write() {
+        let r = write();
+        if let Err(e) = &r {
             crate::daemon::log(&format!("chat: open mentions not saved: {e}"));
         }
+        r
     }
 
     pub(super) fn expire_open_mentions(&self) {
         let Some(path) = self.open_path() else { return };
         let Ok(bytes) = fs::read(&path) else { return };
         let rows: Vec<OpenRow> = serde_json::from_slice(&bytes).unwrap_or_default();
-        let _ = fs::remove_file(&path);
         for r in rows {
             let spec = Spec {
                 id: r.id,
                 origin: r.origin,
+                origin_session: None,
                 target: r.target,
                 title: r.title,
                 hop: r.hop,
@@ -120,6 +130,7 @@ impl Chat {
                 reply: None,
             });
         }
+        let _ = fs::remove_file(&path);
     }
 
     fn emit_mention(&self, t: &Transition) {
@@ -150,9 +161,7 @@ impl Chat {
                 },
             ),
         };
-        if body.len() > limits::MAX_BODY {
-            body.truncate(limits::MAX_BODY);
-        }
+        let body = super::mention::clip_to(&body, limits::MAX_BODY);
         let msg = ChatMessage {
             v: CHAT_V,
             id: self.mint_id(),
@@ -180,7 +189,7 @@ impl Chat {
         for t in &ts {
             self.emit_mention(t);
         }
-        self.persist_open();
+        let _ = self.persist_open();
     }
 
     pub fn mention_admit(&self, now: u64, origin: &RoomRef) -> Result<(), MentionState> {
@@ -191,9 +200,19 @@ impl Chat {
         lock(&self.mentions).target_busy(target)
     }
 
-    pub fn mention_open(&self, spec: Spec) {
-        lock(&self.mentions).open(spec);
-        self.persist_open();
+    pub fn mention_open(&self, spec: Spec) -> bool {
+        let fresh = lock(&self.mentions).open(spec.clone());
+        if !fresh {
+            self.emit_mention(&Transition {
+                spec,
+                state: MentionState::Refused,
+                reason: Some("that message id is already in use".into()),
+                reply: None,
+            });
+            return false;
+        }
+        let _ = self.persist_open();
+        true
     }
 
     pub fn mention_finish(&self, spec_id: &str, state: MentionState, reason: Option<String>) {
@@ -214,8 +233,8 @@ impl Chat {
         lock(&self.mentions).get(id).map(|e| e.spec.clone())
     }
 
-    pub fn mention_prepare(&self, id: &str, work_base: u64) {
-        lock(&self.mentions).prepare(id, work_base);
+    pub fn mention_prepare(&self, id: &str, work_base: u64, anchor_pos: u64) {
+        lock(&self.mentions).prepare(id, work_base, anchor_pos);
     }
 
     pub fn mention_delivered(&self, id: &str, typed: &str, now: u64) {
@@ -227,8 +246,8 @@ impl Chat {
         lock(&self.mentions).set_gen(id, gen);
     }
 
-    pub fn mention_observe(&self, room: &RoomRef, user: bool, text: &str) {
-        lock(&self.mentions).observe(room, user, text);
+    pub fn mention_observe(&self, room: &RoomRef, user: bool, text: &str, end: Option<u64>) {
+        lock(&self.mentions).observe(room, user, text, end);
     }
 
     pub fn mention_pass(&self, room: &RoomRef, caught_up: bool) {
@@ -238,7 +257,7 @@ impl Chat {
 
     pub(super) fn mention_observe_manager_row(&self, msg: &ChatMessage) {
         if msg.room.kind == RoomKind::Manager && msg.author.kind == AuthorKind::Manager {
-            self.mention_observe(&msg.room, false, &msg.body_md);
+            self.mention_observe(&msg.room, false, &msg.body_md, None);
         }
     }
 
@@ -253,6 +272,13 @@ impl Chat {
             .map(|(s, t)| (s.clone(), t.to_string()))
     }
 
+    pub fn tail_len(&self, session: &str) -> u64 {
+        lock(&self.tails)
+            .get(session)
+            .and_then(|t| t.file_len())
+            .unwrap_or(0)
+    }
+
     pub fn has_tail(&self, session: &str) -> bool {
         lock(&self.tails).contains_key(session)
     }
@@ -265,4 +291,75 @@ impl Chat {
 
 pub(super) fn new_mentions() -> std::sync::Mutex<Mentions> {
     std::sync::Mutex::new(Mentions::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(title: &str) -> Spec {
+        let room = |s: &str| RoomRef::session("mx_0000000000000001", s);
+        Spec {
+            id: "m_0190a1b2c3d4aabbccddeeff00112233".into(),
+            origin: room("s_originaaaa"),
+            origin_session: None,
+            target: room("s_targetaaaa"),
+            title: title.into(),
+            hop: 1,
+            question: "q".into(),
+            via: Via::Local {
+                client: "cli".into(),
+            },
+            confirmed_risky: false,
+        }
+    }
+
+    #[test]
+    fn a_long_multibyte_reason_is_truncated_on_a_char_boundary() {
+        for title in ["a", "ab"] {
+            let t = tempfile::tempdir().unwrap();
+            let c = Chat::open(t.path());
+            let mut sp = spec(title);
+            sp.origin = c.session_room("s_originaaaa");
+            sp.target = c.session_room("s_targetaaaa");
+            c.mention_open(sp.clone());
+            c.mention_finish(&sp.id, MentionState::Refused, Some("é".repeat(40_000)));
+            let rows = c.history(&sp.origin, None, None).unwrap();
+            assert!(rows[0].body_md.len() <= limits::MAX_BODY);
+        }
+    }
+
+    #[test]
+    fn concurrent_open_mention_saves_never_fail_and_leave_no_temp_file() {
+        let t = tempfile::tempdir().unwrap();
+        let c = std::sync::Arc::new(Chat::open(t.path()));
+        let mut hs = Vec::new();
+        for n in 0..8u8 {
+            let c = c.clone();
+            hs.push(std::thread::spawn(move || {
+                let mut ok = true;
+                for k in 0..40u8 {
+                    let mut sp = spec("x");
+                    sp.id = format!("m_0190a1b2c3d4aabbccddeeff0011{n:02x}{k:02x}");
+                    sp.origin = c.session_room("s_originaaaa");
+                    sp.target = c.session_room("s_targetaaaa");
+                    c.mention_open(sp);
+                    ok &= c.persist_open().is_ok();
+                }
+                ok
+            }));
+        }
+        for h in hs {
+            assert!(h.join().unwrap(), "a save failed under contention");
+        }
+        let dir = c.store.as_ref().unwrap().dir().to_path_buf();
+        let names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.iter().all(|n| !n.ends_with(".tmp")), "{names:?}");
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_slice(&std::fs::read(c.open_path().unwrap()).unwrap()).unwrap();
+        assert_eq!(rows.len(), 8 * 40);
+    }
 }

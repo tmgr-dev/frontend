@@ -157,6 +157,7 @@ pub struct Chat {
     rpc_client: Mutex<Option<Arc<RpcClient>>>,
     relay_device: Mutex<Option<(String, String)>>,
     mentions: Mutex<mention::Mentions>,
+    persist_lock: Mutex<()>,
 }
 
 impl Chat {
@@ -184,6 +185,7 @@ impl Chat {
             rpc_client: Mutex::new(None),
             relay_device: Mutex::new(None),
             mentions: mention_io::new_mentions(),
+            persist_lock: Mutex::new(()),
         };
         chat.expire_open_mentions();
         chat

@@ -183,9 +183,14 @@ impl Runner {
         let question = mention::question_of(&msg.body_md);
         let busy =
             self.chat.mention_target_busy(&target) || !self.chat.queued_ids(&target).is_empty();
+        let origin_id = match msg.room.kind {
+            RoomKind::Session => msg.room.session.clone(),
+            RoomKind::Manager => self.live_manager().map(|m| m.id.clone()),
+        };
         let spec = Spec {
             id: r.id.clone(),
             origin: msg.room.clone(),
+            origin_session: origin_id.clone(),
             target: target.clone(),
             title: r.target_title.clone(),
             hop: r.hop,
@@ -193,7 +198,9 @@ impl Runner {
             via: via.clone(),
             confirmed_risky,
         };
-        self.chat.mention_open(spec);
+        if !self.chat.mention_open(spec) {
+            return;
+        }
         let refuse = |state: MentionState, why: &str| {
             self.chat.mention_finish(&r.id, state, Some(why.into()));
         };
@@ -218,10 +225,6 @@ impl Runner {
         };
         let Some(s) = self.mention_session(&target) else {
             return refuse(MentionState::Offline, "the session no longer exists");
-        };
-        let origin_id = match msg.room.kind {
-            RoomKind::Session => msg.room.session.clone(),
-            RoomKind::Manager => self.live_manager().map(|m| m.id.clone()),
         };
         if origin_id.as_deref() == Some(s.id.as_str()) {
             return refuse(MentionState::Refused, "a chat cannot ask itself");
@@ -270,9 +273,18 @@ impl Runner {
         let Some(spec) = self.chat.mention_spec(it.id) else {
             return chat::Delivery::Refused(NOT_ASKABLE);
         };
+        if spec.target != *it.room {
+            return chat::Delivery::Refused(NOT_ASKABLE);
+        }
         let Some(t) = self.mention_session(it.room) else {
             return chat::Delivery::Gone("the session no longer exists".into());
         };
+        let origin_now = self.mention_session(&spec.origin).map(|o| o.id.clone());
+        if spec.origin_session.as_deref() == Some(t.id.as_str())
+            || origin_now.as_deref() == Some(t.id.as_str())
+        {
+            return chat::Delivery::Refused(NOT_ASKABLE);
+        }
         let facts = self.mention_facts(&t);
         if facts.exited {
             return chat::Delivery::Gone("the session has exited".into());
@@ -297,8 +309,11 @@ impl Runner {
         if !t.has_shim() {
             return chat::Delivery::Busy;
         }
-        self.chat
-            .mention_prepare(it.id, t.working_seen.load(Ordering::SeqCst));
+        self.chat.mention_prepare(
+            it.id,
+            t.working_seen.load(Ordering::SeqCst),
+            self.chat.tail_len(&t.id),
+        );
         let (chat_arc, id) = (self.chat.clone(), it.id.to_string());
         match t.input_at_prompt_noted(
             &chat::prompt_bytes(&typed),
@@ -804,6 +819,7 @@ mod tests {
         let spec = Spec {
             id: ID.into(),
             origin: origin.clone(),
+            origin_session: None,
             target: target.clone(),
             title: "build-fix".into(),
             hop: 1,
@@ -814,11 +830,11 @@ mod tests {
             confirmed_risky: false,
         };
         rt.chat.mention_open(spec);
-        rt.chat.mention_prepare(ID, 0);
+        rt.chat.mention_prepare(ID, 0, 0);
         rt.chat.mention_delivered(ID, "q", now_ms());
         rt.chat.mention_set_gen(ID, 0);
-        rt.chat.mention_observe(&target, true, "q");
-        rt.chat.mention_observe(&target, false, "all green");
+        rt.chat.mention_observe(&target, true, "q", None);
+        rt.chat.mention_observe(&target, false, "all green", None);
         rt.chat.mention_tick(now_ms(), &|_| {
             Some(Probe {
                 exited: false,
@@ -970,6 +986,7 @@ mod tests {
         first.mention_open(Spec {
             id: ID.into(),
             origin: a.clone(),
+            origin_session: None,
             target: first.session_room(B),
             title: "build-fix".into(),
             hop: 1,
@@ -987,5 +1004,99 @@ mod tests {
         assert_eq!(rows[0].reply_to.as_deref(), Some(ID));
         let third = chat::Chat::open(t.path());
         assert_eq!(third.history(&a, None, None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn one_message_id_cannot_route_two_mentions_for_two_origins_and_targets() {
+        let (_t, rt) = rig(json!({}));
+        let t2 = tempfile::tempdir().unwrap();
+        for id in ["s_cccccccccc", "s_dddddddddd"] {
+            add_meta(&rt, t2.path(), id, json!({}));
+            rt.chat.add_placeholder_tail(id);
+        }
+        let (c, _p) = conn(CLIENT_DESKTOP);
+        let (b, d) = (
+            rt.chat.session_room(B),
+            rt.chat.session_room("s_dddddddddd"),
+        );
+        let first = send(&rt, Some(ID), &b);
+        call(&rt, &c, method::SEND, to_json(&first)).unwrap();
+        let mut second = send(&rt, Some(ID), &d);
+        second.room = rt.chat.session_room("s_cccccccccc");
+        call(&rt, &c, method::SEND, to_json(&second)).unwrap();
+        let spec = rt.chat.mention_spec(ID).unwrap();
+        assert_eq!(spec.origin, rt.chat.session_room(A));
+        assert_eq!(spec.target, b);
+        assert_eq!(rt.chat.queued_ids(&b), [ID]);
+        assert!(rt.chat.queued_ids(&d).is_empty());
+        assert!(states(&rt, &rt.chat.session_room("s_cccccccccc")).contains(&MentionState::Refused));
+    }
+
+    #[test]
+    fn a_queued_mention_is_never_delivered_into_its_own_origin_session() {
+        let (_t, rt) = rig(json!({}));
+        let b = rt.chat.session_room(B);
+        let mut sp = Spec {
+            id: ID.into(),
+            origin: rt.chat.manager_room(),
+            origin_session: Some(B.into()),
+            target: b.clone(),
+            title: "t".into(),
+            hop: 1,
+            question: "q".into(),
+            via: Via::Local {
+                client: "desktop".into(),
+            },
+            confirmed_risky: false,
+        };
+        rt.chat.mention_open(sp.clone());
+        let item = Item {
+            room: &b,
+            id: ID,
+            body: "q",
+            client: "desktop",
+            device: None,
+        };
+        assert!(matches!(
+            rt.mention_deliver(&item),
+            chat::Delivery::Refused(_)
+        ));
+        sp.origin_session = Some(A.into());
+        let other = "m_0190a1b2c3d4aabbccddeeff00112244";
+        sp.id = other.into();
+        rt.chat.mention_open(sp);
+        let item = Item { id: other, ..item };
+        assert_eq!(rt.mention_deliver(&item), chat::Delivery::Busy);
+    }
+
+    #[test]
+    fn a_delivery_for_a_queue_item_that_does_not_match_the_stored_target_is_refused() {
+        let (_t, rt) = rig(json!({}));
+        let b = rt.chat.session_room(B);
+        rt.chat.mention_open(Spec {
+            id: ID.into(),
+            origin: rt.chat.session_room(A),
+            origin_session: Some(A.into()),
+            target: b,
+            title: "t".into(),
+            hop: 1,
+            question: "q".into(),
+            via: Via::Local {
+                client: "desktop".into(),
+            },
+            confirmed_risky: false,
+        });
+        let wrong = rt.chat.session_room("s_cccccccccc");
+        let item = Item {
+            room: &wrong,
+            id: ID,
+            body: "q",
+            client: "desktop",
+            device: None,
+        };
+        assert!(matches!(
+            rt.mention_deliver(&item),
+            chat::Delivery::Refused(_)
+        ));
     }
 }

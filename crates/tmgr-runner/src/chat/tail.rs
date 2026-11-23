@@ -54,6 +54,10 @@ struct Saved {
 }
 
 impl Tail {
+    pub(super) fn file_len(&self) -> Option<u64> {
+        tail::len(&self.path).ok()
+    }
+
     #[cfg(test)]
     pub(crate) fn placeholder() -> Tail {
         Tail {
@@ -171,7 +175,7 @@ fn post(
     turn: tail::Turn,
 ) -> Result<(), String> {
     let text = clip(turn.text);
-    chat.mention_observe(room, turn.user, &text);
+    chat.mention_observe(room, turn.user, &text, Some(turn.end));
     if turn.user && chat.take_sent(&s.id, &text) {
         return Ok(());
     }

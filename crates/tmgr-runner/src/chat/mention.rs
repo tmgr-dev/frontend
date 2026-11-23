@@ -11,6 +11,8 @@ pub const TOTAL_PER_MIN: usize = 20;
 pub const REPLY_MAX: usize = 8 << 10;
 const WINDOW_MS: u64 = 60_000;
 const KEEP_DONE: usize = 64;
+const BUFFER_MAX: usize = REPLY_MAX + 1024;
+const FRAGMENTS_MAX: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Via {
@@ -22,6 +24,7 @@ pub enum Via {
 pub struct Spec {
     pub id: String,
     pub origin: RoomRef,
+    pub origin_session: Option<String>,
     pub target: RoomRef,
     pub title: String,
     pub hop: u8,
@@ -42,8 +45,10 @@ struct Sent {
     typed: String,
     delivered_ms: u64,
     work_base: u64,
+    anchor_pos: u64,
     gen: Option<u64>,
     anchored: bool,
+    anchor_end: Option<u64>,
     answering: bool,
     waiting_seen: bool,
     replies: Vec<String>,
@@ -54,6 +59,7 @@ pub struct Entry {
     pub spec: Spec,
     phase: Phase,
     work_base: u64,
+    anchor_pos: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,15 +135,19 @@ pub fn question_of(body: &str) -> Option<String> {
     (!rest.is_empty()).then(|| rest.to_string())
 }
 
-pub fn clip_reply(text: &str) -> String {
-    if text.len() <= REPLY_MAX {
+pub fn clip_to(text: &str, max: usize) -> String {
+    if text.len() <= max {
         return text.to_string();
     }
-    let mut end = REPLY_MAX;
+    let mut end = max;
     while !text.is_char_boundary(end) {
         end -= 1;
     }
     text[..end].to_string()
+}
+
+pub fn clip_reply(text: &str) -> String {
+    clip_to(text, REPLY_MAX)
 }
 
 #[derive(Default)]
@@ -179,7 +189,10 @@ impl Mentions {
             .any(|e| e.spec.target == *target && matches!(e.phase, Phase::Queued | Phase::Sent(_)))
     }
 
-    pub fn open(&mut self, spec: Spec) {
+    pub fn open(&mut self, spec: Spec) -> bool {
+        if self.entries.contains_key(&spec.id) {
+            return false;
+        }
         let phase = Phase::Queued;
         self.order.push_back(spec.id.clone());
         self.entries.insert(
@@ -188,9 +201,11 @@ impl Mentions {
                 spec,
                 phase,
                 work_base: 0,
+                anchor_pos: 0,
             },
         );
         self.trim();
+        true
     }
 
     fn trim(&mut self) {
@@ -245,9 +260,10 @@ impl Mentions {
         }
     }
 
-    pub fn prepare(&mut self, id: &str, work_base: u64) {
+    pub fn prepare(&mut self, id: &str, work_base: u64, anchor_pos: u64) {
         if let Some(e) = self.entries.get_mut(id) {
             e.work_base = work_base;
+            e.anchor_pos = anchor_pos;
         }
     }
 
@@ -260,6 +276,7 @@ impl Mentions {
             typed: normalize(typed),
             delivered_ms: now,
             work_base: e.work_base,
+            anchor_pos: e.anchor_pos,
             ..Sent::default()
         });
         Some(tr(&e.spec, MentionState::Sent, None, None))
@@ -275,7 +292,7 @@ impl Mentions {
         }
     }
 
-    pub fn observe(&mut self, target: &RoomRef, user: bool, text: &str) {
+    pub fn observe(&mut self, target: &RoomRef, user: bool, text: &str, end: Option<u64>) {
         let text = normalize(text);
         for e in self.entries.values_mut() {
             let Phase::Sent(s) = &mut e.phase else {
@@ -285,11 +302,19 @@ impl Mentions {
                 continue;
             }
             if user {
-                if !s.anchored && s.typed == text {
+                if !s.anchored && s.typed == text && end.is_none_or(|e| e > s.anchor_pos) {
                     s.anchored = true;
+                    s.anchor_end = end;
                 }
-            } else if s.anchored && !text.is_empty() && !s.replies.contains(&text) {
-                s.replies.push(text.clone());
+            } else if s.anchored
+                && !text.is_empty()
+                && !s.replies.contains(&text)
+                && end.is_none_or(|e| s.anchor_end.is_none_or(|a| e > a))
+            {
+                let used: usize = s.replies.iter().map(String::len).sum();
+                if s.replies.len() < FRAGMENTS_MAX && used < BUFFER_MAX {
+                    s.replies.push(clip_to(&text, BUFFER_MAX - used));
+                }
             }
         }
     }
@@ -370,6 +395,14 @@ impl Mentions {
         out
     }
 
+    #[cfg(test)]
+    pub fn buffered(&self, id: &str) -> (usize, usize) {
+        match self.entries.get(id).map(|e| &e.phase) {
+            Some(Phase::Sent(s)) => (s.replies.len(), s.replies.iter().map(String::len).sum()),
+            _ => (0, 0),
+        }
+    }
+
     pub fn open_specs(&self) -> Vec<Spec> {
         self.order
             .iter()
@@ -394,6 +427,7 @@ mod tests {
         Spec {
             id: id.into(),
             origin: room("s_origin0001"),
+            origin_session: None,
             target: room("s_target0001"),
             title: "build-fix".into(),
             hop: HOP,
@@ -420,7 +454,7 @@ mod tests {
 
     fn sent(m: &mut Mentions, id: &str) {
         m.open(spec(id, local()));
-        m.prepare(id, 5);
+        m.prepare(id, 5, 0);
         let t = m.delivered(id, "status?", T0 + 10).unwrap();
         assert_eq!(t.state, MentionState::Sent);
         m.set_gen(id, 7);
@@ -434,11 +468,12 @@ mod tests {
             &room("s_target0001"),
             false,
             "stale answer before the anchor",
+            None,
         );
         let t = m.tick(T0 + 100, &|_| probe(false, 6, 7));
         assert_eq!(t[0].state, MentionState::Answering);
-        m.observe(&room("s_target0001"), true, "status?\n");
-        m.observe(&room("s_target0001"), false, "all green");
+        m.observe(&room("s_target0001"), true, "status?\n", None);
+        m.observe(&room("s_target0001"), false, "all green", None);
         assert!(m.tick(T0 + 200, &|_| probe(false, 6, 7)).is_empty());
         assert!(m.pass(&room("s_target0001"), true).is_empty());
         assert!(m.tick(T0 + 300, &|_| probe(true, 6, 7)).is_empty());
@@ -455,11 +490,12 @@ mod tests {
     fn waiting_without_having_worked_after_delivery_does_not_finish() {
         let mut m = Mentions::default();
         sent(&mut m, "m1");
-        m.observe(&room("s_target0001"), true, "status?");
+        m.observe(&room("s_target0001"), true, "status?", None);
         m.observe(
             &room("s_target0001"),
             false,
             "old answer to an earlier turn",
+            None,
         );
         m.tick(T0 + 100, &|_| probe(true, 5, 7));
         assert!(m.pass(&room("s_target0001"), true).is_empty());
@@ -469,8 +505,8 @@ mod tests {
     fn a_short_working_phase_between_polls_is_latched_by_the_counter() {
         let mut m = Mentions::default();
         sent(&mut m, "m1");
-        m.observe(&room("s_target0001"), true, "status?");
-        m.observe(&room("s_target0001"), false, "done");
+        m.observe(&room("s_target0001"), true, "status?", None);
+        m.observe(&room("s_target0001"), false, "done", None);
         let t = m.tick(T0 + 100, &|_| probe(true, 6, 7));
         assert_eq!(t[0].state, MentionState::Answering);
         assert_eq!(
@@ -643,5 +679,39 @@ mod tests {
         }
         assert!(m.is_open("open"));
         assert!(m.entries.len() <= KEEP_DONE + 1);
+    }
+
+    #[test]
+    fn only_a_user_turn_written_after_the_recorded_position_anchors_and_only_later_turns_reply() {
+        let mut m = Mentions::default();
+        let t = room("s_target0001");
+        m.open(spec("m1", local()));
+        m.prepare("m1", 5, 100);
+        m.delivered("m1", "status?", T0).unwrap();
+        m.observe(&t, true, "status?", Some(80));
+        m.observe(
+            &t,
+            false,
+            "answer to the older identical question",
+            Some(90),
+        );
+        assert_eq!(m.buffered("m1"), (0, 0));
+        m.observe(&t, true, "status?", Some(150));
+        m.observe(&t, false, "fresh answer", Some(200));
+        assert_eq!(m.buffered("m1"), (1, "fresh answer".len()));
+    }
+
+    #[test]
+    fn reply_fragments_are_bounded_in_bytes_and_count() {
+        let mut m = Mentions::default();
+        let t = room("s_target0001");
+        sent(&mut m, "m1");
+        m.observe(&t, true, "status?", None);
+        for i in 0..10_000 {
+            m.observe(&t, false, &format!("{i}: {}", "x".repeat(1000)), None);
+        }
+        let (count, bytes) = m.buffered("m1");
+        assert!(bytes <= REPLY_MAX + 1024, "{bytes}");
+        assert!(count <= 64, "{count}");
     }
 }

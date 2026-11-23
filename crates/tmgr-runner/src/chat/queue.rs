@@ -483,6 +483,7 @@ mod tests {
         Spec {
             id: id.into(),
             origin: c.session_room("s_originaaaa"),
+            origin_session: None,
             target: c.session_room("s_abcdefghij"),
             title: "build-fix".into(),
             hop: 1,

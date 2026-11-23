@@ -19,6 +19,7 @@ pub struct Turn {
     pub user: bool,
     pub text: String,
     pub ts: Option<String>,
+    pub end: u64,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -84,13 +85,20 @@ pub fn read_new(path: &Path, agent: Agent, offset: u64, window: usize) -> Result
         };
         let mut turns = Vec::new();
         let mut usage = Usage::default();
-        for v in buf[..end]
-            .split(|b| *b == b'\n')
-            .filter(|l| l.len() <= MAX_LINE)
-            .filter_map(|l| serde_json::from_slice::<Value>(l).ok())
-        {
+        let mut pos = offset;
+        for line in buf[..end].split(|b| *b == b'\n') {
+            pos += line.len() as u64 + 1;
+            if line.len() > MAX_LINE {
+                continue;
+            }
+            let Ok(v) = serde_json::from_slice::<Value>(line) else {
+                continue;
+            };
             meter(agent, &v, &mut usage);
-            turns.extend(turn(agent, &v));
+            turns.extend(turn(agent, &v).map(|mut t| {
+                t.end = pos;
+                t
+            }));
         }
         return Ok(Replies {
             turns,
@@ -232,6 +240,7 @@ pub fn turn(agent: Agent, v: &Value) -> Option<Turn> {
         user,
         text: text.to_string(),
         ts: v["timestamp"].as_str().map(str::to_string),
+        end: 0,
     })
 }
 
