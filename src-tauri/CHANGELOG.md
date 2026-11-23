@@ -6,6 +6,8 @@ workflow copies that section into the GitHub release and the in-app update notes
 ## 0.9.196 — 2026-11-23
 
 - Manager window: English agent messages can be read aloud by a natural Piper voice. Press Speak on a message, then choose "Download English voice" (about 23 MB, downloaded once after you click, speech is generated on this device). Without the voice, or for Russian, the system voice is used as before. The voice can be removed from the same place.
+- Manager window: the activity under a reply lists each tool call with details (secrets are masked). Needs tmgr CLI 1.0.168 or newer.
+- Manager window: messages from your own paired desktop or phone reach an unrestricted manager chat. Needs tmgr CLI 1.0.169 or newer.
 
 ## 0.9.195 — 2026-11-23
 
