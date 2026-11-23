@@ -39,6 +39,13 @@
 		"allow-manager-machines",
 		"allow-manager-connect-followers",
 		"allow-manager-followers",
+		"allow-tts-status",
+		"allow-tts-install",
+		"allow-tts-cancel-install",
+		"allow-tts-remove",
+		"allow-tts-check",
+		"allow-tts-synthesize",
+		"allow-tts-stop",
 		"allow-decisions-get",
 		"allow-decisions-answer"
 	]

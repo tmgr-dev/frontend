@@ -214,6 +214,7 @@ pub fn run() {
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .plugin(tauri_plugin_deep_link::init())
     .plugin(tauri_plugin_clipboard_manager::init())
+    .manage(manager::tts::TtsState::default())
     .manage(tray::TrayStore::default())
     .manage(tray::DndStore::default())
     .manage(popover::PopoverStore::default())
@@ -445,6 +446,13 @@ pub fn run() {
       manager::manager_cancel,
       manager::manager_mention_inject,
       manager::manager_agent_models,
+      manager::tts::tts_status,
+      manager::tts::tts_install,
+      manager::tts::tts_cancel_install,
+      manager::tts::tts_remove,
+      manager::tts::tts_check,
+      manager::tts::tts_synthesize,
+      manager::tts::tts_stop,
       manager::manager_stop,
       manager::manager_remove,
       manager::manager_spawn_card,

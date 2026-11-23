@@ -122,12 +122,9 @@ impl Lexicon {
     Self { words }
   }
 
-  pub fn len(&self) -> usize {
+  #[cfg(test)]
+  fn len(&self) -> usize {
     self.words.len()
-  }
-
-  pub fn is_empty(&self) -> bool {
-    self.words.is_empty()
   }
 
   fn derived(&self, word: &str) -> Option<Vec<String>> {
@@ -212,7 +209,7 @@ impl Lexicon {
     let mut out = Phonemized::default();
     let mut current: Vec<String> = Vec::new();
     let mut word = String::new();
-    let mut flush_word = |word: &mut String, current: &mut Vec<String>, out: &mut Phonemized| {
+    let flush_word = |word: &mut String, current: &mut Vec<String>, out: &mut Phonemized| {
       let w = word.trim_matches('\'').to_lowercase();
       word.clear();
       if w.is_empty() || !w.chars().any(|c| c.is_ascii_lowercase()) {
