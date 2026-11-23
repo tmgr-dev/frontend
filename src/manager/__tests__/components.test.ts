@@ -602,6 +602,17 @@ describe('manager components', () => {
 			expect(html).toContain('role="status"');
 		});
 
+		it('tells a device the runner does not trust to re-pair, naming the machine', async () => {
+			const html = await render('MessageBubble', {
+				message: own,
+				delivery: { state: 'failed', remote: true, reason: 'not_trusted' },
+				deliveryWho: 'claude on mx_1',
+				deliveryMachine: 'Studio Mac',
+			});
+			expect(html).toContain('Device not trusted on Studio Mac, re-pair');
+			expect(html).not.toContain('not_trusted');
+		});
+
 		it('shows no status line without a delivery', async () => {
 			const html = await render('MessageBubble', { message: own });
 			expect(html).not.toContain('dlv');

@@ -159,6 +159,7 @@
 	import {
 		canRetry,
 		isQueuedWhy,
+		NOT_TRUSTED_REASON,
 		SEND_TIMEOUT_REASON,
 		type Delivery,
 	} from '../delivery';
@@ -218,6 +219,7 @@
 			calls: { type: Array as PropType<ToolCall[]>, default: undefined },
 			delivery: { type: Object as PropType<Delivery>, default: undefined },
 			deliveryWho: { type: String, default: '' },
+			deliveryMachine: { type: String, default: '' },
 		},
 		emits: ['reply', 'copy', 'cancel-queued', 'retry'],
 		data() {
@@ -244,6 +246,10 @@
 				if (d.retried) return this.$t('manager.messages.delivery.retried');
 				if (d.state === 'failed' && d.reason === SEND_TIMEOUT_REASON)
 					return this.$t('manager.messages.delivery.sendTimeout');
+				if (d.state === 'failed' && d.reason === NOT_TRUSTED_REASON)
+					return this.$t('manager.messages.delivery.notTrusted', {
+						machine: this.deliveryMachine,
+					});
 				if (d.state === 'failed' && d.reason)
 					return this.$t('manager.messages.delivery.failedReason', {
 						reason: d.reason,

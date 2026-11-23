@@ -2991,6 +2991,16 @@ fn a_queued_receipt_keeps_its_reason() {
 }
 
 #[test]
+fn a_not_trusted_failure_from_the_runner_is_surfaced_with_its_reason_code() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let sent = send(&a, "hello").unwrap();
+  post_receipt(&r, &my_id(&a), "r_1", json!({ "id": sent.id, "state": "failed", "reason": "not_trusted" }));
+  a.poll_once().unwrap();
+  assert_eq!(a.take_receipts(), [Receipt { id: sent.id.clone(), state: ReceiptState::Failed, reason: Some("not_trusted".into()) }]);
+}
+
+#[test]
 fn a_runner_receipt_for_a_message_this_device_sent_is_surfaced_once() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (a, r) = runner_pair(&fake, &clock);

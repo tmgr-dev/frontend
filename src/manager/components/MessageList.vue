@@ -26,6 +26,7 @@
 						:calls="callsByMessage[row.message.id]"
 						:delivery="deliveryById[row.message.id]"
 						:delivery-who="deliveryWho"
+						:delivery-machine="deliveryMachine"
 						@reply="$emit('reply', $event)"
 						@copy="$emit('copy', $event)"
 						@cancel-queued="$emit('cancel-queued', $event)"
@@ -139,6 +140,7 @@
 				default: () => ({}),
 			},
 			deliveryWho: { type: String, default: '' },
+			deliveryMachine: { type: String, default: '' },
 			activity: {
 				type: Object as PropType<ActivityView | null>,
 				default: null,

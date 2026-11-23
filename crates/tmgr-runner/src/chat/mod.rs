@@ -96,6 +96,8 @@ pub fn machine_id(runner_dir: &Path) -> io::Result<String> {
     }
 }
 
+pub const REJECT_INVALID: &str = "invalid message";
+pub const REJECT_NOT_TRUSTED: &str = "not_trusted";
 pub const RELAY_CLIENT: &str = "relay";
 pub const RELAY_MOBILE_CLIENT: &str = "relay-mobile";
 
@@ -336,13 +338,13 @@ impl Chat {
         }
     }
 
-    pub fn reject_relay(&self, device: &str, id: &str) {
+    pub fn reject_relay(&self, device: &str, id: &str, reason: &str) {
         self.receipt(
             "relay",
             Some(device),
             id,
             ReceiptState::Failed,
-            Some("invalid message"),
+            Some(reason),
         );
     }
 
@@ -1722,8 +1724,8 @@ mod tests {
     fn rejecting_a_relay_message_sends_one_failed_receipt_with_a_fixed_reason() {
         let (_t, c) = chat();
         let r = c.capture_receipts();
-        c.reject_relay("d_phone1", "m1");
-        c.reject_relay("d_phone1", "m1");
+        c.reject_relay("d_phone1", "m1", REJECT_INVALID);
+        c.reject_relay("d_phone1", "m1", REJECT_INVALID);
         assert_eq!(
             *lock(&r),
             [Receipt {

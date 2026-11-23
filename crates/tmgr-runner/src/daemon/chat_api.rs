@@ -201,7 +201,9 @@ impl Runner {
                     )
                 },
             ),
-            give_up: Arc::new(move |device, id| give_up_rt.chat.reject_relay(device, id)),
+            give_up: Arc::new(move |device, id, reason| {
+                give_up_rt.chat.reject_relay(device, id, reason)
+            }),
             blobs: self.chat.blobs().cloned(),
             subscribe: Arc::new(move || sub_rt.chat.subscribe()),
             subscribe_activity: Arc::new(move || act_rt.chat.subscribe_activity()),

@@ -105,6 +105,7 @@
 					:queued-why="store.queuedWhy"
 					:delivery-by-id="store.delivery"
 					:delivery-who="deliveryWho"
+					:delivery-machine="deliveryMachine"
 					@retry="store.retry"
 					:tools-by-message="store.toolsByMessage"
 					:calls-by-message="store.callsByMessage"
@@ -513,6 +514,12 @@
 				return info.agent
 					? `${info.agent} on ${info.room.machine}`
 					: info.room.machine;
+			},
+			deliveryMachine(): string {
+				const id = this.activeInfo?.room.machine;
+				if (!id) return '';
+				const known = this.pairing.machines.find((m) => m.machine === id);
+				return known?.label || id.slice(0, 12);
 			},
 			subtitle(): string {
 				return this.activeInfo

@@ -130,14 +130,16 @@ fn storage_errors_are_retried_forever_and_never_dropped() {
     assert_eq!(seen.lock().unwrap().len(), 10);
 }
 
-type Told = Arc<Mutex<Vec<(String, String)>>>;
+type Told = Arc<Mutex<Vec<(String, String, String)>>>;
 
 fn told_sink(kind_result: IngestError) -> (RelaySink, Told) {
     let (sink, _) = recording_sink(move || Err(kind_result.clone()));
     let told = Arc::new(Mutex::new(Vec::new()));
     let log = told.clone();
-    let sink = sink.with_give_up(Box::new(move |device, id| {
-        log.lock().unwrap().push((device.to_owned(), id.to_owned()))
+    let sink = sink.with_give_up(Box::new(move |device, id, reason| {
+        log.lock()
+            .unwrap()
+            .push((device.to_owned(), id.to_owned(), reason.to_owned()))
     }));
     (sink, told)
 }
@@ -147,7 +149,76 @@ fn giving_up_on_an_invalid_message_from_a_desktop_tells_it_once() {
     let (sink, told) = told_sink(IngestError::Invalid("bad".into()));
     let m = msg(AuthorKind::Owner, MACHINE, None);
     assert_eq!(sink.deliver("dev-9", Some("desktop"), m.clone()), Ok(()));
-    assert_eq!(*told.lock().unwrap(), [("dev-9".to_owned(), m.id)]);
+    assert_eq!(
+        *told.lock().unwrap(),
+        [("dev-9".to_owned(), m.id, "invalid message".to_owned())]
+    );
+}
+
+#[test]
+fn input_from_an_unpinned_or_unknown_kind_is_failed_back_to_the_sender_once_per_message() {
+    for kind in [None, Some("runner"), Some("weird")] {
+        let (sink, told) = told_sink(IngestError::Invalid("bad".into()));
+        let m = msg(AuthorKind::Owner, MACHINE, None);
+        assert_eq!(sink.deliver("dev-9", kind, m.clone()), Ok(()));
+        assert_eq!(
+            *told.lock().unwrap(),
+            [("dev-9".to_owned(), m.id, "not_trusted".to_owned())],
+            "{kind:?}"
+        );
+    }
+}
+
+#[test]
+fn input_that_is_not_owner_input_for_this_machine_gets_no_failed_receipt() {
+    let (sink, told) = told_sink(IngestError::Invalid("bad".into()));
+    sink.deliver("dev-9", None, msg(AuthorKind::Manager, MACHINE, None))
+        .unwrap();
+    sink.deliver(
+        "dev-9",
+        None,
+        msg(AuthorKind::Owner, "mx_ffffffffffffffff", None),
+    )
+    .unwrap();
+    assert!(told.lock().unwrap().is_empty());
+}
+
+#[test]
+fn an_unpinned_senders_failed_receipt_reaches_the_outbound_queue_with_the_not_trusted_reason() {
+    let dir = tempfile::tempdir().unwrap();
+    let chat = Arc::new(Chat::open(dir.path()));
+    let machine = chat.machine().to_owned();
+    let (tx, rx) = mpsc::sync_channel::<Out>(8);
+    chat.set_receipt_sink(Some(receipt_queue(tx)));
+    let (c, g) = (chat.clone(), chat.clone());
+    let sink = RelaySink::new(
+        machine.clone(),
+        Box::new(move |i, _| c.ingest(i, 1_800_000_000_000, |_| false, |_| Delivery::Busy(None))),
+    )
+    .with_give_up(Box::new(move |device, id, reason| {
+        g.reject_relay(device, id, reason)
+    }));
+    let m = msg(AuthorKind::Owner, &machine, None);
+    sink.deliver("dev-1", None, m.clone()).unwrap();
+    let out: Vec<Out> = rx.try_iter().collect();
+    assert_eq!(out.len(), 1);
+    let Out::Receipt(r) = &out[0] else {
+        panic!("expected a receipt")
+    };
+    assert_eq!(
+        (
+            r.device.as_str(),
+            r.id.as_str(),
+            r.state,
+            r.reason.as_deref()
+        ),
+        (
+            "dev-1",
+            m.id.as_str(),
+            ReceiptState::Failed,
+            Some("not_trusted")
+        )
+    );
 }
 
 #[test]

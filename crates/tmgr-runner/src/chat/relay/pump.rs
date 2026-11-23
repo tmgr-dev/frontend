@@ -92,8 +92,8 @@ fn wants_push(msg: &ChatMessage) -> bool {
         && msg.kind == MessageKind::Decision
 }
 
-pub type GiveUpFn = Box<dyn Fn(&str, &str) + Send + Sync>;
-pub type SharedGiveUpFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
+pub type GiveUpFn = Box<dyn Fn(&str, &str, &str) + Send + Sync>;
+pub type SharedGiveUpFn = Arc<dyn Fn(&str, &str, &str) + Send + Sync>;
 
 pub struct RelaySink {
     machine: String,
@@ -130,11 +130,15 @@ impl ChatSink for RelaySink {
         from_kind: Option<&str>,
         msg: ChatMessage,
     ) -> Result<(), String> {
-        if msg.author.kind != AuthorKind::Owner
-            || msg.room.machine != self.machine
-            || !matches!(from_kind, Some("desktop" | "mobile"))
-        {
+        if msg.author.kind != AuthorKind::Owner || msg.room.machine != self.machine {
             self.dropped("not owner input for this machine");
+            return Ok(());
+        }
+        if !matches!(from_kind, Some("desktop" | "mobile")) {
+            self.dropped("sender is not a pinned desktop or phone");
+            if let Some(give_up) = &self.give_up {
+                give_up(from_device, &msg.id, crate::chat::REJECT_NOT_TRUSTED);
+            }
             return Ok(());
         }
         let id = msg.id.clone();
@@ -166,7 +170,7 @@ impl ChatSink for RelaySink {
             Err(IngestError::Invalid(_)) => {
                 crate::daemon::log("chat relay: message dropped (invalid)");
                 if let (true, Some(give_up)) = (desktop, &self.give_up) {
-                    give_up(from_device, &id);
+                    give_up(from_device, &id, crate::chat::REJECT_INVALID);
                 }
                 Ok(())
             }
@@ -411,7 +415,9 @@ fn build(setup: &Setup, leases: &Arc<Leases>) -> Result<Option<Engine>, String> 
     let ingest = setup.ingest.clone();
     let give_up = setup.give_up.clone();
     let mut sink = RelaySink::new(setup.machine.clone(), Box::new(move |i, t| ingest(i, t)))
-        .with_give_up(Box::new(move |device, id| give_up(device, id)));
+        .with_give_up(Box::new(move |device, id, reason| {
+            give_up(device, id, reason)
+        }));
     if let Some(blobs) = &setup.blobs {
         sink = sink.with_blobs(blobs.clone());
     }
