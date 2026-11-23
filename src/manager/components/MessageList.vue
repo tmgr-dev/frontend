@@ -63,7 +63,7 @@
 	} from '../scrollLogic';
 	import Icon from './Icon.vue';
 	import MessageBubble from './MessageBubble.vue';
-	import { dayKey, formatDay, isGrouped } from './viewHelpers';
+	import { dayKey, formatDay, isGrouped, isOwnerMessage } from './viewHelpers';
 
 	interface Row {
 		message: ChatMessage;
@@ -72,7 +72,7 @@
 		grouped: boolean;
 	}
 
-	const isOwn = (message: ChatMessage) => message.author.kind === 'owner';
+	const isOwn = isOwnerMessage;
 
 	export default defineComponent({
 		name: 'ManagerMessageList',

@@ -111,6 +111,7 @@
 		authorLabel,
 		formatClock,
 		formatSize,
+		isOwnerMessage,
 		truncate,
 	} from './viewHelpers';
 	import { speaker } from '../tts/speaker';
@@ -155,7 +156,7 @@
 				);
 			},
 			isOwner(): boolean {
-				return this.message.author.kind === 'owner' || !!this.message.user_turn;
+				return isOwnerMessage(this.message);
 			},
 			isDecision(): boolean {
 				return this.message.kind === 'decision';

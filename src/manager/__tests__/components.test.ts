@@ -212,6 +212,34 @@ describe('manager components', () => {
 		expect(html).not.toContain('mgr-hint');
 	});
 
+	it('ChatList prefixes the preview with You when the owner typed the last runner message', async () => {
+		const last = msg({
+			id: 'u1',
+			room: sessRoom,
+			author: { kind: 'session', id: 's1', agent: 'claude' },
+			user_turn: true,
+			body_md: 'fix the build',
+		});
+		const html = await render('ChatList', {
+			rooms: [{ ...rooms[0], last }],
+		});
+		expect(html).toContain('You: fix the build');
+	});
+
+	it('ChatList shows no You prefix for an agent reply in a session', async () => {
+		const last = msg({
+			id: 'a1',
+			room: sessRoom,
+			author: { kind: 'session', id: 's1', agent: 'claude' },
+			body_md: 'build is green',
+		});
+		const html = await render('ChatList', {
+			rooms: [{ ...rooms[0], last }],
+		});
+		expect(html).toContain('build is green');
+		expect(html).not.toContain('You: ');
+	});
+
 	it('ChatHeader shows title, sub, status and full context', async () => {
 		const html = await render('ChatHeader', {
 			info: rooms[0],
@@ -807,6 +835,13 @@ describe('MessageList scroll behaviour', () => {
 	const fromOwner = (id: string, ts = T0 + 90_000) =>
 		msg({ id, author: { kind: 'owner', id: 'me' }, ts_ms: ts });
 	const fromOther = (id: string, ts = T0 + 90_000) => msg({ id, ts_ms: ts });
+	const fromOwnerTurn = (id: string, ts = T0 + 90_000) =>
+		msg({
+			id,
+			author: { kind: 'session', id: 's1', agent: 'claude' },
+			user_turn: true,
+			ts_ms: ts,
+		});
 
 	it('pins to the last message the first time a chat is shown', async () => {
 		const { scroller, metrics } = mountList();
@@ -837,6 +872,16 @@ describe('MessageList scroll behaviour', () => {
 		await settle();
 		scrollTo(100);
 		state.messages = [...state.messages, fromOwner('d')];
+		await settle();
+		expect(scroller.scrollTop).toBe(metrics.bottom());
+		expect(jump()).toBeNull();
+	});
+
+	it('does not count a runner message typed by the owner as an arrival', async () => {
+		const { state, scroller, metrics, scrollTo, jump } = mountList();
+		await settle();
+		scrollTo(100);
+		state.messages = [...state.messages, fromOwnerTurn('e')];
 		await settle();
 		expect(scroller.scrollTop).toBe(metrics.bottom());
 		expect(jump()).toBeNull();

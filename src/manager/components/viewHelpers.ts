@@ -209,6 +209,11 @@ export const authorLabel = (
 	return t('manager.messages.system');
 };
 
+export const isOwnerMessage = (m: {
+	author: Author;
+	user_turn?: boolean;
+}): boolean => m.author.kind === 'owner' || !!m.user_turn;
+
 export const headerSubtitle = (
 	info: RoomInfo,
 	rooms: RoomInfo[],

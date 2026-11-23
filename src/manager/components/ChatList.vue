@@ -178,7 +178,7 @@
 	import ContextMeter from './ContextMeter.vue';
 	import Icon from './Icon.vue';
 	import StatePill from './StatePill.vue';
-	import { formatClock, plainPreview } from './viewHelpers';
+	import { formatClock, isOwnerMessage, plainPreview } from './viewHelpers';
 
 	interface ChatGroup {
 		key: string;
@@ -302,8 +302,9 @@
 			},
 			preview(info: RoomInfo): string {
 				if (!info.last) return this.$t('manager.list.noMessages');
-				const own =
-					info.last.author.kind === 'owner' ? this.$t('manager.list.you') : '';
+				const own = isOwnerMessage(info.last)
+					? this.$t('manager.list.you')
+					: '';
 				return own + plainPreview(info.last.body_md);
 			},
 			badge(info: RoomInfo): number {
