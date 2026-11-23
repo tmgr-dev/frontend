@@ -4177,6 +4177,25 @@ fn rooms_is_sealed_only_to_owner_devices_and_carries_no_label_visible_to_the_ser
 }
 
 #[test]
+fn a_runner_seals_nothing_to_a_device_with_a_pending_revoke() {
+    let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    desktop.revoke(&mid).unwrap();
+    runner.poll_once().unwrap();
+    assert_eq!(runner.trust_state().unwrap().pending_revokes.len(), 1);
+    let (bd, bm) = (fake.queue_len(&did), fake.queue_len(&mid));
+    runner
+        .send_chat(&text_msg(new_message_id(), "hello"), false)
+        .unwrap();
+    runner
+        .send_sealed_to_owners("rooms", &rpc_id("rooms"), &json!({"v": 1}), None)
+        .unwrap();
+    assert_eq!(fake.queue_len(&did), bd + 2);
+    assert_eq!(fake.queue_len(&mid), bm);
+    assert!(runner.owner_device_ids().unwrap().iter().all(|i| *i != mid));
+}
+
+#[test]
 fn rooms_can_be_restricted_to_a_subset_and_refuses_when_none_match() {
     let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
     let (did, mid) = (my_id(&desktop), my_id(&mobile));

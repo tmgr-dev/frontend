@@ -1813,6 +1813,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .iter()
                 .filter(|d| d.id != id.device_id)
                 .filter(|d| !runner || may_vouch(c.st.kind_of(&d.id, &d.fp)))
+                .filter(|d| !runner || !c.st.pending_revokes.iter().any(|p| p.target_fp == d.fp))
                 .cloned()
                 .collect();
         if targets.is_empty() {
@@ -1869,6 +1870,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             .iter()
             .filter(|d| d.id != own_id)
             .filter(|d| may_vouch(c.st.kind_of(&d.id, &d.fp)))
+            .filter(|d| !c.st.pending_revokes.iter().any(|p| p.target_fp == d.fp))
             .filter(|d| only.is_none_or(|o| o.contains(&d.id)))
             .cloned()
             .collect()
