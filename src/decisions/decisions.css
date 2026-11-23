@@ -514,6 +514,57 @@ kbd {
 	background: none;
 	padding: 0;
 }
+.md pre.md-wrap,
+.msg .md pre.md-wrap,
+.cm .md pre.md-wrap {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	overflow-x: hidden;
+}
+.md-copyable,
+.ctx-copyable {
+	position: relative;
+}
+.md-copy {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 5px;
+	border: 1px solid var(--line-strong);
+	border-radius: 6px;
+	background: var(--bg-sunken);
+	color: var(--fg-muted);
+	cursor: pointer;
+	font-size: 11px;
+	line-height: 1;
+}
+.md-copy:hover,
+.md-copy:focus-visible {
+	color: var(--fg);
+}
+.md-copyable > .md-copy,
+.ctx-copyable > .md-copy {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	opacity: 0;
+}
+.md-copyable:hover > .md-copy,
+.ctx-copyable:hover > .md-copy,
+.md-copy:focus-visible,
+.md-copy.done,
+.md-copy.failed {
+	opacity: 1;
+}
+.md-copy.msg-copy {
+	margin-left: auto;
+}
+.md-copy.done::after {
+	content: attr(data-done);
+}
+.md-copy.failed::after {
+	content: attr(data-failed);
+}
 .md .bigcode:has(details[open]) > pre {
 	display: none;
 }

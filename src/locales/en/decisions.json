@@ -162,6 +162,11 @@
 	"checks": {
 		"empty": "No checks listed."
 	},
+	"copy": {
+		"label": "Copy",
+		"done": "Copied",
+		"failed": "Copy failed"
+	},
 	"diff": {
 		"noneAttached": "No changes attached to this card.",
 		"loading": "Loading changes…",
