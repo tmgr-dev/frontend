@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.172
+
+- Added: @mentions to a follower machine's manager. From the CLI or desktop on the leader, `@<machine>` asks that machine's manager; the follower queues the question into its manager chat as untrusted data and the leader posts the manager's reply back. Phone mentions to follower machines are refused, and so are asks into an unrestricted follower manager.
+- Added: `tmgr chat remote policy` and `tmgr chat remote allow-ask <machine> on|off` on the follower. Turning asks on asks for the follower PIN and works only from a terminal outside any agent session; the desktop Manager can only turn asks off.
+- Changed: a leader that is not allowed to ask keeps the other operations it had. An older `manager-remote.toml` lets no leader ask until you allow it.
+- Note: after this version writes `ask_from` into `manager-remote.toml`, an older CLI cannot read that file and refuses every leader. Do not downgrade the follower below this version.
+- Update the CLI on both machines, then restart the runner (`tmgr runner restart`).
+
 ## 1.0.171
 
 - Added: live tool activity in the phone's Manager tab. While a Manager chat is open on your paired phone, the runner sends what each running tool call does (tool name, a short redacted summary, the last calls) end-to-end encrypted over the chat relay. The server only relays ciphertext and never sees the content.
