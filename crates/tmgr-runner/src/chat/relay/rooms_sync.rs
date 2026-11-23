@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -11,6 +11,7 @@ use tmgr_ipc::chat::{AuthorKind, ChatMessage, RoomInfo, RoomRef};
 
 use crate::mgr_rpc::files::write_private_atomic;
 
+const OWNER_IDLE_MS: u64 = 3 * 60 * 1000;
 pub const BACKFILL_PER_ROOM: u32 = 20;
 pub const BACKFILL_CAP_BYTES: usize = 200 * 1024;
 const BACKFILLED_FILE: &str = "rooms-backfilled.json";
@@ -34,7 +35,7 @@ pub trait OwnerSink {
 
 impl<T: Transport, K: KeyStore, S: ChatSink> OwnerSink for RelayEngine<T, K, S> {
     fn owners(&self) -> Result<Vec<String>, String> {
-        self.owner_device_ids()
+        self.active_owner_device_ids(OWNER_IDLE_MS)
     }
 
     fn send_index(&self, id: &str, payload: &Value, only: Option<&[String]>) -> Result<(), String> {
@@ -192,14 +193,14 @@ pub fn save_backfilled(dir: &Path, done: &BTreeSet<String>) -> std::io::Result<(
 }
 
 pub struct RoomsSync {
-    last_sent: Option<String>,
+    last_sent: BTreeMap<String, String>,
     last_error: Option<String>,
 }
 
 impl RoomsSync {
     pub fn new() -> Self {
         Self {
-            last_sent: None,
+            last_sent: BTreeMap::new(),
             last_error: None,
         }
     }
@@ -232,6 +233,7 @@ impl RoomsSync {
         history: &dyn Fn(&RoomRef, u32) -> Vec<ChatMessage>,
     ) -> Result<(), String> {
         let owners = sink.owners()?;
+        self.last_sent.retain(|d, _| owners.contains(d));
         if owners.is_empty() {
             return Ok(());
         }
@@ -264,6 +266,7 @@ impl RoomsSync {
             match sent {
                 Ok(()) => {
                     done.insert(device.clone());
+                    self.last_sent.insert(device.clone(), json.clone());
                     save_backfilled(dir, &done).map_err(|e| e.to_string())?;
                 }
                 Err(e) => failure = Some(e),
@@ -274,29 +277,26 @@ impl RoomsSync {
             .filter(|d| done.contains(*d))
             .cloned()
             .collect();
-        if self.last_sent.as_deref() != Some(json.as_str()) {
-            let rest: Vec<String> = owners
-                .iter()
-                .filter(|d| !handled.contains(*d))
-                .cloned()
-                .collect();
-            let all_ok = if rest.is_empty() {
-                true
-            } else {
-                match sink.send_index(
-                    &random_msg_id("rooms").map_err(|e| e.to_string())?,
-                    &payload,
-                    Some(&rest),
-                ) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        failure.get_or_insert(e);
-                        false
+        let rest: Vec<String> = owners
+            .iter()
+            .filter(|d| !handled.contains(*d))
+            .filter(|d| self.last_sent.get(*d) != Some(&json))
+            .cloned()
+            .collect();
+        if !rest.is_empty() {
+            match sink.send_index(
+                &random_msg_id("rooms").map_err(|e| e.to_string())?,
+                &payload,
+                Some(&rest),
+            ) {
+                Ok(()) => {
+                    for d in rest {
+                        self.last_sent.insert(d, json.clone());
                     }
                 }
-            };
-            if all_ok {
-                self.last_sent = Some(json);
+                Err(e) => {
+                    failure.get_or_insert(e);
+                }
             }
         }
         failure.map_or(Ok(()), Err)
@@ -557,6 +557,91 @@ mod tests {
             [Some(vec!["phone".to_owned(), "desk".to_owned()])]
         );
         assert_eq!(sink.chats_to.borrow().len(), 2);
+    }
+
+    fn synced_world(
+        owners: &[&str],
+    ) -> (tempfile::TempDir, Sink, RefCell<Vec<RoomInfo>>, RoomsSync) {
+        let dir = tempfile::tempdir().unwrap();
+        let sink = Sink::with_owners(owners);
+        let rooms = RefCell::new(two_rooms());
+        let mut sync = RoomsSync::new();
+        sync.tick(
+            &sink,
+            dir.path(),
+            &|| snap(rooms.borrow().clone()),
+            &history_of(0, 1),
+        );
+        sink.index_to.borrow_mut().clear();
+        (dir, sink, rooms, sync)
+    }
+
+    #[test]
+    fn an_idle_owner_is_not_sent_the_index_while_another_is_active() {
+        let (dir, sink, rooms, mut sync) = synced_world(&["phone", "desk"]);
+        *sink.owners.borrow_mut() = vec!["desk".into()];
+        rooms
+            .borrow_mut()
+            .push(info(RoomRef::session(MACHINE, "s_new"), "new", None));
+        sync.tick(
+            &sink,
+            dir.path(),
+            &|| snap(rooms.borrow().clone()),
+            &history_of(0, 1),
+        );
+        assert_eq!(*sink.index_to.borrow(), [Some(vec!["desk".to_owned()])]);
+    }
+
+    #[test]
+    fn an_owner_that_becomes_active_again_gets_the_current_index_once() {
+        let (dir, sink, rooms, mut sync) = synced_world(&["phone", "desk"]);
+        let snapshot = || snap(rooms.borrow().clone());
+        *sink.owners.borrow_mut() = vec!["desk".into()];
+        sync.tick(&sink, dir.path(), &snapshot, &history_of(0, 1));
+        assert!(sink.index_to.borrow().is_empty());
+        *sink.owners.borrow_mut() = vec!["desk".into(), "phone".into()];
+        sync.tick(&sink, dir.path(), &snapshot, &history_of(0, 1));
+        assert_eq!(*sink.index_to.borrow(), [Some(vec!["phone".to_owned()])]);
+        sync.tick(&sink, dir.path(), &snapshot, &history_of(0, 1));
+        assert_eq!(sink.index_to.borrow().len(), 1);
+    }
+
+    #[test]
+    fn an_index_change_while_idle_is_sent_once_on_return_not_while_idle() {
+        let (dir, sink, rooms, mut sync) = synced_world(&["phone", "desk"]);
+        *sink.owners.borrow_mut() = vec!["desk".into()];
+        rooms
+            .borrow_mut()
+            .push(info(RoomRef::session(MACHINE, "s_a"), "a", None));
+        sync.tick(
+            &sink,
+            dir.path(),
+            &|| snap(rooms.borrow().clone()),
+            &history_of(0, 1),
+        );
+        rooms
+            .borrow_mut()
+            .push(info(RoomRef::session(MACHINE, "s_b"), "b", None));
+        sync.tick(
+            &sink,
+            dir.path(),
+            &|| snap(rooms.borrow().clone()),
+            &history_of(0, 1),
+        );
+        assert!(sink
+            .index_to
+            .borrow()
+            .iter()
+            .all(|t| t.as_deref() == Some(&["desk".to_owned()][..])));
+        sink.index_to.borrow_mut().clear();
+        *sink.owners.borrow_mut() = vec!["desk".into(), "phone".into()];
+        sync.tick(
+            &sink,
+            dir.path(),
+            &|| snap(rooms.borrow().clone()),
+            &history_of(0, 1),
+        );
+        assert_eq!(*sink.index_to.borrow(), [Some(vec!["phone".to_owned()])]);
     }
 
     #[test]

@@ -1732,6 +1732,24 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             .collect())
     }
 
+    pub fn active_owner_device_ids(&self, max_idle_ms: u64) -> Result<Vec<String>, String> {
+        let owners = self.owner_device_ids()?;
+        let g = self.lock();
+        let now = self.now();
+        let mut ids = Vec::new();
+        for id in owners {
+            let seen = g
+                .dir
+                .as_ref()
+                .and_then(|d| d.devices.iter().find(|x| x.device_id == id))
+                .and_then(|d| parse_seen(&d.last_seen_at));
+            if seen.is_none_or(|t| now.saturating_sub(t) <= max_idle_ms) {
+                ids.push(id);
+            }
+        }
+        Ok(ids)
+    }
+
     pub fn send_sealed_to_owners(
         &self,
         kind: &str,

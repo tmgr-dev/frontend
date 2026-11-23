@@ -4213,6 +4213,31 @@ fn send_chat_to_owners_reaches_only_the_chosen_owner_device() {
         .is_err());
 }
 
+#[test]
+fn active_owner_devices_exclude_the_long_unseen_and_keep_unknown_ones() {
+    let (fake, clock, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    let idle = 3 * 60 * 1000;
+    fake.set_last_seen(&mid, T0 - 10 * idle);
+    fake.set_last_seen(&did, T0 - 1000);
+    runner.poll_once().unwrap();
+    assert_eq!(
+        runner.active_owner_device_ids(idle).unwrap(),
+        std::slice::from_ref(&did)
+    );
+    fake.set_last_seen(&mid, T0);
+    runner.poll_once().unwrap();
+    let mut got = runner.active_owner_device_ids(idle).unwrap();
+    got.sort();
+    let mut want = vec![did.clone(), mid.clone()];
+    want.sort();
+    assert_eq!(got, want);
+    fake.0.lock().unwrap().last_seen.clear();
+    runner.poll_once().unwrap();
+    assert_eq!(runner.active_owner_device_ids(idle).unwrap().len(), 2);
+    let _ = clock;
+}
+
 #[derive(Clone, Default)]
 struct ActRec(Arc<Mutex<Vec<(String, bool)>>>);
 
