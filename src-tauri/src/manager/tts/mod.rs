@@ -62,21 +62,20 @@ fn dir_of<R: Runtime>(app: &AppHandle<R>, lang: Lang) -> Result<PathBuf, String>
 
 fn engine_of<R: Runtime>(app: &AppHandle<R>, lang: Lang) -> Result<Arc<synth::Engine>, String> {
   let state = app.state::<TtsState>();
-  let mut engines = state.engines.lock().map_err(|e| e.to_string())?;
-  if let Some(engine) = engines.get(&lang) {
+  if let Some(engine) = state.engines.lock().map_err(|e| e.to_string())?.get(&lang) {
     return Ok(engine.clone());
   }
   let dir = dir_of(app, lang)?;
   if !pack::is_installed(&dir, pack::spec(lang).files) {
     return Err(format!("the {} voice is not installed", lang.label()));
   }
-  let engine = Arc::new(synth::Engine::load(&dir, lang)?);
-  engines.insert(lang, engine.clone());
-  Ok(engine)
+  let loaded = Arc::new(synth::Engine::load(&dir, lang)?);
+  let mut engines = state.engines.lock().map_err(|e| e.to_string())?;
+  Ok(engines.entry(lang).or_insert(loaded).clone())
 }
 
-fn english_for_latin<R: Runtime>(app: &AppHandle<R>, lang: Lang) -> Option<Arc<synth::Engine>> {
-  if lang == Lang::En {
+fn english_for_latin<R: Runtime>(app: &AppHandle<R>, lang: Lang, text: &str) -> Option<Arc<synth::Engine>> {
+  if lang == Lang::En || !text.chars().any(|c| c.is_ascii_alphabetic()) {
     return None;
   }
   engine_of(app, Lang::En).ok()
@@ -160,7 +159,7 @@ pub async fn tts_check<R: Runtime>(app: AppHandle<R>, chunks: Vec<String>, lang:
   let lang = Lang::parse(lang.as_deref())?;
   tauri::async_runtime::spawn_blocking(move || {
     let engine = engine_of(&app, lang)?;
-    let latin = english_for_latin(&app, lang);
+    let latin = english_for_latin(&app, lang, &chunks.join(" "));
     let mut total = g2p::Phonemized::default();
     for chunk in &chunks {
       let p = engine.phonemize(chunk, latin.as_ref().and_then(|e| e.english()));
@@ -187,7 +186,7 @@ pub async fn tts_synthesize<R: Runtime>(app: AppHandle<R>, text: String, run: u6
   let stopped_through = state.stopped_through.clone();
   let samples = tauri::async_runtime::spawn_blocking(move || {
     let engine = engine_of(&app, lang)?;
-    let latin = english_for_latin(&app, lang);
+    let latin = english_for_latin(&app, lang, &text);
     engine.synthesize(&text, run, &stopped_through, latin.as_ref().and_then(|e| e.english()))
   })
   .await

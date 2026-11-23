@@ -14,6 +14,7 @@ use super::{host, wav, TtsState, MAX_TEXT_CHARS};
 
 const FILE_NAME: &str = "tts-external.json";
 const TEST_SENTENCE: &str = "This is a test of the external voice.";
+const MAX_TEST_CHARS: usize = 300;
 const MAX_AUDIO_BYTES: usize = 30 * 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 2048;
 const MAX_ARGS: usize = 64;
@@ -346,7 +347,10 @@ async fn run_command(cfg: &CommandSettings, text: &str, timeout: Duration, stopp
     }
   };
   match outcome {
-    Outcome::Finished(Ok((status, out, _))) if status.success() => Ok(Some(out)),
+    Outcome::Finished(Ok((status, out, _))) if status.success() => {
+      kill_tree(&mut child, pid).await;
+      Ok(Some(out))
+    }
     Outcome::Finished(Ok((status, _, err))) => {
       kill_tree(&mut child, pid).await;
       let err = String::from_utf8_lossy(&err);
@@ -452,9 +456,10 @@ pub async fn tts_external_synthesize<R: Runtime>(app: AppHandle<R>, text: String
 }
 
 #[tauri::command]
-pub async fn tts_external_test<R: Runtime>(app: AppHandle<R>) -> Result<Response, String> {
+pub async fn tts_external_test<R: Runtime>(app: AppHandle<R>, text: Option<String>) -> Result<Response, String> {
   let never = AtomicU64::new(0);
-  let result = synthesize_checked(&app, TEST_SENTENCE, &never, 1).await;
+  let phrase = text.map(|t| t.trim().chars().take(MAX_TEST_CHARS).collect::<String>()).filter(|t| !t.is_empty());
+  let result = synthesize_checked(&app, phrase.as_deref().unwrap_or(TEST_SENTENCE), &never, 1).await;
   if let Err(e) = &result {
     with_health(|h| h.mark_failed(e.clone()));
   }
@@ -861,6 +866,15 @@ mod tests {
       let out = run_command(&f.settings(&script), "héllo wörld", Duration::from_secs(10), &stopped, 1, MAX_AUDIO_BYTES).await.unwrap().unwrap();
       assert_eq!(out, wav_bytes(&[0, 16384]));
       assert_eq!(std::fs::read_to_string(f.p("in.txt")).unwrap(), "héllo wörld");
+    }
+
+    #[tokio::test]
+    async fn background_children_are_killed_after_a_successful_run() {
+      let f = Fixture::new();
+      let script = format!("cat >/dev/null\nsleep 60 >/dev/null 2>&1 &\necho $! > '{}'\ncat '{}'\n", f.p("pids.txt"), f.p("out.wav"));
+      let stopped = AtomicU64::new(0);
+      run_command(&f.settings(&script), "x", Duration::from_secs(10), &stopped, 1, MAX_AUDIO_BYTES).await.unwrap().unwrap();
+      assert!(nobody_alive(&pids(&f.p("pids.txt"))).await);
     }
 
     #[tokio::test]
