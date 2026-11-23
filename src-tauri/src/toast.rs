@@ -502,9 +502,12 @@ pub fn decision_toast(
       primary: *rec,
     })
     .collect();
-  if actions.is_empty() {
-    actions.push(ToastAction { id: "open-decisions".to_owned(), label: "Open".to_owned(), primary: true });
-  }
+  let only_open = actions.is_empty();
+  actions.push(ToastAction {
+    id: "open-decisions".to_owned(),
+    label: crate::plugin_notify::OPEN_IN_DECISIONS.to_owned(),
+    primary: only_open,
+  });
   capped(Toast {
     id: format!("decision:{id}"),
     kind: Kind::Decision,
@@ -611,7 +614,7 @@ pub fn toast_resize<R: Runtime>(app: AppHandle<R>, store: State<'_, ToastStore>,
 #[derive(Debug, PartialEq)]
 pub(crate) enum Route {
   Answer(String, String),
-  OpenDecisions,
+  OpenDecision(String),
   Main,
 }
 
@@ -623,8 +626,8 @@ pub(crate) fn route(toast: &Toast, action_id: &str) -> Result<Route, String> {
     if let (Some(decision), Some(choice)) = (toast.decision_id(), action_id.strip_prefix("answer:")) {
       return Ok(Route::Answer(decision, choice.to_owned()));
     }
-    if action_id == "open-decisions" {
-      return Ok(Route::OpenDecisions);
+    if let (Some(decision), "open-decisions") = (toast.decision_id(), action_id) {
+      return Ok(Route::OpenDecision(decision));
     }
   }
   Ok(Route::Main)
@@ -657,9 +660,9 @@ pub fn toast_action<R: Runtime>(
     #[cfg(not(unix))]
     Route::Answer(..) => {}
     #[cfg(unix)]
-    Route::OpenDecisions => crate::decisions::open_window(&app),
+    Route::OpenDecision(decision) => crate::decisions::focus_card(&app, &decision),
     #[cfg(not(unix))]
-    Route::OpenDecisions => {}
+    Route::OpenDecision(_) => {}
     Route::Main => {
       let _ = app.emit_to(
         "main",
@@ -928,8 +931,10 @@ mod tests {
     let t = decision_toast("c1", "Tag it?", Some("agent".to_owned()), &options, Some(42));
     assert_eq!(t.id, "decision:c1");
     let ids: Vec<_> = t.actions.iter().map(|a| a.id.as_str()).collect();
-    assert_eq!(ids, ["answer:a", "answer:b", "answer:d"]);
+    assert_eq!(ids, ["answer:a", "answer:b", "answer:d", "open-decisions"]);
     assert!(t.actions[2].primary);
+    assert!(!t.actions[3].primary);
+    assert_eq!(t.actions[3].label, "Open in Decisions");
     assert_eq!(t.actions[2].label, "D ★");
     assert_eq!(t.data, Some(json!({"decisionId": "c1", "seenMs": 42})));
     assert_eq!(t.seen_ms(), Some(42));
@@ -945,7 +950,8 @@ mod tests {
     assert_eq!(route(&idle, "stop"), Ok(Route::Main));
     assert!(route(&idle, "answer:go").is_err());
     let open = decision_toast("c3", "Q", None, &[], None);
-    assert_eq!(route(&open, "open-decisions"), Ok(Route::OpenDecisions));
+    assert_eq!(route(&open, "open-decisions"), Ok(Route::OpenDecision("c3".to_owned())));
+    assert_eq!(route(&t, "open-decisions"), Ok(Route::OpenDecision("c1".to_owned())));
   }
 
   #[test]
@@ -980,7 +986,7 @@ mod tests {
     assert_eq!(c2.seen_ms(), Some(2));
     assert_eq!(c2.body, "Q2");
     let actions: Vec<_> = c2.actions.iter().map(|a| a.id.as_str()).collect();
-    assert_eq!(actions, ["answer:x", "answer:y"]);
+    assert_eq!(actions, ["answer:x", "answer:y", "open-decisions"]);
     assert!(!s.sync_decisions(&open));
   }
 
