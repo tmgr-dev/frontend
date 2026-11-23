@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.206 — 2026-11-23
+
+- Tray popover: AI Usage now sits right under the quick add field. The "Switch to" list shows at most 3 tasks, and titles without a ticket code start at the left edge.
+- Tray popover: two icon buttons left of "Open TMGR" open the Decisions window and the Manager chats window (the Decisions icon is hidden where Decisions are not available, for example on Windows). The items at the bottom stay as they were.
+
 ## 0.9.202 — 2026-11-23
 
 - Added: attach files and photos in the Manager chat to a session on this machine (up to 25 MiB per file). The agent gets their paths in its turn. Sending files to a session on another machine is not supported yet. Needs tmgr CLI 1.0.177; with an older CLI the Manager says "Update tmgr on this machine to send files".
