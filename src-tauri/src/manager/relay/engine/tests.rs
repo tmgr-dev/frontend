@@ -628,6 +628,27 @@ fn directory_revocations_are_verified_one_by_one() {
 }
 
 #[test]
+fn a_poll_whose_directory_was_overtaken_still_ingests_the_newer_directory() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  let cid = my_id(&c);
+  let bid = my_id(&b);
+  a.revoke(&cid).unwrap();
+  fake.0.lock().unwrap().msgs.retain(|m| m.to != bid);
+  fake.0.lock().unwrap().slow_ms = 200;
+  std::thread::scope(|s| {
+    let poll = s.spawn(|| b.poll_once().unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    fake.0.lock().unwrap().slow_ms = 0;
+    let token = Engine::token_of(&b.lock()).unwrap();
+    let raw = fake.call(&api::list_devices(), Some(&token)).unwrap();
+    Engine::take_dir(&mut b.lock(), &raw).unwrap();
+    poll.join().unwrap();
+  });
+  assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+}
+
+#[test]
 fn at_most_fifty_directory_revocations_per_revoking_device_are_considered() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (a, b) = pair(&fake, &clock);
@@ -940,6 +961,21 @@ fn second_runner_claiming_a_bound_machine_is_dropped_and_alerted() {
   assert_eq!(alert_kinds(&a), vec!["room_conflict".to_owned()]);
   post_chat(&r1, &aid, &msg_n(4, "session"));
   assert_eq!(a.poll_once().unwrap().len(), 1);
+}
+
+#[test]
+fn a_machine_bound_to_a_revoked_runner_can_be_claimed_by_a_new_runner() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+  let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+  let aid = my_id(&a);
+  post_chat(&r1, &aid, &msg_n(2, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  a.revoke(&my_id(&r1)).unwrap();
+  post_chat(&r2, &aid, &msg_n(3, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  assert!(alert_kinds(&a).is_empty());
 }
 
 #[test]

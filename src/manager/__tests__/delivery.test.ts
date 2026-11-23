@@ -143,4 +143,34 @@ describe('delivery tracker', () => {
 		expect(cleared).toEqual(['h']);
 		expect(seen.filter(([id, d]) => id === 'first' && !d)).toHaveLength(1);
 	});
+
+	it('evicts finished entries before one still in flight', () => {
+		const t = createDeliveryTracker(() => {}, {
+			set: () => 'h',
+			clear: () => {},
+		});
+		t.begin('pending', true);
+		t.begin('done', true);
+		t.accepted('done');
+		t.receipt('done', 'delivered');
+		for (let i = 0; i < MAX_TRACKED - 2; i++) t.begin(`m${i}`, true);
+		t.begin('overflow', true);
+		expect(t.get('done')).toBeUndefined();
+		expect(t.get('pending')?.state).toBe('sending');
+		expect(t.get('overflow')).toBeDefined();
+	});
+
+	it('treats failed and retried entries as finished when evicting', () => {
+		const t = createDeliveryTracker(() => {}, {
+			set: () => 'h',
+			clear: () => {},
+		});
+		t.begin('pending', true);
+		t.begin('bad', true);
+		t.rejected('bad', 'nope');
+		for (let i = 0; i < MAX_TRACKED - 2; i++) t.begin(`m${i}`, true);
+		t.begin('overflow', true);
+		expect(t.get('bad')).toBeUndefined();
+		expect(t.get('pending')).toBeDefined();
+	});
 });

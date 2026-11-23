@@ -1311,6 +1311,21 @@ fn second_runner_claiming_a_bound_machine_is_dropped_and_alerted() {
 }
 
 #[test]
+fn a_machine_bound_to_a_revoked_runner_can_be_claimed_by_a_new_runner() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+    let aid = my_id(&a);
+    post_chat(&r1, &aid, &msg_n(2, AuthorKind::Manager));
+    assert_eq!(a.poll_once().unwrap().len(), 1);
+    a.revoke(&my_id(&r1)).unwrap();
+    post_chat(&r2, &aid, &msg_n(3, AuthorKind::Manager));
+    assert_eq!(a.poll_once().unwrap().len(), 1);
+    assert!(alert_kinds(&a).is_empty());
+}
+
+#[test]
 fn runner_machine_binding_survives_a_restart() {
     let (fake, clock) = (Fake::default(), Clock::new(T0));
     let store = Arc::new(MemKeyStore::default());

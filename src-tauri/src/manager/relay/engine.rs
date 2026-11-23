@@ -952,7 +952,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   fn claim_machine(c: &mut Core, from: &str, machine: &str, now: u64) -> bool {
     let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
-    match c.st.bindings.get(machine) {
+    let holder = c.st.bindings.get(machine).filter(|d| c.st.trusted.iter().any(|t| &t.id == *d));
+    match holder {
       Some(d) if d == from => true,
       Some(_) => {
         record_alert(c, "room_conflict", from, now);
@@ -1475,8 +1476,8 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     if !Self::is_identity(&g, &token) {
       return Ok(vec![]);
     }
-    if g.dir_gen == dir_gen {
-      let dir = Self::take_dir(&mut g, &raw_dir)?;
+    let dir = if g.dir_gen == dir_gen { Some(Self::take_dir(&mut g, &raw_dir)?) } else { g.dir.clone() };
+    if let Some(dir) = dir {
       self.sync_with(&mut g, dir)?;
     }
     let now = self.now();

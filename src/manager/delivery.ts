@@ -52,6 +52,14 @@ export const markRetried = (d: Delivery): Delivery => ({ ...d, retried: true });
 export const canRetry = (d: Delivery | undefined): boolean =>
 	!!d && !d.retried && (d.state === 'failed' || d.state === 'unconfirmed');
 
+const isFinished = (d: Delivery): boolean =>
+	d.state === 'delivered' || d.state === 'failed' || !!d.retried;
+
+const pickVictim = (items: Map<string, Delivery>): string => {
+	for (const [id, d] of items) if (isFinished(d)) return id;
+	return items.keys().next().value as string;
+};
+
 export interface Timers {
 	set: (fn: () => void, ms: number) => unknown;
 	clear: (handle: unknown) => void;
@@ -89,10 +97,10 @@ export const createDeliveryTracker = (
 
 	const put = (id: string, d: Delivery) => {
 		if (!items.has(id) && items.size >= MAX_TRACKED) {
-			const oldest = items.keys().next().value as string;
-			disarm(oldest);
-			items.delete(oldest);
-			onChange(oldest, undefined);
+			const victim = pickVictim(items);
+			disarm(victim);
+			items.delete(victim);
+			onChange(victim, undefined);
 		}
 		items.set(id, d);
 		onChange(id, d);

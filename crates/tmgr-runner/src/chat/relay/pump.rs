@@ -1,7 +1,6 @@
-use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -32,9 +31,10 @@ const RECV_TICK: Duration = Duration::from_secs(1);
 const ROOMS_EVERY: Duration = Duration::from_secs(5);
 const SLEEP_TICK: Duration = Duration::from_millis(250);
 const RECIPIENT_FULL: &str = "the recipient's relay queue is full";
-const PERMANENT: [&str; 2] = [
+const PERMANENT: [&str; 3] = [
     "there are no other trusted devices",
     "this device is not a trusted member",
+    "the target is not a trusted desktop",
 ];
 
 pub type IngestFn =
@@ -88,9 +88,6 @@ fn wants_push(msg: &ChatMessage) -> bool {
         && msg.kind == MessageKind::Decision
 }
 
-const INVALID_ATTEMPTS: u32 = 3;
-const MAX_TRACKED: usize = 64;
-
 pub type GiveUpFn = Box<dyn Fn(&str, &str) + Send + Sync>;
 pub type SharedGiveUpFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
@@ -98,7 +95,6 @@ pub struct RelaySink {
     machine: String,
     ingest: IngestFn,
     give_up: Option<GiveUpFn>,
-    invalid: Mutex<VecDeque<(String, u32)>>,
 }
 
 impl RelaySink {
@@ -107,48 +103,12 @@ impl RelaySink {
             machine,
             ingest,
             give_up: None,
-            invalid: Mutex::new(VecDeque::new()),
         }
     }
 
     pub fn with_give_up(mut self, give_up: GiveUpFn) -> Self {
         self.give_up = Some(give_up);
         self
-    }
-
-    fn invalid_attempts(&self) -> std::sync::MutexGuard<'_, VecDeque<(String, u32)>> {
-        self.invalid.lock().unwrap_or_else(|p| p.into_inner())
-    }
-
-    fn give_up_on_invalid(&self, id: &str) -> bool {
-        let mut seen = self.invalid_attempts();
-        let n = match seen.iter_mut().find(|(i, _)| i == id) {
-            Some((_, n)) => {
-                *n += 1;
-                *n
-            }
-            None => {
-                if seen.len() >= MAX_TRACKED {
-                    seen.pop_front();
-                }
-                seen.push_back((id.to_owned(), 1));
-                1
-            }
-        };
-        if n >= INVALID_ATTEMPTS {
-            seen.retain(|(i, _)| i != id);
-            return true;
-        }
-        false
-    }
-
-    fn forget(&self, id: &str) {
-        self.invalid_attempts().retain(|(i, _)| i != id);
-    }
-
-    #[cfg(test)]
-    fn tracked(&self) -> usize {
-        self.invalid_attempts().len()
     }
 }
 
@@ -167,6 +127,7 @@ impl ChatSink for RelaySink {
             return Ok(());
         }
         let id = msg.id.clone();
+        let desktop = from_kind == Some("desktop");
         let target = msg.mention.map(|m| m.target);
         let incoming = Incoming {
             room: msg.room,
@@ -177,27 +138,21 @@ impl ChatSink for RelaySink {
             attachments: msg.attachments,
             device: Some(from_device.to_owned()),
             owner_device: true,
-            client: "relay".into(),
+            client: if desktop { "relay" } else { "relay-mobile" }.into(),
         };
         match (self.ingest)(incoming, target) {
-            Ok(_) => {
-                self.forget(&id);
-                Ok(())
-            }
+            Ok(_) => Ok(()),
             Err(IngestError::NotFound(e) | IngestError::Conflict(e)) => {
                 crate::daemon::log(&format!("chat relay: message not stored: {e}"));
                 Ok(())
             }
             Err(IngestError::Storage(e)) => Err(e),
-            Err(IngestError::Invalid(e)) => {
-                if self.give_up_on_invalid(&id) {
-                    crate::daemon::log("chat relay: message dropped (invalid)");
-                    if let Some(give_up) = &self.give_up {
-                        give_up(from_device, &id);
-                    }
-                    return Ok(());
+            Err(IngestError::Invalid(_)) => {
+                crate::daemon::log("chat relay: message dropped (invalid)");
+                if let (true, Some(give_up)) = (desktop, &self.give_up) {
+                    give_up(from_device, &id);
                 }
-                Err(e)
+                Ok(())
             }
         }
     }

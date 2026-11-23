@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use super::*;
@@ -102,105 +102,92 @@ fn non_owner_and_foreign_machine_messages_are_dropped() {
 }
 
 #[test]
-fn not_found_and_conflict_are_acked_but_invalid_is_retried() {
+fn not_found_and_conflict_are_acked_but_invalid_is_dropped_at_once() {
     let (sink, _) = recording_sink(|| Err(IngestError::NotFound("no room".into())));
     sink.deliver("d", Some("mobile"), msg(AuthorKind::Owner, MACHINE, None))
         .unwrap();
     let (sink, _) = recording_sink(|| Err(IngestError::Conflict("differs".into())));
     sink.deliver("d", Some("mobile"), msg(AuthorKind::Owner, MACHINE, None))
         .unwrap();
-    let (sink, _) = recording_sink(|| Err(IngestError::Invalid("store down".into())));
+    let (sink, seen) = recording_sink(|| Err(IngestError::Invalid("bad".into())));
     assert_eq!(
         sink.deliver("d", Some("mobile"), msg(AuthorKind::Owner, MACHINE, None)),
-        Err("store down".into())
+        Ok(())
     );
-}
-
-#[test]
-fn invalid_is_retried_a_bounded_number_of_times_then_dropped_to_unblock_the_sender() {
-    let (sink, seen) = recording_sink(|| Err(IngestError::Invalid("store down".into())));
-    let m = msg(AuthorKind::Owner, MACHINE, None);
-    for _ in 0..2 {
-        assert_eq!(
-            sink.deliver("d", Some("mobile"), m.clone()),
-            Err("store down".into())
-        );
-    }
-    assert_eq!(sink.deliver("d", Some("mobile"), m.clone()), Ok(()));
-    assert_eq!(seen.lock().unwrap().len(), 3);
-    let other = ChatMessage {
-        id: new_message_id(),
-        ..m
-    };
-    assert_eq!(
-        sink.deliver("d", Some("mobile"), other),
-        Err("store down".into()),
-        "attempts are counted per message"
-    );
+    assert_eq!(seen.lock().unwrap().len(), 1);
 }
 
 #[test]
 fn storage_errors_are_retried_forever_and_never_dropped() {
     let (sink, seen) = recording_sink(|| Err(IngestError::Storage("disk full".into())));
     let m = msg(AuthorKind::Owner, MACHINE, None);
-    for _ in 0..(INVALID_ATTEMPTS * 3) {
+    for _ in 0..10 {
         assert_eq!(
             sink.deliver("d", Some("mobile"), m.clone()),
             Err("disk full".into())
         );
     }
-    assert_eq!(seen.lock().unwrap().len(), (INVALID_ATTEMPTS * 3) as usize);
+    assert_eq!(seen.lock().unwrap().len(), 10);
 }
 
-#[test]
-fn giving_up_on_an_invalid_message_tells_the_sending_device_once() {
-    let (sink, _) = recording_sink(|| Err(IngestError::Invalid("bad".into())));
+type Told = Arc<Mutex<Vec<(String, String)>>>;
+
+fn told_sink(kind_result: IngestError) -> (RelaySink, Told) {
+    let (sink, _) = recording_sink(move || Err(kind_result.clone()));
     let told = Arc::new(Mutex::new(Vec::new()));
     let log = told.clone();
     let sink = sink.with_give_up(Box::new(move |device, id| {
         log.lock().unwrap().push((device.to_owned(), id.to_owned()))
     }));
+    (sink, told)
+}
+
+#[test]
+fn giving_up_on_an_invalid_message_from_a_desktop_tells_it_once() {
+    let (sink, told) = told_sink(IngestError::Invalid("bad".into()));
     let m = msg(AuthorKind::Owner, MACHINE, None);
-    for _ in 0..(INVALID_ATTEMPTS - 1) {
-        assert!(sink.deliver("dev-9", Some("mobile"), m.clone()).is_err());
-    }
-    assert!(told.lock().unwrap().is_empty());
-    assert_eq!(sink.deliver("dev-9", Some("mobile"), m.clone()), Ok(()));
+    assert_eq!(sink.deliver("dev-9", Some("desktop"), m.clone()), Ok(()));
     assert_eq!(*told.lock().unwrap(), [("dev-9".to_owned(), m.id)]);
 }
 
 #[test]
-fn a_transient_invalid_that_recovers_resets_its_attempts() {
-    let fail = Arc::new(AtomicBool::new(true));
-    let f = fail.clone();
-    let (sink, _) = recording_sink(move || {
-        if f.load(Ordering::SeqCst) {
-            Err(IngestError::Invalid("store down".into()))
-        } else {
-            stored()
-        }
-    });
+fn an_invalid_message_from_a_phone_is_dropped_without_a_failed_receipt() {
+    let (sink, told) = told_sink(IngestError::Invalid("bad".into()));
     let m = msg(AuthorKind::Owner, MACHINE, None);
-    for _ in 0..2 {
-        assert!(sink.deliver("d", Some("mobile"), m.clone()).is_err());
-    }
-    fail.store(false, Ordering::SeqCst);
-    assert_eq!(sink.deliver("d", Some("mobile"), m.clone()), Ok(()));
-    fail.store(true, Ordering::SeqCst);
-    assert!(sink.deliver("d", Some("mobile"), m).is_err());
+    assert_eq!(sink.deliver("dev-9", Some("mobile"), m), Ok(()));
+    assert!(told.lock().unwrap().is_empty());
+}
+
+fn receipts_after(kind: &str, ts_ms: u64) -> (usize, Vec<Out>) {
+    let dir = tempfile::tempdir().unwrap();
+    let chat = Arc::new(Chat::open(dir.path()));
+    let machine = chat.machine().to_owned();
+    let (tx, rx) = mpsc::sync_channel::<Out>(8);
+    chat.set_receipt_sink(Some(receipt_queue(tx)));
+    let c = chat.clone();
+    let sink = RelaySink::new(
+        machine.clone(),
+        Box::new(move |i, _| c.ingest(i, 1_800_000_000_000, |_| false, |_| Delivery::Busy)),
+    );
+    let mut m = msg(AuthorKind::Owner, &machine, None);
+    m.ts_ms = ts_ms;
+    sink.deliver("dev-1", Some(kind), m).unwrap();
+    let out: Vec<Out> = rx.try_iter().collect();
+    (out.len(), out)
 }
 
 #[test]
-fn the_attempt_map_stays_bounded() {
-    let (sink, _) = recording_sink(|| Err(IngestError::Invalid("store down".into())));
-    for _ in 0..(MAX_TRACKED * 3) {
-        let m = ChatMessage {
-            id: new_message_id(),
-            ..msg(AuthorKind::Owner, MACHINE, None)
-        };
-        let _ = sink.deliver("d", Some("mobile"), m);
-    }
-    assert!(sink.tracked() <= MAX_TRACKED);
+fn a_message_from_a_phone_produces_no_receipt_and_never_enters_the_outbound_queue() {
+    let (n, _) = receipts_after("mobile", 1_800_000_000_000);
+    assert_eq!(n, 0);
+    let (n, _) = receipts_after("mobile", 1_000);
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn a_message_from_a_desktop_still_produces_receipts() {
+    let (n, _) = receipts_after("desktop", 1_800_000_000_000);
+    assert!(n > 0);
 }
 
 #[test]
@@ -367,12 +354,12 @@ fn an_ingest_inside_the_engine_lock_queues_the_receipt_and_the_send_thread_sends
     let m = msg(AuthorKind::Owner, &machine, None);
     {
         let _engine_lock = relay.gate.lock().unwrap();
-        sink.deliver("dev-1", Some("mobile"), m.clone()).unwrap();
+        sink.deliver("dev-1", Some("desktop"), m.clone()).unwrap();
         assert!(relay.receipts_sent.lock().unwrap().is_empty());
         assert!(matches!(rx.try_recv(), Ok(Out::Receipt(_))));
         sink.deliver(
             "dev-1",
-            Some("mobile"),
+            Some("desktop"),
             msg(AuthorKind::Owner, &machine, None),
         )
         .unwrap();
@@ -451,6 +438,7 @@ fn full_recipient_and_untrusted_states_drop_without_retry() {
         RECIPIENT_FULL,
         "there are no other trusted devices to send to",
         "this device is not a trusted member of the chat yet",
+        "the target is not a trusted desktop",
     ] {
         let m = msg(AuthorKind::Owner, MACHINE, None);
         let relay = ScriptedRelay::new(vec![], vec![Err(e.into())]);
@@ -617,4 +605,17 @@ fn the_sink_hands_the_ingest_only_the_mention_target_never_the_forged_state() {
     )
     .unwrap();
     assert_eq!(*targets.lock().unwrap(), [Some(target), None]);
+}
+
+#[test]
+fn a_receipt_the_target_cannot_take_is_dropped_without_retry() {
+    let relay = ScriptedRelay::new(vec![], vec![]);
+    *relay.receipts.lock().unwrap() = vec![Err("the target is not a trusted desktop".into())];
+    send_receipt_one(
+        &relay,
+        &receipt(ReceiptState::Delivered),
+        &|| false,
+        &|_| panic!("must not wait"),
+    );
+    assert_eq!(relay.receipts_sent.lock().unwrap().len(), 1);
 }
