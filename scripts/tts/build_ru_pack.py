@@ -25,17 +25,42 @@ def words():
     return sorted(w for (w,) in rows if WORD.fullmatch(w))
 
 
-def phonemize(chunk):
+def valid(word, tokens, allowed):
+    return WORD.fullmatch(word) and all(len(t) == 1 and (t in allowed or t in DROPPED) for t in tokens)
+
+
+def phonemize(job):
+    chunk, allowed = job
     espeak = EspeakPhonemizer()
-    out = []
+    done, failed = [], []
     for word in chunk:
         try:
             tokens = [t for sentence in espeak.phonemize("ru", word) for t in sentence]
         except Exception:
+            failed.append(word)
             continue
-        if tokens:
-            out.append((word, tokens))
-    return out
+        if tokens and valid(word, tokens, allowed):
+            done.append((word, tokens))
+        else:
+            failed.append(word)
+    return done, failed
+
+
+def generate(ws, allowed, procs):
+    entries = {}
+    pending = ws
+    for size in (300, 40, 5, 1):
+        if not pending:
+            break
+        jobs = [(pending[i : i + size], allowed) for i in range(0, len(pending), size)]
+        failed = []
+        with Pool(procs, maxtasksperchild=1) as pool:
+            for done, bad in pool.imap_unordered(phonemize, jobs):
+                entries.update(done)
+                failed.extend(bad)
+        print(f"chunk {size}: {len(entries)} done, {len(failed)} retry", file=sys.stderr)
+        pending = failed
+    return list(entries.items())
 
 
 def fetch(name, dest):
@@ -119,10 +144,7 @@ def main():
     if args.raw:
         entries = [(w, t.split(" ")) for w, t in (l.rstrip("\n").split("\t") for l in open(args.raw, encoding="utf-8") if "\t" in l)]
     else:
-        ws = words()
-        chunks = [ws[i :: args.procs * 8] for i in range(args.procs * 8)]
-        with Pool(args.procs) as pool:
-            entries = [e for part in pool.imap_unordered(phonemize, chunks) for e in part]
+        entries = generate(words(), allowed, args.procs)
     kept = write_lexicon(entries, allowed, args.out)
     licenses(args.out)
     print(kept, "words", file=sys.stderr)

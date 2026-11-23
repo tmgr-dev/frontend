@@ -128,4 +128,21 @@ mod tests {
     bump.fetch_max(1, Ordering::SeqCst);
     assert!(handle.join().unwrap().unwrap().is_empty());
   }
+
+  #[test]
+  #[ignore = "needs TMGR_TTS_RU_PACK_DIR pointing at a built Russian voice pack"]
+  fn speaks_russian_with_the_real_pack() {
+    let dir = std::env::var("TMGR_TTS_RU_PACK_DIR").expect("TMGR_TTS_RU_PACK_DIR");
+    let engine = Engine::load(Path::new(&dir), Lang::Ru).unwrap();
+    let stopped = Arc::new(AtomicU64::new(0));
+    let text = "Раннер запущен, релиз спринта готов. Проверь журнал сборки, пожалуйста.";
+    let phon = engine.phonemize(text, None);
+    assert!(phon.sentences.len() == 2 && phon.sentences.iter().all(|s| !s.is_empty()));
+    let started = std::time::Instant::now();
+    let samples = engine.synthesize(text, 1, &stopped, None).unwrap();
+    let seconds = samples.len() as f32 / 22050.0;
+    assert!(seconds > 3.0 && seconds < 15.0, "{seconds}");
+    assert!(samples.iter().any(|s| s.abs() > 0.05));
+    assert!(started.elapsed().as_secs_f32() < seconds * 3.0);
+  }
 }
