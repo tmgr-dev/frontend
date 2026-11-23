@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.176
+
+- Fixed: replies and session updates from the runner stopped reaching the desktop on other machines when the phone app had not been opened for a while. The runner sent the session list to the phone every few seconds while it changed; with the app in the background these piled up until the phone's relay queue was full, and then every message the runner sent to your devices was refused. The session list now goes only to devices seen in the last 3 minutes, and a device that comes back gets the current list once.
+- Fixed: a desktop or phone whose relay queue is full no longer blocks a message to your other devices. It is skipped, and the runner log says so (search `runner.log` for `skipped mobile` or `skipped desktop`).
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.175
 
 - Fixed: a message you send from the desktop to a session on another machine could vanish or arrive a minute late. The runner now keeps the order of later messages when one cannot be opened (for example because the clocks of the two computers differ by more than 5 minutes), waits 15 s instead of 60 s on a real gap, and writes the reason for every dropped message to the runner log (`~/Library/Application Support/dev.tmgr.cli/run/runner.log` on macOS; search for `chat relay`). No message text is logged.
