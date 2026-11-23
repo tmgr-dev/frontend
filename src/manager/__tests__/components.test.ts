@@ -19,6 +19,7 @@ import manager from '../../locales/en/manager.json';
 import { renderBody } from '../format';
 import { speechSynthesisEngine, type TtsEngine } from '../tts/engine';
 import { setEngine } from '../tts/speaker';
+import { voicePack } from '../tts/voicePack';
 import {
 	roomKey,
 	type ActivityView,
@@ -26,6 +27,9 @@ import {
 	type RoomInfo,
 	type SlashCommand,
 } from '../types';
+
+jest.mock('@tauri-apps/api/core', () => ({ invoke: jest.fn() }));
+jest.mock('@tauri-apps/api/event', () => ({ listen: jest.fn() }));
 
 const dir = join(__dirname, '..', 'components');
 const cache = new Map<string, Component>();
@@ -1409,5 +1413,136 @@ describe('live tool activity UI', () => {
 			app.unmount();
 			el.remove();
 		});
+	});
+});
+
+describe('MessageBubble English voice control', () => {
+	const MB = 94 * 1024 * 1024;
+	const voiceBox = (el: HTMLElement) => el.querySelector<HTMLElement>('.voice');
+	const voiceButtons = (el: HTMLElement) =>
+		Array.from(el.querySelectorAll<HTMLButtonElement>('.voice button'));
+	const buttonByText = (el: HTMLElement, text: string) =>
+		voiceButtons(el).find((b) => b.textContent?.trim() === text);
+	let refresh: jest.SpyInstance;
+
+	beforeEach(() => {
+		voicePack.supported = true;
+		voicePack.installed = false;
+		voicePack.installing = false;
+		voicePack.progress = 0;
+		voicePack.error = null;
+		voicePack.sizeBytes = MB;
+		voicePack.statusRequested = false;
+		refresh = jest.spyOn(voicePack, 'refresh').mockResolvedValue();
+	});
+
+	afterEach(() => {
+		refresh.mockRestore();
+		voicePack.supported = false;
+		voicePack.installed = false;
+		voicePack.installing = false;
+		voicePack.error = null;
+	});
+
+	const englishReply = (id: string) =>
+		mountDom('MessageBubble', {
+			message: msg({ id, body_md: 'Hello there.' }),
+			html: renderBody('Hello there.'),
+		});
+
+	it('offers the download with its size and the on-device hint', () => {
+		const mounted = englishReply('v1');
+		const btn = buttonByText(mounted.el, 'Download English voice (94 MB)');
+		expect(btn?.title).toBe('Speech is generated on this device');
+		mounted.unmount();
+	});
+
+	it('starts the install when the download button is clicked', () => {
+		const install = jest.spyOn(voicePack, 'install').mockResolvedValue();
+		const mounted = englishReply('v2');
+		buttonByText(mounted.el, 'Download English voice (94 MB)')!.click();
+		expect(install).toHaveBeenCalledTimes(1);
+		install.mockRestore();
+		mounted.unmount();
+	});
+
+	it('shows the download percentage and cancels a running download', async () => {
+		const cancel = jest.spyOn(voicePack, 'cancel').mockResolvedValue();
+		voicePack.installing = true;
+		voicePack.progress = 0.42;
+		const mounted = englishReply('v3');
+		expect(voiceBox(mounted.el)?.textContent).toContain('Downloading 42%');
+		buttonByText(mounted.el, 'Cancel')!.click();
+		expect(cancel).toHaveBeenCalledTimes(1);
+		cancel.mockRestore();
+		mounted.unmount();
+	});
+
+	it('shows a short error and offers the download again', async () => {
+		const install = jest.spyOn(voicePack, 'install').mockResolvedValue();
+		voicePack.error = 'disk full';
+		const mounted = englishReply('v4');
+		expect(voiceBox(mounted.el)?.textContent).toContain(
+			'English voice download failed',
+		);
+		expect(voiceBox(mounted.el)?.textContent).not.toContain('disk full');
+		buttonByText(mounted.el, 'Download English voice (94 MB)')!.click();
+		expect(install).toHaveBeenCalledTimes(1);
+		install.mockRestore();
+		mounted.unmount();
+	});
+
+	it('offers removal once the voice is installed', () => {
+		const remove = jest.spyOn(voicePack, 'remove').mockResolvedValue();
+		voicePack.installed = true;
+		const mounted = englishReply('v5');
+		expect(
+			buttonByText(mounted.el, 'Download English voice (94 MB)'),
+		).toBeUndefined();
+		buttonByText(mounted.el, 'Remove English voice')!.click();
+		expect(remove).toHaveBeenCalledTimes(1);
+		remove.mockRestore();
+		mounted.unmount();
+	});
+
+	it('is hidden for Russian replies, owner messages, decisions and unsupported platforms', () => {
+		const ru = mountDom('MessageBubble', {
+			message: msg({ id: 'r1', body_md: 'Привет.' }),
+			html: renderBody('Привет.'),
+		});
+		expect(voiceBox(ru.el)).toBeNull();
+		ru.unmount();
+
+		const owner = mountDom('MessageBubble', {
+			message: msg({
+				id: 'r2',
+				author: { kind: 'owner', id: 'me' },
+				body_md: 'mine',
+			}),
+			html: renderBody('mine'),
+		});
+		expect(voiceBox(owner.el)).toBeNull();
+		owner.unmount();
+
+		const decision = mountDom('MessageBubble', {
+			message: msg({ id: 'r3', kind: 'decision', body_md: 'Pick one' }),
+		});
+		expect(voiceBox(decision.el)).toBeNull();
+		decision.unmount();
+
+		voicePack.supported = false;
+		const unsupported = englishReply('r4');
+		expect(voiceBox(unsupported.el)).toBeNull();
+		unsupported.unmount();
+	});
+
+	it('asks for the voice pack status once, not once per bubble', () => {
+		const a = englishReply('s1');
+		const b = englishReply('s2');
+		const c = englishReply('s3');
+		expect(refresh).toHaveBeenCalledTimes(1);
+		a.unmount();
+		b.unmount();
+		c.unmount();
 	});
 });

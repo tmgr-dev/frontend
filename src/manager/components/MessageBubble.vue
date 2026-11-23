@@ -64,6 +64,39 @@
 						<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
 					</ul>
 				</details>
+				<div v-if="showVoice" class="voice">
+					<template v-if="voicePack.installing">
+						<span>{{
+							$t('manager.messages.voiceDownloading', {
+								percent: voicePercent,
+							})
+						}}</span>
+						<button type="button" @click="voicePack.cancel()">
+							{{ $t('manager.messages.cancelVoiceDownload') }}
+						</button>
+					</template>
+					<template v-else-if="voicePack.installed">
+						<button type="button" @click="voicePack.remove()">
+							{{ $t('manager.messages.removeEnglishVoice') }}
+						</button>
+					</template>
+					<template v-else>
+						<span v-if="voicePack.error">{{
+							$t('manager.messages.voiceDownloadFailed')
+						}}</span>
+						<button
+							type="button"
+							:title="$t('manager.messages.voiceOnDevice')"
+							@click="voicePack.install()"
+						>
+							{{
+								$t('manager.messages.downloadEnglishVoice', {
+									size: voiceSizeMb,
+								})
+							}}
+						</button>
+					</template>
+				</div>
 			</div>
 		</div>
 		<div class="macts">
@@ -105,7 +138,9 @@
 		copyText,
 		flashCopied,
 	} from '../format';
+	import { prepareSpeech } from '../tts/prepareText';
 	import { speaker } from '../tts/speaker';
+	import { voicePack } from '../tts/voicePack';
 	import type { Attachment, ChatMessage, ToolCall } from '../types';
 	import Avatar from './Avatar.vue';
 	import Icon from './Icon.vue';
@@ -151,7 +186,34 @@
 			calls: { type: Array as PropType<ToolCall[]>, default: undefined },
 		},
 		emits: ['reply', 'copy', 'cancel-queued'],
+		data() {
+			return { voicePack };
+		},
+		mounted() {
+			if (this.voiceEligible && !this.voicePack.statusRequested) {
+				this.voicePack.statusRequested = true;
+				void this.voicePack.refresh();
+			}
+		},
 		computed: {
+			voiceEligible(): boolean {
+				return (
+					!this.isSystem &&
+					!this.isOwner &&
+					!this.isDecision &&
+					this.message.body_md.trim().length > 0 &&
+					prepareSpeech(this.message.body_md).lang === 'en'
+				);
+			},
+			showVoice(): boolean {
+				return this.voiceEligible && this.voicePack.supported;
+			},
+			voiceSizeMb(): number {
+				return Math.round(this.voicePack.sizeBytes / 1024 / 1024);
+			},
+			voicePercent(): number {
+				return Math.round(this.voicePack.progress * 100);
+			},
 			isSystem(): boolean {
 				return (
 					this.message.author.kind === 'system' ||

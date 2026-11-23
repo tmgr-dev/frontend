@@ -469,6 +469,19 @@ html.dark .manager {
 	font-size: 11px;
 	text-decoration: underline;
 }
+.manager .voice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--muted);
+}
+.manager .voice button {
+	color: var(--brand);
+	text-decoration: underline;
+}
 .manager .msg.mgr {
 	flex-direction: row;
 	gap: 10px;

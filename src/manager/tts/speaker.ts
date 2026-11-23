@@ -1,6 +1,8 @@
 import { reactive } from 'vue';
-import { speechSynthesisEngine, type TtsEngine } from './engine';
+import { speechSynthesisEngine, type TtsEngine, type TtsHooks } from './engine';
+import { piperEngine } from './piperEngine';
 import { prepareSpeech } from './prepareText';
+import { voicePack } from './voicePack';
 
 const CANCELLED = ['canceled', 'interrupted'];
 
@@ -41,12 +43,13 @@ export const speaker: Speaker = {
 			return;
 		}
 		speaker.stop();
-		if (!engine.isAvailable()) return;
 		const { lang, chunks } = prepareSpeech(bodyMd);
+		const piper = lang === 'en' && voicePack.supported && voicePack.installed;
+		if (!piper && !engine.isAvailable()) return;
 		if (!chunks.length) return;
 		const token = ++run;
 		state.speakingId = messageId;
-		engine.speak(chunks, lang, {
+		const hooks: TtsHooks = {
 			onEnd() {
 				if (token === run) state.speakingId = null;
 			},
@@ -57,10 +60,25 @@ export const speaker: Speaker = {
 				state.error = reason;
 				state.errorId = messageId;
 			},
+		};
+		if (!piper) {
+			engine.speak(chunks, lang, hooks);
+			return;
+		}
+		piperEngine.speak(chunks, 'en', {
+			onEnd: hooks.onEnd,
+			onError(reason) {
+				if (reason === 'piper-fallback' && token === run) {
+					engine.speak(chunks, lang, hooks);
+					return;
+				}
+				hooks.onError(reason);
+			},
 		});
 	},
 	stop() {
 		run++;
+		piperEngine.stop();
 		engine.stop();
 		state.speakingId = null;
 		state.error = null;
