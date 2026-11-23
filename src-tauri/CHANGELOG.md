@@ -5,6 +5,11 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 ## 0.9.198 — 2026-11-23
 
+- Manager window: new Voice tab. Read replies aloud with your own voice program: an OpenAI-compatible speech server on this computer (a remote server only after an explicit switch and a confirmation) or a local command that turns text on standard input into a WAV file. Use "Test voice" to check it; errors stay visible and the next message uses the next voice. Guide: docs/tts-external.md ("How to use Silero locally"). Nothing from Silero is bundled.
+- Manager window: Russian messages can be read by a natural Piper voice (Denis, about 64 MB, downloaded once after you click "Download Russian voice"). Pronunciation uses built-in rules, so no word is skipped. Order of voices: external voice, Piper for the message language, system voice.
+
+## 0.9.197 — 2026-11-23
+
 - Manager window: each accepted leader machine has an "Allow asks from <name>" switch. When it is on, `@` mentions from that leader can reach this machine's manager chat. The desktop can only turn it off; turning it on needs `tmgr chat remote allow-ask` with the follower PIN. Needs tmgr CLI 1.0.172 or newer; restart the runner after updating.
 
 ## 0.9.196 — 2026-11-23
