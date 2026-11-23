@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::File;
 use std::io;
@@ -13,7 +14,8 @@ pub const DIR_NAME: &str = "tmgr-attachments";
 pub const MAX_TOTAL: u64 = 25 * 1024 * 1024;
 const NAME_MAX: usize = 80;
 const MIME_MAX: usize = 100;
-const NAME_TRIES: u32 = 32;
+const NUMBERED_TRIES: u32 = 4;
+const RANDOM_TRIES: u32 = 4;
 const SHA_PREFIX: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +38,7 @@ pub fn resolve(homes: &Path, fallback_root: &Path, id: &str, no_sandbox: bool) -
 pub fn safe_name(name: &str) -> String {
     let mut s: String = name
         .chars()
-        .filter(|c| !c.is_control() && !is_invisible(*c))
+        .filter(|c| !c.is_control() && !tmgr_ipc::manager::invisible(*c))
         .map(|c| {
             if matches!(c, '/' | '\\' | ':') {
                 '_'
@@ -61,8 +63,19 @@ pub fn safe_name(name: &str) -> String {
     }
 }
 
-fn is_invisible(c: char) -> bool {
-    matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
+pub fn disk_name(display: &str) -> String {
+    let mut out = String::with_capacity(display.len());
+    for c in display.chars() {
+        let c = if c.is_ascii_alphanumeric() || matches!(c, '.' | '-') {
+            c
+        } else {
+            '_'
+        };
+        if c != '_' || !out.ends_with('_') {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn safe_mime(mime: &str) -> String {
@@ -103,15 +116,26 @@ pub fn turn_text(
     }
     let dir = target.and_then(|t| open_attachments_dir(t).ok());
     let mut budget = MAX_TOTAL;
+    let mut seen: HashMap<(String, String), (PathBuf, u64)> = HashMap::new();
     let lines: Vec<String> = atts
         .iter()
         .map(|a| {
             let name = safe_name(&a.name);
-            let staged = match (&dir, blobs.and_then(|b| b.get(&a.sha256))) {
-                (Some((fd, path)), Some(src)) => {
-                    copy_in(fd, path, &src, &a.sha256, &name, &mut budget).ok()
+            let key = (a.sha256.clone(), disk_name(&name));
+            let staged = match seen.get(&key) {
+                Some(done) => Some(done.clone()),
+                None => {
+                    let made = match (&dir, blobs.and_then(|b| b.get(&a.sha256))) {
+                        (Some((fd, path)), Some(src)) => {
+                            copy_in(fd, path, &src, &a.sha256, &key.1, &mut budget).ok()
+                        }
+                        _ => None,
+                    };
+                    if let Some(done) = &made {
+                        seen.insert(key, done.clone());
+                    }
+                    made
                 }
-                _ => None,
             };
             match staged {
                 Some((path, size)) => format!(
@@ -209,19 +233,6 @@ fn open_attachments_dir(target: &Target) -> io::Result<(OwnedFd, PathBuf)> {
     Ok((dir, parent_path.join(DIR_NAME)))
 }
 
-fn reusable(dir: &OwnedFd, name: &CString, size: u64) -> bool {
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    let r = unsafe {
-        libc::fstatat(
-            dir.as_raw_fd(),
-            name.as_ptr(),
-            &mut st,
-            libc::AT_SYMLINK_NOFOLLOW,
-        )
-    };
-    r == 0 && (st.st_mode & libc::S_IFMT) == libc::S_IFREG && st.st_size as u64 == size
-}
-
 fn copy_in(
     dir: &OwnedFd,
     dir_path: &Path,
@@ -237,11 +248,11 @@ fn copy_in(
     }
     *budget -= size;
     let prefix = sha.get(..SHA_PREFIX).unwrap_or(sha);
-    for n in 0..NAME_TRIES {
-        let file_name = if n == 0 {
-            format!("{prefix}-{name}")
-        } else {
-            format!("{prefix}-{n}-{name}")
+    for n in 0..NUMBERED_TRIES + RANDOM_TRIES {
+        let file_name = match n {
+            0 => format!("{prefix}-{name}"),
+            n if n < NUMBERED_TRIES => format!("{prefix}-{n}-{name}"),
+            _ => format!("{prefix}-{}-{name}", random_hex()?),
         };
         let c = c_name(&file_name)?;
         let fd = unsafe {
@@ -265,11 +276,14 @@ fn copy_in(
         if e.kind() != io::ErrorKind::AlreadyExists {
             return Err(e);
         }
-        if reusable(dir, &c, size) {
-            return Ok((dir_path.join(file_name), size));
-        }
     }
     Err(io::Error::other("no free file name"))
+}
+
+fn random_hex() -> io::Result<String> {
+    let mut rnd = [0u8; 8];
+    getrandom::fill(&mut rnd).map_err(|e| io::Error::other(e.to_string()))?;
+    Ok(rnd.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 #[cfg(test)]
@@ -454,20 +468,90 @@ mod tests {
     }
 
     #[test]
-    fn an_existing_file_of_the_same_size_is_reused_and_another_size_gets_a_new_name() {
+    fn a_planted_file_of_the_same_size_is_never_presented() {
         let r = rig();
         let sha = put(&r, b"abcd");
         let t = Target::Home(r.home.clone());
         let a = [att("f", "x/y", 4, &sha)];
+        let dir = r.home.join(DIR_NAME);
+        fs::create_dir(&dir).unwrap();
+        let planted = dir.join(format!("{}-f", &sha[..12]));
+        fs::write(&planted, b"evil").unwrap();
+        let text = turn_text("", &a, Some(&r.store), Some(&t));
+        let want = dir.join(format!("{}-1-f", &sha[..12]));
+        assert!(text.ends_with(&format!("{}", want.display())), "{text}");
+        assert_eq!(fs::read(&want).unwrap(), b"abcd");
+        assert_eq!(fs::read(&planted).unwrap(), b"evil");
+    }
+
+    #[test]
+    fn a_second_message_gets_a_fresh_file_and_one_message_dedupes_in_memory() {
+        let r = rig();
+        let sha = put(&r, b"abcd");
+        let t = Target::Home(r.home.clone());
+        let a = [att("f", "x/y", 4, &sha), att("f", "x/y", 4, &sha)];
         let first = turn_text("", &a, Some(&r.store), Some(&t));
-        let second = turn_text("", &a, Some(&r.store), Some(&t));
-        assert_eq!(first, second);
         let dir = r.home.join(DIR_NAME);
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
-        let name = format!("{}-f", &sha[..12]);
-        fs::write(dir.join(&name), b"different length").unwrap();
-        let third = turn_text("", &a, Some(&r.store), Some(&t));
-        assert!(third.ends_with(&format!("{}-1-f", &sha[..12])), "{third}");
+        assert_eq!(first.matches(&format!("{}-f", &sha[..12])).count(), 2);
+        turn_text("", &a[..1], Some(&r.store), Some(&t));
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn planting_every_candidate_name_falls_back_to_a_random_suffix() {
+        let r = rig();
+        let sha = put(&r, b"abcd");
+        let t = Target::Home(r.home.clone());
+        let dir = r.home.join(DIR_NAME);
+        fs::create_dir(&dir).unwrap();
+        let p = &sha[..12];
+        fs::write(dir.join(format!("{p}-f")), b"abcd").unwrap();
+        for n in 1..40 {
+            fs::write(dir.join(format!("{p}-{n}-f")), b"abcd").unwrap();
+        }
+        let text = turn_text("", &[att("f", "x/y", 4, &sha)], Some(&r.store), Some(&t));
+        assert!(!text.contains("(not received)"), "{text}");
+        let path = text.rsplit(": ").next().unwrap();
+        let name = Path::new(path).file_name().unwrap().to_str().unwrap();
+        let mid = name.strip_prefix(&format!("{p}-")).unwrap();
+        let rnd = mid.strip_suffix("-f").unwrap();
+        assert_eq!(rnd.len(), 16, "{name}");
+        assert!(rnd.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(fs::read(path).unwrap(), b"abcd");
+    }
+
+    #[test]
+    fn invisible_and_separator_characters_are_removed_from_names() {
+        assert_eq!(safe_name("a\u{2028}b\u{2029}c"), "abc");
+        assert_eq!(safe_name("a\u{2060}b\u{2064}c\u{206f}"), "abc");
+        assert_eq!(safe_name("a\u{ad}b\u{e0041}c\u{e007f}"), "abc");
+        assert_eq!(safe_name("a\u{61c}b\u{200e}c\u{202a}d\u{2067}"), "abcd");
+    }
+
+    #[test]
+    fn the_file_on_disk_has_a_plain_name_while_the_line_shows_the_clean_original() {
+        assert_eq!(
+            disk_name("a$(curl${IFS}x.sh|sh).pdf"),
+            "a_curl_IFS_x.sh_sh_.pdf"
+        );
+        assert_eq!(disk_name("мой файл.pdf"), "_.pdf");
+        assert_eq!(disk_name("my  report (1).txt"), "my_report_1_.txt");
+        let r = rig();
+        let sha = put(&r, b"x");
+        let t = Target::Home(r.home.clone());
+        let a = [att("my report\u{2028}ф.pdf", "x/y", 1, &sha)];
+        let text = turn_text("", &a, Some(&r.store), Some(&t));
+        let path = r
+            .home
+            .join(DIR_NAME)
+            .join(format!("{}-my_report_.pdf", &sha[..12]));
+        assert!(
+            text.starts_with("Attached files:\n- my reportф.pdf (x/y, 1 B): "),
+            "{text}"
+        );
+        assert!(text.ends_with(&format!("{}", path.display())), "{text}");
+        assert_eq!(fs::read(&path).unwrap(), b"x");
     }
 
     #[test]
