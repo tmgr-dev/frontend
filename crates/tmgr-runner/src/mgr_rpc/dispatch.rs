@@ -635,7 +635,7 @@ fn expiry(now: u64, ts_ms: u64) -> u64 {
 fn prepare(policy: &Policy, from: &str, req: &RpcReq) -> Result<Args, Box<RpcRes>> {
     let rpc = req.rpc.as_str();
     let err = |code, msg: &str| Box::new(RpcRes::err(rpc, code, msg));
-    if !policy.allows(req.op) {
+    if !policy.ops_for(from).contains(&req.op) {
         return Err(err(ErrorCode::OpDenied, "operation is not allowed"));
     }
     parse_args(req.op, &req.args, from)
@@ -1169,6 +1169,22 @@ mod tests {
             let res = r.call(&none, &format!("d-{op}"), op, valid_args(op));
             assert_eq!(code(&res), ErrorCode::OpDenied, "{op}");
         }
+    }
+
+    #[test]
+    fn a_leader_outside_ask_from_is_cut_to_d3_before_anything_runs() {
+        let r = rig();
+        let p = Policy::parse(&format!(
+            "accept_from = [\"{PEER}\"]\nask_from = []\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\"]"
+        ))
+        .unwrap();
+        for op in ["ask", "send"] {
+            let res = r.call(&p, &format!("w-{op}"), op, valid_args(op));
+            assert_eq!(code(&res), ErrorCode::OpDenied, "{op}");
+        }
+        assert!(r.host.sent.lock().unwrap().is_empty());
+        let res = r.call(&p, "w-list", "list", valid_args("list"));
+        assert!(res.ok);
     }
 
     fn card_signed(card: &str) -> SignedSpawn {

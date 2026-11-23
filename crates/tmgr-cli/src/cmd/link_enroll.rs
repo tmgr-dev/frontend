@@ -285,7 +285,7 @@ mod tests {
     use std::cell::RefCell;
     use std::os::unix::fs::PermissionsExt;
     use tmgr_chat_relay::trust::{encode_join_code, JoinCode};
-    use tmgr_runner::mgr_rpc::policy::{Policy, ENROLL_ALLOW, POLICY_FILE};
+    use tmgr_runner::mgr_rpc::policy::{Policy, POLICY_FILE};
     use tmgr_runner::mgr_rpc::Machines;
 
     const LEADER: &str = "mx_0123456789abcdef";
@@ -348,7 +348,8 @@ mod tests {
         assert_eq!(f.calls.borrow().as_slice(), std::slice::from_ref(&c));
         let p = Policy::try_load(d.path()).unwrap();
         assert!(p.accepts(LEADER));
-        assert!(ENROLL_ALLOW.iter().all(|op| p.allows(*op)));
+        assert!(!p.asks(LEADER));
+        assert_eq!(p.ops_for(LEADER).len(), 3);
         let mode = std::fs::metadata(d.path().join(POLICY_FILE))
             .unwrap()
             .permissions()

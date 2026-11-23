@@ -12,12 +12,12 @@ use tmgr_ipc::mgr_rpc::{valid_machine_id, Op};
 pub const POLICY_FILE: &str = "manager-remote.toml";
 const MAX_POLICY_BYTES: u64 = 16 * 1024;
 const DEFAULT_ALLOW: [Op; 3] = [Op::List, Op::Read, Op::Room];
-pub const ENROLL_ALLOW: [Op; 5] = [Op::List, Op::Read, Op::Room, Op::Ask, Op::Send];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
     accept_from: BTreeSet<String>,
     allow: BTreeSet<Op>,
+    ask_from: Option<BTreeSet<String>>,
 }
 
 #[derive(Deserialize)]
@@ -26,6 +26,7 @@ struct PolicyFile {
     #[serde(default)]
     accept_from: Vec<String>,
     allow: Option<Vec<Op>>,
+    ask_from: Option<Vec<String>>,
 }
 
 impl Policy {
@@ -33,14 +34,16 @@ impl Policy {
         Policy {
             accept_from: BTreeSet::new(),
             allow: DEFAULT_ALLOW.into_iter().collect(),
+            ask_from: None,
         }
     }
 
     pub fn parse(text: &str) -> Result<Policy, String> {
         let f: PolicyFile = toml::from_str(text).map_err(|e| format!("policy: {}", e.message()))?;
-        if let Some(bad) = f.accept_from.iter().find(|m| !valid_machine_id(m)) {
+        let ids = f.accept_from.iter().chain(f.ask_from.iter().flatten());
+        if let Some(bad) = ids.into_iter().find(|m| !valid_machine_id(m)) {
             return Err(format!(
-                "policy: accept_from has an invalid machine id ({} bytes)",
+                "policy: a machine id is invalid ({} bytes)",
                 bad.len()
             ));
         }
@@ -50,6 +53,7 @@ impl Policy {
                 || DEFAULT_ALLOW.into_iter().collect(),
                 |a| a.into_iter().collect(),
             ),
+            ask_from: f.ask_from.map(|a| a.into_iter().collect()),
         })
     }
 
@@ -67,15 +71,46 @@ impl Policy {
         self.accept_from.contains(machine)
     }
 
-    pub fn allows(&self, op: Op) -> bool {
-        self.allow.contains(&op)
+    pub fn ops_for(&self, leader: &str) -> BTreeSet<Op> {
+        if !self.accepts(leader) {
+            return BTreeSet::new();
+        }
+        let wide = self.ask_from.as_ref().is_none_or(|a| a.contains(leader));
+        self.allow
+            .iter()
+            .copied()
+            .filter(|op| wide || DEFAULT_ALLOW.contains(op))
+            .collect()
+    }
+
+    pub fn asks(&self, leader: &str) -> bool {
+        self.ops_for(leader).contains(&Op::Ask)
     }
 }
 
 #[derive(Serialize)]
-struct PolicyOut<'a> {
-    accept_from: &'a [String],
-    allow: &'a [Op],
+struct PolicyOut {
+    accept_from: Vec<String>,
+    allow: Vec<Op>,
+    ask_from: Vec<String>,
+}
+
+fn write_policy(
+    runner_dir: &Path,
+    accept_from: Vec<String>,
+    mut allow: Vec<Op>,
+    ask_from: Vec<String>,
+) -> Result<(), String> {
+    allow.sort();
+    allow.dedup();
+    let text = toml::to_string(&PolicyOut {
+        accept_from,
+        allow,
+        ask_from,
+    })
+    .map_err(|e| format!("policy: {e}"))?;
+    write_private_atomic(runner_dir, POLICY_FILE, text.as_bytes())
+        .map_err(|e| format!("{POLICY_FILE} was not written: {e}"))
 }
 
 pub fn enroll_leader(runner_dir: &Path, machine: &str) -> Result<(), String> {
@@ -83,39 +118,51 @@ pub fn enroll_leader(runner_dir: &Path, machine: &str) -> Result<(), String> {
         return Err("policy: the leader machine id is not valid".into());
     }
     let _held = super::pairing::lock(runner_dir)?;
-    let (mut accept_from, mut allow) = match read_private(runner_dir, POLICY_FILE, MAX_POLICY_BYTES)
-    {
-        Ok(text) => {
-            let parsed = Policy::parse(&text)?;
-            let f = toml::from_str::<PolicyFile>(&text)
-                .map_err(|e| format!("policy: {}", e.message()))?;
-            let covers = ENROLL_ALLOW.iter().all(|op| parsed.allows(*op));
-            if !covers && f.accept_from.iter().any(|m| m != machine) {
-                return Err(format!(
-                    "policy: enrolling would widen permissions for other machines in {POLICY_FILE}; edit it by hand"
-                ));
+    let (mut accept_from, allow, ask_from) =
+        match read_private(runner_dir, POLICY_FILE, MAX_POLICY_BYTES) {
+            Ok(text) => {
+                let p = Policy::parse(&text)?;
+                let accept: Vec<String> = p.accept_from.iter().cloned().collect();
+                let ask = p
+                    .ask_from
+                    .map_or_else(|| accept.clone(), |a| a.into_iter().collect());
+                (accept, p.allow.into_iter().collect(), ask)
             }
-            let allow: Vec<Op> = if covers {
-                parsed.allow.iter().copied().collect()
-            } else {
-                ENROLL_ALLOW.to_vec()
-            };
-            (f.accept_from, allow)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Vec::new(), ENROLL_ALLOW.to_vec()),
-        Err(e) => return Err(format!("policy: {e}")),
-    };
-    allow.sort();
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                (Vec::new(), DEFAULT_ALLOW.to_vec(), Vec::new())
+            }
+            Err(e) => return Err(format!("policy: {e}")),
+        };
     if !accept_from.iter().any(|m| m == machine) {
         accept_from.push(machine.to_string());
     }
-    let text = toml::to_string(&PolicyOut {
-        accept_from: &accept_from,
-        allow: &allow,
-    })
-    .map_err(|e| format!("policy: {e}"))?;
-    write_private_atomic(runner_dir, POLICY_FILE, text.as_bytes())
-        .map_err(|e| format!("{POLICY_FILE} was not written: {e}"))
+    accept_from.sort();
+    write_policy(runner_dir, accept_from, allow, ask_from)
+}
+
+pub fn set_ask(runner_dir: &Path, leader: &str, on: bool) -> Result<(), String> {
+    let _held = super::pairing::lock(runner_dir)?;
+    let text = read_private(runner_dir, POLICY_FILE, MAX_POLICY_BYTES)
+        .map_err(|e| format!("policy: {e}"))?;
+    let p = Policy::parse(&text)?;
+    if !p.accepts(leader) {
+        return Err("policy: that machine is not an accepted leader".into());
+    }
+    let mut ask = p.ask_from.unwrap_or_else(|| p.accept_from.clone());
+    let mut allow = p.allow;
+    if on {
+        ask.insert(leader.to_string());
+        allow.insert(Op::Ask);
+        allow.insert(Op::Send);
+    } else {
+        ask.remove(leader);
+    }
+    write_policy(
+        runner_dir,
+        p.accept_from.into_iter().collect(),
+        allow.into_iter().collect(),
+        ask.into_iter().collect(),
+    )
 }
 
 pub(super) fn read_private(runner_dir: &Path, name: &str, max: u64) -> std::io::Result<String> {
@@ -195,7 +242,7 @@ mod tests {
             (Op::Spawn, false),
             (Op::Switch, false),
         ] {
-            assert_eq!(p.allows(op), want, "{op:?}");
+            assert_eq!(p.ops_for(A).contains(&op), want, "{op:?}");
         }
     }
 
@@ -205,10 +252,11 @@ mod tests {
             "accept_from = [\"{A}\"]\nallow = [\"send\", \"spawn\"]"
         ))
         .unwrap();
-        assert!(p.allows(Op::Send) && p.allows(Op::Spawn));
-        assert!(!p.allows(Op::List) && !p.allows(Op::Ask));
+        let ops = p.ops_for(A);
+        assert!(ops.contains(&Op::Send) && ops.contains(&Op::Spawn));
+        assert!(!ops.contains(&Op::List) && !ops.contains(&Op::Ask));
         let none = Policy::parse("allow = []").unwrap();
-        assert!(Op::ALL.iter().all(|o| !none.allows(*o)));
+        assert!(none.ops_for(A).is_empty());
     }
 
     #[test]
@@ -274,29 +322,28 @@ mod tests {
             & 0o777
     }
 
-    #[test]
-    fn the_enroll_allow_list_is_the_one_constant() {
-        assert_eq!(
-            ENROLL_ALLOW,
-            [Op::List, Op::Read, Op::Room, Op::Ask, Op::Send]
-        );
+    fn read_policy(d: &Path) -> String {
+        std::fs::read_to_string(d.join(POLICY_FILE)).unwrap()
+    }
+
+    fn d3() -> BTreeSet<Op> {
+        DEFAULT_ALLOW.into_iter().collect()
     }
 
     #[test]
-    fn enrolling_a_leader_writes_a_private_policy_that_accepts_it_with_the_constant_ops() {
+    fn a_new_enrolment_gives_d3_and_a_private_file() {
         let d = dir();
         enroll_leader(d.path(), A).unwrap();
         assert_eq!(mode(d.path()), 0o600);
         let p = Policy::try_load(d.path()).unwrap();
         assert!(p.accepts(A) && !p.accepts(B));
-        for op in Op::ALL {
-            assert_eq!(p.allows(op), ENROLL_ALLOW.contains(&op), "{op:?}");
-        }
+        assert_eq!(p.ops_for(A), d3());
+        assert!(!p.asks(A));
         assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 1);
     }
 
     #[test]
-    fn enrolling_keeps_other_leaders_and_a_rerun_gives_the_same_file() {
+    fn a_legacy_file_keeps_old_leaders_and_gives_the_new_one_d3() {
         let d = dir();
         put(
             d.path(),
@@ -304,56 +351,94 @@ mod tests {
             0o644,
         );
         enroll_leader(d.path(), A).unwrap();
-        let once = std::fs::read_to_string(d.path().join(POLICY_FILE)).unwrap();
+        let once = read_policy(d.path());
         let p = Policy::parse(&once).unwrap();
         assert!(p.accepts(A) && p.accepts(B));
-        assert!(p.allows(Op::Ask) && p.allows(Op::Send));
+        assert!(p.asks(B) && p.ops_for(B).contains(&Op::Send));
+        assert_eq!(p.ops_for(A), d3());
         assert_eq!(mode(d.path()), 0o600);
         enroll_leader(d.path(), A).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(d.path().join(POLICY_FILE)).unwrap(),
-            once
-        );
-    }
-
-    fn read_policy(d: &Path) -> String {
-        std::fs::read_to_string(d.join(POLICY_FILE)).unwrap()
+        assert_eq!(read_policy(d.path()), once);
     }
 
     #[test]
-    fn enrolling_refuses_to_widen_other_machines_and_writes_nothing() {
-        for text in [
-            format!("accept_from = [\"{B}\"]\nallow = [\"list\"]"),
-            format!("accept_from = [\"{B}\"]"),
-            format!("accept_from = [\"{B}\", \"{A}\"]\nallow = [\"list\", \"read\"]"),
-        ] {
-            let d = dir();
-            put(d.path(), &text, 0o600);
-            let e = enroll_leader(d.path(), A).unwrap_err();
-            assert!(e.contains("widen permissions for other machines"), "{e}");
-            assert_eq!(read_policy(d.path()), text);
-        }
-    }
-
-    #[test]
-    fn enrolling_may_widen_when_only_this_machine_is_listed_and_never_narrows() {
+    fn re_enrolling_never_widens() {
         let d = dir();
         put(d.path(), &format!("accept_from = [\"{A}\"]"), 0o600);
         enroll_leader(d.path(), A).unwrap();
-        let p = Policy::parse(&read_policy(d.path())).unwrap();
-        assert!(ENROLL_ALLOW.iter().all(|o| p.allows(*o)));
+        assert_eq!(
+            Policy::parse(&read_policy(d.path())).unwrap().ops_for(A),
+            d3()
+        );
         let d = dir();
         put(d.path(), "accept_from = []\nallow = [\"list\"]", 0o600);
         enroll_leader(d.path(), A).unwrap();
-        assert!(Policy::parse(&read_policy(d.path()))
-            .unwrap()
-            .allows(Op::Send));
+        let p = Policy::parse(&read_policy(d.path())).unwrap();
+        assert_eq!(p.ops_for(A), [Op::List].into_iter().collect());
         let d = dir();
-        let wide = format!("accept_from = [\"{B}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\", \"spawn\"]");
+        let wide = format!("accept_from = [\"{B}\"]\nask_from = [\"{B}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\", \"spawn\"]");
         put(d.path(), &wide, 0o600);
         enroll_leader(d.path(), A).unwrap();
         let p = Policy::parse(&read_policy(d.path())).unwrap();
-        assert!(p.accepts(A) && p.accepts(B) && p.allows(Op::Spawn));
+        assert!(p.accepts(A) && p.accepts(B) && p.ops_for(B).contains(&Op::Spawn));
+        assert_eq!(p.ops_for(A), d3());
+    }
+
+    #[test]
+    fn ask_from_parses_and_cuts_other_leaders_to_d3() {
+        let p = Policy::parse(&format!(
+            "accept_from = [\"{A}\", \"{B}\"]\nask_from = [\"{A}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\", \"send\", \"spawn\"]"
+        ))
+        .unwrap();
+        assert!(p.asks(A) && !p.asks(B));
+        assert!(p.ops_for(A).contains(&Op::Spawn));
+        assert_eq!(p.ops_for(B), d3());
+        assert!(p.ops_for("mx_ffffffffffffffff").is_empty());
+        assert!(Policy::parse(&format!("accept_from = [\"{A}\"]\nask_from = [\"nope\"]")).is_err());
+        assert!(Policy::parse(&format!("accept_from = [\"{A}\"]\nask_fromm = []")).is_err());
+    }
+
+    #[test]
+    fn set_ask_round_trips() {
+        let d = dir();
+        enroll_leader(d.path(), A).unwrap();
+        enroll_leader(d.path(), B).unwrap();
+        set_ask(d.path(), A, true).unwrap();
+        let p = Policy::try_load(d.path()).unwrap();
+        assert!(p.asks(A) && !p.asks(B));
+        assert!(p.ops_for(A).contains(&Op::Send));
+        assert_eq!(mode(d.path()), 0o600);
+        set_ask(d.path(), A, false).unwrap();
+        let p = Policy::try_load(d.path()).unwrap();
+        assert!(!p.asks(A));
+        assert_eq!(p.ops_for(A), d3());
+        assert!(p.allow.contains(&Op::Ask) && p.allow.contains(&Op::Send));
+    }
+
+    #[test]
+    fn set_ask_on_a_legacy_file_keeps_the_other_leaders() {
+        let d = dir();
+        put(
+            d.path(),
+            &format!(
+                "accept_from = [\"{A}\", \"{B}\"]\nallow = [\"list\", \"read\", \"room\", \"ask\"]"
+            ),
+            0o600,
+        );
+        set_ask(d.path(), A, false).unwrap();
+        let p = Policy::try_load(d.path()).unwrap();
+        assert!(!p.asks(A) && p.asks(B));
+    }
+
+    #[test]
+    fn set_ask_for_a_stranger_or_without_a_file_errors_and_writes_nothing() {
+        let d = dir();
+        assert!(set_ask(d.path(), A, true).is_err());
+        assert!(!d.path().join(POLICY_FILE).exists());
+        enroll_leader(d.path(), A).unwrap();
+        let before = read_policy(d.path());
+        assert!(set_ask(d.path(), B, true).is_err());
+        assert_eq!(read_policy(d.path()), before);
     }
 
     #[test]
