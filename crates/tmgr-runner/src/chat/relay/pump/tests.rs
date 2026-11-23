@@ -388,19 +388,25 @@ fn poll_honours_retry_after_then_doubles_and_resets_on_success() {
         vec![],
     );
     let sleeps = Mutex::new(Vec::new());
-    run_poll(&relay, &|| relay.polls.lock().unwrap().is_empty(), &|d| {
-        sleeps.lock().unwrap().push(d.as_secs())
-    });
-    assert_eq!(*sleeps.lock().unwrap(), [120, 10, 20, 5, 5]);
+    run_poll(
+        &relay,
+        &|| relay.polls.lock().unwrap().is_empty(),
+        &|| false,
+        &|d| sleeps.lock().unwrap().push(d.as_secs()),
+    );
+    assert_eq!(*sleeps.lock().unwrap(), [120, 10, 20, 1, 5]);
 }
 
 #[test]
 fn poll_backoff_is_capped() {
     let relay = ScriptedRelay::new(vec![Err("x".into()); 12], vec![]);
     let sleeps = Mutex::new(Vec::new());
-    run_poll(&relay, &|| relay.polls.lock().unwrap().is_empty(), &|d| {
-        sleeps.lock().unwrap().push(d.as_secs())
-    });
+    run_poll(
+        &relay,
+        &|| relay.polls.lock().unwrap().is_empty(),
+        &|| false,
+        &|d| sleeps.lock().unwrap().push(d.as_secs()),
+    );
     assert_eq!(sleeps.lock().unwrap().iter().max(), Some(&300));
     assert!(sleeps.lock().unwrap().iter().all(|s| *s >= 5));
 }
@@ -618,4 +624,26 @@ fn a_receipt_the_target_cannot_take_is_dropped_without_retry() {
         &|_| panic!("must not wait"),
     );
     assert_eq!(relay.receipts_sent.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn poll_cadence_is_one_second_with_live_sessions_and_five_after_two_idle_minutes() {
+    let secs = Duration::from_secs;
+    assert_eq!(cadence(true, secs(0)), secs(1));
+    assert_eq!(cadence(true, secs(3600)), secs(1));
+    assert_eq!(cadence(false, secs(119)), secs(1));
+    assert_eq!(cadence(false, secs(120)), secs(5));
+}
+
+#[test]
+fn the_pace_falls_back_after_two_minutes_without_sessions_and_speeds_up_again() {
+    let t0 = Instant::now();
+    let mut pace = Pace::new(t0);
+    let at = |s: u64| t0 + Duration::from_secs(s);
+    assert_eq!(pace.next(true, at(10)), Duration::from_secs(1));
+    assert_eq!(pace.next(false, at(60)), Duration::from_secs(1));
+    assert_eq!(pace.next(false, at(129)), Duration::from_secs(1));
+    assert_eq!(pace.next(false, at(130)), Duration::from_secs(5));
+    assert_eq!(pace.next(true, at(400)), Duration::from_secs(1));
+    assert_eq!(pace.next(false, at(401)), Duration::from_secs(1));
 }

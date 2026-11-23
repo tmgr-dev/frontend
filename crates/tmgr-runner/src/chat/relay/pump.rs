@@ -21,6 +21,8 @@ use crate::chat::{ActivityRx, Incoming, IngestError, Ingested, Receipt, ReceiptF
 
 const LABEL: &str = "Runner";
 const CADENCE: Duration = Duration::from_secs(5);
+const CADENCE_LIVE: Duration = Duration::from_secs(1);
+const LIVE_GRACE: Duration = Duration::from_secs(120);
 const BACKOFF_START: Duration = Duration::from_secs(5);
 const BACKOFF_CAP: Duration = Duration::from_secs(300);
 const WAIT_SETUP: Duration = Duration::from_secs(5);
@@ -215,15 +217,46 @@ impl FailureLog {
     }
 }
 
-pub fn run_poll(relay: &dyn Relay, stop: &dyn Fn() -> bool, sleep: &dyn Fn(Duration)) {
+pub(super) fn cadence(live: bool, idle_for: Duration) -> Duration {
+    if live || idle_for < LIVE_GRACE {
+        CADENCE_LIVE
+    } else {
+        CADENCE
+    }
+}
+
+pub(super) struct Pace {
+    last_live: Instant,
+}
+
+impl Pace {
+    pub(super) fn new(now: Instant) -> Self {
+        Self { last_live: now }
+    }
+
+    pub(super) fn next(&mut self, live: bool, now: Instant) -> Duration {
+        if live {
+            self.last_live = now;
+        }
+        cadence(live, now.saturating_duration_since(self.last_live))
+    }
+}
+
+pub fn run_poll(
+    relay: &dyn Relay,
+    stop: &dyn Fn() -> bool,
+    live: &dyn Fn() -> bool,
+    sleep: &dyn Fn(Duration),
+) {
     let mut backoff = BACKOFF_START;
     let mut failures = FailureLog::default();
+    let mut pace = Pace::new(Instant::now());
     while !stop() {
         match relay.poll() {
             Ok(()) => {
                 backoff = BACKOFF_START;
                 failures.clear();
-                sleep(CADENCE);
+                sleep(pace.next(live(), Instant::now()));
             }
             Err(e) => {
                 if let Some(class) = failures.note(&e) {
@@ -343,6 +376,7 @@ pub struct Setup {
     pub on_receipts: Arc<dyn Fn(Option<ReceiptFn>) + Send + Sync>,
     pub rooms: Arc<dyn Fn() -> Vec<RoomInfo> + Send + Sync>,
     pub history: HistoryFn,
+    pub live: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 type Engine = RelayEngine<DynTransport, RelayDir, RelaySink>;
@@ -465,7 +499,7 @@ fn serve(engine: Arc<Engine>, setup: &Setup, leases: &Arc<Leases>, clock: Clock)
     }));
     let rpc_server = (setup.serve_rpc)(rpc_send);
     crate::daemon::log("chat relay: pump started");
-    run_poll(&*engine, &*stop, &sleeper(stop.clone()));
+    run_poll(&*engine, &*stop, &*setup.live, &sleeper(stop.clone()));
     for h in [
         forwarder.ok(),
         sender.ok(),

@@ -135,7 +135,7 @@ impl Runner {
         let rpc = Arc::new(RpcInbox::new());
         let (serve_rt, serve_inbox, device_rt) = (self.clone(), rpc.clone(), self.clone());
         let (rooms_rt, history_rt, owners_rt) = (self.clone(), self.clone(), self.clone());
-        let (receipts_rt, give_up_rt) = (self.clone(), self.clone());
+        let (receipts_rt, give_up_rt, live_rt) = (self.clone(), self.clone(), self.clone());
         let setup = chat::relay::pump::Setup {
             dir: self.cfg.dir.clone(),
             machine: self.chat.machine().to_owned(),
@@ -181,6 +181,7 @@ impl Runner {
                     .history(room, None, Some(limit))
                     .unwrap_or_default()
             }),
+            live: Arc::new(move || !live_rt.all().is_empty()),
         };
         if let Err(e) = chat::relay::pump::spawn(setup) {
             log(&format!("chat relay: pump did not start: {e}"));
