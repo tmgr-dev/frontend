@@ -327,7 +327,9 @@ where
         &plain.body,
     )?;
     verify_der(&b64_decode(&sender_sign)?, &signed, &plain.sig)?;
-    if inner.sent_at < now_ms.saturating_sub(MAX_AGE_MS) || inner.sent_at > now_ms.saturating_add(MAX_AGE_MS) {
+    if inner.sent_at < now_ms.saturating_sub(MAX_AGE_MS)
+        || inner.sent_at > now_ms.saturating_add(MAX_AGE_MS)
+    {
         return Err(Rejected {
             error: Error::BadWindow,
             verified: is_trusted.then(|| (body.from.clone(), inner.seq)),

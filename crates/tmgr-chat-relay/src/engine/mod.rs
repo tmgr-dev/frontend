@@ -39,6 +39,8 @@ const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_SEEN: usize = 5000;
 const MAX_RPC_SEEN: usize = 2000;
+const CLOCK_WINDOW_MS: u64 = 30 * 60 * 1000;
+const MAX_PEER_OFFSET_MS: i64 = 24 * 3600 * 1000;
 const ROOMS_MAX_BYTES: usize = 256 * 1024;
 const ACTIVITY_MAX_BYTES: usize = 48 * 1024;
 const ACTIVITY_ON_MAX_AGE_MS: u64 = 5 * 60 * 1000;
@@ -132,6 +134,66 @@ fn join_v1() -> u8 {
     1
 }
 
+#[derive(Clone, Default, Serialize, Deserialize)]
+struct PeerClock {
+    cur: i64,
+    until: u64,
+    last: u64,
+    next: Option<i64>,
+}
+
+impl PeerClock {
+    fn sample(sent_at: u64, now: u64) -> i64 {
+        (i128::from(sent_at) - i128::from(now)).clamp(
+            -i128::from(MAX_PEER_OFFSET_MS),
+            i128::from(MAX_PEER_OFFSET_MS),
+        ) as i64
+    }
+
+    fn first(d: i64, now: u64) -> Self {
+        PeerClock {
+            cur: d,
+            until: now.saturating_add(CLOCK_WINDOW_MS),
+            last: now,
+            next: None,
+        }
+    }
+
+    fn observe(&mut self, d: i64, now: u64) {
+        let window_end = now.saturating_add(CLOCK_WINDOW_MS);
+        if now.saturating_sub(self.last) > CLOCK_WINDOW_MS {
+            self.until = window_end;
+            self.next = None;
+        }
+        self.last = now;
+        if d >= self.cur {
+            self.cur = d;
+            self.until = window_end;
+            self.next = None;
+        } else {
+            self.next = Some(self.next.map_or(d, |n| n.max(d)));
+            if now >= self.until {
+                self.cur = self.next.take().unwrap_or(d);
+                self.until = window_end;
+            }
+        }
+    }
+}
+
+fn to_local_ms(ts_ms: u64, offset: i64) -> u64 {
+    (i128::from(ts_ms) - i128::from(offset)).clamp(0, i128::from(u64::MAX)) as u64
+}
+
+fn trim_seen(seen: &mut Vec<Seen>, cap: usize, floor: &mut BTreeMap<String, u64>) {
+    if seen.len() > cap {
+        let cut = seen.len() - cap;
+        for s in seen.drain(..cut).filter(|s| !s.id.starts_with("u_")) {
+            let f = floor.entry(s.from).or_insert(0);
+            *f = (*f).max(s.at);
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct Seen {
     from: String,
@@ -156,6 +218,12 @@ struct State {
     seen: Vec<Seen>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rpc_seen: Vec<Seen>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    seen_floor: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    rpc_seen_floor: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    clocks: BTreeMap<String, PeerClock>,
     mismatch: Vec<String>,
     #[serde(default)]
     seq_in: BTreeMap<String, u64>,
@@ -1266,7 +1334,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
     }
 
-    fn apply_rpc(&self, c: &mut Core, o: &Opened, now: u64) {
+    fn apply_rpc(&self, c: &mut Core, o: &Opened, now: u64, offset: i64) {
         let Some(sink) = &self.rpc else { return };
         let cap = if o.kind == KIND_REQ {
             limits::MAX_REQ_BYTES
@@ -1283,6 +1351,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .rpc_seen
                 .iter()
                 .any(|s| s.from == o.from && s.id == o.id)
+            || c.st
+                .rpc_seen_floor
+                .get(&o.from)
+                .is_some_and(|f| o.sent_at <= *f)
             || serde_json::to_vec(&o.payload).map_or(true, |b| b.len() > cap)
         {
             return;
@@ -1292,25 +1364,48 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             id: o.id.clone(),
             at: o.sent_at,
         });
-        c.st.rpc_seen.retain(|s| s.at.saturating_add(SEEN_TTL_MS) >= now);
-        if c.st.rpc_seen.len() > MAX_RPC_SEEN {
-            let cut = c.st.rpc_seen.len() - MAX_RPC_SEEN;
-            c.st.rpc_seen.drain(..cut);
+        c.st.rpc_seen
+            .retain(|s| s.at.saturating_add(SEEN_TTL_MS) >= now);
+        trim_seen(&mut c.st.rpc_seen, MAX_RPC_SEEN, &mut c.st.rpc_seen_floor);
+        let mut payload = o.payload.clone();
+        if o.kind == KIND_REQ {
+            if let Some(ts) = payload["ts_ms"].as_u64() {
+                payload["ts_ms"] = to_local_ms(ts, offset).into();
+            }
         }
-        sink.deliver_rpc(&o.from, &o.from_fp, &o.kind, &o.id, o.payload.clone());
+        sink.deliver_rpc(&o.from, &o.from_fp, &o.kind, &o.id, payload);
     }
 
-    fn apply(&self, c: &mut Core, opened: Opened, now: u64) -> Result<Option<ChatMessage>, String> {
+    fn apply(
+        &self,
+        c: &mut Core,
+        opened: Opened,
+        now: u64,
+        offset: i64,
+    ) -> Result<Option<ChatMessage>, String> {
         if opened.kind == KIND_REQ || opened.kind == KIND_RES {
-            self.apply_rpc(c, &opened, now);
+            self.apply_rpc(c, &opened, now, offset);
             return Ok(None);
         }
         if opened.kind == "blob" {
             return self.apply_blob(c, &opened).map(|()| None);
         }
-        let Some(chat) = self.handle(c, &opened, now) else {
+        if opened.trusted
+            && !opened.id.starts_with("u_")
+            && c.st
+                .seen_floor
+                .get(&opened.from)
+                .is_some_and(|f| opened.sent_at <= *f)
+        {
+            c.drop_reason = Some("replayed or too old");
+            return Ok(None);
+        }
+        let Some(mut chat) = self.handle(c, &opened, now) else {
             return Ok(None);
         };
+        if let Some(msg) = &mut chat {
+            msg.ts_ms = to_local_ms(msg.ts_ms, offset);
+        }
         if let Some(msg) = &chat {
             let revoke_pending =
                 c.st.pending_revokes
@@ -1337,10 +1432,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             };
             s.at.saturating_add(ttl) >= now
         });
-        if c.st.seen.len() > MAX_SEEN {
-            let cut = c.st.seen.len() - MAX_SEEN;
-            c.st.seen.drain(..cut);
-        }
+        trim_seen(&mut c.st.seen, MAX_SEEN, &mut c.st.seen_floor);
         Ok(chat)
     }
 
@@ -1640,12 +1732,26 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 c.st.last_seen.insert(from.clone(), now);
             }
             c.drop_reason = None;
-            let applied = self.apply(c, o, now);
-            if let Some(reason) = c.drop_reason.take() {
+            let sample = o.trusted.then(|| PeerClock::sample(o.sent_at, now));
+            let offset = sample.map_or(0, |d| c.st.clocks.get(&from).map_or(d, |p| p.cur));
+            let applied = self.apply(c, o, now, offset);
+            let dropped = c.drop_reason.take();
+            if let Some(reason) = dropped {
                 hold.drops.push((cursor, reason));
             }
             match applied {
-                Ok(delivered) => out.extend(delivered),
+                Ok(delivered) => {
+                    out.extend(delivered);
+                    if let Some(d) = sample.filter(|_| dropped.is_none()) {
+                        c.st.clocks
+                            .entry(from.clone())
+                            .and_modify(|p| p.observe(d, now))
+                            .or_insert_with(|| PeerClock::first(d, now));
+                        let trusted = &c.st.trusted;
+                        c.st.clocks
+                            .retain(|k, _| trusted.iter().any(|t| t.id == *k));
+                    }
+                }
                 Err(e) => {
                     match prev_seq {
                         Some(s) => c.st.seq_in.insert(from.clone(), s),

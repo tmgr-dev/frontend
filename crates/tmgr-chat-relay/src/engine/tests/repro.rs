@@ -152,7 +152,7 @@ fn message_with_skewed_sent_at_is_reported_consumes_its_seq_and_does_not_delay_t
     let r = rig();
     r.prime();
     let seq_before = r.seq_in().unwrap();
-    r.sender_clock.set(r.now() + 32 * 24 * 3600_000);
+    r.sender_clock.set(r.now() + 32 * 24 * 3_600_000);
     r.send(&chat("m1")).unwrap();
     r.sender_clock.set(r.now());
     r.send(&chat("m2")).unwrap();
