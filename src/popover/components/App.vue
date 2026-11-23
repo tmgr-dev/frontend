@@ -115,6 +115,7 @@
 					</div>
 				</template>
 
+				<div class="sep"></div>
 				<div class="sec top0">
 					<RunningTimer
 						v-for="task in model.running"
@@ -184,7 +185,9 @@
 							"
 							@click="runBusy(actionIds.switch(task.workspaceId, task.id))"
 						>
-							<span class="c">{{ codeOf(task.title) }}</span>
+							<span v-if="codeOf(task.title)" class="c">{{
+								codeOf(task.title)
+							}}</span>
 							<span class="t">{{ stripTicket(task.title) }}</span>
 							<span v-if="todayOf(task)" class="m">{{ todayOf(task) }}</span>
 							<span class="play" aria-hidden="true"></span>

@@ -48,3 +48,27 @@ describe('popover import boundary', () => {
 		},
 	);
 });
+
+describe('popover layout', () => {
+	const template = readFileSync(
+		join(POPOVER_DIR, 'components', 'App.vue'),
+		'utf8',
+	);
+
+	it('places AI usage right after quick add and before the timer', () => {
+		const quick = template.indexOf('class="quick"');
+		const ai = template.indexOf("show('ai')");
+		const timer = template.indexOf('<RunningTimer');
+		expect(quick).toBeGreaterThan(-1);
+		expect(ai).toBeGreaterThan(quick);
+		expect(timer).toBeGreaterThan(ai);
+	});
+
+	it('wires header buttons to run(action.id) before Open TMGR', () => {
+		const icons = template.indexOf('v-for="action in actions"');
+		const open = template.indexOf("run('open')");
+		expect(icons).toBeGreaterThan(-1);
+		expect(icons).toBeLessThan(open);
+		expect(template).toContain('@click="run(action.id)"');
+	});
+});
