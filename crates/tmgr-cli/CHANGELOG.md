@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.175
+
+- Fixed: a message you send from the desktop to a session on another machine could vanish or arrive a minute late. The runner now keeps the order of later messages when one cannot be opened (for example because the clocks of the two computers differ by more than 5 minutes), waits 15 s instead of 60 s on a real gap, and writes the reason for every dropped message to the runner log (`~/Library/Application Support/dev.tmgr.cli/run/runner.log` on macOS; search for `chat relay`). No message text is logged.
+- Added: the runner tells the desktop that sent a message what happened to it (typed into the session, queued while the agent is busy, or not delivered with a short reason). Showing these states needs the matching desktop version; older desktops ignore them. Phones get none yet.
+- Changed: a message the runner cannot store is retried, and one it can never accept is dropped after telling the sender, so it no longer blocks the messages behind it. Not-delivered notes now point at the message they refer to.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.174
 
 - Fixed: chat messages from your phone or desktop to a Codex session no longer wait in the queue when Codex shows `← for agents · ? for shortcuts`, `? for shortcuts` with the mode label right after it, or no shortcuts hint at all (narrow terminal, crowded footer). An empty `›` prompt row now counts as idle; a draft you typed still holds the message back.
