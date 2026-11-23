@@ -54,10 +54,29 @@ fn focus_existing<R: Runtime>(app: &AppHandle<R>) -> bool {
 }
 
 pub fn open_window<R: Runtime>(app: &AppHandle<R>) {
+  open_window_at(app, None);
+}
+
+pub fn window_path(card: Option<&str>) -> String {
+  match card {
+    Some(id) if tmgr_ipc::decisions::valid_card_id(id) => format!("decisions.html?card={id}"),
+    _ => "decisions.html".to_owned(),
+  }
+}
+
+pub fn focus_card<R: Runtime>(app: &AppHandle<R>, id: &str) {
+  if focus_existing(app) {
+    let _ = app.emit_to(LABEL, "decisions://focus", json!({ "id": id }));
+    return;
+  }
+  open_window_at(app, Some(id));
+}
+
+fn open_window_at<R: Runtime>(app: &AppHandle<R>, card: Option<&str>) {
   if focus_existing(app) {
     return;
   }
-  let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("decisions.html".into()))
+  let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(window_path(card).into()))
     .title(crate::native_i18n::tr(crate::native_i18n::Key::DecisionsWindow))
     .inner_size(1280.0, 820.0)
     .min_inner_size(980.0, 640.0)
@@ -336,4 +355,17 @@ pub async fn decisions_finish_action<R: Runtime>(
   main_window_only(&window, "decisions_finish_action")?;
   let hub = hub_of(&app)?;
   blocking(move || hub.finish_claimed_action(&run_id, result)).await
+}
+
+#[cfg(test)]
+mod window_path_tests {
+  use super::window_path;
+
+  #[test]
+  fn a_valid_card_id_goes_into_the_window_url_and_anything_else_is_dropped() {
+    let id = format!("c_{}", "b".repeat(32));
+    assert_eq!(window_path(Some(&id)), format!("decisions.html?card={id}"));
+    assert_eq!(window_path(Some("../x?y")), "decisions.html");
+    assert_eq!(window_path(None), "decisions.html");
+  }
 }

@@ -367,7 +367,10 @@ fn render<R: Runtime>(app: &AppHandle<R>) {
 
 fn fallback<R: Runtime>(app: &AppHandle<R>, toast: &Toast, text: Option<(String, String)>) {
   let (title, body) = text.unwrap_or_else(|| (toast.title.clone(), toast.body.clone()));
-  crate::plugin_notify::plugin_notify(app.clone(), title, body, None);
+  match toast.decision_id() {
+    Some(id) if toast.kind == Kind::Decision => crate::plugin_notify::notify_decision(app.clone(), title, body, id),
+    _ => crate::plugin_notify::plugin_notify(app.clone(), title, body, None),
+  }
 }
 
 pub fn push<R: Runtime>(app: &AppHandle<R>, toast: Toast) {
