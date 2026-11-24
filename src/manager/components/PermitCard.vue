@@ -1,6 +1,6 @@
 <template>
 	<div
-		:class="['dcard', 'permit', { danger, resolved: !!closedText }]"
+		:class="['dcard', 'permit', { danger, resolved: !!closedText || expired }]"
 		:data-card="cardId"
 		@keydown.enter.prevent.stop
 	>
@@ -30,6 +30,22 @@
 			{{ line }}
 		</div>
 		<div v-if="closedText" class="dc-note pm-closed">{{ closedText }}</div>
+		<template v-else-if="expired">
+			<div class="dc-note pm-closed">{{ $t('manager.permit.expired') }}</div>
+			<div v-if="refreshable" class="sp-row pm-actions">
+				<button
+					v-if="!refreshing"
+					type="button"
+					class="sp-btn pm-refresh"
+					@click="refresh"
+				>
+					{{ $t('manager.permit.refresh') }}
+				</button>
+				<span v-else class="dc-note pm-refreshing">{{
+					$t('manager.permit.refreshing')
+				}}</span>
+			</div>
+		</template>
 		<div v-else-if="sent" class="dc-note pm-sent">
 			{{ $t('manager.permit.sent') }}
 		</div>
@@ -92,7 +108,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { permitAnswer } from '../api';
+	import { permitAnswer, permitRefresh } from '../api';
 	import { stripFormat } from '../permitCards';
 	import type { PermitCardWire, PermitChoice } from '../types';
 	import Icon from './Icon.vue';
@@ -106,7 +122,6 @@
 			closed: { type: String, default: undefined },
 			answerable: { type: Boolean, default: true },
 			live: { type: Boolean, default: false },
-			replaced: { type: Boolean, default: false },
 		},
 		data() {
 			return {
@@ -115,7 +130,9 @@
 				sent: false,
 				error: '',
 				now: Date.now(),
+				refreshing: false,
 				timer: 0 as ReturnType<typeof setTimeout> | 0,
+				refreshTimer: 0 as ReturnType<typeof setTimeout> | 0,
 			};
 		},
 		computed: {
@@ -147,17 +164,21 @@
 					always_label: clean(p.always_label),
 				};
 			},
+			stamp(): string {
+				return `${this.permit.nonce ?? ''}|${this.permit.exp_ms}`;
+			},
+			expired(): boolean {
+				return this.now > this.permit.exp_ms;
+			},
+			refreshable(): boolean {
+				return this.answerable && this.live;
+			},
 			canAnswer(): boolean {
 				return this.answerable && this.live && this.permit.desktop_ok === true;
 			},
 			closedText(): string {
 				const reason = this.closed && stripFormat(this.closed);
-				if (reason === undefined) {
-					if (this.replaced) return this.$t('manager.permit.replaced');
-					if (this.now > this.permit.exp_ms)
-						return this.$t('manager.permit.expired');
-					return '';
-				}
+				if (reason === undefined) return '';
 				if (reason.startsWith('answered on '))
 					return this.$t('manager.permit.answeredOn', {
 						device: reason.slice('answered on '.length),
@@ -169,18 +190,50 @@
 				return this.$t('manager.permit.closed', { reason });
 			},
 		},
+		watch: {
+			stamp() {
+				this.sent = false;
+				this.confirming = null;
+				this.error = '';
+				this.stopRefreshing();
+				this.arm();
+			},
+		},
 		mounted() {
-			const wait = this.permit.exp_ms - Date.now();
-			if (wait > 0)
-				this.timer = setTimeout(
-					() => (this.now = Date.now()),
-					Math.min(wait + 50, 2147483647),
-				);
+			this.arm();
 		},
 		beforeUnmount() {
 			if (this.timer) clearTimeout(this.timer);
+			if (this.refreshTimer) clearTimeout(this.refreshTimer);
 		},
 		methods: {
+			arm() {
+				if (this.timer) clearTimeout(this.timer);
+				this.now = Date.now();
+				const wait = this.permit.exp_ms - this.now;
+				if (wait > 0)
+					this.timer = setTimeout(
+						() => (this.now = Date.now()),
+						Math.min(wait + 50, 2147483647),
+					);
+			},
+			stopRefreshing() {
+				if (this.refreshTimer) clearTimeout(this.refreshTimer);
+				this.refreshTimer = 0;
+				this.refreshing = false;
+			},
+			async refresh() {
+				if (this.refreshing) return;
+				this.refreshing = true;
+				this.error = '';
+				try {
+					await permitRefresh(this.cardId);
+					this.refreshTimer = setTimeout(() => this.stopRefreshing(), 8000);
+				} catch (e) {
+					this.error = this.$t('manager.permit.failed', { error: String(e) });
+					this.stopRefreshing();
+				}
+			},
 			onOnce() {
 				if (this.danger) this.confirming = 'once';
 				else this.send('once', false);

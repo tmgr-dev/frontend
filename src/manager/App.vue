@@ -94,7 +94,7 @@
 			<template v-else>
 				<MessageList
 					ref="list"
-					:messages="messages"
+					:messages="shownMessages"
 					:body-html="bodyHtml"
 					:empty-hint="
 						activeInfo?.room.kind === 'session'
@@ -127,23 +127,18 @@
 				>
 					<template #decision="{ message }">
 						<template v-if="message.decision?.card_id">
-							<PermitCard
-								v-if="message.decision.permit"
-								:card-id="message.decision.card_id"
-								:permit="message.decision.permit"
-								:closed="
-									closedByCard[
-										permitKey(message.decision.poster, message.decision.card_id)
-									]
-								"
-								:answerable="activeInfo?.local === false"
-								:live="message.decision.live === true"
-								:replaced="
-									newestByCard[
-										permitKey(message.decision.poster, message.decision.card_id)
-									] !== message.id
-								"
-							/>
+							<template v-if="message.decision.permit">
+								<PermitCard
+									v-if="permitGroupByMessage[message.id]"
+									:card-id="message.decision.card_id"
+									:permit="permitGroupByMessage[message.id].decision.permit"
+									:closed="permitGroupByMessage[message.id].closed"
+									:answerable="activeInfo?.local === false"
+									:live="
+										permitGroupByMessage[message.id].decision.live === true
+									"
+								/>
+							</template>
 							<template v-else-if="message.decision.closed"></template>
 							<template v-else>
 								<template v-if="activeInfo?.local !== false">
@@ -368,7 +363,7 @@
 	import ControlDialog from './components/ControlDialog.vue';
 	import DecisionCard from './components/DecisionCard.vue';
 	import PermitCard from './components/PermitCard.vue';
-	import { closedCards, newestPermits, permitKey } from './permitCards';
+	import { permitGroups } from './permitCards';
 	import DetailPanel from './components/DetailPanel.vue';
 	import GateBlockersBanner from './components/GateBlockersBanner.vue';
 	import Icon from './components/Icon.vue';
@@ -570,11 +565,16 @@
 					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
 					: [];
 			},
-			closedByCard(): Record<string, string> {
-				return closedCards(this.messages);
+			permitGroupByMessage() {
+				return permitGroups(this.messages);
 			},
-			newestByCard(): Record<string, string> {
-				return newestPermits(this.messages);
+			shownMessages() {
+				const groups = this.permitGroupByMessage;
+				return this.messages.filter((m) => {
+					const d = m.decision;
+					if (!d?.card_id) return true;
+					return d.permit ? !!groups[m.id] : !d.closed;
+				});
 			},
 			bodyHtml(): Record<string, string> {
 				return Object.fromEntries(
@@ -626,7 +626,6 @@
 			this.trust.dispose();
 		},
 		methods: {
-			permitKey,
 			revokeAddedRunner() {
 				const id = this.pairing.notice?.deviceId;
 				this.pairing.dismiss();

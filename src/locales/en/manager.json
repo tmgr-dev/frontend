@@ -99,7 +99,8 @@
 		"gone": "Gone",
 		"expired": "Expired",
 		"closed": "Closed: {reason}",
-		"replaced": "Replaced by a newer request"
+		"refresh": "Refresh",
+		"refreshing": "Refreshing…"
 	},
 	"spawn": {
 		"title": "Manager wants to start a {profile} session",

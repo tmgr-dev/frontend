@@ -349,3 +349,47 @@ fn a_remote_cannot_preset_live_or_poster() {
   assert!(!d.live);
   assert_eq!(d.poster.as_deref(), Some(rig.rid.as_str()));
 }
+
+#[test]
+fn a_refresh_request_is_the_exact_payload_sealed_only_to_the_poster() {
+  let rig = rig();
+  let c = card(false, true);
+  post_card(&rig, 2, c.clone());
+  let before = counts(&rig);
+  rig.a.refresh_permit(CARD).unwrap();
+  let payload = sent_to_runner(&rig, before.0);
+  assert_eq!(payload, serde_json::json!({"v": 1, "refresh": CARD, "nonce": c.nonce}));
+  assert_eq!(rig.fake.posts(), before.1 + 1);
+}
+
+#[test]
+fn a_refresh_is_sent_for_an_expired_card_and_one_the_desktop_cannot_answer() {
+  let rig = rig();
+  post_card(&rig, 2, card(true, false));
+  rig.clock.set(EXP + 1);
+  let before = to_runner(&rig).len();
+  rig.a.refresh_permit(CARD).unwrap();
+  assert_eq!(to_runner(&rig).len(), before + 1);
+}
+
+#[test]
+fn a_refresh_keeps_the_card_so_the_updated_one_can_still_be_answered() {
+  let rig = rig();
+  post_card(&rig, 2, card(false, true));
+  rig.a.refresh_permit(CARD).unwrap();
+  rig.a.refresh_permit(CARD).unwrap();
+  answer(&rig, PermitAnswer::Deny, false).unwrap();
+}
+
+#[test]
+fn a_refresh_for_an_unknown_or_closed_card_is_refused_and_nothing_is_sent() {
+  let rig = rig();
+  let before = counts(&rig);
+  assert_eq!(rig.a.refresh_permit(CARD).unwrap_err(), UNKNOWN);
+  assert_eq!(counts(&rig), before);
+  post_card(&rig, 2, card(false, true));
+  deliver(&rig, &rig.r, &card_msg(3, CARD, None, Some("answered on Phone")));
+  let before2 = counts(&rig);
+  assert_eq!(rig.a.refresh_permit(CARD).unwrap_err(), UNKNOWN);
+  assert_eq!(counts(&rig), before2);
+}

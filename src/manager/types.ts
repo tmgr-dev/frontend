@@ -49,6 +49,7 @@ export interface PermitCardWire {
 	danger?: string[];
 	always_label?: string;
 	exp_ms: number;
+	nonce?: string;
 	desktop_ok?: boolean;
 }
 

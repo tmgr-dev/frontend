@@ -89,6 +89,9 @@ export const spawnDecide = (
 		edit,
 	});
 
+export const permitRefresh = (cardId: string) =>
+	invoke<void>('manager_permit_refresh', { cardId });
+
 export const permitAnswer = (
 	cardId: string,
 	choice: PermitChoice,

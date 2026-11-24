@@ -5,10 +5,10 @@ import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import ts from 'typescript';
-import { createApp, h, nextTick, type Component } from 'vue';
+import { createApp, h, nextTick, reactive, type Component } from 'vue';
 import { createI18n } from 'vue-i18n';
 import manager from '../../locales/en/manager.json';
-import { closedCards, newestPermits, permitKey } from '../permitCards';
+import { permitGroups } from '../permitCards';
 import type { ChatMessage, PermitCardWire } from '../types';
 
 const mockInvoke = jest.fn();
@@ -96,7 +96,6 @@ const mount = async (
 		closed?: string;
 		answerable?: boolean;
 		live?: boolean;
-		replaced?: boolean;
 	} = {},
 ) => {
 	const el = document.createElement('div');
@@ -280,13 +279,6 @@ describe('PermitCard states', () => {
 		mockInvoke.mockResolvedValue(undefined);
 	});
 
-	it('a replaced card has no buttons and says so', async () => {
-		const { el, unmount } = await mount(permit(), { replaced: true });
-		expect(labels(el)).toEqual([]);
-		expect(el.textContent).toContain('Replaced by a newer request');
-		unmount();
-	});
-
 	it('a card that is not in the book has no buttons and the phone line', async () => {
 		const { el, unmount } = await mount(permit(), { live: false });
 		expect(labels(el)).toEqual([]);
@@ -294,11 +286,87 @@ describe('PermitCard states', () => {
 		unmount();
 	});
 
-	it('a card already past exp_ms shows as expired without buttons', async () => {
+	it('a card already past exp_ms shows Expired with only a Refresh button', async () => {
 		const { el, unmount } = await mount(permit({ exp_ms: Date.now() - 1 }));
-		expect(labels(el)).toEqual([]);
+		expect(labels(el)).toEqual(['Refresh']);
 		expect(el.querySelector('.pm-closed')?.textContent).toBe('Expired');
 		unmount();
+	});
+
+	it('an expired card the desktop may not answer still offers Refresh', async () => {
+		const { el, unmount } = await mount(
+			permit({ exp_ms: Date.now() - 1, desktop_ok: false }),
+		);
+		expect(labels(el)).toEqual(['Refresh']);
+		unmount();
+	});
+
+	it('an expired card that is not live or closed has no Refresh', async () => {
+		const a = await mount(permit({ exp_ms: Date.now() - 1 }), { live: false });
+		expect(labels(a.el)).toEqual([]);
+		a.unmount();
+		const b = await mount(permit({ exp_ms: Date.now() - 1 }), {
+			closed: 'gone',
+		});
+		expect(labels(b.el)).toEqual([]);
+		b.unmount();
+	});
+
+	it('Refresh invokes manager_permit_refresh with the card id only and shows Refreshing', async () => {
+		const { el, unmount } = await mount(permit({ exp_ms: Date.now() - 1 }));
+		await click(el, '.pm-refresh');
+		expect(mockInvoke).toHaveBeenCalledWith('manager_permit_refresh', {
+			cardId: CARD,
+		});
+		expect(labels(el)).toEqual([]);
+		expect(el.textContent).toContain('Refreshing');
+		unmount();
+	});
+
+	it('Refresh comes back after a few seconds without an update', async () => {
+		jest.useFakeTimers();
+		const { el, unmount } = await mount(permit({ exp_ms: Date.now() - 1 }));
+		await click(el, '.pm-refresh');
+		jest.advanceTimersByTime(10_000);
+		await flush();
+		expect(labels(el)).toEqual(['Refresh']);
+		expect(el.textContent).not.toContain('Refreshing');
+		unmount();
+	});
+
+	it('a failed refresh shows the error and the button again', async () => {
+		mockInvoke.mockRejectedValueOnce('boom');
+		const { el, unmount } = await mount(permit({ exp_ms: Date.now() - 1 }));
+		await click(el, '.pm-refresh');
+		expect(labels(el)).toEqual(['Refresh']);
+		expect(el.querySelector('.dc-err')?.textContent).toContain('boom');
+		unmount();
+	});
+
+	it('the same bubble updates in place when the refreshed card arrives', async () => {
+		const state = reactive({
+			card: permit({ exp_ms: Date.now() - 1, nonce: 'n1' }),
+		});
+		const el = document.createElement('div');
+		document.body.appendChild(el);
+		const app = createApp({
+			render: () =>
+				h(load('PermitCard'), {
+					cardId: CARD,
+					permit: state.card,
+					live: true,
+				}),
+		}).use(i18n);
+		app.mount(el);
+		await flush();
+		await click(el, '.pm-refresh');
+		expect(el.textContent).toContain('Refreshing');
+		state.card = permit({ exp_ms: Date.now() + 60_000, nonce: 'n2' });
+		await flush();
+		expect(labels(el)).toEqual(['Allow once', 'Always allow', 'Deny']);
+		expect(el.querySelector('.pm-closed')).toBeNull();
+		expect(el.textContent).not.toContain('Refreshing');
+		app.unmount();
 	});
 
 	it('a sent card turns expired when exp_ms passes without a close', async () => {
@@ -349,17 +417,29 @@ const dmsg = (
 	}) as unknown as ChatMessage;
 
 describe('permit card grouping', () => {
-	it('only the newest message per poster and card id is current', () => {
+	const stamp = (nonce: string, exp: number) => permit({ nonce, exp_ms: exp });
+
+	it('10 updates of one card from one poster render exactly one card at the first position with the newest state', () => {
+		const msgs = Array.from({ length: 10 }, (_, i) =>
+			dmsg(`m${i}`, 'rA', 'c1', { permit: stamp(`n${i}`, 1000 + i) }),
+		);
+		const groups = permitGroups(msgs);
+		expect(Object.keys(groups)).toEqual(['m0']);
+		expect(groups.m0.decision.permit?.nonce).toBe('n9');
+		expect(groups.m0.decision.permit?.exp_ms).toBe(1009);
+		expect(groups.m0.closed).toBeUndefined();
+	});
+
+	it('the same card id from another poster does not merge', () => {
 		const msgs = [
-			dmsg('m1', 'rA', 'c1', { permit: permit() }),
-			dmsg('m2', 'rA', 'c1', { permit: permit() }),
-			dmsg('m3', 'rB', 'c1', { permit: permit() }),
-			dmsg('m4', 'rA', 'c2', { permit: permit() }),
+			dmsg('m1', 'rA', 'c1', { permit: stamp('a1', 1) }),
+			dmsg('m2', 'rB', 'c1', { permit: stamp('b1', 2) }),
+			dmsg('m3', 'rA', 'c1', { permit: stamp('a2', 3) }),
 		];
-		const newest = newestPermits(msgs);
-		expect(newest[permitKey('rA', 'c1')]).toBe('m2');
-		expect(newest[permitKey('rB', 'c1')]).toBe('m3');
-		expect(newest[permitKey('rA', 'c2')]).toBe('m4');
+		const groups = permitGroups(msgs);
+		expect(Object.keys(groups).sort()).toEqual(['m1', 'm2']);
+		expect(groups.m1.decision.permit?.nonce).toBe('a2');
+		expect(groups.m2.decision.permit?.nonce).toBe('b1');
 	});
 
 	it('a close from another poster does not close the card', () => {
@@ -367,9 +447,7 @@ describe('permit card grouping', () => {
 			dmsg('m1', 'rA', 'c1', { permit: permit() }),
 			dmsg('m2', 'rB', 'c1', { closed: 'gone' }),
 		];
-		const closed = closedCards(msgs);
-		expect(closed[permitKey('rA', 'c1')]).toBeUndefined();
-		expect(closed[permitKey('rB', 'c1')]).toBe('gone');
+		expect(permitGroups(msgs).m1.closed).toBeUndefined();
 	});
 
 	it('a close from the same poster closes the card', () => {
@@ -377,6 +455,29 @@ describe('permit card grouping', () => {
 			dmsg('m1', 'rA', 'c1', { permit: permit() }),
 			dmsg('m2', 'rA', 'c1', { closed: 'answered on Phone' }),
 		];
-		expect(closedCards(msgs)[permitKey('rA', 'c1')]).toBe('answered on Phone');
+		expect(permitGroups(msgs).m1.closed).toBe('answered on Phone');
+	});
+
+	it('a close only applies to cards before it; a later card with the same id is a new open card', () => {
+		const msgs = [
+			dmsg('m1', 'rA', 'c1', { permit: stamp('n1', 1) }),
+			dmsg('m2', 'rA', 'c1', { closed: 'gone' }),
+			dmsg('m3', 'rA', 'c1', { permit: stamp('n2', 2) }),
+			dmsg('m4', 'rA', 'c1', { permit: stamp('n3', 3) }),
+		];
+		const groups = permitGroups(msgs);
+		expect(Object.keys(groups).sort()).toEqual(['m1', 'm3']);
+		expect(groups.m1.closed).toBe('gone');
+		expect(groups.m1.decision.permit?.nonce).toBe('n1');
+		expect(groups.m3.closed).toBeUndefined();
+		expect(groups.m3.decision.permit?.nonce).toBe('n3');
+	});
+
+	it('a close that precedes every card does not affect them', () => {
+		const msgs = [
+			dmsg('m1', 'rA', 'c1', { closed: 'gone' }),
+			dmsg('m2', 'rA', 'c1', { permit: permit() }),
+		];
+		expect(permitGroups(msgs).m2.closed).toBeUndefined();
 	});
 });

@@ -265,6 +265,15 @@ pub async fn manager_permit_answer<R: Runtime>(window: tauri::WebviewWindow<R>, 
 }
 
 #[tauri::command]
+pub async fn manager_permit_refresh<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>, card_id: String) -> Result<(), String> {
+  if window.label() != LABEL {
+    return Err("not allowed from this window".to_owned());
+  }
+  let relay = relay_of(&app)?;
+  blocking(move || relay.refresh_permit(&card_id)).await
+}
+
+#[tauri::command]
 pub async fn manager_join_decide<R: Runtime>(app: AppHandle<R>, device_id: String, accept: bool) -> Result<(), String> {
   let relay = relay_of(&app)?;
   blocking(move || relay.decide_join(&device_id, accept)).await?;

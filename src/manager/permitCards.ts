@@ -1,29 +1,37 @@
-import type { ChatMessage } from './types';
+import type { ChatMessage, DecisionRef, PermitCardWire } from './types';
 
 export const permitKey = (poster: string | undefined, cardId: string) =>
 	`${poster ?? ''}|${cardId}`;
 
-export const newestPermits = (
-	messages: ChatMessage[],
-): Record<string, string> => {
-	const newest: Record<string, string> = {};
-	for (const m of messages) {
-		const d = m.decision;
-		if (d?.permit) newest[permitKey(d.poster, d.card_id)] = m.id;
-	}
-	return newest;
-};
+export interface PermitGroup {
+	decision: DecisionRef & { permit: PermitCardWire };
+	closed?: string;
+}
 
-export const closedCards = (
+export const permitGroups = (
 	messages: ChatMessage[],
-): Record<string, string> => {
-	const closed: Record<string, string> = {};
+): Record<string, PermitGroup> => {
+	const groups: Record<string, PermitGroup> = {};
+	const open: Record<string, string> = {};
 	for (const m of messages) {
 		const d = m.decision;
-		if (d?.closed && !d.permit)
-			closed[permitKey(d.poster, d.card_id)] = d.closed;
+		if (!d?.card_id) continue;
+		const key = permitKey(d.poster, d.card_id);
+		const permit = d.permit;
+		if (permit) {
+			const decision = { ...d, permit };
+			const first = open[key];
+			if (first) groups[first].decision = decision;
+			else {
+				open[key] = m.id;
+				groups[m.id] = { decision };
+			}
+		} else if (d.closed && open[key]) {
+			groups[open[key]].closed = d.closed;
+			delete open[key];
+		}
 	}
-	return closed;
+	return groups;
 };
 
 const FORMAT_CONTROLS = /[‎‏‪-‮⁦-⁩؜]/g;

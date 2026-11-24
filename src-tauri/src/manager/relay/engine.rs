@@ -19,7 +19,7 @@ use tmgr_chat_relay::trust::{
 use tmgr_chat_relay::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex, Error};
 
-use super::permit::{sign_answer, PermitAnswer, PermitBook};
+use super::permit::{sign_answer, PermitAnswer, PermitBook, StoredPermit};
 use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, ReceiptState, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
 use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
@@ -1525,14 +1525,27 @@ const UNKNOWN_PERMIT_MSG: &str = "Unknown or closed permission card";
 
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   pub fn answer_permit(&self, card_id: &str, answer: PermitAnswer, confirmed: bool) -> Result<(), String> {
+    let user_id = self.cfg.user_id.to_string();
+    let now = self.now();
+    self.send_permitok(card_id, true, |c, stored| {
+      let (_, keys) = Self::own(c)?;
+      let signed = sign_answer(stored, answer, confirmed, &user_id, &keys.fingerprint(), now, keys.sign_secret())?;
+      serde_json::to_value(&signed).map_err(err)
+    })
+  }
+
+  pub fn refresh_permit(&self, card_id: &str) -> Result<(), String> {
+    self.send_permitok(card_id, false, |_, stored| Ok(serde_json::json!({"v": 1, "refresh": stored.card_id, "nonce": stored.card.nonce})))
+  }
+
+  fn send_permitok(&self, card_id: &str, consume: bool, build: impl FnOnce(&mut Core, &StoredPermit) -> Result<serde_json::Value, String>) -> Result<(), String> {
     let deadline = Instant::now() + self.send_budget;
     let guard_key = format!("permit:{card_id}");
     let (msg_id, token, sealed) = {
       let mut g = self.lock();
       let c = &mut *g;
       let stored = c.permits.get(card_id).cloned().ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
-      let (_, keys) = Self::own(c)?;
-      let signed = sign_answer(&stored, answer, confirmed, &self.cfg.user_id.to_string(), &keys.fingerprint(), self.now(), keys.sign_secret())?;
+      let payload = build(c, &stored)?;
       let runner = c
         .st
         .trusted
@@ -1541,7 +1554,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         .cloned()
         .ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
       let msg_id = random_msg_id("permitok").map_err(err)?;
-      let payload = serde_json::to_value(&signed).map_err(err)?;
       if !c.sending.insert(guard_key.clone()) {
         return Err("This card is already being answered".into());
       }
@@ -1562,7 +1574,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     }
     Self::settle(c, &sealed.items, &posted.done);
     posted.outcome?;
-    c.permits.remove(card_id);
+    if consume {
+      c.permits.remove(card_id);
+    }
     Ok(())
   }
 
@@ -1600,6 +1614,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   fn answer_permit(&self, card_id: &str, answer: PermitAnswer, confirmed: bool) -> Result<(), String> {
     RelayEngine::answer_permit(self, card_id, answer, confirmed)
+  }
+  fn refresh_permit(&self, card_id: &str) -> Result<(), String> {
+    RelayEngine::refresh_permit(self, card_id)
   }
   fn rooms(&self) -> Result<Vec<RoomInfo>, String> {
     let g = self.lock();

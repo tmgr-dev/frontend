@@ -469,6 +469,7 @@ pub fn run() {
       manager::manager_spawn_decide,
       manager::manager_trust_state,
       manager::manager_permit_answer,
+      manager::manager_permit_refresh,
       manager::manager_join_decide,
       manager::manager_revoke_decide,
       manager::manager_revoke,
