@@ -225,11 +225,6 @@ impl PermitDesk {
                     vec![close(&id, "answer in attach"), line(e.code(), "closed")]
                 }
             }
-            PermitOutcome::Terminal => {
-                self.pending.remove(&id);
-                self.tombstone(&id);
-                vec![close(&id, "gone"), line(e.code(), "closed")]
-            }
         }
     }
 
@@ -639,10 +634,11 @@ mod tests {
     }
 
     #[test]
-    fn bad_signature_from_trusted_owner_is_terminal() {
+    fn bad_signature_is_dropped_and_the_card_stays_answerable() {
         let mut g = Gen(0);
         let c = card();
         let mut d = desk_with(&c, &mut g);
+        let before = d.pending(CARD).unwrap().clone();
         let r = rec(&d);
         let mut s = sign(&r, PermitChoice::Yes, 0);
         let other: Signature = SigningKey::from_slice(&[9; 32])
@@ -650,14 +646,33 @@ mod tests {
             .sign(permit_signed_string(&r, &key(), &s).as_bytes());
         s.sig = b64_encode(other.to_der().as_bytes());
         let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1, &mut g);
-        assert_eq!(answers(&acts), 0);
-        assert_eq!(closes(&acts), vec!["gone".to_string()]);
-        assert!(audit(&acts).contains("result=bad_sig action=closed"));
-        assert!(d.is_empty());
+        only_audit(&acts);
+        assert!(audit(&acts).contains("result=bad_sig action=dropped"));
+        assert_eq!(d.pending(CARD).unwrap(), &before);
         let good = sign(&r, PermitChoice::Yes, 0);
         let acts = accept(&mut d, &good, &Ctx::ok(), Some(&c), T0 + 2, &mut g);
-        assert_eq!(answers(&acts), 0);
-        only_audit(&acts);
+        assert_eq!(answers(&acts), 1);
+    }
+
+    #[test]
+    fn unsigned_junk_on_a_danger_card_burns_nothing_and_uses_no_reissue() {
+        let mut g = Gen(0);
+        let c = danger_card();
+        let mut d = desk_under(DesktopPolicy::Safe, &c, &mut g);
+        let before = d.pending(CARD).unwrap().clone();
+        for _ in 0..5 {
+            let mut s = sign(&rec(&d), PermitChoice::Yes, 0);
+            s.sig = "AAAA".into();
+            let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1, &mut g);
+            only_audit(&acts);
+            assert!(audit(&acts).contains("action=dropped"));
+        }
+        assert_eq!(d.pending(CARD).unwrap(), &before);
+        let s = sign(&rec(&d), PermitChoice::Yes, 1);
+        assert_eq!(
+            answers(&accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 2, &mut g)),
+            1
+        );
     }
 
     #[test]

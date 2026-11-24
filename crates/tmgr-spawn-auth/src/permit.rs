@@ -175,7 +175,6 @@ pub fn permit_signed_string(record: &PermitRecord, key: &PinnedKey, sig: &Signed
 pub enum PermitOutcome {
     Drop,
     Reissue,
-    Terminal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,7 +224,8 @@ impl PermitRefusal {
             | PermitRefusal::DesktopNotAllowed
             | PermitRefusal::NotTrusted
             | PermitRefusal::UnknownKey
-            | PermitRefusal::Stale => PermitOutcome::Drop,
+            | PermitRefusal::Stale
+            | PermitRefusal::BadSig => PermitOutcome::Drop,
             PermitRefusal::Expired
             | PermitRefusal::NeedsConfirm
             | PermitRefusal::BadChoice
@@ -234,7 +234,6 @@ impl PermitRefusal {
             | PermitRefusal::BadTtl
             | PermitRefusal::UnsupportedVersion
             | PermitRefusal::UnsupportedAlg => PermitOutcome::Reissue,
-            PermitRefusal::BadSig => PermitOutcome::Terminal,
         }
     }
 }
@@ -360,6 +359,7 @@ impl PermittedAnswer {
 }
 
 /// Caller burns the nonce only when the result is Ok or `refusal.outcome() != Drop`.
+/// The signature is checked before any outcome that burns, reissues or closes.
 pub fn verify_permit(
     sig: &SignedPermit,
     record: &PermitRecord,
@@ -391,13 +391,7 @@ pub fn verify_permit(
     if !same {
         return Err(PermitRefusal::Stale);
     }
-    if sig.v != 1 {
-        return Err(PermitRefusal::UnsupportedVersion);
-    }
-    if sig.alg != "es256" {
-        return Err(PermitRefusal::UnsupportedAlg);
-    }
-    if sig.ts_ms > MAX_SAFE_INT || sig.exp_ms > MAX_SAFE_INT || record.exp_ms > MAX_SAFE_INT {
+    if record.exp_ms > MAX_SAFE_INT {
         return Err(PermitRefusal::BadToken);
     }
     if record.exp_ms <= record.issued_ms
@@ -412,13 +406,26 @@ pub fn verify_permit(
         && is_session_id(&record.session)
         && is_hex_lower(&key.device_fp, 64)
         && is_hex_lower(&record.runner_fp, 64)
-        && is_hex_lower(&record.nonce, 32)
-        && is_hex_lower(&sig.req_sha256, 64)
-        && sig.confirmed <= 1;
+        && is_hex_lower(&record.nonce, 32);
     if !tokens_ok {
         return Err(PermitRefusal::BadToken);
     }
     record.screen.validate()?;
+    let message = permit_signed_string(record, key, sig);
+    verify_der_b64(&verifying, &message, &sig.sig).map_err(|_| PermitRefusal::BadSig)?;
+    if sig.v != 1 {
+        return Err(PermitRefusal::UnsupportedVersion);
+    }
+    if sig.alg != "es256" {
+        return Err(PermitRefusal::UnsupportedAlg);
+    }
+    if sig.ts_ms > MAX_SAFE_INT
+        || sig.exp_ms > MAX_SAFE_INT
+        || !is_hex_lower(&sig.req_sha256, 64)
+        || sig.confirmed > 1
+    {
+        return Err(PermitRefusal::BadToken);
+    }
     let req_sha256 = record.screen.req_sha256();
     if sig.exp_ms != record.exp_ms || sig.req_sha256 != req_sha256 {
         return Err(PermitRefusal::ScreenMismatch);
@@ -435,8 +442,6 @@ pub fn verify_permit(
     if needs_confirm && sig.confirmed != 1 {
         return Err(PermitRefusal::NeedsConfirm);
     }
-    let message = permit_signed_string(record, key, sig);
-    verify_der_b64(&verifying, &message, &sig.sig).map_err(|_| PermitRefusal::BadSig)?;
     Ok(PermittedAnswer {
         device_fp: key.device_fp.clone(),
         card_id: record.card_id.clone(),
@@ -775,6 +780,8 @@ mod tests {
         for edit in edits {
             let mut r2 = r.clone();
             edit(&mut r2.screen);
+            let mut s = s.clone();
+            resign(&mut s, &r2, &k);
             let e = ok(&s, &r2, &k).unwrap_err();
             assert_eq!(e, PermitRefusal::ScreenMismatch);
             assert_eq!(e.outcome(), PermitOutcome::Reissue);
@@ -785,19 +792,112 @@ mod tests {
     }
 
     #[test]
-    fn bad_signatures_are_terminal() {
+    fn bad_signatures_are_dropped() {
         let (r, k) = (record(), key());
         let mut s = signed(&r, &k, PermitChoice::Yes, 0);
         let other: Signature = sk(4).sign(permit_signed_string(&r, &k, &s).as_bytes());
         s.sig = b64_encode(other.to_der().as_bytes());
         let e = ok(&s, &r, &k).unwrap_err();
         assert_eq!(e, PermitRefusal::BadSig);
-        assert_eq!(e.outcome(), PermitOutcome::Terminal);
+        assert_eq!(e.outcome(), PermitOutcome::Drop);
         s.sig = "AAAA".into();
         assert_eq!(ok(&s, &r, &k), Err(PermitRefusal::BadSig));
         let mut tampered = signed(&r, &k, PermitChoice::No, 0);
         tampered.choice = PermitChoice::Yes;
         assert_eq!(ok(&tampered, &r, &k), Err(PermitRefusal::BadSig));
+    }
+
+    #[test]
+    fn unsigned_junk_never_reaches_a_burning_outcome() {
+        let (r, k) = (record(), key());
+        let mut danger = record();
+        danger.screen.danger = vec!["deletes files".into()];
+        let late = r.exp_ms + 1;
+        let cases: Vec<(&str, SignedPermit, PermitRecord, u64)> = vec![
+            (
+                "expired",
+                signed(&r, &k, PermitChoice::Yes, 0),
+                r.clone(),
+                late,
+            ),
+            (
+                "needs_confirm",
+                signed(&danger, &k, PermitChoice::Yes, 0),
+                danger.clone(),
+                NOW,
+            ),
+            (
+                "bad_choice",
+                {
+                    let mut r2 = record();
+                    r2.screen.always_label = None;
+                    signed(&r2, &k, PermitChoice::Always, 1)
+                },
+                {
+                    let mut r2 = record();
+                    r2.screen.always_label = None;
+                    r2
+                },
+                NOW,
+            ),
+            (
+                "version",
+                SignedPermit {
+                    v: 2,
+                    ..signed(&r, &k, PermitChoice::Yes, 0)
+                },
+                r.clone(),
+                NOW,
+            ),
+            (
+                "alg",
+                SignedPermit {
+                    alg: "es384".into(),
+                    ..signed(&r, &k, PermitChoice::Yes, 0)
+                },
+                r.clone(),
+                NOW,
+            ),
+            (
+                "confirmed",
+                signed(&r, &k, PermitChoice::Yes, 2),
+                r.clone(),
+                NOW,
+            ),
+            (
+                "exp",
+                SignedPermit {
+                    exp_ms: r.exp_ms + 1,
+                    ..signed(&r, &k, PermitChoice::Yes, 0)
+                },
+                r.clone(),
+                NOW,
+            ),
+        ];
+        for (name, mut s, rec, now) in cases {
+            s.sig = "AAAA".into();
+            let e = run(&s, &rec, &k, TrustStatus::Trusted, now).unwrap_err();
+            assert_eq!(e, PermitRefusal::BadSig, "{name}");
+            assert_eq!(e.outcome(), PermitOutcome::Drop, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_valid_signature_still_gets_the_specific_refusal() {
+        let (mut r, k) = (record(), key());
+        r.screen.danger = vec!["deletes files".into()];
+        let e = ok(&signed(&r, &k, PermitChoice::Yes, 0), &r, &k).unwrap_err();
+        assert_eq!(
+            (e, e.outcome()),
+            (PermitRefusal::NeedsConfirm, PermitOutcome::Reissue)
+        );
+        let r = record();
+        let s = signed(&r, &k, PermitChoice::Yes, 0);
+        let e = run(&s, &r, &k, TrustStatus::Trusted, r.exp_ms + 1).unwrap_err();
+        assert_eq!(
+            (e, e.outcome()),
+            (PermitRefusal::Expired, PermitOutcome::Reissue)
+        );
     }
 
     #[test]
@@ -964,10 +1064,9 @@ mod tests {
         for r in all {
             let want = match r {
                 NotOwnerDevice | SenderMismatch | DesktopNotAllowed | NotTrusted | UnknownKey
-                | Stale => Drop,
+                | Stale | BadSig => Drop,
                 Expired | NeedsConfirm | BadChoice | ScreenMismatch | BadToken | BadTtl
                 | UnsupportedVersion | UnsupportedAlg => Reissue,
-                BadSig => Terminal,
             };
             assert_eq!(r.outcome(), want, "{r:?}");
             assert!(r.to_string().starts_with("permission"), "{r:?}");
