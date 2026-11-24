@@ -124,6 +124,10 @@ impl RelaySink {
 }
 
 impl ChatSink for RelaySink {
+    fn accepts_owner_input(&self, from_kind: Option<&str>) -> bool {
+        matches!(from_kind, Some("desktop" | "mobile" | "terminal"))
+    }
+
     fn deliver(
         &self,
         from_device: &str,
@@ -134,7 +138,7 @@ impl ChatSink for RelaySink {
             self.dropped("not owner input for this machine");
             return Ok(());
         }
-        if !matches!(from_kind, Some("desktop" | "mobile" | "terminal")) {
+        if !self.accepts_owner_input(from_kind) {
             self.dropped("sender is not a pinned desktop, phone or terminal");
             if let Some(give_up) = &self.give_up {
                 give_up(from_device, &msg.id, crate::chat::REJECT_REVOKE_PENDING);

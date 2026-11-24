@@ -789,3 +789,23 @@ fn a_runner_kind_owner_message_is_still_dropped_and_an_invalid_terminal_message_
         [("dev-9".to_owned(), m.id, "invalid message".to_owned())]
     );
 }
+
+#[test]
+fn deliver_ingests_exactly_when_the_sink_accepts_owner_input_for_that_kind() {
+    let kinds = [
+        (None, false),
+        (Some("desktop"), true),
+        (Some("mobile"), true),
+        (Some("terminal"), true),
+        (Some("runner"), false),
+        (Some("weird"), false),
+    ];
+    for (kind, expected) in kinds {
+        let (sink, seen) = recording_sink(stored);
+        sink.deliver("dev-1", kind, msg(AuthorKind::Owner, MACHINE, None))
+            .unwrap();
+        let ingested = !seen.lock().unwrap().is_empty();
+        assert_eq!(ingested, sink.accepts_owner_input(kind), "{kind:?}");
+        assert_eq!(ingested, expected, "{kind:?}");
+    }
+}
