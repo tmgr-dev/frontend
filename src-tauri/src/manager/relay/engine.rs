@@ -263,7 +263,18 @@ struct Core {
   drop_reason: Option<&'static str>,
   drop_detail: Option<String>,
   receipts: Vec<Receipt>,
+  held_receipts: Vec<HeldReceipt>,
 }
+
+struct HeldReceipt {
+  machine: String,
+  from: String,
+  at_ms: u64,
+  receipt: Receipt,
+}
+
+const HELD_RECEIPT_TTL_MS: u64 = 120_000;
+const MAX_HELD_RECEIPTS: usize = 64;
 
 struct Sealed {
   items: Vec<(String, String, u64)>,
@@ -1256,7 +1267,22 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       }
       None => {
         c.st.bindings.insert(machine.to_owned(), from.to_owned());
+        Self::release_held_receipts(c, from, machine, now);
         true
+      }
+    }
+  }
+
+  fn release_held_receipts(c: &mut Core, from: &str, machine: &str, now: u64) {
+    let held = std::mem::take(&mut c.held_receipts);
+    for x in held {
+      if now.saturating_sub(x.at_ms) >= HELD_RECEIPT_TTL_MS {
+        continue;
+      }
+      if x.from == from && x.machine == machine {
+        c.receipts.push(x.receipt);
+      } else {
+        c.held_receipts.push(x);
       }
     }
   }
@@ -1334,11 +1360,21 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           c.drop_reason = Some("receipt for a message this device did not send");
           return None;
         };
-        if c.st.bindings.get(machine) != Some(&opened.from) {
-          c.drop_reason = Some("receipt from a runner of another machine");
-          return None;
+        match c.st.bindings.get(machine) {
+          Some(d) if *d == opened.from => c.receipts.push(receipt),
+          bound => {
+            if bound.is_none() && c.st.kind_of_trusted(&opened.from) == Some("runner") {
+              let machine = machine.clone();
+              c.held_receipts.retain(|x| now.saturating_sub(x.at_ms) < HELD_RECEIPT_TTL_MS);
+              if c.held_receipts.len() >= MAX_HELD_RECEIPTS {
+                c.held_receipts.remove(0);
+              }
+              c.held_receipts.push(HeldReceipt { machine, from: opened.from.clone(), at_ms: now, receipt });
+            }
+            c.drop_reason = Some("receipt from a runner of another machine");
+            return None;
+          }
         }
-        c.receipts.push(receipt);
       }
       "join" if !sender_trusted => {
         if !join_open {
@@ -1974,6 +2010,27 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         c.auto_join_error = Some(e);
       }
     }
+  }
+
+  pub fn rebind_machine(&self, machine: &str, device_id: &str) -> Result<(), String> {
+    if self.kind == "runner" {
+      return Err("only an owner device can move a machine".into());
+    }
+    let mut g = self.lock();
+    let c = &mut *g;
+    let now = self.now();
+    if c.st.kind_of_trusted(device_id) != Some("runner") {
+      return Err("the device is not a trusted runner".into());
+    }
+    let claimed = c.st.alerts.iter().any(|a| a.kind == "room_conflict" && a.device_id == device_id && now.saturating_sub(a.at_ms) < ALERT_TTL_MS);
+    if !claimed {
+      return Err("this runner has not claimed a machine".into());
+    }
+    c.st.bindings.retain(|_, d| d != device_id);
+    c.st.bindings.insert(machine.to_owned(), device_id.to_owned());
+    c.st.alerts.retain(|a| !(a.kind == "room_conflict" && a.device_id == device_id));
+    Self::release_held_receipts(c, device_id, machine, now);
+    self.save_now(c)
   }
 
   pub fn expect_join(&self, device_id: &str, fp: &str) -> Result<(), String> {

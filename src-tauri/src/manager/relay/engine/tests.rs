@@ -1005,12 +1005,53 @@ fn a_binding_to_a_revoked_runner_passes_to_the_runner_that_replaced_it() {
   let new = join_as(&fake, &clock, &a, "Runner new", "runner");
   let id = format!("m_{}", "8".repeat(32));
   send_with(&a, &id, T0 + 1, "hi").unwrap();
-  post_chat(&new, &aid, &msg_n(3, "session"));
   post_receipt(&new, &aid, "r_1", receipt_of(&id, "delivered"));
+  post_chat(&new, &aid, &msg_n(3, "session"));
   assert_eq!(a.poll_once().unwrap().len(), 1);
   assert_eq!(a.take_receipts().len(), 1);
-  assert!(a.drops().is_empty(), "{:?}", a.drops());
   assert!(!alert_kinds(&a).contains(&"room_conflict".to_owned()));
+}
+
+#[test]
+fn a_re_paired_runner_claiming_a_bound_machine_stays_refused_until_the_owner_moves_it() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let old = join_as(&fake, &clock, &a, "Runner old", "runner");
+  let aid = my_id(&a);
+  post_chat(&old, &aid, &msg_n(2, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  let new = join_as(&fake, &clock, &a, "Runner new", "runner");
+  post_chat(&new, &aid, &msg_n(3, "session"));
+  assert!(a.poll_once().unwrap().is_empty());
+  assert!(alert_kinds(&a).contains(&"room_conflict".to_owned()));
+  assert_eq!(a.lock().st.bindings.get(&room().machine), Some(&my_id(&old)));
+  a.rebind_machine(&room().machine, &my_id(&new)).unwrap();
+  assert!(!alert_kinds(&a).contains(&"room_conflict".to_owned()));
+  let id = format!("m_{}", "8".repeat(32));
+  send_with(&a, &id, T0 + 1, "hi").unwrap();
+  assert_eq!(new.poll_once().unwrap().len(), 1);
+  assert!(old.poll_once().unwrap().is_empty());
+  post_receipt(&new, &aid, "r_1", receipt_of(&id, "delivered"));
+  post_chat(&new, &aid, &msg_n(4, "session"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  assert_eq!(a.take_receipts().len(), 1);
+}
+
+#[test]
+fn only_an_owner_device_moves_a_machine_and_only_to_a_runner_that_claimed_it() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let old = join_as(&fake, &clock, &a, "Runner old", "runner");
+  let quiet = join_as(&fake, &clock, &a, "Runner quiet", "runner");
+  let aid = my_id(&a);
+  post_chat(&old, &aid, &msg_n(2, "manager"));
+  a.poll_once().unwrap();
+  assert!(a.rebind_machine(&room().machine, &my_id(&quiet)).is_err());
+  assert!(a.rebind_machine(&room().machine, "d_unknown").is_err());
+  post_chat(&quiet, &aid, &msg_n(3, "session"));
+  a.poll_once().unwrap();
+  assert!(old.rebind_machine(&room().machine, &my_id(&quiet)).is_err());
+  assert_eq!(a.lock().st.bindings.get(&room().machine), Some(&my_id(&old)));
 }
 
 #[test]
