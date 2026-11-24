@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tmgr_ipc::chat::{valid_message_id, AuthorKind, ChatMessage, RoomRef};
+use tmgr_ipc::chat::{new_message_id, valid_message_id, AuthorKind, ChatMessage, RoomRef};
 use tmgr_ipc::mgr_rpc::{limits, KIND_REQ, KIND_RES};
 use tmgr_phone::{b64, b64_decode, h};
 
@@ -305,7 +305,29 @@ pub struct Receipt {
 }
 
 const SENT_KEEP: usize = 200;
+const MAX_PROBES: usize = 64;
 const MAX_RECEIPTS: usize = 256;
+const MAX_PROBES_PER_SENDER: usize = 8;
+
+fn permanent_failure(e: &str) -> bool {
+    const LOCAL: [&str; 3] = [
+        "invalid message id",
+        "the target is not a trusted owner device",
+        "this device is not a trusted member of the chat yet",
+    ];
+    LOCAL.contains(&e)
+        || serde_json::from_str::<Value>(e)
+            .ok()
+            .and_then(|v| v["http_status"].as_u64())
+            .is_some_and(|s| (400..500).contains(&s) && s != 429)
+}
+
+fn push_probe(c: &mut Core, from: String, id: String) {
+    let mine = c.probes.iter().filter(|p| p.0 == from).count();
+    if c.probes.len() < MAX_PROBES && mine < MAX_PROBES_PER_SENDER {
+        c.probes.push((from, id));
+    }
+}
 
 /// Ids are unique per runner because `sent` binds each id to one runner, so the id alone identifies the pair.
 fn push_receipt(c: &mut Core, r: Receipt) {
@@ -380,6 +402,7 @@ struct Core {
     drop_reason: Option<&'static str>,
     sent: Vec<(String, String)>,
     receipts: Vec<Receipt>,
+    probes: Vec<(String, String)>,
 }
 
 fn trust_key(st: &State) -> String {
@@ -1611,6 +1634,14 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 }
                 push_receipt(c, receipt);
             }
+            "probe" if sender_trusted && c.st.joined && self.kind == "runner" => {
+                c.st.trusted.iter().find(|d| d.id == opened.from)?;
+                let from_kind = sender_kind(c, &opened.from, &opened.from_fp);
+                if !self.s.accepts_owner_input(from_kind) || !valid_message_id(&opened.id) {
+                    return None;
+                }
+                push_probe(c, opened.from.clone(), opened.id.clone());
+            }
             "join" if !sender_trusted => {
                 if !join_open {
                     record_alert(c, "join_code_reused", &opened.from, now);
@@ -2108,6 +2139,18 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         state: ReceiptState,
         reason: Option<&str>,
     ) -> Result<(), String> {
+        let mut g = self.lock();
+        self.receipt_locked(&mut g, to_device, id, state, reason)
+    }
+
+    fn receipt_locked(
+        &self,
+        c: &mut Core,
+        to_device: &str,
+        id: &str,
+        state: ReceiptState,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
         if !valid_message_id(id) {
             return Err("invalid message id".into());
         }
@@ -2118,8 +2161,6 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             payload["reason"] = json!(r.chars().take(RECEIPT_REASON_MAX).collect::<String>());
         }
         let msg_id = format!("rc_{}_{}", &h(id)[..24], state.letter());
-        let mut g = self.lock();
-        let c = &mut *g;
         self.ensure_registered(c)?;
         let (own, _) = Self::own(c)?;
         if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == own.device_id) {
@@ -2131,6 +2172,62 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             .ok_or_else(|| "the target is not a trusted owner device".to_owned())?;
         self.seal_and_post(c, "receipt", &msg_id, &payload, &[target], false)?;
         self.save_now(c)
+    }
+
+    pub fn send_probes(&self) -> Result<Vec<(String, String)>, String> {
+        if !is_owner_device(Some(self.kind.as_str())) {
+            return Err(format!("a {} cannot probe runners", self.kind));
+        }
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (id, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        let runners: Vec<Dev> =
+            c.st.trusted
+                .iter()
+                .filter(|d| c.st.kind_of_trusted(&d.id) == Some("runner"))
+                .filter(|d| !c.st.pending_revokes.iter().any(|p| p.target_fp == d.fp))
+                .cloned()
+                .collect();
+        if runners.is_empty() {
+            return Err("there are no trusted runners to probe".into());
+        }
+        let mut sent = Vec::new();
+        for runner in runners {
+            let probe = new_message_id();
+            self.seal_and_post(
+                c,
+                "probe",
+                &probe,
+                &json!({ "v": 1 }),
+                std::slice::from_ref(&runner),
+                false,
+            )?;
+            c.sent.push((probe.clone(), runner.id.clone()));
+            if c.sent.len() > SENT_KEEP {
+                c.sent.remove(0);
+            }
+            sent.push((runner.id, probe));
+        }
+        self.save_now(c)?;
+        Ok(sent)
+    }
+
+    fn answer_probes(&self, c: &mut Core) {
+        let pending = std::mem::take(&mut c.probes);
+        for (from, id) in pending {
+            if !c.st.trusted.iter().any(|d| d.id == from) {
+                continue;
+            }
+            if let Err(e) = self.receipt_locked(c, &from, &id, ReceiptState::Delivered, None) {
+                if !permanent_failure(&e) {
+                    push_probe(c, from, id);
+                }
+            }
+        }
     }
 
     pub fn send_chat_to_owners(&self, msg: &ChatMessage, only: &[String]) -> Result<(), String> {
@@ -2542,6 +2639,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
         c.hold_since.retain(|k, _| hold.blocked.contains(k));
         self.ack_if_stored(c)?;
+        self.answer_probes(c);
         match hold.sink_err {
             Some(e) => Err(e),
             None => Ok(out),

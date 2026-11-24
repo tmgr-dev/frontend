@@ -381,6 +381,8 @@ struct Rec {
     got: Arc<Mutex<Vec<(String, ChatMessage)>>>,
     kinds: Arc<Mutex<Vec<Option<String>>>>,
     fail: Arc<AtomicBool>,
+    refuse_probes: Arc<AtomicBool>,
+    probe_kinds: Arc<Mutex<Vec<Option<String>>>>,
     drops: Arc<Mutex<Vec<&'static str>>>,
     skipped: Arc<Mutex<Vec<(String, String)>>>,
     blobs: Arc<Mutex<Vec<(String, crate::engine::blob::BlobPart)>>>,
@@ -406,6 +408,15 @@ impl Rec {
 }
 
 impl ChatSink for Rec {
+    fn accepts_owner_input(&self, kind: Option<&str>) -> bool {
+        self.probe_kinds
+            .lock()
+            .unwrap()
+            .push(kind.map(str::to_owned));
+        !self.refuse_probes.load(Ordering::SeqCst)
+            && matches!(kind, Some("desktop" | "mobile" | "terminal"))
+    }
+
     fn deliver(&self, from: &str, kind: Option<&str>, msg: ChatMessage) -> Result<(), String> {
         if self.fail.load(Ordering::SeqCst) {
             return Err("sink is down".into());
@@ -5046,6 +5057,7 @@ fn send_activity_refuses_desktop_only_targets_and_bad_input() {
 mod blobs;
 mod clock;
 mod receipt;
+mod probe;
 mod repro;
 
 #[test]
