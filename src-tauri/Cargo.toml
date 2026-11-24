@@ -50,6 +50,7 @@ tmgr-usage = { path = "../crates/tmgr-usage" }
 tmgr-session = { path = "../crates/tmgr-session" }
 tmgr-phone = { path = "../crates/tmgr-phone" }
 tmgr-chat-relay = { path = "../crates/tmgr-chat-relay" }
+tmgr-spawn-auth = { path = "../crates/tmgr-spawn-auth" }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 trash = "5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

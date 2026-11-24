@@ -11,6 +11,7 @@ import type {
 	ManagerMachine,
 	ModelChoice,
 	PairResult,
+	PermitChoice,
 	RemotePolicyInfo,
 	RoomInfo,
 	RoomRef,
@@ -87,6 +88,12 @@ export const spawnDecide = (
 		decision,
 		edit,
 	});
+
+export const permitAnswer = (
+	cardId: string,
+	choice: PermitChoice,
+	confirmed: boolean,
+) => invoke<void>('manager_permit_answer', { cardId, choice, confirmed });
 
 export const runnerCaps = () =>
 	invoke<{ caps: string[] }>('runner_status').then((s) => s.caps);

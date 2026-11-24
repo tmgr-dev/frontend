@@ -189,6 +189,9 @@ impl RelayPort for SwitchRelay {
   fn reset_identity(&self) -> Result<(), String> {
     self.cur().reset_identity()
   }
+  fn answer_permit(&self, card_id: &str, answer: super::permit::PermitAnswer, confirmed: bool) -> Result<(), String> {
+    self.cur().answer_permit(card_id, answer, confirmed)
+  }
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
     self.cur().poll_once()
   }

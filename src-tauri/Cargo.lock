@@ -5596,6 +5596,7 @@ dependencies = [
  "tmgr-ipc",
  "tmgr-phone",
  "tmgr-session",
+ "tmgr-spawn-auth",
  "tmgr-usage",
  "tokio",
  "trash",

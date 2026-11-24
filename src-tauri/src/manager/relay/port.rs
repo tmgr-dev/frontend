@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::permit::PermitAnswer;
 use super::rooms::MachineIndex;
 use crate::manager::backend::{ChatMessage, HistoryParams, RoomInfo, RoomRef, SearchParams, SendParams};
 
@@ -134,6 +135,9 @@ pub trait RelayPort: Send + Sync {
     vec![]
   }
   fn reset_identity(&self) -> Result<(), String>;
+  fn answer_permit(&self, _card_id: &str, _answer: PermitAnswer, _confirmed: bool) -> Result<(), String> {
+    Err("chat sync is not set up".into())
+  }
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String>;
   fn take_receipts(&self) -> Vec<Receipt> {
     vec![]

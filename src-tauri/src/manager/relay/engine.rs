@@ -19,6 +19,7 @@ use tmgr_chat_relay::trust::{
 use tmgr_chat_relay::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex, Error};
 
+use super::permit::{sign_answer, PermitAnswer, PermitBook};
 use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, ReceiptState, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
 use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
@@ -266,6 +267,7 @@ struct Core {
   drop_detail: Option<String>,
   receipts: Vec<Receipt>,
   held_receipts: Vec<HeldReceipt>,
+  permits: PermitBook,
 }
 
 struct HeldReceipt {
@@ -1339,6 +1341,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         if !c.log.iter().any(|x| x.from == opened.from && x.msg.id == msg.id) {
           c.log.push(LogEntry { from: opened.from.clone(), msg: msg.clone() });
           self.mark_log();
+          Self::track_permit(c, &opened.from, &msg, now);
           stored = Some(msg);
         }
       }
@@ -1516,7 +1519,72 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 }
 
+const UNKNOWN_PERMIT_MSG: &str = "Unknown or closed permission card";
+
+impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
+  pub fn answer_permit(&self, card_id: &str, answer: PermitAnswer, confirmed: bool) -> Result<(), String> {
+    let deadline = Instant::now() + self.send_budget;
+    let guard_key = format!("permit:{card_id}");
+    let (msg_id, token, sealed) = {
+      let mut g = self.lock();
+      let c = &mut *g;
+      let stored = c.permits.get(card_id).cloned().ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
+      let (_, keys) = Self::own(c)?;
+      let signed = sign_answer(&stored, answer, confirmed, &self.cfg.user_id.to_string(), &keys.fingerprint(), self.now(), keys.sign_secret())?;
+      let runner = c
+        .st
+        .trusted
+        .iter()
+        .find(|d| d.id == stored.from && !c.st.revoked.contains(&d.fp) && c.st.kind_of(&d.id, &d.fp) == Some("runner") && c.st.bindings.get(&stored.room.machine) == Some(&d.id))
+        .cloned()
+        .ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
+      let msg_id = random_msg_id("permitok").map_err(err)?;
+      let payload = serde_json::to_value(&signed).map_err(err)?;
+      if !c.sending.insert(guard_key.clone()) {
+        return Err("This card is already being answered".into());
+      }
+      match self.seal_items(c, "permitok", &msg_id, &payload, std::slice::from_ref(&runner)) {
+        Ok(sealed) => (msg_id, Self::token_of(c)?, sealed),
+        Err(e) => {
+          c.sending.remove(&guard_key);
+          return Err(e);
+        }
+      }
+    };
+    let posted = self.post_phase(Some(&token), &msg_id, false, &sealed, Some(deadline));
+    let mut g = self.lock();
+    let c = &mut *g;
+    c.sending.remove(&guard_key);
+    if !Self::is_identity(c, &token) {
+      return Err("the chat identity changed while sending".into());
+    }
+    Self::settle(c, &sealed.items, &posted.done);
+    posted.outcome?;
+    c.permits.remove(card_id);
+    Ok(())
+  }
+
+  fn track_permit(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) {
+    let Some(d) = &msg.decision else {
+      return;
+    };
+    if msg.room.kind != RoomKind::Manager || msg.author.kind != "manager" || c.st.kind_of_trusted(from) != Some("runner") || c.st.bindings.get(&msg.room.machine).map(String::as_str) != Some(from) {
+      return;
+    }
+    match (&d.permit, &d.closed) {
+      (Some(card), _) => {
+        c.permits.accept(&d.card_id, from, &msg.room, card, now);
+      }
+      (None, Some(_)) => c.permits.close(&d.card_id, from),
+      _ => {}
+    }
+  }
+}
+
 impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
+  fn answer_permit(&self, card_id: &str, answer: PermitAnswer, confirmed: bool) -> Result<(), String> {
+    RelayEngine::answer_permit(self, card_id, answer, confirmed)
+  }
   fn rooms(&self) -> Result<Vec<RoomInfo>, String> {
     let g = self.lock();
     let mut rooms: Vec<RoomInfo> = Vec::new();

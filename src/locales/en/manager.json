@@ -80,6 +80,26 @@
 		"freePlaceholder": "Or write an answer",
 		"send": "Send"
 	},
+	"permit": {
+		"title": "{agent} asks permission: {tool}",
+		"session": "Session {session}",
+		"path": "Folder",
+		"reason": "Reason",
+		"phoneOnly": "Answer on your phone or in tmgr attach",
+		"once": "Allow once",
+		"always": "Always allow",
+		"deny": "Deny",
+		"confirmOnce": "Confirm: allow once",
+		"confirmAlways": "Confirm: always allow",
+		"cancel": "Cancel",
+		"sent": "Answer sent. Waiting for the runner",
+		"failed": "Could not send the answer: {error}",
+		"answeredOn": "Answered on {device}",
+		"answeredInAttach": "Answered in tmgr attach",
+		"gone": "Gone",
+		"expired": "Expired",
+		"closed": "Closed: {reason}"
+	},
 	"spawn": {
 		"title": "Manager wants to start a {profile} session",
 		"cwd": "Folder",

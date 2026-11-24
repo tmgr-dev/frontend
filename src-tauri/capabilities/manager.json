@@ -27,6 +27,7 @@
 		"allow-manager-remove",
 		"allow-manager-spawn-card",
 		"allow-manager-spawn-decide",
+		"allow-manager-permit-answer",
 		"allow-runner-status",
 		"allow-manager-trust-state",
 		"allow-manager-join-decide",

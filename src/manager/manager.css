@@ -2514,3 +2514,38 @@ html.dark .manager .call-out {
 	cursor: pointer;
 	font: inherit;
 }
+
+.manager .dcard.permit .pm-text {
+	margin: 0;
+	padding: 6px 8px;
+	border-radius: 6px;
+	background: var(--bg);
+	font-family: var(--mono, monospace);
+	font-size: 12.5px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 160px;
+	overflow: auto;
+}
+.manager .dcard.permit .pm-lines {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 2px 10px;
+	margin: 0;
+	font-size: 12.5px;
+}
+.manager .dcard.permit .pm-lines dt {
+	color: var(--muted);
+}
+.manager .dcard.permit .pm-lines dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+.manager .dcard.permit .pm-warn {
+	color: var(--fix-fg);
+	font-weight: 600;
+	font-size: 13px;
+}
+.manager .dcard.permit.danger {
+	border-color: var(--fix-fg);
+}

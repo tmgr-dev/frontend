@@ -127,17 +127,27 @@
 				>
 					<template #decision="{ message }">
 						<template v-if="message.decision?.card_id">
-							<template v-if="activeInfo?.local !== false">
-								<SpawnApprovalCard
-									v-if="message.decision.spawn"
-									:card-id="message.decision.card_id"
-									:spawn="message.decision.spawn"
-								/>
-								<DecisionCard v-else :card-id="message.decision.card_id" />
+							<PermitCard
+								v-if="message.decision.permit"
+								:card-id="message.decision.card_id"
+								:permit="message.decision.permit"
+								:closed="closedCards[message.decision.card_id]"
+								:answerable="activeInfo?.local === false"
+							/>
+							<template v-else-if="message.decision.closed"></template>
+							<template v-else>
+								<template v-if="activeInfo?.local !== false">
+									<SpawnApprovalCard
+										v-if="message.decision.spawn"
+										:card-id="message.decision.card_id"
+										:spawn="message.decision.spawn"
+									/>
+									<DecisionCard v-else :card-id="message.decision.card_id" />
+								</template>
+								<p v-else class="mgr-remote-decision">
+									{{ $t('manager.decision.otherMachine') }}
+								</p>
 							</template>
-							<p v-else class="mgr-remote-decision">
-								{{ $t('manager.decision.otherMachine') }}
-							</p>
 						</template>
 					</template>
 				</MessageList>
@@ -347,6 +357,7 @@
 	import ConnectFollowers from './components/ConnectFollowers.vue';
 	import ControlDialog from './components/ControlDialog.vue';
 	import DecisionCard from './components/DecisionCard.vue';
+	import PermitCard from './components/PermitCard.vue';
 	import DetailPanel from './components/DetailPanel.vue';
 	import GateBlockersBanner from './components/GateBlockersBanner.vue';
 	import Icon from './components/Icon.vue';
@@ -410,6 +421,7 @@
 			Composer,
 			ConfirmKindDialog,
 			DecisionCard,
+			PermitCard,
 			SpawnApprovalCard,
 			DetailPanel,
 			DevicesPanel,
@@ -546,6 +558,14 @@
 				return this.store.activeKey
 					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
 					: [];
+			},
+			closedCards(): Record<string, string> {
+				const closed: Record<string, string> = {};
+				for (const m of this.messages) {
+					const d = m.decision;
+					if (d?.closed && !d.permit) closed[d.card_id] = d.closed;
+				}
+				return closed;
 			},
 			bodyHtml(): Record<string, string> {
 				return Object.fromEntries(

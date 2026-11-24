@@ -55,6 +55,10 @@ pub struct DecisionRef {
   pub card_id: String,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub spawn: Option<SpawnCardWire>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub permit: Option<tmgr_ipc::chat::PermitCardMsg>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub closed: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

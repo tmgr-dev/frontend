@@ -37,9 +37,28 @@ export interface SpawnCardWire {
 	target_fp: string;
 }
 
+export interface PermitCardWire {
+	session: string;
+	agent: string;
+	tool: string;
+	text: string;
+	path?: string;
+	reason?: string;
+	from?: string;
+	warning?: string;
+	danger?: string[];
+	always_label?: string;
+	exp_ms: number;
+	desktop_ok?: boolean;
+}
+
+export type PermitChoice = 'once' | 'always' | 'deny';
+
 export interface DecisionRef {
 	card_id: string;
 	spawn?: SpawnCardWire;
+	permit?: PermitCardWire;
+	closed?: string;
 }
 
 export type MentionState =

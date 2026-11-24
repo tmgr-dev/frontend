@@ -188,6 +188,7 @@ const APP_COMMANDS: &[&str] = &[
   "manager_remove",
   "manager_spawn_card",
   "manager_spawn_decide",
+  "manager_permit_answer",
   "manager_trust_state",
   "manager_join_decide",
   "manager_revoke_decide",
