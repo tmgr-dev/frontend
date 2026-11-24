@@ -290,6 +290,28 @@ impl Runner {
         self.permit_execute(actions, &format!("relay:{who}"));
     }
 
+    pub(super) fn accept_permit_refresh(&self, card_id: &str, nonce: &str, now: u64) {
+        if self.permit_ids().is_none() {
+            return;
+        }
+        let Some(session) = lock(&self.permit_relay.desk)
+            .pending(card_id)
+            .map(|p| p.record.session.clone())
+        else {
+            return;
+        };
+        let current = self.permit_card_of(&session);
+        self.permit_sync_policy();
+        let actions = lock(&self.permit_relay.desk).refresh(
+            card_id,
+            nonce,
+            current.as_ref(),
+            now,
+            &mut fresh_nonce,
+        );
+        self.permit_execute(actions, "relay:refresh");
+    }
+
     fn permit_execute(&self, actions: Vec<Action>, client: &str) {
         for action in actions {
             match action {
@@ -467,7 +489,12 @@ struct OkItem {
     kind: PermitSenderKind,
     sign_pub: String,
     label: String,
-    signed: SignedPermit,
+    body: OkBody,
+}
+
+enum OkBody {
+    Signed(Box<SignedPermit>),
+    Refresh { card_id: String, nonce: String },
 }
 
 pub(super) struct PermitOkInbox {
@@ -481,15 +508,15 @@ fn permit_inbox() -> (PermitOkInbox, std::sync::mpsc::Receiver<OkItem>) {
     (PermitOkInbox { tx, queued }, rx)
 }
 
-impl PermitOkSink for PermitOkInbox {
-    fn deliver_permitok(
+impl PermitOkInbox {
+    fn enqueue(
         &self,
         from_device: &str,
         from_fp: &str,
         kind: PermitSenderKind,
         sign_pub_b64: &str,
         sender_label: &str,
-        signed: &SignedPermit,
+        body: OkBody,
     ) {
         let mut q = lock(&self.queued);
         let n = q.get(from_device).copied().unwrap_or(0);
@@ -503,7 +530,7 @@ impl PermitOkSink for PermitOkInbox {
                     kind,
                     sign_pub: sign_pub_b64.to_owned(),
                     label: sender_label.to_owned(),
-                    signed: signed.clone(),
+                    body,
                 })
                 .is_ok();
         if sent {
@@ -511,6 +538,48 @@ impl PermitOkSink for PermitOkInbox {
         } else {
             log("permit relay: an answer was dropped, the intake is busy or stopped");
         }
+    }
+}
+
+impl PermitOkSink for PermitOkInbox {
+    fn deliver_permitok(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        kind: PermitSenderKind,
+        sign_pub_b64: &str,
+        sender_label: &str,
+        signed: &SignedPermit,
+    ) {
+        self.enqueue(
+            from_device,
+            from_fp,
+            kind,
+            sign_pub_b64,
+            sender_label,
+            OkBody::Signed(Box::new(signed.clone())),
+        );
+    }
+
+    fn deliver_permit_refresh(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        kind: PermitSenderKind,
+        card_id: &str,
+        nonce: &str,
+    ) {
+        self.enqueue(
+            from_device,
+            from_fp,
+            kind,
+            "",
+            "",
+            OkBody::Refresh {
+                card_id: card_id.to_owned(),
+                nonce: nonce.to_owned(),
+            },
+        );
     }
 }
 
@@ -526,16 +595,21 @@ impl Runner {
                     match rx.recv_timeout(PERMIT_INTAKE_TICK) {
                         Ok(item) => {
                             release_queued(&queued, &item.device);
-                            rt.accept_permitok(
-                                &item.device,
-                                &item.fp,
-                                item.owner_device,
-                                item.kind,
-                                &item.sign_pub,
-                                &item.label,
-                                &item.signed,
-                                now_ms(),
-                            );
+                            match &item.body {
+                                OkBody::Signed(signed) => rt.accept_permitok(
+                                    &item.device,
+                                    &item.fp,
+                                    item.owner_device,
+                                    item.kind,
+                                    &item.sign_pub,
+                                    &item.label,
+                                    signed,
+                                    now_ms(),
+                                ),
+                                OkBody::Refresh { card_id, nonce } => {
+                                    rt.accept_permit_refresh(card_id, nonce, now_ms())
+                                }
+                            }
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -813,7 +887,6 @@ mod tests {
         let e = env(true);
         armed(&e);
         let id = card_id(&e);
-        let (_, ids) = e.rt.permit_ids().unwrap();
         let card = e.s.card();
         let late = lock(&e.rt.permit_relay.desk)
             .pending(&id)
@@ -821,9 +894,10 @@ mod tests {
             .record
             .exp_ms
             + 1;
+        let nonce = card_nonce(&posted(&e)[0]);
         let mut n = 0u32;
         let stale =
-            lock(&e.rt.permit_relay.desk).observe(SID, card.as_ref(), &ids, late, &mut || {
+            lock(&e.rt.permit_relay.desk).refresh(&id, &nonce, card.as_ref(), late, &mut || {
                 n += 1;
                 Some(format!("{n:032x}"))
             });
@@ -960,6 +1034,58 @@ mod tests {
             a.iter().all(|l| !l.contains("result=ok action=answered")),
             "{a:?}"
         );
+    }
+
+    fn card_nonce(m: &ChatMessage) -> String {
+        m.decision
+            .as_ref()
+            .unwrap()
+            .permit
+            .as_ref()
+            .unwrap()
+            .nonce
+            .clone()
+    }
+
+    #[test]
+    fn a_request_open_for_ten_expiry_periods_leaves_one_card_in_the_room() {
+        let e = env(true);
+        armed(&e);
+        let t0 = now_ms();
+        for k in 1..=10u64 {
+            fg(&e);
+            e.rt.permit_observe(t0 + k * (tmgr_spawn_auth::MAX_PERMIT_TTL_MS + 1));
+        }
+        assert_eq!(posted(&e).len(), 1);
+    }
+
+    #[test]
+    fn a_refresh_reposts_an_expired_card_once_with_the_same_id() {
+        let e = env(true);
+        armed(&e);
+        let id = card_id(&e);
+        let first = card_nonce(&posted(&e)[0]);
+        let late = now_ms() + tmgr_spawn_auth::MAX_PERMIT_TTL_MS + 1;
+        fg(&e);
+        e.rt.accept_permit_refresh(&id, &first, late - 10_000);
+        assert_eq!(posted(&e).len(), 1);
+        e.rt.accept_permit_refresh(&id, &first, late);
+        e.rt.accept_permit_refresh(&id, &first, late + 1);
+        let cards = posted(&e);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[1].decision.as_ref().unwrap().card_id, id);
+        assert_ne!(card_nonce(&cards[1]), first);
+        e.rt.accept_permit_refresh("unknown", &first, late + 2);
+        assert_eq!(posted(&e).len(), 2);
+    }
+
+    #[test]
+    fn the_intake_queues_a_refresh_under_the_same_per_device_cap() {
+        let (inbox, rx) = permit_inbox();
+        for _ in 0..6 {
+            inbox.deliver_permit_refresh("dev-1", "fp", PermitSenderKind::Desktop, "card", "n");
+        }
+        assert_eq!(rx.try_iter().count(), 4);
     }
 
     #[test]

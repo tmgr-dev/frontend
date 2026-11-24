@@ -4182,9 +4182,21 @@ type PermitRows = Vec<(
 )>;
 
 #[derive(Clone, Default)]
-struct PermitRec(Arc<Mutex<PermitRows>>);
+struct PermitRec(Arc<Mutex<PermitRows>>, Arc<Mutex<Vec<RefreshRow>>>);
+
+type RefreshRow = (
+    String,
+    String,
+    tmgr_spawn_auth::PermitSenderKind,
+    String,
+    String,
+);
 
 impl PermitRec {
+    fn refreshes(&self) -> Vec<RefreshRow> {
+        self.1.lock().unwrap().clone()
+    }
+
     fn n(&self) -> usize {
         self.0.lock().unwrap().len()
     }
@@ -4208,6 +4220,20 @@ impl PermitOkSink for PermitRec {
             label.into(),
             signed.clone(),
         ));
+    }
+
+    fn deliver_permit_refresh(
+        &self,
+        from: &str,
+        fp: &str,
+        kind: tmgr_spawn_auth::PermitSenderKind,
+        card_id: &str,
+        nonce: &str,
+    ) {
+        self.1
+            .lock()
+            .unwrap()
+            .push((from.into(), fp.into(), kind, card_id.into(), nonce.into()));
     }
 }
 
@@ -4239,6 +4265,10 @@ fn permitok_payload(device_fp: &str) -> Value {
         "alg": "es256",
         "sig": "c2ln"
     })
+}
+
+fn refresh_payload() -> Value {
+    json!({"v": 1, "refresh": "card_00112233445566778899aabbccddeeff", "nonce": "ab".repeat(16)})
 }
 
 fn post_permitok(from: &Engine, to: &Engine, payload: &Value) {
@@ -5339,4 +5369,122 @@ fn a_restart_without_a_flush_does_not_hold_the_next_rpc() {
         "the rpc was held"
     );
     assert!(r.lock().st.seq_gaps.is_empty());
+}
+
+#[test]
+fn a_permit_refresh_from_a_trusted_desktop_or_phone_reaches_the_sink() {
+    for (pin, want) in [
+        ("desktop", tmgr_spawn_auth::PermitSenderKind::Desktop),
+        ("mobile", tmgr_spawn_auth::PermitSenderKind::Mobile),
+    ] {
+        let (_f, _c, a, r, sink) = permitok_world_from(pin);
+        post_permitok(&a, &r, &refresh_payload());
+        assert_eq!(sink.n(), 0);
+        assert_eq!(
+            sink.refreshes(),
+            vec![(
+                my_id(&a),
+                fp_of(&a),
+                want,
+                "card_00112233445566778899aabbccddeeff".to_owned(),
+                "ab".repeat(16)
+            )]
+        );
+    }
+}
+
+#[test]
+fn a_permit_refresh_from_a_runner_or_untrusted_or_revoked_sender_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    set_pin(&r, &my_id(&a), "runner");
+    post_permitok(&a, &r, &refresh_payload());
+    assert!(sink.refreshes().is_empty());
+
+    let (fake, clock, _a, r, sink) = permitok_world_from("desktop");
+    let stranger = engine_with(&fake, &clock, "Stranger").with_kind("desktop");
+    stranger.ensure_registered(&mut stranger.lock()).unwrap();
+    let rid = my_id(&r);
+    let dev = {
+        let g = r.lock();
+        g.st.trusted.iter().find(|d| d.id == rid).cloned().unwrap()
+    };
+    stranger
+        .seal_and_post(
+            &mut stranger.lock(),
+            "permitok",
+            &rpc_id("permitok"),
+            &refresh_payload(),
+            &[dev],
+            false,
+        )
+        .unwrap();
+    r.poll_once().unwrap();
+    assert!(sink.refreshes().is_empty());
+
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    r.lock().st.revoked.push(fp_of(&a));
+    post_permitok(&a, &r, &refresh_payload());
+    assert!(sink.refreshes().is_empty());
+}
+
+#[test]
+fn a_garbage_permit_refresh_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    let mut extra = refresh_payload();
+    extra["x"] = json!(1);
+    let mut bad_v = refresh_payload();
+    bad_v["v"] = json!(2);
+    let mut no_nonce = refresh_payload();
+    no_nonce.as_object_mut().unwrap().remove("nonce");
+    let mut huge = refresh_payload();
+    huge["refresh"] = json!("c".repeat(4096));
+    let mut num = refresh_payload();
+    num["refresh"] = json!(7);
+    for junk in [
+        extra,
+        bad_v,
+        no_nonce,
+        huge,
+        num,
+        json!({"v": 1, "refresh": "c"}),
+    ] {
+        post_permitok(&a, &r, &junk);
+    }
+    assert!(sink.refreshes().is_empty());
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn a_permit_refresh_from_a_non_desktop_non_mobile_pin_is_dropped() {
+    for kind in ["runner", "terminal", "web", "mobile2", ""] {
+        let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+        set_pin(&r, &my_id(&a), kind);
+        post_permitok(&a, &r, &refresh_payload());
+        assert!(sink.refreshes().is_empty(), "{kind}");
+    }
+}
+
+#[test]
+fn a_permit_refresh_from_a_device_with_a_pending_revoke_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    r.lock().st.pending_revokes.push(PendingRevoke {
+        statement_id: "s".into(),
+        revoker_label: "x".into(),
+        revoker_fp: "11".repeat(32),
+        target_id: my_id(&a),
+        target_label: "Sender".into(),
+        target_fp: fp_of(&a),
+    });
+    post_permitok(&a, &r, &refresh_payload());
+    post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+    assert!(sink.refreshes().is_empty());
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn a_permit_refresh_before_the_runner_has_joined_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    r.lock().st.joined = false;
+    post_permitok(&a, &r, &refresh_payload());
+    assert!(sink.refreshes().is_empty());
 }

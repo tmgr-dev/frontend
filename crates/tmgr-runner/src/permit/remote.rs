@@ -45,6 +45,7 @@ pub struct PendingPermit {
     pub idle: u8,
     pub burned: HashSet<String>,
     pub prompt: String,
+    raw: PermissionCard,
     answering: Option<String>,
 }
 
@@ -52,7 +53,7 @@ pub struct PendingPermit {
 pub struct PermitDesk {
     pending: HashMap<String, PendingPermit>,
     closed: VecDeque<String>,
-    retired: VecDeque<String>,
+    salt: String,
     serial: u64,
     desktop: DesktopPolicy,
 }
@@ -108,17 +109,9 @@ impl PermitDesk {
                 return out;
             }
             if live.is_some_and(|c| c.id == p.prompt) {
-                if now_ms > p.record.exp_ms {
-                    if let Some(nonce) = fresh_nonce() {
-                        p.reissue(now_ms, nonce, true);
-                        out.push(post(&id, p, desktop));
-                    }
-                }
                 return out;
             }
-            let prompt = p.prompt.clone();
             self.pending.remove(&id);
-            self.retire(&prompt);
             out.push(close(&id, "gone"));
         }
         let Some(c) = live else {
@@ -161,6 +154,7 @@ impl PermitDesk {
             idle: 0,
             burned: HashSet::new(),
             prompt: c.id.clone(),
+            raw: c.clone(),
             answering: None,
         };
         out.push(post(&card_id, &p, desktop));
@@ -168,12 +162,43 @@ impl PermitDesk {
         out
     }
 
-    pub fn answered_locally(&mut self, card_id: &str) -> Vec<Action> {
-        let Some(p) = self.pending.remove(card_id) else {
+    pub fn refresh(
+        &mut self,
+        card_id: &str,
+        nonce: &str,
+        current: Option<&PermissionCard>,
+        now_ms: u64,
+        fresh_nonce: FreshNonce<'_>,
+    ) -> Vec<Action> {
+        let desktop = self.desktop;
+        let Some(p) = self.pending.get_mut(card_id) else {
+            return Vec::new();
+        };
+        let live = current.is_some_and(|c| c.id == p.prompt && c.can_answer);
+        if p.answering.is_some() || !live || p.record.nonce != nonce || now_ms <= p.record.exp_ms {
+            return Vec::new();
+        }
+        let Some(fresh) = fresh_nonce() else {
+            return Vec::new();
+        };
+        p.reissue(now_ms, fresh, true);
+        vec![post(card_id, p, desktop)]
+    }
+
+    pub fn answered_locally(&mut self, id: &str) -> Vec<Action> {
+        let Some(card_id) = self
+            .pending
+            .iter()
+            .find(|(k, p)| *k == id || p.prompt == id)
+            .map(|(k, _)| k.clone())
+        else {
+            return Vec::new();
+        };
+        let Some(p) = self.pending.remove(&card_id) else {
             return Vec::new();
         };
         self.tombstone(&p.prompt);
-        vec![close(card_id, "answered in attach")]
+        vec![close(&card_id, "answered in attach")]
     }
 
     pub fn answered(&mut self, card_id: &str) -> Vec<Action> {
@@ -208,7 +233,10 @@ impl PermitDesk {
                     p.reissue(now_ms, nonce, false);
                     vec![post(card_id, p, desktop)]
                 }
-                None => Vec::new(),
+                None => {
+                    p.record.exp_ms = p.record.exp_ms.min(now_ms);
+                    Vec::new()
+                }
             };
         } else {
             "answer in attach"
@@ -248,11 +276,8 @@ impl PermitDesk {
         let refusal = verdict.err();
         let Some(e) = refusal else {
             p.burned.insert(p.record.nonce.clone());
-            let screen_same = current.is_some_and(|c| {
-                c.id == p.prompt
-                    && c.can_answer
-                    && screen_of(c).req_sha256() == p.record.screen.req_sha256()
-            });
+            let screen_same =
+                current.is_some_and(|c| c.id == p.prompt && c.can_answer && same_screen(c, &p.raw));
             if !screen_same {
                 if let Some(p) = self.pending.remove(&id) {
                     self.tombstone(&p.prompt);
@@ -293,11 +318,13 @@ impl PermitDesk {
     }
 
     fn relay_id(&mut self, prompt: &str) -> String {
-        if !self.retired.iter().any(|r| r == prompt) {
-            return prompt.to_string();
+        if self.salt.is_empty() {
+            let mut b = [0u8; 16];
+            let _ = getrandom::fill(&mut b);
+            self.salt = b.iter().map(|x| format!("{x:02x}")).collect();
         }
         self.serial += 1;
-        crate::permit::digest(&[prompt, &self.serial.to_string()])
+        crate::permit::digest(&[&self.salt, &self.serial.to_string(), prompt])
     }
 
     fn tombstone(&mut self, prompt: &str) {
@@ -305,13 +332,6 @@ impl PermitDesk {
             self.closed.pop_front();
         }
         self.closed.push_back(prompt.to_string());
-    }
-
-    fn retire(&mut self, prompt: &str) {
-        if self.retired.len() >= MAX_CLOSED {
-            self.retired.pop_front();
-        }
-        self.retired.push_back(prompt.to_string());
     }
 }
 
@@ -373,6 +393,18 @@ pub(crate) fn strip_bidi(s: &str) -> String {
             )
         })
         .collect()
+}
+
+fn same_screen(a: &PermissionCard, b: &PermissionCard) -> bool {
+    a.agent == b.agent
+        && a.tool == b.tool
+        && a.text == b.text
+        && a.path == b.path
+        && a.reason == b.reason
+        && a.from == b.from
+        && a.warning == b.warning
+        && a.danger == b.danger
+        && a.always_label == b.always_label
 }
 
 fn screen_of(c: &PermissionCard) -> PermitScreen {
@@ -515,8 +547,13 @@ mod tests {
         s
     }
 
+    fn cid(d: &PermitDesk) -> String {
+        assert_eq!(d.pending.len(), 1);
+        d.pending.keys().next().unwrap().clone()
+    }
+
     fn rec(d: &PermitDesk) -> PermitRecord {
-        d.pending(CARD).unwrap().record.clone()
+        d.pending(&cid(d)).unwrap().record.clone()
     }
 
     struct Ctx {
@@ -622,32 +659,35 @@ mod tests {
         let mut g = Gen(0);
         let c = card();
         let mut d = desk_with(&c, &mut g);
+        let id = cid(&d);
         let s = sign(&rec(&d), PermitChoice::Yes, 0);
         let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1000, &mut g);
         assert_eq!(
             acts[0],
             Action::Answer {
                 session: SESSION.into(),
-                card_id: CARD.into(),
+                card_id: id.clone(),
                 prompt: CARD.into(),
                 choice: PermissionChoice::Yes,
                 confirmed: false,
                 audit: format!(
-                    "permit answer: card={CARD} device={} choice=yes result=ok action=answered",
+                    "permit answer: card={} device={} choice=yes result=ok action=answered",
+                    id,
                     "d".repeat(12)
                 )
             }
         );
         assert!(closes(&acts).is_empty());
         assert_eq!(
-            closes(&d.answered(CARD)),
+            closes(&d.answered(&id)),
             vec!["answered on Mac".to_string()]
         );
         let a = answer_audit(&acts);
         assert_eq!(
             a,
             format!(
-                "permit answer: card={CARD} device={} choice=yes result=ok action=answered",
+                "permit answer: card={} device={} choice=yes result=ok action=answered",
+                id,
                 "d".repeat(12)
             )
         );
@@ -675,7 +715,7 @@ mod tests {
             }
         ));
         assert_eq!(
-            closes(&d.answered(CARD)),
+            closes(&d.answered(&cid(&d))),
             vec!["answered on Phone".to_string()]
         );
         assert!(answer_audit(&acts).contains("choice=always result=ok action=answered"));
@@ -685,12 +725,12 @@ mod tests {
         let mut g = Gen(0);
         let c = card();
         let mut d = desk_with(&c, &mut g);
-        let before = d.pending(CARD).unwrap().clone();
+        let before = d.pending(&cid(&d)).unwrap().clone();
         let s = sign(&before.record, PermitChoice::Yes, 0);
         let acts = accept(&mut d, &s, &ctx, Some(&c), T0 + 1000, &mut g);
         only_audit(&acts);
         assert!(audit(&acts).ends_with("action=dropped"), "{acts:?}");
-        assert_eq!(d.pending(CARD).unwrap(), &before);
+        assert_eq!(d.pending(&cid(&d)).unwrap(), &before);
         assert_eq!(before.reissues, 0);
         let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1001, &mut g);
         assert_eq!(answers(&acts), 1);
@@ -735,7 +775,7 @@ mod tests {
         s.card_id = "other".into();
         let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1, &mut g);
         only_audit(&acts);
-        assert!(d.pending(CARD).is_some());
+        assert!(d.pending(&cid(&d)).is_some());
     }
 
     #[test]
@@ -743,7 +783,7 @@ mod tests {
         let mut g = Gen(0);
         let c = card();
         let mut d = desk_with(&c, &mut g);
-        let before = d.pending(CARD).unwrap().clone();
+        let before = d.pending(&cid(&d)).unwrap().clone();
         let r = rec(&d);
         let mut s = sign(&r, PermitChoice::Yes, 0);
         let other: Signature = SigningKey::from_slice(&[9; 32])
@@ -753,7 +793,7 @@ mod tests {
         let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1, &mut g);
         only_audit(&acts);
         assert!(audit(&acts).contains("result=bad_sig action=dropped"));
-        assert_eq!(d.pending(CARD).unwrap(), &before);
+        assert_eq!(d.pending(&cid(&d)).unwrap(), &before);
         let good = sign(&r, PermitChoice::Yes, 0);
         let acts = accept(&mut d, &good, &Ctx::ok(), Some(&c), T0 + 2, &mut g);
         assert_eq!(answers(&acts), 1);
@@ -764,7 +804,7 @@ mod tests {
         let mut g = Gen(0);
         let c = danger_card();
         let mut d = desk_under(DesktopPolicy::Safe, &c, &mut g);
-        let before = d.pending(CARD).unwrap().clone();
+        let before = d.pending(&cid(&d)).unwrap().clone();
         for _ in 0..5 {
             let mut s = sign(&rec(&d), PermitChoice::Yes, 0);
             s.sig = "AAAA".into();
@@ -772,7 +812,7 @@ mod tests {
             only_audit(&acts);
             assert!(audit(&acts).contains("action=dropped"));
         }
-        assert_eq!(d.pending(CARD).unwrap(), &before);
+        assert_eq!(d.pending(&cid(&d)).unwrap(), &before);
         let s = sign(&rec(&d), PermitChoice::Yes, 1);
         assert_eq!(
             answers(&accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 2, &mut g)),
@@ -883,7 +923,7 @@ mod tests {
         assert_eq!(p.reissue, 0);
         assert_eq!(p.text, c.text);
         assert_eq!(p.req_sha256, rec(&d).screen.req_sha256());
-        assert!(matches!(&acts[0], Action::Post { card_id, .. } if card_id == CARD));
+        assert!(matches!(&acts[0], Action::Post { card_id, .. } if *card_id == cid(&d)));
         let acts = d.observe(SESSION, Some(&c), &ids(), T0 + 5, &mut || g.next());
         assert!(acts.is_empty());
     }
@@ -893,11 +933,12 @@ mod tests {
         let mut g = Gen(0);
         let c = card();
         let mut d = desk_with(&c, &mut g);
+        let id = cid(&d);
         let acts = d.observe(SESSION, None, &ids(), T0 + 5, &mut || g.next());
         assert_eq!(
             acts,
             vec![Action::Close {
-                card_id: CARD.into(),
+                card_id: id,
                 reason: "gone".into()
             }]
         );
@@ -913,7 +954,7 @@ mod tests {
         next.id = "card-2".into();
         let acts = d.observe(SESSION, Some(&next), &ids(), T0 + 5, &mut || g.next());
         assert_eq!(closes(&acts), vec!["gone".to_string()]);
-        assert!(matches!(&acts[1], Action::Post { card_id, .. } if card_id == "card-2"));
+        assert!(matches!(&acts[1], Action::Post { card_id, .. } if *card_id == cid(&d)));
     }
 
     #[test]
@@ -940,21 +981,251 @@ mod tests {
         assert!(d.is_empty());
     }
 
+    fn refresh(
+        d: &mut PermitDesk,
+        id: &str,
+        nonce: &str,
+        c: Option<&PermissionCard>,
+        now: u64,
+        g: &mut Gen,
+    ) -> Vec<Action> {
+        d.refresh(id, nonce, c, now, &mut || g.next())
+    }
+
+    fn post_count(acts: &[Action]) -> usize {
+        acts.iter()
+            .filter(|a| matches!(a, Action::Post { .. }))
+            .count()
+    }
+
     #[test]
-    fn expiry_on_screen_reposts_with_a_new_nonce() {
+    fn a_request_left_open_for_ten_expiry_periods_posts_exactly_one_card() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = PermitDesk::new();
+        let mut posts = post_count(&d.observe(SESSION, Some(&c), &ids(), T0, &mut || g.next()));
+        for k in 1..=10u64 {
+            let now = T0 + k * (MAX_PERMIT_TTL_MS + 1);
+            posts += post_count(&d.observe(SESSION, Some(&c), &ids(), now, &mut || g.next()));
+        }
+        assert_eq!(posts, 1);
+        assert_eq!(d.len(), 1);
+    }
+
+    #[test]
+    fn a_refresh_on_an_expired_card_reposts_once_with_the_same_id_and_a_new_nonce() {
         let mut g = Gen(0);
         let c = card();
         let mut d = desk_with(&c, &mut g);
         let old = rec(&d);
+        let id = cid(&d);
         let now = old.exp_ms + 1;
-        let acts = d.observe(SESSION, Some(&c), &ids(), now, &mut || g.next());
+        let acts = refresh(&mut d, &id, &old.nonce, Some(&c), now, &mut g);
+        assert_eq!(acts.len(), 1, "{acts:?}");
+        assert!(matches!(&acts[0], Action::Post { card_id, .. } if *card_id == id));
         let p = posted(&acts);
         assert_ne!(p.nonce, old.nonce);
-        assert_eq!(p.reissue, 1);
         assert_eq!(p.exp_ms, now + MAX_PERMIT_TTL_MS);
+        assert_eq!(d.pending(&id).unwrap().reissues, 0);
+        let again = refresh(&mut d, &id, &old.nonce, Some(&c), now + 1, &mut g);
+        assert!(again.is_empty(), "{again:?}");
         let s = sign(&old, PermitChoice::Yes, 0);
-        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), now + 1, &mut g);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), now + 2, &mut g);
         assert_eq!(answers(&acts), 0);
+        let s = sign(&rec(&d), PermitChoice::Yes, 0);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), now + 3, &mut g);
+        assert_eq!(answers(&acts), 1);
+    }
+
+    #[test]
+    fn a_refresh_before_expiry_is_dropped() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let r = rec(&d);
+        let id = cid(&d);
+        for now in [T0, r.exp_ms] {
+            assert!(refresh(&mut d, &id, &r.nonce, Some(&c), now, &mut g).is_empty());
+        }
+        assert_eq!(rec(&d), r);
+    }
+
+    #[test]
+    fn a_refresh_for_an_unknown_closed_or_stale_card_is_dropped() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let r = rec(&d);
+        let id = cid(&d);
+        let late = r.exp_ms + 1;
+        assert!(refresh(&mut d, "nope", &r.nonce, Some(&c), late, &mut g).is_empty());
+        assert!(refresh(&mut d, &id, &"0".repeat(32), Some(&c), late, &mut g).is_empty());
+        d.observe(SESSION, None, &ids(), late, &mut || g.next());
+        assert!(refresh(&mut d, &id, &r.nonce, Some(&c), late, &mut g).is_empty());
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn a_refresh_needs_a_live_prompt_and_no_answer_in_flight() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let r = rec(&d);
+        let id = cid(&d);
+        let late = r.exp_ms + 1;
+        let mut other = card();
+        other.id = "card-2".into();
+        let mut view_only = card();
+        view_only.can_answer = false;
+        for cur in [None, Some(&other), Some(&view_only)] {
+            assert!(refresh(&mut d, &id, &r.nonce, cur, late, &mut g).is_empty());
+        }
+        let s = sign(&r, PermitChoice::Yes, 0);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 10, &mut g);
+        assert_eq!(answers(&acts), 1);
+        assert!(refresh(&mut d, &id, &r.nonce, Some(&c), late, &mut g).is_empty());
+    }
+
+    #[test]
+    fn a_refresh_is_not_blocked_by_the_desktop_policy_and_a_refused_class_card_stays() {
+        let mut g = Gen(0);
+        let c = danger_card();
+        let mut d = desk_under(DesktopPolicy::None, &c, &mut g);
+        let r = rec(&d);
+        let id = cid(&d);
+        let acts = refresh(&mut d, &id, &r.nonce, Some(&c), r.exp_ms + 1, &mut g);
+        let p = posted(&acts);
+        assert!(!p.desktop_ok);
+        assert_eq!(p.danger, c.danger);
+    }
+
+    #[test]
+    fn three_sessions_in_one_tick_get_distinct_nonzero_fresh_nonces() {
+        let mut g = Gen(0);
+        let mut d = PermitDesk::new();
+        let sessions = ["s_aaaaaaaaaa", "s_bbbbbbbbbb", "s_cccccccccc"];
+        let mut cards = Vec::new();
+        for (i, s) in sessions.iter().enumerate() {
+            let mut c = card();
+            c.id = format!("card-{i}");
+            c.session = s.to_string();
+            cards.push(c);
+        }
+        let mut posts = Vec::new();
+        for c in &cards {
+            let acts = d.observe(&c.session, Some(c), &ids(), T0, &mut || g.next());
+            posts.push((posted_id(&acts), posted(&acts).nonce));
+        }
+        let late = T0 + MAX_PERMIT_TTL_MS + 1;
+        let mut again = Vec::new();
+        for (c, (id, nonce)) in cards.iter().zip(&posts) {
+            let acts = refresh(&mut d, id, nonce, Some(c), late, &mut g);
+            again.push(posted(&acts).nonce);
+        }
+        let all: HashSet<String> = posts.iter().map(|p| p.1.clone()).chain(again).collect();
+        assert_eq!(all.len(), 6);
+        assert!(all.iter().all(|n| !n.trim_start_matches('0').is_empty()));
+    }
+
+    fn posted_id(acts: &[Action]) -> String {
+        acts.iter()
+            .find_map(|a| match a {
+                Action::Post { card_id, .. } => Some(card_id.clone()),
+                _ => None,
+            })
+            .expect("no Post")
+    }
+
+    #[test]
+    fn a_permanent_answer_failure_closes_the_card_as_gone_and_tombstones_it() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let id = cid(&d);
+        let s = sign(&rec(&d), PermitChoice::Yes, 0);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 10, &mut g);
+        assert_eq!(answers(&acts), 1);
+        let acts = d.answer_failed(&id, false, T0 + 11, &mut || g.next());
+        assert_eq!(closes(&acts), vec!["gone".to_string()]);
+        assert!(d.is_empty());
+        let acts = d.observe(SESSION, Some(&c), &ids(), T0 + 12, &mut || g.next());
+        assert!(acts.is_empty(), "{acts:?}");
+    }
+
+    #[test]
+    fn a_retryable_failure_without_a_nonce_source_leaves_the_card_refreshable() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let id = cid(&d);
+        let r = rec(&d);
+        let s = sign(&r, PermitChoice::Yes, 0);
+        accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 10, &mut g);
+        let acts = d.answer_failed(&id, true, T0 + 11, &mut || None);
+        assert!(acts.is_empty(), "{acts:?}");
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 12, &mut g);
+        assert_eq!(answers(&acts), 0);
+        let acts = refresh(&mut d, &id, &r.nonce, Some(&c), T0 + 12, &mut g);
+        let p = posted(&acts);
+        assert_ne!(p.nonce, r.nonce);
+        let s = sign(&rec(&d), PermitChoice::Yes, 0);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 13, &mut g);
+        assert_eq!(answers(&acts), 1);
+    }
+
+    #[test]
+    fn a_local_answer_to_a_reappearing_prompt_closes_the_current_card() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        d.observe(SESSION, None, &ids(), T0 + 1, &mut || g.next());
+        let acts = d.observe(SESSION, Some(&c), &ids(), T0 + 2, &mut || g.next());
+        let second = posted_id(&acts);
+        let acts = d.answered_locally(CARD);
+        assert_eq!(
+            acts,
+            vec![Action::Close {
+                card_id: second,
+                reason: "answered in attach".into()
+            }]
+        );
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn a_posted_card_id_is_never_posted_again_for_another_instance() {
+        let mut g = Gen(0);
+        let mut d = PermitDesk::new();
+        let mut seen = HashSet::new();
+        let cycle = |d: &mut PermitDesk, prompt: &str, g: &mut Gen| {
+            let mut c = card();
+            c.id = prompt.into();
+            let acts = d.observe(SESSION, Some(&c), &ids(), T0, &mut || g.next());
+            let id = posted_id(&acts);
+            d.observe(SESSION, None, &ids(), T0, &mut || g.next());
+            id
+        };
+        seen.insert(cycle(&mut d, "p-first", &mut g));
+        for i in 0..300 {
+            assert!(seen.insert(cycle(&mut d, &format!("p-{i}"), &mut g)));
+        }
+        let back = cycle(&mut d, "p-first", &mut g);
+        assert!(seen.insert(back.clone()), "{back}");
+        assert!(crate_is_token(&back));
+    }
+
+    #[test]
+    fn a_prompt_that_differs_only_in_bidi_controls_is_not_the_same_screen() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let mut twin = c.clone();
+        twin.text = format!("{}\u{202e}", c.text);
+        assert_eq!(screen_of(&twin).req_sha256(), rec(&d).screen.req_sha256());
+        let s = sign(&rec(&d), PermitChoice::Yes, 0);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&twin), T0 + 10, &mut g);
+        assert_eq!(answers(&acts), 0, "{acts:?}");
+        assert_eq!(closes(&acts), vec!["gone".to_string()]);
     }
 
     #[test]
@@ -1047,7 +1318,8 @@ mod tests {
         let mut d = desk_under(DesktopPolicy::Safe, &c, &mut g);
         for _ in 0..4 {
             let now = rec(&d).exp_ms + 1;
-            let acts = d.observe(SESSION, Some(&c), &ids(), now, &mut || g.next());
+            let (id, nonce) = (cid(&d), rec(&d).nonce);
+            let acts = refresh(&mut d, &id, &nonce, Some(&c), now, &mut g);
             assert!(matches!(acts.as_slice(), [Action::Post { .. }]), "{acts:?}");
         }
         for _ in 0..3 {
@@ -1129,7 +1401,8 @@ mod tests {
                 "{policy:?} danger={danger}"
             );
             let later = T0 + MAX_PERMIT_TTL_MS + 1;
-            let again = d.observe(SESSION, Some(&c), &ids(), later, &mut || g.next());
+            let (id, nonce) = (cid(&d), rec(&d).nonce);
+            let again = refresh(&mut d, &id, &nonce, Some(&c), later, &mut g);
             let p = posted(&again);
             assert_eq!(p.reissue, 1);
             assert_eq!(p.desktop_ok, want, "reissue {policy:?} danger={danger}");
@@ -1141,7 +1414,7 @@ mod tests {
         let mut g = Gen(0);
         let c = danger_card();
         let mut d = desk_under(DesktopPolicy::Safe, &c, &mut g);
-        let before = d.pending(CARD).unwrap().clone();
+        let before = d.pending(&cid(&d)).unwrap().clone();
         let s = sign(&rec(&d), PermitChoice::Yes, 1);
         let desktop = Ctx {
             kind: PermitSenderKind::Desktop,
@@ -1154,8 +1427,8 @@ mod tests {
             line.ends_with("result=desktop_not_allowed action=dropped"),
             "{line}"
         );
-        assert_eq!(d.pending(CARD).unwrap(), &before);
-        assert_eq!(d.pending(CARD).unwrap().reissues, before.reissues);
+        assert_eq!(d.pending(&cid(&d)).unwrap(), &before);
+        assert_eq!(d.pending(&cid(&d)).unwrap().reissues, before.reissues);
         let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1001, &mut g);
         assert_eq!(answers(&acts), 1, "{acts:?}");
     }

@@ -127,6 +127,15 @@ pub trait PermitOkSink: Send + Sync {
         label: &str,
         signed: &SignedPermit,
     );
+
+    fn deliver_permit_refresh(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        kind: PermitSenderKind,
+        card_id: &str,
+        nonce: &str,
+    );
 }
 
 /// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
