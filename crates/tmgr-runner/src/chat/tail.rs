@@ -271,16 +271,19 @@ fn backfill(
 
 fn resolve_log(s: &SessionInfo, agent: Agent, home: &Path) -> Option<PathBuf> {
     switch::log_of(s, agent).ok().or_else(|| {
-        if !s.no_sandbox || agent != Agent::Claude {
+        if !s.no_sandbox {
             return None;
         }
-        crate::attach::locate_unsandboxed_claude(
-            home,
-            &s.cwd,
-            s.child_pid,
-            s.created_ms.saturating_sub(PID_FILE_SLACK_MS),
-        )
-        .map(|(path, _)| path)
+        match agent {
+            Agent::Claude => crate::attach::locate_unsandboxed_claude(
+                home,
+                &s.cwd,
+                s.child_pid,
+                s.created_ms.saturating_sub(PID_FILE_SLACK_MS),
+            )
+            .map(|(path, _)| path),
+            Agent::Codex => crate::questions::tail::locate_codex_rollout(home, None, &s.cwd),
+        }
     })
 }
 
@@ -953,6 +956,35 @@ mod tests {
         let chat = Chat::open(&t.path().join("run"));
         capture_with(&chat, &[s.clone()], &|s, a| resolve_log(s, a, &home));
         append(&proj.join(format!("{id}.jsonl")), &line("more"));
+        capture_with(&chat, &[s], &|s, a| resolve_log(s, a, &home));
+        assert_eq!(bodies(&chat, SID), ["hello", "more"]);
+    }
+
+    #[test]
+    fn a_codex_session_without_the_sandbox_is_read_through_its_rollout() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let day = home.join(".codex/sessions/2026/11/24");
+        fs::create_dir_all(&day).unwrap();
+        let rollout =
+            day.join("rollout-2026-11-24T20-00-00-0199a213-81c0-7800-8aa1-bbab2a035a53.jsonl");
+        let reply = |text: &str| {
+            json!({"type": "response_item", "payload": {"type": "message", "role": "assistant",
+                "content": [{"type": "output_text", "text": text}]}})
+            .to_string()
+                + "\n"
+        };
+        append(
+            &rollout,
+            &(json!({"type": "session_meta", "payload": {"cwd": "/work/app"}}).to_string() + "\n"),
+        );
+        append(&rollout, &reply("hello"));
+        let mut s = info(SID, "codex", "working");
+        s.no_sandbox = true;
+        s.cwd = "/work/app".into();
+        let chat = Chat::open(&t.path().join("run"));
+        capture_with(&chat, &[s.clone()], &|s, a| resolve_log(s, a, &home));
+        append(&rollout, &reply("more"));
         capture_with(&chat, &[s], &|s, a| resolve_log(s, a, &home));
         assert_eq!(bodies(&chat, SID), ["hello", "more"]);
     }
