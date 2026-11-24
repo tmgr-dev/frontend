@@ -46,22 +46,33 @@ fn origin(base: &str) -> Result<String, String> {
 pub(super) const STATUS_KEY: &str = "http_status";
 
 fn failure(status: u16, retry_after: Option<u64>, body: String) -> String {
+    let mut object = match serde_json::from_str::<Value>(&body) {
+        Ok(Value::Object(mut map)) => {
+            map.remove(STATUS_KEY);
+            Some(map)
+        }
+        _ => None,
+    };
     if let (429, Some(secs)) = (status, retry_after) {
-        let mut map = match serde_json::from_str::<Value>(&body) {
-            Ok(Value::Object(map)) => map,
-            _ => Default::default(),
-        };
+        let mut map = object.unwrap_or_default();
         map.insert("retry_after".into(), secs.into());
         return Value::Object(map).to_string();
     }
-    if matches!(status, 401 | 403) {
-        if let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(&body) {
-            map.insert(STATUS_KEY.into(), status.into());
-            return Value::Object(map).to_string();
+    if matches!(status, 401 | 403 | 404) {
+        let mut map = object.unwrap_or_default();
+        if map.is_empty() && !body.trim().is_empty() && status == 404 {
+            map.insert("message".into(), body.trim().into());
+        } else if map.is_empty() && status == 404 {
+            map.insert(
+                "message".into(),
+                format!("the relay answered HTTP {status}").into(),
+            );
         }
-        if body.trim().is_empty() {
-            return serde_json::json!({ STATUS_KEY: status }).to_string();
-        }
+        map.insert(STATUS_KEY.into(), status.into());
+        return Value::Object(map).to_string();
+    }
+    if let Some(map) = object.take().filter(|_| body.contains(STATUS_KEY)) {
+        return Value::Object(map).to_string();
     }
     if body.trim().is_empty() {
         format!("the relay answered HTTP {status}")
@@ -138,6 +149,30 @@ mod tests {
     use std::sync::mpsc;
     use tmgr_chat_relay::api::Method;
     use tmgr_chat_relay::engine::{post_error, retry_after_secs};
+
+    #[test]
+    fn a_404_carries_its_status_and_a_readable_message_whatever_the_body() {
+        for body in ["", "<html>", r#"{"error":"not_found"}"#] {
+            let v: Value = serde_json::from_str(&failure(404, None, body.into())).unwrap();
+            assert_eq!(v[STATUS_KEY], 404, "{body}");
+        }
+        let v: Value = serde_json::from_str(&failure(404, None, "<html>".into())).unwrap();
+        assert_eq!(v["message"], "<html>");
+        let v: Value = serde_json::from_str(&failure(404, None, String::new())).unwrap();
+        assert_eq!(v["message"], "the relay answered HTTP 404");
+    }
+
+    #[test]
+    fn a_status_claimed_by_the_body_is_never_trusted() {
+        let forged = r#"{"error":"x","http_status":404}"#;
+        for status in [400, 500, 429] {
+            let out = failure(status, (status == 429).then_some(3), forged.into());
+            let v: Value = serde_json::from_str(&out).unwrap();
+            assert!(v.get(STATUS_KEY).is_none(), "{status}: {out}");
+        }
+        let v: Value = serde_json::from_str(&failure(403, None, forged.into())).unwrap();
+        assert_eq!(v[STATUS_KEY], 403);
+    }
 
     fn serve(reply: String) -> (String, mpsc::Receiver<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
