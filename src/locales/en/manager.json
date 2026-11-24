@@ -98,7 +98,8 @@
 		"answeredInAttach": "Answered in tmgr attach",
 		"gone": "Gone",
 		"expired": "Expired",
-		"closed": "Closed: {reason}"
+		"closed": "Closed: {reason}",
+		"replaced": "Replaced by a newer request"
 	},
 	"spawn": {
 		"title": "Manager wants to start a {profile} session",

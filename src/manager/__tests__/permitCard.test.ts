@@ -8,7 +8,8 @@ import ts from 'typescript';
 import { createApp, h, nextTick, type Component } from 'vue';
 import { createI18n } from 'vue-i18n';
 import manager from '../../locales/en/manager.json';
-import type { PermitCardWire } from '../types';
+import { closedCards, newestPermits, permitKey } from '../permitCards';
+import type { ChatMessage, PermitCardWire } from '../types';
 
 const mockInvoke = jest.fn();
 jest.mock('@tauri-apps/api/core', () => ({
@@ -91,13 +92,23 @@ const flush = async () => {
 
 const mount = async (
 	card: PermitCardWire,
-	props: { closed?: string; answerable?: boolean } = {},
+	props: {
+		closed?: string;
+		answerable?: boolean;
+		live?: boolean;
+		replaced?: boolean;
+	} = {},
 ) => {
 	const el = document.createElement('div');
 	document.body.appendChild(el);
 	const app = createApp({
 		render: () =>
-			h(load('PermitCard'), { cardId: CARD, permit: card, ...props }),
+			h(load('PermitCard'), {
+				cardId: CARD,
+				permit: card,
+				live: true,
+				...props,
+			}),
 	}).use(i18n);
 	app.mount(el);
 	await flush();
@@ -259,5 +270,113 @@ describe('PermitCard', () => {
 		);
 		expect(labels(el)).toContain('Allow once');
 		unmount();
+	});
+});
+
+describe('PermitCard states', () => {
+	beforeEach(() => {
+		jest.resetAllMocks();
+		jest.useRealTimers();
+		mockInvoke.mockResolvedValue(undefined);
+	});
+
+	it('a replaced card has no buttons and says so', async () => {
+		const { el, unmount } = await mount(permit(), { replaced: true });
+		expect(labels(el)).toEqual([]);
+		expect(el.textContent).toContain('Replaced by a newer request');
+		unmount();
+	});
+
+	it('a card that is not in the book has no buttons and the phone line', async () => {
+		const { el, unmount } = await mount(permit(), { live: false });
+		expect(labels(el)).toEqual([]);
+		expect(el.textContent).toContain('Answer on your phone or in tmgr attach');
+		unmount();
+	});
+
+	it('a card already past exp_ms shows as expired without buttons', async () => {
+		const { el, unmount } = await mount(permit({ exp_ms: Date.now() - 1 }));
+		expect(labels(el)).toEqual([]);
+		expect(el.querySelector('.pm-closed')?.textContent).toBe('Expired');
+		unmount();
+	});
+
+	it('a sent card turns expired when exp_ms passes without a close', async () => {
+		jest.useFakeTimers();
+		const { el, unmount } = await mount(permit({ exp_ms: Date.now() + 5000 }));
+		await click(el, '.pm-once');
+		expect(el.textContent).toContain('Waiting for the runner');
+		jest.advanceTimersByTime(6000);
+		await flush();
+		expect(el.querySelector('.pm-closed')?.textContent).toBe('Expired');
+		expect(el.textContent).not.toContain('Waiting for the runner');
+		unmount();
+	});
+
+	it('shows the session id in the session label', async () => {
+		const { el, unmount } = await mount(permit());
+		expect(el.textContent).toContain('Session s_abcdefghij');
+		unmount();
+	});
+
+	it('strips bidi and format controls from the shown text', async () => {
+		const evil = '\u202Ers -rf /\u202C \u200Ex\u2066y\u2069\u061Cz\u200F';
+		const { el, unmount } = await mount(
+			permit({
+				text: evil,
+				path: evil,
+				reason: evil,
+				warning: evil,
+				danger: [evil],
+			}),
+		);
+		const shown = el.textContent ?? '';
+		expect(shown).not.toMatch(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\u061C]/);
+		expect(shown).toContain('rs -rf /');
+		unmount();
+	});
+});
+
+const dmsg = (
+	id: string,
+	poster: string,
+	cardId: string,
+	over: Partial<NonNullable<ChatMessage['decision']>> = {},
+): ChatMessage =>
+	({
+		id,
+		decision: { card_id: cardId, poster, ...over },
+	}) as unknown as ChatMessage;
+
+describe('permit card grouping', () => {
+	it('only the newest message per poster and card id is current', () => {
+		const msgs = [
+			dmsg('m1', 'rA', 'c1', { permit: permit() }),
+			dmsg('m2', 'rA', 'c1', { permit: permit() }),
+			dmsg('m3', 'rB', 'c1', { permit: permit() }),
+			dmsg('m4', 'rA', 'c2', { permit: permit() }),
+		];
+		const newest = newestPermits(msgs);
+		expect(newest[permitKey('rA', 'c1')]).toBe('m2');
+		expect(newest[permitKey('rB', 'c1')]).toBe('m3');
+		expect(newest[permitKey('rA', 'c2')]).toBe('m4');
+	});
+
+	it('a close from another poster does not close the card', () => {
+		const msgs = [
+			dmsg('m1', 'rA', 'c1', { permit: permit() }),
+			dmsg('m2', 'rB', 'c1', { closed: 'gone' }),
+		];
+		const closed = closedCards(msgs);
+		expect(closed[permitKey('rA', 'c1')]).toBeUndefined();
+		expect(closed[permitKey('rB', 'c1')]).toBe('gone');
+	});
+
+	it('a close from the same poster closes the card', () => {
+		const msgs = [
+			dmsg('m1', 'rA', 'c1', { permit: permit() }),
+			dmsg('m2', 'rA', 'c1', { closed: 'answered on Phone' }),
+		];
+		expect(closedCards(msgs)[permitKey('rA', 'c1')]).toBe('answered on Phone');
 	});
 });

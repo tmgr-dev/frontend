@@ -59,6 +59,8 @@ export interface DecisionRef {
 	spawn?: SpawnCardWire;
 	permit?: PermitCardWire;
 	closed?: string;
+	poster?: string;
+	live?: boolean;
 }
 
 export type MentionState =

@@ -131,8 +131,18 @@
 								v-if="message.decision.permit"
 								:card-id="message.decision.card_id"
 								:permit="message.decision.permit"
-								:closed="closedCards[message.decision.card_id]"
+								:closed="
+									closedByCard[
+										permitKey(message.decision.poster, message.decision.card_id)
+									]
+								"
 								:answerable="activeInfo?.local === false"
+								:live="message.decision.live === true"
+								:replaced="
+									newestByCard[
+										permitKey(message.decision.poster, message.decision.card_id)
+									] !== message.id
+								"
 							/>
 							<template v-else-if="message.decision.closed"></template>
 							<template v-else>
@@ -358,6 +368,7 @@
 	import ControlDialog from './components/ControlDialog.vue';
 	import DecisionCard from './components/DecisionCard.vue';
 	import PermitCard from './components/PermitCard.vue';
+	import { closedCards, newestPermits, permitKey } from './permitCards';
 	import DetailPanel from './components/DetailPanel.vue';
 	import GateBlockersBanner from './components/GateBlockersBanner.vue';
 	import Icon from './components/Icon.vue';
@@ -559,13 +570,11 @@
 					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
 					: [];
 			},
-			closedCards(): Record<string, string> {
-				const closed: Record<string, string> = {};
-				for (const m of this.messages) {
-					const d = m.decision;
-					if (d?.closed && !d.permit) closed[d.card_id] = d.closed;
-				}
-				return closed;
+			closedByCard(): Record<string, string> {
+				return closedCards(this.messages);
+			},
+			newestByCard(): Record<string, string> {
+				return newestPermits(this.messages);
 			},
 			bodyHtml(): Record<string, string> {
 				return Object.fromEntries(
@@ -617,6 +626,7 @@
 			this.trust.dispose();
 		},
 		methods: {
+			permitKey,
 			revokeAddedRunner() {
 				const id = this.pairing.notice?.deviceId;
 				this.pairing.dismiss();
