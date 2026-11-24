@@ -743,8 +743,7 @@ struct Session {
     fg: Mutex<Option<(i32, Instant)>>,
     cards: Mutex<Cards>,
     team_stop: Mutex<Option<(Instant, Instant)>>,
-    input_gen: AtomicU64,
-    router_gen: AtomicU64,
+    foreign_gen: AtomicU64,
     working_seen: AtomicU64,
 }
 
@@ -1369,9 +1368,7 @@ impl Session {
     }
 
     pub(crate) fn foreign_gen(&self) -> u64 {
-        self.input_gen
-            .load(Ordering::SeqCst)
-            .saturating_sub(self.router_gen.load(Ordering::SeqCst))
+        self.foreign_gen.load(Ordering::SeqCst)
     }
 
     fn clear_submit_pending(&self, token: Option<Instant>) {
@@ -1435,13 +1432,9 @@ impl Session {
                     "input queue full; the agent is not reading its input",
                 ));
             }
-            if !bytes.is_empty() {
-                self.router_gen.fetch_add(1, Ordering::SeqCst);
-                self.input_gen.fetch_add(1, Ordering::SeqCst);
-                if submit {
-                    i.submit_pending = Some(now);
-                    token = i.submit_pending;
-                }
+            if submit {
+                i.submit_pending = Some(now);
+                token = i.submit_pending;
             }
         }
         if !bytes.is_empty() {
@@ -1462,11 +1455,8 @@ impl Session {
         let accepted = {
             let _i = lock(&self.inner);
             let ok = self.shim_input(bytes);
-            if ok && !bytes.is_empty() {
-                if router {
-                    self.router_gen.fetch_add(1, Ordering::SeqCst);
-                }
-                self.input_gen.fetch_add(1, Ordering::SeqCst);
+            if ok && !bytes.is_empty() && !router {
+                self.foreign_gen.fetch_add(1, Ordering::SeqCst);
             }
             ok
         };
@@ -5286,8 +5276,7 @@ impl Runner {
             fg: Mutex::new(None),
             cards: Mutex::new(Cards::default()),
             team_stop: Mutex::new(None),
-            input_gen: AtomicU64::new(0),
-            router_gen: AtomicU64::new(0),
+            foreign_gen: AtomicU64::new(0),
             working_seen: AtomicU64::new(0),
         });
         session.cp_refresh();
@@ -6283,7 +6272,8 @@ fn screen_refusal(
     if kind == StateKind::Blocked
         || blocked_rule
         || agent.is_some_and(|a| permit::parse_dialog(a, rows).is_some())
-        || (!matcher.is_some_and(|m| m.idle_in(bottom) || m.idle_in(prompt_box(lines)))
+        || (!matcher
+            .is_some_and(|m| m.has_draft() && (m.idle_in(bottom) || m.idle_in(prompt_box(lines))))
             && generic_dialog(bottom))
     {
         return Some("blocked on a dialog");
@@ -7133,7 +7123,6 @@ mod tests {
         .unwrap();
         let noted = got.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(noted, 0);
-        assert_eq!(s.input_gen.load(Ordering::SeqCst), 2);
         drain(&s, &rx);
         assert!(s.input(b"x"));
         assert!(s.foreign_gen() > noted);

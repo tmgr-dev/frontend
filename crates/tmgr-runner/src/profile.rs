@@ -780,6 +780,10 @@ impl Matcher {
         self.mid_turn
     }
 
+    pub fn has_draft(&self) -> bool {
+        !self.drafts.is_empty()
+    }
+
     pub fn has_idle(&self) -> bool {
         self.rules.iter().any(|(id, _)| id.starts_with("idle"))
     }
