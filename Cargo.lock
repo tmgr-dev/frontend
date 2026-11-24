@@ -4337,6 +4337,7 @@ dependencies = [
  "tmgr-chat-relay",
  "tmgr-fuzzy",
  "tmgr-ipc",
+ "tmgr-link",
  "tmgr-session",
  "tmgr-spawn-auth",
  "tmgr-usage",

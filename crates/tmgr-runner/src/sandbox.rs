@@ -708,6 +708,8 @@ pub struct ControlPlane {
     pub hidden: Vec<PathBuf>,
     pub write_protected: Vec<PathBuf>,
     pub allowed: Vec<PathBuf>,
+    pub readable: Vec<PathBuf>,
+    pub stat_only: Vec<PathBuf>,
 }
 
 pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPlane {
@@ -746,11 +748,34 @@ pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPla
         push_unique(&mut allowed, spool.clone());
         push_unique(&mut allowed, canon_lossy(spool));
     }
+    let mut readable = Vec::new();
+    let mut pastes = vec![spec.home.join(tmgr_ipc::dirs::PASTE_DIR_NAME)];
+    if tmgr_ipc::proto::valid_session_id(&spec.session_id) {
+        pastes.push(
+            tmgr_ipc::dirs::paste_dir(&spec.runner_dir)
+                .join(&spec.session_id)
+                .join(tmgr_ipc::dirs::PASTE_DIR_NAME),
+        );
+    }
+    for p in &pastes {
+        push_unique(&mut readable, p.clone());
+        push_unique(&mut readable, canon_lossy(p));
+    }
+    let mut stat_only = Vec::new();
+    for r in &readable {
+        for a in r.ancestors().skip(1) {
+            if hidden.iter().any(|h| a.starts_with(h)) {
+                push_unique(&mut stat_only, a.to_path_buf());
+            }
+        }
+    }
     ControlPlane {
         fenced,
         hidden,
         write_protected,
         allowed,
+        readable,
+        stat_only,
     }
 }
 
@@ -775,6 +800,18 @@ pub fn control_plane_profile(c: &ControlPlane) -> Result<String, String> {
     for d in &c.allowed {
         s.push_str(&format!(
             "(allow file-read* file-write* (subpath {}))\n",
+            sbpl_quote(d)?
+        ));
+    }
+    for d in &c.readable {
+        s.push_str(&format!(
+            "(allow file-read* (subpath {}))\n",
+            sbpl_quote(d)?
+        ));
+    }
+    for d in &c.stat_only {
+        s.push_str(&format!(
+            "(allow file-read-metadata (literal {}))\n",
             sbpl_quote(d)?
         ));
     }
@@ -1855,7 +1892,22 @@ mod tests {
         ] {
             assert!(profile.contains(&format!("(deny file-read* (subpath {}))", q(d))));
         }
-        assert_eq!(profile.matches("file-read").count(), c.hidden.len());
+        let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
+        assert_eq!(
+            c.readable,
+            vec![
+                f.spec.home.join(paste),
+                tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir)
+                    .join(&f.spec.session_id)
+                    .join(paste),
+            ]
+        );
+        assert_eq!(
+            profile.matches("file-read").count(),
+            c.hidden.len() + c.readable.len() + c.stat_only.len()
+        );
+        assert_eq!(profile.matches("(allow file-read* (subpath").count(), 2);
+        assert!(!profile.contains("(allow file-write"));
         assert!(!profile.contains("/dev/tty"));
     }
 
@@ -1863,7 +1915,7 @@ mod tests {
     fn the_spool_is_allowed_after_every_deny_and_only_with_a_spool() {
         let mut f = fx();
         let plain = control_plane_profile(&control_plane(&f.spec, &[])).unwrap();
-        assert!(!plain.contains("(allow file-read*"));
+        assert!(!plain.contains("(allow file-read* file-write*"));
         let spool = f.spec.home.join(".cache/tmgr-manager");
         f.spec.spool = Some(spool.clone());
         let profile = control_plane_profile(&control_plane(&f.spec, &[])).unwrap();
@@ -1872,7 +1924,7 @@ mod tests {
             sbpl_quote(&spool).unwrap()
         );
         let at = profile.find(&allow).expect("allow rule");
-        assert_eq!(profile.matches("(allow file-read*").count(), 1);
+        assert_eq!(profile.matches("(allow file-read* file-write*").count(), 1);
         assert!(profile.rfind("(deny ").unwrap() < at);
     }
 
@@ -1902,6 +1954,273 @@ mod tests {
         )));
         assert!(!run(format!("echo x > '{}/other'", home.display())));
         assert!(!run(format!("ls '{}' > /dev/null", home.display())));
+    }
+
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\nimage";
+
+    fn verdict(profile: &str, op: &str, path: &Path) -> bool {
+        let filter = regex::Regex::new(r#"\((subpath|literal) "((?:[^"\\]|\\.)*)"\)"#).unwrap();
+        let mut allowed = true;
+        for line in profile.lines() {
+            let Some(rest) = line.strip_prefix('(') else {
+                continue;
+            };
+            let Some((act, rest)) = rest.split_once(' ') else {
+                continue;
+            };
+            let allow = match act {
+                "allow" => true,
+                "deny" => false,
+                _ => continue,
+            };
+            if rest.contains("(remote ") {
+                continue;
+            }
+            let ops = rest.split('(').next().unwrap_or("");
+            let op_hit = ops.split_whitespace().any(|o| match o.strip_suffix('*') {
+                Some(pre) => op.starts_with(pre),
+                None => o == op,
+            });
+            if !op_hit {
+                continue;
+            }
+            let path_hit = filter.captures_iter(rest).any(|c| {
+                let mut p = String::new();
+                let mut esc = false;
+                for ch in c[2].chars() {
+                    esc = !esc && ch == '\\';
+                    if !esc {
+                        p.push(ch);
+                    }
+                }
+                let p = PathBuf::from(p);
+                match &c[1] {
+                    "subpath" => path.starts_with(&p),
+                    _ => path == p,
+                }
+            });
+            if path_hit {
+                allowed = allow;
+            }
+        }
+        allowed
+    }
+
+    fn readable(profile: &str, path: &Path) -> bool {
+        verdict(profile, "file-read-data", path) && verdict(profile, "file-read-metadata", path)
+    }
+
+    fn session_profile(f: &Fx) -> String {
+        control_plane_profile(&control_plane(&f.spec, &[])).unwrap()
+    }
+
+    fn agents() -> [Vec<String>; 2] {
+        [
+            vec![
+                "claude".into(),
+                "--permission-mode".into(),
+                "acceptEdits".into(),
+            ],
+            vec!["codex".into(), "--sandbox".into(), "workspace-write".into()],
+        ]
+    }
+
+    #[test]
+    fn control_plane_lets_the_session_read_its_pasted_image_for_claude_and_codex() {
+        for argv in agents() {
+            let mut f = fx();
+            f.spec.argv = argv;
+            fs::create_dir_all(&f.spec.home).unwrap();
+            let path = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
+            let profile = session_profile(&f);
+            assert!(readable(&profile, &path), "{}", path.display());
+            for a in [
+                path.parent().unwrap(),
+                &f.spec.home,
+                f.spec.home.parent().unwrap(),
+            ] {
+                assert!(
+                    verdict(&profile, "file-read-metadata", a),
+                    "{}",
+                    a.display()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn control_plane_lets_the_session_read_a_paste_stored_beside_the_runner() {
+        for argv in agents() {
+            let mut f = fx();
+            f.spec.argv = argv;
+            let root = tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir);
+            let path =
+                tmgr_link::paste::store_private(&root, &f.spec.session_id, PNG, "png").unwrap();
+            let profile = session_profile(&f);
+            assert!(readable(&profile, &path), "{}", path.display());
+        }
+    }
+
+    #[test]
+    fn control_plane_keeps_other_sessions_the_runner_and_the_rest_of_the_home_hidden() {
+        let f = fx();
+        let profile = session_profile(&f);
+        let homes = f.spec.home.parent().unwrap();
+        let other = homes.join("s_otherother");
+        let pastes = tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir);
+        let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
+        for p in [
+            other.clone(),
+            other.join(paste).join("ab.png"),
+            other.join(".claude.json"),
+            pastes.join("s_otherother").join(paste).join("ab.png"),
+            f.spec.runner_dir.join("token"),
+            f.spec.runner_dir.join("config.toml"),
+            f.spec.runner_dir.join("runner.sock"),
+            f.spec.home.join(".claude.json"),
+            f.spec.home.join(".codex/auth.json"),
+            f.spec.home.join(format!("{paste}-x/ab.png")),
+            f.spec.home.join(format!("{paste}x")),
+        ] {
+            assert!(!verdict(&profile, "file-read-data", &p), "{}", p.display());
+        }
+        for dir in [
+            homes,
+            f.spec.home.as_path(),
+            f.spec.runner_dir.as_path(),
+            pastes.as_path(),
+        ] {
+            assert!(
+                !verdict(&profile, "file-read-data", dir),
+                "{}",
+                dir.display()
+            );
+        }
+        for p in [other.as_path(), &f.spec.runner_dir.join("token")] {
+            assert!(
+                !verdict(&profile, "file-read-metadata", p),
+                "{}",
+                p.display()
+            );
+        }
+    }
+
+    #[test]
+    fn control_plane_never_lets_the_session_write_into_its_paste_dirs() {
+        let f = fx();
+        let profile = session_profile(&f);
+        let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
+        let own = tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir).join(&f.spec.session_id);
+        for dir in [f.spec.home.join(paste), own.join(paste)] {
+            for op in ["file-write-create", "file-write-data", "file-write-unlink"] {
+                assert!(!verdict(&profile, op, &dir.join("planted.png")), "{op}");
+                assert!(!verdict(&profile, op, &dir), "{op}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_symlink_out_of_the_paste_dir_resolves_to_a_hidden_path() {
+        let f = fx();
+        fs::create_dir_all(&f.spec.home).unwrap();
+        let stored = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
+        let dir = stored.parent().unwrap();
+        let token = f.spec.runner_dir.join("token");
+        fs::write(&token, b"secret").unwrap();
+        let other = f.spec.home.parent().unwrap().join("s_otherother");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("note"), b"x").unwrap();
+        let profile = session_profile(&f);
+        for (name, target) in [("t.png", token), ("o.png", other.join("note"))] {
+            let link = dir.join(name);
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            let resolved = link.canonicalize().unwrap();
+            assert!(!verdict(&profile, "file-read-data", &resolved), "{name}");
+        }
+    }
+
+    #[test]
+    fn an_attach_paste_reaches_the_prompt_as_a_path_the_session_can_read() {
+        for argv in agents() {
+            let mut f = fx();
+            f.spec.argv = argv;
+            fs::create_dir_all(&f.spec.home).unwrap();
+            let profile = session_profile(&f);
+            let stored = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
+            for bracketed in [false, true] {
+                let text = tmgr_link::paste::paste_text(&stored, bracketed);
+                let text = text
+                    .strip_prefix("\x1b[200~")
+                    .and_then(|t| t.strip_suffix("\x1b[201~"))
+                    .unwrap_or(&text);
+                let words = shell_words::split(text).unwrap();
+                assert_eq!(words.len(), 1);
+                let path = PathBuf::from(&words[0]);
+                assert_eq!(path, stored);
+                assert!(readable(&profile, &path), "{}", path.display());
+                assert_eq!(fs::read(&path).unwrap(), PNG);
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_real_fence_lets_a_pasted_image_through_and_nothing_else() {
+        let f = fx();
+        fs::create_dir_all(&f.spec.home).unwrap();
+        let stored = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
+        let fallback = tmgr_link::paste::store_private(
+            &tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir),
+            &f.spec.session_id,
+            PNG,
+            "png",
+        )
+        .unwrap();
+        let token = f.spec.runner_dir.join("token");
+        fs::write(&token, b"secret").unwrap();
+        fs::write(f.spec.home.join(".claude.json"), b"{}").unwrap();
+        let other = f.spec.home.parent().unwrap().join("s_otherother");
+        fs::create_dir_all(other.join(tmgr_ipc::dirs::PASTE_DIR_NAME)).unwrap();
+        fs::write(
+            other.join(tmgr_ipc::dirs::PASTE_DIR_NAME).join("ab.png"),
+            PNG,
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&token, stored.parent().unwrap().join("t.png")).unwrap();
+        let profile = session_profile(&f);
+        let run = |script: String| {
+            std::process::Command::new("/usr/bin/sandbox-exec")
+                .args(["-p", &profile, "--", "/bin/sh", "-c", &script])
+                .status()
+                .unwrap()
+                .success()
+        };
+        if !run("exit 0".into()) {
+            return;
+        }
+        for p in [&stored, &fallback] {
+            let p = p.display();
+            assert!(run(format!(
+                "cat '{p}' > /dev/null && stat '{p}' > /dev/null && realpath '{p}' > /dev/null"
+            )));
+            assert!(!run(format!("echo x > '{p}'")));
+        }
+        let dir = stored.parent().unwrap();
+        assert!(!run(format!("echo x > '{}/planted.png'", dir.display())));
+        assert!(!run(format!("cat '{}/t.png'", dir.display())));
+        assert!(!run(format!("cat '{}'", token.display())));
+        assert!(!run(format!(
+            "cat '{}/.claude.json'",
+            f.spec.home.display()
+        )));
+        assert!(!run(format!(
+            "cat '{}/{}/ab.png'",
+            other.display(),
+            tmgr_ipc::dirs::PASTE_DIR_NAME
+        )));
+        for d in [f.spec.home.parent().unwrap(), f.spec.home.as_path()] {
+            assert!(!run(format!("ls '{}' > /dev/null", d.display())));
+        }
     }
 
     #[test]

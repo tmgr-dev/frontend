@@ -9,7 +9,7 @@ use tmgr_ipc::proto::valid_session_id;
 
 pub const MAX_IMAGE: usize = 10 * 1024 * 1024;
 pub const MAX_CHUNK: usize = 512 * 1024;
-const DIR: &str = ".tmgr-paste";
+const DIR: &str = tmgr_ipc::dirs::PASTE_DIR_NAME;
 const KEEP: usize = 16;
 
 pub fn image_ext(bytes: &[u8]) -> Option<&'static str> {

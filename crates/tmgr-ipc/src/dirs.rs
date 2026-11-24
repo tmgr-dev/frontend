@@ -71,6 +71,8 @@ pub fn time_dir(runner_dir: &Path) -> PathBuf {
     persistent_dir(runner_dir, "time")
 }
 
+pub const PASTE_DIR_NAME: &str = ".tmgr-paste";
+
 pub fn paste_dir(runner_dir: &Path) -> PathBuf {
     persistent_dir(runner_dir, "paste")
 }
