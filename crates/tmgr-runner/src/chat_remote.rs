@@ -408,6 +408,7 @@ mod tests {
             target_title: "x".into(),
             state: tmgr_ipc::chat::MentionState::Answered,
             hop: 1,
+            reason: None,
         });
         let net = Net::top().replying(Ok(RpcRes::ok("r", json!([forged]))));
         let got = history(&net, &room, None, None).unwrap();

@@ -112,6 +112,7 @@ impl Runner {
             target_title: title.clone(),
             state: MentionState::Queued,
             hop: mention::HOP,
+            reason: None,
         };
         let via = Via::Local {
             client: conn.client.clone(),
@@ -168,6 +169,7 @@ impl Runner {
             target_title: self.mention_title(&target),
             state: MentionState::Queued,
             hop: mention::HOP,
+            reason: None,
         };
         let via = Via::Relay {
             device: m.device.clone().unwrap_or_else(|| "unknown device".into()),
@@ -312,9 +314,6 @@ impl Runner {
         if facts.risky && !mention_may_be_risky(&via, confirmed_risky) {
             return refuse(MentionState::Refused, "needs confirmation on this machine");
         }
-        if busy {
-            return refuse(MentionState::Busy, "the session has other messages waiting");
-        }
         let (client, device, owner_device) = match &via {
             Via::Local { client } => (client.as_str(), None, false),
             Via::Relay {
@@ -378,7 +377,7 @@ impl Runner {
             return chat::Delivery::Gone("the session has exited".into());
         }
         if !t.has_shim() {
-            return chat::Delivery::Busy(None);
+            return chat::Delivery::Busy(Some("noinput"));
         }
         self.chat.mention_prepare(
             it.id,
@@ -397,7 +396,7 @@ impl Runner {
                 self.capture_fast();
                 chat::Delivery::Typed(typed)
             }
-            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(None),
+            Err(e) if e.code == ErrorCode::Busy => chat::Delivery::Busy(t.busy_code()),
             Err(e) => chat::Delivery::Gone(e.msg),
         }
     }
@@ -683,18 +682,18 @@ mod tests {
             rows.iter().filter(|s| **s == MentionState::Queued).count(),
             2
         );
-        assert!(rows.contains(&MentionState::Busy));
+        assert!(!rows.contains(&MentionState::Busy));
     }
 
     #[test]
-    fn a_second_mention_while_b_has_one_open_or_queued_messages_is_refused() {
+    fn a_second_mention_while_b_has_one_open_is_queued_behind_it_not_refused() {
         let (_t, rt) = rig(json!({}));
         let (c, _p) = conn(CLIENT_DESKTOP);
         let b = rt.chat.session_room(B);
         call(&rt, &c, method::SEND, to_json(&send(&rt, None, &b))).unwrap();
         call(&rt, &c, method::SEND, to_json(&send(&rt, None, &b))).unwrap();
-        assert_eq!(rt.chat.queued_ids(&b).len(), 1);
-        assert!(states(&rt, &rt.chat.session_room(A)).contains(&MentionState::Busy));
+        assert_eq!(rt.chat.queued_ids(&b).len(), 2);
+        assert!(!states(&rt, &rt.chat.session_room(A)).contains(&MentionState::Busy));
     }
 
     #[test]
@@ -858,6 +857,7 @@ mod tests {
             target_title: "Manager".into(),
             state: MentionState::Queued,
             hop: 1,
+            reason: None,
         });
         for kind in [None, Some("runner"), Some("link"), Some("")] {
             sink.deliver("d1", kind, m.clone()).unwrap();
@@ -1067,6 +1067,7 @@ mod tests {
                 target_title: "x".into(),
                 state: MentionState::Answered,
                 hop: 1,
+                reason: None,
             }),
             ..rt.chat
                 .post(
@@ -1204,7 +1205,10 @@ mod tests {
         sp.id = other.into();
         rt.chat.mention_open(sp);
         let item = Item { id: other, ..item };
-        assert_eq!(rt.mention_deliver(&item), chat::Delivery::Busy(None));
+        assert_eq!(
+            rt.mention_deliver(&item),
+            chat::Delivery::Busy(Some("noinput"))
+        );
     }
 
     #[test]
@@ -1328,6 +1332,7 @@ mod tests {
                         target_title: "Manager".into(),
                         state: MentionState::Queued,
                         hop: mention::HOP,
+                        reason: None,
                     },
                 )
                 .unwrap();

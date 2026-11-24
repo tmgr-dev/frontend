@@ -114,6 +114,7 @@ fn msg(id: &str, r: RoomRef, body: &str, mention: Option<(&str, MentionState)>) 
             target_title: "docs".into(),
             state,
             hop: 0,
+            reason: None,
         }),
     }
 }

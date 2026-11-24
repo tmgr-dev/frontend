@@ -4,6 +4,7 @@
 			<p class="mstate" role="status">
 				{{ $t(`manager.mention.state.${stateKey}`, { who }) }}
 			</p>
+			<p v-if="reasonText" class="mnote">{{ reasonText }}</p>
 		</template>
 		<template v-else>
 			<p class="mstate">{{ $t('manager.mention.replyFrom', { who }) }}</p>
@@ -56,6 +57,8 @@
 		'cancelled',
 	]);
 
+	const REASON_STATES = new Set(['queued', 'busy', 'timeout', 'refused']);
+
 	export default defineComponent({
 		name: 'ManagerMentionReply',
 		props: {
@@ -80,7 +83,14 @@
 				return `@${this.mention.target_title}`;
 			},
 			stateKey(): string {
+				if (this.mention.state === 'timeout' && this.mention.reason)
+					return 'noAnswer';
 				return KNOWN.has(this.mention.state) ? this.mention.state : 'other';
+			},
+			reasonText(): string {
+				return REASON_STATES.has(this.mention.state)
+					? (this.mention.reason ?? '')
+					: '';
 			},
 			gate(): InjectGate {
 				return injectGate(this.origin, this.message, this.supported);

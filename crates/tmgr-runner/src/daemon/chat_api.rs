@@ -126,7 +126,7 @@ impl Runner {
             return Err(gone("the session has exited"));
         }
         if !s.has_shim() {
-            return Err(chat::Delivery::Busy(Some("prompt")));
+            return Err(chat::Delivery::Busy(Some("noinput")));
         }
         Ok(s)
     }
@@ -1009,7 +1009,7 @@ mod tests {
         for room in [room.clone(), rt.chat.session_room("s_aaaaaaaaaa")] {
             assert_eq!(
                 rt.relay_deliver(&room, Some("d_phone1"), true, "hi"),
-                chat::Delivery::Busy(Some("prompt"))
+                chat::Delivery::Busy(Some("noinput"))
             );
         }
         let mut m = relay_msg(room.clone(), "hello");
@@ -1519,7 +1519,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(why.get(&posted.id).map(String::as_str), Some("prompt"));
+        assert_eq!(why.get(&posted.id).map(String::as_str), Some("noinput"));
         let cancel = |id: &str| -> bool {
             serde_json::from_value(
                 call(

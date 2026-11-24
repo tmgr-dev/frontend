@@ -1428,6 +1428,7 @@ impl Session {
                 return Err(api(ErrorCode::Busy, "the agent is not at its prompt"));
             }
             if self.input_dropped.swap(false, Ordering::SeqCst) || !self.shim_input(bytes) {
+                i.last_busy = Some("input queue full");
                 return Err(api(
                     ErrorCode::Busy,
                     "input queue full; the agent is not reading its input",
@@ -7131,7 +7132,7 @@ mod tests {
             b"two\r",
             base + Duration::from_millis(4_900)
         ));
-        assert_eq!(s.busy_code(), Some("turn"));
+        assert_eq!(s.busy_code(), Some("settling"));
         assert!(send_at_prompt(&s, b"two\r", base + SEND_SETTLE));
     }
 
@@ -7154,7 +7155,7 @@ mod tests {
             b"two\r",
             base + Duration::from_millis(2_100)
         ));
-        assert_eq!(s.busy_code(), Some("turn"));
+        assert_eq!(s.busy_code(), Some("settling"));
         assert!(send_at_prompt(
             &s,
             b"two\r",
@@ -7262,6 +7263,25 @@ mod tests {
         assert!(!send_at_prompt(&s, b"note\r", settled()));
         drain(&s, &rx);
         assert!(send_at_prompt(&s, b"note\r", settled()));
+    }
+
+    #[test]
+    fn a_send_refused_for_queued_input_reports_the_input_code() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        assert!(s.input(b"1"));
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+        assert_eq!(s.busy_code(), Some("input"));
+        drain(&s, &rx);
+    }
+
+    #[test]
+    fn a_send_refused_for_a_dropped_input_reports_the_input_code() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(IDLE, true);
+        s.input_dropped.store(true, Ordering::SeqCst);
+        assert!(!send_at_prompt(&s, b"note\r", settled()));
+        assert_eq!(s.busy_code(), Some("input"));
     }
 
     #[test]

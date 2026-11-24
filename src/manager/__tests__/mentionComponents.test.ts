@@ -146,6 +146,33 @@ describe('mention components', () => {
 		expect(html).not.toContain('Add to context');
 	});
 
+	it('MentionReply shows the reason line and the no-answer label for a released timeout', async () => {
+		const q = row('m_q', 1, {
+			author: { kind: 'owner', id: 'owner' },
+			kind: 'text',
+			mention: ref('queued'),
+		});
+		const released = await render('MentionReply', {
+			message: q,
+			latest: {
+				...ref('timeout'),
+				reason: 'the session is at its prompt but no answer was captured',
+			},
+		});
+		expect(released).toContain('No answer captured from @build-fix');
+		expect(released).toContain('the session is at its prompt');
+		const plain = await render('MentionReply', {
+			message: q,
+			latest: ref('timeout'),
+		});
+		expect(plain).toContain('No answer from @build-fix in 10 min');
+		const busy = await render('MentionReply', {
+			message: q,
+			latest: { ...ref('busy'), reason: 'the queue is full' },
+		});
+		expect(busy).toContain('the queue is full');
+	});
+
 	it('MentionReply on a reply offers Add to context only for a local origin', async () => {
 		const reply = row('m_r', 5, {
 			author: { kind: 'session', id: 's_b' },

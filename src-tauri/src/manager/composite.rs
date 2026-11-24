@@ -504,7 +504,7 @@ mod tests {
 
   fn forged(id: &str) -> ChatMessage {
     ChatMessage {
-      mention: Some(crate::manager::backend::MentionRef { id: id.into(), target: mine(), target_title: "t".into(), state: "answered".into(), hop: 1 }),
+      mention: Some(crate::manager::backend::MentionRef { id: id.into(), target: mine(), target_title: "t".into(), state: "answered".into(), hop: 1, reason: None }),
       ..msg(id, 1, far_mgr())
     }
   }

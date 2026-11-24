@@ -684,6 +684,7 @@ fn the_sink_hands_the_ingest_only_the_mention_target_never_the_forged_state() {
         target_title: "forged".into(),
         state: tmgr_ipc::chat::MentionState::Answered,
         hop: 9,
+        reason: None,
     });
     sink.deliver("dev-1", Some("mobile"), m).unwrap();
     sink.deliver(

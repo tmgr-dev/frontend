@@ -518,6 +518,9 @@ describe('manager components', () => {
 			['dialog', 'Queued: waiting on a dialog in the session'],
 			['prompt', 'Queued: waiting for the session prompt'],
 			['draft', 'Waiting: the input box has unsent text'],
+			['settling', 'Queued: sending in a moment'],
+			['input', 'Queued: the session is still taking earlier input'],
+			['noinput', 'Queued: this session does not take chat input'],
 		];
 		for (const [queuedWhy, text] of cases) {
 			const html = await render('MessageBubble', {

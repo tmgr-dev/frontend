@@ -22,13 +22,14 @@ struct OpenRow {
     hop: u8,
 }
 
-pub fn mention_ref(spec: &Spec, state: MentionState) -> MentionRef {
+pub fn mention_ref(spec: &Spec, state: MentionState, reason: Option<String>) -> MentionRef {
     MentionRef {
         id: spec.id.clone(),
         target: spec.target.clone(),
         target_title: spec.title.clone(),
         state,
         hop: spec.hop,
+        reason,
     }
 }
 
@@ -176,7 +177,7 @@ impl Chat {
             decision: None,
             session_meta: None,
             user_turn: false,
-            mention: Some(mention_ref(&t.spec, t.state)),
+            mention: Some(mention_ref(&t.spec, t.state, t.reason.clone())),
         };
         if let Err(e) = self.append(msg) {
             crate::daemon::log(&format!("chat: mention state not stored: {e}"));

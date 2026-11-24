@@ -63,6 +63,7 @@ export interface MentionRef {
 	target_title: string;
 	state: MentionState;
 	hop: number;
+	reason?: string;
 }
 
 export interface MentionReq {

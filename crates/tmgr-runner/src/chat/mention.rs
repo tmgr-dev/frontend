@@ -4,6 +4,9 @@ use tmgr_ipc::chat::{MentionState, MentionTarget, RoomRef};
 
 pub const QUEUE_TTL_MS: u64 = 120_000;
 pub const ANSWER_TIMEOUT_MS: u64 = 600_000;
+pub const MENTION_RELEASE_MS: u64 = 30_000;
+pub const RELEASE_WAITING_MS: u64 = 10_000;
+pub const NO_ANSWER_REASON: &str = "the session is at its prompt but no answer was captured";
 pub const HOP: u8 = 1;
 pub const HOP_MAX: u8 = 2;
 pub const PER_ORIGIN_PER_MIN: usize = 6;
@@ -51,6 +54,8 @@ struct Sent {
     anchor_end: Option<u64>,
     answering: bool,
     waiting_seen: bool,
+    waiting_since: Option<u64>,
+    closed: bool,
     replies: Vec<String>,
 }
 
@@ -294,6 +299,32 @@ impl Mentions {
 
     pub fn observe(&mut self, target: &RoomRef, user: bool, text: &str, end: Option<u64>) {
         let text = normalize(text);
+        if user {
+            let newer: Vec<(String, u64)> = self
+                .entries
+                .iter()
+                .filter(|(_, e)| e.spec.target == *target)
+                .filter_map(|(id, e)| match &e.phase {
+                    Phase::Sent(s)
+                        if !s.anchored
+                            && s.typed == text
+                            && end.is_none_or(|e| e > s.anchor_pos) =>
+                    {
+                        Some((id.clone(), s.delivered_ms))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if let Some(at) = newer.iter().map(|(_, d)| *d).max() {
+                for e in self.entries.values_mut() {
+                    if let Phase::Sent(s) = &mut e.phase {
+                        if e.spec.target == *target && s.anchored && s.delivered_ms < at {
+                            s.closed = true;
+                        }
+                    }
+                }
+            }
+        }
         for e in self.entries.values_mut() {
             let Phase::Sent(s) = &mut e.phase else {
                 continue;
@@ -307,6 +338,7 @@ impl Mentions {
                     s.anchor_end = end;
                 }
             } else if s.anchored
+                && !s.closed
                 && !text.is_empty()
                 && !s.replies.contains(&text)
                 && end.is_none_or(|e| s.anchor_end.is_none_or(|a| e > a))
@@ -393,7 +425,19 @@ impl Mentions {
                             if worked && p.waiting && s.anchored {
                                 s.waiting_seen = true;
                             }
-                            None
+                            s.waiting_since = if p.waiting {
+                                s.waiting_since.or(Some(now))
+                            } else {
+                                None
+                            };
+                            let captured = s.anchored && !s.replies.is_empty();
+                            let idle_for = s.waiting_since.map_or(0, |w| now.saturating_sub(w));
+                            (!captured
+                                && now.saturating_sub(s.delivered_ms) >= MENTION_RELEASE_MS
+                                && idle_for >= RELEASE_WAITING_MS)
+                                .then(|| {
+                                    (MentionState::Timeout, Some(NO_ANSWER_REASON.to_string()))
+                                })
                         }
                     };
                     if let Some((state, reason)) = verdict {
@@ -523,6 +567,88 @@ mod tests {
             m.pass(&room("s_target0001"), true)[0].state,
             MentionState::Answered
         );
+    }
+
+    fn released(m: &mut Mentions, at: u64, waiting: bool) -> Vec<Transition> {
+        let mut t = m.tick(at, &|_| probe(waiting, 6, 7));
+        t.retain(|t| t.state != MentionState::Answering);
+        t
+    }
+
+    #[test]
+    fn a_sent_mention_with_no_captured_answer_is_released_after_the_session_idles() {
+        let mut m = Mentions::default();
+        sent(&mut m, "m1");
+        assert!(released(&mut m, T0 + 28_000, true).is_empty());
+        assert!(released(&mut m, T0 + 35_000, true).is_empty());
+        let t = released(&mut m, T0 + 39_000, true);
+        assert_eq!(t[0].state, MentionState::Timeout);
+        assert_eq!(t[0].reason.as_deref(), Some(NO_ANSWER_REASON));
+        assert!(!m.is_open("m1"));
+    }
+
+    #[test]
+    fn a_sent_mention_is_not_released_before_thirty_seconds() {
+        let mut m = Mentions::default();
+        sent(&mut m, "m1");
+        assert!(released(&mut m, T0 + 100, true).is_empty());
+        assert!(released(&mut m, T0 + 12_000, true).is_empty());
+        assert!(released(&mut m, T0 + 29_000, true).is_empty());
+        assert!(m.is_open("m1"));
+    }
+
+    #[test]
+    fn a_working_session_resets_the_idle_clock() {
+        let mut m = Mentions::default();
+        sent(&mut m, "m1");
+        assert!(released(&mut m, T0 + 100, true).is_empty());
+        assert!(released(&mut m, T0 + 20_000, false).is_empty());
+        assert!(released(&mut m, T0 + 31_000, true).is_empty());
+        assert!(released(&mut m, T0 + 38_000, true).is_empty());
+        let t = released(&mut m, T0 + 42_000, true);
+        assert_eq!(t[0].state, MentionState::Timeout);
+    }
+
+    #[test]
+    fn a_mention_with_a_captured_answer_is_left_to_the_transcript_pass() {
+        let mut m = Mentions::default();
+        sent(&mut m, "m1");
+        m.observe(&room("s_target0001"), true, "status?", None);
+        m.observe(&room("s_target0001"), false, "all green", None);
+        released(&mut m, T0 + 100, false);
+        assert!(released(&mut m, T0 + 200, true).is_empty());
+        assert!(released(&mut m, T0 + 31_000, true).is_empty());
+        assert!(released(&mut m, T0 + 50_000, true).is_empty());
+        assert!(m.is_open("m1"));
+        assert_eq!(
+            m.pass(&room("s_target0001"), true)[0].state,
+            MentionState::Answered
+        );
+    }
+
+    #[test]
+    fn two_mentions_to_one_target_each_collect_only_their_own_reply() {
+        let mut m = Mentions::default();
+        let t = room("s_target0001");
+        m.open(spec("m1", local()));
+        m.prepare("m1", 5, 0);
+        m.delivered("m1", "first?", T0 + 10);
+        m.open(spec("m2", local()));
+        m.prepare("m2", 5, 0);
+        m.delivered("m2", "second?", T0 + 20);
+        m.observe(&t, true, "first?", Some(10));
+        m.observe(&t, false, "first answer", Some(20));
+        m.observe(&t, true, "second?", Some(30));
+        m.observe(&t, false, "second answer", Some(40));
+        released(&mut m, T0 + 100, true);
+        let done = m.pass(&t, true);
+        let reply = |id: &str| {
+            done.iter()
+                .find(|t| t.spec.id == id)
+                .and_then(|t| t.reply.clone())
+        };
+        assert_eq!(reply("m1").as_deref(), Some("first answer"));
+        assert_eq!(reply("m2").as_deref(), Some("second answer"));
     }
 
     #[test]

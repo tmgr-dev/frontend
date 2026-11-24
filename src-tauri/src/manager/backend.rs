@@ -64,6 +64,8 @@ pub struct MentionRef {
   pub target_title: String,
   pub state: String,
   pub hop: u8,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
