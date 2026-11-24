@@ -1907,3 +1907,23 @@ fn manager_remote_policy_shapes() {
         json!({"leaders": [{"machine": "mac-1", "ask": false, "ops": ["list", "room"]}], "legacy": false})
     );
 }
+
+#[test]
+fn permission_card_reads_json_without_from_and_warning() {
+    let card: tmgr_ipc::api::PermissionCard = serde_json::from_value(json!({
+        "id": "a", "session": "s", "agent": "claude", "tool": "Bash",
+        "text": "ls", "can_answer": true
+    }))
+    .unwrap();
+    assert_eq!((card.from, card.warning), (None, None));
+    let plain = serde_json::to_value(tmgr_ipc::api::PermissionCard::default()).unwrap();
+    assert!(plain.get("from").is_none() && plain.get("warning").is_none());
+    let card = tmgr_ipc::api::PermissionCard {
+        from: Some("general-purpose".into()),
+        warning: Some("w".into()),
+        ..Default::default()
+    };
+    let v = serde_json::to_value(&card).unwrap();
+    assert_eq!(v["from"], "general-purpose");
+    assert_eq!(v["warning"], "w");
+}

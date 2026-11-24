@@ -1,6 +1,13 @@
 use super::{Agent, Dialog, DialogBody, DialogOption, OptionAction};
 
-const CLAUDE_FOOTERS: [&str; 2] = ["Esc to cancel · Tab to amend", "Esc to cancel"];
+const CLAUDE_FOOTERS: [&str; 3] = [
+    "Esc to cancel · Tab to amend",
+    "Esc to cancel",
+    "Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents",
+];
+const BASH_KIND: &str = "Bash command";
+const FROM_PREFIX: &str = "Bash command · from the ";
+const FROM_SUFFIX: &str = " agent";
 const CODEX_FOOTER: &str = "Press enter to confirm or esc to cancel";
 const CODEX_QUESTION: &str = "Would you like to run the following command?";
 const CODEX_EDIT_QUESTION: &str = "Would you like to make the following edits?";
@@ -155,6 +162,16 @@ fn finish_options(agent: Agent, raw: Vec<Raw>) -> Option<Vec<DialogOption>> {
     Some(out)
 }
 
+fn agent_name(kind: &str) -> Option<&str> {
+    let name = kind.strip_prefix(FROM_PREFIX)?.strip_suffix(FROM_SUFFIX)?;
+    let ok = (1..=64).contains(&name.len())
+        && name == name.trim()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ' '));
+    ok.then_some(name)
+}
+
 fn drop_gutter(rows: &mut [String]) {
     if rows.iter().all(|r| r.is_empty() || r.starts_with('│')) {
         for r in rows.iter_mut() {
@@ -170,7 +187,20 @@ fn claude(rows: &[String]) -> Option<Dialog> {
     if !(question.starts_with("Do you want to ") && question.ends_with('?')) {
         return None;
     }
-    let lo = first.checked_sub(2)?;
+    let mut lo = first.checked_sub(2)?;
+    let mut warning = None;
+    if !ruleish(&rows[lo]) {
+        let mut w = lo;
+        while blank(&rows[w]) {
+            w = w.checked_sub(1)?;
+        }
+        let text = rows[w].trim();
+        if ruleish(text) || text.chars().any(char::is_control) {
+            return None;
+        }
+        warning = Some(text.to_string());
+        lo = w.checked_sub(1)?;
+    }
     let width = rule(&rows[lo], '╌')?;
     let mut i = lo;
     let body_end = i;
@@ -202,12 +232,14 @@ fn claude(rows: &[String]) -> Option<Dialog> {
     let kind = *header.first()?;
     let rest = &header[1..];
 
+    let from = agent_name(kind);
+    let bash = kind == BASH_KIND || from.is_some();
     let mut body_rows: Vec<String> = body.iter().map(|r| r.trim().to_string()).collect();
-    if kind == "Bash command" {
+    if bash {
         drop_gutter(&mut body_rows);
     }
     let nonblank: Vec<&String> = body_rows.iter().filter(|r| !r.is_empty()).collect();
-    let parsed = if kind == "Bash command" && question == "Do you want to proceed?" {
+    let parsed = if bash && question == "Do you want to proceed?" {
         if nonblank.len() == 1 && nonblank[0] == WITHHELD {
             DialogBody::Withheld
         } else if nonblank.is_empty() {
@@ -216,6 +248,8 @@ fn claude(rows: &[String]) -> Option<Dialog> {
             DialogBody::Command {
                 rows: body_rows.clone(),
                 reason: (!rest.is_empty()).then(|| rest.join("\n")),
+                from: from.map(str::to_string),
+                warning: warning.clone(),
             }
         }
     } else if kind == "Create file"
@@ -236,8 +270,12 @@ fn claude(rows: &[String]) -> Option<Dialog> {
         }
     };
 
+    if warning.is_some() && !matches!(parsed, DialogBody::Command { .. }) {
+        return None;
+    }
     let mut text: Vec<String> = header.iter().map(|s| s.to_string()).collect();
     text.extend(body_rows);
+    text.extend(warning);
     text.push(question.to_string());
     Some(Dialog {
         agent: Agent::Claude,
@@ -302,7 +340,12 @@ fn codex(rows: &[String]) -> Option<Dialog> {
     text.extend(cmd.iter().cloned());
     Some(Dialog {
         agent: Agent::Codex,
-        body: DialogBody::Command { rows: cmd, reason },
+        body: DialogBody::Command {
+            rows: cmd,
+            reason,
+            from: None,
+            warning: None,
+        },
         options,
         text: text.join("\n"),
     })

@@ -604,6 +604,10 @@ pub struct PermissionCard {
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub danger: Vec<String>,
     pub can_answer: bool,

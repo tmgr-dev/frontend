@@ -1236,6 +1236,8 @@ impl Session {
             text: ev.text(),
             path: ev.path(),
             reason: ev.reason(),
+            from: ev.from(),
+            warning: ev.warning(),
             danger: ev.danger.iter().map(|d| d.to_string()).collect(),
             can_answer: why_not.is_none(),
             why_not,

@@ -29,6 +29,8 @@ pub fn clean_text(s: &str) -> String {
         .join("\n")
 }
 
+const WARNING_DANGER: &str = "the agent cannot fully check this command";
+
 pub struct Eval {
     pub id: String,
     pub dialog: Dialog,
@@ -83,9 +85,18 @@ impl Eval {
             Some(h) => fingerprint(session, &dialog, h),
             None => digest(&[session, &dialog.text]),
         };
-        let danger = hook
+        let mut danger = hook
             .as_ref()
             .map_or_else(Vec::new, |h| all_danger(h, &dialog, session_cwd));
+        if matches!(
+            &dialog.body,
+            DialogBody::Command {
+                warning: Some(_),
+                ..
+            }
+        ) {
+            danger.push(WARNING_DANGER);
+        }
         Some(Eval {
             id,
             dialog,
@@ -145,6 +156,20 @@ impl Eval {
         }
         match &self.dialog.body {
             DialogBody::Command { reason, .. } => reason.as_deref().map(clean_text),
+            _ => None,
+        }
+    }
+
+    pub fn from(&self) -> Option<String> {
+        match &self.dialog.body {
+            DialogBody::Command { from, .. } => from.as_deref().map(clean_text),
+            _ => None,
+        }
+    }
+
+    pub fn warning(&self) -> Option<String> {
+        match &self.dialog.body {
+            DialogBody::Command { warning, .. } => warning.as_deref().map(clean_text),
             _ => None,
         }
     }

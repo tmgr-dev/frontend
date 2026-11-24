@@ -22,7 +22,7 @@ pub fn verdict(d: &Dialog, h: Option<&HookEvent>) -> Verdict {
         return Verdict::ViewOnly("dialog has no single yes and no option");
     }
     let ok = match (&d.body, h.tool.as_str()) {
-        (DialogBody::Command { rows, reason }, "Bash") => {
+        (DialogBody::Command { rows, reason, .. }, "Bash") => {
             command_matches(rows, reason.as_deref(), h)
         }
         (

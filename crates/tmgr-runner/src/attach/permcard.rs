@@ -352,8 +352,16 @@ impl ViewState {
             wrap_line(&clean(&format!("{name} · {}", card.tool)), w),
             Role::Title,
         );
+        if let Some(from) = &card.from {
+            let line = clean(&format!("from the {from} agent"));
+            rows.extend(plain_rows(wrap_line(&line, w), Role::Dim));
+        }
         if !card.danger.is_empty() {
             let line = clean(&format!("Dangerous: {}", card.danger.join(", ")));
+            rows.extend(plain_rows(wrap_line(&line, w), Role::Danger));
+        }
+        if let Some(warning) = &card.warning {
+            let line = clean(&format!("Warning: {warning}"));
             rows.extend(plain_rows(wrap_line(&line, w), Role::Danger));
         }
         rows
@@ -1072,6 +1080,24 @@ mod tests {
         let (x, y) = find_text(&v, "rm -rf").unwrap();
         let cell = &term.backend().buffer()[(x, y)];
         assert_eq!(cell.fg, crate::attach::theme::colors().bad);
+    }
+
+    #[test]
+    fn a_card_shows_the_subagent_and_a_red_warning() {
+        let mut v = view();
+        let mut c = card("c1", "rm -f x");
+        c.from = Some("gp".into());
+        c.warning = Some("nested".into());
+        c.danger = vec!["unchecked".into()];
+        show(&mut v, vec![c]);
+        let (text, term) = dump(&v, 140, 40);
+        assert!(text.contains("from the gp agent"));
+        assert!(text.contains("Warning: nested"));
+        let (x, y) = find_text(&v, "Warning: nested").unwrap();
+        assert_eq!(
+            term.backend().buffer()[(x, y)].fg,
+            crate::attach::theme::colors().bad
+        );
     }
 
     #[test]

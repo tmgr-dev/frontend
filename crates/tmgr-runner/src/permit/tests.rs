@@ -9,6 +9,10 @@ const CLAUDE_WRITE: &str = include_str!("../../profiles/screens/claude-write-app
 const CLAUDE_WRITE_OUT: &str =
     include_str!("../../profiles/screens/claude-write-outside-approval.txt");
 const CLAUDE_FETCH: &str = include_str!("../../profiles/screens/claude-webfetch-approval.txt");
+const SUB_WARN: &str =
+    include_str!("../../profiles/screens/claude-bash-subagent-warning-approval.txt");
+const BASH_WARN: &str = include_str!("../../profiles/screens/claude-bash-warning-approval.txt");
+const SUB: &str = include_str!("../../profiles/screens/claude-bash-subagent-approval.txt");
 const CODEX_0164: &str = include_str!("../../profiles/screens/codex-0164-approval.txt");
 const CODEX_EDIT: &str = include_str!("../../profiles/screens/codex-edit-approval.txt");
 const CODEX: &str = include_str!("../../profiles/screens/codex-approval.txt");
@@ -84,7 +88,9 @@ fn claude_bash_fixture_parses_body_and_exact_keys() {
         d.body,
         DialogBody::Command {
             rows: vec!["touch hello.txt; ls -la".into()],
-            reason: Some("run it".into())
+            reason: Some("run it".into()),
+            from: None,
+            warning: None
         }
     );
     assert_eq!(
@@ -266,7 +272,9 @@ fn codex_0164_fixture_parses_keys_from_trailing_parentheses() {
         d.body,
         DialogBody::Command {
             rows: vec!["touch hello.txt".into()],
-            reason: Some("needs outside sandbox".into())
+            reason: Some("needs outside sandbox".into()),
+            from: None,
+            warning: None
         }
     );
     assert_eq!(
@@ -324,7 +332,7 @@ fn codex_reason_with_dollar_line_does_not_shift_the_command() {
     );
     let d = parse(Agent::Codex, &s);
     match &d.body {
-        DialogBody::Command { rows, reason } => {
+        DialogBody::Command { rows, reason, .. } => {
             assert_eq!(rows, &vec!["touch hello.txt".to_string()]);
             assert_eq!(reason.as_deref(), Some("first part\n$ other"));
         }
@@ -998,4 +1006,202 @@ fn codex_edit_dialog_with_unexpected_structure_is_none() {
     ] {
         assert!(parse_dialog(Agent::Codex, &rows(&s)).is_none());
     }
+}
+
+const NESTED: &str = "A nested command in this command can't be checked before it runs";
+
+fn command_parts(d: &Dialog) -> (Vec<String>, Option<String>, Option<String>, Option<String>) {
+    match &d.body {
+        DialogBody::Command {
+            rows,
+            reason,
+            from,
+            warning,
+        } => (rows.clone(), reason.clone(), from.clone(), warning.clone()),
+        b => panic!("{b:?}"),
+    }
+}
+
+fn warn_screen(header: &str, body: &[&str], gap: &[&str]) -> Vec<String> {
+    let mut r = vec![
+        "transcript".to_string(),
+        "─".repeat(40),
+        format!(" {header}"),
+    ];
+    r.push(" run it".into());
+    r.push("╌".repeat(40));
+    r.extend(body.iter().map(|b| format!(" {b}")));
+    r.push("╌".repeat(40));
+    r.extend(gap.iter().map(|g| g.to_string()));
+    r.push(" Do you want to proceed?".into());
+    r.extend(PLAIN_OPTS.iter().map(|o| o.to_string()));
+    r.push(String::new());
+    r.push(" Esc to cancel · Tab to amend".into());
+    r
+}
+
+#[test]
+fn subagent_warning_fixture_parses_from_and_warning() {
+    let (rows, reason, from, warning) = command_parts(&parse(Agent::Claude, SUB_WARN));
+    assert_eq!(rows, vec!["rm -f ./tmpdir/x/$(echo f)".to_string()]);
+    assert_eq!(
+        reason.as_deref(),
+        Some("Remove file f from tmpdir/x if present")
+    );
+    assert_eq!(from.as_deref(), Some("general-purpose"));
+    assert_eq!(warning.as_deref(), Some(NESTED));
+}
+
+#[test]
+fn warning_fixture_without_subagent_parses_warning_only() {
+    let (rows, reason, from, warning) = command_parts(&parse(Agent::Claude, BASH_WARN));
+    assert_eq!(
+        rows,
+        vec![r#"rm -f ./tmpdir/x/$(echo f); echo "exit=$?"; ls -la ./tmpdir/x 2>&1"#.to_string()]
+    );
+    assert_eq!(
+        reason.as_deref(),
+        Some("Remove file f inside tmpdir/x and list the directory")
+    );
+    assert_eq!(from, None);
+    assert_eq!(warning.as_deref(), Some(NESTED));
+}
+
+#[test]
+fn subagent_fixture_without_warning_parses_from() {
+    let d = parse(Agent::Claude, SUB);
+    let (rows, reason, from, warning) = command_parts(&d);
+    assert_eq!(rows, vec!["touch ./tmpdir/newfile.txt".to_string()]);
+    assert_eq!(reason.as_deref(), Some("Create file in tmpdir"));
+    assert_eq!(from.as_deref(), Some("general-purpose"));
+    assert_eq!(warning, None);
+    assert_eq!(
+        keys(&d),
+        vec![("1", OptionAction::Yes), ("2", OptionAction::No)]
+    );
+}
+
+#[test]
+fn old_fixtures_have_no_from_or_warning() {
+    for s in [CLAUDE_BASH, CLAUDE_BASH_TIP, CLAUDE_BASH_WRAPPED] {
+        let (_, _, from, warning) = command_parts(&parse(Agent::Claude, s));
+        assert_eq!((from, warning), (None, None));
+    }
+}
+
+#[test]
+fn unknown_header_suffix_is_not_a_command() {
+    for header in [
+        "Bash command · from the x agent; rm",
+        "Bash command · via something",
+        "Bash command · from the  agent",
+        "Bash command · from the x agent extra",
+        "Bash command · from the x\u{202e}y agent",
+        "Bash command · from the a  agent",
+    ] {
+        let d = parse_dialog(Agent::Claude, &warn_screen(header, &["ls"], &[])).unwrap();
+        assert!(matches!(d.body, DialogBody::Other { .. }), "{header}");
+    }
+    let long = format!("Bash command · from the {} agent", "a".repeat(65));
+    let d = parse_dialog(Agent::Claude, &warn_screen(&long, &["ls"], &[])).unwrap();
+    assert!(matches!(d.body, DialogBody::Other { .. }));
+    let ok = format!("Bash command · from the {} agent", "a".repeat(64));
+    let d = parse_dialog(Agent::Claude, &warn_screen(&ok, &["ls"], &[])).unwrap();
+    assert!(matches!(d.body, DialogBody::Command { .. }));
+}
+
+#[test]
+fn warning_like_line_inside_the_command_stays_in_the_command() {
+    let r = warn_screen("Bash command", &["ls", NESTED], &[]);
+    let (rows, _, _, warning) = command_parts(&parse_dialog(Agent::Claude, &r).unwrap());
+    assert_eq!(rows.len(), 2);
+    assert!(rows[1].contains("nested command"));
+    assert_eq!(warning, None);
+}
+
+#[test]
+fn two_text_rows_after_the_closing_rule_fail_closed() {
+    let r = warn_screen("Bash command", &["ls"], &[" one", " two", ""]);
+    assert!(parse_dialog(Agent::Claude, &r).is_none());
+    let r = warn_screen("Bash command", &["ls"], &[" one", "", " two", ""]);
+    assert!(parse_dialog(Agent::Claude, &r).is_none());
+}
+
+#[test]
+fn a_warning_needs_a_real_closing_rule_above_it() {
+    let mut r = warn_screen("Bash command", &["ls"], &[" warn", ""]);
+    let at = r.iter().rposition(|l| l.starts_with('╌')).unwrap();
+    r[at] = "-".repeat(40);
+    assert!(parse_dialog(Agent::Claude, &r).is_none());
+}
+
+#[test]
+fn a_warning_after_other_dialog_kinds_fails_closed() {
+    let r = warn_screen("Some tool", &["x"], &[" warn", ""]);
+    assert!(parse_dialog(Agent::Claude, &r).is_none());
+}
+
+#[test]
+fn several_blank_rows_after_the_warning_are_fine() {
+    let r = warn_screen("Bash command", &["ls"], &[" warn", "", ""]);
+    let (_, _, _, w) = command_parts(&parse_dialog(Agent::Claude, &r).unwrap());
+    assert_eq!(w.as_deref(), Some("warn"));
+}
+
+fn warn_eval(warning: &str) -> Eval {
+    let r = warn_screen("Bash command", &["ls"], &[&format!(" {warning}"), ""]);
+    let h = bash_hook(Agent::Claude, "ls", Some("run it"));
+    Eval::new("s1", "/work/proj", Agent::Claude, &r, Some(h)).unwrap()
+}
+
+#[test]
+fn the_fingerprint_changes_when_only_the_warning_changes() {
+    let a = warn_eval("first warning");
+    let b = warn_eval("second warning");
+    assert_ne!(a.id, b.id);
+    assert_eq!(a.id, warn_eval("first warning").id);
+}
+
+#[test]
+fn a_warning_sets_danger_and_still_matches_the_hook() {
+    let ev = warn_eval("first warning");
+    assert!(ev.approvable());
+    assert!(!ev.danger.is_empty());
+    assert_eq!(
+        ev.key(Choice::Yes, false),
+        Err("this command needs a second confirmation")
+    );
+    assert!(ev.key(Choice::Yes, true).is_ok());
+    assert_eq!(ev.reason().as_deref(), Some("run it"));
+    assert_eq!(ev.warning().as_deref(), Some("first warning"));
+}
+
+#[test]
+fn a_warning_sets_danger_without_a_hook() {
+    let r = warn_screen("Bash command", &["ls"], &[" first warning", ""]);
+    let ev = Eval::new("s1", "/work/proj", Agent::Claude, &r, None).unwrap();
+    assert!(!ev.danger.is_empty());
+}
+
+#[test]
+fn a_card_without_a_warning_has_no_warning_danger() {
+    let r = warn_screen("Bash command", &["ls"], &[]);
+    let h = bash_hook(Agent::Claude, "ls", Some("run it"));
+    let ev = Eval::new("s1", "/work/proj", Agent::Claude, &r, Some(h)).unwrap();
+    assert!(ev.danger.is_empty());
+    assert_eq!(ev.warning(), None);
+    assert_eq!(ev.from(), None);
+}
+
+#[test]
+fn a_subagent_name_reaches_the_eval() {
+    let r = rows(SUB);
+    let h = bash_hook(
+        Agent::Claude,
+        "touch ./tmpdir/newfile.txt",
+        Some("Create file in tmpdir"),
+    );
+    let ev = Eval::new("s1", "/work/proj", Agent::Claude, &r, Some(h)).unwrap();
+    assert_eq!(ev.from().as_deref(), Some("general-purpose"));
+    assert!(ev.approvable());
 }

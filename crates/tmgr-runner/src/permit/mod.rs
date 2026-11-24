@@ -67,6 +67,8 @@ pub enum DialogBody {
     Command {
         rows: Vec<String>,
         reason: Option<String>,
+        from: Option<String>,
+        warning: Option<String>,
     },
     WriteFile {
         shown_path: String,
