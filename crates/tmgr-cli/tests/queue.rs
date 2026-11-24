@@ -974,7 +974,7 @@ fn approve_walks_the_journal_from_genesis_and_refuses_a_broken_chain() {
     let mut p = fx.pty(&["queue", "approve", &id], &[]);
     let code = p.exit();
     assert_eq!(code, 5, "{}", p.text());
-    assert!(p.text().contains("does not verify"), "{}", p.text());
+    p.wait_for("does not verify");
     assert_eq!(fx.count("approved"), 0);
 }
 

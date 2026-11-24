@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use super::*;
 
 const STEP: u64 = 5_000;
@@ -310,39 +308,36 @@ fn a_failing_sink_holds_the_cursor_retries_every_poll_and_blocks_later_messages_
     assert_eq!(history(&r.runner), ["m0", "m1", "m2"]);
 }
 
-fn slow_poll_blocks_send(queued_in_desk: bool) -> (u128, u64) {
-    const SLOW: u64 = 300;
+fn slow_poll_blocks_send(queued_in_desk: bool) -> usize {
     let r = rig();
     if queued_in_desk {
         let mut m = chat("reply");
         m.author.kind = AuthorKind::Manager;
         r.runner.send_chat(&m, true).unwrap();
     }
-    r.fake.0.lock().unwrap().slow_ms = SLOW;
-    let waited = std::thread::scope(|s| {
+    r.fake.0.lock().unwrap().slow_ms = 10;
+    std::thread::scope(|s| {
         let poll = s.spawn(|| r.desk.poll_once().unwrap());
-        std::thread::sleep(Duration::from_millis(50));
-        let t = Instant::now();
+        while r.fake.0.lock().unwrap().slow_started == 0 {
+            std::thread::yield_now();
+        }
         r.desk.send_chat(&chat("outbound"), true).unwrap();
-        let waited = t.elapsed().as_millis();
         poll.join().unwrap();
-        waited
     });
-    (waited, SLOW)
+    let calls = r.fake.0.lock().unwrap().slow_done_at_post;
+    calls.unwrap()
 }
 
 #[test]
 fn send_waits_for_an_in_flight_poll_and_the_wait_scales_with_its_http_calls() {
-    let (idle, slow) = slow_poll_blocks_send(false);
-    let (busy, _) = slow_poll_blocks_send(true);
-    let slow = slow as u128;
-    assert!(
-        idle >= 2 * slow - 60 && idle < 3 * slow + 300,
-        "idle poll (devices + messages = 2 calls): send waited {idle} ms"
+    let idle = slow_poll_blocks_send(false);
+    let busy = slow_poll_blocks_send(true);
+    assert_eq!(
+        idle, 2,
+        "idle poll (devices + messages = 2 calls) finished before send posted"
     );
-    assert!(
-        busy >= 3 * slow - 60 && busy < 4 * slow + 300,
-        "poll with one message (devices + messages + ack = 3 calls): send waited {busy} ms"
+    assert_eq!(
+        busy, 3,
+        "poll with one message (devices + messages + ack = 3 calls) finished before send posted"
     );
-    assert!(busy > idle, "idle {idle} ms, busy {busy} ms");
 }

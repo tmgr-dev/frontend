@@ -46,6 +46,9 @@ struct Server {
     puts: Vec<(String, String, String)>,
     fail_after_store: bool,
     slow_ms: u64,
+    slow_started: usize,
+    slow_done: usize,
+    slow_done_at_post: Option<usize>,
     full: Option<String>,
 }
 
@@ -172,8 +175,15 @@ fn wrap(v: Value) -> Result<String, String> {
 impl Transport for Fake {
     fn call(&self, req: &Request, token: Option<&str>) -> Result<String, String> {
         let slow_ms = self.0.lock().unwrap().slow_ms;
-        if slow_ms > 0 && !(req.method == Method::Post && req.path.ends_with("/messages")) {
+        let is_post = req.method == Method::Post && req.path.ends_with("/messages");
+        if slow_ms > 0 && !is_post {
+            self.0.lock().unwrap().slow_started += 1;
             std::thread::sleep(std::time::Duration::from_millis(slow_ms));
+            self.0.lock().unwrap().slow_done += 1;
+        } else if slow_ms > 0 {
+            let mut s = self.0.lock().unwrap();
+            let done = s.slow_done;
+            s.slow_done_at_post.get_or_insert(done);
         }
         let mut s = self.0.lock().unwrap();
         let path = req.path.trim_start_matches("/api/chat-relay").to_owned();

@@ -848,10 +848,17 @@ mod tests {
             .env("GIT_AUTHOR_EMAIL", "t@example.com")
             .env("GIT_COMMITTER_NAME", "t")
             .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .env("GIT_CONFIG_COUNT", "2")
+            .env("GIT_CONFIG_KEY_0", "gc.auto")
+            .env("GIT_CONFIG_VALUE_0", "0")
+            .env("GIT_CONFIG_KEY_1", "maintenance.auto")
+            .env("GIT_CONFIG_VALUE_1", "false")
     }
 
     fn git(dir: &Path, args: &[&str]) -> String {
-        g(dir).run(args).unwrap()
+        g(dir)
+            .run(args)
+            .unwrap_or_else(|e| panic!("git {args:?} in {}: {e}", dir.display()))
     }
 
     fn commit(dir: &Path, name: &str, body: &str) {

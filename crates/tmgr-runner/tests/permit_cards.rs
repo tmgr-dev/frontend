@@ -59,7 +59,7 @@ impl Fx {
             let p = bin.join(agent);
             fs::write(
                 &p,
-                "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$HOME/argv.txt\"\nsleep 60\n",
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$HOME/argv.tmp\" && mv \"$HOME/argv.tmp\" \"$HOME/argv.txt\"\nsleep 60\n",
             )
             .unwrap();
             fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
@@ -214,7 +214,6 @@ fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
 fn argv_of(home: &Path) -> String {
     let p = home.join("argv.txt");
     wait_for("agent argv", || p.exists());
-    thread::sleep(Duration::from_millis(100));
     fs::read_to_string(p).unwrap()
 }
 
@@ -293,6 +292,7 @@ fn the_flag_and_the_hook_carry_through_resume() {
     wait_for("exit", || {
         info_of(&mut fx.client(), &info.id).state.kind == StateKind::Exited
     });
+    fs::remove_file(fx.run_home(&info.id).join("argv.txt")).unwrap();
     let resumed = fx.client().resume(&info.id, 80, 24).unwrap();
     assert!(resumed.session.permission_cards);
     let argv = argv_of(&fx.run_home(&resumed.session.id));

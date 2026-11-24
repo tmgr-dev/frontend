@@ -3277,9 +3277,15 @@ mod tests {
         let mut out = Vec::new();
         let mut todo = vec![dir.join(".git/objects")];
         while let Some(d) = todo.pop() {
-            for e in std::fs::read_dir(&d).unwrap() {
-                let p = e.unwrap().path();
-                let m = std::fs::symlink_metadata(&p).unwrap();
+            let Ok(entries) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in entries {
+                let Ok(e) = e else { continue };
+                let p = e.path();
+                let Ok(m) = std::fs::symlink_metadata(&p) else {
+                    continue;
+                };
                 if m.is_dir() {
                     todo.push(p);
                 } else if m.is_file() && m.nlink() > 1 {
