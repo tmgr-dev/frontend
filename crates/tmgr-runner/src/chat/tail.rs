@@ -282,7 +282,16 @@ fn resolve_log(s: &SessionInfo, agent: Agent, home: &Path) -> Option<PathBuf> {
                 s.created_ms.saturating_sub(PID_FILE_SLACK_MS),
             )
             .map(|(path, _)| path),
-            Agent::Codex => crate::questions::tail::locate_codex_rollout(home, None, &s.cwd),
+            Agent::Codex => crate::questions::tail::locate_codex_rollout(home, None, &s.cwd)
+                .filter(|p| {
+                    std::fs::metadata(p)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .is_some_and(|d| {
+                            d.as_millis() as u64 >= s.created_ms.saturating_sub(PID_FILE_SLACK_MS)
+                        })
+                }),
         }
     })
 }
@@ -987,6 +996,35 @@ mod tests {
         append(&rollout, &reply("more"));
         capture_with(&chat, &[s], &|s, a| resolve_log(s, a, &home));
         assert_eq!(bodies(&chat, SID), ["hello", "more"]);
+    }
+
+    #[test]
+    fn a_codex_rollout_older_than_the_session_is_not_mirrored() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let day = home.join(".codex/sessions/2026/11/24");
+        fs::create_dir_all(&day).unwrap();
+        let rollout =
+            day.join("rollout-2026-11-24T08-00-00-0199a213-81c0-7800-8aa1-bbab2a035a53.jsonl");
+        append(
+            &rollout,
+            &(json!({"type": "session_meta", "payload": {"cwd": "/work/app"}}).to_string() + "\n"),
+        );
+        let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        fs::File::options()
+            .append(true)
+            .open(&rollout)
+            .unwrap()
+            .set_modified(hour_ago)
+            .unwrap();
+        let mut s = info(SID, "codex", "working");
+        s.no_sandbox = true;
+        s.cwd = "/work/app".into();
+        s.created_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        assert_eq!(resolve_log(&s, Agent::Codex, &home), None);
     }
 
     #[test]
