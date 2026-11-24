@@ -8,8 +8,9 @@ use std::fmt;
 
 pub const MAX_PERMIT_TTL_MS: u64 = 120_000;
 const MAX_SHORT: usize = 256;
-const MAX_ROWS: usize = 64;
+const MAX_TEXT: usize = 8192;
 const MAX_LONG: usize = 1024;
+const MAX_DANGER: usize = 16;
 const CARD_MAGIC: &[u8] = b"tmgr-permit-card:v1\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,14 +34,15 @@ impl PermitChoice {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PermitScreen {
+    pub agent: String,
     pub tool: String,
-    pub title: String,
-    pub rows: Vec<String>,
+    pub text: String,
+    pub path: Option<String>,
     pub reason: Option<String>,
     pub from: Option<String>,
     pub warning: Option<String>,
-    pub danger: bool,
-    pub always_offered: bool,
+    pub danger: Vec<String>,
+    pub always_label: Option<String>,
 }
 
 fn put_str(out: &mut Vec<u8>, s: &str) {
@@ -61,17 +63,18 @@ fn put_opt(out: &mut Vec<u8>, s: &Option<String>) {
 impl PermitScreen {
     pub fn canonical_bytes(&self) -> Vec<u8> {
         let mut out = CARD_MAGIC.to_vec();
+        put_str(&mut out, &self.agent);
         put_str(&mut out, &self.tool);
-        put_str(&mut out, &self.title);
-        out.extend_from_slice(&(self.rows.len() as u32).to_be_bytes());
-        for r in &self.rows {
-            put_str(&mut out, r);
-        }
+        put_str(&mut out, &self.text);
+        put_opt(&mut out, &self.path);
         put_opt(&mut out, &self.reason);
         put_opt(&mut out, &self.from);
         put_opt(&mut out, &self.warning);
-        out.push(u8::from(self.danger));
-        out.push(u8::from(self.always_offered));
+        out.extend_from_slice(&(self.danger.len() as u32).to_be_bytes());
+        for d in &self.danger {
+            put_str(&mut out, d);
+        }
+        put_opt(&mut out, &self.always_label);
         out
     }
 
@@ -79,15 +82,26 @@ impl PermitScreen {
         sha256_hex(&self.canonical_bytes())
     }
 
+    pub fn is_danger(&self) -> bool {
+        !self.danger.is_empty()
+    }
+
+    pub fn always_offered(&self) -> bool {
+        self.always_label.is_some()
+    }
+
     pub fn validate(&self) -> Result<(), PermitRefusal> {
         let opt_ok = |o: &Option<String>| o.as_ref().is_none_or(|s| s.len() <= MAX_LONG);
-        let ok = self.tool.len() <= MAX_SHORT
-            && self.title.len() <= MAX_SHORT
-            && self.rows.len() <= MAX_ROWS
-            && self.rows.iter().all(|r| r.len() <= MAX_LONG)
+        let ok = self.agent.len() <= MAX_SHORT
+            && self.tool.len() <= MAX_SHORT
+            && self.text.len() <= MAX_TEXT
+            && opt_ok(&self.path)
             && opt_ok(&self.reason)
             && opt_ok(&self.from)
-            && opt_ok(&self.warning);
+            && opt_ok(&self.warning)
+            && opt_ok(&self.always_label)
+            && self.danger.len() <= MAX_DANGER
+            && self.danger.iter().all(|d| d.len() <= MAX_LONG);
         if ok {
             Ok(())
         } else {
@@ -352,11 +366,11 @@ pub fn verify_permit(
         return Err(PermitRefusal::Expired);
     }
     let screen = &record.screen;
-    if sig.choice == PermitChoice::Always && !screen.always_offered {
+    if sig.choice == PermitChoice::Always && !screen.always_offered() {
         return Err(PermitRefusal::BadChoice);
     }
-    let needs_confirm =
-        sig.choice == PermitChoice::Always || (screen.danger && sig.choice == PermitChoice::Yes);
+    let needs_confirm = sig.choice == PermitChoice::Always
+        || (screen.is_danger() && sig.choice == PermitChoice::Yes);
     if needs_confirm && sig.confirmed != 1 {
         return Err(PermitRefusal::NeedsConfirm);
     }
@@ -397,14 +411,15 @@ mod tests {
 
     fn screen() -> PermitScreen {
         PermitScreen {
+            agent: "claude-code".into(),
             tool: "Bash".into(),
-            title: "Run command".into(),
-            rows: vec!["ls -la".into(), "/work/app".into()],
+            text: "ls -la".into(),
+            path: Some("/work/app".into()),
             reason: Some("list files".into()),
             from: Some("agent".into()),
             warning: Some("writes outside cwd".into()),
-            danger: false,
-            always_offered: true,
+            danger: vec![],
+            always_label: Some("Always allow ls".into()),
         }
     }
 
@@ -637,7 +652,7 @@ mod tests {
     #[test]
     fn confirmation_rules() {
         let (mut r, k) = (record(), key());
-        r.screen.danger = true;
+        r.screen.danger = vec!["deletes files".into()];
         let e = ok(&signed(&r, &k, PermitChoice::Yes, 0), &r, &k).unwrap_err();
         assert_eq!(e, PermitRefusal::NeedsConfirm);
         assert_eq!(e.outcome(), PermitOutcome::Reissue);
@@ -658,7 +673,7 @@ mod tests {
     #[test]
     fn always_requires_it_to_be_offered() {
         let (mut r, k) = (record(), key());
-        r.screen.always_offered = false;
+        r.screen.always_label = None;
         let e = ok(&signed(&r, &k, PermitChoice::Always, 1), &r, &k).unwrap_err();
         assert_eq!(e, PermitRefusal::BadChoice);
         assert_eq!(e.outcome(), PermitOutcome::Reissue);
@@ -678,15 +693,15 @@ mod tests {
         let (r, k) = (record(), key());
         let s = signed(&r, &k, PermitChoice::Yes, 0);
         let edits: Vec<EditC> = vec![
+            Box::new(|c| c.agent = "codex".into()),
             Box::new(|c| c.tool = "Edit".into()),
-            Box::new(|c| c.title = "Other".into()),
-            Box::new(|c| c.rows[1] = "/etc".into()),
-            Box::new(|c| c.rows.push("x".into())),
+            Box::new(|c| c.text = "ls -la /etc".into()),
+            Box::new(|c| c.path = Some("/etc".into())),
             Box::new(|c| c.reason = None),
             Box::new(|c| c.from = Some("someone".into())),
             Box::new(|c| c.warning = None),
-            Box::new(|c| c.danger = true),
-            Box::new(|c| c.always_offered = false),
+            Box::new(|c| c.danger = vec!["x".into()]),
+            Box::new(|c| c.always_label = Some("Always allow all".into())),
         ];
         for edit in edits {
             let mut r2 = r.clone();
@@ -805,8 +820,8 @@ mod tests {
     fn canonical_bytes_are_unambiguous() {
         let mut a = screen();
         let mut b = screen();
-        a.rows = vec!["a".into(), "b".into()];
-        b.rows = vec!["ab".into()];
+        a.danger = vec!["a".into(), "b".into()];
+        b.danger = vec!["ab".into()];
         assert_ne!(a.canonical_bytes(), b.canonical_bytes());
         let mut c = screen();
         let mut d = screen();
@@ -822,19 +837,34 @@ mod tests {
     fn screen_validate_caps() {
         let mut s = screen();
         assert!(s.validate().is_ok());
+        s.agent = "x".repeat(257);
+        assert_eq!(s.validate(), Err(PermitRefusal::BadToken));
+        let mut s = screen();
         s.tool = "x".repeat(257);
         assert_eq!(s.validate(), Err(PermitRefusal::BadToken));
         let mut s = screen();
-        s.rows = vec!["r".into(); 65];
+        s.text = "t".repeat(8192);
+        assert!(s.validate().is_ok());
+        s.text = "t".repeat(8193);
         assert_eq!(s.validate(), Err(PermitRefusal::BadToken));
+        for edit in [
+            (|s: &mut PermitScreen| s.path = Some("p".repeat(1025))) as fn(&mut PermitScreen),
+            |s| s.reason = Some("p".repeat(1025)),
+            |s| s.from = Some("p".repeat(1025)),
+            |s| s.warning = Some("p".repeat(1025)),
+            |s| s.always_label = Some("p".repeat(1025)),
+            |s| s.danger = vec!["d".repeat(1025)],
+            |s| s.danger = vec!["d".into(); 17],
+        ] {
+            let mut s = screen();
+            edit(&mut s);
+            assert_eq!(s.validate(), Err(PermitRefusal::BadToken));
+        }
         let mut s = screen();
-        s.rows = vec!["r".repeat(1025)];
-        assert_eq!(s.validate(), Err(PermitRefusal::BadToken));
-        let mut s = screen();
-        s.warning = Some("w".repeat(1025));
-        assert_eq!(s.validate(), Err(PermitRefusal::BadToken));
+        s.danger = vec!["d".repeat(1024); 16];
+        assert!(s.validate().is_ok());
         let (mut r, k) = (record(), key());
-        r.screen.title = "t".repeat(257);
+        r.screen.agent = "t".repeat(257);
         assert_eq!(
             ok(&signed(&r, &k, PermitChoice::Yes, 0), &r, &k),
             Err(PermitRefusal::BadToken)
