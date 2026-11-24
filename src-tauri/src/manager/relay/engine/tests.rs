@@ -1055,6 +1055,50 @@ fn a_re_paired_runner_claiming_a_bound_machine_stays_refused_until_the_owner_mov
 }
 
 #[test]
+fn a_receipt_from_the_re_paired_runner_claims_the_machine_its_predecessor_was_revoked_from() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let old = join_as(&fake, &clock, &a, "Runner old", "runner");
+  let aid = my_id(&a);
+  post_chat(&old, &aid, &msg_n(2, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  let new = join_as(&fake, &clock, &a, "Runner new", "runner");
+  post_chat(&new, &aid, &msg_n(3, "session"));
+  assert!(a.poll_once().unwrap().is_empty());
+  fake.0.lock().unwrap().delete_error = Some("the relay answered HTTP 401".into());
+  a.revoke(&my_id(&old)).unwrap();
+  let id = format!("m_{}", "8".repeat(32));
+  send_with(&a, &id, T0 + 1, "hi").unwrap();
+  post_receipt(&new, &aid, "r_1", receipt_of(&id, "delivered"));
+  a.poll_once().unwrap();
+  assert_eq!(a.take_receipts().len(), 1);
+  assert_eq!(a.lock().st.bindings.get(&room().machine), Some(&my_id(&new)));
+  clock.set(T0 + WRITE_EVERY_MS);
+  a.poll_once().unwrap();
+  let again = engine_on(&fake, &clock, store, "mx_local");
+  assert_eq!(again.lock().st.bindings.get(&room().machine), Some(&my_id(&new)));
+}
+
+#[test]
+fn of_two_runners_receipting_an_unbound_machine_the_first_claims_it() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+  let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+  let aid = my_id(&a);
+  let id = format!("m_{}", "8".repeat(32));
+  send_with(&a, &id, T0 + 1, "hi").unwrap();
+  post_receipt(&r1, &aid, "r_1", receipt_of(&id, "queued"));
+  a.poll_once().unwrap();
+  post_receipt(&r2, &aid, "r_2", receipt_of(&id, "delivered"));
+  a.poll_once().unwrap();
+  assert_eq!(a.take_receipts().len(), 1);
+  assert_eq!(a.lock().st.bindings.get(&room().machine), Some(&my_id(&r1)));
+  assert!(alert_kinds(&a).contains(&"room_conflict".to_owned()));
+}
+
+#[test]
 fn only_an_owner_device_moves_a_machine_and_only_to_a_runner_that_claimed_it() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let a = engine_with(&fake, &clock, "Desktop A");
@@ -3320,15 +3364,16 @@ fn a_receipt_from_a_trusted_runner_of_another_machine_is_dropped() {
 }
 
 #[test]
-fn a_receipt_for_a_room_machine_no_runner_has_claimed_is_dropped() {
+fn a_failed_receipt_for_a_room_machine_no_runner_has_claimed_is_dropped() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let a = engine_with(&fake, &clock, "Desktop A");
   let r = join_as(&fake, &clock, &a, "Runner", "runner");
   let sent = send(&a, "hello").unwrap();
-  post_receipt(&r, &my_id(&a), "r_1", receipt_of(&sent.id, "delivered"));
+  post_receipt(&r, &my_id(&a), "r_1", receipt_of(&sent.id, "failed"));
   a.poll_once().unwrap();
   assert!(a.take_receipts().is_empty());
   assert_eq!(a.drops(), ["receipt from a runner of another machine"]);
+  assert!(!a.lock().st.bindings.contains_key(&room().machine));
 }
 
 #[test]

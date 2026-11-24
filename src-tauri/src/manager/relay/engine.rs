@@ -19,7 +19,7 @@ use tmgr_chat_relay::trust::{
 use tmgr_chat_relay::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex, Error};
 
-use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
+use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, ReceiptState, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
 use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
 use crate::manager::backend::{
@@ -1366,11 +1366,13 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           c.drop_reason = Some("receipt for a message this device did not send");
           return None;
         };
-        match c.st.bindings.get(machine) {
-          Some(d) if *d == opened.from => c.receipts.push(receipt),
-          bound => {
-            if bound.is_none() && c.st.kind_of_trusted(&opened.from) == Some("runner") {
-              let machine = machine.clone();
+        let machine = machine.clone();
+        let runner = c.st.kind_of_trusted(&opened.from) == Some("runner");
+        match c.st.bindings.get(&machine).cloned() {
+          Some(d) if d == opened.from => c.receipts.push(receipt),
+          _ if runner && receipt.state != ReceiptState::Failed && Self::claim_machine(c, &opened.from, &machine, now) => c.receipts.push(receipt),
+          _ => {
+            if runner && !c.st.bindings.contains_key(&machine) {
               c.held_receipts.retain(|x| now.saturating_sub(x.at_ms) < HELD_RECEIPT_TTL_MS);
               if c.held_receipts.len() >= MAX_HELD_RECEIPTS {
                 c.held_receipts.remove(0);
