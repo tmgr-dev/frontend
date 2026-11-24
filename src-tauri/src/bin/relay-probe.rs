@@ -94,6 +94,11 @@ fn command(eng: &dyn RelayPort, cmd: &Value) -> Result<(), String> {
     }
     "state" => emit(json!({"event": "state", "trust": serde_json::to_value(eng.trust_state()?).map_err(|e| e.to_string())?,
       "rooms": serde_json::to_value(eng.rooms()?).map_err(|e| e.to_string())?})),
+    "revoke" => {
+      eng.revoke(cmd["device"].as_str().unwrap_or(""))?;
+      eng.flush();
+      emit(json!({"event": "revoked", "device": cmd["device"]}));
+    }
     "flush" => {
       eng.flush();
       emit(json!({"event": "flushed"}));
