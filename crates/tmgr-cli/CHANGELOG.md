@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.185
+
+- Changed: messages from the Manager chat, the phone and mentions no longer wait for the agent's turn to end. They are typed right away, including while the agent is working. A message waits only when the session shows a dialog (an approval or a question), when its input box holds text you have not sent, or when the session is still taking earlier input. Two messages sent quickly go in one after the other.
+- Changed: Aider and sessions without a profile still wait while the agent is working. The Manager says "Queued: this agent can't take input mid-turn, sends when its turn ends".
+- Changed: the Manager shows the real reason a message is waiting instead of a generic "waiting for the session prompt".
+- Changed: a mention that is waiting for its answer is no longer cancelled when the runner types a newer mention into the same session; only your own typing in `tmgr attach` interrupts it.
+- Added: the runner log notes a message stuck at the front of the chat queue for any session state except a dialog, with the gate reason.
+- OpenCode, Agy and Cursor Agent receive messages mid-turn with Enter; this is not checked on a real session yet.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.184
 
 - Fixed: an agent running without the sandbox can open an image you paste in `tmgr attach`. It used to fail with "Operation not permitted".
