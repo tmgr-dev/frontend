@@ -2227,11 +2227,8 @@ mod tests {
         std::os::unix::fs::symlink(&other, &own).unwrap();
         let c = control_plane(&f.spec, &[]);
         let profile = control_plane_profile(&c).unwrap();
-        assert!(c.readable.contains(&own), "{:?}", c.readable);
-        for r in &c.readable {
-            assert!(!r.starts_with(&other), "{}", r.display());
-            assert!(!f.spec.runner_dir.join("token").starts_with(r));
-        }
+        let [home_paste, beside_paste] = own_paste_dirs(&f);
+        assert_eq!(c.readable, vec![home_paste, beside_paste, own]);
         for p in [token, other.join("f.txt"), other] {
             assert!(!verdict(&profile, "file-read-data", &p), "{}", p.display());
         }
@@ -2320,6 +2317,10 @@ mod tests {
         if !String::from_utf8_lossy(&probe.stdout).contains("started") {
             let why = String::from_utf8_lossy(&probe.stderr);
             assert!(
+                why.contains("sandbox_apply"),
+                "the profile was rejected: {why}"
+            );
+            assert!(
                 std::env::var_os("CI").is_none(),
                 "sandbox-exec did not apply the profile in CI: {why}"
             );
@@ -2355,6 +2356,16 @@ mod tests {
         for d in [f.spec.home.parent().unwrap(), f.spec.home.as_path()] {
             assert!(!run(format!("ls '{}' > /dev/null", d.display())));
         }
+        let others = plant(&attachments_dir(&f, "s_otherother"));
+        assert!(!run(format!("cat '{}'", others.display())));
+        let own = attachments_dir(&f, &f.spec.session_id);
+        fs::remove_file(&attached).unwrap();
+        fs::remove_dir(&own).unwrap();
+        std::os::unix::fs::symlink(others.parent().unwrap(), &own).unwrap();
+        assert!(!run(format!(
+            "cat '{}'",
+            own.join(others.file_name().unwrap()).display()
+        )));
     }
 
     #[test]
