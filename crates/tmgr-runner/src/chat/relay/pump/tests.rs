@@ -509,6 +509,22 @@ fn busy_send_waits_for_the_hint_and_retries_the_same_message() {
 }
 
 #[test]
+fn a_rate_limited_receipt_is_retried_after_the_hint_not_the_backoff() {
+    let relay = ScriptedRelay::new(vec![], vec![]);
+    *relay.receipts.lock().unwrap() = vec![
+        Err("relay is busy, retry in 1s".into()),
+        Err("relay is busy, retry in 1s".into()),
+        Ok(()),
+    ];
+    let sleeps = Mutex::new(Vec::new());
+    send_receipt_one(&relay, &receipt(ReceiptState::Delivered), &|| false, &|d| {
+        sleeps.lock().unwrap().push(d.as_secs())
+    });
+    assert_eq!(*sleeps.lock().unwrap(), [1, 1]);
+    assert_eq!(relay.receipts_sent.lock().unwrap().len(), 3);
+}
+
+#[test]
 fn send_gives_up_after_bounded_attempts() {
     let m = msg(AuthorKind::Owner, MACHINE, None);
     let relay = ScriptedRelay::new(vec![], vec![Err("relay unreachable".into()); 10]);

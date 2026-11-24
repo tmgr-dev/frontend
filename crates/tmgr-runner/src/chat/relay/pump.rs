@@ -339,7 +339,10 @@ fn retry_send(
             ));
             return;
         }
-        sleep(wait_for(backoff, &e));
+        sleep(match retry_hint(&e) {
+            Some(secs) => Duration::from_secs(secs.clamp(1, BACKOFF_CAP.as_secs())),
+            None => backoff,
+        });
         backoff = (backoff * 2).min(BACKOFF_CAP);
     }
 }
