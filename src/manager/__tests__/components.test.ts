@@ -521,6 +521,10 @@ describe('manager components', () => {
 			['settling', 'Queued: sending in a moment'],
 			['input', 'Queued: the session is still taking earlier input'],
 			['noinput', 'Queued: this session does not take chat input'],
+			[
+				'midturn',
+				"Queued: this agent can't take input mid-turn, sends when its turn ends",
+			],
 		];
 		for (const [queuedWhy, text] of cases) {
 			const html = await render('MessageBubble', {
@@ -528,7 +532,7 @@ describe('manager components', () => {
 				queued: true,
 				queuedWhy,
 			});
-			expect(html).toContain(text);
+			expect(html).toContain(text.replace(/'/g, '&#39;'));
 			expect(html).toContain('Cancel');
 		}
 		for (const queuedWhy of [undefined, 'something_new']) {

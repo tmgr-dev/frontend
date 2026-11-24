@@ -64,7 +64,7 @@ impl Session {
     ) -> Option<String> {
         let i = lock(&self.inner);
         let state = self.effective(&i);
-        if state.kind != StateKind::Waiting {
+        if state.kind == StateKind::Blocked {
             return None;
         }
         let lines = i.screen.bottom_text_without_ghosts(usize::MAX);
@@ -84,7 +84,7 @@ impl Session {
             .collect();
         rows.reverse();
         let line = format!(
-            "chat queue: message {id} waited {}s at the front on idle session {}: why={}, gate={}, detector={:?} {}, idle rule={rule}, bottom rows: {rows:?}",
+            "chat queue: message {id} waited {}s at the front on session {}: why={}, gate={}, detector={:?} {}, idle rule={rule}, bottom rows: {rows:?}",
             age_ms / 1000,
             self.id,
             why.unwrap_or("none"),

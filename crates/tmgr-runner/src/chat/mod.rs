@@ -124,9 +124,9 @@ pub fn busy_code(why: &str) -> &'static str {
     match why {
         "blocked on a dialog" => "dialog",
         "input box has unsent text" => "draft",
-        "prompt not idle" => "turn",
         "previous input settling" => "settling",
         "input still queued" | "input queue full" => "input",
+        "agent takes no input mid-turn" => "midturn",
         _ => "prompt",
     }
 }
@@ -884,14 +884,13 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
-    fn only_a_working_agent_is_reported_as_mid_turn() {
-        assert_eq!(busy_code("prompt not idle"), "turn");
+    fn every_gate_refusal_maps_to_its_own_code() {
+        assert_eq!(busy_code("agent takes no input mid-turn"), "midturn");
         assert_eq!(busy_code("previous input settling"), "settling");
         assert_eq!(busy_code("blocked on a dialog"), "dialog");
         assert_eq!(busy_code("input box has unsent text"), "draft");
         assert_eq!(busy_code("input still queued"), "input");
         assert_eq!(busy_code("input queue full"), "input");
-        assert_eq!(busy_code("not at an empty prompt"), "prompt");
         assert_eq!(busy_code("something new"), "prompt");
     }
 

@@ -160,7 +160,8 @@
 			"draft": "Waiting: the input box has unsent text",
 			"settling": "Queued: sending in a moment",
 			"input": "Queued: the session is still taking earlier input",
-			"noinput": "Queued: this session does not take chat input"
+			"noinput": "Queued: this session does not take chat input",
+			"midturn": "Queued: this agent can't take input mid-turn, sends when its turn ends"
 		},
 		"delivery": {
 			"sending": "Sending…",

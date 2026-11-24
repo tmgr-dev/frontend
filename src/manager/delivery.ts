@@ -11,6 +11,7 @@ const QUEUED_WHY = [
 	'settling',
 	'input',
 	'noinput',
+	'midturn',
 ];
 
 export const isQueuedWhy = (why: string | undefined): boolean =>

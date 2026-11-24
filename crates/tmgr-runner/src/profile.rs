@@ -123,14 +123,31 @@ pub enum MidTurnSubmit {
     Tab,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct PromptDecl {
     #[serde(default)]
     pub mode: PromptMode,
     #[serde(default)]
     pub mid_turn_submit: MidTurnSubmit,
+    #[serde(default = "mid_turn_default")]
+    pub mid_turn: bool,
     #[serde(default)]
     pub args: Vec<String>,
+}
+
+fn mid_turn_default() -> bool {
+    true
+}
+
+impl Default for PromptDecl {
+    fn default() -> Self {
+        PromptDecl {
+            mode: PromptMode::default(),
+            mid_turn_submit: MidTurnSubmit::default(),
+            mid_turn: true,
+            args: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -720,6 +737,7 @@ pub struct Matcher {
     rules: Vec<(String, Regex)>,
     drafts: Vec<Regex>,
     tab_mid_turn: bool,
+    mid_turn: bool,
 }
 
 impl Matcher {
@@ -750,11 +768,16 @@ impl Matcher {
             rules,
             drafts,
             tab_mid_turn: profile.prompt.mid_turn_submit == MidTurnSubmit::Tab,
+            mid_turn: profile.prompt.mid_turn,
         })
     }
 
     pub fn tab_mid_turn(&self) -> bool {
         self.tab_mid_turn
+    }
+
+    pub fn mid_turn(&self) -> bool {
+        self.mid_turn
     }
 
     pub fn has_idle(&self) -> bool {
@@ -1011,6 +1034,21 @@ idle = ['^> $']
             parse("").unwrap().prompt.mid_turn_submit,
             MidTurnSubmit::Enter
         );
+    }
+
+    #[test]
+    fn mid_turn_defaults_to_true_and_aider_opts_out() {
+        assert!(parse("").unwrap().prompt.mid_turn);
+        assert!(
+            !parse("[prompt]\nmid_turn = false\n")
+                .unwrap()
+                .prompt
+                .mid_turn
+        );
+        let (set, _) = ProfileSet::load(None);
+        assert!(!set.get("aider").unwrap().prompt.mid_turn);
+        assert!(set.get("claude-code").unwrap().prompt.mid_turn);
+        assert!(set.get("codex").unwrap().prompt.mid_turn);
     }
 
     #[test]

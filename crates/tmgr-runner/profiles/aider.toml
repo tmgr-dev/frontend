@@ -6,6 +6,9 @@ model_arg = ["--model", "{model}"]
 env_pass = []
 tier = "t0"
 
+[prompt]
+mid_turn = false
+
 [resume]
 args = ["--restore-chat-history"]
 

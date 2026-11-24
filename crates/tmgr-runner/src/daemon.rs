@@ -85,11 +85,8 @@ const SHIM_CREDIT_FRAMES: u64 = 1024;
 const LIMIT_CONFIRM: Duration = Duration::from_secs(3);
 const SHIM_LINK_SILENT: Duration = Duration::from_secs(5);
 const ATTACH_INPUT_WAIT: Duration = Duration::from_secs(2);
-// Longest wait for the agent to redraw after our input, before judging its screen again.
-const SEND_SETTLE: Duration = Duration::from_secs(5);
-const SETTLE_QUIET: Duration = Duration::from_millis(300);
-const SETTLE_FLOOR: Duration = Duration::from_millis(500);
 const SUBMIT_DELAY: Duration = Duration::from_millis(250);
+const SUBMIT_PENDING_CAP: Duration = Duration::from_secs(2);
 const MAX_REPLIES_PER_SEC: u32 = 32;
 const MAX_PENDING: usize = 16;
 const REJECT_LOG_EVERY: Duration = Duration::from_secs(10);
@@ -596,8 +593,7 @@ struct Inner {
     matcher: Option<Matcher>,
     fixed: Option<State>,
     size_owner: Option<u64>,
-    input_sent_at: Option<Instant>,
-    output_at: Option<Instant>,
+    submit_pending: Option<Instant>,
     limit_first: Option<Instant>,
     last_busy: Option<&'static str>,
 }
@@ -748,6 +744,7 @@ struct Session {
     cards: Mutex<Cards>,
     team_stop: Mutex<Option<(Instant, Instant)>>,
     input_gen: AtomicU64,
+    router_gen: AtomicU64,
     working_seen: AtomicU64,
 }
 
@@ -1083,9 +1080,6 @@ impl Session {
         let mut replies = Vec::new();
         self.change(|i, now, out| {
             let r = i.screen.feed(bytes);
-            if live && !bytes.is_empty() {
-                i.output_at = Some(Instant::now());
-            }
             if live {
                 replies = r.replies;
                 out.extend(i.det.on_output(now));
@@ -1309,27 +1303,6 @@ impl Session {
         }
     }
 
-    fn settled_without_idle_rules(
-        &self,
-        i: &Inner,
-        now: Instant,
-        agent: Option<permit::Agent>,
-        rows: &[String],
-    ) -> bool {
-        if !i.matcher.as_ref().is_some_and(|m| !m.has_idle())
-            || agent.is_some_and(|a| permit::parse_dialog(a, rows).is_some())
-        {
-            return false;
-        }
-        let state = self.effective(i);
-        let ahead = now.saturating_duration_since(Instant::now()).as_millis() as u64;
-        state.kind == StateKind::Waiting
-            && now_ms()
-                .saturating_add(ahead)
-                .saturating_sub(state.since_ms)
-                >= SEND_SETTLE.as_millis() as u64
-    }
-
     fn input_at_prompt(self: &Arc<Self>, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
         self.input_at_prompt_after(bytes, now, SUBMIT_DELAY)
     }
@@ -1359,18 +1332,19 @@ impl Session {
             let tab = i.matcher.as_ref().is_some_and(Matcher::tab_mid_turn);
             submit_key(tab, self.effective(&i).kind)
         };
-        self.write_at_prompt(text, now)?;
+        let token = self.write_gated(text, now, submit)?;
         if submit {
             let s = Arc::clone(self);
             thread::spawn(move || {
                 thread::sleep(delay);
-                if !s.input(key) {
+                if !s.input_router(key) {
                     log(&format!("session {}: submit key not delivered", s.id));
                 }
-                done(s.input_gen.load(Ordering::SeqCst));
+                s.clear_submit_pending(token);
+                done(s.foreign_gen());
             });
         } else {
-            done(self.input_gen.load(Ordering::SeqCst));
+            done(self.foreign_gen());
         }
         Ok(())
     }
@@ -1379,7 +1353,31 @@ impl Session {
         lock(&self.inner).last_busy.map(chat::busy_code)
     }
 
+    pub(crate) fn foreign_gen(&self) -> u64 {
+        self.input_gen
+            .load(Ordering::SeqCst)
+            .saturating_sub(self.router_gen.load(Ordering::SeqCst))
+    }
+
+    fn clear_submit_pending(&self, token: Option<Instant>) {
+        let mut i = lock(&self.inner);
+        if token.is_some() && i.submit_pending == token {
+            i.submit_pending = None;
+        }
+    }
+
+    #[cfg(test)]
     fn write_at_prompt(&self, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
+        self.write_gated(bytes, now, false).map(|_| ())
+    }
+
+    fn write_gated(
+        &self,
+        bytes: &[u8],
+        now: Instant,
+        submit: bool,
+    ) -> Result<Option<Instant>, ApiErr> {
+        let mut token = None;
         {
             let mut i = lock(&self.inner);
             let lines = i.screen.bottom_text_without_ghosts(usize::MAX);
@@ -1392,27 +1390,15 @@ impl Session {
                     _ => l.queued_frames.load(Ordering::SeqCst) == 0,
                 }
             });
-            let busy = if self.effective(&i).kind == StateKind::Blocked {
-                Some("blocked on a dialog")
-            } else if !(prompt_ready(i.matcher.as_ref(), agent, &lines, &rows)
-                || self.settled_without_idle_rules(&i, now, agent, &rows))
+            let kind = self.effective(&i).kind;
+            let busy = if i
+                .submit_pending
+                .is_some_and(|at| now.saturating_duration_since(at) < SUBMIT_PENDING_CAP)
             {
-                if i.matcher.as_ref().is_some_and(|m| prompt_draft(m, &lines)) {
-                    Some("input box has unsent text")
-                } else if self.effective(&i).kind == StateKind::Working {
-                    Some("prompt not idle")
-                } else {
-                    Some("not at an empty prompt")
-                }
-            } else if i.input_sent_at.is_some_and(|at| {
-                let since = now.saturating_duration_since(at);
-                let redrawn = since >= SETTLE_FLOOR
-                    && i.output_at.is_some_and(|out| {
-                        out > at && now.saturating_duration_since(out) >= SETTLE_QUIET
-                    });
-                since < SEND_SETTLE && !redrawn
-            }) {
                 Some("previous input settling")
+            } else if let Some(why) = screen_refusal(i.matcher.as_ref(), agent, kind, &lines, &rows)
+            {
+                Some(why)
             } else if !idle_queue {
                 Some("input still queued")
             } else {
@@ -1435,23 +1421,37 @@ impl Session {
                 ));
             }
             if !bytes.is_empty() {
-                i.input_sent_at = Some(now);
                 self.input_gen.fetch_add(1, Ordering::SeqCst);
+                self.router_gen.fetch_add(1, Ordering::SeqCst);
+                if submit {
+                    i.submit_pending = Some(now);
+                    token = i.submit_pending;
+                }
             }
         }
         if !bytes.is_empty() {
             self.change(|i, now, out| out.extend(i.det.on_input(now)));
         }
-        Ok(())
+        Ok(token)
+    }
+
+    fn input_router(&self, bytes: &[u8]) -> bool {
+        self.input_counted(bytes, true)
     }
 
     fn input(&self, bytes: &[u8]) -> bool {
+        self.input_counted(bytes, false)
+    }
+
+    fn input_counted(&self, bytes: &[u8], router: bool) -> bool {
         let accepted = {
-            let mut i = lock(&self.inner);
+            let _i = lock(&self.inner);
             let ok = self.shim_input(bytes);
             if ok && !bytes.is_empty() {
-                i.input_sent_at = Some(Instant::now());
                 self.input_gen.fetch_add(1, Ordering::SeqCst);
+                if router {
+                    self.router_gen.fetch_add(1, Ordering::SeqCst);
+                }
             }
             ok
         };
@@ -5241,8 +5241,7 @@ impl Runner {
                 matcher,
                 fixed: None,
                 size_owner: None,
-                input_sent_at: None,
-                output_at: None,
+                submit_pending: None,
                 limit_first: None,
                 last_busy: None,
             }),
@@ -5273,6 +5272,7 @@ impl Runner {
             cards: Mutex::new(Cards::default()),
             team_stop: Mutex::new(None),
             input_gen: AtomicU64::new(0),
+            router_gen: AtomicU64::new(0),
             working_seen: AtomicU64::new(0),
         });
         session.cp_refresh();
@@ -6223,20 +6223,63 @@ fn prompt_box(lines: &[String]) -> &[String] {
         })
 }
 
-fn prompt_ready(
+fn dialog_marker() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(
+            r"(?i)esc to cancel|enter to (confirm|select|submit)|\[y/n\]|\(y/n\)|\(y\)es/\(n\)o|yes/no|\ballow\b|\bapprove\b|do you want|password|passphrase",
+        )
+        .unwrap()
+    })
+}
+
+fn option_line() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(r"^\s*[\u{276f}\u{203a}>]?\s*(\d+|[A-Za-z])[.)]\s+\S").unwrap()
+    })
+}
+
+fn option_cursor() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(r"^\s*[\u{276f}\u{203a}>]\s*(\d+|[A-Za-z])[.)]\s+\S").unwrap()
+    })
+}
+
+fn generic_dialog(bottom: &[String]) -> bool {
+    bottom.iter().any(|l| dialog_marker().is_match(l))
+        || (bottom.iter().filter(|l| option_line().is_match(l)).count() >= 2
+            && bottom.iter().any(|l| option_cursor().is_match(l)))
+}
+
+fn screen_refusal(
     matcher: Option<&Matcher>,
     agent: Option<permit::Agent>,
+    kind: StateKind,
     lines: &[String],
     rows: &[String],
-) -> bool {
-    let Some(m) = matcher else {
-        return false;
-    };
-    let idle = match m.check(bottom_rows(lines)) {
-        Some((rule, _)) => rule.starts_with("idle"),
-        None => m.idle_in(prompt_box(lines)),
-    };
-    idle && agent.is_none_or(|a| permit::parse_dialog(a, rows).is_none())
+) -> Option<&'static str> {
+    let bottom = bottom_rows(lines);
+    let blocked_rule = matcher.is_some_and(|m| {
+        m.check(bottom)
+            .is_some_and(|(rule, _)| rule.starts_with("blocked"))
+    });
+    if kind == StateKind::Blocked
+        || blocked_rule
+        || agent.is_some_and(|a| permit::parse_dialog(a, rows).is_some())
+        || (!matcher.is_some_and(|m| m.idle_in(bottom) || m.idle_in(prompt_box(lines)))
+            && generic_dialog(bottom))
+    {
+        return Some("blocked on a dialog");
+    }
+    if matcher.is_some_and(|m| prompt_draft(m, lines)) {
+        return Some("input box has unsent text");
+    }
+    if kind == StateKind::Working && !matcher.is_some_and(Matcher::mid_turn) {
+        return Some("agent takes no input mid-turn");
+    }
+    None
 }
 
 fn submit_key(tab_mid_turn: bool, kind: StateKind) -> &'static [u8] {
@@ -6340,7 +6383,14 @@ mod tests {
         let mut screen = screen_of(text);
         let lines = screen.bottom_text_without_ghosts(usize::MAX);
         let rows = screen.text_lines(None).3;
-        prompt_ready(Some(&matcher), permit::agent_of(profile), &lines, &rows)
+        screen_refusal(
+            Some(&matcher),
+            permit::agent_of(profile),
+            StateKind::Waiting,
+            &lines,
+            &rows,
+        )
+        .is_none()
     }
 
     fn forbidden() -> Vec<PathBuf> {
@@ -6472,7 +6522,10 @@ mod tests {
         let dialog = include_str!("../profiles/screens/claude-bash-approval.txt");
         assert!(!ready("claude-code", dialog));
         assert!(!ready("claude-code", "Do you want to proceed?\n"));
-        assert!(!ready("claude-code", "working\n"));
+        assert!(!ready(
+            "claude-code",
+            "Allow this?\n  1. Yes\n  2. No\nesc to cancel\n"
+        ));
     }
 
     #[test]
@@ -6513,7 +6566,32 @@ mod tests {
         screen.feed(bytes);
         let lines = screen.bottom_text_without_ghosts(usize::MAX);
         let rows = screen.text_lines(None).3;
-        prompt_ready(Some(&matcher), permit::agent_of(profile), &lines, &rows)
+        screen_refusal(
+            Some(&matcher),
+            permit::agent_of(profile),
+            StateKind::Waiting,
+            &lines,
+            &rows,
+        )
+        .is_none()
+    }
+
+    #[test]
+    fn at_prompt_ignores_dialog_words_in_the_answer_above_an_empty_claude_box() {
+        assert!(ready(
+            "claude-code",
+            "Do you want me to push?\n> 1. Push now\n  2. Wait for CI\n\u{276f}\n"
+        ));
+        assert!(!ready_unmatched(
+            "Do you want me to push?\n> 1. Push now\n  2. Wait for CI\n"
+        ));
+    }
+
+    fn ready_unmatched(text: &str) -> bool {
+        let mut screen = screen_of(text);
+        let lines = screen.bottom_text_without_ghosts(usize::MAX);
+        let rows = screen.text_lines(None).3;
+        screen_refusal(None, None, StateKind::Waiting, &lines, &rows).is_none()
     }
 
     #[test]
@@ -6541,7 +6619,14 @@ mod tests {
         model.feed(screen);
         let lines = model.bottom_text_without_ghosts(usize::MAX);
         let rows = model.text_lines(None).3;
-        let ready = prompt_ready(Some(&matcher), permit::agent_of(profile), &lines, &rows);
+        let ready = screen_refusal(
+            Some(&matcher),
+            permit::agent_of(profile),
+            StateKind::Waiting,
+            &lines,
+            &rows,
+        )
+        .is_none();
         (ready, prompt_draft(&matcher, &lines))
     }
 
@@ -6627,11 +6712,6 @@ mod tests {
     fn at_prompt_refuses_a_codex_draft() {
         let screen = include_bytes!("../profiles/screens/codex-draft.ansi");
         assert!(!ready_ansi("codex", screen));
-    }
-
-    #[test]
-    fn at_prompt_refuses_without_a_profile_matcher() {
-        assert!(!prompt_ready(None, None, &["❯".into()], &[]));
     }
 
     fn lone_session() -> (tempfile::TempDir, Arc<Session>, mpsc::Receiver<Frame>) {
@@ -6735,7 +6815,7 @@ mod tests {
     const IDLE: &[u8] = "done\r\n\r\n\u{276f}\r\n".as_bytes();
 
     fn settled() -> Instant {
-        Instant::now() + SEND_SETTLE
+        Instant::now() + SUBMIT_PENDING_CAP
     }
 
     fn plain_req() -> RunCreateReq {
@@ -7023,7 +7103,7 @@ mod tests {
     }
 
     #[test]
-    fn the_noted_input_generation_includes_the_routers_own_submit_key_and_later_input_exceeds_it() {
+    fn the_noted_input_generation_ignores_the_routers_own_writes_and_counts_later_input() {
         let (_t, s, rx) = lone_session();
         s.feed(IDLE, true);
         let (tx, got) = std::sync::mpsc::channel();
@@ -7037,11 +7117,11 @@ mod tests {
         )
         .unwrap();
         let noted = got.recv_timeout(Duration::from_secs(2)).unwrap();
-        assert_eq!(noted, s.input_gen.load(Ordering::SeqCst));
-        assert_eq!(noted, 2);
+        assert_eq!(noted, 0);
+        assert_eq!(s.input_gen.load(Ordering::SeqCst), 2);
         drain(&s, &rx);
         assert!(s.input(b"x"));
-        assert!(s.input_gen.load(Ordering::SeqCst) > noted);
+        assert!(s.foreign_gen() > noted);
     }
 
     #[test]
@@ -7060,134 +7140,12 @@ mod tests {
     #[test]
     fn a_refused_send_does_not_submit_anything_later() {
         let (_t, s, rx) = lone_session();
-        s.feed(b"\r\nworking\r\n", true);
+        s.feed(b"\r\nDo you want to proceed?\r\n", true);
         assert!(s
             .input_at_prompt_after(b"x\r", Instant::now(), Duration::from_millis(50))
             .is_err());
         thread::sleep(Duration::from_millis(400));
         assert!(queued(&rx).is_empty());
-    }
-
-    #[test]
-    fn a_second_send_right_after_the_first_is_refused_even_after_an_echo() {
-        let (_t, s, rx) = lone_session();
-        s.feed(IDLE, true);
-        assert!(send_at_prompt(&s, b"one\r", Instant::now()));
-        drain(&s, &rx);
-        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
-        assert!(!send_at_prompt(&s, b"two\r", Instant::now()));
-    }
-
-    #[test]
-    fn a_second_send_is_accepted_once_the_settle_time_has_passed_at_a_ready_prompt() {
-        let (_t, s, rx) = lone_session();
-        s.feed(IDLE, true);
-        assert!(send_at_prompt(&s, b"one\r", Instant::now()));
-        drain(&s, &rx);
-        s.feed(b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n", true);
-        assert!(send_at_prompt(&s, b"two\r", settled()));
-    }
-
-    fn redrawn_session(
-        output_ms: u64,
-        screen: &[u8],
-    ) -> (
-        tempfile::TempDir,
-        Arc<Session>,
-        mpsc::Receiver<Frame>,
-        Instant,
-    ) {
-        let (t, s, rx) = lone_session();
-        s.feed(IDLE, true);
-        let base = Instant::now();
-        assert!(send_at_prompt(&s, b"one\r", base));
-        drain(&s, &rx);
-        s.feed(screen, true);
-        {
-            let mut i = lock(&s.inner);
-            i.input_sent_at = Some(base);
-            i.output_at = Some(base + Duration::from_millis(output_ms));
-        }
-        (t, s, rx, base)
-    }
-
-    const REDRAWN: &[u8] = b"\r\nworking\r\n\r\n\xe2\x9d\xaf\r\n";
-
-    #[test]
-    fn a_second_send_goes_through_once_the_agent_redrew_and_went_quiet() {
-        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
-        assert!(send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(700)
-        ));
-    }
-
-    #[test]
-    fn a_second_send_is_refused_until_the_cap_when_nothing_was_redrawn() {
-        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
-        lock(&s.inner).output_at = None;
-        assert!(!send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(4_900)
-        ));
-        assert_eq!(s.busy_code(), Some("settling"));
-        assert!(send_at_prompt(&s, b"two\r", base + SEND_SETTLE));
-    }
-
-    #[test]
-    fn output_from_before_the_input_does_not_end_the_settle() {
-        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
-        lock(&s.inner).output_at = Some(base - Duration::from_secs(1));
-        assert!(!send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(2_000)
-        ));
-    }
-
-    #[test]
-    fn a_second_send_waits_while_the_agent_is_still_printing() {
-        let (_t, s, _rx, base) = redrawn_session(2_000, REDRAWN);
-        assert!(!send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(2_100)
-        ));
-        assert_eq!(s.busy_code(), Some("settling"));
-        assert!(send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(2_300)
-        ));
-    }
-
-    #[test]
-    fn a_second_send_waits_for_the_floor_even_when_the_screen_is_quiet() {
-        let (_t, s, _rx, base) = redrawn_session(100, REDRAWN);
-        assert!(!send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(400)
-        ));
-        assert!(send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(500)
-        ));
-    }
-
-    #[test]
-    fn a_redraw_that_leaves_text_in_the_box_is_refused_as_a_draft() {
-        let (_t, s, _rx, base) =
-            redrawn_session(100, "\x1b[2J\x1b[Hdone\r\n\r\n\u{276f} one\r\n".as_bytes());
-        assert!(!send_at_prompt(
-            &s,
-            b"two\r",
-            base + Duration::from_millis(1_000)
-        ));
-        assert_eq!(s.busy_code(), Some("draft"));
     }
 
     #[test]
@@ -7228,31 +7186,11 @@ mod tests {
     }
 
     #[test]
-    fn an_idle_session_off_its_prompt_is_not_reported_as_mid_turn() {
-        let (_t, s, _rx) = lone_session();
-        s.feed(b"/model picker\r\n  Opus\r\n", true);
-        let later = Instant::now() + Duration::from_secs(2);
-        s.change(|i, _, out| out.extend(i.det.tick(now_ms() + 2_000)));
-        assert!(!send_at_prompt(&s, b"hi", later));
-        assert_eq!(s.busy_code(), Some("prompt"));
-    }
-
-    #[test]
     fn attach_keys_reach_a_session_whose_box_holds_a_draft() {
         let (_t, s, rx) = tall_footer_session("❯ half a sentence");
         assert!(!send_at_prompt(&s, b"hi", settled()));
         assert!(s.input(b"x"));
         assert!(!queued(&rx).is_empty());
-    }
-
-    #[test]
-    fn a_keystroke_that_prints_nothing_blocks_a_send_only_until_the_settle_time_passes() {
-        let (_t, s, rx) = lone_session();
-        s.feed(IDLE, true);
-        assert!(s.input(b"\x1b[A"));
-        drain(&s, &rx);
-        assert!(!send_at_prompt(&s, b"note\r", Instant::now()));
-        assert!(send_at_prompt(&s, b"note\r", settled()));
     }
 
     #[test]
@@ -7284,6 +7222,255 @@ mod tests {
         assert_eq!(s.busy_code(), Some("input"));
     }
 
+    const CLAUDE_WORKING: &[u8] = b"\xe2\x9c\xb6 Thinking\xe2\x80\xa6 (12s \xc2\xb7 esc to interrupt)\r\n\r\n\xe2\x9d\xaf\r\n";
+
+    fn sent_key(profile: &str, screen: &[u8], working: bool) -> Result<Vec<u8>, &'static str> {
+        let (_t, s, rx) = lone_session_for(profile, 120, 40);
+        s.feed(screen, true);
+        if !working {
+            waiting_since(&s, 20_000);
+        }
+        assert_eq!(
+            s.state().kind,
+            if working {
+                StateKind::Working
+            } else {
+                StateKind::Waiting
+            }
+        );
+        match s.input_at_prompt_after(b"hi there\r", Instant::now(), Duration::from_millis(20)) {
+            Ok(()) => {
+                assert_eq!(queued(&rx), vec![b"hi there".to_vec()]);
+                Ok(queued_by(&rx, 1).pop().unwrap())
+            }
+            Err(_) => {
+                assert!(queued(&rx).is_empty());
+                Err(s.busy_code().unwrap())
+            }
+        }
+    }
+
+    #[test]
+    fn a_working_claude_takes_a_send_with_enter() {
+        assert_eq!(
+            sent_key("claude-code", CLAUDE_WORKING, true),
+            Ok(b"\r".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_working_codex_takes_a_send_with_tab() {
+        let screen = include_bytes!("../profiles/screens/codex-working.ansi");
+        assert_eq!(sent_key("codex", screen, true), Ok(b"\t".to_vec()));
+    }
+
+    #[test]
+    fn an_unrecognised_idle_screen_takes_a_send() {
+        let screen = b"some unknown layout\r\nno prompt in sight\r\n";
+        assert_eq!(sent_key("claude-code", screen, false), Ok(b"\r".to_vec()));
+    }
+
+    #[test]
+    fn an_unknown_dialog_refuses_with_the_dialog_code() {
+        let screen = b"Pick one\r\n 1. Yes\r\n 2. No\r\nesc to cancel\r\n";
+        for profile in ["claude-code", "codex", "aider"] {
+            assert_eq!(sent_key(profile, screen, false), Err("dialog"), "{profile}");
+        }
+    }
+
+    #[test]
+    fn a_draft_in_the_claude_composer_refuses_with_the_draft_code() {
+        let screen = "done\r\n\r\n\u{276f} hello\r\n".as_bytes();
+        assert_eq!(sent_key("claude-code", screen, false), Err("draft"));
+    }
+
+    #[test]
+    fn the_model_picker_style_screen_without_markers_takes_a_send() {
+        let screen = b"/model picker\r\n  Opus\r\n";
+        assert_eq!(sent_key("claude-code", screen, false), Ok(b"\r".to_vec()));
+    }
+
+    #[test]
+    fn two_rapid_sends_are_serialized_so_their_keys_never_interleave() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        let mut seen = Vec::new();
+        let mut pull = |s: &Session| {
+            let g = lock(&s.shim);
+            let link = g.as_ref().unwrap();
+            while let Ok(Frame::Bin(b)) = rx.try_recv() {
+                input_left_link(
+                    &link.queued_bytes,
+                    &link.queued_frames,
+                    link.credit.as_ref(),
+                    b.data.len(),
+                );
+                seen.push(b.data.to_vec());
+            }
+        };
+        s.input_at_prompt_after(b"one\r", Instant::now(), Duration::from_millis(300))
+            .unwrap();
+        let err = s
+            .input_at_prompt_after(b"two\r", Instant::now(), Duration::from_millis(300))
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Busy);
+        assert_eq!(s.busy_code(), Some("settling"));
+        thread::sleep(Duration::from_millis(600));
+        pull(&s);
+        s.input_at_prompt_after(b"two\r", Instant::now(), Duration::from_millis(20))
+            .unwrap();
+        thread::sleep(Duration::from_millis(200));
+        pull(&s);
+        assert_eq!(
+            seen,
+            vec![
+                b"one".to_vec(),
+                b"\r".to_vec(),
+                b"two".to_vec(),
+                b"\r".to_vec()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_pending_submit_key_never_wedges_the_gate() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(IDLE, true);
+        lock(&s.inner).submit_pending = Some(Instant::now());
+        assert!(!send_at_prompt(&s, b"x", Instant::now()));
+        assert_eq!(s.busy_code(), Some("settling"));
+        assert!(send_at_prompt(&s, b"x", settled()));
+    }
+
+    #[test]
+    fn a_failed_submit_key_still_clears_the_pending_marker() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        s.input_at_prompt_after(b"one\r", Instant::now(), Duration::from_millis(100))
+            .unwrap();
+        *lock(&s.shim) = None;
+        drop(rx);
+        thread::sleep(Duration::from_millis(400));
+        assert!(lock(&s.inner).submit_pending.is_none());
+    }
+
+    #[test]
+    fn aider_waits_while_working_and_takes_a_send_once_waiting() {
+        assert_eq!(sent_key("aider", b"some output\r\n", true), Err("midturn"));
+        assert_eq!(
+            sent_key("aider", b"some output\r\n", false),
+            Ok(b"\r".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_session_without_a_matcher_waits_only_while_working() {
+        for (working, want) in [(true, Err("midturn")), (false, Ok(b"\r".to_vec()))] {
+            let (_t, s, rx) = lone_session();
+            lock(&s.inner).matcher = None;
+            s.feed(b"plain output\r\n", true);
+            if !working {
+                waiting_since(&s, 20_000);
+            }
+            let got =
+                match s.input_at_prompt_after(b"x\r", Instant::now(), Duration::from_millis(20)) {
+                    Ok(()) => {
+                        queued(&rx);
+                        Ok(queued_by(&rx, 1).pop().unwrap())
+                    }
+                    Err(_) => Err(s.busy_code().unwrap()),
+                };
+            assert_eq!(got, want);
+        }
+    }
+
+    #[test]
+    fn the_routers_own_writes_never_look_like_foreign_input() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        s.input_at_prompt_after(b"one\r", Instant::now(), Duration::from_millis(20))
+            .unwrap();
+        thread::sleep(Duration::from_millis(300));
+        drain(&s, &rx);
+        s.input_at_prompt_after(b"two\r", Instant::now(), Duration::from_millis(20))
+            .unwrap();
+        thread::sleep(Duration::from_millis(300));
+        assert_eq!(s.foreign_gen(), 0);
+        assert!(s.input(b"x"));
+        assert_eq!(s.foreign_gen(), 1);
+    }
+
+    fn bottom_of(profile: &str, bytes: &[u8]) -> Vec<String> {
+        let _ = profile;
+        let mut screen = ScreenModel::new(40, 120, 100);
+        screen.feed(bytes);
+        screen.bottom_text_without_ghosts(usize::MAX)
+    }
+
+    #[test]
+    fn generic_dialog_markers_match_in_the_bottom_rows() {
+        for text in [
+            "pick one\r\n > 1. Yes\r\n   2. No\r\n",
+            "pick one\r\n \u{276f} 1) Yes\r\n   2) No\r\n",
+            "choose\r\n a) first\r\n \u{203a} b) second\r\n",
+            "Press esc to cancel\r\n",
+            "Enter to confirm\r\n",
+            "Enter to select\r\n",
+            "Enter to submit\r\n",
+            "Continue? [y/n]\r\n",
+            "Continue? (Y/n)\r\n",
+            "Overwrite? (Y)es/(N)o\r\n",
+            "Proceed, yes/no\r\n",
+            "Allow Bash(ls)?\r\n",
+            "Please APPROVE this\r\n",
+            "Do you want to continue\r\n",
+            "Enter your password:\r\n",
+            "Enter passphrase for key:\r\n",
+        ] {
+            assert!(
+                generic_dialog(bottom_rows(&bottom_of("x", text.as_bytes()))),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn generic_dialog_markers_ignore_idle_and_working_screens() {
+        for (profile, screen) in [
+            (
+                "claude",
+                &include_bytes!("../profiles/screens/claude-working.ansi")[..],
+            ),
+            (
+                "claude",
+                &include_bytes!("../profiles/screens/claude-suggestion.ansi")[..],
+            ),
+            ("claude", CLAUDE_WORKING),
+            ("claude", IDLE),
+            (
+                "codex",
+                &include_bytes!("../profiles/screens/codex-working.ansi")[..],
+            ),
+            (
+                "codex",
+                &include_bytes!("../profiles/screens/codex-placeholder.ansi")[..],
+            ),
+            (
+                "codex",
+                &include_bytes!("../profiles/screens/codex-idle-after-turn.ansi")[..],
+            ),
+        ] {
+            let lines = bottom_of(profile, screen);
+            assert!(!generic_dialog(bottom_rows(&lines)), "{lines:?}");
+        }
+        assert!(!generic_dialog(&["only 1. one numbered line".into()]));
+        assert!(!generic_dialog(&[
+            "Next steps:".into(),
+            "1. Run the tests".into(),
+            "2. Push the branch".into(),
+        ]));
+    }
+
     #[test]
     fn the_stuck_queue_line_names_the_message_gate_rule_and_scrubbed_bottom_rows() {
         let (_t, s, _rx) = lone_session();
@@ -7292,21 +7479,31 @@ mod tests {
             true,
         );
         waiting_since(&s, 20_000);
-        lock(&s.inner).last_busy = Some("not at an empty prompt");
+        lock(&s.inner).last_busy = Some("input still queued");
         let line = s
             .stuck_queue_line("m1", 31_500, Some("prompt"), now_ms(), Some("/opt/h"))
             .unwrap();
-        assert!(line.starts_with("chat queue: message m1 waited 31s at the front on idle session s1: why=prompt, gate=not at an empty prompt, detector=Waiting quiet=1000ms"));
+        assert!(line.starts_with("chat queue: message m1 waited 31s at the front on session s1: why=prompt, gate=input still queued, detector=Waiting quiet=1000ms"));
         assert!(line.contains("idle rule="));
         assert!(line.contains("bottom rows: [\"running in ~/proj and ~/work\", \">\"]"));
         assert!(!line.contains("/home/u") && !line.contains("/opt/h"));
     }
 
     #[test]
-    fn the_stuck_queue_line_is_skipped_while_the_session_is_working() {
+    fn the_stuck_queue_line_is_logged_while_the_session_is_working_but_not_while_blocked() {
         let (_t, s, _rx) = lone_session();
         s.feed(b"busy output\r\n", true);
         assert_eq!(s.state().kind, StateKind::Working);
+        let line = s
+            .stuck_queue_line("m1", 31_000, None, now_ms(), None)
+            .unwrap();
+        assert!(line.contains("on session s1") && line.contains("detector=Working"));
+        lock(&s.inner).fixed = Some(State {
+            kind: StateKind::Blocked,
+            since_ms: now_ms(),
+            detail: None,
+            exit_code: None,
+        });
         assert!(s
             .stuck_queue_line("m1", 31_000, None, now_ms(), None)
             .is_none());
@@ -7329,51 +7526,6 @@ mod tests {
         let mut i = lock(&s.inner);
         i.det.on_output(t);
         i.det.tick(t + 2000);
-    }
-
-    #[test]
-    fn a_profile_without_idle_rules_is_ready_once_waiting_for_the_settle_time() {
-        let (_t, s, _rx) = lone_session_for("aider", 100, 24);
-        assert!(lock(&s.inner)
-            .matcher
-            .as_ref()
-            .is_some_and(|m| !m.has_idle()));
-        s.feed(b"some output\r\n", true);
-        assert!(!send_at_prompt(&s, b"note\r", settled()));
-        waiting_since(&s, 20_000);
-        assert_eq!(s.state().kind, StateKind::Waiting);
-        assert!(send_at_prompt(&s, b"note\r", settled()));
-    }
-
-    #[test]
-    fn a_profile_without_idle_rules_refuses_while_working_or_just_turned_waiting() {
-        let (_t, s, _rx) = lone_session_for("aider", 100, 24);
-        {
-            let mut i = lock(&s.inner);
-            i.det.on_output(now_ms());
-        }
-        assert_eq!(s.state().kind, StateKind::Working);
-        assert!(!send_at_prompt(&s, b"note\r", settled()));
-        waiting_since(&s, 3_000);
-        assert_eq!(s.state().kind, StateKind::Waiting);
-        assert!(!send_at_prompt(&s, b"note\r", Instant::now()));
-    }
-
-    #[test]
-    fn a_profile_with_idle_rules_still_needs_its_prompt_even_when_waiting() {
-        let (_t, s, _rx) = lone_session();
-        s.feed(b"plain output\r\n", true);
-        waiting_since(&s, 20_000);
-        assert!(!send_at_prompt(&s, b"note\r", settled()));
-    }
-
-    #[test]
-    fn a_session_without_a_matcher_never_takes_chat_input() {
-        let (_t, s, _rx) = lone_session();
-        lock(&s.inner).matcher = None;
-        s.feed(b"plain output\r\n", true);
-        waiting_since(&s, 20_000);
-        assert!(!send_at_prompt(&s, b"note\r", settled()));
     }
 
     #[test]
@@ -7609,13 +7761,6 @@ mod tests {
             .queued_frames
             .fetch_add(1, Ordering::SeqCst);
         assert!(!send_at_prompt(&s, b"note\r", settled()));
-    }
-
-    #[test]
-    fn a_send_at_the_prompt_is_refused_off_the_prompt() {
-        let (_t, s, _rx) = lone_session();
-        s.feed(b"working\r\n", true);
-        assert!(!send_at_prompt(&s, b"one\r", settled()));
     }
 
     #[test]

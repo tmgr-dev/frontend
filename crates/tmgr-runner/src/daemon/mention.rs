@@ -416,7 +416,7 @@ impl Runner {
                 exited: s.is_exited(),
                 waiting: s.state().kind == StateKind::Waiting,
                 working_seen: s.working_seen.load(Ordering::SeqCst),
-                input_gen: s.input_gen.load(Ordering::SeqCst),
+                input_gen: s.foreign_gen(),
             })
         });
     }
