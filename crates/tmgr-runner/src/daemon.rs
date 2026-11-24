@@ -1354,13 +1354,13 @@ impl Session {
             Some(text) => (text, true),
             None => (bytes, false),
         };
+        let key = {
+            let i = lock(&self.inner);
+            let tab = i.matcher.as_ref().is_some_and(Matcher::tab_mid_turn);
+            submit_key(tab, self.effective(&i).kind)
+        };
         self.write_at_prompt(text, now)?;
         if submit {
-            let key = {
-                let i = lock(&self.inner);
-                let tab = i.matcher.as_ref().is_some_and(Matcher::tab_mid_turn);
-                submit_key(tab, self.effective(&i).kind)
-            };
             let s = Arc::clone(self);
             thread::spawn(move || {
                 thread::sleep(delay);
@@ -6928,6 +6928,74 @@ mod tests {
             assert_eq!(err.code, ErrorCode::Busy);
             assert!(queued(&rx).is_empty());
         }
+    }
+
+    fn gate_send(
+        profile: &str,
+        screen: &[u8],
+        idle: bool,
+    ) -> (Option<Vec<u8>>, Option<&'static str>) {
+        let (_t, s, rx) = lone_session_for(profile, 120, 40);
+        s.feed(screen, true);
+        let mut now = Instant::now();
+        if idle {
+            s.change(|i, _, out| out.extend(i.det.tick(now_ms() + 2_000)));
+            now += Duration::from_secs(2);
+        }
+        match s.input_at_prompt(b"hello from the phone\r", now) {
+            Ok(()) => {
+                assert_eq!(queued(&rx), vec![b"hello from the phone".to_vec()]);
+                (queued_by(&rx, 1).pop(), None)
+            }
+            Err(_) => {
+                assert!(queued(&rx).is_empty());
+                (None, s.busy_code())
+            }
+        }
+    }
+
+    #[test]
+    fn a_busy_codex_with_a_queued_message_gets_the_next_one_queued_with_tab() {
+        let screen = include_bytes!("../profiles/screens/codex-working-queued.ansi");
+        assert_eq!(
+            gate_send("codex", screen, false),
+            (Some(b"\t".to_vec()), None)
+        );
+    }
+
+    #[test]
+    fn a_codex_right_after_its_turn_gets_tab_in_the_quiet_window_and_enter_once_idle() {
+        let screen = include_bytes!("../profiles/screens/codex-idle-after-turn.ansi");
+        assert_eq!(
+            gate_send("codex", screen, false),
+            (Some(b"\t".to_vec()), None)
+        );
+        assert_eq!(
+            gate_send("codex", screen, true),
+            (Some(b"\r".to_vec()), None)
+        );
+    }
+
+    #[test]
+    fn a_codex_command_approval_mid_turn_refuses_with_dialog() {
+        let screen = include_bytes!("../profiles/screens/codex-working-approval.ansi");
+        assert_eq!(gate_send("codex", screen, false), (None, Some("dialog")));
+    }
+
+    #[test]
+    fn a_codex_interrupt_that_puts_the_queued_message_back_refuses_with_draft() {
+        let screen = include_bytes!("../profiles/screens/codex-interrupted-requeued.ansi");
+        assert_eq!(gate_send("codex", screen, true), (None, Some("draft")));
+    }
+
+    #[test]
+    fn a_claude_create_file_dialog_refuses_with_dialog() {
+        let screen =
+            include_str!("../profiles/screens/claude-write-approval.txt").replace('\n', "\r\n");
+        assert_eq!(
+            gate_send("claude-code", screen.as_bytes(), true),
+            (None, Some("dialog"))
+        );
     }
 
     #[test]
