@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.186
+
+- Fixed: a Bash approval asked by a Claude subagent ("Bash command · from the <name> agent") now shows up as a permission card. The card names the subagent.
+- Fixed: a Bash approval with a warning line under the command (for example "A nested command in this command can't be checked before it runs") shows up as a permission card. The warning is shown in red, and approving it needs a second confirmation; "always" is not offered.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.185
 
 - Changed: messages from the Manager chat, the phone and mentions no longer wait for the agent's turn to end. They are typed right away, including while the agent is working. A message waits only when the session shows a dialog (an approval or a question), when its input box holds text you have not sent, or when the session is still taking earlier input. Two messages sent quickly go in one after the other.
