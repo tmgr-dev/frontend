@@ -244,7 +244,7 @@ struct Core {
   committed_gen: u64,
   seq_reserved: BTreeMap<String, BTreeSet<u64>>,
   seq_holes: BTreeMap<String, BTreeSet<u64>>,
-  sending: BTreeSet<String>,
+  sending: BTreeMap<String, String>,
   dir: Option<Directory>,
   dir_gen: u64,
   joined_now: bool,
@@ -1317,11 +1317,17 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           return None;
         };
         let own_id = c.identity.as_ref().map(|i| i.device_id.as_str()).unwrap_or_default();
-        let Some(entry) = c.log.iter().find(|x| x.from == own_id && x.msg.id == receipt.id) else {
+        let machine = c
+          .log
+          .iter()
+          .find(|x| x.from == own_id && x.msg.id == receipt.id)
+          .map(|x| &x.msg.room.machine)
+          .or_else(|| c.sending.get(&receipt.id));
+        let Some(machine) = machine else {
           c.drop_reason = Some("receipt for a message this device did not send");
           return None;
         };
-        if c.st.bindings.get(&entry.msg.room.machine) != Some(&opened.from) {
+        if c.st.bindings.get(machine) != Some(&opened.from) {
           c.drop_reason = Some("receipt from a runner of another machine");
           return None;
         }
@@ -1484,14 +1490,16 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
           r.title = ir.title.clone();
           r.state = ir.state.clone();
           r.context_pct = ir.context_pct;
+          r.agent = ir.agent.clone();
+          r.context_tokens = ir.context_tokens;
         }
         None => rooms.push(RoomInfo {
           room: ir.room.clone(),
           title: ir.title.clone(),
-          agent: None,
+          agent: ir.agent.clone(),
           state: ir.state.clone(),
           context_pct: ir.context_pct,
-          context_tokens: None,
+          context_tokens: ir.context_tokens,
           model: None,
           last: None,
           local: false,
@@ -1608,9 +1616,10 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       };
       validate_chat(&msg)?;
       let payload = serde_json::to_value(&msg).map_err(err)?;
-      if !c.sending.insert(msg.id.clone()) {
+      if c.sending.contains_key(&msg.id) {
         return Err("this message is already being sent".into());
       }
+      c.sending.insert(msg.id.clone(), msg.room.machine.clone());
       let sealed = match self.seal_items(c, "chat", &msg.id, &payload, &targets) {
         Ok(sealed) => sealed,
         Err(e) => {

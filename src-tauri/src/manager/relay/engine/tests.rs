@@ -2825,6 +2825,35 @@ fn a_valid_rooms_index_from_a_trusted_runner_is_stored_and_merged_into_the_room_
 }
 
 #[test]
+fn a_rooms_index_carries_the_agent_and_context_tokens_into_the_room_list() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let mut session = session_room("mx_0123456789abcdef", "s_abc");
+  session["agent"] = json!("claude-code");
+  session["context_tokens"] = json!(64_600);
+  post_rooms(&r, &my_id(&a), IDX_ID, &rooms_payload("mx_0123456789abcdef", "top", json!([manager_room("mx_0123456789abcdef"), session])));
+  a.poll_once().unwrap();
+  let rooms = a.rooms().unwrap();
+  let s = rooms.iter().find(|x| x.title == "fix login").unwrap();
+  assert_eq!((s.agent.as_deref(), s.context_tokens), (Some("claude-code"), Some(64_600)));
+  let m = rooms.iter().find(|x| x.title == "Manager").unwrap();
+  assert_eq!((m.agent.as_deref(), m.context_tokens), (None, None));
+}
+
+#[test]
+fn a_rooms_index_with_a_long_agent_is_refused() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let mut session = session_room("mx_0123456789abcdef", "s_abc");
+  session["agent"] = json!("x".repeat(65));
+  post_rooms(&r, &my_id(&a), IDX_ID, &rooms_payload("mx_0123456789abcdef", "top", json!([session])));
+  a.poll_once().unwrap();
+  assert!(indexed(&a).is_empty());
+}
+
+#[test]
 fn a_rooms_index_keeps_the_last_message_of_a_room_and_replaces_the_previous_index() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let a = engine_with(&fake, &clock, "Desktop A");
@@ -3093,6 +3122,25 @@ fn a_receipt_for_a_message_this_device_did_not_send_is_dropped() {
   a.poll_once().unwrap();
   assert!(a.take_receipts().is_empty());
   assert_eq!(a.drops(), ["receipt for a message this device did not send"; 2]);
+}
+
+#[test]
+fn a_receipt_that_arrives_while_the_send_is_still_posting_is_kept() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let id = format!("m_{}", "8".repeat(32));
+  post_receipt(&r, &my_id(&a), "r_1", receipt_of(&id, "delivered"));
+  fake.0.lock().unwrap().post_slow_ms = 500;
+  std::thread::scope(|s| {
+    let sending = s.spawn(|| send_with(&a, &id, T0, "hi").unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    a.poll_once().unwrap();
+    sending.join().unwrap();
+  });
+  let got = a.take_receipts();
+  assert_eq!(got.len(), 1);
+  assert_eq!(got[0].id, id);
+  assert!(a.drops().is_empty(), "{:?}", a.drops());
 }
 
 #[test]

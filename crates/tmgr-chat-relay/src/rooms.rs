@@ -6,6 +6,11 @@ pub const ROOMS_V: u8 = 1;
 pub const MAX_ROOMS: usize = 200;
 pub const MAX_LABEL_CHARS: usize = 64;
 pub const MAX_FOLLOWERS: usize = 200;
+pub const MAX_AGENT_CHARS: usize = 64;
+
+pub fn valid_agent(agent: &str) -> bool {
+    (1..=MAX_AGENT_CHARS).contains(&agent.chars().count()) && !agent.chars().any(char::is_control)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -26,6 +31,10 @@ pub struct RoomEntry {
     pub last_ts: Option<u64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mention_ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +83,9 @@ impl RoomsIndex {
             r.room.validate()?;
             if r.room.machine != self.machine {
                 return Err("a room belongs to another machine".into());
+            }
+            if r.agent.as_deref().is_some_and(|a| !valid_agent(a)) {
+                return Err("invalid agent".into());
             }
         }
         Ok(())
@@ -151,6 +163,31 @@ mod tests {
         ];
         for (i, c) in cases.into_iter().enumerate() {
             assert!(RoomsIndex::parse(c).is_err(), "case {i}");
+        }
+    }
+
+    #[test]
+    fn agent_and_context_tokens_are_optional_and_round_trip_when_set() {
+        let idx = RoomsIndex::parse(fixture()).unwrap();
+        assert_eq!(
+            (idx.rooms[0].agent.clone(), idx.rooms[0].context_tokens),
+            (None, None)
+        );
+        let on = with(|v| {
+            v["rooms"][1]["agent"] = json!("claude-code");
+            v["rooms"][1]["context_tokens"] = json!(64_600);
+        });
+        let idx = RoomsIndex::parse(on.clone()).unwrap();
+        assert_eq!(idx.rooms[1].agent.as_deref(), Some("claude-code"));
+        assert_eq!(idx.rooms[1].context_tokens, Some(64_600));
+        assert_eq!(serde_json::to_value(&idx).unwrap(), on);
+    }
+
+    #[test]
+    fn a_long_or_control_agent_is_refused() {
+        for agent in ["x".repeat(65), "a\nb".into(), String::new()] {
+            let v = with(|v| v["rooms"][1]["agent"] = json!(agent));
+            assert!(RoomsIndex::parse(v).is_err(), "{agent:?}");
         }
     }
 

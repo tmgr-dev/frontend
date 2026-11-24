@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde_json::Value;
 use tmgr_chat_relay::engine::{ChatSink, KeyStore, RelayEngine, Transport};
-use tmgr_chat_relay::rooms::{Role, RoomEntry, RoomsIndex, MAX_ROOMS, ROOMS_V};
+use tmgr_chat_relay::rooms::{valid_agent, Role, RoomEntry, RoomsIndex, MAX_ROOMS, ROOMS_V};
 use tmgr_chat_relay::wire::random_msg_id;
 use tmgr_ipc::chat::{AuthorKind, ChatMessage, RoomInfo, RoomRef};
 
@@ -84,6 +84,8 @@ pub fn build_index(s: &Snapshot) -> RoomsIndex {
             context_pct: r.context_pct,
             last_ts: r.last.as_ref().map(|m| m.ts_ms),
             mention_ok: r.mention.as_ref().is_some_and(|m| m.ok),
+            agent: r.agent.clone().filter(|a| valid_agent(a)),
+            context_tokens: r.context_tokens,
         })
         .collect();
     RoomsIndex {
@@ -440,6 +442,21 @@ mod tests {
         s.top = false;
         let sub = build_index(&s);
         assert_eq!((sub.role, sub.followers), (Role::Sub, None));
+    }
+
+    #[test]
+    fn the_index_carries_the_agent_and_context_tokens_of_a_room() {
+        let mut rooms = two_rooms();
+        rooms[1].agent = Some("claude-code".into());
+        rooms[1].context_tokens = Some(64_600);
+        let idx = build_index(&snap(rooms));
+        assert_eq!(idx.rooms[1].agent.as_deref(), Some("claude-code"));
+        assert_eq!(idx.rooms[1].context_tokens, Some(64_600));
+        assert_eq!(
+            (idx.rooms[0].agent.clone(), idx.rooms[0].context_tokens),
+            (None, None)
+        );
+        assert!(idx.validate().is_ok());
     }
 
     #[test]

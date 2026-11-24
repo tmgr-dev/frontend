@@ -8,6 +8,7 @@ const MAX_ROOMS: usize = 200;
 const MAX_FOLLOWERS: usize = 200;
 const MAX_LABEL: usize = 64;
 const MAX_TITLE: usize = 256;
+const MAX_AGENT: usize = 64;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IndexRoom {
@@ -19,6 +20,10 @@ pub struct IndexRoom {
   pub context_pct: Option<u8>,
   #[serde(default)]
   pub last_ts: Option<u64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub agent: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub context_tokens: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,7 +77,8 @@ impl RoomsIndex {
           RoomKind::Manager => r.room.session.is_none(),
           RoomKind::Session => r.room.session.is_some(),
         };
-        shape && r.room.machine == self.machine && r.title.len() <= MAX_TITLE
+        let agent_ok = r.agent.as_ref().is_none_or(|a| (1..=MAX_AGENT).contains(&a.chars().count()) && !a.chars().any(char::is_control));
+        shape && r.room.machine == self.machine && r.title.len() <= MAX_TITLE && agent_ok
       })
   }
 }
