@@ -94,6 +94,10 @@ fn command(eng: &dyn RelayPort, cmd: &Value) -> Result<(), String> {
     }
     "state" => emit(json!({"event": "state", "trust": serde_json::to_value(eng.trust_state()?).map_err(|e| e.to_string())?,
       "rooms": serde_json::to_value(eng.rooms()?).map_err(|e| e.to_string())?})),
+    "flush" => {
+      eng.flush();
+      emit(json!({"event": "flushed"}));
+    }
     other => return Err(format!("unknown command {other}")),
   }
   Ok(())
@@ -102,7 +106,7 @@ fn command(eng: &dyn RelayPort, cmd: &Value) -> Result<(), String> {
 fn main() {
   let args: Vec<String> = std::env::args().collect();
   if args.len() != 6 {
-    eprintln!("usage: relay-probe <state-dir> <api-base> <token-file> <user-id> <local-machine>\nstdin: JSON lines {{\"cmd\":\"join\"|\"send\"|\"state\", \"room\", \"text\"}}");
+    eprintln!("usage: relay-probe <state-dir> <api-base> <token-file> <user-id> <local-machine>\nstdin: JSON lines {{\"cmd\":\"join\"|\"send\"|\"state\"|\"flush\", \"room\", \"text\"}}");
     std::process::exit(2);
   }
   let _ = rustls::crypto::ring::default_provider().install_default();
