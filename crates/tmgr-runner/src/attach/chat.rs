@@ -17,6 +17,8 @@ use tmgr_ipc::chat::{
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub const HISTORY_LIMIT: u32 = 200;
+pub const PAIR_HINT: &str =
+    "Pair this terminal to write into this machine's sessions: tmgr device pair";
 pub const NEEDS_NEWER: &str = "Chat needs a newer runner";
 pub const BUSY_STATUS: &str = "Session is busy, try again when it is at its prompt";
 const MAX_INPUT: usize = 4000;
@@ -84,6 +86,8 @@ pub struct ChatState {
     offset_secs: i32,
     metrics: Cell<(usize, usize)>,
     mention_cap: bool,
+    labels: HashMap<String, String>,
+    pair_hint: bool,
     agent_session: bool,
     pending: Option<mention::Pending>,
     menu_sel: usize,
@@ -149,11 +153,22 @@ impl ChatState {
             offset_secs: offset,
             metrics: Cell::new((0, 0)),
             mention_cap: false,
+            labels: HashMap::new(),
+            pair_hint: false,
             agent_session: false,
             pending: None,
             menu_sel: 0,
             now_ms: 0,
         }
+    }
+
+    pub fn with_pair_hint(mut self, on: bool) -> ChatState {
+        self.pair_hint = on;
+        self
+    }
+
+    pub fn set_machine_labels(&mut self, labels: HashMap<String, String>) {
+        self.labels = labels;
     }
 
     pub fn with_offset(mut self, secs: i32) -> ChatState {
@@ -768,6 +783,7 @@ fn room_meta(info: &RoomInfo) -> String {
 enum ListItem<'a> {
     Header(&'a str),
     Room(usize),
+    Hint,
 }
 
 fn list_items(chat: &ChatState) -> Vec<ListItem<'_>> {
@@ -776,26 +792,38 @@ fn list_items(chat: &ChatState) -> Vec<ListItem<'_>> {
     }
     let mut items = Vec::new();
     let mut group: Option<&str> = None;
+    let mut remote = false;
     for (i, e) in chat.rooms.iter().enumerate() {
         let m = e.info.room.machine.as_str();
         if group != Some(m) {
+            if chat.pair_hint && remote {
+                items.push(ListItem::Hint);
+            }
             group = Some(m);
-            items.push(ListItem::Header(if chat.is_remote(&e.info.room) {
+            remote = chat.is_remote(&e.info.room);
+            items.push(ListItem::Header(if !chat.is_remote(&e.info.room) {
+                LOCAL_GROUP
+            } else if is_manager(&e.info) {
                 e.info.title.as_str()
             } else {
-                LOCAL_GROUP
+                chat.labels.get(m).map_or(m, String::as_str)
             }));
         }
         items.push(ListItem::Room(i));
+    }
+    if chat.pair_hint && remote {
+        items.push(ListItem::Hint);
     }
     items
 }
 
 fn draw_list(buf: &mut Buffer, rect: Rect, chat: &ChatState) {
     let items = list_items(chat);
+    let hint_rows = wrap_words(PAIR_HINT, rect.width.saturating_sub(2).max(1).into()).len() as u16;
     let height = |it: &ListItem| match it {
         ListItem::Header(_) => 1u16,
         ListItem::Room(_) => 2,
+        ListItem::Hint => hint_rows,
     };
     let sel_item = items
         .iter()
@@ -824,6 +852,14 @@ fn draw_list(buf: &mut Buffer, rect: Rect, chat: &ChatState) {
                 );
             }
             ListItem::Room(i) => draw_room(buf, rect, y, chat, *i),
+            ListItem::Hint => {
+                for (dy, line) in wrap_words(PAIR_HINT, rect.width.saturating_sub(2).max(1).into())
+                    .iter()
+                    .enumerate()
+                {
+                    put(buf, rect.x + 2, y + dy as u16, line, dim(), rect.width);
+                }
+            }
         }
         y += height(item);
     }

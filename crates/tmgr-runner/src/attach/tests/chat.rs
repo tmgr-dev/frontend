@@ -567,3 +567,79 @@ fn grouped_chat_renders_at_every_small_size() {
         }
     }
 }
+
+fn remote_session(machine: &str, id: &str) -> RoomRef {
+    RoomRef {
+        kind: RoomKind::Session,
+        machine: machine.into(),
+        session: Some(id.into()),
+    }
+}
+
+fn with_remote_sessions() -> Vec<RoomInfo> {
+    let mut rooms = grouped_rooms();
+    rooms.push(info(
+        remote_session(PEER_A, "s_remote0001"),
+        "deploy-fix",
+        Some("claude-code"),
+        Some(10),
+    ));
+    rooms.push(info(
+        remote_session(PEER_C, "s_remote0002"),
+        "db-migrate",
+        None,
+        None,
+    ));
+    rooms
+}
+
+const PEER_C: &str = "mx_cccccccccccccccc";
+
+#[test]
+fn remote_session_rooms_group_under_their_machine_after_its_manager_room() {
+    let mut c = ChatState::new().with_offset(0);
+    let mut labels = std::collections::HashMap::new();
+    labels.insert(PEER_C.to_string(), "desk".to_string());
+    c.set_machine_labels(labels);
+    c.set_rooms(with_remote_sessions());
+    let order: Vec<String> = c.rooms.iter().map(|r| r.info.title.clone()).collect();
+    assert_eq!(
+        order,
+        [
+            "Manager",
+            "api-fix",
+            "laptop",
+            "deploy-fix",
+            "build box",
+            "db-migrate"
+        ]
+    );
+    c.history(&manager_room(), None, Ok(Vec::new()));
+    let v = view_with(c);
+    assert_snapshot("chat_rooms_remote_sessions", &draw(&v, &screens(), 100, 20));
+}
+
+#[test]
+fn an_unpaired_attach_hints_how_to_pair_under_each_remote_machine_only() {
+    let mut c = ChatState::new().with_offset(0).with_pair_hint(true);
+    c.set_rooms(grouped_rooms());
+    c.history(&manager_room(), None, Ok(Vec::new()));
+    let v = view_with(c);
+    assert_snapshot("chat_rooms_pair_hint", &draw(&v, &screens(), 100, 20));
+}
+
+#[test]
+fn without_the_hint_flag_the_room_list_is_unchanged() {
+    let hinted = {
+        let mut c = ChatState::new().with_offset(0);
+        c.set_rooms(grouped_rooms());
+        c.history(&manager_room(), None, Ok(Vec::new()));
+        draw(&view_with(c), &screens(), 100, 16)
+    };
+    let expected = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/attach/snapshots/chat_rooms_grouped.txt"
+    ))
+    .unwrap();
+    assert_eq!(hinted.trim_end(), expected.trim_end());
+}

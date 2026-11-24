@@ -1,0 +1,20 @@
+╭ Chat ────────────────────────────────────────────────────────────────────────────────────────────╮
+│This machine                  │No messages yet                                                    │
+│  Manager                     │                                                                   │
+│  working                     │                                                                   │
+│  api-fix                     │                                                                   │
+│  claude-code · 42% · working │                                                                   │
+│laptop                        │                                                                   │
+│  Manager                     │                                                                   │
+│  working                     │                                                                   │
+│  Pair this terminal to write │                                                                   │
+│  into this machine's         │                                                                   │
+│  sessions: tmgr device pair  │                                                                   │
+│build box                     │                                                                   │
+│  Manager                     │                                                                   │
+│  working                     │                                                                   │
+│  Pair this terminal to write │                                                                   │
+│  into this machine's         │                                                                   │
+│  sessions: tmgr device pair  │>                                                                  │
+╰ Esc close · Up/Down room · PgUp older · Enter send ──────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1            drag copies  Ctrl-] ? help
