@@ -2011,6 +2011,24 @@ mod tests {
         verdict(profile, "file-read-data", path) && verdict(profile, "file-read-metadata", path)
     }
 
+    fn plant(dir: &Path) -> PathBuf {
+        fs::create_dir_all(dir).unwrap();
+        fs::set_permissions(dir, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+        let path = dir.join("0123456789abcdef.png");
+        fs::write(&path, PNG).unwrap();
+        path
+    }
+
+    fn own_paste_dirs(f: &Fx) -> [PathBuf; 2] {
+        let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
+        [
+            f.spec.home.join(paste),
+            tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir)
+                .join(&f.spec.session_id)
+                .join(paste),
+        ]
+    }
+
     fn session_profile(f: &Fx) -> String {
         control_plane_profile(&control_plane(&f.spec, &[])).unwrap()
     }
@@ -2031,8 +2049,7 @@ mod tests {
         for argv in agents() {
             let mut f = fx();
             f.spec.argv = argv;
-            fs::create_dir_all(&f.spec.home).unwrap();
-            let path = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
+            let path = plant(&own_paste_dirs(&f)[0]);
             let profile = session_profile(&f);
             assert!(readable(&profile, &path), "{}", path.display());
             for a in [
@@ -2054,9 +2071,7 @@ mod tests {
         for argv in agents() {
             let mut f = fx();
             f.spec.argv = argv;
-            let root = tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir);
-            let path =
-                tmgr_link::paste::store_private(&root, &f.spec.session_id, PNG, "png").unwrap();
+            let path = plant(&own_paste_dirs(&f)[1]);
             let profile = session_profile(&f);
             assert!(readable(&profile, &path), "{}", path.display());
         }
@@ -2123,8 +2138,7 @@ mod tests {
     #[test]
     fn a_symlink_out_of_the_paste_dir_resolves_to_a_hidden_path() {
         let f = fx();
-        fs::create_dir_all(&f.spec.home).unwrap();
-        let stored = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
+        let stored = plant(&own_paste_dirs(&f)[0]);
         let dir = stored.parent().unwrap();
         let token = f.spec.runner_dir.join("token");
         fs::write(&token, b"secret").unwrap();
@@ -2163,43 +2177,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_attach_paste_reaches_the_prompt_as_a_path_the_session_can_read() {
-        for argv in agents() {
-            let mut f = fx();
-            f.spec.argv = argv;
-            fs::create_dir_all(&f.spec.home).unwrap();
-            let profile = session_profile(&f);
-            let stored = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
-            for bracketed in [false, true] {
-                let text = tmgr_link::paste::paste_text(&stored, bracketed);
-                let text = text
-                    .strip_prefix("\x1b[200~")
-                    .and_then(|t| t.strip_suffix("\x1b[201~"))
-                    .unwrap_or(&text);
-                let words = shell_words::split(text).unwrap();
-                assert_eq!(words.len(), 1);
-                let path = PathBuf::from(&words[0]);
-                assert_eq!(path, stored);
-                assert!(readable(&profile, &path), "{}", path.display());
-                assert_eq!(fs::read(&path).unwrap(), PNG);
-            }
-        }
-    }
-
     #[cfg(target_os = "macos")]
     #[test]
     fn a_real_fence_lets_a_pasted_image_through_and_nothing_else() {
         let f = fx();
-        fs::create_dir_all(&f.spec.home).unwrap();
-        let stored = tmgr_link::paste::store(&f.spec.home, PNG, "png").unwrap();
-        let fallback = tmgr_link::paste::store_private(
-            &tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir),
-            &f.spec.session_id,
-            PNG,
-            "png",
-        )
-        .unwrap();
+        let [own, beside] = own_paste_dirs(&f);
+        let stored = plant(&own);
+        let fallback = plant(&beside);
         let token = f.spec.runner_dir.join("token");
         fs::write(&token, b"secret").unwrap();
         fs::write(f.spec.home.join(".claude.json"), b"{}").unwrap();

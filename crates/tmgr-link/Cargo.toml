@@ -25,3 +25,6 @@ argon2 = { version = "=0.5.3", default-features = false, features = ["alloc", "p
 
 [dev-dependencies]
 keyring.workspace = true
+regex.workspace = true
+shell-words.workspace = true
+tmgr-runner.workspace = true

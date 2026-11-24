@@ -38,6 +38,5 @@ tempfile.workspace = true
 landlock.workspace = true
 
 [dev-dependencies]
-tmgr-link.workspace = true
 vte.workspace = true
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "sha256", "std"] }

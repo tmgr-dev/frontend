@@ -347,3 +347,160 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use tmgr_runner::sandbox::{control_plane, control_plane_profile, Network, SandboxSpec};
+
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\nimage";
+
+    fn verdict(profile: &str, op: &str, path: &Path) -> bool {
+        let filter = regex::Regex::new(r#"\((subpath|literal) "((?:[^"\\]|\\.)*)"\)"#).unwrap();
+        let mut allowed = true;
+        for line in profile.lines() {
+            let Some(rest) = line.strip_prefix('(') else {
+                continue;
+            };
+            let Some((act, rest)) = rest.split_once(' ') else {
+                continue;
+            };
+            let allow = match act {
+                "allow" => true,
+                "deny" => false,
+                _ => continue,
+            };
+            if rest.contains("(remote ") {
+                continue;
+            }
+            let ops = rest.split('(').next().unwrap_or("");
+            let op_hit = ops.split_whitespace().any(|o| match o.strip_suffix('*') {
+                Some(pre) => op.starts_with(pre),
+                None => o == op,
+            });
+            if !op_hit {
+                continue;
+            }
+            let path_hit = filter.captures_iter(rest).any(|c| {
+                let mut p = String::new();
+                let mut esc = false;
+                for ch in c[2].chars() {
+                    esc = !esc && ch == '\\';
+                    if !esc {
+                        p.push(ch);
+                    }
+                }
+                let p = PathBuf::from(p);
+                match &c[1] {
+                    "subpath" => path.starts_with(&p),
+                    _ => path == p,
+                }
+            });
+            if path_hit {
+                allowed = allow;
+            }
+        }
+        allowed
+    }
+
+    fn readable(profile: &str, path: &Path) -> bool {
+        verdict(profile, "file-read-data", path) && verdict(profile, "file-read-metadata", path)
+    }
+
+    struct Session {
+        _t: tempfile::TempDir,
+        spec: SandboxSpec,
+    }
+
+    fn session(argv: &[&str]) -> Session {
+        let t = tempfile::Builder::new()
+            .prefix("pp")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let root = t.path().canonicalize().unwrap();
+        let id = "s_abcdefghij";
+        let runner_dir = root.join("runner");
+        let home = root.join("homes").join(id);
+        for d in [
+            &root.join("fakehome"),
+            &runner_dir,
+            &home,
+            &root.join("proj"),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        for d in [&root.join("homes"), &runner_dir, &home] {
+            fs::set_permissions(d, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let spec = SandboxSpec {
+            session_id: id.into(),
+            argv: argv.iter().map(|a| a.to_string()).collect(),
+            cwd: root.join("proj"),
+            home,
+            real_home: root.join("fakehome"),
+            runner_dir,
+            self_exe: PathBuf::from("/usr/bin/tmgr"),
+            env_pass: vec![],
+            base_env: vec![],
+            grants: Default::default(),
+            cwd_id: None,
+            network: Network::Open,
+            spool: None,
+        };
+        Session { _t: t, spec }
+    }
+
+    fn agents() -> [&'static [&'static str]; 2] {
+        [
+            &["claude", "--permission-mode", "acceptEdits"],
+            &["codex", "--sandbox", "workspace-write"],
+        ]
+    }
+
+    fn profile(s: &Session) -> String {
+        control_plane_profile(&control_plane(&s.spec, &[])).unwrap()
+    }
+
+    #[test]
+    fn a_stored_paste_is_readable_under_the_control_plane_for_claude_and_codex() {
+        for argv in agents() {
+            let s = session(argv);
+            let profile = profile(&s);
+            let in_home = store(&s.spec.home, PNG, "png").unwrap();
+            let beside = store_private(
+                &tmgr_ipc::dirs::paste_dir(&s.spec.runner_dir),
+                &s.spec.session_id,
+                PNG,
+                "png",
+            )
+            .unwrap();
+            for path in [in_home, beside] {
+                assert!(readable(&profile, &path), "{argv:?} {}", path.display());
+                assert!(!verdict(&profile, "file-write-data", &path), "{argv:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_attach_paste_reaches_the_prompt_as_a_path_the_session_can_read() {
+        for argv in agents() {
+            let s = session(argv);
+            let profile = profile(&s);
+            let stored = store(&s.spec.home, PNG, "png").unwrap();
+            for bracketed in [false, true] {
+                let text = paste_text(&stored, bracketed);
+                let text = text
+                    .strip_prefix("\x1b[200~")
+                    .and_then(|t| t.strip_suffix("\x1b[201~"))
+                    .unwrap_or(&text);
+                let words = shell_words::split(text).unwrap();
+                assert_eq!(words.len(), 1);
+                let path = PathBuf::from(&words[0]);
+                assert_eq!(path, stored);
+                assert!(readable(&profile, &path), "{argv:?} {}", path.display());
+                assert_eq!(fs::read(&path).unwrap(), PNG);
+            }
+        }
+    }
+}
