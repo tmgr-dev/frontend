@@ -262,6 +262,17 @@ fn only_one_attach_holds_the_device_lock() {
 }
 
 #[test]
+fn the_lock_file_is_never_followed_through_a_symlink() {
+    let t = tempfile::tempdir().unwrap();
+    config_dir(t.path()).unwrap().save_config(&cfg()).unwrap();
+    let target = t.path().join("elsewhere");
+    std::fs::write(&target, "keep").unwrap();
+    std::os::unix::fs::symlink(&target, t.path().join(DIR).join(lock::FILE)).unwrap();
+    assert!(lock::acquire(t.path()).is_err());
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep");
+}
+
+#[test]
 fn a_held_lock_means_no_device_and_no_store_access() {
     let t = tempfile::tempdir().unwrap();
     config_dir(t.path()).unwrap().save_config(&cfg()).unwrap();
@@ -480,17 +491,11 @@ fn a_terminal_attach_still_sends_to_capable_machines() {
 }
 
 #[test]
-fn a_terminal_attach_warns_when_the_machine_has_no_cached_runner_but_still_sends() {
+fn a_failed_send_to_an_unconfirmed_machine_leaves_no_unconfirmed_note() {
     let net = Offline::default();
     let d = terminal_device(&net);
     let room = RoomRef::session(PEER, "s_1");
     assert_eq!(d.send_with(&room, "hi", &[]).unwrap_err(), "offline");
-    assert_eq!(
-        d.receipt_notes(),
-        [format!(
-            "{PEER} has not confirmed this terminal yet; the message may not arrive. Run `tmgr device pair` to check."
-        )]
-    );
     assert!(d.receipt_notes().is_empty());
     let capable = [runner("a", PEER, true)];
     assert_eq!(d.send_with(&room, "hi", &capable).unwrap_err(), "offline");

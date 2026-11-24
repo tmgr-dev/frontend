@@ -16,13 +16,14 @@ use lock::InstanceLock;
 use probe::Probe;
 use serde_json::json;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use store::{config_dir, device_namespace, open_store, DynStore};
+use store::{config_dir, device_namespace, open_store, DynStore, NO_SECURE_STORE};
 use tmgr_chat_relay::api::MAX_LABEL_CHARS;
 use tmgr_chat_relay::engine::{
-    DeviceState, EngineConfig, KeyStore, Receipt, ReceiptState, RelayEngine, RoomScope, Transport,
-    TrustState,
+    http_status, DeviceState, EngineConfig, KeyStore, Receipt, ReceiptState, RelayEngine,
+    RoomScope, Transport, TrustState,
 };
 use tmgr_core::api::scopes_hint;
 use tmgr_core::error::{Error, Kind, Result};
@@ -52,7 +53,11 @@ pub struct AttachDevice<T: Transport, K: KeyStore> {
     local_machine: String,
     _lock: Option<InstanceLock>,
     notes: Mutex<Vec<String>>,
+    removed: AtomicBool,
 }
+
+pub const REMOVED_TEXT: &str =
+    "This terminal was removed from your devices. Run tmgr device pair to pair it again.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunnerCap {
@@ -139,12 +144,14 @@ fn build<T: Transport, K: KeyStore>(
         .with_kind(KIND)
         .with_room_scope(RoomScope::Remote)
         .with_rooms_sink(Arc::new(CacheSink(cache.clone())));
+    engine.restore_sent(cache.sent());
     Ok(AttachDevice {
         engine,
         cache,
         local_machine: local_machine.to_owned(),
         _lock: None,
         notes: Mutex::default(),
+        removed: AtomicBool::new(false),
     })
 }
 
@@ -158,10 +165,7 @@ fn build_http(
         base_url: parts.cfg.server.clone(),
         login_token: login,
     };
-    let keys = open_store(
-        runner_dir,
-        &device_namespace(&parts.cfg.server, parts.cfg.user_id),
-    )?;
+    let keys = open_store(&device_namespace(&parts.cfg.server, parts.cfg.user_id))?;
     let cache = RoomCache::open(config_dir(runner_dir)?)?;
     build(transport, keys, cache, &parts.cfg, local_machine)
 }
@@ -259,8 +263,54 @@ impl<T: Transport, K: KeyStore> AttachDevice<T, K> {
         Ok(self.engine.is_joined() && peers > 0 && self.engine.own_device().is_some())
     }
 
+    pub fn removed(&self) -> bool {
+        self.removed.load(Ordering::SeqCst)
+    }
+
+    pub fn check_removed(&self) -> bool {
+        if self.removed() {
+            return true;
+        }
+        let gone = self.engine.own_removed().unwrap_or(false);
+        if gone {
+            self.removed.store(true, Ordering::SeqCst);
+        }
+        gone
+    }
+
+    fn note_failure(&self, e: String) -> String {
+        if http_status(&e) == Some(401) {
+            self.removed.store(true, Ordering::SeqCst);
+        }
+        e
+    }
+
     pub fn poll(&self) -> std::result::Result<Vec<ChatMessage>, String> {
-        self.engine.poll_once()
+        if self.removed() {
+            return Err(REMOVED_TEXT.into());
+        }
+        let out = self.engine.poll_once().map_err(|e| self.note_failure(e))?;
+        if self.engine.own_removed_known() {
+            self.removed.store(true, Ordering::SeqCst);
+            return Err(REMOVED_TEXT.into());
+        }
+        if self.engine.is_joined() {
+            if let Some(st) = self
+                .engine
+                .trust_state()
+                .ok()
+                .filter(|st| !st.devices.is_empty())
+            {
+                let runners: Vec<String> = st
+                    .devices
+                    .iter()
+                    .filter(|d| d.kind == "runner" && d.state == DeviceState::Trusted)
+                    .map(|d| d.id.clone())
+                    .collect();
+                let _ = self.cache.prune(&runners);
+            }
+        }
+        Ok(out)
     }
 
     pub fn merge(&self, runner: Vec<RoomInfo>) -> Vec<RoomInfo> {
@@ -268,10 +318,22 @@ impl<T: Transport, K: KeyStore> AttachDevice<T, K> {
     }
 
     pub fn handles(&self, room: &RoomRef) -> bool {
-        route(&self.local_machine, true, room) == Route::Device
+        !self.removed() && route(&self.local_machine, true, room) == Route::Device
+    }
+
+    pub fn refusal(&self, room: &RoomRef) -> Option<&'static str> {
+        (self.removed() && route(&self.local_machine, true, room) == Route::Device)
+            .then_some(REMOVED_TEXT)
+    }
+
+    pub fn version(&self) -> u64 {
+        self.cache.version()
     }
 
     pub fn rooms(&self) -> Vec<RoomInfo> {
+        if self.removed() {
+            return Vec::new();
+        }
         let mut rooms = self.cache.rooms(&self.local_machine);
         for r in &mut rooms {
             r.title = sanitize_text(&r.title).into_owned();
@@ -325,23 +387,28 @@ impl<T: Transport, K: KeyStore> AttachDevice<T, K> {
             ));
         }
         let mut here = runners.iter().filter(|r| r.machine == room.machine);
-        match here.next() {
+        let unconfirmed = match here.next() {
             Some(first) if !first.capable && !here.any(|r| r.capable) => {
                 let name = Some(first.machine_label.as_str())
                     .filter(|l| !l.is_empty())
                     .unwrap_or(&first.machine);
                 return Err(terminal_refusal(name));
             }
-            Some(_) => {}
-            None => self
-                .notes
+            Some(_) => false,
+            None => true,
+        };
+        let msg = owner_message(room, body, now_ms());
+        self.engine
+            .send_chat_for_machine(&msg, true)
+            .map_err(|e| self.note_failure(e))?;
+        self.cache.add(msg.clone())?;
+        self.cache.set_sent(self.engine.sent_log())?;
+        if unconfirmed {
+            self.notes
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .push(unconfirmed_note(&room.machine)),
+                .push(unconfirmed_note(&room.machine));
         }
-        let msg = owner_message(room, body, now_ms());
-        self.engine.send_chat_for_machine(&msg, true)?;
-        self.cache.add(msg.clone())?;
         Ok(msg)
     }
 }
@@ -373,17 +440,39 @@ pub fn pair_error(e: &str) -> Error {
 
 pub struct PairOutcome {
     pub already: bool,
+    pub replaced: bool,
     pub probe: Probe,
 }
 
+fn store_error(e: String) -> Error {
+    if e == NO_SECURE_STORE {
+        Error::new(Kind::Forbidden, e)
+    } else {
+        Error::internal(e)
+    }
+}
+
+pub type Open<'a, T, K> = &'a dyn Fn() -> std::result::Result<AttachDevice<T, K>, String>;
+
 pub fn pair_with<T: Transport, K: KeyStore>(
-    dev: &AttachDevice<T, K>,
+    open_own: Open<T, K>,
+    open_login: Open<T, K>,
     relay_dir: &RelayDir,
     cfg: &RelayConfig,
     read_code: &dyn Fn() -> Result<String>,
     sleep: &dyn Fn(Duration),
     say: &dyn Fn(&str),
 ) -> Result<PairOutcome> {
+    let mut replaced = false;
+    {
+        let own = open_own().map_err(store_error)?;
+        if own.engine.own_device().is_some() && own.check_removed() {
+            say(REMOVED_TEXT);
+            remove_device(&own, relay_dir)?;
+            replaced = true;
+        }
+    }
+    let dev = open_login().map_err(store_error)?;
     let already = dev.is_paired().map_err(internal)?;
     if !already {
         say("On a trusted desktop or mobile device open the chat devices screen, start adding a device and copy the join code.");
@@ -397,7 +486,8 @@ pub fn pair_with<T: Transport, K: KeyStore>(
     }
     Ok(PairOutcome {
         already,
-        probe: probe::run(dev, sleep),
+        replaced,
+        probe: probe::run(&dev, sleep),
     })
 }
 
@@ -450,13 +540,9 @@ fn pair_once(o: &Opts) -> Result<i32> {
     let machine = tmgr_runner::chat::machine_id(&runner_dir)
         .map_err(|e| Error::internal(format!("machine id: {e}")))?;
     let parts = Parts { cfg, relay_dir };
-    let dev = build_http(
-        &runner_dir,
-        &parts,
-        Some(tokens.access.expose().to_owned()),
-        &machine,
-    )
-    .map_err(internal)?;
+    let access = tokens.access.expose().to_owned();
+    let open_own = || build_http(&runner_dir, &parts, None, &machine);
+    let open_login = || build_http(&runner_dir, &parts, Some(access.clone()), &machine);
     let read = || {
         read_join_text(std::io::stdin().lock(), is_interactive(), || {
             rpassword::prompt_password("Join code: ")
@@ -464,13 +550,23 @@ fn pair_once(o: &Opts) -> Result<i32> {
     };
     let sleep = |d| std::thread::sleep(d);
     let say = |line: &str| eprintln!("{line}");
-    let out = pair_with(&dev, &parts.relay_dir, &parts.cfg, &read, &sleep, &say)?;
+    let out = pair_with(
+        &open_own,
+        &open_login,
+        &parts.relay_dir,
+        &parts.cfg,
+        &read,
+        &sleep,
+        &say,
+    )?;
     Ok(emit_pair(o, &out))
 }
 
 fn emit_pair(o: &Opts, out: &PairOutcome) -> i32 {
     let mut human = if out.already {
         "Already paired.".to_owned()
+    } else if out.replaced {
+        "Paired again. Attach can now use this device.".to_owned()
     } else {
         "Paired. Attach can now use this device.".to_owned()
     };
@@ -501,10 +597,10 @@ fn remove_device<T: Transport, K: KeyStore>(
     };
     let note = dev.engine.leave_confirmed().map_err(|e| {
         Error::internal(format!(
-            "{e}. Device {id} is still registered and nothing was deleted locally"
+            "{e}. Device {id} keeps its keys on this machine until the relay confirms the removal"
         ))
         .hint(format!(
-            "retry tmgr device unpair, or revoke device {id} from the Devices list of a trusted desktop or mobile device"
+            "run tmgr device unpair again, or delete device {id} from the Devices list of a trusted desktop or mobile device"
         ))
     })?;
     dev.cache.wipe().map_err(internal)?;
@@ -529,7 +625,17 @@ fn unpair_with<T: Transport, K: KeyStore>(
             "Close tmgr attach first: it is using this device",
         ));
     };
-    let dev = make(&parts).map_err(internal)?;
+    let dev = match make(&parts) {
+        Ok(dev) => dev,
+        Err(e) if e == NO_SECURE_STORE => {
+            RoomCache::open(config_dir(runner_dir).map_err(internal)?)
+                .and_then(|c| c.wipe())
+                .map_err(internal)?;
+            parts.relay_dir.clear_config().map_err(internal)?;
+            return Ok("Not paired.".to_owned());
+        }
+        Err(e) => return Err(internal(e)),
+    };
     remove_device(&dev, &parts.relay_dir)
 }
 
@@ -560,16 +666,33 @@ pub fn status_data(st: &TrustState, joined: bool, has_config: bool) -> (&'static
     }
 }
 
+pub fn standing<T: Transport, K: KeyStore>(
+    dev: &AttachDevice<T, K>,
+) -> std::result::Result<(&'static str, String), String> {
+    let st = dev.engine.trust_state()?;
+    if dev.engine.own_device().is_some() && dev.check_removed() {
+        return Ok(("removed", REMOVED_TEXT.to_owned()));
+    }
+    Ok(status_data(&st, dev.engine.is_joined(), true))
+}
+
 pub fn device(o: &Opts) -> Result<i32> {
     let runner_dir =
         tmgr_ipc::dirs::runner_dir().map_err(|e| Error::internal(format!("runner dir: {e}")))?;
-    let Some(parts) = load_parts(&runner_dir).map_err(internal)? else {
+    let not_paired = || {
         let (state, human) = status_data(&TrustState::default(), false, false);
-        return Ok(emit(o, json!({"state": state}), human));
+        emit(o, json!({"state": state}), human)
     };
-    let dev = build_http(&runner_dir, &parts, None, "").map_err(internal)?;
+    let Some(parts) = load_parts(&runner_dir).map_err(internal)? else {
+        return Ok(not_paired());
+    };
+    let dev = match build_http(&runner_dir, &parts, None, "") {
+        Ok(dev) => dev,
+        Err(e) if e == NO_SECURE_STORE => return Ok(not_paired()),
+        Err(e) => return Err(internal(e)),
+    };
     let st = dev.engine.trust_state().map_err(internal)?;
-    let (state, human) = status_data(&st, dev.engine.is_joined(), true);
+    let (state, human) = standing(&dev).map_err(internal)?;
     let me = st.devices.iter().find(|d| d.is_self);
     let trusted = st
         .devices

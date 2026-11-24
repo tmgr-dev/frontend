@@ -108,9 +108,18 @@ impl DevicePoller {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         thread::spawn(move || {
-            let mut shape = (usize::MAX, usize::MAX);
+            let mut shape = u64::MAX;
             let mut step = || {
-                let fresh = dev.poll()?;
+                let fresh = match dev.poll() {
+                    Ok(fresh) => fresh,
+                    Err(_) if dev.removed() => {
+                        let _ = tx.send(Msg::ChatReceipt(clean(&attach_device::REMOVED_TEXT)));
+                        load_rooms(cfg.clone(), tx.clone(), Some(dev.clone()));
+                        flag.store(true, Ordering::SeqCst);
+                        return Ok(());
+                    }
+                    Err(e) => return Err(e),
+                };
                 for m in fresh {
                     if tx.send(Msg::ChatPush(Box::new(m))).is_err() {
                         flag.store(true, Ordering::SeqCst);
@@ -119,7 +128,7 @@ impl DevicePoller {
                 for note in dev.receipt_notes() {
                     let _ = tx.send(Msg::ChatReceipt(clean(&note)));
                 }
-                let now = (dev.rooms().len(), dev.machines().len());
+                let now = dev.version();
                 if now != shape {
                     shape = now;
                     load_rooms(cfg.clone(), tx.clone(), Some(dev.clone()));
@@ -146,11 +155,15 @@ pub(super) fn load_rooms(cfg: RunnerConfig, tx: SyncSender<Msg>, device: Option<
             .map_err(|e| clean(&e))
             .and_then(|mut c| c.chat_rooms().map_err(|e| clean(&e)));
         let result = match (&device, result) {
-            (Some(dev), Ok(rooms)) => {
+            (Some(dev), result) => {
                 let _ = tx.send(Msg::ChatMachines(dev.machines().into_iter().collect()));
-                Ok(dev.merge(rooms))
+                match result {
+                    Ok(rooms) => Ok(dev.merge(rooms)),
+                    Err(_) if !dev.rooms().is_empty() => Ok(dev.rooms()),
+                    Err(e) => Err(e),
+                }
             }
-            (_, result) => result,
+            (None, result) => result,
         };
         let _ = tx.send(Msg::ChatRooms(result));
     });
@@ -199,6 +212,13 @@ pub(super) fn send(
     mention: Option<MentionReq>,
     device: Option<Arc<Paired>>,
 ) {
+    if let Some(text) = device.as_ref().and_then(|d| d.refusal(&room)) {
+        thread::spawn(move || {
+            let result = Err((false, text.to_owned()));
+            let _ = tx.send(Msg::ChatSent { room, result });
+        });
+        return;
+    }
     if let Some(dev) = device.filter(|d| d.handles(&room)) {
         thread::spawn(move || {
             let result = if mention.is_some() {

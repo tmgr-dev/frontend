@@ -1544,7 +1544,7 @@ impl App {
         let state = tmgr_runner::attach::ChatState::new()
             .with_mention_cap(self.chat_mention_cap)
             .with_agent_session(std::env::var_os("TMGR_SESSION_ID").is_some())
-            .with_pair_hint(self.device.is_none());
+            .with_pair_hint(self.device.as_ref().is_none_or(|d| d.removed()));
         self.view.open_chat(state);
         self.chat_sub = Some(ChatSub::start(&self.cfg, self.tx.clone()));
         attach_chat::load_rooms(self.cfg.clone(), self.tx.clone(), self.device.clone());
