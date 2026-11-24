@@ -2,6 +2,7 @@ mod card;
 mod danger;
 mod dialog;
 mod matcher;
+pub mod remote;
 #[cfg(unix)]
 pub mod spool;
 #[cfg(test)]

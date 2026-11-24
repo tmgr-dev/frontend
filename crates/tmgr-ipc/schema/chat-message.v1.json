@@ -54,6 +54,30 @@
       "required": ["card_id"],
       "properties": {
         "card_id": { "$ref": "#/$defs/token" },
+        "closed": { "type": "string", "maxLength": 256 },
+        "permit": {
+          "description": "Remote permission card. Readers that do not know it ignore it.",
+          "type": "object",
+          "required": ["session", "runner_id", "runner_fp", "nonce", "exp_ms", "req_sha256", "reissue", "agent", "tool", "text"],
+          "properties": {
+            "session": { "type": "string" },
+            "runner_id": { "type": "string" },
+            "runner_fp": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+            "exp_ms": { "type": "integer", "minimum": 0 },
+            "req_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "reissue": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "agent": { "type": "string" },
+            "tool": { "type": "string" },
+            "text": { "type": "string" },
+            "path": { "type": "string" },
+            "reason": { "type": "string" },
+            "from": { "type": "string" },
+            "warning": { "type": "string" },
+            "danger": { "type": "array", "items": { "type": "string" } },
+            "always_label": { "type": "string" }
+          }
+        },
         "spawn": {
           "description": "Owner approval card for a spawn proposal. Readers that do not know it ignore it.",
           "type": "object",

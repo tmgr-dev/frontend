@@ -526,6 +526,8 @@ impl Runner {
                     }),
                     prompt: remote.and(prompt).map(String::from),
                 }),
+                permit: None,
+                closed: None,
             }),
             session_meta: None,
             user_turn: false,

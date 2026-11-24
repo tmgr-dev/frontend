@@ -201,6 +201,36 @@ pub struct DecisionRef {
     pub card_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spawn: Option<SpawnCard>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permit: Option<PermitCardMsg>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PermitCardMsg {
+    pub session: String,
+    pub runner_id: String,
+    pub runner_fp: String,
+    pub nonce: String,
+    pub exp_ms: u64,
+    pub req_sha256: String,
+    pub reissue: u8,
+    pub agent: String,
+    pub tool: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub danger: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub always_label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -750,6 +780,46 @@ mod tests {
             1795000900000
         );
         assert_eq!(serde_json::to_value(&m).unwrap(), e);
+    }
+
+    fn permit_card() -> Value {
+        json!({
+            "session": "s_abcdefghij", "runner_id": "mx_7f3a", "runner_fp": "ab".repeat(32),
+            "nonce": "cd".repeat(16), "exp_ms": 1795000120000u64, "req_sha256": "ef".repeat(32),
+            "reissue": 1, "agent": "claude-code", "tool": "Bash", "text": "ls",
+            "danger": ["deletes files"], "always_label": "Always allow ls"
+        })
+    }
+
+    #[test]
+    fn a_permit_card_round_trips_on_a_decision() {
+        let mut e = examples().remove(2);
+        e["decision"]["permit"] = permit_card();
+        e["decision"]["closed"] = json!("answered on Mac");
+        let m: ChatMessage = serde_json::from_value(e.clone()).unwrap();
+        m.validate().unwrap();
+        let d = m.decision.as_ref().unwrap();
+        assert_eq!(d.permit.as_ref().unwrap().reissue, 1);
+        assert_eq!(d.closed.as_deref(), Some("answered on Mac"));
+        assert_eq!(serde_json::to_value(&m).unwrap(), e);
+    }
+
+    #[test]
+    fn an_old_decision_has_no_permit_or_closed_and_serializes_without_them() {
+        let m: ChatMessage = serde_json::from_value(examples().remove(2)).unwrap();
+        let d = m.decision.as_ref().unwrap();
+        assert!(d.permit.is_none() && d.closed.is_none());
+        let s = serde_json::to_string(&m).unwrap();
+        assert!(!s.contains("permit") && !s.contains("closed"));
+    }
+
+    #[test]
+    fn a_permit_card_without_danger_omits_it() {
+        let mut c = permit_card();
+        c.as_object_mut().unwrap().remove("danger");
+        let p: PermitCardMsg = serde_json::from_value(c).unwrap();
+        assert!(p.danger.is_empty());
+        assert!(serde_json::to_value(&p).unwrap().get("danger").is_none());
     }
 
     #[test]
