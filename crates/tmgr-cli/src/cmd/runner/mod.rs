@@ -5,6 +5,7 @@ mod attach_checkpoints;
 mod attach_chip;
 mod attach_clip;
 pub(crate) mod attach_consent;
+pub(crate) mod attach_device;
 mod attach_export;
 mod attach_export_cmd;
 mod attach_folders;
@@ -523,6 +524,16 @@ pub struct AttachArgs {
     pub no_links: bool,
 }
 
+#[derive(Subcommand)]
+pub enum DeviceCmd {
+    /// Give `tmgr attach` its own chat device so it can write into other machines' sessions; approve it on a trusted desktop or mobile
+    Pair,
+    /// Remove the attach chat device from the relay and delete its keys
+    Unpair,
+    /// Show whether the attach chat device is paired
+    Status,
+}
+
 #[derive(Args)]
 pub struct SendArgs {
     /// Session id or name
@@ -658,6 +669,25 @@ pub fn run(cli: &Cli, cmd: &RunnerCommands) -> i32 {
         style: out::stdout_style(cli.no_color),
     };
     match ops::dispatch(&o, cmd) {
+        Ok(code) => code,
+        Err(e) => out::print_error(cli.json, cli.verbose, out::stderr_style(cli.no_color), &e),
+    }
+}
+
+pub fn run_device(cli: &Cli, cmd: &DeviceCmd) -> i32 {
+    let o = Opts {
+        cli,
+        ws: cli.ws.clone(),
+        json: cli.json,
+        quiet: cli.quiet,
+        style: out::stdout_style(cli.no_color),
+    };
+    let result = match cmd {
+        DeviceCmd::Pair => attach_device::pair(&o),
+        DeviceCmd::Unpair => attach_device::unpair(&o),
+        DeviceCmd::Status => attach_device::device(&o),
+    };
+    match result {
         Ok(code) => code,
         Err(e) => out::print_error(cli.json, cli.verbose, out::stderr_style(cli.no_color), &e),
     }

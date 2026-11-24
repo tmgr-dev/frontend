@@ -1,4 +1,5 @@
 use super::attach::Msg;
+use super::attach_device::{self, poll, Paired};
 use super::connect;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
@@ -80,11 +81,77 @@ fn listen(
     }
 }
 
-pub(super) fn load_rooms(cfg: RunnerConfig, tx: SyncSender<Msg>) {
+pub(super) fn open_device() -> Option<Arc<Paired>> {
+    open_in(
+        tmgr_link::privileged::in_agent_session(),
+        &tmgr_ipc::dirs::runner_dir().ok()?,
+    )
+}
+
+pub(super) fn open_in(agent_session: bool, dir: &std::path::Path) -> Option<Arc<Paired>> {
+    if agent_session {
+        return None;
+    }
+    let machine = tmgr_runner::chat::machine_id(dir).ok()?;
+    attach_device::open(dir, &machine)
+        .ok()
+        .flatten()
+        .map(Arc::new)
+}
+
+pub(super) struct DevicePoller {
+    stop: Arc<AtomicBool>,
+}
+
+impl DevicePoller {
+    pub(super) fn start(dev: Arc<Paired>, cfg: RunnerConfig, tx: SyncSender<Msg>) -> DevicePoller {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        thread::spawn(move || {
+            let mut shape = (usize::MAX, usize::MAX);
+            let mut step = || {
+                let fresh = dev.poll()?;
+                for m in fresh {
+                    if tx.send(Msg::ChatPush(Box::new(m))).is_err() {
+                        flag.store(true, Ordering::SeqCst);
+                    }
+                }
+                for note in dev.receipt_notes() {
+                    let _ = tx.send(Msg::ChatReceipt(clean(&note)));
+                }
+                let now = (dev.rooms().len(), dev.machines().len());
+                if now != shape {
+                    shape = now;
+                    load_rooms(cfg.clone(), tx.clone(), Some(dev.clone()));
+                }
+                Ok(())
+            };
+            poll::run(&flag.clone(), &mut step, &|d| {
+                poll::sleep_unless_stopped(&flag, d)
+            });
+        });
+        DevicePoller { stop }
+    }
+}
+
+impl Drop for DevicePoller {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
+}
+
+pub(super) fn load_rooms(cfg: RunnerConfig, tx: SyncSender<Msg>, device: Option<Arc<Paired>>) {
     thread::spawn(move || {
         let result = connect(&cfg)
             .map_err(|e| clean(&e))
             .and_then(|mut c| c.chat_rooms().map_err(|e| clean(&e)));
+        let result = match (&device, result) {
+            (Some(dev), Ok(rooms)) => {
+                let _ = tx.send(Msg::ChatMachines(dev.machines().into_iter().collect()));
+                Ok(dev.merge(rooms))
+            }
+            (_, result) => result,
+        };
         let _ = tx.send(Msg::ChatRooms(result));
     });
 }
@@ -94,7 +161,23 @@ pub(super) fn load_history(
     tx: SyncSender<Msg>,
     room: RoomRef,
     before: Option<String>,
+    device: Option<Arc<Paired>>,
 ) {
+    if let Some(dev) = device.filter(|d| d.handles(&room)) {
+        thread::spawn(move || {
+            let result = Ok(if before.is_some() {
+                Vec::new()
+            } else {
+                dev.history(&room, HISTORY_LIMIT as usize)
+            });
+            let _ = tx.send(Msg::ChatHistory {
+                room,
+                before,
+                result,
+            });
+        });
+        return;
+    }
     thread::spawn(move || {
         let result = connect(&cfg).map_err(|e| clean(&e)).and_then(|mut c| {
             c.chat_history(&room, before.as_deref(), Some(HISTORY_LIMIT))
@@ -114,7 +197,22 @@ pub(super) fn send(
     room: RoomRef,
     body: String,
     mention: Option<MentionReq>,
+    device: Option<Arc<Paired>>,
 ) {
+    if let Some(dev) = device.filter(|d| d.handles(&room)) {
+        thread::spawn(move || {
+            let result = if mention.is_some() {
+                Err((
+                    false,
+                    "mentions are not supported in rooms of other machines".to_owned(),
+                ))
+            } else {
+                dev.send(&room, &body).map_err(|e| (false, clean(&e)))
+            };
+            let _ = tx.send(Msg::ChatSent { room, result });
+        });
+        return;
+    }
     thread::spawn(move || {
         let result: Result<ChatMessage, (bool, String)> = connect(&cfg)
             .map_err(|e| (false, clean(&e)))

@@ -74,6 +74,8 @@ fn standalone(cli: &Cli) -> Option<i32> {
         })) => Some(cmd::session::run(c)),
         #[cfg(feature = "runner")]
         Some(Command::Runner(c)) => Some(cmd::runner::run(cli, c)),
+        #[cfg(feature = "runner")]
+        Some(Command::Device { command }) => Some(cmd::runner::run_device(cli, command)),
         Some(Command::Prompt(args)) => Some(cmd::prompt::prompt(args, cli.no_color)),
         Some(Command::Statusline { target }) => Some(cmd::prompt::statusline(*target)),
         Some(Command::Git {
@@ -181,6 +183,8 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Alarm(args)) => cmd::notify::alarm(ctx, args),
         #[cfg(feature = "runner")]
         Some(Command::Runner(_)) => Err(Error::internal("handled before the session starts")),
+        #[cfg(feature = "runner")]
+        Some(Command::Device { .. }) => Err(Error::internal("handled before the session starts")),
         #[cfg(feature = "runner")]
         Some(Command::Chat { command }) => cmd::chat::run(ctx, command),
         #[cfg(feature = "runner")]

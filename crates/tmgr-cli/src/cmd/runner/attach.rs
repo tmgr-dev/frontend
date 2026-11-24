@@ -3,6 +3,7 @@ use super::attach_checkpoints;
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{clipboard_image, Clipboard, SystemClipboard};
 use super::attach_consent::Reads;
+use super::attach_device;
 use super::attach_export;
 use super::attach_git::{diff_pane_argv, git_worker, GitJob};
 use super::attach_goto::{
@@ -181,6 +182,7 @@ pub(super) enum Msg {
     Exported(std::result::Result<String, String>),
     NotesSent(std::result::Result<String, String>),
     ChatRooms(std::result::Result<Vec<tmgr_ipc::chat::RoomInfo>, String>),
+    ChatMachines(Vec<(String, String)>),
     ChatHistory {
         room: tmgr_ipc::chat::RoomRef,
         before: Option<String>,
@@ -197,6 +199,7 @@ pub(super) enum Msg {
     },
     ChatPush(Box<tmgr_ipc::chat::ChatMessage>),
     ChatDown(String),
+    ChatReceipt(String),
     Pushed(std::result::Result<(), String>),
     Posted(std::result::Result<String, String>, Box<SummaryDraft>),
     Chips(HashMap<String, TaskChip>),
@@ -414,6 +417,8 @@ struct App {
     chat_cap: bool,
     chat_mention_cap: bool,
     chat_sub: Option<ChatSub>,
+    device: Option<Arc<attach_device::Paired>>,
+    _device_poll: Option<attach_chat::DevicePoller>,
     window_focused: bool,
     focus_seen: bool,
     last_user: Instant,
@@ -671,6 +676,11 @@ impl App {
                 self.view.notes_sent(ok, &text);
                 self.notify(&text);
             }
+            Msg::ChatMachines(labels) => {
+                if let Some(c) = self.view.chat.as_mut() {
+                    c.set_machine_labels(labels.into_iter().collect());
+                }
+            }
             Msg::ChatRooms(result) => {
                 self.dirty = true;
                 let action = self.view.chat.as_mut().and_then(|c| match result {
@@ -723,6 +733,10 @@ impl App {
                 if self.view.chat.is_some() {
                     self.notify(&format!("chat live updates stopped: {e}"));
                 }
+            }
+            Msg::ChatReceipt(note) => {
+                self.dirty = true;
+                self.notify(&note);
             }
             Msg::Pushed(result) => {
                 if let Err(e) = result {
@@ -1529,10 +1543,11 @@ impl App {
         }
         let state = tmgr_runner::attach::ChatState::new()
             .with_mention_cap(self.chat_mention_cap)
-            .with_agent_session(std::env::var_os("TMGR_SESSION_ID").is_some());
+            .with_agent_session(std::env::var_os("TMGR_SESSION_ID").is_some())
+            .with_pair_hint(self.device.is_none());
         self.view.open_chat(state);
         self.chat_sub = Some(ChatSub::start(&self.cfg, self.tx.clone()));
-        attach_chat::load_rooms(self.cfg.clone(), self.tx.clone());
+        attach_chat::load_rooms(self.cfg.clone(), self.tx.clone(), self.device.clone());
     }
 
     fn chat_actions(&mut self, actions: Vec<tmgr_runner::attach::ChatAction>) {
@@ -1541,14 +1556,27 @@ impl App {
         for action in actions {
             match action {
                 ChatAction::Load { room, before } => {
-                    attach_chat::load_history(self.cfg.clone(), self.tx.clone(), room, before);
+                    attach_chat::load_history(
+                        self.cfg.clone(),
+                        self.tx.clone(),
+                        room,
+                        before,
+                        self.device.clone(),
+                    );
                 }
                 ChatAction::Send {
                     room,
                     body,
                     mention,
                 } => {
-                    attach_chat::send(self.cfg.clone(), self.tx.clone(), room, body, mention);
+                    attach_chat::send(
+                        self.cfg.clone(),
+                        self.tx.clone(),
+                        room,
+                        body,
+                        mention,
+                        self.device.clone(),
+                    );
                 }
                 ChatAction::Inject {
                     room,
@@ -5360,6 +5388,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
     thread::spawn(move || answerer(perm_cfg, perm_rx, perm_out));
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
+    let device = attach_chat::open_device();
+    let device_poll = device
+        .clone()
+        .map(|d| attach_chat::DevicePoller::start(d, cfg.clone(), app_tx.clone()));
     let mut app = App {
         watched: Some(view.panes().to_vec()),
         shell_ids: list
@@ -5386,6 +5418,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> 
         chat_cap,
         chat_mention_cap,
         chat_sub: None,
+        device,
+        _device_poll: device_poll,
         window_focused: true,
         focus_seen: false,
         last_user: Instant::now(),

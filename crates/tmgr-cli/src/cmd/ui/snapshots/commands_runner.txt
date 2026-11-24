@@ -60,6 +60,9 @@ chat join | Other | -
 chat status | Other | -
 chat remote allow-ask | Other | leader, state
 chat remote policy | Other | -
+device pair | Other | -
+device unpair | Other | -
+device status | Other | -
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds

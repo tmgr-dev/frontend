@@ -43,9 +43,9 @@ fn origin(base: &str) -> Result<String, String> {
     Ok(base.to_owned())
 }
 
-pub(super) const STATUS_KEY: &str = "http_status";
+pub(crate) const STATUS_KEY: &str = "http_status";
 
-fn failure(status: u16, retry_after: Option<u64>, body: String) -> String {
+pub(crate) fn failure(status: u16, retry_after: Option<u64>, body: String) -> String {
     let mut object = match serde_json::from_str::<Value>(&body) {
         Ok(Value::Object(mut map)) => {
             map.remove(STATUS_KEY);
@@ -82,7 +82,7 @@ fn failure(status: u16, retry_after: Option<u64>, body: String) -> String {
 }
 
 impl HttpRelayTransport {
-    fn bearer(&self, auth: Auth, device: Option<&str>) -> Result<String, String> {
+    pub(crate) fn bearer(&self, auth: Auth, device: Option<&str>) -> Result<String, String> {
         let login = self.login_token.as_deref();
         let token = match auth {
             Auth::Login => login,

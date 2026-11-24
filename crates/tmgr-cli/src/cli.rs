@@ -49,6 +49,12 @@ pub enum Command {
         #[command(subcommand)]
         command: crate::cmd::chat::ChatCommand,
     },
+    /// Pair this terminal's `tmgr attach` as a chat device, to write into sessions of other machines
+    #[cfg(feature = "runner")]
+    Device {
+        #[command(subcommand)]
+        command: crate::cmd::runner::DeviceCmd,
+    },
     /// Time you spent in `tmgr attach`: totals, idle cap and sending to tasks
     #[cfg(feature = "runner")]
     Time(crate::cmd::time::TimeArgs),
