@@ -349,6 +349,8 @@ fn untrusted_sender_is_ignored() {
   send(&stranger, "let me in").unwrap();
   assert!(a.poll_once().unwrap().is_empty());
   assert!(history(&a).is_empty());
+  clock.set(T0 + WRITE_EVERY_MS);
+  a.poll_once().unwrap();
   assert_eq!(fake.queue_len(&my_id(&a)), 0);
   assert_eq!(a.drops(), ["unknown sender"]);
 }
@@ -3850,4 +3852,31 @@ fn pending_after_unlearned_revoke(root: bool) -> usize {
 fn a_root_of_unknown_kind_may_revoke_but_a_non_root_of_unknown_kind_may_not() {
   assert_eq!(pending_after_unlearned_revoke(true), 1);
   assert_eq!(pending_after_unlearned_revoke(false), 0);
+}
+
+#[test]
+fn a_restart_without_a_flush_does_not_hold_the_receipts_that_follow() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let store = Arc::new(MemKeyStore::default());
+  let a = engine_on(&fake, &clock, store.clone(), "mx_local");
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  bind_room_machine(&a, &r);
+  a.save_now(&mut a.lock()).unwrap();
+  let aid = my_id(&a);
+  let sent: Vec<String> = (0..4).map(|i| send(&a, &format!("m{i}")).unwrap().id).collect();
+  a.save_now(&mut a.lock()).unwrap();
+  clock.set(T0 + 1_000);
+  post_receipt(&r, &aid, "rc_0q", receipt_of(&sent[0], "queued"));
+  a.poll_once().unwrap();
+  assert_eq!(a.take_receipts().len(), 1);
+  drop(a);
+  let a = engine_on(&fake, &clock, store, "mx_local");
+  for (i, id) in sent.iter().enumerate() {
+    clock.set(T0 + 2_000 + i as u64 * 1_500);
+    post_receipt(&r, &aid, &format!("rc_{i}d"), receipt_of(id, "delivered"));
+    a.poll_once().unwrap();
+    let got = a.take_receipts();
+    assert!(got.iter().any(|r| r.id == *id && r.state == ReceiptState::Delivered), "receipt {i} was held: {got:?}");
+  }
+  assert!(a.lock().st.seq_gaps.is_empty());
 }

@@ -125,8 +125,8 @@ fn first_unverifiable_second_delayed(break_first: impl FnOnce(&Rig, &ChatMessage
     assert!(r.runner.poll_once().unwrap().is_empty());
     assert_eq!(
         r.runner_queue(),
-        1,
-        "m1 is acked and gone; only the held m2 stays on the server"
+        2,
+        "m1 stays on the server until the cursor past it is stored"
     );
     assert_eq!(r.seq_in(), Some(seq_before), "m1 did not advance seq_in");
 
@@ -314,6 +314,7 @@ fn slow_poll_blocks_send(queued_in_desk: bool) -> usize {
         let mut m = chat("reply");
         m.author.kind = AuthorKind::Manager;
         r.runner.send_chat(&m, true).unwrap();
+        r.sender_clock.set(T0 + WRITE_EVERY_MS);
     }
     r.fake.0.lock().unwrap().slow_ms = 10;
     std::thread::scope(|s| {

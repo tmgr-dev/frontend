@@ -257,6 +257,7 @@ struct Core {
   written_state: String,
   written_trust: String,
   last_write: u64,
+  written_cursor: u64,
   acked: u64,
   hold_since: BTreeMap<String, u64>,
   pass_cap: Option<usize>,
@@ -291,6 +292,7 @@ struct Snapshot {
   gen: u64,
   log: Option<(u64, String)>,
   state: Option<String>,
+  cursor: u64,
   trust: String,
   at: u64,
 }
@@ -671,6 +673,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       }
       core.written_state = serde_json::to_string(&core.st).map_err(err)?;
       core.written_trust = trust_key(&core.st);
+      core.written_cursor = core.st.cursor;
       core.acked = core.st.cursor;
     }
     let now = Box::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
@@ -792,7 +795,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       None
     };
     let gen = self.next_gen.fetch_add(1, Ordering::SeqCst) + 1;
-    Ok(Some(Snapshot { gen, log, state: state_changed.then_some(st), trust, at: now }))
+    Ok(Some(Snapshot { gen, log, state: state_changed.then_some(st), cursor: c.st.cursor, trust, at: now }))
   }
 
   /// Without the core lock: one writer at a time, and a snapshot older than one already written is dropped (the newer one carries everything).
@@ -819,12 +822,13 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.committed_gen = snap.gen;
     if let Some(st) = snap.state {
       c.written_state = st;
+      c.written_cursor = snap.cursor;
     }
     c.written_trust = snap.trust;
     c.last_write = snap.at;
   }
 
-  /// A message is acked only once the log holding it is stored, so the keychain write runs with the core lock released.
+  /// A message is acked only once the log holding it and the cursor past it are stored, so the keychain write runs with the core lock released.
   fn persist_out<'a>(&'a self, g: MutexGuard<'a, Core>, force: bool) -> Result<MutexGuard<'a, Core>, String> {
     let mut g = g;
     let Some(snap) = self.plan(&mut g, force)? else {
@@ -2081,10 +2085,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   fn ack_stored<'a>(&'a self, g: MutexGuard<'a, Core>, token: &str) -> Result<MutexGuard<'a, Core>, String> {
     let g = self.persist_out(g, false)?;
-    if self.log_unstored() || g.st.cursor <= g.acked {
+    let through = g.st.cursor.min(g.written_cursor);
+    if self.log_unstored() || through <= g.acked {
       return Ok(g);
     }
-    let through = g.st.cursor;
     drop(g);
     self.t.call(&api::ack_messages(through).map_err(err)?, Some(token))?;
     let mut g = self.lock();
@@ -2110,9 +2114,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         Self::commit(c, snap);
       }
     }
-    if !self.log_unstored() && c.st.cursor > c.acked {
-      self.call(c, api::ack_messages(c.st.cursor).map_err(err)?)?;
-      c.acked = c.st.cursor;
+    let through = c.st.cursor.min(c.written_cursor);
+    if !self.log_unstored() && through > c.acked {
+      self.call(c, api::ack_messages(through).map_err(err)?)?;
+      c.acked = through;
     }
     Ok(())
   }

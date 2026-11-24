@@ -338,6 +338,7 @@ struct Core {
     written_state: String,
     written_trust: String,
     last_write: u64,
+    written_cursor: u64,
     acked: u64,
     hold_since: BTreeMap<String, u64>,
     pass_cap: Option<usize>,
@@ -850,6 +851,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             }
             core.written_state = serde_json::to_string(&core.st).map_err(err)?;
             core.written_trust = trust_key(&core.st);
+            core.written_cursor = core.st.cursor;
             core.acked = core.st.cursor;
         }
         let now = Box::new(|| {
@@ -938,7 +940,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         self.persist(c, true).map(|_| ())
     }
 
-    /// Poll-time writes are throttled unless trust changed; a message is acked only once the state that dedupes it is stored.
+    /// Poll-time writes are throttled unless trust changed; a message is acked only once the state that dedupes it and the cursor past it are stored.
     fn persist(&self, c: &mut Core, force: bool) -> Result<bool, String> {
         let st = serde_json::to_string(&c.st).map_err(err)?;
         let state_changed = st != c.written_state;
@@ -953,6 +955,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         if state_changed {
             self.k.save(Slot::State, &st)?;
             c.written_state = st;
+            c.written_cursor = c.st.cursor;
         }
         c.unsaved = false;
         c.written_trust = trust;
@@ -2409,9 +2412,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     fn ack_if_stored(&self, c: &mut Core) -> Result<(), String> {
         self.persist(c, false)?;
-        if !c.unsaved && c.st.cursor > c.acked {
-            self.call(c, api::ack_messages(c.st.cursor).map_err(err)?)?;
-            c.acked = c.st.cursor;
+        let through = c.st.cursor.min(c.written_cursor);
+        if !c.unsaved && through > c.acked {
+            self.call(c, api::ack_messages(through).map_err(err)?)?;
+            c.acked = through;
         }
         Ok(())
     }

@@ -161,7 +161,7 @@ fn a_receipt_never_contains_message_text() {
 
 #[test]
 fn an_unknown_receipt_kind_is_ignored_without_alert_or_hold_and_the_next_message_is_not_delayed() {
-    let (fake, _c, runner, desktop, _m, _o) = rooms_world();
+    let (fake, clock, runner, desktop, _m, _o) = rooms_world();
     let did = my_id(&desktop);
     desktop.poll_once().unwrap();
     let rid = my_id(&runner);
@@ -178,6 +178,8 @@ fn an_unknown_receipt_kind_is_ignored_without_alert_or_hold_and_the_next_message
         desktop.lock().st.seq_in.get(&rid).copied(),
         Some(before + 2)
     );
+    clock.set(T0 + WRITE_EVERY_MS);
+    desktop.poll_once().unwrap();
     assert_eq!(fake.queue_len(&did), 0);
     assert_eq!(alert_kinds(&desktop), alerts);
     assert!(desktop.trust_state().unwrap().seq_gaps.is_empty());

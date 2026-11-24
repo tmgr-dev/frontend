@@ -566,6 +566,8 @@ fn untrusted_sender_is_ignored() {
     send(&stranger, "let me in").unwrap();
     assert!(a.poll_once().unwrap().is_empty());
     assert!(history(&a).is_empty());
+    clock.set(T0 + WRITE_EVERY_MS);
+    a.poll_once().unwrap();
     assert_eq!(fake.queue_len(&my_id(&a)), 0);
 }
 
@@ -4977,4 +4979,48 @@ fn pending_after_unlearned_revoke(root: bool) -> usize {
 fn a_root_of_unknown_kind_may_revoke_but_a_non_root_of_unknown_kind_may_not() {
     assert_eq!(pending_after_unlearned_revoke(true), 1);
     assert_eq!(pending_after_unlearned_revoke(false), 0);
+}
+
+#[test]
+fn a_restart_without_a_flush_does_not_hold_the_next_rpc() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let store = Arc::new(MemKeyStore::default());
+    let runner = |store: Arc<MemKeyStore>| {
+        let mut r = engine_on(&fake, &clock, store, "").with_kind("runner");
+        let sink = RpcRec::default();
+        r.rpc = Some(Arc::new(sink.clone()));
+        (r, sink)
+    };
+    let (r, _) = runner(store.clone());
+    let code = a.open_join_code().unwrap();
+    r.join_with_code(&code).unwrap();
+    a.poll_once().unwrap();
+    a.decide_join(&my_id(&r), true).unwrap();
+    r.poll_once().unwrap();
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    for e in [&r1, &r, &a] {
+        e.poll_once().unwrap();
+    }
+    let rid = my_id(&r);
+    r1.send_rpc(&rid, "mgr_req", &rpc_id("mgr_req"), &json!({ "op": "w" }))
+        .unwrap();
+    r.poll_once().unwrap();
+    r.save_now(&mut r.lock()).unwrap();
+    clock.set(T0 + 1_000);
+    r1.send_rpc(&rid, "mgr_req", &rpc_id("mgr_req"), &json!({ "op": "x" }))
+        .unwrap();
+    r.poll_once().unwrap();
+    drop(r);
+    let (r, sink) = runner(store);
+    clock.set(T0 + 2_000);
+    let id = rpc_id("mgr_req");
+    r1.send_rpc(&rid, "mgr_req", &id, &json!({ "op": "y" }))
+        .unwrap();
+    r.poll_once().unwrap();
+    assert!(
+        sink.0.lock().unwrap().iter().any(|g| g.3 == id),
+        "the rpc was held"
+    );
+    assert!(r.lock().st.seq_gaps.is_empty());
 }
