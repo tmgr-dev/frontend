@@ -5,6 +5,16 @@ pub fn is_interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
 }
 
+pub fn ask_yes(question: &str) -> bool {
+    eprint!("{question} ");
+    let _ = std::io::stderr().flush();
+    let mut line = String::new();
+    if std::io::stdin().lock().read_line(&mut line).is_err() {
+        return false;
+    }
+    matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+}
+
 pub fn confirm(question: &str, accept_yes_flag: bool, yes_flag: bool) -> Result<()> {
     if accept_yes_flag && yes_flag {
         return Ok(());

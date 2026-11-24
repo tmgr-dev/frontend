@@ -2,6 +2,7 @@ mod cache;
 mod lock;
 pub mod poll;
 mod probe;
+pub mod step_up;
 mod store;
 
 use super::{emit, Opts};
@@ -353,15 +354,19 @@ fn pair_hint() -> &'static str {
     "run tmgr device pair again with a fresh join code"
 }
 
+fn scope_error() -> Error {
+    Error::new(
+        Kind::Forbidden,
+        format!("this login cannot add a chat device (needs scope {SCOPE})"),
+    )
+    .hint(scopes_hint(SCOPE))
+}
+
 pub fn pair_error(e: &str) -> Error {
     let body = serde_json::from_str::<serde_json::Value>(e).unwrap_or_default();
     match body.get(STATUS_KEY).and_then(serde_json::Value::as_u64) {
         Some(401) => Error::auth("not logged in or the session expired").hint("tmgr login"),
-        Some(403) => Error::new(
-            Kind::Forbidden,
-            format!("this login cannot add a chat device (needs scope {SCOPE})"),
-        )
-        .hint(scopes_hint(SCOPE)),
+        Some(403) => scope_error(),
         _ => Error::internal(e).hint(pair_hint()),
     }
 }
@@ -398,6 +403,23 @@ pub fn pair_with<T: Transport, K: KeyStore>(
 
 pub fn pair(o: &Opts) -> Result<i32> {
     tmgr_link::privileged::guard()?;
+    let have = Ctx::new(o.cli)?
+        .cloud_client()?
+        .current_device()
+        .ok()
+        .map(|d| d.scopes);
+    let ask = |prompt: &str| crate::interact::ask_yes(prompt);
+    let login =
+        |scopes: &[String]| crate::cmd::auth::relogin_with_scopes(&Ctx::new(o.cli)?, scopes);
+    let seams = step_up::Seams {
+        interactive: is_interactive(),
+        ask: &ask,
+        login: &login,
+    };
+    step_up::pair_after_step_up(have.as_deref(), &seams, || pair_once(o))
+}
+
+fn pair_once(o: &Opts) -> Result<i32> {
     let ctx = Ctx::new(o.cli)?;
     let client = ctx.cloud_client()?;
     let user_id = client

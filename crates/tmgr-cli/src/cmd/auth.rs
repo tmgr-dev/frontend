@@ -50,6 +50,16 @@ pub fn login(ctx: &Ctx, args: &LoginArgs) -> Result<Output> {
     ))
 }
 
+pub fn relogin_with_scopes(ctx: &Ctx, scopes: &[String]) -> Result<()> {
+    let args = LoginArgs {
+        scopes: Some(scopes.join(",")),
+        with_token: false,
+        label: "tmgr cli".to_owned(),
+        no_browser: false,
+    };
+    login(ctx, &args).map(|_| ())
+}
+
 fn persist_login_settings(ctx: &Ctx, backend: Backend, server: &str) -> Result<()> {
     let mut cfg: Config = Config::load(&ctx.dir)?;
     let mut changed = false;

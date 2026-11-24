@@ -891,3 +891,107 @@ fn the_paired_device_is_opened_by_attach_only_after_a_real_pairing() {
     .expect("paired");
     assert!(opened.is_paired().unwrap());
 }
+
+struct StepUpRun {
+    prompts: RefCell<Vec<String>>,
+    logins: RefCell<Vec<Vec<String>>>,
+}
+
+impl StepUpRun {
+    fn run(
+        w: &World,
+        have: &[&str],
+        interactive: bool,
+        answer: bool,
+    ) -> (StepUpRun, Result<PairOutcome>) {
+        let run = StepUpRun {
+            prompts: RefCell::default(),
+            logins: RefCell::default(),
+        };
+        w.net.0.lock().unwrap().cli_scopes = have.iter().map(|s| (*s).to_owned()).collect();
+        let have: Vec<String> = have.iter().map(|s| (*s).to_owned()).collect();
+        let ask = |p: &str| {
+            run.prompts.borrow_mut().push(p.to_owned());
+            answer
+        };
+        let login = |scopes: &[String]| {
+            run.logins.borrow_mut().push(scopes.to_vec());
+            w.net.0.lock().unwrap().cli_scopes = scopes.to_vec();
+            Ok(())
+        };
+        let seams = step_up::Seams {
+            interactive,
+            ask: &ask,
+            login: &login,
+        };
+        let out = step_up::pair_after_step_up(Some(&have), &seams, || {
+            let dev = w.cli_device();
+            w.pair(&dev)
+        });
+        (run, out)
+    }
+}
+
+#[test]
+fn a_missing_scope_accepted_logs_in_again_with_the_old_scopes_plus_chat_devices_and_pairs() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let (run, out) = StepUpRun::run(&w, &["tasks:read", "workspaces:read"], true, true);
+    assert!(out.is_ok(), "{:?}", out.err());
+    assert_eq!(
+        run.prompts.borrow().as_slice(),
+        [step_up::PROMPT.to_owned()]
+    );
+    assert_eq!(
+        run.logins.borrow().as_slice(),
+        [vec![
+            "tasks:read".to_owned(),
+            "workspaces:read".to_owned(),
+            "chat:devices".to_owned()
+        ]]
+    );
+    assert!(w.net.devices().iter().any(|d| d.1 == "terminal"));
+}
+
+#[test]
+fn a_missing_scope_declined_keeps_the_hint_and_neither_logs_in_nor_registers() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let (run, out) = StepUpRun::run(&w, &["tasks:read"], true, false);
+    let e = out.err().expect("refused");
+    assert_eq!(e.exit_code(), 5);
+    assert!(e.hint.unwrap_or_default().contains("tmgr login --scopes"));
+    assert_eq!(run.prompts.borrow().len(), 1);
+    assert!(run.logins.borrow().is_empty());
+    assert!(w.net.devices().iter().all(|d| d.1 != "terminal"));
+}
+
+#[test]
+fn a_missing_scope_without_a_terminal_gives_the_hint_and_never_prompts() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let (run, out) = StepUpRun::run(&w, &["tasks:read"], false, true);
+    let e = out.err().expect("refused");
+    assert_eq!(e.exit_code(), 5);
+    assert!(e.hint.unwrap_or_default().contains("chat:devices"));
+    assert!(run.prompts.borrow().is_empty());
+    assert!(run.logins.borrow().is_empty());
+    assert!(w.net.devices().iter().all(|d| d.1 != "terminal"));
+}
+
+#[test]
+fn a_token_with_the_scope_pairs_without_a_prompt_or_login() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let (run, out) = StepUpRun::run(&w, &["tasks:read", "chat:devices"], true, true);
+    assert!(out.is_ok(), "{:?}", out.err());
+    assert!(run.prompts.borrow().is_empty());
+    assert!(run.logins.borrow().is_empty());
+}
+
+#[test]
+fn unknown_scopes_fall_back_to_the_defaults_plus_chat_devices() {
+    let wanted = step_up::wanted_scopes(&[]);
+    assert_eq!(wanted.len(), tmgr_core::api::DEFAULT_SCOPES.len() + 1);
+    assert_eq!(wanted.last().map(String::as_str), Some("chat:devices"));
+}
