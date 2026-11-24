@@ -308,7 +308,7 @@ fn a_failing_sink_holds_the_cursor_retries_every_poll_and_blocks_later_messages_
     assert_eq!(history(&r.runner), ["m0", "m1", "m2"]);
 }
 
-fn slow_poll_blocks_send(queued_in_desk: bool) -> usize {
+fn poll_and_send(queued_in_desk: bool) -> Vec<String> {
     let r = rig();
     if queued_in_desk {
         let mut m = chat("reply");
@@ -316,29 +316,39 @@ fn slow_poll_blocks_send(queued_in_desk: bool) -> usize {
         r.runner.send_chat(&m, true).unwrap();
         r.sender_clock.set(T0 + WRITE_EVERY_MS);
     }
-    r.fake.0.lock().unwrap().slow_ms = 10;
+    let gate = Arc::new(Gate::default());
+    {
+        let mut s = r.fake.0.lock().unwrap();
+        s.gate = Some(gate.clone());
+        s.log.clear();
+    }
     std::thread::scope(|s| {
         let poll = s.spawn(|| r.desk.poll_once().unwrap());
-        while r.fake.0.lock().unwrap().slow_started == 0 {
-            std::thread::yield_now();
-        }
-        r.desk.send_chat(&chat("outbound"), true).unwrap();
+        gate.wait_entered(1);
+        let send = s.spawn(|| r.desk.send_chat(&chat("outbound"), true).unwrap());
+        gate.open();
         poll.join().unwrap();
+        send.join().unwrap();
     });
-    let calls = r.fake.0.lock().unwrap().slow_done_at_post;
-    calls.unwrap()
+    let log = r.fake.0.lock().unwrap().log.clone();
+    log
 }
 
 #[test]
-fn send_waits_for_an_in_flight_poll_and_the_wait_scales_with_its_http_calls() {
-    let idle = slow_poll_blocks_send(false);
-    let busy = slow_poll_blocks_send(true);
+fn send_waits_for_an_in_flight_poll_and_goes_out_after_all_of_its_http_calls() {
     assert_eq!(
-        idle, 2,
-        "idle poll (devices + messages = 2 calls) finished before send posted"
+        poll_and_send(false),
+        ["GET devices", "GET messages", "POST messages"],
+        "idle poll: devices + messages, then the send"
     );
     assert_eq!(
-        busy, 3,
-        "poll with one message (devices + messages + ack = 3 calls) finished before send posted"
+        poll_and_send(true),
+        [
+            "GET devices",
+            "GET messages",
+            "POST messages/ack",
+            "POST messages"
+        ],
+        "poll with one message: devices + messages + ack, then the send"
     );
 }

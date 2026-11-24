@@ -48,10 +48,8 @@ struct Server {
     last_seen: BTreeMap<String, u64>,
     puts: Vec<(String, String, String)>,
     fail_after_store: bool,
-    slow_ms: u64,
-    slow_started: usize,
-    slow_done: usize,
-    slow_done_at_post: Option<usize>,
+    gate: Option<Arc<Gate>>,
+    log: Vec<String>,
     full: Option<String>,
     delete_error: Option<String>,
 }
@@ -172,22 +170,46 @@ impl Fake {
     }
 }
 
+#[derive(Default)]
+struct Gate {
+    state: Mutex<(usize, bool)>,
+    changed: std::sync::Condvar,
+}
+
+impl Gate {
+    fn enter(&self) {
+        let mut g = self.state.lock().unwrap();
+        g.0 += 1;
+        self.changed.notify_all();
+        while !g.1 {
+            g = self.changed.wait(g).unwrap();
+        }
+    }
+
+    fn wait_entered(&self, n: usize) {
+        let mut g = self.state.lock().unwrap();
+        while g.0 < n {
+            g = self.changed.wait(g).unwrap();
+        }
+    }
+
+    fn open(&self) {
+        self.state.lock().unwrap().1 = true;
+        self.changed.notify_all();
+    }
+}
+
 fn wrap(v: Value) -> Result<String, String> {
     Ok(json!({ "data": v }).to_string())
 }
 
 impl Transport for Fake {
     fn call(&self, req: &Request, token: Option<&str>) -> Result<String, String> {
-        let slow_ms = self.0.lock().unwrap().slow_ms;
-        let is_post = req.method == Method::Post && req.path.ends_with("/messages");
-        if slow_ms > 0 && !is_post {
-            self.0.lock().unwrap().slow_started += 1;
-            std::thread::sleep(std::time::Duration::from_millis(slow_ms));
-            self.0.lock().unwrap().slow_done += 1;
-        } else if slow_ms > 0 {
-            let mut s = self.0.lock().unwrap();
-            let done = s.slow_done;
-            s.slow_done_at_post.get_or_insert(done);
+        let gate = self.0.lock().unwrap().gate.clone();
+        if let Some(gate) = gate {
+            if !(req.method == Method::Post && req.path.ends_with("/messages")) {
+                gate.enter();
+            }
         }
         let mut s = self.0.lock().unwrap();
         let path = req.path.trim_start_matches("/api/chat-relay").to_owned();
@@ -205,6 +227,8 @@ impl Transport for Fake {
             .trim_matches('/')
             .split('/')
             .collect();
+        s.log
+            .push(format!("{} {}", req.method.as_str(), seg.join("/")));
         match (req.method, seg.as_slice()) {
             (Method::Post, ["devices"]) => {
                 let id = format!("00000000-0000-4000-8000-{:012x}", rand_n());
