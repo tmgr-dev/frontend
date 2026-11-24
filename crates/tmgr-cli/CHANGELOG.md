@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.183
+
+- Fixed: when Codex asks to approve a file edit, the chat shows it as a dialog and no longer types your message into it.
+- Fixed: a chat message is not typed into Claude Code's file-write approval dialog.
+- Changed: a message sent while Codex is working is submitted with Tab, so Codex queues it for its next turn.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.182
 
 - Faster: chat messages sent a few seconds apart reach the agent sooner. The runner used to wait a fixed 5 seconds after each message before typing the next one; it now waits until the agent has redrawn its screen, usually under a second.
