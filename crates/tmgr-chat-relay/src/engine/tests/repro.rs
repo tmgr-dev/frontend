@@ -322,10 +322,16 @@ fn poll_and_send(queued_in_desk: bool) -> Vec<String> {
         s.gate = Some(gate.clone());
         s.log.clear();
     }
+    let started = std::sync::Barrier::new(2);
     std::thread::scope(|s| {
         let poll = s.spawn(|| r.desk.poll_once().unwrap());
         gate.wait_entered(1);
-        let send = s.spawn(|| r.desk.send_chat(&chat("outbound"), true).unwrap());
+        let send = s.spawn(|| {
+            started.wait();
+            r.desk.send_chat(&chat("outbound"), true).unwrap()
+        });
+        started.wait();
+        std::thread::sleep(std::time::Duration::from_millis(50));
         gate.open();
         poll.join().unwrap();
         send.join().unwrap();

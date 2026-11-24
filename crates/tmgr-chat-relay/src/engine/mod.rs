@@ -2632,8 +2632,15 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         if revoked_known(c) {
             return Ok(true);
         }
-        match self.fetch_dir(c) {
-            Ok(dir) => Ok(!dir.devices.iter().any(|d| d.device_id == id)),
+        match self.sync_dir(c) {
+            Ok(()) => {
+                self.save_now(c)?;
+                let listed = c
+                    .dir
+                    .as_ref()
+                    .is_some_and(|d| d.devices.iter().any(|x| x.device_id == id));
+                Ok(!listed || revoked_known(c))
+            }
             Err(e) if http_status(&e) == Some(401) => Ok(true),
             Err(e) => Err(e),
         }
