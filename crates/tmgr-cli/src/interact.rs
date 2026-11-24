@@ -5,6 +5,7 @@ pub fn is_interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
 }
 
+#[cfg(feature = "runner")]
 pub fn ask_yes(question: &str) -> bool {
     eprint!("{question} ");
     let _ = std::io::stderr().flush();

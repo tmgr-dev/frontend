@@ -50,6 +50,7 @@ pub fn login(ctx: &Ctx, args: &LoginArgs) -> Result<Output> {
     ))
 }
 
+#[cfg(feature = "runner")]
 pub fn relogin_with_scopes(ctx: &Ctx, scopes: &[String]) -> Result<()> {
     let args = LoginArgs {
         scopes: Some(scopes.join(",")),
