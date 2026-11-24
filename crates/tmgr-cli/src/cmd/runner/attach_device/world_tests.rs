@@ -1135,6 +1135,24 @@ fn status_says_a_revoked_terminal_was_removed_from_the_devices() {
 }
 
 #[test]
+fn status_does_not_open_the_device_while_attach_holds_it() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let mut dev = w.cli_device();
+    w.pair(&mut dev).unwrap();
+    let _held = super::lock::acquire(w.dir.path()).unwrap().unwrap();
+    let (data, text) = device_with(
+        w.dir.path(),
+        |_| -> std::result::Result<AttachDevice<Via, Keys>, String> {
+            panic!("status must not open the device while attach holds it")
+        },
+    )
+    .unwrap();
+    assert_eq!(data["state"], "in_use");
+    assert_eq!(text, "Paired and in use by tmgr attach.");
+}
+
+#[test]
 fn status_says_removed_when_the_revoke_row_delete_failed() {
     let w = World::new();
     w.add_runner(R1, true, true);

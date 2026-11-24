@@ -675,14 +675,30 @@ pub fn standing<T: Transport, K: KeyStore>(
 pub fn device(o: &Opts) -> Result<i32> {
     let runner_dir =
         tmgr_ipc::dirs::runner_dir().map_err(|e| Error::internal(format!("runner dir: {e}")))?;
+    let (data, text) = device_with(&runner_dir, |parts| {
+        build_http(&runner_dir, parts, None, "")
+    })?;
+    Ok(emit(o, data, text))
+}
+
+fn device_with<T: Transport, K: KeyStore>(
+    runner_dir: &Path,
+    make: impl Fn(&Parts) -> std::result::Result<AttachDevice<T, K>, String>,
+) -> Result<(serde_json::Value, String)> {
     let not_paired = || {
         let (state, human) = status_data(&TrustState::default(), false, false);
-        emit(o, json!({"state": state}), human)
+        (json!({"state": state}), human)
     };
-    let Some(parts) = load_parts(&runner_dir).map_err(internal)? else {
+    let Some(parts) = load_parts(runner_dir).map_err(internal)? else {
         return Ok(not_paired());
     };
-    let dev = match build_http(&runner_dir, &parts, None, "") {
+    let Some(_lock) = lock::acquire(runner_dir).map_err(internal)? else {
+        return Ok((
+            json!({"state": "in_use", "kind": KIND}),
+            "Paired and in use by tmgr attach.".to_owned(),
+        ));
+    };
+    let dev = match make(&parts) {
         Ok(dev) => dev,
         Err(e) if e == NO_SECURE_STORE => return Ok(not_paired()),
         Err(e) => return Err(internal(e)),
@@ -707,7 +723,7 @@ pub fn device(o: &Opts) -> Result<i32> {
         me.map_or("-", |d| d.label.as_str()),
         me.map_or("-", |d| d.id.as_str()),
     );
-    Ok(emit(o, data, text))
+    Ok((data, text))
 }
 
 #[cfg(test)]
