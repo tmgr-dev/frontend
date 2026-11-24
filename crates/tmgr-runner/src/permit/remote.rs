@@ -279,17 +279,29 @@ fn post(card_id: &str, r: &PermitRecord, reissue: u8, desktop: DesktopPolicy) ->
     }
 }
 
+pub(crate) fn strip_bidi(s: &str) -> String {
+    s.chars()
+        .filter(|c| {
+            !matches!(
+                c,
+                '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{061c}'
+            )
+        })
+        .collect()
+}
+
 fn screen_of(c: &PermissionCard) -> PermitScreen {
+    let opt = |s: &Option<String>| s.as_deref().map(strip_bidi);
     PermitScreen {
-        agent: c.agent.clone(),
-        tool: c.tool.clone(),
-        text: c.text.clone(),
-        path: c.path.clone(),
-        reason: c.reason.clone(),
-        from: c.from.clone(),
-        warning: c.warning.clone(),
-        danger: c.danger.clone(),
-        always_label: c.always_label.clone(),
+        agent: strip_bidi(&c.agent),
+        tool: strip_bidi(&c.tool),
+        text: strip_bidi(&c.text),
+        path: opt(&c.path),
+        reason: opt(&c.reason),
+        from: opt(&c.from),
+        warning: opt(&c.warning),
+        danger: c.danger.iter().map(|d| strip_bidi(d)).collect(),
+        always_label: opt(&c.always_label),
     }
 }
 
@@ -894,6 +906,45 @@ mod tests {
         c.danger = vec!["deletes files".into()];
         c.always_label = None;
         c
+    }
+
+    #[test]
+    fn bidi_controls_never_reach_the_posted_card_or_its_hash() {
+        const BIDI: [char; 12] = [
+            '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}',
+            '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{061c}',
+        ];
+        let dirty = |s: &str| format!("a{}b{}c", BIDI[6], BIDI[0]) + s;
+        let mut c = card();
+        c.agent = dirty("agent");
+        c.tool = dirty("Bash");
+        c.text = dirty("ls\nrm");
+        c.path = Some(dirty("/p"));
+        c.reason = Some(dirty("r"));
+        c.from = Some(dirty("f"));
+        c.warning = Some(dirty("w"));
+        c.danger = vec![dirty("d")];
+        c.always_label = Some(dirty("al"));
+        let mut g = Gen(0);
+        let mut d = PermitDesk::new();
+        let acts = d.observe(SESSION, Some(&c), &ids(), T0, &mut || g.next());
+        let p = posted(&acts);
+        let fields = [
+            Some(p.agent.clone()),
+            Some(p.tool.clone()),
+            Some(p.text.clone()),
+            p.path.clone(),
+            p.reason.clone(),
+            p.from.clone(),
+            p.warning.clone(),
+            p.danger.first().cloned(),
+            p.always_label.clone(),
+        ];
+        for f in fields.into_iter().flatten() {
+            assert!(!f.chars().any(|ch| BIDI.contains(&ch)), "{f:?}");
+        }
+        assert_eq!(p.text, "abcls\nrm");
+        assert_eq!(p.req_sha256, rec(&d).screen.req_sha256());
     }
 
     #[test]

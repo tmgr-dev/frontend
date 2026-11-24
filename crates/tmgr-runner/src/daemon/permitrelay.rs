@@ -1,6 +1,6 @@
 use super::spawnauth::release_queued;
 use super::*;
-use crate::permit::remote::{Action, PermitDesk, RunnerIds};
+use crate::permit::remote::{strip_bidi, Action, PermitDesk, RunnerIds};
 use crate::spawnauth::SpawnAuth;
 use std::io::Write;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -148,7 +148,11 @@ fn pool(mut nonces: Vec<String>) -> impl FnMut() -> String {
 }
 
 fn clean(s: &str, max: usize) -> String {
-    s.chars().filter(|c| !c.is_control()).take(max).collect()
+    strip_bidi(s)
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(max)
+        .collect()
 }
 
 impl Runner {
@@ -744,6 +748,12 @@ mod tests {
     fn armed(e: &Env) {
         tick(e);
         thread::sleep(CARD_ARM + Duration::from_millis(100));
+    }
+
+    #[test]
+    fn clean_strips_bidi_and_control_characters() {
+        let s = "a\u{202e}b\u{2066}c\u{200f}d\u{061c}e\nf";
+        assert_eq!(clean(s, 64), "abcdef");
     }
 
     #[test]
