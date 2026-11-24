@@ -994,6 +994,26 @@ fn second_runner_claiming_a_bound_machine_is_dropped_and_alerted() {
 }
 
 #[test]
+fn a_binding_to_a_revoked_runner_passes_to_the_runner_that_replaced_it() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let old = join_as(&fake, &clock, &a, "Runner old", "runner");
+  let aid = my_id(&a);
+  post_chat(&old, &aid, &msg_n(2, "manager"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  a.revoke(&my_id(&old)).unwrap();
+  let new = join_as(&fake, &clock, &a, "Runner new", "runner");
+  let id = format!("m_{}", "8".repeat(32));
+  send_with(&a, &id, T0 + 1, "hi").unwrap();
+  post_chat(&new, &aid, &msg_n(3, "session"));
+  post_receipt(&new, &aid, "r_1", receipt_of(&id, "delivered"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  assert_eq!(a.take_receipts().len(), 1);
+  assert!(a.drops().is_empty(), "{:?}", a.drops());
+  assert!(!alert_kinds(&a).contains(&"room_conflict".to_owned()));
+}
+
+#[test]
 fn runner_machine_binding_survives_a_restart() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let store = Arc::new(MemKeyStore::default());

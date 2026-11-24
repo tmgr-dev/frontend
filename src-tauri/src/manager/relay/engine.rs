@@ -198,6 +198,11 @@ impl State {
     self.kind_of(&d.id, &d.fp)
   }
 
+  fn drop_untrusted_bindings(&mut self) {
+    let trusted: BTreeSet<String> = self.trusted.iter().map(|d| d.id.clone()).collect();
+    self.bindings.retain(|_, d| trusted.contains(d));
+  }
+
   fn pinned_for_other_fp(&self, id: &str, fp: &str) -> bool {
     let prefix = kind_key(id, "");
     let own = kind_key(id, fp);
@@ -1237,6 +1242,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn claim_machine(c: &mut Core, from: &str, machine: &str, now: u64) -> bool {
+    c.st.drop_untrusted_bindings();
     let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
     match c.st.bindings.get(machine) {
       Some(d) if d == from => true,
@@ -1317,6 +1323,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           return None;
         };
         let own_id = c.identity.as_ref().map(|i| i.device_id.as_str()).unwrap_or_default();
+        c.st.drop_untrusted_bindings();
         let machine = c
           .log
           .iter()
@@ -1572,6 +1579,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         let same = stored.room == params.room && stored.body_md == params.body_md && stored.reply_to == params.reply_to;
         return if same { Ok(stored.clone()) } else { Err("conflict".into()) };
       }
+      c.st.drop_untrusted_bindings();
       let (id, _) = Self::own(c)?;
       if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
         return Err("this device is not a trusted member of the chat yet".into());
