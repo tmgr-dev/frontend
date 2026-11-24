@@ -181,10 +181,10 @@ impl Runner {
                     card_id,
                     choice,
                     confirmed,
-                } => {
-                    if let Err(code) =
-                        self.permit_answer(client, &session, &card_id, choice, confirmed)
-                    {
+                    audit,
+                } => match self.permit_answer(client, &session, &card_id, choice, confirmed) {
+                    Ok(()) => self.permit_audit(&audit),
+                    Err(code) => {
                         self.permit_audit(&format!(
                             "permit answer: card={} result=answer_failed code={code}",
                             clean(&card_id, 64)
@@ -192,7 +192,7 @@ impl Runner {
                         self.permit_close(&card_id, "gone");
                         failed.push(card_id);
                     }
-                }
+                },
                 Action::Audit(line) => self.permit_audit(&line),
             }
         }
@@ -682,6 +682,25 @@ mod tests {
         assert_eq!(typed(&e), "");
         assert_eq!(closed(&e), vec!["gone".to_string()]);
         assert!(audits(&e).iter().all(|l| !l.contains("touch")));
+    }
+
+    #[test]
+    fn a_refused_answer_audits_the_failure_and_never_an_ok_line() {
+        let e = env(true);
+        tick(&e);
+        let s = signed(&e, PermitChoice::Yes);
+        accept(&e, &s, true);
+        assert_eq!(typed(&e), "");
+        assert_eq!(closed(&e), vec!["gone".to_string()]);
+        let a = audits(&e);
+        assert!(
+            a.iter().any(|l| l.contains("result=answer_failed")),
+            "{a:?}"
+        );
+        assert!(
+            a.iter().all(|l| !l.contains("result=ok action=answered")),
+            "{a:?}"
+        );
     }
 
     #[test]

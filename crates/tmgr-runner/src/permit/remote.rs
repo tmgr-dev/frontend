@@ -32,6 +32,7 @@ pub enum Action {
         card_id: String,
         choice: PermissionChoice,
         confirmed: bool,
+        audit: String,
     },
     Audit(String),
 }
@@ -196,9 +197,9 @@ impl PermitDesk {
                         PermitChoice::Always => PermissionChoice::Always,
                     },
                     confirmed: signed.confirmed == 1,
+                    audit: audit_line(signed, "ok", "answered"),
                 },
                 close(&id, &format!("answered on {sender_label}")),
-                line("ok", "answered"),
             ];
         };
         match e.outcome() {
@@ -462,6 +463,15 @@ mod tests {
         lines[0].clone()
     }
 
+    fn answer_audit(acts: &[Action]) -> String {
+        acts.iter()
+            .find_map(|a| match a {
+                Action::Answer { audit, .. } => Some(audit.clone()),
+                _ => None,
+            })
+            .expect("no Answer")
+    }
+
     fn only_audit(acts: &[Action]) {
         assert!(
             acts.iter().all(|a| matches!(a, Action::Audit(_))),
@@ -507,11 +517,15 @@ mod tests {
                 session: SESSION.into(),
                 card_id: CARD.into(),
                 choice: PermissionChoice::Yes,
-                confirmed: false
+                confirmed: false,
+                audit: format!(
+                    "permit answer: card={CARD} device={} choice=yes result=ok action=answered",
+                    "d".repeat(12)
+                )
             }
         );
         assert_eq!(closes(&acts), vec!["answered on Mac".to_string()]);
-        let a = audit(&acts);
+        let a = answer_audit(&acts);
         assert_eq!(
             a,
             format!(
@@ -543,7 +557,7 @@ mod tests {
             }
         ));
         assert_eq!(closes(&acts), vec!["answered on Phone".to_string()]);
-        assert!(audit(&acts).contains("choice=always result=ok action=answered"));
+        assert!(answer_audit(&acts).contains("choice=always result=ok action=answered"));
     }
 
     fn assert_dropped_and_still_answerable(ctx: Ctx) {
