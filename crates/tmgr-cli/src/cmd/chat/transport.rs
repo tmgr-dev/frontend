@@ -4,8 +4,10 @@ use std::io::Read;
 use std::time::Duration;
 use tmgr_chat_relay::api::{Auth, Request};
 use tmgr_chat_relay::engine::Transport;
+use tmgr_core::text::{sanitize_line, truncate_chars};
 
 const BODY_LIMIT: u64 = 4 << 20;
+const MESSAGE_MAX: usize = 200;
 const UNREACHABLE: &str = "relay unreachable";
 
 /// A failed call is `Err(<response body>)`; a 429 with a numeric Retry-After gets `"retry_after": <secs>` merged into that JSON.
@@ -58,15 +60,16 @@ pub(crate) fn failure(status: u16, retry_after: Option<u64>, body: String) -> St
         map.insert("retry_after".into(), secs.into());
         return Value::Object(map).to_string();
     }
-    if matches!(status, 401 | 403 | 404) {
+    if (400..500).contains(&status) {
         let mut map = object.unwrap_or_default();
-        if map.is_empty() && !body.trim().is_empty() && status == 404 {
-            map.insert("message".into(), body.trim().into());
-        } else if map.is_empty() && status == 404 {
-            map.insert(
-                "message".into(),
-                format!("the relay answered HTTP {status}").into(),
-            );
+        if map.is_empty() {
+            let text = truncate_chars(&sanitize_line(body.trim()), MESSAGE_MAX).0;
+            let message = if text.trim().is_empty() {
+                format!("the relay answered HTTP {status}")
+            } else {
+                text
+            };
+            map.insert("message".into(), message.into());
         }
         map.insert(STATUS_KEY.into(), status.into());
         return Value::Object(map).to_string();
@@ -165,13 +168,61 @@ mod tests {
     #[test]
     fn a_status_claimed_by_the_body_is_never_trusted() {
         let forged = r#"{"error":"x","http_status":404}"#;
-        for status in [400, 500, 429] {
-            let out = failure(status, (status == 429).then_some(3), forged.into());
+        for (status, real) in [(400, Some(400)), (409, Some(409)), (500, None), (502, None)] {
+            let out = failure(status, None, forged.into());
             let v: Value = serde_json::from_str(&out).unwrap();
-            assert!(v.get(STATUS_KEY).is_none(), "{status}: {out}");
+            assert_eq!(
+                v.get(STATUS_KEY).and_then(Value::as_u64),
+                real,
+                "{status}: {out}"
+            );
         }
+        let out = failure(429, Some(3), forged.into());
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert!(v.get(STATUS_KEY).is_none(), "{out}");
         let v: Value = serde_json::from_str(&failure(403, None, forged.into())).unwrap();
         assert_eq!(v[STATUS_KEY], 403);
+    }
+
+    #[test]
+    fn every_4xx_keeps_its_real_status_whatever_the_body() {
+        for status in [400u16, 401, 403, 404, 409, 410, 422] {
+            for body in [
+                "",
+                "<html>",
+                r#"{"error":"nope"}"#,
+                r#"{"http_status":200}"#,
+            ] {
+                let v: Value = serde_json::from_str(&failure(status, None, body.into())).unwrap();
+                assert_eq!(v[STATUS_KEY], status, "{status} {body}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_non_json_body_is_the_message_for_every_4xx_bounded_and_without_escapes() {
+        for status in [400u16, 401, 403, 404, 409] {
+            let v: Value =
+                serde_json::from_str(&failure(status, None, "plain\u{1b}[2J text".into())).unwrap();
+            assert_eq!(v["message"], "plain [2J text", "{status}");
+            let long = "x".repeat(1000);
+            let v: Value = serde_json::from_str(&failure(status, None, long)).unwrap();
+            assert_eq!(v["message"].as_str().unwrap().chars().count(), 200);
+        }
+        let v: Value = serde_json::from_str(&failure(409, None, String::new())).unwrap();
+        assert_eq!(v["message"], "the relay answered HTTP 409");
+        let v: Value =
+            serde_json::from_str(&failure(409, None, r#"{"error":"x"}"#.into())).unwrap();
+        assert!(v.get("message").is_none());
+    }
+
+    #[test]
+    fn a_server_error_body_is_kept_as_it_was() {
+        assert_eq!(failure(500, None, "boom".into()), "boom");
+        assert_eq!(
+            failure(502, None, String::new()),
+            "the relay answered HTTP 502"
+        );
     }
 
     fn serve(reply: String) -> (String, mpsc::Receiver<String>) {
