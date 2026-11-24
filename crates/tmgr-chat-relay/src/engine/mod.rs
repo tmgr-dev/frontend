@@ -86,6 +86,13 @@ fn per_recipient(e: &str) -> bool {
     e == RECIPIENT_FULL_MSG || e == RECIPIENT_UNKNOWN_MSG
 }
 
+fn http_status(e: &str) -> Option<u64> {
+    serde_json::from_str::<Value>(e)
+        .ok()?
+        .get("http_status")?
+        .as_u64()
+}
+
 pub fn retry_after_secs(e: &str) -> Option<u64> {
     e.strip_prefix(BUSY_PREFIX)?.strip_suffix('s')?.parse().ok()
 }
@@ -2601,6 +2608,35 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         notice.map_err(|e| {
             format!("the old identity was wiped, but the other devices were not told: {e}")
         })
+    }
+
+    fn confirmed_absent(&self, c: &mut Core, id: &str) -> bool {
+        match self.fetch_dir(c) {
+            Ok(dir) => !dir.devices.iter().any(|d| d.device_id == id),
+            Err(e) => http_status(&e) == Some(401),
+        }
+    }
+
+    pub fn leave_confirmed(&self) -> Result<Option<String>, String> {
+        let mut g = self.lock();
+        let c = &mut *g;
+        let notice = self.announce_reset(c);
+        if let Some(id) = c.identity.as_ref().map(|i| i.device_id.clone()) {
+            api::delete_device(&id)
+                .map_err(err)
+                .and_then(|req| self.call(c, req))
+                .or_else(|e| match http_status(&e) {
+                    Some(401) => Ok(String::new()),
+                    Some(404) if self.confirmed_absent(c, &id) => Ok(String::new()),
+                    _ => Err(e),
+                })
+                .map_err(|e| format!("the relay did not confirm the removal: {e}"))?;
+        }
+        self.k.clear()?;
+        *c = Core::default();
+        Ok(notice
+            .err()
+            .map(|e| format!("the device was removed, but the other devices were not told: {e}")))
     }
 
     pub fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {

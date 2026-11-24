@@ -40,6 +40,9 @@ struct Server {
     next: i64,
     post_error: Option<String>,
     dir_error: bool,
+    delete_gone: bool,
+    delete_unauthorized: bool,
+    delete_404_listed: bool,
     posts: usize,
     pushes: Vec<bool>,
     last_seen: BTreeMap<String, u64>,
@@ -219,7 +222,9 @@ impl Transport for Fake {
                 wrap(json!({ "device_id": id, "device_token": token }))
             }
             (Method::Get, ["devices"]) => {
-                caller.ok_or("401")?;
+                if caller.is_none() {
+                    return Err(r#"{"http_status":401}"#.into());
+                }
                 if s.dir_error {
                     return Err("directory down".into());
                 }
@@ -252,6 +257,17 @@ impl Transport for Fake {
             (Method::Delete, ["devices", target]) => {
                 if let Some(e) = s.delete_error.clone() {
                     return Err(e);
+                }
+                if s.delete_unauthorized {
+                    s.devices.retain(|d| d.id != *target);
+                    return Err(r#"{"http_status":401}"#.into());
+                }
+                if s.delete_404_listed {
+                    return Err(r#"{"error":"not_found","http_status":404}"#.into());
+                }
+                if s.delete_gone {
+                    s.devices.retain(|d| d.id != *target);
+                    return Err(r#"{"error":"not_found","http_status":404}"#.into());
                 }
                 s.devices.retain(|d| d.id != *target);
                 s.msgs.retain(|m| m.to != *target && m.from != *target);
@@ -5757,4 +5773,83 @@ fn receipts_are_capped_by_evicting_the_oldest_and_keep_the_latest_state_per_id()
         format!("r{}", MAX_RECEIPTS + 9)
     );
     assert!(!c.receipts.iter().any(|r| r.id == "same"));
+}
+
+#[test]
+fn leave_confirmed_tells_the_others_deletes_the_device_and_clears_the_store() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (old_id, old_fp) = (my_id(&b), fp_of(&b));
+    assert_eq!(b.leave_confirmed().unwrap(), None);
+    assert!(fake
+        .0
+        .lock()
+        .unwrap()
+        .devices
+        .iter()
+        .all(|d| d.id != old_id));
+    assert!(b.own_device().is_none());
+    assert!(b.k.load(Slot::Identity).unwrap().is_none());
+    assert!(b.k.load(Slot::State).unwrap().is_none());
+    a.poll_once().unwrap();
+    assert!(a.lock().st.revoked.contains(&old_fp));
+    assert!(a.trust_state().unwrap().pending_revokes.is_empty());
+}
+
+#[test]
+fn leave_confirmed_keeps_the_identity_and_state_when_the_relay_does_not_confirm() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (_a, b) = pair(&fake, &clock);
+    fake.0.lock().unwrap().delete_error = Some("boom".into());
+    let e = b.leave_confirmed().unwrap_err();
+    assert!(e.contains("did not confirm"), "{e}");
+    assert!(b.own_device().is_some());
+    assert!(b.k.load(Slot::Identity).unwrap().is_some());
+    assert!(b.k.load(Slot::State).unwrap().is_some());
+    fake.0.lock().unwrap().delete_error = None;
+    assert_eq!(b.leave_confirmed().unwrap(), None);
+    assert!(b.own_device().is_none());
+    assert!(b.k.load(Slot::Identity).unwrap().is_none());
+    assert!(b.k.load(Slot::State).unwrap().is_none());
+}
+
+#[test]
+fn leave_confirmed_without_an_identity_changes_nothing() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let e = engine_with(&fake, &clock, "Desktop A");
+    assert_eq!(e.leave_confirmed().unwrap(), None);
+    assert_eq!(fake.0.lock().unwrap().devices.len(), 0);
+}
+
+#[test]
+fn leave_confirmed_treats_a_device_the_relay_no_longer_knows_as_removed() {
+    for (gone, unauthorized) in [(true, false), (false, true)] {
+        let (fake, clock) = (Fake::default(), Clock::new(T0));
+        let (_a, b) = pair(&fake, &clock);
+        {
+            let mut s = fake.0.lock().unwrap();
+            s.delete_gone = gone;
+            s.delete_unauthorized = unauthorized;
+        }
+        assert!(b.leave_confirmed().is_ok());
+        assert!(b.own_device().is_none());
+        assert!(b.k.load(Slot::Identity).unwrap().is_none());
+    }
+}
+
+#[test]
+fn a_404_while_the_device_is_still_listed_is_not_a_removal() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (_a, b) = pair(&fake, &clock);
+    fake.0.lock().unwrap().delete_404_listed = true;
+    let e = b.leave_confirmed().unwrap_err();
+    assert!(e.contains("did not confirm"), "{e}");
+    assert!(b.own_device().is_some());
+}
+
+#[test]
+fn a_status_claimed_inside_a_relay_error_message_is_not_a_removal() {
+    assert_eq!(http_status(r#"{"http_status":404}"#), Some(404));
+    assert_eq!(http_status("not json http_status 404"), None);
+    assert_eq!(http_status(r#"{"error":"x"}"#), None);
 }
