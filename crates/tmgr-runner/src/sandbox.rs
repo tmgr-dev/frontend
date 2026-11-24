@@ -749,14 +749,17 @@ pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPla
         push_unique(&mut allowed, canon_lossy(spool));
     }
     let mut readable = Vec::new();
-    let mut parents = vec![spec.home.clone()];
+    let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
+    let mut leaves = vec![(spec.home.clone(), paste)];
     if tmgr_ipc::proto::valid_session_id(&spec.session_id) {
-        parents.push(tmgr_ipc::dirs::paste_dir(&spec.runner_dir).join(&spec.session_id));
+        let own = tmgr_ipc::dirs::paste_dir(&spec.runner_dir).join(&spec.session_id);
+        leaves.push((own.clone(), paste));
+        leaves.push((own, crate::chat::attach::DIR_NAME));
     }
-    // The paste dir itself is never resolved: a symlink planted there must not become an allow rule.
-    for p in &parents {
+    // The leaf itself is never resolved: a symlink planted there must not become an allow rule.
+    for (p, leaf) in &leaves {
         for form in [p.clone(), canon_lossy(p)] {
-            let dir = form.join(tmgr_ipc::dirs::PASTE_DIR_NAME);
+            let dir = form.join(leaf);
             if hidden.iter().any(|h| dir.starts_with(h)) {
                 push_unique(&mut readable, dir);
             }
@@ -1894,20 +1897,20 @@ mod tests {
             assert!(profile.contains(&format!("(deny file-read* (subpath {}))", q(d))));
         }
         let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
+        let own = tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir).join(&f.spec.session_id);
         assert_eq!(
             c.readable,
             vec![
                 f.spec.home.join(paste),
-                tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir)
-                    .join(&f.spec.session_id)
-                    .join(paste),
+                own.join(paste),
+                own.join(crate::chat::attach::DIR_NAME),
             ]
         );
         assert_eq!(
             profile.matches("file-read").count(),
             c.hidden.len() + c.readable.len() + c.stat_only.len()
         );
-        assert_eq!(profile.matches("(allow file-read* (subpath").count(), 2);
+        assert_eq!(profile.matches("(allow file-read* (subpath").count(), 3);
         assert!(!profile.contains("(allow file-write"));
         assert!(!profile.contains("/dev/tty"));
     }
@@ -2127,11 +2130,110 @@ mod tests {
         let profile = session_profile(&f);
         let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
         let own = tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir).join(&f.spec.session_id);
-        for dir in [f.spec.home.join(paste), own.join(paste)] {
+        for dir in [
+            f.spec.home.join(paste),
+            own.join(paste),
+            own.join(crate::chat::attach::DIR_NAME),
+        ] {
             for op in ["file-write-create", "file-write-data", "file-write-unlink"] {
                 assert!(!verdict(&profile, op, &dir.join("planted.png")), "{op}");
                 assert!(!verdict(&profile, op, &dir), "{op}");
             }
+        }
+    }
+
+    fn attachments_dir(f: &Fx, id: &str) -> PathBuf {
+        tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir)
+            .join(id)
+            .join(crate::chat::attach::DIR_NAME)
+    }
+
+    #[test]
+    fn control_plane_lets_an_unsandboxed_session_read_its_chat_attachments_for_claude_and_codex() {
+        use sha2::Digest;
+        for argv in agents() {
+            let mut f = fx();
+            f.spec.argv = argv;
+            for d in [f.spec.runner_dir.parent().unwrap(), &f.spec.runner_dir] {
+                fs::set_permissions(d, std::os::unix::fs::PermissionsExt::from_mode(0o700))
+                    .unwrap();
+            }
+            let store = crate::chat::blobs::BlobStore::open(&f.spec.runner_dir).unwrap();
+            let bytes = b"report bytes";
+            let sha: String = sha2::Sha256::digest(bytes)
+                .iter()
+                .map(|x| format!("{x:02x}"))
+                .collect();
+            store.put_bytes(&sha, bytes).unwrap();
+            let target = crate::chat::attach::resolve(
+                f.spec.home.parent().unwrap(),
+                &tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir),
+                &f.spec.session_id,
+                true,
+            );
+            let att = tmgr_ipc::chat::Attachment {
+                name: "report.txt".into(),
+                mime: "text/plain".into(),
+                size: bytes.len() as u64,
+                sha256: sha.clone(),
+            };
+            let text = crate::chat::attach::turn_text("", &[att], Some(&store), Some(&target));
+            let path = PathBuf::from(text.rsplit_once(": ").unwrap().1);
+            assert_eq!(
+                path.parent().unwrap(),
+                attachments_dir(&f, &f.spec.session_id)
+            );
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+            let profile = session_profile(&f);
+            assert!(readable(&profile, &path), "{}", path.display());
+            assert!(!verdict(&profile, "file-write-data", &path));
+        }
+    }
+
+    #[test]
+    fn control_plane_keeps_other_sessions_chat_attachments_hidden() {
+        let f = fx();
+        let profile = session_profile(&f);
+        let own = attachments_dir(&f, &f.spec.session_id);
+        let name = crate::chat::attach::DIR_NAME;
+        for p in [
+            attachments_dir(&f, "s_otherother").join("f.txt"),
+            attachments_dir(&f, "s_otherother"),
+            own.with_file_name(format!("{name}-x")).join("f.txt"),
+            own.with_file_name("other.txt"),
+            f.spec.home.join(name).join("f.txt"),
+            f.spec
+                .home
+                .parent()
+                .unwrap()
+                .join("s_otherother")
+                .join(name)
+                .join("f.txt"),
+        ] {
+            assert!(!verdict(&profile, "file-read-data", &p), "{}", p.display());
+        }
+    }
+
+    #[test]
+    fn a_chat_attachments_dir_planted_as_a_symlink_never_widens_the_profile() {
+        let f = fx();
+        let token = f.spec.runner_dir.join("token");
+        fs::write(&token, b"secret").unwrap();
+        let other = attachments_dir(&f, "s_otherother");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("f.txt"), b"x").unwrap();
+        let own = attachments_dir(&f, &f.spec.session_id);
+        fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&other, &own).unwrap();
+        let c = control_plane(&f.spec, &[]);
+        let profile = control_plane_profile(&c).unwrap();
+        assert!(c.readable.contains(&own), "{:?}", c.readable);
+        for r in &c.readable {
+            assert!(!r.starts_with(&other), "{}", r.display());
+            assert!(!f.spec.runner_dir.join("token").starts_with(r));
+        }
+        for p in [token, other.join("f.txt"), other] {
+            assert!(!verdict(&profile, "file-read-data", &p), "{}", p.display());
         }
     }
 
@@ -2170,7 +2272,12 @@ mod tests {
         let c = control_plane(&f.spec, &[]);
         let profile = control_plane_profile(&c).unwrap();
         for r in &c.readable {
-            assert!(r.ends_with(paste), "{}", r.display());
+            assert!(
+                r.ends_with(paste) || r.ends_with(crate::chat::attach::DIR_NAME),
+                "{}",
+                r.display()
+            );
+            assert!(!r.starts_with(&other) && !f.spec.runner_dir.starts_with(r));
         }
         for p in [token, other.join("note"), f.spec.runner_dir.clone(), other] {
             assert!(!verdict(&profile, "file-read-data", &p), "{}", p.display());
@@ -2195,6 +2302,7 @@ mod tests {
         )
         .unwrap();
         std::os::unix::fs::symlink(&token, stored.parent().unwrap().join("t.png")).unwrap();
+        let attached = plant(&attachments_dir(&f, &f.spec.session_id));
         let profile = session_profile(&f);
         let run = |script: String| {
             std::process::Command::new("/usr/bin/sandbox-exec")
@@ -2203,10 +2311,28 @@ mod tests {
                 .unwrap()
                 .success()
         };
-        if !run("exit 0".into()) {
+        assert_eq!(fs::read(&token).unwrap(), b"secret");
+        let probe = std::process::Command::new("/usr/bin/sandbox-exec")
+            .args(["-p", &profile, "--", "/bin/sh", "-c"])
+            .arg(format!("echo started; cat '{}'", token.display()))
+            .output()
+            .unwrap();
+        if !String::from_utf8_lossy(&probe.stdout).contains("started") {
+            let why = String::from_utf8_lossy(&probe.stderr);
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "sandbox-exec did not apply the profile in CI: {why}"
+            );
+            eprintln!("SKIPPED a_real_fence_lets_a_pasted_image_through_and_nothing_else: sandbox-exec cannot apply a profile here ({why})");
             return;
         }
-        for p in [&stored, &fallback] {
+        assert!(!probe.status.success());
+        assert!(
+            String::from_utf8_lossy(&probe.stderr).contains("Operation not permitted"),
+            "{}",
+            String::from_utf8_lossy(&probe.stderr)
+        );
+        for p in [&stored, &fallback, &attached] {
             let p = p.display();
             assert!(run(format!(
                 "cat '{p}' > /dev/null && stat '{p}' > /dev/null && realpath '{p}' > /dev/null"
