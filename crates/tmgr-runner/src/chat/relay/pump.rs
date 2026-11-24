@@ -134,15 +134,15 @@ impl ChatSink for RelaySink {
             self.dropped("not owner input for this machine");
             return Ok(());
         }
-        if !matches!(from_kind, Some("desktop" | "mobile")) {
-            self.dropped("sender is not a pinned desktop or phone");
+        if !matches!(from_kind, Some("desktop" | "mobile" | "terminal")) {
+            self.dropped("sender is not a pinned desktop, phone or terminal");
             if let Some(give_up) = &self.give_up {
                 give_up(from_device, &msg.id, crate::chat::REJECT_REVOKE_PENDING);
             }
             return Ok(());
         }
         let id = msg.id.clone();
-        let desktop = from_kind == Some("desktop");
+        let desktop = matches!(from_kind, Some("desktop" | "terminal"));
         let target = msg.mention.map(|m| m.target);
         let incoming = Incoming {
             room: msg.room,

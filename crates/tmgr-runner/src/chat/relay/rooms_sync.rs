@@ -95,6 +95,7 @@ pub fn build_index(s: &Snapshot) -> RoomsIndex {
         rooms,
         activity: true,
         blob: true,
+        terminal_input: true,
     }
 }
 
