@@ -3697,3 +3697,31 @@ fn a_message_for_a_bound_runner_also_reaches_a_trusted_terminal() {
   send(&a, "hello").unwrap();
   assert_eq!((fake.queue_len(&rid), fake.queue_len(&tid)), (before.0 + 1, before.1 + 1));
 }
+
+fn pending_after_unlearned_revoke(root: bool) -> usize {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let (_c, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+  let aid = my_id(&a);
+  put_raw_intro(&fake, &aid, &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+  b.poll_once().unwrap();
+  let json = {
+    let g = a.lock();
+    let keys = g.keys.as_ref().unwrap();
+    let st = RevokeStatement { user_id: USER, revoker_fp: keys.fingerprint(), target_id: cid.clone(), target_fp: c_fp.clone(), issued_at_ms: T0 };
+    sign_revoke(keys, &st).unwrap()
+  };
+  let mut g = b.lock();
+  g.st.kinds.retain(|k, _| !k.starts_with(&kind_key(&aid, "")));
+  if !root {
+    g.st.base.retain(|d| d.id != aid);
+  }
+  ingest_revoke(&mut g, USER, T0, &json, None, &mut BTreeMap::new());
+  g.st.pending_revokes.len()
+}
+
+#[test]
+fn a_root_of_unknown_kind_may_revoke_but_a_non_root_of_unknown_kind_may_not() {
+  assert_eq!(pending_after_unlearned_revoke(true), 1);
+  assert_eq!(pending_after_unlearned_revoke(false), 0);
+}

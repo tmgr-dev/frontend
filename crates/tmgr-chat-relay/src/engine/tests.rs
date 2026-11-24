@@ -4906,3 +4906,41 @@ fn a_runner_seals_output_rooms_and_receipts_to_a_trusted_terminal_like_a_desktop
 fn mid_of(n: u8) -> String {
     msg_n(n, AuthorKind::Owner).id
 }
+
+fn revoke_json(from: &Engine, target_id: &str, target_fp: &str) -> String {
+    let g = from.lock();
+    let keys = g.keys.as_ref().unwrap();
+    let st = RevokeStatement {
+        user_id: USER,
+        revoker_fp: keys.fingerprint(),
+        target_id: target_id.into(),
+        target_fp: target_fp.into(),
+        issued_at_ms: T0,
+    };
+    sign_revoke(keys, &st).unwrap()
+}
+
+fn pending_after_unlearned_revoke(root: bool) -> usize {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let (_c, cid, c_fp) = registered(&fake, &clock, "Desktop C", "desktop");
+    let aid = my_id(&a);
+    put_raw_intro(&fake, &aid, &cid, &signed_intro(&a, &cid, &c_fp, "desktop"));
+    b.poll_once().unwrap();
+    assert!(is_trusted_with(&b, &cid, "desktop"));
+    let json = revoke_json(&a, &cid, &c_fp);
+    let mut g = b.lock();
+    g.st.kinds
+        .retain(|k, _| !k.starts_with(&kind_key(&aid, "")));
+    if !root {
+        g.st.base.retain(|d| d.id != aid);
+    }
+    ingest_revoke(&mut g, USER, T0, &json, None, &mut BTreeMap::new());
+    g.st.pending_revokes.len()
+}
+
+#[test]
+fn a_root_of_unknown_kind_may_revoke_but_a_non_root_of_unknown_kind_may_not() {
+    assert_eq!(pending_after_unlearned_revoke(true), 1);
+    assert_eq!(pending_after_unlearned_revoke(false), 0);
+}

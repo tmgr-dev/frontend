@@ -572,6 +572,13 @@ fn apply_revoke(c: &mut Core, uid: u64, now: u64, target_id: &str, target_fp: &s
   }
 }
 
+fn revoker_kind<'a>(c: &'a Core, revoker: &Dev) -> Option<&'a str> {
+  match c.st.kind_of(&revoker.id, &revoker.fp) {
+    None if c.st.base.iter().any(|d| d.id == revoker.id && d.fp == revoker.fp) => Some("desktop"),
+    kind => kind,
+  }
+}
+
 fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option<&str>, budget: &mut BTreeMap<String, usize>) {
   let Ok(r) = parse_revoke(json) else { return };
   let p = &r.parsed;
@@ -584,7 +591,7 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
   if verify_revoke(json, uid, &revoker.sign_pub, &revoker.kex_pub).is_err() {
     return;
   }
-  if !may_revoke(c.st.kind_of(&revoker.id, &revoker.fp), &p.revoker_fp, &p.target_fp) {
+  if !may_revoke(revoker_kind(c, &revoker), &p.revoker_fp, &p.target_fp) {
     return;
   }
   let used = budget.entry(p.revoker_fp.clone()).or_default();
