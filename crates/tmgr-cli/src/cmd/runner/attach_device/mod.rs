@@ -474,6 +474,9 @@ pub fn pair_with<T: Transport, K: KeyStore>(
     }
     let dev = open_login().map_err(store_error)?;
     let already = dev.is_paired().map_err(internal)?;
+    if already && relay_dir.load_config().map_err(internal)?.as_ref() != Some(cfg) {
+        relay_dir.save_config(cfg).map_err(internal)?;
+    }
     if !already {
         say("On a trusted desktop or mobile device open the chat devices screen, start adding a device and copy the join code.");
         let code = read_code()?;
@@ -627,14 +630,7 @@ fn unpair_with<T: Transport, K: KeyStore>(
     };
     let dev = match make(&parts) {
         Ok(dev) => dev,
-        Err(e) if e == NO_SECURE_STORE => {
-            RoomCache::open(config_dir(runner_dir).map_err(internal)?)
-                .and_then(|c| c.wipe())
-                .map_err(internal)?;
-            parts.relay_dir.clear_config().map_err(internal)?;
-            return Ok("Not paired.".to_owned());
-        }
-        Err(e) => return Err(internal(e)),
+        Err(e) => return Err(store_error(e)),
     };
     remove_device(&dev, &parts.relay_dir)
 }

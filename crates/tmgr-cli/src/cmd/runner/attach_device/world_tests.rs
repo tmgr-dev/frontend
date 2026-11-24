@@ -1050,6 +1050,36 @@ fn settle(w: &World) {
 }
 
 #[test]
+fn unpair_without_a_secure_store_is_refused_and_keeps_the_config() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let mut dev = w.cli_device();
+    w.pair(&mut dev).unwrap();
+    let e = unpair_with(w.dir.path(), |_| {
+        Err::<AttachDevice<Via, Keys>, String>(NO_SECURE_STORE.to_owned())
+    })
+    .expect_err("refused");
+    assert!(
+        e.message.contains("No secure key store available"),
+        "{}",
+        e.message
+    );
+    assert_eq!(w.relay_dir().load_config().unwrap(), Some(cfg()));
+}
+
+#[test]
+fn pairing_an_already_paired_terminal_restores_a_missing_config() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let mut dev = w.cli_device();
+    w.pair(&mut dev).unwrap();
+    w.relay_dir().clear_config().unwrap();
+    let out = w.pair(&mut dev).unwrap();
+    assert!(out.already);
+    assert_eq!(w.relay_dir().load_config().unwrap(), Some(cfg()));
+}
+
+#[test]
 fn pairing_without_a_secure_store_is_refused_and_no_key_file_is_written() {
     let w = World::new();
     w.add_runner(R1, true, true);
@@ -1102,6 +1132,37 @@ fn status_says_a_revoked_terminal_was_removed_from_the_devices() {
                 .to_owned()
         )
     );
+}
+
+#[test]
+fn status_says_removed_when_the_revoke_row_delete_failed() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let mut dev = w.cli_device();
+    w.pair(&mut dev).unwrap();
+    settle(&w);
+    w.net.0.lock().unwrap().delete_error = true;
+    assert!(w.owner.revoke(&terminal_id(&dev)).is_ok());
+    w.net.0.lock().unwrap().delete_error = false;
+    let own = w.device(Via::own_token(&w.net));
+    assert_eq!(standing(&own).unwrap().0, "removed");
+}
+
+#[test]
+fn pairing_replaces_a_terminal_whose_revoke_row_delete_failed_in_one_run() {
+    let w = World::new();
+    w.add_runner(R1, true, true);
+    let mut dev = w.cli_device();
+    w.pair(&mut dev).unwrap();
+    settle(&w);
+    let old = terminal_id(&dev);
+    w.net.0.lock().unwrap().delete_error = true;
+    assert!(w.owner.revoke(&old).is_ok());
+    w.net.0.lock().unwrap().delete_error = false;
+    let out = w.pair(&mut dev).unwrap();
+    assert!(out.replaced && !out.already);
+    assert_ne!(terminal_id(&dev), old);
+    assert!(dev.is_paired().unwrap());
 }
 
 #[test]
