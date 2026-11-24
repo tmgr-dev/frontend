@@ -14,6 +14,7 @@ use tmgr_phone::{b64, b64_decode, h};
 use crate::api::{self, Directory, Msg, Request};
 use crate::fields::{check_device_id, check_device_kind, check_fp};
 use crate::keys::{fingerprint, DeviceKeys};
+use crate::rooms::{valid_index_msg_id, RoomsIndex};
 use crate::trust::{
     decode_join_code, encode_join_code, gate_blockers, is_owner_device, join_mac, kind_key,
     lowers_kind, may_revoke, parse_intro, parse_revoke, restrict_to_before, sign_intro,
@@ -25,8 +26,8 @@ use crate::wire::{open_message_checked, random_msg_id, seal_message, Opened, Pee
 use tmgr_phone::Error;
 
 pub use ports::{
-    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, RpcSink, Slot, SpawnKeySink,
-    SpawnOkSink, Transport,
+    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, RoomsSink, RpcSink, Slot,
+    SpawnKeySink, SpawnOkSink, Transport,
 };
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
@@ -186,6 +187,13 @@ impl PeerClock {
             }
         }
     }
+}
+
+fn sender_kind<'a>(c: &'a Core, from: &str, from_fp: &str) -> Option<&'a str> {
+    if c.st.pending_revokes.iter().any(|p| p.target_fp == from_fp) {
+        return None;
+    }
+    c.st.kind_of(from, from_fp)
 }
 
 fn to_local_ms(ts_ms: u64, offset: i64) -> u64 {
@@ -831,6 +839,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore, S: ChatSink> {
     spawnok: Option<Arc<dyn SpawnOkSink>>,
     permitok: Option<Arc<dyn PermitOkSink>>,
     activity_sub: Option<Arc<dyn ActivitySubSink>>,
+    rooms: Option<Arc<dyn RoomsSink>>,
     core: Mutex<Core>,
 }
 
@@ -874,6 +883,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             spawnok: None,
             permitok: None,
             activity_sub: None,
+            rooms: None,
             core: Mutex::new(core),
         })
     }
@@ -914,6 +924,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     pub fn with_activity_sub_sink(mut self, sink: Arc<dyn ActivitySubSink>) -> Self {
         self.activity_sub = Some(sink);
+        self
+    }
+
+    pub fn with_rooms_sink(mut self, sink: Arc<dyn RoomsSink>) -> Self {
+        self.rooms = Some(sink);
         self
     }
 
@@ -1448,15 +1463,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             msg.ts_ms = to_local_ms(msg.ts_ms, offset);
         }
         if let Some(msg) = &chat {
-            let revoke_pending =
-                c.st.pending_revokes
-                    .iter()
-                    .any(|p| p.target_fp == opened.from_fp);
-            let from_kind = if revoke_pending {
-                None
-            } else {
-                c.st.kind_of(&opened.from, &opened.from_fp)
-            };
+            let from_kind = sender_kind(c, &opened.from, &opened.from_fp);
             self.s.deliver(&opened.from, from_kind, msg.clone())?;
             c.unsaved = true;
         }
@@ -1491,23 +1498,26 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 {
                     return false;
                 }
-                let machine = &msg.room.machine;
-                let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
-                match c.st.bindings.get(machine) {
-                    Some(d) if d == from => true,
-                    Some(_) => {
-                        record_alert(c, "room_conflict", from, now);
-                        false
-                    }
-                    None if bound_elsewhere => {
-                        record_alert(c, "room_conflict", from, now);
-                        false
-                    }
-                    None => {
-                        c.st.bindings.insert(machine.clone(), from.to_owned());
-                        true
-                    }
-                }
+                Self::claim_machine(c, from, &msg.room.machine, now)
+            }
+        }
+    }
+
+    fn claim_machine(c: &mut Core, from: &str, machine: &str, now: u64) -> bool {
+        let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
+        match c.st.bindings.get(machine) {
+            Some(d) if d == from => true,
+            Some(_) => {
+                record_alert(c, "room_conflict", from, now);
+                false
+            }
+            None if bound_elsewhere => {
+                record_alert(c, "room_conflict", from, now);
+                false
+            }
+            None => {
+                c.st.bindings.insert(machine.to_owned(), from.to_owned());
+                true
             }
         }
     }
@@ -1688,6 +1698,20 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             }
             "permitok" if sender_trusted && c.st.joined => {
                 self.accept_permitok(c, opened)?;
+            }
+            "rooms" if sender_trusted && c.st.joined => {
+                let sink = self.rooms.as_ref()?;
+                if self.kind == "runner"
+                    || !valid_index_msg_id(&opened.id)
+                    || c.st.kind_of_trusted(&opened.from) != Some("runner")
+                {
+                    return None;
+                }
+                let index = RoomsIndex::parse(opened.payload.clone()).ok()?;
+                if !Self::claim_machine(c, &opened.from, &index.machine, now) {
+                    return None;
+                }
+                sink.deliver_rooms(&opened.from, index);
             }
             "activity_on" if sender_trusted && c.st.joined => {
                 let sink = self.activity_sub.as_ref()?;

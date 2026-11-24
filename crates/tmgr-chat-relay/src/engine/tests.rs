@@ -5543,3 +5543,128 @@ fn a_join_ok_from_a_root_the_relay_lists_as_a_terminal_or_runner_is_refused() {
         assert!(!b.is_joined(), "{kind}");
     }
 }
+
+#[derive(Clone, Default)]
+struct RoomsRec(Arc<Mutex<Vec<(String, RoomsIndex)>>>);
+
+impl RoomsSink for RoomsRec {
+    fn deliver_rooms(&self, from: &str, index: RoomsIndex) {
+        self.0.lock().unwrap().push((from.to_owned(), index));
+    }
+}
+
+fn index_json(machine: &str) -> Value {
+    json!({
+        "v": 1,
+        "machine": machine,
+        "machine_label": "Studio",
+        "role": "top",
+        "rooms": [{"room": {"kind": "manager", "machine": machine}, "title": "Manager"}]
+    })
+}
+
+fn with_rooms_sink(fake: &Fake, clock: &Clock, label: &str) -> (Engine, RoomsRec) {
+    let rec = RoomsRec::default();
+    let c = clock.0.clone();
+    let e = RelayEngine::new(
+        fake.clone(),
+        Arc::new(MemKeyStore::default()),
+        Rec::default(),
+        EngineConfig {
+            user_id: USER,
+            label: label.into(),
+            local_machine: "mx_0000000000000001".into(),
+        },
+    )
+    .unwrap()
+    .with_clock(move || c.load(Ordering::SeqCst))
+    .with_rooms_sink(Arc::new(rec.clone()));
+    (e, rec)
+}
+
+#[test]
+fn a_trusted_runners_rooms_index_reaches_the_rooms_sink_and_is_deduped() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, rec) = with_rooms_sink(&fake, &clock, "Desktop A");
+    let r = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let aid = my_id(&a);
+    let id = rpc_id("rooms");
+    assert!(valid_index_msg_id(&id));
+    raw_post(&r, &aid, "rooms", &id, &index_json("mx_00000000000000bb"));
+    a.poll_once().unwrap();
+    let got = rec.0.lock().unwrap().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0, my_id(&r));
+    assert_eq!(got[0].1.machine, "mx_00000000000000bb");
+    raw_post(&r, &aid, "rooms", &id, &index_json("mx_00000000000000bb"));
+    a.poll_once().unwrap();
+    assert_eq!(rec.0.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_rooms_index_from_a_non_runner_a_bad_id_or_a_bad_body_is_ignored() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, rec) = with_rooms_sink(&fake, &clock, "Desktop A");
+    let phone = join_as(&fake, &clock, &a, "Phone", "mobile");
+    let r = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let aid = my_id(&a);
+    raw_post(
+        &phone,
+        &aid,
+        "rooms",
+        &rpc_id("rooms"),
+        &index_json("mx_00000000000000bb"),
+    );
+    raw_post(
+        &r,
+        &aid,
+        "rooms",
+        "i_short",
+        &index_json("mx_00000000000000bb"),
+    );
+    raw_post(&r, &aid, "rooms", &rpc_id("rooms"), &json!({"v": 1}));
+    a.poll_once().unwrap();
+    assert!(rec.0.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_second_runner_cannot_claim_a_machine_bound_to_another_runner_in_the_rooms_index() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, rec) = with_rooms_sink(&fake, &clock, "Desktop A");
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+    let aid = my_id(&a);
+    raw_post(
+        &r1,
+        &aid,
+        "rooms",
+        &rpc_id("rooms"),
+        &index_json("mx_00000000000000bb"),
+    );
+    raw_post(
+        &r2,
+        &aid,
+        "rooms",
+        &rpc_id("rooms"),
+        &index_json("mx_00000000000000bb"),
+    );
+    a.poll_once().unwrap();
+    assert_eq!(rec.0.lock().unwrap().len(), 1);
+    assert!(alert_kinds(&a).contains(&"room_conflict".to_owned()));
+}
+
+#[test]
+fn a_rooms_index_is_ignored_without_a_sink() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let r = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    raw_post(
+        &r,
+        &my_id(&a),
+        "rooms",
+        &rpc_id("rooms"),
+        &index_json("mx_00000000000000bb"),
+    );
+    assert!(a.poll_once().unwrap().is_empty());
+    assert!(alert_kinds(&a).is_empty());
+}

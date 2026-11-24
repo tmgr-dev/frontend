@@ -54,6 +54,14 @@ pub struct RoomsIndex {
     pub terminal_input: bool,
 }
 
+pub fn valid_index_msg_id(id: &str) -> bool {
+    id.len() == 34
+        && id.starts_with("i_")
+        && id[2..]
+            .bytes()
+            .all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 impl RoomsIndex {
     pub fn validate(&self) -> Result<(), String> {
         if self.v != ROOMS_V {

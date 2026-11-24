@@ -5,6 +5,7 @@ use tmgr_ipc::chat::ChatMessage;
 
 use super::blob::BlobPart;
 use crate::api::Request;
+use crate::rooms::RoomsIndex;
 use crate::trust::SpawnKey;
 use tmgr_spawn_auth::{PermitSenderKind, SignedPermit, SignedSpawn};
 
@@ -71,6 +72,10 @@ pub trait ChatSink: Send + Sync {
         from_kind: Option<&str>,
         msg: ChatMessage,
     ) -> Result<(), String>;
+
+    fn accepts_owner_input(&self, _from_kind: Option<&str>) -> bool {
+        false
+    }
 
     fn deliver_blob(&self, _from_device: &str, _part: BlobPart) -> Result<(), String> {
         Ok(())
@@ -142,4 +147,10 @@ pub trait PermitOkSink: Send + Sync {
 /// The sender is a trusted, joined, non-revoked device other than ourselves, pinned as a phone.
 pub trait ActivitySubSink: Send + Sync {
     fn deliver_activity_on(&self, from_device: &str, on: bool);
+}
+
+/// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
+/// The index is valid, its id is well formed and the sender is a trusted runner bound to `index.machine`.
+pub trait RoomsSink: Send + Sync {
+    fn deliver_rooms(&self, from_device: &str, index: RoomsIndex);
 }
