@@ -1337,7 +1337,12 @@ impl Session {
             let s = Arc::clone(self);
             thread::spawn(move || {
                 thread::sleep(delay);
-                if !s.input_router(key) {
+                if s.dialog_open() {
+                    log(&format!(
+                        "session {}: submit key held: a dialog opened after the text was typed",
+                        s.id
+                    ));
+                } else if !s.input_router(key) {
                     log(&format!("session {}: submit key not delivered", s.id));
                 }
                 s.clear_submit_pending(token);
@@ -1351,6 +1356,16 @@ impl Session {
 
     pub(crate) fn busy_code(&self) -> Option<&'static str> {
         lock(&self.inner).last_busy.map(chat::busy_code)
+    }
+
+    fn dialog_open(&self) -> bool {
+        let mut i = lock(&self.inner);
+        let lines = i.screen.bottom_text_without_ghosts(usize::MAX);
+        let rows = i.screen.text_lines(None).3;
+        let agent = i.meta.profile.as_deref().and_then(permit::agent_of);
+        let kind = self.effective(&i).kind;
+        screen_refusal(i.matcher.as_ref(), agent, kind, &lines, &rows)
+            == Some("blocked on a dialog")
     }
 
     pub(crate) fn foreign_gen(&self) -> u64 {
@@ -1421,8 +1436,8 @@ impl Session {
                 ));
             }
             if !bytes.is_empty() {
-                self.input_gen.fetch_add(1, Ordering::SeqCst);
                 self.router_gen.fetch_add(1, Ordering::SeqCst);
+                self.input_gen.fetch_add(1, Ordering::SeqCst);
                 if submit {
                     i.submit_pending = Some(now);
                     token = i.submit_pending;
@@ -1448,10 +1463,10 @@ impl Session {
             let _i = lock(&self.inner);
             let ok = self.shim_input(bytes);
             if ok && !bytes.is_empty() {
-                self.input_gen.fetch_add(1, Ordering::SeqCst);
                 if router {
                     self.router_gen.fetch_add(1, Ordering::SeqCst);
                 }
+                self.input_gen.fetch_add(1, Ordering::SeqCst);
             }
             ok
         };
@@ -7330,6 +7345,25 @@ mod tests {
                 b"\r".to_vec()
             ]
         );
+    }
+
+    #[test]
+    fn the_submit_key_is_held_when_a_dialog_opens_after_the_text() {
+        let (_t, s, rx) = lone_session();
+        s.feed(IDLE, true);
+        s.input_at_prompt_after(b"one\r", Instant::now(), Duration::from_millis(200))
+            .unwrap();
+        s.feed(
+            b"\r\nDo you want to proceed?\r\n > 1. Yes\r\n   2. No\r\n",
+            true,
+        );
+        thread::sleep(Duration::from_millis(500));
+        let mut seen = Vec::new();
+        while let Ok(Frame::Bin(b)) = rx.try_recv() {
+            seen.push(b.data.to_vec());
+        }
+        assert_eq!(seen, vec![b"one".to_vec()]);
+        assert!(lock(&s.inner).submit_pending.is_none());
     }
 
     #[test]
