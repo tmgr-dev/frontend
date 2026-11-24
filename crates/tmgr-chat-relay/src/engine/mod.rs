@@ -16,7 +16,7 @@ use crate::fields::{check_device_id, check_device_kind, check_fp};
 use crate::keys::{fingerprint, DeviceKeys};
 use crate::trust::{
     decode_join_code, encode_join_code, gate_blockers, is_owner_device, join_mac, kind_key,
-    lowers_kind, may_revoke, may_vouch, parse_intro, parse_revoke, restrict_to_before, sign_intro,
+    lowers_kind, may_revoke, parse_intro, parse_revoke, restrict_to_before, sign_intro,
     sign_revoke, trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke,
     verify_spawnkey, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement,
     SpawnKey, Trusted,
