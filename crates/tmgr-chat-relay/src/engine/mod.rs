@@ -66,6 +66,7 @@ fn err<E: Display>(e: E) -> String {
 }
 
 pub const RECIPIENT_FULL_MSG: &str = "the recipient's relay queue is full";
+pub const RECIPIENT_UNKNOWN_MSG: &str = "the recipient device is not on the relay";
 
 /// Transport errors are the response body of a failed call; for a 429 with Retry-After the transport adds `"retry_after": <secs>`.
 pub fn post_error(e: String) -> String {
@@ -73,9 +74,14 @@ pub fn post_error(e: String) -> String {
     match (v["error"].as_str(), v["retry_after"].as_u64()) {
         (Some("user_full"), _) => "relay storage is full".into(),
         (Some("recipient_full"), _) => RECIPIENT_FULL_MSG.into(),
+        (Some("recipient_unknown"), _) => RECIPIENT_UNKNOWN_MSG.into(),
         (_, Some(secs)) => format!("{BUSY_PREFIX}{secs}s"),
         _ => e,
     }
+}
+
+fn per_recipient(e: &str) -> bool {
+    e == RECIPIENT_FULL_MSG || e == RECIPIENT_UNKNOWN_MSG
 }
 
 pub fn retry_after_secs(e: &str) -> Option<u64> {
@@ -1087,7 +1093,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             items.push((t.id.clone(), body, seq));
         }
         let mut delivered = false;
-        let mut skipped = false;
+        let mut skipped: Option<String> = None;
         for chunk in items.chunks(api::MAX_ITEMS) {
             match self.post_items(c, msg_id, push, chunk) {
                 Ok(()) => {
@@ -1097,7 +1103,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     delivered = true;
                     continue;
                 }
-                Err(e) if e == RECIPIENT_FULL_MSG && chunk.len() > 1 => {}
+                Err(e) if per_recipient(&e) && chunk.len() > 1 => {}
                 Err(e) => return Err(e),
             }
             for item in chunk {
@@ -1106,7 +1112,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                         c.st.seq_out.insert(item.0.clone(), item.2);
                         delivered = true;
                     }
-                    Err(e) if e == RECIPIENT_FULL_MSG => {
+                    Err(e) if per_recipient(&e) => {
                         let kind = targets
                             .iter()
                             .find(|t| t.id == item.0)
@@ -1115,15 +1121,17 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                         if !is_owner_device(Some(kind.as_str())) {
                             return Err(e);
                         }
-                        self.s.skipped_full(&item.0, &kind);
-                        skipped = true;
+                        if e == RECIPIENT_FULL_MSG {
+                            self.s.skipped_full(&item.0, &kind);
+                        }
+                        skipped = Some(e);
                     }
                     Err(e) => return Err(e),
                 }
             }
         }
-        if skipped && !delivered {
-            return Err(RECIPIENT_FULL_MSG.into());
+        if let Some(e) = skipped.filter(|_| !delivered) {
+            return Err(e);
         }
         Ok(())
     }

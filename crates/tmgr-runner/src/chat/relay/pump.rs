@@ -326,7 +326,10 @@ fn retry_send(
     let mut backoff = BACKOFF_START;
     for attempt in 1..=SEND_ATTEMPTS {
         let Err(e) = attempt_send() else { return };
-        if e == RECIPIENT_FULL || PERMANENT.iter().any(|p| e.starts_with(p)) {
+        if e == RECIPIENT_FULL
+            || e == tmgr_chat_relay::engine::RECIPIENT_UNKNOWN_MSG
+            || PERMANENT.iter().any(|p| e.starts_with(p))
+        {
             crate::daemon::log(&format!("chat relay: {what} dropped: {e}"));
             return;
         }

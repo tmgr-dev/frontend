@@ -4334,6 +4334,30 @@ fn a_full_owner_device_is_skipped_and_the_rest_still_get_the_message() {
 }
 
 #[test]
+fn a_removed_owner_device_does_not_block_the_chat_to_the_others() {
+    let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
+    let (did, mid) = (my_id(&desktop), my_id(&mobile));
+    fake.0.lock().unwrap().devices.retain(|d| d.id != mid);
+    runner.poll_once().unwrap();
+    let bd = fake.queue_len(&did);
+    runner
+        .send_chat(&text_msg(new_message_id(), "reply"), false)
+        .unwrap();
+    assert_eq!(fake.queue_len(&did), bd + 1);
+}
+
+#[test]
+fn a_receipt_to_a_removed_device_fails_with_a_permanent_error() {
+    let (fake, _c, runner, desktop, _mobile, _other) = rooms_world();
+    let did = my_id(&desktop);
+    fake.0.lock().unwrap().devices.retain(|d| d.id != did);
+    let err = runner
+        .send_receipt(&did, &new_message_id(), ReceiptState::Delivered, None)
+        .unwrap_err();
+    assert_eq!(err, RECIPIENT_UNKNOWN_MSG);
+}
+
+#[test]
 fn a_chat_to_owners_skips_a_full_desktop_too() {
     let (fake, _c, runner, desktop, mobile, _other) = rooms_world();
     let (did, mid) = (my_id(&desktop), my_id(&mobile));

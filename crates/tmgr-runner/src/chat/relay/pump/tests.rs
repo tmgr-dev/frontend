@@ -524,6 +524,7 @@ fn send_gives_up_after_bounded_attempts() {
 fn full_recipient_and_untrusted_states_drop_without_retry() {
     for e in [
         RECIPIENT_FULL,
+        tmgr_chat_relay::engine::RECIPIENT_UNKNOWN_MSG,
         "there are no other trusted devices to send to",
         "this device is not a trusted member of the chat yet",
         "the target is not a trusted owner device",
