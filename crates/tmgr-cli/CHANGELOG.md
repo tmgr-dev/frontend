@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.184
+
+- Fixed: an agent running without the sandbox can open an image you paste in `tmgr attach`. It used to fail with "Operation not permitted".
+- Fixed: an agent running without the sandbox can open files attached to a chat message.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.183
 
 - Fixed: when Codex asks to approve a file edit, the chat shows it as a dialog and no longer types your message into it.
