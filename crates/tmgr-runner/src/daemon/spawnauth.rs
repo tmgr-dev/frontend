@@ -20,7 +20,8 @@ use tmgr_ipc::chat::{
     Author, AuthorKind, ChatMessage, DecisionRef, MessageKind, SpawnCard, CHAT_V,
 };
 use tmgr_spawn_auth::{
-    b64_encode, OfferOutcome, ProposalKind, Refusal, SignedSpawn, SpawnProposal, TrustStatus,
+    b64_encode, OfferOutcome, PermitSenderKind, ProposalKind, Refusal, SignedSpawn, SpawnProposal,
+    TrustStatus,
 };
 
 const CHALLENGES_PER_MINUTE: usize = 10;
@@ -192,6 +193,30 @@ impl TrustSource for RelayTrust {
         match relay_state(&self.dir, &self.machine) {
             Some((_, state)) => status_of(&state, device_id, fp),
             None => TrustStatus::Unknown,
+        }
+    }
+
+    fn permit_sender_kind(&self, device_id: &str, fp: &str) -> Option<PermitSenderKind> {
+        let (_, state) = relay_state(&self.dir, &self.machine)?;
+        if state.pending_revokes.iter().any(|p| p.target_fp == fp)
+            || state
+                .devices
+                .iter()
+                .any(|d| d.fp == fp && d.state == DeviceState::Revoked)
+        {
+            return None;
+        }
+        let dev = state.devices.iter().find(|d| {
+            d.id == device_id
+                && d.fp == fp
+                && d.state == DeviceState::Trusted
+                && !d.is_self
+                && d.kind_verified
+        })?;
+        match dev.kind.as_str() {
+            "desktop" => Some(PermitSenderKind::Desktop),
+            "mobile" => Some(PermitSenderKind::Mobile),
+            _ => None,
         }
     }
 }

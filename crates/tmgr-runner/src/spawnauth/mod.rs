@@ -15,12 +15,16 @@ pub use keys::{KeyError, KeyInfo, KeyOffer, KeyStoreFile, PendingKey};
 
 use std::sync::Arc;
 use tmgr_spawn_auth::{
-    OfferOutcome, PinnedKey, Refusal, RevokedKey, SignedSpawn, SpawnProposal, TrustStatus,
-    TrustView,
+    OfferOutcome, PermitSenderKind, PinnedKey, Refusal, RevokedKey, SignedSpawn, SpawnProposal,
+    TrustStatus, TrustView,
 };
 
 pub trait TrustSource: Send + Sync {
     fn status(&self, device_id: &str, fp: &str) -> TrustStatus;
+
+    fn permit_sender_kind(&self, _device_id: &str, _fp: &str) -> Option<PermitSenderKind> {
+        None
+    }
 }
 
 pub struct TrustAdapter<'a>(pub &'a dyn TrustSource);
@@ -98,6 +102,10 @@ impl SpawnAuth {
 
     pub fn identity(&self) -> &Identity {
         self.cards.identity()
+    }
+
+    pub fn permit_sender_kind(&self, device_id: &str, fp: &str) -> Option<PermitSenderKind> {
+        self.trust.permit_sender_kind(device_id, fp)
     }
 
     pub fn trust_view(&self) -> TrustAdapter<'_> {
