@@ -5072,8 +5072,8 @@ fn send_activity_refuses_desktop_only_targets_and_bad_input() {
 
 mod blobs;
 mod clock;
-mod receipt;
 mod probe;
+mod receipt;
 mod repro;
 
 #[test]
