@@ -2634,7 +2634,6 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
         match self.sync_dir(c) {
             Ok(()) => {
-                self.save_now(c)?;
                 let listed = c
                     .dir
                     .as_ref()

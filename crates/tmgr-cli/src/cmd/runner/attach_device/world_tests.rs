@@ -1135,21 +1135,20 @@ fn status_says_a_revoked_terminal_was_removed_from_the_devices() {
 }
 
 #[test]
-fn status_does_not_open_the_device_while_attach_holds_it() {
+fn status_while_attach_holds_the_device_says_in_use_or_removed() {
     let w = World::new();
     w.add_runner(R1, true, true);
     let mut dev = w.cli_device();
     w.pair(&mut dev).unwrap();
     let _held = super::lock::acquire(w.dir.path()).unwrap().unwrap();
-    let (data, text) = device_with(
-        w.dir.path(),
-        |_| -> std::result::Result<AttachDevice<Via, Keys>, String> {
-            panic!("status must not open the device while attach holds it")
-        },
-    )
-    .unwrap();
+    let status = || device_with(w.dir.path(), |_| Ok(w.device(Via::own_token(&w.net)))).unwrap();
+    let (data, text) = status();
     assert_eq!(data["state"], "in_use");
     assert_eq!(text, "Paired and in use by tmgr attach.");
+    w.owner.revoke(&terminal_id(&dev)).unwrap();
+    let (data, text) = status();
+    assert_eq!(data["state"], "removed");
+    assert_eq!(text, REMOVED_TEXT);
 }
 
 #[test]

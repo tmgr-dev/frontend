@@ -692,12 +692,17 @@ fn device_with<T: Transport, K: KeyStore>(
     let Some(parts) = load_parts(runner_dir).map_err(internal)? else {
         return Ok(not_paired());
     };
-    let Some(_lock) = lock::acquire(runner_dir).map_err(internal)? else {
-        return Ok((
-            json!({"state": "in_use", "kind": KIND}),
-            "Paired and in use by tmgr attach.".to_owned(),
-        ));
-    };
+    let lock = lock::acquire(runner_dir).map_err(internal)?;
+    if lock.is_none() {
+        let removed =
+            make(&parts).is_ok_and(|d| d.engine.own_device().is_some() && d.check_removed());
+        let (state, human) = if removed {
+            ("removed", REMOVED_TEXT.to_owned())
+        } else {
+            ("in_use", "Paired and in use by tmgr attach.".to_owned())
+        };
+        return Ok((json!({"state": state, "kind": KIND}), human));
+    }
     let dev = match make(&parts) {
         Ok(dev) => dev,
         Err(e) if e == NO_SECURE_STORE => return Ok(not_paired()),
