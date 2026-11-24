@@ -86,7 +86,7 @@ fn per_recipient(e: &str) -> bool {
     e == RECIPIENT_FULL_MSG || e == RECIPIENT_UNKNOWN_MSG
 }
 
-fn http_status(e: &str) -> Option<u64> {
+pub fn http_status(e: &str) -> Option<u64> {
     serde_json::from_str::<Value>(e)
         .ok()?
         .get("http_status")?
@@ -825,6 +825,13 @@ fn revoker_kind<'a>(c: &'a Core, revoker: &Dev) -> Option<&'a str> {
         }
         kind => kind,
     }
+}
+
+fn revoked_known(c: &Core) -> bool {
+    let Some(fp) = c.keys.as_ref().map(|k| k.fingerprint()) else {
+        return false;
+    };
+    c.st.revoked.contains(&fp) || c.st.pending_revokes.iter().any(|r| r.target_fp == fp)
 }
 
 fn ingest_revoke(
@@ -2622,11 +2629,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         let Some(id) = c.identity.as_ref().map(|i| i.device_id.clone()) else {
             return Ok(false);
         };
-        let revoked = c
-            .keys
-            .as_ref()
-            .is_some_and(|k| c.st.revoked.contains(&k.fingerprint()));
-        if revoked {
+        if revoked_known(c) {
             return Ok(true);
         }
         match self.fetch_dir(c) {
@@ -2634,6 +2637,18 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             Err(e) if http_status(&e) == Some(401) => Ok(true),
             Err(e) => Err(e),
         }
+    }
+
+    pub fn own_removed_known(&self) -> bool {
+        let g = self.lock();
+        let c = &*g;
+        let Some(id) = c.identity.as_ref().map(|i| i.device_id.as_str()) else {
+            return false;
+        };
+        revoked_known(c)
+            || c.dir
+                .as_ref()
+                .is_some_and(|d| !d.devices.iter().any(|x| x.device_id == id))
     }
 
     pub fn sent_log(&self) -> Vec<(String, String)> {
