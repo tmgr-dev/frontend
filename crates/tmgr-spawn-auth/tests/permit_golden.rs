@@ -319,6 +319,8 @@ fn fixture_cases_verify() {
         let sender = PermitSender {
             device_fp: c["sender_fp"].as_str().unwrap(),
             owner_device: c["owner_device"].as_bool().unwrap(),
+            kind: PermitSenderKind::Mobile,
+            desktop: DesktopPolicy::Safe,
         };
         let trust = Trust(trust_from(c["trust"].as_str().unwrap()));
         let got = verify_permit(&w, &r, &k, sender, &trust, c["now_ms"].as_u64().unwrap());

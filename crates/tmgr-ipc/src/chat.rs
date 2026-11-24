@@ -231,6 +231,8 @@ pub struct PermitCardMsg {
     pub danger: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub always_label: Option<String>,
+    #[serde(default)]
+    pub desktop_ok: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -787,7 +789,7 @@ mod tests {
             "session": "s_abcdefghij", "runner_id": "mx_7f3a", "runner_fp": "ab".repeat(32),
             "nonce": "cd".repeat(16), "exp_ms": 1795000120000u64, "req_sha256": "ef".repeat(32),
             "reissue": 1, "agent": "claude-code", "tool": "Bash", "text": "ls",
-            "danger": ["deletes files"], "always_label": "Always allow ls"
+            "danger": ["deletes files"], "always_label": "Always allow ls", "desktop_ok": true
         })
     }
 
@@ -811,6 +813,14 @@ mod tests {
         assert!(d.permit.is_none() && d.closed.is_none());
         let s = serde_json::to_string(&m).unwrap();
         assert!(!s.contains("permit") && !s.contains("closed"));
+    }
+
+    #[test]
+    fn a_permit_card_without_desktop_ok_means_false() {
+        let mut c = permit_card();
+        c.as_object_mut().unwrap().remove("desktop_ok");
+        let p: PermitCardMsg = serde_json::from_value(c).unwrap();
+        assert!(!p.desktop_ok);
     }
 
     #[test]

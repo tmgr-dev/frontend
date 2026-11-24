@@ -3,7 +3,7 @@ use super::*;
 use crate::permit::remote::{Action, PermitDesk, RunnerIds};
 use crate::spawnauth::SpawnAuth;
 use tmgr_ipc::chat::{Author, AuthorKind, ChatMessage, DecisionRef, MessageKind, CHAT_V};
-use tmgr_spawn_auth::{PermitSender, SignedPermit};
+use tmgr_spawn_auth::{DesktopPolicy, PermitSender, PermitSenderKind, SignedPermit};
 
 const PERMIT_TICK: Duration = Duration::from_secs(1);
 const PERMIT_INBOX_CAP: usize = 16;
@@ -13,6 +13,51 @@ const PERMIT_INTAKE_TICK: Duration = Duration::from_millis(500);
 const POSTED_CAP: usize = 64;
 const REASON_MAX: usize = 128;
 const TOOL_MAX: usize = 64;
+const PERMIT_CONFIG_FILE: &str = "permit.toml";
+const PERMIT_CONFIG_MAX: u64 = 4096;
+const DESKTOP_KEY: &str = "desktop_may_answer";
+
+fn desktop_policy_from(text: Option<&str>) -> (DesktopPolicy, Option<String>) {
+    let Some(text) = text else {
+        return (DesktopPolicy::Safe, None);
+    };
+    let table: toml::Table = match text.parse() {
+        Ok(t) => t,
+        Err(_) => {
+            return (
+                DesktopPolicy::Safe,
+                Some(format!("{PERMIT_CONFIG_FILE} is not valid")),
+            )
+        }
+    };
+    let Some(v) = table.get(DESKTOP_KEY) else {
+        return (DesktopPolicy::Safe, None);
+    };
+    match v.as_str().map(str::parse::<DesktopPolicy>) {
+        Some(Ok(p)) => (p, None),
+        _ => (
+            DesktopPolicy::Safe,
+            Some(format!("{DESKTOP_KEY} must be none, safe or all")),
+        ),
+    }
+}
+
+fn load_desktop_policy(runner_dir: &Path) -> (DesktopPolicy, Option<String>) {
+    let mut text = String::new();
+    let read = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(runner_dir.join(PERMIT_CONFIG_FILE))
+        .map(|f| f.take(PERMIT_CONFIG_MAX).read_to_string(&mut text));
+    match read {
+        Ok(Ok(_)) => desktop_policy_from(Some(&text)),
+        Ok(Err(_)) => (
+            DesktopPolicy::Safe,
+            Some(format!("{PERMIT_CONFIG_FILE} cannot be read")),
+        ),
+        Err(_) => (DesktopPolicy::Safe, None),
+    }
+}
 
 struct Posted {
     msg_id: Option<String>,
@@ -24,6 +69,7 @@ pub(super) struct PermitRelay {
     desk: Mutex<PermitDesk>,
     posted: Mutex<HashMap<String, Posted>>,
     last_tick: Mutex<Option<Instant>>,
+    policy_warned: AtomicBool,
     #[cfg(test)]
     audits: Mutex<Vec<String>>,
 }
@@ -61,6 +107,26 @@ impl Runner {
     fn permit_card_of(&self, session: &str) -> Option<PermissionCard> {
         let s = self.session(session)?;
         (!s.is_exited() && s.has_shim()).then(|| s.card()).flatten()
+    }
+
+    fn permit_sync_policy(&self) {
+        let (policy, warning) = load_desktop_policy(&self.cfg.dir);
+        match warning {
+            Some(w) => {
+                if !self
+                    .permit_relay
+                    .policy_warned
+                    .swap(true, Ordering::Relaxed)
+                {
+                    log(&format!("permit relay: {w}, desktop answers use safe"));
+                }
+            }
+            None => self
+                .permit_relay
+                .policy_warned
+                .store(false, Ordering::Relaxed),
+        }
+        lock(&self.permit_relay.desk).set_desktop(policy);
     }
 
     pub(super) fn permit_tick(&self, now: u64) {
@@ -106,6 +172,7 @@ impl Runner {
             return;
         };
         let mut fresh = pool(pool_);
+        self.permit_sync_policy();
         let actions: Vec<Action> = {
             let mut desk = lock(&self.permit_relay.desk);
             seen.iter()
@@ -123,11 +190,13 @@ impl Runner {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn accept_permitok(
         &self,
         _from_device: &str,
         from_fp: &str,
         owner_device: bool,
+        kind: PermitSenderKind,
         sender_label: &str,
         signed: &SignedPermit,
         now: u64,
@@ -144,12 +213,15 @@ impl Runner {
         };
         let mut fresh = pool(pool_);
         let trust = auth.trust_view();
+        self.permit_sync_policy();
         let actions = lock(&self.permit_relay.desk).accept(
             signed,
             key.as_ref(),
             PermitSender {
                 device_fp: from_fp,
                 owner_device,
+                kind,
+                desktop: DesktopPolicy::default(),
             },
             &trust,
             &clean(sender_label, REASON_MAX / 2),
@@ -326,6 +398,7 @@ struct OkItem {
     device: String,
     fp: String,
     owner_device: bool,
+    kind: PermitSenderKind,
     label: String,
     signed: SignedPermit,
 }
@@ -349,6 +422,7 @@ impl PermitOkInbox {
         from_device: &str,
         from_fp: &str,
         owner_device: bool,
+        kind: PermitSenderKind,
         sender_label: &str,
         signed: &SignedPermit,
     ) {
@@ -361,6 +435,7 @@ impl PermitOkInbox {
                     device: from_device.to_owned(),
                     fp: from_fp.to_owned(),
                     owner_device,
+                    kind,
                     label: sender_label.to_owned(),
                     signed: signed.clone(),
                 })
@@ -390,6 +465,7 @@ impl Runner {
                                 &item.device,
                                 &item.fp,
                                 item.owner_device,
+                                item.kind,
                                 &item.label,
                                 &item.signed,
                                 now_ms(),
@@ -569,7 +645,15 @@ mod tests {
 
     fn accept(e: &Env, s: &SignedPermit, owner: bool) {
         fg(e);
-        e.rt.accept_permitok("dev-1", &s.device_fp, owner, "Mac", s, now_ms());
+        e.rt.accept_permitok(
+            "dev-1",
+            &s.device_fp,
+            owner,
+            PermitSenderKind::Mobile,
+            "Mac",
+            s,
+            now_ms(),
+        );
     }
 
     fn typed(e: &Env) -> String {
@@ -710,7 +794,14 @@ mod tests {
         let s = signed(&e, PermitChoice::Yes);
         let (inbox, rx) = permit_inbox();
         for _ in 0..6 {
-            inbox.deliver("dev-1", &s.device_fp, true, "Mac", &s);
+            inbox.deliver(
+                "dev-1",
+                &s.device_fp,
+                true,
+                PermitSenderKind::Mobile,
+                "Mac",
+                &s,
+            );
         }
         assert_eq!(rx.try_iter().count(), 4);
     }
@@ -722,7 +813,14 @@ mod tests {
         let s = signed(&e, PermitChoice::Yes);
         fg(&e);
         let inbox = e.rt.start_permitok_intake();
-        inbox.deliver("dev-1", &s.device_fp, true, "Mac", &s);
+        inbox.deliver(
+            "dev-1",
+            &s.device_fp,
+            true,
+            PermitSenderKind::Mobile,
+            "Mac",
+            &s,
+        );
         for _ in 0..50 {
             if !closed(&e).is_empty() {
                 break;
@@ -732,5 +830,56 @@ mod tests {
         e.rt.stop.store(true, Ordering::SeqCst);
         assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
         assert_eq!(typed(&e), "1");
+    }
+
+    #[test]
+    fn the_desktop_setting_defaults_to_safe_when_missing_or_invalid() {
+        for text in [
+            None,
+            Some(""),
+            Some("other = 1"),
+            Some("desktop_may_answer = \"ALL\""),
+            Some("desktop_may_answer = \"\""),
+            Some("desktop_may_answer = 3"),
+            Some("desktop_may_answer = ["),
+        ] {
+            assert_eq!(desktop_policy_from(text).0, DesktopPolicy::Safe, "{text:?}");
+        }
+        assert!(desktop_policy_from(None).1.is_none());
+        assert!(desktop_policy_from(Some("other = 1")).1.is_none());
+        assert!(desktop_policy_from(Some("desktop_may_answer = \"ALL\""))
+            .1
+            .is_some());
+        assert!(desktop_policy_from(Some("desktop_may_answer = ["))
+            .1
+            .is_some());
+        for (v, p) in [
+            ("none", DesktopPolicy::None),
+            ("safe", DesktopPolicy::Safe),
+            ("all", DesktopPolicy::All),
+        ] {
+            let text = format!("desktop_may_answer = \"{v}\"\n");
+            assert_eq!(desktop_policy_from(Some(&text)), (p, None));
+        }
+    }
+
+    #[test]
+    fn the_desktop_setting_is_read_from_the_runner_dir() {
+        let t = tempfile::tempdir().unwrap();
+        assert_eq!(load_desktop_policy(t.path()).0, DesktopPolicy::Safe);
+        std::fs::write(
+            t.path().join(PERMIT_CONFIG_FILE),
+            "desktop_may_answer = \"none\"\n",
+        )
+        .unwrap();
+        assert_eq!(load_desktop_policy(t.path()).0, DesktopPolicy::None);
+        std::fs::write(
+            t.path().join(PERMIT_CONFIG_FILE),
+            "desktop_may_answer = \"everything\"\n",
+        )
+        .unwrap();
+        let (p, warn) = load_desktop_policy(t.path());
+        assert_eq!(p, DesktopPolicy::Safe);
+        assert!(warn.is_some());
     }
 }

@@ -75,7 +75,8 @@
             "from": { "type": "string" },
             "warning": { "type": "string" },
             "danger": { "type": "array", "items": { "type": "string" } },
-            "always_label": { "type": "string" }
+            "always_label": { "type": "string" },
+            "desktop_ok": { "type": "boolean", "default": false, "description": "True when a desktop may offer answer buttons. False or absent: the desktop shows \"Answer on your phone or in tmgr attach\"." }
           }
         },
         "spawn": {

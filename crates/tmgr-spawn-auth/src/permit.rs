@@ -182,6 +182,7 @@ pub enum PermitOutcome {
 pub enum PermitRefusal {
     NotOwnerDevice,
     SenderMismatch,
+    DesktopNotAllowed,
     NotTrusted,
     UnknownKey,
     Stale,
@@ -201,6 +202,7 @@ impl PermitRefusal {
         match self {
             PermitRefusal::NotOwnerDevice => "not_owner_device",
             PermitRefusal::SenderMismatch => "sender_mismatch",
+            PermitRefusal::DesktopNotAllowed => "desktop_not_allowed",
             PermitRefusal::NotTrusted => "not_trusted",
             PermitRefusal::UnknownKey => "unknown_key",
             PermitRefusal::Stale => "stale",
@@ -220,6 +222,7 @@ impl PermitRefusal {
         match self {
             PermitRefusal::NotOwnerDevice
             | PermitRefusal::SenderMismatch
+            | PermitRefusal::DesktopNotAllowed
             | PermitRefusal::NotTrusted
             | PermitRefusal::UnknownKey
             | PermitRefusal::Stale => PermitOutcome::Drop,
@@ -243,6 +246,9 @@ impl fmt::Display for PermitRefusal {
             PermitRefusal::SenderMismatch => {
                 "permission answer sender does not match the signing device"
             }
+            PermitRefusal::DesktopNotAllowed => {
+                "permission answers from a desktop are not allowed for this card"
+            }
             PermitRefusal::NotTrusted => "permission answer device is not trusted",
             PermitRefusal::UnknownKey => "permission answer has no usable pinned key",
             PermitRefusal::Stale => "permission answer is for another or an older card",
@@ -264,10 +270,62 @@ impl fmt::Display for PermitRefusal {
 
 impl std::error::Error for PermitRefusal {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermitSenderKind {
+    Mobile,
+    Desktop,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DesktopPolicy {
+    None,
+    #[default]
+    Safe,
+    All,
+}
+
+impl DesktopPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DesktopPolicy::None => "none",
+            DesktopPolicy::Safe => "safe",
+            DesktopPolicy::All => "all",
+        }
+    }
+
+    pub fn allows(self, kind: PermitSenderKind, screen: &PermitScreen) -> bool {
+        match kind {
+            PermitSenderKind::Mobile => true,
+            PermitSenderKind::Desktop => match self {
+                DesktopPolicy::None => false,
+                DesktopPolicy::Safe => !screen.is_danger(),
+                DesktopPolicy::All => true,
+            },
+        }
+    }
+}
+
+impl std::str::FromStr for DesktopPolicy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "none" => Ok(DesktopPolicy::None),
+            "safe" => Ok(DesktopPolicy::Safe),
+            "all" => Ok(DesktopPolicy::All),
+            _ => Err(format!(
+                "desktop policy must be none, safe or all, got {s:?}"
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct PermitSender<'a> {
     pub device_fp: &'a str,
     pub owner_device: bool,
+    pub kind: PermitSenderKind,
+    pub desktop: DesktopPolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -315,6 +373,9 @@ pub fn verify_permit(
     }
     if sender.device_fp != sig.device_fp || sig.device_fp != key.device_fp {
         return Err(PermitRefusal::SenderMismatch);
+    }
+    if !sender.desktop.allows(sender.kind, &record.screen) {
+        return Err(PermitRefusal::DesktopNotAllowed);
     }
     if trust.status(&key.device_id, &key.device_fp) != TrustStatus::Trusted {
         return Err(PermitRefusal::NotTrusted);
@@ -492,6 +553,8 @@ mod tests {
         let sender = PermitSender {
             device_fp: &s.device_fp,
             owner_device: true,
+            kind: PermitSenderKind::Mobile,
+            desktop: DesktopPolicy::Safe,
         };
         verify_permit(s, r, k, sender, &Trust(trust), now)
     }
@@ -527,6 +590,8 @@ mod tests {
         let sender = PermitSender {
             device_fp: &s.device_fp,
             owner_device: false,
+            kind: PermitSenderKind::Mobile,
+            desktop: DesktopPolicy::Safe,
         };
         let e = verify_permit(&s, &r, &k, sender, &T, NOW).unwrap_err();
         assert_eq!(e, PermitRefusal::NotOwnerDevice);
@@ -556,6 +621,8 @@ mod tests {
         let sender = PermitSender {
             device_fp: &other,
             owner_device: true,
+            kind: PermitSenderKind::Mobile,
+            desktop: DesktopPolicy::Safe,
         };
         let e = verify_permit(&s, &r, &k, sender, &T, NOW).unwrap_err();
         assert_eq!(e, PermitRefusal::SenderMismatch);
@@ -566,6 +633,8 @@ mod tests {
         let sender = PermitSender {
             device_fp: &other,
             owner_device: true,
+            kind: PermitSenderKind::Mobile,
+            desktop: DesktopPolicy::Safe,
         };
         assert_eq!(
             verify_permit(&s2, &r, &k, sender, &T, NOW),
@@ -878,6 +947,7 @@ mod tests {
         let all = [
             NotOwnerDevice,
             SenderMismatch,
+            DesktopNotAllowed,
             NotTrusted,
             UnknownKey,
             Stale,
@@ -893,7 +963,8 @@ mod tests {
         ];
         for r in all {
             let want = match r {
-                NotOwnerDevice | SenderMismatch | NotTrusted | UnknownKey | Stale => Drop,
+                NotOwnerDevice | SenderMismatch | DesktopNotAllowed | NotTrusted | UnknownKey
+                | Stale => Drop,
                 Expired | NeedsConfirm | BadChoice | ScreenMismatch | BadToken | BadTtl
                 | UnsupportedVersion | UnsupportedAlg => Reissue,
                 BadSig => Terminal,
@@ -937,5 +1008,99 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn danger_record() -> PermitRecord {
+        let mut r = record();
+        r.screen.danger = vec!["deletes files".into()];
+        r.screen.always_label = None;
+        r
+    }
+
+    fn as_sender(
+        s: &SignedPermit,
+        kind: PermitSenderKind,
+        desktop: DesktopPolicy,
+    ) -> PermitSender<'_> {
+        PermitSender {
+            device_fp: &s.device_fp,
+            owner_device: true,
+            kind,
+            desktop,
+        }
+    }
+
+    #[test]
+    fn desktop_policy_matrix() {
+        let k = key();
+        let cases = [
+            (DesktopPolicy::None, false, false),
+            (DesktopPolicy::None, true, false),
+            (DesktopPolicy::Safe, false, true),
+            (DesktopPolicy::Safe, true, false),
+            (DesktopPolicy::All, false, true),
+            (DesktopPolicy::All, true, true),
+        ];
+        for (policy, danger, allowed) in cases {
+            let r = if danger { danger_record() } else { record() };
+            let s = signed(&r, &k, PermitChoice::Yes, u8::from(danger));
+            let got = verify_permit(
+                &s,
+                &r,
+                &k,
+                as_sender(&s, PermitSenderKind::Desktop, policy),
+                &T,
+                NOW,
+            );
+            if allowed {
+                assert!(got.is_ok(), "{policy:?} danger={danger}");
+            } else {
+                let e = got.unwrap_err();
+                assert_eq!(e, PermitRefusal::DesktopNotAllowed, "{policy:?} {danger}");
+                assert_eq!(e.outcome(), PermitOutcome::Drop);
+                assert_eq!(e.code(), "desktop_not_allowed");
+            }
+        }
+    }
+
+    #[test]
+    fn mobile_is_never_limited_by_the_desktop_policy() {
+        let k = key();
+        for danger in [false, true] {
+            let r = if danger { danger_record() } else { record() };
+            let s = signed(&r, &k, PermitChoice::Yes, u8::from(danger));
+            for policy in [DesktopPolicy::None, DesktopPolicy::Safe, DesktopPolicy::All] {
+                let sender = as_sender(&s, PermitSenderKind::Mobile, policy);
+                assert!(verify_permit(&s, &r, &k, sender, &T, NOW).is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn desktop_policy_parses_strictly() {
+        assert_eq!(DesktopPolicy::default(), DesktopPolicy::Safe);
+        for (text, p) in [
+            ("none", DesktopPolicy::None),
+            ("safe", DesktopPolicy::Safe),
+            ("all", DesktopPolicy::All),
+        ] {
+            assert_eq!(text.parse::<DesktopPolicy>(), Ok(p));
+            assert_eq!(p.as_str(), text);
+        }
+        for bad in ["", "Safe", "ALL", " safe", "yes", "safe\n"] {
+            assert!(bad.parse::<DesktopPolicy>().is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn desktop_check_runs_before_the_trust_check() {
+        let (r, k) = (danger_record(), key());
+        let s = signed(&r, &k, PermitChoice::Yes, 1);
+        let sender = as_sender(&s, PermitSenderKind::Desktop, DesktopPolicy::Safe);
+        let untrusted = Trust(TrustStatus::NotTrusted);
+        assert_eq!(
+            verify_permit(&s, &r, &k, sender, &untrusted, NOW),
+            Err(PermitRefusal::DesktopNotAllowed)
+        );
     }
 }

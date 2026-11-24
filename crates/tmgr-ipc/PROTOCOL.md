@@ -712,8 +712,12 @@ optional; readers ignore the object when it is absent.
 
 A `decision` message may carry two more optional fields, both absent on older runners and ignored by older
 readers. `decision.permit` is a remote permission card (`PermitCardMsg`: session, runner id and fingerprint,
-nonce, `exp_ms`, `req_sha256`, `reissue` count and the screen fields of the agent's permission dialog) that a
-paired owner device may answer with a signed permit. `decision.closed` is a short reason that closes the card
+nonce, `exp_ms`, `req_sha256`, `reissue` count and the screen fields of the agent's permission dialog, and `desktop_ok`) that a
+paired owner device may answer with a signed permit. `desktop_ok` is a boolean that is `false` when absent: when it is
+`true` a desktop may offer answer buttons for the card, when it is `false` the desktop shows "Answer on your phone or in
+tmgr attach" instead. The runner sets it from its `desktop_may_answer` setting (`none`, `safe` or `all`, default `safe`)
+and enforces the same rule when it checks the signed answer, so a desktop answer that the setting does not allow is
+dropped and the card stays answerable; a phone is never limited by it. `decision.closed` is a short reason that closes the card
 `card_id` on every device (`answered on <device>`, `answered in attach`, `gone`, `answer in attach`, `expired`).
 
 | method | params | result |

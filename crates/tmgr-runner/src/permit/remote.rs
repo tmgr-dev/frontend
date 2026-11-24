@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use tmgr_ipc::api::{PermissionCard, PermissionChoice};
 use tmgr_ipc::chat::PermitCardMsg;
 use tmgr_spawn_auth::{
-    verify_permit, PermitChoice, PermitOutcome, PermitRecord, PermitScreen, PermitSender,
-    PinnedKey, SignedPermit, TrustView, MAX_PERMIT_TTL_MS,
+    verify_permit, DesktopPolicy, PermitChoice, PermitOutcome, PermitRecord, PermitScreen,
+    PermitSender, PermitSenderKind, PinnedKey, SignedPermit, TrustView, MAX_PERMIT_TTL_MS,
 };
 
 const MAX_PENDING: usize = 32;
@@ -48,11 +48,16 @@ pub struct PendingPermit {
 pub struct PermitDesk {
     pending: HashMap<String, PendingPermit>,
     closed: VecDeque<String>,
+    desktop: DesktopPolicy,
 }
 
 impl PermitDesk {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn set_desktop(&mut self, policy: DesktopPolicy) {
+        self.desktop = policy;
     }
 
     pub fn pending(&self, card_id: &str) -> Option<&PendingPermit> {
@@ -76,6 +81,7 @@ impl PermitDesk {
         fresh_nonce: &mut dyn FnMut() -> String,
     ) -> Vec<Action> {
         let mut out = Vec::new();
+        let desktop = self.desktop;
         let live = card.filter(|c| c.can_answer);
         let held = self
             .pending
@@ -88,7 +94,7 @@ impl PermitDesk {
                 if now_ms > p.record.exp_ms {
                     if p.reissues < MAX_REISSUES {
                         p.reissue(now_ms, fresh_nonce());
-                        out.push(post(&id, &p.record, p.reissues));
+                        out.push(post(&id, &p.record, p.reissues, desktop));
                     } else {
                         self.pending.remove(&id);
                         self.tombstone(&id);
@@ -129,7 +135,7 @@ impl PermitDesk {
             exp_ms: now_ms.saturating_add(MAX_PERMIT_TTL_MS),
             screen: screen_of(c),
         };
-        out.push(post(&c.id, &record, 0));
+        out.push(post(&c.id, &record, 0, desktop));
         self.pending.insert(
             c.id.clone(),
             PendingPermit {
@@ -162,6 +168,8 @@ impl PermitDesk {
         fresh_nonce: &mut dyn FnMut() -> String,
     ) -> Vec<Action> {
         let id = signed.card_id.clone();
+        let desktop = self.desktop;
+        let sender = PermitSender { desktop, ..sender };
         let line = |result: &str, action: &str| Action::Audit(audit_line(signed, result, action));
         let Some(p) = self.pending.get_mut(&id) else {
             return vec![line("stale", "dropped")];
@@ -207,7 +215,10 @@ impl PermitDesk {
             PermitOutcome::Reissue => {
                 if p.reissues < MAX_REISSUES {
                     p.reissue(now_ms, fresh_nonce());
-                    vec![post(&id, &p.record, p.reissues), line(e.code(), "reissued")]
+                    vec![
+                        post(&id, &p.record, p.reissues, desktop),
+                        line(e.code(), "reissued"),
+                    ]
                 } else {
                     self.pending.remove(&id);
                     self.tombstone(&id);
@@ -247,7 +258,7 @@ fn close(card_id: &str, reason: &str) -> Action {
     }
 }
 
-fn post(card_id: &str, r: &PermitRecord, reissue: u8) -> Action {
+fn post(card_id: &str, r: &PermitRecord, reissue: u8, desktop: DesktopPolicy) -> Action {
     let s = &r.screen;
     Action::Post {
         card_id: card_id.to_string(),
@@ -268,6 +279,7 @@ fn post(card_id: &str, r: &PermitRecord, reissue: u8) -> Action {
             warning: s.warning.clone(),
             danger: s.danger.clone(),
             always_label: s.always_label.clone(),
+            desktop_ok: desktop.allows(PermitSenderKind::Desktop, s),
         }),
     }
 }
@@ -376,7 +388,12 @@ mod tests {
     }
 
     fn desk_with(c: &PermissionCard, g: &mut Gen) -> PermitDesk {
+        desk_under(DesktopPolicy::Safe, c, g)
+    }
+
+    fn desk_under(policy: DesktopPolicy, c: &PermissionCard, g: &mut Gen) -> PermitDesk {
         let mut d = PermitDesk::new();
+        d.set_desktop(policy);
         let acts = d.observe(SESSION, Some(c), &ids(), T0, &mut || g.next());
         assert!(matches!(acts.as_slice(), [Action::Post { .. }]), "{acts:?}");
         d
@@ -413,6 +430,7 @@ mod tests {
     struct Ctx {
         trust: TrustStatus,
         owner: bool,
+        kind: PermitSenderKind,
         key: Option<PinnedKey>,
         label: &'static str,
     }
@@ -422,6 +440,7 @@ mod tests {
             Ctx {
                 trust: TrustStatus::Trusted,
                 owner: true,
+                kind: PermitSenderKind::Mobile,
                 key: Some(key()),
                 label: "Mac",
             }
@@ -442,6 +461,8 @@ mod tests {
             PermitSender {
                 device_fp: &s.device_fp,
                 owner_device: c.owner,
+                kind: c.kind,
+                desktop: DesktopPolicy::All,
             },
             &Trust(c.trust),
             c.label,
@@ -851,5 +872,65 @@ mod tests {
                 assert!(!l.contains("Mac"));
             }
         }
+    }
+
+    fn danger_card() -> PermissionCard {
+        let mut c = card();
+        c.danger = vec!["deletes files".into()];
+        c.always_label = None;
+        c
+    }
+
+    #[test]
+    fn desktop_ok_follows_the_policy_on_every_post() {
+        let cases = [
+            (DesktopPolicy::None, false, false),
+            (DesktopPolicy::None, true, false),
+            (DesktopPolicy::Safe, false, true),
+            (DesktopPolicy::Safe, true, false),
+            (DesktopPolicy::All, false, true),
+            (DesktopPolicy::All, true, true),
+        ];
+        for (policy, danger, want) in cases {
+            let c = if danger { danger_card() } else { card() };
+            let mut g = Gen(0);
+            let mut d = PermitDesk::new();
+            d.set_desktop(policy);
+            let first = d.observe(SESSION, Some(&c), &ids(), T0, &mut || g.next());
+            assert_eq!(
+                posted(&first).desktop_ok,
+                want,
+                "{policy:?} danger={danger}"
+            );
+            let later = T0 + MAX_PERMIT_TTL_MS + 1;
+            let again = d.observe(SESSION, Some(&c), &ids(), later, &mut || g.next());
+            let p = posted(&again);
+            assert_eq!(p.reissue, 1);
+            assert_eq!(p.desktop_ok, want, "reissue {policy:?} danger={danger}");
+        }
+    }
+
+    #[test]
+    fn a_dropped_desktop_answer_burns_nothing_and_a_phone_can_still_answer() {
+        let mut g = Gen(0);
+        let c = danger_card();
+        let mut d = desk_under(DesktopPolicy::Safe, &c, &mut g);
+        let before = d.pending(CARD).unwrap().clone();
+        let s = sign(&rec(&d), PermitChoice::Yes, 1);
+        let desktop = Ctx {
+            kind: PermitSenderKind::Desktop,
+            ..Ctx::ok()
+        };
+        let acts = accept(&mut d, &s, &desktop, Some(&c), T0 + 1000, &mut g);
+        only_audit(&acts);
+        let line = audit(&acts);
+        assert!(
+            line.ends_with("result=desktop_not_allowed action=dropped"),
+            "{line}"
+        );
+        assert_eq!(d.pending(CARD).unwrap(), &before);
+        assert_eq!(d.pending(CARD).unwrap().reissues, before.reissues);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), T0 + 1001, &mut g);
+        assert_eq!(answers(&acts), 1, "{acts:?}");
     }
 }
