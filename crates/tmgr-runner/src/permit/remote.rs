@@ -30,6 +30,7 @@ pub enum Action {
     Answer {
         session: String,
         card_id: String,
+        prompt: String,
         choice: PermissionChoice,
         confirmed: bool,
         audit: String,
@@ -41,15 +42,22 @@ pub enum Action {
 pub struct PendingPermit {
     pub record: PermitRecord,
     pub reissues: u8,
+    pub idle: u8,
     pub burned: HashSet<String>,
+    pub prompt: String,
+    answering: Option<String>,
 }
 
 #[derive(Debug, Default)]
 pub struct PermitDesk {
     pending: HashMap<String, PendingPermit>,
     closed: VecDeque<String>,
+    retired: VecDeque<String>,
+    serial: u64,
     desktop: DesktopPolicy,
 }
+
+pub type FreshNonce<'a> = &'a mut dyn FnMut() -> Option<String>;
 
 impl PermitDesk {
     pub fn new() -> Self {
@@ -62,6 +70,12 @@ impl PermitDesk {
 
     pub fn pending(&self, card_id: &str) -> Option<&PendingPermit> {
         self.pending.get(card_id)
+    }
+
+    pub fn is_current(&self, card_id: &str, nonce: &str) -> bool {
+        self.pending
+            .get(card_id)
+            .is_some_and(|p| p.record.nonce == nonce)
     }
 
     pub fn len(&self) -> usize {
@@ -78,7 +92,7 @@ impl PermitDesk {
         card: Option<&PermissionCard>,
         ids: &RunnerIds,
         now_ms: u64,
-        fresh_nonce: &mut dyn FnMut() -> String,
+        fresh_nonce: FreshNonce<'_>,
     ) -> Vec<Action> {
         let mut out = Vec::new();
         let desktop = self.desktop;
@@ -89,29 +103,33 @@ impl PermitDesk {
             .find(|(_, p)| p.record.session == session)
             .map(|(id, _)| id.clone());
         if let Some(id) = held {
-            if live.is_some_and(|c| c.id == id) {
-                let p = self.pending.get_mut(&id).expect("held card is pending");
+            let p = self.pending.get_mut(&id).expect("held card is pending");
+            if p.answering.is_some() {
+                return out;
+            }
+            if live.is_some_and(|c| c.id == p.prompt) {
                 if now_ms > p.record.exp_ms {
-                    if p.reissues < MAX_REISSUES {
-                        p.reissue(now_ms, fresh_nonce());
-                        out.push(post(&id, &p.record, p.reissues, desktop));
-                    } else {
-                        self.pending.remove(&id);
-                        self.tombstone(&id);
-                        out.push(close(&id, "expired"));
+                    if let Some(nonce) = fresh_nonce() {
+                        p.reissue(now_ms, nonce, true);
+                        out.push(post(&id, p, desktop));
                     }
                 }
                 return out;
             }
+            let prompt = p.prompt.clone();
             self.pending.remove(&id);
+            self.retire(&prompt);
             out.push(close(&id, "gone"));
         }
         let Some(c) = live else {
             return out;
         };
-        if self.closed.contains(&c.id) || self.pending.contains_key(&c.id) {
+        if self.closed.contains(&c.id) || self.pending.values().any(|p| p.prompt == c.id) {
             return out;
         }
+        let Some(nonce) = fresh_nonce() else {
+            return out;
+        };
         if self.pending.len() >= MAX_PENDING {
             let oldest = self
                 .pending
@@ -119,40 +137,86 @@ impl PermitDesk {
                 .min_by_key(|(_, p)| p.record.exp_ms)
                 .map(|(id, _)| id.clone());
             if let Some(id) = oldest {
-                self.pending.remove(&id);
-                self.tombstone(&id);
+                if let Some(p) = self.pending.remove(&id) {
+                    self.tombstone(&p.prompt);
+                }
                 out.push(close(&id, "gone"));
             }
         }
+        let card_id = self.relay_id(&c.id);
         let record = PermitRecord {
             user_id: ids.user_id.clone(),
             runner_id: ids.runner_id.clone(),
             runner_fp: ids.runner_fp.clone(),
-            card_id: c.id.clone(),
+            card_id: card_id.clone(),
             session: session.to_string(),
-            nonce: fresh_nonce(),
+            nonce,
             issued_ms: now_ms,
             exp_ms: now_ms.saturating_add(MAX_PERMIT_TTL_MS),
             screen: screen_of(c),
         };
-        out.push(post(&c.id, &record, 0, desktop));
-        self.pending.insert(
-            c.id.clone(),
-            PendingPermit {
-                record,
-                reissues: 0,
-                burned: HashSet::new(),
-            },
-        );
+        let p = PendingPermit {
+            record,
+            reissues: 0,
+            idle: 0,
+            burned: HashSet::new(),
+            prompt: c.id.clone(),
+            answering: None,
+        };
+        out.push(post(&card_id, &p, desktop));
+        self.pending.insert(card_id, p);
         out
     }
 
     pub fn answered_locally(&mut self, card_id: &str) -> Vec<Action> {
-        if self.pending.remove(card_id).is_none() {
+        let Some(p) = self.pending.remove(card_id) else {
+            return Vec::new();
+        };
+        self.tombstone(&p.prompt);
+        vec![close(card_id, "answered in attach")]
+    }
+
+    pub fn answered(&mut self, card_id: &str) -> Vec<Action> {
+        let Some(reason) = self.pending.get(card_id).and_then(|p| p.answering.clone()) else {
+            return Vec::new();
+        };
+        if let Some(p) = self.pending.remove(card_id) {
+            self.tombstone(&p.prompt);
+        }
+        vec![close(card_id, &reason)]
+    }
+
+    pub fn answer_failed(
+        &mut self,
+        card_id: &str,
+        retry: bool,
+        now_ms: u64,
+        fresh_nonce: FreshNonce<'_>,
+    ) -> Vec<Action> {
+        let desktop = self.desktop;
+        let Some(p) = self.pending.get_mut(card_id) else {
+            return Vec::new();
+        };
+        if p.answering.take().is_none() {
             return Vec::new();
         }
-        self.tombstone(card_id);
-        vec![close(card_id, "answered in attach")]
+        let reason = if !retry {
+            "gone"
+        } else if p.reissues < MAX_REISSUES {
+            return match fresh_nonce() {
+                Some(nonce) => {
+                    p.reissue(now_ms, nonce, false);
+                    vec![post(card_id, p, desktop)]
+                }
+                None => Vec::new(),
+            };
+        } else {
+            "answer in attach"
+        };
+        if let Some(p) = self.pending.remove(card_id) {
+            self.tombstone(&p.prompt);
+        }
+        vec![close(card_id, reason)]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -165,7 +229,7 @@ impl PermitDesk {
         sender_label: &str,
         current: Option<&PermissionCard>,
         now_ms: u64,
-        fresh_nonce: &mut dyn FnMut() -> String,
+        fresh_nonce: FreshNonce<'_>,
     ) -> Vec<Action> {
         let id = signed.card_id.clone();
         let desktop = self.desktop;
@@ -174,7 +238,7 @@ impl PermitDesk {
         let Some(p) = self.pending.get_mut(&id) else {
             return vec![line("stale", "dropped")];
         };
-        if p.burned.contains(&signed.nonce) {
+        if p.answering.is_some() || p.burned.contains(&signed.nonce) {
             return vec![line("stale", "dropped")];
         }
         let Some(key) = key else {
@@ -185,64 +249,83 @@ impl PermitDesk {
         let Some(e) = refusal else {
             p.burned.insert(p.record.nonce.clone());
             let screen_same = current.is_some_and(|c| {
-                c.id == id
+                c.id == p.prompt
                     && c.can_answer
                     && screen_of(c).req_sha256() == p.record.screen.req_sha256()
             });
-            let session = p.record.session.clone();
-            self.pending.remove(&id);
-            self.tombstone(&id);
             if !screen_same {
+                if let Some(p) = self.pending.remove(&id) {
+                    self.tombstone(&p.prompt);
+                }
                 return vec![close(&id, "gone"), line("screen_changed", "closed")];
             }
-            return vec![
-                Action::Answer {
-                    session,
-                    card_id: id.clone(),
-                    choice: match signed.choice {
-                        PermitChoice::Yes => PermissionChoice::Yes,
-                        PermitChoice::No => PermissionChoice::No,
-                        PermitChoice::Always => PermissionChoice::Always,
-                    },
-                    confirmed: signed.confirmed == 1,
-                    audit: audit_line(signed, "ok", "answered"),
+            p.answering = Some(format!("answered on {sender_label}"));
+            return vec![Action::Answer {
+                session: p.record.session.clone(),
+                card_id: id.clone(),
+                prompt: p.prompt.clone(),
+                choice: match signed.choice {
+                    PermitChoice::Yes => PermissionChoice::Yes,
+                    PermitChoice::No => PermissionChoice::No,
+                    PermitChoice::Always => PermissionChoice::Always,
                 },
-                close(&id, &format!("answered on {sender_label}")),
-            ];
+                confirmed: signed.confirmed == 1,
+                audit: audit_line(signed, "ok", "answered"),
+            }];
         };
         match e.outcome() {
             PermitOutcome::Drop => vec![line(e.code(), "dropped")],
             PermitOutcome::Reissue => {
                 if p.reissues < MAX_REISSUES {
-                    p.reissue(now_ms, fresh_nonce());
-                    vec![
-                        post(&id, &p.record, p.reissues, desktop),
-                        line(e.code(), "reissued"),
-                    ]
+                    let Some(nonce) = fresh_nonce() else {
+                        return vec![line(e.code(), "dropped")];
+                    };
+                    p.reissue(now_ms, nonce, false);
+                    vec![post(&id, p, desktop), line(e.code(), "reissued")]
                 } else {
-                    self.pending.remove(&id);
-                    self.tombstone(&id);
+                    if let Some(p) = self.pending.remove(&id) {
+                        self.tombstone(&p.prompt);
+                    }
                     vec![close(&id, "answer in attach"), line(e.code(), "closed")]
                 }
             }
         }
     }
 
-    fn tombstone(&mut self, card_id: &str) {
+    fn relay_id(&mut self, prompt: &str) -> String {
+        if !self.retired.iter().any(|r| r == prompt) {
+            return prompt.to_string();
+        }
+        self.serial += 1;
+        crate::permit::digest(&[prompt, &self.serial.to_string()])
+    }
+
+    fn tombstone(&mut self, prompt: &str) {
         if self.closed.len() >= MAX_CLOSED {
             self.closed.pop_front();
         }
-        self.closed.push_back(card_id.to_string());
+        self.closed.push_back(prompt.to_string());
+    }
+
+    fn retire(&mut self, prompt: &str) {
+        if self.retired.len() >= MAX_CLOSED {
+            self.retired.pop_front();
+        }
+        self.retired.push_back(prompt.to_string());
     }
 }
 
 impl PendingPermit {
-    fn reissue(&mut self, now_ms: u64, nonce: String) {
+    fn reissue(&mut self, now_ms: u64, nonce: String, idle: bool) {
         let old = std::mem::replace(&mut self.record.nonce, nonce);
         self.burned.insert(old);
         self.record.issued_ms = now_ms;
         self.record.exp_ms = now_ms.saturating_add(MAX_PERMIT_TTL_MS);
-        self.reissues += 1;
+        if idle {
+            self.idle = self.idle.saturating_add(1);
+        } else {
+            self.reissues += 1;
+        }
     }
 }
 
@@ -253,7 +336,9 @@ fn close(card_id: &str, reason: &str) -> Action {
     }
 }
 
-fn post(card_id: &str, r: &PermitRecord, reissue: u8, desktop: DesktopPolicy) -> Action {
+fn post(card_id: &str, p: &PendingPermit, desktop: DesktopPolicy) -> Action {
+    let r = &p.record;
+    let reissue = p.reissues.saturating_add(p.idle);
     let s = &r.screen;
     Action::Post {
         card_id: card_id.to_string(),
@@ -388,9 +473,9 @@ mod tests {
 
     struct Gen(u64);
     impl Gen {
-        fn next(&mut self) -> String {
+        fn next(&mut self) -> Option<String> {
             self.0 += 1;
-            format!("{:032x}", self.0)
+            Some(format!("{:032x}", self.0))
         }
     }
 
@@ -544,6 +629,7 @@ mod tests {
             Action::Answer {
                 session: SESSION.into(),
                 card_id: CARD.into(),
+                prompt: CARD.into(),
                 choice: PermissionChoice::Yes,
                 confirmed: false,
                 audit: format!(
@@ -552,7 +638,11 @@ mod tests {
                 )
             }
         );
-        assert_eq!(closes(&acts), vec!["answered on Mac".to_string()]);
+        assert!(closes(&acts).is_empty());
+        assert_eq!(
+            closes(&d.answered(CARD)),
+            vec!["answered on Mac".to_string()]
+        );
         let a = answer_audit(&acts);
         assert_eq!(
             a,
@@ -584,7 +674,10 @@ mod tests {
                 ..
             }
         ));
-        assert_eq!(closes(&acts), vec!["answered on Phone".to_string()]);
+        assert_eq!(
+            closes(&d.answered(CARD)),
+            vec!["answered on Phone".to_string()]
+        );
         assert!(answer_audit(&acts).contains("choice=always result=ok action=answered"));
     }
 
@@ -945,6 +1038,73 @@ mod tests {
         }
         assert_eq!(p.text, "abcls\nrm");
         assert_eq!(p.req_sha256, rec(&d).screen.req_sha256());
+    }
+
+    #[test]
+    fn idle_expiries_do_not_use_the_refusal_budget() {
+        let mut g = Gen(0);
+        let c = danger_card();
+        let mut d = desk_under(DesktopPolicy::Safe, &c, &mut g);
+        for _ in 0..4 {
+            let now = rec(&d).exp_ms + 1;
+            let acts = d.observe(SESSION, Some(&c), &ids(), now, &mut || g.next());
+            assert!(matches!(acts.as_slice(), [Action::Post { .. }]), "{acts:?}");
+        }
+        for _ in 0..3 {
+            let now = rec(&d).issued_ms + 1;
+            let s = sign(&rec(&d), PermitChoice::Yes, 0);
+            let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), now, &mut g);
+            assert!(audit(&acts).contains("action=reissued"), "{acts:?}");
+        }
+        let now = rec(&d).issued_ms + 1;
+        let s = sign(&rec(&d), PermitChoice::Yes, 0);
+        let acts = accept(&mut d, &s, &Ctx::ok(), Some(&c), now, &mut g);
+        assert_eq!(closes(&acts), vec!["answer in attach".to_string()]);
+    }
+
+    #[test]
+    fn a_reappearing_prompt_gets_a_new_card_id_and_a_closed_id_is_never_posted_again() {
+        let mut g = Gen(0);
+        let c = card();
+        let mut d = desk_with(&c, &mut g);
+        let acts = d.observe(SESSION, None, &ids(), T0 + 1, &mut || g.next());
+        assert_eq!(closes(&acts), vec!["gone".to_string()]);
+        let acts = d.observe(SESSION, Some(&c), &ids(), T0 + 2, &mut || g.next());
+        let Some(Action::Post { card_id, .. }) = acts.first() else {
+            panic!("{acts:?}");
+        };
+        assert_ne!(card_id, CARD);
+        let second = card_id.clone();
+        assert!(d.pending(CARD).is_none());
+        let acts = d.observe(SESSION, None, &ids(), T0 + 3, &mut || g.next());
+        assert_eq!(closes(&acts), vec!["gone".to_string()]);
+        let acts = d.observe(SESSION, Some(&c), &ids(), T0 + 4, &mut || g.next());
+        let Some(Action::Post { card_id, .. }) = acts.first() else {
+            panic!("{acts:?}");
+        };
+        assert!(card_id != CARD && *card_id != second, "{card_id}");
+        assert!(crate_is_token(card_id), "{card_id}");
+    }
+
+    fn crate_is_token(s: &str) -> bool {
+        (1..=64).contains(&s.len())
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    }
+
+    #[test]
+    fn a_reappearing_prompt_with_a_full_length_id_keeps_a_valid_card_id() {
+        let mut g = Gen(0);
+        let mut c = card();
+        c.id = "e".repeat(64);
+        let mut d = PermitDesk::new();
+        d.observe(SESSION, Some(&c), &ids(), T0, &mut || g.next());
+        d.observe(SESSION, None, &ids(), T0 + 1, &mut || g.next());
+        let acts = d.observe(SESSION, Some(&c), &ids(), T0 + 2, &mut || g.next());
+        let Some(Action::Post { card_id, .. }) = acts.first() else {
+            panic!("{acts:?}");
+        };
+        assert!(*card_id != c.id && crate_is_token(card_id), "{card_id}");
     }
 
     #[test]

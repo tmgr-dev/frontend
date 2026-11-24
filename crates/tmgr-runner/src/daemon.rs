@@ -1270,17 +1270,17 @@ impl Session {
             return Err(refused(why));
         }
         if !self.foreground_is_agent() {
-            return Err(refused("another process is in the foreground"));
+            return Err(refused(REFUSED_FOREGROUND));
         }
         let first = match &c.first_seen {
             Some((id, t)) if *id == ev.id => *t,
             _ => {
                 c.first_seen = Some((ev.id.clone(), Instant::now()));
-                return Err(refused("the card was just shown; try again"));
+                return Err(refused(REFUSED_JUST_SHOWN));
             }
         };
         if first.elapsed() < CARD_ARM {
-            return Err(refused("the card was just shown; try again"));
+            return Err(refused(REFUSED_JUST_SHOWN));
         }
         let choice = match a.choice {
             PermissionChoice::Yes => permit::Choice::Yes,
@@ -1288,21 +1288,20 @@ impl Session {
             PermissionChoice::No => permit::Choice::No,
         };
         let key = ev.key(choice, a.confirmed).map_err(refused)?;
+        self.note_input_from(client);
+        if !self.input(&key) {
+            return Err(api(
+                ErrorCode::Busy,
+                "input queue full; the agent is not reading its input",
+            ));
+        }
         c.answered = Some(ev.id.clone());
         if let Some(h) = &ev.hook {
             c.consumed = spool::order(&h.id);
             c.last_hook = Some(h.clone());
             spool::remove(&self.home, &self.id, &h.id);
         }
-        self.note_input_from(client);
-        if self.input(&key) {
-            Ok(())
-        } else {
-            Err(api(
-                ErrorCode::Busy,
-                "input queue full; the agent is not reading its input",
-            ))
-        }
+        Ok(())
     }
 
     fn input_at_prompt(self: &Arc<Self>, bytes: &[u8], now: Instant) -> Result<(), ApiErr> {
@@ -2751,6 +2750,15 @@ fn kill_reason(p: &Value) -> Result<Option<String>, ApiErr> {
     }
     let clean = crate::sanitize::sanitize_text(raw).trim().to_string();
     Ok((!clean.is_empty()).then_some(clean))
+}
+
+const REFUSED_FOREGROUND: &str = "another process is in the foreground";
+const REFUSED_JUST_SHOWN: &str = "the card was just shown; try again";
+
+fn answer_retryable(e: &ApiErr) -> bool {
+    e.code == ErrorCode::Busy
+        || e.msg.ends_with(REFUSED_FOREGROUND)
+        || e.msg.ends_with(REFUSED_JUST_SHOWN)
 }
 
 fn refused(why: &str) -> ApiErr {

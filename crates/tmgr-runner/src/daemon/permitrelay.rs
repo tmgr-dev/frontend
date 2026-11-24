@@ -133,18 +133,13 @@ fn relay_key(
     })
 }
 
-fn nonces() -> Option<Vec<String>> {
-    (0..2)
-        .map(|_| {
-            let mut b = [0u8; 16];
-            getrandom::fill(&mut b).ok()?;
-            Some(b.iter().map(|x| format!("{x:02x}")).collect::<String>())
-        })
-        .collect()
-}
-
-fn pool(mut nonces: Vec<String>) -> impl FnMut() -> String {
-    move || nonces.pop().unwrap_or_else(|| "0".repeat(32))
+fn fresh_nonce() -> Option<String> {
+    let mut b = [0u8; 16];
+    if getrandom::fill(&mut b).is_err() {
+        log("permit relay: no random source, the action was skipped");
+        return None;
+    }
+    Some(b.iter().map(|x| format!("{x:02x}")).collect())
 }
 
 fn clean(s: &str, max: usize) -> String {
@@ -230,17 +225,12 @@ impl Runner {
         let Some((_, ids)) = self.permit_ids() else {
             return;
         };
-        let Some(pool_) = nonces() else {
-            log("permit relay: no random source, the tick was skipped");
-            return;
-        };
-        let mut fresh = pool(pool_);
         self.permit_sync_policy();
         let actions: Vec<Action> = {
             let mut desk = lock(&self.permit_relay.desk);
             seen.iter()
                 .flat_map(|(session, card)| {
-                    desk.observe(session, card.as_ref(), &ids, now, &mut fresh)
+                    desk.observe(session, card.as_ref(), &ids, now, &mut fresh_nonce)
                 })
                 .collect()
         };
@@ -275,11 +265,6 @@ impl Runner {
             PermitSenderKind::Mobile => auth.pinned_key(&signed.device_fp).ok().flatten(),
         };
         let current = self.permit_card_of(&signed.session);
-        let Some(pool_) = nonces() else {
-            log("permit relay: no random source, an answer was dropped");
-            return;
-        };
-        let mut fresh = pool(pool_);
         let trust = auth.trust_view();
         self.permit_sync_policy();
         let actions = lock(&self.permit_relay.desk).accept(
@@ -295,7 +280,7 @@ impl Runner {
             &clean(sender_label, REASON_MAX / 2),
             current.as_ref(),
             now,
-            &mut fresh,
+            &mut fresh_nonce,
         );
         let who: String = from_fp
             .chars()
@@ -306,33 +291,39 @@ impl Runner {
     }
 
     fn permit_execute(&self, actions: Vec<Action>, client: &str) {
-        let mut failed: Vec<String> = Vec::new();
         for action in actions {
             match action {
                 Action::Post { card_id, card } => self.permit_post(&card_id, *card),
-                Action::Close { card_id, reason } => {
-                    if failed.contains(&card_id) {
-                        continue;
-                    }
-                    self.permit_close(&card_id, &reason);
-                }
+                Action::Close { card_id, reason } => self.permit_close(&card_id, &reason),
                 Action::Answer {
                     session,
                     card_id,
+                    prompt,
                     choice,
                     confirmed,
                     audit,
-                } => match self.permit_answer(client, &session, &card_id, choice, confirmed) {
-                    Ok(()) => self.permit_audit(&audit),
-                    Err(code) => {
-                        self.permit_audit(&format!(
-                            "permit answer: card={} result=answer_failed code={code}",
-                            clean(&card_id, 64)
-                        ));
-                        self.permit_close(&card_id, "gone");
-                        failed.push(card_id);
-                    }
-                },
+                } => {
+                    let follow =
+                        match self.permit_answer(client, &session, &prompt, choice, confirmed) {
+                            Ok(()) => {
+                                self.permit_audit(&audit);
+                                lock(&self.permit_relay.desk).answered(&card_id)
+                            }
+                            Err((code, retry)) => {
+                                self.permit_audit(&format!(
+                                    "permit answer: card={} result=answer_failed code={code}",
+                                    clean(&card_id, 64)
+                                ));
+                                lock(&self.permit_relay.desk).answer_failed(
+                                    &card_id,
+                                    retry,
+                                    now_ms(),
+                                    &mut fresh_nonce,
+                                )
+                            }
+                        };
+                    self.permit_execute(follow, client);
+                }
                 Action::Audit(line) => self.permit_audit(&line),
             }
         }
@@ -342,24 +333,27 @@ impl Runner {
         &self,
         client: &str,
         session: &str,
-        card_id: &str,
+        prompt: &str,
         choice: PermissionChoice,
         confirmed: bool,
-    ) -> Result<(), String> {
+    ) -> Result<(), (String, bool)> {
         let s = self
             .session(session)
             .filter(|s| !s.is_exited() && s.has_shim())
-            .ok_or("no_session")?;
+            .ok_or_else(|| ("no_session".to_owned(), false))?;
         s.answer_card(
             client,
             &PermissionAnswer {
                 session: session.to_owned(),
-                card: card_id.to_owned(),
+                card: prompt.to_owned(),
                 choice,
                 confirmed,
             },
         )
-        .map_err(|e| String::from(e.code))
+        .map_err(|e| {
+            let retry = answer_retryable(&e);
+            (String::from(e.code), retry)
+        })
     }
 
     fn permit_audit(&self, line: &str) {
@@ -398,6 +392,10 @@ impl Runner {
     }
 
     fn permit_post(&self, card_id: &str, card: tmgr_ipc::chat::PermitCardMsg) {
+        let desk = lock(&self.permit_relay.desk);
+        if !desk.is_current(card_id, &card.nonce) {
+            return;
+        }
         let body = format!(
             "Permission needed in {}: {}",
             card.session,
@@ -430,6 +428,7 @@ impl Runner {
             }
         }
         posted.insert(card_id.to_owned(), Posted { msg_id, session });
+        drop(desk);
     }
 
     fn permit_close(&self, card_id: &str, reason: &str) {
@@ -751,6 +750,98 @@ mod tests {
     }
 
     #[test]
+    fn every_nonce_is_fresh_and_never_constant() {
+        let drawn: Vec<String> = (0..6).map(|_| fresh_nonce().unwrap()).collect();
+        let distinct: std::collections::HashSet<_> = drawn.iter().collect();
+        assert_eq!(distinct.len(), drawn.len(), "{drawn:?}");
+        assert!(drawn
+            .iter()
+            .all(|n| n.len() == 32 && n.bytes().any(|b| b != b'0')));
+    }
+
+    #[test]
+    fn a_transient_key_refusal_keeps_the_card_answerable_with_a_fresh_nonce() {
+        let e = env(true);
+        tick(&e);
+        let first = signed(&e, PermitChoice::Yes);
+        accept(&e, &first, true);
+        assert_eq!(typed(&e), "");
+        assert!(closed(&e).is_empty(), "{:?}", closed(&e));
+        assert_eq!(lock(&e.rt.permit_relay.desk).len(), 1);
+        let cards = posted(&e);
+        assert_eq!(cards.len(), 2);
+        let nonce = |m: &ChatMessage| {
+            m.decision
+                .as_ref()
+                .unwrap()
+                .permit
+                .as_ref()
+                .unwrap()
+                .nonce
+                .clone()
+        };
+        assert_ne!(nonce(&cards[0]), nonce(&cards[1]));
+        assert!(audits(&e)
+            .iter()
+            .any(|l| l.contains("result=answer_failed")));
+        thread::sleep(CARD_ARM + Duration::from_millis(100));
+        let retry = signed(&e, PermitChoice::Yes);
+        assert_eq!(retry.nonce, nonce(&cards[1]));
+        accept(&e, &retry, true);
+        assert_eq!(typed(&e), "1");
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+    }
+
+    #[test]
+    fn a_full_input_queue_does_not_burn_the_prompt() {
+        let e = env(true);
+        armed(&e);
+        let full = lock(&e.s.shim).as_ref().unwrap().queued_frames.clone();
+        full.store(usize::MAX / 2, Ordering::SeqCst);
+        let first = signed(&e, PermitChoice::Yes);
+        accept(&e, &first, true);
+        assert!(closed(&e).is_empty(), "{:?}", closed(&e));
+        full.store(0, Ordering::SeqCst);
+        let retry = signed(&e, PermitChoice::Yes);
+        accept(&e, &retry, true);
+        assert_eq!(typed(&e), "1");
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+    }
+
+    #[test]
+    fn a_post_for_a_card_that_is_no_longer_pending_is_not_executed() {
+        let e = env(true);
+        armed(&e);
+        let id = card_id(&e);
+        let (_, ids) = e.rt.permit_ids().unwrap();
+        let card = e.s.card();
+        let late = lock(&e.rt.permit_relay.desk)
+            .pending(&id)
+            .unwrap()
+            .record
+            .exp_ms
+            + 1;
+        let mut n = 0u32;
+        let stale =
+            lock(&e.rt.permit_relay.desk).observe(SID, card.as_ref(), &ids, late, &mut || {
+                n += 1;
+                Some(format!("{n:032x}"))
+            });
+        assert!(
+            matches!(stale.as_slice(), [Action::Post { .. }]),
+            "{stale:?}"
+        );
+        let s = signed(&e, PermitChoice::Yes);
+        accept(&e, &s, true);
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+        e.rt.permit_execute(stale, "relay:test");
+        assert_eq!(posted(&e).len(), 1);
+        assert!(lock(&e.rt.permit_relay.posted).is_empty());
+        tick(&e);
+        assert_eq!(posted(&e).len(), 1);
+    }
+
+    #[test]
     fn clean_strips_bidi_and_control_characters() {
         let s = "a\u{202e}b\u{2066}c\u{200f}d\u{061c}e\nf";
         assert_eq!(clean(s, 64), "abcdef");
@@ -859,7 +950,7 @@ mod tests {
         let s = signed(&e, PermitChoice::Yes);
         accept(&e, &s, true);
         assert_eq!(typed(&e), "");
-        assert_eq!(closed(&e), vec!["gone".to_string()]);
+        assert!(closed(&e).is_empty());
         let a = audits(&e);
         assert!(
             a.iter().any(|l| l.contains("result=answer_failed")),
