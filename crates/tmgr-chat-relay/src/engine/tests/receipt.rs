@@ -186,7 +186,7 @@ fn an_unknown_receipt_kind_is_ignored_without_alert_or_hold_and_the_next_message
     assert!(desktop.s.drops().is_empty());
 }
 
-fn sent_world() -> (Engine, Engine, Engine, Engine, String) {
+pub(super) fn sent_world() -> (Engine, Engine, Engine, Engine, String) {
     let (fake, clock) = (Fake::default(), Clock::new(T0));
     let a = engine_with(&fake, &clock, "Desktop A");
     let phone = join_as(&fake, &clock, &a, "Phone", "mobile");

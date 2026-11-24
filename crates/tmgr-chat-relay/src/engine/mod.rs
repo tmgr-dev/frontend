@@ -336,7 +336,6 @@ fn push_probe(c: &mut Core, from: String, id: String) {
     }
 }
 
-/// Ids are unique per runner because `sent` binds each id to one runner, so the id alone identifies the pair.
 fn push_receipt(c: &mut Core, r: Receipt) {
     if let Some(have) = c.receipts.iter_mut().find(|x| x.id == r.id) {
         if have.state == ReceiptState::Queued && r.state != ReceiptState::Queued {
@@ -2617,10 +2616,41 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
     }
 
+    pub fn own_removed(&self) -> Result<bool, String> {
+        let mut g = self.lock();
+        let c = &mut *g;
+        let Some(id) = c.identity.as_ref().map(|i| i.device_id.clone()) else {
+            return Ok(false);
+        };
+        let revoked = c
+            .keys
+            .as_ref()
+            .is_some_and(|k| c.st.revoked.contains(&k.fingerprint()));
+        if revoked {
+            return Ok(true);
+        }
+        match self.fetch_dir(c) {
+            Ok(dir) => Ok(!dir.devices.iter().any(|d| d.device_id == id)),
+            Err(e) if http_status(&e) == Some(401) => Ok(true),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn sent_log(&self) -> Vec<(String, String)> {
+        self.lock().sent.clone()
+    }
+
+    pub fn restore_sent(&self, log: Vec<(String, String)>) {
+        let mut g = self.lock();
+        let skip = log.len().saturating_sub(SENT_KEEP);
+        g.sent = log.into_iter().skip(skip).collect();
+    }
+
     pub fn leave_confirmed(&self) -> Result<Option<String>, String> {
         let mut g = self.lock();
         let c = &mut *g;
         let notice = self.announce_reset(c);
+        let told = notice.is_ok();
         if let Some(id) = c.identity.as_ref().map(|i| i.device_id.clone()) {
             api::delete_device(&id)
                 .map_err(err)
@@ -2630,7 +2660,13 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     Some(404) if self.confirmed_absent(c, &id) => Ok(String::new()),
                     _ => Err(e),
                 })
-                .map_err(|e| format!("the relay did not confirm the removal: {e}"))?;
+                .map_err(|e| {
+                    if told {
+                        format!("the relay did not confirm the removal ({e}); this device is already revoked for your other devices but its relay row is still there")
+                    } else {
+                        format!("the relay did not confirm the removal ({e}) and the other devices were not told")
+                    }
+                })?;
         }
         self.k.clear()?;
         *c = Core::default();

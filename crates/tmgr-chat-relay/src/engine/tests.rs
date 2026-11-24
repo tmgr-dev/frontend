@@ -5853,3 +5853,63 @@ fn a_status_claimed_inside_a_relay_error_message_is_not_a_removal() {
     assert_eq!(http_status("not json http_status 404"), None);
     assert_eq!(http_status(r#"{"error":"x"}"#), None);
 }
+
+#[test]
+fn own_removed_is_false_while_listed_and_true_once_another_device_revoked_it() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    assert_eq!(b.own_removed(), Ok(false));
+    fake.0.lock().unwrap().dir_error = true;
+    assert!(b.own_removed().is_err());
+    fake.0.lock().unwrap().dir_error = false;
+    a.revoke(&my_id(&b)).unwrap();
+    assert_eq!(b.own_removed(), Ok(true));
+}
+
+#[test]
+fn own_removed_is_false_for_a_device_that_never_registered() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let e = engine_with(&fake, &clock, "Desktop A");
+    e.leave_confirmed().unwrap();
+    assert_eq!(e.own_removed(), Ok(false));
+}
+
+#[test]
+fn a_failed_delete_after_the_revoke_notice_says_the_device_is_revoked_but_its_row_remains() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let bfp = fp_of(&b);
+    fake.0.lock().unwrap().delete_error = Some("boom".into());
+    let e = b.leave_confirmed().unwrap_err();
+    assert!(
+        e.contains("already revoked") && e.contains("relay row is still there"),
+        "{e}"
+    );
+    assert!(!e.contains("nothing was deleted"), "{e}");
+    a.poll_once().unwrap();
+    assert!(a.lock().st.revoked.contains(&bfp));
+}
+
+#[test]
+fn the_sent_log_survives_a_restart_and_is_bounded() {
+    let (a, _p, r1, _r2, id) = receipt::sent_world();
+    let log = a.sent_log();
+    assert!(log.iter().any(|(m, _)| *m == id));
+    a.restore_sent(Vec::new());
+    r1.send_receipt(&my_id(&a), &id, ReceiptState::Failed, Some("busy"))
+        .unwrap();
+    a.poll_once().unwrap();
+    assert!(a.take_receipts().is_empty());
+    a.restore_sent(log);
+    r1.send_receipt(&my_id(&a), &id, ReceiptState::Delivered, None)
+        .unwrap();
+    a.poll_once().unwrap();
+    assert_eq!(a.take_receipts().len(), 1);
+    let many: Vec<(String, String)> = (0..SENT_KEEP + 50)
+        .map(|n| (format!("m{n}"), "r".into()))
+        .collect();
+    a.restore_sent(many);
+    let kept = a.sent_log();
+    assert_eq!(kept.len(), SENT_KEEP);
+    assert_eq!(kept.last().unwrap().0, format!("m{}", SENT_KEEP + 49));
+}

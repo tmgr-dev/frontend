@@ -150,7 +150,6 @@ pub trait ActivitySubSink: Send + Sync {
 }
 
 /// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
-/// The index is valid, its id is well formed and the sender is a trusted runner bound to `index.machine`.
 pub trait RoomsSink: Send + Sync {
     fn deliver_rooms(&self, from_device: &str, index: RoomsIndex);
 }
