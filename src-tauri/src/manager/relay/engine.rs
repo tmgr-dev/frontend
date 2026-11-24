@@ -229,13 +229,14 @@ struct Hold {
 enum Inbound {
   Opened(Opened),
   Consumed { from: String, seq: u64 },
+  Repeated { from: String, seq: u64 },
 }
 
 impl Inbound {
   fn key(&self) -> (&str, u64) {
     match self {
       Inbound::Opened(o) => (&o.from, o.seq),
-      Inbound::Consumed { from, seq } => (from, *seq),
+      Inbound::Consumed { from, seq } | Inbound::Repeated { from, seq } => (from, *seq),
     }
   }
 }
@@ -1207,9 +1208,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn open_one(&self, c: &Core, m: &Msg, now: u64) -> Result<Inbound, Option<&'static str>> {
-    if c.st.seen.iter().any(|s| s.from == m.from && s.id == m.msg_id) {
-      return Err(None);
-    }
     let kind_hint = serde_json::from_str::<Value>(&m.body).ok().and_then(|v| v.get("kind")?.as_str().map(str::to_owned));
     let join_open = kind_hint.as_deref() == Some("join");
     let Some(dir) = c.dir.as_ref() else {
@@ -1226,6 +1224,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         .map(|d| Peer { device_id: &d.device_id, sign_pub_b64: &d.sign_pub, kex_pub_b64: &d.kex_pub })
     });
     match opened {
+      Ok(o) if c.st.seen.iter().any(|s| s.from == o.from && s.id == o.id) => match o.trusted {
+        true => Ok(Inbound::Repeated { from: o.from, seq: o.seq }),
+        false => Err(None),
+      },
       Ok(o) => Ok(Inbound::Opened(o)),
       Err(r) => match r.verified {
         Some((from, seq)) => Ok(Inbound::Consumed { from, seq }),
@@ -1464,7 +1466,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     for (cursor, item) in opened {
       let (from, seq, trusted) = match &item {
         Inbound::Opened(o) => (o.from.clone(), o.seq, o.trusted),
-        Inbound::Consumed { from, seq } => (from.clone(), *seq, true),
+        Inbound::Consumed { from, seq } | Inbound::Repeated { from, seq } => (from.clone(), *seq, true),
       };
       let mut defer = hold.blocked.contains(&from);
       if !defer && trusted {

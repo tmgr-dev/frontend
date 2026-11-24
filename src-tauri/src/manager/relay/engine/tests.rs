@@ -3083,6 +3083,23 @@ fn receipt_of(id: &str, state: &str) -> Value {
 }
 
 #[test]
+fn a_repeated_receipt_with_a_new_seq_does_not_hold_what_follows() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let aid = my_id(&a);
+  let sent = send(&a, "hello").unwrap();
+  post_receipt(&r, &aid, "rc_1", receipt_of(&sent.id, "delivered"));
+  a.poll_once().unwrap();
+  assert_eq!(a.take_receipts().len(), 1);
+  post_receipt(&r, &aid, "rc_1", receipt_of(&sent.id, "delivered"));
+  post_receipt(&r, &aid, "rc_2", receipt_of(&sent.id, "queued"));
+  post_chat(&r, &aid, &msg_n(3, "session"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+  assert_eq!(a.take_receipts().len(), 1);
+  assert!(a.lock().st.seq_gaps.is_empty());
+}
+
+#[test]
 fn a_queued_receipt_keeps_its_reason() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (a, r) = runner_pair(&fake, &clock);
