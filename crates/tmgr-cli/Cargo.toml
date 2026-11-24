@@ -45,13 +45,13 @@ tmgr-local = { path = "../tmgr-local", optional = true }
 rusqlite = { workspace = true, optional = true }
 tmgr-chat-relay = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
+keyring.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.5"
 block2 = "=0.6.2"
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString", "NSError"] }
 objc2-local-authentication = { version = "=0.3.2", default-features = false, features = ["std", "block2", "LAContext", "LAError"] }
-keyring.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true

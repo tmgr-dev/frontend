@@ -1,5 +1,6 @@
 use std::path::Path;
 use tmgr_chat_relay::engine::{KeyStore, Slot};
+use tmgr_core::creds::{classify, Failure};
 use tmgr_runner::chat::relay::store::RelayDir;
 
 pub const SERVICE: &str = "dev.tmgr.attach.chat-relay";
@@ -22,19 +23,7 @@ impl KeyStore for DynStore {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub fn open_store(dir: &Path, namespace: &str) -> Result<DynStore, String> {
-    let _ = dir;
-    Ok(DynStore(Box::new(KeychainStore::new(
-        KeyringCells,
-        namespace.to_owned(),
-    ))))
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn open_store(dir: &Path, _namespace: &str) -> Result<DynStore, String> {
-    Ok(DynStore(Box::new(RelayDir::open_named(dir, super::DIR)?)))
-}
+pub const NO_SECURE_STORE: &str = "No secure key store available on this machine (Secret Service on Linux). Pairing the terminal needs one.";
 
 pub fn namespace(server: &str, user_id: u64) -> String {
     format!("u{user_id}@{server}")
@@ -48,54 +37,67 @@ pub fn config_dir(runner_dir: &Path) -> Result<RelayDir, String> {
     RelayDir::open_named(runner_dir, super::DIR)
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub trait Cells: Send + Sync {
     fn get(&self, account: &str) -> Result<Option<String>, String>;
     fn set(&self, account: &str, value: &str) -> Result<(), String>;
     fn delete(&self, account: &str) -> Result<(), String>;
 }
 
-#[cfg(target_os = "macos")]
 struct KeyringCells;
 
-#[cfg(target_os = "macos")]
-impl KeyringCells {
-    fn entry(account: &str) -> Result<keyring::Entry, String> {
-        keyring::Entry::new(SERVICE, account).map_err(|e| e.to_string())
+fn cell_error(e: keyring::Error) -> String {
+    match classify(&e, cfg!(target_os = "linux")) {
+        Failure::StoreAbsent => NO_SECURE_STORE.to_owned(),
+        _ => e.to_string(),
     }
 }
 
-#[cfg(target_os = "macos")]
+impl KeyringCells {
+    fn entry(account: &str) -> Result<keyring::Entry, String> {
+        keyring::Entry::new(SERVICE, account).map_err(cell_error)
+    }
+}
+
 impl Cells for KeyringCells {
     fn get(&self, account: &str) -> Result<Option<String>, String> {
         match Self::entry(account)?.get_password() {
             Ok(v) => Ok(Some(v)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(cell_error(e)),
         }
     }
 
     fn set(&self, account: &str, value: &str) -> Result<(), String> {
         Self::entry(account)?
             .set_password(value)
-            .map_err(|e| e.to_string())
+            .map_err(cell_error)
     }
 
     fn delete(&self, account: &str) -> Result<(), String> {
         match Self::entry(account)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(cell_error(e)),
         }
     }
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn open_store(namespace: &str) -> Result<DynStore, String> {
+    open_with_cells(KeyringCells, namespace)
+}
+
+pub fn open_with_cells<C: Cells + 'static>(cells: C, namespace: &str) -> Result<DynStore, String> {
+    cells.get(&format!("{namespace}/probe"))?;
+    Ok(DynStore(Box::new(KeychainStore::new(
+        cells,
+        namespace.to_owned(),
+    ))))
+}
+
 pub struct KeychainStore<C: Cells> {
     cells: C,
     namespace: String,
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl<C: Cells> KeychainStore<C> {
     pub fn new(cells: C, namespace: String) -> Self {
         Self { cells, namespace }
@@ -106,17 +108,14 @@ impl<C: Cells> KeychainStore<C> {
     }
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn unreadable() -> String {
     "the attach device store is unreadable".to_owned()
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn chunk_name(name: &str, version: u64, i: usize) -> String {
     format!("{name}.v{version}.{i}")
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn pointer(cells: &dyn Cells, name: &str) -> Result<Option<(u64, usize)>, String> {
     let Some(raw) = cells.get(&format!("{name}.n"))? else {
         return Ok(None);
@@ -128,7 +127,6 @@ fn pointer(cells: &dyn Cells, name: &str) -> Result<Option<(u64, usize)>, String
     )))
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn drop_chunks(cells: &dyn Cells, name: &str, version: u64) -> Result<(), String> {
     let mut i = 0;
     while cells.get(&chunk_name(name, version, i))?.is_some() {
@@ -138,7 +136,6 @@ fn drop_chunks(cells: &dyn Cells, name: &str, version: u64) -> Result<(), String
     Ok(())
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn chunks(value: &str) -> Vec<String> {
     let mut out = vec![String::new()];
     for c in value.chars() {
@@ -152,7 +149,6 @@ fn chunks(value: &str) -> Vec<String> {
     out
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn load_chunked(cells: &dyn Cells, name: &str) -> Result<Option<String>, String> {
     let Some((version, count)) = pointer(cells, name)? else {
         return Ok(None);
@@ -168,7 +164,6 @@ fn load_chunked(cells: &dyn Cells, name: &str) -> Result<Option<String>, String>
     Ok(Some(out))
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn save_chunked(cells: &dyn Cells, name: &str, value: &str) -> Result<(), String> {
     let old = pointer(cells, name)?;
     let next = old.map_or(1, |(v, _)| v + 1);
@@ -190,7 +185,6 @@ fn save_chunked(cells: &dyn Cells, name: &str, value: &str) -> Result<(), String
     Ok(())
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn clear_chunked(cells: &dyn Cells, name: &str) -> Result<(), String> {
     let current = pointer(cells, name)?.map(|(v, _)| v);
     cells.delete(&format!("{name}.n"))?;
@@ -338,18 +332,43 @@ mod tests {
         assert!(s.load(Slot::State).is_err());
     }
 
-    #[cfg(not(target_os = "macos"))]
+    struct AbsentCells;
+
+    impl Cells for AbsentCells {
+        fn get(&self, _: &str) -> Result<Option<String>, String> {
+            Err(NO_SECURE_STORE.to_owned())
+        }
+
+        fn set(&self, _: &str, _: &str) -> Result<(), String> {
+            panic!("keys must never be written when no secure store exists")
+        }
+
+        fn delete(&self, _: &str) -> Result<(), String> {
+            Err(NO_SECURE_STORE.to_owned())
+        }
+    }
+
     #[test]
-    fn off_macos_keys_live_in_a_private_file_under_the_attach_dir_only() {
-        use std::os::unix::fs::PermissionsExt;
-        let t = tempfile::tempdir().unwrap();
-        let s = open_store(t.path(), "ns").unwrap();
-        s.save(Slot::Identity, "secret").unwrap();
-        let f = t.path().join(super::super::DIR).join("identity");
-        assert_eq!(
-            std::fs::metadata(f).unwrap().permissions().mode() & 0o777,
-            0o600
+    fn an_absent_secure_store_is_refused_with_a_clear_message_and_nothing_is_written() {
+        let e = open_with_cells(AbsentCells, "ns").err().expect("refused");
+        assert!(
+            e.contains("No secure key store available") && e.contains("Secret Service on Linux"),
+            "{e}"
         );
-        assert!(!t.path().join("relay").exists());
+    }
+
+    #[test]
+    fn a_present_store_is_opened_after_a_probe_that_writes_nothing() {
+        let cells = MemCells::default();
+        let store = open_with_cells(cells, "ns").unwrap();
+        store.save(Slot::Identity, "k").unwrap();
+        assert_eq!(store.load(Slot::Identity).unwrap().as_deref(), Some("k"));
+    }
+
+    #[test]
+    fn linux_store_absence_is_classified_like_the_login_credentials() {
+        assert_eq!(cell_error(keyring::Error::NoDefaultStore), NO_SECURE_STORE);
+        let denied = keyring::Error::NoStorageAccess(std::io::Error::other("locked").into());
+        assert_ne!(cell_error(denied), NO_SECURE_STORE);
     }
 }
