@@ -10,7 +10,7 @@ pub fn ask_yes(question: &str) -> bool {
     eprint!("{question} ");
     let _ = std::io::stderr().flush();
     let mut line = String::new();
-    if std::io::stdin().lock().read_line(&mut line).is_err() {
+    if !matches!(std::io::stdin().lock().read_line(&mut line), Ok(n) if n > 0) {
         return false;
     }
     matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
