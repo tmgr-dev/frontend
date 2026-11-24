@@ -430,7 +430,7 @@ mod profile_tests {
         ] {
             fs::create_dir_all(d).unwrap();
         }
-        for d in [&root.join("homes"), &runner_dir, &home] {
+        for d in [&root, &root.join("homes"), &runner_dir, &home] {
             fs::set_permissions(d, fs::Permissions::from_mode(0o700)).unwrap();
         }
         let spec = SandboxSpec {
