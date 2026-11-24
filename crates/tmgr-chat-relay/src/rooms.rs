@@ -41,6 +41,8 @@ pub struct RoomsIndex {
     pub activity: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub blob: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub terminal_input: bool,
 }
 
 impl RoomsIndex {
@@ -184,6 +186,17 @@ mod tests {
         let on = with(|v| v["blob"] = json!(true));
         let idx = RoomsIndex::parse(on.clone()).unwrap();
         assert!(idx.blob);
+        assert_eq!(serde_json::to_value(&idx).unwrap(), on);
+    }
+
+    #[test]
+    fn the_terminal_input_flag_defaults_to_false_and_round_trips_when_set() {
+        let idx = RoomsIndex::parse(fixture()).unwrap();
+        assert!(!idx.terminal_input);
+        assert!(fixture().get("terminal_input").is_none());
+        let on = with(|v| v["terminal_input"] = json!(true));
+        let idx = RoomsIndex::parse(on.clone()).unwrap();
+        assert!(idx.terminal_input);
         assert_eq!(serde_json::to_value(&idx).unwrap(), on);
     }
 }

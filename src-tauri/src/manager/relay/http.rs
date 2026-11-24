@@ -169,7 +169,8 @@ impl HttpTransport {
   fn exchange(&self, req: &Request, device_token: Option<&str>, timeout: Option<Duration>) -> Result<String, String> {
     let bearer = self.bearer(req.auth, device_token)?;
     let url = format!("{}{}", self.base_url, req.path);
-    let headers = [("Authorization", format!("Bearer {bearer}"))];
+    let mut headers = vec![("Authorization", format!("Bearer {bearer}"))];
+    headers.extend(req.headers.iter().map(|(k, v)| (*k, (*v).to_owned())));
     let body = req.body.as_ref().map(Value::to_string);
     let sent = match timeout {
       Some(t) => self.client.send_within(req.method.as_str(), &url, &headers, body, t),
@@ -288,9 +289,18 @@ mod tests {
     assert_eq!(fake.sent.lock().unwrap()[0].3.as_deref(), Some(r#"{"push_token":"abc"}"#));
   }
 
+  #[test]
+  fn the_devices_request_sends_the_kinds_header_after_authorization() {
+    let fake = Fake::new(resp(200, None, "{}"));
+    transport(None, &fake).call(&tmgr_chat_relay::api::list_devices(), Some("d")).unwrap();
+    let h = fake.sent.lock().unwrap()[0].2.clone();
+    assert_eq!(h[0].0, "Authorization");
+    assert!(h.contains(&("X-Chat-Relay-Kinds".to_owned(), "terminal".to_owned())));
+  }
+
   fn call_with(auth: Auth, login: Option<&'static str>, device: Option<&str>) -> (Result<String, String>, Arc<Fake>) {
     let fake = Fake::new(resp(200, None, "{}"));
-    let req = Request { method: tmgr_chat_relay::api::Method::Get, path: "/api/chat-relay/x".into(), auth, body: None };
+    let req = Request { method: tmgr_chat_relay::api::Method::Get, path: "/api/chat-relay/x".into(), auth, body: None, headers: Vec::new() };
     (transport(login, &fake).call(&req, device), fake)
   }
 

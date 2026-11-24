@@ -103,6 +103,9 @@ impl Transport for HttpRelayTransport {
             .request(method, url)
             .bearer_auth(bearer)
             .header(reqwest::header::ACCEPT, "application/json");
+        for (name, value) in &req.headers {
+            builder = builder.header(*name, *value);
+        }
         if let Some(body) = &req.body {
             builder = builder
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
@@ -178,6 +181,7 @@ mod tests {
             path: "/api/chat-relay/x".into(),
             auth,
             body: Some(serde_json::json!({"a": 1})),
+            headers: Vec::new(),
         }
     }
 
@@ -201,6 +205,16 @@ mod tests {
             .to_ascii_lowercase()
             .contains("authorization: bearer device"));
         assert!(sent.ends_with("{\"a\":1}"));
+    }
+
+    #[test]
+    fn the_devices_request_carries_the_kinds_header() {
+        let (base, rx) = serve(reply("200 OK", "", "{}"));
+        transport(base)
+            .call(&tmgr_chat_relay::api::list_devices(), Some("DEVICE"))
+            .unwrap();
+        let sent = rx.recv().unwrap().to_ascii_lowercase();
+        assert!(sent.contains("x-chat-relay-kinds: terminal"), "{sent}");
     }
 
     #[test]

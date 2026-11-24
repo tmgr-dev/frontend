@@ -566,7 +566,8 @@ pub fn restrict_to_before(
 }
 
 pub fn lowers_kind(have: &str, new: &str) -> bool {
-    new == "runner" && have != "runner"
+    (new == "runner" && have != "runner")
+        || (new == "terminal" && matches!(have, "desktop" | "mobile"))
 }
 
 pub fn expected_join_matches(
@@ -585,6 +586,10 @@ pub fn expected_join_matches(
 
 pub fn may_vouch(kind: Option<&str>) -> bool {
     matches!(kind, Some("desktop" | "mobile"))
+}
+
+pub fn may_revoke(revoker_kind: Option<&str>, revoker_fp: &str, target_fp: &str) -> bool {
+    may_vouch(revoker_kind) || revoker_fp == target_fp
 }
 
 fn parse_intros(user_id: u64, intros: &[String]) -> Vec<Intro> {
@@ -639,7 +644,7 @@ pub fn v2_self_markers(
     self_markers_of(&parse_intros(user_id, intros), trusted, kinds)
 }
 
-/// Devices that keep the runner gate closed: desktop/mobile devices without a counted v2 self-intro and devices of unknown kind. Runners and `own` never block.
+/// Devices that keep the runner gate closed: desktop/mobile devices without a counted v2 self-intro and devices of unknown kind. Runners, terminals and `own` never block.
 pub fn gate_blockers(
     trusted: &[Trusted],
     kinds: &BTreeMap<String, String>,
@@ -654,7 +659,7 @@ pub fn gate_blockers(
                 return false;
             }
             match kinds.get(&key).map(String::as_str) {
-                Some("runner") => false,
+                Some("runner" | "terminal") => false,
                 Some("desktop" | "mobile") => !markers.contains(&key),
                 _ => true,
             }
@@ -1004,6 +1009,63 @@ mod tests {
             );
         }
         assert!(!expected_join_matches("", "", "", "", "runner"));
+    }
+
+    #[test]
+    fn terminal_is_a_device_kind_that_cannot_vouch() {
+        crate::fields::check_device_kind("terminal").unwrap();
+        for k in [Some("terminal"), Some("runner"), Some("weird"), None] {
+            assert!(!may_vouch(k), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn lowers_kind_table() {
+        let kinds = ["desktop", "mobile", "runner", "terminal"];
+        let lowers = [
+            ("desktop", "runner"),
+            ("mobile", "runner"),
+            ("terminal", "runner"),
+            ("desktop", "terminal"),
+            ("mobile", "terminal"),
+        ];
+        for have in kinds {
+            for new in kinds {
+                assert_eq!(
+                    lowers_kind(have, new),
+                    lowers.contains(&(have, new)),
+                    "{have} -> {new}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn only_desktop_mobile_or_the_device_itself_may_revoke() {
+        for k in [Some("desktop"), Some("mobile")] {
+            assert!(may_revoke(k, "a", "b"));
+        }
+        for k in [Some("runner"), Some("terminal"), Some("weird"), None] {
+            assert!(!may_revoke(k, "a", "b"), "{k:?}");
+            assert!(may_revoke(k, "a", "a"), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn a_terminal_does_not_block_the_runner_gate() {
+        let t = |id: &str, fp: &str| Trusted {
+            device_id: id.into(),
+            fp: fp.into(),
+            sign_pub: String::new(),
+            kex_pub: String::new(),
+        };
+        let trusted = [t("d1", "f1"), t("d2", "f2"), t("d3", "f3")];
+        let kinds: BTreeMap<String, String> = [("d1", "f1", "terminal"), ("d2", "f2", "runner")]
+            .into_iter()
+            .map(|(i, f, k)| (kind_key(i, f), k.to_owned()))
+            .collect();
+        let blockers = gate_blockers(&trusted, &kinds, None, &BTreeSet::new());
+        assert_eq!(blockers, ["d3"]);
     }
 
     const U: u64 = 42;

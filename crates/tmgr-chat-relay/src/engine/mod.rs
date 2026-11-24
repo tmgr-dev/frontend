@@ -15,10 +15,10 @@ use crate::api::{self, Directory, Msg, Request};
 use crate::fields::{check_device_id, check_device_kind, check_fp};
 use crate::keys::{fingerprint, DeviceKeys};
 use crate::trust::{
-    decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, may_vouch,
-    parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke, trusted_set_by_kind,
-    v2_self_markers, verify_join_mac, verify_revoke, verify_spawnkey, DirEntry, IntroStatement,
-    JoinCode, JoinMacInput, KindCtx, RevokeStatement, SpawnKey, Trusted,
+    decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, may_revoke,
+    may_vouch, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
+    trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, verify_spawnkey,
+    DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, SpawnKey, Trusted,
 };
 use crate::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::Error;
@@ -758,6 +758,13 @@ fn ingest_revoke(
     if verify_revoke(json, uid, &revoker.sign_pub, &revoker.kex_pub).is_err() {
         return;
     }
+    if !may_revoke(
+        c.st.kind_of(&revoker.id, &revoker.fp),
+        &p.revoker_fp,
+        &p.target_fp,
+    ) {
+        return;
+    }
     let used = budget.entry(p.revoker_fp.clone()).or_default();
     *used += 1;
     if *used > MAX_REVOKES_PER_DEVICE || c.st.revoked.contains(&p.target_fp) {
@@ -849,10 +856,14 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         })
     }
 
+    fn cannot_vouch(&self) -> bool {
+        matches!(self.kind.as_str(), "runner" | "terminal")
+    }
+
     pub fn with_kind(mut self, kind: &str) -> Self {
         self.kind = kind.to_owned();
         let c = self.core.get_mut().unwrap_or_else(|p| p.into_inner());
-        if kind == "runner" {
+        if matches!(kind, "runner" | "terminal") {
             c.st.join_code = None;
         }
         backfill_self(c, kind);
@@ -1142,7 +1153,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
-        if self.kind == "runner" {
+        if self.cannot_vouch() {
             return Ok(());
         }
         let (id, keys) = Self::own(c)?;
@@ -1172,8 +1183,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn open_join_code(&self) -> Result<String, String> {
-        if self.kind == "runner" {
-            return Err("a runner cannot issue join codes".into());
+        if self.cannot_vouch() {
+            return Err(format!("a {} cannot issue join codes", self.kind));
         }
         let mut g = self.lock();
         let c = &mut *g;
@@ -1439,7 +1450,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     fn authorized_author(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) -> bool {
         let kind = c.st.kind_of_trusted(from).map(str::to_owned);
         match msg.author.kind {
-            AuthorKind::Owner => matches!(kind.as_deref(), Some("desktop" | "mobile")),
+            AuthorKind::Owner => matches!(kind.as_deref(), Some("desktop" | "mobile" | "terminal")),
             AuthorKind::Manager | AuthorKind::Session | AuthorKind::System => {
                 if kind.as_deref() != Some("runner")
                     || msg
@@ -2111,8 +2122,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn decide_join(&self, device_id: &str, accept: bool) -> Result<(), String> {
-        if self.kind == "runner" {
-            return Err("a runner cannot approve joins".into());
+        if self.cannot_vouch() {
+            return Err(format!("a {} cannot approve joins", self.kind));
         }
         let mut g = self.lock();
         let c = &mut *g;
@@ -2195,7 +2206,10 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn confirm_device_kind(&self, device_id: &str, kind: &str) -> Result<(), String> {
-        if !matches!(kind, "desktop" | "mobile") || self.kind == "runner" {
+        if self.cannot_vouch() {
+            return Err(format!("a {} cannot confirm device kinds", self.kind));
+        }
+        if !matches!(kind, "desktop" | "mobile") {
             return Err("only a desktop or phone kind can be confirmed".into());
         }
         let mut g = self.lock();
@@ -2234,6 +2248,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .cloned()
                 .ok_or_else(|| "no such revoke request".to_owned())?;
         if accept {
+            if self.cannot_vouch() {
+                return Err(format!("a {} cannot accept revokes", self.kind));
+            }
             self.fetch_dir(c)?;
             backfill_self(c, &self.kind);
             apply_revoke(
@@ -2253,6 +2270,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn revoke(&self, device_id: &str) -> Result<(), String> {
+        if self.kind == "terminal" {
+            return Err("a terminal cannot revoke other devices".into());
+        }
         let mut g = self.lock();
         let c = &mut *g;
         self.ensure_registered(c)?;

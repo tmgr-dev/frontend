@@ -32,6 +32,8 @@ impl Method {
     }
 }
 
+pub const KINDS_HEADER: &str = "X-Chat-Relay-Kinds";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Auth {
     Login,
@@ -46,6 +48,7 @@ pub struct Request {
     pub path: String,
     pub auth: Auth,
     pub body: Option<Value>,
+    pub headers: Vec<(&'static str, &'static str)>,
 }
 
 fn req(method: Method, path: &str, auth: Auth, body: Option<Value>) -> Request {
@@ -54,6 +57,7 @@ fn req(method: Method, path: &str, auth: Auth, body: Option<Value>) -> Request {
         path: format!("{BASE_PATH}{path}"),
         auth,
         body,
+        headers: Vec::new(),
     }
 }
 
@@ -99,7 +103,9 @@ pub fn register_device(
 }
 
 pub fn list_devices() -> Request {
-    req(Method::Get, "/devices", Auth::DeviceOrLogin, None)
+    let mut r = req(Method::Get, "/devices", Auth::DeviceOrLogin, None);
+    r.headers.push((KINDS_HEADER, "terminal"));
+    r
 }
 
 pub fn put_intro(target_device_id: &str, intro_json: &str) -> Result<Request> {
@@ -360,6 +366,7 @@ mod tests {
         );
         assert_eq!(r.auth, Auth::DeviceOrLogin);
         assert!(r.body.is_none());
+        assert_eq!(r.headers, [("X-Chat-Relay-Kinds", "terminal")]);
 
         let r = put_intro(D1, "{\"v\":1}").unwrap();
         assert_eq!(r.method, Method::Put);

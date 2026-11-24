@@ -3,7 +3,7 @@ use serde::de::{self, DeserializeOwned, DeserializeSeed, MapAccess, SeqAccess, V
 use std::collections::HashSet;
 use std::fmt;
 
-pub const DEVICE_KINDS: [&str; 3] = ["desktop", "mobile", "runner"];
+pub const DEVICE_KINDS: [&str; 4] = ["desktop", "mobile", "runner", "terminal"];
 
 fn ensure(ok: bool) -> Result<()> {
     if ok {

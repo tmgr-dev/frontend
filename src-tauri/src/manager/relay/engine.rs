@@ -13,7 +13,7 @@ use tmgr_chat_relay::api::{self, Directory, Msg, Request};
 use tmgr_chat_relay::fields::{check_device_id, check_device_kind, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
-  decode_join_code, encode_join_code, expected_join_matches, gate_blockers, join_mac, kind_key, lowers_kind, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
+  decode_join_code, encode_join_code, expected_join_matches, gate_blockers, join_mac, kind_key, lowers_kind, may_revoke, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
   trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
@@ -582,6 +582,9 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
     return;
   };
   if verify_revoke(json, uid, &revoker.sign_pub, &revoker.kex_pub).is_err() {
+    return;
+  }
+  if !may_revoke(c.st.kind_of(&revoker.id, &revoker.fp), &p.revoker_fp, &p.target_fp) {
     return;
   }
   let used = budget.entry(p.revoker_fp.clone()).or_default();
@@ -1248,7 +1251,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   fn authorized_author(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) -> bool {
     let kind = c.st.kind_of_trusted(from).map(str::to_owned);
     match msg.author.kind.as_str() {
-      "owner" => matches!(kind.as_deref(), Some("desktop" | "mobile")),
+      "owner" => matches!(kind.as_deref(), Some("desktop" | "mobile" | "terminal")),
       "manager" | "session" | "system" => {
         if kind.as_deref() != Some("runner") || msg.author.machine.as_ref().is_some_and(|m| *m != msg.room.machine) {
           return false;
