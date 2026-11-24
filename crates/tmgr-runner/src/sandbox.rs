@@ -749,17 +749,18 @@ pub fn control_plane(spec: &SandboxSpec, env: &[(String, String)]) -> ControlPla
         push_unique(&mut allowed, canon_lossy(spool));
     }
     let mut readable = Vec::new();
-    let mut pastes = vec![spec.home.join(tmgr_ipc::dirs::PASTE_DIR_NAME)];
+    let mut parents = vec![spec.home.clone()];
     if tmgr_ipc::proto::valid_session_id(&spec.session_id) {
-        pastes.push(
-            tmgr_ipc::dirs::paste_dir(&spec.runner_dir)
-                .join(&spec.session_id)
-                .join(tmgr_ipc::dirs::PASTE_DIR_NAME),
-        );
+        parents.push(tmgr_ipc::dirs::paste_dir(&spec.runner_dir).join(&spec.session_id));
     }
-    for p in &pastes {
-        push_unique(&mut readable, p.clone());
-        push_unique(&mut readable, canon_lossy(p));
+    // The paste dir itself is never resolved: a symlink planted there must not become an allow rule.
+    for p in &parents {
+        for form in [p.clone(), canon_lossy(p)] {
+            let dir = form.join(tmgr_ipc::dirs::PASTE_DIR_NAME);
+            if hidden.iter().any(|h| dir.starts_with(h)) {
+                push_unique(&mut readable, dir);
+            }
+        }
     }
     let mut stat_only = Vec::new();
     for r in &readable {
@@ -2136,6 +2137,29 @@ mod tests {
             std::os::unix::fs::symlink(&target, &link).unwrap();
             let resolved = link.canonicalize().unwrap();
             assert!(!verdict(&profile, "file-read-data", &resolved), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_paste_dir_planted_as_a_symlink_never_widens_the_profile() {
+        let f = fx();
+        fs::create_dir_all(&f.spec.home).unwrap();
+        let token = f.spec.runner_dir.join("token");
+        fs::write(&token, b"secret").unwrap();
+        let other = f.spec.home.parent().unwrap().join("s_otherother");
+        fs::create_dir_all(&other).unwrap();
+        let paste = tmgr_ipc::dirs::PASTE_DIR_NAME;
+        let own = tmgr_ipc::dirs::paste_dir(&f.spec.runner_dir).join(&f.spec.session_id);
+        fs::create_dir_all(&own).unwrap();
+        std::os::unix::fs::symlink(&f.spec.runner_dir, f.spec.home.join(paste)).unwrap();
+        std::os::unix::fs::symlink(&other, own.join(paste)).unwrap();
+        let c = control_plane(&f.spec, &[]);
+        let profile = control_plane_profile(&c).unwrap();
+        for r in &c.readable {
+            assert!(r.ends_with(paste), "{}", r.display());
+        }
+        for p in [token, other.join("note"), f.spec.runner_dir.clone(), other] {
+            assert!(!verdict(&profile, "file-read-data", &p), "{}", p.display());
         }
     }
 
