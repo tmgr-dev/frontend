@@ -7,6 +7,13 @@ mod capture;
 #[cfg(unix)]
 mod decisions;
 mod manager;
+#[cfg(feature = "relay-probe")]
+pub mod relay_probe {
+  pub use crate::manager::relay::http::LoginToken;
+  pub use crate::manager::relay::port::RelayPort;
+  pub use crate::manager::relay::ports::{KeyStore, Slot};
+  pub use crate::manager::relay::switch::{build_engine, EngineSpec};
+}
 mod downloads;
 mod embeds;
 mod git_track;

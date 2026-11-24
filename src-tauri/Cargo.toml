@@ -6,6 +6,7 @@ authors = ["TMGR"]
 license = ""
 repository = ""
 edition = "2021"
+default-run = "tmgr"
 rust-version = "1.89"
 
 [lib]
@@ -15,6 +16,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 # Real-build containment check for plugin windows (npm run test:desktop-isolation). Never in release builds.
 isolation-selftest = []
+# Headless run of the desktop chat-relay engine for the e2e stand. Never in release builds.
+relay-probe = []
+
+[[bin]]
+name = "relay-probe"
+path = "src/bin/relay-probe.rs"
+required-features = ["relay-probe"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
