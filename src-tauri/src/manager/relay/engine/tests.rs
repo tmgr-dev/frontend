@@ -3957,4 +3957,43 @@ fn a_restart_without_a_flush_does_not_hold_the_receipts_that_follow() {
   assert!(a.lock().st.seq_gaps.is_empty());
 }
 
+#[test]
+fn a_terminal_cannot_confirm_a_device_kind() {
+  let (fake, clock, store, a, x, y) = legacy_owner_fleet();
+  let (aid, xid, yid, y_fp) = (my_id(&a), my_id(&x), my_id(&y), fp_of(&y));
+  let own_v1 = signed_intro_v(1, &a, &xid, &fp_of(&x), "desktop");
+  legacy_state_with_kinds(&store, &a, json!({ aid.clone(): "desktop", xid.clone(): "mobile", yid.clone(): "runner" }), vec![own_v1.clone()]);
+  clear_intros(&fake, &a);
+  put_raw_intro(&fake, &aid, &xid, &own_v1);
+  put_raw_intro(&fake, &aid, &yid, &signed_intro_v(1, &a, &yid, &y_fp, "runner"));
+  clock.set(T0 + 1000);
+  let mut a2 = engine_on(&fake, &clock, store, "mx_local");
+  a2.poll_once().unwrap();
+  a2.kind = "terminal".into();
+  assert!(a2.confirm_device_kind(&yid, "desktop").is_err());
+  assert!(a2.lock().st.kind_of(&yid, &y_fp).is_none());
+}
+
+#[test]
+fn a_join_ok_from_a_root_the_relay_lists_as_a_terminal_or_runner_is_refused() {
+  for kind in ["terminal", "runner"] {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let b = engine_with(&fake, &clock, "Desktop B");
+    let code = a.open_join_code().unwrap();
+    let aid = my_id(&a);
+    b.join_with_code(&code).unwrap();
+    for dev in fake.0.lock().unwrap().devices.iter_mut() {
+      if dev.id == aid {
+        dev.kind = kind.to_owned();
+      }
+    }
+    b.lock().dir = None;
+    a.poll_once().unwrap();
+    a.decide_join(&my_id(&b), true).unwrap();
+    b.poll_once().unwrap();
+    assert!(!b.lock().st.joined, "{kind}");
+  }
+}
+
 mod permit_answers;

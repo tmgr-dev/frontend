@@ -1424,6 +1424,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         if kind.is_some_and(|k| check_device_kind(k).is_err()) {
           return None;
         }
+        let listed = dir.devices.iter().find(|d| d.device_id == root.id).map(|d| d.kind.as_str());
+        if [kind, listed].into_iter().flatten().any(|k| matches!(k, "runner" | "terminal")) {
+          return None;
+        }
         if c.st.pinned_for_other_fp(&root.id, &root.fp) {
           record_alert_once(c, "kind_conflict", &root.id, now);
           return None;
@@ -1848,7 +1852,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   }
 
   fn confirm_device_kind(&self, device_id: &str, kind: &str) -> Result<(), String> {
-    if !matches!(kind, "desktop" | "mobile") || self.kind == "runner" {
+    if !matches!(kind, "desktop" | "mobile") || matches!(self.kind.as_str(), "runner" | "terminal") {
       return Err("only a desktop or phone kind can be confirmed".into());
     }
     let mut g = self.lock();
