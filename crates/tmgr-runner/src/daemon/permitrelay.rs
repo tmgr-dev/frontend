@@ -4,13 +4,15 @@ use crate::permit::remote::{Action, PermitDesk, RunnerIds};
 use crate::spawnauth::SpawnAuth;
 use std::io::Write;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use tmgr_chat_relay::engine::PermitOkSink;
 use tmgr_ipc::chat::{Author, AuthorKind, ChatMessage, DecisionRef, MessageKind, CHAT_V};
-use tmgr_spawn_auth::{DesktopPolicy, PermitSender, PermitSenderKind, SignedPermit};
+use tmgr_spawn_auth::{
+    b64_decode_strict, DesktopPolicy, PermitSender, PermitSenderKind, PinnedKey, SignedPermit,
+};
 
 const PERMIT_TICK: Duration = Duration::from_secs(1);
 const PERMIT_INBOX_CAP: usize = 16;
 const PERMIT_PER_DEVICE: usize = 4;
-#[cfg_attr(not(test), allow(dead_code))]
 const PERMIT_INTAKE_TICK: Duration = Duration::from_millis(500);
 const POSTED_CAP: usize = 64;
 const REASON_MAX: usize = 128;
@@ -115,6 +117,20 @@ pub(super) struct PermitRelay {
     policy_warned: AtomicBool,
     #[cfg(test)]
     audits: Mutex<Vec<String>>,
+}
+
+fn relay_key(
+    user_id: &str,
+    device_id: &str,
+    device_fp: &str,
+    sign_pub_b64: &str,
+) -> Option<PinnedKey> {
+    Some(PinnedKey {
+        user_id: user_id.to_owned(),
+        device_id: device_id.to_owned(),
+        device_fp: device_fp.to_owned(),
+        spawn_pub: b64_decode_strict(sign_pub_b64)?,
+    })
 }
 
 fn nonces() -> Option<Vec<String>> {
@@ -232,23 +248,28 @@ impl Runner {
         self.permit_execute(actions, "relay:local");
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn accept_permitok(
         &self,
-        _from_device: &str,
+        from_device: &str,
         from_fp: &str,
         owner_device: bool,
         kind: PermitSenderKind,
+        sign_pub_b64: &str,
         sender_label: &str,
         signed: &SignedPermit,
         now: u64,
     ) {
-        let Some((auth, _)) = self.permit_ids() else {
+        let Some((auth, ids)) = self.permit_ids() else {
             log("permit relay: an answer was dropped, no account is linked");
             return;
         };
-        let key = auth.pinned_key(&signed.device_fp).ok().flatten();
+        let key = match kind {
+            PermitSenderKind::Desktop => {
+                relay_key(&ids.user_id, from_device, from_fp, sign_pub_b64)
+            }
+            PermitSenderKind::Mobile => auth.pinned_key(&signed.device_fp).ok().flatten(),
+        };
         let current = self.permit_card_of(&signed.session);
         let Some(pool_) = nonces() else {
             log("permit relay: no random source, an answer was dropped");
@@ -436,17 +457,16 @@ impl Runner {
     }
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 struct OkItem {
     device: String,
     fp: String,
     owner_device: bool,
     kind: PermitSenderKind,
+    sign_pub: String,
     label: String,
     signed: SignedPermit,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 pub(super) struct PermitOkInbox {
     tx: std::sync::mpsc::SyncSender<OkItem>,
     queued: Arc<Mutex<HashMap<String, usize>>>,
@@ -458,14 +478,13 @@ fn permit_inbox() -> (PermitOkInbox, std::sync::mpsc::Receiver<OkItem>) {
     (PermitOkInbox { tx, queued }, rx)
 }
 
-impl PermitOkInbox {
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn deliver(
+impl PermitOkSink for PermitOkInbox {
+    fn deliver_permitok(
         &self,
         from_device: &str,
         from_fp: &str,
-        owner_device: bool,
         kind: PermitSenderKind,
+        sign_pub_b64: &str,
         sender_label: &str,
         signed: &SignedPermit,
     ) {
@@ -477,8 +496,9 @@ impl PermitOkInbox {
                 .try_send(OkItem {
                     device: from_device.to_owned(),
                     fp: from_fp.to_owned(),
-                    owner_device,
+                    owner_device: true,
                     kind,
+                    sign_pub: sign_pub_b64.to_owned(),
                     label: sender_label.to_owned(),
                     signed: signed.clone(),
                 })
@@ -492,7 +512,6 @@ impl PermitOkInbox {
 }
 
 impl Runner {
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn start_permitok_intake(self: &Arc<Self>) -> Arc<PermitOkInbox> {
         let (inbox, rx) = permit_inbox();
         let queued = inbox.queued.clone();
@@ -509,6 +528,7 @@ impl Runner {
                                 &item.fp,
                                 item.owner_device,
                                 item.kind,
+                                &item.sign_pub,
                                 &item.label,
                                 &item.signed,
                                 now_ms(),
@@ -530,12 +550,12 @@ impl Runner {
 mod tests {
     use super::manager::tests::{add_meta, runner};
     use super::*;
-    use crate::spawnauth::testutil::{fp_of, offer, secret, spawn_fp, USER};
+    use crate::spawnauth::testutil::{fp_of, offer, pub_b64, secret, spawn_fp, USER};
     use crate::spawnauth::{Identity, SpawnAuth, TrustSource};
     use p256::ecdsa::signature::Signer;
     use p256::ecdsa::Signature;
     use tmgr_ipc::chat::ChatMessage;
-    use tmgr_spawn_auth::{b64_encode, permit_signed_string, PermitChoice, TrustStatus};
+    use tmgr_spawn_auth::{b64_encode, permit_signed_string, PermitChoice, PinnedKey, TrustStatus};
 
     const SID: &str = "s_aaaaaaaaaa";
     const SCREEN: &str = include_str!("../../profiles/screens/claude-bash-approval.txt");
@@ -559,6 +579,10 @@ mod tests {
     }
 
     fn env(linked: bool) -> Env {
+        env_with(linked, COMMAND)
+    }
+
+    fn env_with(linked: bool, command: &str) -> Env {
         let t = tempfile::Builder::new()
             .prefix("pr")
             .tempdir_in("/tmp")
@@ -578,12 +602,18 @@ mod tests {
             queued_frames: Arc::new(AtomicUsize::new(0)),
             credit: None,
         });
-        s.feed(SCREEN.replace('\n', "\r\n").as_bytes(), true);
+        s.feed(
+            SCREEN
+                .replace(COMMAND, command)
+                .replace('\n', "\r\n")
+                .as_bytes(),
+            true,
+        );
         let home = rt.cfg.homes.join(SID);
         fs::create_dir_all(&home).unwrap();
         let hook = serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": COMMAND, "description": "run it"},
+            "tool_input": {"command": command, "description": "run it"},
             "cwd": "/work/proj",
         })
         .to_string();
@@ -693,6 +723,7 @@ mod tests {
             &s.device_fp,
             owner,
             PermitSenderKind::Mobile,
+            "",
             "Mac",
             s,
             now_ms(),
@@ -837,11 +868,11 @@ mod tests {
         let s = signed(&e, PermitChoice::Yes);
         let (inbox, rx) = permit_inbox();
         for _ in 0..6 {
-            inbox.deliver(
+            inbox.deliver_permitok(
                 "dev-1",
                 &s.device_fp,
-                true,
                 PermitSenderKind::Mobile,
+                "",
                 "Mac",
                 &s,
             );
@@ -856,11 +887,174 @@ mod tests {
         let s = signed(&e, PermitChoice::Yes);
         fg(&e);
         let inbox = e.rt.start_permitok_intake();
-        inbox.deliver(
+        inbox.deliver_permitok(
             "dev-1",
             &s.device_fp,
-            true,
             PermitSenderKind::Mobile,
+            "",
+            "Mac",
+            &s,
+        );
+        for _ in 0..50 {
+            if !closed(&e).is_empty() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        e.rt.stop.store(true, Ordering::SeqCst);
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+        assert_eq!(typed(&e), "1");
+    }
+
+    fn desktop_fp() -> String {
+        "dd".repeat(32)
+    }
+
+    fn resign(e: &Env, mut s: SignedPermit, k: &p256::ecdsa::SigningKey, fp: &str) -> SignedPermit {
+        let rec = lock(&e.rt.permit_relay.desk)
+            .pending(&card_id(e))
+            .unwrap()
+            .record
+            .clone();
+        s.device_fp = fp.to_owned();
+        let key = PinnedKey {
+            user_id: rec.user_id.clone(),
+            device_id: "desk-1".into(),
+            device_fp: fp.to_owned(),
+            spawn_pub: Vec::new(),
+        };
+        let sig: Signature = k.sign(permit_signed_string(&rec, &key, &s).as_bytes());
+        s.sig = b64_encode(sig.to_der().as_bytes());
+        s
+    }
+
+    fn accept_as(e: &Env, s: &SignedPermit, kind: PermitSenderKind, sign_pub: &str) {
+        fg(e);
+        e.rt.accept_permitok(
+            "desk-1",
+            &s.device_fp,
+            true,
+            kind,
+            sign_pub,
+            "Mac",
+            s,
+            now_ms(),
+        );
+    }
+
+    fn refused(e: &Env) {
+        assert_eq!(typed(e), "");
+        assert!(closed(e).iter().all(|c| !c.starts_with("answered")));
+        assert!(audits(e).iter().all(|l| !l.contains("result=ok")));
+    }
+
+    fn kept(e: &Env) {
+        refused(e);
+        assert!(closed(e).is_empty());
+        assert_eq!(lock(&e.rt.permit_relay.desk).len(), 1);
+    }
+
+    #[test]
+    fn a_desktop_answer_signed_with_the_relay_key_is_verified_and_answered() {
+        let e = env(true);
+        armed(&e);
+        let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &desktop_fp());
+        accept_as(&e, &s, PermitSenderKind::Desktop, &pub_b64(&secret(9)));
+        assert_eq!(typed(&e), "1");
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+    }
+
+    #[test]
+    fn a_desktop_answer_signed_with_the_spawn_key_pinned_for_the_same_fp_is_refused() {
+        let e = env(true);
+        armed(&e);
+        let s = signed(&e, PermitChoice::Yes);
+        assert_eq!(s.device_fp, e.fp);
+        accept_as(&e, &s, PermitSenderKind::Desktop, &pub_b64(&secret(9)));
+        refused(&e);
+    }
+
+    #[test]
+    fn a_desktop_answer_with_the_relay_key_works_even_when_a_spawn_key_is_pinned_for_that_fp() {
+        let e = env(true);
+        armed(&e);
+        let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &e.fp);
+        accept_as(&e, &s, PermitSenderKind::Desktop, &pub_b64(&secret(9)));
+        assert_eq!(typed(&e), "1");
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+    }
+
+    #[test]
+    fn a_desktop_answer_with_an_unusable_relay_key_is_refused() {
+        let e = env(true);
+        armed(&e);
+        let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &desktop_fp());
+        for bad in ["", "!!", "AAAA"] {
+            accept_as(&e, &s, PermitSenderKind::Desktop, bad);
+            kept(&e);
+        }
+    }
+
+    #[test]
+    fn a_mobile_answer_signed_with_its_relay_key_is_refused() {
+        let e = env(true);
+        armed(&e);
+        let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &e.fp);
+        accept_as(&e, &s, PermitSenderKind::Mobile, &pub_b64(&secret(9)));
+        refused(&e);
+    }
+
+    #[test]
+    fn a_mobile_answer_signed_with_the_spawn_key_is_accepted_whatever_the_relay_key() {
+        let e = env(true);
+        armed(&e);
+        let s = signed(&e, PermitChoice::Yes);
+        accept_as(&e, &s, PermitSenderKind::Mobile, &pub_b64(&secret(9)));
+        assert_eq!(typed(&e), "1");
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+    }
+
+    #[test]
+    fn a_desktop_answer_to_a_danger_card_through_the_sink_is_refused_under_the_default_policy() {
+        let e = env_with(true, "rm -rf build");
+        armed(&e);
+        let card = posted(&e).remove(0).decision.unwrap().permit.unwrap();
+        assert!(!card.danger.is_empty());
+        let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &desktop_fp());
+        fg(&e);
+        let inbox = e.rt.start_permitok_intake();
+        inbox.deliver_permitok(
+            "desk-1",
+            &s.device_fp,
+            PermitSenderKind::Desktop,
+            &pub_b64(&secret(9)),
+            "Mac",
+            &s,
+        );
+        for _ in 0..50 {
+            if !audits(&e).is_empty() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        e.rt.stop.store(true, Ordering::SeqCst);
+        let a = audits(&e);
+        assert!(a.iter().any(|l| l.contains("desktop_not_allowed")), "{a:?}");
+        refused(&e);
+    }
+
+    #[test]
+    fn a_desktop_answer_to_a_safe_card_through_the_sink_is_answered_under_the_default_policy() {
+        let e = env(true);
+        armed(&e);
+        let s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &desktop_fp());
+        fg(&e);
+        let inbox = e.rt.start_permitok_intake();
+        inbox.deliver_permitok(
+            "desk-1",
+            &s.device_fp,
+            PermitSenderKind::Desktop,
+            &pub_b64(&secret(9)),
             "Mac",
             &s,
         );

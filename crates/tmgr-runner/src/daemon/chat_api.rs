@@ -276,6 +276,7 @@ impl Runner {
             rpc,
             spawnkey: self.start_spawnkey_intake(),
             spawnok: Some(self.start_spawnok_intake()),
+            permitok: Some(self.start_permitok_intake()),
             serve_rpc: Arc::new(move |send| serve_rt.spawn_rpc_server(serve_inbox.clone(), send)),
             on_device: Arc::new(move |d| device_rt.chat.set_relay_device(d)),
             on_owners: Arc::new(move |f| owners_rt.chat.set_relay_owners(Some(f))),

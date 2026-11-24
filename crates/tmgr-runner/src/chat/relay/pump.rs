@@ -8,8 +8,8 @@ use serde_json::Value;
 use tmgr_chat_relay::api::Request;
 use tmgr_chat_relay::engine::blob::BlobPart;
 use tmgr_chat_relay::engine::{
-    retry_after_secs, ChatSink, EngineConfig, KeyStore, RelayEngine, RoomScope, Slot, SpawnKeySink,
-    SpawnOkSink, Transport,
+    retry_after_secs, ChatSink, EngineConfig, KeyStore, PermitOkSink, RelayEngine, RoomScope, Slot,
+    SpawnKeySink, SpawnOkSink, Transport,
 };
 use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind, RoomInfo, RoomRef};
 
@@ -398,6 +398,7 @@ pub struct Setup {
     pub rpc: Arc<RpcInbox>,
     pub spawnkey: Arc<dyn SpawnKeySink>,
     pub spawnok: Option<Arc<dyn SpawnOkSink>>,
+    pub permitok: Option<Arc<dyn PermitOkSink>>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
     pub on_device: OnDevice,
     pub on_owners: Arc<dyn Fn(crate::chat::OwnersFn) + Send + Sync>,
@@ -439,8 +440,12 @@ fn build(setup: &Setup, leases: &Arc<Leases>) -> Result<Option<Engine>, String> 
             .with_rpc_sink(setup.rpc.clone())
             .with_spawnkey_sink(setup.spawnkey.clone())
             .with_activity_sub_sink(leases.clone());
-        Some(match &setup.spawnok {
+        let e = match &setup.spawnok {
             Some(sink) => e.with_spawnok_sink(sink.clone()),
+            None => e,
+        };
+        Some(match &setup.permitok {
+            Some(sink) => e.with_permitok_sink(sink.clone()),
             None => e,
         })
     })

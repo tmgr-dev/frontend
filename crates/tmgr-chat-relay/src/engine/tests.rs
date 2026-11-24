@@ -4172,6 +4172,302 @@ fn spawnok_before_joining_is_dropped() {
     assert_eq!(sink.n(), 0);
 }
 
+type PermitRows = Vec<(
+    String,
+    String,
+    tmgr_spawn_auth::PermitSenderKind,
+    String,
+    String,
+    tmgr_spawn_auth::SignedPermit,
+)>;
+
+#[derive(Clone, Default)]
+struct PermitRec(Arc<Mutex<PermitRows>>);
+
+impl PermitRec {
+    fn n(&self) -> usize {
+        self.0.lock().unwrap().len()
+    }
+}
+
+impl PermitOkSink for PermitRec {
+    fn deliver_permitok(
+        &self,
+        from: &str,
+        fp: &str,
+        kind: tmgr_spawn_auth::PermitSenderKind,
+        sign_pub: &str,
+        label: &str,
+        signed: &tmgr_spawn_auth::SignedPermit,
+    ) {
+        self.0.lock().unwrap().push((
+            from.into(),
+            fp.into(),
+            kind,
+            sign_pub.into(),
+            label.into(),
+            signed.clone(),
+        ));
+    }
+}
+
+fn permitok_world_from(kind: &str) -> (Fake, Clock, Engine, Engine, PermitRec) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Sender").with_kind(kind);
+    let mut r = join_as(&fake, &clock, &a, "Runner", "runner");
+    r.poll_once().unwrap();
+    let sink = PermitRec::default();
+    r.permitok = Some(Arc::new(sink.clone()));
+    (fake, clock, a, r, sink)
+}
+
+fn permitok_payload(device_fp: &str) -> Value {
+    json!({
+        "v": 1,
+        "user_id": "42",
+        "device_fp": device_fp,
+        "runner_id": "d_runner1",
+        "runner_fp": "cd".repeat(32),
+        "card_id": "card_00112233445566778899aabbccddeeff",
+        "session": "s_aaaaaaaaaa",
+        "choice": "yes",
+        "confirmed": 0,
+        "nonce": "ab".repeat(16),
+        "ts_ms": 1,
+        "exp_ms": 2,
+        "req_sha256": "ef".repeat(32),
+        "alg": "es256",
+        "sig": "c2ln"
+    })
+}
+
+fn post_permitok(from: &Engine, to: &Engine, payload: &Value) {
+    raw_post(from, &my_id(to), "permitok", &rpc_id("permitok"), payload);
+    to.poll_once().unwrap();
+}
+
+fn sign_pub_of(e: &Engine, id: &str) -> String {
+    e.lock()
+        .st
+        .trusted
+        .iter()
+        .find(|d| d.id == id)
+        .unwrap()
+        .sign_pub
+        .clone()
+}
+
+#[test]
+fn permitok_from_a_trusted_joined_desktop_reaches_the_sink_as_desktop() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    let payload = permitok_payload(&fp_of(&a));
+    post_permitok(&a, &r, &payload);
+    let got = sink.0.lock().unwrap().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0, my_id(&a));
+    assert_eq!(got[0].1, fp_of(&a));
+    assert_eq!(got[0].2, tmgr_spawn_auth::PermitSenderKind::Desktop);
+    assert_eq!(got[0].3, sign_pub_of(&r, &my_id(&a)));
+    assert_eq!(got[0].4, "Sender");
+    assert_eq!(serde_json::to_value(&got[0].5).unwrap(), payload);
+}
+
+#[test]
+fn permitok_from_a_trusted_joined_phone_reaches_the_sink_as_mobile() {
+    let (_f, _c, a, r, sink) = permitok_world_from("mobile");
+    post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+    let got = sink.0.lock().unwrap().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].2, tmgr_spawn_auth::PermitSenderKind::Mobile);
+    assert_eq!(got[0].3, sign_pub_of(&r, &my_id(&a)));
+}
+
+fn assert_permitok_dropped_for_pin(kind: &str) {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    set_pin(&r, &my_id(&a), kind);
+    assert_eq!(kind_pin(&r, &my_id(&a)).as_deref(), Some(kind));
+    post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+    assert_eq!(sink.n(), 0, "{kind}");
+}
+
+#[test]
+fn permitok_from_a_device_pinned_as_terminal_is_dropped() {
+    assert_permitok_dropped_for_pin("terminal");
+}
+
+#[test]
+fn permitok_from_a_device_pinned_as_runner_is_dropped() {
+    assert_permitok_dropped_for_pin("runner");
+}
+
+#[test]
+fn permitok_from_a_device_pinned_as_web_is_dropped() {
+    assert_permitok_dropped_for_pin("web");
+}
+
+#[test]
+fn permitok_from_a_device_pinned_as_an_unknown_kind_is_dropped() {
+    assert_permitok_dropped_for_pin("mobile2");
+    assert_permitok_dropped_for_pin("");
+}
+
+#[test]
+fn permitok_from_an_unpinned_device_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    drop_pin(&r, &my_id(&a));
+    assert_eq!(kind_pin(&r, &my_id(&a)), None);
+    post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn permitok_whose_device_fp_is_not_the_sender_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    post_permitok(&a, &r, &permitok_payload(&"11".repeat(32)));
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn a_malformed_permitok_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    let fp = fp_of(&a);
+    let mut no_sig = permitok_payload(&fp);
+    no_sig.as_object_mut().unwrap().remove("sig");
+    let mut bad_ts = permitok_payload(&fp);
+    bad_ts["ts_ms"] = json!(-1);
+    let mut huge = permitok_payload(&fp);
+    huge["exp_ms"] = json!(u64::MAX);
+    let mut extra = permitok_payload(&fp);
+    extra["owner_device"] = json!(true);
+    let mut bad_choice = permitok_payload(&fp);
+    bad_choice["choice"] = json!("maybe");
+    for junk in [
+        no_sig,
+        bad_ts,
+        huge,
+        extra,
+        bad_choice,
+        json!("x"),
+        json!([1]),
+        json!({}),
+    ] {
+        post_permitok(&a, &r, &junk);
+    }
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn permitok_to_an_engine_that_is_not_a_runner_is_dropped() {
+    for kind in ["desktop", "mobile", "terminal"] {
+        let (_f, _c, a, mut r, sink) = permitok_world_from("desktop");
+        r.kind = kind.to_owned();
+        post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+        assert_eq!(sink.n(), 0, "{kind}");
+    }
+}
+
+#[test]
+fn permitok_without_a_sink_is_dropped() {
+    let (_f, _c, a, mut r, sink) = permitok_world_from("desktop");
+    r.permitok = None;
+    post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn permitok_from_an_untrusted_device_is_dropped() {
+    let (fake, clock, _a, r, sink) = permitok_world_from("desktop");
+    let stranger = engine_with(&fake, &clock, "Stranger").with_kind("desktop");
+    stranger.ensure_registered(&mut stranger.lock()).unwrap();
+    let rid = my_id(&r);
+    let dev = {
+        let g = r.lock();
+        g.st.trusted.iter().find(|d| d.id == rid).cloned().unwrap()
+    };
+    let payload = permitok_payload(&fp_of(&stranger));
+    stranger
+        .seal_and_post(
+            &mut stranger.lock(),
+            "permitok",
+            &rpc_id("permitok"),
+            &payload,
+            &[dev],
+            false,
+        )
+        .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn permitok_from_a_revoked_sender_is_dropped() {
+    for keep_trusted in [false, true] {
+        let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+        let fp = fp_of(&a);
+        {
+            let mut g = r.lock();
+            g.st.revoked.push(fp.clone());
+            if !keep_trusted {
+                g.st.trusted.retain(|d| d.fp != fp);
+            }
+        }
+        let target: Vec<Dev> = {
+            let g = a.lock();
+            g.st.trusted
+                .iter()
+                .filter(|d| d.id == my_id(&r))
+                .cloned()
+                .collect()
+        };
+        a.seal_and_post(
+            &mut a.lock(),
+            "permitok",
+            &rpc_id("permitok"),
+            &permitok_payload(&fp),
+            &target,
+            false,
+        )
+        .unwrap();
+        r.poll_once().unwrap();
+        assert_eq!(sink.n(), 0, "keep_trusted={keep_trusted}");
+    }
+}
+
+#[test]
+fn permitok_from_the_own_device_is_dropped() {
+    let (_f, _c, _a, r, sink) = permitok_world_from("desktop");
+    let rid = my_id(&r);
+    set_pin(&r, &rid, "desktop");
+    let payload = permitok_payload(&fp_of(&r));
+    let me: Vec<Dev> = r
+        .lock()
+        .st
+        .trusted
+        .iter()
+        .filter(|d| d.id == rid)
+        .cloned()
+        .collect();
+    r.seal_and_post(
+        &mut r.lock(),
+        "permitok",
+        &rpc_id("permitok"),
+        &payload,
+        &me,
+        false,
+    )
+    .unwrap();
+    r.poll_once().unwrap();
+    assert_eq!(sink.n(), 0);
+}
+
+#[test]
+fn permitok_before_joining_is_dropped() {
+    let (_f, _c, a, r, sink) = permitok_world_from("desktop");
+    r.lock().st.joined = false;
+    post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+    assert_eq!(sink.n(), 0);
+}
+
 fn rooms_world() -> (Fake, Clock, Engine, Engine, Engine, Engine) {
     let (fake, clock) = (Fake::default(), Clock::new(T0));
     let desktop = engine_with(&fake, &clock, "Desktop A");

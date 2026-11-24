@@ -6,7 +6,7 @@ use tmgr_ipc::chat::ChatMessage;
 use super::blob::BlobPart;
 use crate::api::Request;
 use crate::trust::SpawnKey;
-use tmgr_spawn_auth::SignedSpawn;
+use tmgr_spawn_auth::{PermitSenderKind, SignedPermit, SignedSpawn};
 
 pub trait Transport: Send + Sync {
     fn call(&self, req: &Request, device_token: Option<&str>) -> Result<String, String>;
@@ -111,6 +111,22 @@ pub trait SpawnKeySink: Send + Sync {
 /// the signature itself is not checked here.
 pub trait SpawnOkSink: Send + Sync {
     fn deliver_spawnok(&self, from_device: &str, from_fp: &str, signed: &SignedSpawn);
+}
+
+/// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
+/// Only a runner engine calls this. The sender is a trusted, joined, non-revoked device other than ourselves,
+/// pinned as exactly `desktop` or `mobile` (`kind`), and `signed.device_fp == from_fp`;
+/// `sign_pub_b64` is the sender's relay signing key as stored. The signature itself is not checked here.
+pub trait PermitOkSink: Send + Sync {
+    fn deliver_permitok(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        kind: PermitSenderKind,
+        sign_pub_b64: &str,
+        label: &str,
+        signed: &SignedPermit,
+    );
 }
 
 /// Runs under the engine lock: implementations must only persist or enqueue and never call back into the engine.
