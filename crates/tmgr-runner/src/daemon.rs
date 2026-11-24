@@ -7264,6 +7264,46 @@ mod tests {
         assert!(send_at_prompt(&s, b"note\r", settled()));
     }
 
+    #[test]
+    fn the_stuck_queue_line_names_the_message_gate_rule_and_scrubbed_bottom_rows() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(
+            b"\r\n\r\nrunning in /home/u/proj and /opt/h/work\r\n> \r\n",
+            true,
+        );
+        waiting_since(&s, 20_000);
+        lock(&s.inner).last_busy = Some("not at an empty prompt");
+        let line = s
+            .stuck_queue_line("m1", 31_500, Some("prompt"), now_ms(), Some("/opt/h"))
+            .unwrap();
+        assert!(line.starts_with("chat queue: message m1 waited 31s at the front on idle session s1: why=prompt, gate=not at an empty prompt, detector=Waiting quiet=1000ms"));
+        assert!(line.contains("idle rule="));
+        assert!(line.contains("bottom rows: [\"running in ~/proj and ~/work\", \">\"]"));
+        assert!(!line.contains("/home/u") && !line.contains("/opt/h"));
+    }
+
+    #[test]
+    fn the_stuck_queue_line_is_skipped_while_the_session_is_working() {
+        let (_t, s, _rx) = lone_session();
+        s.feed(b"busy output\r\n", true);
+        assert_eq!(s.state().kind, StateKind::Working);
+        assert!(s
+            .stuck_queue_line("m1", 31_000, None, now_ms(), None)
+            .is_none());
+    }
+
+    #[test]
+    fn home_prefixes_are_scrubbed_to_a_tilde() {
+        let s = |t, h| chat_api::scrub_home(t, h);
+        assert_eq!(
+            s("at /Users/alice/x and /home/bob/y", None),
+            "at ~/x and ~/y"
+        );
+        assert_eq!(s("at /srv/me/x", Some("/srv/me")), "at ~/x");
+        assert_eq!(s("at /x", Some("")), "at /x");
+        assert_eq!(s("at /x", Some("/")), "at /x");
+    }
+
     fn waiting_since(s: &Session, ago_ms: u64) {
         let t = now_ms() - ago_ms;
         let mut i = lock(&s.inner);

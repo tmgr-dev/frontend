@@ -10,6 +10,7 @@ use crate::mgr_rpc::relay::{
 };
 use crate::mgr_rpc::{Dispatcher, FileAudit};
 use std::sync::mpsc::RecvTimeoutError as ChatRecv;
+use std::sync::OnceLock;
 use tmgr_chat_relay::engine::blob::MAX_LOCAL_BYTES;
 use tmgr_ipc::chat::{
     method as chat_method, BlobPutParams, BlobPutResult, CancelParams, HistoryParams, QueuedParams,
@@ -24,6 +25,9 @@ const CAPTURE_FAST_AFTER_WORKING: Duration = Duration::from_secs(5);
 const ACTIVITY_TICK: Duration = Duration::from_millis(250);
 const QUEUE_EVERY: Duration = Duration::from_millis(500);
 const RPC_TICK: Duration = Duration::from_millis(100);
+const QUEUE_STUCK_AFTER: u64 = 30_000;
+const STUCK_ROWS: usize = 6;
+const STUCK_ROW_CHARS: usize = 120;
 pub(super) const RELAY_SOURCE: &str = "phone or another device via chat relay";
 
 pub(super) fn relay_typed(owner_device: bool, device: Option<&str>, body: &str) -> String {
@@ -38,6 +42,59 @@ const REMOTE_UNRESTRICTED_REFUSAL: &str =
     "Not delivered: an unrestricted manager takes input only from this machine's keyboard.";
 pub(super) const UNRESTRICTED_REFUSAL: &str =
     "Not delivered: an unrestricted manager takes input only from this machine's keyboard and the owner's paired devices.";
+
+pub(super) fn scrub_home(text: &str, home: Option<&str>) -> String {
+    static USER_DIR: OnceLock<regex::Regex> = OnceLock::new();
+    let text = match home {
+        Some(h) if h.len() > 1 => text.replace(h, "~"),
+        _ => text.to_owned(),
+    };
+    let re = USER_DIR.get_or_init(|| regex::Regex::new(r#"/(?:Users|home)/[^/\s"']+"#).unwrap());
+    re.replace_all(&text, "~").into_owned()
+}
+
+impl Session {
+    pub(super) fn stuck_queue_line(
+        &self,
+        id: &str,
+        age_ms: u64,
+        why: Option<&str>,
+        now: u64,
+        home: Option<&str>,
+    ) -> Option<String> {
+        let i = lock(&self.inner);
+        let state = self.effective(&i);
+        if state.kind != StateKind::Waiting {
+            return None;
+        }
+        let lines = i.screen.bottom_text_without_ghosts(usize::MAX);
+        let rule = match &i.matcher {
+            None => "no matcher".to_owned(),
+            Some(m) => m
+                .check(bottom_rows(&lines))
+                .map_or("miss".to_owned(), |(rule, _)| rule),
+        };
+        let mut rows: Vec<String> = lines
+            .iter()
+            .rev()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .take(STUCK_ROWS)
+            .map(|l| l.chars().take(STUCK_ROW_CHARS).collect())
+            .collect();
+        rows.reverse();
+        let line = format!(
+            "chat queue: message {id} waited {}s at the front on idle session {}: why={}, gate={}, detector={:?} {}, idle rule={rule}, bottom rows: {rows:?}",
+            age_ms / 1000,
+            self.id,
+            why.unwrap_or("none"),
+            i.last_busy.unwrap_or("none"),
+            state.kind,
+            i.det.summary(now),
+        );
+        Some(scrub_home(&line, home))
+    }
+}
 
 fn capture_due(
     now: Instant,
@@ -562,6 +619,25 @@ impl Runner {
                 },
                 |it, typed| self.chat.mention_delivered(it.id, typed, now_ms()),
             );
+            self.log_stuck_queue();
+        }
+    }
+
+    fn log_stuck_queue(&self) {
+        let now = now_ms();
+        let home = std::env::var("HOME").ok();
+        for st in self.chat.stalled_fronts(now, QUEUE_STUCK_AFTER) {
+            let target = match st.room.session.as_deref() {
+                Some(id) => self.session(id),
+                None => self.live_manager(),
+            };
+            let Some(line) = target
+                .and_then(|s| s.stuck_queue_line(&st.id, st.age_ms, st.why, now, home.as_deref()))
+            else {
+                continue;
+            };
+            log(&line);
+            self.chat.mark_stall_reported(&st.id);
         }
     }
 

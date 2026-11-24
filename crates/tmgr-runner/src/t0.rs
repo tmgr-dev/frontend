@@ -54,6 +54,24 @@ impl Detector {
         &self.state
     }
 
+    pub fn summary(&self, now: u64) -> String {
+        let ago = |t: Option<u64>| {
+            t.map_or("never".to_owned(), |t| {
+                format!("{}ms", now.saturating_sub(t))
+            })
+        };
+        format!(
+            "quiet={}ms output_ago={} input_ago={} idle_rule={} tty_waiting={:?} cpu_growing={} bell={}",
+            self.quiet_ms,
+            ago(self.last_output),
+            ago(self.last_input),
+            self.idle,
+            self.tty_waiting,
+            self.cpu_growing(now),
+            self.bell,
+        )
+    }
+
     pub fn on_output(&mut self, now: u64) -> Option<State> {
         self.last_output = Some(now);
         self.bell = false;

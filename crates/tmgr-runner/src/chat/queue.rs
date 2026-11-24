@@ -1,7 +1,7 @@
 use super::mention::QueueEnd;
 use super::{lock, Chat, Delivery, NOT_DELIVERED};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -62,6 +62,7 @@ pub(super) struct Queue {
     rooms: HashMap<RoomRef, VecDeque<Entry>>,
     finished: VecDeque<String>,
     path: Option<PathBuf>,
+    stall_reported: HashSet<String>,
 }
 
 impl Queue {
@@ -267,6 +268,14 @@ fn gone_reason(r: &str) -> String {
 
 fn full_reason() -> String {
     format!("the queue for this session is full ({QUEUE_CAP} messages).")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stalled {
+    pub room: RoomRef,
+    pub id: String,
+    pub age_ms: u64,
+    pub why: Option<&'static str>,
 }
 
 pub struct Item<'a> {
@@ -639,6 +648,33 @@ impl Chat {
             .unwrap_or_default()
     }
 
+    pub fn stalled_fronts(&self, now_ms: u64, after_ms: u64) -> Vec<Stalled> {
+        let mut q = lock(&self.queue);
+        let Queue {
+            rooms,
+            stall_reported,
+            ..
+        } = &mut *q;
+        stall_reported.retain(|id| rooms.values().flatten().any(|e| &e.id == id));
+        rooms
+            .iter()
+            .filter_map(|(room, entries)| {
+                let e = entries.front()?;
+                let age_ms = now_ms.saturating_sub(e.enq_ms);
+                (age_ms > after_ms && !stall_reported.contains(&e.id)).then(|| Stalled {
+                    room: room.clone(),
+                    id: e.id.clone(),
+                    age_ms,
+                    why: e.why,
+                })
+            })
+            .collect()
+    }
+
+    pub fn mark_stall_reported(&self, id: &str) {
+        lock(&self.queue).stall_reported.insert(id.to_owned());
+    }
+
     pub fn queued_why(&self, room: &RoomRef) -> HashMap<String, String> {
         lock(&self.queue)
             .rooms
@@ -747,6 +783,42 @@ mod tests {
             }
             d.clone()
         });
+    }
+
+    #[test]
+    fn a_stalled_front_item_is_reported_once_after_the_threshold() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.submit(&room, "m1", "hi", "relay", None, false, T0, busy);
+        c.submit(&room, "m2", "hi", "relay", None, false, T0, busy);
+        assert!(c.stalled_fronts(T0 + 30_000, 30_000).is_empty());
+        let got = c.stalled_fronts(T0 + 30_001, 30_000);
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].id.as_str(), got[0].age_ms), ("m1", 30_001));
+        assert_eq!(got[0].room, room);
+        c.mark_stall_reported("m1");
+        assert!(c.stalled_fronts(T0 + 60_000, 30_000).is_empty());
+    }
+
+    #[test]
+    fn an_unreported_stalled_item_keeps_showing_until_marked() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.submit(&room, "m1", "hi", "relay", None, false, T0, busy);
+        assert_eq!(c.stalled_fronts(T0 + 31_000, 30_000).len(), 1);
+        assert_eq!(c.stalled_fronts(T0 + 32_000, 30_000).len(), 1);
+    }
+
+    #[test]
+    fn a_reported_item_that_left_the_queue_is_forgotten() {
+        let (_t, c) = chat();
+        let room = c.session_room("s_abcdefghij");
+        c.submit(&room, "m1", "hi", "relay", None, false, T0, busy);
+        c.mark_stall_reported("m1");
+        assert!(c.stalled_fronts(T0 + 31_000, 30_000).is_empty());
+        assert!(c.cancel(&room, "m1"));
+        assert!(c.stalled_fronts(T0 + 31_000, 30_000).is_empty());
+        assert!(lock(&c.queue).stall_reported.is_empty());
     }
 
     #[test]
