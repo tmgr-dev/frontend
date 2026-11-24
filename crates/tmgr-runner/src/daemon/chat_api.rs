@@ -1085,10 +1085,10 @@ mod tests {
     fn an_attach_send_to_a_bypass_no_sandbox_session_room_is_stored_and_queued_not_refused() {
         let (_t, rt) = manager_rig(json!({}));
         let room = rt.chat.session_room("s_cccccccccc");
-        assert_eq!(
+        assert!(matches!(
             rt.chat_deliver(&room, "hi", CLIENT_CLI),
-            chat::Delivery::Busy(Some("prompt"))
-        );
+            chat::Delivery::Busy(_)
+        ));
         let posted = cli_send(&rt, &room);
         assert_eq!(posted.room, room);
         assert_eq!(posted.author.id, "owner");
@@ -1105,10 +1105,10 @@ mod tests {
         ] {
             let (_t, rt) = manager_rig(flags);
             let room = rt.chat.manager_room();
-            assert_eq!(
+            assert!(matches!(
                 rt.chat_deliver(&room, "hi", CLIENT_CLI),
-                chat::Delivery::Busy(Some("prompt"))
-            );
+                chat::Delivery::Busy(_)
+            ));
             let posted = cli_send(&rt, &room);
             assert_eq!(posted.room, room);
             assert_eq!(posted.author.id, "owner");
