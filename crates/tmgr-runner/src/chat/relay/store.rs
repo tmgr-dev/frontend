@@ -32,7 +32,14 @@ fn check_dir(dir: &Path) -> Result<(), String> {
 
 impl RelayDir {
     pub fn open(runner_dir: &Path) -> Result<RelayDir, String> {
-        let dir = runner_dir.join("relay");
+        Self::open_named(runner_dir, "relay")
+    }
+
+    pub fn open_named(runner_dir: &Path, name: &str) -> Result<RelayDir, String> {
+        if name.is_empty() || name.contains(['/', '\\']) || name.starts_with('.') {
+            return Err(unusable("bad directory name"));
+        }
+        let dir = runner_dir.join(name);
         match fs::symlink_metadata(&dir) {
             Ok(_) => {}
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -103,6 +110,43 @@ impl RelayDir {
         let raw = serde_json::to_string(cfg).map_err(unusable)?;
         self.write(self.dir.join(CONFIG_FILE), &raw)
     }
+
+    pub fn clear_config(&self) -> Result<(), String> {
+        self.remove(self.dir.join(CONFIG_FILE))
+    }
+
+    pub fn remove_file(&self, name: &str) -> Result<(), String> {
+        self.remove(self.plain(name)?)
+    }
+
+    fn remove(&self, path: PathBuf) -> Result<(), String> {
+        check_dir(&self.dir)?;
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(unusable(e)),
+        }
+    }
+
+    pub fn read_file(&self, name: &str) -> Result<Option<String>, String> {
+        self.read(self.plain(name)?)
+    }
+
+    pub fn write_file(&self, name: &str, value: &str) -> Result<(), String> {
+        self.write(self.plain(name)?, value)
+    }
+
+    fn plain(&self, name: &str) -> Result<PathBuf, String> {
+        let ok = !name.is_empty()
+            && name
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'))
+            && !name.starts_with('.');
+        if !ok {
+            return Err(unusable("bad file name"));
+        }
+        Ok(self.dir.join(name))
+    }
 }
 
 impl KeyStore for RelayDir {
@@ -144,6 +188,46 @@ mod tests {
         fs::set_permissions(&d.dir, fs::Permissions::from_mode(0o755)).unwrap();
         RelayDir::open(t.path()).unwrap();
         assert_eq!(mode(&t.path().join("relay")), 0o700);
+    }
+
+    #[test]
+    fn a_named_dir_is_separate_from_the_runners_own() {
+        let t = tempfile::tempdir().unwrap();
+        let own = RelayDir::open(t.path()).unwrap();
+        own.save(Slot::Identity, "runner").unwrap();
+        let other = RelayDir::open_named(t.path(), "attach-relay").unwrap();
+        assert_eq!(mode(&t.path().join("attach-relay")), 0o700);
+        assert_eq!(other.load(Slot::Identity).unwrap(), None);
+        other.save(Slot::Identity, "attach").unwrap();
+        other.clear().unwrap();
+        assert_eq!(own.load(Slot::Identity).unwrap().as_deref(), Some("runner"));
+        for bad in ["", ".", "..", "a/b", "../relay", ".hidden"] {
+            assert!(RelayDir::open_named(t.path(), bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn named_files_are_private_and_config_can_be_cleared() {
+        let t = tempfile::tempdir().unwrap();
+        let d = RelayDir::open_named(t.path(), "attach-relay").unwrap();
+        assert_eq!(d.read_file("cache.json").unwrap(), None);
+        d.write_file("cache.json", "{}").unwrap();
+        assert_eq!(d.read_file("cache.json").unwrap().as_deref(), Some("{}"));
+        assert_eq!(mode(&d.dir.join("cache.json")), 0o600);
+        d.remove_file("cache.json").unwrap();
+        d.remove_file("cache.json").unwrap();
+        assert_eq!(d.read_file("cache.json").unwrap(), None);
+        for bad in ["", "../x", "a/b", ".h"] {
+            assert!(d.write_file(bad, "x").is_err(), "{bad}");
+        }
+        d.save_config(&RelayConfig {
+            server: "https://tmgr.dev".into(),
+            user_id: 7,
+        })
+        .unwrap();
+        d.clear_config().unwrap();
+        d.clear_config().unwrap();
+        assert_eq!(d.load_config().unwrap(), None);
     }
 
     #[test]
