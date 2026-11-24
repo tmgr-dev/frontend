@@ -288,11 +288,37 @@ impl State {
 
 const RECEIPT_REASON_MAX: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ReceiptState {
     Delivered,
     Queued,
     Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Receipt {
+    pub id: String,
+    pub state: ReceiptState,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+const SENT_KEEP: usize = 200;
+const MAX_RECEIPTS: usize = 256;
+
+/// Ids are unique per runner because `sent` binds each id to one runner, so the id alone identifies the pair.
+fn push_receipt(c: &mut Core, r: Receipt) {
+    if let Some(have) = c.receipts.iter_mut().find(|x| x.id == r.id) {
+        if have.state == ReceiptState::Queued && r.state != ReceiptState::Queued {
+            *have = r;
+        }
+        return;
+    }
+    if c.receipts.len() >= MAX_RECEIPTS {
+        c.receipts.remove(0);
+    }
+    c.receipts.push(r);
 }
 
 impl ReceiptState {
@@ -352,6 +378,8 @@ struct Core {
     hold_since: BTreeMap<String, u64>,
     pass_cap: Option<usize>,
     drop_reason: Option<&'static str>,
+    sent: Vec<(String, String)>,
+    receipts: Vec<Receipt>,
 }
 
 fn trust_key(st: &State) -> String {
@@ -1562,6 +1590,27 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                     stored = Some(msg);
                 }
             }
+            "receipt" if sender_trusted && c.st.joined => {
+                if c.st.kind_of_trusted(&opened.from) != Some("runner") {
+                    return None;
+                }
+                let receipt = serde_json::from_value::<Receipt>(opened.payload.clone())
+                    .ok()
+                    .filter(|r| {
+                        valid_message_id(&r.id)
+                            && r.reason
+                                .as_ref()
+                                .is_none_or(|x| x.chars().count() <= RECEIPT_REASON_MAX)
+                    })?;
+                if !c
+                    .sent
+                    .iter()
+                    .any(|(id, runner)| *id == receipt.id && *runner == opened.from)
+                {
+                    return None;
+                }
+                push_receipt(c, receipt);
+            }
             "join" if !sender_trusted => {
                 if !join_open {
                     record_alert(c, "join_code_reused", &opened.from, now);
@@ -2100,6 +2149,44 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         let payload = serde_json::to_value(msg).map_err(err)?;
         self.seal_and_post(c, "chat", &msg.id, &payload, &targets, false)?;
         self.save_now(c)
+    }
+
+    pub fn send_chat_for_machine(&self, msg: &ChatMessage, push: bool) -> Result<(), String> {
+        msg.validate()?;
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (id, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        let runner =
+            c.st.bindings
+                .get(&msg.room.machine)
+                .filter(|d| c.st.kind_of_trusted(d) == Some("runner"))
+                .cloned()
+                .ok_or_else(|| "no runner of that machine has been seen yet".to_owned())?;
+        let revoking =
+            c.st.trusted
+                .iter()
+                .filter(|d| d.id == runner)
+                .any(|d| c.st.pending_revokes.iter().any(|p| p.target_fp == d.fp));
+        if revoking {
+            return Err("the runner of that machine is being revoked".into());
+        }
+        let mut targets = Self::owner_targets(c, &id.device_id, None);
+        targets.extend(c.st.trusted.iter().filter(|d| d.id == runner).cloned());
+        let payload = serde_json::to_value(msg).map_err(err)?;
+        self.seal_and_post(c, "chat", &msg.id, &payload, &targets, push)?;
+        c.sent.push((msg.id.clone(), runner));
+        if c.sent.len() > SENT_KEEP {
+            c.sent.remove(0);
+        }
+        self.save_now(c)
+    }
+
+    pub fn take_receipts(&self) -> Vec<Receipt> {
+        std::mem::take(&mut self.lock().receipts)
     }
 
     pub fn pending_join_matches(&self, code: &str) -> bool {

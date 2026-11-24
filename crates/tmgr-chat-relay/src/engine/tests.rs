@@ -5668,3 +5668,81 @@ fn a_rooms_index_is_ignored_without_a_sink() {
     assert!(a.poll_once().unwrap().is_empty());
     assert!(alert_kinds(&a).is_empty());
 }
+
+#[test]
+fn send_for_machine_reaches_owner_devices_and_the_bound_runner_only() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let phone = join_as(&fake, &clock, &a, "Phone", "mobile");
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+    let (aid, pid, r1id, r2id) = (my_id(&a), my_id(&phone), my_id(&r1), my_id(&r2));
+    let m = msg_n(2, AuthorKind::Manager);
+    assert!(a
+        .send_chat_for_machine(&text_msg(new_message_id(), "early"), false)
+        .unwrap_err()
+        .contains("has been seen"));
+    post_chat(&r1, &aid, &m);
+    assert_eq!(a.poll_once().unwrap().len(), 1);
+    let before = (
+        fake.queue_len(&pid),
+        fake.queue_len(&r1id),
+        fake.queue_len(&r2id),
+    );
+    let mut out = text_msg(new_message_id(), "hello");
+    out.room = m.room.clone();
+    a.send_chat_for_machine(&out, true).unwrap();
+    assert_eq!(
+        (
+            fake.queue_len(&pid),
+            fake.queue_len(&r1id),
+            fake.queue_len(&r2id)
+        ),
+        (before.0 + 1, before.1 + 1, before.2)
+    );
+}
+
+#[test]
+fn send_for_machine_skips_a_runner_with_a_pending_revoke() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let r = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    b.poll_once().unwrap();
+    let (bid, rid) = (my_id(&b), my_id(&r));
+    let m = msg_n(2, AuthorKind::Manager);
+    post_chat(&r, &bid, &m);
+    assert_eq!(b.poll_once().unwrap().len(), 1);
+    let mut out = text_msg(new_message_id(), "hello");
+    out.room = m.room.clone();
+    a.revoke(&rid).unwrap();
+    b.poll_once().unwrap();
+    assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+    let before = fake.queue_len(&rid);
+    let e = b.send_chat_for_machine(&out, true).unwrap_err();
+    assert!(e.contains("revok"), "{e}");
+    assert_eq!(fake.queue_len(&rid), before);
+}
+
+#[test]
+fn receipts_are_capped_by_evicting_the_oldest_and_keep_the_latest_state_per_id() {
+    let mut c = Core::default();
+    let receipt = |id: String, state| Receipt {
+        id,
+        state,
+        reason: None,
+    };
+    push_receipt(&mut c, receipt("same".into(), ReceiptState::Queued));
+    push_receipt(&mut c, receipt("same".into(), ReceiptState::Failed));
+    push_receipt(&mut c, receipt("same".into(), ReceiptState::Queued));
+    assert_eq!(c.receipts.len(), 1);
+    assert_eq!(c.receipts[0].state, ReceiptState::Failed);
+    for n in 0..(MAX_RECEIPTS + 10) {
+        push_receipt(&mut c, receipt(format!("r{n}"), ReceiptState::Delivered));
+    }
+    assert_eq!(c.receipts.len(), MAX_RECEIPTS);
+    assert_eq!(
+        c.receipts.last().unwrap().id,
+        format!("r{}", MAX_RECEIPTS + 9)
+    );
+    assert!(!c.receipts.iter().any(|r| r.id == "same"));
+}

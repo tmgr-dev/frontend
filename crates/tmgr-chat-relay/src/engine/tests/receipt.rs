@@ -185,3 +185,49 @@ fn an_unknown_receipt_kind_is_ignored_without_alert_or_hold_and_the_next_message
     assert!(desktop.trust_state().unwrap().seq_gaps.is_empty());
     assert!(desktop.s.drops().is_empty());
 }
+
+fn sent_world() -> (Engine, Engine, Engine, Engine, String) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let phone = join_as(&fake, &clock, &a, "Phone", "mobile");
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+    post_chat(&r1, &my_id(&a), &msg_n(2, AuthorKind::Manager));
+    assert_eq!(a.poll_once().unwrap().len(), 1);
+    let mut out = text_msg(new_message_id(), "hello");
+    out.room = msg_n(2, AuthorKind::Manager).room;
+    a.send_chat_for_machine(&out, true).unwrap();
+    (a, phone, r1, r2, out.id)
+}
+
+#[test]
+fn a_failed_receipt_from_the_bound_runner_for_a_sent_message_is_exposed_once() {
+    let (a, _p, r1, _r2, id) = sent_world();
+    r1.send_receipt(&my_id(&a), &id, ReceiptState::Failed, Some("busy"))
+        .unwrap();
+    assert_eq!(a.poll_once().unwrap().len(), 0);
+    assert_eq!(
+        a.take_receipts(),
+        vec![Receipt {
+            id,
+            state: ReceiptState::Failed,
+            reason: Some("busy".into())
+        }]
+    );
+    assert!(a.take_receipts().is_empty());
+}
+
+#[test]
+fn receipts_from_other_devices_or_for_unsent_messages_are_ignored_without_a_drop() {
+    let (a, p, r1, r2, id) = sent_world();
+    let aid = my_id(&a);
+    p.send_receipt(&aid, &id, ReceiptState::Failed, Some("x"))
+        .unwrap();
+    r2.send_receipt(&aid, &id, ReceiptState::Failed, Some("x"))
+        .unwrap();
+    r1.send_receipt(&aid, &orig(), ReceiptState::Failed, Some("x"))
+        .unwrap();
+    assert_eq!(a.poll_once().unwrap().len(), 0);
+    assert!(a.take_receipts().is_empty());
+    assert!(a.s.drops().is_empty());
+}
