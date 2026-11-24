@@ -1598,6 +1598,18 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 if kind.is_some_and(|k| check_device_kind(k).is_err()) {
                     return None;
                 }
+                let listed = dir
+                    .devices
+                    .iter()
+                    .find(|d| d.device_id == root.id)
+                    .map(|d| d.kind.as_str());
+                if [kind, listed]
+                    .into_iter()
+                    .flatten()
+                    .any(|k| matches!(k, "runner" | "terminal"))
+                {
+                    return None;
+                }
                 if c.st.pinned_for_other_fp(&root.id, &root.fp) {
                     record_alert_once(c, "kind_conflict", &root.id, now);
                     return None;
@@ -1851,7 +1863,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
             return Err("this device is not a trusted member of the chat yet".into());
         }
-        let runner = self.kind == "runner";
+        let runner = self.cannot_vouch();
         let targets: Vec<Dev> =
             c.st.trusted
                 .iter()
@@ -2303,8 +2315,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     pub fn revoke(&self, device_id: &str) -> Result<(), String> {
-        if self.kind == "terminal" {
-            return Err("a terminal cannot revoke other devices".into());
+        if self.cannot_vouch() {
+            return Err(format!("a {} cannot revoke other devices", self.kind));
         }
         let mut g = self.lock();
         let c = &mut *g;

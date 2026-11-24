@@ -5488,3 +5488,58 @@ fn a_permit_refresh_before_the_runner_has_joined_is_dropped() {
     post_permitok(&a, &r, &refresh_payload());
     assert!(sink.refreshes().is_empty());
 }
+
+#[test]
+fn a_runner_cannot_revoke_other_devices() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let d = join_as(&fake, &clock, &a, "Desktop D", "desktop");
+    let x = join_as(&fake, &clock, &a, "Runner", "runner");
+    let e = x.revoke(&my_id(&d)).unwrap_err();
+    assert!(e.contains("runner"), "{e}");
+}
+
+#[test]
+fn a_terminal_does_not_send_chat_to_a_device_with_a_pending_revoke() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let a = engine_with(&fake, &clock, "Desktop A");
+    let d = join_as(&fake, &clock, &a, "Desktop D", "desktop");
+    let x = join_as(&fake, &clock, &a, "Terminal", "terminal");
+    x.poll_once().unwrap();
+    let (did, dfp) = (my_id(&d), fp_of(&d));
+    x.lock().st.pending_revokes.push(PendingRevoke {
+        statement_id: "s1".into(),
+        revoker_label: "A".into(),
+        revoker_fp: fp_of(&a),
+        target_id: did.clone(),
+        target_label: "D".into(),
+        target_fp: dfp,
+    });
+    let (before_d, before_a) = (fake.queue_len(&did), fake.queue_len(&my_id(&a)));
+    x.send_chat(&text_msg(new_message_id(), "hi"), false)
+        .unwrap();
+    assert_eq!(fake.queue_len(&did), before_d);
+    assert!(fake.queue_len(&my_id(&a)) > before_a);
+}
+
+#[test]
+fn a_join_ok_from_a_root_the_relay_lists_as_a_terminal_or_runner_is_refused() {
+    for kind in ["terminal", "runner"] {
+        let (fake, clock) = (Fake::default(), Clock::new(T0));
+        let a = engine_with(&fake, &clock, "Desktop A");
+        let b = engine_with(&fake, &clock, "Desktop B");
+        let code = a.open_join_code().unwrap();
+        let aid = my_id(&a);
+        b.join_with_code(&code).unwrap();
+        for dev in fake.0.lock().unwrap().devices.iter_mut() {
+            if dev.id == aid {
+                dev.kind = kind.to_owned();
+            }
+        }
+        b.lock().dir = None;
+        a.poll_once().unwrap();
+        a.decide_join(&my_id(&b), true).unwrap();
+        b.poll_once().unwrap();
+        assert!(!b.is_joined(), "{kind}");
+    }
+}
