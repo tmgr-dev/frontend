@@ -3584,3 +3584,105 @@ fn a_receipt_is_handed_out_before_the_page_is_stored_and_acked() {
   assert_eq!(*seen.lock().unwrap(), [(sent.id, 1)]);
   assert!(a.take_receipts().is_empty());
 }
+
+fn revoker_setup(kind: Option<&str>) -> (Fake, Clock, Engine, Engine, Engine) {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let d = join_as(&fake, &clock, &a, "Desktop D", "desktop");
+  let x = join_as(&fake, &clock, &a, "Revoker", kind.unwrap_or("desktop"));
+  if kind.is_none() {
+    drop_pin(&a, &my_id(&x));
+    a.lock().st.intros.clear();
+    for dev in fake.0.lock().unwrap().devices.iter_mut() {
+      dev.intros.clear();
+    }
+  }
+  (fake, clock, a, d, x)
+}
+
+fn post_revoke_msg(from: &Engine, to_id: &str, target_id: &str, target_fp: &str) {
+  let json = {
+    let g = from.lock();
+    let keys = g.keys.as_ref().unwrap();
+    let st = RevokeStatement { user_id: USER, revoker_fp: keys.fingerprint(), target_id: target_id.into(), target_fp: target_fp.into(), issued_at_ms: T0 };
+    sign_revoke(keys, &st).unwrap()
+  };
+  let parsed = parse_revoke(&json).unwrap();
+  let payload = json!({ "statement": parsed.statement, "sig": parsed.sig });
+  let mut g = from.lock();
+  let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
+  from.seal_and_post(&mut g, "revoke", "r_1111111111111111", &payload, &target, false).unwrap();
+}
+
+fn revoke_outcome(kind: Option<&str>, sealed: bool) -> (usize, bool) {
+  let (fake, _clock, a, d, x) = revoker_setup(kind);
+  let (did, dfp) = (my_id(&d), fp_of(&d));
+  if sealed {
+    post_revoke_msg(&x, &my_id(&a), &did, &dfp);
+  } else {
+    directory_revoke(&fake, &x, &did, &dfp);
+  }
+  a.poll_once().unwrap();
+  let ts = a.trust_state().unwrap();
+  let trusted = ts.devices.iter().any(|v| v.id == did && v.state == DeviceState::Trusted);
+  (ts.pending_revokes.len(), trusted)
+}
+
+#[test]
+fn a_revoke_of_a_desktop_signed_by_a_runner_terminal_or_unknown_kind_is_refused() {
+  for sealed in [false, true] {
+    for kind in [Some("runner"), Some("terminal"), None] {
+      assert_eq!(revoke_outcome(kind, sealed), (0, true), "{kind:?} sealed={sealed}");
+    }
+  }
+}
+
+#[test]
+fn a_revoke_of_a_desktop_signed_by_a_desktop_or_mobile_is_pending() {
+  for sealed in [false, true] {
+    for kind in [Some("desktop"), Some("mobile")] {
+      assert_eq!(revoke_outcome(kind, sealed), (1, true), "{kind:?} sealed={sealed}");
+    }
+  }
+}
+
+#[test]
+fn a_runner_or_terminal_may_revoke_itself() {
+  for kind in ["runner", "terminal"] {
+    for sealed in [false, true] {
+      let (fake, _clock, a, _d, x) = revoker_setup(Some(kind));
+      let (xid, xfp) = (my_id(&x), fp_of(&x));
+      if sealed {
+        post_revoke_msg(&x, &my_id(&a), &xid, &xfp);
+      } else {
+        directory_revoke(&fake, &x, &xid, &xfp);
+      }
+      a.poll_once().unwrap();
+      assert!(is_revoked(&a, &xid), "{kind} sealed={sealed}");
+      assert!(a.trust_state().unwrap().pending_revokes.is_empty());
+    }
+  }
+}
+
+#[test]
+fn a_terminal_joins_pinned_as_terminal_and_keeps_the_gate_open() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let x = join_as(&fake, &clock, &a, "Terminal", "terminal");
+  assert_eq!(kind_pin(&a, &my_id(&x)).as_deref(), Some("terminal"));
+  assert!(a.trust_state().unwrap().gate_blockers.is_empty());
+  join_as(&fake, &clock, &a, "Runner", "runner");
+}
+
+#[test]
+fn terminal_owner_messages_are_accepted_and_manager_session_ones_are_not() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let x = join_as(&fake, &clock, &a, "Terminal", "terminal");
+  let aid = my_id(&a);
+  post_chat(&x, &aid, &msg_n(2, "manager"));
+  post_chat(&x, &aid, &msg_n(3, "session"));
+  assert!(a.poll_once().unwrap().is_empty());
+  post_chat(&x, &aid, &msg_n(4, "owner"));
+  assert_eq!(a.poll_once().unwrap().len(), 1);
+}

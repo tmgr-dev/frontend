@@ -730,3 +730,45 @@ fn the_pace_falls_back_after_two_minutes_without_sessions_and_speeds_up_again() 
     assert_eq!(pace.next(true, at(400)), Duration::from_secs(1));
     assert_eq!(pace.next(false, at(401)), Duration::from_secs(1));
 }
+
+#[test]
+fn owner_input_from_a_terminal_behaves_exactly_like_desktop_input() {
+    let (sink, seen) = recording_sink(stored);
+    sink.deliver(
+        "dev-1",
+        Some("desktop"),
+        msg(AuthorKind::Owner, MACHINE, None),
+    )
+    .unwrap();
+    sink.deliver(
+        "dev-2",
+        Some("terminal"),
+        msg(AuthorKind::Owner, MACHINE, None),
+    )
+    .unwrap();
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2);
+    assert!(seen.iter().all(|i| i.owner_device));
+    assert_eq!(seen[1].device.as_deref(), Some("dev-2"));
+    assert_eq!(seen[1].client, crate::chat::RELAY_CLIENT);
+    assert_eq!(seen[0].client, seen[1].client);
+}
+
+#[test]
+fn a_runner_kind_owner_message_is_still_dropped_and_an_invalid_terminal_message_is_told_once() {
+    let (sink, seen) = recording_sink(stored);
+    sink.deliver(
+        "dev-1",
+        Some("runner"),
+        msg(AuthorKind::Owner, MACHINE, None),
+    )
+    .unwrap();
+    assert!(seen.lock().unwrap().is_empty());
+    let (sink, told) = told_sink(IngestError::Invalid("bad".into()));
+    let m = msg(AuthorKind::Owner, MACHINE, None);
+    assert_eq!(sink.deliver("dev-9", Some("terminal"), m.clone()), Ok(()));
+    assert_eq!(
+        *told.lock().unwrap(),
+        [("dev-9".to_owned(), m.id, "invalid message".to_owned())]
+    );
+}
