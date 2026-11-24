@@ -1080,6 +1080,30 @@ mod tests {
     }
 
     #[test]
+    fn two_devices_refreshing_at_once_repost_once() {
+        let e = env(true);
+        armed(&e);
+        let id = card_id(&e);
+        let first = card_nonce(&posted(&e)[0]);
+        let late = now_ms() + tmgr_spawn_auth::MAX_PERMIT_TTL_MS + 1;
+        fg(&e);
+        let (inbox, rx) = permit_inbox();
+        inbox.deliver_permit_refresh("desk-1", "fp-desk", PermitSenderKind::Desktop, &id, &first);
+        inbox.deliver_permit_refresh("phone-1", "fp-phone", PermitSenderKind::Mobile, &id, &first);
+        let items: Vec<OkItem> = rx.try_iter().collect();
+        assert_eq!(items.len(), 2);
+        for item in &items {
+            if let OkBody::Refresh { card_id, nonce } = &item.body {
+                e.rt.accept_permit_refresh(card_id, nonce, late);
+            }
+        }
+        let cards = posted(&e);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[1].decision.as_ref().unwrap().card_id, id);
+        assert_ne!(card_nonce(&cards[1]), first);
+    }
+
+    #[test]
     fn the_intake_queues_a_refresh_under_the_same_per_device_cap() {
         let (inbox, rx) = permit_inbox();
         for _ in 0..6 {
