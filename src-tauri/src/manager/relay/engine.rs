@@ -1808,7 +1808,9 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       self.seal_and_post(c, "revoke", &msg_id, &payload, &others, false)?;
       self.save_now(c)?;
     }
-    self.call(c, api::delete_device(&target.id).map_err(err)?)?;
+    if let Err(e) = self.call(c, api::delete_device(&target.id).map_err(err)?) {
+      log::warn!("[manager] the device was revoked, but its relay registration was not removed: {e}");
+    }
     Ok(())
   }
 

@@ -46,6 +46,7 @@ struct Server {
   post_slow_ms: u64,
   post_error_once: Option<String>,
   full: Option<String>,
+  delete_error: Option<String>,
   on_devices: Option<Box<dyn FnOnce() + Send>>,
 }
 
@@ -182,6 +183,9 @@ impl Transport for Fake {
         Ok(String::new())
       }
       (Method::Delete, ["devices", target]) => {
+        if let Some(e) = s.delete_error.clone() {
+          return Err(e);
+        }
         s.devices.retain(|d| d.id != *target);
         s.msgs.retain(|m| m.to != *target && m.from != *target);
         Ok(String::new())
@@ -429,6 +433,17 @@ fn expired_join_code_is_rejected() {
   clock.set(T0 + 11 * 60 * 1000);
   a.poll_once().unwrap();
   assert!(a.trust_state().unwrap().pending_joins.is_empty());
+}
+
+#[test]
+fn revoke_succeeds_when_the_device_cleanup_is_refused() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  fake.0.lock().unwrap().delete_error = Some("the relay answered HTTP 401".into());
+  a.revoke(&bid).unwrap();
+  assert_eq!(fake.0.lock().unwrap().revocations.len(), 1);
+  assert!(a.trust_state().unwrap().devices.iter().any(|d| d.id == bid && d.state == DeviceState::Revoked));
 }
 
 #[test]
@@ -3652,6 +3667,22 @@ fn a_rate_limited_send_retries_once_after_a_short_retry_after() {
   assert_eq!(fake.posts(), posts + 2);
   assert!((900..4_000).contains(&took), "retry waited {took} ms");
   assert_eq!(b.poll_once().unwrap()[0].id, sent.id);
+}
+
+#[test]
+fn a_rate_limited_send_consumes_no_seq() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let before = a.lock().st.seq_out.get(&bid).copied().unwrap_or(0);
+  fake.0.lock().unwrap().post_error_once = Some(r#"{"error":"rate_limited","retry_after":1}"#.into());
+  send(&a, "retried").unwrap();
+  fake.0.lock().unwrap().post_error_once = Some(r#"{"error":"rate_limited","retry_after":30}"#.into());
+  send(&a, "refused").unwrap_err();
+  send(&a, "next").unwrap();
+  assert_eq!(a.lock().st.seq_out.get(&bid).copied(), Some(before + 2));
+  assert_eq!(b.poll_once().unwrap().len(), 2);
+  assert!(b.lock().st.seq_gaps.is_empty());
 }
 
 #[test]

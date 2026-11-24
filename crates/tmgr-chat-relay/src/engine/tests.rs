@@ -50,6 +50,7 @@ struct Server {
     slow_done: usize,
     slow_done_at_post: Option<usize>,
     full: Option<String>,
+    delete_error: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -249,6 +250,9 @@ impl Transport for Fake {
                 Ok(String::new())
             }
             (Method::Delete, ["devices", target]) => {
+                if let Some(e) = s.delete_error.clone() {
+                    return Err(e);
+                }
                 s.devices.retain(|d| d.id != *target);
                 s.msgs.retain(|m| m.to != *target && m.from != *target);
                 Ok(String::new())
@@ -624,6 +628,22 @@ fn expired_join_code_is_rejected() {
     clock.set(T0 + 11 * 60 * 1000);
     a.poll_once().unwrap();
     assert!(a.trust_state().unwrap().pending_joins.is_empty());
+}
+
+#[test]
+fn revoke_succeeds_when_the_device_cleanup_is_refused() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let bid = my_id(&b);
+    fake.0.lock().unwrap().delete_error = Some("the relay answered HTTP 401".into());
+    a.revoke(&bid).unwrap();
+    assert_eq!(fake.0.lock().unwrap().revocations.len(), 1);
+    assert!(a
+        .trust_state()
+        .unwrap()
+        .devices
+        .iter()
+        .any(|d| d.id == bid && d.state == DeviceState::Revoked));
 }
 
 #[test]
