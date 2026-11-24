@@ -11,6 +11,7 @@ publish = false
 [features]
 default = []
 http = []
+e2e-blob = []
 
 [dependencies]
 tmgr-phone.workspace = true

@@ -2110,6 +2110,35 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         self.save_now(c)
     }
 
+    #[cfg(feature = "e2e-blob")]
+    pub fn send_blob(&self, to_device: &str, part: &blob::BlobPart) -> Result<(), String> {
+        part.check(blob::MAX_RELAY_BYTES).map_err(err)?;
+        let payload = json!({
+            "v": 1,
+            "sha256": part.sha256,
+            "size": part.size,
+            "part": part.part,
+            "parts": part.parts,
+            "data": b64(&part.data),
+        });
+        let msg_id = random_msg_id("blob").map_err(err)?;
+        let mut g = self.lock();
+        let c = &mut *g;
+        self.ensure_registered(c)?;
+        let (id, _) = Self::own(c)?;
+        if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
+            return Err("this device is not a trusted member of the chat yet".into());
+        }
+        let target =
+            c.st.trusted
+                .iter()
+                .find(|d| d.id == to_device && c.st.kind_of(&d.id, &d.fp) == Some("runner"))
+                .cloned()
+                .ok_or_else(|| "the target is not a trusted runner device".to_owned())?;
+        self.seal_and_post(c, "blob", &msg_id, &payload, &[target], false)?;
+        self.save_now(c)
+    }
+
     fn owner_targets(c: &Core, own_id: &str, only: Option<&[String]>) -> Vec<Dev> {
         c.st.trusted
             .iter()

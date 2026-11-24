@@ -9,10 +9,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tmgr_chat_relay::engine::{
-    ChatSink, DeviceState, EngineConfig, ReceiptSink, RelayEngine, RoomScope,
+    blob, ChatSink, DeviceState, EngineConfig, ReceiptSink, RelayEngine, RoomScope,
 };
 use tmgr_ipc::chat::{
-    new_message_id, Author, AuthorKind, ChatMessage, MessageKind, RoomKind, RoomRef,
+    new_message_id, Attachment, Author, AuthorKind, ChatMessage, MessageKind, RoomKind, RoomRef,
 };
 use transport::HttpTransport;
 
@@ -71,6 +71,10 @@ enum Cmd {
         count: u32,
         #[arg(long, default_value_t = 0)]
         interval_ms: u64,
+        #[arg(long, requires = "runner_device")]
+        image: Option<PathBuf>,
+        #[arg(long)]
+        runner_device: Option<String>,
     },
     Listen {
         #[arg(long, default_value_t = 1000)]
@@ -243,7 +247,16 @@ fn run(cli: Cli) -> Result<(), String> {
             text,
             count,
             interval_ms,
-        } => send(&cli.state_dir, &room, &text, count, interval_ms),
+            image,
+            runner_device,
+        } => send(
+            &cli.state_dir,
+            &room,
+            &text,
+            count,
+            interval_ms,
+            image.as_deref().zip(runner_device.as_deref()),
+        ),
         Cmd::Listen { poll_ms } => listen(&cli.state_dir, poll_ms),
     }
 }
@@ -374,13 +387,66 @@ fn parse_room(dir: &Path, room: &str) -> Result<RoomRef, String> {
     }
 }
 
-fn send(dir: &Path, room: &str, text: &str, count: u32, interval_ms: u64) -> Result<(), String> {
+fn send_image(eng: &Engine, path: &Path, runner_device: &str) -> Result<Attachment, String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).map_err(|e| format!("image: {e}"))?;
+    let sha256: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let size = bytes.len() as u64;
+    let parts = blob::parts_for(size) as u32;
+    for (n, data) in bytes.chunks(blob::PART_BYTES).enumerate() {
+        eng.send_blob(
+            runner_device,
+            &blob::BlobPart {
+                sha256: sha256.clone(),
+                size,
+                part: n as u32,
+                parts,
+                data: data.to_vec(),
+            },
+        )?;
+    }
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("image")
+        .to_owned();
+    let mime = match path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => "application/octet-stream",
+    };
+    emit(json!({"event": "blob_sent", "sha256": sha256, "size": size, "parts": parts}));
+    Ok(Attachment {
+        name,
+        mime: mime.into(),
+        size,
+        sha256,
+    })
+}
+
+fn send(
+    dir: &Path,
+    room: &str,
+    text: &str,
+    count: u32,
+    interval_ms: u64,
+    image: Option<(&Path, &str)>,
+) -> Result<(), String> {
     let room = parse_room(dir, room)?;
     let _ = RoomKind::Manager;
     for n in 0..count {
         let ctx = Ctx::open(dir)?;
         let eng = ctx.engine()?;
         let (device, _) = eng.own_device().ok_or("device is not registered")?;
+        let attachments = match image {
+            Some((path, runner)) => vec![send_image(&eng, path, runner)?],
+            None => vec![],
+        };
         let id = new_message_id();
         let ts = now_ms();
         let msg = ChatMessage {
@@ -401,7 +467,7 @@ fn send(dir: &Path, room: &str, text: &str, count: u32, interval_ms: u64) -> Res
             } else {
                 text.to_owned()
             },
-            attachments: vec![],
+            attachments,
             reply_to: None,
             decision: None,
             session_meta: None,
