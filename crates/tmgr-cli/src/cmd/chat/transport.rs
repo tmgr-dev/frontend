@@ -77,10 +77,11 @@ pub(crate) fn failure(status: u16, retry_after: Option<u64>, body: String) -> St
     if let Some(map) = object.take().filter(|_| body.contains(STATUS_KEY)) {
         return Value::Object(map).to_string();
     }
-    if body.trim().is_empty() {
+    let text = truncate_chars(&sanitize_line(body.trim()), MESSAGE_MAX).0;
+    if text.trim().is_empty() {
         format!("the relay answered HTTP {status}")
     } else {
-        body
+        text
     }
 }
 
@@ -223,6 +224,15 @@ mod tests {
             failure(502, None, String::new()),
             "the relay answered HTTP 502"
         );
+    }
+
+    #[test]
+    fn a_long_plain_server_error_body_is_sanitized_and_cut() {
+        let body = format!("bad\x1b[2Jgateway {}", "x".repeat(5000));
+        let out = failure(502, None, body);
+        assert!(!out.contains('\x1b'), "{out:?}");
+        assert!(out.chars().count() <= MESSAGE_MAX, "{}", out.len());
+        assert!(out.starts_with("bad"));
     }
 
     fn serve(reply: String) -> (String, mpsc::Receiver<String>) {
