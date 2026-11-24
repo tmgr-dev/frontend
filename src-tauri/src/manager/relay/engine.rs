@@ -1342,7 +1342,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           c.log.push(LogEntry { from: opened.from.clone(), msg: msg.clone() });
           self.mark_log();
           Self::track_permit(c, &opened.from, &msg, now);
-          stored = Some(msg);
+          let mut shown = msg;
+          Self::stamp_decision(c, &opened.from, &mut shown);
+          stored = Some(shown);
         }
       }
       "receipt" if sender_trusted && c.st.joined => {
@@ -1564,6 +1566,20 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(())
   }
 
+  fn stamp_decision(c: &Core, from: &str, msg: &mut ChatMessage) {
+    let Some(d) = &mut msg.decision else {
+      return;
+    };
+    d.poster = Some(from.to_owned());
+    d.live = d.permit.as_ref().is_some_and(|p| c.permits.get(&d.card_id).is_some_and(|s| s.from == from && s.card.nonce == p.nonce));
+  }
+
+  fn stamped(c: &Core, e: &LogEntry) -> ChatMessage {
+    let mut m = e.msg.clone();
+    Self::stamp_decision(c, &e.from, &mut m);
+    m
+  }
+
   fn track_permit(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) {
     let Some(d) = &msg.decision else {
       return;
@@ -1638,7 +1654,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     }
     let limit = params.limit.unwrap_or(50).min(MAX_HISTORY) as usize;
     let g = self.lock();
-    let mut all: Vec<ChatMessage> = g.log.iter().map(|e| &e.msg).filter(|m| m.room == params.room).cloned().collect();
+    let mut all: Vec<ChatMessage> = g.log.iter().filter(|e| e.msg.room == params.room).map(|e| Self::stamped(&g, e)).collect();
     all.sort_by(|a, b| (a.ts_ms, &a.id).cmp(&(b.ts_ms, &b.id)));
     if let Some(before) = params.before.as_deref() {
       let cut = all.iter().position(|m| m.id == before).unwrap_or(all.len());
@@ -1658,10 +1674,9 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     let mut hits: Vec<ChatMessage> = g
       .log
       .iter()
-      .map(|e| &e.msg)
-      .filter(|m| params.room.as_ref().is_none_or(|r| r == &m.room))
-      .filter(|m| m.body_md.to_lowercase().contains(&needle))
-      .cloned()
+      .filter(|e| params.room.as_ref().is_none_or(|r| r == &e.msg.room))
+      .filter(|e| e.msg.body_md.to_lowercase().contains(&needle))
+      .map(|e| Self::stamped(&g, e))
       .collect();
     hits.sort_by_key(|m| std::cmp::Reverse(m.ts_ms));
     hits.truncate(limit);

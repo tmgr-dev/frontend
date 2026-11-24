@@ -60,7 +60,7 @@ fn card_msg(n: u8, card_id: &str, permit: Option<PermitCardMsg>, closed: Option<
   let mut m = msg_n(n, "manager");
   m.kind = "decision".into();
   m.author.machine = Some("mx_remote".into());
-  m.decision = Some(DecisionRef { card_id: card_id.into(), spawn: None, permit, closed: closed.map(str::to_owned) });
+  m.decision = Some(DecisionRef { card_id: card_id.into(), spawn: None, permit, closed: closed.map(str::to_owned), poster: None, live: false });
   m
 }
 
@@ -297,4 +297,55 @@ fn the_book_is_bounded() {
     deliver(&rig, &rig.r, &m);
   }
   assert_eq!(rig.a.lock().permits.len(), MAX_PERMITS);
+}
+
+fn shown(rig: &Rig) -> Vec<DecisionRef> {
+  let h = rig.a.history(&HistoryParams { room: card_msg(2, CARD, None, None).room, before: None, limit: None }).unwrap();
+  h.into_iter().filter_map(|m| m.decision).collect()
+}
+
+#[test]
+fn history_marks_a_card_live_only_while_it_is_in_the_book() {
+  let rig = rig();
+  post_card(&rig, 2, card(false, true));
+  let d = shown(&rig);
+  assert!(d[0].live);
+  assert_eq!(d[0].poster.as_deref(), Some(rig.rid.as_str()));
+  rig.a.lock().permits = Default::default();
+  assert!(!shown(&rig)[0].live);
+}
+
+#[test]
+fn only_the_message_matching_the_booked_nonce_is_live() {
+  let rig = rig();
+  post_card(&rig, 2, card(false, true));
+  let mut newer = card(false, true);
+  newer.nonce = "cd".repeat(16);
+  deliver(&rig, &rig.r, &card_msg(3, CARD, Some(newer), None));
+  let live: Vec<bool> = shown(&rig).iter().map(|d| d.live).collect();
+  assert_eq!(live, vec![false, true]);
+}
+
+#[test]
+fn an_answered_or_closed_card_is_not_live() {
+  let rig = rig();
+  post_card(&rig, 2, card(false, true));
+  answer(&rig, PermitAnswer::Once, false).unwrap();
+  assert!(!shown(&rig)[0].live);
+}
+
+#[test]
+fn a_remote_cannot_preset_live_or_poster() {
+  let rig = rig();
+  let mut m = card_msg(2, CARD, Some(card(false, true)), None);
+  let d = m.decision.as_mut().unwrap();
+  d.live = true;
+  d.poster = Some("someone-else".into());
+  let mut bad = card(false, true);
+  bad.req_sha256 = "0".repeat(64);
+  d.permit = Some(bad);
+  deliver(&rig, &rig.r, &m);
+  let d = &shown(&rig)[0];
+  assert!(!d.live);
+  assert_eq!(d.poster.as_deref(), Some(rig.rid.as_str()));
 }

@@ -59,6 +59,10 @@ pub struct DecisionRef {
   pub permit: Option<tmgr_ipc::chat::PermitCardMsg>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub closed: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub poster: Option<String>,
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub live: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
