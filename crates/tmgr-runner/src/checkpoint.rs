@@ -2823,6 +2823,14 @@ mod tests {
     }
 
     fn snap_bounded(fx: &Fx, fifos: &[&Path]) -> Result<Option<CheckpointItem>, CpError> {
+        snap_bounded_slow(fx, fifos, Duration::from_millis(50))
+    }
+
+    fn snap_bounded_slow(
+        fx: &Fx,
+        fifos: &[&Path],
+        slow_list: Duration,
+    ) -> Result<Option<CheckpointItem>, CpError> {
         use std::os::unix::fs::OpenOptionsExt;
         let st = fx.store();
         let (home, xdg) = (fx.home.clone(), fx.xdg.clone());
@@ -2834,7 +2842,7 @@ mod tests {
                 max_file: MAX_FILE,
                 max_total: MAX_TOTAL,
                 migrate_deadline: MIGRATE_DEADLINE,
-                slow_list: Duration::from_millis(50),
+                slow_list,
                 after_before: None,
                 after_temp: None,
             };
@@ -2862,7 +2870,7 @@ mod tests {
         assert!(matches!(r, Err(CpError::Failed(_))), "{r:?}");
         assert!(start.elapsed() < Duration::from_secs(10));
         fs::remove_file(fifo).unwrap();
-        assert!(snap_bounded(fx, &[]).is_ok());
+        assert!(snap_bounded_slow(fx, &[], SLOW_LIST).is_ok());
     }
 
     #[test]

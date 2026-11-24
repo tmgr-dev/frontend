@@ -256,6 +256,7 @@ impl H {
             .map(|s| s.state)
     }
 
+    #[track_caller]
     fn wait_exited(&self, id: &str) {
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
@@ -265,7 +266,23 @@ impl H {
             {
                 return;
             }
-            assert!(Instant::now() < deadline, "{id} did not exit");
+            if Instant::now() >= deadline {
+                let ps = Command::new("ps")
+                    .args(["-A", "-o", "pid,ppid,pgid,stat,command"])
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                    .unwrap_or_default();
+                let ps: Vec<&str> = ps
+                    .lines()
+                    .filter(|l| l.contains(self.tmp.path().to_str().unwrap()) || l.contains("PID"))
+                    .collect();
+                panic!(
+                    "{id} did not exit: {:?}\n{}\nlog:{}",
+                    self.state_of(id),
+                    ps.join("\n"),
+                    self.log()
+                );
+            }
             thread::sleep(Duration::from_millis(50));
         }
     }
