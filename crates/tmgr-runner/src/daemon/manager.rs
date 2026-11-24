@@ -416,6 +416,7 @@ pub(super) mod tests {
             clock: Mutex::new(humantime::Clock::new(0)),
             mgr: Arc::new(core::State::default()),
             spawn_gate: spawnauth::SpawnGate::default(),
+            permit_relay: permitrelay::PermitRelay::default(),
             capture_fast_until: Mutex::new(None),
         })
     }

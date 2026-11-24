@@ -791,6 +791,7 @@ mod tests {
             chat: chat_store.clone(),
             mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
             spawn_gate: spawnauth::SpawnGate::default(),
+            permit_relay: permitrelay::PermitRelay::default(),
             capture_fast_until: Mutex::new(None),
             cfg,
             secret: String::new(),

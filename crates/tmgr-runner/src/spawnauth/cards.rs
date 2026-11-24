@@ -49,6 +49,14 @@ impl Identity {
     pub fn user_id(&self) -> &str {
         &self.user_id
     }
+
+    pub fn target_id(&self) -> &str {
+        &self.target_id
+    }
+
+    pub fn target_fp(&self) -> &str {
+        &self.target_fp
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,6 +253,10 @@ impl CardStore {
         rng: Rng,
     ) -> Result<Self, CardError> {
         Self::open_inner(runner_dir, identity, rng)
+    }
+
+    pub fn identity(&self) -> &Identity {
+        &self.identity
     }
 
     fn open_inner(runner_dir: &Path, identity: Identity, rng: Rng) -> Result<Self, CardError> {

@@ -96,6 +96,14 @@ impl SpawnAuth {
         &self.cards
     }
 
+    pub fn identity(&self) -> &Identity {
+        self.cards.identity()
+    }
+
+    pub fn trust_view(&self) -> TrustAdapter<'_> {
+        TrustAdapter(&*self.trust)
+    }
+
     pub fn keys(&self) -> &KeyStoreFile {
         &self.keys
     }

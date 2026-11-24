@@ -768,6 +768,7 @@ impl Runner {
         let mut last = Instant::now();
         while !self.stop.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(250));
+            self.permit_tick(now_ms());
             if last.elapsed() < CARD_TICK {
                 continue;
             }
@@ -1266,7 +1267,7 @@ fn spawnok_inbox() -> (SpawnOkInbox, std::sync::mpsc::Receiver<OkItem>) {
     (SpawnOkInbox { tx, queued }, rx)
 }
 
-fn release_queued(queued: &Mutex<HashMap<String, usize>>, device: &str) {
+pub(super) fn release_queued(queued: &Mutex<HashMap<String, usize>>, device: &str) {
     let mut q = lock(queued);
     if let Some(n) = q.get_mut(device) {
         *n -= 1;
