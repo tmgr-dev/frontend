@@ -18,6 +18,8 @@ struct Data {
     messages: Vec<ChatMessage>,
     #[serde(default)]
     runners: BTreeMap<String, RunnerInfo>,
+    #[serde(default)]
+    sent: Vec<(String, String)>,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -75,6 +77,9 @@ impl RoomCache {
     }
 
     pub fn add(&self, msg: ChatMessage) -> Result<(), String> {
+        if msg.room.kind != RoomKind::Session {
+            return Ok(());
+        }
         let mut d = self.lock();
         if d.messages
             .iter()
@@ -95,7 +100,8 @@ impl RoomCache {
         self.save(&d)
     }
 
-    pub fn set_index(&self, index: RoomsIndex) -> Result<(), String> {
+    pub fn set_index(&self, mut index: RoomsIndex) -> Result<(), String> {
+        index.rooms.retain(|e| e.room.kind == RoomKind::Session);
         let mut d = self.lock();
         d.indexes.insert(index.machine.clone(), index);
         self.save(&d)
@@ -111,6 +117,38 @@ impl RoomCache {
                 terminal_input: index.terminal_input,
             },
         );
+        self.save(&d)
+    }
+
+    pub fn sent(&self) -> Vec<(String, String)> {
+        self.lock().sent.clone()
+    }
+
+    pub fn set_sent(&self, log: Vec<(String, String)>) -> Result<(), String> {
+        let mut d = self.lock();
+        d.sent = log;
+        self.save(&d)
+    }
+
+    pub fn version(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let d = self.lock();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        serde_json::to_string(&d.indexes)
+            .unwrap_or_default()
+            .hash(&mut h);
+        h.finish()
+    }
+
+    pub fn prune(&self, trusted_runners: &[String]) -> Result<(), String> {
+        let mut d = self.lock();
+        let before = (d.runners.len(), d.indexes.len());
+        d.runners.retain(|id, _| trusted_runners.contains(id));
+        let machines: Vec<String> = d.runners.values().map(|r| r.machine.clone()).collect();
+        d.indexes.retain(|m, _| machines.contains(m));
+        if before == (d.runners.len(), d.indexes.len()) {
+            return Ok(());
+        }
         self.save(&d)
     }
 
@@ -177,10 +215,7 @@ impl RoomCache {
         }
         for m in d.messages.iter().filter(|m| m.room.machine != local) {
             if !rooms.iter().any(|r| r.room == m.room) {
-                let title = match (m.room.kind, m.room.session.as_deref()) {
-                    (RoomKind::Session, Some(s)) => s.to_owned(),
-                    _ => "Manager".to_owned(),
-                };
+                let title = m.room.session.clone().unwrap_or_default();
                 rooms.push(info(m.room.clone(), title, None, None));
             }
         }
@@ -300,10 +335,12 @@ mod tests {
         c.add(msg(1, s1.clone(), 10)).unwrap();
         c.add(msg(2, RoomRef::session(PEER, "s_9"), 20)).unwrap();
         c.add(msg(3, RoomRef::manager(LOCAL), 30)).unwrap();
+        c.add(msg(4, RoomRef::manager(PEER), 40)).unwrap();
         let rooms = c.rooms(LOCAL);
         let ids: Vec<_> = rooms.iter().map(|r| r.room.clone()).collect();
-        assert_eq!(ids.len(), 3);
+        assert_eq!(ids.len(), 2);
         assert!(ids.iter().all(|r| r.machine == PEER));
+        assert!(ids.iter().all(|r| r.kind == RoomKind::Session));
         assert_eq!(rooms[0].room, RoomRef::session(PEER, "s_9"));
         assert_eq!(rooms[1].room, s1);
         assert_eq!(rooms[1].state.as_deref(), Some("idle"));
@@ -314,7 +351,7 @@ mod tests {
     #[test]
     fn history_is_ordered_deduped_and_limited_to_the_room() {
         let c = RoomCache::memory();
-        let room = RoomRef::manager(PEER);
+        let room = RoomRef::session(PEER, "s_0");
         c.add(msg(2, room.clone(), 20)).unwrap();
         c.add(msg(1, room.clone(), 10)).unwrap();
         c.add(msg(1, room.clone(), 10)).unwrap();
@@ -327,7 +364,7 @@ mod tests {
     #[test]
     fn a_room_keeps_only_its_newest_messages() {
         let c = RoomCache::memory();
-        let room = RoomRef::manager(PEER);
+        let room = RoomRef::session(PEER, "s_0");
         let other = RoomRef::session(PEER, "s_1");
         c.add(msg(100_000, other.clone(), 1)).unwrap();
         for n in 0..(MAX_PER_ROOM as u32 + 5) {
@@ -343,7 +380,7 @@ mod tests {
     fn the_cache_survives_a_restart_in_a_private_file_and_wipe_removes_it() {
         use std::os::unix::fs::PermissionsExt;
         let t = tempfile::tempdir().unwrap();
-        let room = RoomRef::manager(PEER);
+        let room = RoomRef::session(PEER, "s_0");
         let c = RoomCache::open(RelayDir::open_named(t.path(), "attach-relay").unwrap()).unwrap();
         c.add(msg(1, room.clone(), 10)).unwrap();
         c.set_index(index(PEER, vec![room.clone()])).unwrap();
@@ -365,12 +402,50 @@ mod tests {
     fn the_sink_stores_delivered_messages_and_indexes() {
         let c = RoomCache::memory();
         let sink = CacheSink(c.clone());
-        let room = RoomRef::manager(PEER);
+        let room = RoomRef::session(PEER, "s_0");
+        let manager = RoomRef::manager(PEER);
         sink.deliver("d1", Some("runner"), msg(1, room.clone(), 10))
             .unwrap();
-        sink.deliver_rooms("d1", index(PEER, vec![room.clone()]));
+        sink.deliver("d1", Some("runner"), msg(2, manager.clone(), 11))
+            .unwrap();
+        sink.deliver_rooms("d1", index(PEER, vec![room.clone(), manager.clone()]));
         assert_eq!(c.history(&room, 10).len(), 1);
+        assert!(c.history(&manager, 10).is_empty());
         assert_eq!(c.machines(LOCAL).len(), 1);
+        assert_eq!(c.rooms(LOCAL).len(), 1);
+    }
+
+    #[test]
+    fn pruning_drops_runners_and_the_machines_they_alone_vouched_for() {
+        let c = RoomCache::memory();
+        let sink = CacheSink(c.clone());
+        let other = "mx_00000000000000cc";
+        sink.deliver_rooms("d1", index(PEER, vec![RoomRef::session(PEER, "s_0")]));
+        sink.deliver_rooms("d2", index(other, vec![RoomRef::session(other, "s_0")]));
+        c.prune(&["d1".to_owned()]).unwrap();
+        assert!(c.runner("d1").is_some() && c.runner("d2").is_none());
+        let machines: Vec<_> = c.machines(LOCAL).into_iter().map(|m| m.0).collect();
+        assert_eq!(machines, [PEER]);
+        assert_eq!(c.rooms(LOCAL).len(), 1);
+    }
+
+    #[test]
+    fn the_version_changes_with_room_titles_and_states_and_the_sent_log_persists() {
+        let c = RoomCache::memory();
+        let before = c.version();
+        let mut idx = index(PEER, vec![RoomRef::session(PEER, "s_0")]);
+        c.set_index(idx.clone()).unwrap();
+        let first = c.version();
+        assert_ne!(before, first);
+        idx.rooms[0].state = Some("busy".into());
+        c.set_index(idx.clone()).unwrap();
+        assert_ne!(first, c.version());
+        idx.rooms[0].title = "renamed".into();
+        let second = c.version();
+        c.set_index(idx).unwrap();
+        assert_ne!(second, c.version());
+        c.set_sent(vec![("m".into(), "r".into())]).unwrap();
+        assert_eq!(c.sent(), [("m".to_owned(), "r".to_owned())]);
     }
 
     #[test]
