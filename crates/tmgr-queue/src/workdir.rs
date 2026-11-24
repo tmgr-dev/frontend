@@ -4609,7 +4609,7 @@ mod tests {
             std::time::Duration::from_millis(100),
             1000,
             Vec::new(),
-            &out,
+            &root.join("slow"),
         )
         .unwrap_err();
         assert!(err.to_string().contains("in time"), "{err}");
