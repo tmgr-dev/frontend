@@ -2246,7 +2246,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -5419,7 +5419,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -5548,7 +5548,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tmgr"
-version = "0.9.210"
+version = "0.9.211"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5607,7 +5607,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-chat-relay"
-version = "1.0.186"
+version = "1.0.187"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5624,7 +5624,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-ipc"
-version = "1.0.186"
+version = "1.0.187"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -5639,7 +5639,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-phone"
-version = "1.0.186"
+version = "1.0.187"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -5655,7 +5655,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-session"
-version = "1.0.186"
+version = "1.0.187"
 dependencies = [
  "libc",
  "regex",
@@ -5667,7 +5667,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-spawn-auth"
-version = "1.0.186"
+version = "1.0.187"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -5679,7 +5679,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-usage"
-version = "1.0.186"
+version = "1.0.187"
 dependencies = [
  "chrono",
  "libc",

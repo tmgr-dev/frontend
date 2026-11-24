@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.187
+
+- Added: Manager chat knows the new "Terminal" device kind, ready for terminal devices in a later release. A terminal can send owner messages to your sessions and the Manager and receives their replies, but it cannot approve other devices.
+- Changed: a runner or terminal can no longer remove another device; only a desktop, a phone or the device itself can. A first (root) device whose kind is not known yet still counts as a desktop.
+- The runner advertises in its rooms index that it accepts terminal input. Older desktop and phone apps do not see terminal devices.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.186
 
 - Fixed: a Bash approval asked by a Claude subagent ("Bash command · from the <name> agent") now shows up as a permission card. The card names the subagent.

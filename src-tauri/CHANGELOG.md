@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.211 — 2026-11-24
+
+- Manager: knows the new "Terminal" device kind and shows it in Chat devices. Removals sent by a runner or terminal for another device are ignored; only a desktop, a phone or the device itself can remove a device. Needs tmgr CLI 1.0.187.
+
 ## 0.9.210 — 2026-11-24
 
 - Manager: a message to a working agent is typed right away instead of waiting for its turn to end. It waits only for a dialog in the session, unsent text in the input box or earlier input still being typed, and the Manager shows that reason. Aider and sessions without a profile still wait while working: "Queued: this agent can't take input mid-turn, sends when its turn ends". OpenCode, Agy and Cursor Agent are not checked on a real session yet. Needs tmgr CLI 1.0.185.
