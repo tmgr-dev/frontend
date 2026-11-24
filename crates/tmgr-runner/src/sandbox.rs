@@ -1915,6 +1915,127 @@ mod tests {
         assert!(!profile.contains("/dev/tty"));
     }
 
+    const WRITE_OPS: [&str; 3] = ["file-write-data", "file-write-create", "file-write-unlink"];
+
+    fn permit_write_denied(profile: &str, path: &Path) -> bool {
+        WRITE_OPS.iter().all(|op| !verdict(profile, op, path))
+    }
+
+    fn permit_forms(f: &Fx) -> Vec<PathBuf> {
+        let plain = f.spec.runner_dir.join("permit.toml");
+        let canon = canon_lossy(&f.spec.runner_dir).join("permit.toml");
+        let mut forms = vec![plain];
+        push_unique(&mut forms, canon);
+        forms
+    }
+
+    #[test]
+    fn the_control_plane_profile_keeps_a_session_from_writing_permit_toml() {
+        let mut f = fx();
+        f.spec.spool = Some(f.spec.runner_dir.join("spool"));
+        for spool in [None, f.spec.spool.clone()] {
+            f.spec.spool = spool;
+            let profile = control_plane_profile(&control_plane(&f.spec, &[])).unwrap();
+            for dir in [f.spec.runner_dir.clone(), canon_lossy(&f.spec.runner_dir)] {
+                assert!(profile.contains(&format!(
+                    "(deny file-write* (subpath {}))",
+                    sbpl_quote(&dir).unwrap()
+                )));
+            }
+            for p in permit_forms(&f) {
+                assert!(permit_write_denied(&profile, &p), "{}", p.display());
+            }
+            assert!(!permit_write_denied(
+                &profile,
+                &f.spec.cwd.join("permit.toml")
+            ));
+        }
+    }
+
+    #[test]
+    fn the_seatbelt_profile_keeps_a_session_from_writing_permit_toml() {
+        let f = fx();
+        let mut paths = plan(&f.spec).unwrap().paths;
+        for extra in [
+            paths.runner_dir.join("spool"),
+            paths.runner_dir.clone(),
+            paths.runner_dir.join("permit.toml"),
+        ] {
+            let mut p = paths.clone();
+            p.write.push(extra);
+            let profile = seatbelt_profile(&p).unwrap();
+            for form in permit_forms(&f) {
+                assert!(permit_write_denied(&profile, &form), "{}", form.display());
+            }
+        }
+        paths
+            .write_prefixes
+            .push(paths.runner_dir.to_string_lossy().into_owned());
+        let profile = seatbelt_profile(&paths).unwrap();
+        for form in permit_forms(&f) {
+            assert!(permit_write_denied(&profile, &form));
+        }
+        assert!(!permit_write_denied(
+            &profile,
+            &f.spec.cwd.join("permit.toml")
+        ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_real_fence_denies_writing_permit_toml_under_both_profiles() {
+        let f = fx();
+        let permit = f.spec.runner_dir.join("permit.toml");
+        fs::write(&permit, b"desktop_may_answer = \"safe\"\n").unwrap();
+        let sbox = plan(&f.spec).unwrap().paths;
+        let profiles = [
+            control_plane_profile(&control_plane(&f.spec, &[])).unwrap(),
+            seatbelt_profile(&sbox).unwrap(),
+        ];
+        for profile in &profiles {
+            let run = |script: String| {
+                std::process::Command::new("/usr/bin/sandbox-exec")
+                    .args(["-p", profile, "--", "/bin/sh", "-c", &script])
+                    .status()
+                    .unwrap()
+                    .success()
+            };
+            let probe = std::process::Command::new("/usr/bin/sandbox-exec")
+                .args(["-p", profile, "--", "/bin/sh", "-c", "echo started"])
+                .output()
+                .unwrap();
+            if !String::from_utf8_lossy(&probe.stdout).contains("started") {
+                let why = String::from_utf8_lossy(&probe.stderr);
+                assert!(
+                    why.contains("sandbox_apply"),
+                    "the profile was rejected: {why}"
+                );
+                assert!(
+                    std::env::var_os("CI").is_none(),
+                    "sandbox-exec did not apply the profile in CI: {why}"
+                );
+                eprintln!("SKIPPED a_real_fence_denies_writing_permit_toml_under_both_profiles: sandbox-exec cannot apply a profile here ({why})");
+                return;
+            }
+            let ok = f.spec.cwd.join("ok");
+            assert!(run(format!("touch '{}'", ok.display())));
+            assert!(ok.exists());
+            assert!(!run(format!("touch '{}'", permit.display())));
+            assert!(!run(format!("echo all > '{}'", permit.display())));
+            assert!(!run(format!("rm '{}'", permit.display())));
+            assert!(!run(format!(
+                "mv '{}' '{}.bak'",
+                permit.display(),
+                permit.display()
+            )));
+            assert_eq!(
+                fs::read(&permit).unwrap(),
+                b"desktop_may_answer = \"safe\"\n"
+            );
+            fs::remove_file(&ok).unwrap();
+        }
+    }
+
     #[test]
     fn the_spool_is_allowed_after_every_deny_and_only_with_a_spool() {
         let mut f = fx();

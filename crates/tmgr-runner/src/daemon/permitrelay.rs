@@ -2,6 +2,8 @@ use super::spawnauth::release_queued;
 use super::*;
 use crate::permit::remote::{Action, PermitDesk, RunnerIds};
 use crate::spawnauth::SpawnAuth;
+use std::io::Write;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tmgr_ipc::chat::{Author, AuthorKind, ChatMessage, DecisionRef, MessageKind, CHAT_V};
 use tmgr_spawn_auth::{DesktopPolicy, PermitSender, PermitSenderKind, SignedPermit};
 
@@ -42,20 +44,61 @@ fn desktop_policy_from(text: Option<&str>) -> (DesktopPolicy, Option<String>) {
     }
 }
 
+const PERMIT_CONFIG_DEFAULT: &str = "desktop_may_answer = \"safe\"\n";
+
+fn safe_with(warning: String) -> (DesktopPolicy, Option<String>) {
+    (DesktopPolicy::Safe, Some(warning))
+}
+
+fn create_permit_config(path: &Path) -> (DesktopPolicy, Option<String>) {
+    let made = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .and_then(|mut f| {
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            f.write_all(PERMIT_CONFIG_DEFAULT.as_bytes())
+        });
+    match made {
+        Ok(()) => (DesktopPolicy::Safe, None),
+        Err(_) => safe_with(format!("{PERMIT_CONFIG_FILE} cannot be created")),
+    }
+}
+
 fn load_desktop_policy(runner_dir: &Path) -> (DesktopPolicy, Option<String>) {
-    let mut text = String::new();
-    let read = std::fs::OpenOptions::new()
+    let path = runner_dir.join(PERMIT_CONFIG_FILE);
+    let file = match std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)
-        .open(runner_dir.join(PERMIT_CONFIG_FILE))
-        .map(|f| f.take(PERMIT_CONFIG_MAX).read_to_string(&mut text));
-    match read {
-        Ok(Ok(_)) => desktop_policy_from(Some(&text)),
-        Ok(Err(_)) => (
-            DesktopPolicy::Safe,
-            Some(format!("{PERMIT_CONFIG_FILE} cannot be read")),
-        ),
-        Err(_) => (DesktopPolicy::Safe, None),
+        .open(&path)
+    {
+        Ok(f) => f,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return create_permit_config(&path),
+        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+            return safe_with(format!("{PERMIT_CONFIG_FILE} is a symlink"))
+        }
+        Err(_) => return safe_with(format!("{PERMIT_CONFIG_FILE} cannot be opened")),
+    };
+    let Ok(meta) = file.metadata() else {
+        return safe_with(format!("{PERMIT_CONFIG_FILE} cannot be read"));
+    };
+    if !meta.is_file() {
+        return safe_with(format!("{PERMIT_CONFIG_FILE} is not a regular file"));
+    }
+    if meta.uid() != unsafe { libc::geteuid() } {
+        return safe_with(format!(
+            "{PERMIT_CONFIG_FILE} is not owned by the runner user"
+        ));
+    }
+    if meta.mode() & 0o022 != 0 {
+        return safe_with(format!("{PERMIT_CONFIG_FILE} is group- or world-writable"));
+    }
+    let mut text = String::new();
+    match file.take(PERMIT_CONFIG_MAX).read_to_string(&mut text) {
+        Ok(_) => desktop_policy_from(Some(&text)),
+        Err(_) => safe_with(format!("{PERMIT_CONFIG_FILE} cannot be read")),
     }
 }
 
@@ -878,6 +921,102 @@ mod tests {
             "desktop_may_answer = \"everything\"\n",
         )
         .unwrap();
+        let (p, warn) = load_desktop_policy(t.path());
+        assert_eq!(p, DesktopPolicy::Safe);
+        assert!(warn.is_some());
+    }
+
+    fn private_dir() -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(t.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        t
+    }
+
+    fn put(dir: &Path, text: &str, mode: u32) -> PathBuf {
+        let p = dir.join(PERMIT_CONFIG_FILE);
+        std::fs::write(&p, text).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+        p
+    }
+
+    #[test]
+    fn a_symlinked_permit_file_gives_safe_and_a_warning() {
+        let t = private_dir();
+        let real = t.path().join("real.toml");
+        std::fs::write(&real, "desktop_may_answer = \"all\"\n").unwrap();
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::os::unix::fs::symlink(&real, t.path().join(PERMIT_CONFIG_FILE)).unwrap();
+        let (p, warn) = load_desktop_policy(t.path());
+        assert_eq!(p, DesktopPolicy::Safe);
+        assert!(warn.is_some());
+    }
+
+    #[test]
+    fn a_group_or_world_writable_permit_file_gives_safe_and_a_warning() {
+        for mode in [0o620, 0o602, 0o666] {
+            let t = private_dir();
+            put(t.path(), "desktop_may_answer = \"all\"\n", mode);
+            let (p, warn) = load_desktop_policy(t.path());
+            assert_eq!(p, DesktopPolicy::Safe, "{mode:o}");
+            assert!(warn.is_some(), "{mode:o}");
+        }
+    }
+
+    #[test]
+    fn an_owner_only_permit_file_is_honoured() {
+        let t = private_dir();
+        put(t.path(), "desktop_may_answer = \"all\"\n", 0o600);
+        assert_eq!(load_desktop_policy(t.path()), (DesktopPolicy::All, None));
+    }
+
+    #[test]
+    fn a_missing_permit_file_is_created_owner_only_with_safe() {
+        let t = private_dir();
+        assert_eq!(load_desktop_policy(t.path()), (DesktopPolicy::Safe, None));
+        let p = t.path().join(PERMIT_CONFIG_FILE);
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "desktop_may_answer = \"safe\"\n"
+        );
+        let mode = std::fs::metadata(&p).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn a_permit_file_is_created_owner_only_whatever_the_umask() {
+        let t = private_dir();
+        let old = unsafe { libc::umask(0) };
+        let (p, warn) = load_desktop_policy(t.path());
+        unsafe { libc::umask(old) };
+        assert_eq!((p, warn), (DesktopPolicy::Safe, None));
+        let mode = std::fs::metadata(t.path().join(PERMIT_CONFIG_FILE))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn an_existing_permit_file_is_never_rewritten() {
+        let t = private_dir();
+        let p = put(t.path(), "desktop_may_answer = \"none\"\n", 0o600);
+        load_desktop_policy(t.path());
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "desktop_may_answer = \"none\"\n"
+        );
+        let p = put(t.path(), "desktop_may_answer = \"all\"\n", 0o644);
+        load_desktop_policy(t.path());
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "desktop_may_answer = \"all\"\n"
+        );
+    }
+
+    #[test]
+    fn a_permit_path_that_is_not_a_regular_file_gives_safe_and_a_warning() {
+        let t = private_dir();
+        std::fs::create_dir(t.path().join(PERMIT_CONFIG_FILE)).unwrap();
         let (p, warn) = load_desktop_policy(t.path());
         assert_eq!(p, DesktopPolicy::Safe);
         assert!(warn.is_some());
