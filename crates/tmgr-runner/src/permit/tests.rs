@@ -10,6 +10,7 @@ const CLAUDE_WRITE_OUT: &str =
     include_str!("../../profiles/screens/claude-write-outside-approval.txt");
 const CLAUDE_FETCH: &str = include_str!("../../profiles/screens/claude-webfetch-approval.txt");
 const CODEX_0164: &str = include_str!("../../profiles/screens/codex-0164-approval.txt");
+const CODEX_EDIT: &str = include_str!("../../profiles/screens/codex-edit-approval.txt");
 const CODEX: &str = include_str!("../../profiles/screens/codex-approval.txt");
 
 fn rows(s: &str) -> Vec<String> {
@@ -939,4 +940,62 @@ fn a_gutter_hides_no_row_from_the_danger_check() {
     assert!(ev.approvable());
     assert!(!ev.danger.is_empty());
     assert_eq!(ev.text(), "echo a;\nrm -f b");
+}
+
+#[test]
+fn codex_edit_dialog_parses_destination_and_options() {
+    let d = parse(Agent::Codex, CODEX_EDIT);
+    assert_eq!(
+        d.body,
+        DialogBody::WriteFile {
+            shown_path: "/tmp/proj/probe.txt".into(),
+            preview: vec![]
+        }
+    );
+    assert_eq!(
+        keys(&d),
+        vec![
+            ("y", OptionAction::Yes),
+            ("a", OptionAction::Other),
+            ("esc", OptionAction::No)
+        ]
+    );
+    assert!(d
+        .text
+        .contains("Would you like to make the following edits?"));
+    assert!(d.text.contains("Apply proposed file edits"));
+    assert!(d.text.contains("/tmp/proj/probe.txt"));
+}
+
+#[test]
+fn codex_edit_dialog_is_view_only() {
+    let d = parse(Agent::Codex, CODEX_EDIT);
+    let h = bash_hook(Agent::Codex, "touch probe.txt", None);
+    assert!(is_view_only(&d, &h));
+    assert!(matches!(verdict(&d, None), Verdict::ViewOnly(_)));
+}
+
+#[test]
+fn codex_edit_dialog_joins_a_wrapped_destination() {
+    let s = CODEX_EDIT.replace("  /tmp/proj/probe.txt\n", "  /tmp/proj/pro\n  be.txt\n");
+    let d = parse(Agent::Codex, &s);
+    match d.body {
+        DialogBody::WriteFile { shown_path, .. } => assert_eq!(shown_path, "/tmp/proj/probe.txt"),
+        b => panic!("{b:?}"),
+    }
+}
+
+#[test]
+fn codex_edit_dialog_with_unexpected_structure_is_none() {
+    for s in [
+        CODEX_EDIT.replace(
+            "  Destination:\n  /tmp/proj/probe.txt\n",
+            "  Destination:\n",
+        ),
+        CODEX_EDIT.replace("Destination:", "Target:"),
+        CODEX_EDIT.replace("make the following edits?", "do it?"),
+        CODEX_EDIT.replace("Destination:\n", "Destination:\n\n"),
+    ] {
+        assert!(parse_dialog(Agent::Codex, &rows(&s)).is_none());
+    }
 }

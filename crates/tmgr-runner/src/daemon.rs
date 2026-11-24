@@ -1356,10 +1356,15 @@ impl Session {
         };
         self.write_at_prompt(text, now)?;
         if submit {
+            let key = {
+                let i = lock(&self.inner);
+                let tab = i.matcher.as_ref().is_some_and(Matcher::tab_mid_turn);
+                submit_key(tab, self.effective(&i).kind)
+            };
             let s = Arc::clone(self);
             thread::spawn(move || {
                 thread::sleep(delay);
-                if !s.input(b"\r") {
+                if !s.input(key) {
                     log(&format!("session {}: submit key not delivered", s.id));
                 }
                 done(s.input_gen.load(Ordering::SeqCst));
@@ -6233,6 +6238,14 @@ fn prompt_ready(
     idle && agent.is_none_or(|a| permit::parse_dialog(a, rows).is_none())
 }
 
+fn submit_key(tab_mid_turn: bool, kind: StateKind) -> &'static [u8] {
+    if tab_mid_turn && kind == StateKind::Working {
+        b"\t"
+    } else {
+        b"\r"
+    }
+}
+
 fn prompt_draft(m: &Matcher, lines: &[String]) -> bool {
     m.draft_in(bottom_rows(lines)) || m.draft_in(prompt_box(lines))
 }
@@ -6518,6 +6531,61 @@ mod tests {
     fn at_prompt_accepts_the_codex_placeholder_with_footer_notices() {
         let screen = include_bytes!("../profiles/screens/codex-placeholder.ansi");
         assert!(ready_ansi("codex", screen));
+    }
+
+    fn screen_ready(profile: &str, screen: &[u8]) -> (bool, bool) {
+        let (set, _) = ProfileSet::load(None);
+        let matcher = Matcher::new(set.get(profile).unwrap()).unwrap();
+        let mut model = ScreenModel::new(40, 120, 100);
+        model.feed(screen);
+        let lines = model.bottom_text_without_ghosts(usize::MAX);
+        let rows = model.text_lines(None).3;
+        let ready = prompt_ready(Some(&matcher), permit::agent_of(profile), &lines, &rows);
+        (ready, prompt_draft(&matcher, &lines))
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_busy_claude_with_an_empty_box() {
+        let screen = include_bytes!("../profiles/screens/claude-working.ansi");
+        assert!(ready_ansi("claude-code", screen));
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_busy_claude_with_a_queued_message() {
+        let screen = include_bytes!("../profiles/screens/claude-working-queued.ansi");
+        assert!(ready_ansi("claude-code", screen));
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_busy_claude_with_a_typed_draft() {
+        let screen = include_bytes!("../profiles/screens/claude-working-draft.ansi");
+        assert_eq!(screen_ready("claude-code", screen), (false, true));
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_busy_codex_with_an_empty_box() {
+        let screen = include_bytes!("../profiles/screens/codex-working.ansi");
+        assert!(ready_ansi("codex", screen));
+    }
+
+    #[test]
+    fn at_prompt_accepts_a_busy_codex_after_a_steer() {
+        let screen = include_bytes!("../profiles/screens/codex-working-steered.ansi");
+        assert!(ready_ansi("codex", screen));
+    }
+
+    #[test]
+    fn at_prompt_refuses_a_busy_codex_with_a_typed_draft() {
+        let screen = include_bytes!("../profiles/screens/codex-working-draft.ansi");
+        assert_eq!(screen_ready("codex", screen), (false, true));
+    }
+
+    #[test]
+    fn submit_key_is_tab_only_for_a_busy_tab_profile() {
+        assert_eq!(submit_key(true, StateKind::Working), b"\t");
+        assert_eq!(submit_key(true, StateKind::Waiting), b"\r");
+        assert_eq!(submit_key(false, StateKind::Working), b"\r");
+        assert_eq!(submit_key(false, StateKind::Waiting), b"\r");
     }
 
     fn codex_screen(footer: &str) -> Vec<u8> {
@@ -6819,14 +6887,16 @@ mod tests {
 
     #[test]
     fn a_chat_message_is_typed_over_a_ghost_placeholder_and_never_accepts_it() {
-        for (profile, screen) in [
+        for (profile, screen, submit) in [
             (
                 "claude-code",
                 &include_bytes!("../profiles/screens/claude-suggestion.ansi")[..],
+                b"\r",
             ),
             (
                 "codex",
                 &include_bytes!("../profiles/screens/codex-placeholder.ansi")[..],
+                b"\t",
             ),
         ] {
             let (_t, s, rx) = lone_session_for(profile, 120, 40);
@@ -6834,7 +6904,7 @@ mod tests {
             s.input_at_prompt(b"hello from the phone\r", Instant::now())
                 .unwrap();
             assert_eq!(queued(&rx), vec![b"hello from the phone".to_vec()]);
-            assert_eq!(queued_by(&rx, 1), vec![b"\r".to_vec()]);
+            assert_eq!(queued_by(&rx, 1), vec![submit.to_vec()]);
         }
     }
 

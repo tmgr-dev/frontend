@@ -29,6 +29,7 @@ json_keys = ["hasCompletedOnboarding", "theme", "oauthAccount"]
 [status]
 blocked = [
   '(?i)do you want to (proceed|allow|make this edit)',
+  '(?i)do you want to (create|overwrite) .+\?',
   '(?i)\ballow .+\?',
   '(?i)trust this folder',
 ]
@@ -37,6 +38,7 @@ draft = ['^\s*❯\s+\S']
 
 [prompt]
 mode = "arg"
+mid_turn_submit = "enter"
 args = ["{prompt}"]
 
 [resume]

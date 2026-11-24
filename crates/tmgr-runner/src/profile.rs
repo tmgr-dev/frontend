@@ -115,10 +115,20 @@ pub enum PromptMode {
     None,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MidTurnSubmit {
+    #[default]
+    Enter,
+    Tab,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct PromptDecl {
     #[serde(default)]
     pub mode: PromptMode,
+    #[serde(default)]
+    pub mid_turn_submit: MidTurnSubmit,
     #[serde(default)]
     pub args: Vec<String>,
 }
@@ -709,6 +719,7 @@ fn check_declarations(p: &Profile, home: Option<&Path>) -> Result<(), String> {
 pub struct Matcher {
     rules: Vec<(String, Regex)>,
     drafts: Vec<Regex>,
+    tab_mid_turn: bool,
 }
 
 impl Matcher {
@@ -735,7 +746,15 @@ impl Matcher {
             .into_iter()
             .map(|(_, re): (String, Regex)| re)
             .collect();
-        Ok(Matcher { rules, drafts })
+        Ok(Matcher {
+            rules,
+            drafts,
+            tab_mid_turn: profile.prompt.mid_turn_submit == MidTurnSubmit::Tab,
+        })
+    }
+
+    pub fn tab_mid_turn(&self) -> bool {
+        self.tab_mid_turn
     }
 
     pub fn has_idle(&self) -> bool {
@@ -786,6 +805,45 @@ mod tests {
     }
 
     const USER_CLAUDE: &str = "id = \"claude-code\"\nname = \"Mine\"\ncommand = [\"my-claude\"]\n";
+
+    fn blocked_rule(profile: &str, screen: &str) -> Option<String> {
+        let (set, _) = ProfileSet::load(None);
+        let m = Matcher::new(set.get(profile).unwrap()).unwrap();
+        let rows: Vec<String> = screen.lines().map(String::from).collect();
+        let end = rows.iter().rposition(|r| !r.trim().is_empty()).unwrap() + 1;
+        let tail = rows[end.saturating_sub(10)..end].to_vec();
+        m.check(&tail)
+            .map(|(rule, _)| rule)
+            .filter(|r| r.starts_with("blocked"))
+    }
+
+    #[test]
+    fn claude_write_dialogs_are_blocked() {
+        let create = include_str!("../profiles/screens/claude-write-approval.txt");
+        let outside = include_str!("../profiles/screens/claude-write-outside-approval.txt");
+        let overwrite = create.replace("create new.txt", "overwrite new.txt");
+        assert!(overwrite.contains("overwrite new.txt"));
+        for screen in [create, outside, overwrite.as_str()] {
+            assert!(blocked_rule("claude-code", screen).is_some());
+        }
+    }
+
+    #[test]
+    fn claude_edit_dialog_stays_blocked() {
+        let screen =
+            "Edit file\n x.rs\n Do you want to make this edit to x.rs?\n 1. Yes\n\n Esc to cancel";
+        assert!(blocked_rule("claude-code", screen).is_some());
+    }
+
+    #[test]
+    fn claude_idle_and_working_screens_are_not_blocked() {
+        for screen in [
+            include_str!("../profiles/screens/claude-idle.txt"),
+            include_str!("../profiles/screens/claude-idle-manual.txt"),
+        ] {
+            assert_eq!(blocked_rule("claude-code", screen), None);
+        }
+    }
 
     #[test]
     fn builtins_load() {
@@ -936,6 +994,23 @@ idle = ['^> $']
         let text = format!("id = \"x\"\nname = \"X\"\ncommand = [\"x\", \"sub\"]\nargs = [\"--a\"]\nmodel_arg = [\"-m\", \"{{model}}\"]\n{extra}");
         let p: Profile = toml::from_str(&text).map_err(|e| e.to_string())?;
         check_launch(&p).map(|()| p)
+    }
+
+    #[test]
+    fn builtin_profiles_declare_their_mid_turn_submit_key() {
+        let (set, _) = ProfileSet::load(None);
+        assert_eq!(
+            set.get("codex").unwrap().prompt.mid_turn_submit,
+            MidTurnSubmit::Tab
+        );
+        assert_eq!(
+            set.get("claude-code").unwrap().prompt.mid_turn_submit,
+            MidTurnSubmit::Enter
+        );
+        assert_eq!(
+            parse("").unwrap().prompt.mid_turn_submit,
+            MidTurnSubmit::Enter
+        );
     }
 
     #[test]

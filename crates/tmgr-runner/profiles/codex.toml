@@ -22,6 +22,7 @@ blocked = [
   '(?i)\ballow .+\?',
   '(?i)trust this folder',
   '(?i)would you like to run the following command\?',
+  '(?i)would you like to make the following edits\?',
   '(?i)press enter to confirm or esc to cancel',
 ]
 idle = ['^\s*(\u2190 for agents \u00b7 )?\? for shortcuts(\s.*)?$', '^\s*\u203a\s*$']
@@ -29,6 +30,7 @@ draft = ['^\s*\u203a\s+\S']
 
 [prompt]
 mode = "arg"
+mid_turn_submit = "tab"
 args = ["{prompt}"]
 
 [resume]

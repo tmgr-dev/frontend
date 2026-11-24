@@ -3,6 +3,7 @@ use super::{Agent, Dialog, DialogBody, DialogOption, OptionAction};
 const CLAUDE_FOOTERS: [&str; 2] = ["Esc to cancel · Tab to amend", "Esc to cancel"];
 const CODEX_FOOTER: &str = "Press enter to confirm or esc to cancel";
 const CODEX_QUESTION: &str = "Would you like to run the following command?";
+const CODEX_EDIT_QUESTION: &str = "Would you like to make the following edits?";
 const WITHHELD: &str = "(value cannot be shown in full — approval withheld; one-time options only)";
 const MIN_RULE: usize = 10;
 
@@ -267,6 +268,9 @@ fn codex(rows: &[String]) -> Option<Dialog> {
     let options = finish_options(Agent::Codex, raw)?;
     let i = skip_blank_up(rows, first)?;
     let (i, cmd_rows) = block_up(rows, i)?;
+    if cmd_rows[0].starts_with("Description:") {
+        return codex_edit(rows, i, &cmd_rows, options);
+    }
     let first_cmd = cmd_rows[0].strip_prefix("$ ")?;
     let mut cmd: Vec<String> = vec![first_cmd.trim().to_string()];
     cmd.extend(cmd_rows[1..].iter().map(|r| r.to_string()));
@@ -299,6 +303,41 @@ fn codex(rows: &[String]) -> Option<Dialog> {
     Some(Dialog {
         agent: Agent::Codex,
         body: DialogBody::Command { rows: cmd, reason },
+        options,
+        text: text.join("\n"),
+    })
+}
+
+fn codex_edit(
+    rows: &[String],
+    start: usize,
+    blk: &[&str],
+    options: Vec<DialogOption>,
+) -> Option<Dialog> {
+    let description = blk[0].strip_prefix("Description:")?.trim();
+    if description.is_empty() || blk.len() < 3 || blk[1] != "Destination:" {
+        return None;
+    }
+    let path = blk[2..].concat();
+    if path.is_empty() {
+        return None;
+    }
+    let j = skip_blank_up(rows, start)?;
+    let (_, q) = block_up(rows, j)?;
+    if q.len() != 1 || q[0] != CODEX_EDIT_QUESTION {
+        return None;
+    }
+    let text = [
+        CODEX_EDIT_QUESTION.to_string(),
+        format!("Description: {description}"),
+        format!("Destination: {path}"),
+    ];
+    Some(Dialog {
+        agent: Agent::Codex,
+        body: DialogBody::WriteFile {
+            shown_path: path,
+            preview: vec![],
+        },
         options,
         text: text.join("\n"),
     })
