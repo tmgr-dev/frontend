@@ -996,7 +996,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           }
           Err(e) if e == RECIPIENT_FULL_MSG => {
             let kind = sealed.kinds.get(&item.0).cloned().unwrap_or_default();
-            if kind != "desktop" && kind != "mobile" {
+            if !matches!(kind.as_str(), "desktop" | "mobile" | "terminal") {
               return Posted { done, outcome: Err(e) };
             }
             log::warn!("[chat-relay] skipped {kind} {}: its relay queue is full", item.0.chars().take(8).collect::<String>());
@@ -1568,7 +1568,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         .iter()
         .filter(|d| d.id != id.device_id)
         .filter(|d| match (&bound, c.st.kind_of(&d.id, &d.fp).unwrap_or(&d.kind)) {
-          (_, "desktop" | "mobile") => true,
+          (_, "desktop" | "mobile" | "terminal") => true,
           (Some(runner), _) => &d.id == runner,
           (None, _) => true,
         })

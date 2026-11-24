@@ -3,6 +3,7 @@ use tmgr_phone::b64_decode;
 
 use super::{Core, RelayEngine};
 use crate::engine::{ChatSink, KeyStore, Transport};
+use crate::trust::is_owner_device;
 use crate::wire::Opened;
 
 pub const PART_BYTES: usize = 737_280;
@@ -86,7 +87,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                 .pending_revokes
                 .iter()
                 .any(|p| p.target_fp == o.from_fp)
-            && matches!(c.st.kind_of_trusted(&o.from), Some("desktop" | "mobile"));
+            && is_owner_device(c.st.kind_of_trusted(&o.from));
         if !sender_ok {
             c.drop_reason = Some("blob from a sender that may not send files");
             return Ok(());

@@ -3686,3 +3686,14 @@ fn terminal_owner_messages_are_accepted_and_manager_session_ones_are_not() {
   post_chat(&x, &aid, &msg_n(4, "owner"));
   assert_eq!(a.poll_once().unwrap().len(), 1);
 }
+
+#[test]
+fn a_message_for_a_bound_runner_also_reaches_a_trusted_terminal() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, r) = runner_pair(&fake, &clock);
+  let t = join_as(&fake, &clock, &a, "Terminal", "terminal");
+  let (rid, tid) = (my_id(&r), my_id(&t));
+  let before = (fake.queue_len(&rid), fake.queue_len(&tid));
+  send(&a, "hello").unwrap();
+  assert_eq!((fake.queue_len(&rid), fake.queue_len(&tid)), (before.0 + 1, before.1 + 1));
+}

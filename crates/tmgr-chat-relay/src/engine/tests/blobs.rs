@@ -183,3 +183,10 @@ fn parse_rejects_bad_shapes() {
     }
     assert!(parse(&json!([1])).is_err());
 }
+
+#[test]
+fn a_blob_from_a_trusted_terminal_is_accepted_like_a_desktop() {
+    let (_f, _c, runner, _desktop, terminal) = terminal_world();
+    post_blob(&terminal, &runner, &small());
+    assert_eq!(runner.s.blobs.lock().unwrap().len(), 1);
+}

@@ -15,10 +15,11 @@ use crate::api::{self, Directory, Msg, Request};
 use crate::fields::{check_device_id, check_device_kind, check_fp};
 use crate::keys::{fingerprint, DeviceKeys};
 use crate::trust::{
-    decode_join_code, encode_join_code, gate_blockers, join_mac, kind_key, lowers_kind, may_revoke,
-    may_vouch, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
-    trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, verify_spawnkey,
-    DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, SpawnKey, Trusted,
+    decode_join_code, encode_join_code, gate_blockers, is_owner_device, join_mac, kind_key,
+    lowers_kind, may_revoke, may_vouch, parse_intro, parse_revoke, restrict_to_before, sign_intro,
+    sign_revoke, trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke,
+    verify_spawnkey, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement,
+    SpawnKey, Trusted,
 };
 use crate::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::Error;
@@ -1101,7 +1102,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
                             .find(|t| t.id == item.0)
                             .map(|t| c.st.kind_of(&t.id, &t.fp).unwrap_or(&t.kind).to_owned())
                             .unwrap_or_default();
-                        if kind != "desktop" && kind != "mobile" {
+                        if !is_owner_device(Some(kind.as_str())) {
                             return Err(e);
                         }
                         self.s.skipped_full(&item.0, &kind);
@@ -1793,7 +1794,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         let g = self.lock();
         g.st.trusted
             .iter()
-            .filter(|d| matches!(g.st.kind_of(&d.id, &d.fp), Some("desktop" | "mobile")))
+            .filter(|d| is_owner_device(g.st.kind_of(&d.id, &d.fp)))
             .filter(|d| !g.st.pending_revokes.iter().any(|p| p.target_fp == d.fp))
             .map(|d| d.id.clone())
             .collect()
@@ -1823,7 +1824,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             c.st.trusted
                 .iter()
                 .filter(|d| d.id != id.device_id)
-                .filter(|d| !runner || may_vouch(c.st.kind_of(&d.id, &d.fp)))
+                .filter(|d| !runner || is_owner_device(c.st.kind_of(&d.id, &d.fp)))
                 .filter(|d| !runner || !c.st.pending_revokes.iter().any(|p| p.target_fp == d.fp))
                 .cloned()
                 .collect();
@@ -1880,7 +1881,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         c.st.trusted
             .iter()
             .filter(|d| d.id != own_id)
-            .filter(|d| may_vouch(c.st.kind_of(&d.id, &d.fp)))
+            .filter(|d| is_owner_device(c.st.kind_of(&d.id, &d.fp)))
             .filter(|d| !c.st.pending_revokes.iter().any(|p| p.target_fp == d.fp))
             .filter(|d| only.is_none_or(|o| o.contains(&d.id)))
             .cloned()
@@ -2009,7 +2010,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         }
         let target = Self::owner_targets(c, &own.device_id, Some(&[to_device.to_owned()]))
             .into_iter()
-            .find(|d| matches!(c.st.kind_of(&d.id, &d.fp), Some("desktop" | "mobile")))
+            .find(|d| is_owner_device(c.st.kind_of(&d.id, &d.fp)))
             .ok_or_else(|| "the target is not a trusted owner device".to_owned())?;
         self.seal_and_post(c, "receipt", &msg_id, &payload, &[target], false)?;
         self.save_now(c)

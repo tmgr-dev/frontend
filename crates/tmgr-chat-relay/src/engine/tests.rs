@@ -4860,3 +4860,49 @@ fn terminal_owner_messages_are_accepted_and_manager_session_ones_are_not() {
     assert_eq!(a.poll_once().unwrap().len(), 1);
     assert_eq!(*a.s.kinds.lock().unwrap(), [Some("terminal".to_owned())]);
 }
+
+fn terminal_world() -> (Fake, Clock, Engine, Engine, Engine) {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let desktop = engine_with(&fake, &clock, "Desktop A");
+    let runner = join_as(&fake, &clock, &desktop, "Runner 1", "runner");
+    let terminal = join_as(&fake, &clock, &desktop, "Terminal", "terminal");
+    runner.poll_once().unwrap();
+    (fake, clock, runner, desktop, terminal)
+}
+
+#[test]
+fn a_runner_seals_output_rooms_and_receipts_to_a_trusted_terminal_like_a_desktop() {
+    let (fake, _c, runner, desktop, terminal) = terminal_world();
+    let (did, tid) = (my_id(&desktop), my_id(&terminal));
+    assert_eq!(runner.owner_devices().len(), 2);
+    assert!(runner.owner_devices().contains(&tid));
+    assert_eq!(runner.owner_device_ids().unwrap().len(), 2);
+    let before = (fake.queue_len(&did), fake.queue_len(&tid));
+    runner
+        .send_chat(&msg_n(5, AuthorKind::Session), false)
+        .unwrap();
+    assert_eq!(
+        (fake.queue_len(&did), fake.queue_len(&tid)),
+        (before.0 + 1, before.1 + 1)
+    );
+    runner
+        .send_chat_to_owners(&msg_n(6, AuthorKind::Session), std::slice::from_ref(&tid))
+        .unwrap();
+    assert_eq!(fake.queue_len(&tid), before.1 + 2);
+    assert_eq!(fake.queue_len(&did), before.0 + 1);
+    runner
+        .send_sealed_to_owners("rooms", &rpc_id("rooms"), &json!({"v": 1}), None)
+        .unwrap();
+    assert_eq!(
+        (fake.queue_len(&did), fake.queue_len(&tid)),
+        (before.0 + 2, before.1 + 3)
+    );
+    runner
+        .send_receipt(&tid, &mid_of(7), ReceiptState::Delivered, None)
+        .unwrap();
+    assert_eq!(fake.queue_len(&tid), before.1 + 4);
+}
+
+fn mid_of(n: u8) -> String {
+    msg_n(n, AuthorKind::Owner).id
+}

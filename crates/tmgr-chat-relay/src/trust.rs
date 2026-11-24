@@ -588,6 +588,10 @@ pub fn may_vouch(kind: Option<&str>) -> bool {
     matches!(kind, Some("desktop" | "mobile"))
 }
 
+pub fn is_owner_device(kind: Option<&str>) -> bool {
+    matches!(kind, Some("desktop" | "mobile" | "terminal"))
+}
+
 pub fn may_revoke(revoker_kind: Option<&str>, revoker_fp: &str, target_fp: &str) -> bool {
     may_vouch(revoker_kind) || revoker_fp == target_fp
 }
