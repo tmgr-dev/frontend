@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.212 — 2026-11-24
+
+- Manager: message receipts arrive in about 2 seconds instead of hanging for up to 15 seconds while an agent works. A re-paired runner takes over its machine, a removed runner no longer blocks chat, revoking a device works even if the cleanup is refused, and rate-limited sends retry after the time the server asks for. Codex sessions started without the sandbox now mirror their replies. Needs tmgr CLI 1.0.188.
+
 ## 0.9.211 — 2026-11-24
 
 - Manager: knows the new "Terminal" device kind and shows it in Chat devices. Removals sent by a runner or terminal for another device are ignored; only a desktop, a phone or the device itself can remove a device. Needs tmgr CLI 1.0.187.

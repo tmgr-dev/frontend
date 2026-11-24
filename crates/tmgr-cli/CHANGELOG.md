@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.188
+
+- Fixed: delivery receipts for Manager chat messages arrive in about 2 seconds instead of hanging for up to 15 seconds while an agent is working.
+- Fixed: a re-paired runner takes over its machine, so the old pairing no longer shadows it.
+- Fixed: a removed runner no longer blocks the chat.
+- Fixed: revoking a device works even when the cleanup request is refused.
+- Fixed: a send that hits the rate limit is retried after the time the server asks for (Retry-After).
+- Fixed: Codex sessions started without the sandbox now mirror their replies to the Manager chat.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.187
 
 - Added: Manager chat knows the new "Terminal" device kind, ready for terminal devices in a later release. A terminal can send owner messages to your sessions and the Manager and receives their replies, but it cannot approve other devices.
