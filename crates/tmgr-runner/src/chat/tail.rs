@@ -202,6 +202,7 @@ fn post(
         .and_then(|t| u64::try_from(t.timestamp_millis()).ok())
         .unwrap_or_else(super::now_ms);
     chat.append(ChatMessage {
+        poll: None,
         v: CHAT_V,
         id: chat.mint_id(),
         room: room.clone(),

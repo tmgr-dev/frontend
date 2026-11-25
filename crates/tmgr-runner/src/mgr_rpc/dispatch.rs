@@ -519,6 +519,7 @@ impl Dispatcher {
                     ));
                 }
                 let msg = ChatMessage {
+                    poll: None,
                     v: chat::CHAT_V,
                     id: chat::new_message_id(),
                     room: RoomRef::manager(&self.machine),
@@ -1521,6 +1522,7 @@ mod tests {
         r.d.state()
             .chat
             .post(ChatMessage {
+                poll: None,
                 v: chat::CHAT_V,
                 id: id.clone(),
                 room,
@@ -1614,6 +1616,7 @@ mod tests {
         r.d.state()
             .chat
             .post(ChatMessage {
+                poll: None,
                 v: chat::CHAT_V,
                 id: chat::new_message_id(),
                 room: RoomRef::manager(ME),
@@ -1657,6 +1660,7 @@ mod tests {
         r.d.state()
             .chat
             .post(ChatMessage {
+                poll: None,
                 v: chat::CHAT_V,
                 id: chat::new_message_id(),
                 room: RoomRef::manager(ME),

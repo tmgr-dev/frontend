@@ -983,6 +983,7 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                 return Ok(json!({"id": m.id}));
             }
             let msg = ChatMessage {
+                poll: None,
                 v: chat::CHAT_V,
                 id: chat::new_message_id(),
                 room: RoomRef::manager(&machine),
@@ -3162,6 +3163,7 @@ mod tests {
         let machine = h.machine();
         st.chat
             .post(ChatMessage {
+                poll: None,
                 v: chat::CHAT_V,
                 id: chat::new_message_id(),
                 room: RoomRef::manager(&machine),

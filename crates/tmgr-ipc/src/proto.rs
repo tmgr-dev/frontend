@@ -338,6 +338,7 @@ mod tests {
     fn a_chat_push_has_the_flat_shape_and_old_clients_decode_it_as_unknown() {
         use crate::chat::{Author, AuthorKind, ChatMessage, ChatPush, MessageKind, RoomRef};
         let message = ChatMessage {
+            poll: None,
             v: 1,
             id: crate::chat::message_id_at(1, [0; 10]),
             room: RoomRef::manager("mx_0123456789abcdef"),

@@ -720,6 +720,18 @@ and enforces the same rule when it checks the signed answer, so a desktop answer
 dropped and the card stays answerable; a phone is never limited by it. `decision.closed` is a short reason that closes the card
 `card_id` on every device (`answered on <device>`, `answered in attach`, `gone`, `answer in attach`, `expired`).
 
+
+**Poll messages.** A message may carry an optional top-level `poll` (`PollMsg`), absent on older runners and ignored by older readers, which then show the message as a plain bubble from `body_md`. It is only valid on a message of kind `text`. An open card is authored by `manager` and has `card_id`, `session` and 1 to 4 `questions`; a question is `{header, question, multi_select?, options}` with 1 to 8 options `{label, description?, recommended?}`. Limits are in `tmgr_ipc::chat::limits` (`header` 60 bytes, `question` 500, `label` 200, `description` 500). `can_answer` is `true` when absent; `false` with an optional `why_not` means the card is read-only ("Answer in terminal"). A close is a later `text` message with the same `card_id`, `session`, no `questions` and `closed` (at most 300 bytes: `answered`, `answered in terminal`, `cancelled`, `gone`) plus an optional `picked` summary; devices group by `card_id` like permit cards. Example open card and close:
+
+```json
+{"poll": {"card_id": "poll_<32 hex>", "session": "s_abcdefghij",
+  "questions": [{"header": "DB", "question": "Which DB?", "multi_select": true,
+    "options": [{"label": "Postgres", "description": "Relational", "recommended": true}, {"label": "SQLite"}]}]}}
+{"poll": {"card_id": "poll_<32 hex>", "session": "s_abcdefghij", "closed": "answered", "picked": "Postgres"}}
+```
+
+A device answers with a relay message of kind `permitok` whose payload is a `PollAnswer` (unsigned): `{"v": 1, "card_id": "poll_<32 hex>", "answers": [{"question_idx": 0, "choices": [1, 2], "other": "text"}]}`. There is one entry per question (1 to 4); `choices` are option indexes (at most 8, distinct) and `other` is free text (at most 1000 bytes, no control characters); an entry with neither is invalid. The runner engine tells it apart from a `SignedPermit` and a refresh by shape (it has `answers`), applies the same sender checks as for a permit answer (trusted, joined, not revoked, no pending revoke, not itself, pinned `desktop` or `mobile`) and hands it to its poll sink; without a poll sink the payload is dropped silently. Indexes and the card are checked by the runner against the open card.
+
 | method | params | result |
 |---|---|---|
 | `chat.rooms` | none | `[RoomInfo]`: the Manager room first (title `Manager`; `state`, `context_pct` and `context_tokens` of the live manager session when there is one), then one room per session except the live manager, whose terminal replies are posted into the Manager room as `session` messages without `reply_to` and whose user turns are not mirrored (`title` = session name, `agent` = profile, `state`, `last`, and `context_pct`, `context_tokens` and `model` once the session's transcript reported usage since the runner started) |

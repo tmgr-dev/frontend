@@ -532,6 +532,7 @@ fn owner() -> Author {
 
 fn text_msg(id: String, text: &str) -> ChatMessage {
     ChatMessage {
+        poll: None,
         v: 1,
         id,
         room: room(),
@@ -4572,6 +4573,162 @@ fn permitok_before_joining_is_dropped() {
     r.lock().st.joined = false;
     post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
     assert_eq!(sink.n(), 0);
+}
+
+type PollRows = Vec<(
+    String,
+    String,
+    tmgr_spawn_auth::PermitSenderKind,
+    tmgr_ipc::chat::PollAnswer,
+)>;
+
+#[derive(Clone, Default)]
+struct PollRec(Arc<Mutex<PollRows>>);
+
+impl PollRec {
+    fn rows(&self) -> PollRows {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl PollSink for PollRec {
+    fn deliver_poll(
+        &self,
+        from: &str,
+        fp: &str,
+        kind: tmgr_spawn_auth::PermitSenderKind,
+        answer: &tmgr_ipc::chat::PollAnswer,
+    ) {
+        self.0
+            .lock()
+            .unwrap()
+            .push((from.into(), fp.into(), kind, answer.clone()));
+    }
+}
+
+fn poll_payload() -> Value {
+    json!({
+        "v": 1,
+        "card_id": "poll_00112233445566778899aabbccddeeff",
+        "answers": [
+            {"question_idx": 0, "choices": [1]},
+            {"question_idx": 1, "choices": [], "other": "my own"}
+        ]
+    })
+}
+
+fn poll_world_from(kind: &str) -> (Fake, Clock, Engine, Engine, PollRec) {
+    let (fake, clock, a, mut r, _permit) = permitok_world_from(kind);
+    r.permitok = None;
+    let sink = PollRec::default();
+    r.poll = Some(Arc::new(sink.clone()));
+    (fake, clock, a, r, sink)
+}
+
+#[test]
+fn a_poll_answer_from_a_desktop_or_phone_reaches_the_poll_sink_without_a_permitok_sink() {
+    for (pin, want) in [
+        ("desktop", tmgr_spawn_auth::PermitSenderKind::Desktop),
+        ("mobile", tmgr_spawn_auth::PermitSenderKind::Mobile),
+    ] {
+        let (_f, _c, a, r, sink) = poll_world_from(pin);
+        assert!(r.permitok.is_none());
+        post_permitok(&a, &r, &poll_payload());
+        let got = sink.rows();
+        assert_eq!(got.len(), 1, "{pin}");
+        assert_eq!(got[0].0, my_id(&a));
+        assert_eq!(got[0].1, fp_of(&a));
+        assert_eq!(got[0].2, want);
+        assert_eq!(serde_json::to_value(&got[0].3).unwrap(), {
+            let mut v = poll_payload();
+            v["answers"][0]["choices"] = json!([1]);
+            v
+        });
+    }
+}
+
+#[test]
+fn old_style_permitok_payloads_still_reach_the_permit_sink_when_a_poll_sink_is_set() {
+    let (_f, _c, a, mut r, permit) = permitok_world_from("desktop");
+    let poll = PollRec::default();
+    r.poll = Some(Arc::new(poll.clone()));
+    post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
+    post_permitok(&a, &r, &refresh_payload());
+    assert_eq!(permit.n(), 1);
+    assert_eq!(permit.refreshes().len(), 1);
+    assert!(poll.rows().is_empty());
+}
+
+#[test]
+fn a_poll_answer_never_reaches_the_permit_sink() {
+    let (_f, _c, a, r, permit) = permitok_world_from("desktop");
+    post_permitok(&a, &r, &poll_payload());
+    assert_eq!(permit.n(), 0);
+    assert!(permit.refreshes().is_empty());
+}
+
+#[test]
+fn a_poll_answer_without_a_poll_sink_is_dropped() {
+    let (_f, _c, a, mut r, sink) = poll_world_from("desktop");
+    r.poll = None;
+    post_permitok(&a, &r, &poll_payload());
+    assert!(sink.rows().is_empty());
+}
+
+#[test]
+fn a_malformed_poll_answer_is_dropped() {
+    let (_f, _c, a, r, sink) = poll_world_from("desktop");
+    let mut no_answers = poll_payload();
+    no_answers.as_object_mut().unwrap().remove("answers");
+    let mut bad_idx = poll_payload();
+    bad_idx["answers"][0]["question_idx"] = json!(300);
+    let mut bad_choice = poll_payload();
+    bad_choice["answers"][0]["choices"] = json!([-1]);
+    for junk in [no_answers, bad_idx, bad_choice, json!("x"), json!({})] {
+        post_permitok(&a, &r, &junk);
+    }
+    assert!(sink.rows().is_empty());
+}
+
+#[test]
+fn a_poll_answer_from_a_wrong_sender_is_dropped() {
+    for pin in ["terminal", "runner", "web"] {
+        let (_f, _c, a, r, sink) = poll_world_from("desktop");
+        set_pin(&r, &my_id(&a), pin);
+        post_permitok(&a, &r, &poll_payload());
+        assert!(sink.rows().is_empty(), "{pin}");
+    }
+    let (_f, _c, a, mut r, sink) = poll_world_from("desktop");
+    r.kind = "desktop".to_owned();
+    post_permitok(&a, &r, &poll_payload());
+    assert!(sink.rows().is_empty());
+
+    let (_f, _c, a, r, sink) = poll_world_from("desktop");
+    r.lock().st.joined = false;
+    post_permitok(&a, &r, &poll_payload());
+    assert!(sink.rows().is_empty());
+}
+
+#[test]
+fn a_poll_answer_from_a_revoked_or_pending_revoke_sender_is_dropped() {
+    let (_f, _c, a, r, sink) = poll_world_from("desktop");
+    r.lock().st.pending_revokes.push(PendingRevoke {
+        statement_id: "s".into(),
+        revoker_label: "x".into(),
+        revoker_fp: "11".repeat(32),
+        target_id: my_id(&a),
+        target_label: "Sender".into(),
+        target_fp: fp_of(&a),
+        received_at_ms: 0,
+        issued_at_ms: 0,
+    });
+    post_permitok(&a, &r, &poll_payload());
+    assert!(sink.rows().is_empty());
+
+    let (_f, _c, a, r, sink) = poll_world_from("desktop");
+    r.lock().st.revoked.push(fp_of(&a));
+    post_permitok(&a, &r, &poll_payload());
+    assert!(sink.rows().is_empty());
 }
 
 fn rooms_world() -> (Fake, Clock, Engine, Engine, Engine, Engine) {

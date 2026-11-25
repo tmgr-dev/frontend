@@ -90,6 +90,7 @@ fn status(v: &ViewState) -> String {
 
 fn msg(id: &str, r: RoomRef, body: &str, mention: Option<(&str, MentionState)>) -> ChatMessage {
     ChatMessage {
+        poll: None,
         v: 1,
         id: id.into(),
         room: r,

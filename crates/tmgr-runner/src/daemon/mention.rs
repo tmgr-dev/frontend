@@ -831,6 +831,7 @@ mod tests {
         );
         use tmgr_chat_relay::engine::ChatSink;
         let mut m = ChatMessage {
+            poll: None,
             v: 1,
             id: ID.into(),
             room: rt.chat.session_room(A),

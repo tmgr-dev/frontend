@@ -119,6 +119,7 @@ pub fn send(
         .filter(|id| tmgr_ipc::chat::valid_message_id(id))
         .ok_or("the remote machine sent an unreadable answer")?;
     Ok(ChatMessage {
+        poll: None,
         v: CHAT_V,
         id: id.into(),
         room: room.clone(),
@@ -212,6 +213,7 @@ mod tests {
 
     fn msg(id: &str, room: RoomRef) -> ChatMessage {
         ChatMessage {
+            poll: None,
             v: CHAT_V,
             id: id.into(),
             room,

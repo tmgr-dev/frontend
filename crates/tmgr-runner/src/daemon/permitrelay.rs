@@ -401,6 +401,7 @@ impl Runner {
         reply_to: Option<String>,
     ) -> ChatMessage {
         ChatMessage {
+            poll: None,
             v: CHAT_V,
             id: self.chat.mint_id(),
             room: self.chat.manager_room(),

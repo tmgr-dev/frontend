@@ -450,6 +450,7 @@ fn send(
         let id = new_message_id();
         let ts = now_ms();
         let msg = ChatMessage {
+            poll: None,
             v: 1,
             id: id.clone(),
             room: room.clone(),

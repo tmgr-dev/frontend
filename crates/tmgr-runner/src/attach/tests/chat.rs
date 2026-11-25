@@ -50,6 +50,7 @@ fn rooms() -> Vec<RoomInfo> {
 
 fn msg(n: u64, room: RoomRef, author: AuthorKind, kind: MessageKind, body: &str) -> ChatMessage {
     ChatMessage {
+        poll: None,
         v: 1,
         id: format!("m_{n:012x}{:020x}", 0),
         room,

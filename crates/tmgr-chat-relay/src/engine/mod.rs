@@ -26,8 +26,8 @@ use crate::wire::{open_message_checked, random_msg_id, seal_message, Opened, Pee
 use tmgr_phone::Error;
 
 pub use ports::{
-    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, ReceiptSink, RoomsSink,
-    RpcSink, Slot, SpawnKeySink, SpawnOkSink, Transport,
+    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, PollSink, ReceiptSink,
+    RoomsSink, RpcSink, Slot, SpawnKeySink, SpawnOkSink, Transport,
 };
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
@@ -939,6 +939,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore, S: ChatSink> {
     spawnkey: Option<Arc<dyn SpawnKeySink>>,
     spawnok: Option<Arc<dyn SpawnOkSink>>,
     permitok: Option<Arc<dyn PermitOkSink>>,
+    poll: Option<Arc<dyn PollSink>>,
     activity_sub: Option<Arc<dyn ActivitySubSink>>,
     rooms: Option<Arc<dyn RoomsSink>>,
     receipt: Option<Arc<dyn ReceiptSink>>,
@@ -984,6 +985,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             spawnkey: None,
             spawnok: None,
             permitok: None,
+            poll: None,
             activity_sub: None,
             rooms: None,
             receipt: None,
@@ -1022,6 +1024,11 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
 
     pub fn with_permitok_sink(mut self, sink: Arc<dyn PermitOkSink>) -> Self {
         self.permitok = Some(sink);
+        self
+    }
+
+    pub fn with_poll_sink(mut self, sink: Arc<dyn PollSink>) -> Self {
+        self.poll = Some(sink);
         self
     }
 

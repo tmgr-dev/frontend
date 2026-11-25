@@ -274,6 +274,7 @@ mod tests {
     #[test]
     fn a_remote_ask_message_validates_with_a_foreign_author_machine() {
         let m = ChatMessage {
+            poll: None,
             v: crate::chat::CHAT_V,
             id: crate::chat::new_message_id(),
             room: RoomRef::manager("mx_00000000000000aa"),

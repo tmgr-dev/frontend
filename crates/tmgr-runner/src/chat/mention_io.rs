@@ -165,6 +165,7 @@ impl Chat {
         };
         let body = super::mention::clip_to(&body, limits::MAX_BODY);
         let msg = ChatMessage {
+            poll: None,
             v: CHAT_V,
             id: self.mint_id(),
             room: t.spec.origin.clone(),

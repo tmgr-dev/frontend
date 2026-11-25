@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use tmgr_ipc::chat::ChatMessage;
+use tmgr_ipc::chat::{ChatMessage, PollAnswer};
 
 use super::blob::BlobPart;
 use crate::api::Request;
@@ -140,6 +140,20 @@ pub trait PermitOkSink: Send + Sync {
         kind: PermitSenderKind,
         card_id: &str,
         nonce: &str,
+    );
+}
+
+/// Runs under the engine lock: implementations must only enqueue and never call back into the engine.
+/// Only a runner engine calls this. The sender is a trusted, joined, non-revoked device other than ourselves,
+/// without a pending revoke, pinned as exactly `desktop` or `mobile` (`kind`). The answer is unsigned and
+/// only shape-checked by serde; the card, the indexes and the answer text are checked by the receiver.
+pub trait PollSink: Send + Sync {
+    fn deliver_poll(
+        &self,
+        from_device: &str,
+        from_fp: &str,
+        kind: PermitSenderKind,
+        answer: &PollAnswer,
     );
 }
 

@@ -262,6 +262,7 @@ mod tests {
 
     fn msg(n: u64, room: &RoomRef, body: &str) -> ChatMessage {
         ChatMessage {
+            poll: None,
             v: 1,
             id: message_id_at(n, [0; 10]),
             room: room.clone(),

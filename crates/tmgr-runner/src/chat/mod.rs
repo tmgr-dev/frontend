@@ -400,6 +400,7 @@ impl Chat {
     ) -> Result<ChatMessage, String> {
         self.own(&room)?;
         let msg = ChatMessage {
+            poll: None,
             v: CHAT_V,
             id: self.mint_id(),
             room,
@@ -429,6 +430,7 @@ impl Chat {
         let id = self.mint_id();
         let mention = Some(make(&id));
         self.append(ChatMessage {
+            poll: None,
             v: CHAT_V,
             id,
             room,
@@ -539,6 +541,7 @@ impl Chat {
         }
         let (client, device, owner_device) = (m.client, m.device.clone(), m.owner_device);
         let msg = ChatMessage {
+            poll: None,
             v: CHAT_V,
             id: m.id,
             room: m.room,
@@ -848,6 +851,7 @@ fn same_content(a: &ChatMessage, b: &ChatMessage) -> bool {
 
 fn system_message(room: &RoomRef, id: String, ts_ms: u64, text: &str) -> ChatMessage {
     ChatMessage {
+        poll: None,
         v: CHAT_V,
         id,
         room: room.clone(),

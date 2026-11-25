@@ -34,6 +34,14 @@ pub mod limits {
     pub const MAX_MODEL: usize = 128;
     pub const MAX_SPAWN_REQUEST: usize = 16 << 10;
     pub const MAX_SPAWN_SUMMARY: usize = 2048;
+    pub const MAX_POLL_QUESTIONS: usize = 4;
+    pub const MAX_POLL_OPTIONS: usize = 8;
+    pub const MAX_POLL_LABEL: usize = 200;
+    pub const MAX_POLL_DESCRIPTION: usize = 500;
+    pub const MAX_POLL_HEADER: usize = 60;
+    pub const MAX_POLL_QUESTION: usize = 500;
+    pub const MAX_POLL_OTHER: usize = 1000;
+    pub const MAX_POLL_CLOSED: usize = 300;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +65,8 @@ pub struct ChatMessage {
     pub user_turn: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mention: Option<MentionRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poll: Option<PollMsg>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -235,6 +245,154 @@ pub struct PermitCardMsg {
     pub desktop_ok: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presence_fps: Vec<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollMsg {
+    pub card_id: String,
+    pub session: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub questions: Vec<PollQuestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picked: Option<String>,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub can_answer: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why_not: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollQuestion {
+    pub header: String,
+    pub question: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub multi_select: bool,
+    pub options: Vec<PollOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollOption {
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub recommended: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollAnswer {
+    pub v: u8,
+    pub card_id: String,
+    pub answers: Vec<PollPick>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollPick {
+    pub question_idx: u8,
+    #[serde(default)]
+    pub choices: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other: Option<String>,
+}
+
+impl PollMsg {
+    fn validate(&self) -> Result<(), String> {
+        if !valid_token(&self.card_id) {
+            return Err("invalid poll card id".into());
+        }
+        if !valid_token(&self.session) {
+            return Err("invalid poll session".into());
+        }
+        let short = |s: &Option<String>| {
+            s.as_ref()
+                .is_some_and(|t| t.len() > limits::MAX_POLL_CLOSED)
+        };
+        if short(&self.closed) || short(&self.picked) || short(&self.why_not) {
+            return Err("poll status text too long".into());
+        }
+        if self.closed.is_some() {
+            if !self.questions.is_empty() {
+                return Err("a closed poll has no questions".into());
+            }
+            return Ok(());
+        }
+        if self.picked.is_some() {
+            return Err("poll.picked needs poll.closed".into());
+        }
+        if self.questions.is_empty() || self.questions.len() > limits::MAX_POLL_QUESTIONS {
+            return Err("a poll needs 1 to 4 questions".into());
+        }
+        self.questions.iter().try_for_each(PollQuestion::validate)
+    }
+}
+
+impl PollQuestion {
+    fn validate(&self) -> Result<(), String> {
+        if self.header.len() > limits::MAX_POLL_HEADER {
+            return Err("poll header too long".into());
+        }
+        if self.question.is_empty() || self.question.len() > limits::MAX_POLL_QUESTION {
+            return Err("invalid poll question".into());
+        }
+        if self.options.is_empty() || self.options.len() > limits::MAX_POLL_OPTIONS {
+            return Err("a poll question needs 1 to 8 options".into());
+        }
+        for o in &self.options {
+            if o.label.is_empty() || o.label.len() > limits::MAX_POLL_LABEL {
+                return Err("invalid poll option label".into());
+            }
+            if o.description.len() > limits::MAX_POLL_DESCRIPTION {
+                return Err("poll option description too long".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+impl PollAnswer {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.v != 1 {
+            return Err(format!("unsupported poll answer version {}", self.v));
+        }
+        if !valid_token(&self.card_id) {
+            return Err("invalid poll card id".into());
+        }
+        if self.answers.is_empty() || self.answers.len() > limits::MAX_POLL_QUESTIONS {
+            return Err("a poll answer needs 1 to 4 picks".into());
+        }
+        for p in &self.answers {
+            if p.choices.len() > limits::MAX_POLL_OPTIONS {
+                return Err("too many poll choices".into());
+            }
+            let mut seen = p.choices.clone();
+            seen.sort_unstable();
+            seen.dedup();
+            if seen.len() != p.choices.len() {
+                return Err("duplicate poll choice".into());
+            }
+            match p.other.as_deref() {
+                Some(t) if t.len() > limits::MAX_POLL_OTHER => {
+                    return Err("poll other text too long".into())
+                }
+                Some(t) if t.chars().any(char::is_control) => {
+                    return Err("poll other text has control characters".into())
+                }
+                Some("") | None if p.choices.is_empty() => return Err("an empty poll pick".into()),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -540,6 +698,15 @@ impl ChatMessage {
                 return Err("invalid mention id".into());
             }
         }
+        if let Some(p) = &self.poll {
+            p.validate()?;
+            if self.kind != MessageKind::Text {
+                return Err("a poll is only valid on a text message".into());
+            }
+            if !p.questions.is_empty() && self.author.kind != AuthorKind::Manager {
+                return Err("a poll card must be authored by the manager".into());
+            }
+        }
         match (&self.kind, &self.decision) {
             (MessageKind::Decision, None) => {
                 Err("a decision message needs decision.card_id".into())
@@ -608,6 +775,25 @@ mod tests {
                     "target": {"kind": "session", "machine": "mx_7f3a", "session": "s_target0001"},
                     "target_title": "build-fix", "state": "sent", "hop": 1}
             }),
+            json!({
+                "v": 1, "id": "m_0190a1b2c3d9aabbccddeeff00112233",
+                "room": {"kind": "manager", "machine": "mx_7f3a"},
+                "author": {"kind": "manager", "id": "s_manager01", "machine": "mx_7f3a", "agent": "claude-code"},
+                "ts_ms": 1795000000500u64, "kind": "text", "body_md": "Question in s_abcdefghij: Which DB?",
+                "poll": {"card_id": "poll_0123456789abcdef0123456789abcdef", "session": "s_abcdefghij",
+                    "questions": [{"header": "DB", "question": "Which DB?", "multi_select": true,
+                        "options": [{"label": "Postgres", "description": "Relational", "recommended": true},
+                            {"label": "SQLite", "description": ""}]}],
+                    "can_answer": false, "why_not": "Answer in terminal"}
+            }),
+            json!({
+                "v": 1, "id": "m_0190a1b2c3daaabbccddeeff00112233",
+                "room": {"kind": "manager", "machine": "mx_7f3a"},
+                "author": {"kind": "system", "id": "runner"},
+                "ts_ms": 1795000000600u64, "kind": "text", "body_md": "Answered: Postgres",
+                "poll": {"card_id": "poll_0123456789abcdef0123456789abcdef", "session": "s_abcdefghij",
+                    "closed": "answered", "picked": "Postgres"}
+            }),
         ]
     }
 
@@ -649,6 +835,7 @@ mod tests {
                 "id",
                 "kind",
                 "mention",
+                "poll",
                 "reply_to",
                 "room",
                 "session_meta",
@@ -926,5 +1113,200 @@ mod tests {
         }))
         .unwrap();
         assert!(!req.confirmed_risky);
+    }
+
+    fn poll_msg() -> ChatMessage {
+        serde_json::from_value(examples().remove(5)).unwrap()
+    }
+
+    fn pick(idx: u8, choices: &[u8], other: Option<&str>) -> PollPick {
+        PollPick {
+            question_idx: idx,
+            choices: choices.to_vec(),
+            other: other.map(Into::into),
+        }
+    }
+
+    fn answer(answers: Vec<PollPick>) -> PollAnswer {
+        PollAnswer {
+            v: 1,
+            card_id: "poll_0123456789abcdef0123456789abcdef".into(),
+            answers,
+        }
+    }
+
+    #[test]
+    fn a_message_without_a_poll_serializes_unchanged() {
+        for e in &examples()[..5] {
+            let m: ChatMessage = serde_json::from_value(e.clone()).unwrap();
+            assert!(m.poll.is_none());
+            assert!(serde_json::to_value(&m).unwrap().get("poll").is_none());
+        }
+    }
+
+    #[test]
+    fn poll_defaults_fill_in_when_absent() {
+        let m: PollMsg = serde_json::from_value(json!({
+            "card_id": "poll_a", "session": "s_a",
+            "questions": [{"header": "", "question": "q", "options": [{"label": "a"}]}]
+        }))
+        .unwrap();
+        assert!(m.can_answer);
+        assert!(!m.questions[0].multi_select);
+        assert_eq!(m.questions[0].options[0].description, "");
+        assert!(!m.questions[0].options[0].recommended);
+        let back = serde_json::to_value(&m).unwrap();
+        assert!(back.get("can_answer").is_none());
+    }
+
+    #[test]
+    fn a_poll_needs_a_text_message_and_a_manager_author() {
+        let m = poll_msg();
+        m.validate().unwrap();
+        let mut bad = m.clone();
+        bad.kind = MessageKind::Decision;
+        bad.decision = Some(DecisionRef {
+            card_id: "c".into(),
+            spawn: None,
+            permit: None,
+            closed: None,
+        });
+        assert!(bad.validate().is_err());
+        let mut bad = m.clone();
+        bad.kind = MessageKind::System;
+        assert!(bad.validate().is_err());
+        let mut bad = m.clone();
+        bad.author.kind = AuthorKind::Session;
+        assert!(bad.validate().is_err());
+        let mut bad = m;
+        bad.author.kind = AuthorKind::Owner;
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn a_close_validates_and_must_not_carry_questions() {
+        let close: ChatMessage = serde_json::from_value(examples().remove(6)).unwrap();
+        close.validate().unwrap();
+        let mut bad = close.clone();
+        bad.poll.as_mut().unwrap().questions = poll_msg().poll.unwrap().questions;
+        assert!(bad.validate().is_err());
+        let mut bad = close.clone();
+        bad.kind = MessageKind::System;
+        assert!(bad.validate().is_err());
+        let mut bad = close;
+        bad.poll.as_mut().unwrap().closed = Some("x".repeat(limits::MAX_POLL_CLOSED + 1));
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn poll_limits_are_enforced() {
+        type Edit = Box<dyn Fn(&mut PollMsg)>;
+        let edits: Vec<(&str, Edit)> = vec![
+            ("bad card id", Box::new(|p| p.card_id = "a b".into())),
+            ("bad session", Box::new(|p| p.session = "".into())),
+            ("no questions", Box::new(|p| p.questions.clear())),
+            (
+                "five questions",
+                Box::new(|p| p.questions = vec![p.questions[0].clone(); 5]),
+            ),
+            (
+                "long header",
+                Box::new(|p| p.questions[0].header = "h".repeat(limits::MAX_POLL_HEADER + 1)),
+            ),
+            (
+                "empty question",
+                Box::new(|p| p.questions[0].question.clear()),
+            ),
+            (
+                "long question",
+                Box::new(|p| p.questions[0].question = "q".repeat(limits::MAX_POLL_QUESTION + 1)),
+            ),
+            ("no options", Box::new(|p| p.questions[0].options.clear())),
+            (
+                "nine options",
+                Box::new(|p| p.questions[0].options = vec![p.questions[0].options[0].clone(); 9]),
+            ),
+            (
+                "empty label",
+                Box::new(|p| p.questions[0].options[0].label.clear()),
+            ),
+            (
+                "long label",
+                Box::new(|p| {
+                    p.questions[0].options[0].label = "l".repeat(limits::MAX_POLL_LABEL + 1)
+                }),
+            ),
+            (
+                "long description",
+                Box::new(|p| {
+                    p.questions[0].options[0].description =
+                        "d".repeat(limits::MAX_POLL_DESCRIPTION + 1)
+                }),
+            ),
+            (
+                "picked without closed",
+                Box::new(|p| p.picked = Some("x".into())),
+            ),
+            (
+                "long why_not",
+                Box::new(|p| p.why_not = Some("w".repeat(limits::MAX_POLL_CLOSED + 1))),
+            ),
+        ];
+        for (name, edit) in edits {
+            let mut m = poll_msg();
+            edit(m.poll.as_mut().unwrap());
+            assert!(m.validate().is_err(), "{name}");
+        }
+        let mut ok = poll_msg();
+        let q = ok.poll.as_ref().unwrap().questions[0].clone();
+        let p = ok.poll.as_mut().unwrap();
+        p.questions = vec![q; limits::MAX_POLL_QUESTIONS];
+        p.questions[0].options = vec![p.questions[0].options[0].clone(); limits::MAX_POLL_OPTIONS];
+        p.questions[0].header = "h".repeat(limits::MAX_POLL_HEADER);
+        ok.validate().unwrap();
+    }
+
+    #[test]
+    fn a_poll_answer_round_trips_and_validates() {
+        let a = answer(vec![pick(0, &[1, 2], None), pick(1, &[], Some("my own"))]);
+        a.validate().unwrap();
+        let v = serde_json::to_value(&a).unwrap();
+        assert_eq!(
+            v,
+            json!({"v": 1, "card_id": "poll_0123456789abcdef0123456789abcdef", "answers": [
+                {"question_idx": 0, "choices": [1, 2]},
+                {"question_idx": 1, "choices": [], "other": "my own"}]})
+        );
+        assert_eq!(serde_json::from_value::<PollAnswer>(v).unwrap(), a);
+    }
+
+    #[test]
+    fn invalid_poll_answers_are_refused() {
+        let ok = || answer(vec![pick(0, &[0], None)]);
+        let mut a = ok();
+        a.v = 2;
+        assert!(a.validate().is_err());
+        let mut a = ok();
+        a.card_id = "bad id".into();
+        assert!(a.validate().is_err());
+        assert!(answer(vec![]).validate().is_err());
+        assert!(answer(vec![pick(0, &[0], None); 5]).validate().is_err());
+        assert!(answer(vec![pick(0, &[0, 0], None)]).validate().is_err());
+        assert!(answer(vec![pick(0, &[0, 1, 2, 3, 4, 5, 6, 7, 8], None)])
+            .validate()
+            .is_err());
+        assert!(answer(vec![pick(0, &[], None)]).validate().is_err());
+        assert!(answer(vec![pick(0, &[], Some(""))]).validate().is_err());
+        let long = "x".repeat(limits::MAX_POLL_OTHER + 1);
+        assert!(answer(vec![pick(0, &[], Some(&long))]).validate().is_err());
+        assert!(answer(vec![pick(0, &[], Some("a\nb"))]).validate().is_err());
+        assert!(answer(vec![pick(0, &[0], Some("a\u{1b}b"))])
+            .validate()
+            .is_err());
+        let max = "x".repeat(limits::MAX_POLL_OTHER);
+        answer(vec![pick(0, &[], Some(&max))]).validate().unwrap();
+        answer(vec![pick(0, &[0, 1, 2, 3, 4, 5, 6, 7], None); 4])
+            .validate()
+            .unwrap();
     }
 }

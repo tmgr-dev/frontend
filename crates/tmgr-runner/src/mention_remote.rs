@@ -216,6 +216,7 @@ mod tests {
 
     fn row(n: u32, kind: AuthorKind, author: &str, body: &str) -> ChatMessage {
         ChatMessage {
+            poll: None,
             v: CHAT_V,
             id: format!("m_{n:032x}"),
             room: RoomRef::manager(M),

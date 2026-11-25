@@ -517,6 +517,7 @@ impl Runner {
         let remote = proposer.and_then(|p| p.strip_prefix(REMOTE_PREFIX));
         let machine = self.chat.machine().to_owned();
         let msg = ChatMessage {
+            poll: None,
             v: CHAT_V,
             id: self.chat.mint_id(),
             room: self.chat.manager_room(),

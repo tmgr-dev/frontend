@@ -10,6 +10,7 @@ const MACHINE: &str = "mx_0123456789abcdef";
 
 fn msg(kind: AuthorKind, machine: &str, device: Option<&str>) -> ChatMessage {
     ChatMessage {
+        poll: None,
         v: CHAT_V,
         id: new_message_id(),
         room: RoomRef::manager(machine),
