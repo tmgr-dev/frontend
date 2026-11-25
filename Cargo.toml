@@ -34,7 +34,7 @@ hkdf = "0.13"
 aes-gcm = "0.10"
 ratatui = "0.30"
 unicode-width = "0.2"
-toml_edit = "0.22"
+toml_edit = "0.25"
 libc = "0.2"
 rusqlite = { version = "0.37", features = ["bundled"] }
 form_urlencoded = "1"
