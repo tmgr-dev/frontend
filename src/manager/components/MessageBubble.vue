@@ -98,7 +98,7 @@
 							{{ $t('manager.messages.cancelVoiceDownload') }}
 						</button>
 					</template>
-					<template v-else-if="!pack.installed">
+					<template v-else>
 						<span v-if="pack.error">{{
 							$t('manager.messages.voiceDownloadFailed', { language })
 						}}</span>
