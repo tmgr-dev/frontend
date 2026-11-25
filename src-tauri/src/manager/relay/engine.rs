@@ -168,6 +168,8 @@ struct State {
   #[serde(default)]
   last_seen: BTreeMap<String, u64>,
   #[serde(default)]
+  last_sent: BTreeMap<String, u64>,
+  #[serde(default)]
   pinned_at: BTreeMap<String, u64>,
   #[serde(default)]
   alerts: Vec<TrustAlert>,
@@ -209,10 +211,11 @@ impl State {
       return false;
     };
     self.pending_revokes.iter().any(|p| {
+      let cutoff = if p.issued_at_ms > 0 { p.issued_at_ms } else { p.received_at_ms };
       p.target_id == d.id
         && p.target_fp == d.fp
-        && p.received_at_ms > 0
-        && self.last_seen.get(bound).is_none_or(|&s| s < p.received_at_ms)
+        && cutoff > 0
+        && self.last_sent.get(bound).is_none_or(|&s| s <= cutoff)
         && self.trusted.iter().any(|t| t.fp == p.revoker_fp)
     })
   }
@@ -657,6 +660,7 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
       target_label,
       target_fp: p.target_fp.clone(),
       received_at_ms: now,
+      issued_at_ms: p.issued_at_ms,
     });
   }
 }
@@ -1506,7 +1510,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     for (_, i) in &opened {
       if let Inbound::Opened(o) = i {
         if o.trusted {
-          c.st.last_seen.insert(o.from.clone(), now);
+          let s = c.st.last_sent.entry(o.from.clone()).or_default();
+          *s = (*s).max(o.sent_at);
         }
       }
     }
@@ -1538,6 +1543,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       let entry = c.st.seq_in.entry(from.clone()).or_insert(0);
       *entry = (*entry).max(seq);
       let Inbound::Opened(o) = item else { continue };
+      if o.trusted {
+        c.st.last_seen.insert(from, now);
+      }
       c.drop_reason = None;
       c.drop_detail = None;
       let who = format!("kind={} sender={}", o.kind, short_id(&o.from));

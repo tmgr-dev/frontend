@@ -255,6 +255,8 @@ struct State {
     #[serde(default)]
     last_seen: BTreeMap<String, u64>,
     #[serde(default)]
+    last_sent: BTreeMap<String, u64>,
+    #[serde(default)]
     pinned_at: BTreeMap<String, u64>,
     #[serde(default)]
     alerts: Vec<TrustAlert>,
@@ -294,13 +296,15 @@ impl State {
             return false;
         };
         self.pending_revokes.iter().any(|p| {
+            let cutoff = if p.issued_at_ms > 0 {
+                p.issued_at_ms
+            } else {
+                p.received_at_ms
+            };
             p.target_id == d.id
                 && p.target_fp == d.fp
-                && p.received_at_ms > 0
-                && self
-                    .last_seen
-                    .get(bound)
-                    .is_none_or(|&s| s < p.received_at_ms)
+                && cutoff > 0
+                && self.last_sent.get(bound).is_none_or(|&s| s <= cutoff)
                 && self.trusted.iter().any(|t| t.fp == p.revoker_fp)
         })
     }
@@ -918,6 +922,7 @@ fn ingest_revoke(
             target_label,
             target_fp: p.target_fp.clone(),
             received_at_ms: now,
+            issued_at_ms: p.issued_at_ms,
         });
     }
 }
@@ -1906,7 +1911,8 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         for (_, i) in &opened {
             if let Inbound::Opened(o) = i {
                 if o.trusted {
-                    c.st.last_seen.insert(o.from.clone(), now);
+                    let s = c.st.last_sent.entry(o.from.clone()).or_default();
+                    *s = (*s).max(o.sent_at);
                 }
             }
         }
@@ -1945,6 +1951,9 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             let Inbound::Opened(o) = item else {
                 continue;
             };
+            if o.trusted {
+                c.st.last_seen.insert(from.clone(), now);
+            }
             c.drop_reason = None;
             let sample = o.trusted.then(|| PeerClock::sample(o.sent_at, now));
             let offset = c.st.clocks.get(&from).map_or(0, |p| p.cur);

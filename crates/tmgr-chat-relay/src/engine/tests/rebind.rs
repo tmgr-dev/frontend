@@ -31,6 +31,7 @@ fn the_old_runner_keeps_the_machine_when_it_speaks_after_the_revoke_arrived() {
     let (fake, clock) = (Fake::default(), Clock::new(T0));
     let (a, b, r1, r2) = world(&fake, &clock);
     let bid = my_id(&b);
+    clock.set(T0 + 6_000);
     post_chat(&r1, &bid, &msg_n(4, AuthorKind::Session));
     let (mid, from, body) = last_body_to(&fake, &bid);
     fake.0.lock().unwrap().msgs.retain(|m| m.msg_id != mid);
@@ -54,6 +55,7 @@ fn a_pending_revoke_stored_without_a_receive_time_is_stamped_at_the_next_poll() 
     a.revoke(&my_id(&r1)).unwrap();
     b.poll_once().unwrap();
     b.lock().st.pending_revokes[0].received_at_ms = 0;
+    b.lock().st.pending_revokes[0].issued_at_ms = 0;
     clock.set(T0 + 6_000);
     post_chat(&r2, &my_id(&b), &msg_n(3, AuthorKind::Manager));
     assert_eq!(b.poll_once().unwrap().len(), 1);
@@ -120,6 +122,7 @@ fn the_old_runner_keeps_the_machine_when_it_speaks_in_the_same_poll_as_a_runner_
     let bid = my_id(&b);
     post_chat(&r2, &bid, &msg_n(2, AuthorKind::Manager));
     assert_eq!(b.poll_once().unwrap().len(), 1);
+    clock.set(T0 + 6_000);
     post_chat(&r2, &bid, &msg_n(4, AuthorKind::Manager));
     let (mid, from, body) = last_body_to(&fake, &bid);
     fake.0.lock().unwrap().msgs.retain(|m| m.msg_id != mid);
@@ -131,6 +134,26 @@ fn the_old_runner_keeps_the_machine_when_it_speaks_in_the_same_poll_as_a_runner_
     fake.inject(&bid, &mid, &from, &body);
     b.poll_once().unwrap();
     assert_eq!(alert_kinds(&b), vec!["room_conflict".to_owned()]);
+    let bound: Vec<String> = b.lock().st.bindings.values().cloned().collect();
+    assert_eq!(bound, vec![my_id(&r2)]);
+}
+
+#[test]
+fn the_old_runner_backlog_signed_before_the_revoke_does_not_keep_the_machine() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b, r1, r2) = world(&fake, &clock);
+    let bid = my_id(&b);
+    clock.set(T0 + 4_000);
+    post_chat(&r1, &bid, &msg_n(4, AuthorKind::Session));
+    let (mid, from, body) = last_body_to(&fake, &bid);
+    fake.0.lock().unwrap().msgs.retain(|m| m.msg_id != mid);
+    clock.set(T0 + 5_000);
+    a.revoke(&my_id(&r1)).unwrap();
+    fake.inject(&bid, &mid, &from, &body);
+    clock.set(T0 + 6_000);
+    post_chat(&r2, &bid, &msg_n(3, AuthorKind::Manager));
+    assert_eq!(b.poll_once().unwrap().len(), 2);
+    assert!(alert_kinds(&b).is_empty());
     let bound: Vec<String> = b.lock().st.bindings.values().cloned().collect();
     assert_eq!(bound, vec![my_id(&r2)]);
 }

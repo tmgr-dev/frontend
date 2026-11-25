@@ -4040,7 +4040,7 @@ fn a_send_after_the_re_pair_reaches_the_new_runner_and_its_receipt_claims_the_ma
 fn the_old_runner_keeps_the_machine_when_it_spoke_after_the_pending_revoke_arrived() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (_a, b, r1, r2) = rebind_world(&fake, &clock);
-  b.lock().st.last_seen.insert(my_id(&r1), T0 + 6_000);
+  b.lock().st.last_sent.insert(my_id(&r1), T0 + 6_000);
   post_chat(&r2, &my_id(&b), &msg_n(3, "session"));
   assert!(b.poll_once().unwrap().is_empty());
   assert!(alert_kinds(&b).contains(&"room_conflict".to_owned()));
@@ -4052,6 +4052,7 @@ fn a_pending_revoke_stored_without_a_receive_time_is_stamped_at_the_next_poll() 
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (_a, b, _r1, r2) = rebind_world(&fake, &clock);
   b.lock().st.pending_revokes[0].received_at_ms = 0;
+  b.lock().st.pending_revokes[0].issued_at_ms = 0;
   post_chat(&r2, &my_id(&b), &msg_n(3, "session"));
   assert_eq!(b.poll_once().unwrap().len(), 1);
   assert_eq!(b.trust_state().unwrap().pending_revokes[0].received_at_ms, T0 + 6_000);
@@ -4068,6 +4069,7 @@ fn the_old_runner_keeps_the_machine_when_it_speaks_in_the_same_poll_as_a_runner_
   let bid = my_id(&b);
   post_chat(&r2, &bid, &msg_n(2, "manager"));
   assert_eq!(b.poll_once().unwrap().len(), 1);
+  clock.set(T0 + 6_000);
   post_chat(&r2, &bid, &msg_n(4, "session"));
   let (mid, from, body) = {
     let mut s = fake.0.lock().unwrap();
@@ -4083,6 +4085,34 @@ fn the_old_runner_keeps_the_machine_when_it_speaks_in_the_same_poll_as_a_runner_
   fake.inject(&bid, &mid, &from, &body);
   b.poll_once().unwrap();
   assert!(alert_kinds(&b).contains(&"room_conflict".to_owned()));
+  assert_eq!(b.lock().st.bindings.get(&room().machine), Some(&my_id(&r2)));
+}
+
+#[test]
+fn the_old_runner_backlog_signed_before_the_revoke_does_not_keep_the_machine() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+  let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+  b.poll_once().unwrap();
+  let bid = my_id(&b);
+  post_chat(&r1, &bid, &msg_n(2, "manager"));
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  clock.set(T0 + 4_000);
+  post_chat(&r1, &bid, &msg_n(4, "session"));
+  let (mid, from, body) = {
+    let mut s = fake.0.lock().unwrap();
+    let i = s.msgs.iter().rposition(|m| m.to == bid).unwrap();
+    let m = s.msgs.remove(i);
+    (m.msg_id, m.from, m.body)
+  };
+  clock.set(T0 + 5_000);
+  a.revoke(&my_id(&r1)).unwrap();
+  fake.inject(&bid, &mid, &from, &body);
+  clock.set(T0 + 6_000);
+  post_chat(&r2, &bid, &msg_n(3, "session"));
+  assert_eq!(b.poll_once().unwrap().len(), 2);
+  assert!(!alert_kinds(&b).contains(&"room_conflict".to_owned()));
   assert_eq!(b.lock().st.bindings.get(&room().machine), Some(&my_id(&r2)));
 }
 

@@ -5249,6 +5249,7 @@ fn a_terminal_cannot_vouch_issue_codes_approve_or_revoke_others() {
         target_label: "D".into(),
         target_fp: fp_of(&d),
         received_at_ms: 0,
+        issued_at_ms: 0,
     });
     assert!(has(x.decide_revoke("s1", true)));
     assert_eq!(x.lock().st.pending_revokes.len(), 1);
