@@ -5,6 +5,7 @@ use crate::verify::{verify_der_b64, TrustStatus, TrustView};
 use sha2::{Digest, Sha256};
 
 const PREFIX: &str = "tmgr-spawn-key:v1:";
+const PRESENCE_PREFIX: &str = "tmgr-presence-key:v1:";
 const MAX_STATEMENT_BYTES: usize = 512;
 
 pub struct DeviceKeys<'a> {
@@ -75,7 +76,62 @@ pub fn build_spawn_key_statement(
     format!("{PREFIX}{user_id}:{device_fp}:{device_id}:{spawn_pub_b64}:{issued_at_ms}")
 }
 
+pub fn build_presence_key_statement(
+    user_id: &str,
+    device_fp: &str,
+    device_id: &str,
+    presence_pub_b64: &str,
+    issued_at_ms: u64,
+) -> String {
+    format!("{PRESENCE_PREFIX}{user_id}:{device_fp}:{device_id}:{presence_pub_b64}:{issued_at_ms}")
+}
+
 pub fn verify_spawn_key_statement(
+    expected_user_id: &str,
+    statement: &str,
+    sig_b64: &str,
+    spawn_sig_b64: &str,
+    device: &DeviceKeys<'_>,
+    trust: &dyn TrustView,
+    now_ms: u64,
+) -> Result<SpawnKeyStatement, Refusal> {
+    verify_key_statement(
+        PREFIX,
+        expected_user_id,
+        statement,
+        sig_b64,
+        spawn_sig_b64,
+        device,
+        trust,
+        now_ms,
+    )
+}
+
+/// Same checks as a spawn key statement under its own prefix; the result is kept in a separate book.
+pub fn verify_presence_key_statement(
+    expected_user_id: &str,
+    statement: &str,
+    sig_b64: &str,
+    presence_sig_b64: &str,
+    device: &DeviceKeys<'_>,
+    trust: &dyn TrustView,
+    now_ms: u64,
+) -> Result<SpawnKeyStatement, Refusal> {
+    verify_key_statement(
+        PRESENCE_PREFIX,
+        expected_user_id,
+        statement,
+        sig_b64,
+        presence_sig_b64,
+        device,
+        trust,
+        now_ms,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_key_statement(
+    prefix: &str,
     expected_user_id: &str,
     statement: &str,
     sig_b64: &str,
@@ -87,7 +143,7 @@ pub fn verify_spawn_key_statement(
     if statement.len() > MAX_STATEMENT_BYTES {
         return Err(Refusal::BadToken);
     }
-    let body = statement.strip_prefix(PREFIX).ok_or(Refusal::BadToken)?;
+    let body = statement.strip_prefix(prefix).ok_or(Refusal::BadToken)?;
     let parts: Vec<&str> = body.splitn(6, ':').collect();
     let [user_id, fp, device_id, spawn_pub_b64, issued] = parts[..] else {
         return Err(Refusal::BadToken);
@@ -424,5 +480,71 @@ mod tests {
     fn fp_matches_plan_formula() {
         let want = hex::encode(Sha256::digest(b"tmgr-chat-fp:v1:A:B"));
         assert_eq!(device_fp("A", "B"), want);
+    }
+
+    #[test]
+    fn spawn_and_presence_statements_never_cross() {
+        let f = fx();
+        let fp = device_fp(&f.sign_pub, &f.kex_pub);
+        let pres = build_presence_key_statement("42", &fp, "dev-1", &pubb64(&f.spawn), 42);
+        assert!(pres.starts_with("tmgr-presence-key:v1:"));
+        assert_eq!(
+            pres.strip_prefix("tmgr-presence-key:v1:"),
+            f.stmt.strip_prefix("tmgr-spawn-key:v1:")
+        );
+        let d = DeviceKeys {
+            device_id: "dev-1",
+            sign_pub_b64: &f.sign_pub,
+            kex_pub_b64: &f.kex_pub,
+        };
+        let t = Trust(TrustStatus::Trusted);
+        let (pa, pb) = both(&f, &pres);
+        let got = verify_presence_key_statement("42", &pres, &pa, &pb, &d, &t, NOW).unwrap();
+        assert_eq!(got.spawn_pub().len(), 65);
+        assert_eq!(
+            verify_spawn_key_statement("42", &pres, &pa, &pb, &d, &t, NOW),
+            Err(Refusal::BadToken)
+        );
+        let (sa, sb) = both(&f, &f.stmt);
+        assert_eq!(
+            verify_presence_key_statement("42", &f.stmt, &sa, &sb, &d, &t, NOW),
+            Err(Refusal::BadToken)
+        );
+        assert_eq!(
+            verify_presence_key_statement("42", &pres, &sa, &sb, &d, &t, NOW),
+            Err(Refusal::BadSig)
+        );
+    }
+
+    #[test]
+    fn a_presence_statement_needs_both_signatures_and_trust() {
+        let f = fx();
+        let fp = device_fp(&f.sign_pub, &f.kex_pub);
+        let pres = build_presence_key_statement("42", &fp, "dev-1", &pubb64(&f.spawn), 42);
+        let d = DeviceKeys {
+            device_id: "dev-1",
+            sign_pub_b64: &f.sign_pub,
+            kex_pub_b64: &f.kex_pub,
+        };
+        let t = Trust(TrustStatus::Trusted);
+        let (a, b) = both(&f, &pres);
+        assert_eq!(
+            verify_presence_key_statement("42", &pres, &a, &a, &d, &t, NOW),
+            Err(Refusal::BadSig)
+        );
+        assert_eq!(
+            verify_presence_key_statement("42", &pres, &b, &b, &d, &t, NOW),
+            Err(Refusal::BadSig)
+        );
+        for st in [
+            TrustStatus::NotTrusted,
+            TrustStatus::Revoked,
+            TrustStatus::Unknown,
+        ] {
+            assert_eq!(
+                verify_presence_key_statement("42", &pres, &a, &b, &d, &Trust(st), NOW),
+                Err(Refusal::NotTrusted)
+            );
+        }
     }
 }

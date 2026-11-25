@@ -12,16 +12,16 @@ mod wire;
 
 pub use error::Refusal;
 pub use key_statement::{
-    build_spawn_key_statement, device_fp, supersedes, verify_spawn_key_statement, DeviceKeys,
-    SpawnKeyStatement,
+    build_presence_key_statement, build_spawn_key_statement, device_fp, supersedes,
+    verify_presence_key_statement, verify_spawn_key_statement, DeviceKeys, SpawnKeyStatement,
 };
 pub use keystore::{
     ApproveError, DeviceFp, KeyBook, KeyState, KeyView, OfferOutcome, RevokeError, RevokedKey,
 };
 pub use permit::{
-    permit_signed_string, verify_permit, DesktopPolicy, PermitChoice, PermitOutcome, PermitRecord,
-    PermitRefusal, PermitScreen, PermitSender, PermitSenderKind, PermittedAnswer, SignedPermit,
-    MAX_PERMIT_TTL_MS,
+    permit_signed_string, verify_permit, DesktopPolicy, PermitChoice, PermitKey, PermitOutcome,
+    PermitRecord, PermitRefusal, PermitScreen, PermitSender, PermitSenderKind, PermittedAnswer,
+    SignedPermit, MAX_PERMIT_TTL_MS,
 };
 pub use proposal::{sha256_hex, ProposalKind, SpawnMode, SpawnProposal};
 pub use tokens::{b64_decode_strict, b64_encode, is_hex_lower, is_target_id, is_token};

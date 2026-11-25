@@ -101,6 +101,7 @@ fn base_wire(choice: PermitChoice, confirmed: u8) -> SignedPermit {
         req_sha256: r.screen.req_sha256(),
         alg: "es256".into(),
         sig: String::new(),
+        k: PermitKey::Chat,
     };
     resign(&mut w);
     w
@@ -321,6 +322,7 @@ fn fixture_cases_verify() {
             owner_device: c["owner_device"].as_bool().unwrap(),
             kind: PermitSenderKind::Mobile,
             desktop: DesktopPolicy::Safe,
+            presence: None,
         };
         let trust = Trust(trust_from(c["trust"].as_str().unwrap()));
         let got = verify_permit(&w, &r, &k, sender, &trust, c["now_ms"].as_u64().unwrap());
@@ -330,6 +332,24 @@ fn fixture_cases_verify() {
         };
         assert_eq!(code, c["expect"].as_str().unwrap(), "{}", c["name"]);
     }
+}
+
+#[test]
+fn presence_signed_string_is_pinned() {
+    let f = load();
+    let (r, k) = (record_from(&f), key_from(&f));
+    let mut w = base_wire(PermitChoice::Yes, 1);
+    w.k = PermitKey::Presence;
+    let chat = f["signed_string"].as_str().unwrap();
+    let want = format!(
+        "tmgr-permit-presence:v1:{}",
+        chat.strip_prefix("tmgr-permit:v1:").unwrap()
+    );
+    assert_eq!(permit_signed_string(&r, &k, &w), want);
+    assert_eq!(
+        serde_json::to_value(&w).unwrap()["k"].as_str(),
+        Some("presence")
+    );
 }
 
 #[test]

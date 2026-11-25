@@ -110,6 +110,20 @@ impl PermitScreen {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PermitKey {
+    #[default]
+    Chat,
+    Presence,
+}
+
+impl PermitKey {
+    pub fn is_chat(&self) -> bool {
+        *self == PermitKey::Chat
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SignedPermit {
@@ -130,6 +144,8 @@ pub struct SignedPermit {
     pub req_sha256: String,
     pub alg: String,
     pub sig: String,
+    #[serde(default, skip_serializing_if = "PermitKey::is_chat")]
+    pub k: PermitKey,
 }
 
 fn safe_int<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
@@ -154,8 +170,12 @@ pub struct PermitRecord {
 }
 
 pub fn permit_signed_string(record: &PermitRecord, key: &PinnedKey, sig: &SignedPermit) -> String {
+    let domain = match sig.k {
+        PermitKey::Chat => "tmgr-permit:v1",
+        PermitKey::Presence => "tmgr-permit-presence:v1",
+    };
     format!(
-        "tmgr-permit:v1:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+        "{domain}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
         record.user_id,
         key.device_fp,
         record.runner_id,
@@ -278,9 +298,10 @@ pub enum PermitSenderKind {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DesktopPolicy {
     None,
-    #[default]
     Safe,
     All,
+    #[default]
+    Presence,
 }
 
 impl DesktopPolicy {
@@ -289,16 +310,29 @@ impl DesktopPolicy {
             DesktopPolicy::None => "none",
             DesktopPolicy::Safe => "safe",
             DesktopPolicy::All => "all",
+            DesktopPolicy::Presence => "presence",
         }
     }
 
+    /// Whether an answer signed with the device's chat key (mobile: its spawn key) is enough.
     pub fn allows(self, kind: PermitSenderKind, screen: &PermitScreen) -> bool {
-        match kind {
-            PermitSenderKind::Mobile => true,
-            PermitSenderKind::Desktop => match self {
+        self.allows_key(kind, PermitKey::Chat, screen)
+    }
+
+    /// Whether a desktop may answer this card with a presence-key signature.
+    pub fn wants_presence(self, screen: &PermitScreen) -> bool {
+        self == DesktopPolicy::Presence && screen.is_danger()
+    }
+
+    pub fn allows_key(self, kind: PermitSenderKind, k: PermitKey, screen: &PermitScreen) -> bool {
+        match (kind, k) {
+            (PermitSenderKind::Mobile, PermitKey::Chat) => true,
+            (PermitSenderKind::Mobile, PermitKey::Presence) => false,
+            (PermitSenderKind::Desktop, k) => match self {
                 DesktopPolicy::None => false,
-                DesktopPolicy::Safe => !screen.is_danger(),
+                DesktopPolicy::Safe => k.is_chat() && !screen.is_danger(),
                 DesktopPolicy::All => true,
+                DesktopPolicy::Presence => !k.is_chat() || !screen.is_danger(),
             },
         }
     }
@@ -312,8 +346,9 @@ impl std::str::FromStr for DesktopPolicy {
             "none" => Ok(DesktopPolicy::None),
             "safe" => Ok(DesktopPolicy::Safe),
             "all" => Ok(DesktopPolicy::All),
+            "presence" => Ok(DesktopPolicy::Presence),
             _ => Err(format!(
-                "desktop policy must be none, safe or all, got {s:?}"
+                "desktop policy must be none, safe, all or presence, got {s:?}"
             )),
         }
     }
@@ -325,6 +360,8 @@ pub struct PermitSender<'a> {
     pub owner_device: bool,
     pub kind: PermitSenderKind,
     pub desktop: DesktopPolicy,
+    /// The sender's approved presence key, if any (desktop only).
+    pub presence: Option<&'a PinnedKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -371,11 +408,18 @@ pub fn verify_permit(
     if !sender.owner_device {
         return Err(PermitRefusal::NotOwnerDevice);
     }
+    if !sender
+        .desktop
+        .allows_key(sender.kind, sig.k, &record.screen)
+    {
+        return Err(PermitRefusal::DesktopNotAllowed);
+    }
+    let key = match sig.k {
+        PermitKey::Chat => key,
+        PermitKey::Presence => sender.presence.ok_or(PermitRefusal::UnknownKey)?,
+    };
     if sender.device_fp != sig.device_fp || sig.device_fp != key.device_fp {
         return Err(PermitRefusal::SenderMismatch);
-    }
-    if !sender.desktop.allows(sender.kind, &record.screen) {
-        return Err(PermitRefusal::DesktopNotAllowed);
     }
     if trust.status(&key.device_id, &key.device_fp) != TrustStatus::Trusted {
         return Err(PermitRefusal::NotTrusted);
@@ -538,6 +582,7 @@ mod tests {
             req_sha256: r.screen.req_sha256(),
             alg: "es256".into(),
             sig: String::new(),
+            k: PermitKey::Chat,
         };
         resign(&mut s, r, k);
         s
@@ -560,6 +605,7 @@ mod tests {
             owner_device: true,
             kind: PermitSenderKind::Mobile,
             desktop: DesktopPolicy::Safe,
+            presence: None,
         };
         verify_permit(s, r, k, sender, &Trust(trust), now)
     }
@@ -597,6 +643,7 @@ mod tests {
             owner_device: false,
             kind: PermitSenderKind::Mobile,
             desktop: DesktopPolicy::Safe,
+            presence: None,
         };
         let e = verify_permit(&s, &r, &k, sender, &T, NOW).unwrap_err();
         assert_eq!(e, PermitRefusal::NotOwnerDevice);
@@ -628,6 +675,7 @@ mod tests {
             owner_device: true,
             kind: PermitSenderKind::Mobile,
             desktop: DesktopPolicy::Safe,
+            presence: None,
         };
         let e = verify_permit(&s, &r, &k, sender, &T, NOW).unwrap_err();
         assert_eq!(e, PermitRefusal::SenderMismatch);
@@ -640,6 +688,7 @@ mod tests {
             owner_device: true,
             kind: PermitSenderKind::Mobile,
             desktop: DesktopPolicy::Safe,
+            presence: None,
         };
         assert_eq!(
             verify_permit(&s2, &r, &k, sender, &T, NOW),
@@ -1127,6 +1176,7 @@ mod tests {
             owner_device: true,
             kind,
             desktop,
+            presence: None,
         }
     }
 
@@ -1198,11 +1248,12 @@ mod tests {
 
     #[test]
     fn desktop_policy_parses_strictly() {
-        assert_eq!(DesktopPolicy::default(), DesktopPolicy::Safe);
+        assert_eq!(DesktopPolicy::default(), DesktopPolicy::Presence);
         for (text, p) in [
             ("none", DesktopPolicy::None),
             ("safe", DesktopPolicy::Safe),
             ("all", DesktopPolicy::All),
+            ("presence", DesktopPolicy::Presence),
         ] {
             assert_eq!(text.parse::<DesktopPolicy>(), Ok(p));
             assert_eq!(p.as_str(), text);
@@ -1222,5 +1273,249 @@ mod tests {
             verify_permit(&s, &r, &k, sender, &untrusted, NOW),
             Err(PermitRefusal::DesktopNotAllowed)
         );
+    }
+
+    fn presence_key() -> PinnedKey {
+        PinnedKey {
+            spawn_pub: sk(5)
+                .verifying_key()
+                .to_encoded_point(false)
+                .as_bytes()
+                .to_vec(),
+            ..key()
+        }
+    }
+
+    fn signed_by(
+        r: &PermitRecord,
+        choice: PermitChoice,
+        k: PermitKey,
+        signer: &SigningKey,
+    ) -> SignedPermit {
+        let mut s = signed(r, &key(), choice, u8::from(r.screen.is_danger()));
+        s.k = k;
+        let sig: Signature = signer.sign(permit_signed_string(r, &key(), &s).as_bytes());
+        s.sig = b64_encode(sig.to_der().as_bytes());
+        s
+    }
+
+    fn desk<'a>(
+        s: &'a SignedPermit,
+        policy: DesktopPolicy,
+        presence: Option<&'a PinnedKey>,
+    ) -> PermitSender<'a> {
+        PermitSender {
+            presence,
+            ..as_sender(s, PermitSenderKind::Desktop, policy)
+        }
+    }
+
+    #[test]
+    fn desktop_key_policy_table() {
+        use DesktopPolicy as P;
+        use PermitKey::{Chat, Presence};
+        let pk = presence_key();
+        let cases = [
+            (P::None, false, Chat, true, false),
+            (P::None, true, Presence, true, false),
+            (P::Safe, false, Chat, true, true),
+            (P::Safe, false, Presence, true, false),
+            (P::Safe, true, Chat, true, false),
+            (P::Safe, true, Presence, true, false),
+            (P::All, true, Chat, true, true),
+            (P::All, true, Chat, false, true),
+            (P::All, true, Presence, true, true),
+            (P::Presence, false, Chat, true, true),
+            (P::Presence, false, Chat, false, true),
+            (P::Presence, false, Presence, true, true),
+            (P::Presence, true, Presence, true, true),
+            (P::Presence, true, Chat, true, false),
+            (P::Presence, true, Chat, false, false),
+        ];
+        for (policy, danger, k, pinned, allowed) in cases {
+            let r = if danger { danger_record() } else { record() };
+            let signer = if k == Presence { sk(5) } else { sk(3) };
+            let s = signed_by(&r, PermitChoice::Yes, k, &signer);
+            let sender = desk(&s, policy, pinned.then_some(&pk));
+            let got = verify_permit(&s, &r, &key(), sender, &T, NOW);
+            let tag = format!("{policy:?} danger={danger} {k:?} pinned={pinned}");
+            if allowed {
+                assert!(got.is_ok(), "{tag}: {got:?}");
+            } else {
+                let e = got.unwrap_err();
+                assert_eq!(e, PermitRefusal::DesktopNotAllowed, "{tag}");
+                assert_eq!(e.outcome(), PermitOutcome::Drop, "{tag}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_presence_answer_without_a_pinned_presence_key_is_dropped() {
+        let r = danger_record();
+        let s = signed_by(&r, PermitChoice::Yes, PermitKey::Presence, &sk(5));
+        let e = verify_permit(
+            &s,
+            &r,
+            &key(),
+            desk(&s, DesktopPolicy::Presence, None),
+            &T,
+            NOW,
+        )
+        .unwrap_err();
+        assert_eq!(e, PermitRefusal::UnknownKey);
+        assert_eq!(e.outcome(), PermitOutcome::Drop);
+    }
+
+    #[test]
+    fn a_mobile_presence_answer_is_dropped() {
+        let r = danger_record();
+        let pk = presence_key();
+        let s = signed_by(&r, PermitChoice::Yes, PermitKey::Presence, &sk(5));
+        for policy in [DesktopPolicy::All, DesktopPolicy::Presence] {
+            let sender = PermitSender {
+                presence: Some(&pk),
+                ..as_sender(&s, PermitSenderKind::Mobile, policy)
+            };
+            let e = verify_permit(&s, &r, &key(), sender, &T, NOW).unwrap_err();
+            assert_eq!(e.outcome(), PermitOutcome::Drop, "{policy:?} {e:?}");
+        }
+    }
+
+    #[test]
+    fn the_key_kind_is_bound_into_the_signature() {
+        let r = danger_record();
+        let pk = presence_key();
+        let mut relabelled = signed_by(&r, PermitChoice::Yes, PermitKey::Presence, &sk(3));
+        relabelled.k = PermitKey::Chat;
+        let s = relabelled.clone();
+        assert_eq!(
+            verify_permit(
+                &s,
+                &r,
+                &key(),
+                desk(&s, DesktopPolicy::All, Some(&pk)),
+                &T,
+                NOW
+            ),
+            Err(PermitRefusal::BadSig)
+        );
+        let mut relabelled = signed_by(&r, PermitChoice::Yes, PermitKey::Chat, &sk(5));
+        relabelled.k = PermitKey::Presence;
+        let s = relabelled.clone();
+        assert_eq!(
+            verify_permit(
+                &s,
+                &r,
+                &key(),
+                desk(&s, DesktopPolicy::Presence, Some(&pk)),
+                &T,
+                NOW
+            ),
+            Err(PermitRefusal::BadSig)
+        );
+        let chat_signed_as_presence = signed_by(&r, PermitChoice::Yes, PermitKey::Presence, &sk(3));
+        let s = chat_signed_as_presence;
+        assert_eq!(
+            verify_permit(
+                &s,
+                &r,
+                &key(),
+                desk(&s, DesktopPolicy::Presence, Some(&pk)),
+                &T,
+                NOW
+            ),
+            Err(PermitRefusal::BadSig)
+        );
+    }
+
+    #[test]
+    fn a_presence_key_of_another_device_is_a_mismatch() {
+        let r = danger_record();
+        let other = PinnedKey {
+            device_fp: "e".repeat(64),
+            ..presence_key()
+        };
+        let s = signed_by(&r, PermitChoice::Yes, PermitKey::Presence, &sk(5));
+        let e = verify_permit(
+            &s,
+            &r,
+            &key(),
+            desk(&s, DesktopPolicy::Presence, Some(&other)),
+            &T,
+            NOW,
+        )
+        .unwrap_err();
+        assert_eq!(e, PermitRefusal::SenderMismatch);
+    }
+
+    #[test]
+    fn a_presence_answer_from_an_untrusted_device_is_refused() {
+        let r = danger_record();
+        let pk = presence_key();
+        let s = signed_by(&r, PermitChoice::Yes, PermitKey::Presence, &sk(5));
+        for t in [
+            TrustStatus::NotTrusted,
+            TrustStatus::Revoked,
+            TrustStatus::Unknown,
+        ] {
+            let got = verify_permit(
+                &s,
+                &r,
+                &key(),
+                desk(&s, DesktopPolicy::Presence, Some(&pk)),
+                &Trust(t),
+                NOW,
+            );
+            assert_eq!(got, Err(PermitRefusal::NotTrusted), "{t:?}");
+        }
+    }
+
+    #[test]
+    fn the_key_kind_is_on_the_wire_only_for_presence() {
+        let w: SignedPermit = serde_json::from_str(J).unwrap();
+        assert_eq!(w.k, PermitKey::Chat);
+        assert!(!serde_json::to_string(&w).unwrap().contains("\"k\""));
+        let chat = J.replace("\"sig\":\"s\"", "\"sig\":\"s\",\"k\":\"chat\"");
+        assert_eq!(
+            serde_json::from_str::<SignedPermit>(&chat).unwrap().k,
+            PermitKey::Chat
+        );
+        let pres = J.replace("\"sig\":\"s\"", "\"sig\":\"s\",\"k\":\"presence\"");
+        let p: SignedPermit = serde_json::from_str(&pres).unwrap();
+        assert_eq!(p.k, PermitKey::Presence);
+        assert_eq!(serde_json::to_string(&p).unwrap(), pres);
+        for bad in ["\"spawn\"", "\"Presence\"", "1", "null"] {
+            let j = J.replace("\"sig\":\"s\"", &format!("\"sig\":\"s\",\"k\":{bad}"));
+            assert!(serde_json::from_str::<SignedPermit>(&j).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn presence_uses_its_own_signing_domain() {
+        let r = record();
+        let mut s = signed(&r, &key(), PermitChoice::Yes, 0);
+        let chat = permit_signed_string(&r, &key(), &s);
+        s.k = PermitKey::Presence;
+        let pres = permit_signed_string(&r, &key(), &s);
+        assert!(chat.starts_with("tmgr-permit:v1:"));
+        assert_eq!(
+            pres,
+            chat.replacen("tmgr-permit:v1:", "tmgr-permit-presence:v1:", 1)
+        );
+    }
+
+    #[test]
+    fn desktop_cards_want_presence_only_when_danger_under_presence() {
+        let (safe, danger) = (record().screen, danger_record().screen);
+        for p in [DesktopPolicy::None, DesktopPolicy::Safe, DesktopPolicy::All] {
+            assert!(
+                !p.wants_presence(&safe) && !p.wants_presence(&danger),
+                "{p:?}"
+            );
+        }
+        assert!(!DesktopPolicy::Presence.wants_presence(&safe));
+        assert!(DesktopPolicy::Presence.wants_presence(&danger));
+        assert!(DesktopPolicy::Presence.allows(PermitSenderKind::Desktop, &safe));
+        assert!(!DesktopPolicy::Presence.allows(PermitSenderKind::Desktop, &danger));
     }
 }
