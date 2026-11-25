@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.192
+
+- Dangerous permission cards can be answered from a Mac with Touch ID. A desktop on TMGR 0.9.216 sets up a Touch ID key in the Encryption tab and sends it to your runners; approve it on the runner host with `tmgr runner manager presence-keys approve <device_fp> <key_fp>`. `tmgr runner manager presence-keys list|revoke` show and remove approved keys.
+- A newly created `permit.toml` lets approved desktops answer dangerous cards with Touch ID. Existing files are left as they are.
+- Touch ID approvals are not yet verified on real hardware; the phone and `tmgr attach` keep working as before.
+
 ## 1.0.191
 
 - A runner paired again on the same machine takes that machine over. Phones, the desktop app and `tmgr attach` move its chat rooms to the new runner while the old runner's removal is still pending, so replies from the re-paired runner arrive instead of being refused as a room conflict.

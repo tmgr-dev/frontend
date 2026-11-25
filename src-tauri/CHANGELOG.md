@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.216 — 2026-11-25
+
+- Manager: dangerous permission cards can be answered here with Touch ID. Set it up under Touch ID approvals in the Manager's Encryption tab, then run the shown `tmgr runner manager presence-keys approve` command on the runner host. One Touch ID prompt covers answers for 10 minutes; sleep, screen lock or switching users ends it. Needs tmgr CLI 1.0.192.
+- Touch ID approvals are not yet verified on real hardware. If an answer fails right after Touch ID, answer on the phone or in `tmgr attach`.
+- Manager: Copy on a message copies its text instead of "[object Object]", and the composer shrinks back after sending a long message.
+
 ## 0.9.215 — 2026-11-25
 
 - Manager: when a runner is paired again on the same machine, the chat moves that machine's rooms to the new runner while the old runner's removal is still pending. Replies from the re-paired runner show up instead of a room conflict. Pairs with tmgr CLI 1.0.191.
