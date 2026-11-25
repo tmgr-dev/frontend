@@ -1,13 +1,11 @@
-#![allow(dead_code)]
-
-mod desk;
-mod picker;
-#[cfg(test)]
-mod sim;
-#[cfg(test)]
-mod tests;
+pub mod desk;
 #[cfg(test)]
 mod desk_tests;
+mod picker;
+#[cfg(test)]
+pub(crate) mod sim;
+#[cfg(test)]
+mod tests;
 
 use crate::attach::status::AskQuestion;
 use crate::sanitize::is_unsafe;

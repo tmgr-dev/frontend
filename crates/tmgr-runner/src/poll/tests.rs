@@ -173,7 +173,6 @@ fn matches_the_card_identity() {
     assert!(matches_card(&picker(NARROW), &narrow_q()));
 }
 
-
 #[test]
 fn rejects_a_different_card() {
     let p = picker(SINGLE);

@@ -184,6 +184,7 @@ pub(super) mod tests {
             switch_lock: Mutex::new(HashSet::new()),
             spawn_gate: super::spawnauth::SpawnGate::default(),
             permit_relay: super::permitrelay::PermitRelay::default(),
+            poll_relay: super::pollrelay::PollRelay::default(),
             capture_fast_until: Mutex::new(None),
             chat: chat_store.clone(),
             mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),

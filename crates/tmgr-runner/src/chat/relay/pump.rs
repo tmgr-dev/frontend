@@ -8,8 +8,8 @@ use serde_json::Value;
 use tmgr_chat_relay::api::Request;
 use tmgr_chat_relay::engine::blob::BlobPart;
 use tmgr_chat_relay::engine::{
-    retry_after_secs, ChatSink, EngineConfig, KeyStore, PermitOkSink, RelayEngine, RoomScope, Slot,
-    SpawnKeySink, SpawnOkSink, Transport,
+    retry_after_secs, ChatSink, EngineConfig, KeyStore, PermitOkSink, PollSink, RelayEngine,
+    RoomScope, Slot, SpawnKeySink, SpawnOkSink, Transport,
 };
 use tmgr_ipc::chat::{AuthorKind, ChatMessage, ChatPush, MessageKind, RoomInfo, RoomRef};
 
@@ -403,6 +403,7 @@ pub struct Setup {
     pub spawnkey: Arc<dyn SpawnKeySink>,
     pub spawnok: Option<Arc<dyn SpawnOkSink>>,
     pub permitok: Option<Arc<dyn PermitOkSink>>,
+    pub poll: Option<Arc<dyn PollSink>>,
     pub serve_rpc: Arc<dyn Fn(RpcSend) -> Option<JoinHandle<()>> + Send + Sync>,
     pub on_device: OnDevice,
     pub on_owners: Arc<dyn Fn(crate::chat::OwnersFn) + Send + Sync>,
@@ -448,8 +449,12 @@ fn build(setup: &Setup, leases: &Arc<Leases>) -> Result<Option<Engine>, String> 
             Some(sink) => e.with_spawnok_sink(sink.clone()),
             None => e,
         };
-        Some(match &setup.permitok {
+        let e = match &setup.permitok {
             Some(sink) => e.with_permitok_sink(sink.clone()),
+            None => e,
+        };
+        Some(match &setup.poll {
+            Some(sink) => e.with_poll_sink(sink.clone()),
             None => e,
         })
     })

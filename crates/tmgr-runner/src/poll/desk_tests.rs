@@ -1,10 +1,10 @@
 use super::desk::*;
 use super::sim::*;
 use super::*;
-use std::sync::Mutex;
 use crate::attach::status::{AskPoll, AskQuestion};
-use tmgr_ipc::chat::{PollAnswer, PollMsg, PollPick};
+use std::sync::Mutex;
 use std::time::Duration;
+use tmgr_ipc::chat::{PollAnswer, PollMsg, PollPick};
 
 struct Fake {
     sim: Mutex<Sim>,
@@ -55,6 +55,7 @@ fn answering(qs: Vec<AskQuestion>, picks: Vec<PollPick>) -> Answering {
     Answering {
         card_id: "poll_x".into(),
         session: "s_aaaaaaaaaa".into(),
+        tool_use_id: "t".into(),
         questions: qs,
         picks,
     }
@@ -254,7 +255,9 @@ fn an_unanswerable_card_is_reposted_once_when_it_becomes_answerable() {
     let p = poll("t1", vec![scope_q()]);
     let screen = shown(vec![scope_q()]);
     let again = d.observe(SID, Some(&p), screen.as_ref(), true);
-    assert!(matches!(&again[..], [Action::Post { card_id, poll }] if *card_id == id && poll.can_answer));
+    assert!(
+        matches!(&again[..], [Action::Post { card_id, poll }] if *card_id == id && poll.can_answer)
+    );
     assert!(d.observe(SID, Some(&p), screen.as_ref(), true).is_empty());
     assert!(d
         .begin_answer(&id, &answer(&id, vec![pick(0, &[0], None)]), "dev")
@@ -311,7 +314,11 @@ fn an_answering_card_is_left_to_the_worker() {
     );
     assert!(matches!(
         fin,
-        Some(Action::Close { closed: "applied", picked: Some(_), .. })
+        Some(Action::Close {
+            closed: "applied",
+            picked: Some(_),
+            ..
+        })
     ));
     assert_eq!(d.finish(&id, Outcome::Stale), None);
     assert!(d.gone(SID).is_empty());
@@ -342,10 +349,7 @@ fn a_second_answer_is_a_duplicate_and_a_closed_card_never_types() {
     assert_eq!(d.begin_answer(&id, &a, "other"), Err(Reject::Duplicate));
     d.finish(&id, Outcome::Stale);
     assert_eq!(d.begin_answer(&id, &a, "dev"), Err(Reject::Duplicate));
-    assert_eq!(
-        d.begin_answer("poll_nope", &a, "dev"),
-        Err(Reject::Unknown)
-    );
+    assert_eq!(d.begin_answer("poll_nope", &a, "dev"), Err(Reject::Unknown));
 }
 
 #[test]

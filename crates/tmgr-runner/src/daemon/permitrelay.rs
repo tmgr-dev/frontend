@@ -142,7 +142,7 @@ fn fresh_nonce() -> Option<String> {
     Some(b.iter().map(|x| format!("{x:02x}")).collect())
 }
 
-fn clean(s: &str, max: usize) -> String {
+pub(super) fn clean(s: &str, max: usize) -> String {
     strip_bidi(s)
         .chars()
         .filter(|c| !c.is_control())
@@ -151,7 +151,7 @@ fn clean(s: &str, max: usize) -> String {
 }
 
 impl Runner {
-    fn permit_ids(&self) -> Option<(Arc<SpawnAuth>, RunnerIds)> {
+    pub(super) fn permit_ids(&self) -> Option<(Arc<SpawnAuth>, RunnerIds)> {
         let auth = self.spawn_gate.auth(self).ok()?;
         let id = auth.identity();
         let ids = RunnerIds {

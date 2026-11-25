@@ -75,7 +75,6 @@ impl Tail {
         self.status.as_ref().is_some_and(StatusScan::is_asking)
     }
 
-    #[allow(dead_code)] // read by the poll tick in a later slice
     pub(super) fn asking_poll(&self) -> Option<&AskPoll> {
         self.status.as_ref().and_then(StatusScan::asking_poll)
     }
@@ -367,6 +366,7 @@ pub fn capture_consenting(
     resolve: &dyn Fn(&SessionInfo, Agent) -> Option<PathBuf>,
     reading_allowed: &dyn Fn(Agent) -> bool,
 ) -> Vec<(String, String)> {
+    chat.set_claude_read(reading_allowed(Agent::Claude));
     chat.set_activity_consent(reading_allowed(Agent::Claude) || reading_allowed(Agent::Codex));
     let mut titles = Vec::new();
     let Some(store) = chat.store.as_ref() else {

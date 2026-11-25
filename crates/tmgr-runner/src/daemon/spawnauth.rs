@@ -795,6 +795,7 @@ impl Runner {
         while !self.stop.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(250));
             self.permit_tick(now_ms());
+            self.poll_tick();
             if last.elapsed() < CARD_TICK {
                 continue;
             }

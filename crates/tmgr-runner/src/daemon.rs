@@ -71,6 +71,7 @@ mod handoff;
 mod manager;
 mod mention;
 mod permitrelay;
+mod pollrelay;
 mod remote_policy;
 mod spawnauth;
 mod spawnkeys;
@@ -2081,6 +2082,7 @@ struct Runner {
     mgr: Arc<crate::manager::State>,
     spawn_gate: spawnauth::SpawnGate,
     permit_relay: permitrelay::PermitRelay,
+    poll_relay: pollrelay::PollRelay,
     capture_fast_until: Mutex<Option<Instant>>,
 }
 
@@ -5901,6 +5903,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
         spawn_gate: spawnauth::SpawnGate::default(),
         permit_relay: permitrelay::PermitRelay::default(),
+        poll_relay: pollrelay::PollRelay::default(),
         capture_fast_until: Mutex::new(None),
     });
     log(&format!("runner {} starting", cfg.version));
@@ -6814,6 +6817,7 @@ mod tests {
             mgr: Arc::new(crate::manager::State::new(Box::new(chat_store))),
             spawn_gate: spawnauth::SpawnGate::default(),
             permit_relay: permitrelay::PermitRelay::default(),
+            poll_relay: pollrelay::PollRelay::default(),
             capture_fast_until: Mutex::new(None),
         };
         let meta: Meta = serde_json::from_value(serde_json::json!({

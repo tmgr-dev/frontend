@@ -27,6 +27,7 @@ use tmgr_ipc::chat::{
     ChatPush, MentionRef, MessageKind, RelaySelf, RoomInfo, RoomRef, CHAT_V,
 };
 
+use crate::attach::AskPoll;
 use crate::mgr_rpc::relay::RpcClient;
 
 const MACHINE_FILE: &str = "machine.id";
@@ -174,6 +175,7 @@ pub struct Chat {
     subs: Mutex<Vec<SyncSender<ChatPush>>>,
     activity_subs: Mutex<Vec<Arc<activity::Slot>>>,
     activity_on: Arc<AtomicBool>,
+    claude_read: AtomicBool,
     seq: AtomicU16,
     tails: Mutex<HashMap<String, tail::Tail>>,
     sent: Mutex<VecDeque<(String, String, Instant)>>,
@@ -226,6 +228,7 @@ impl Chat {
             subs: Mutex::new(Vec::new()),
             activity_subs: Mutex::new(Vec::new()),
             activity_on: Arc::new(AtomicBool::new(false)),
+            claude_read: AtomicBool::new(false),
             seq: AtomicU16::new(0),
             tails: Mutex::new(HashMap::new()),
             sent: Mutex::new(VecDeque::new()),
@@ -709,6 +712,21 @@ impl Chat {
                 s.clear();
             }
         }
+    }
+
+    pub(crate) fn set_claude_read(&self, on: bool) {
+        self.claude_read.store(on, Ordering::SeqCst);
+    }
+
+    pub(crate) fn claude_read(&self) -> bool {
+        self.claude_read.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn asking_poll(&self, session: &str) -> Option<AskPoll> {
+        if !self.claude_read() {
+            return None;
+        }
+        lock(&self.tails).get(session)?.asking_poll().cloned()
     }
 
     pub(crate) fn retire_activity(&self, room: &RoomRef) {

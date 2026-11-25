@@ -92,6 +92,7 @@ pub enum Reject {
 pub struct Answering {
     pub card_id: String,
     pub session: String,
+    pub tool_use_id: String,
     pub questions: Vec<AskQuestion>,
     pub picks: Vec<PollPick>,
 }
@@ -105,6 +106,7 @@ enum State {
 #[derive(Debug)]
 struct Card {
     session: String,
+    tool_use_id: String,
     questions: Vec<AskQuestion>,
     state: State,
     posted_answerable: bool,
@@ -201,6 +203,7 @@ impl PollDesk {
                 if self.cards.len() < MAX_OPEN {
                     let c = Card {
                         session: session.to_string(),
+                        tool_use_id: p.tool_use_id.clone(),
                         questions: p.questions.clone(),
                         state: State::Open,
                         posted_answerable: can,
@@ -250,6 +253,7 @@ impl PollDesk {
         Ok(Answering {
             card_id: card_id.to_string(),
             session: c.session.clone(),
+            tool_use_id: c.tool_use_id.clone(),
             questions: c.questions.clone(),
             picks,
         })

@@ -417,6 +417,7 @@ pub(super) mod tests {
             mgr: Arc::new(core::State::default()),
             spawn_gate: spawnauth::SpawnGate::default(),
             permit_relay: permitrelay::PermitRelay::default(),
+            poll_relay: pollrelay::PollRelay::default(),
             capture_fast_until: Mutex::new(None),
         })
     }

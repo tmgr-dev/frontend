@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.195
+
+- Claude Code question pickers (`AskUserQuestion`) now show in the TMGR Manager chat as poll cards. An answer from the desktop app or the phone is typed into the session by the runner, one key at a time, and checked on screen after every key; the card then shows the result. This works only when reading Claude Code transcripts is allowed (`tmgr usage consent`), and for Claude Code sessions only. A picker that is not in the foreground pane shows as "open the pane to answer".
+
 ## 1.0.194
 
 - Session chats again show the agent's replies when Claude Code agent teams or a nested `claude` write their own transcripts next to the session's: the runner now follows the session's own conversation (from Claude Code's pid file) instead of the newest file.

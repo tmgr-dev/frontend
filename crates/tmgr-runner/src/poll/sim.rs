@@ -51,7 +51,6 @@ pub(crate) fn pick(idx: u8, choices: &[u8], other: Option<&str>) -> PollPick {
     }
 }
 
-
 pub(crate) fn narrow_q() -> AskQuestion {
     question(
         "Narrow",
