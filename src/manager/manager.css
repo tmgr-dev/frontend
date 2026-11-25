@@ -518,6 +518,28 @@ html.dark .manager {
 .manager .txt.plain {
 	white-space: pre-wrap;
 }
+.manager .txt a,
+.manager .bubble a {
+	color: var(--brand-fg);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+.manager .txt a:visited,
+.manager .bubble a:visited {
+	color: var(--brand-fg);
+}
+.manager .txt a:hover,
+.manager .bubble a:hover {
+	text-decoration-thickness: 2px;
+}
+.manager .txt a:focus-visible,
+.manager .bubble a:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 1px;
+	border-radius: 2px;
+}
 .manager .txt p,
 .manager .bubble p {
 	margin: 0 0 6px;
