@@ -5529,6 +5529,8 @@ fn a_permit_refresh_from_a_device_with_a_pending_revoke_is_dropped() {
         target_id: my_id(&a),
         target_label: "Sender".into(),
         target_fp: fp_of(&a),
+        received_at_ms: 0,
+        issued_at_ms: 0,
     });
     post_permitok(&a, &r, &refresh_payload());
     post_permitok(&a, &r, &permitok_payload(&fp_of(&a)));
@@ -5569,6 +5571,8 @@ fn a_terminal_does_not_send_chat_to_a_device_with_a_pending_revoke() {
         target_id: did.clone(),
         target_label: "D".into(),
         target_fp: dfp,
+        received_at_ms: 0,
+        issued_at_ms: 0,
     });
     let (before_d, before_a) = (fake.queue_len(&did), fake.queue_len(&my_id(&a)));
     x.send_chat(&text_msg(new_message_id(), "hi"), false)

@@ -114,6 +114,8 @@ fn a_probe_from_a_device_with_a_pending_revoke_gets_no_receipt() {
             target_id: my_id(&term),
             target_label: "Term".into(),
             target_fp: tfp,
+            received_at_ms: 0,
+            issued_at_ms: 0,
         });
     }
     let ids = term.send_probes().unwrap();
@@ -193,6 +195,8 @@ fn the_probe_path_asks_the_sink_with_the_kind_chat_delivery_uses() {
             target_id: my_id(&term),
             target_label: "Term".into(),
             target_fp: tfp,
+            received_at_ms: 0,
+            issued_at_ms: 0,
         });
     }
     runner.s.probe_kinds.lock().unwrap().clear();
