@@ -1554,9 +1554,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         .cloned()
         .ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
       let msg_id = random_msg_id("permitok").map_err(err)?;
-      if !c.sending.insert(guard_key.clone()) {
+      if c.sending.contains_key(&guard_key) {
         return Err("This card is already being answered".into());
       }
+      c.sending.insert(guard_key.clone(), stored.room.machine.clone());
       match self.seal_items(c, "permitok", &msg_id, &payload, std::slice::from_ref(&runner)) {
         Ok(sealed) => (msg_id, Self::token_of(c)?, sealed),
         Err(e) => {
