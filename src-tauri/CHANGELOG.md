@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.221 — 2026-11-26
+
+- Manager chat shows Claude Code question pickers as poll cards that can be answered with a tap, for sessions on this computer and on paired machines. This needs tmgr CLI 1.0.195 or newer and a restarted runner.
+
 ## 0.9.220 — 2026-11-26
 
 - Manager: links in chat messages are now readable in dark mode (themed color, underline, long URLs wrap).
