@@ -10,6 +10,8 @@ struct Fake {
     sim: Mutex<Sim>,
     send_ok: bool,
     stuck_open: bool,
+    allowed: std::sync::atomic::AtomicBool,
+    drift_before_send: bool,
 }
 
 impl Fake {
@@ -18,6 +20,8 @@ impl Fake {
             sim: Mutex::new(sim),
             send_ok: true,
             stuck_open: false,
+            allowed: true.into(),
+            drift_before_send: false,
         }
     }
 
@@ -31,12 +35,23 @@ impl Terminal for Fake {
         parse_screen(&self.sim.lock().unwrap().render())
     }
 
-    fn send(&self, keys: &[u8]) -> bool {
-        if !self.send_ok {
-            return false;
+    fn send_checked(&self, keys: &[u8], check: &dyn Fn(Option<&Screen>) -> bool) -> Sent {
+        let mut sim = self.sim.lock().unwrap();
+        if self.drift_before_send {
+            sim.press(b"\x1b[B");
         }
-        self.sim.lock().unwrap().press(keys);
-        true
+        if !check(parse_screen(&sim.render()).as_ref()) {
+            return Sent::Changed;
+        }
+        if !self.send_ok {
+            return Sent::Refused;
+        }
+        sim.press(keys);
+        Sent::Ok
+    }
+
+    fn allowed(&self) -> bool {
+        self.allowed.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn poll_open(&self) -> bool {
@@ -174,6 +189,28 @@ fn executor_fails_when_a_key_is_not_accepted() {
 }
 
 #[test]
+fn executor_sends_nothing_when_the_screen_changes_before_the_key() {
+    let mut t = Fake::new(Sim::new(vec![scope_q()], 100));
+    t.drift_before_send = true;
+    assert_eq!(
+        run(&t, vec![scope_q()], vec![pick(0, &[2], None)]),
+        Outcome::Stale
+    );
+    assert_eq!(t.keys(), [b"\x1b[B".to_vec()]);
+}
+
+#[test]
+fn executor_stops_when_consent_is_turned_off() {
+    let t = Fake::new(Sim::new(vec![scope_q()], 100));
+    t.allowed.store(false, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        run(&t, vec![scope_q()], vec![pick(0, &[2], None)]),
+        Outcome::Failed("reading consent was turned off".into())
+    );
+    assert!(t.keys().is_empty());
+}
+
+#[test]
 fn executor_needs_the_agent_to_confirm() {
     let mut t = Fake::new(Sim::new(vec![scope_q()], 100));
     t.stuck_open = true;
@@ -217,11 +254,16 @@ fn posted(desk: &mut PollDesk, tool: &str, fg: bool) -> (String, PollMsg) {
 
 #[test]
 fn card_ids_are_stable_and_scoped() {
-    let a = card_id(SID, "tool1");
+    let q = [scope_q()];
+    let a = card_id(SID, "tool1", &q);
     assert!(a.starts_with("poll_") && a.len() == 37);
-    assert_eq!(a, card_id(SID, "tool1"));
-    assert_ne!(a, card_id(SID, "tool2"));
-    assert_ne!(a, card_id("s_bbbbbbbbbb", "tool1"));
+    assert_eq!(a, card_id(SID, "tool1", &q));
+    assert_ne!(a, card_id(SID, "tool2", &q));
+    assert_ne!(a, card_id("s_bbbbbbbbbb", "tool1", &q));
+    assert_ne!(a, card_id(SID, "tool1", &[sources_q()]));
+    let mut other = scope_q();
+    other.options[1].label = "Else".into();
+    assert_ne!(a, card_id(SID, "tool1", &[other]));
 }
 
 #[test]
@@ -404,4 +446,66 @@ fn open_cards_and_the_closed_ring_are_bounded() {
         d.observe("s_ring", None, None, true);
     }
     assert!(d.closed.len() <= 128);
+}
+
+#[test]
+fn a_changed_question_under_the_same_tool_id_replaces_the_card() {
+    let mut d = PollDesk::default();
+    let (old, _) = posted(&mut d, "t1", true);
+    let p = poll("t1", vec![sources_q()]);
+    let out = d.observe(SID, Some(&p), shown(vec![sources_q()]).as_ref(), true);
+    assert_eq!(out.len(), 2);
+    assert!(
+        matches!(&out[0], Action::Close { card_id, closed: "terminal", .. } if *card_id == old)
+    );
+    assert!(matches!(&out[1], Action::Post { card_id, .. } if *card_id != old));
+}
+
+#[test]
+fn displayed_fields_are_stripped_and_capped() {
+    let mut q = scope_q();
+    q.header = "He\u{202e}ad\u{1b}[31m".into();
+    q.question = "Wh\u{202e}ich\u{7}?".into();
+    q.options[1].label = "Opt\u{202e}ion\u{1b}".into();
+    q.options[1].description = "de\u{202e}sc\n\u{3}".into();
+    let extra: Vec<AskQuestion> = (0..6).map(|_| q.clone()).collect();
+    let mut d = PollDesk::default();
+    let p = poll("t1", extra);
+    let out = d.observe(SID, Some(&p), None, true);
+    let Some(Action::Post { poll, .. }) = out.first() else {
+        panic!("{out:?}")
+    };
+    assert_eq!(poll.questions.len(), 4);
+    let q = &poll.questions[0];
+    assert_eq!(q.header, "Head[31m");
+    assert_eq!(q.question, "Which?");
+    assert_eq!(q.options[1].label, "Option");
+    assert_eq!(q.options[1].description, "desc");
+}
+
+#[test]
+fn a_closed_summary_and_reason_are_stripped() {
+    let mut d = PollDesk::default();
+    let (id, _) = posted(&mut d, "t1", true);
+    d.begin_answer(&id, &answer(&id, vec![pick(0, &[1], None)]), "dev")
+        .unwrap();
+    match d.finish(&id, Outcome::Failed("bad\u{202e}\u{1b}[0m".into())) {
+        Some(Action::Close { why, .. }) => assert_eq!(why.as_deref(), Some("bad[0m")),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn fail_open_closes_only_an_open_card() {
+    let mut d = PollDesk::default();
+    let (id, _) = posted(&mut d, "t1", true);
+    d.begin_answer(&id, &answer(&id, vec![pick(0, &[1], None)]), "dev")
+        .unwrap();
+    assert_eq!(d.fail_open(&id, "busy"), None);
+    let (id2, _) = posted(&mut d, "t2", true);
+    assert!(matches!(
+        d.fail_open(&id2, "busy"),
+        Some(Action::Close { closed: "failed", why: Some(w), .. }) if w == "busy"
+    ));
+    assert_eq!(d.fail_open(&id2, "busy"), None);
 }

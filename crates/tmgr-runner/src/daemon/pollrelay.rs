@@ -1,8 +1,9 @@
 use super::permitrelay::clean;
 use super::spawnauth::release_queued;
 use super::*;
-use crate::poll::desk::{self, Action, Outcome, PollDesk, Terminal};
+use crate::poll::desk::{self, Action, Outcome, PollDesk, Sent, Terminal};
 use crate::poll::{parse_screen, Screen};
+use std::collections::VecDeque;
 use tmgr_chat_relay::engine::PollSink;
 use tmgr_ipc::chat::{
     limits, Author, AuthorKind, ChatMessage, MessageKind, PollAnswer, PollMsg, CHAT_V,
@@ -16,12 +17,27 @@ const POLL_INTAKE_TICK: Duration = Duration::from_millis(500);
 const POSTED_CAP: usize = 64;
 const LINE_MAX: usize = 700;
 const WHY_MAX: usize = 300;
+const PENDING_CAP: usize = 64;
+const PENDING_GIVE_UP: Duration = Duration::from_secs(300);
+const BUSY_CAP: usize = 64;
+const BUSY_WHY: &str = "the runner was busy, answer in terminal";
 
 #[derive(Default)]
 pub(super) struct PollRelay {
     desk: Mutex<PollDesk>,
     posted: Mutex<HashMap<String, String>>,
     last_tick: Mutex<Option<Instant>>,
+    pending: Mutex<VecDeque<PendingClose>>,
+    busy: Arc<Mutex<VecDeque<String>>>,
+    #[cfg(test)]
+    fail_appends: AtomicUsize,
+}
+
+struct PendingClose {
+    card_id: String,
+    msg: ChatMessage,
+    since: Instant,
+    next: Instant,
 }
 
 impl Session {
@@ -37,6 +53,22 @@ impl Session {
     fn poll_screen(&self) -> Option<Screen> {
         let rows = lock(&self.inner).screen.text_lines(None).3;
         parse_screen(&rows)
+    }
+
+    fn poll_send(&self, keys: &[u8], check: &dyn Fn(Option<&Screen>) -> bool) -> Sent {
+        let accepted = {
+            let i = &mut *lock(&self.inner);
+            let rows = i.screen.text_lines(None).3;
+            if !check(parse_screen(&rows).as_ref()) {
+                return Sent::Changed;
+            }
+            self.shim_input(keys)
+        };
+        if !accepted {
+            return Sent::Refused;
+        }
+        self.change(|i, now, out| out.extend(i.det.on_input(now)));
+        Sent::Ok
     }
 
     fn poll_ready(&self) -> bool {
@@ -55,8 +87,12 @@ impl Terminal for SessionTerm<'_> {
         self.session.poll_screen()
     }
 
-    fn send(&self, keys: &[u8]) -> bool {
-        self.session.input_counted(keys, true)
+    fn send_checked(&self, keys: &[u8], check: &dyn Fn(Option<&Screen>) -> bool) -> Sent {
+        self.session.poll_send(keys, check)
+    }
+
+    fn allowed(&self) -> bool {
+        self.rt.chat.claude_read()
     }
 
     fn poll_open(&self) -> bool {
@@ -113,18 +149,69 @@ impl Runner {
             }
             *last = Some(Instant::now());
         }
+        self.poll_flush();
         self.poll_observe();
+    }
+
+    fn poll_flush(&self) {
+        let busy: Vec<String> = lock(&self.poll_relay.busy).drain(..).collect();
+        let actions: Vec<Action> = {
+            let mut desk = lock(&self.poll_relay.desk);
+            busy.iter()
+                .filter_map(|id| desk.fail_open(id, BUSY_WHY))
+                .collect()
+        };
+        self.poll_execute(actions);
+        self.poll_retry();
+    }
+
+    fn poll_retry(&self) {
+        let now = Instant::now();
+        let due: Vec<PendingClose> = {
+            let mut q = lock(&self.poll_relay.pending);
+            let (due, keep): (Vec<_>, Vec<_>) = q.drain(..).partition(|p| p.next <= now);
+            q.extend(keep);
+            due
+        };
+        for mut p in due {
+            match self.poll_store(p.msg.clone()) {
+                Ok(()) => {
+                    lock(&self.poll_relay.posted).remove(&p.card_id);
+                }
+                Err(e) if p.since.elapsed() >= PENDING_GIVE_UP => {
+                    log(&format!("poll relay: a close was given up: {e}"));
+                }
+                Err(_) => {
+                    p.next = now + POLL_TICK;
+                    lock(&self.poll_relay.pending).push_back(p);
+                }
+            }
+        }
+    }
+
+    fn poll_store(&self, msg: ChatMessage) -> Result<(), String> {
+        #[cfg(test)]
+        if self
+            .poll_relay
+            .fail_appends
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+            .is_ok()
+        {
+            return Err("store unavailable".into());
+        }
+        self.chat.append(msg).map(|_| ())
     }
 
     fn poll_observe(&self) {
         let tracked = lock(&self.poll_relay.desk).sessions();
         let sessions = self.all();
         let mut seen = Vec::new();
-        for s in sessions
-            .iter()
-            .filter(|s| !s.is_exited() && s.poll_claude())
-        {
-            let poll = self.chat.asking_poll(&s.id);
+        for s in sessions.iter().filter(|s| !s.is_exited()) {
+            let claude = s.poll_claude();
+            if !claude && !tracked.contains(&s.id) {
+                continue;
+            }
+            let poll = claude.then(|| self.chat.asking_poll(&s.id)).flatten();
             if poll.is_none() && !tracked.contains(&s.id) {
                 continue;
             }
@@ -221,7 +308,7 @@ impl Runner {
         picked: Option<String>,
         why: Option<String>,
     ) {
-        let reply_to = lock(&self.poll_relay.posted).remove(card_id);
+        let reply_to = lock(&self.poll_relay.posted).get(card_id).cloned();
         let picked = picked.map(|p| clean(&p, WHY_MAX));
         let body = close_body(session, closed, picked.as_deref());
         let poll = PollMsg {
@@ -233,8 +320,26 @@ impl Runner {
             can_answer: true,
             why_not: why.map(|w| clean(&w, WHY_MAX)),
         };
-        if let Err(e) = self.chat.append(self.poll_message(body, poll, reply_to)) {
-            log(&format!("poll relay: the close was not posted: {e}"));
+        let msg = self.poll_message(body, poll, reply_to);
+        match self.poll_store(msg.clone()) {
+            Ok(()) => {
+                lock(&self.poll_relay.posted).remove(card_id);
+            }
+            Err(e) => {
+                log(&format!("poll relay: the close will be retried: {e}"));
+                let mut q = lock(&self.poll_relay.pending);
+                if q.len() >= PENDING_CAP {
+                    q.pop_front();
+                    log("poll relay: the oldest pending close was dropped");
+                }
+                let now = Instant::now();
+                q.push_back(PendingClose {
+                    card_id: card_id.to_owned(),
+                    msg,
+                    since: now,
+                    next: now + POLL_TICK,
+                });
+            }
         }
     }
 
@@ -293,6 +398,7 @@ impl Runner {
         let inbox = PollInbox {
             tx,
             queued: queued.clone(),
+            busy: self.poll_relay.busy.clone(),
         };
         let rt = self.clone();
         let spawned = thread::Builder::new()
@@ -325,6 +431,7 @@ struct PollItem {
 pub(super) struct PollInbox {
     tx: SyncSender<PollItem>,
     queued: Arc<Mutex<HashMap<String, usize>>>,
+    busy: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl PollSink for PollInbox {
@@ -349,7 +456,11 @@ impl PollSink for PollInbox {
         if sent {
             q.insert(from_device.to_owned(), n + 1);
         } else {
-            log("poll relay: an answer was dropped, the intake is busy or stopped");
+            log("poll relay: an answer was refused, the intake is busy or stopped");
+            let mut busy = lock(&self.busy);
+            if busy.len() < BUSY_CAP {
+                busy.push_back(answer.card_id.clone());
+            }
         }
     }
 }
@@ -719,6 +830,7 @@ mod tests {
         let inbox = PollInbox {
             tx,
             queued: Arc::new(Mutex::new(HashMap::new())),
+            busy: Arc::default(),
         };
         let a = PollAnswer {
             v: 1,
@@ -752,5 +864,88 @@ mod tests {
                 "fixture {i}"
             );
         }
+    }
+
+    #[test]
+    fn a_close_that_cannot_be_stored_is_retried_until_it_is() {
+        let e = env();
+        ask(&e, vec![scope_q()]);
+        tick(&e);
+        e.rt.poll_relay.fail_appends.store(2, Ordering::SeqCst);
+        append(&e.log, &result_line());
+        capture(&e);
+        tick(&e);
+        assert!(closes(&e).is_empty());
+        assert_eq!(lock(&e.rt.poll_relay.pending).len(), 1);
+        for _ in 0..4 {
+            thread::sleep(POLL_TICK + Duration::from_millis(20));
+            e.rt.poll_tick();
+        }
+        let c = closes(&e);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].closed.as_deref(), Some("terminal"));
+        assert!(lock(&e.rt.poll_relay.pending).is_empty());
+    }
+
+    #[test]
+    fn a_refused_answer_fails_an_open_card_only() {
+        let e = env();
+        ask(&e, vec![scope_q()]);
+        tick(&e);
+        let item = answer(&e, vec![pick(0, &[1], None)]);
+        let (tx, rx) = std::sync::mpsc::sync_channel::<PollItem>(1);
+        let inbox = PollInbox {
+            tx,
+            queued: Arc::new(Mutex::new(HashMap::new())),
+            busy: e.rt.poll_relay.busy.clone(),
+        };
+        inbox.deliver_poll("d", "fp", PermitSenderKind::Mobile, &item.answer);
+        inbox.deliver_poll("d", "fp", PermitSenderKind::Mobile, &item.answer);
+        assert_eq!(rx.try_iter().count(), 1);
+        e.rt.poll_flush();
+        let c = closes(&e);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].closed.as_deref(), Some("failed"));
+        assert_eq!(c[0].why_not.as_deref(), Some(BUSY_WHY));
+        e.rt.poll_flush();
+        assert_eq!(closes(&e).len(), 1);
+    }
+
+    #[test]
+    fn a_refused_answer_leaves_an_answering_card_alone() {
+        let e = env();
+        ask(&e, vec![scope_q()]);
+        tick(&e);
+        let item = answer(&e, vec![pick(0, &[1], None)]);
+        lock(&e.rt.poll_relay.desk)
+            .begin_answer(&item.answer.card_id, &item.answer, "d")
+            .unwrap();
+        lock(&e.rt.poll_relay.busy).push_back(item.answer.card_id.clone());
+        e.rt.poll_flush();
+        assert!(closes(&e).is_empty());
+    }
+
+    #[test]
+    fn a_session_that_no_longer_qualifies_is_reconciled() {
+        let e = env();
+        ask(&e, vec![scope_q()]);
+        tick(&e);
+        lock(&e.s.inner).meta.profile = Some("codex".into());
+        tick(&e);
+        let c = closes(&e);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].closed.as_deref(), Some("terminal"));
+    }
+
+    #[test]
+    fn a_session_that_vanished_is_reconciled_as_gone() {
+        let e = env();
+        ask(&e, vec![scope_q()]);
+        tick(&e);
+        lock(&e.rt.sessions).remove(SID);
+        e.rt.poll_observe();
+        let c = closes(&e);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].closed.as_deref(), Some("gone"));
     }
 }

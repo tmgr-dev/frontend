@@ -1,6 +1,7 @@
 use super::{advance, matches_card, sanitize_other, Next, Screen};
 use crate::attach::status::{AskPoll, AskQuestion};
 use crate::permit::digest;
+use crate::sanitize::is_unsafe;
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use tmgr_ipc::chat::{PollAnswer, PollMsg, PollOption, PollPick, PollQuestion};
@@ -16,8 +17,32 @@ const QUESTION_MAX: usize = 500;
 const LABEL_MAX: usize = 200;
 const DESCRIPTION_MAX: usize = 500;
 
-pub fn card_id(session: &str, tool_use_id: &str) -> String {
-    format!("poll_{}", &digest(&[session, tool_use_id])[..32])
+const MAX_QUESTIONS: usize = 4;
+const MAX_OPTIONS: usize = 8;
+
+fn questions_digest(questions: &[AskQuestion]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for q in questions {
+        parts.push(q.header.clone());
+        parts.push(q.question.clone());
+        parts.push(q.multi_select.to_string());
+        parts.extend(q.options.iter().map(|o| o.label.clone()));
+        parts.push(String::new());
+    }
+    let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+    digest(&refs)
+}
+
+pub fn card_id(session: &str, tool_use_id: &str, questions: &[AskQuestion]) -> String {
+    format!(
+        "poll_{}",
+        &digest(&[session, tool_use_id, &questions_digest(questions)])[..32]
+    )
+}
+
+fn safe(s: &str, max: usize) -> String {
+    let clean: String = s.chars().filter(|&c| !is_unsafe(c)).collect();
+    clip(&clean, max)
 }
 
 fn clip(s: &str, max: usize) -> String {
@@ -29,6 +54,7 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 pub fn shown_label(raw: &str) -> (String, bool) {
+    let raw = &safe(raw, usize::MAX);
     match raw.trim_end().strip_suffix(RECOMMENDED) {
         Some(rest) if !rest.trim().is_empty() => (rest.trim_end().to_string(), true),
         _ => (raw.to_string(), false),
@@ -38,18 +64,20 @@ pub fn shown_label(raw: &str) -> (String, bool) {
 fn poll_questions(questions: &[AskQuestion]) -> Vec<PollQuestion> {
     questions
         .iter()
+        .take(MAX_QUESTIONS)
         .map(|q| PollQuestion {
-            header: clip(&q.header, HEADER_MAX),
-            question: clip(&q.question, QUESTION_MAX),
+            header: safe(&q.header, HEADER_MAX),
+            question: safe(&q.question, QUESTION_MAX),
             multi_select: q.multi_select,
             options: q
                 .options
                 .iter()
+                .take(MAX_OPTIONS)
                 .map(|o| {
                     let (label, recommended) = shown_label(&o.label);
                     PollOption {
                         label: clip(&label, LABEL_MAX),
-                        description: clip(&o.description, DESCRIPTION_MAX),
+                        description: safe(&o.description, DESCRIPTION_MAX),
                         recommended,
                     }
                 })
@@ -172,7 +200,7 @@ impl PollDesk {
         screen: Option<&Screen>,
         foreground: bool,
     ) -> Vec<Action> {
-        let live = poll.map(|p| card_id(session, &p.tool_use_id));
+        let live = poll.map(|p| card_id(session, &p.tool_use_id, &p.questions));
         let vanished: Vec<String> = self
             .cards
             .iter()
@@ -259,14 +287,32 @@ impl PollDesk {
         })
     }
 
+    pub fn fail_open(&mut self, card_id: &str, why: &str) -> Option<Action> {
+        if self.cards.get(card_id)?.state != State::Open {
+            return None;
+        }
+        match self.close(card_id, "failed")? {
+            Action::Close {
+                card_id, session, ..
+            } => Some(Action::Close {
+                card_id,
+                session,
+                closed: "failed",
+                picked: None,
+                why: Some(safe(why, PICKED_MAX)),
+            }),
+            Action::Post { .. } => None,
+        }
+    }
+
     pub fn finish(&mut self, card_id: &str, outcome: Outcome) -> Option<Action> {
         if !matches!(self.cards.get(card_id)?.state, State::Answering(_)) {
             return None;
         }
         let (closed, picked, why) = match outcome {
-            Outcome::Applied { picked } => ("applied", Some(picked), None),
+            Outcome::Applied { picked } => ("applied", Some(safe(&picked, PICKED_MAX)), None),
             Outcome::Stale => ("stale", None, None),
-            Outcome::Failed(why) => ("failed", None, Some(clip(&why, PICKED_MAX))),
+            Outcome::Failed(why) => ("failed", None, Some(safe(&why, PICKED_MAX))),
         };
         match self.close(card_id, closed)? {
             Action::Close {
@@ -351,13 +397,21 @@ fn summary(questions: &[AskQuestion], picks: &[PollPick]) -> String {
             )
         })
         .collect();
-    clip(&parts.join("; "), PICKED_MAX)
+    safe(&parts.join("; "), PICKED_MAX)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sent {
+    Ok,
+    Changed,
+    Refused,
 }
 
 pub trait Terminal {
     fn screen(&self) -> Option<Screen>;
-    fn send(&self, keys: &[u8]) -> bool;
+    fn send_checked(&self, keys: &[u8], check: &dyn Fn(Option<&Screen>) -> bool) -> Sent;
     fn poll_open(&self) -> bool;
+    fn allowed(&self) -> bool;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -404,9 +458,14 @@ pub fn run_answer_with<T: Terminal>(t: &T, ans: &Answering, pace: &Pace) -> Outc
         if steps >= MAX_STEPS {
             return Outcome::Failed("too many steps".into());
         }
+        if !t.allowed() {
+            return Outcome::Failed("reading consent was turned off".into());
+        }
         steps += 1;
-        if !t.send(&step.keys) {
-            return Outcome::Failed("the agent is not reading its input".into());
+        match t.send_checked(&step.keys, &|now| now == screen.as_ref()) {
+            Sent::Ok => {}
+            Sent::Changed => return Outcome::Stale,
+            Sent::Refused => return Outcome::Failed("the agent is not reading its input".into()),
         }
         let sent = Instant::now();
         let last = loop {
