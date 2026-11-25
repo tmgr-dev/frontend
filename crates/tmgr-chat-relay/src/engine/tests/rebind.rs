@@ -108,3 +108,29 @@ fn an_applied_revoke_frees_the_machine_for_the_new_runner() {
     assert_eq!(b.poll_once().unwrap().len(), 1);
     assert!(alert_kinds(&b).is_empty());
 }
+
+#[test]
+fn the_old_runner_keeps_the_machine_when_it_speaks_in_the_same_poll_as_a_runner_sorted_before_it() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b) = pair(&fake, &clock);
+    let r1 = join_as(&fake, &clock, &a, "Runner 1", "runner");
+    let r2 = join_as(&fake, &clock, &a, "Runner 2", "runner");
+    b.poll_once().unwrap();
+    assert!(my_id(&r1) < my_id(&r2));
+    let bid = my_id(&b);
+    post_chat(&r2, &bid, &msg_n(2, AuthorKind::Manager));
+    assert_eq!(b.poll_once().unwrap().len(), 1);
+    post_chat(&r2, &bid, &msg_n(4, AuthorKind::Manager));
+    let (mid, from, body) = last_body_to(&fake, &bid);
+    fake.0.lock().unwrap().msgs.retain(|m| m.msg_id != mid);
+    clock.set(T0 + 5_000);
+    a.revoke(&my_id(&r2)).unwrap();
+    b.poll_once().unwrap();
+    clock.set(T0 + 6_000);
+    post_chat(&r1, &bid, &msg_n(3, AuthorKind::Manager));
+    fake.inject(&bid, &mid, &from, &body);
+    b.poll_once().unwrap();
+    assert_eq!(alert_kinds(&b), vec!["room_conflict".to_owned()]);
+    let bound: Vec<String> = b.lock().st.bindings.values().cloned().collect();
+    assert_eq!(bound, vec![my_id(&r2)]);
+}

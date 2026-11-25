@@ -1903,6 +1903,13 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             }
         }
         opened.sort_by(|a, b| (a.1.key(), a.0).cmp(&(b.1.key(), b.0)));
+        for (_, i) in &opened {
+            if let Inbound::Opened(o) = i {
+                if o.trusted {
+                    c.st.last_seen.insert(o.from.clone(), now);
+                }
+            }
+        }
         for (cursor, item) in opened {
             let (from, seq, trusted) = match &item {
                 Inbound::Opened(o) => (o.from.clone(), o.seq, o.trusted),
@@ -1938,9 +1945,6 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
             let Inbound::Opened(o) = item else {
                 continue;
             };
-            if o.trusted {
-                c.st.last_seen.insert(from.clone(), now);
-            }
             c.drop_reason = None;
             let sample = o.trusted.then(|| PeerClock::sample(o.sent_at, now));
             let offset = c.st.clocks.get(&from).map_or(0, |p| p.cur);

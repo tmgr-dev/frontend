@@ -1503,6 +1503,13 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       }
     }
     opened.sort_by(|a, b| (a.1.key(), a.0).cmp(&(b.1.key(), b.0)));
+    for (_, i) in &opened {
+      if let Inbound::Opened(o) = i {
+        if o.trusted {
+          c.st.last_seen.insert(o.from.clone(), now);
+        }
+      }
+    }
     for (cursor, item) in opened {
       let (from, seq, trusted) = match &item {
         Inbound::Opened(o) => (o.from.clone(), o.seq, o.trusted),
@@ -1531,9 +1538,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       let entry = c.st.seq_in.entry(from.clone()).or_insert(0);
       *entry = (*entry).max(seq);
       let Inbound::Opened(o) = item else { continue };
-      if o.trusted {
-        c.st.last_seen.insert(from, now);
-      }
       c.drop_reason = None;
       c.drop_detail = None;
       let who = format!("kind={} sender={}", o.kind, short_id(&o.from));
@@ -1758,7 +1762,8 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
         return Err("this device is not a trusted member of the chat yet".into());
       }
-      let bound = c.st.bindings.get(&params.room.machine).filter(|d| !c.st.superseded(d)).cloned();
+      let room_superseded = c.st.bindings.get(&params.room.machine).is_some_and(|d| c.st.superseded(d));
+      let bound = c.st.bindings.get(&params.room.machine).filter(|_| !room_superseded).cloned();
       let targets: Vec<Dev> = c
         .st
         .trusted
@@ -1767,7 +1772,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         .filter(|d| match (&bound, c.st.kind_of(&d.id, &d.fp).unwrap_or(&d.kind)) {
           (_, "desktop" | "mobile" | "terminal") => true,
           (Some(runner), _) => &d.id == runner,
-          (None, _) => !c.st.superseded(&d.id),
+          (None, _) => !c.st.superseded(&d.id) && !(room_superseded && c.st.bindings.values().any(|b| b == &d.id)),
         })
         .cloned()
         .collect();
