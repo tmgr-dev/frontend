@@ -1,6 +1,6 @@
 use crate::git;
 use crate::handoff::{build, build_screen, Opts as NoteOpts};
-use crate::locate::{export_counted, find, load, newest, Roots};
+use crate::locate::{claude_pid_session, export_counted, find, load, newest, Roots};
 use crate::packet::{
     build_packet, build_packet_screen, ChatMessage, HandoffPacket, PacketSource, PacketTo,
 };
@@ -139,7 +139,7 @@ pub fn ancestors<'a>(sessions: &'a [SessionInfo], from: &'a SessionInfo) -> Vec<
     out
 }
 
-fn is_uuid(id: &str) -> bool {
+pub(crate) fn is_uuid(id: &str) -> bool {
     id.len() == 36
         && id.bytes().enumerate().all(|(i, b)| match i {
             8 | 13 | 18 | 23 => b == b'-',
@@ -177,11 +177,14 @@ fn roots_of(s: &SessionInfo) -> Result<Roots> {
 }
 
 pub fn log_of(s: &SessionInfo, agent: Agent) -> Result<PathBuf> {
-    let roots = roots_of(s)?;
+    log_in(s, agent, &roots_of(s)?)
+}
+
+fn log_in(s: &SessionInfo, agent: Agent, roots: &Roots) -> Result<PathBuf> {
     if s.no_sandbox {
         let id = s.agent_session_id.as_deref().filter(|i| is_uuid(i));
         return id
-            .and_then(|id| find(&roots, id).ok())
+            .and_then(|id| find(roots, id).ok())
             .map(|(_, path)| path)
             .ok_or_else(|| {
                 SwitchError::NotFound(format!(
@@ -191,11 +194,18 @@ pub fn log_of(s: &SessionInfo, agent: Agent) -> Result<PathBuf> {
             });
     }
     if let Some(id) = s.agent_session_id.as_deref().filter(|i| is_uuid(i)) {
-        if let Ok((_, path)) = find(&roots, id) {
+        if let Ok((_, path)) = find(roots, id) {
             return Ok(path);
         }
     }
-    newest(&roots, agent).ok_or_else(|| {
+    if agent == Agent::Claude {
+        if let Some(id) = claude_pid_session(roots, s.child_pid, s.created_ms) {
+            if let Ok((_, path)) = find(roots, &id) {
+                return Ok(path);
+            }
+        }
+    }
+    newest(roots, agent).ok_or_else(|| {
         SwitchError::NotFound(format!(
             "no conversation file of session {} was found",
             s.id
@@ -511,6 +521,80 @@ mod tests {
         let mut s = info("a", "codex");
         s.managed = true;
         assert!(refusal(&s).unwrap().contains("queue"));
+    }
+
+    const MAIN: &str = "aaaaaaaa-0000-4000-8000-000000000001";
+    const OTHER: &str = "bbbbbbbb-0000-4000-8000-000000000002";
+
+    fn project(home: &Path) -> PathBuf {
+        let p = home.join(".claude/projects/p");
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn write_at(path: &Path, body: &str, secs: u64) {
+        std::fs::write(path, body).unwrap();
+        let f = std::fs::File::options().write(true).open(path).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+            .unwrap();
+    }
+
+    fn pid_file(home: &Path, pid: u32, body: &str, secs: u64) {
+        let d = home.join(".claude/sessions");
+        std::fs::create_dir_all(&d).unwrap();
+        write_at(&d.join(format!("{pid}.json")), body, secs);
+    }
+
+    const LINE: &str = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n";
+
+    #[test]
+    fn the_pid_file_picks_the_main_conversation_over_a_fresher_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let p = project(home);
+        write_at(&p.join(format!("{MAIN}.jsonl")), LINE, 1000);
+        write_at(&p.join(format!("{OTHER}.jsonl")), LINE, 2000);
+        pid_file(
+            home,
+            2,
+            &format!("{{\"pid\":2,\"sessionId\":\"{MAIN}\"}}"),
+            1000,
+        );
+        let mut s = info("a", "claude-code");
+        s.created_ms = 1_000_000;
+        let roots = Roots::for_home(home);
+        let got = log_in(&s, Agent::Claude, &roots).unwrap();
+        assert!(got.ends_with(format!("{MAIN}.jsonl")));
+    }
+
+    #[test]
+    fn a_stale_or_mismatched_pid_file_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let p = project(home);
+        write_at(&p.join(format!("{MAIN}.jsonl")), LINE, 1000);
+        write_at(&p.join(format!("{OTHER}.jsonl")), LINE, 2000);
+        let mut s = info("a", "claude-code");
+        s.created_ms = 1_000_000;
+        let roots = Roots::for_home(home);
+        pid_file(
+            home,
+            2,
+            &format!("{{\"pid\":2,\"sessionId\":\"{MAIN}\"}}"),
+            500,
+        );
+        assert!(log_in(&s, Agent::Claude, &roots)
+            .unwrap()
+            .ends_with(format!("{OTHER}.jsonl")));
+        pid_file(
+            home,
+            2,
+            &format!("{{\"pid\":3,\"sessionId\":\"{MAIN}\"}}"),
+            1000,
+        );
+        assert!(log_in(&s, Agent::Claude, &roots)
+            .unwrap()
+            .ends_with(format!("{OTHER}.jsonl")));
     }
 
     #[test]

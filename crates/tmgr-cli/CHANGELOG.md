@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Session chats again show the agent's replies when Claude Code agent teams or a nested `claude` write their own transcripts next to the session's: the runner now follows the session's own conversation (from Claude Code's pid file) instead of the newest file.
+
 ## 1.0.193
 
 - Manager replies no longer show twice in the Manager room (desktop, phone, attach).
