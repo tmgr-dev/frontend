@@ -191,12 +191,8 @@ impl Runner {
 
     fn poll_store(&self, msg: ChatMessage) -> Result<(), String> {
         #[cfg(test)]
-        if self
-            .poll_relay
-            .fail_appends
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-            .is_ok()
-        {
+        if self.poll_relay.fail_appends.load(Ordering::SeqCst) > 0 {
+            self.poll_relay.fail_appends.fetch_sub(1, Ordering::SeqCst);
             return Err("store unavailable".into());
         }
         self.chat.append(msg).map(|_| ())
