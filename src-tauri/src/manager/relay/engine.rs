@@ -1909,7 +1909,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
 
   fn owns(&self, room: &RoomRef) -> bool {
     let local = self.local_machine.read().unwrap_or_else(|p| p.into_inner());
-    !local.is_empty() && room.machine != *local
+    !room.machine.is_empty() && room.machine != *local
   }
 
   fn set_local_machine(&self, machine: &str) {

@@ -73,9 +73,11 @@ const RELAY_ENABLED: bool = true;
 pub fn setup<R: Runtime>(app: &AppHandle<R>) {
   let runner = app.try_state::<crate::runner::Runner>().map(|r| Arc::new(local::RunnerLocal::new(Arc::new(r.inner().clone()))));
   let machine_source = runner.clone();
-  let machine: relay::switch::MachineSource = Box::new(move || match &machine_source {
-    Some(local) => local::LocalPort::machine(&**local),
-    None => Err("the runner is not available".to_owned()),
+  let runner_flag = app.try_state::<crate::runner::Runner>().map(|r| r.inner().clone());
+  let machine: relay::switch::MachineSource = Box::new(move || match (&runner_flag, &machine_source) {
+    (Some(flag), _) if !flag.enabled() => Ok(None),
+    (_, Some(local)) => local::LocalPort::machine(&**local).map(Some),
+    _ => Ok(None),
   });
   let presence = presence_setup(app);
   let switch = Arc::new(relay::switch::SwitchRelay::new(RELAY_ENABLED, relay::switch::keychain_builder(presence.clone()), machine));

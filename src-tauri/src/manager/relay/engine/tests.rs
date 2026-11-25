@@ -1140,16 +1140,31 @@ fn owns_is_false_for_the_local_machine_and_when_it_is_unknown() {
   assert!(a.owns(&room()));
   assert!(!a.owns(&RoomRef { kind: RoomKind::Manager, machine: "mx_local".into(), session: None }));
   let blank = engine_on(&fake, &clock, Arc::new(MemKeyStore::default()), "");
-  assert!(!blank.owns(&room()));
+  assert!(blank.owns(&room()));
   assert!(!blank.owns(&RoomRef { kind: RoomKind::Manager, machine: String::new(), session: None }));
-  assert_eq!(send(&blank, "x").unwrap_err(), "unknown room");
 }
 
 #[test]
-fn a_blank_engine_owns_remote_rooms_once_the_local_machine_is_set() {
+fn a_blank_engine_keeps_chat_for_remote_rooms() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_on(&fake, &clock, Arc::new(MemKeyStore::default()), "");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let bid = my_id(&b);
+  a.decide_join(&bid, true).unwrap();
+  b.poll_once().unwrap();
+  post_chat(&a, &bid, &msg_n(5, "owner"));
+  assert_eq!(b.poll_once().unwrap().len(), 1);
+  assert!(b.drops().is_empty(), "{:?}", b.drops());
+}
+
+#[test]
+fn setting_the_local_machine_stops_a_blank_engine_owning_local_rooms() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let e = engine_on(&fake, &clock, Arc::new(MemKeyStore::default()), "");
-  assert!(!e.owns(&room()));
+  assert!(e.owns(&RoomRef { kind: RoomKind::Manager, machine: "mx_local".into(), session: None }));
   RelayPort::set_local_machine(&e, "mx_local");
   assert!(e.owns(&room()));
   assert!(!e.owns(&RoomRef { kind: RoomKind::Manager, machine: "mx_local".into(), session: None }));
