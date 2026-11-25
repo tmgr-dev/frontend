@@ -163,9 +163,7 @@ pub fn claude_pid_session(roots: &Roots, pid: u32, created_ms: u64) -> Option<St
     let mut raw = Vec::new();
     file.take(PID_FILE_CAP).read_to_end(&mut raw).ok()?;
     let v: serde_json::Value = serde_json::from_slice(&raw).ok()?;
-    if v.get("pid")
-        .is_some_and(|p| p.as_u64() != Some(u64::from(pid)))
-    {
+    if v.get("pid").and_then(|p| p.as_u64()) != Some(u64::from(pid)) {
         return None;
     }
     let id = v.get("sessionId")?.as_str()?;
@@ -535,6 +533,8 @@ mod tests {
         assert_eq!(claude_pid_session(&roots, 8, 1_000_000), None);
         write(10, "{\"pid\":10,\"sessionId\":\"../x\"}".into(), 1000);
         assert_eq!(claude_pid_session(&roots, 10, 1_000_000), None);
+        write(11, format!("{{\"sessionId\":\"{MAIN}\"}}"), 1000);
+        assert_eq!(claude_pid_session(&roots, 11, 1_000_000), None);
     }
 
     fn put_json(path: &Path, body: &str, secs: u64) {
