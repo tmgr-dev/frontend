@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.217 — 2026-11-25
+
+- Manager: Chat devices → Add device shows the QR code and pairing code even when "Run agents" is off on this computer. Before, chat sync never started without the local runner, so the dialog stayed empty.
+- Manager: while a pairing code is being created, the dialog says so. If it fails, it explains why and offers Try again.
+- Manager: with "Run agents" off, chat from your other machines' rooms still arrives here.
+
 ## 0.9.216 — 2026-11-25
 
 - Manager: dangerous permission cards can be answered here with Touch ID. Set it up under Touch ID approvals in the Manager's Encryption tab, then run the shown `tmgr runner manager presence-keys approve` command on the runner host. One Touch ID prompt covers answers for 10 minutes; sleep, screen lock or switching users ends it. Needs tmgr CLI 1.0.192.
