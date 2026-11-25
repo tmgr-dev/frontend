@@ -483,6 +483,8 @@ pub fn check_create(
     Ok(())
 }
 
+const REPLY_DEDUPE: u32 = 50;
+
 pub trait ChatPort: Send + Sync {
     fn post(&self, msg: ChatMessage) -> Result<ChatMessage, String>;
     fn history(&self, room: &RoomRef, limit: u32) -> Result<Vec<ChatMessage>, String>;
@@ -966,6 +968,20 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
             let body = need(a, "body_md", 1, chat::limits::MAX_BODY)?;
             let reply_to = text_arg(a, "reply_to", 1, 64)?;
             let machine = host.machine();
+            let said = crate::chat::normalize(body);
+            let mirrored = st
+                .chat
+                .history(&RoomRef::manager(&machine), REPLY_DEDUPE)?
+                .into_iter()
+                .rev()
+                .take_while(|m| m.author.kind != AuthorKind::Owner)
+                .find(|m| {
+                    m.author.kind == AuthorKind::Session
+                        && crate::chat::normalize(&m.body_md) == said
+                });
+            if let Some(m) = mirrored {
+                return Ok(json!({"id": m.id}));
+            }
             let msg = ChatMessage {
                 v: chat::CHAT_V,
                 id: chat::new_message_id(),
@@ -3140,6 +3156,91 @@ mod tests {
         assert!(seen[0].starts_with("[relayed message "), "{}", seen[0]);
         assert!(seen[0].contains("source: manager on another machine | from: mx_peer]"));
         assert!(seen[0].contains("\n\ngo\n\n"));
+    }
+
+    fn seed(st: &State, h: &Fake, kind: AuthorKind, body: &str) {
+        let machine = h.machine();
+        st.chat
+            .post(ChatMessage {
+                v: chat::CHAT_V,
+                id: chat::new_message_id(),
+                room: RoomRef::manager(&machine),
+                author: Author {
+                    kind,
+                    id: "x".into(),
+                    machine: Some(machine),
+                    device: None,
+                    agent: None,
+                },
+                ts_ms: h.now_ms(),
+                kind: MessageKind::Text,
+                body_md: body.into(),
+                attachments: Vec::new(),
+                reply_to: None,
+                decision: None,
+                session_meta: None,
+                user_turn: false,
+                mention: None,
+            })
+            .unwrap();
+    }
+
+    fn manager_room_bodies(h: &Fake, st: &State) -> Vec<String> {
+        let room = call(h, st, "read_room", json!({"room": "manager", "limit": 50})).unwrap();
+        room["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["body_md"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn post_message_repeating_a_mirrored_session_reply_posts_once() {
+        let h = Fake::new();
+        let st = State::new(Box::new(MemoryChat::default()));
+        seed(&st, &h, AuthorKind::Session, "All idle\n");
+        let r = call(&h, &st, "post_message", json!({"body_md": "All idle"})).unwrap();
+        assert!(chat::valid_message_id(r["id"].as_str().unwrap()));
+        assert_eq!(manager_room_bodies(&h, &st), ["All idle\n"]);
+    }
+
+    #[test]
+    fn post_message_dedupe_returns_the_existing_id_and_ignores_reply_to() {
+        let h = Fake::new();
+        let st = State::new(Box::new(MemoryChat::default()));
+        seed(&st, &h, AuthorKind::Session, "Done");
+        let existing = call(&h, &st, "read_room", json!({"room": "manager"})).unwrap()["messages"]
+            [0]["id"]
+            .clone();
+        let r = call(
+            &h,
+            &st,
+            "post_message",
+            json!({"body_md": "Done", "reply_to": chat::new_message_id()}),
+        )
+        .unwrap();
+        assert_eq!(r["id"], existing);
+        assert_eq!(manager_room_bodies(&h, &st), ["Done"]);
+    }
+
+    #[test]
+    fn post_message_after_an_owner_message_is_not_deduped_against_older_replies() {
+        let h = Fake::new();
+        let st = State::new(Box::new(MemoryChat::default()));
+        seed(&st, &h, AuthorKind::Session, "Done");
+        seed(&st, &h, AuthorKind::Owner, "status?");
+        call(&h, &st, "post_message", json!({"body_md": "Done"})).unwrap();
+        assert_eq!(manager_room_bodies(&h, &st), ["Done", "status?", "Done"]);
+    }
+
+    #[test]
+    fn post_message_with_a_different_text_is_posted() {
+        let h = Fake::new();
+        let st = State::new(Box::new(MemoryChat::default()));
+        seed(&st, &h, AuthorKind::Session, "Done");
+        call(&h, &st, "post_message", json!({"body_md": "Also this"})).unwrap();
+        assert_eq!(manager_room_bodies(&h, &st), ["Done", "Also this"]);
     }
 
     #[test]

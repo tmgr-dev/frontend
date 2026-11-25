@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.193
+
+- Manager replies no longer show twice in the Manager room (desktop, phone, attach).
+
 ## 1.0.192
 
 - Dangerous permission cards can be answered from a Mac with Touch ID. A desktop on TMGR 0.9.216 sets up a Touch ID key in the Encryption tab and sends it to your runners; approve it on the runner host with `tmgr runner manager presence-keys approve <device_fp> <key_fp>`. `tmgr runner manager presence-keys list|revoke` show and remove approved keys.

@@ -158,7 +158,7 @@ pub struct Ingested {
 const SENT_TTL: Duration = Duration::from_secs(600);
 const SENT_MAX: usize = 32;
 
-pub(super) fn normalize(text: &str) -> String {
+pub(crate) fn normalize(text: &str) -> String {
     text.replace('\r', "").trim().to_string()
 }
 
