@@ -211,7 +211,7 @@ impl State {
       return false;
     };
     self.pending_revokes.iter().any(|p| {
-      let cutoff = if p.issued_at_ms > 0 { p.issued_at_ms } else { p.received_at_ms };
+      let cutoff = if p.issued_at_ms > 0 { p.issued_at_ms.min(p.received_at_ms) } else { p.received_at_ms };
       p.target_id == d.id
         && p.target_fp == d.fp
         && cutoff > 0

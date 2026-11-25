@@ -157,3 +157,25 @@ fn the_old_runner_backlog_signed_before_the_revoke_does_not_keep_the_machine() {
     let bound: Vec<String> = b.lock().st.bindings.values().cloned().collect();
     assert_eq!(bound, vec![my_id(&r2)]);
 }
+
+#[test]
+fn a_revoke_dated_in_the_future_does_not_hide_a_live_old_runner() {
+    let (fake, clock) = (Fake::default(), Clock::new(T0));
+    let (a, b, r1, r2) = world(&fake, &clock);
+    let bid = my_id(&b);
+    clock.set(T0 + 6_000);
+    post_chat(&r1, &bid, &msg_n(4, AuthorKind::Session));
+    let (mid, from, body) = last_body_to(&fake, &bid);
+    fake.0.lock().unwrap().msgs.retain(|m| m.msg_id != mid);
+    clock.set(T0 + 100_000);
+    a.revoke(&my_id(&r1)).unwrap();
+    clock.set(T0 + 5_000);
+    b.poll_once().unwrap();
+    clock.set(T0 + 7_000);
+    fake.inject(&bid, &mid, &from, &body);
+    assert_eq!(b.poll_once().unwrap().len(), 1);
+    clock.set(T0 + 8_000);
+    post_chat(&r2, &bid, &msg_n(3, AuthorKind::Manager));
+    assert!(b.poll_once().unwrap().is_empty());
+    assert_eq!(alert_kinds(&b), vec!["room_conflict".to_owned()]);
+}
