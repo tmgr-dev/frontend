@@ -27,6 +27,7 @@ struct Fx {
     home: PathBuf,
     runner: Option<Child>,
     clock: std::cell::Cell<u64>,
+    arm_ms: u64,
 }
 
 impl Fx {
@@ -83,6 +84,7 @@ impl Fx {
             home,
             runner: None,
             clock: std::cell::Cell::new(1_000_000),
+            arm_ms: 300,
         }
     }
 
@@ -99,6 +101,7 @@ impl Fx {
                 .env("TMGR_AGENTS_DIR", &self.agents)
                 .env("XDG_CONFIG_HOME", &self.cfg)
                 .env("TMGR_T0_QUIET_MS", "5000")
+                .env("TMGR_CARD_ARM_MS", self.arm_ms.to_string())
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(err)
@@ -1033,6 +1036,7 @@ fn an_answer_inside_the_arming_window_is_refused() {
         return;
     }
     let mut fx = Fx::new();
+    fx.arm_ms = 5000;
     let a = fx.agent("claude-code", true, false);
     fx.hook(&a, &bash_hook_json("ls", false));
     fx.paint(&claude_screen("ls", &PLAIN_OPTS));
@@ -1040,7 +1044,7 @@ fn an_answer_inside_the_arming_window_is_refused() {
     fx.hook(&a, &bash_hook_json("pwd", false));
     fx.paint(&claude_screen("pwd", &PLAIN_OPTS));
     let first = fx.wait_card(&a, "first sight", |c| c.text == "pwd" && c.can_answer);
-    assert!(first.armed_in_ms > 0, "{first:?}");
+    assert!(first.armed_in_ms > 1000, "{first:?}");
     refusal(
         fx.answer(&a, &first, PermissionChoice::Yes, false),
         "just shown",

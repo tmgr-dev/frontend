@@ -708,6 +708,20 @@ struct Cards {
 }
 
 const CARD_ARM: Duration = Duration::from_millis(300);
+const CARD_ARM_MAX: Duration = Duration::from_secs(60);
+
+/// `TMGR_CARD_ARM_MS` can only lengthen the arming window, never shorten it.
+fn card_arm() -> Duration {
+    static ARM: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *ARM.get_or_init(|| parse_card_arm(std::env::var("TMGR_CARD_ARM_MS").ok().as_deref()))
+}
+
+fn parse_card_arm(raw: Option<&str>) -> Duration {
+    raw.and_then(|v| v.trim().parse::<u64>().ok())
+        .map_or(CARD_ARM, |ms| {
+            Duration::from_millis(ms).clamp(CARD_ARM, CARD_ARM_MAX)
+        })
+}
 const STAT_FRESH: Duration = Duration::from_secs(1);
 
 struct ReplyBudget {
@@ -1243,7 +1257,7 @@ impl Session {
             can_answer: why_not.is_none(),
             why_not,
             always_label: ev.always_label(),
-            armed_in_ms: CARD_ARM.saturating_sub(waited).as_millis() as u64,
+            armed_in_ms: card_arm().saturating_sub(waited).as_millis() as u64,
             ..base
         })
     }
@@ -1279,7 +1293,7 @@ impl Session {
                 return Err(refused(REFUSED_JUST_SHOWN));
             }
         };
-        if first.elapsed() < CARD_ARM {
+        if first.elapsed() < card_arm() {
             return Err(refused(REFUSED_JUST_SHOWN));
         }
         let choice = match a.choice {
@@ -6325,6 +6339,17 @@ mod tests {
         fs::create_dir_all(from.join(".claude/projects/p")).unwrap();
         fs::create_dir_all(&to).unwrap();
         (t, from, to)
+    }
+
+    #[test]
+    fn the_card_arming_window_can_only_grow_up_to_a_minute() {
+        let ms = |raw| parse_card_arm(raw).as_millis();
+        assert_eq!(ms(None), 300);
+        assert_eq!(ms(Some("junk")), 300);
+        assert_eq!(ms(Some("0")), 300);
+        assert_eq!(ms(Some("100")), 300);
+        assert_eq!(ms(Some(" 5000 ")), 5000);
+        assert_eq!(ms(Some("999999999")), 60_000);
     }
 
     #[test]
