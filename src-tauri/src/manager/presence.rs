@@ -164,6 +164,9 @@ impl Presence {
         return Err(EXPIRED.into());
       }
     };
+    if self.live_secs(&mut slot).is_none() {
+      return Err(EXPIRED.into());
+    }
     drop(slot);
     let bad = || "Touch ID returned an invalid signature".to_owned();
     let sig = Signature::from_der(&der).map_err(|_| bad())?;
@@ -277,7 +280,7 @@ pub mod macos {
 #[cfg(test)]
 pub mod soft {
   use std::collections::BTreeSet;
-  use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+  use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
   use std::sync::{mpsc, Arc, Mutex};
 
   use p256::ecdsa::signature::Signer;
@@ -294,6 +297,7 @@ pub mod soft {
     pub epoch: AtomicU64,
     pub broken: Mutex<bool>,
     pub high_s: Mutex<bool>,
+    pub lock_while_signing: AtomicBool,
     pub live: Mutex<BTreeSet<usize>>,
     pub hold: Mutex<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>>,
     next: AtomicUsize,
@@ -345,6 +349,9 @@ pub mod soft {
       }
       let key = SigningKey::from_slice(blob).map_err(|_| "bad key".to_owned())?;
       let sig: Signature = key.sign(msg);
+      if self.0.lock_while_signing.load(Ordering::SeqCst) {
+        self.0.epoch.fetch_add(1, Ordering::SeqCst);
+      }
       let sig = sig.normalize_s().unwrap_or(sig);
       let sig = if *self.0.high_s.lock().unwrap() { Signature::from_scalars(sig.r(), -*sig.s()).unwrap() } else { sig };
       Ok(sig.to_der().as_bytes().to_vec())
@@ -462,6 +469,16 @@ mod tests {
     r.p.unlock("x").unwrap();
     assert_eq!(r.e.prompts(), 2);
     r.p.sign_unlocked("m").unwrap();
+  }
+
+  #[test]
+  fn a_screen_lock_during_signing_discards_the_signature() {
+    let r = rig();
+    r.p.setup().unwrap();
+    r.p.unlock("x").unwrap();
+    r.e.0.lock_while_signing.store(true, Ordering::SeqCst);
+    assert_eq!(r.p.sign_unlocked("m").unwrap_err(), EXPIRED);
+    assert_eq!(r.e.live(), 0);
   }
 
   #[test]
