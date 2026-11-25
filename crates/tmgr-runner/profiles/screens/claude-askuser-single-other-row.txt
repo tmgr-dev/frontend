@@ -1,0 +1,25 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Scope
+
+│ Which scope should the rework cover in the hub service, where one service calls all external
+│ sources and serves data to everyone?
+
+  1. Jira+GitLab+Confluence (Recommended)
+     Rework the hub so one service owns all calls to Jira, GitLab and Confluence and serves data to
+     every consumer. This removes duplicated access code and rate-limit handling in each client,
+     gives one place for credentials and caching, and keeps the change bounded to the three sources
+     the team uses daily.
+  2. All sources at once
+     Rework the hub to cover every external source it touches in a single pass, including any minor
+     or legacy integrations. This gives one uniform access layer across the board, but the blast
+     radius is large, testing takes longer, and a regression in any one source can block the whole
+     rollout.
+  3. Only Jira+GitLab
+     Limit the rework to Jira and GitLab, leaving Confluence on its current access path. Smallest
+     change and fastest to ship, but Confluence stays duplicated and outside the hub, so the
+     consolidation is incomplete.
+❯ 4. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · ctrl+g to edit in Vim · Esc to cancel

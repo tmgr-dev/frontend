@@ -1,0 +1,12 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ Sources  ☒ Order  ✔ Submit  →
+
+Review your answers
+
+ ● Which sources should be migrated?
+   → Jira, Confluence
+ ● Which goes first?
+   → GitLab
+
+❯ 1. Submit answers
+  2. Cancel

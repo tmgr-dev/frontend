@@ -1,0 +1,15 @@
+────────────────────────────────────────────────────────────────────────────────
+ ☐ Narrow
+
+A fairly long question to wrap on a narrow terminal screen, does it wrap?
+
+❯ 1. Yes please
+     a fairly long description that must wrap on the narrow screen at eighty
+     columns
+  2. No thanks
+     short
+  3. Type something.
+────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

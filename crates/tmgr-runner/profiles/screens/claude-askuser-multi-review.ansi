@@ -1,0 +1,12 @@
+[38;5;246m[49m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m←  ☒ Sources  ☒ Order [38;5;16m[48;5;153m ✔ Submit [38;5;246m[49m →[39m
+
+[1m[38;5;231mReview your answers[0m
+
+ ● Which sources should be migrated?
+   [38;5;114m→ Jira, Confluence[39m
+ ● Which goes first?
+   [38;5;114m→ GitLab[39m
+
+[38;5;153m❯[39m [38;5;246m1. [38;5;153mSubmit answers[39m
+  [38;5;246m2. [39mCancel

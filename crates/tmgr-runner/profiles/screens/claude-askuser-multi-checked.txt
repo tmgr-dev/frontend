@@ -1,0 +1,17 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ Sources  ☐ Order  ✔ Submit  →
+
+Which sources should be migrated?
+
+❯ 1. [✔] Jira
+         Six services
+  2. [ ] GitLab
+         Three services
+  3. [ ] Confluence
+         Two services
+  4. [ ] Type something
+     Next
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel

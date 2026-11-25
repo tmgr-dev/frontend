@@ -1,0 +1,14 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ Sources  ☐ Order  ✔ Submit  →
+
+Which goes first?
+
+❯ 1. Jira
+     Biggest
+  2. GitLab
+     Medium
+  3. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel

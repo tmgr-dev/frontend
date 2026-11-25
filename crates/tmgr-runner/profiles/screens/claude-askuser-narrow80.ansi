@@ -1,0 +1,15 @@
+[38;5;246m[49m────────────────────────────────────────────────────────────────────────────────
+[38;5;16m[48;5;153m ☐ Narrow [39m[49m
+
+[1m[38;5;231mA fairly long question to wrap on a narrow terminal screen, does it wrap?[0m
+
+[38;5;153m❯[39m [38;5;246m1.[39m [38;5;153mYes please[39m
+     [38;5;246ma fairly long description that must wrap on the narrow screen at eighty [39m
+     [38;5;246mcolumns[39m
+  [38;5;246m2.[39m No thanks
+     [38;5;246mshort[39m
+  [38;5;246m3. Type something.[39m
+[38;5;246m────────────────────────────────────────────────────────────────────────────────
+[39m  4. Chat about this
+
+[38;5;246mEnter[39m [38;5;246mto[39m [38;5;246mselect[39m [38;5;246m·[39m [38;5;246m↑/↓[39m [38;5;246mto[39m [38;5;246mnavigate[39m [38;5;246m·[39m [38;5;246mEsc[39m [38;5;246mto[39m [38;5;246mcancel[39m
