@@ -19,6 +19,7 @@ pub const SETUP_AGAIN: &str = "Set up desktop approvals again";
 pub const EXPIRED: &str = "The Touch ID approval has ended; answer again";
 pub const ANSWER_REASON: &str = "approve a dangerous command from the Manager";
 pub const SETUP_REASON: &str = "set up desktop approvals for dangerous commands";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const KEY_FILE: &str = "presence.key";
 
 pub trait Enclave: Send + Sync {
@@ -38,6 +39,7 @@ pub trait Enclave: Send + Sync {
 
 pub type Now = Box<dyn Fn() -> (Instant, u64) + Send + Sync>;
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn system_now() -> (Instant, u64) {
   let wall = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
   (Instant::now(), wall)
@@ -68,6 +70,7 @@ pub struct Presence {
 }
 
 impl Presence {
+  #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
   pub fn new(enclave: Box<dyn Enclave>, dir: PathBuf, now: Now) -> Self {
     Self { enclave, path: dir.join(KEY_FILE), now, unlock: Mutex::new(None), prompting: Mutex::new(()) }
   }
