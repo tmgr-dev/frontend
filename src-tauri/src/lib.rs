@@ -477,6 +477,7 @@ pub fn run() {
       manager::manager_trust_state,
       manager::manager_permit_answer,
       manager::manager_permit_refresh,
+      manager::manager_poll_answer,
       manager::manager_presence_status,
       manager::manager_presence_setup,
       manager::manager_presence_publish,

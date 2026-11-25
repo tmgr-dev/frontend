@@ -190,6 +190,7 @@ const APP_COMMANDS: &[&str] = &[
   "manager_spawn_decide",
   "manager_permit_answer",
   "manager_permit_refresh",
+  "manager_poll_answer",
   "manager_presence_status",
   "manager_presence_setup",
   "manager_presence_publish",

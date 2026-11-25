@@ -109,6 +109,8 @@ pub struct ChatMessage {
   pub decision: Option<DecisionRef>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub mention: Option<MentionRef>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub poll: Option<tmgr_ipc::chat::PollMsg>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -240,6 +242,7 @@ fn message(n: u64, room: RoomRef, who: Author, body: &str) -> ChatMessage {
     reply_to: None,
     decision: None,
     mention: None,
+    poll: None,
   }
 }
 

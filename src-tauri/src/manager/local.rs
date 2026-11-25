@@ -324,6 +324,7 @@ mod tests {
       reply_to: None,
       decision: None,
       mention: None,
+      poll: None,
     }
   }
 

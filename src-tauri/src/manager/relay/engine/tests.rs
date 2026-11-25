@@ -610,6 +610,7 @@ fn chat_validation_rejects_bad_ids_and_rooms() {
     reply_to: None,
     decision: None,
     mention: None,
+    poll: None,
   };
   assert!(validate_chat(&m).is_ok());
   m.id = "m_short".into();
@@ -732,6 +733,7 @@ fn same_id_msg() -> ChatMessage {
     reply_to: None,
     decision: None,
     mention: None,
+    poll: None,
   }
 }
 
@@ -4154,3 +4156,4 @@ fn a_send_to_a_superseded_machine_skips_runners_bound_to_other_machines() {
 }
 
 mod permit_answers;
+mod poll_answers;

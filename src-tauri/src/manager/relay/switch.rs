@@ -211,6 +211,9 @@ impl RelayPort for SwitchRelay {
   fn reset_identity(&self) -> Result<(), String> {
     self.cur().reset_identity()
   }
+  fn answer_poll(&self, card_id: &str, picks: &[tmgr_ipc::chat::PollPick]) -> Result<(), String> {
+    self.cur().answer_poll(card_id, picks)
+  }
   fn answer_permit(&self, card_id: &str, answer: super::permit::PermitAnswer, confirmed: bool) -> Result<(), String> {
     self.cur().answer_permit(card_id, answer, confirmed)
   }
@@ -682,6 +685,7 @@ mod tests {
       reply_to: None,
       decision: None,
       mention: None,
+      poll: None,
     }
   }
 

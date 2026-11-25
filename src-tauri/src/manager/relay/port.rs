@@ -2,6 +2,7 @@
 //! The engine is built on the sans-IO crate `tmgr-chat-relay`; HTTP and key storage sit behind ports.
 
 use serde::{Deserialize, Serialize};
+use tmgr_ipc::chat::PollPick;
 
 use super::permit::PermitAnswer;
 use super::rooms::MachineIndex;
@@ -140,6 +141,9 @@ pub trait RelayPort: Send + Sync {
   }
   fn set_local_machine(&self, _machine: &str) {}
   fn reset_identity(&self) -> Result<(), String>;
+  fn answer_poll(&self, _card_id: &str, _picks: &[PollPick]) -> Result<(), String> {
+    Err("chat sync is not set up".into())
+  }
   fn answer_permit(&self, _card_id: &str, _answer: PermitAnswer, _confirmed: bool) -> Result<(), String> {
     Err("chat sync is not set up".into())
   }

@@ -18,10 +18,12 @@ use tmgr_chat_relay::trust::{
 };
 use tmgr_chat_relay::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex, Error};
+use tmgr_ipc::chat::PollPick;
 use tmgr_spawn_auth::PermitKey;
 
 use super::super::presence::{Presence, ANSWER_REASON, NOT_SET_UP, SETUP_REASON};
 use super::permit::{needs_presence, sign_answer, PermitAnswer, PermitBook, StoredPermit};
+use super::poll::{build_answer, PollBook};
 use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, ReceiptState, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
 use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
@@ -292,6 +294,7 @@ struct Core {
   receipts: Vec<Receipt>,
   held_receipts: Vec<HeldReceipt>,
   permits: PermitBook,
+  polls: PollBook,
 }
 
 struct HeldReceipt {
@@ -1382,6 +1385,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           c.log.push(LogEntry { from: opened.from.clone(), msg: msg.clone() });
           self.mark_log();
           Self::track_permit(c, &opened.from, &msg, now);
+          Self::track_poll(c, &opened.from, &msg);
           let mut shown = msg;
           Self::stamp_decision(c, &opened.from, &mut shown);
           stored = Some(shown);
@@ -1574,6 +1578,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 }
 
 const UNKNOWN_PERMIT_MSG: &str = "Unknown or closed permission card";
+const UNKNOWN_POLL_MSG: &str = "Unknown or closed question";
 
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   pub fn answer_permit(&self, card_id: &str, answer: PermitAnswer, confirmed: bool) -> Result<(), String> {
@@ -1637,25 +1642,46 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn send_permitok(&self, card_id: &str, consume: bool, build: impl FnOnce(&mut Core, &StoredPermit) -> Result<serde_json::Value, String>) -> Result<(), String> {
+    let target = |c: &mut Core| {
+      let stored = c.permits.get(card_id).cloned().ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
+      let payload = build(c, &stored)?;
+      Ok((stored.from, stored.room.machine, payload))
+    };
+    self.send_to_poster(format!("permit:{card_id}"), UNKNOWN_PERMIT_MSG, target, |c| {
+      if consume {
+        c.permits.remove(card_id);
+      }
+    })
+  }
+
+  pub fn answer_poll(&self, card_id: &str, picks: &[PollPick]) -> Result<(), String> {
+    let target = |c: &mut Core| {
+      let stored = c.polls.get(card_id).ok_or_else(|| UNKNOWN_POLL_MSG.to_owned())?;
+      let answer = build_answer(stored, picks)?;
+      let payload = serde_json::to_value(&answer).map_err(err)?;
+      Ok((stored.from.clone(), stored.room.machine.clone(), payload))
+    };
+    self.send_to_poster(format!("poll:{card_id}"), UNKNOWN_POLL_MSG, target, |_| {})
+  }
+
+  fn send_to_poster(&self, guard_key: String, unknown: &str, target: impl FnOnce(&mut Core) -> Result<(String, String, serde_json::Value), String>, on_sent: impl FnOnce(&mut Core)) -> Result<(), String> {
     let deadline = Instant::now() + self.send_budget;
-    let guard_key = format!("permit:{card_id}");
     let (msg_id, token, sealed) = {
       let mut g = self.lock();
       let c = &mut *g;
-      let stored = c.permits.get(card_id).cloned().ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
-      let payload = build(c, &stored)?;
+      let (from, machine, payload) = target(c)?;
       let runner = c
         .st
         .trusted
         .iter()
-        .find(|d| d.id == stored.from && !c.st.revoked.contains(&d.fp) && c.st.kind_of(&d.id, &d.fp) == Some("runner") && c.st.bindings.get(&stored.room.machine) == Some(&d.id))
+        .find(|d| d.id == from && !c.st.revoked.contains(&d.fp) && c.st.kind_of(&d.id, &d.fp) == Some("runner") && c.st.bindings.get(&machine) == Some(&d.id))
         .cloned()
-        .ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
+        .ok_or_else(|| unknown.to_owned())?;
       let msg_id = random_msg_id("permitok").map_err(err)?;
       if c.sending.contains_key(&guard_key) {
         return Err("This card is already being answered".into());
       }
-      c.sending.insert(guard_key.clone(), stored.room.machine.clone());
+      c.sending.insert(guard_key.clone(), machine.clone());
       match self.seal_items(c, "permitok", &msg_id, &payload, std::slice::from_ref(&runner)) {
         Ok(sealed) => (msg_id, Self::token_of(c)?, sealed),
         Err(e) => {
@@ -1673,9 +1699,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     }
     Self::settle(c, &sealed.items, &posted.done);
     posted.outcome?;
-    if consume {
-      c.permits.remove(card_id);
-    }
+    on_sent(c);
     Ok(())
   }
 
@@ -1691,6 +1715,20 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let mut m = e.msg.clone();
     Self::stamp_decision(c, &e.from, &mut m);
     m
+  }
+
+  fn track_poll(c: &mut Core, from: &str, msg: &ChatMessage) {
+    let Some(p) = &msg.poll else {
+      return;
+    };
+    if msg.room.kind != RoomKind::Manager || msg.author.kind != "manager" || c.st.kind_of_trusted(from) != Some("runner") || c.st.bindings.get(&msg.room.machine).map(String::as_str) != Some(from) {
+      return;
+    }
+    if !p.questions.is_empty() {
+      c.polls.accept(from, &msg.room, p);
+    } else if p.closed.is_some() {
+      c.polls.close(&p.card_id, from);
+    }
   }
 
   fn track_permit(c: &mut Core, from: &str, msg: &ChatMessage, now: u64) {
@@ -1711,6 +1749,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 }
 
 impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
+  fn answer_poll(&self, card_id: &str, picks: &[PollPick]) -> Result<(), String> {
+    RelayEngine::answer_poll(self, card_id, picks)
+  }
   fn answer_permit(&self, card_id: &str, answer: PermitAnswer, confirmed: bool) -> Result<(), String> {
     RelayEngine::answer_permit(self, card_id, answer, confirmed)
   }
@@ -1868,6 +1909,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         reply_to: params.reply_to,
         decision: None,
         mention: None,
+        poll: None,
       };
       validate_chat(&msg)?;
       let payload = serde_json::to_value(&msg).map_err(err)?;
