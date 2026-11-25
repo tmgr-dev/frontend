@@ -102,6 +102,14 @@
 			'drop',
 			'keydown',
 		],
+		watch: {
+			modelValue(): void {
+				void this.$nextTick(() => {
+					const el = this.$refs.input as HTMLTextAreaElement | undefined;
+					if (el) this.fit(el);
+				});
+			},
+		},
 		computed: {
 			canSend(): boolean {
 				return (
@@ -126,9 +134,16 @@
 			},
 			onInput(e: Event): void {
 				const el = e.target as HTMLTextAreaElement;
+				this.fit(el);
+				this.$emit('update:modelValue', el.value);
+			},
+			fit(el: HTMLTextAreaElement): void {
+				if (el.value === '') {
+					el.style.height = '';
+					return;
+				}
 				el.style.height = 'auto';
 				el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-				this.$emit('update:modelValue', el.value);
 			},
 			onKeydown(e: KeyboardEvent): void {
 				this.$emit('keydown', e);

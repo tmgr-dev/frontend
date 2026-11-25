@@ -138,7 +138,7 @@
 				type="button"
 				:aria-label="$t('manager.messages.copy')"
 				:title="$t('manager.messages.copy')"
-				@click="$emit('copy', message)"
+				@click="$emit('copy', message.body_md)"
 			>
 				<Icon name="copy" />
 			</button>

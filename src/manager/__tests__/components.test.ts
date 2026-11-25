@@ -765,6 +765,18 @@ describe('manager components', () => {
 		expect(html).toContain('disabled');
 	});
 
+	it('Composer shrinks the input back after the text is cleared on send', async () => {
+		const props = reactive({ modelValue: 'line 1\nline 2\nline 3' });
+		const mounted = mountDom('Composer', props);
+		const ta = mounted.el.querySelector('textarea')!;
+		ta.style.height = '120px';
+		props.modelValue = '';
+		await nextTick();
+		await nextTick();
+		expect(ta.style.height).toBe('');
+		mounted.unmount();
+	});
+
 	it('SlashMenu groups commands, marks the active row and dangerous ones', async () => {
 		const commands: SlashCommand[] = [
 			{
@@ -898,6 +910,21 @@ describe('MessageBubble copy buttons', () => {
 			html: renderBody(m.body_md),
 		});
 		expect(mounted.el.querySelector('.blk-copy')).toBeNull();
+		mounted.unmount();
+	});
+
+	it('emits the message text, not the message object, from the Copy action', () => {
+		const onCopy = jest.fn();
+		const m = msg({ id: 'c2', body_md: 'hello **world**' });
+		const mounted = mountDom('MessageBubble', {
+			message: m,
+			html: renderBody(m.body_md),
+			onCopy,
+		});
+		mounted.el
+			.querySelector<HTMLButtonElement>('.macts button[aria-label="Copy"]')!
+			.click();
+		expect(onCopy).toHaveBeenCalledWith('hello **world**');
 		mounted.unmount();
 	});
 });
