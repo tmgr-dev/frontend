@@ -64,6 +64,35 @@ export interface PresenceStatus {
 
 export type PermitChoice = 'once' | 'always' | 'deny';
 
+export interface PollOptionWire {
+	label: string;
+	description?: string;
+	recommended?: boolean;
+}
+
+export interface PollQuestionWire {
+	header: string;
+	question: string;
+	multi_select?: boolean;
+	options: PollOptionWire[];
+}
+
+export interface PollWire {
+	card_id: string;
+	session: string;
+	questions?: PollQuestionWire[];
+	closed?: string;
+	picked?: string;
+	can_answer?: boolean;
+	why_not?: string;
+}
+
+export interface PollPick {
+	question_idx: number;
+	choices: number[];
+	other?: string;
+}
+
 export interface DecisionRef {
 	card_id: string;
 	spawn?: SpawnCardWire;
@@ -120,6 +149,7 @@ export interface ChatMessage {
 	reply_to?: string;
 	decision?: DecisionRef;
 	mention?: MentionRef;
+	poll?: PollWire;
 	user_turn?: boolean;
 	fresh?: boolean;
 }
@@ -298,7 +328,12 @@ export interface PairResult {
 }
 
 export type FollowerState =
-	'enrolled' | 'already' | 'refused' | 'unreachable' | 'pending' | 'error';
+	| 'enrolled'
+	| 'already'
+	| 'refused'
+	| 'unreachable'
+	| 'pending'
+	| 'error';
 
 export interface FollowerInfo {
 	follower: string;
@@ -334,7 +369,11 @@ export interface ManagerMachine {
 export const RESET_PHRASE = 'RESET';
 
 export type SpawnCardState =
-	'issued' | 'approved' | 'claimed' | 'spawned' | 'refused';
+	| 'issued'
+	| 'approved'
+	| 'claimed'
+	| 'spawned'
+	| 'refused';
 
 export interface SpawnEdit {
 	cwd: string;

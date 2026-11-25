@@ -104,6 +104,26 @@
 		"touchId": "Touch ID confirms this answer",
 		"setupTouchId": "Set up Touch ID approvals in the Encryption tab to answer here"
 	},
+	"poll": {
+		"recommended": "Recommended",
+		"other": "Other…",
+		"otherPlaceholder": "Write your own answer",
+		"send": "Send answer",
+		"sendOther": "Send",
+		"sending": "Sending the answer…",
+		"noResponse": "No response. Answer in the terminal.",
+		"terminalOnly": "Answer in the terminal",
+		"failed": "Could not send the answer: {error}",
+		"answered": "Answered: {picked}",
+		"answeredPlain": "Answered",
+		"stale": "The question changed or was answered elsewhere",
+		"applyFailed": "Could not apply the answer: {why}",
+		"applyFailedPlain": "Could not apply the answer",
+		"terminal": "Answered in the terminal",
+		"cancelled": "Cancelled in the terminal",
+		"gone": "The session ended",
+		"closed": "Closed: {reason}"
+	},
 	"spawn": {
 		"title": "Manager wants to start a {profile} session",
 		"cwd": "Folder",

@@ -164,10 +164,11 @@
 		copyText,
 		flashCopied,
 	} from '../format';
+	import { hasPollQuestions } from '../pollCards';
+	import { externalVoice } from '../tts/externalVoice';
 	import { prepareSpeech } from '../tts/prepareText';
 	import { speaker } from '../tts/speaker';
 	import { voicePacks } from '../tts/voicePack';
-	import { externalVoice } from '../tts/externalVoice';
 	import type { Attachment, ChatMessage, ToolCall } from '../types';
 	import Avatar from './Avatar.vue';
 	import Icon from './Icon.vue';
@@ -291,7 +292,9 @@
 				return isOwnerMessage(this.message);
 			},
 			isDecision(): boolean {
-				return this.message.kind === 'decision';
+				return (
+					this.message.kind === 'decision' || hasPollQuestions(this.message)
+				);
 			},
 			isManagerAuthor(): boolean {
 				return this.message.author.kind === 'manager';
@@ -331,7 +334,7 @@
 					? addCopyButtons(this.html, {
 							copy: this.$t('manager.messages.copy'),
 							copied: this.$t('manager.messages.copied'),
-						})
+					  })
 					: undefined;
 			},
 		},

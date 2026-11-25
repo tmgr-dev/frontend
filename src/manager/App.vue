@@ -126,7 +126,15 @@
 					@inject="store.requestInject"
 				>
 					<template #decision="{ message }">
-						<template v-if="message.decision?.card_id">
+						<template v-if="message.poll">
+							<PollCard
+								v-if="pollGroupByMessage[message.id]"
+								:poll="pollGroupByMessage[message.id].card.poll"
+								:closed="pollGroupByMessage[message.id].closed"
+								:answerable="activeInfo?.local === false"
+							/>
+						</template>
+						<template v-else-if="message.decision?.card_id">
 							<template v-if="message.decision.permit">
 								<PermitCard
 									v-if="permitGroupByMessage[message.id]"
@@ -372,6 +380,7 @@
 	import MessageList from './components/MessageList.vue';
 	import NewSessionDialog from './components/NewSessionDialog.vue';
 	import PermitCard from './components/PermitCard.vue';
+	import PollCard from './components/PollCard.vue';
 	import RemotePolicy from './components/RemotePolicy.vue';
 	import RunnerAddedNotice from './components/RunnerAddedNotice.vue';
 	import SearchPanel from './components/SearchPanel.vue';
@@ -404,6 +413,7 @@
 		type PanelSide,
 	} from './panelWidths';
 	import { permitGroups } from './permitCards';
+	import { pollGroups, pollHidden } from './pollCards';
 	import { useRemotePolicyStore } from './remotePolicyStore';
 	import { MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';
@@ -430,6 +440,7 @@
 			ConfirmKindDialog,
 			DecisionCard,
 			PermitCard,
+			PollCard,
 			SpawnApprovalCard,
 			DetailPanel,
 			DevicesPanel,
@@ -545,7 +556,7 @@
 				return this.activeInfo
 					? headerSubtitle(this.activeInfo, this.store.rooms, (k, n) =>
 							this.$t(k, { count: n }, n),
-						)
+					  )
 					: '';
 			},
 			placeholder(): string {
@@ -564,15 +575,20 @@
 			},
 			messages() {
 				return this.store.activeKey
-					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
+					? this.store.messagesByRoom[this.store.activeKey] ?? []
 					: [];
 			},
 			permitGroupByMessage() {
 				return permitGroups(this.messages);
 			},
+			pollGroupByMessage() {
+				return pollGroups(this.messages);
+			},
 			shownMessages() {
 				const groups = this.permitGroupByMessage;
+				const polls = this.pollGroupByMessage;
 				return this.messages.filter((m) => {
+					if (pollHidden(m, polls)) return false;
 					const d = m.decision;
 					if (!d?.card_id) return true;
 					return d.permit ? !!groups[m.id] : !d.closed;
@@ -723,8 +739,8 @@
 					scope === 'chat'
 						? this.store.activeKey
 						: scope === 'manager'
-							? this.managerKey
-							: null;
+						? this.managerKey
+						: null;
 				void this.store.runSearch(this.store.search.text);
 			},
 			async onHit(hit: Parameters<typeof this.store.jumpToHit>[0]) {
