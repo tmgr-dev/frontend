@@ -174,6 +174,13 @@ impl ManagerBackend for CompositeBackend {
     }
   }
 
+  fn poll_answer(&self, room: &RoomRef, card_id: &str, picks: &[tmgr_ipc::chat::PollPick]) -> Result<(), String> {
+    match self.route(room)? {
+      Route::Local => self.local.poll_answer(card_id, picks),
+      Route::Relay => self.relay.answer_poll(card_id, picks),
+    }
+  }
+
   fn blob_put(&self, room: &RoomRef, sha256: &str, bytes: &[u8]) -> Result<(), String> {
     match self.route(room)? {
       Route::Local => self.local.blob_put(sha256, bytes),
@@ -286,6 +293,10 @@ mod tests {
       self.note("blob");
       self.up()
     }
+    fn poll_answer(&self, _: &str, _: &[tmgr_ipc::chat::PollPick]) -> Result<(), String> {
+      self.note("poll");
+      self.up()
+    }
   }
 
   #[derive(Default)]
@@ -312,6 +323,10 @@ mod tests {
     }
     fn owns(&self, r: &RoomRef) -> bool {
       self.rooms.iter().any(|i| &i.room == r)
+    }
+    fn answer_poll(&self, _: &str, _: &[tmgr_ipc::chat::PollPick]) -> Result<(), String> {
+      self.calls.lock().unwrap().push("poll");
+      Ok(())
     }
     fn trust_state(&self) -> Result<TrustState, String> {
       NoRelay.trust_state()
@@ -402,6 +417,18 @@ mod tests {
     assert_eq!(c.history(h(far_sess())).unwrap()[0].id, "r1");
     assert_eq!(*l.calls.lock().unwrap(), ["history"]);
     assert_eq!(*r.calls.lock().unwrap(), ["history"]);
+  }
+
+  #[test]
+  fn poll_answers_route_by_machine() {
+    let (c, l, r) = build(FakeLocal::default(), relay_with_far());
+    let picks = [tmgr_ipc::chat::PollPick { question_idx: 0, choices: vec![0], other: None }];
+    c.poll_answer(&mine(), "poll_x", &picks).unwrap();
+    c.poll_answer(&far_mgr(), "poll_x", &picks).unwrap();
+    assert_eq!(*l.calls.lock().unwrap(), ["poll"]);
+    assert_eq!(*r.calls.lock().unwrap(), ["poll"]);
+    let other = room(RoomKind::Manager, "mx_none", None);
+    assert_eq!(c.poll_answer(&other, "poll_x", &picks).unwrap_err(), "unknown room");
   }
 
   #[test]

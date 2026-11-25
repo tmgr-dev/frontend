@@ -319,12 +319,12 @@ pub async fn manager_permit_answer<R: Runtime>(window: tauri::WebviewWindow<R>, 
 }
 
 #[tauri::command]
-pub async fn manager_poll_answer<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>, card_id: String, answers: Vec<tmgr_ipc::chat::PollPick>) -> Result<(), String> {
+pub async fn manager_poll_answer<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>, room: backend::RoomRef, card_id: String, answers: Vec<tmgr_ipc::chat::PollPick>) -> Result<(), String> {
   if window.label() != LABEL {
     return Err("not allowed from this window".to_owned());
   }
-  let relay = relay_of(&app)?;
-  blocking(move || relay.answer_poll(&card_id, &answers)).await
+  let backend = backend_of(&app)?;
+  blocking(move || backend.poll_answer(&room, &card_id, &answers)).await
 }
 
 #[tauri::command]

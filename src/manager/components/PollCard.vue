@@ -92,7 +92,7 @@
 	import { pollAnswer } from '../api';
 	import { stripFormat } from '../permitCards';
 	import type { PollClose } from '../pollCards';
-	import type { PollPick, PollWire } from '../types';
+	import type { PollPick, PollWire, RoomRef } from '../types';
 
 	const IN_FLIGHT_MS = 10000;
 
@@ -101,7 +101,7 @@
 		props: {
 			poll: { type: Object as PropType<PollWire>, required: true },
 			closed: { type: Object as PropType<PollClose>, default: undefined },
-			answerable: { type: Boolean, default: true },
+			room: { type: Object as PropType<RoomRef>, required: true },
 		},
 		data() {
 			const n = this.poll.questions?.length ?? 0;
@@ -138,10 +138,7 @@
 			},
 			interactive(): boolean {
 				return (
-					this.answerable &&
-					this.poll.can_answer !== false &&
-					!this.closedText &&
-					!this.timedOut
+					this.poll.can_answer !== false && !this.closedText && !this.timedOut
 				);
 			},
 			immediate(): boolean {
@@ -238,7 +235,7 @@
 					this.timedOut = true;
 				}, IN_FLIGHT_MS);
 				try {
-					await pollAnswer(this.poll.card_id, this.buildAnswers());
+					await pollAnswer(this.room, this.poll.card_id, this.buildAnswers());
 				} catch (e) {
 					this.stopTimer();
 					this.busy = false;

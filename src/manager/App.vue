@@ -131,7 +131,7 @@
 								v-if="pollGroupByMessage[message.id]"
 								:poll="pollGroupByMessage[message.id].card.poll"
 								:closed="pollGroupByMessage[message.id].closed"
-								:answerable="activeInfo?.local === false"
+								:room="message.room"
 							/>
 						</template>
 						<template v-else-if="message.decision?.card_id">

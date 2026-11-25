@@ -204,6 +204,9 @@ pub trait ManagerBackend: Send + Sync {
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
   fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String>;
   fn blob_put(&self, room: &RoomRef, sha256: &str, bytes: &[u8]) -> Result<(), String>;
+  fn poll_answer(&self, _room: &RoomRef, _card_id: &str, _picks: &[tmgr_ipc::chat::PollPick]) -> Result<(), String> {
+    Err("chat sync is not set up".into())
+  }
 }
 
 fn valid_attachment(a: &Attachment) -> Result<(), String> {

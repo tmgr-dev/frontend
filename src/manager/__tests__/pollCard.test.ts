@@ -72,6 +72,7 @@ const i18n = createI18n({
 });
 
 const CARD = 'poll_abc';
+const ROOM = { kind: 'manager', machine: 'mx_a' };
 const q = (over: Record<string, unknown> = {}) => ({
 	header: 'DB',
 	question: 'Which DB?',
@@ -98,7 +99,6 @@ const mount = async (
 	card: PollWire,
 	props: {
 		closed?: { closed: string; picked?: string; why?: string };
-		answerable?: boolean;
 	} = {},
 ) => {
 	const el = document.createElement('div');
@@ -108,7 +108,7 @@ const mount = async (
 		render: () =>
 			h(load('PollCard'), {
 				poll: card,
-				answerable: props.answerable ?? true,
+				room: ROOM,
 				closed: state.closed,
 			}),
 	}).use(i18n);
@@ -162,6 +162,7 @@ describe('PollCard', () => {
 		await click(opts(el)[1]);
 		expect(mockInvoke).toHaveBeenCalledTimes(1);
 		expect(mockInvoke).toHaveBeenCalledWith('manager_poll_answer', {
+			room: ROOM,
 			cardId: CARD,
 			answers: [{ question_idx: 0, choices: [1] }],
 		});
@@ -185,6 +186,7 @@ describe('PollCard', () => {
 		expect(opts(el)[2].getAttribute('aria-pressed')).toBe('false');
 		await click(send());
 		expect(mockInvoke).toHaveBeenCalledWith('manager_poll_answer', {
+			room: ROOM,
 			cardId: CARD,
 			answers: [{ question_idx: 0, choices: [0, 1] }],
 		});
@@ -199,6 +201,7 @@ describe('PollCard', () => {
 		await type(el, 0, '  MariaDB ');
 		await click(el.querySelector('.po-other-send'));
 		expect(mockInvoke).toHaveBeenCalledWith('manager_poll_answer', {
+			room: ROOM,
 			cardId: CARD,
 			answers: [{ question_idx: 0, choices: [], other: 'MariaDB' }],
 		});
@@ -222,6 +225,7 @@ describe('PollCard', () => {
 		await click(send());
 		expect(mockInvoke).toHaveBeenCalledTimes(1);
 		expect(mockInvoke).toHaveBeenCalledWith('manager_poll_answer', {
+			room: ROOM,
 			cardId: CARD,
 			answers: [
 				{ question_idx: 0, choices: [2] },
@@ -331,13 +335,6 @@ describe('PollCard', () => {
 		expect(el.querySelector('input')).toBeNull();
 		expect(el.textContent).toContain('Answer in the terminal');
 		expect(el.textContent).toContain('The picker is not on screen');
-		unmount();
-	});
-
-	it('a room that cannot answer from the desktop shows the terminal hint', async () => {
-		const { el, unmount } = await mount(poll(), { answerable: false });
-		expect(el.querySelectorAll('button')).toHaveLength(0);
-		expect(el.textContent).toContain('Answer in the terminal');
 		unmount();
 	});
 });

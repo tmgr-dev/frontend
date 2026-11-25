@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use base64::Engine as _;
 use sha2::{Digest, Sha256};
 use tmgr_chat_relay::engine::blob::{parts_for, MAX_LOCAL_BYTES, PART_BYTES};
-use tmgr_ipc::chat::{BlobPutParams, BlobPutResult};
+use tmgr_ipc::chat::{method, BlobPutParams, BlobPutResult, PollAnswer, PollPick};
 
 use super::backend::{ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, StopOutcome, MAX_HISTORY};
 
@@ -29,6 +29,9 @@ pub trait LocalPort: Send + Sync {
   fn remove(&self, room: &RoomRef) -> Result<(), String>;
   fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String>;
   fn blob_put(&self, sha256: &str, bytes: &[u8]) -> Result<(), String>;
+  fn poll_answer(&self, _card_id: &str, _picks: &[PollPick]) -> Result<(), String> {
+    Err(NOT_RUNNING.to_owned())
+  }
 }
 
 pub trait ChatCall: Send + Sync {
@@ -67,6 +70,16 @@ impl Sess {
 fn listing_error(e: String) -> String {
   if e.starts_with("busy") {
     "The runner is busy. Try again in a moment.".to_owned()
+  } else {
+    e
+  }
+}
+
+fn poll_error(e: String) -> String {
+  if e.starts_with("busy") {
+    "The runner is busy, try again".to_owned()
+  } else if e.starts_with("not_found") {
+    "Unknown or closed question".to_owned()
   } else {
     e
   }
@@ -223,6 +236,13 @@ impl LocalPort for RunnerLocal {
     self.stopped(room)?;
     let id = self.stopped(room)?.id;
     self.runner.call("sessions.remove", serde_json::json!({ "id": id })).map(drop).map_err(control_error)
+  }
+
+  fn poll_answer(&self, card_id: &str, picks: &[PollPick]) -> Result<(), String> {
+    let answer = PollAnswer { v: 1, card_id: card_id.to_owned(), answers: picks.to_vec() };
+    answer.validate()?;
+    let params = serde_json::to_value(&answer).map_err(|e| e.to_string())?;
+    self.runner.call(method::POLL_ANSWER, params).map(drop).map_err(poll_error)
   }
 
   fn mention_inject(&self, room: &RoomRef, mention_id: &str, confirmed_risky: bool) -> Result<(), String> {
@@ -437,6 +457,34 @@ mod tests {
     let log = fake.log.lock().unwrap();
     assert_eq!(log[0].0, "chat.mention_inject");
     assert_eq!((log[0].1["mention_id"].as_str(), log[0].1["confirmed_risky"].as_bool()), (Some("m_1"), Some(true)));
+  }
+
+  #[test]
+  fn poll_answer_calls_the_runner_with_a_plain_answer() {
+    let (l, fake) = local(|_, _| Ok(json!({"accepted": true})));
+    let picks = [PollPick { question_idx: 0, choices: vec![1], other: None }, PollPick { question_idx: 1, choices: vec![], other: Some("x".into()) }];
+    l.poll_answer("poll_abc", &picks).unwrap();
+    let log = fake.log.lock().unwrap();
+    assert_eq!(log[0].0, "chat.poll_answer");
+    assert_eq!(log[0].1, json!({"v": 1, "card_id": "poll_abc", "answers": [{"question_idx": 0, "choices": [1]}, {"question_idx": 1, "choices": [], "other": "x"}]}));
+  }
+
+  #[test]
+  fn poll_answer_maps_runner_errors_and_refuses_bad_shapes_without_calling() {
+    let pick = [PollPick { question_idx: 0, choices: vec![0], other: None }];
+    for (raw, shown) in [
+      ("not_found unknown or closed question", "Unknown or closed question"),
+      ("busy busy", "The runner is busy, try again"),
+      ("forbidden nope", "forbidden nope"),
+    ] {
+      let raw = raw.to_owned();
+      let (l, _) = local(move |_, _| Err(raw.clone()));
+      assert_eq!(l.poll_answer("poll_abc", &pick).unwrap_err(), shown);
+    }
+    let (l, fake) = local(|_, _| Ok(Value::Null));
+    assert!(l.poll_answer("poll_abc", &[]).is_err());
+    assert!(l.poll_answer("poll_abc", &[PollPick { question_idx: 0, choices: vec![], other: None }]).is_err());
+    assert!(fake.log.lock().unwrap().is_empty());
   }
 
   #[test]

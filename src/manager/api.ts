@@ -100,8 +100,11 @@ export const permitAnswer = (
 	confirmed: boolean,
 ) => invoke<void>('manager_permit_answer', { cardId, choice, confirmed });
 
-export const pollAnswer = (cardId: string, answers: PollPick[]) =>
-	invoke<void>('manager_poll_answer', { cardId, answers });
+export const pollAnswer = (
+	room: RoomRef,
+	cardId: string,
+	answers: PollPick[],
+) => invoke<void>('manager_poll_answer', { room, cardId, answers });
 
 export const presenceStatus = () =>
 	invoke<PresenceStatus | null>('manager_presence_status');
