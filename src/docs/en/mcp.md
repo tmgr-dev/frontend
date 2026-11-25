@@ -71,15 +71,15 @@ These tools track your own time, not the agent's. An agent uses them only when y
 
 ### Pages {#tools-pages}
 
-- `workspace_context`: all context pages of the workspace as one document. Agents read it before they start a task.
+- `workspace_context`: all context pages of the workspace as one document. Agents read it before they start a task. New or edited context pages show up on the next call.
 - `pages_for_task`: the pages that mention a task.
 - `pages_search`: searches page titles and text.
 - `pages_tree`: all pages of a workspace as a tree, without their text.
 - `pages_get`: one page with its text, properties, version and sections.
-- `pages_create`: creates a plain, person or meeting page. Only people create context pages.
-- `pages_update`: replaces the title, text or properties. It needs the page's latest version, so it never overwrites someone else's edit.
-- `pages_append`: adds text at the end of a page or under a heading.
-- `pages_set_section`: replaces one section that belongs to the agent. On a context page, agents may write only to the "Agent notes" section.
+- `pages_create`: creates a plain, person or meeting page. Agents (persona tokens and device tokens) may create context pages too. Plugins and the in-app AI assistant may not.
+- `pages_update`: replaces the title, text or properties. Agents may edit context pages with it; sections owned by the server or by someone else stay read-only. It needs the page's latest version, so it never overwrites someone else's edit.
+- `pages_append`: adds text at the end of a page or under a heading. Without a heading, text on a context page lands in the "Agent notes" section.
+- `pages_set_section`: replaces one section that belongs to the agent.
 
 ### Graph {#tools-graph}
 
@@ -124,6 +124,7 @@ How to use them: [The agent work workflow](#agent-work).
 - `list_workspaces`: your workspaces with id and code. With a persona token, only its workspace.
 - `list_members`: the members of a workspace.
 - `whoami`: who the token acts as. With a persona token, also the persona, its workspace, permissions and skills.
+- `update_workspace`: renames a workspace. Only the workspace owner may do it; everyone else, admins included, gets 403, and persona tokens are refused. The name is trimmed and must be 1-255 characters.
 
 ### Other {#tools-other}
 
