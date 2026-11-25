@@ -5592,7 +5592,7 @@ dependencies = [
  "core-graphics",
  "flate2",
  "getrandom 0.3.4",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "http-body-util",
  "hyper",
  "hyper-util",
@@ -5610,7 +5610,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "sherpa-onnx",
  "subtle",
  "tauri",
@@ -5648,7 +5648,7 @@ version = "1.0.194"
 dependencies = [
  "base64 0.22.1",
  "chrono",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "log",
  "p256",
  "serde",
@@ -5664,7 +5664,7 @@ name = "tmgr-ipc"
 version = "1.0.194"
 dependencies = [
  "base64 0.22.1",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "hmac 0.13.0",
  "libc",
  "serde",
@@ -5680,7 +5680,7 @@ version = "1.0.194"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "hkdf 0.13.0",
  "hmac 0.13.0",
  "p256",
