@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.219 — 2026-11-26
+
+- Session chats again show the agent's replies when Claude Code agent teams or a nested `claude` write their own transcripts next to the session's: the bundled runner now follows the session's own conversation instead of the newest file.
+
 ## 0.9.218 — 2026-11-25
 
 - Manager: the voice download and remove controls moved to the Voice tab; messages no longer show a Remove voice link under every reply.
