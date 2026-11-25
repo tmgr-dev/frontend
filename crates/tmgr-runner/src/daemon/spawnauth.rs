@@ -1356,18 +1356,23 @@ pub(crate) fn ingest_spawnkey(
     key: &SpawnKey,
     now: u64,
 ) -> Result<OfferOutcome, &'static str> {
-    auth.offer_key(
-        KeyOffer {
-            statement: key.statement.clone(),
-            sig: key.sig.clone(),
-            spawn_sig: key.spawn_sig.clone(),
-            device_id: device_id.to_owned(),
-            sign_pub_b64: sign_pub_b64.to_owned(),
-            kex_pub_b64: kex_pub_b64.to_owned(),
-        },
-        now,
-    )
-    .map_err(|_| "spawn key rejected")
+    let offer = KeyOffer {
+        statement: key.statement.clone(),
+        sig: key.sig.clone(),
+        spawn_sig: key.spawn_sig.clone(),
+        device_id: device_id.to_owned(),
+        sign_pub_b64: sign_pub_b64.to_owned(),
+        kex_pub_b64: kex_pub_b64.to_owned(),
+    };
+    if !key.statement.starts_with(tmgr_spawn_auth::PRESENCE_PREFIX) {
+        return auth.offer_key(offer, now).map_err(|_| "spawn key rejected");
+    }
+    let fp = tmgr_spawn_auth::device_fp(sign_pub_b64, kex_pub_b64);
+    if auth.permit_sender_kind(device_id, &fp) != Some(PermitSenderKind::Desktop) {
+        return Err("presence key from a device that is not a verified desktop");
+    }
+    auth.offer_presence_key(offer, now)
+        .map_err(|_| "presence key rejected")
 }
 
 const KEY_INBOX_CAP: usize = 16;
@@ -1441,7 +1446,7 @@ mod tests {
     use super::*;
     use crate::manager::{self as core, Host, SpawnSpec};
     use crate::spawnauth::testutil::{
-        fp_of, kex_key, offer, offer_with, secret, sign, spawn_fp, USER,
+        fp_of, kex_key, offer, offer_with, presence_offer, secret, sign, spawn_fp, DEVICE_ID, USER,
     };
 
     const PHONE: &str = "00000000-0000-4000-8000-000000000001";
@@ -3106,6 +3111,50 @@ mod tests {
         );
         assert!(out.is_err());
         assert!(auth.pending_keys().unwrap().is_empty());
+    }
+
+    struct KindSource(Option<PermitSenderKind>);
+
+    impl TrustSource for KindSource {
+        fn status(&self, _: &str, _: &str) -> TrustStatus {
+            TrustStatus::Trusted
+        }
+
+        fn permit_sender_kind(&self, _: &str, _: &str) -> Option<PermitSenderKind> {
+            self.0
+        }
+    }
+
+    #[test]
+    fn a_presence_statement_is_taken_only_from_a_verified_desktop_and_only_as_presence() {
+        for kind in [
+            None,
+            Some(PermitSenderKind::Mobile),
+            Some(PermitSenderKind::Desktop),
+        ] {
+            let t = tempfile::tempdir().unwrap();
+            let identity = Identity::new(USER, "mx_0123456789abcdef", &"b".repeat(64)).unwrap();
+            let auth = SpawnAuth::open(t.path(), identity, Arc::new(KindSource(kind))).unwrap();
+            let o = presence_offer(9, now_ms() - 1_000);
+            let out = ingest_spawnkey(
+                &auth,
+                DEVICE_ID,
+                &o.sign_pub_b64,
+                &o.kex_pub_b64,
+                &serde_json::from_str(&statement_json(&o)).unwrap(),
+                now_ms(),
+            );
+            assert!(auth.pending_keys().unwrap().is_empty(), "{kind:?}");
+            let presence = auth.presence_keys().pending().unwrap();
+            if kind == Some(PermitSenderKind::Desktop) {
+                assert_eq!(out.unwrap(), OfferOutcome::Added);
+                assert_eq!(presence.len(), 1);
+                assert_eq!(presence[0].device_fp, fp_of(&o));
+            } else {
+                assert!(out.is_err(), "{kind:?}");
+                assert!(presence.is_empty(), "{kind:?}");
+            }
+        }
     }
 
     fn trust(e: &Env, dir: &str) {

@@ -3,7 +3,7 @@
 
 use serde::Deserialize;
 use tmgr_ipc::chat::PermitCardMsg;
-use tmgr_spawn_auth::{is_hex_lower, is_token, permit_signed_string, PermitChoice, PermitRecord, PermitScreen, PinnedKey, SignedPermit};
+use tmgr_spawn_auth::{is_hex_lower, is_token, permit_signed_string, PermitChoice, PermitKey, PermitRecord, PermitScreen, PinnedKey, SignedPermit};
 
 use super::super::backend::RoomRef;
 
@@ -143,6 +143,7 @@ pub fn sign_answer(stored: &StoredPermit, answer: PermitAnswer, confirmed: bool,
     exp_ms: card.exp_ms,
     req_sha256: screen.req_sha256(),
     alg: "es256".into(),
+    k: PermitKey::Chat,
     sig: String::new(),
   };
   let message = permit_signed_string(&record, &key, &signed);

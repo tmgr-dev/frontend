@@ -11,7 +11,7 @@ pub use cards::{
 };
 #[cfg(test)]
 pub(crate) use keys::testutil;
-pub use keys::{KeyError, KeyInfo, KeyOffer, KeyStoreFile, PendingKey};
+pub use keys::{KeyError, KeyInfo, KeyOffer, KeyPurpose, KeyStoreFile, PendingKey};
 
 use std::sync::Arc;
 use tmgr_spawn_auth::{
@@ -55,6 +55,7 @@ impl std::error::Error for SpawnAuthError {}
 pub struct SpawnAuth {
     cards: CardStore,
     keys: KeyStoreFile,
+    presence: KeyStoreFile,
     trust: Arc<dyn TrustSource>,
 }
 
@@ -65,9 +66,14 @@ impl SpawnAuth {
         identity: Identity,
         trust: Arc<dyn TrustSource>,
     ) -> Result<Self, SpawnAuthError> {
-        let keys = Self::open_keys(runner_dir, &identity, &trust)?;
+        let (keys, presence) = Self::open_keys(runner_dir, &identity, &trust)?;
         let cards = CardStore::open(runner_dir, identity).map_err(SpawnAuthError::Card)?;
-        Ok(Self { cards, keys, trust })
+        Ok(Self {
+            cards,
+            keys,
+            presence,
+            trust,
+        })
     }
 
     #[cfg(test)]
@@ -77,23 +83,36 @@ impl SpawnAuth {
         trust: Arc<dyn TrustSource>,
         rng: Rng,
     ) -> Result<Self, SpawnAuthError> {
-        let keys = Self::open_keys(runner_dir, &identity, &trust)?;
+        let (keys, presence) = Self::open_keys(runner_dir, &identity, &trust)?;
         let cards =
             CardStore::open_with_rng(runner_dir, identity, rng).map_err(SpawnAuthError::Card)?;
-        Ok(Self { cards, keys, trust })
+        Ok(Self {
+            cards,
+            keys,
+            presence,
+            trust,
+        })
     }
 
     fn open_keys(
         runner_dir: &std::path::Path,
         identity: &Identity,
         trust: &Arc<dyn TrustSource>,
-    ) -> Result<KeyStoreFile, SpawnAuthError> {
-        KeyStoreFile::open(
-            &runner_dir.join("spawnauth").join("keys.json"),
-            identity.user_id(),
-            &TrustAdapter(&**trust),
-        )
-        .map_err(SpawnAuthError::Key)
+    ) -> Result<(KeyStoreFile, KeyStoreFile), SpawnAuthError> {
+        let dir = runner_dir.join("spawnauth");
+        let open = |purpose, name: &str| {
+            KeyStoreFile::open_as(
+                purpose,
+                &dir.join(name),
+                identity.user_id(),
+                &TrustAdapter(&**trust),
+            )
+            .map_err(SpawnAuthError::Key)
+        };
+        Ok((
+            open(KeyPurpose::Spawn, "keys.json")?,
+            open(KeyPurpose::Presence, "presence_keys.json")?,
+        ))
     }
 
     pub fn cards(&self) -> &CardStore {
@@ -118,6 +137,7 @@ impl SpawnAuth {
 
     pub fn recover(&self, now_ms: u64) -> Result<RecoverReport, SpawnAuthError> {
         self.keys.recover().map_err(SpawnAuthError::Key)?;
+        self.presence.recover().map_err(SpawnAuthError::Key)?;
         self.cards.recover(now_ms).map_err(SpawnAuthError::Card)
     }
 
@@ -223,6 +243,33 @@ impl SpawnAuth {
 
     pub fn pinned_key(&self, device_fp: &str) -> Result<Option<PinnedKey>, KeyError> {
         self.keys.pinned_key(device_fp)
+    }
+
+    pub fn presence_keys(&self) -> &KeyStoreFile {
+        &self.presence
+    }
+
+    pub fn offer_presence_key(
+        &self,
+        offer: KeyOffer,
+        now_ms: u64,
+    ) -> Result<OfferOutcome, KeyError> {
+        self.presence
+            .offer(offer, &TrustAdapter(&*self.trust), now_ms)
+    }
+
+    pub fn presence_key(&self, device_fp: &str) -> Result<Option<PinnedKey>, KeyError> {
+        self.presence.pinned_key(device_fp)
+    }
+
+    pub fn approved_presence_fps(&self) -> Result<Vec<String>, KeyError> {
+        Ok(self
+            .presence
+            .list()?
+            .into_iter()
+            .filter(|k| k.state == tmgr_spawn_auth::KeyState::Approved)
+            .map(|k| k.device_fp)
+            .collect())
     }
 }
 

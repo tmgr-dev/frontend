@@ -56,6 +56,9 @@ manager machine remove | Other | id
 manager spawn-keys list | Other | -
 manager spawn-keys approve | Other | device_fp, spawn_key_fp
 manager spawn-keys revoke | Other | device_fp
+manager presence-keys list | Other | -
+manager presence-keys approve | Other | device_fp, presence_key_fp
+manager presence-keys revoke | Other | device_fp
 chat join | Other | -
 chat status | Other | -
 chat remote allow-ask | Other | leader, state

@@ -41,12 +41,12 @@ fn desktop_policy_from(text: Option<&str>) -> (DesktopPolicy, Option<String>) {
         Some(Ok(p)) => (p, None),
         _ => (
             DesktopPolicy::Safe,
-            Some(format!("{DESKTOP_KEY} must be none, safe or all")),
+            Some(format!("{DESKTOP_KEY} must be none, safe, all or presence")),
         ),
     }
 }
 
-const PERMIT_CONFIG_DEFAULT: &str = "desktop_may_answer = \"safe\"\n";
+const PERMIT_CONFIG_DEFAULT: &str = "desktop_may_answer = \"presence\"\n";
 
 fn safe_with(warning: String) -> (DesktopPolicy, Option<String>) {
     (DesktopPolicy::Safe, Some(warning))
@@ -64,7 +64,7 @@ fn create_permit_config(path: &Path) -> (DesktopPolicy, Option<String>) {
             f.write_all(PERMIT_CONFIG_DEFAULT.as_bytes())
         });
     match made {
-        Ok(()) => (DesktopPolicy::Safe, None),
+        Ok(()) => (DesktopPolicy::Presence, None),
         Err(_) => safe_with(format!("{PERMIT_CONFIG_FILE} cannot be created")),
     }
 }
@@ -167,7 +167,12 @@ impl Runner {
         (!s.is_exited() && s.has_shim()).then(|| s.card()).flatten()
     }
 
-    fn permit_sync_policy(&self) {
+    fn permit_sync_policy(&self, auth: &SpawnAuth) {
+        let fps = auth.approved_presence_fps().unwrap_or_else(|_| {
+            log("permit relay: presence keys cannot be read, danger cards need a phone");
+            Vec::new()
+        });
+        lock(&self.permit_relay.desk).set_presence_fps(fps);
         let (policy, warning) = load_desktop_policy(&self.cfg.dir);
         match warning {
             Some(w) => {
@@ -222,10 +227,10 @@ impl Runner {
         if !busy {
             return;
         }
-        let Some((_, ids)) = self.permit_ids() else {
+        let Some((auth, ids)) = self.permit_ids() else {
             return;
         };
-        self.permit_sync_policy();
+        self.permit_sync_policy(&auth);
         let actions: Vec<Action> = {
             let mut desk = lock(&self.permit_relay.desk);
             seen.iter()
@@ -264,9 +269,13 @@ impl Runner {
             }
             PermitSenderKind::Mobile => auth.pinned_key(&signed.device_fp).ok().flatten(),
         };
+        let presence = match kind {
+            PermitSenderKind::Desktop => auth.presence_key(&signed.device_fp).ok().flatten(),
+            PermitSenderKind::Mobile => None,
+        };
         let current = self.permit_card_of(&signed.session);
         let trust = auth.trust_view();
-        self.permit_sync_policy();
+        self.permit_sync_policy(&auth);
         let actions = lock(&self.permit_relay.desk).accept(
             signed,
             key.as_ref(),
@@ -275,6 +284,7 @@ impl Runner {
                 owner_device,
                 kind,
                 desktop: DesktopPolicy::default(),
+                presence: presence.as_ref(),
             },
             &trust,
             &clean(sender_label, REASON_MAX / 2),
@@ -291,9 +301,9 @@ impl Runner {
     }
 
     pub(super) fn accept_permit_refresh(&self, card_id: &str, nonce: &str, now: u64) {
-        if self.permit_ids().is_none() {
+        let Some((auth, _)) = self.permit_ids() else {
             return;
-        }
+        };
         let Some(session) = lock(&self.permit_relay.desk)
             .pending(card_id)
             .map(|p| p.record.session.clone())
@@ -301,7 +311,7 @@ impl Runner {
             return;
         };
         let current = self.permit_card_of(&session);
-        self.permit_sync_policy();
+        self.permit_sync_policy(&auth);
         let actions = lock(&self.permit_relay.desk).refresh(
             card_id,
             nonce,
@@ -642,12 +652,16 @@ impl Runner {
 mod tests {
     use super::manager::tests::{add_meta, runner};
     use super::*;
-    use crate::spawnauth::testutil::{fp_of, offer, pub_b64, secret, spawn_fp, USER};
+    use crate::spawnauth::testutil::{
+        fp_of, offer, presence_offer, pub_b64, secret, spawn_fp, USER,
+    };
     use crate::spawnauth::{Identity, SpawnAuth, TrustSource};
     use p256::ecdsa::signature::Signer;
     use p256::ecdsa::Signature;
     use tmgr_ipc::chat::ChatMessage;
-    use tmgr_spawn_auth::{b64_encode, permit_signed_string, PermitChoice, PinnedKey, TrustStatus};
+    use tmgr_spawn_auth::{
+        b64_encode, permit_signed_string, PermitChoice, PermitKey, PinnedKey, TrustStatus,
+    };
 
     const SID: &str = "s_aaaaaaaaaa";
     const SCREEN: &str = include_str!("../../profiles/screens/claude-bash-approval.txt");
@@ -813,6 +827,7 @@ mod tests {
             exp_ms: rec.exp_ms,
             req_sha256: rec.screen.req_sha256(),
             alg: "es256".into(),
+            k: PermitKey::Chat,
             sig: String::new(),
         };
         let sig: Signature = secret(3).sign(permit_signed_string(&rec, &key, &s).as_bytes());
@@ -1417,6 +1432,82 @@ mod tests {
         assert_eq!(typed(&e), "1");
     }
 
+    fn presence_signed(e: &Env, choice: PermitChoice, confirmed: u8) -> SignedPermit {
+        let mut s = signed(e, choice);
+        let rec = lock(&e.rt.permit_relay.desk)
+            .pending(&card_id(e))
+            .unwrap()
+            .record
+            .clone();
+        let key = PinnedKey {
+            user_id: rec.user_id.clone(),
+            device_id: "desk-1".into(),
+            device_fp: e.fp.clone(),
+            spawn_pub: Vec::new(),
+        };
+        s.k = PermitKey::Presence;
+        s.confirmed = confirmed;
+        let sig: Signature = secret(11).sign(permit_signed_string(&rec, &key, &s).as_bytes());
+        s.sig = b64_encode(sig.to_der().as_bytes());
+        s
+    }
+
+    fn presence_world(approve: bool) -> Env {
+        let e = env_with(true, "rm -rf build");
+        let auth = e.auth.clone().unwrap();
+        auth.offer_presence_key(presence_offer(11, now_ms() - 5_000), now_ms())
+            .unwrap();
+        if approve {
+            auth.presence_keys()
+                .approve(&e.fp[..8], &spawn_fp(11)[..16], now_ms())
+                .unwrap();
+        }
+        armed(&e);
+        e
+    }
+
+    #[test]
+    fn a_danger_card_carries_only_approved_presence_fps() {
+        let e = presence_world(true);
+        let card = posted(&e).remove(0).decision.unwrap().permit.unwrap();
+        assert!(!card.desktop_ok);
+        assert_eq!(card.presence_fps, vec![e.fp.clone()]);
+        let p = presence_world(false);
+        let card = posted(&p).remove(0).decision.unwrap().permit.unwrap();
+        assert!(card.presence_fps.is_empty());
+    }
+
+    #[test]
+    fn a_confirmed_presence_answer_from_a_desktop_answers_a_danger_card() {
+        let e = presence_world(true);
+        let s = presence_signed(&e, PermitChoice::Yes, 1);
+        accept_as(&e, &s, PermitSenderKind::Desktop, &pub_b64(&secret(9)));
+        assert_eq!(typed(&e), "1");
+        assert_eq!(closed(&e), vec!["answered on Mac".to_string()]);
+    }
+
+    #[test]
+    fn a_presence_answer_is_refused_without_an_approved_key_or_from_a_phone() {
+        let e = presence_world(false);
+        let s = presence_signed(&e, PermitChoice::Yes, 1);
+        accept_as(&e, &s, PermitSenderKind::Desktop, &pub_b64(&secret(9)));
+        kept(&e);
+        let m = presence_world(true);
+        let s = presence_signed(&m, PermitChoice::Yes, 1);
+        accept_as(&m, &s, PermitSenderKind::Mobile, &pub_b64(&secret(9)));
+        refused(&m);
+    }
+
+    #[test]
+    fn a_chat_key_answer_to_a_danger_card_stays_refused_with_a_presence_key_approved() {
+        let e = presence_world(true);
+        let mut s = resign(&e, signed(&e, PermitChoice::Yes), &secret(9), &e.fp);
+        s.confirmed = 1;
+        let s = resign(&e, s, &secret(9), &e.fp);
+        accept_as(&e, &s, PermitSenderKind::Desktop, &pub_b64(&secret(9)));
+        refused(&e);
+    }
+
     #[test]
     fn the_desktop_setting_defaults_to_safe_when_missing_or_invalid() {
         for text in [
@@ -1451,13 +1542,19 @@ mod tests {
     #[test]
     fn the_desktop_setting_is_read_from_the_runner_dir() {
         let t = tempfile::tempdir().unwrap();
-        assert_eq!(load_desktop_policy(t.path()).0, DesktopPolicy::Safe);
+        assert_eq!(load_desktop_policy(t.path()).0, DesktopPolicy::Presence);
         std::fs::write(
             t.path().join(PERMIT_CONFIG_FILE),
             "desktop_may_answer = \"none\"\n",
         )
         .unwrap();
         assert_eq!(load_desktop_policy(t.path()).0, DesktopPolicy::None);
+        std::fs::write(
+            t.path().join(PERMIT_CONFIG_FILE),
+            "desktop_may_answer = \"presence\"\n",
+        )
+        .unwrap();
+        assert_eq!(load_desktop_policy(t.path()).0, DesktopPolicy::Presence);
         std::fs::write(
             t.path().join(PERMIT_CONFIG_FILE),
             "desktop_may_answer = \"everything\"\n",
@@ -1512,13 +1609,16 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_permit_file_is_created_owner_only_with_safe() {
+    fn a_missing_permit_file_is_created_owner_only_with_presence() {
         let t = private_dir();
-        assert_eq!(load_desktop_policy(t.path()), (DesktopPolicy::Safe, None));
+        assert_eq!(
+            load_desktop_policy(t.path()),
+            (DesktopPolicy::Presence, None)
+        );
         let p = t.path().join(PERMIT_CONFIG_FILE);
         assert_eq!(
             std::fs::read_to_string(&p).unwrap(),
-            "desktop_may_answer = \"safe\"\n"
+            "desktop_may_answer = \"presence\"\n"
         );
         let mode = std::fs::metadata(&p).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
@@ -1530,7 +1630,7 @@ mod tests {
         let old = unsafe { libc::umask(0) };
         let (p, warn) = load_desktop_policy(t.path());
         unsafe { libc::umask(old) };
-        assert_eq!((p, warn), (DesktopPolicy::Safe, None));
+        assert_eq!((p, warn), (DesktopPolicy::Presence, None));
         let mode = std::fs::metadata(t.path().join(PERMIT_CONFIG_FILE))
             .unwrap()
             .permissions()

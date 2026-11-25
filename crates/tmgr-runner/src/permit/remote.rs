@@ -56,6 +56,7 @@ pub struct PermitDesk {
     salt: String,
     serial: u64,
     desktop: DesktopPolicy,
+    presence_fps: Vec<String>,
 }
 
 pub type FreshNonce<'a> = &'a mut dyn FnMut() -> Option<String>;
@@ -67,6 +68,10 @@ impl PermitDesk {
 
     pub fn set_desktop(&mut self, policy: DesktopPolicy) {
         self.desktop = policy;
+    }
+
+    pub fn set_presence_fps(&mut self, fps: Vec<String>) {
+        self.presence_fps = fps;
     }
 
     pub fn pending(&self, card_id: &str) -> Option<&PendingPermit> {
@@ -97,6 +102,7 @@ impl PermitDesk {
     ) -> Vec<Action> {
         let mut out = Vec::new();
         let desktop = self.desktop;
+        let fps = self.presence_fps.clone();
         let live = card.filter(|c| c.can_answer);
         let held = self
             .pending
@@ -159,7 +165,7 @@ impl PermitDesk {
             raw: c.clone(),
             answering: None,
         };
-        out.push(post(&card_id, &p, desktop));
+        out.push(post(&card_id, &p, desktop, &fps));
         self.pending.insert(card_id, p);
         out
     }
@@ -173,6 +179,7 @@ impl PermitDesk {
         fresh_nonce: FreshNonce<'_>,
     ) -> Vec<Action> {
         let desktop = self.desktop;
+        let fps = self.presence_fps.clone();
         let Some(p) = self.pending.get_mut(card_id) else {
             return Vec::new();
         };
@@ -192,7 +199,7 @@ impl PermitDesk {
             return Vec::new();
         };
         p.reissue(now_ms, fresh, true);
-        vec![post(card_id, p, desktop)]
+        vec![post(card_id, p, desktop, &fps)]
     }
 
     pub fn answered_locally(&mut self, id: &str) -> Vec<Action> {
@@ -229,6 +236,7 @@ impl PermitDesk {
         fresh_nonce: FreshNonce<'_>,
     ) -> Vec<Action> {
         let desktop = self.desktop;
+        let fps = self.presence_fps.clone();
         let Some(p) = self.pending.get_mut(card_id) else {
             return Vec::new();
         };
@@ -241,7 +249,7 @@ impl PermitDesk {
             return match fresh_nonce() {
                 Some(nonce) => {
                     p.reissue(now_ms, nonce, false);
-                    vec![post(card_id, p, desktop)]
+                    vec![post(card_id, p, desktop, &fps)]
                 }
                 None => {
                     p.record.exp_ms = p.record.exp_ms.min(now_ms);
@@ -271,6 +279,7 @@ impl PermitDesk {
     ) -> Vec<Action> {
         let id = signed.card_id.clone();
         let desktop = self.desktop;
+        let fps = self.presence_fps.clone();
         let sender = PermitSender { desktop, ..sender };
         let line = |result: &str, action: &str| Action::Audit(audit_line(signed, result, action));
         let Some(p) = self.pending.get_mut(&id) else {
@@ -316,7 +325,7 @@ impl PermitDesk {
                         return vec![line(e.code(), "dropped")];
                     };
                     p.reissue(now_ms, nonce, false);
-                    vec![post(&id, p, desktop), line(e.code(), "reissued")]
+                    vec![post(&id, p, desktop, &fps), line(e.code(), "reissued")]
                 } else {
                     if let Some(p) = self.pending.remove(&id) {
                         self.tombstone(&p.prompt);
@@ -370,7 +379,7 @@ fn close(card_id: &str, reason: &str) -> Action {
     }
 }
 
-fn post(card_id: &str, p: &PendingPermit, desktop: DesktopPolicy) -> Action {
+fn post(card_id: &str, p: &PendingPermit, desktop: DesktopPolicy, fps: &[String]) -> Action {
     let r = &p.record;
     let reissue = p.reissues.saturating_add(p.idle);
     let s = &r.screen;
@@ -394,6 +403,11 @@ fn post(card_id: &str, p: &PendingPermit, desktop: DesktopPolicy) -> Action {
             danger: s.danger.clone(),
             always_label: s.always_label.clone(),
             desktop_ok: desktop.allows(PermitSenderKind::Desktop, s),
+            presence_fps: if desktop.wants_presence(s) {
+                fps.to_vec()
+            } else {
+                Vec::new()
+            },
         }),
     }
 }
@@ -460,7 +474,7 @@ mod tests {
     use super::*;
     use p256::ecdsa::signature::Signer;
     use p256::ecdsa::{Signature, SigningKey};
-    use tmgr_spawn_auth::{b64_encode, permit_signed_string, TrustStatus};
+    use tmgr_spawn_auth::{b64_encode, permit_signed_string, PermitKey, TrustStatus};
 
     struct Trust(TrustStatus);
     impl TrustView for Trust {
@@ -554,6 +568,7 @@ mod tests {
             exp_ms: rec.exp_ms,
             req_sha256: rec.screen.req_sha256(),
             alg: "es256".into(),
+            k: PermitKey::Chat,
             sig: String::new(),
         };
         let sig: Signature = sk().sign(permit_signed_string(rec, &k, &s).as_bytes());
@@ -606,6 +621,7 @@ mod tests {
                 owner_device: c.owner,
                 kind: c.kind,
                 desktop: DesktopPolicy::All,
+                presence: None,
             },
             &Trust(c.trust),
             c.label,
@@ -1441,6 +1457,36 @@ mod tests {
             let p = posted(&again);
             assert_eq!(p.reissue, 1);
             assert_eq!(p.desktop_ok, want, "reissue {policy:?} danger={danger}");
+        }
+    }
+
+    #[test]
+    fn presence_fps_ride_only_on_danger_cards_under_the_presence_policy() {
+        let fps = vec!["a".repeat(64)];
+        let cases = [
+            (DesktopPolicy::Presence, true, true),
+            (DesktopPolicy::Presence, false, false),
+            (DesktopPolicy::Safe, true, false),
+            (DesktopPolicy::All, true, false),
+            (DesktopPolicy::None, true, false),
+        ];
+        for (policy, danger, want) in cases {
+            let c = if danger { danger_card() } else { card() };
+            let mut g = Gen(0);
+            let mut d = PermitDesk::new();
+            d.set_desktop(policy);
+            d.set_presence_fps(fps.clone());
+            let first = d.observe(SESSION, Some(&c), &ids(), T0, &mut || g.next());
+            let expect = if want { fps.clone() } else { Vec::new() };
+            assert_eq!(
+                posted(&first).presence_fps,
+                expect,
+                "{policy:?} danger={danger}"
+            );
+            let later = T0 + MAX_PERMIT_TTL_MS + 1;
+            let (id, nonce) = (cid(&d), rec(&d).nonce);
+            let again = refresh(&mut d, &id, &nonce, Some(&c), later, &mut g);
+            assert_eq!(posted(&again).presence_fps, expect, "reissue {policy:?}");
         }
     }
 

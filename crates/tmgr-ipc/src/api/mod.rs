@@ -195,6 +195,9 @@ pub mod method {
     pub const SPAWN_KEYS_LIST: &str = "spawn.keys.list";
     pub const SPAWN_KEYS_APPROVE: &str = "spawn.keys.approve";
     pub const SPAWN_KEYS_REVOKE: &str = "spawn.keys.revoke";
+    pub const PRESENCE_KEYS_LIST: &str = "presence.keys.list";
+    pub const PRESENCE_KEYS_APPROVE: &str = "presence.keys.approve";
+    pub const PRESENCE_KEYS_REVOKE: &str = "presence.keys.revoke";
 }
 
 pub mod limits {

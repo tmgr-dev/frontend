@@ -50,6 +50,11 @@ pub enum ManagerCmd {
         #[command(subcommand)]
         cmd: super::manager_spawn_keys::SpawnKeysCmd,
     },
+    /// [experimental] Review and revoke the Touch ID presence keys of your desktops
+    PresenceKeys {
+        #[command(subcommand)]
+        cmd: super::manager_spawn_keys::PresenceKeysCmd,
+    },
 }
 
 #[derive(Args)]
@@ -211,6 +216,7 @@ pub(super) fn run(o: &Opts, cmd: &ManagerCmd) -> Result<i32> {
         ManagerCmd::Status => status(o),
         ManagerCmd::Machine { cmd } => super::manager_machine::run(o, cmd),
         ManagerCmd::SpawnKeys { cmd } => super::manager_spawn_keys::run(o, cmd),
+        ManagerCmd::PresenceKeys { cmd } => super::manager_spawn_keys::run_presence(o, cmd),
     }
 }
 

@@ -3251,9 +3251,12 @@ impl Runner {
             method::SPAWN_CHALLENGE => self.spawn_challenge_call(conn, p),
             method::SPAWN_CARD => self.spawn_card_call(conn, p),
             method::SPAWN_DECIDE => self.spawn_decide_call(conn, p),
-            method::SPAWN_KEYS_LIST | method::SPAWN_KEYS_APPROVE | method::SPAWN_KEYS_REVOKE => {
-                self.spawn_keys_call(conn, req.method.as_str(), p)
-            }
+            method::SPAWN_KEYS_LIST
+            | method::SPAWN_KEYS_APPROVE
+            | method::SPAWN_KEYS_REVOKE
+            | method::PRESENCE_KEYS_LIST
+            | method::PRESENCE_KEYS_APPROVE
+            | method::PRESENCE_KEYS_REVOKE => self.spawn_keys_call(conn, req.method.as_str(), p),
             method::SESSIONS_WORKLOG => {
                 let s = self
                     .session(&session_id_param(p)?)

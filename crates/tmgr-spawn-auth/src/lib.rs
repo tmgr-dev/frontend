@@ -14,6 +14,7 @@ pub use error::Refusal;
 pub use key_statement::{
     build_presence_key_statement, build_spawn_key_statement, device_fp, supersedes,
     verify_presence_key_statement, verify_spawn_key_statement, DeviceKeys, SpawnKeyStatement,
+    PRESENCE_PREFIX,
 };
 pub use keystore::{
     ApproveError, DeviceFp, KeyBook, KeyState, KeyView, OfferOutcome, RevokeError, RevokedKey,

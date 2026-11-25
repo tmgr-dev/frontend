@@ -5,7 +5,7 @@ use crate::verify::{verify_der_b64, TrustStatus, TrustView};
 use sha2::{Digest, Sha256};
 
 const PREFIX: &str = "tmgr-spawn-key:v1:";
-const PRESENCE_PREFIX: &str = "tmgr-presence-key:v1:";
+pub const PRESENCE_PREFIX: &str = "tmgr-presence-key:v1:";
 const MAX_STATEMENT_BYTES: usize = 512;
 
 pub struct DeviceKeys<'a> {

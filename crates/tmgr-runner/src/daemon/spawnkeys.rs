@@ -24,12 +24,13 @@ fn info(k: KeyInfo) -> SpawnKeyInfo {
     }
 }
 
-fn key_err(e: KeyError) -> ApiErr {
+fn key_err(e: KeyError, noun: &str) -> ApiErr {
+    let msg = e.to_string().replace("spawn key", noun);
     match e {
         KeyError::Approve(_) | KeyError::Revoke(_) | KeyError::Refused(_) => {
-            api(ErrorCode::InvalidParams, e.to_string())
+            api(ErrorCode::InvalidParams, msg)
         }
-        KeyError::Io | KeyError::Corrupt => api(ErrorCode::Internal, e.to_string()),
+        KeyError::Io | KeyError::Corrupt => api(ErrorCode::Internal, msg),
     }
 }
 
@@ -40,33 +41,49 @@ impl Runner {
         method: &str,
         p: &Value,
     ) -> Result<Value, ApiErr> {
+        use tmgr_ipc::api::method as m;
+        let presence = matches!(
+            method,
+            m::PRESENCE_KEYS_LIST | m::PRESENCE_KEYS_APPROVE | m::PRESENCE_KEYS_REVOKE
+        );
+        let noun = if presence {
+            "presence key"
+        } else {
+            "spawn key"
+        };
         if conn.client != CLIENT_CLI {
             return Err(api(
                 ErrorCode::Forbidden,
-                "spawn keys are managed only from the tmgr CLI",
+                format!("{noun}s are managed only from the tmgr CLI"),
             ));
         }
         let auth = self
             .spawn_gate
             .auth(self)
             .map_err(|m| api(ErrorCode::Forbidden, m))?;
+        let store = if presence {
+            auth.presence_keys()
+        } else {
+            auth.keys()
+        };
+        let err = |e| key_err(e, noun);
         match method {
-            tmgr_ipc::api::method::SPAWN_KEYS_LIST => {
-                let keys = auth.list_keys().map_err(key_err)?;
+            m::SPAWN_KEYS_LIST | m::PRESENCE_KEYS_LIST => {
+                let keys = store.list().map_err(err)?;
                 Ok(to_json(&SpawnKeysList {
                     keys: keys.into_iter().map(info).collect(),
                 }))
             }
-            tmgr_ipc::api::method::SPAWN_KEYS_APPROVE => {
+            m::SPAWN_KEYS_APPROVE | m::PRESENCE_KEYS_APPROVE => {
                 let q: SpawnKeysApproveParams = params(p)?;
-                let device_fp = auth
-                    .approve_key(&q.device_fp, &q.spawn_key_fp, now_ms())
-                    .map_err(key_err)?;
+                let device_fp = store
+                    .approve(&q.device_fp, &q.spawn_key_fp, now_ms())
+                    .map_err(err)?;
                 Ok(to_json(&SpawnKeysApproveResult { device_fp }))
             }
             _ => {
                 let q: SpawnKeysRevokeParams = params(p)?;
-                let r = auth.revoke_key(&q.device_fp).map_err(key_err)?;
+                let r = store.revoke(&q.device_fp).map_err(err)?;
                 Ok(to_json(&SpawnKeysRevokeResult {
                     device_fp: r.device_fp,
                     device_id: r.device_id,
@@ -82,7 +99,7 @@ impl Runner {
 mod tests {
     use super::super::manager::tests::{add, runner};
     use super::*;
-    use crate::spawnauth::testutil::{fp_of, offer, spawn_fp, USER};
+    use crate::spawnauth::testutil::{fp_of, offer, presence_offer, spawn_fp, USER};
     use crate::spawnauth::{Identity, SpawnAuth, TrustSource};
     use std::os::unix::net::UnixStream;
     use tmgr_ipc::api::method;
@@ -217,6 +234,50 @@ mod tests {
         assert_eq!(r.spawn_key_fp, spawn_fp(3));
         assert_eq!(r.state, "approved");
         assert_eq!(e.auth.pinned_key(&e.fp).unwrap(), None);
+    }
+
+    #[test]
+    fn presence_keys_are_a_separate_book_managed_only_from_the_cli() {
+        let e = env();
+        let o = presence_offer(9, now_ms() - 10_000);
+        let fp = fp_of(&o);
+        let desk = e.auth.clone();
+        desk.offer_presence_key(o, now_ms()).unwrap();
+        let approve =
+            serde_json::json!({"device_fp": &fp[..8], "spawn_key_fp": &spawn_fp(9)[..16]});
+        let err = call(
+            &e,
+            CLIENT_DESKTOP,
+            method::PRESENCE_KEYS_APPROVE,
+            approve.clone(),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Forbidden);
+        assert!(err.msg.contains("presence keys"));
+        let v = call(&e, CLIENT_CLI, method::PRESENCE_KEYS_LIST, Value::Null).unwrap();
+        let l: SpawnKeysList = serde_json::from_value(v).unwrap();
+        assert_eq!(l.keys.len(), 1);
+        assert_eq!(l.keys[0].state, "pending");
+        call(&e, CLIENT_CLI, method::PRESENCE_KEYS_APPROVE, approve).unwrap();
+        assert!(desk.presence_key(&fp).unwrap().is_some());
+        assert!(desk.pinned_key(&fp).unwrap().is_none());
+        assert_eq!(desk.approved_presence_fps().unwrap(), vec![fp.clone()]);
+        let err = call(
+            &e,
+            CLIENT_CLI,
+            method::PRESENCE_KEYS_REVOKE,
+            serde_json::json!({"device_fp": "ffffffff"}),
+        )
+        .unwrap_err();
+        assert_eq!(err.msg, "no presence key matches the prefix");
+        call(
+            &e,
+            CLIENT_CLI,
+            method::PRESENCE_KEYS_REVOKE,
+            serde_json::json!({"device_fp": &fp[..8]}),
+        )
+        .unwrap();
+        assert!(desk.presence_key(&fp).unwrap().is_none());
     }
 
     #[test]

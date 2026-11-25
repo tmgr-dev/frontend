@@ -51,6 +51,7 @@ fn card(danger: bool, desktop_ok: bool) -> PermitCardMsg {
     danger: if danger { vec!["destructive".to_owned()] } else { vec![] },
     always_label: Some("Always allow ls".into()),
     desktop_ok,
+    presence_fps: vec![],
   };
   c.req_sha256 = screen_of(&c).req_sha256();
   c
@@ -110,7 +111,7 @@ fn verify(rig: &Rig, payload: &Value, c: &PermitCardMsg, policy: DesktopPolicy) 
     screen: screen_of(c),
   };
   let key = PinnedKey { user_id: USER.to_string(), device_id: dev_id, device_fp: dev_fp.clone(), spawn_pub: sign_pub };
-  let sender = PermitSender { device_fp: &dev_fp, owner_device: true, kind: PermitSenderKind::Desktop, desktop: policy };
+  let sender = PermitSender { device_fp: &dev_fp, owner_device: true, kind: PermitSenderKind::Desktop, desktop: policy, presence: None };
   verify_permit(&signed, &record, &key, sender, &Trusting, T0)
 }
 

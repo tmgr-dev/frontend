@@ -113,15 +113,23 @@ impl TrustView for IntegrityOnly {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyPurpose {
+    Spawn,
+    Presence,
+}
+
 pub struct KeyStoreFile {
     path: PathBuf,
     lock_path: PathBuf,
     user_id: String,
+    purpose: KeyPurpose,
 }
 
 const MAX_KEYS_BYTES: u64 = 1024 * 1024;
 
 fn verify_offer(
+    purpose: KeyPurpose,
     user_id: &str,
     o: &KeyOffer,
     trust: &dyn TrustView,
@@ -132,7 +140,11 @@ fn verify_offer(
         sign_pub_b64: &o.sign_pub_b64,
         kex_pub_b64: &o.kex_pub_b64,
     };
-    tmgr_spawn_auth::verify_spawn_key_statement(
+    let verify = match purpose {
+        KeyPurpose::Spawn => tmgr_spawn_auth::verify_spawn_key_statement,
+        KeyPurpose::Presence => tmgr_spawn_auth::verify_presence_key_statement,
+    };
+    verify(
         user_id,
         &o.statement,
         &o.sig,
@@ -145,12 +157,25 @@ fn verify_offer(
 
 impl KeyStoreFile {
     pub fn open(path: &Path, user_id: &str, trust: &dyn TrustView) -> Result<Self, KeyError> {
+        Self::open_as(KeyPurpose::Spawn, path, user_id, trust)
+    }
+
+    pub fn open_as(
+        purpose: KeyPurpose,
+        path: &Path,
+        user_id: &str,
+        trust: &dyn TrustView,
+    ) -> Result<Self, KeyError> {
         let parent = path.parent().ok_or(KeyError::Io)?;
         super::ensure_private_dir(parent).map_err(|_| KeyError::Io)?;
+        let stem = path
+            .file_stem()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         let store = Self {
             path: path.into(),
-            lock_path: parent.join(".keys.lock"),
+            lock_path: parent.join(format!(".{stem}.lock")),
             user_id: user_id.into(),
+            purpose,
         };
         let _lock = store.lock()?;
         store.remove_temp_files()?;
@@ -167,7 +192,8 @@ impl KeyStoreFile {
         trust: &dyn TrustView,
         now_ms: u64,
     ) -> Result<OfferOutcome, KeyError> {
-        let stmt = verify_offer(&self.user_id, &offer, trust, now_ms).map_err(KeyError::Refused)?;
+        let stmt = verify_offer(self.purpose, &self.user_id, &offer, trust, now_ms)
+            .map_err(KeyError::Refused)?;
         let fp = stmt.device_fp().to_string();
         let _lock = self.lock()?;
         let (mut loaded, _) = self.load(None)?;
@@ -304,7 +330,13 @@ impl KeyStoreFile {
             loaded.book.restore_revoked(spawn_key_fp);
         }
         for (fp, st) in file.keys {
-            let Ok(stmt) = verify_offer(&self.user_id, &st.offer, &IntegrityOnly, u64::MAX) else {
+            let Ok(stmt) = verify_offer(
+                self.purpose,
+                &self.user_id,
+                &st.offer,
+                &IntegrityOnly,
+                u64::MAX,
+            ) else {
                 continue;
             };
             if stmt.device_fp() != fp {
@@ -381,7 +413,9 @@ pub(crate) mod testutil {
     use p256::ecdsa::signature::Signer;
     use p256::ecdsa::{Signature, SigningKey};
     use std::sync::Mutex;
-    use tmgr_spawn_auth::{b64_encode, build_spawn_key_statement, device_fp, TrustStatus};
+    use tmgr_spawn_auth::{
+        b64_encode, build_presence_key_statement, build_spawn_key_statement, device_fp, TrustStatus,
+    };
 
     pub const USER: &str = "42";
     pub const DEVICE_ID: &str = "dev-1";
@@ -443,6 +477,16 @@ pub(crate) mod testutil {
 
     pub fn offer(spawn_byte: u8, issued_ms: u64) -> KeyOffer {
         offer_with(&kex_key(None), DEVICE_ID, &secret(spawn_byte), issued_ms)
+    }
+
+    pub fn presence_offer(key_byte: u8, issued_ms: u64) -> KeyOffer {
+        let mut o = offer(key_byte, issued_ms);
+        let (dev, key) = (secret(5), secret(key_byte));
+        let fp = fp_of(&o);
+        o.statement = build_presence_key_statement(USER, &fp, DEVICE_ID, &pub_b64(&key), issued_ms);
+        o.sig = sign(&dev, &o.statement);
+        o.spawn_sig = sign(&key, &o.statement);
+        o
     }
 
     pub fn fp_of(o: &KeyOffer) -> String {
@@ -511,6 +555,36 @@ mod tests {
 
     fn set_mode(p: &Path, mode: u32) {
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    #[test]
+    fn a_presence_store_takes_only_presence_statements_and_keeps_its_own_file_and_lock() {
+        let t = tempfile::tempdir().unwrap();
+        let trust = trusted();
+        let spawn = open(t.path(), &trust);
+        let pp = t.path().join("spawnauth/presence_keys.json");
+        let presence = KeyStoreFile::open_as(KeyPurpose::Presence, &pp, USER, &trust).unwrap();
+        assert_eq!(
+            presence.offer(offer(9, T0), &trust, NOW).err(),
+            Some(KeyError::Refused(Refusal::BadToken))
+        );
+        assert!(spawn.offer(presence_offer(9, T0), &trust, NOW).is_err());
+        let o = presence_offer(9, T0);
+        let fp = fp_of(&o);
+        assert_eq!(presence.offer(o, &trust, NOW).unwrap(), OfferOutcome::Added);
+        assert_eq!(presence.pinned_key(&fp).unwrap(), None);
+        presence.approve(&fp[..8], &spawn_fp(9)[..16], NOW).unwrap();
+        spawn
+            .with_pinned(&fp, |k| {
+                assert!(k.is_none());
+                assert!(presence.pinned_key(&fp).unwrap().is_some());
+            })
+            .unwrap();
+        assert!(!path(t.path()).exists());
+        let reopened = KeyStoreFile::open_as(KeyPurpose::Presence, &pp, USER, &trust).unwrap();
+        assert!(reopened.pinned_key(&fp).unwrap().is_some());
+        let as_spawn = KeyStoreFile::open(&pp, USER, &trust).unwrap();
+        assert!(as_spawn.list().unwrap().is_empty());
     }
 
     #[test]

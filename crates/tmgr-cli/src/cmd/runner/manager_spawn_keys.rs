@@ -26,40 +26,108 @@ pub enum SpawnKeysCmd {
     },
 }
 
+#[derive(Subcommand)]
+pub enum PresenceKeysCmd {
+    /// [experimental] List the presence keys published by your desktops
+    List,
+    /// [experimental] Trust a pending presence key after comparing its fingerprint on the desktop
+    Approve {
+        /// First 8 or more characters of the device fingerprint
+        device_fp: String,
+        /// First 16 or more hex characters of the presence key fingerprint
+        presence_key_fp: String,
+    },
+    /// [experimental] Stop trusting a desktop's presence key and refuse that key from now on
+    Revoke {
+        /// First 8 or more characters of the device fingerprint
+        device_fp: String,
+    },
+}
+
+struct Book {
+    list: &'static str,
+    approve: &'static str,
+    revoke: &'static str,
+    noun: &'static str,
+    source: &'static str,
+    empty: &'static str,
+}
+
+const SPAWN: Book = Book {
+    list: method::SPAWN_KEYS_LIST,
+    approve: method::SPAWN_KEYS_APPROVE,
+    revoke: method::SPAWN_KEYS_REVOKE,
+    noun: "spawn key",
+    source: "phone",
+    empty: "No spawn keys. Publish one from your phone first.",
+};
+
+const PRESENCE: Book = Book {
+    list: method::PRESENCE_KEYS_LIST,
+    approve: method::PRESENCE_KEYS_APPROVE,
+    revoke: method::PRESENCE_KEYS_REVOKE,
+    noun: "presence key",
+    source: "desktop",
+    empty: "No presence keys. Set up desktop approvals in the TMGR desktop app first.",
+};
+
+enum Op<'a> {
+    List,
+    Approve(&'a str, &'a str),
+    Revoke(&'a str),
+}
+
 pub(super) fn run(o: &Opts, cmd: &SpawnKeysCmd) -> Result<i32> {
-    let cfg = runner_config()?;
-    let mut c = connect(&cfg)?;
-    match cmd {
-        SpawnKeysCmd::List => {
-            let v = c.call(method::SPAWN_KEYS_LIST, Value::Null).map_err(rerr)?;
-            let list: SpawnKeysList = serde_json::from_value(v).map_err(bad_reply)?;
-            let human = format_list(&list.keys);
-            Ok(emit(o, list, human))
-        }
+    let op = match cmd {
+        SpawnKeysCmd::List => Op::List,
         SpawnKeysCmd::Approve {
             device_fp,
             spawn_key_fp,
-        } => {
+        } => Op::Approve(device_fp, spawn_key_fp),
+        SpawnKeysCmd::Revoke { device_fp } => Op::Revoke(device_fp),
+    };
+    run_book(o, &SPAWN, op)
+}
+
+pub(super) fn run_presence(o: &Opts, cmd: &PresenceKeysCmd) -> Result<i32> {
+    let op = match cmd {
+        PresenceKeysCmd::List => Op::List,
+        PresenceKeysCmd::Approve {
+            device_fp,
+            presence_key_fp,
+        } => Op::Approve(device_fp, presence_key_fp),
+        PresenceKeysCmd::Revoke { device_fp } => Op::Revoke(device_fp),
+    };
+    run_book(o, &PRESENCE, op)
+}
+
+fn run_book(o: &Opts, b: &Book, op: Op<'_>) -> Result<i32> {
+    let cfg = runner_config()?;
+    let mut c = connect(&cfg)?;
+    match op {
+        Op::List => {
+            let v = c.call(b.list, Value::Null).map_err(rerr)?;
+            let list: SpawnKeysList = serde_json::from_value(v).map_err(bad_reply)?;
+            let human = format_list(b, &list.keys);
+            Ok(emit(o, list, human))
+        }
+        Op::Approve(device_fp, key_fp) => {
             let params = SpawnKeysApproveParams {
-                device_fp: device_fp.clone(),
-                spawn_key_fp: spawn_key_fp.clone(),
+                device_fp: device_fp.into(),
+                spawn_key_fp: key_fp.into(),
             };
-            let v = c
-                .call(method::SPAWN_KEYS_APPROVE, json!(params))
-                .map_err(rerr)?;
+            let v = c.call(b.approve, json!(params)).map_err(rerr)?;
             let r: SpawnKeysApproveResult = serde_json::from_value(v).map_err(bad_reply)?;
-            let human = approved_text(&r);
+            let human = approved_text(b, &r);
             Ok(emit(o, r, human))
         }
-        SpawnKeysCmd::Revoke { device_fp } => {
+        Op::Revoke(device_fp) => {
             let params = SpawnKeysRevokeParams {
-                device_fp: device_fp.clone(),
+                device_fp: device_fp.into(),
             };
-            let v = c
-                .call(method::SPAWN_KEYS_REVOKE, json!(params))
-                .map_err(rerr)?;
+            let v = c.call(b.revoke, json!(params)).map_err(rerr)?;
             let r: SpawnKeysRevokeResult = serde_json::from_value(v).map_err(bad_reply)?;
-            let human = revoked_text(&r);
+            let human = revoked_text(b, &r);
             Ok(emit(o, r, human))
         }
     }
@@ -91,9 +159,9 @@ fn short(fp: &str) -> String {
     fp.chars().take(8).collect()
 }
 
-fn format_list(keys: &[SpawnKeyInfo]) -> String {
+fn format_list(b: &Book, keys: &[SpawnKeyInfo]) -> String {
     if keys.is_empty() {
-        return "No spawn keys. Publish one from your phone first.".into();
+        return b.empty.into();
     }
     keys.iter()
         .map(|k| {
@@ -110,17 +178,19 @@ fn format_list(keys: &[SpawnKeyInfo]) -> String {
         .join("\n")
 }
 
-fn approved_text(r: &SpawnKeysApproveResult) -> String {
-    format!("Approved the spawn key of device {}…", short(&r.device_fp))
+fn approved_text(b: &Book, r: &SpawnKeysApproveResult) -> String {
+    format!("Approved the {} of device {}…", b.noun, short(&r.device_fp))
 }
 
-fn revoked_text(r: &SpawnKeysRevokeResult) -> String {
+fn revoked_text(b: &Book, r: &SpawnKeysRevokeResult) -> String {
     format!(
-        "Revoked the {} spawn key {} of device {}… ({}). That key is refused from now on; a new key from the phone arrives as pending.",
+        "Revoked the {} {} {} of device {}… ({}). That key is refused from now on; a new key from the {} arrives as pending.",
         r.state,
+        b.noun,
         groups(&r.spawn_key_fp),
         short(&r.device_fp),
-        r.device_id
+        r.device_id,
+        b.source
     )
 }
 
@@ -171,32 +241,44 @@ mod tests {
 
     #[test]
     fn list_shows_fingerprints_in_groups_state_and_time() {
-        let text = format_list(&[key("pending"), key("approved")]);
+        let text = format_list(&SPAWN, &[key("pending"), key("approved")]);
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 2);
         assert!(lines[0].starts_with("abababababababab  phone-1  0123 4567 89ab cdef  pending  "));
         assert!(lines[0].ends_with("UTC"));
         assert!(lines[1].contains("  approved  "));
         assert_eq!(
-            format_list(&[]),
+            format_list(&SPAWN, &[]),
             "No spawn keys. Publish one from your phone first."
+        );
+        assert_eq!(
+            format_list(&PRESENCE, &[]),
+            "No presence keys. Set up desktop approvals in the TMGR desktop app first."
         );
     }
 
     #[test]
     fn approve_and_revoke_texts_name_the_device() {
-        let a = approved_text(&SpawnKeysApproveResult {
-            device_fp: "ab".repeat(32),
-        });
+        let a = approved_text(
+            &SPAWN,
+            &SpawnKeysApproveResult {
+                device_fp: "ab".repeat(32),
+            },
+        );
         assert_eq!(a, "Approved the spawn key of device abababab…");
-        let r = revoked_text(&SpawnKeysRevokeResult {
+        let res = SpawnKeysRevokeResult {
             device_fp: "ab".repeat(32),
             device_id: "phone-1".into(),
             spawn_key_fp: spawn_fp(),
             state: "approved".into(),
-        });
+        };
+        let r = revoked_text(&SPAWN, &res);
         assert!(r.starts_with(
             "Revoked the approved spawn key 0123 4567 89ab cdef of device abababab… (phone-1)."
         ));
+        assert!(r.ends_with("a new key from the phone arrives as pending."));
+        let p = revoked_text(&PRESENCE, &res);
+        assert!(p.starts_with("Revoked the approved presence key 0123 4567 89ab cdef"));
+        assert!(p.ends_with("a new key from the desktop arrives as pending."));
     }
 }

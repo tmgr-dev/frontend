@@ -233,6 +233,8 @@ pub struct PermitCardMsg {
     pub always_label: Option<String>,
     #[serde(default)]
     pub desktop_ok: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presence_fps: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -821,6 +823,20 @@ mod tests {
         c.as_object_mut().unwrap().remove("desktop_ok");
         let p: PermitCardMsg = serde_json::from_value(c).unwrap();
         assert!(!p.desktop_ok);
+    }
+
+    #[test]
+    fn presence_fps_are_optional_and_omitted_when_empty() {
+        let p: PermitCardMsg = serde_json::from_value(permit_card()).unwrap();
+        assert!(p.presence_fps.is_empty());
+        assert!(serde_json::to_value(&p)
+            .unwrap()
+            .get("presence_fps")
+            .is_none());
+        let mut c = permit_card();
+        c["presence_fps"] = serde_json::json!(["ab"]);
+        let p: PermitCardMsg = serde_json::from_value(c).unwrap();
+        assert_eq!(p.presence_fps, ["ab"]);
     }
 
     #[test]
