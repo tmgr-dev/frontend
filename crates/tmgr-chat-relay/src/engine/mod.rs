@@ -26,8 +26,8 @@ use crate::wire::{open_message_checked, random_msg_id, seal_message, Opened, Pee
 use tmgr_phone::Error;
 
 pub use ports::{
-    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, ReceiptSink, RoomsSink, RpcSink,
-    Slot, SpawnKeySink, SpawnOkSink, Transport,
+    ActivitySubSink, ChatSink, KeyStore, MemKeyStore, PermitOkSink, ReceiptSink, RoomsSink,
+    RpcSink, Slot, SpawnKeySink, SpawnOkSink, Transport,
 };
 pub use trust_state::{
     DeviceState, PendingJoin, PendingRevoke, SeqGap, TrustAlert, TrustDevice, TrustState,
