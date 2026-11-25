@@ -4222,7 +4222,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-e2e-device"
-version = "1.0.187"
+version = "1.0.192"
 dependencies = [
  "clap",
  "reqwest",
