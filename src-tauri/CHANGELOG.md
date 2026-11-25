@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.213 — 2026-11-25
+
+- Manager: permission dialogs from your sessions show as cards in the chat. Safe cards can be answered here (Allow, Always allow, Deny); cards with a warning or danger flag say to answer on the phone or in `tmgr attach`. Expired cards offer Refresh. Needs tmgr CLI 1.0.189.
+
 ## 0.9.212 — 2026-11-24
 
 - Manager: message receipts arrive in about 2 seconds instead of hanging for up to 15 seconds while an agent works. A re-paired runner takes over its machine, a removed runner no longer blocks chat, revoking a device works even if the cleanup is refused, and rate-limited sends retry after the time the server asks for. Codex sessions started without the sandbox now mirror their replies. Needs tmgr CLI 1.0.188.

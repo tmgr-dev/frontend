@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.189
+
+- Permission dialogs in your sessions (Claude or Codex asking to run a command or edit a file) now also show as cards in the TMGR Manager chat. You can answer them from the phone (Face ID) or from the desktop app; the runner checks each signed answer against the dialog still on screen before it presses a key.
+- A desktop may answer only safe cards by default. Cards with a warning or a danger flag need the phone or `tmgr attach`. Set `desktop_may_answer` to `none`, `safe` or `all` in `permit.toml` in the runner directory to change this.
+- An expired card can be refreshed from the phone or desktop while the dialog is still open.
+- Restart the runner after updating (`tmgr runner restart`).
+
 ## 1.0.188
 
 - Fixed: delivery receipts for Manager chat messages arrive in about 2 seconds instead of hanging for up to 15 seconds while an agent is working.
