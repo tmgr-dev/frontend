@@ -33,3 +33,10 @@ export const dialogKeydown = (
 		first.focus();
 	}
 };
+
+export const pairErrorKey = (raw: string) => {
+	if (raw.includes('not set up')) return 'manager.trust.pair.errorNotSetUp';
+	if (raw.includes('waiting for another device to approve'))
+		return 'manager.trust.pair.errorNotApproved';
+	return 'manager.trust.pair.errorGeneric';
+};

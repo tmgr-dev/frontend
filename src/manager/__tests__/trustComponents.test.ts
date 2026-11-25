@@ -260,6 +260,36 @@ describe('trust components', () => {
 		expect(html).toContain('New code');
 	});
 
+	it('PairDeviceDialog explains a failure and offers Try again', async () => {
+		const html = await render('PairDeviceDialog', {
+			mode: 'show',
+			error: 'chat sync is not set up',
+		});
+		expect(html).not.toContain('<img');
+		expect(html).toContain('Chat sync is not ready on this computer yet');
+		expect(html).toContain('role="alert"');
+		expect(html).toContain('Try again');
+	});
+
+	it('PairDeviceDialog keeps the raw text of an unknown failure', async () => {
+		const html = await render('PairDeviceDialog', {
+			mode: 'show',
+			error: 'HTTP 502',
+		});
+		expect(html).toContain('Could not create a pairing code: HTTP 502');
+	});
+
+	it('PairDeviceDialog shows progress while the code is created', async () => {
+		const html = await render('PairDeviceDialog', {
+			mode: 'show',
+			loading: true,
+		});
+		expect(html).not.toContain('<img');
+		expect(html).toContain('role="status"');
+		expect(html).toContain('Creating a pairing code');
+		expect(html).not.toContain('Try again');
+	});
+
 	it('PairDeviceDialog enter mode has a paste field, Join and the error', async () => {
 		const html = await render('PairDeviceDialog', {
 			mode: 'enter',

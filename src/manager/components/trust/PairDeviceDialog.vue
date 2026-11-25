@@ -36,7 +36,12 @@
 						/>
 					</label>
 				</template>
-				<p v-if="error" class="mgr-error" role="alert">{{ error }}</p>
+				<p v-else-if="loading && !error" role="status">
+					{{ $t('manager.trust.pair.creating') }}
+				</p>
+				<p v-if="error" class="mgr-error" role="alert">
+					{{ code ? error : $t(pairErrorKey(error), { error }) }}
+				</p>
 				<div class="trust-actions">
 					<button type="button" class="btn" @click="$emit('close')">
 						{{ $t('manager.trust.close') }}
@@ -49,6 +54,15 @@
 						@click="$emit('renew')"
 					>
 						{{ $t('manager.trust.pair.newCode') }}
+					</button>
+					<button
+						v-else-if="error && !code"
+						type="button"
+						class="btn primary"
+						:disabled="busy"
+						@click="$emit('renew')"
+					>
+						{{ $t('manager.trust.pair.retry') }}
 					</button>
 					<button
 						v-else-if="code"
@@ -112,7 +126,7 @@
 
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
-	import { dialogKeydown, focusInitial } from './trustHelpers';
+	import { dialogKeydown, focusInitial, pairErrorKey } from './trustHelpers';
 
 	export default defineComponent({
 		name: 'ManagerPairDeviceDialog',
@@ -122,6 +136,7 @@
 			qr: { type: String, default: '' },
 			secondsLeft: { type: Number, default: 0 },
 			expired: { type: Boolean, default: false },
+			loading: { type: Boolean, default: false },
 			modelValue: { type: String, default: '' },
 			busy: { type: Boolean, default: false },
 			error: { type: String, default: '' },
@@ -131,6 +146,7 @@
 			return { copied: false };
 		},
 		computed: {
+			pairErrorKey: () => pairErrorKey,
 			countdown(): string {
 				const m = Math.floor(this.secondsLeft / 60);
 				const s = String(this.secondsLeft % 60).padStart(2, '0');

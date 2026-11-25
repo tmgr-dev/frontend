@@ -327,6 +327,7 @@
 			:qr="trust.pair.qr"
 			:seconds-left="trust.pair.secondsLeft"
 			:expired="trust.pair.expired"
+			:loading="trust.pair.loading"
 			:busy="trust.busy"
 			:error="trust.error"
 			@submit="trust.submitCode()"

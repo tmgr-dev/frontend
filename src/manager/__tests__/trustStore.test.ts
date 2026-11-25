@@ -1,3 +1,4 @@
+import { pairErrorKey } from '../components/trust/trustHelpers';
 import { createTrustStore, type ManagerTrustApi } from '../trustStore';
 import type { TrustState } from '../types';
 
@@ -248,6 +249,72 @@ describe('trust store', () => {
 			expect(store.pair.code).toBe('');
 			expect(store.pair.mode).toBeNull();
 			expect(api.closeJoinCode).toHaveBeenCalledTimes(1);
+		});
+
+		it('keeps the failure and shows no code when generating fails', async () => {
+			const { store } = setup(base(), {
+				openJoinCode: jest.fn(async () => {
+					throw new Error('chat sync is not set up');
+				}),
+			});
+			await store.openAddDevice();
+			expect(store.pair).toMatchObject({
+				mode: 'show',
+				code: '',
+				loading: false,
+			});
+			expect(store.error).toBe('chat sync is not set up');
+		});
+
+		it('never ends blank when the store is busy', async () => {
+			const { api, store } = setup(base());
+			store.busy = true;
+			await store.openAddDevice();
+			expect(api.openJoinCode).not.toHaveBeenCalled();
+			expect(store.pair.loading).toBe(false);
+			expect(store.error).not.toBe('');
+		});
+
+		it('never ends blank when no view comes back', async () => {
+			const { store } = setup(base(), {
+				openJoinCode: jest.fn(async () => undefined as never),
+			});
+			await store.openAddDevice();
+			expect(store.pair.loading).toBe(false);
+			expect(store.error).not.toBe('');
+		});
+
+		it('is loading while the code is being generated', async () => {
+			let release: (v: {
+				code: string;
+				qr: string;
+				expires_at_ms: number;
+			}) => void = () => {};
+			const { store } = setup(base(), {
+				openJoinCode: jest.fn(
+					() =>
+						new Promise((r) => {
+							release = r;
+						}),
+				),
+			});
+			jest.useFakeTimers();
+			const opening = store.openAddDevice();
+			expect(store.pair.loading).toBe(true);
+			release({ code: 'c', qr: 'q', expires_at_ms: Date.now() + 60_000 });
+			await opening;
+			expect(store.pair.loading).toBe(false);
+			expect(store.pair.code).toBe('c');
+		});
+
+		it('maps raw pairing errors to i18n keys', () => {
+			expect(pairErrorKey('chat sync is not set up')).toBe(
+				'manager.trust.pair.errorNotSetUp',
+			);
+			expect(
+				pairErrorKey('this device is waiting for another device to approve it'),
+			).toBe('manager.trust.pair.errorNotApproved');
+			expect(pairErrorKey('HTTP 502')).toBe('manager.trust.pair.errorGeneric');
 		});
 
 		it('closes and wipes the code once a join request arrives', async () => {

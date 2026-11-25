@@ -37,6 +37,7 @@ const emptyPair = () => ({
 	expiresAtMs: 0,
 	secondsLeft: 0,
 	expired: false,
+	loading: false,
 	text: '',
 });
 
@@ -179,13 +180,20 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 		async openAddDevice() {
 			stopTicker();
 			const token = ++pairToken;
-			store.pair = { ...emptyPair(), mode: 'show' };
+			store.pair = { ...emptyPair(), mode: 'show', loading: true };
 			store.error = '';
 			let view: realApi.JoinCodeView | null = null;
-			await store.run(async () => {
+			const ran = await store.run(async () => {
 				view = await api.openJoinCode();
 			});
-			if (!view) return;
+			if (token === pairToken) store.pair.loading = false;
+			if (!view) {
+				if (token === pairToken && !store.error)
+					store.error = ran
+						? 'no code was returned'
+						: 'another action is in progress';
+				return;
+			}
 			const v = view as realApi.JoinCodeView;
 			if (token !== pairToken) {
 				burn(v.expires_at_ms);
