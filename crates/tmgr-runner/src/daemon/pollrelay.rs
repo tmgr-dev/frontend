@@ -29,6 +29,7 @@ pub(super) struct PollRelay {
     last_tick: Mutex<Option<Instant>>,
     pending: Mutex<VecDeque<PendingClose>>,
     busy: Arc<Mutex<VecDeque<String>>>,
+    inbox: Mutex<Option<Arc<PollInbox>>>,
     #[cfg(test)]
     fail_appends: AtomicUsize,
 }
@@ -340,13 +341,15 @@ impl Runner {
     }
 
     fn process_poll_item(&self, item: &PollItem) {
-        let Some((auth, _)) = self.permit_ids() else {
-            log("poll relay: an answer was dropped, no account is linked");
-            return;
-        };
-        if auth.permit_sender_kind(&item.device, &item.fp).is_none() {
-            log("poll relay: a queued answer was dropped, its sender is no longer trusted");
-            return;
+        if !item.local {
+            let Some((auth, _)) = self.permit_ids() else {
+                log("poll relay: an answer was dropped, no account is linked");
+                return;
+            };
+            if auth.permit_sender_kind(&item.device, &item.fp).is_none() {
+                log("poll relay: a queued answer was dropped, its sender is no longer trusted");
+                return;
+            }
         }
         let begun = lock(&self.poll_relay.desk).begin_answer(
             &item.answer.card_id,
@@ -396,6 +399,8 @@ impl Runner {
             queued: queued.clone(),
             busy: self.poll_relay.busy.clone(),
         };
+        let inbox = Arc::new(inbox);
+        *lock(&self.poll_relay.inbox) = Some(inbox.clone());
         let rt = self.clone();
         let spawned = thread::Builder::new()
             .name("poll-intake".into())
@@ -414,13 +419,31 @@ impl Runner {
         if spawned.is_err() {
             log("poll relay: the answer intake did not start");
         }
-        Arc::new(inbox)
+        inbox
+    }
+
+    pub(super) fn poll_answer_local(
+        &self,
+        client: &str,
+        answer: PollAnswer,
+    ) -> Result<Value, ApiErr> {
+        if !lock(&self.poll_relay.desk).can_answer(&answer.card_id) {
+            return Err(api(ErrorCode::NotFound, "unknown or closed question"));
+        }
+        let inbox = lock(&self.poll_relay.inbox)
+            .clone()
+            .ok_or_else(|| api(ErrorCode::Busy, "polls are not available"))?;
+        if !inbox.enqueue(&format!("local:{client}"), "", true, &answer) {
+            return Err(api(ErrorCode::Busy, "busy"));
+        }
+        Ok(serde_json::json!({"accepted": true}))
     }
 }
 
 struct PollItem {
     device: String,
     fp: String,
+    local: bool,
     answer: PollAnswer,
 }
 
@@ -428,6 +451,27 @@ pub(super) struct PollInbox {
     tx: SyncSender<PollItem>,
     queued: Arc<Mutex<HashMap<String, usize>>>,
     busy: Arc<Mutex<VecDeque<String>>>,
+}
+
+impl PollInbox {
+    fn enqueue(&self, device: &str, fp: &str, local: bool, answer: &PollAnswer) -> bool {
+        let mut q = lock(&self.queued);
+        let n = q.get(device).copied().unwrap_or(0);
+        let sent = n < POLL_PER_DEVICE
+            && self
+                .tx
+                .try_send(PollItem {
+                    device: device.to_owned(),
+                    fp: fp.to_owned(),
+                    local,
+                    answer: answer.clone(),
+                })
+                .is_ok();
+        if sent {
+            q.insert(device.to_owned(), n + 1);
+        }
+        sent
+    }
 }
 
 impl PollSink for PollInbox {
@@ -438,20 +482,7 @@ impl PollSink for PollInbox {
         _kind: PermitSenderKind,
         answer: &PollAnswer,
     ) {
-        let mut q = lock(&self.queued);
-        let n = q.get(from_device).copied().unwrap_or(0);
-        let sent = n < POLL_PER_DEVICE
-            && self
-                .tx
-                .try_send(PollItem {
-                    device: from_device.to_owned(),
-                    fp: from_fp.to_owned(),
-                    answer: answer.clone(),
-                })
-                .is_ok();
-        if sent {
-            q.insert(from_device.to_owned(), n + 1);
-        } else {
+        if !self.enqueue(from_device, from_fp, false, answer) {
             log("poll relay: an answer was refused, the intake is busy or stopped");
             let mut busy = lock(&self.busy);
             if busy.len() < BUSY_CAP {
@@ -631,6 +662,7 @@ mod tests {
         PollItem {
             device: "phone-1".into(),
             fp: "ab".repeat(32),
+            local: false,
             answer: PollAnswer {
                 v: 1,
                 card_id: cards(e)[0].card_id.clone(),
@@ -943,5 +975,70 @@ mod tests {
         let c = closes(&e);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].closed.as_deref(), Some("gone"));
+    }
+
+    #[test]
+    fn a_local_answer_is_typed_and_acked_once() {
+        let mut e = env();
+        let sim = ask(&e, vec![scope_q()]);
+        tick(&e);
+        let stop = responder(&mut e, sim.clone());
+        e.rt.start_poll_intake();
+        let a = answer(&e, vec![pick(0, &[1], None)]).answer;
+        e.trust.0.store(false, Ordering::SeqCst);
+        fg(&e);
+        let r = e.rt.poll_answer_local("desktop", a.clone()).unwrap();
+        assert_eq!(r, serde_json::json!({"accepted": true}));
+        for _ in 0..100 {
+            if !closes(&e).is_empty() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        let err = e.rt.poll_answer_local("cli", a).unwrap_err();
+        assert_eq!(err.msg, "unknown or closed question");
+        e.rt.stop.store(true, Ordering::SeqCst);
+        stop.store(true, Ordering::SeqCst);
+        let c = closes(&e);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].closed.as_deref(), Some("applied"));
+        assert_eq!(lock(&sim).answers, ["All sources at once"]);
+    }
+
+    #[test]
+    fn a_local_answer_for_an_unknown_or_answering_card_is_refused() {
+        let e = env();
+        ask(&e, vec![scope_q()]);
+        tick(&e);
+        let a = answer(&e, vec![pick(0, &[1], None)]).answer;
+        let mut other = a.clone();
+        other.card_id = "poll_nope".into();
+        let err = e.rt.poll_answer_local("desktop", other).unwrap_err();
+        assert_eq!(err.msg, "unknown or closed question");
+        lock(&e.rt.poll_relay.desk)
+            .begin_answer(&a.card_id, &a, "d")
+            .unwrap();
+        let err = e.rt.poll_answer_local("desktop", a).unwrap_err();
+        assert_eq!(err.msg, "unknown or closed question");
+    }
+
+    #[test]
+    fn a_full_inbox_answers_busy_per_local_sender() {
+        let e = env();
+        ask(&e, vec![scope_q()]);
+        tick(&e);
+        let a = answer(&e, vec![pick(0, &[1], None)]).answer;
+        let (tx, _rx) = std::sync::mpsc::sync_channel::<PollItem>(POLL_INBOX_CAP);
+        *lock(&e.rt.poll_relay.inbox) = Some(Arc::new(PollInbox {
+            tx,
+            queued: Arc::new(Mutex::new(HashMap::new())),
+            busy: Arc::default(),
+        }));
+        for _ in 0..POLL_PER_DEVICE {
+            e.rt.poll_answer_local("desktop", a.clone()).unwrap();
+        }
+        let err = e.rt.poll_answer_local("desktop", a.clone()).unwrap_err();
+        assert_eq!(err.msg, "busy");
+        assert!(e.rt.poll_answer_local("cli", a).is_ok());
     }
 }

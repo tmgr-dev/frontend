@@ -287,6 +287,12 @@ impl PollDesk {
         })
     }
 
+    pub fn can_answer(&self, card_id: &str) -> bool {
+        self.cards
+            .get(card_id)
+            .is_some_and(|c| c.state == State::Open && c.posted_answerable)
+    }
+
     pub fn fail_open(&mut self, card_id: &str, why: &str) -> Option<Action> {
         if self.cards.get(card_id)?.state != State::Open {
             return None;

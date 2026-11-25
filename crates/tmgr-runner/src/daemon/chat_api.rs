@@ -529,6 +529,11 @@ impl Runner {
                     Err(e) => Err(bad(e.to_string())),
                 }
             }
+            chat_method::POLL_ANSWER => {
+                let a: tmgr_ipc::chat::PollAnswer = params(p)?;
+                a.validate().map_err(bad)?;
+                self.poll_answer_local(&conn.client, a)
+            }
             chat_method::MENTION_INJECT => self.mention_inject(params(p)?),
             chat_method::RELAY_SELF => {
                 self.chat.relay_self().map(|r| to_json(&r)).ok_or_else(|| {
@@ -1965,5 +1970,25 @@ mod tests {
                 None
             );
         }
+    }
+
+    #[test]
+    fn poll_answer_is_for_the_cli_and_the_desktop_only() {
+        let t = tempfile::tempdir().unwrap();
+        let rt = runner(t.path());
+        let answer = serde_json::json!({
+            "v": 1, "card_id": "poll_x", "answers": [{"question_idx": 0, "choices": [0]}]
+        });
+        let (c, _s) = conn("relay");
+        let e = call(&rt, &c, chat_method::POLL_ANSWER, answer.clone()).unwrap_err();
+        assert_eq!(e.code, ErrorCode::Forbidden);
+        for client in ["desktop", "cli"] {
+            let (c, _s) = conn(client);
+            let e = call(&rt, &c, chat_method::POLL_ANSWER, answer.clone()).unwrap_err();
+            assert_eq!(e.msg, "unknown or closed question");
+        }
+        let (c, _s) = conn("desktop");
+        let bad_answer = serde_json::json!({"v": 1, "card_id": "poll_x", "answers": []});
+        assert!(call(&rt, &c, chat_method::POLL_ANSWER, bad_answer).is_err());
     }
 }

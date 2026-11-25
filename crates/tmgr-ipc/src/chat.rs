@@ -22,6 +22,7 @@ pub mod method {
     pub const CANCEL: &str = "chat.cancel";
     pub const MENTION_INJECT: &str = "chat.mention_inject";
     pub const BLOB_PUT: &str = "chat.blob.put";
+    pub const POLL_ANSWER: &str = "chat.poll_answer";
 }
 
 pub mod limits {
@@ -294,6 +295,11 @@ pub struct PollAnswer {
     pub v: u8,
     pub card_id: String,
     pub answers: Vec<PollPick>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollAnswerResult {
+    pub accepted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1308,5 +1314,14 @@ mod tests {
         answer(vec![pick(0, &[0, 1, 2, 3, 4, 5, 6, 7], None); 4])
             .validate()
             .unwrap();
+    }
+
+    #[test]
+    fn the_local_poll_answer_method_and_result_keep_their_wire_shape() {
+        assert_eq!(method::POLL_ANSWER, "chat.poll_answer");
+        assert_eq!(
+            serde_json::to_value(PollAnswerResult { accepted: true }).unwrap(),
+            serde_json::json!({"accepted": true})
+        );
     }
 }
