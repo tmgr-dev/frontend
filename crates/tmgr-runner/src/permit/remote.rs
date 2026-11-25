@@ -508,7 +508,7 @@ mod tests {
             path: Some("/work/app".into()),
             reason: Some("cleanup".into()),
             from: None,
-            warning: Some("writes outside cwd".into()),
+            warning: None,
             danger: vec![],
             can_answer: true,
             why_not: None,

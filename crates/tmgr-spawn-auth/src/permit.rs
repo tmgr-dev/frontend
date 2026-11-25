@@ -83,7 +83,7 @@ impl PermitScreen {
     }
 
     pub fn is_danger(&self) -> bool {
-        !self.danger.is_empty()
+        !self.danger.is_empty() || self.warning.is_some()
     }
 
     pub fn always_offered(&self) -> bool {
@@ -483,7 +483,7 @@ mod tests {
             path: Some("/work/app".into()),
             reason: Some("list files".into()),
             from: Some("agent".into()),
-            warning: Some("writes outside cwd".into()),
+            warning: None,
             danger: vec![],
             always_label: Some("Always allow ls".into()),
         }
@@ -773,7 +773,7 @@ mod tests {
             Box::new(|c| c.path = Some("/etc".into())),
             Box::new(|c| c.reason = None),
             Box::new(|c| c.from = Some("someone".into())),
-            Box::new(|c| c.warning = None),
+            Box::new(|c| c.warning = Some("writes outside cwd".into())),
             Box::new(|c| c.danger = vec!["x".into()]),
             Box::new(|c| c.always_label = Some("Always allow all".into())),
         ];
@@ -1112,6 +1112,7 @@ mod tests {
     fn danger_record() -> PermitRecord {
         let mut r = record();
         r.screen.danger = vec!["deletes files".into()];
+        r.screen.warning = Some("writes outside cwd".into());
         r.screen.always_label = None;
         r
     }
@@ -1160,6 +1161,26 @@ mod tests {
                 assert_eq!(e.code(), "desktop_not_allowed");
             }
         }
+    }
+
+    #[test]
+    fn a_warning_alone_makes_a_danger_card() {
+        let k = key();
+        let mut r = record();
+        r.screen.danger = vec![];
+        r.screen.warning = Some("Dangerous rm operation".into());
+        r.screen.always_label = None;
+        let s = signed(&r, &k, PermitChoice::Yes, 0);
+        let desk = as_sender(&s, PermitSenderKind::Desktop, DesktopPolicy::Safe);
+        assert_eq!(
+            verify_permit(&s, &r, &k, desk, &T, NOW).unwrap_err(),
+            PermitRefusal::DesktopNotAllowed
+        );
+        let phone = as_sender(&s, PermitSenderKind::Mobile, DesktopPolicy::Safe);
+        assert_eq!(
+            verify_permit(&s, &r, &k, phone, &T, NOW).unwrap_err(),
+            PermitRefusal::NeedsConfirm
+        );
     }
 
     #[test]
