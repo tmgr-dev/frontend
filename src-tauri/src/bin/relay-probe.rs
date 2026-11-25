@@ -124,7 +124,7 @@ fn main() {
     local_machine: args[5].clone(),
     login: Arc::new(TokenFile(PathBuf::from(&args[3]))),
   };
-  let eng = build_engine(spec, FileStore(dir)).unwrap_or_else(|e| {
+  let eng = build_engine(spec, FileStore(dir), None).unwrap_or_else(|e| {
     eprintln!("engine: {e}");
     std::process::exit(1);
   });
