@@ -295,6 +295,7 @@ mod tests {
             session_meta: None,
             user_turn: false,
             mention: None,
+            poll: None,
         }
     }
 
