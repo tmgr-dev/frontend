@@ -1,6 +1,7 @@
 use super::redact;
 use super::title::{clean_title, clip, contains, open_under, LINE_CAP, PASS_CAP};
 use super::view::ViewState;
+use crate::sanitize::is_unsafe;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek, SeekFrom};
@@ -274,6 +275,33 @@ fn clock_label(secs: u64) -> String {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AskPoll {
+    pub tool_use_id: String,
+    pub questions: Vec<AskQuestion>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AskQuestion {
+    pub header: String,
+    pub question: String,
+    pub multi_select: bool,
+    pub options: Vec<AskOption>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AskOption {
+    pub label: String,
+    pub description: String,
+}
+
+const ASK_QUESTIONS: usize = 4;
+const ASK_OPTIONS: usize = 8;
+const ASK_HEADER_MAX: usize = 60;
+const ASK_QUESTION_MAX: usize = 500;
+const ASK_LABEL_MAX: usize = 200;
+const ASK_DESCRIPTION_MAX: usize = 500;
+
 #[derive(Debug)]
 pub struct StatusScan {
     root: PathBuf,
@@ -296,6 +324,7 @@ pub struct StatusScan {
     todo: Option<(u32, u32)>,
     subs: Vec<Sub>,
     asking: Option<(String, String)>,
+    asking_poll: Option<AskPoll>,
     model: Option<String>,
     ctx: Option<u8>,
     mode: Option<String>,
@@ -332,6 +361,7 @@ impl StatusScan {
             todo: None,
             subs: Vec::new(),
             asking: None,
+            asking_poll: None,
             model: None,
             ctx: None,
             mode: None,
@@ -373,6 +403,10 @@ impl StatusScan {
 
     pub fn is_asking(&self) -> bool {
         self.asking.is_some()
+    }
+
+    pub fn asking_poll(&self) -> Option<&AskPoll> {
+        self.asking_poll.as_ref()
     }
 
     pub fn status(&self) -> SessionStatus {
@@ -436,6 +470,7 @@ impl StatusScan {
         self.todo = None;
         self.windowed = false;
         self.asking = None;
+        self.asking_poll = None;
         self.subs.clear();
         self.model = None;
         self.ctx = None;
@@ -635,6 +670,7 @@ impl StatusScan {
                     .filter(|q| !q.is_empty())
                     .unwrap_or_else(|| "asked a question".to_string());
                 self.asking = Some((id.to_string(), question));
+                self.asking_poll = ask_poll(id, input);
             }
             if matches!(name, "Agent" | "Task") {
                 self.subs.push(Sub {
@@ -685,6 +721,7 @@ impl StatusScan {
         self.calls.clear();
         self.no_result.clear();
         self.asking = None;
+        self.asking_poll = None;
         self.subs.retain(|s| s.agent.is_some());
     }
 
@@ -751,6 +788,7 @@ impl StatusScan {
             .is_some_and(|(id, _)| results.contains(&id.as_str()))
         {
             self.asking = None;
+            self.asking_poll = None;
         }
         let launched = v
             .get("toolUseResult")
@@ -1062,6 +1100,82 @@ pub(crate) fn event_label(name: &str, input: &Value) -> String {
         other => clip(&clean_title(other), EVENT_TOOL_MAX),
     };
     mask_secrets(&clip(&line, EVENT_LABEL_MAX))
+}
+
+fn ask_poll(id: &str, input: &Value) -> Option<AskPoll> {
+    let questions: Vec<AskQuestion> = input
+        .get("questions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(ask_question)
+        .take(ASK_QUESTIONS)
+        .collect();
+    (!questions.is_empty()).then(|| AskPoll {
+        tool_use_id: id.to_string(),
+        questions,
+    })
+}
+
+fn ask_question(q: &Value) -> Option<AskQuestion> {
+    let question = ask_field(q.get("question")?.as_str()?, ASK_QUESTION_MAX);
+    let options: Vec<AskOption> = q
+        .get("options")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(ask_option)
+        .take(ASK_OPTIONS)
+        .collect();
+    if question.is_empty() || options.is_empty() {
+        return None;
+    }
+    Some(AskQuestion {
+        header: ask_text(q, "header", ASK_HEADER_MAX),
+        question,
+        multi_select: q.get("multiSelect").and_then(Value::as_bool) == Some(true),
+        options,
+    })
+}
+
+fn ask_option(o: &Value) -> Option<AskOption> {
+    let label = ask_field(o.get("label")?.as_str()?, ASK_LABEL_MAX);
+    if label.is_empty() {
+        return None;
+    }
+    Some(AskOption {
+        label,
+        description: ask_text(o, "description", ASK_DESCRIPTION_MAX),
+    })
+}
+
+fn ask_text(v: &Value, key: &str, max: usize) -> String {
+    v.get(key)
+        .and_then(Value::as_str)
+        .map(|s| ask_field(s, max))
+        .unwrap_or_default()
+}
+
+fn ask_field(raw: &str, max: usize) -> String {
+    let spaced: String = raw
+        .chars()
+        .map(|c| {
+            if matches!(c, '\n' | '\r' | '\t') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .filter(|&c| !is_unsafe(c))
+        .collect();
+    let joined = spaced.split_whitespace().collect::<Vec<_>>().join(" ");
+    let end = joined
+        .char_indices()
+        .map(|(i, c)| i + c.len_utf8())
+        .take_while(|&e| e <= max)
+        .last()
+        .unwrap_or(0);
+    joined[..end].to_string()
 }
 
 #[cfg(test)]
@@ -1618,6 +1732,143 @@ mod tests {
         assert_eq!(s.status().ask, None);
         let s = scan(dir.path(), &[HUMAN, &ask, HUMAN]);
         assert_eq!(s.status().ask, None);
+    }
+
+    #[test]
+    fn an_ask_user_question_keeps_its_structured_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let ask = tool(
+            "q",
+            "AskUserQuestion",
+            r#"{"questions":[{"question":"Which database?","header":"DB","multiSelect":false,"options":[{"label":"Postgres (Recommended)","description":"Default"},{"label":"MySQL"}]}]}"#,
+        );
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        let poll = s.asking_poll().expect("poll");
+        assert_eq!(poll.tool_use_id, "q");
+        assert_eq!(poll.questions.len(), 1);
+        let q = &poll.questions[0];
+        assert_eq!(q.header, "DB");
+        assert_eq!(q.question, "Which database?");
+        assert!(!q.multi_select);
+        assert_eq!(
+            q.options,
+            vec![
+                AskOption {
+                    label: "Postgres (Recommended)".into(),
+                    description: "Default".into(),
+                },
+                AskOption {
+                    label: "MySQL".into(),
+                    description: String::new(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_multi_select_question_is_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let ask = tool(
+            "q",
+            "AskUserQuestion",
+            r#"{"questions":[{"question":"Which features?","header":"F","multiSelect":true,"options":[{"label":"A","description":""},{"label":"B","description":""}]}]}"#,
+        );
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        assert!(s.asking_poll().expect("poll").questions[0].multi_select);
+    }
+
+    #[test]
+    fn two_questions_in_one_call_keep_their_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let ask = tool(
+            "q",
+            "AskUserQuestion",
+            r#"{"questions":[{"question":"First?","header":"1","options":[{"label":"x","description":""}]},{"question":"Second?","header":"2","options":[{"label":"y","description":""}]}]}"#,
+        );
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        let questions: Vec<&str> = s
+            .asking_poll()
+            .expect("poll")
+            .questions
+            .iter()
+            .map(|q| q.question.as_str())
+            .collect();
+        assert_eq!(questions, ["First?", "Second?"]);
+    }
+
+    #[test]
+    fn malformed_ask_input_gives_no_poll_but_still_asks() {
+        let dir = tempfile::tempdir().unwrap();
+        let ask = tool(
+            "q",
+            "AskUserQuestion",
+            r#"{"questions":[{"question":"","options":[{"label":"x"}]},{"question":"Q","options":"nope"}]}"#,
+        );
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        assert!(s.is_asking());
+        assert_eq!(s.asking_poll(), None);
+    }
+
+    #[test]
+    fn the_poll_is_cleared_by_the_matching_tool_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let ask = tool(
+            "q",
+            "AskUserQuestion",
+            r#"{"questions":[{"question":"Q?","options":[{"label":"x"}]}]}"#,
+        );
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        assert!(s.asking_poll().is_some());
+        let s = scan(dir.path(), &[HUMAN, &ask, &result("q")]);
+        assert_eq!(s.asking_poll(), None);
+    }
+
+    #[test]
+    fn the_poll_is_cleared_by_a_human_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let ask = tool(
+            "q",
+            "AskUserQuestion",
+            r#"{"questions":[{"question":"Q?","options":[{"label":"x"}]}]}"#,
+        );
+        let s = scan(dir.path(), &[HUMAN, &ask, HUMAN]);
+        assert_eq!(s.asking_poll(), None);
+    }
+
+    #[test]
+    fn poll_text_is_stripped_of_control_chars_and_clipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = "é".repeat(400);
+        let header = "h".repeat(100);
+        let input = format!(
+            r#"{{"questions":[{{"question":"{long}\u202e\u0000","header":"{header}","options":[{{"label":"Yes\u202e\u0007","description":"{long}"}}]}}]}}"#
+        );
+        let ask = tool("q", "AskUserQuestion", &input);
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        let poll = s.asking_poll().expect("poll");
+        let q = &poll.questions[0];
+        assert_eq!(q.header.len(), 60);
+        assert!(q.question.len() <= 500 && q.question.chars().all(|c| c == 'é'));
+        assert_eq!(q.question.chars().count(), 250);
+        assert_eq!(q.options[0].label, "Yes");
+        assert!(q.options[0].description.len() <= 500);
+    }
+
+    #[test]
+    fn poll_counts_are_capped_at_four_questions_and_eight_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let options: Vec<String> = (0..10)
+            .map(|i| format!(r#"{{"label":"o{i}","description":""}}"#))
+            .collect();
+        let questions: Vec<String> = (0..6)
+            .map(|i| format!(r#"{{"question":"Q{i}","options":[{}]}}"#, options.join(",")))
+            .collect();
+        let input = format!(r#"{{"questions":[{}]}}"#, questions.join(","));
+        let ask = tool("q", "AskUserQuestion", &input);
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        let poll = s.asking_poll().expect("poll");
+        assert_eq!(poll.questions.len(), 4);
+        assert!(poll.questions.iter().all(|q| q.options.len() == 8));
     }
 
     #[test]

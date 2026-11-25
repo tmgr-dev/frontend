@@ -14,7 +14,7 @@ use tmgr_ipc::chat::{
 };
 use tmgr_session::{switch, tail, Agent};
 
-use crate::attach::{Format, StatusScan, TitleScan};
+use crate::attach::{AskPoll, Format, StatusScan, TitleScan};
 
 const RESOLVE_EVERY: Duration = Duration::from_secs(30);
 const BACKFILL_BYTES: u64 = 4 << 20;
@@ -73,6 +73,11 @@ impl Tail {
 
     pub(super) fn asking(&self) -> bool {
         self.status.as_ref().is_some_and(StatusScan::is_asking)
+    }
+
+    #[allow(dead_code)] // read by the poll tick in a later slice
+    pub(super) fn asking_poll(&self) -> Option<&AskPoll> {
+        self.status.as_ref().and_then(StatusScan::asking_poll)
     }
 }
 
