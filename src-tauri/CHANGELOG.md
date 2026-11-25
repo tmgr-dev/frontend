@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.215 — 2026-11-25
+
+- Manager: when a runner is paired again on the same machine, the chat moves that machine's rooms to the new runner while the old runner's removal is still pending. Replies from the re-paired runner show up instead of a room conflict. Pairs with tmgr CLI 1.0.191.
+
 ## 0.9.214 — 2026-11-25
 
 - Manager: a join approval from a runner or a terminal, and a device kind confirmation from a terminal, are refused. Approve `tmgr attach` terminals paired with `tmgr device pair` (tmgr CLI 1.0.190) here as before.

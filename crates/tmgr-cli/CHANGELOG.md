@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.191
+
+- A runner paired again on the same machine takes that machine over. Phones, the desktop app and `tmgr attach` move its chat rooms to the new runner while the old runner's removal is still pending, so replies from the re-paired runner arrive instead of being refused as a room conflict.
+
 ## 1.0.190
 
 - `tmgr device pair` pairs `tmgr attach` as a chat device of its own. Approve it from the desktop app or the phone. After that, attach can write into sessions on your other machines, not only this one. `tmgr device` shows the status, `tmgr device unpair` removes it.
