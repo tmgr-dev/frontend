@@ -1663,16 +1663,11 @@ describe('MessageBubble English voice control', () => {
 		mounted.unmount();
 	});
 
-	it('offers removal once the voice is installed', () => {
-		const remove = jest.spyOn(voicePack, 'remove').mockResolvedValue();
+	it('shows no voice controls once the voice is installed', () => {
 		voicePack.installed = true;
 		const mounted = englishReply('v5');
-		expect(
-			buttonByText(mounted.el, 'Download English voice (94 MB)'),
-		).toBeUndefined();
-		buttonByText(mounted.el, 'Remove English voice')!.click();
-		expect(remove).toHaveBeenCalledTimes(1);
-		remove.mockRestore();
+		expect(voiceButtons(mounted.el)).toHaveLength(0);
+		expect(mounted.el.textContent).not.toContain('Remove English voice');
 		mounted.unmount();
 	});
 
@@ -1770,7 +1765,7 @@ describe('MessageBubble Russian voice control', () => {
 		mounted.unmount();
 	});
 
-	it('shows Russian progress with cancel and removal', () => {
+	it('shows Russian progress with cancel and no controls once installed', () => {
 		const cancel = jest.spyOn(ru, 'cancel').mockResolvedValue();
 		ru.installing = true;
 		ru.progress = 0.5;
@@ -1781,13 +1776,10 @@ describe('MessageBubble Russian voice control', () => {
 		cancel.mockRestore();
 		downloading.unmount();
 
-		const remove = jest.spyOn(ru, 'remove').mockResolvedValue();
 		ru.installing = false;
 		ru.installed = true;
 		const installed = russianReply('ru3');
-		byText(installed.el, 'Remove Russian voice')!.click();
-		expect(remove).toHaveBeenCalledTimes(1);
-		remove.mockRestore();
+		expect(box(installed.el)).toBeNull();
 		installed.unmount();
 	});
 

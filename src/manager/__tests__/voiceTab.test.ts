@@ -9,6 +9,7 @@ import { createApp, h, nextTick, type Component } from 'vue';
 import { createI18n } from 'vue-i18n';
 import manager from '../../locales/en/manager.json';
 import { externalVoice } from '../tts/externalVoice';
+import { voicePacks } from '../tts/voicePack';
 
 jest.mock('@tauri-apps/api/core', () => ({ invoke: jest.fn() }));
 jest.mock('@tauri-apps/api/event', () => ({ listen: jest.fn() }));
@@ -112,6 +113,7 @@ const health = (over: Record<string, unknown> = {}) => ({
 });
 
 const { invoke } = require('@tauri-apps/api/core') as { invoke: jest.Mock };
+const { listen } = require('@tauri-apps/api/event') as { listen: jest.Mock };
 
 const backend = (
 	initial: ReturnType<typeof settings>,
@@ -491,6 +493,64 @@ describe('VoiceTab', () => {
 		expect(q(m.el, '.vt-hint')).toBeNull();
 		await click(q(m.el, '.vt-silero'));
 		expect(q(m.el, '.vt-hint')?.textContent).toContain('docs/tts-external.md');
+		m.unmount();
+	});
+});
+
+describe('VoiceTab on-device packs', () => {
+	const MB = 94 * 1024 * 1024;
+	const status = (installed: boolean) => ({
+		supported: true,
+		installed,
+		installing: false,
+		sizeBytes: MB,
+		sampleRate: 22050,
+	});
+	const packBackend = (installed: { en: boolean; ru: boolean }) => {
+		invoke.mockImplementation(
+			async (cmd: string, args: { lang?: 'en' | 'ru' }) => {
+				if (cmd === 'tts_settings_get') return settings('off');
+				if (cmd === 'tts_external_health')
+					return health({ mode: 'off', configured: false });
+				if (cmd === 'tts_status') return status(installed[args.lang!]);
+				return undefined;
+			},
+		);
+	};
+	const rowButton = (el: HTMLElement, lang: string, text: string) =>
+		Array.from(
+			el.querySelectorAll<HTMLButtonElement>(`.vt-pack-${lang} button`),
+		).find((b) => b.textContent?.trim() === text);
+
+	beforeEach(() => {
+		invoke.mockReset();
+		listen.mockResolvedValue(() => undefined);
+		for (const p of [voicePacks.en, voicePacks.ru]) {
+			p.supported = false;
+			p.installed = false;
+			p.installing = false;
+			p.error = null;
+			p.statusRequested = false;
+		}
+	});
+
+	it('removes an installed Russian voice with tts_remove', async () => {
+		packBackend({ en: false, ru: true });
+		const m = mountDom();
+		await flush();
+		await click(rowButton(m.el, 'ru', 'Remove Russian voice') ?? null);
+		expect(invoke).toHaveBeenCalledWith('tts_remove', { lang: 'ru' });
+		m.unmount();
+	});
+
+	it('downloads the English voice with tts_install', async () => {
+		packBackend({ en: false, ru: false });
+		const m = mountDom();
+		await flush();
+		await click(
+			rowButton(m.el, 'en', 'Download English voice (94 MB)') ?? null,
+		);
+		expect(invoke).toHaveBeenCalledWith('tts_install', { lang: 'en' });
 		m.unmount();
 	});
 });

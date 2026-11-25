@@ -131,12 +131,59 @@
 				{{ $t('manager.voice.sileroHint') }}
 			</p>
 		</div>
+		<div v-if="packs.length" class="blk vt-packs">
+			<h4>{{ $t('manager.voice.onDeviceTitle') }}</h4>
+			<div
+				v-for="p in packs"
+				:key="p.lang"
+				:class="['vt-row', `vt-pack-${p.lang}`]"
+			>
+				<span>{{ languageName(p.lang) }}</span>
+				<template v-if="p.installing">
+					<span>{{
+						$t('manager.messages.voiceDownloading', {
+							percent: Math.round(p.progress * 100),
+						})
+					}}</span>
+					<button type="button" class="btn sm" @click="p.cancel()">
+						{{ $t('manager.messages.cancelVoiceDownload') }}
+					</button>
+				</template>
+				<template v-else-if="p.installed">
+					<span>{{ $t('manager.voice.packInstalled') }}</span>
+					<button type="button" class="btn sm" @click="onRemovePack(p)">
+						{{
+							$t('manager.messages.removeVoice', {
+								language: languageName(p.lang),
+							})
+						}}
+					</button>
+				</template>
+				<template v-else>
+					<span v-if="p.error" class="mgr-error">{{
+						$t('manager.messages.voiceDownloadFailed', {
+							language: languageName(p.lang),
+						})
+					}}</span>
+					<button type="button" class="btn sm" @click="p.install()">
+						{{
+							$t('manager.messages.downloadVoice', {
+								language: languageName(p.lang),
+								size: Math.round(p.sizeBytes / 1024 / 1024),
+							})
+						}}
+					</button>
+				</template>
+			</div>
+		</div>
 	</div>
 </template>
 
 <script lang="ts">
 	import { defineComponent } from 'vue';
 	import { externalVoice, type ExternalSettings } from '../tts/externalVoice';
+	import { speaker } from '../tts/speaker';
+	import { voicePacks, type PackLang } from '../tts/voicePack';
 
 	const DEFAULT_TIMEOUT = 30;
 	const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/i;
@@ -173,6 +220,9 @@
 			};
 		},
 		computed: {
+			packs() {
+				return [voicePacks.en, voicePacks.ru].filter((p) => p.supported);
+			},
 			dirty(): boolean {
 				return !same(this.draft, this.store.settings);
 			},
@@ -203,8 +253,20 @@
 		},
 		mounted() {
 			void this.store.load();
+			for (const p of [voicePacks.en, voicePacks.ru]) {
+				if (p.statusRequested) continue;
+				p.statusRequested = true;
+				void p.refresh();
+			}
 		},
 		methods: {
+			languageName(lang: PackLang): string {
+				return this.$t(`manager.messages.languageName.${lang}`);
+			},
+			onRemovePack(p: (typeof voicePacks)[PackLang]) {
+				speaker.stop();
+				void p.remove();
+			},
 			async onSave() {
 				const d = clone(this.draft);
 				d.command.argv = d.command.argv

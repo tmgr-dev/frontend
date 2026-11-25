@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.218 — 2026-11-25
+
+- Manager: the voice download and remove controls moved to the Voice tab; messages no longer show a Remove voice link under every reply.
+
 ## 0.9.217 — 2026-11-25
 
 - Manager: Chat devices → Add device shows the QR code and pairing code even when "Run agents" is off on this computer. Before, chat sync never started without the local runner, so the dialog stayed empty.

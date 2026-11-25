@@ -87,7 +87,7 @@
 						<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
 					</ul>
 				</details>
-				<div v-if="showVoice" class="voice">
+				<div v-if="showVoice && !pack.installed" class="voice">
 					<template v-if="pack.installing">
 						<span>{{
 							$t('manager.messages.voiceDownloading', {
@@ -98,12 +98,7 @@
 							{{ $t('manager.messages.cancelVoiceDownload') }}
 						</button>
 					</template>
-					<template v-else-if="pack.installed">
-						<button type="button" @click="onRemoveVoice">
-							{{ $t('manager.messages.removeVoice', { language }) }}
-						</button>
-					</template>
-					<template v-else>
+					<template v-else-if="!pack.installed">
 						<span v-if="pack.error">{{
 							$t('manager.messages.voiceDownloadFailed', { language })
 						}}</span>
@@ -342,10 +337,6 @@
 		},
 		methods: {
 			truncate,
-			onRemoveVoice() {
-				speaker.stop();
-				void this.pack.remove();
-			},
 			onSpeak() {
 				speaker.toggle(this.message.id, this.message.body_md);
 			},

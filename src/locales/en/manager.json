@@ -491,6 +491,8 @@
 		}
 	},
 	"voice": {
+		"onDeviceTitle": "Voices on this device",
+		"packInstalled": "Installed",
 		"title": "External voice",
 		"intro": "Read messages aloud with a speech server or program you run yourself.",
 		"mode": "Mode",
