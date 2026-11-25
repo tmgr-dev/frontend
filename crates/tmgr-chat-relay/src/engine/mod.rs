@@ -284,6 +284,37 @@ impl State {
         self.kind_of(&d.id, &d.fp)
     }
 
+    fn drop_untrusted_bindings(&mut self) {
+        let trusted: BTreeSet<&str> = self.trusted.iter().map(|d| d.id.as_str()).collect();
+        self.bindings.retain(|_, d| trusted.contains(d.as_str()));
+    }
+
+    fn superseded(&self, bound: &str) -> bool {
+        let Some(d) = self.trusted.iter().find(|d| d.id == bound) else {
+            return false;
+        };
+        self.pending_revokes.iter().any(|p| {
+            p.target_id == d.id
+                && p.target_fp == d.fp
+                && p.received_at_ms > 0
+                && self
+                    .last_seen
+                    .get(bound)
+                    .is_none_or(|&s| s < p.received_at_ms)
+                && self.trusted.iter().any(|t| t.fp == p.revoker_fp)
+        })
+    }
+
+    fn stamp_pending_revokes(&mut self, now: u64) {
+        for p in self
+            .pending_revokes
+            .iter_mut()
+            .filter(|p| p.received_at_ms == 0)
+        {
+            p.received_at_ms = now;
+        }
+    }
+
     fn pinned_for_other_fp(&self, id: &str, fp: &str) -> bool {
         let prefix = kind_key(id, "");
         let own = kind_key(id, fp);
@@ -886,6 +917,7 @@ fn ingest_revoke(
             target_id: p.target_id.clone(),
             target_label,
             target_fp: p.target_fp.clone(),
+            received_at_ms: now,
         });
     }
 }
@@ -1568,9 +1600,14 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
     }
 
     fn claim_machine(c: &mut Core, from: &str, machine: &str, now: u64) -> bool {
+        c.st.drop_untrusted_bindings();
         let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
         match c.st.bindings.get(machine) {
             Some(d) if d == from => true,
+            Some(d) if !bound_elsewhere && c.st.superseded(d) && !c.st.superseded(from) => {
+                c.st.bindings.insert(machine.to_owned(), from.to_owned());
+                true
+            }
             Some(_) => {
                 record_alert(c, "room_conflict", from, now);
                 false
@@ -2702,6 +2739,7 @@ impl<T: Transport, K: KeyStore, S: ChatSink> RelayEngine<T, K, S> {
         self.ensure_registered(c)?;
         self.sync_dir(c)?;
         let now = self.now();
+        c.st.stamp_pending_revokes(now);
         let mut out = Vec::new();
         let mut hold = Hold::default();
         let mut after = c.st.cursor;

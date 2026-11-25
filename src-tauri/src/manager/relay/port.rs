@@ -47,6 +47,8 @@ pub struct PendingRevoke {
   pub target_id: String,
   pub target_label: String,
   pub target_fp: String,
+  #[serde(default)]
+  pub received_at_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

@@ -204,6 +204,25 @@ impl State {
     self.bindings.retain(|_, d| trusted.contains(d));
   }
 
+  fn superseded(&self, bound: &str) -> bool {
+    let Some(d) = self.trusted.iter().find(|d| d.id == bound) else {
+      return false;
+    };
+    self.pending_revokes.iter().any(|p| {
+      p.target_id == d.id
+        && p.target_fp == d.fp
+        && p.received_at_ms > 0
+        && self.last_seen.get(bound).is_none_or(|&s| s < p.received_at_ms)
+        && self.trusted.iter().any(|t| t.fp == p.revoker_fp)
+    })
+  }
+
+  fn stamp_pending_revokes(&mut self, now: u64) {
+    for p in self.pending_revokes.iter_mut().filter(|p| p.received_at_ms == 0) {
+      p.received_at_ms = now;
+    }
+  }
+
   fn pinned_for_other_fp(&self, id: &str, fp: &str) -> bool {
     let prefix = kind_key(id, "");
     let own = kind_key(id, fp);
@@ -637,6 +656,7 @@ fn ingest_revoke(c: &mut Core, uid: u64, now: u64, json: &str, expect_fp: Option
       target_id: p.target_id.clone(),
       target_label,
       target_fp: p.target_fp.clone(),
+      received_at_ms: now,
     });
   }
 }
@@ -1265,6 +1285,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let bound_elsewhere = c.st.bindings.iter().any(|(m, d)| d == from && m != machine);
     match c.st.bindings.get(machine) {
       Some(d) if d == from => true,
+      Some(d) if !bound_elsewhere && c.st.superseded(d) && !c.st.superseded(from) => {
+        c.st.bindings.insert(machine.to_owned(), from.to_owned());
+        Self::release_held_receipts(c, from, machine, now);
+        true
+      }
       Some(_) => {
         record_alert(c, "room_conflict", from, now);
         false
@@ -1733,7 +1758,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
       if !c.st.joined || !c.st.trusted.iter().any(|d| d.id == id.device_id) {
         return Err("this device is not a trusted member of the chat yet".into());
       }
-      let bound = c.st.bindings.get(&params.room.machine).cloned();
+      let bound = c.st.bindings.get(&params.room.machine).filter(|d| !c.st.superseded(d)).cloned();
       let targets: Vec<Dev> = c
         .st
         .trusted
@@ -1742,7 +1767,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
         .filter(|d| match (&bound, c.st.kind_of(&d.id, &d.fp).unwrap_or(&d.kind)) {
           (_, "desktop" | "mobile" | "terminal") => true,
           (Some(runner), _) => &d.id == runner,
-          (None, _) => true,
+          (None, _) => !c.st.superseded(&d.id),
         })
         .cloned()
         .collect();
@@ -1996,6 +2021,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       self.sync_with(&mut g, dir)?;
     }
     let now = self.now();
+    g.st.stamp_pending_revokes(now);
     let mut out = Vec::new();
     let mut hold = Hold::default();
     let mut after = g.st.cursor;
