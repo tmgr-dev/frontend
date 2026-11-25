@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.190
+
+- `tmgr device pair` pairs `tmgr attach` as a chat device of its own. Approve it from the desktop app or the phone. After that, attach can write into sessions on your other machines, not only this one. `tmgr device` shows the status, `tmgr device unpair` removes it.
+- If the pairing login lacks the `chat:devices` scope, `tmgr device pair` offers to sign in again with it.
+- The device key is kept only in the OS key store (Keychain or Secret Service). Without one, pairing is refused.
+- When the terminal is removed from another device, attach stops sending to remote sessions and says to run `tmgr device pair` again; pairing replaces the old device in one step.
+- Relay errors show the real HTTP status and a short, cleaned-up message.
+
 ## 1.0.189
 
 - Permission dialogs in your sessions (Claude or Codex asking to run a command or edit a file) now also show as cards in the TMGR Manager chat. You can answer them from the phone (Face ID) or from the desktop app; the runner checks each signed answer against the dialog still on screen before it presses a key.

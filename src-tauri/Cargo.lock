@@ -5548,7 +5548,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tmgr"
-version = "0.9.213"
+version = "0.9.214"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5608,7 +5608,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-chat-relay"
-version = "1.0.189"
+version = "1.0.190"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5625,7 +5625,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-ipc"
-version = "1.0.189"
+version = "1.0.190"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -5640,7 +5640,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-phone"
-version = "1.0.189"
+version = "1.0.190"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -5656,7 +5656,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-session"
-version = "1.0.189"
+version = "1.0.190"
 dependencies = [
  "libc",
  "regex",
@@ -5668,7 +5668,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-spawn-auth"
-version = "1.0.189"
+version = "1.0.190"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -5680,7 +5680,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-usage"
-version = "1.0.189"
+version = "1.0.190"
 dependencies = [
  "chrono",
  "libc",

@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.214 — 2026-11-25
+
+- Manager: a join approval from a runner or a terminal, and a device kind confirmation from a terminal, are refused. Approve `tmgr attach` terminals paired with `tmgr device pair` (tmgr CLI 1.0.190) here as before.
+
 ## 0.9.213 — 2026-11-25
 
 - Manager: permission dialogs from your sessions show as cards in the chat. Safe cards can be answered here (Allow, Always allow, Deny); cards with a warning or danger flag say to answer on the phone or in `tmgr attach`. Expired cards offer Refresh. Needs tmgr CLI 1.0.189.
