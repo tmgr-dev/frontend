@@ -27,7 +27,7 @@ pub struct EngineSpec {
 }
 
 pub type Builder = Box<dyn Fn(EngineSpec) -> Result<Arc<dyn RelayPort>, String> + Send + Sync>;
-pub type MachineSource = Box<dyn Fn() -> Result<Option<String>, String> + Send + Sync>;
+pub type MachineSource = Box<dyn Fn() -> Result<String, String> + Send + Sync>;
 
 pub fn build_engine(spec: EngineSpec, store: impl KeyStore + 'static, presence: Option<Arc<Presence>>) -> Result<Arc<dyn RelayPort>, String> {
   let transport = HttpTransport::new(&spec.api_base, spec.login)?;
@@ -116,7 +116,7 @@ impl SwitchRelay {
     };
     if built {
       if !machine_known {
-        if let Ok(Some(machine)) = (self.machine)() {
+        if let Ok(machine) = (self.machine)() {
           self.cur().set_local_machine(&machine);
           self.slot.write().unwrap_or_else(|p| p.into_inner()).machine_known = true;
         }
@@ -124,17 +124,11 @@ impl SwitchRelay {
       return true;
     }
     self.put(Arc::new(NoRelay), None, false);
-    let machine = match (self.machine)() {
-      Ok(machine) => machine,
-      Err(e) => {
-        if !*logged {
-          log::warn!("[manager] chat relay unavailable: {e}");
-          *logged = true;
-        }
-        return false;
-      }
-    };
-    let known = machine.is_some();
+    let machine = (self.machine)();
+    if let Err(e) = &machine {
+      log::info!("[manager] the local runner is not available ({e}); chat sync starts without local rooms");
+    }
+    let known = machine.is_ok();
     let spec = EngineSpec { user_id: key.0, api_base: key.1.clone(), local_machine: machine.unwrap_or_default(), login: Arc::new(BoundLogin::new(self.auth.clone(), key.clone())) };
     match (self.build)(spec) {
       Ok(relay) => {
@@ -440,7 +434,7 @@ mod tests {
   }
 
   fn machine_ok() -> MachineSource {
-    Box::new(|| Ok(Some("mx_a".to_owned())))
+    Box::new(|| Ok("mx_a".to_owned()))
   }
 
   fn switch(enabled: bool, count: &Arc<AtomicUsize>) -> SwitchRelay {
@@ -572,29 +566,12 @@ mod tests {
   }
 
   #[test]
-  fn a_runner_that_is_on_but_not_ready_leaves_no_relay_and_builds_later() {
-    let count = Arc::new(AtomicUsize::new(0));
-    let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let flag = ready.clone();
-    let machine: MachineSource = Box::new(move || if flag.load(Ordering::SeqCst) { Ok(Some("mx_a".into())) } else { Err("no runner".into()) });
-    let s = SwitchRelay::new(true, live_builder(count.clone()), machine);
-    s.set_auth(auth(7));
-    assert!(is_no_relay(&s));
-    assert!(!s.ensure_engine());
-    assert_eq!(count.load(Ordering::SeqCst), 0);
-    ready.store(true, Ordering::SeqCst);
-    assert!(s.ensure_engine());
-    assert!(!is_no_relay(&s));
-    assert_eq!(count.load(Ordering::SeqCst), 1);
-  }
-
-  #[test]
-  fn with_the_runner_off_the_relay_still_builds_so_devices_can_pair() {
+  fn without_the_local_runner_the_relay_still_builds_so_devices_can_pair() {
     let count = Arc::new(AtomicUsize::new(0));
     let seen = Arc::new(Mutex::new(Vec::<String>::new()));
     let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = ready.clone();
-    let machine: MachineSource = Box::new(move || Ok(flag.load(Ordering::SeqCst).then(|| "mx_a".to_owned())));
+    let machine: MachineSource = Box::new(move || if flag.load(Ordering::SeqCst) { Ok("mx_a".into()) } else { Err("disabled".into()) });
     let (c, sink) = (count.clone(), seen.clone());
     let build: Builder = Box::new(move |spec| {
       c.fetch_add(1, Ordering::SeqCst);
