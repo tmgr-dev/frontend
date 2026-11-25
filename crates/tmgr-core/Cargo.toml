@@ -18,7 +18,7 @@ zeroize.workspace = true
 chrono.workspace = true
 rustix.workspace = true
 sha2.workspace = true
-minisign-verify = "0.2"
+minisign-verify = "0.3"
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
 semver = "1"
@@ -29,7 +29,7 @@ rusqlite.workspace = true
 form_urlencoded.workspace = true
 
 [dev-dependencies]
-minisign = "0.7"
+minisign = "0.10"
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 wiremock.workspace = true
