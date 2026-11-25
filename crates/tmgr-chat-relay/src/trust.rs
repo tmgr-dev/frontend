@@ -246,8 +246,25 @@ pub fn verify_revoke(
     Ok(r)
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeyPurpose {
+    #[default]
+    Spawn,
+    Presence,
+}
+
+impl KeyPurpose {
+    fn tag(self) -> &'static str {
+        match self {
+            KeyPurpose::Spawn => "tmgr-spawn-key",
+            KeyPurpose::Presence => "tmgr-presence-key",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpawnStatement {
+    pub purpose: KeyPurpose,
     pub user_id: u64,
     pub device_fp: String,
     pub device_id: String,
@@ -261,14 +278,24 @@ impl SpawnStatement {
         check_device_id(&self.device_id)?;
         check_pub(&self.spawn_pub_b64)?;
         Ok(format!(
-            "tmgr-spawn-key:v1:{}:{}:{}:{}:{}",
-            self.user_id, self.device_fp, self.device_id, self.spawn_pub_b64, self.issued_at_ms
+            "{}:v1:{}:{}:{}:{}:{}",
+            self.purpose.tag(),
+            self.user_id,
+            self.device_fp,
+            self.device_id,
+            self.spawn_pub_b64,
+            self.issued_at_ms
         ))
     }
 
     pub fn parse(s: &str) -> Result<SpawnStatement> {
-        let p = parts(s, "tmgr-spawn-key", 7)?;
+        let purpose = [KeyPurpose::Spawn, KeyPurpose::Presence]
+            .into_iter()
+            .find(|k| s.split(':').next() == Some(k.tag()))
+            .ok_or(Error::BadFormat)?;
+        let p = parts(s, purpose.tag(), 7)?;
         let st = SpawnStatement {
+            purpose,
             user_id: parse_decimal(p[2])?,
             device_fp: p[3].to_string(),
             device_id: p[4].to_string(),
@@ -1393,6 +1420,7 @@ mod tests {
         let spawn_secret = [77u8; 32];
         let spawn_pub = b64(&tmgr_phone::public_key(&spawn_secret).unwrap());
         let st = SpawnStatement {
+            purpose: KeyPurpose::Spawn,
             user_id: U,
             device_fp: dev.fingerprint(),
             device_id: IDS[0].into(),
@@ -1435,6 +1463,33 @@ mod tests {
         };
         assert!(verify_spawnkey(&as_json(&swap_spawn), U, IDS[0], &sp, &kp).is_err());
         assert!(sign_spawnkey(&dev, &[78u8; 32], &st).is_err());
+    }
+
+    #[test]
+    fn a_presence_statement_keeps_its_purpose_and_never_reads_as_spawn() {
+        let dev = key(1);
+        let secret = [77u8; 32];
+        let st = SpawnStatement {
+            purpose: KeyPurpose::Presence,
+            user_id: U,
+            device_fp: dev.fingerprint(),
+            device_id: IDS[0].into(),
+            spawn_pub_b64: b64(&tmgr_phone::public_key(&secret).unwrap()),
+            issued_at_ms: 5,
+        };
+        let text = st.to_statement().unwrap();
+        assert!(text.starts_with("tmgr-presence-key:v1:42:"));
+        let json = serde_json::to_string(&sign_spawnkey(&dev, &secret, &st).unwrap()).unwrap();
+        let (sp, kp) = (dev.sign_pub_b64(), dev.kex_pub_b64());
+        let got = verify_spawnkey(&json, U, IDS[0], &sp, &kp).unwrap();
+        assert_eq!(got.purpose, KeyPurpose::Presence);
+        let relabeled = json.replace("tmgr-presence-key", "tmgr-spawn-key");
+        assert!(verify_spawnkey(&relabeled, U, IDS[0], &sp, &kp).is_err());
+        let unknown = json.replace("tmgr-presence-key", "tmgr-other-key");
+        assert_eq!(
+            verify_spawnkey(&unknown, U, IDS[0], &sp, &kp).err(),
+            Some(Error::BadFormat)
+        );
     }
 
     #[test]

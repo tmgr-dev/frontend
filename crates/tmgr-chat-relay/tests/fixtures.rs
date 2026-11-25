@@ -6,8 +6,8 @@ use tmgr_chat_relay::keys::DeviceKeys;
 use tmgr_chat_relay::trust::{
     decode_join_code, encode_join_code, join_mac, restrict_to_before, sign_intro, sign_revoke,
     sign_spawnkey, trusted_set, trusted_set_by_kind, verify_intro, verify_join_mac, verify_revoke,
-    verify_spawnkey, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement,
-    SpawnStatement, Trusted,
+    verify_spawnkey, DirEntry, IntroStatement, JoinCode, JoinMacInput, KeyPurpose, KindCtx,
+    RevokeStatement, SpawnStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{
     chat_ctx, msg_id_from, open_message, seal_message_unpadded_with, seal_message_with,
@@ -393,6 +393,7 @@ fn spawnkey_fixture() -> Value {
     let spawn_secret = [0x77u8; 32];
     let spawn_pub = b64(&public_key(&spawn_secret).unwrap());
     let st = SpawnStatement {
+        purpose: KeyPurpose::Spawn,
         user_id: USER,
         device_fp: dev.fingerprint(),
         device_id: IDS[0].into(),

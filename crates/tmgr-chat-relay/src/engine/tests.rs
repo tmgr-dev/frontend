@@ -9,7 +9,7 @@ use tmgr_ipc::chat::{new_message_id, Author, MessageKind};
 
 use super::*;
 use crate::api::Method;
-use crate::trust::{sign_spawnkey, SpawnStatement};
+use crate::trust::{sign_spawnkey, KeyPurpose, SpawnStatement};
 
 const T0: u64 = 1_800_000_000_000;
 const USER: u64 = 42;
@@ -3902,6 +3902,7 @@ fn spawnkey_payload(signer: &Engine, user: u64, device_id: &str, issued: u64) ->
     let dev = g.keys.as_ref().unwrap();
     let spawn_secret = [77u8; 32];
     let st = SpawnStatement {
+        purpose: KeyPurpose::Spawn,
         user_id: user,
         device_fp: dev.fingerprint(),
         device_id: device_id.into(),
@@ -3926,6 +3927,30 @@ fn spawnkey_from_a_trusted_joined_sender_reaches_the_sink() {
     assert_eq!(got[0].0, my_id(&a));
     assert_eq!(got[0].1, fp_of(&a));
     assert_eq!(serde_json::to_value(&got[0].2).unwrap(), payload);
+}
+
+#[test]
+fn a_presence_key_statement_reaches_the_sink_on_the_spawnkey_kind() {
+    let (_f, _c, a, r, sink) = spawnkey_world();
+    let me = my_id(&a);
+    let payload = {
+        let g = a.lock();
+        let dev = g.keys.as_ref().unwrap();
+        let spawn_secret = [78u8; 32];
+        let st = SpawnStatement {
+            purpose: KeyPurpose::Presence,
+            user_id: USER,
+            device_fp: dev.fingerprint(),
+            device_id: me,
+            spawn_pub_b64: b64(&tmgr_phone::public_key(&spawn_secret).unwrap()),
+            issued_at_ms: 6,
+        };
+        serde_json::to_value(sign_spawnkey(dev, &spawn_secret, &st).unwrap()).unwrap()
+    };
+    post_spawnkey(&a, &r, &payload);
+    let got = sink.0.lock().unwrap().clone();
+    assert_eq!(got.len(), 1);
+    assert!(got[0].2.statement.starts_with("tmgr-presence-key:v1:"));
 }
 
 #[test]
