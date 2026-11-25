@@ -138,6 +138,7 @@ pub trait RelayPort: Send + Sync {
   fn machine_indexes(&self) -> Vec<MachineIndex> {
     vec![]
   }
+  fn set_local_machine(&self, _machine: &str) {}
   fn reset_identity(&self) -> Result<(), String>;
   fn answer_permit(&self, _card_id: &str, _answer: PermitAnswer, _confirmed: bool) -> Result<(), String> {
     Err("chat sync is not set up".into())

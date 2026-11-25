@@ -671,6 +671,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore> {
   t: T,
   k: K,
   cfg: EngineConfig,
+  local_machine: std::sync::RwLock<String>,
   kind: String,
   now: Box<dyn Fn() -> u64 + Send + Sync>,
   core: Mutex<Core>,
@@ -709,6 +710,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(Self {
       t,
       k,
+      local_machine: std::sync::RwLock::new(cfg.local_machine.clone()),
       cfg,
       kind: "desktop".into(),
       now,
@@ -1906,7 +1908,14 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   }
 
   fn owns(&self, room: &RoomRef) -> bool {
-    !self.cfg.local_machine.is_empty() && room.machine != self.cfg.local_machine
+    let local = self.local_machine.read().unwrap_or_else(|p| p.into_inner());
+    !local.is_empty() && room.machine != *local
+  }
+
+  fn set_local_machine(&self, machine: &str) {
+    if !machine.is_empty() {
+      *self.local_machine.write().unwrap_or_else(|p| p.into_inner()) = machine.to_owned();
+    }
   }
 
   fn trust_state(&self) -> Result<TrustState, String> {

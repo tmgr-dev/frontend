@@ -45,6 +45,7 @@ pub fn keychain_builder(presence: Option<Arc<Presence>>) -> Builder {
 struct Slot {
   relay: Arc<dyn RelayPort>,
   built_for: Option<(u64, String)>,
+  machine_known: bool,
 }
 
 pub struct SwitchRelay {
@@ -61,7 +62,7 @@ impl SwitchRelay {
     Self {
       enabled,
       auth: Arc::new(AuthCell::default()),
-      slot: RwLock::new(Slot { relay: Arc::new(NoRelay), built_for: None }),
+      slot: RwLock::new(Slot { relay: Arc::new(NoRelay), built_for: None, machine_known: false }),
       gate: Mutex::new(false),
       build,
       machine,
@@ -76,8 +77,8 @@ impl SwitchRelay {
     self.slot.read().unwrap_or_else(|p| p.into_inner()).relay.clone()
   }
 
-  fn put(&self, relay: Arc<dyn RelayPort>, built_for: Option<(u64, String)>) {
-    *self.slot.write().unwrap_or_else(|p| p.into_inner()) = Slot { relay, built_for };
+  fn put(&self, relay: Arc<dyn RelayPort>, built_for: Option<(u64, String)>, machine_known: bool) {
+    *self.slot.write().unwrap_or_else(|p| p.into_inner()) = Slot { relay, built_for, machine_known };
   }
 
   #[cfg(test)]
@@ -94,7 +95,7 @@ impl SwitchRelay {
   pub fn clear(&self) {
     let _gate = self.gate.lock().unwrap_or_else(|p| p.into_inner());
     self.auth.clear();
-    self.put(Arc::new(NoRelay), None);
+    self.put(Arc::new(NoRelay), None, false);
   }
 
   pub fn ensure_engine(&self) -> bool {
@@ -109,17 +110,30 @@ impl SwitchRelay {
     let Some(key) = self.auth.key() else {
       return false;
     };
-    if self.slot.read().unwrap_or_else(|p| p.into_inner()).built_for.as_ref() == Some(&key) {
+    let (built, machine_known) = {
+      let slot = self.slot.read().unwrap_or_else(|p| p.into_inner());
+      (slot.built_for.as_ref() == Some(&key), slot.machine_known)
+    };
+    if built {
+      if !machine_known {
+        if let Ok(machine) = (self.machine)() {
+          self.cur().set_local_machine(&machine);
+          self.slot.write().unwrap_or_else(|p| p.into_inner()).machine_known = true;
+        }
+      }
       return true;
     }
-    self.put(Arc::new(NoRelay), None);
-    let built = (self.machine)().and_then(|local_machine| {
-      (self.build)(EngineSpec { user_id: key.0, api_base: key.1.clone(), local_machine, login: Arc::new(BoundLogin::new(self.auth.clone(), key.clone())) })
-    });
-    match built {
+    self.put(Arc::new(NoRelay), None, false);
+    let machine = (self.machine)();
+    if let Err(e) = &machine {
+      log::info!("[manager] the local runner is not available ({e}); chat sync starts without local rooms");
+    }
+    let known = machine.is_ok();
+    let spec = EngineSpec { user_id: key.0, api_base: key.1.clone(), local_machine: machine.unwrap_or_default(), login: Arc::new(BoundLogin::new(self.auth.clone(), key.clone())) };
+    match (self.build)(spec) {
       Ok(relay) => {
         *logged = false;
-        self.put(relay, Some(key));
+        self.put(relay, Some(key), known);
         true
       }
       Err(e) => {
@@ -186,6 +200,9 @@ impl RelayPort for SwitchRelay {
   }
   fn machine_indexes(&self) -> Vec<super::rooms::MachineIndex> {
     self.cur().machine_indexes()
+  }
+  fn set_local_machine(&self, machine: &str) {
+    self.cur().set_local_machine(machine)
   }
   fn reset_identity(&self) -> Result<(), String> {
     self.cur().reset_identity()
@@ -507,20 +524,84 @@ mod tests {
     assert_eq!(login.token(), None);
   }
 
+  struct Machined(Arc<Mutex<Vec<String>>>);
+
+  impl RelayPort for Machined {
+    fn rooms(&self) -> Result<Vec<RoomInfo>, String> {
+      Ok(vec![])
+    }
+    fn history(&self, _: &HistoryParams) -> Result<Vec<ChatMessage>, String> {
+      Ok(vec![])
+    }
+    fn search(&self, _: &SearchParams) -> Result<Vec<ChatMessage>, String> {
+      Ok(vec![])
+    }
+    fn send(&self, _: SendParams) -> Result<ChatMessage, String> {
+      Err("live".into())
+    }
+    fn owns(&self, _: &RoomRef) -> bool {
+      true
+    }
+    fn trust_state(&self) -> Result<TrustState, String> {
+      Ok(TrustState::default())
+    }
+    fn decide_join(&self, _: &str, _: bool) -> Result<(), String> {
+      Ok(())
+    }
+    fn revoke(&self, _: &str) -> Result<(), String> {
+      Ok(())
+    }
+    fn reset_identity(&self) -> Result<(), String> {
+      Ok(())
+    }
+    fn open_join_code(&self) -> Result<String, String> {
+      Ok("code".into())
+    }
+    fn set_local_machine(&self, machine: &str) {
+      self.0.lock().unwrap().push(machine.to_owned());
+    }
+    fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
+      Ok(vec![])
+    }
+  }
+
   #[test]
-  fn an_unknown_machine_leaves_no_relay_and_builds_later() {
+  fn without_the_local_runner_the_relay_still_builds_so_devices_can_pair() {
     let count = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
     let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = ready.clone();
-    let machine: MachineSource = Box::new(move || if flag.load(Ordering::SeqCst) { Ok("mx_a".into()) } else { Err("no runner".into()) });
-    let s = SwitchRelay::new(true, live_builder(count.clone()), machine);
+    let machine: MachineSource = Box::new(move || if flag.load(Ordering::SeqCst) { Ok("mx_a".into()) } else { Err("disabled".into()) });
+    let (c, sink) = (count.clone(), seen.clone());
+    let build: Builder = Box::new(move |spec| {
+      c.fetch_add(1, Ordering::SeqCst);
+      sink.lock().unwrap().push(format!("built:{}", spec.local_machine));
+      Ok(Arc::new(Machined(sink.clone())))
+    });
+    let s = SwitchRelay::new(true, build, machine);
     s.set_auth(auth(7));
-    assert!(is_no_relay(&s));
-    assert!(!s.ensure_engine());
+    assert!(!is_no_relay(&s));
+    assert!(s.ensure_engine());
+    assert_eq!(s.open_join_code().unwrap(), "code");
     ready.store(true, Ordering::SeqCst);
     assert!(s.ensure_engine());
-    assert!(!is_no_relay(&s));
+    assert!(s.ensure_engine());
     assert_eq!(count.load(Ordering::SeqCst), 1);
+    assert_eq!(*seen.lock().unwrap(), vec!["built:".to_owned(), "mx_a".to_owned()]);
+  }
+
+  #[test]
+  fn a_known_machine_is_passed_at_build_and_never_set_again() {
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = seen.clone();
+    let build: Builder = Box::new(move |spec| {
+      sink.lock().unwrap().push(format!("built:{}", spec.local_machine));
+      Ok(Arc::new(Machined(sink.clone())))
+    });
+    let s = SwitchRelay::new(true, build, machine_ok());
+    s.set_auth(auth(7));
+    assert!(s.ensure_engine());
+    assert_eq!(*seen.lock().unwrap(), vec!["built:mx_a".to_owned()]);
   }
 
   #[test]

@@ -1146,6 +1146,18 @@ fn owns_is_false_for_the_local_machine_and_when_it_is_unknown() {
 }
 
 #[test]
+fn a_blank_engine_owns_remote_rooms_once_the_local_machine_is_set() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let e = engine_on(&fake, &clock, Arc::new(MemKeyStore::default()), "");
+  assert!(!e.owns(&room()));
+  RelayPort::set_local_machine(&e, "mx_local");
+  assert!(e.owns(&room()));
+  assert!(!e.owns(&RoomRef { kind: RoomKind::Manager, machine: "mx_local".into(), session: None }));
+  RelayPort::set_local_machine(&e, "");
+  assert!(e.owns(&room()));
+}
+
+#[test]
 fn transient_errors_keep_the_pending_join_and_revoke() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let a = engine_with(&fake, &clock, "Desktop A");
