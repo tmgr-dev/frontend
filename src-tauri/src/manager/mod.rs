@@ -6,6 +6,7 @@ pub mod followers;
 pub mod local;
 pub mod machines;
 pub mod pair;
+pub mod presence;
 pub mod relay;
 pub mod remote_policy;
 pub mod tts;
@@ -25,6 +26,7 @@ pub struct ManagerState {
   backend: Arc<dyn ManagerBackend>,
   relay: Arc<dyn relay::port::RelayPort>,
   switch: Arc<relay::switch::SwitchRelay>,
+  presence: Option<Arc<presence::Presence>>,
 }
 
 fn backend_of<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<dyn ManagerBackend>, String> {
@@ -75,7 +77,8 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     Some(local) => local::LocalPort::machine(&**local),
     None => Err("the runner is not available".to_owned()),
   });
-  let switch = Arc::new(relay::switch::SwitchRelay::new(RELAY_ENABLED, relay::switch::keychain_builder(), machine));
+  let presence = presence_setup(app);
+  let switch = Arc::new(relay::switch::SwitchRelay::new(RELAY_ENABLED, relay::switch::keychain_builder(presence.clone()), machine));
   let relay: Arc<dyn relay::port::RelayPort> = switch.clone();
   let backend: Arc<dyn ManagerBackend> = match (app.try_state::<crate::runner::Runner>(), runner) {
     (Some(runner), Some(local)) => {
@@ -115,7 +118,58 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
       move || manager_window_visible(&visible_handle),
     );
   }
-  app.manage(ManagerState { backend, relay, switch });
+  app.manage(ManagerState { backend, relay, switch, presence });
+}
+
+#[cfg(target_os = "macos")]
+fn presence_setup<R: Runtime>(app: &AppHandle<R>) -> Option<Arc<presence::Presence>> {
+  let dir = app.path().app_data_dir().ok()?;
+  presence::macos::SecureEnclave::watch();
+  Some(Arc::new(presence::Presence::new(Box::new(presence::macos::SecureEnclave), dir, Box::new(presence::system_now))))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn presence_setup<R: Runtime>(_app: &AppHandle<R>) -> Option<Arc<presence::Presence>> {
+  None
+}
+
+fn presence_of<R: Runtime>(window: &tauri::WebviewWindow<R>, app: &AppHandle<R>) -> Result<Option<Arc<presence::Presence>>, String> {
+  if window.label() != LABEL {
+    return Err("not allowed from this window".to_owned());
+  }
+  app.try_state::<ManagerState>().map(|m| m.presence.clone()).ok_or_else(|| "the manager chat is not running".to_owned())
+}
+
+#[tauri::command]
+pub async fn manager_presence_status<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>) -> Result<Option<presence::PresenceStatus>, String> {
+  let p = presence_of(&window, &app)?;
+  blocking(move || Ok(p.map(|p| p.status()))).await
+}
+
+#[tauri::command]
+pub async fn manager_presence_setup<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>) -> Result<usize, String> {
+  let p = presence_of(&window, &app)?.ok_or_else(|| "Desktop approvals need macOS".to_owned())?;
+  let relay = relay_of(&app)?;
+  blocking(move || {
+    p.setup()?;
+    relay.publish_presence()
+  })
+  .await
+}
+
+#[tauri::command]
+pub async fn manager_presence_publish<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>) -> Result<usize, String> {
+  presence_of(&window, &app)?.ok_or_else(|| "Desktop approvals need macOS".to_owned())?;
+  let relay = relay_of(&app)?;
+  blocking(move || relay.publish_presence()).await
+}
+
+#[tauri::command]
+pub async fn manager_presence_lock<R: Runtime>(window: tauri::WebviewWindow<R>, app: AppHandle<R>) -> Result<(), String> {
+  if let Some(p) = presence_of(&window, &app)? {
+    p.lock_now();
+  }
+  Ok(())
 }
 
 fn manager_window_visible<R: Runtime>(app: &AppHandle<R>) -> bool {

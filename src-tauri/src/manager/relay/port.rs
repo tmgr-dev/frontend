@@ -145,6 +145,9 @@ pub trait RelayPort: Send + Sync {
   fn refresh_permit(&self, _card_id: &str) -> Result<(), String> {
     Err("chat sync is not set up".into())
   }
+  fn publish_presence(&self) -> Result<usize, String> {
+    Err("chat sync is not set up".into())
+  }
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String>;
   fn take_receipts(&self) -> Vec<Receipt> {
     vec![]

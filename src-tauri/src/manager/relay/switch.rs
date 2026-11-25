@@ -8,6 +8,7 @@ use super::engine::{retry_after_secs, EngineConfig, RelayEngine};
 use super::http::{HttpTransport, LoginToken};
 use super::port::{NoRelay, Receipt, RelayPort, TrustState};
 use super::ports::{KeyStore, KeychainStore};
+use super::super::presence::Presence;
 use crate::manager::backend::{ChatMessage, HistoryParams, RoomInfo, RoomRef, SearchParams, SendParams};
 
 const LABEL: &str = "Desktop";
@@ -28,16 +29,16 @@ pub struct EngineSpec {
 pub type Builder = Box<dyn Fn(EngineSpec) -> Result<Arc<dyn RelayPort>, String> + Send + Sync>;
 pub type MachineSource = Box<dyn Fn() -> Result<String, String> + Send + Sync>;
 
-pub fn build_engine(spec: EngineSpec, store: impl KeyStore + 'static) -> Result<Arc<dyn RelayPort>, String> {
+pub fn build_engine(spec: EngineSpec, store: impl KeyStore + 'static, presence: Option<Arc<Presence>>) -> Result<Arc<dyn RelayPort>, String> {
   let transport = HttpTransport::new(&spec.api_base, spec.login)?;
   let cfg = EngineConfig { user_id: spec.user_id, label: LABEL.to_owned(), local_machine: spec.local_machine };
-  Ok(Arc::new(RelayEngine::new(transport, store, cfg)?))
+  Ok(Arc::new(RelayEngine::new(transport, store, cfg)?.with_presence(presence)))
 }
 
-pub fn keychain_builder() -> Builder {
-  Box::new(|spec| {
+pub fn keychain_builder(presence: Option<Arc<Presence>>) -> Builder {
+  Box::new(move |spec| {
     let store = KeychainStore::new(format!("u{}@{}", spec.user_id, spec.api_base));
-    build_engine(spec, store)
+    build_engine(spec, store, presence.clone())
   })
 }
 
@@ -194,6 +195,9 @@ impl RelayPort for SwitchRelay {
   }
   fn refresh_permit(&self, card_id: &str) -> Result<(), String> {
     self.cur().refresh_permit(card_id)
+  }
+  fn publish_presence(&self) -> Result<usize, String> {
+    self.cur().publish_presence()
   }
   fn poll_once(&self) -> Result<Vec<ChatMessage>, String> {
     self.cur().poll_once()
@@ -528,15 +532,15 @@ mod tests {
       login: Arc::new(TokenOnly(login.to_owned())),
     };
     let bad = [
-      build_engine(spec(&format!("https://u:{SECRET}@api.example.com"), SECRET), MemKeyStore::default()),
-      build_engine(spec(&format!("http://{SECRET}.example.com"), SECRET), MemKeyStore::default()),
-      build_engine(spec("https://api.tmgr.dev", SECRET), BrokenStore),
+      build_engine(spec(&format!("https://u:{SECRET}@api.example.com"), SECRET), MemKeyStore::default(), None),
+      build_engine(spec(&format!("http://{SECRET}.example.com"), SECRET), MemKeyStore::default(), None),
+      build_engine(spec("https://api.tmgr.dev", SECRET), BrokenStore, None),
     ];
     for r in bad {
       let e = r.err().expect("build must fail");
       assert!(!e.contains(SECRET), "{e}");
     }
-    assert!(build_engine(spec("https://api.tmgr.dev", SECRET), MemKeyStore::default()).is_ok());
+    assert!(build_engine(spec("https://api.tmgr.dev", SECRET), MemKeyStore::default(), None).is_ok());
   }
 
   struct TokenOnly(String);

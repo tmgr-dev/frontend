@@ -137,6 +137,7 @@
 									:live="
 										permitGroupByMessage[message.id].decision.live === true
 									"
+									:self-fp="trust.trust?.self_fp ?? ''"
 								/>
 							</template>
 							<template v-else-if="message.decision.closed"></template>
@@ -362,8 +363,6 @@
 	import ConnectFollowers from './components/ConnectFollowers.vue';
 	import ControlDialog from './components/ControlDialog.vue';
 	import DecisionCard from './components/DecisionCard.vue';
-	import PermitCard from './components/PermitCard.vue';
-	import { permitGroups } from './permitCards';
 	import DetailPanel from './components/DetailPanel.vue';
 	import GateBlockersBanner from './components/GateBlockersBanner.vue';
 	import Icon from './components/Icon.vue';
@@ -371,6 +370,7 @@
 	import MentionMenu from './components/MentionMenu.vue';
 	import MessageList from './components/MessageList.vue';
 	import NewSessionDialog from './components/NewSessionDialog.vue';
+	import PermitCard from './components/PermitCard.vue';
 	import RemotePolicy from './components/RemotePolicy.vue';
 	import RunnerAddedNotice from './components/RunnerAddedNotice.vue';
 	import SearchPanel from './components/SearchPanel.vue';
@@ -402,6 +402,7 @@
 		shellColumns,
 		type PanelSide,
 	} from './panelWidths';
+	import { permitGroups } from './permitCards';
 	import { useRemotePolicyStore } from './remotePolicyStore';
 	import { MAX_FILE_BYTES, useManagerStore } from './store';
 	import { useTrustStore } from './trustStore';

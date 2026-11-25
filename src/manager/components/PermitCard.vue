@@ -102,6 +102,9 @@
 				{{ $t('manager.permit.deny') }}
 			</button>
 		</div>
+		<div v-if="touchId && showActions" class="dc-note pm-touch">
+			{{ $t('manager.permit.touchId') }}
+		</div>
 		<div v-if="error" class="dc-note dc-err" role="alert">{{ error }}</div>
 	</div>
 </template>
@@ -113,6 +116,8 @@
 	import type { PermitCardWire, PermitChoice } from '../types';
 	import Icon from './Icon.vue';
 
+	const NOT_SET_UP = 'Set up desktop approvals first';
+
 	export default defineComponent({
 		name: 'ManagerPermitCard',
 		components: { Icon },
@@ -122,6 +127,7 @@
 			closed: { type: String, default: undefined },
 			answerable: { type: Boolean, default: true },
 			live: { type: Boolean, default: false },
+			selfFp: { type: String, default: '' },
 		},
 		data() {
 			return {
@@ -173,8 +179,22 @@
 			refreshable(): boolean {
 				return this.answerable && this.live;
 			},
+			touchId(): boolean {
+				return (
+					!!this.selfFp && !!this.permit.presence_fps?.includes(this.selfFp)
+				);
+			},
 			canAnswer(): boolean {
-				return this.answerable && this.live && this.permit.desktop_ok === true;
+				return (
+					this.answerable &&
+					this.live &&
+					(this.permit.desktop_ok === true || this.touchId)
+				);
+			},
+			showActions(): boolean {
+				return (
+					!this.closedText && !this.expired && !this.sent && this.canAnswer
+				);
 			},
 			closedText(): string {
 				const reason = this.closed && stripFormat(this.closed);
@@ -247,9 +267,10 @@
 					this.sent = true;
 					this.confirming = null;
 				} catch (e) {
-					this.error = this.$t('manager.permit.failed', {
-						error: String(e),
-					});
+					this.error =
+						String(e) === NOT_SET_UP
+							? this.$t('manager.permit.setupTouchId')
+							: this.$t('manager.permit.failed', { error: String(e) });
 					this.confirming = null;
 				} finally {
 					this.busy = false;

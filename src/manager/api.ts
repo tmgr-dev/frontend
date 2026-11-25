@@ -12,6 +12,7 @@ import type {
 	ModelChoice,
 	PairResult,
 	PermitChoice,
+	PresenceStatus,
 	RemotePolicyInfo,
 	RoomInfo,
 	RoomRef,
@@ -97,6 +98,15 @@ export const permitAnswer = (
 	choice: PermitChoice,
 	confirmed: boolean,
 ) => invoke<void>('manager_permit_answer', { cardId, choice, confirmed });
+
+export const presenceStatus = () =>
+	invoke<PresenceStatus | null>('manager_presence_status');
+
+export const presenceSetup = () => invoke<number>('manager_presence_setup');
+
+export const presencePublish = () => invoke<number>('manager_presence_publish');
+
+export const presenceLock = () => invoke<void>('manager_presence_lock');
 
 export const runnerCaps = () =>
 	invoke<{ caps: string[] }>('runner_status').then((s) => s.caps);

@@ -96,6 +96,7 @@ const mount = async (
 		closed?: string;
 		answerable?: boolean;
 		live?: boolean;
+		selfFp?: string;
 	} = {},
 ) => {
 	const el = document.createElement('div');
@@ -401,6 +402,152 @@ describe('PermitCard states', () => {
 		const shown = el.textContent ?? '';
 		expect(shown).not.toMatch(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\u061C]/);
 		expect(shown).toContain('rs -rf /');
+		unmount();
+	});
+
+	const ME = 'a'.repeat(64);
+	const touchCard = () =>
+		permit({
+			desktop_ok: false,
+			danger: ['destructive'],
+			presence_fps: [ME],
+		});
+
+	it('a danger card listing this desktop is answerable with Touch ID', async () => {
+		const { el, unmount } = await mount(touchCard(), { selfFp: ME });
+		expect(labels(el)).toEqual(['Allow once', 'Always allow', 'Deny']);
+		expect(el.textContent).toContain('Touch ID confirms this answer');
+		await click(el, '.pm-once');
+		await click(el, '.pm-confirm');
+		expect(mockInvoke).toHaveBeenCalledWith('manager_permit_answer', {
+			cardId: CARD,
+			choice: 'once',
+			confirmed: true,
+		});
+		expect(el.textContent).not.toContain('Touch ID confirms this answer');
+		unmount();
+	});
+
+	it('a danger card listing another desktop stays phone only', async () => {
+		const { el, unmount } = await mount(touchCard(), {
+			selfFp: 'b'.repeat(64),
+		});
+		expect(labels(el)).toEqual([]);
+		expect(el.textContent).toContain('Answer on your phone or in tmgr attach');
+		unmount();
+	});
+
+	it('a plain card does not mention Touch ID', async () => {
+		const { el, unmount } = await mount(permit(), { selfFp: ME });
+		expect(el.textContent).not.toContain('Touch ID');
+		unmount();
+	});
+
+	it('points to the Encryption tab when Touch ID approvals are not set up', async () => {
+		mockInvoke.mockRejectedValueOnce('Set up desktop approvals first');
+		const { el, unmount } = await mount(touchCard(), { selfFp: ME });
+		await click(el, '.pm-deny');
+		expect(el.textContent).toContain(
+			'Set up Touch ID approvals in the Encryption tab to answer here',
+		);
+		expect(labels(el)).toEqual(['Allow once', 'Always allow', 'Deny']);
+		unmount();
+	});
+});
+
+describe('PresenceApprovals', () => {
+	const ME = 'a'.repeat(64);
+	const KEY = 'c'.repeat(64);
+	const mountPresence = async () => {
+		const el = document.createElement('div');
+		document.body.appendChild(el);
+		const app = createApp({
+			render: () => h(load('PresenceApprovals'), { selfFp: ME }),
+		}).use(i18n);
+		app.mount(el);
+		await flush();
+		return {
+			el,
+			unmount: () => {
+				app.unmount();
+				el.remove();
+			},
+		};
+	};
+	const status = (over = {}) => ({
+		available: true,
+		set_up: false,
+		needs_setup_again: false,
+		...over,
+	});
+
+	beforeEach(() => jest.resetAllMocks());
+
+	it('is hidden off macOS and without a Secure Enclave', async () => {
+		mockInvoke.mockResolvedValueOnce(null);
+		const off = await mountPresence();
+		expect(off.el.textContent).toBe('');
+		off.unmount();
+		mockInvoke.mockResolvedValueOnce(status({ available: false }));
+		const none = await mountPresence();
+		expect(none.el.textContent).toBe('');
+		none.unmount();
+	});
+
+	it('sets up, reports the runners reached and shows the approve command', async () => {
+		mockInvoke.mockImplementation((cmd: string) =>
+			Promise.resolve(
+				cmd === 'manager_presence_setup'
+					? 2
+					: status(
+							mockInvoke.mock.calls.some(
+								(c) => c[0] === 'manager_presence_setup',
+							)
+								? { set_up: true, key_fp: KEY }
+								: {},
+						),
+			),
+		);
+		const { el, unmount } = await mountPresence();
+		expect(el.textContent).toContain('Not set up');
+		await click(el, '.pres-setup');
+		expect(el.textContent).toContain('Key sent to runners: 2');
+		expect(el.querySelector('.pres-cmd')?.textContent).toBe(
+			`tmgr runner manager presence-keys approve ${ME} ${KEY}`,
+		);
+		expect(el.querySelector('.pres-resend')).not.toBeNull();
+		unmount();
+	});
+
+	it('asks to set up again when the stored key stopped working', async () => {
+		mockInvoke.mockResolvedValue(status({ needs_setup_again: true }));
+		const { el, unmount } = await mountPresence();
+		expect(el.textContent).toContain('The Touch ID key stopped working');
+		expect(el.querySelector('.pres-setup')).not.toBeNull();
+		unmount();
+	});
+
+	it('shows an open window and locks it', async () => {
+		mockInvoke.mockImplementation((cmd: string) =>
+			Promise.resolve(
+				cmd === 'manager_presence_lock'
+					? undefined
+					: status({
+							set_up: true,
+							key_fp: KEY,
+							unlocked_secs: mockInvoke.mock.calls.some(
+								(c) => c[0] === 'manager_presence_lock',
+							)
+								? undefined
+								: 61,
+						}),
+			),
+		);
+		const { el, unmount } = await mountPresence();
+		expect(el.textContent).toContain('Unlocked for 2 min');
+		await click(el, '.pres-lock');
+		expect(mockInvoke).toHaveBeenCalledWith('manager_presence_lock');
+		expect(el.textContent).not.toContain('Unlocked for');
 		unmount();
 	});
 });

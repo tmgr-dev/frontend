@@ -30,6 +30,7 @@ tauri-plugin-opener = "2"
 rusqlite = { version = "0.37", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream"] }
 sha2 = "0.10"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 hmac = "0.12"
 subtle = "2"
 minisign-verify = "0.2"
@@ -92,4 +93,3 @@ tauri-plugin-updater = { version = "2", default-features = false, features = ["r
 [dev-dependencies]
 tempfile = "3"
 tauri = { version = "2.11.6", features = ["tray-icon", "test"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }

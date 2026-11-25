@@ -95,9 +95,18 @@ impl PermitBook {
   }
 }
 
-pub fn sign_answer(stored: &StoredPermit, answer: PermitAnswer, confirmed: bool, user_id: &str, own_fp: &str, now: u64, sign_secret: &[u8]) -> Result<SignedPermit, String> {
+pub fn needs_presence(card: &PermitCardMsg, own_fp: &str) -> bool {
+  card.presence_fps.iter().any(|fp| fp == own_fp)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sign_answer(stored: &StoredPermit, answer: PermitAnswer, confirmed: bool, user_id: &str, own_fp: &str, now: u64, k: PermitKey, sign: impl FnOnce(&str) -> Result<String, String>) -> Result<SignedPermit, String> {
   let card = &stored.card;
-  if !card.desktop_ok {
+  let allowed = match k {
+    PermitKey::Chat => card.desktop_ok,
+    PermitKey::Presence => needs_presence(card, own_fp),
+  };
+  if !allowed {
     return Err("Answer on your phone or in tmgr attach".into());
   }
   if now > card.exp_ms {
@@ -143,10 +152,10 @@ pub fn sign_answer(stored: &StoredPermit, answer: PermitAnswer, confirmed: bool,
     exp_ms: card.exp_ms,
     req_sha256: screen.req_sha256(),
     alg: "es256".into(),
-    k: PermitKey::Chat,
+    k,
     sig: String::new(),
   };
   let message = permit_signed_string(&record, &key, &signed);
-  signed.sig = tmgr_phone::sign(sign_secret, &message).map_err(|_| "Could not sign the answer".to_owned())?;
+  signed.sig = sign(&message)?;
   Ok(signed)
 }

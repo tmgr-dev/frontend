@@ -41,6 +41,7 @@
 				{{ $t('manager.panel.manageDevices') }}
 			</button>
 		</div>
+		<PresenceApprovals :self-fp="selfFp" />
 	</div>
 </template>
 
@@ -48,11 +49,12 @@
 	import { defineComponent, type PropType } from 'vue';
 	import type { TrustDevice } from '../types';
 	import Icon from './Icon.vue';
+	import PresenceApprovals from './PresenceApprovals.vue';
 	import { groupFp } from './trust/trustHelpers';
 
 	export default defineComponent({
 		name: 'ManagerEncryptionTab',
-		components: { Icon },
+		components: { Icon, PresenceApprovals },
 		props: {
 			selfFp: { type: String, default: '' },
 			devices: { type: Array as PropType<TrustDevice[]>, default: () => [] },

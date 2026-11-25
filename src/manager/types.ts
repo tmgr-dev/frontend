@@ -51,6 +51,15 @@ export interface PermitCardWire {
 	exp_ms: number;
 	nonce?: string;
 	desktop_ok?: boolean;
+	presence_fps?: string[];
+}
+
+export interface PresenceStatus {
+	available: boolean;
+	set_up: boolean;
+	needs_setup_again: boolean;
+	key_fp?: string;
+	unlocked_secs?: number;
 }
 
 export type PermitChoice = 'once' | 'always' | 'deny';

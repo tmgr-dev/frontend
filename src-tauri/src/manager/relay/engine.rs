@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -14,12 +14,14 @@ use tmgr_chat_relay::fields::{check_device_id, check_device_kind, check_fp};
 use tmgr_chat_relay::keys::{fingerprint, DeviceKeys};
 use tmgr_chat_relay::trust::{
   decode_join_code, encode_join_code, expected_join_matches, gate_blockers, join_mac, kind_key, lowers_kind, may_revoke, parse_intro, parse_revoke, restrict_to_before, sign_intro, sign_revoke,
-  trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KindCtx, RevokeStatement, Trusted,
+  trusted_set_by_kind, v2_self_markers, verify_join_mac, verify_revoke, DirEntry, IntroStatement, JoinCode, JoinMacInput, KeyPurpose, KindCtx, RevokeStatement, SpawnKey, SpawnStatement, Trusted,
 };
 use tmgr_chat_relay::wire::{open_message_checked, random_msg_id, seal_message, Opened, Peer, SealParams};
 use tmgr_phone::{b64, b64_decode, h, hex, Error};
+use tmgr_spawn_auth::PermitKey;
 
-use super::permit::{sign_answer, PermitAnswer, PermitBook, StoredPermit};
+use super::super::presence::{Presence, ANSWER_REASON, NOT_SET_UP, SETUP_REASON};
+use super::permit::{needs_presence, sign_answer, PermitAnswer, PermitBook, StoredPermit};
 use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, ReceiptState, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
 use super::ports::{KeyStore, Slot, Transport};
 use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
@@ -677,6 +679,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore> {
   stored_log_rev: AtomicU64,
   next_gen: AtomicU64,
   send_budget: Duration,
+  presence: Option<Arc<Presence>>,
   #[cfg(test)]
   drops: Mutex<Vec<&'static str>>,
   #[cfg(test)]
@@ -715,6 +718,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       stored_log_rev: AtomicU64::new(0),
       next_gen: AtomicU64::new(0),
       send_budget: SEND_BUDGET,
+      presence: None,
       #[cfg(test)]
       drops: Mutex::default(),
       #[cfg(test)]
@@ -732,6 +736,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   #[cfg(test)]
   fn with_send_budget(mut self, budget: Duration) -> Self {
     self.send_budget = budget;
+    self
+  }
+
+  pub fn with_presence(mut self, presence: Option<Arc<Presence>>) -> Self {
+    self.presence = presence;
     self
   }
 
@@ -1567,12 +1576,58 @@ const UNKNOWN_PERMIT_MSG: &str = "Unknown or closed permission card";
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   pub fn answer_permit(&self, card_id: &str, answer: PermitAnswer, confirmed: bool) -> Result<(), String> {
     let user_id = self.cfg.user_id.to_string();
+    let presence = self.presence_for(card_id)?;
+    if let Some(p) = &presence {
+      p.unlock(ANSWER_REASON)?;
+    }
     let now = self.now();
     self.send_permitok(card_id, true, |c, stored| {
       let (_, keys) = Self::own(c)?;
-      let signed = sign_answer(stored, answer, confirmed, &user_id, &keys.fingerprint(), now, keys.sign_secret())?;
+      let signed = match &presence {
+        Some(p) => sign_answer(stored, answer, confirmed, &user_id, &keys.fingerprint(), now, PermitKey::Presence, |m| p.sign_unlocked(m))?,
+        None => sign_answer(stored, answer, confirmed, &user_id, &keys.fingerprint(), now, PermitKey::Chat, |m| tmgr_phone::sign(keys.sign_secret(), m).map_err(|_| "Could not sign the answer".to_owned()))?,
+      };
       serde_json::to_value(&signed).map_err(err)
     })
+  }
+
+  fn presence_for(&self, card_id: &str) -> Result<Option<Arc<Presence>>, String> {
+    let g = self.lock();
+    let stored = g.permits.get(card_id).ok_or_else(|| UNKNOWN_PERMIT_MSG.to_owned())?;
+    let (_, keys) = Self::own(&g)?;
+    if !needs_presence(&stored.card, &keys.fingerprint()) {
+      return Ok(None);
+    }
+    self.presence.clone().map(Some).ok_or_else(|| NOT_SET_UP.to_owned())
+  }
+
+  /// Sends this desktop's Touch ID key to every trusted runner; each owner approves it there once.
+  pub fn publish_presence(&self) -> Result<usize, String> {
+    let p = self.presence.clone().ok_or_else(|| NOT_SET_UP.to_owned())?;
+    let public = p.public_key()?.ok_or_else(|| NOT_SET_UP.to_owned())?;
+    let statement = {
+      let g = self.lock();
+      let (id, keys) = Self::own(&g)?;
+      SpawnStatement { purpose: KeyPurpose::Presence, user_id: self.cfg.user_id, device_fp: keys.fingerprint(), device_id: id.device_id.clone(), spawn_pub_b64: b64(&public), issued_at_ms: self.now() }.to_statement().map_err(err)?
+    };
+    p.unlock(SETUP_REASON)?;
+    let spawn_sig = p.sign_unlocked(&statement)?;
+    let mut g = self.lock();
+    let c = &mut *g;
+    let (_, keys) = Self::own(c)?;
+    let parsed = SpawnStatement::parse(&statement).map_err(err)?;
+    if parsed.device_fp != keys.fingerprint() {
+      return Err("the chat identity changed while sending".into());
+    }
+    let sig = tmgr_phone::sign(keys.sign_secret(), &statement).map_err(err)?;
+    let payload = serde_json::to_value(SpawnKey { statement, sig, spawn_sig }).map_err(err)?;
+    let runners: Vec<Dev> = c.st.trusted.iter().filter(|d| !c.st.revoked.contains(&d.fp) && c.st.kind_of(&d.id, &d.fp) == Some("runner")).cloned().collect();
+    if runners.is_empty() {
+      return Err("No runner is paired with this desktop yet".into());
+    }
+    let msg_id = random_msg_id("spawnkey").map_err(err)?;
+    self.seal_and_post(c, "spawnkey", &msg_id, &payload, &runners, false)?;
+    Ok(runners.len())
   }
 
   pub fn refresh_permit(&self, card_id: &str) -> Result<(), String> {
@@ -1659,6 +1714,9 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   }
   fn refresh_permit(&self, card_id: &str) -> Result<(), String> {
     RelayEngine::refresh_permit(self, card_id)
+  }
+  fn publish_presence(&self) -> Result<usize, String> {
+    RelayEngine::publish_presence(self)
   }
   fn rooms(&self) -> Result<Vec<RoomInfo>, String> {
     let g = self.lock();

@@ -394,3 +394,178 @@ fn a_refresh_for_an_unknown_or_closed_card_is_refused_and_nothing_is_sent() {
   assert_eq!(rig.a.refresh_permit(CARD).unwrap_err(), UNKNOWN);
   assert_eq!(counts(&rig), before2);
 }
+
+struct Touch {
+  rig: Rig,
+  e: crate::manager::presence::soft::SoftEnclave,
+  p: Arc<crate::manager::presence::Presence>,
+  _dir: tempfile::TempDir,
+}
+
+fn touch(set_up: bool) -> Touch {
+  use crate::manager::presence::{soft::SoftEnclave, Presence};
+  let dir = tempfile::tempdir().unwrap();
+  let e = SoftEnclave::default();
+  let p = Arc::new(Presence::new(Box::new(e.clone()), dir.path().to_path_buf(), Box::new(crate::manager::presence::system_now)));
+  if set_up {
+    p.setup().unwrap();
+  }
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A").with_presence(Some(p.clone()));
+  let r = join_as(&fake, &clock, &a, "Runner", "runner");
+  let rid = my_id(&r);
+  Touch { rig: Rig { fake, clock, a, r, rid }, e, p, _dir: dir }
+}
+
+fn own_fp(rig: &Rig) -> String {
+  rig.a.lock().keys.as_ref().unwrap().fingerprint()
+}
+
+fn presence_card(rig: &Rig) -> PermitCardMsg {
+  let mut c = card(true, false);
+  c.presence_fps = vec![own_fp(rig)];
+  c
+}
+
+fn verify_presence(t: &Touch, payload: &Value, c: &PermitCardMsg) -> Result<PermittedAnswer, PermitRefusal> {
+  let signed: SignedPermit = serde_json::from_value(payload.clone()).unwrap();
+  let (dev_id, dev_fp) = {
+    let g = t.rig.a.lock();
+    (g.identity.as_ref().unwrap().device_id.clone(), g.keys.as_ref().unwrap().fingerprint())
+  };
+  let record = PermitRecord {
+    user_id: USER.to_string(),
+    runner_id: c.runner_id.clone(),
+    runner_fp: c.runner_fp.clone(),
+    card_id: CARD.into(),
+    session: c.session.clone(),
+    nonce: c.nonce.clone(),
+    issued_ms: c.exp_ms - 60_000,
+    exp_ms: c.exp_ms,
+    screen: screen_of(c),
+  };
+  let chat = PinnedKey { user_id: USER.to_string(), device_id: dev_id.clone(), device_fp: dev_fp.clone(), spawn_pub: vec![] };
+  let presence = PinnedKey { user_id: USER.to_string(), device_id: dev_id, device_fp: dev_fp.clone(), spawn_pub: t.p.public_key().unwrap().unwrap() };
+  let sender = PermitSender { device_fp: &dev_fp, owner_device: true, kind: PermitSenderKind::Desktop, desktop: DesktopPolicy::Presence, presence: Some(&presence) };
+  verify_permit(&signed, &record, &chat, sender, &Trusting, T0)
+}
+
+#[test]
+fn a_touch_id_answer_on_a_danger_card_passes_the_runner_verifier() {
+  let t = touch(true);
+  let c = presence_card(&t.rig);
+  post_card(&t.rig, 2, c.clone());
+  let before = to_runner(&t.rig).len();
+  answer(&t.rig, PermitAnswer::Once, true).unwrap();
+  let payload = sent_to_runner(&t.rig, before);
+  assert_eq!(payload["k"], "presence");
+  assert_eq!(verify_presence(&t, &payload, &c).unwrap().choice(), PermitChoice::Yes);
+  assert_eq!(t.e.prompts(), 1);
+}
+
+#[test]
+fn a_danger_card_without_desktop_approvals_set_up_is_refused_before_any_prompt() {
+  let t = touch(false);
+  post_card(&t.rig, 2, presence_card(&t.rig));
+  let before = counts(&t.rig);
+  assert_eq!(answer(&t.rig, PermitAnswer::Deny, false).unwrap_err(), crate::manager::presence::NOT_SET_UP);
+  assert_eq!(counts(&t.rig), before);
+  assert_eq!(t.e.prompts(), 0);
+
+  let rig = rig();
+  post_card(&rig, 2, presence_card(&rig));
+  assert_eq!(answer(&rig, PermitAnswer::Deny, false).unwrap_err(), crate::manager::presence::NOT_SET_UP);
+}
+
+#[test]
+fn a_cancelled_touch_id_prompt_sends_nothing_and_the_card_stays_answerable() {
+  let t = touch(true);
+  let c = presence_card(&t.rig);
+  post_card(&t.rig, 2, c.clone());
+  *t.e.0.refuse.lock().unwrap() = Some("cancelled".into());
+  let before = counts(&t.rig);
+  assert_eq!(answer(&t.rig, PermitAnswer::Deny, false).unwrap_err(), "cancelled");
+  assert_eq!(counts(&t.rig), before);
+  *t.e.0.refuse.lock().unwrap() = None;
+  answer(&t.rig, PermitAnswer::Deny, false).unwrap();
+  let payload = sent_to_runner(&t.rig, before.0);
+  assert_eq!(verify_presence(&t, &payload, &c).unwrap().choice(), PermitChoice::No);
+}
+
+#[test]
+fn the_relay_stays_usable_while_the_touch_id_prompt_is_open() {
+  let t = touch(true);
+  post_card(&t.rig, 2, presence_card(&t.rig));
+  let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+  let (release_tx, release_rx) = std::sync::mpsc::channel();
+  *t.e.0.hold.lock().unwrap() = Some((entered_tx, release_rx));
+  std::thread::scope(|s| {
+    let answering = s.spawn(|| answer(&t.rig, PermitAnswer::Deny, false));
+    entered_rx.recv().unwrap();
+    assert!(t.rig.a.core.try_lock().is_ok(), "the relay lock is free during the prompt");
+    t.rig.a.poll_once().unwrap();
+    release_tx.send(()).unwrap();
+    answering.join().unwrap().unwrap();
+  });
+}
+
+#[test]
+fn one_touch_id_window_covers_the_next_card() {
+  let t = touch(true);
+  post_card(&t.rig, 2, presence_card(&t.rig));
+  answer(&t.rig, PermitAnswer::Deny, false).unwrap();
+  post_card(&t.rig, 3, presence_card(&t.rig));
+  answer(&t.rig, PermitAnswer::Deny, false).unwrap();
+  assert_eq!(t.e.prompts(), 1);
+}
+
+#[test]
+fn a_card_without_this_desktop_in_its_presence_list_keeps_the_chat_key() {
+  let t = touch(true);
+  let c = card(false, true);
+  post_card(&t.rig, 2, c.clone());
+  let before = to_runner(&t.rig).len();
+  answer(&t.rig, PermitAnswer::Once, false).unwrap();
+  let payload = sent_to_runner(&t.rig, before);
+  assert!(payload.get("k").is_none(), "a chat answer keeps the old wire form");
+  assert_eq!(verify(&t.rig, &payload, &c, DesktopPolicy::Presence).unwrap().choice(), PermitChoice::Yes);
+  assert_eq!(t.e.prompts(), 0);
+
+  let mut other = card(true, false);
+  other.presence_fps = vec!["e".repeat(64)];
+  post_card(&t.rig, 3, other);
+  assert_eq!(answer(&t.rig, PermitAnswer::Deny, false).unwrap_err(), "Answer on your phone or in tmgr attach");
+}
+
+#[test]
+fn publishing_sends_a_double_signed_presence_key_to_each_runner() {
+  use tmgr_chat_relay::trust::{KeyPurpose, SpawnKey, SpawnStatement};
+  let t = touch(true);
+  let before = to_runner(&t.rig).len();
+  assert_eq!(t.rig.a.publish_presence().unwrap(), 1);
+  let all = to_runner(&t.rig);
+  assert_eq!(all.len(), before + 1);
+  let (msg_id, from, body) = all.last().unwrap().clone();
+  let opened = {
+    let g = t.rig.r.lock();
+    let id = g.identity.as_ref().unwrap().device_id.clone();
+    let trusted: Vec<_> = g.st.trusted.iter().map(to_trusted).collect();
+    open_message_checked(g.keys.as_ref().unwrap(), USER, &id, &from, &msg_id, &body, T0, &trusted, |_| None).unwrap()
+  };
+  assert_eq!(opened.kind, "spawnkey");
+  let key: SpawnKey = serde_json::from_value(opened.payload).unwrap();
+  let st = SpawnStatement::parse(&key.statement).unwrap();
+  let public = t.p.public_key().unwrap().unwrap();
+  assert_eq!(st.purpose, KeyPurpose::Presence);
+  assert_eq!(st.device_fp, own_fp(&t.rig));
+  assert_eq!(b64_decode(&st.spawn_pub_b64).unwrap(), public);
+  let sign_pub = b64_decode(&t.rig.a.lock().keys.as_ref().unwrap().sign_pub_b64()).unwrap();
+  tmgr_phone::verify(&sign_pub, &key.statement, &key.sig).unwrap();
+  tmgr_phone::verify(&public, &key.statement, &key.spawn_sig).unwrap();
+}
+
+#[test]
+fn publishing_without_setup_or_a_runner_is_refused() {
+  assert_eq!(touch(false).rig.a.publish_presence().unwrap_err(), crate::manager::presence::NOT_SET_UP);
+  assert_eq!(rig().a.publish_presence().unwrap_err(), crate::manager::presence::NOT_SET_UP);
+}

@@ -100,7 +100,9 @@
 		"expired": "Expired",
 		"closed": "Closed: {reason}",
 		"refresh": "Refresh",
-		"refreshing": "Refreshing…"
+		"refreshing": "Refreshing…",
+		"touchId": "Touch ID confirms this answer",
+		"setupTouchId": "Set up Touch ID approvals in the Encryption tab to answer here"
 	},
 	"spawn": {
 		"title": "Manager wants to start a {profile} session",
@@ -519,5 +521,19 @@
 		"lastError": "Last error: {error}",
 		"silero": "How to use Silero locally",
 		"sileroHint": "See docs/tts-external.md in the TMGR repository for running Silero as a local server."
+	},
+	"presence": {
+		"title": "Touch ID approvals",
+		"body": "Answer dangerous permission requests on this Mac after Touch ID. One check covers answers for 10 minutes; sleep or a locked screen ends it.",
+		"notSetUp": "Not set up",
+		"setupAgain": "The Touch ID key stopped working. Set it up again.",
+		"setup": "Set up Touch ID approvals",
+		"resend": "Send the key to runners again",
+		"lock": "Lock now",
+		"unlocked": "Unlocked for {minutes} min",
+		"sent": "Key sent to runners: {count}",
+		"approve": "On each runner machine, approve the key once:",
+		"keyFp": "Touch ID key",
+		"failed": "Could not finish: {error}"
 	}
 }

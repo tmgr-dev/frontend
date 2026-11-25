@@ -190,6 +190,10 @@ const APP_COMMANDS: &[&str] = &[
   "manager_spawn_decide",
   "manager_permit_answer",
   "manager_permit_refresh",
+  "manager_presence_status",
+  "manager_presence_setup",
+  "manager_presence_publish",
+  "manager_presence_lock",
   "manager_trust_state",
   "manager_join_decide",
   "manager_revoke_decide",
@@ -264,9 +268,35 @@ fn build_widget_reload() {
   println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
 }
 
+fn build_presence() {
+  use std::path::PathBuf;
+  use std::process::Command;
+
+  println!("cargo:rerun-if-changed=presence/TMGRPresence.swift");
+  let min = std::env::var("MACOSX_DEPLOYMENT_TARGET").unwrap_or_else(|_| "13.3".into());
+  let arch = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+    Ok("aarch64") => "arm64",
+    _ => "x86_64",
+  };
+  let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+  let status = Command::new("xcrun")
+    .args(["swiftc", "-emit-library", "-static", "-parse-as-library", "-module-name", "TMGRPresence"])
+    .args(["-target", &format!("{arch}-apple-macos{min}")])
+    .arg("presence/TMGRPresence.swift")
+    .arg("-o")
+    .arg(out.join("libtmgr_presence.a"))
+    .status()
+    .expect("failed to run swiftc");
+  assert!(status.success(), "swiftc failed");
+  println!("cargo:rustc-link-lib=static=tmgr_presence");
+  println!("cargo:rustc-link-lib=framework=LocalAuthentication");
+  println!("cargo:rustc-link-lib=framework=CryptoKit");
+}
+
 fn main() {
   if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
     build_widget_reload();
+    build_presence();
   }
   tauri_build::try_build(
     tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(APP_COMMANDS)),
