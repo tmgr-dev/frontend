@@ -103,6 +103,10 @@ impl SwitchRelay {
     self.ensure_locked(&mut gate)
   }
 
+  fn local_machine(&self) -> Result<String, String> {
+    (self.machine)().and_then(|m| if m.is_empty() { Err("the runner has no machine id".to_owned()) } else { Ok(m) })
+  }
+
   fn ensure_locked(&self, logged: &mut bool) -> bool {
     if !self.enabled {
       return false;
@@ -116,7 +120,7 @@ impl SwitchRelay {
     };
     if built {
       if !machine_known {
-        if let Ok(machine) = (self.machine)() {
+        if let Ok(machine) = self.local_machine() {
           self.cur().set_local_machine(&machine);
           self.slot.write().unwrap_or_else(|p| p.into_inner()).machine_known = true;
         }
@@ -124,7 +128,7 @@ impl SwitchRelay {
       return true;
     }
     self.put(Arc::new(NoRelay), None, false);
-    let machine = (self.machine)();
+    let machine = self.local_machine();
     if let Err(e) = &machine {
       log::info!("[manager] the local runner is not available ({e}); chat sync starts without local rooms");
     }
@@ -587,6 +591,25 @@ mod tests {
     assert!(s.ensure_engine());
     assert!(s.ensure_engine());
     assert_eq!(count.load(Ordering::SeqCst), 1);
+    assert_eq!(*seen.lock().unwrap(), vec!["built:".to_owned(), "mx_a".to_owned()]);
+  }
+
+  #[test]
+  fn an_empty_machine_id_counts_as_unknown() {
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = ready.clone();
+    let machine: MachineSource = Box::new(move || Ok(if flag.load(Ordering::SeqCst) { "mx_a".into() } else { String::new() }));
+    let sink = seen.clone();
+    let build: Builder = Box::new(move |spec| {
+      sink.lock().unwrap().push(format!("built:{}", spec.local_machine));
+      Ok(Arc::new(Machined(sink.clone())))
+    });
+    let s = SwitchRelay::new(true, build, machine);
+    s.set_auth(auth(7));
+    assert!(s.ensure_engine());
+    ready.store(true, Ordering::SeqCst);
+    assert!(s.ensure_engine());
     assert_eq!(*seen.lock().unwrap(), vec!["built:".to_owned(), "mx_a".to_owned()]);
   }
 
