@@ -434,6 +434,8 @@ fn capable_runners_lists_only_trusted_runners_not_being_revoked_with_their_flag(
             target_id: "d".into(),
             target_label: "d".into(),
             target_fp: "d".into(),
+            received_at_ms: 0,
+            issued_at_ms: 0,
         }],
         ..TrustState::default()
     };
