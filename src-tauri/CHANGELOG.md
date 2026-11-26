@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.223 — 2026-11-26
+
+- Manager chat: every message now sits in its own bubble with the time under it; the author name and avatar show once above a run of messages, hovering a time shows the full date, and each day starts with a date chip.
+
 ## 0.9.222 — 2026-11-26
 
 - Manager chat: a reply the manager posts and the same reply from its transcript no longer appear as two messages, even when the copies differ in bold text or have one extra short line. This needs tmgr CLI 1.0.196 and a restarted runner.
