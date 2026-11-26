@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.225 — 2026-11-26
+
+- Manager: a slow or failing chat relay no longer freezes the Manager. Approving or revoking a device, confirming a device kind, joining with a code and resetting the chat identity now run without blocking rooms, history and the device list, and a relay error leaves the request in place to try again.
+
 ## 0.9.224 — 2026-11-26
 
 - Manager: Add a device no longer stays on "Creating a pairing code…" when the chat relay is slow. Chat sync no longer holds pairing while it republishes device intros, and after 15 seconds the dialog shows an error with Try again.
