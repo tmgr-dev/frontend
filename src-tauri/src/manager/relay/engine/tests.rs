@@ -48,7 +48,7 @@ struct Server {
   full: Option<String>,
   delete_error: Option<String>,
   on_devices: Option<Box<dyn FnOnce() + Send>>,
-  pause: Option<(Method, String, Box<dyn FnOnce() + Send>)>,
+  pause: Option<(Method, String, Hold)>,
 }
 
 #[derive(Clone, Default)]
