@@ -504,7 +504,7 @@ html.dark .manager {
 	align-items: flex-start;
 	gap: 4px;
 }
-.manager .msg.mgr > .body > .dcard {
+.manager .msg.mgr > .body > .dwrap {
 	align-self: stretch;
 }
 .manager .bubble.abub {

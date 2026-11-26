@@ -61,7 +61,7 @@
 			<span v-else class="av-spacer"></span>
 			<div class="body">
 				<div v-if="!grouped" class="who">{{ labelOf(message) }}</div>
-				<div :class="isDecision ? 'dcard' : 'bubble abub'">
+				<div :class="isDecision ? 'dwrap' : 'bubble abub'">
 					<div v-if="replyTo" class="qt">
 						<b>{{ labelOf(replyTo) }}</b
 						><span>{{ truncate(replyTo.body_md, 90) }}</span>

@@ -746,6 +746,28 @@ describe('manager components', () => {
 		expect(html).toContain('aria-label="Copy"');
 	});
 
+	it('MessageList puts each agent message in its own bubble with a titled time under it', async () => {
+		const messages = [
+			msg({ id: 'a', body_md: 'one' }),
+			msg({ id: 'b', ts_ms: T0 + 60_000, body_md: 'two' }),
+			msg({ id: 'c', ts_ms: T0 + 120_000, body_md: 'three' }),
+			msg({
+				id: 'd',
+				author: { kind: 'owner', id: 'me' },
+				ts_ms: T0 + 180_000,
+				body_md: 'ok',
+			}),
+			msg({ id: 'e', ts_ms: T0 + 20 * 60_000, body_md: 'later' }),
+		];
+		const html = await render('MessageList', { messages, now: T0 });
+		expect(html.match(/class="bubble abub"/g)).toHaveLength(4);
+		expect(html.match(/class="who"/g)).toHaveLength(2);
+		expect(html.match(/<time datetime="[^"]+" title="[^"]+">/g)).toHaveLength(
+			5,
+		);
+		expect(html.match(/class="day"/g)).toHaveLength(1);
+	});
+
 	it('Composer shows reply bar, attachment chips with remove, attach and send', async () => {
 		const html = await render('Composer', {
 			modelValue: 'hi',
