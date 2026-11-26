@@ -48,6 +48,7 @@ struct Server {
   full: Option<String>,
   delete_error: Option<String>,
   on_devices: Option<Box<dyn FnOnce() + Send>>,
+  pause: Option<(Method, String, Box<dyn FnOnce() + Send>)>,
 }
 
 #[derive(Clone, Default)]
@@ -131,6 +132,14 @@ impl Transport for Fake {
   }
 
   fn call(&self, req: &Request, token: Option<&str>) -> Result<String, String> {
+    let paused = {
+      let mut s = self.0.lock().unwrap();
+      let hit = s.pause.as_ref().is_some_and(|(m, p, _)| *m == req.method && req.path.ends_with(p.as_str()));
+      if hit { s.pause.take().map(|p| p.2) } else { None }
+    };
+    if let Some(wait) = paused {
+      wait();
+    }
     let (slow_ms, post_slow_ms) = {
       let s = self.0.lock().unwrap();
       (s.slow_ms, s.post_slow_ms)
@@ -4182,4 +4191,395 @@ fn open_join_code_does_not_wait_for_intros_a_poll_republishes_on_a_slow_relay() 
     waited
   });
   assert!(waited < u128::from(SLOW), "open_join_code waited {waited} ms behind intros a poll published under the lock");
+}
+
+type Hold = Box<dyn FnOnce() + Send>;
+
+fn gate() -> (Hold, std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+  let (started_tx, started) = std::sync::mpsc::channel();
+  let (release, release_rx) = std::sync::mpsc::channel::<()>();
+  let hold: Hold = Box::new(move || {
+    started_tx.send(()).unwrap();
+    let _ = release_rx.recv();
+  });
+  (hold, started, release)
+}
+
+/// Runs `call` until it reaches the held point, then checks `probe` finishes within a second while `call` is still waiting there.
+fn probe_while_held<R: Send>(hold_at: impl FnOnce(Hold), call: impl FnOnce() -> R + Send, probe: impl FnOnce() + Send) -> (R, bool) {
+  let (hold, started, release) = gate();
+  hold_at(hold);
+  std::thread::scope(|s| {
+    let call = s.spawn(call);
+    started.recv_timeout(std::time::Duration::from_secs(5)).expect("the call did not reach the held point");
+    let (done_tx, done) = std::sync::mpsc::channel();
+    s.spawn(move || {
+      probe();
+      let _ = done_tx.send(());
+    });
+    let free = done.recv_timeout(std::time::Duration::from_secs(1)).is_ok();
+    release.send(()).unwrap();
+    (call.join().unwrap(), free)
+  })
+}
+
+fn hold_relay<'a>(fake: &'a Fake, method: Method, path: &str) -> impl FnOnce(Hold) + 'a {
+  let path = path.to_owned();
+  move |hold| fake.0.lock().unwrap().pause = Some((method, path, hold))
+}
+
+fn read_trust<K: KeyStore>(e: &RelayEngine<Fake, K>) -> impl FnOnce() + Send + '_ {
+  move || drop(e.trust_state().unwrap())
+}
+
+fn pending_join(fake: &Fake, clock: &Clock) -> (Engine, Engine, Engine) {
+  let (a, b) = pair(fake, clock);
+  let c = engine_with(fake, clock, "Desktop C");
+  let code = a.open_join_code().unwrap();
+  c.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  assert_eq!(a.trust_state().unwrap().pending_joins.len(), 1);
+  (a, b, c)
+}
+
+fn trusts<K: KeyStore>(e: &RelayEngine<Fake, K>, id: &str) -> bool {
+  e.trust_state().unwrap().devices.iter().any(|d| d.id == id && d.state == DeviceState::Trusted)
+}
+
+#[test]
+fn approving_a_join_does_not_hold_the_lock_while_the_intro_is_stored() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b, c) = pending_join(&fake, &clock);
+  let cid = my_id(&c);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a.decide_join(&cid, true), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the intro PUT of decide_join");
+  assert!(trusts(&a, &cid));
+}
+
+#[test]
+fn approving_a_join_does_not_hold_the_lock_while_the_directory_loads() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b, c) = pending_join(&fake, &clock);
+  let cid = my_id(&c);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Get, "/devices"), || a.decide_join(&cid, true), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the directory fetch of decide_join");
+}
+
+#[test]
+fn approving_a_join_does_not_hold_the_lock_while_join_ok_is_posted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b, c) = pending_join(&fake, &clock);
+  let cid = my_id(&c);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Post, "/messages"), || a.decide_join(&cid, true), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the join_ok post");
+  c.poll_once().unwrap();
+  assert!(trusts(&c, &my_id(&a)));
+}
+
+#[test]
+fn an_expected_join_is_approved_without_holding_the_lock() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a.expect_join(&rid, &fp), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the auto-approval of expect_join");
+  assert!(trusts(&a, &rid));
+}
+
+#[test]
+fn a_poll_approves_an_expected_join_without_holding_the_lock() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  let code = a.open_join_code().unwrap();
+  a.expect_join(&rid, &fp).unwrap();
+  r.join_with_code(&code).unwrap();
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a.poll_once(), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the auto-approval inside a poll");
+  assert!(trusts(&a, &rid));
+  assert!(a.trust_state().unwrap().pending_joins.is_empty());
+}
+
+#[test]
+fn a_joined_device_publishes_its_intros_without_holding_the_lock() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || b.poll_once(), read_trust(&b));
+  res.unwrap();
+  assert!(free, "trust_state waited for the intro PUTs after join_ok");
+  assert!(b.lock().st.joined && b.lock().st.self_intro);
+  assert!(fake.puts_by(&my_id(&b), &my_id(&a)).contains(&2));
+}
+
+#[test]
+fn a_chat_from_a_third_device_after_join_ok_in_the_same_page_is_delivered() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, c) = pair(&fake, &clock);
+  let b = engine_with(&fake, &clock, "Desktop B");
+  let code = a.open_join_code().unwrap();
+  b.join_with_code(&code).unwrap();
+  a.poll_once().unwrap();
+  let bid = my_id(&b);
+  a.decide_join(&bid, true).unwrap();
+  c.poll_once().unwrap();
+  assert!(trusts(&c, &bid));
+  post_chat(&c, &bid, &msg_n(5, "owner"));
+  b.poll_once().unwrap();
+  assert!(trusts(&b, &my_id(&c)));
+  assert!(b.drops().is_empty(), "{:?}", b.drops());
+  assert_eq!(history(&b).len(), 1, "the chat that followed join_ok was dropped");
+  assert!(b.poll_once().unwrap().is_empty());
+}
+
+#[test]
+fn a_revocation_during_an_unlocked_approval_leaves_the_device_untrusted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b, c) = pending_join(&fake, &clock);
+  let (cid, c_fp) = (my_id(&c), fp_of(&c));
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a.decide_join(&cid, true), || a.lock().st.revoked.push(c_fp.clone()));
+  assert!(free, "the revocation waited for the approval");
+  assert!(res.is_err());
+  assert!(!trusts(&a, &cid));
+  a.poll_once().unwrap();
+  assert!(!trusts(&a, &cid), "the intro left on the relay re-trusted a revoked device");
+  assert!(fake.queue_len(&cid) == 0, "join_ok went to a revoked device");
+}
+
+#[test]
+fn two_concurrent_approvals_send_one_join_ok() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b, c) = pending_join(&fake, &clock);
+  let cid = my_id(&c);
+  let second = Mutex::new(None);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a.decide_join(&cid, true), || *second.lock().unwrap() = Some(a.decide_join(&cid, true)));
+  assert!(free);
+  res.unwrap();
+  assert!(second.into_inner().unwrap().unwrap().is_err());
+  assert_eq!(fake.queue_len(&cid), 1);
+}
+
+#[test]
+fn rejecting_a_join_is_refused_while_its_approval_is_in_flight() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b, c) = pending_join(&fake, &clock);
+  let cid = my_id(&c);
+  let rejected = Mutex::new(None);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a.decide_join(&cid, true), || *rejected.lock().unwrap() = Some(a.decide_join(&cid, false)));
+  assert!(free);
+  res.unwrap();
+  assert!(rejected.into_inner().unwrap().unwrap().is_err());
+  assert!(trusts(&a, &cid));
+}
+
+#[test]
+fn revoking_does_not_hold_the_lock_while_the_revocation_is_stored() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Post, "/revocations"), || a.revoke(&bid), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the revocation POST");
+  assert!(a.trust_state().unwrap().devices.iter().any(|d| d.id == bid && d.state == DeviceState::Revoked));
+}
+
+#[test]
+fn revoking_does_not_hold_the_lock_while_the_device_is_deleted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let bid = my_id(&b);
+  let path = format!("/devices/{bid}");
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Delete, &path), || a.revoke(&bid), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the device DELETE");
+}
+
+#[test]
+fn revoking_tells_the_other_devices_without_holding_the_lock() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  let cid = my_id(&c);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Post, "/messages"), || a.revoke(&cid), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the revoke message");
+  b.poll_once().unwrap();
+  assert_eq!(b.trust_state().unwrap().pending_revokes.len(), 1);
+}
+
+#[test]
+fn accepting_a_revoke_does_not_hold_the_lock_while_the_directory_loads() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b, c) = trio(&fake, &clock);
+  let cid = my_id(&c);
+  a.revoke(&cid).unwrap();
+  b.poll_once().unwrap();
+  let id = b.trust_state().unwrap().pending_revokes[0].statement_id.clone();
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Get, "/devices"), || b.decide_revoke(&id, true), read_trust(&b));
+  res.unwrap();
+  assert!(free, "trust_state waited for the directory fetch of decide_revoke");
+  assert!(b.trust_state().unwrap().devices.iter().any(|d| d.id == cid && d.state == DeviceState::Revoked));
+}
+
+#[test]
+fn confirming_a_device_kind_does_not_hold_the_lock_while_the_intro_is_stored() {
+  let (fake, clock, store, a, x, y) = legacy_owner_fleet();
+  let (aid, xid, yid, y_fp) = (my_id(&a), my_id(&x), my_id(&y), fp_of(&y));
+  let own_v1 = signed_intro_v(1, &a, &xid, &fp_of(&x), "desktop");
+  legacy_state_with_kinds(&store, &a, json!({ aid.clone(): "desktop", xid.clone(): "mobile", yid.clone(): "runner" }), vec![own_v1.clone()]);
+  clear_intros(&fake, &a);
+  put_raw_intro(&fake, &aid, &xid, &own_v1);
+  put_raw_intro(&fake, &aid, &yid, &signed_intro_v(1, &a, &yid, &y_fp, "runner"));
+  clock.set(T0 + 1000);
+  let a2 = engine_on(&fake, &clock, store, "mx_local");
+  a2.poll_once().unwrap();
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a2.confirm_device_kind(&yid, "desktop"), read_trust(&a2));
+  res.unwrap();
+  assert!(free, "trust_state waited for the intro PUT of confirm_device_kind");
+  assert_eq!(kind_pin(&a2, &yid).as_deref(), Some("desktop"));
+}
+
+#[test]
+fn joining_with_a_code_does_not_hold_the_lock_while_the_directory_loads() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.register().unwrap();
+  let code = a.open_join_code().unwrap();
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Get, "/devices"), || b.join_with_code(&code), read_trust(&b));
+  res.unwrap();
+  assert!(free, "trust_state waited for the directory fetch of join_with_code");
+}
+
+#[test]
+fn joining_with_a_code_does_not_hold_the_lock_while_the_join_is_posted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.register().unwrap();
+  let code = a.open_join_code().unwrap();
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Post, "/messages"), || b.join_with_code(&code), read_trust(&b));
+  res.unwrap();
+  assert!(free, "trust_state waited for the join post");
+  assert!(b.trust_state().unwrap().joining);
+}
+
+#[test]
+fn a_concurrent_join_with_a_code_is_refused() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let b = engine_with(&fake, &clock, "Desktop B");
+  b.register().unwrap();
+  let code = a.open_join_code().unwrap();
+  let second = Mutex::new(None);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Post, "/messages"), || b.join_with_code(&code), || *second.lock().unwrap() = Some(b.join_with_code(&code)));
+  assert!(free);
+  res.unwrap();
+  assert!(second.into_inner().unwrap().unwrap().is_err());
+  assert_eq!(fake.queue_len(&my_id(&a)), 1);
+}
+
+#[test]
+fn registering_does_not_hold_the_lock_while_the_relay_answers() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Post, "/devices"), || a.register(), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the device registration");
+  assert!(a.lock().identity.is_some());
+}
+
+#[test]
+fn concurrent_first_calls_register_one_device() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let a = engine_with(&fake, &clock, "Desktop A");
+  let (res, _) = probe_while_held(hold_relay(&fake, Method::Post, "/devices"), || a.register(), || a.register().unwrap());
+  res.unwrap();
+  assert_eq!(fake.0.lock().unwrap().devices.len(), 1);
+}
+
+#[test]
+fn resetting_the_identity_does_not_hold_the_lock_while_the_old_device_is_deleted() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  let old = my_id(&a);
+  let path = format!("/devices/{old}");
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Delete, &path), || a.reset_identity(), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the DELETE of reset_identity");
+  assert_ne!(my_id(&a), old);
+}
+
+#[test]
+fn resetting_the_identity_does_not_hold_the_lock_while_the_others_are_told() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, b) = pair(&fake, &clock);
+  let old = my_id(&a);
+  let (res, free) = probe_while_held(hold_relay(&fake, Method::Post, "/messages"), || a.reset_identity(), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the reset notice");
+  b.poll_once().unwrap();
+  assert!(!trusts(&b, &old));
+}
+
+#[derive(Default)]
+struct HeldStore {
+  inner: MemKeyStore,
+  hold: Mutex<Option<Hold>>,
+}
+
+impl KeyStore for Arc<HeldStore> {
+  fn load(&self, slot: Slot) -> Result<Option<String>, String> {
+    self.inner.load(slot)
+  }
+  fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
+    let hold = if slot == Slot::State { self.hold.lock().unwrap().take() } else { None };
+    if let Some(hold) = hold {
+      hold();
+    }
+    self.inner.save(slot, value)
+  }
+  fn clear(&self) -> Result<(), String> {
+    self.inner.clear()
+  }
+}
+
+fn held_store_engine(fake: &Fake, clock: &Clock) -> (RelayEngine<Fake, Arc<HeldStore>>, Arc<HeldStore>) {
+  let store = Arc::new(HeldStore::default());
+  let c = clock.0.clone();
+  let e = RelayEngine::new(fake.clone(), store.clone(), EngineConfig { user_id: USER, label: "Desktop A".into(), local_machine: "mx_local".into() })
+    .unwrap()
+    .with_clock(move || c.load(Ordering::SeqCst));
+  (e, store)
+}
+
+#[test]
+fn opening_a_join_code_does_not_hold_the_lock_while_the_keychain_writes() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, store) = held_store_engine(&fake, &clock);
+  a.register().unwrap();
+  let (res, free) = probe_while_held(|hold| *store.hold.lock().unwrap() = Some(hold), || a.open_join_code(), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the keychain write of open_join_code");
+}
+
+#[test]
+fn closing_a_join_code_does_not_hold_the_lock_while_the_keychain_writes() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, store) = held_store_engine(&fake, &clock);
+  a.open_join_code().unwrap();
+  let exp = a.lock().st.join_code.as_ref().unwrap().exp_ms;
+  let (res, free) = probe_while_held(|hold| *store.hold.lock().unwrap() = Some(hold), || a.close_join_code(exp), read_trust(&a));
+  res.unwrap();
+  assert!(free, "trust_state waited for the keychain write of close_join_code");
 }
