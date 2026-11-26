@@ -152,6 +152,7 @@
 		kind_unknown: 'kindUnknown',
 		trust_unstable: 'trustUnstable',
 		root_kind_unknown: 'rootKindUnknown',
+		history_reset: 'historyReset',
 	};
 
 	export default defineComponent({

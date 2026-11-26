@@ -716,9 +716,7 @@ html.dark .manager .qt {
 	right: 0;
 	top: -12px;
 	background: var(--raised);
-	box-shadow:
-		var(--shadow-md),
-		0 0 0 1px var(--line-strong);
+	box-shadow: var(--shadow-md), 0 0 0 1px var(--line-strong);
 	border-radius: var(--r-sm);
 	padding: 2px;
 	z-index: 3;
@@ -884,9 +882,7 @@ html.dark .manager .qt {
 .manager .pop {
 	background: var(--raised);
 	border-radius: var(--r-md);
-	box-shadow:
-		var(--shadow-md),
-		0 0 0 1px var(--line-strong);
+	box-shadow: var(--shadow-md), 0 0 0 1px var(--line-strong);
 	padding: 4px;
 	overflow: auto;
 }
@@ -1121,6 +1117,18 @@ html.dark .manager .qt {
 	margin: 0 24px 8px;
 	color: var(--fix-fg);
 	font-size: 12.5px;
+}
+
+.manager .mgr-notice {
+	margin: 0 24px 8px;
+	color: var(--muted);
+	font-size: 12.5px;
+}
+
+.manager .mgr-notice-dismiss {
+	margin-left: 8px;
+	color: var(--brand);
+	text-decoration: underline;
 }
 .manager .mgr-remote-decision {
 	margin: 0;

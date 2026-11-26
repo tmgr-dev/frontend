@@ -196,6 +196,16 @@
 			<p v-if="store.error" class="mgr-error" role="alert">
 				{{ store.error }}
 			</p>
+			<p v-if="historyResetAt" class="mgr-notice" role="status">
+				{{ $t('manager.historyReset.notice') }}
+				<button
+					type="button"
+					class="mgr-notice-dismiss"
+					@click="dismissHistoryReset"
+				>
+					{{ $t('manager.historyReset.dismiss') }}
+				</button>
+			</p>
 		</section>
 		<DetailPanel
 			:tab="store.panel.tab"
@@ -401,6 +411,7 @@
 	} from './components/viewHelpers';
 	import { useFollowersStore } from './followersStore';
 	import { renderBody } from './format';
+	import { loadResetSeen, saveResetSeen, unseenResetAt } from './historyReset';
 	import { sharedWithPhone } from './machineTree';
 	import { usePairingStore } from './pairingStore';
 	import {
@@ -478,6 +489,9 @@
 			};
 		},
 		computed: {
+			historyResetAt(): number {
+				return unseenResetAt(this.trust.trust?.alerts ?? [], this.resetSeen);
+			},
 			leftW(): number {
 				return clampWidth(
 					'left',
@@ -556,7 +570,7 @@
 				return this.activeInfo
 					? headerSubtitle(this.activeInfo, this.store.rooms, (k, n) =>
 							this.$t(k, { count: n }, n),
-						)
+					  )
 					: '';
 			},
 			placeholder(): string {
@@ -575,7 +589,7 @@
 			},
 			messages() {
 				return this.store.activeKey
-					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
+					? this.store.messagesByRoom[this.store.activeKey] ?? []
 					: [];
 			},
 			permitGroupByMessage() {
@@ -613,6 +627,7 @@
 				unlistenResync: null as (() => void) | null,
 				stopWatch: null as (() => void) | null,
 				stopMachines: null as (() => void) | null,
+				resetSeen: loadResetSeen(),
 			};
 		},
 		mounted() {
@@ -644,6 +659,10 @@
 			this.trust.dispose();
 		},
 		methods: {
+			dismissHistoryReset() {
+				this.resetSeen = this.historyResetAt;
+				saveResetSeen(this.resetSeen);
+			},
 			revokeAddedRunner() {
 				const id = this.pairing.notice?.deviceId;
 				this.pairing.dismiss();
@@ -739,8 +758,8 @@
 					scope === 'chat'
 						? this.store.activeKey
 						: scope === 'manager'
-							? this.managerKey
-							: null;
+						? this.managerKey
+						: null;
 				void this.store.runSearch(this.store.search.text);
 			},
 			async onHit(hit: Parameters<typeof this.store.jumpToHit>[0]) {

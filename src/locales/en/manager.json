@@ -337,6 +337,7 @@
 			"kindUnknown": "A trusted device has no confirmed kind after an app update. It cannot send you owner messages or vouch for other devices until you confirm it as a desktop or phone.",
 			"trustUnstable": "The device list kept changing while it was being checked, so some devices are left out for now. Check your devices.",
 			"rootKindUnknown": "This device cannot confirm what kind of device it was joined through. Re-join this device with a fresh join code from a desktop or phone.",
+			"historyReset": "The saved chat history on this device could not be read, so it starts empty. The unreadable file was kept.",
 			"alertOther": "The relay raised a security alert ({kind}). Check your devices.",
 			"seqGaps": "{n} messages may be missing from {label}",
 			"thisDevice": "this device",
@@ -476,6 +477,10 @@
 		"confirmDelete": "Delete",
 		"working": "Working...",
 		"busyHint": "Working... please wait for it to finish."
+	},
+	"historyReset": {
+		"notice": "The saved chat history on this device could not be read, so it starts empty. New messages are saved as usual.",
+		"dismiss": "Dismiss"
 	},
 	"mention": {
 		"menuLabel": "Chats to mention",
