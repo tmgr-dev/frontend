@@ -716,7 +716,9 @@ html.dark .manager .qt {
 	right: 0;
 	top: -12px;
 	background: var(--raised);
-	box-shadow: var(--shadow-md), 0 0 0 1px var(--line-strong);
+	box-shadow:
+		var(--shadow-md),
+		0 0 0 1px var(--line-strong);
 	border-radius: var(--r-sm);
 	padding: 2px;
 	z-index: 3;
@@ -882,7 +884,9 @@ html.dark .manager .qt {
 .manager .pop {
 	background: var(--raised);
 	border-radius: var(--r-md);
-	box-shadow: var(--shadow-md), 0 0 0 1px var(--line-strong);
+	box-shadow:
+		var(--shadow-md),
+		0 0 0 1px var(--line-strong);
 	padding: 4px;
 	overflow: auto;
 }

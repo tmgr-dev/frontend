@@ -570,7 +570,7 @@
 				return this.activeInfo
 					? headerSubtitle(this.activeInfo, this.store.rooms, (k, n) =>
 							this.$t(k, { count: n }, n),
-					  )
+						)
 					: '';
 			},
 			placeholder(): string {
@@ -589,7 +589,7 @@
 			},
 			messages() {
 				return this.store.activeKey
-					? this.store.messagesByRoom[this.store.activeKey] ?? []
+					? (this.store.messagesByRoom[this.store.activeKey] ?? [])
 					: [];
 			},
 			permitGroupByMessage() {
@@ -758,8 +758,8 @@
 					scope === 'chat'
 						? this.store.activeKey
 						: scope === 'manager'
-						? this.managerKey
-						: null;
+							? this.managerKey
+							: null;
 				void this.store.runSearch(this.store.search.text);
 			},
 			async onHit(hit: Parameters<typeof this.store.jumpToHit>[0]) {
