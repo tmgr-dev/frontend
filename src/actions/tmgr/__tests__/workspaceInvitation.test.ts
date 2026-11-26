@@ -25,7 +25,9 @@ test.each(['tok123', 'id-89'])(
 	'info requests the invitation %s',
 	async (token) => {
 		get.mockResolvedValue({
-			data: { workspace: { id: 1, name: 'Demo' }, already_member: false },
+			data: {
+				data: { workspace: { id: 1, name: 'Demo' }, already_member: false },
+			},
 		});
 
 		const data = await workspaceInvitationInfo(token);

@@ -15,7 +15,11 @@ const answer = (route, outcome) =>
 
 async function routeInvitation(
   page,
-  { info = { json: invitation }, accept = { json: { data: {} } }, gate } = {},
+  {
+    info = { json: { data: invitation } },
+    accept = { json: { data: {} } },
+    gate,
+  } = {},
 ) {
   const calls = { info: [], accept: [] };
   await page.route('**/workspaces/invitations/*/info', async (route) => {
@@ -95,7 +99,7 @@ test('already a member shows joined without clicking Accept', async ({
 }) => {
   await mockApp(page);
   const calls = await routeInvitation(page, {
-    info: { json: { ...invitation, already_member: true } },
+    info: { json: { data: { ...invitation, already_member: true } } },
   });
   await page.goto(`/workspaces/invitations/${TOKEN}`);
 
