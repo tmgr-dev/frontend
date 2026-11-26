@@ -77,16 +77,19 @@
 						></div>
 						<div v-else class="txt plain">{{ message.body_md }}</div>
 					</template>
-					<details v-if="tools?.length" class="tools">
-						<summary>
-							{{ $t('manager.activity.toolsUsed', { count: tools.length }) }}
-						</summary>
-						<ToolCallList v-if="calls?.length" :calls="calls" />
-						<ul v-else>
-							<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
-						</ul>
-					</details>
 				</div>
+				<div class="meta">
+					<time :datetime="isoTime" :title="fullTime">{{ clock }}</time>
+				</div>
+				<details v-if="tools?.length" class="tools">
+					<summary>
+						{{ $t('manager.activity.toolsUsed', { count: tools.length }) }}
+					</summary>
+					<ToolCallList v-if="calls?.length" :calls="calls" />
+					<ul v-else>
+						<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
+					</ul>
+				</details>
 				<div v-if="showVoice && !pack.installed" class="voice">
 					<template v-if="pack.installing">
 						<span>{{
@@ -115,9 +118,6 @@
 							}}
 						</button>
 					</template>
-				</div>
-				<div class="meta">
-					<time :datetime="isoTime" :title="fullTime">{{ clock }}</time>
 				</div>
 			</div>
 		</div>
@@ -306,7 +306,8 @@
 				return formatClock(this.message.ts_ms);
 			},
 			isoTime(): string {
-				return new Date(this.message.ts_ms).toISOString();
+				const d = new Date(this.message.ts_ms);
+				return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 			},
 			fullTime(): string {
 				return new Date(this.message.ts_ms).toLocaleString(undefined, {
