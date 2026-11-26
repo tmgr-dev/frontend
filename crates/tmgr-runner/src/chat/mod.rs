@@ -163,6 +163,61 @@ pub(crate) fn normalize(text: &str) -> String {
     text.replace('\r', "").trim().to_string()
 }
 
+fn reply_lines(text: &str) -> Vec<String> {
+    const MARKS: &[char] = &['*', '_', '`'];
+    let mut lines: Vec<String> = text
+        .replace('\r', "")
+        .split('\n')
+        .map(|l| {
+            l.replace("**", "")
+                .replace("__", "")
+                .split_whitespace()
+                .map(|w| w.trim_matches(MARKS))
+                .filter(|w| !w.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines
+        .last()
+        .is_some_and(|l| l.to_lowercase().starts_with("notify:"))
+    {
+        lines.pop();
+    }
+    lines
+}
+
+const EXTRA_LINE_MAX: usize = 60;
+const EXTRA_LINE_MIN_BASE: usize = 40;
+
+pub(crate) fn same_reply(a: &str, b: &str) -> bool {
+    let (la, lb) = (reply_lines(a), reply_lines(b));
+    if la.is_empty() || lb.is_empty() {
+        return normalize(a) == normalize(b);
+    }
+    let (short, long) = if la.len() <= lb.len() {
+        (&la, &lb)
+    } else {
+        (&lb, &la)
+    };
+    if short == long {
+        return true;
+    }
+    let base: usize = short.iter().map(|l| l.chars().count()).sum();
+    if base < EXTRA_LINE_MIN_BASE || long.len() != short.len() + 1 {
+        return false;
+    }
+    let extra = if long[1..] == short[..] {
+        &long[0]
+    } else if long[..short.len()] == short[..] {
+        &long[short.len()]
+    } else {
+        return false;
+    };
+    extra.chars().count() <= EXTRA_LINE_MAX
+}
+
 pub struct ChatSub {
     pub rx: Receiver<ChatPush>,
     pub activity: Option<ActivityRx>,
@@ -902,6 +957,24 @@ pub fn prompt_bytes(body: &str) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn same_reply_ignores_emphasis_wrapping_and_a_notify_line_but_not_real_differences() {
+        let base = "All three sessions are idle right now and nothing waits for approval.";
+        assert!(same_reply(&format!("**{base}**\r\n\nNotify: no"), base));
+        assert!(same_reply(
+            base,
+            &format!("{base}\n\nMirrored into the UI room.")
+        ));
+        assert!(!same_reply(base, &format!("{base}\n{}", "x".repeat(80))));
+        assert!(!same_reply(
+            "foo_bar baz qux quux corge grault garply",
+            "foobar baz qux quux corge grault garply"
+        ));
+        assert!(!same_reply("Notify: yes", "Notify: no"));
+        assert!(!same_reply("***", "```"));
+        assert!(same_reply("***", "***"));
+    }
+
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 

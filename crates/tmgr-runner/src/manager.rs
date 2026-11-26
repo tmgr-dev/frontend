@@ -968,7 +968,6 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
             let body = need(a, "body_md", 1, chat::limits::MAX_BODY)?;
             let reply_to = text_arg(a, "reply_to", 1, 64)?;
             let machine = host.machine();
-            let said = crate::chat::normalize(body);
             let mirrored = st
                 .chat
                 .history(&RoomRef::manager(&machine), REPLY_DEDUPE)?
@@ -977,7 +976,7 @@ pub fn execute(host: &dyn Host, st: &State, req: &SpoolReq) -> Result<Value, Str
                 .take_while(|m| m.author.kind != AuthorKind::Owner)
                 .find(|m| {
                     m.author.kind == AuthorKind::Session
-                        && crate::chat::normalize(&m.body_md) == said
+                        && crate::chat::same_reply(&m.body_md, body)
                 });
             if let Some(m) = mirrored {
                 return Ok(json!({"id": m.id}));
@@ -3234,6 +3233,42 @@ mod tests {
         seed(&st, &h, AuthorKind::Owner, "status?");
         call(&h, &st, "post_message", json!({"body_md": "Done"})).unwrap();
         assert_eq!(manager_room_bodies(&h, &st), ["Done", "status?", "Done"]);
+    }
+
+    #[test]
+    fn post_message_repeating_a_mirrored_reply_with_other_emphasis_and_an_extra_line_posts_once() {
+        let h = Fake::new();
+        let st = State::new(Box::new(MemoryChat::default()));
+        let mirrored = "All three sessions are idle right now. Nothing is waiting.\n\nMirrored into the UI room.\n\nNotify: no";
+        seed(&st, &h, AuthorKind::Session, mirrored);
+        call(
+            &h,
+            &st,
+            "post_message",
+            json!({"body_md": "**All three sessions are idle right now.** Nothing is waiting.\n\nNotify: no"}),
+        )
+        .unwrap();
+        assert_eq!(manager_room_bodies(&h, &st), [mirrored]);
+    }
+
+    #[test]
+    fn post_message_with_a_similar_but_different_text_is_posted() {
+        let h = Fake::new();
+        let st = State::new(Box::new(MemoryChat::default()));
+        seed(
+            &st,
+            &h,
+            AuthorKind::Session,
+            "All three sessions are idle right now. Nothing is waiting.",
+        );
+        call(
+            &h,
+            &st,
+            "post_message",
+            json!({"body_md": "All three sessions are busy right now. Nothing is waiting."}),
+        )
+        .unwrap();
+        assert_eq!(manager_room_bodies(&h, &st).len(), 2);
     }
 
     #[test]

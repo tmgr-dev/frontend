@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.196
+
+- A Manager reply no longer shows twice in the Manager room when the agent posts it with `post_message` and the same reply is also mirrored from its transcript, even if one copy has different markdown emphasis, line wrapping, a trailing `Notify:` line or one extra short line. Restart the runner to apply.
+
 ## 1.0.195
 
 - Claude Code question pickers (`AskUserQuestion`) now show in the TMGR Manager chat as poll cards. An answer from the desktop app or the phone is typed into the session by the runner, one key at a time, and checked on screen after every key; the card then shows the result. This works only when reading Claude Code transcripts is allowed (`tmgr usage consent`), and for Claude Code sessions only. A picker that is not in the foreground pane shows as "open the pane to answer".

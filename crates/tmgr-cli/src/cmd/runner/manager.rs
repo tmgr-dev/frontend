@@ -380,7 +380,7 @@ fn tool_defs(top: bool) -> Value {
             "card_id": {"type": "string", "description": "Approved propose_spawn card"}
          }), json!(["profile", "cwd"]))},
         {"name": tool::POST_MESSAGE,
-         "description": "Post a Markdown message to the owner in the Manager room.",
+         "description": "Post a Markdown message to the owner in the Manager room. Your normal text replies already appear in this room; do not use this tool to repeat them.",
          "inputSchema": obj(json!({
             "body_md": {"type": "string", "minLength": 1, "maxLength": 65536},
             "reply_to": {"type": "string", "description": "Id of the message you answer"}

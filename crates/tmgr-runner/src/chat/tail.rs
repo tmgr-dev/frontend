@@ -170,6 +170,7 @@ fn room_of(chat: &Chat, s: &SessionInfo) -> RoomRef {
 }
 
 const MANAGER_DEDUPE: u32 = 50;
+const MIRROR_WINDOW_MS: u64 = 300_000;
 
 fn post(
     chat: &Chat,
@@ -183,28 +184,31 @@ fn post(
     if turn.user && chat.take_sent(&s.id, &text) {
         return Ok(());
     }
-    if s.manager {
-        if turn.user {
-            return Ok(());
-        }
-        let said = super::normalize(&text);
-        let posted = chat
-            .history(room, None, Some(MANAGER_DEDUPE))
-            .unwrap_or_default()
-            .iter()
-            .rev()
-            .take_while(|m| m.author.kind != AuthorKind::Session)
-            .any(|m| m.author.kind == AuthorKind::Manager && super::normalize(&m.body_md) == said);
-        if posted {
-            return Ok(());
-        }
-    }
     let ts_ms = turn
         .ts
         .as_deref()
         .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
         .and_then(|t| u64::try_from(t.timestamp_millis()).ok())
         .unwrap_or_else(super::now_ms);
+    if s.manager {
+        if turn.user {
+            return Ok(());
+        }
+        let since = ts_ms.saturating_sub(MIRROR_WINDOW_MS);
+        let posted = chat
+            .history(room, None, Some(MANAGER_DEDUPE))
+            .unwrap_or_default()
+            .iter()
+            .any(|m| {
+                m.author.kind == AuthorKind::Manager
+                    && m.ts_ms >= since
+                    && super::same_reply(&m.body_md, &text)
+            });
+        if posted {
+            return Ok(());
+        }
+    }
+
     chat.append(ChatMessage {
         poll: None,
         v: CHAT_V,
@@ -914,6 +918,86 @@ mod tests {
         append(&log, &line("All sessions are idle"));
         capture_with(&chat, &s, &resolve);
         assert_eq!(manager_bodies(&chat), ["old", "All sessions are idle"]);
+    }
+
+    fn post_as_manager(chat: &Chat, body: &str) {
+        chat.post(
+            chat.manager_room(),
+            Author {
+                kind: AuthorKind::Manager,
+                id: "manager".into(),
+                machine: None,
+                device: None,
+                agent: None,
+            },
+            body.into(),
+            None,
+            Vec::new(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_mirrored_reply_with_emphasis_and_an_extra_line_is_not_a_second_message() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("old"));
+        let s = [manager_info()];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        let posted = "**All three sessions are idle right now.** Nothing is waiting for your approval.\n\nNotify: no";
+        post_as_manager(&chat, posted);
+        append(
+            &log,
+            &line("All three sessions are idle right now. Nothing is waiting for your approval.\n\nMirrored into the UI room.\n\nNotify: no"),
+        );
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(manager_bodies(&chat), ["old", posted]);
+    }
+
+    #[test]
+    fn an_intermediate_mirrored_line_does_not_hide_an_earlier_post() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("old"));
+        let s = [manager_info()];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        let posted = "All sessions are idle and nothing is waiting for approval.";
+        post_as_manager(&chat, posted);
+        append(&log, &line("Checking one more thing."));
+        append(&log, &line(posted));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(
+            manager_bodies(&chat),
+            ["old", posted, "Checking one more thing."]
+        );
+    }
+
+    #[test]
+    fn an_owner_message_between_the_post_and_its_mirror_does_not_show_the_reply_twice() {
+        let t = tempfile::tempdir().unwrap();
+        let chat = Chat::open(&t.path().join("run"));
+        let log = t.path().join("log.jsonl");
+        append(&log, &line("old"));
+        let s = [manager_info()];
+        let resolve = |_: &SessionInfo, _: Agent| Some(log.clone());
+        capture_with(&chat, &s, &resolve);
+        let posted = "All sessions are idle and nothing is waiting for approval.";
+        post_as_manager(&chat, posted);
+        chat.post(
+            chat.manager_room(),
+            Chat::owner(),
+            "status?".into(),
+            None,
+            Vec::new(),
+        )
+        .unwrap();
+        append(&log, &line(posted));
+        capture_with(&chat, &s, &resolve);
+        assert_eq!(manager_bodies(&chat), ["old", posted, "status?"]);
     }
 
     #[test]

@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.222 — 2026-11-26
+
+- Manager chat: a reply the manager posts and the same reply from its transcript no longer appear as two messages, even when the copies differ in bold text or have one extra short line. This needs tmgr CLI 1.0.196 and a restarted runner.
+
 ## 0.9.221 — 2026-11-26
 
 - Manager chat shows Claude Code question pickers as poll cards that can be answered with a tap, for sessions on this computer and on paired machines. This needs tmgr CLI 1.0.195 or newer and a restarted runner.
