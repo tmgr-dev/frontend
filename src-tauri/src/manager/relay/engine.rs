@@ -38,6 +38,8 @@ const JOINING_KEY: &str = "join_with_code";
 const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_LOG: usize = 2000;
+const MAX_LOG_BYTES: usize = 512 * 1024;
+const SLOW_WRITE: Duration = Duration::from_secs(1);
 const MAX_SEEN: usize = 5000;
 const MAX_GAPS: usize = 100;
 const MAX_HELD: usize = 200;
@@ -827,6 +829,14 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         let cut = c.log.len() - MAX_LOG;
         c.log.drain(..cut);
       }
+      let sizes = c.log.iter().map(|e| serde_json::to_string(e).map(|j| j.len() + 1)).collect::<Result<Vec<_>, _>>().map_err(err)?;
+      let mut total = sizes.iter().sum::<usize>() + 1;
+      let mut cut = 0;
+      while total > MAX_LOG_BYTES && cut + 1 < sizes.len() {
+        total -= sizes[cut];
+        cut += 1;
+      }
+      c.log.drain(..cut);
       Some((log_rev, serde_json::to_string(&c.log).map_err(err)?))
     } else {
       None
@@ -837,18 +847,28 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
 
   /// Without the core lock: one writer at a time, and a snapshot older than one already written is dropped (the newer one carries everything).
   fn write(&self, snap: &Snapshot) -> Result<bool, String> {
+    let started = Instant::now();
     let mut last = self.writer();
+    let waited = started.elapsed();
     if snap.gen < *last {
       return Ok(false);
     }
+    let mut steps = Vec::new();
     if let Some((rev, json)) = &snap.log {
+      let t = Instant::now();
       self.k.save(Slot::Log, json)?;
       self.stored_log_rev.fetch_max(*rev, Ordering::SeqCst);
+      steps.push(format!("log {} B in {} ms", json.len(), t.elapsed().as_millis()));
     }
     if let Some(st) = &snap.state {
+      let t = Instant::now();
       self.k.save(Slot::State, st)?;
+      steps.push(format!("state {} B in {} ms", st.len(), t.elapsed().as_millis()));
     }
     *last = snap.gen;
+    if started.elapsed() >= SLOW_WRITE {
+      log::info!("[chat-relay] keychain write took {} ms: waited {} ms for the writer, {}", started.elapsed().as_millis(), waited.as_millis(), steps.join(", "));
+    }
     Ok(true)
   }
 
@@ -1190,8 +1210,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(g)
   }
 
+  /// The code lives in memory only: waiting for the keychain here would queue behind a chat log write that can take tens of seconds.
   pub fn open_join_code(&self) -> Result<String, String> {
-    let mut g = self.registered(self.lock())?;
+    let started = Instant::now();
+    let g = self.lock();
+    let locked = started.elapsed();
+    let mut g = self.registered(g)?;
     let c = &mut *g;
     if !c.st.joined {
       return Err(WAITING_MSG.into());
@@ -1203,7 +1227,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let code = JoinCode { version: 2, user_id: self.cfg.user_id, device_id: id.device_id.clone(), fp: keys.fingerprint(), kind: Some(self.kind.clone()), secret, exp_ms };
     let text = encode_join_code(&code).map_err(err)?;
     c.st.join_code = Some(OpenCode { secret: b64(&secret), exp_ms });
-    self.persist_out(g, true).map(drop)?;
+    drop(g);
+    log::info!("[chat-relay] join code opened in {} ms (lock wait {} ms)", started.elapsed().as_millis(), locked.as_millis());
     Ok(text)
   }
 
