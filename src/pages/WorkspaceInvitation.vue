@@ -37,7 +37,7 @@
 						</a>
 						<a
 							href="#"
-							@click="loginWithCorrectEmail()"
+							@click.prevent="loginWithCorrectEmail()"
 							v-else-if="!user || errorCode === 403"
 							class="text-brand hover:underline"
 						>
@@ -56,7 +56,7 @@
 						</div>
 						<a
 							href="#"
-							@click="goToWorkspace()"
+							@click.prevent="goToWorkspace()"
 							class="text-brand hover:underline"
 						>
 							{{ $t('workspace.workspaceInvitation.goTo') }}

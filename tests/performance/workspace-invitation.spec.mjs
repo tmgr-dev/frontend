@@ -152,9 +152,7 @@ test('invitation for another email shows the correct-email login link and keeps 
   expect(await storedInvitation(page)).toBe(TOKEN);
 });
 
-test.fixme('TM-1122: Login with correct email navigates to /login (link is href="#" without .prevent, hash navigation rewinds the router push)', async ({
-  page,
-}) => {
+test('Login with correct email navigates to /login', async ({ page }) => {
   await mockApp(page);
   await routeInvitation(page, {
     info: {
