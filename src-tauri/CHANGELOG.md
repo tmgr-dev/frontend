@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.224 — 2026-11-26
+
+- Manager: Add a device no longer stays on "Creating a pairing code…" when the chat relay is slow. Chat sync no longer holds pairing while it republishes device intros, and after 15 seconds the dialog shows an error with Try again.
+
 ## 0.9.223 — 2026-11-26
 
 - Manager chat: every message now sits in its own bubble with the time under it; the author name and avatar show once above a run of messages, hovering a time shows the full date, and each day starts with a date chip.
