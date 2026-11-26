@@ -2428,8 +2428,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   fn run_auto(&self, device_id: &str, now: u64) {
+    let token = Self::token_of(&self.lock()).ok();
     let res = self.decide_join_now(device_id, true);
     let mut g = self.lock();
+    if !token.as_deref().is_some_and(|t| Self::is_identity(&g, t)) {
+      return;
+    }
     match res {
       Ok(()) => g.auto_join_error = None,
       Err(e) => {

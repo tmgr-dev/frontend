@@ -4583,3 +4583,18 @@ fn closing_a_join_code_does_not_hold_the_lock_while_the_keychain_writes() {
   res.unwrap();
   assert!(free, "trust_state waited for the keychain write of close_join_code");
 }
+
+#[test]
+fn an_auto_approval_overtaken_by_an_identity_reset_leaves_the_new_identity_clean() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  let old = my_id(&a);
+  let (res, _) = probe_while_held(hold_relay(&fake, Method::Put, "/intros/self"), || a.expect_join(&rid, &fp), || a.reset_identity().unwrap());
+  res.unwrap();
+  assert_ne!(my_id(&a), old);
+  assert!(!alert_kinds(&a).contains(&"auto_join_failed".to_owned()));
+  assert!(a.trust_state().unwrap().auto_join_error.is_none());
+}
