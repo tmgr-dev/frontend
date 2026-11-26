@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.227 — 2026-11-26
+
+- Manager chat: the chat history and sync state are now kept in an encrypted file in the app data folder instead of the keychain, so saving a long history takes milliseconds instead of up to a minute. Approving a device, pairing and sending no longer wait on it. Existing history moves over once on the first start, and the keychain copy is removed only after the file is checked.
+- Manager chat: the history keeps up to 20,000 messages (was 2,000). If the history file can't be read, it is set aside, not deleted, and the Manager shows a notice that the history was reset.
+
 ## 0.9.226 — 2026-11-26
 
 - Manager: Add a device opens the pairing code right away again. It used to wait for the chat history to be saved to the keychain, which with a long history took longer than 15 seconds and ended in a timeout.
