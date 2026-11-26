@@ -32,6 +32,9 @@ use crate::manager::backend::{
 };
 
 const WAITING_MSG: &str = "this device is waiting for another device to approve it";
+const IDENTITY_CHANGED_MSG: &str = "the chat identity changed, try again";
+const JOIN_BUSY_MSG: &str = "a join is already in progress";
+const JOINING_KEY: &str = "join_with_code";
 const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_LOG: usize = 2000;
@@ -278,6 +281,7 @@ struct Core {
   seq_reserved: BTreeMap<String, BTreeSet<u64>>,
   seq_holes: BTreeMap<String, BTreeSet<u64>>,
   sending: BTreeMap<String, String>,
+  inflight: BTreeSet<String>,
   dir: Option<Directory>,
   dir_gen: u64,
   joined_now: bool,
@@ -678,6 +682,7 @@ pub struct RelayEngine<T: Transport, K: KeyStore> {
   kind: String,
   now: Box<dyn Fn() -> u64 + Send + Sync>,
   core: Mutex<Core>,
+  registering: Mutex<()>,
   writer: Mutex<u64>,
   log_rev: AtomicU64,
   stored_log_rev: AtomicU64,
@@ -718,6 +723,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       kind: "desktop".into(),
       now,
       core: Mutex::new(core),
+      registering: Mutex::new(()),
       writer: Mutex::new(0),
       log_rev: AtomicU64::new(0),
       stored_log_rev: AtomicU64::new(0),
@@ -802,15 +808,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     self.writer.lock().unwrap_or_else(|p| p.into_inner())
   }
 
-  fn save_now(&self, c: &mut Core) -> Result<(), String> {
-    if let Some(snap) = self.plan(c, true)? {
-      if self.write(&snap)? {
-        Self::commit(c, snap);
-      }
-    }
-    Ok(())
-  }
-
   /// Under the core lock: decides what to write and serializes it. Poll-time writes are throttled unless trust changed.
   fn plan(&self, c: &mut Core, force: bool) -> Result<Option<Snapshot>, String> {
     let st = serde_json::to_string(&c.st).map_err(err)?;
@@ -890,11 +887,24 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     }
   }
 
-  fn ensure_registered(&self, c: &mut Core) -> Result<(), String> {
-    backfill_self(c, &self.kind);
-    if c.identity.is_some() {
-      return Ok(());
+  /// The POST /devices and the identity write run with the core lock released; the gate keeps registration single.
+  fn registered<'a>(&'a self, g: MutexGuard<'a, Core>) -> Result<MutexGuard<'a, Core>, String> {
+    let mut g = g;
+    backfill_self(&mut g, &self.kind);
+    if g.identity.is_some() {
+      return Ok(g);
     }
+    drop(g);
+    let _gate = self.registering.lock().unwrap_or_else(|p| p.into_inner());
+    self.register_gated()
+  }
+
+  fn register_gated(&self) -> Result<MutexGuard<'_, Core>, String> {
+    let g = self.lock();
+    if g.identity.is_some() {
+      return Ok(g);
+    }
+    drop(g);
     let keys = DeviceKeys::generate().map_err(err)?;
     let req = api::register_device(&self.kind, &self.cfg.label, &keys.sign_pub_b64(), &keys.kex_pub_b64(), None).map_err(err)?;
     let reg = api::parse_registered(&self.t.call(&req, None)?).map_err(err)?;
@@ -908,6 +918,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     };
     let identity = Identity { device_id: reg.device_id, token: reg.device_token, sign_secret: b64(keys.sign_secret()), kex_secret: b64(keys.kex_secret()) };
     self.k.save(Slot::Identity, &serde_json::to_string(&identity).map_err(err)?)?;
+    let mut g = self.lock();
+    let c = &mut *g;
     c.identity = Some(identity);
     c.keys = Some(keys);
     c.st = State { base: vec![me.clone()], trusted: vec![me.clone()], joined: true, ..State::default() };
@@ -916,17 +928,11 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.log.clear();
     self.mark_log();
     c.acked = 0;
-    self.save_now(c)
+    self.persist_out(g, true)
   }
 
   pub fn register(&self) -> Result<(), String> {
-    let mut g = self.lock();
-    self.ensure_registered(&mut g)
-  }
-
-  fn fetch_dir(&self, c: &mut Core) -> Result<Directory, String> {
-    let raw = self.call(c, api::list_devices())?;
-    Self::take_dir(c, &raw)
+    self.registered(self.lock()).map(drop)
   }
 
   fn take_dir(c: &mut Core, raw: &str) -> Result<Directory, String> {
@@ -936,9 +942,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(dir)
   }
 
-  fn sync_dir(&self, c: &mut Core) -> Result<(), String> {
-    let dir = self.fetch_dir(c)?;
-    self.sync_with(c, dir)
+  /// A directory fetched without the lock is stored only if no newer fetch landed meanwhile; otherwise the newer one is used.
+  fn adopt_dir(c: &mut Core, raw: &str, gen: u64) -> Result<Directory, String> {
+    match c.dir.clone() {
+      Some(dir) if c.dir_gen != gen => Ok(dir),
+      _ => Self::take_dir(c, raw),
+    }
   }
 
   fn sync_with(&self, c: &mut Core, dir: Directory) -> Result<(), String> {
@@ -1074,12 +1083,21 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Posted { done, outcome }
   }
 
-  fn seal_and_post(&self, c: &mut Core, kind: &str, msg_id: &str, payload: &Value, targets: &[Dev], push: bool) -> Result<(), String> {
-    let sealed = self.seal_items(c, kind, msg_id, payload, targets)?;
-    let token = c.identity.as_ref().map(|i| i.token.clone());
+  /// Seals under the core lock, posts without it, settles the seqs only if the identity is still the same.
+  fn post_unlocked<'a>(&'a self, g: MutexGuard<'a, Core>, kind: &str, msg_id: &str, payload: &Value, targets: &[Dev], push: bool) -> (MutexGuard<'a, Core>, Result<(), String>) {
+    let mut g = g;
+    let sealed = match self.seal_items(&mut g, kind, msg_id, payload, targets) {
+      Ok(sealed) => sealed,
+      Err(e) => return (g, Err(e)),
+    };
+    let token = g.identity.as_ref().map(|i| i.token.clone());
+    drop(g);
     let posted = self.post_phase(token.as_deref(), msg_id, push, &sealed, None);
-    Self::settle(c, &sealed.items, &posted.done);
-    posted.outcome
+    let mut g = self.lock();
+    if token.as_deref().is_some_and(|t| Self::is_identity(&g, t)) {
+      Self::settle(&mut g, &sealed.items, &posted.done);
+    }
+    (g, posted.outcome)
   }
 
   fn post_items(&self, token: Option<&str>, msg_id: &str, push: bool, items: &[(String, String, u64)], deadline: Option<Instant>) -> Result<(), String> {
@@ -1151,12 +1169,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(())
   }
 
-  fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
-    let targets = self.intro_targets(c)?;
-    let signed = self.signed_intros(c, &targets)?;
-    self.put_intros(c.identity.as_ref().map(|i| i.token.as_str()), &signed)
-  }
-
   /// The intro PUTs run with the core lock released so a slow relay does not stall pairing, sends or trust reads.
   fn republish_unlocked<'a>(&'a self, g: MutexGuard<'a, Core>, token: &str) -> Result<MutexGuard<'a, Core>, String> {
     if !g.st.joined || !(g.st.republish_intros || !g.st.self_intro) {
@@ -1178,17 +1190,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(g)
   }
 
-  fn finish_join(&self, c: &mut Core) -> Result<(), String> {
-    self.sync_dir(c)?;
-    self.publish_intros(c)?;
-    c.st.self_intro = true;
-    Ok(())
-  }
-
   pub fn open_join_code(&self) -> Result<String, String> {
-    let mut g = self.lock();
+    let mut g = self.registered(self.lock())?;
     let c = &mut *g;
-    self.ensure_registered(c)?;
     if !c.st.joined {
       return Err(WAITING_MSG.into());
     }
@@ -1199,7 +1203,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let code = JoinCode { version: 2, user_id: self.cfg.user_id, device_id: id.device_id.clone(), fp: keys.fingerprint(), kind: Some(self.kind.clone()), secret, exp_ms };
     let text = encode_join_code(&code).map_err(err)?;
     c.st.join_code = Some(OpenCode { secret: b64(&secret), exp_ms });
-    self.save_now(c)?;
+    self.persist_out(g, true).map(drop)?;
     Ok(text)
   }
 
@@ -1208,14 +1212,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let c = &mut *g;
     if c.st.join_code.as_ref().is_some_and(|j| j.exp_ms == expires_at_ms) {
       c.st.join_code = None;
-      self.save_now(c)?;
+      self.persist_out(g, true).map(drop)?;
     }
     Ok(())
   }
 
   pub fn join_with_code(&self, code: &str) -> Result<(), String> {
-    let mut g = self.lock();
-    let c = &mut *g;
     let code = decode_join_code(code.trim()).map_err(|_| "the join code is not valid".to_owned())?;
     if code.version < 2 && self.kind == "runner" {
       return Err(OLD_CODE_MSG.into());
@@ -1223,11 +1225,34 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     if code.user_id != self.cfg.user_id || code.is_expired(self.now()) {
       return Err("the join code is not valid".into());
     }
-    self.ensure_registered(c)?;
-    if c.st.joined && c.st.trusted.len() > 1 {
+    let already = |c: &Core| c.st.joined && c.st.trusted.len() > 1;
+    let (token, gen) = {
+      let mut g = self.registered(self.lock())?;
+      if already(&g) {
+        return Err("this device already has trusted devices".into());
+      }
+      if !g.inflight.insert(JOINING_KEY.into()) {
+        return Err(JOIN_BUSY_MSG.into());
+      }
+      (Self::token_of(&g)?, g.dir_gen)
+    };
+    let res = self.join_with_code_unlocked(&code, &token, gen, already);
+    let mut g = self.lock();
+    g.inflight.remove(JOINING_KEY);
+    res
+  }
+
+  fn join_with_code_unlocked(&self, code: &JoinCode, token: &str, gen: u64, already: impl Fn(&Core) -> bool) -> Result<(), String> {
+    let raw = self.t.call(&api::list_devices(), Some(token))?;
+    let mut g = self.lock();
+    if !Self::is_identity(&g, token) {
+      return Err(IDENTITY_CHANGED_MSG.into());
+    }
+    let c = &mut *g;
+    let dir = Self::adopt_dir(c, &raw, gen)?;
+    if already(c) {
       return Err("this device already has trusted devices".into());
     }
-    let dir = self.fetch_dir(c)?;
     let p = dir
       .devices
       .iter()
@@ -1264,8 +1289,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.st.joined = false;
     let payload = json!({ "label": self.cfg.label, "mac": mac });
     let msg_id = random_msg_id("join").map_err(err)?;
-    let res = self.seal_and_post(c, "join", &msg_id, &payload, std::slice::from_ref(&pdev), true);
-    if res.is_err() {
+    let (mut g, res) = self.post_unlocked(g, "join", &msg_id, &payload, std::slice::from_ref(&pdev), true);
+    if !Self::is_identity(&g, token) {
+      return Err(IDENTITY_CHANGED_MSG.into());
+    }
+    if res.is_err() && !g.st.joined {
+      let c = &mut *g;
       if inserted {
         c.st.kinds.remove(&key);
       }
@@ -1273,7 +1302,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       c.st.trusted.retain(|d| d.id != pdev.id);
       c.st.joined = true;
     }
-    self.save_now(c)?;
+    self.persist_out(g, true).map(drop)?;
     res
   }
 
@@ -1477,7 +1506,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         c.st.join_code = None;
         c.st.pending_joins.retain(|j| j.device_id != opened.from);
         c.st.pending_joins.push(JoinRec { device_id: opened.from.clone(), label, fp: opened.from_fp.clone(), kind: entry.kind.clone(), requested_at_ms: now, v });
-        self.auto_approve(c, now);
       }
       "rooms" if sender_trusted && c.st.joined => {
         let index = serde_json::from_value::<RoomsIndex>(opened.payload.clone()).ok().filter(|i| valid_index_msg_id(&opened.id) && i.is_valid());
@@ -1531,7 +1559,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   }
 
   /// Per sender, messages are applied in `seq` order; a missing predecessor holds the rest for HOLD_MS, then a gap is recorded.
-  fn process_page(&self, c: &mut Core, msgs: &[Msg], now: u64, hold: &mut Hold, out: &mut Vec<ChatMessage>) -> Result<(), String> {
+  /// Stops right after this device is approved and returns the cursor to resume after, so the rest is reopened with the new trust.
+  fn process_page(&self, c: &mut Core, msgs: &[Msg], now: u64, hold: &mut Hold, out: &mut Vec<ChatMessage>) -> Option<u64> {
     stamp_pins(c, now);
     let mut opened: Vec<(u64, Inbound)> = Vec::new();
     for m in msgs {
@@ -1556,7 +1585,8 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         }
       }
     }
-    for (cursor, item) in opened {
+    let mut rest = opened.into_iter();
+    while let Some((cursor, item)) = rest.next() {
       let (from, seq, trusted) = match &item {
         Inbound::Opened(o) => (o.from.clone(), o.seq, o.trusted),
         Inbound::Consumed { from, seq } | Inbound::Repeated { from, seq } => (from.clone(), *seq, true),
@@ -1596,10 +1626,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         hold.drops.push((cursor, reason, detail));
       }
       if std::mem::take(&mut c.joined_now) {
-        self.finish_join(c)?;
+        let next = rest.map(|(c, _)| c).min().unwrap_or(u64::MAX).min(cursor + 1);
+        hold.drops.retain(|(c, _, _)| *c < next);
+        return Some(next - 1);
       }
     }
-    Ok(())
+    None
   }
 }
 
@@ -1659,7 +1691,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       return Err("No runner is paired with this desktop yet".into());
     }
     let msg_id = random_msg_id("spawnkey").map_err(err)?;
-    self.seal_and_post(c, "spawnkey", &msg_id, &payload, &runners, false)?;
+    self.post_unlocked(g, "spawnkey", &msg_id, &payload, &runners, false).1?;
     Ok(runners.len())
   }
 
@@ -1884,9 +1916,8 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     }
     let deadline = Instant::now() + self.send_budget;
     let (msg, own_id, token, sealed) = {
-      let mut g = self.lock();
+      let mut g = self.registered(self.lock())?;
       let c = &mut *g;
-      self.ensure_registered(c)?;
       let own_id = c.identity.as_ref().map(|i| i.device_id.clone()).unwrap_or_default();
       if let Some(stored) = params.id.as_deref().and_then(|i| c.log.iter().find(|e| e.msg.id == i && (e.from == own_id || e.from.is_empty())).map(|e| &e.msg)) {
         let same = stored.room == params.room && stored.body_md == params.body_md && stored.reply_to == params.reply_to;
@@ -2019,9 +2050,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
   }
 
   fn decide_join(&self, device_id: &str, accept: bool) -> Result<(), String> {
-    let mut g = self.lock();
-    let c = &mut *g;
-    self.decide_join_locked(c, device_id, accept)
+    self.decide_join_now(device_id, accept)
   }
 
   fn confirm_device_kind(&self, device_id: &str, kind: &str) -> Result<(), String> {
@@ -2039,56 +2068,86 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     c.st.legacy_unknown.retain(|k| *k != key);
     c.st.alerts.retain(|a| !(a.kind == "kind_unknown" && a.device_id == dev.id));
     let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, kind));
-    self.save_now(c)?;
+    let token = Self::token_of(c)?;
+    let g = self.persist_out(g, true)?;
     let intro = intro?;
-    self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
-    c.st.intros.push(intro);
-    let dir = c.dir.clone();
-    recompute(c, dir.as_ref(), self.cfg.user_id, self.now(), false);
-    self.save_now(c)
+    drop(g);
+    self.t.call(&api::put_intro(&dev.id, &intro).map_err(err)?, Some(&token))?;
+    let mut g = self.lock();
+    if !Self::is_identity(&g, &token) {
+      return Err(IDENTITY_CHANGED_MSG.into());
+    }
+    let c = &mut *g;
+    if c.st.trusted.iter().any(|d| d.id == dev.id && d.fp == dev.fp) && c.st.kind_of(&dev.id, &dev.fp) == Some(kind) {
+      c.st.intros.push(intro);
+      let dir = c.dir.clone();
+      recompute(c, dir.as_ref(), self.cfg.user_id, self.now(), false);
+    }
+    self.persist_out(g, true).map(drop)
   }
 
   fn decide_revoke(&self, statement_id: &str, accept: bool) -> Result<(), String> {
+    let pending = |c: &Core| c.st.pending_revokes.iter().find(|p| p.statement_id == statement_id).cloned().ok_or_else(|| "no such revoke request".to_owned());
     let mut g = self.lock();
-    let c = &mut *g;
-    let p = c.st.pending_revokes.iter().find(|p| p.statement_id == statement_id).cloned().ok_or_else(|| "no such revoke request".to_owned())?;
+    let p = pending(&g)?;
     if accept {
-      self.fetch_dir(c)?;
+      let (token, gen) = (Self::token_of(&g)?, g.dir_gen);
+      drop(g);
+      let raw = self.t.call(&api::list_devices(), Some(&token))?;
+      g = self.lock();
+      if !Self::is_identity(&g, &token) {
+        return Err(IDENTITY_CHANGED_MSG.into());
+      }
+      let p = pending(&g)?;
+      let c = &mut *g;
+      Self::adopt_dir(c, &raw, gen)?;
       backfill_self(c, &self.kind);
       apply_revoke(c, self.cfg.user_id, self.now(), &p.target_id, &p.target_fp, &p.target_label);
     } else {
-      c.st.pending_revokes.retain(|x| x.statement_id != statement_id);
-      c.st.declined.push(p.statement_id);
+      g.st.pending_revokes.retain(|x| x.statement_id != statement_id);
+      g.st.declined.push(p.statement_id);
     }
-    self.save_now(c)
+    self.persist_out(g, true).map(drop)
   }
 
+  /// The revocation is stored on the relay before it is applied here; every relay call runs with the core lock released.
   fn revoke(&self, device_id: &str) -> Result<(), String> {
-    let mut g = self.lock();
-    let c = &mut *g;
-    self.ensure_registered(c)?;
-    let (id, keys) = Self::own(c)?;
-    let live = c.st.trusted.iter().find(|d| d.id == device_id && d.id != id.device_id).cloned();
-    let already = live.is_none();
-    let target = live
-      .or_else(|| c.st.revoked_devs.iter().find(|d| d.id == device_id && d.id != id.device_id).cloned())
+    let g = self.registered(self.lock())?;
+    let (id, keys) = Self::own(&g)?;
+    let own_id = id.device_id.clone();
+    let target = g
+      .st
+      .trusted
+      .iter()
+      .find(|d| d.id == device_id && d.id != own_id)
+      .or_else(|| g.st.revoked_devs.iter().find(|d| d.id == device_id && d.id != own_id))
+      .cloned()
       .ok_or_else(|| "unknown device".to_owned())?;
     let st = RevokeStatement { user_id: self.cfg.user_id, revoker_fp: keys.fingerprint(), target_id: target.id.clone(), target_fp: target.fp.clone(), issued_at_ms: self.now() };
     let json = sign_revoke(keys, &st).map_err(err)?;
     let parsed = parse_revoke(&json).map_err(err)?;
-    let others: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id && d.id != target.id).cloned().collect();
-    self.call(c, api::post_revocation(&target.fp, &json).map_err(err)?)?;
-    if !already {
+    let token = Self::token_of(&g)?;
+    drop(g);
+    self.t.call(&api::post_revocation(&target.fp, &json).map_err(err)?, Some(&token))?;
+    let mut g = self.lock();
+    if !Self::is_identity(&g, &token) {
+      return Err(IDENTITY_CHANGED_MSG.into());
+    }
+    let c = &mut *g;
+    if c.st.trusted.iter().any(|d| d.id == target.id && d.fp == target.fp) {
       apply_revoke(c, self.cfg.user_id, self.now(), &target.id, &target.fp, &target.label);
     }
-    self.save_now(c)?;
+    let mut g = self.persist_out(g, true)?;
+    let others: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id != own_id && d.id != target.id).cloned().collect();
     if !others.is_empty() {
       let msg_id = random_msg_id("revoke").map_err(err)?;
       let payload = json!({ "statement": parsed.statement, "sig": parsed.sig });
-      self.seal_and_post(c, "revoke", &msg_id, &payload, &others, false)?;
-      self.save_now(c)?;
+      let (posted, res) = self.post_unlocked(g, "revoke", &msg_id, &payload, &others, false);
+      res?;
+      g = self.persist_out(posted, true)?;
     }
-    if let Err(e) = self.call(c, api::delete_device(&target.id).map_err(err)?) {
+    drop(g);
+    if let Err(e) = self.t.call(&api::delete_device(&target.id).map_err(err)?, Some(&token)) {
       log::warn!("[manager] the device was revoked, but its relay registration was not removed: {e}");
     }
     Ok(())
@@ -2114,21 +2173,25 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
     RelayEngine::machine_indexes(self)
   }
 
+  /// The relay calls run with the core lock released; the registration gate keeps a poll or send from re-registering midway.
   fn reset_identity(&self) -> Result<(), String> {
-    let mut g = self.lock();
-    let c = &mut *g;
-    let notice = self.announce_reset(c);
-    if let Some(id) = c.identity.as_ref().map(|i| i.device_id.clone()) {
-      if let Ok(req) = api::delete_device(&id) {
-        let _ = self.call(c, req);
+    let _gate = self.registering.lock().unwrap_or_else(|p| p.into_inner());
+    let g = self.lock();
+    let token = g.identity.as_ref().map(|i| (i.token.clone(), i.device_id.clone()));
+    let (g, notice) = self.announce_reset(g);
+    drop(g);
+    if let Some((token, id)) = &token {
+      if let Ok(req) = api::delete_device(id) {
+        let _ = self.t.call(&req, Some(token));
       }
     }
+    *self.lock() = Core::default();
     {
-      let _writing = self.writer();
+      let mut written = self.writer();
       self.k.clear()?;
+      *written = self.next_gen.fetch_add(1, Ordering::SeqCst) + 1;
     }
-    *c = Core::default();
-    self.ensure_registered(c)?;
+    self.register_gated().map(drop)?;
     notice.map_err(|e| format!("the old identity was wiped, but the other devices were not told: {e}"))
   }
 
@@ -2155,8 +2218,7 @@ impl<T: Transport, K: KeyStore> RelayPort for RelayEngine<T, K> {
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
   fn poll_inner(&self, on_receipt: Option<&dyn Fn(Receipt)>) -> Result<Vec<ChatMessage>, String> {
     let (token, dir_gen) = {
-      let mut g = self.lock();
-      self.ensure_registered(&mut g)?;
+      let g = self.registered(self.lock())?;
       (Self::token_of(&g)?, g.dir_gen)
     };
     let raw_dir = self.t.call(&api::list_devices(), Some(&token))?;
@@ -2189,7 +2251,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       let Some(last) = inbox.messages.iter().map(|m| m.cursor as u64).max() else {
         break;
       };
-      self.process_page(&mut g, &inbox.messages, now, &mut hold, &mut out)?;
+      let cut = self.process_page(&mut g, &inbox.messages, now, &mut hold, &mut out);
       if let Some(emit) = on_receipt.filter(|_| !g.receipts.is_empty()) {
         let fresh = std::mem::take(&mut g.receipts);
         drop(g);
@@ -2199,53 +2261,108 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
           return Ok(out);
         }
       }
-      after = last;
-      g.st.cursor = g.st.cursor.max(hold.stuck.map_or(last, |s| s.saturating_sub(1)));
+      let through = cut.unwrap_or(last);
+      g.st.cursor = g.st.cursor.max(hold.stuck.map_or(through, |s| through.min(s.saturating_sub(1))));
       self.release_drops(&mut hold, g.st.cursor);
       g = self.ack_stored(g, &token)?;
       expected_cursor = g.st.cursor;
+      if cut.is_some() {
+        let gen = g.dir_gen;
+        drop(g);
+        let raw_dir = self.t.call(&api::list_devices(), Some(&token))?;
+        g = self.lock();
+        if !Self::is_identity(&g, &token) || g.st.cursor != expected_cursor {
+          return Ok(out);
+        }
+        let dir = Self::adopt_dir(&mut g, &raw_dir, gen)?;
+        self.sync_with(&mut g, dir)?;
+        g.st.self_intro = false;
+        g = self.republish_unlocked(g, &token)?;
+        if !Self::is_identity(&g, &token) || g.st.cursor != expected_cursor {
+          return Ok(out);
+        }
+        after = through;
+        continue;
+      }
+      after = last;
       if !inbox.more {
         break;
       }
     }
     g.hold_since.retain(|k, _| hold.blocked.contains(k));
-    self.ack_stored(g, &token).map(drop)?;
+    let mut g = self.ack_stored(g, &token)?;
+    let auto = self.pick_auto(&mut g, now);
+    drop(g);
+    if let Some(device_id) = auto {
+      self.run_auto(&device_id, now);
+    }
     Ok(out)
   }
 }
 
 impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
-  fn decide_join_locked(&self, c: &mut Core, device_id: &str, accept: bool) -> Result<(), String> {
-    if c.st.expected.as_ref().is_some_and(|e| e.device_id == device_id) {
-      c.st.expected = None;
+  fn decide_join_now(&self, device_id: &str, accept: bool) -> Result<(), String> {
+    let key = format!("join:{device_id}");
+    let mut g = self.lock();
+    if g.inflight.contains(&key) {
+      return Err("this join request is already being decided".into());
     }
+    if g.st.expected.as_ref().is_some_and(|e| e.device_id == device_id) {
+      g.st.expected = None;
+    }
+    let c = &mut *g;
     let rec = c.st.pending_joins.iter().find(|j| j.device_id == device_id).cloned().ok_or_else(|| "no such join request".to_owned())?;
-    if !accept {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
-      return self.save_now(c);
-    }
-    if c.st.revoked.contains(&rec.fp) {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
-      self.save_now(c)?;
-      return Err("this device was revoked".into());
-    }
-    if c.st.revoked_devs.iter().any(|r| r.id == rec.device_id && r.fp != rec.fp)
+    let refused = if !accept {
+      Some(Ok(()))
+    } else if c.st.revoked.contains(&rec.fp) {
+      Some(Err("this device was revoked".to_owned()))
+    } else if c.st.revoked_devs.iter().any(|r| r.id == rec.device_id && r.fp != rec.fp)
       || c.st.pinned_for_other_fp(&rec.device_id, &rec.fp)
       || c.st.trusted.iter().any(|d| d.id == rec.device_id && d.fp != rec.fp)
     {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
       record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
-      self.save_now(c)?;
-      return Err("this device id belonged to another device".into());
-    }
-    let contradicts = c.st.kinds.iter().any(|(k, v)| k.split_once(':').is_some_and(|(id, fp)| (id == rec.device_id || fp == rec.fp) && *v != rec.kind));
-    if contradicts {
-      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      Some(Err("this device id belonged to another device".to_owned()))
+    } else if c.st.kinds.iter().any(|(k, v)| k.split_once(':').is_some_and(|(id, fp)| (id == rec.device_id || fp == rec.fp) && *v != rec.kind)) {
       record_alert_once(c, "kind_conflict", &rec.device_id, self.now());
-      self.save_now(c)?;
-      return Err("this device kind contradicts a known one".into());
+      Some(Err("this device kind contradicts a known one".to_owned()))
+    } else {
+      None
+    };
+    if let Some(res) = refused {
+      c.st.pending_joins.retain(|j| j.device_id != device_id);
+      self.persist_out(g, true).map(drop)?;
+      return res;
     }
-    let dir = self.fetch_dir(c)?;
+    let (token, gen) = (Self::token_of(&g)?, g.dir_gen);
+    g.inflight.insert(key.clone());
+    drop(g);
+    let res = self.approve_unlocked(&rec, &token, gen);
+    self.lock().inflight.remove(&key);
+    res
+  }
+
+  /// Approving a join: every relay call and keychain write runs without the core lock, and each re-lock checks the request is still open.
+  fn approve_unlocked(&self, rec: &JoinRec, token: &str, gen: u64) -> Result<(), String> {
+    let open = |c: &Core| -> Result<(), String> {
+      if !Self::is_identity(c, token) {
+        return Err(IDENTITY_CHANGED_MSG.into());
+      }
+      if !c.st.pending_joins.iter().any(|j| j.device_id == rec.device_id && j.fp == rec.fp) {
+        return Err("the join request is no longer open".into());
+      }
+      if c.st.revoked.contains(&rec.fp) {
+        return Err("this device was revoked".into());
+      }
+      if c.st.trusted.iter().any(|d| d.id == rec.device_id && d.fp != rec.fp) || c.st.pinned_for_other_fp(&rec.device_id, &rec.fp) {
+        return Err("this device id belonged to another device".into());
+      }
+      Ok(())
+    };
+    let raw = self.t.call(&api::list_devices(), Some(token))?;
+    let mut g = self.lock();
+    open(&g)?;
+    let c = &mut *g;
+    let dir = Self::adopt_dir(c, &raw, gen)?;
     let entry = dir
       .devices
       .iter()
@@ -2266,42 +2383,62 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       return Err("update the app first".into());
     }
     let intro = self.intro_json(c, 2, (&dev.id, &dev.fp, &rec.kind))?;
-    self.call(c, api::put_intro(&dev.id, &intro).map_err(err)?)?;
+    drop(g);
+    self.t.call(&api::put_intro(&dev.id, &intro).map_err(err)?, Some(token))?;
+    let mut g = self.lock();
+    open(&g)?;
+    let c = &mut *g;
     c.st.intros.push(intro);
     pin_kind(c, &dev.id, &dev.fp, &rec.kind, self.now());
     if !c.st.trusted.iter().any(|d| d.id == dev.id) {
       c.st.trusted.push(dev.clone());
     }
     stamp_pins(c, self.now());
-    self.save_now(c)?;
+    let g = self.persist_out(g, true)?;
+    if !Self::is_identity(&g, token) {
+      return Err(IDENTITY_CHANGED_MSG.into());
+    }
     let msg_id = random_msg_id("join_ok").map_err(err)?;
-    let payload = json!({ "revoked": c.st.revoked, "kind": self.kind });
-    self.seal_and_post(c, "join_ok", &msg_id, &payload, &[dev], false)?;
-    c.st.pending_joins.retain(|j| j.device_id != device_id);
-    self.save_now(c)
+    let payload = json!({ "revoked": g.st.revoked, "kind": self.kind });
+    let (mut g, res) = self.post_unlocked(g, "join_ok", &msg_id, &payload, &[dev], false);
+    res?;
+    if !Self::is_identity(&g, token) {
+      return Err(IDENTITY_CHANGED_MSG.into());
+    }
+    g.st.pending_joins.retain(|j| j.device_id != rec.device_id);
+    self.persist_out(g, true).map(drop)
   }
 
-  fn auto_approve(&self, c: &mut Core, now: u64) {
+  /// Under the core lock: picks the expected join to approve; the approval itself runs later without the lock.
+  fn pick_auto(&self, c: &mut Core, now: u64) -> Option<String> {
     if c.st.expected.as_ref().is_some_and(|e| now >= e.exp_ms) {
       c.st.expected = None;
     }
-    let Some(exp) = c.st.expected.clone() else {
-      return;
-    };
-    let Some(rec) = c.st.pending_joins.iter().find(|j| j.device_id == exp.device_id).cloned() else {
-      return;
-    };
+    let exp = c.st.expected.clone()?;
+    let rec = c.st.pending_joins.iter().find(|j| j.device_id == exp.device_id).cloned()?;
+    if c.inflight.contains(&format!("join:{}", rec.device_id)) {
+      return None;
+    }
     c.st.expected = None;
     if !expected_join_matches(&exp.device_id, &exp.fp, &rec.device_id, &rec.fp, &rec.kind) {
       record_alert(c, "expected_join_mismatch", &rec.device_id, now);
-      return;
+      return None;
     }
-    match self.decide_join_locked(c, &rec.device_id, true) {
-      Ok(()) => c.auto_join_error = None,
+    Some(rec.device_id)
+  }
+
+  fn run_auto(&self, device_id: &str, now: u64) {
+    let res = self.decide_join_now(device_id, true);
+    let mut g = self.lock();
+    match res {
+      Ok(()) => g.auto_join_error = None,
       Err(e) => {
-        record_alert(c, "auto_join_failed", &rec.device_id, now);
-        c.auto_join_error = Some(e);
+        record_alert(&mut g, "auto_join_failed", device_id, now);
+        g.auto_join_error = Some(e);
       }
+    }
+    if let Err(e) = self.persist_out(g, true) {
+      log::warn!("[manager] chat store write failed: {e}");
     }
   }
 
@@ -2323,7 +2460,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     c.st.bindings.insert(machine.to_owned(), device_id.to_owned());
     c.st.alerts.retain(|a| !(a.kind == "room_conflict" && a.device_id == device_id));
     Self::release_held_receipts(c, device_id, machine, now);
-    self.save_now(c)
+    self.persist_out(g, true).map(drop)
   }
 
   pub fn expect_join(&self, device_id: &str, fp: &str) -> Result<(), String> {
@@ -2345,8 +2482,12 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     };
     c.st.expected = Some(ExpectedJoin { device_id: device_id.to_owned(), fp: fp.to_owned(), exp_ms });
     c.auto_join_error = None;
-    self.auto_approve(c, now);
-    self.save_now(c)
+    let auto = self.pick_auto(c, now);
+    self.persist_out(g, true).map(drop)?;
+    if let Some(device_id) = auto {
+      self.run_auto(&device_id, now);
+    }
+    Ok(())
   }
 
   fn live_indexes<'a>(&self, c: &'a Core) -> Vec<&'a StoredRooms> {
@@ -2409,23 +2550,37 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     Ok(())
   }
 
-  fn announce_reset(&self, c: &mut Core) -> Result<(), String> {
-    let (Some(id), Some(keys)) = (&c.identity, &c.keys) else {
-      return Ok(());
+  fn announce_reset<'a>(&'a self, g: MutexGuard<'a, Core>) -> (MutexGuard<'a, Core>, Result<(), String>) {
+    let signed = (|| {
+      let (Some(id), Some(keys)) = (&g.identity, &g.keys) else {
+        return Ok(None);
+      };
+      let others: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id != id.device_id).cloned().collect();
+      if !g.st.joined || others.is_empty() {
+        return Ok(None);
+      }
+      let fp = keys.fingerprint();
+      let st = RevokeStatement { user_id: self.cfg.user_id, revoker_fp: fp.clone(), target_id: id.device_id.clone(), target_fp: fp.clone(), issued_at_ms: self.now() };
+      let json = sign_revoke(keys, &st).map_err(err)?;
+      let parsed = parse_revoke(&json).map_err(err)?;
+      Ok(Some((fp, json, parsed, others, id.token.clone())))
+    })();
+    let (fp, json, parsed, others, token) = match signed {
+      Ok(Some(s)) => s,
+      Ok(None) => return (g, Ok(())),
+      Err(e) => return (g, Err(e)),
     };
-    let others: Vec<Dev> = c.st.trusted.iter().filter(|d| d.id != id.device_id).cloned().collect();
-    if !c.st.joined || others.is_empty() {
-      return Ok(());
-    }
-    let fp = keys.fingerprint();
-    let st = RevokeStatement { user_id: self.cfg.user_id, revoker_fp: fp.clone(), target_id: id.device_id.clone(), target_fp: fp.clone(), issued_at_ms: self.now() };
-    let json = sign_revoke(keys, &st).map_err(err)?;
-    let parsed = parse_revoke(&json).map_err(err)?;
+    drop(g);
     if let Ok(req) = api::post_revocation(&fp, &json) {
-      let _ = self.call(c, req);
+      let _ = self.t.call(&req, Some(&token));
     }
-    let msg_id = random_msg_id("revoke").map_err(err)?;
+    let g = self.lock();
+    let msg_id = match random_msg_id("revoke").map_err(err) {
+      Ok(id) => id,
+      Err(e) => return (g, Err(e)),
+    };
     let payload = json!({ "statement": parsed.statement, "sig": parsed.sig });
-    self.seal_and_post(c, "revoke", &msg_id, &payload, &others, false)
+    self.post_unlocked(g, "revoke", &msg_id, &payload, &others, false)
   }
+
 }

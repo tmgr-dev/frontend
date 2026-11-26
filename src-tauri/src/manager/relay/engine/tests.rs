@@ -792,9 +792,9 @@ fn dedupe_is_per_sender_and_message_id() {
   let msg = same_id_msg();
   let payload = serde_json::to_value(&msg).unwrap();
   for e in [&a, &c] {
-    let mut g = e.lock();
+    let g = e.lock();
     let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == bid).cloned().collect();
-    e.seal_and_post(&mut g, "chat", &msg.id, &payload, &target, false).unwrap();
+    e.post_unlocked(g, "chat", &msg.id, &payload, &target, false).1.unwrap();
   }
   assert_eq!(fake.queue_len(&bid), 2);
   b.poll_once().unwrap();
@@ -803,9 +803,9 @@ fn dedupe_is_per_sender_and_message_id() {
   assert_eq!(history(&b), ["same id", "same id"]);
   fake.reverse_queue(&bid);
   for e in [&a, &c] {
-    let mut g = e.lock();
+    let g = e.lock();
     let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == bid).cloned().collect();
-    e.seal_and_post(&mut g, "chat", &msg.id, &payload, &target, false).unwrap();
+    e.post_unlocked(g, "chat", &msg.id, &payload, &target, false).1.unwrap();
   }
   b.poll_once().unwrap();
   assert_eq!(history(&b).len(), 2);
@@ -824,9 +824,9 @@ fn fp_of(e: &Engine) -> String {
 
 fn post_chat(from: &Engine, to_id: &str, msg: &ChatMessage) {
   let payload = serde_json::to_value(msg).unwrap();
-  let mut g = from.lock();
+  let g = from.lock();
   let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
-  from.seal_and_post(&mut g, "chat", &msg.id, &payload, &target, false).unwrap();
+  from.post_unlocked(g, "chat", &msg.id, &payload, &target, false).1.unwrap();
 }
 
 #[test]
@@ -1796,8 +1796,11 @@ fn directory_last_seen_accepts_seconds_millis_and_rfc3339() {
 }
 
 fn publish_for(a: &Engine) {
-  let mut g = a.lock();
-  a.publish_intros(&mut g).unwrap();
+  let g = a.lock();
+  let token = g.identity.as_ref().unwrap().token.clone();
+  let signed = a.signed_intros(&g, &a.intro_targets(&g).unwrap()).unwrap();
+  drop(g);
+  a.put_intros(Some(&token), &signed).unwrap();
 }
 
 fn intros_of(fake: &Fake, id: &str) -> Vec<String> {
@@ -2947,9 +2950,9 @@ fn session_room(machine: &str, session: &str) -> Value {
 const IDX_ID: &str = "i_0123456789abcdef0123456789abcdef";
 
 fn post_rooms(from: &Engine, to_id: &str, msg_id: &str, payload: &Value) {
-  let mut g = from.lock();
+  let g = from.lock();
   let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
-  from.seal_and_post(&mut g, "rooms", msg_id, payload, &target, false).unwrap();
+  from.post_unlocked(g, "rooms", msg_id, payload, &target, false).1.unwrap();
 }
 
 fn indexed(a: &Engine) -> Vec<String> {
@@ -3151,9 +3154,9 @@ fn a_state_saved_with_rooms_by_an_older_build_still_loads() {
 }
 
 fn post_receipt(from: &Engine, to_id: &str, relay_id: &str, payload: Value) {
-  let mut g = from.lock();
+  let g = from.lock();
   let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
-  from.seal_and_post(&mut g, "receipt", relay_id, &payload, &target, false).unwrap();
+  from.post_unlocked(g, "receipt", relay_id, &payload, &target, false).1.unwrap();
 }
 
 fn bind_room_machine(a: &Engine, runner: &Engine) {
@@ -3414,8 +3417,9 @@ fn a_directory_fetched_before_a_trust_change_does_not_overwrite_the_newer_one() 
   let a2 = a.clone();
   fake.0.lock().unwrap().on_devices = Some(Box::new(move || {
     fresh.register().unwrap();
-    let mut g = a2.lock();
-    a2.fetch_dir(&mut g).unwrap();
+    let token = a2.lock().identity.as_ref().unwrap().token.clone();
+    let raw = a2.t.call(&api::list_devices(), Some(&token)).unwrap();
+    Engine::take_dir(&mut a2.lock(), &raw).unwrap();
   }));
   a.poll_once().unwrap();
   assert_eq!(a.lock().dir.as_ref().unwrap().devices.len(), 2);
@@ -3842,9 +3846,9 @@ fn post_revoke_msg(from: &Engine, to_id: &str, target_id: &str, target_fp: &str)
   };
   let parsed = parse_revoke(&json).unwrap();
   let payload = json!({ "statement": parsed.statement, "sig": parsed.sig });
-  let mut g = from.lock();
+  let g = from.lock();
   let target: Vec<Dev> = g.st.trusted.iter().filter(|d| d.id == to_id).cloned().collect();
-  from.seal_and_post(&mut g, "revoke", "r_1111111111111111", &payload, &target, false).unwrap();
+  from.post_unlocked(g, "revoke", "r_1111111111111111", &payload, &target, false).1.unwrap();
 }
 
 fn revoke_outcome(kind: Option<&str>, sealed: bool) -> (usize, bool) {
@@ -3966,10 +3970,10 @@ fn a_restart_without_a_flush_does_not_hold_the_receipts_that_follow() {
   let a = engine_on(&fake, &clock, store.clone(), "mx_local");
   let r = join_as(&fake, &clock, &a, "Runner", "runner");
   bind_room_machine(&a, &r);
-  a.save_now(&mut a.lock()).unwrap();
+  drop(a.persist_out(a.lock(), true).unwrap());
   let aid = my_id(&a);
   let sent: Vec<String> = (0..4).map(|i| send(&a, &format!("m{i}")).unwrap().id).collect();
-  a.save_now(&mut a.lock()).unwrap();
+  drop(a.persist_out(a.lock(), true).unwrap());
   clock.set(T0 + 1_000);
   post_receipt(&r, &aid, "rc_0q", receipt_of(&sent[0], "queued"));
   a.poll_once().unwrap();
