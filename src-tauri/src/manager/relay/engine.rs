@@ -2582,5 +2582,4 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let payload = json!({ "statement": parsed.statement, "sig": parsed.sig });
     self.post_unlocked(g, "revoke", &msg_id, &payload, &others, false)
   }
-
 }
