@@ -14,7 +14,7 @@
 				<div v-else class="txt plain">{{ message.body_md }}</div>
 			</div>
 			<div class="meta">
-				{{ clock }}
+				<time :datetime="isoTime" :title="fullTime">{{ clock }}</time>
 				<template v-if="queued">
 					<span :title="$t('manager.messages.queuedHint')">{{
 						queuedText
@@ -60,33 +60,33 @@
 			/>
 			<span v-else class="av-spacer"></span>
 			<div class="body">
-				<div v-if="!grouped" class="who">
-					{{ labelOf(message) }} <i>{{ clock }}</i>
+				<div v-if="!grouped" class="who">{{ labelOf(message) }}</div>
+				<div :class="isDecision ? 'dcard' : 'bubble abub'">
+					<div v-if="replyTo" class="qt">
+						<b>{{ labelOf(replyTo) }}</b
+						><span>{{ truncate(replyTo.body_md, 90) }}</span>
+					</div>
+					<slot v-if="isDecision" name="decision" :message="message"></slot>
+					<template v-else>
+						<Attachments :items="message.attachments" />
+						<div
+							v-if="html"
+							class="txt"
+							v-html="copyableHtml"
+							@click="onBodyClick"
+						></div>
+						<div v-else class="txt plain">{{ message.body_md }}</div>
+					</template>
+					<details v-if="tools?.length" class="tools">
+						<summary>
+							{{ $t('manager.activity.toolsUsed', { count: tools.length }) }}
+						</summary>
+						<ToolCallList v-if="calls?.length" :calls="calls" />
+						<ul v-else>
+							<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
+						</ul>
+					</details>
 				</div>
-				<div v-if="replyTo" class="qt">
-					<b>{{ labelOf(replyTo) }}</b
-					><span>{{ truncate(replyTo.body_md, 90) }}</span>
-				</div>
-				<slot v-if="isDecision" name="decision" :message="message"></slot>
-				<template v-else>
-					<Attachments :items="message.attachments" />
-					<div
-						v-if="html"
-						class="txt"
-						v-html="copyableHtml"
-						@click="onBodyClick"
-					></div>
-					<div v-else class="txt plain">{{ message.body_md }}</div>
-				</template>
-				<details v-if="tools?.length" class="tools">
-					<summary>
-						{{ $t('manager.activity.toolsUsed', { count: tools.length }) }}
-					</summary>
-					<ToolCallList v-if="calls?.length" :calls="calls" />
-					<ul v-else>
-						<li v-for="(tool, i) in tools" :key="i">{{ tool }}</li>
-					</ul>
-				</details>
 				<div v-if="showVoice && !pack.installed" class="voice">
 					<template v-if="pack.installing">
 						<span>{{
@@ -115,6 +115,9 @@
 							}}
 						</button>
 					</template>
+				</div>
+				<div class="meta">
+					<time :datetime="isoTime" :title="fullTime">{{ clock }}</time>
 				</div>
 			</div>
 		</div>
@@ -301,6 +304,20 @@
 			},
 			clock(): string {
 				return formatClock(this.message.ts_ms);
+			},
+			isoTime(): string {
+				return new Date(this.message.ts_ms).toISOString();
+			},
+			fullTime(): string {
+				return new Date(this.message.ts_ms).toLocaleString(undefined, {
+					weekday: 'short',
+					day: 'numeric',
+					month: 'short',
+					year: 'numeric',
+					hour: '2-digit',
+					minute: '2-digit',
+					second: '2-digit',
+				});
 			},
 			canSpeak(): boolean {
 				return (

@@ -76,7 +76,8 @@
 <script lang="ts">
 	import { defineComponent, type PropType } from 'vue';
 	import type { Delivery } from '../delivery';
-	import { isMentionStateRow, latestMentions, mentionRole } from '../mentions';
+	import { latestMentions, mentionRole } from '../mentions';
+	import { buildRows, type MessageRow } from '../messageRows';
 	import {
 		anchoredScrollTop,
 		arrivalsAfter,
@@ -95,14 +96,7 @@
 	import MentionReply from './MentionReply.vue';
 	import MessageBubble from './MessageBubble.vue';
 	import ToolCallList from './ToolCallList.vue';
-	import { dayKey, formatDay, isGrouped, isOwnerMessage } from './viewHelpers';
-
-	interface Row {
-		message: ChatMessage;
-		day?: string;
-		replyTo?: ChatMessage;
-		grouped: boolean;
-	}
+	import { isOwnerMessage } from './viewHelpers';
 
 	const isOwn = isOwnerMessage;
 
@@ -343,24 +337,10 @@
 			latestMention(): Map<string, MentionRef> {
 				return latestMentions(this.messages);
 			},
-			rows(): Row[] {
-				const byId = new Map(this.messages.map((m) => [m.id, m]));
-				const labels = {
+			rows(): MessageRow[] {
+				return buildRows(this.messages, this.now, {
 					today: this.$t('manager.messages.today'),
 					yesterday: this.$t('manager.messages.yesterday'),
-				};
-				const shown = this.messages.filter((m) => !isMentionStateRow(m));
-				return shown.map((message, i) => {
-					const prev = shown[i - 1];
-					const newDay = !prev || dayKey(prev.ts_ms) !== dayKey(message.ts_ms);
-					return {
-						message,
-						day: newDay
-							? formatDay(message.ts_ms, this.now, labels)
-							: undefined,
-						replyTo: message.reply_to ? byId.get(message.reply_to) : undefined,
-						grouped: isGrouped(prev, message),
-					};
 				});
 			},
 		},

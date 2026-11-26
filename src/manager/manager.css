@@ -420,12 +420,14 @@ html.dark .manager {
 	gap: 16px;
 }
 .manager .day {
-	text-align: center;
-	font-size: 11px;
+	align-self: center;
+	font-size: 11.5px;
 	color: var(--subtle);
 	font-weight: 600;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
+	background: var(--sunken);
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	padding: 2px 10px;
 	margin: 6px 0;
 }
 .manager .sys {
@@ -492,25 +494,36 @@ html.dark .manager {
 	align-items: flex-start;
 }
 .manager .msg.mgr.grouped {
-	margin-top: -10px;
+	margin-top: -8px;
 }
 .manager .msg.mgr > .body {
 	min-width: 0;
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	align-items: flex-start;
+	gap: 4px;
+}
+.manager .msg.mgr > .body > .dcard {
+	align-self: stretch;
+}
+.manager .bubble.abub {
+	background: var(--raised);
+	box-shadow: 0 0 0 1px var(--line);
+	border-radius: 6px 18px 18px 6px;
+	max-width: min(100%, 640px);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.manager .msg.mgr:not(.grouped) > .body > .who + .bubble.abub {
+	border-top-left-radius: 18px;
+}
+.manager .msg.mgr > .body > .meta {
+	margin-top: 0;
 }
 .manager .who {
 	font-weight: 700;
 	font-size: 13px;
-}
-.manager .who i {
-	font-style: normal;
-	font-weight: 500;
-	color: var(--subtle);
-	margin-left: 6px;
-	font-size: 11px;
 }
 .manager .txt {
 	overflow-wrap: anywhere;
