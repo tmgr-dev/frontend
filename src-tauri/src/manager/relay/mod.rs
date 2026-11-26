@@ -10,3 +10,4 @@ pub mod port;
 pub mod ports;
 pub mod rooms;
 pub mod switch;
+pub mod vault;

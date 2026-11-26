@@ -8,6 +8,7 @@ use super::engine::{retry_after_secs, EngineConfig, RelayEngine};
 use super::http::{HttpTransport, LoginToken};
 use super::port::{NoRelay, Receipt, RelayPort, TrustState};
 use super::ports::{KeyStore, KeychainStore};
+use super::vault::FileVault;
 use super::super::presence::Presence;
 use crate::manager::backend::{ChatMessage, HistoryParams, RoomInfo, RoomRef, SearchParams, SendParams};
 
@@ -35,10 +36,14 @@ pub fn build_engine(spec: EngineSpec, store: impl KeyStore + 'static, presence: 
   Ok(Arc::new(RelayEngine::new(transport, store, cfg)?.with_presence(presence)))
 }
 
-pub fn keychain_builder(presence: Option<Arc<Presence>>) -> Builder {
+pub fn vault_builder(presence: Option<Arc<Presence>>, data_dir: Option<std::path::PathBuf>) -> Builder {
   Box::new(move |spec| {
-    let store = KeychainStore::new(format!("u{}@{}", spec.user_id, spec.api_base));
-    build_engine(spec, store, presence.clone())
+    let namespace = format!("u{}@{}", spec.user_id, spec.api_base);
+    let keychain = KeychainStore::new(namespace.clone());
+    match &data_dir {
+      Some(dir) => build_engine(spec, FileVault::new(keychain, dir.join("chat-relay"), &namespace), presence.clone()),
+      None => build_engine(spec, keychain, presence.clone()),
+    }
   })
 }
 

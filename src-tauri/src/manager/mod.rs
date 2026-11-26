@@ -78,7 +78,8 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     None => Err("the runner is not available".to_owned()),
   });
   let presence = presence_setup(app);
-  let switch = Arc::new(relay::switch::SwitchRelay::new(RELAY_ENABLED, relay::switch::keychain_builder(presence.clone()), machine));
+  let data_dir = app.path().app_data_dir().map_err(|e| log::warn!("[chat-relay] no app data dir, the chat stays in the keychain: {e}")).ok();
+  let switch = Arc::new(relay::switch::SwitchRelay::new(RELAY_ENABLED, relay::switch::vault_builder(presence.clone(), data_dir), machine));
   let relay: Arc<dyn relay::port::RelayPort> = switch.clone();
   let backend: Arc<dyn ManagerBackend> = match (app.try_state::<crate::runner::Runner>(), runner) {
     (Some(runner), Some(local)) => {

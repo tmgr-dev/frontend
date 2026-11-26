@@ -4547,7 +4547,7 @@ impl KeyStore for Arc<HeldStore> {
     let hold = match slot {
       Slot::State => self.hold.lock().unwrap().take(),
       Slot::Log => self.hold_log.lock().unwrap().take(),
-      Slot::Identity => None,
+      Slot::Identity | Slot::VaultKey => None,
     };
     if let Some(hold) = hold {
       hold();
@@ -4608,4 +4608,150 @@ fn an_auto_approval_overtaken_by_an_identity_reset_leaves_the_new_identity_clean
   assert_ne!(my_id(&a), old);
   assert!(!alert_kinds(&a).contains(&"auto_join_failed".to_owned()));
   assert!(a.trust_state().unwrap().auto_join_error.is_none());
+}
+
+type VaultEngine = RelayEngine<Fake, crate::manager::relay::vault::FileVault<Arc<MemKeyStore>>>;
+
+fn vault_engine(fake: &Fake, clock: &Clock, keychain: &Arc<MemKeyStore>, dir: &std::path::Path) -> VaultEngine {
+  let c = clock.0.clone();
+  let store = crate::manager::relay::vault::FileVault::new(keychain.clone(), dir.to_path_buf(), "u42@https://api.example.com/api/");
+  RelayEngine::new(fake.clone(), store, EngineConfig { user_id: USER, label: "Desktop A".into(), local_machine: "mx_local".into() }).unwrap().with_clock(move || c.load(Ordering::SeqCst))
+}
+
+fn vault_pair(fake: &Fake, clock: &Clock, keychain: &Arc<MemKeyStore>, dir: &std::path::Path) -> (VaultEngine, Engine) {
+  let a = vault_engine(fake, clock, keychain, dir);
+  let b = engine_with(fake, clock, "Desktop B");
+  b.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  a.decide_join(&my_id(&b), true).unwrap();
+  b.poll_once().unwrap();
+  (a, b)
+}
+
+fn filler(proto: &LogEntry, n: usize, body: usize) -> Vec<LogEntry> {
+  (0..n)
+    .map(|i| {
+      let mut e = proto.clone();
+      e.msg.id = format!("fill-{i:06}");
+      e.msg.body_md = "x".repeat(body);
+      e
+    })
+    .collect()
+}
+
+fn log_file(dir: &std::path::Path, suffix: &str) -> Vec<std::path::PathBuf> {
+  std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.to_string_lossy().contains(suffix)).collect()
+}
+
+#[test]
+fn joins_stay_fast_with_a_4_mb_log_in_the_file_store() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (keychain, tmp) = (Arc::new(MemKeyStore::default()), tempfile::tempdir().unwrap());
+  let (a, _b) = vault_pair(&fake, &clock, &keychain, tmp.path());
+  send(&a, "seed").unwrap();
+  let proto = a.lock().log[0].clone();
+  a.lock().log.extend(filler(&proto, 9_000, 400));
+  a.mark_log();
+  let (_, first) = millis(|| a.flush());
+  let size = std::fs::metadata(&log_file(tmp.path(), ".log.bin")[0]).unwrap().len();
+  assert!(size > 4 * 1024 * 1024, "log file is only {size} B");
+
+  let (r, rid, fp) = runner_ready(&fake, &clock);
+  r.join_with_code(&a.open_join_code().unwrap()).unwrap();
+  a.poll_once().unwrap();
+  send(&a, "dirty").unwrap();
+  let (expect, decide) = std::thread::scope(|s| {
+    let writer = s.spawn(|| a.flush());
+    let (res, expect) = millis(|| a.expect_join(&rid, &fp));
+    res.unwrap();
+    writer.join().unwrap();
+    let phone = engine_with(&fake, &clock, "Phone C");
+    phone.join_with_code(&a.open_join_code().unwrap()).unwrap();
+    a.poll_once().unwrap();
+    send(&a, "dirty again").unwrap();
+    let (res, decide) = millis(|| a.decide_join(&my_id(&phone), true));
+    res.unwrap();
+    (expect, decide)
+  });
+  eprintln!("log file {size} B: first write {first} ms, expect_join {expect} ms, decide_join {decide} ms");
+  assert!(expect < 1000 && decide < 1000, "expect_join {expect} ms, decide_join {decide} ms");
+  assert!(is_trusted_v(&a, &rid));
+  drop(a);
+  let restarted = vault_engine(&fake, &clock, &keychain, tmp.path());
+  assert_eq!(restarted.lock().log.len(), 9_003);
+}
+
+fn is_trusted_v<K: KeyStore>(e: &RelayEngine<Fake, K>, id: &str) -> bool {
+  e.trust_state().unwrap().devices.iter().any(|d| d.id == id && d.state == DeviceState::Trusted)
+}
+
+#[test]
+fn an_unwritable_chat_file_keeps_the_message_on_the_server() {
+  use std::os::unix::fs::PermissionsExt;
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (keychain, tmp) = (Arc::new(MemKeyStore::default()), tempfile::tempdir().unwrap());
+  let (a, b) = vault_pair(&fake, &clock, &keychain, tmp.path());
+  send(&b, "inbound").unwrap();
+  clock.set(T0 + 31_000);
+  std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
+  let failed = a.poll_once();
+  std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+  assert!(failed.is_err());
+  assert_eq!(fake.queue_len(&my_id(&a)), 1, "acked before the chat file was stored");
+  a.poll_once().unwrap();
+  assert_eq!(fake.queue_len(&my_id(&a)), 0);
+  drop(a);
+  assert_eq!(history(&vault_engine(&fake, &clock, &keychain, tmp.path())), ["inbound"]);
+}
+
+#[test]
+fn a_corrupt_chat_log_starts_empty_with_a_reset_notice() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (keychain, tmp) = (Arc::new(MemKeyStore::default()), tempfile::tempdir().unwrap());
+  let (a, b) = vault_pair(&fake, &clock, &keychain, tmp.path());
+  let bid = my_id(&b);
+  send(&a, "before").unwrap();
+  a.flush();
+  drop(a);
+  std::fs::write(&log_file(tmp.path(), ".log.bin")[0], b"garbage").unwrap();
+
+  let a = vault_engine(&fake, &clock, &keychain, tmp.path());
+  assert!(history(&a).is_empty());
+  let ts = a.trust_state().unwrap();
+  assert!(ts.alerts.iter().any(|x| x.kind == "history_reset"));
+  assert!(is_trusted_v(&a, &bid));
+  assert_eq!(log_file(tmp.path(), ".corrupt-").len(), 1);
+  a.flush();
+  drop(a);
+  let again = vault_engine(&fake, &clock, &keychain, tmp.path());
+  assert_eq!(again.trust_state().unwrap().alerts.iter().filter(|x| x.kind == "history_reset").count(), 1);
+}
+
+#[test]
+fn the_log_drops_oldest_entries_past_the_count_cap() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  send(&a, "seed").unwrap();
+  let proto = a.lock().log[0].clone();
+  let mut log = filler(&proto, MAX_LOG + 1, 10);
+  trimmed_log(&mut log).unwrap();
+  assert_eq!(log.len(), MAX_LOG * 9 / 10);
+  assert_eq!(log.last().unwrap().msg.id, format!("fill-{:06}", MAX_LOG));
+  let mut small = filler(&proto, MAX_LOG, 10);
+  trimmed_log(&mut small).unwrap();
+  assert_eq!(small.len(), MAX_LOG);
+}
+
+#[test]
+fn the_log_drops_oldest_entries_past_the_byte_cap() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  send(&a, "seed").unwrap();
+  let proto = a.lock().log[0].clone();
+  let mut log = filler(&proto, 17_000, 1024);
+  let json = trimmed_log(&mut log).unwrap();
+  assert!(json.len() <= MAX_LOG_BYTES * 3 / 4, "{} B kept", json.len());
+  assert!(json.len() > MAX_LOG_BYTES / 2);
+  assert_eq!(log.last().unwrap().msg.id, "fill-016999");
+  assert_eq!(serde_json::from_str::<Vec<LogEntry>>(&json).unwrap().len(), log.len());
 }

@@ -28,24 +28,43 @@ pub enum Slot {
   Identity,
   State,
   Log,
+  VaultKey,
 }
 
 impl Slot {
-  fn name(self) -> &'static str {
+  pub fn name(self) -> &'static str {
     match self {
       Slot::Identity => "identity",
       Slot::State => "state",
       Slot::Log => "log",
+      Slot::VaultKey => "vault-key",
     }
   }
 
-  const ALL: [Slot; 3] = [Slot::Identity, Slot::State, Slot::Log];
+  const ALL: [Slot; 4] = [Slot::Identity, Slot::State, Slot::Log, Slot::VaultKey];
 }
 
 pub trait KeyStore: Send + Sync {
   fn load(&self, slot: Slot) -> Result<Option<String>, String>;
   fn save(&self, slot: Slot, value: &str) -> Result<(), String>;
   fn clear(&self) -> Result<(), String>;
+
+  /// The raw chunk pointer of a slot stored by the chunked keychain layout, if any.
+  fn legacy_pointer(&self, _slot: Slot) -> Result<Option<String>, String> {
+    Ok(None)
+  }
+
+  fn drop_pointer(&self, _slot: Slot) -> Result<(), String> {
+    Ok(())
+  }
+
+  fn sweep(&self, _slot: Slot, _pointer: &str) -> Result<(), String> {
+    Ok(())
+  }
+
+  fn log_reset(&self) -> bool {
+    false
+  }
 }
 
 #[derive(Default)]
@@ -70,13 +89,13 @@ impl KeyStore for MemKeyStore {
 pub const SERVICE: &str = "dev.tmgr.desktop.chat-relay";
 const CHUNK: usize = 1800;
 
-trait Cells {
+pub trait Cells: Send + Sync {
   fn get(&self, account: &str) -> Result<Option<String>, String>;
   fn set(&self, account: &str, value: &str) -> Result<(), String>;
   fn delete(&self, account: &str) -> Result<(), String>;
 }
 
-struct KeyringCells;
+pub struct KeyringCells;
 
 impl KeyringCells {
   fn entry(account: &str) -> Result<keyring::Entry, String> {
@@ -105,13 +124,28 @@ impl Cells for KeyringCells {
   }
 }
 
-pub struct KeychainStore {
+pub struct ChunkedStore<C: Cells> {
+  cells: C,
   namespace: String,
 }
 
+pub type KeychainStore = ChunkedStore<KeyringCells>;
+
 impl KeychainStore {
   pub fn new(namespace: String) -> Self {
-    Self { namespace }
+    Self { cells: KeyringCells, namespace }
+  }
+}
+
+impl<C: Cells> ChunkedStore<C> {
+  #[cfg(test)]
+  pub fn with_cells(cells: C, namespace: String) -> Self {
+    Self { cells, namespace }
+  }
+
+  #[cfg(test)]
+  pub fn cells(&self) -> &C {
+    &self.cells
   }
 
   fn account(&self, slot: Slot) -> String {
@@ -139,10 +173,7 @@ fn pointer(cells: &dyn Cells, name: &str) -> Result<Option<(Option<u64>, usize)>
   let Some(raw) = cells.get(&format!("{name}.n"))? else {
     return Ok(None);
   };
-  match raw.split_once(':') {
-    Some((v, n)) => Ok(Some((Some(v.parse().map_err(|_| unreadable())?), n.parse().map_err(|_| unreadable())?))),
-    None => Ok(Some((None, raw.parse().map_err(|_| unreadable())?))),
-  }
+  parse_pointer(&raw).map(Some)
 }
 
 fn drop_chunks(cells: &dyn Cells, name: &str, version: Option<u64>) -> Result<(), String> {
@@ -196,17 +227,43 @@ fn clear_chunked(cells: &dyn Cells, name: &str) -> Result<(), String> {
   drop_chunks(cells, name, Some(current.map_or(1, |v| v + 1)))
 }
 
-impl KeyStore for KeychainStore {
+fn parse_pointer(raw: &str) -> Result<(Option<u64>, usize), String> {
+  match raw.split_once(':') {
+    Some((v, n)) => Ok((Some(v.parse().map_err(|_| unreadable())?), n.parse().map_err(|_| unreadable())?)),
+    None => Ok((None, raw.parse().map_err(|_| unreadable())?)),
+  }
+}
+
+impl<C: Cells> KeyStore for ChunkedStore<C> {
   fn load(&self, slot: Slot) -> Result<Option<String>, String> {
-    load_chunked(&KeyringCells, &self.account(slot))
+    load_chunked(&self.cells, &self.account(slot))
   }
 
   fn save(&self, slot: Slot, value: &str) -> Result<(), String> {
-    save_chunked(&KeyringCells, &self.account(slot), value)
+    save_chunked(&self.cells, &self.account(slot), value)
   }
 
   fn clear(&self) -> Result<(), String> {
-    Slot::ALL.into_iter().try_for_each(|slot| clear_chunked(&KeyringCells, &self.account(slot)))
+    Slot::ALL.into_iter().try_for_each(|slot| clear_chunked(&self.cells, &self.account(slot)))
+  }
+
+  fn legacy_pointer(&self, slot: Slot) -> Result<Option<String>, String> {
+    self.cells.get(&format!("{}.n", self.account(slot)))
+  }
+
+  fn drop_pointer(&self, slot: Slot) -> Result<(), String> {
+    self.cells.delete(&format!("{}.n", self.account(slot)))
+  }
+
+  /// Deletes the data chunks a dropped pointer referred to, plus leftovers of an interrupted save.
+  fn sweep(&self, slot: Slot, pointer: &str) -> Result<(), String> {
+    let name = self.account(slot);
+    let (version, count) = parse_pointer(pointer)?;
+    for i in 0..count {
+      self.cells.delete(&chunk_name(&name, version, i))?;
+    }
+    drop_chunks(&self.cells, &name, version)?;
+    drop_chunks(&self.cells, &name, Some(version.map_or(1, |v| v + 1)))
   }
 }
 

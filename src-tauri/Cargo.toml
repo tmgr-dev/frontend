@@ -38,6 +38,7 @@ tauri-plugin-opener = "2"
 rusqlite = { version = "0.41", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream"] }
 sha2 = "0.11"
+ring = "0.17"
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 hmac = "0.13"
 subtle = "2"

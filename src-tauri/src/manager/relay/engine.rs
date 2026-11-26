@@ -37,7 +37,8 @@ const JOIN_BUSY_MSG: &str = "a join is already in progress";
 const JOINING_KEY: &str = "join_with_code";
 const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
-const MAX_LOG: usize = 2000;
+const MAX_LOG: usize = 20_000;
+const MAX_LOG_BYTES: usize = 16 * 1024 * 1024;
 const SLOW_WRITE: Duration = Duration::from_secs(1);
 const MAX_SEEN: usize = 5000;
 const MAX_GAPS: usize = 100;
@@ -300,6 +301,7 @@ struct Core {
   held_receipts: Vec<HeldReceipt>,
   permits: PermitBook,
   polls: PollBook,
+  history_reset: bool,
 }
 
 struct HeldReceipt {
@@ -565,6 +567,28 @@ fn stamp_pins(c: &mut Core, now: u64) {
   }
 }
 
+/// Serializes the log after dropping the oldest entries past the caps; trims below the caps so this runs rarely.
+fn trimmed_log(log: &mut Vec<LogEntry>) -> Result<String, String> {
+  let mut cut = if log.len() > MAX_LOG { log.len() - MAX_LOG * 9 / 10 } else { 0 };
+  log.drain(..cut);
+  let mut json = serde_json::to_string(log).map_err(err)?;
+  if json.len() > MAX_LOG_BYTES {
+    let excess = json.len() - MAX_LOG_BYTES * 3 / 4;
+    let (mut freed, mut n) = (0, 0);
+    while freed < excess && n < log.len() {
+      freed += serde_json::to_string(&log[n]).map_err(err)?.len() + 1;
+      n += 1;
+    }
+    log.drain(..n);
+    cut += n;
+    json = serde_json::to_string(log).map_err(err)?;
+  }
+  if cut > 0 {
+    log::info!("[chat-relay] log trimmed: dropped {cut} oldest messages, {} kept", log.len());
+  }
+  Ok(json)
+}
+
 fn record_alert(c: &mut Core, kind: &str, device_id: &str, now: u64) {
   c.st.alerts.retain(|a| now.saturating_sub(a.at_ms) < ALERT_TTL_MS && !(a.kind == kind && a.device_id == device_id));
   c.st.alerts.push(TrustAlert { kind: kind.to_owned(), device_id: device_id.to_owned(), at_ms: now });
@@ -710,6 +734,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
       if let Some(raw) = k.load(Slot::Log)? {
         core.log = serde_json::from_str(&raw).map_err(|_| "the chat log is unreadable".to_owned())?;
       }
+      core.history_reset = k.log_reset();
       core.written_state = serde_json::to_string(&core.st).map_err(err)?;
       core.written_trust = trust_key(&core.st);
       core.written_cursor = core.st.cursor;
@@ -765,6 +790,9 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let mut g = self.core.lock().unwrap_or_else(|p| p.into_inner());
     if g.identity.is_some() && g.st.kinds_v < KINDS_V {
       migrate_kinds(&mut g, &self.kind);
+    }
+    if std::mem::take(&mut g.history_reset) {
+      record_alert(&mut g, "history_reset", "", self.now());
     }
     g
   }
@@ -823,13 +851,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     if !force && trust == c.written_trust && now.abs_diff(c.last_write) < WRITE_EVERY_MS {
       return Ok(None);
     }
-    let log = if log_dirty {
-      if c.log.len() > MAX_LOG {
-        let cut = c.log.len() - MAX_LOG;
-        c.log.drain(..cut);
-      }
-      Some((log_rev, serde_json::to_string(&c.log).map_err(err)?))
-    } else {
+    let log = if log_dirty { Some((log_rev, trimmed_log(&mut c.log)?)) } else {
       None
     };
     let gen = self.next_gen.fetch_add(1, Ordering::SeqCst) + 1;
@@ -858,7 +880,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     }
     *last = snap.gen;
     if started.elapsed() >= SLOW_WRITE {
-      log::info!("[chat-relay] keychain write took {} ms: waited {} ms for the writer, {}", started.elapsed().as_millis(), waited.as_millis(), steps.join(", "));
+      log::info!("[chat-relay] chat store write took {} ms: waited {} ms for the writer, {}", started.elapsed().as_millis(), waited.as_millis(), steps.join(", "));
     }
     Ok(true)
   }

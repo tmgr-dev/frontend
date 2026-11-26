@@ -5635,6 +5635,7 @@ dependencies = [
  "p256",
  "qrcode",
  "reqwest",
+ "ring",
  "rusqlite",
  "rustls",
  "serde",
