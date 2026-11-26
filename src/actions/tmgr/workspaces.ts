@@ -200,7 +200,9 @@ export const acceptWorkspaceInvitation = async (token: string) => {
 	return data;
 };
 export const workspaceInvitationInfo = async (token: string) => {
-	const { data } = await $axios.get(`workspaces/invitations/${token}/info`);
+	const {
+		data: { data },
+	} = await $axios.get(`workspaces/invitations/${token}/info`);
 
 	return data;
 };

@@ -85,6 +85,7 @@
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { t } from '@/i18n';
+	import { invitationLoadError } from '@/utils/invitationLoadError';
 	import { requestCache } from '@/utils/requestCache';
 
 	export default {
@@ -152,10 +153,11 @@
 					}
 					this.loading = false;
 				} catch (e) {
-					console.log(e);
-					this.error =
-						e.response?.data?.message ||
-						t('workspace.workspaceInvitation.loadFailed');
+					console.error(e);
+					this.error = invitationLoadError(
+						e,
+						t('workspace.workspaceInvitation.loadFailed'),
+					);
 					this.errorCode = e.response?.status;
 					this.forgetSettledInvitation(e);
 					this.loading = false;
@@ -199,9 +201,10 @@
 					this.accepted = true;
 					localStorage.removeItem('workspace.invitation');
 				} catch (e) {
-					this.error =
-						e.response?.data?.message ||
-						t('workspace.workspaceInvitation.acceptFailed');
+					this.error = invitationLoadError(
+						e,
+						t('workspace.workspaceInvitation.acceptFailed'),
+					);
 					this.forgetSettledInvitation(e);
 				} finally {
 					this.loading = false;
