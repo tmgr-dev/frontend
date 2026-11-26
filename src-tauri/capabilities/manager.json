@@ -28,6 +28,7 @@
 		"allow-manager-spawn-card",
 		"allow-manager-spawn-decide",
 		"allow-manager-permit-answer",
+		"allow-manager-poll-answer",
 		"allow-manager-presence-status",
 		"allow-manager-presence-setup",
 		"allow-manager-presence-publish",
