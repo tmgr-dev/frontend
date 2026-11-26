@@ -11,6 +11,7 @@ struct MemCells {
   map: Mutex<HashMap<String, String>>,
   fail_get: Mutex<Option<String>>,
   fail_delete: Mutex<Option<String>>,
+  hold_delete: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
 }
 
 impl MemCells {
@@ -46,6 +47,11 @@ impl Cells for Arc<MemCells> {
   fn delete(&self, account: &str) -> Result<(), String> {
     if matches(&self.fail_delete, account) {
       return Err("keychain denied".into());
+    }
+    if account.contains("/log.v") {
+      if let Some(gate) = self.hold_delete.lock().unwrap().as_ref() {
+        let _ = gate.recv();
+      }
     }
     self.map.lock().unwrap().remove(account);
     Ok(())
@@ -453,6 +459,28 @@ fn clear_finishes_when_old_chunks_cannot_be_swept() {
   v.load(Slot::Log).unwrap();
   v.clear().unwrap();
   assert!(files(tmp.path()).is_empty());
+}
+
+#[test]
+fn a_slow_background_sweep_does_not_hold_up_reads_and_writes() {
+  let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
+  store(&cells).save(Slot::Log, &log_json(50, "old")).unwrap();
+  let (release, gate) = std::sync::mpsc::channel();
+  *cells.hold_delete.lock().unwrap() = Some(gate);
+  let v = FileVault::with_fs(store(&cells), FailFs::default(), tmp.path().to_path_buf(), NS);
+  v.load(Slot::Log).unwrap();
+  let t = Instant::now();
+  v.save(Slot::Log, &log_json(51, "new")).unwrap();
+  v.save(Slot::Identity, "{}").unwrap();
+  assert_eq!(v.load(Slot::Log).unwrap(), Some(log_json(51, "new")));
+  assert!(t.elapsed() < std::time::Duration::from_secs(1));
+  assert!(cells.data_chunks("log") > 0);
+  drop(release);
+  let t = Instant::now();
+  while cells.data_chunks("log") > 0 {
+    assert!(t.elapsed() < std::time::Duration::from_secs(10));
+    std::thread::sleep(std::time::Duration::from_millis(10));
+  }
 }
 
 #[test]
