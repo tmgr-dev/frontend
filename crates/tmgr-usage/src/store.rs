@@ -186,7 +186,9 @@ impl Store {
     pub fn event_count(&self) -> Result<u64> {
         Ok(self
             .conn
-            .query_row("SELECT COUNT(*) FROM usage_event", [], |r| r.get(0))?)
+            .query_row("SELECT COUNT(*) FROM usage_event", [], |r| {
+                r.get::<_, i64>(0).map(|n| n as u64)
+            })?)
     }
 
     pub fn record_limit(&self, snap: &LimitSnapshot) -> Result<()> {
