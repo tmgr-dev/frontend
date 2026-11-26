@@ -334,7 +334,7 @@
 					? addCopyButtons(this.html, {
 							copy: this.$t('manager.messages.copy'),
 							copied: this.$t('manager.messages.copied'),
-					  })
+						})
 					: undefined;
 			},
 		},

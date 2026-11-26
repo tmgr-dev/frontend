@@ -328,12 +328,7 @@ export interface PairResult {
 }
 
 export type FollowerState =
-	| 'enrolled'
-	| 'already'
-	| 'refused'
-	| 'unreachable'
-	| 'pending'
-	| 'error';
+	'enrolled' | 'already' | 'refused' | 'unreachable' | 'pending' | 'error';
 
 export interface FollowerInfo {
 	follower: string;
@@ -369,11 +364,7 @@ export interface ManagerMachine {
 export const RESET_PHRASE = 'RESET';
 
 export type SpawnCardState =
-	| 'issued'
-	| 'approved'
-	| 'claimed'
-	| 'spawned'
-	| 'refused';
+	'issued' | 'approved' | 'claimed' | 'spawned' | 'refused';
 
 export interface SpawnEdit {
 	cwd: string;
