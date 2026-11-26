@@ -4584,28 +4584,11 @@ fn opening_a_join_code_does_not_wait_for_a_chat_log_write_in_flight() {
 }
 
 #[test]
-fn the_stored_chat_log_stays_within_its_byte_budget_and_keeps_the_newest_message() {
-  let (fake, clock) = (Fake::default(), Clock::new(T0));
-  let (a, _b) = pair(&fake, &clock);
-  let body = "x".repeat(60 * 1024);
-  for i in 0..(MAX_LOG_BYTES / body.len() + 4) {
-    send(&a, &format!("{i} {body}")).unwrap();
-  }
-  let last = send(&a, "newest").unwrap();
-  let snap = a.plan(&mut a.lock(), true).unwrap().unwrap();
-  let (_, json) = snap.log.unwrap();
-  assert!(json.len() <= MAX_LOG_BYTES, "stored log is {} bytes", json.len());
-  let log: Vec<LogEntry> = serde_json::from_str(&json).unwrap();
-  assert_eq!(log.last().unwrap().msg.id, last.id);
-  assert_eq!(a.lock().log.len(), log.len());
-}
-
-#[test]
 fn closing_a_join_code_does_not_hold_the_lock_while_the_keychain_writes() {
   let (fake, clock) = (Fake::default(), Clock::new(T0));
   let (a, store) = held_store_engine(&fake, &clock);
   a.open_join_code().unwrap();
-  a.persist_out(a.lock(), true).unwrap();
+  drop(a.persist_out(a.lock(), true).unwrap());
   let exp = a.lock().st.join_code.as_ref().unwrap().exp_ms;
   let (res, free) = probe_while_held(|hold| *store.hold.lock().unwrap() = Some(hold), || a.close_join_code(exp), read_trust(&a));
   res.unwrap();

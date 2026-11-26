@@ -38,7 +38,6 @@ const JOINING_KEY: &str = "join_with_code";
 const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
 const MAX_LOG: usize = 2000;
-const MAX_LOG_BYTES: usize = 512 * 1024;
 const SLOW_WRITE: Duration = Duration::from_secs(1);
 const MAX_SEEN: usize = 5000;
 const MAX_GAPS: usize = 100;
@@ -829,14 +828,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
         let cut = c.log.len() - MAX_LOG;
         c.log.drain(..cut);
       }
-      let sizes = c.log.iter().map(|e| serde_json::to_string(e).map(|j| j.len() + 1)).collect::<Result<Vec<_>, _>>().map_err(err)?;
-      let mut total = sizes.iter().sum::<usize>() + 1;
-      let mut cut = 0;
-      while total > MAX_LOG_BYTES && cut + 1 < sizes.len() {
-        total -= sizes[cut];
-        cut += 1;
-      }
-      c.log.drain(..cut);
       Some((log_rev, serde_json::to_string(&c.log).map_err(err)?))
     } else {
       None

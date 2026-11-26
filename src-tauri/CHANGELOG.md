@@ -5,7 +5,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 ## 0.9.226 — 2026-11-26
 
-- Manager: Add a device opens the pairing code right away again. It used to wait for the chat history to be saved to the keychain, which with a long history took longer than 15 seconds and ended in a timeout. The saved chat history is now capped at 512 KB, so saving it stays fast.
+- Manager: Add a device opens the pairing code right away again. It used to wait for the chat history to be saved to the keychain, which with a long history took longer than 15 seconds and ended in a timeout.
 
 ## 0.9.225 — 2026-11-26
 
