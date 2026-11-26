@@ -140,7 +140,7 @@ pub fn select(conn: &Connection, sql: &str, params: &[Json]) -> Result<Vec<Map<S
   if !stmt.readonly() {
     return Err("only read-only statements can be used to select".to_string());
   }
-  let names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+  let names: Vec<String> = stmt.column_names().map(|s| s.to_string()).collect();
   let mut rows = stmt
     .query(params_from_iter(params.iter().map(to_sql)))
     .map_err(|e| e.to_string())?;

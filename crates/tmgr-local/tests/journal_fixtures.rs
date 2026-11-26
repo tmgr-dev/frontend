@@ -96,7 +96,7 @@ fn journal(conn: &Connection) -> Vec<Value> {
     let mut stmt = conn
         .prepare("SELECT seq, at, entity, entity_id, task_id, field, author_kind, source, actor_id, content_sha256, prev_hash, hash FROM edit_journal ORDER BY seq")
         .unwrap();
-    let names: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
+    let names: Vec<String> = stmt.column_names().map(|c| c.to_string()).collect();
     stmt.query_map([], |r| {
         let mut row = serde_json::Map::new();
         for (i, name) in names.iter().enumerate() {

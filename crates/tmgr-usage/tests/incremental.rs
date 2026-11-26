@@ -270,8 +270,10 @@ fn slow_scan(
 fn stored_offsets(dir: &std::path::Path) -> u64 {
     rusqlite::Connection::open(dir.join("usage.db"))
         .unwrap()
-        .query_row("SELECT COUNT(*) FROM usage_file_state", [], |r| r.get(0))
-        .unwrap()
+        .query_row("SELECT COUNT(*) FROM usage_file_state", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap() as u64
 }
 
 #[test]
@@ -348,8 +350,10 @@ fn a_large_backlog_is_stored_in_several_chunks() {
 fn stored_offset(dir: &std::path::Path) -> u64 {
     rusqlite::Connection::open(dir.join("usage.db"))
         .unwrap()
-        .query_row("SELECT byte_offset FROM usage_file_state", [], |r| r.get(0))
-        .unwrap()
+        .query_row("SELECT byte_offset FROM usage_file_state", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap() as u64
 }
 
 #[test]

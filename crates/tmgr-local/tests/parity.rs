@@ -82,7 +82,7 @@ fn dump(conn: &Connection) -> Value {
         let mut stmt = conn
             .prepare(&format!("SELECT * FROM \"{name}\" ORDER BY rowid"))
             .unwrap();
-        let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
+        let columns: Vec<String> = stmt.column_names().map(|c| c.to_string()).collect();
         let rows: Vec<Value> = stmt
             .query_map([], |r| {
                 let mut row = serde_json::Map::new();

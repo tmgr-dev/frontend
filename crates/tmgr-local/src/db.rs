@@ -107,7 +107,7 @@ fn to_json(value: ValueRef<'_>) -> Value {
 
 pub(crate) fn select(conn: &Connection, sql: &str, params: &[Sql]) -> Result<Vec<Row>> {
     let mut stmt = conn.prepare_cached(sql)?;
-    let names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+    let names: Vec<String> = stmt.column_names().map(|s| s.to_string()).collect();
     let mut rows = stmt.query(rusqlite::params_from_iter(params.iter()))?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
