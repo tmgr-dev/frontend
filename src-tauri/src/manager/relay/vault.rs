@@ -382,6 +382,11 @@ impl<K: KeyStore + 'static, F: Fs + 'static> KeyStore for FileVault<K, F> {
   }
 
   fn clear(&self) -> Result<(), String> {
+    for slot in [Slot::Log, Slot::State] {
+      if let Ok(Some(raw)) = self.fs.read(&self.marker(slot)) {
+        self.inner.sweep(slot, &String::from_utf8_lossy(&raw))?;
+      }
+    }
     self.inner.clear()?;
     *self.key.lock().unwrap_or_else(|p| p.into_inner()) = None;
     self.modes().clear();

@@ -377,6 +377,23 @@ fn clear_removes_files_and_key() {
 }
 
 #[test]
+fn clear_sweeps_chunks_an_unfinished_migration_left() {
+  let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
+  for i in 0..3 {
+    store(&cells).save(Slot::Log, &log_json(100, &format!("old{i}"))).unwrap();
+  }
+  assert!(cells.get(&pointer_key("log")).unwrap().unwrap().starts_with("3:"));
+  *cells.fail_delete.lock().unwrap() = Some(".v3.".into());
+  let v = vault(&cells, tmp.path());
+  v.load(Slot::Log).unwrap();
+  assert!(cells.data_chunks("log") > 0);
+  *cells.fail_delete.lock().unwrap() = None;
+  v.clear().unwrap();
+  assert!(cells.keys().is_empty());
+  assert!(files(tmp.path()).is_empty());
+}
+
+#[test]
 fn migration_of_a_5_mb_log_is_fast() {
   let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
   let log = log_json(80_000, "big");
