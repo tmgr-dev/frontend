@@ -44,6 +44,15 @@ impl Slot {
   const ALL: [Slot; 4] = [Slot::Identity, Slot::State, Slot::Log, Slot::VaultKey];
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LogCap {
+  pub entries: usize,
+  pub bytes: usize,
+}
+
+pub const KEYCHAIN_LOG_CAP: LogCap = LogCap { entries: 2_000, bytes: usize::MAX };
+pub const FILE_LOG_CAP: LogCap = LogCap { entries: 20_000, bytes: 16 * 1024 * 1024 };
+
 pub trait KeyStore: Send + Sync {
   fn load(&self, slot: Slot) -> Result<Option<String>, String>;
   fn save(&self, slot: Slot, value: &str) -> Result<(), String>;
@@ -64,6 +73,10 @@ pub trait KeyStore: Send + Sync {
 
   fn log_reset(&self) -> bool {
     false
+  }
+
+  fn log_cap(&self) -> LogCap {
+    KEYCHAIN_LOG_CAP
   }
 }
 

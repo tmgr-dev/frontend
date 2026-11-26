@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
@@ -11,7 +12,7 @@ use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
 use sha2::{Digest, Sha256};
 use tmgr_phone::{b64, b64_decode, hex};
 
-use super::ports::{KeyStore, Slot};
+use super::ports::{KeyStore, LogCap, Slot, FILE_LOG_CAP, KEYCHAIN_LOG_CAP};
 
 const MAGIC: &[u8; 6] = b"TMGRCV";
 const VERSION: u8 = 1;
@@ -43,8 +44,9 @@ pub trait Fs: Send + Sync {
 pub struct DiskFs;
 
 fn tmp_of(path: &Path) -> PathBuf {
+  static SEQ: AtomicU64 = AtomicU64::new(0);
   let mut p = path.as_os_str().to_owned();
-  p.push(".tmp");
+  p.push(format!(".{}-{}.tmp", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
   PathBuf::from(p)
 }
 
@@ -88,14 +90,22 @@ fn create_private(path: &Path) -> io::Result<fs::File> {
 impl DiskFs {
   fn write_steps(&self, path: &Path, data: &[u8], fail: &dyn Fn(Step) -> io::Result<()>) -> io::Result<()> {
     let dir = path.parent().ok_or_else(|| io::Error::other("no parent dir"))?;
-    fs::create_dir_all(dir)?;
+    if !dir.exists() {
+      fs::create_dir_all(dir)?;
+      if let Some(up) = dir.parent() {
+        sync_dir(up)?;
+      }
+    }
     let tmp = tmp_of(path);
+    let cleanup = |e: io::Error| {
+      let _ = fs::remove_file(&tmp);
+      e
+    };
     let mut f = create_private(&tmp)?;
-    f.write_all(data)?;
-    full_sync(&f)?;
+    f.write_all(data).and_then(|()| full_sync(&f)).map_err(cleanup)?;
     drop(f);
     fail(Step::WriteTmp)?;
-    fs::rename(&tmp, path)?;
+    fs::rename(&tmp, path).map_err(cleanup)?;
     fail(Step::Rename)?;
     sync_dir(dir)
   }
@@ -270,12 +280,12 @@ impl<K: KeyStore + 'static, F: Fs + 'static> FileVault<K, F> {
     self.fs.write_atomic(&path, &sealed).map_err(|e| format!("the chat file could not be written: {}", e.kind()))
   }
 
-  fn quarantine(&self, slot: Slot) -> Result<(), String> {
+  fn quarantine(&self, slot: Slot, label: &str) -> Result<(), String> {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
     let base = self.path(slot);
     let mut n = 0u32;
     let target = loop {
-      let suffix = if n == 0 { format!(".corrupt-{now}") } else { format!(".corrupt-{now}-{n}") };
+      let suffix = if n == 0 { format!(".{label}-{now}") } else { format!(".{label}-{now}-{n}") };
       let mut p = base.as_os_str().to_owned();
       p.push(suffix);
       let p = PathBuf::from(p);
@@ -284,7 +294,7 @@ impl<K: KeyStore + 'static, F: Fs + 'static> FileVault<K, F> {
       }
       n += 1;
     };
-    self.fs.rename(&base, &target).map_err(|e| format!("the unreadable chat file could not be moved aside: {}", e.kind()))
+    self.fs.rename(&base, &target).map_err(|e| format!("the chat file could not be moved aside: {}", e.kind()))
   }
 
   fn sweep_later(&self, slot: Slot, pointer: String) {
@@ -316,6 +326,10 @@ impl<K: KeyStore + 'static, F: Fs + 'static> FileVault<K, F> {
 
   fn migrate(&self, slot: Slot, pointer: &str, value: &str) -> Result<(), String> {
     let t = Instant::now();
+    if self.fs.exists(&self.path(slot)) && !matches!(self.read_file(slot)?, Read::Plain(ref old) if old == value) {
+      self.quarantine(slot, "pre-migrate")?;
+      log::warn!("[chat-relay] an older chat {} file was set aside before moving the keychain copy over", slot.name());
+    }
     self.write_file(slot, value)?;
     self.fs.fail(Step::ReadBack).map_err(|e| e.to_string())?;
     let Read::Plain(back) = self.read_file(slot)? else {
@@ -349,17 +363,18 @@ impl<K: KeyStore + 'static, F: Fs + 'static> FileVault<K, F> {
       }
       return Ok(Some(value));
     }
-    self.resume_sweep(slot);
     match self.read_file(slot)? {
       Read::Missing => Ok(None),
-      Read::Plain(s) => Ok(Some(s)),
-      Read::Unreadable if slot == Slot::Log => {
-        self.quarantine(slot)?;
+      Read::Plain(s) => {
+        self.resume_sweep(slot);
+        Ok(Some(s))
+      }
+      Read::Unreadable => {
+        self.quarantine(slot, "corrupt")?;
         *self.reset.lock().unwrap_or_else(|p| p.into_inner()) = true;
-        log::warn!("[chat-relay] the chat log file is unreadable; it was moved aside and the history starts empty");
+        log::warn!("[chat-relay] the chat {} file is unreadable; it was moved aside and starts empty", slot.name());
         Ok(None)
       }
-      Read::Unreadable => Err("the chat state is unreadable".into()),
     }
   }
 }
@@ -384,22 +399,34 @@ impl<K: KeyStore + 'static, F: Fs + 'static> KeyStore for FileVault<K, F> {
   fn clear(&self) -> Result<(), String> {
     for slot in [Slot::Log, Slot::State] {
       if let Ok(Some(raw)) = self.fs.read(&self.marker(slot)) {
-        self.inner.sweep(slot, &String::from_utf8_lossy(&raw))?;
+        if let Err(e) = self.inner.sweep(slot, &String::from_utf8_lossy(&raw)) {
+          log::warn!("[chat-relay] old keychain chunks of the chat {} are not removed: {e}", slot.name());
+        }
       }
     }
     self.inner.clear()?;
     *self.key.lock().unwrap_or_else(|p| p.into_inner()) = None;
     self.modes().clear();
-    for slot in [Slot::Log, Slot::State] {
-      for p in [self.path(slot), self.marker(slot), tmp_of(&self.path(slot))] {
-        self.fs.remove(&p).map_err(|e| format!("the chat file could not be removed: {}", e.kind()))?;
-      }
+    let mut doomed: Vec<PathBuf> = [Slot::Log, Slot::State].into_iter().flat_map(|s| [self.path(s), self.marker(s)]).collect();
+    if let Ok(dir) = fs::read_dir(&self.dir) {
+      doomed.extend(dir.flatten().map(|e| e.path()).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&self.stem) && n.ends_with(".tmp"))));
+    }
+    for p in doomed {
+      self.fs.remove(&p).map_err(|e| format!("the chat file could not be removed: {}", e.kind()))?;
     }
     Ok(())
   }
 
   fn log_reset(&self) -> bool {
     std::mem::take(&mut *self.reset.lock().unwrap_or_else(|p| p.into_inner()))
+  }
+
+  fn log_cap(&self) -> LogCap {
+    if self.modes().contains(Slot::Log.name()) {
+      KEYCHAIN_LOG_CAP
+    } else {
+      FILE_LOG_CAP
+    }
   }
 }
 

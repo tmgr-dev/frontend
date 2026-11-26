@@ -25,7 +25,7 @@ use super::super::presence::{Presence, ANSWER_REASON, NOT_SET_UP, SETUP_REASON};
 use super::permit::{needs_presence, sign_answer, PermitAnswer, PermitBook, StoredPermit};
 use super::poll::{build_answer, PollBook};
 use super::port::{DeviceState, PendingJoin, PendingRevoke, Receipt, ReceiptState, RelayPort, SeqGap, TrustAlert, TrustDevice, TrustState};
-use super::ports::{KeyStore, Slot, Transport};
+use super::ports::{KeyStore, LogCap, Slot, Transport};
 use super::rooms::{valid_index_msg_id, MachineIndex, RoomsIndex, StoredRooms};
 use crate::manager::backend::{
   ChatMessage, HistoryParams, RoomInfo, RoomKind, RoomRef, SearchParams, SendParams, MAX_ATTACHMENTS, MAX_BODY, MAX_HISTORY, MAX_QUERY,
@@ -37,8 +37,6 @@ const JOIN_BUSY_MSG: &str = "a join is already in progress";
 const JOINING_KEY: &str = "join_with_code";
 const JOIN_TTL_MS: u64 = 10 * 60 * 1000;
 const SEEN_TTL_MS: u64 = 31 * 24 * 3600 * 1000;
-const MAX_LOG: usize = 20_000;
-const MAX_LOG_BYTES: usize = 16 * 1024 * 1024;
 const SLOW_WRITE: Duration = Duration::from_secs(1);
 const MAX_SEEN: usize = 5000;
 const MAX_GAPS: usize = 100;
@@ -568,14 +566,14 @@ fn stamp_pins(c: &mut Core, now: u64) {
 }
 
 /// Serializes the log after dropping the oldest entries past the caps; trims below the caps so this runs rarely.
-fn trimmed_log(log: &mut Vec<LogEntry>) -> Result<String, String> {
-  let mut cut = if log.len() > MAX_LOG { log.len() - MAX_LOG * 9 / 10 } else { 0 };
+fn trimmed_log(log: &mut Vec<LogEntry>, cap: LogCap) -> Result<String, String> {
+  let mut cut = if log.len() > cap.entries { log.len() - cap.entries * 9 / 10 } else { 0 };
   log.drain(..cut);
   let mut json = serde_json::to_string(log).map_err(err)?;
-  if json.len() > MAX_LOG_BYTES {
-    let excess = json.len() - MAX_LOG_BYTES * 3 / 4;
+  if json.len() > cap.bytes {
+    let excess = json.len() - cap.bytes * 3 / 4;
     let (mut freed, mut n) = (0, 0);
-    while freed < excess && n < log.len() {
+    while freed < excess && n + 1 < log.len() {
       freed += serde_json::to_string(&log[n]).map_err(err)?.len() + 1;
       n += 1;
     }
@@ -851,7 +849,7 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     if !force && trust == c.written_trust && now.abs_diff(c.last_write) < WRITE_EVERY_MS {
       return Ok(None);
     }
-    let log = if log_dirty { Some((log_rev, trimmed_log(&mut c.log)?)) } else {
+    let log = if log_dirty { Some((log_rev, trimmed_log(&mut c.log, self.k.log_cap())?)) } else {
       None
     };
     let gen = self.next_gen.fetch_add(1, Ordering::SeqCst) + 1;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::*;
-use crate::manager::relay::ports::{Cells, ChunkedStore};
+use crate::manager::relay::ports::{Cells, ChunkedStore, KEYCHAIN_LOG_CAP};
 
 const NS: &str = "u42@https://api.example.com/api/";
 
@@ -160,9 +160,9 @@ fn a_log_file_does_not_open_as_state() {
   let v = vault(&cells, tmp.path());
   v.save(Slot::Log, "[]").unwrap();
   fs::copy(v.path(Slot::Log), v.path(Slot::State)).unwrap();
-  let before = fs::read(v.path(Slot::State)).unwrap();
-  assert_eq!(vault(&cells, tmp.path()).load(Slot::State).unwrap_err(), "the chat state is unreadable");
-  assert_eq!(fs::read(v.path(Slot::State)).unwrap(), before);
+  assert_eq!(vault(&cells, tmp.path()).load(Slot::State).unwrap(), None);
+  assert!(!v.path(Slot::State).exists());
+  assert_eq!(v.load(Slot::Log).unwrap(), Some("[]".into()));
 }
 
 #[test]
@@ -235,13 +235,20 @@ fn crash_after_tmp_before_rename_recovers_on_next_start() {
   store(&cells).save(Slot::Log, &log_json(20, "old")).unwrap();
   let crashed = vault_fs(&cells, tmp.path(), FailFs::at(Step::WriteTmp));
   crashed.load(Slot::Log).unwrap();
-  assert!(tmp_of(&crashed.path(Slot::Log)).exists());
+  assert!(files(tmp.path()).iter().any(|f| f.ends_with(".tmp")));
   drop(crashed);
 
   let v = vault(&cells, tmp.path());
   assert_eq!(v.load(Slot::Log).unwrap(), Some(log_json(20, "old")));
   assert!(!cells.has(&pointer_key("log")));
-  assert!(!tmp_of(&v.path(Slot::Log)).exists());
+  v.clear().unwrap();
+  assert!(!files(tmp.path()).iter().any(|f| f.ends_with(".tmp")));
+}
+
+#[test]
+fn writers_never_share_a_tmp_file() {
+  let p = Path::new("/x/a.log.bin");
+  assert_ne!(tmp_of(p), tmp_of(p));
 }
 
 #[test]
@@ -321,19 +328,61 @@ fn quarantine_picks_a_free_name() {
   let v = vault(&cells, tmp.path());
   for i in 0..3 {
     fs::write(v.path(Slot::Log), format!("bad {i}")).unwrap();
-    v.quarantine(Slot::Log).unwrap();
+    v.quarantine(Slot::Log, "corrupt").unwrap();
   }
   assert_eq!(files(tmp.path()).iter().filter(|f| f.contains(".corrupt-")).count(), 3);
 }
 
 #[test]
-fn corrupt_state_without_chunks_is_an_error_and_left_alone() {
+fn corrupt_state_without_chunks_is_moved_aside_and_starts_empty() {
   let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
   let v = vault(&cells, tmp.path());
   v.save(Slot::State, "{}").unwrap();
   fs::write(v.path(Slot::State), b"garbage").unwrap();
-  assert_eq!(vault(&cells, tmp.path()).load(Slot::State).unwrap_err(), "the chat state is unreadable");
-  assert_eq!(fs::read(v.path(Slot::State)).unwrap(), b"garbage");
+  let v = vault(&cells, tmp.path());
+  assert_eq!(v.load(Slot::State).unwrap(), None);
+  assert!(v.log_reset());
+  let corrupt: Vec<String> = files(tmp.path()).into_iter().filter(|f| f.contains(".state.bin.corrupt-")).collect();
+  assert_eq!(corrupt.len(), 1);
+  assert_eq!(fs::read(tmp.path().join(&corrupt[0])).unwrap(), b"garbage");
+}
+
+#[test]
+fn a_leftover_marker_keeps_the_chunks_while_the_file_is_unreadable() {
+  let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
+  store(&cells).save(Slot::Log, &log_json(100, "old")).unwrap();
+  *cells.fail_delete.lock().unwrap() = Some(".v1.".into());
+  let v = vault(&cells, tmp.path());
+  v.load(Slot::Log).unwrap();
+  *cells.fail_delete.lock().unwrap() = None;
+  fs::write(v.path(Slot::Log), b"garbage").unwrap();
+  drop(v);
+  let v = vault(&cells, tmp.path());
+  assert_eq!(v.load(Slot::Log).unwrap(), None);
+  assert!(cells.data_chunks("log") > 0);
+  assert!(v.marker(Slot::Log).exists());
+}
+
+#[test]
+fn re_migration_sets_the_existing_file_aside() {
+  let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
+  store(&cells).save(Slot::Log, &log_json(30, "first")).unwrap();
+  vault(&cells, tmp.path()).load(Slot::Log).unwrap();
+  store(&cells).save(Slot::Log, &log_json(2, "downgrade")).unwrap();
+  let v = vault(&cells, tmp.path());
+  assert_eq!(v.load(Slot::Log).unwrap(), Some(log_json(2, "downgrade")));
+  assert_eq!(files(tmp.path()).iter().filter(|f| f.contains(".log.bin.pre-migrate-")).count(), 1);
+}
+
+#[test]
+fn the_log_cap_follows_where_the_log_is_stored() {
+  let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
+  assert_eq!(vault(&cells, tmp.path()).log_cap(), FILE_LOG_CAP);
+  assert_eq!(store(&cells).log_cap(), KEYCHAIN_LOG_CAP);
+  store(&cells).save(Slot::Log, &log_json(5, "old")).unwrap();
+  let v = vault_fs(&cells, tmp.path(), FailFs::at(Step::WriteTmp));
+  v.load(Slot::Log).unwrap();
+  assert_eq!(v.log_cap(), KEYCHAIN_LOG_CAP);
 }
 
 #[test]
@@ -390,6 +439,19 @@ fn clear_sweeps_chunks_an_unfinished_migration_left() {
   *cells.fail_delete.lock().unwrap() = None;
   v.clear().unwrap();
   assert!(cells.keys().is_empty());
+  assert!(files(tmp.path()).is_empty());
+}
+
+#[test]
+fn clear_finishes_when_old_chunks_cannot_be_swept() {
+  let (cells, tmp) = (Arc::new(MemCells::default()), tempfile::tempdir().unwrap());
+  for i in 0..3 {
+    store(&cells).save(Slot::Log, &log_json(10, &format!("old{i}"))).unwrap();
+  }
+  *cells.fail_delete.lock().unwrap() = Some(".v3.".into());
+  let v = vault(&cells, tmp.path());
+  v.load(Slot::Log).unwrap();
+  v.clear().unwrap();
   assert!(files(tmp.path()).is_empty());
 }
 

@@ -8,7 +8,7 @@ use tmgr_chat_relay::api::{Method, Request};
 use super::*;
 use crate::manager::backend::Author;
 use crate::manager::relay::port::ReceiptState;
-use crate::manager::relay::ports::MemKeyStore;
+use crate::manager::relay::ports::{MemKeyStore, FILE_LOG_CAP, KEYCHAIN_LOG_CAP};
 
 const T0: u64 = 1_800_000_000_000;
 const USER: u64 = 42;
@@ -4733,13 +4733,45 @@ fn the_log_drops_oldest_entries_past_the_count_cap() {
   let (a, _b) = pair(&fake, &clock);
   send(&a, "seed").unwrap();
   let proto = a.lock().log[0].clone();
-  let mut log = filler(&proto, MAX_LOG + 1, 10);
-  trimmed_log(&mut log).unwrap();
-  assert_eq!(log.len(), MAX_LOG * 9 / 10);
-  assert_eq!(log.last().unwrap().msg.id, format!("fill-{:06}", MAX_LOG));
-  let mut small = filler(&proto, MAX_LOG, 10);
-  trimmed_log(&mut small).unwrap();
-  assert_eq!(small.len(), MAX_LOG);
+  for cap in [FILE_LOG_CAP, KEYCHAIN_LOG_CAP] {
+    let mut log = filler(&proto, cap.entries + 1, 10);
+    trimmed_log(&mut log, cap).unwrap();
+    assert_eq!(log.len(), cap.entries * 9 / 10);
+    assert_eq!(log.last().unwrap().msg.id, format!("fill-{:06}", cap.entries));
+    let mut small = filler(&proto, cap.entries, 10);
+    trimmed_log(&mut small, cap).unwrap();
+    assert_eq!(small.len(), cap.entries);
+  }
+}
+
+#[test]
+fn one_huge_entry_keeps_the_newest_message() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  send(&a, "seed").unwrap();
+  let proto = a.lock().log[0].clone();
+  let mut log = filler(&proto, 3, 10);
+  log.extend(filler(&proto, 1, FILE_LOG_CAP.bytes).into_iter().map(|mut e| {
+    e.msg.id = "huge".into();
+    e
+  }));
+  trimmed_log(&mut log, FILE_LOG_CAP).unwrap();
+  assert_eq!(log.len(), 1);
+  assert_eq!(log[0].msg.id, "huge");
+}
+
+#[test]
+fn a_corrupt_chat_state_starts_fresh_with_a_reset_notice() {
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (keychain, tmp) = (Arc::new(MemKeyStore::default()), tempfile::tempdir().unwrap());
+  let (a, _b) = vault_pair(&fake, &clock, &keychain, tmp.path());
+  send(&a, "before").unwrap();
+  a.flush();
+  drop(a);
+  std::fs::write(&log_file(tmp.path(), ".state.bin")[0], b"garbage").unwrap();
+  let a = vault_engine(&fake, &clock, &keychain, tmp.path());
+  assert!(a.trust_state().unwrap().alerts.iter().any(|x| x.kind == "history_reset"));
+  assert_eq!(log_file(tmp.path(), ".state.bin.corrupt-").len(), 1);
 }
 
 #[test]
@@ -4749,9 +4781,9 @@ fn the_log_drops_oldest_entries_past_the_byte_cap() {
   send(&a, "seed").unwrap();
   let proto = a.lock().log[0].clone();
   let mut log = filler(&proto, 17_000, 1024);
-  let json = trimmed_log(&mut log).unwrap();
-  assert!(json.len() <= MAX_LOG_BYTES * 3 / 4, "{} B kept", json.len());
-  assert!(json.len() > MAX_LOG_BYTES / 2);
+  let json = trimmed_log(&mut log, FILE_LOG_CAP).unwrap();
+  assert!(json.len() <= FILE_LOG_CAP.bytes * 3 / 4, "{} B kept", json.len());
+  assert!(json.len() > FILE_LOG_CAP.bytes / 2);
   assert_eq!(log.last().unwrap().msg.id, "fill-016999");
   assert_eq!(serde_json::from_str::<Vec<LogEntry>>(&json).unwrap().len(), log.len());
 }
