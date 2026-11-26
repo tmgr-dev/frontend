@@ -370,6 +370,7 @@
 			"errorNotSetUp": "Chat sync is not ready on this computer yet. Make sure you are signed in, then try again.",
 			"errorNotApproved": "This computer is not approved for chat yet. Approve it from one of your trusted devices first, then try again.",
 			"errorGeneric": "Could not create a pairing code: {error}",
+			"errorTimeout": "Creating a pairing code is taking too long. Chat sync may be busy or the connection to the server is slow. Try again in a moment.",
 			"enterTitle": "Enter code from phone",
 			"enterBody": "On your phone open Manager, Chat devices, then Show join code, and paste it here. This works only while this device has no other trusted devices.",
 			"enterLabel": "Join code",

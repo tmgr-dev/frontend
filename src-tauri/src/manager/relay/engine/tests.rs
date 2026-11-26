@@ -4157,3 +4157,25 @@ fn a_send_to_a_superseded_machine_skips_runners_bound_to_other_machines() {
 
 mod permit_answers;
 mod poll_answers;
+
+#[test]
+fn open_join_code_does_not_wait_for_intros_a_poll_republishes_on_a_slow_relay() {
+  const SLOW: u64 = 300;
+  let (fake, clock) = (Fake::default(), Clock::new(T0));
+  let (a, _b) = pair(&fake, &clock);
+  a.lock().st.republish_intros = true;
+  let (tx, rx) = std::sync::mpsc::channel();
+  fake.0.lock().unwrap().on_devices = Some(Box::new(move || tx.send(()).unwrap()));
+  fake.0.lock().unwrap().slow_ms = SLOW;
+  let waited = std::thread::scope(|s| {
+    let poll = s.spawn(|| a.poll_once().unwrap());
+    rx.recv().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let t = std::time::Instant::now();
+    a.open_join_code().unwrap();
+    let waited = t.elapsed().as_millis();
+    poll.join().unwrap();
+    waited
+  });
+  assert!(waited < u128::from(SLOW), "open_join_code waited {waited} ms behind intros a poll published under the lock");
+}

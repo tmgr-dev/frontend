@@ -30,6 +30,9 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export type PairMode = 'show' | 'enter';
 
+export const PAIR_TIMEOUT_MS = 15_000;
+const PAIR_TIMEOUT_TEXT = 'creating the pairing code timed out';
+
 const emptyPair = () => ({
 	mode: null as PairMode | null,
 	code: '',
@@ -184,7 +187,26 @@ export const createTrustStore = (api: ManagerTrustApi) => {
 			store.error = '';
 			let view: realApi.JoinCodeView | null = null;
 			const ran = await store.run(async () => {
-				view = await api.openJoinCode();
+				const pending = api.openJoinCode();
+				let timer: ReturnType<typeof setTimeout> | undefined;
+				const timeout = new Promise<never>((_, reject) => {
+					timer = setTimeout(
+						() => reject(new Error(PAIR_TIMEOUT_TEXT)),
+						PAIR_TIMEOUT_MS,
+					);
+				});
+				try {
+					view = await Promise.race([pending, timeout]);
+				} catch (e) {
+					if (e instanceof Error && e.message === PAIR_TIMEOUT_TEXT)
+						void pending.then(
+							(late) => burn(late?.expires_at_ms ?? 0),
+							() => {},
+						);
+					throw e;
+				} finally {
+					clearTimeout(timer);
+				}
 			});
 			if (token === pairToken) store.pair.loading = false;
 			if (!view) {

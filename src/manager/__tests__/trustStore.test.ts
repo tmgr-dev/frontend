@@ -307,6 +307,41 @@ describe('trust store', () => {
 			expect(store.pair.code).toBe('c');
 		});
 
+		it('stops waiting after 15 seconds with a timeout error and burns a late code', async () => {
+			jest.useFakeTimers();
+			let release: (v: {
+				code: string;
+				qr: string;
+				expires_at_ms: number;
+			}) => void = () => {};
+			const { api, store } = setup(base(), {
+				openJoinCode: jest.fn(
+					() =>
+						new Promise((r) => {
+							release = r;
+						}),
+				),
+			});
+			const opening = store.openAddDevice();
+			await jest.advanceTimersByTimeAsync(14_999);
+			expect(store.pair.loading).toBe(true);
+			await jest.advanceTimersByTimeAsync(1);
+			await opening;
+			expect(store.pair).toMatchObject({
+				mode: 'show',
+				loading: false,
+				code: '',
+			});
+			expect(store.busy).toBe(false);
+			expect(pairErrorKey(store.error)).toBe('manager.trust.pair.errorTimeout');
+			const exp = Date.now() + 60_000;
+			release({ code: 'late', qr: 'late', expires_at_ms: exp });
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(store.pair.code).toBe('');
+			expect(api.closeJoinCode).toHaveBeenCalledWith(exp);
+		});
+
 		it('maps raw pairing errors to i18n keys', () => {
 			expect(pairErrorKey('chat sync is not set up')).toBe(
 				'manager.trust.pair.errorNotSetUp',
@@ -315,6 +350,9 @@ describe('trust store', () => {
 				pairErrorKey('this device is waiting for another device to approve it'),
 			).toBe('manager.trust.pair.errorNotApproved');
 			expect(pairErrorKey('HTTP 502')).toBe('manager.trust.pair.errorGeneric');
+			expect(pairErrorKey('creating the pairing code timed out')).toBe(
+				'manager.trust.pair.errorTimeout',
+			);
 		});
 
 		it('closes and wipes the code once a join request arrives', async () => {

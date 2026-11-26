@@ -956,10 +956,6 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     for r in &dir.revocations {
       ingest_revoke(c, self.cfg.user_id, now, &r.statement, Some(&r.target_fp), &mut budget);
     }
-    if (c.st.republish_intros || !c.st.self_intro) && self.publish_intros(c).is_ok() {
-      c.st.republish_intros = false;
-      c.st.self_intro = true;
-    }
     Ok(())
   }
 
@@ -1132,24 +1128,54 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     sign_intro(keys, &id.device_id, &st).map_err(err)
   }
 
-  fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
+  fn intro_targets(&self, c: &Core) -> Result<Vec<(String, String, String)>, String> {
     if self.kind == "runner" {
-      return Ok(());
+      return Ok(vec![]);
     }
     let (id, keys) = Self::own(c)?;
     let (own_id, own_fp) = (id.device_id.clone(), keys.fingerprint());
-    let mut signed = Vec::new();
-    for t in c.st.trusted.iter().filter(|t| t.id != own_id) {
-      let Some(kind) = c.st.kind_of(&t.id, &t.fp) else {
-        continue;
-      };
-      signed.push((t.id.clone(), self.intro_json(c, 2, (&t.id, &t.fp, kind))?));
-    }
-    signed.push((own_id.clone(), self.intro_json(c, 2, (&own_id, &own_fp, &self.kind))?));
+    let mut targets: Vec<(String, String, String)> =
+      c.st.trusted.iter().filter(|t| t.id != own_id).filter_map(|t| c.st.kind_of(&t.id, &t.fp).map(|k| (t.id.clone(), t.fp.clone(), k.to_owned()))).collect();
+    targets.push((own_id, own_fp, self.kind.clone()));
+    Ok(targets)
+  }
+
+  fn signed_intros(&self, c: &Core, targets: &[(String, String, String)]) -> Result<Vec<(String, String)>, String> {
+    targets.iter().map(|(id, fp, kind)| Ok((id.clone(), self.intro_json(c, 2, (id, fp, kind))?))).collect()
+  }
+
+  fn put_intros(&self, token: Option<&str>, signed: &[(String, String)]) -> Result<(), String> {
     for (target, json) in signed {
-      self.call(c, api::put_intro(&target, &json).map_err(err)?)?;
+      self.t.call(&api::put_intro(target, json).map_err(err)?, token)?;
     }
     Ok(())
+  }
+
+  fn publish_intros(&self, c: &mut Core) -> Result<(), String> {
+    let targets = self.intro_targets(c)?;
+    let signed = self.signed_intros(c, &targets)?;
+    self.put_intros(c.identity.as_ref().map(|i| i.token.as_str()), &signed)
+  }
+
+  /// The intro PUTs run with the core lock released so a slow relay does not stall pairing, sends or trust reads.
+  fn republish_unlocked<'a>(&'a self, g: MutexGuard<'a, Core>, token: &str) -> Result<MutexGuard<'a, Core>, String> {
+    if !g.st.joined || !(g.st.republish_intros || !g.st.self_intro) {
+      return Ok(g);
+    }
+    let Ok(targets) = self.intro_targets(&g) else {
+      return Ok(g);
+    };
+    let Ok(signed) = self.signed_intros(&g, &targets) else {
+      return Ok(g);
+    };
+    drop(g);
+    let put = self.put_intros(Some(token), &signed);
+    let mut g = self.lock();
+    if put.is_ok() && Self::is_identity(&g, token) && self.intro_targets(&g).is_ok_and(|now| now == targets) {
+      g.st.republish_intros = false;
+      g.st.self_intro = true;
+    }
+    Ok(g)
   }
 
   fn finish_join(&self, c: &mut Core) -> Result<(), String> {
@@ -2141,6 +2167,10 @@ impl<T: Transport, K: KeyStore> RelayEngine<T, K> {
     let dir = if g.dir_gen == dir_gen { Some(Self::take_dir(&mut g, &raw_dir)?) } else { g.dir.clone() };
     if let Some(dir) = dir {
       self.sync_with(&mut g, dir)?;
+    }
+    g = self.republish_unlocked(g, &token)?;
+    if !Self::is_identity(&g, &token) {
+      return Ok(vec![]);
     }
     let now = self.now();
     g.st.stamp_pending_revokes(now);
