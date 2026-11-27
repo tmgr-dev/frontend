@@ -434,7 +434,7 @@
 																item-key="id"
 																@end="onEnd"
 																:disabled="false"
-																:sort="!prioritySortActive"
+																:sort="cardsReorderable"
 																:data-status="column.status.id"
 																data-tour="board.column"
 																:data-column-id="column.status.id"
@@ -450,7 +450,7 @@
 																		:enabled="column.tasks.length > 100"
 																		:task="task"
 																		:statuses="statuses"
-																		:can-reorder="!prioritySortActive"
+																		:can-reorder="cardsReorderable"
 																		:column-status-id="column.status.id"
 																		:class="[
 																			'my-5',
@@ -898,6 +898,12 @@
 		removeRealtimeTask,
 		resyncPagedColumns,
 	} from '@/utils/boardColumnPaging';
+	import {
+		canReorderCards,
+		isSubsetFiltered,
+		unpagedDropSave,
+	} from '@/utils/boardDropPlan';
+	import { isLocalWorkspaceId } from '@/local/classify';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { currentLocale, t } from '@/i18n';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
@@ -1033,6 +1039,8 @@
 			dragSaveQueue: Promise.resolve(),
 			pendingMoveIds: markRaw(new Set()),
 			menuMoveIds: markRaw(new Set()),
+			loadedSubset: false,
+			loadedSorted: false,
 			dirtyStatusIds: markRaw(new Set()),
 			realtimeBuffer: markRaw(createRealtimeBuffer()),
 			boardInstanceId: `board-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1124,6 +1132,19 @@
 			},
 		},
 		computed: {
+			dropPlanState() {
+				return {
+					sorted: this.loadedSorted || this.prioritySortActive,
+					subset:
+						this.loadedSubset || isSubsetFiltered(this.$store.state.filter),
+					local:
+						!!this.$store.getters.isLocalOnly ||
+						isLocalWorkspaceId(this.workspaceId),
+				};
+			},
+			cardsReorderable() {
+				return canReorderCards(this.dropPlanState);
+			},
 			prioritySortActive() {
 				return this.$store.state.filter.prioritySort;
 			},
@@ -1596,7 +1617,8 @@
 			openTaskModal(column) {
 				this.$store.commit('setShowCreatingTaskModal', column.status.id);
 			},
-			async onEnd({ to, from, item }) {
+			async onEnd({ to, from, item, oldIndex, newIndex }) {
+				if (from === to && oldIndex === newIndex) return;
 				const status = Number(to.dataset.status);
 				const sourceStatus = Number(from.dataset.status);
 				const id = Number(item.dataset.taskId);
@@ -1623,21 +1645,45 @@
 				}
 				if (sorted && target)
 					this.sortColumnsByPriority(new Set([target.status.id]));
+				const plan = unpagedDropSave(this.dropPlanState);
+				const visible = target
+					? target.tasks.filter(
+							(t) => t.id === id || this.taskMatchesBoardFilters(t),
+						)
+					: [];
+				const index = visible.findIndex((t) => t.id === id);
+				const placement =
+					plan === 'move' && index !== -1 ? placementAt(visible, index) : null;
+				this.refreshColumnSummaries(new Set([sourceStatus, status]));
 				const dropOrder = (statusId) =>
-					sorted ? null : this.findColumn(statusId)?.tasks.slice();
+					plan === 'orders' ? this.findColumn(statusId)?.tasks.slice() : null;
 				const targetTasks = dropOrder(status);
 				const sourceTasks = sourceStatus !== status && dropOrder(sourceStatus);
+				let moveFailed = false;
 				this.dragSaveQueue = this.dragSaveQueue
 					.then(async () => {
+						if (placement) {
+							await moveTask(
+								id,
+								{ status_id: status, ...placement },
+								this.boardInstanceId,
+							);
+							task.status_id = status;
+							return;
+						}
 						if (sourceStatus !== status) await updateTaskStatus(id, status);
 						task.status_id = status;
 						if (targetTasks) await this.saveOrders(targetTasks);
 						if (sourceTasks) await this.saveOrders(sourceTasks);
 					})
 					.catch(() => {
-						this.boardError = t('board.boardPage.errors.saveOrder');
+						if (placement) moveFailed = true;
+						else this.boardError = t('board.boardPage.errors.saveOrder');
 					});
 				await this.dragSaveQueue;
+				if (moveFailed) await this.reloadAfterFailedMove();
+				else if (plan === 'status' && this.dropPlanState.local)
+					await this.loadTasks();
 			},
 			async moveCardKeyset(task, sourceStatus, targetStatus, placement) {
 				const id = task.id;
@@ -1720,9 +1766,10 @@
 				return handlers;
 			},
 			async handleMoveToTop(task, column) {
-				if (this.prioritySortActive) return;
+				if (!this.cardsReorderable) return;
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
-				if (taskIndex === -1 || taskIndex === 0) {
+				const plan = column.paging ? null : unpagedDropSave(this.dropPlanState);
+				if (taskIndex === -1 || (taskIndex === 0 && plan !== 'move')) {
 					return;
 				}
 				if (column.paging) {
@@ -1736,13 +1783,18 @@
 
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.unshift(task);
-
+				if (plan === 'move') {
+					await this.queueMove(task, column.status.id, { position: 'top' });
+					return;
+				}
 				await this.queueOrderSave(column.tasks.slice());
 			},
 			async handleMoveToBottom(task, column) {
-				if (this.prioritySortActive) return;
+				if (!this.cardsReorderable) return;
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
-				if (taskIndex === -1 || taskIndex === column.tasks.length - 1) {
+				const plan = column.paging ? null : unpagedDropSave(this.dropPlanState);
+				const last = taskIndex === column.tasks.length - 1;
+				if (taskIndex === -1 || (last && plan !== 'move')) {
 					return;
 				}
 				if (column.paging) {
@@ -1756,7 +1808,10 @@
 
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.push(task);
-
+				if (plan === 'move') {
+					await this.queueMove(task, column.status.id, { position: 'bottom' });
+					return;
+				}
 				await this.queueOrderSave(column.tasks.slice());
 			},
 			async handleMoveToStatus(task, column, statusId, keyboard = false) {
@@ -1790,15 +1845,9 @@
 				const sorted = this.prioritySortActive;
 				if (sorted) this.sortColumnsByPriority(new Set([targetStatus]));
 				this.refreshColumnSummaries(new Set([sourceStatus, targetStatus]));
-				const local = this.$store.getters.isLocalOnly;
-				const filter = this.$store.state.filter;
-				const filtered =
-					this.needsFullLoad ||
-					!!filter.selectedUser ||
-					!!filter.selectedCategory ||
-					!!filter.selectedPersona ||
-					!!filter.searchText;
-				const saveOrder = local && !sorted && !filtered;
+				const local = this.dropPlanState.local;
+				const saveOrder =
+					local && unpagedDropSave(this.dropPlanState) === 'orders';
 				const targetTasks = saveOrder ? target.tasks.slice() : null;
 				const sourceTasks = saveOrder ? column.tasks.slice() : null;
 				let failed = false;
@@ -1824,7 +1873,10 @@
 							failed = true;
 						});
 					await this.dragSaveQueue;
-					if (!failed) return;
+					if (!failed) {
+						if (local && !saveOrder) await this.loadTasks();
+						return;
+					}
 					await this.loadTasks();
 					if (!this.boardError)
 						this.boardError = t(
@@ -1875,6 +1927,27 @@
 						list.style.setProperty('--board-list-top', `${top}px`);
 					}
 				});
+			},
+			async queueMove(task, statusId, placement) {
+				let failed = false;
+				this.dragSaveQueue = this.dragSaveQueue
+					.then(() =>
+						moveTask(
+							task.id,
+							{ status_id: statusId, ...placement },
+							this.boardInstanceId,
+						),
+					)
+					.catch(() => {
+						failed = true;
+					});
+				await this.dragSaveQueue;
+				if (failed) await this.reloadAfterFailedMove();
+			},
+			async reloadAfterFailedMove() {
+				await this.loadTasks();
+				if (!this.boardError)
+					this.boardError = t('board.boardPage.errors.moveRefreshed');
 			},
 			queueOrderSave(tasks) {
 				this.dragSaveQueue = this.dragSaveQueue
@@ -2461,10 +2534,22 @@
 			this.boardLoader = createBoardLoader(
 				() => {
 					this.syncBoardQuery();
-					return this.dragSaveQueue.then(() => this.fetchBoardTasks());
+					return this.dragSaveQueue.then(() => {
+						const filter = this.$store.state.filter;
+						const snapshot = {
+							subset: isSubsetFiltered(filter),
+							sorted: !!filter.prioritySort,
+						};
+						return this.fetchBoardTasks().then((columns) => ({
+							columns,
+							...snapshot,
+						}));
+					});
 				},
-				(columns) => {
+				({ columns, subset, sorted }) => {
 					this.columns = columns;
+					this.loadedSubset = subset;
+					this.loadedSorted = sorted;
 					this.replayBufferedEvents();
 					this.refreshColumnSummaries();
 					this.tasksLoaded = true;

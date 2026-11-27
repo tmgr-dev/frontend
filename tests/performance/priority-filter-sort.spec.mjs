@@ -428,6 +428,185 @@ const openList = async (page, query = '') => {
   await expect(page.locator('[data-task-id]').first()).toBeVisible();
 };
 
+const isMove = (entry) => /^POST \/api\/tasks\/\d+\/move/.test(entry);
+
+const routeMoves = async (page, bodies) =>
+  page.route(
+    (url) => /^\/api\/tasks\/\d+\/move$/.test(url.pathname),
+    (route) => {
+      const id = Number(new URL(route.request().url()).pathname.split('/')[3]);
+      const body = route.request().postDataJSON();
+      bodies.push({ id, ...body });
+      const task = Object.values(BOARD)
+        .flat()
+        .find((entry) => entry.id === id);
+      return route.fulfill({
+        json: { data: { ...task, status_id: body.status_id } },
+      });
+    },
+  );
+
+test.describe('board order while filtered (TM-1127)', () => {
+  test('turning the sort off: a drag before the manual order loads saves nothing', async ({
+    page,
+  }) => {
+    const { requests, errors } = await prepare(page);
+    await openBoard(page, '?priority_sort=1');
+    await expect.poll(() => columnIds(page, 1)).toEqual(SORTED_1);
+
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      (url) => url.pathname.startsWith('/api/tasks/status/'),
+      async (route) => {
+        await held;
+        const id = new URL(route.request().url()).pathname.split('/').pop();
+        return route.fulfill({ json: { data: BOARD[id] ?? [] } });
+      },
+    );
+    await openFilters(page);
+    await page.getByLabel('Sort by priority').uncheck();
+    await page.keyboard.press('Escape');
+    expect(await columnIds(page, 1)).toEqual(SORTED_1);
+
+    await dragAbove(page, card(page, 1, 15), card(page, 1, 12));
+    await page.waitForTimeout(500);
+    expect(requests.filter(isOrders)).toEqual([]);
+
+    release();
+    await expect.poll(() => columnIds(page, 1)).toEqual(MANUAL_1);
+    expect(requests.filter(isOrders)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('a drag in a filtered column saves a placement next to the visible neighbour', async ({
+    page,
+  }) => {
+    const { requests, errors } = await prepare(page);
+    const bodies = [];
+    await routeMoves(page, bodies);
+    await openBoard(page, '?priority=high');
+    await expect.poll(() => columnIds(page, 1)).toEqual([12, 15]);
+
+    await dragAbove(page, card(page, 1, 15), card(page, 1, 12));
+    await expect.poll(() => columnIds(page, 1)).toEqual([15, 12]);
+    await expect
+      .poll(() => bodies)
+      .toEqual([{ id: 15, status_id: 1, before_id: 12 }]);
+    await page.waitForTimeout(300);
+    expect(requests.filter(isOrders)).toEqual([]);
+    expect(requests.filter(isMove)).toHaveLength(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('Move to top and bottom in a filtered column go through the move endpoint', async ({
+    page,
+  }) => {
+    const { requests, errors } = await prepare(page);
+    const bodies = [];
+    await routeMoves(page, bodies);
+    await openBoard(page, '?priority=high');
+    await expect.poll(() => columnIds(page, 1)).toEqual([12, 15]);
+
+    await card(page, 1, 15)
+      .getByRole('button', { name: 'Task actions' })
+      .click();
+    await page.getByRole('menuitem', { name: 'Move to top' }).click();
+    await expect.poll(() => columnIds(page, 1)).toEqual([15, 12]);
+    await card(page, 1, 15)
+      .getByRole('button', { name: 'Task actions' })
+      .click();
+    await page.getByRole('menuitem', { name: 'Move to bottom' }).click();
+    await expect.poll(() => columnIds(page, 1)).toEqual([12, 15]);
+    await expect
+      .poll(() => bodies)
+      .toEqual([
+        { id: 15, status_id: 1, position: 'top' },
+        { id: 15, status_id: 1, position: 'bottom' },
+      ]);
+    expect(requests.filter(isOrders)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('a drag below a visible card with hidden tasks in between anchors after it', async ({
+    page,
+  }) => {
+    const { requests, errors } = await prepare(page);
+    const bodies = [];
+    await routeMoves(page, bodies);
+    await openBoard(page, '?priority=high');
+    await expect.poll(() => columnIds(page, 1)).toEqual([12, 15]);
+
+    await dragHandle(page, card(page, 1, 12));
+    const below = await card(page, 1, 15).boundingBox();
+    await page.mouse.move(
+      below.x + below.width / 2,
+      below.y + below.height - 4,
+      {
+        steps: 20,
+      },
+    );
+    await page.mouse.move(
+      below.x + below.width / 2,
+      below.y + below.height - 2,
+      {
+        steps: 3,
+      },
+    );
+    await page.mouse.up();
+    await expect.poll(() => columnIds(page, 1)).toEqual([15, 12]);
+    await expect
+      .poll(() => bodies)
+      .toEqual([{ id: 12, status_id: 1, after_id: 15 }]);
+    expect(requests.filter(isOrders)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('a filtered cross-column drop saves one move with the new status', async ({
+    page,
+  }) => {
+    const { requests, errors } = await prepare(page);
+    const bodies = [];
+    await routeMoves(page, bodies);
+    await openBoard(page, '?priority=high');
+    await expect.poll(() => columnIds(page, 1)).toEqual([12, 15]);
+
+    await dragHandle(page, card(page, 1, 15));
+    const target = await column(page, 2).boundingBox();
+    await page.mouse.move(target.x + target.width / 2, target.y + 35, {
+      steps: 20,
+    });
+    await page.mouse.up();
+    await expect.poll(() => columnIds(page, 2)).toEqual([15]);
+    await expect
+      .poll(() => bodies)
+      .toEqual([{ id: 15, status_id: 2, position: 'top' }]);
+    await page.waitForTimeout(300);
+    expect(
+      requests.filter((entry) => entry.startsWith('PUT /api/tasks/15/')),
+    ).toEqual([]);
+    expect(requests.filter(isOrders)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('control: without a filter a drag still renumbers the whole column', async ({
+    page,
+  }) => {
+    const { requests } = await prepare(page);
+    const bodies = [];
+    await routeMoves(page, bodies);
+    await openBoard(page);
+    await dragAbove(page, card(page, 1, 15), card(page, 1, 12));
+    await expect
+      .poll(() => columnIds(page, 1))
+      .toEqual([11, 15, 12, 13, 14, 16]);
+    await expect.poll(() => requests.filter(isOrders).length).toBe(1);
+    expect(bodies).toEqual([]);
+  });
+});
+
 test.describe('active list', () => {
   test('filter and sort apply across all pages, totals follow, reload keeps them', async ({
     page,
