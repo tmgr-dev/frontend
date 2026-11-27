@@ -26,6 +26,22 @@
 				/>
 			</div>
 
+			<button
+				v-if="showUserFilter && currentUserId"
+				type="button"
+				class="h-9 shrink-0 rounded-pill border px-3 text-sm hover:bg-surface-hover"
+				:class="
+					selectedUser === currentUserId
+						? 'border-brand text-brand'
+						: 'border-line text-ink'
+				"
+				:aria-pressed="selectedUser === currentUserId"
+				@click="
+					selectedUser = selectedUser === currentUserId ? 0 : currentUserId
+				"
+			>
+				{{ $t('general.filtersBoard.myWork') }}
+			</button>
 			<div v-if="showUserFilter" class="w-full">
 				<UiSelect v-model="selectedUserValue">
 					<UiSelectTrigger class="w-full">
@@ -109,6 +125,13 @@
 				<span>{{ $t('general.filtersBoard.clearFilters') }}</span>
 			</button>
 
+			<BoardSavedViews
+				v-if="workspaceId && currentUserId"
+				:key="currentUserId + ':' + workspaceId"
+				:workspace-id="workspaceId"
+				:user-id="currentUserId"
+				@apply="$emit('apply-view', $event)"
+			/>
 			<div class="mt-3 flex flex-col gap-3 border-t border-line pt-3">
 				<button
 					type="button"
@@ -153,6 +176,20 @@
 			</button>
 		</div>
 
+		<button
+			v-if="showUserFilter && currentUserId"
+			type="button"
+			class="h-9 shrink-0 rounded-pill border px-3 text-sm hover:bg-surface-hover"
+			:class="
+				selectedUser === currentUserId
+					? 'border-brand text-brand'
+					: 'border-line text-ink'
+			"
+			:aria-pressed="selectedUser === currentUserId"
+			@click="selectedUser = selectedUser === currentUserId ? 0 : currentUserId"
+		>
+			{{ $t('general.filtersBoard.myWork') }}
+		</button>
 		<!-- Category / user filters -->
 		<Popover class="relative shrink-0">
 			<PopoverButton
@@ -171,7 +208,7 @@
 				</span>
 			</PopoverButton>
 			<PopoverPanel
-				class="absolute right-0 z-50 mt-2 flex w-80 flex-col gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg"
+				class="absolute right-0 z-50 mt-2 flex max-h-[75dvh] w-80 flex-col gap-2 overflow-y-auto rounded-xl border border-line bg-surface p-3 shadow-lg"
 			>
 				<!-- Category select -->
 				<div v-if="showCategoryFilter" class="relative">
@@ -286,6 +323,13 @@
 						{{ $t('general.filtersBoard.sortByPriority') }}
 					</label>
 				</div>
+				<BoardSavedViews
+					v-if="workspaceId && currentUserId"
+					:key="currentUserId + ':' + workspaceId"
+					:workspace-id="workspaceId"
+					:user-id="currentUserId"
+					@apply="$emit('apply-view', $event)"
+				/>
 			</PopoverPanel>
 		</Popover>
 
@@ -346,6 +390,7 @@
 
 <script setup lang="ts">
 	import { t } from '@/i18n';
+	import BoardSavedViews from '@/components/board/BoardSavedViews.vue';
 	import Dropdown from '@/components/general/Dropdown.vue';
 	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
@@ -389,6 +434,7 @@
 		label: string;
 	}
 	interface Props {
+		workspaceId: number;
 		workspaceUsers: UserOption[];
 		chosenUser?: object | null;
 		personaOptions?: Array<{ id: string; name: string }>;
@@ -415,6 +461,7 @@
 	});
 
 	const emit = defineEmits([
+		'apply-view',
 		'update:chosenUser',
 		'handleUpdateDraggable',
 		'handleSearchTextChanged',
@@ -431,6 +478,7 @@
 	};
 
 	const store = useStore();
+	const currentUserId = computed(() => Number(store.state.user?.id) || 0);
 	const { isFeatureEnabled, isUserFeatureEnabled, showSurface } =
 		useFeatureToggles();
 

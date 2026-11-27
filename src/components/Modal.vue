@@ -31,6 +31,7 @@
 	interface Props {
 		modalClass?: string;
 		closeOnBgClick?: boolean;
+		preserveUrl?: boolean;
 	}
 
 	defineOptions({ inheritAttrs: false });
@@ -82,7 +83,7 @@
 			document.body.classList.remove('overflow-hidden');
 		}
 
-		if (location.href !== initialUrl.value) {
+		if (!props.preserveUrl && location.href !== initialUrl.value) {
 			history.replaceState({}, '', initialUrl.value);
 		}
 	});

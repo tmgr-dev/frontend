@@ -11,6 +11,9 @@ import { mockApp } from './mockApp.mjs';
 test('adding a task to the board leaves the existing cards untouched', async ({
   page,
 }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
   await countLifecycle(page);
   await mockApp(page, { taskCount: 5 });
   await page.route('**/api/tasks', async (route) => {

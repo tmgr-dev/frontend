@@ -105,6 +105,11 @@
 		"withHint": "Поиск ({hint})"
 	},
 	"filtersBoard": {
+		"myWork": "Моя работа",
+		"savedViews": "Сохранённые виды",
+		"rename": "Переименовать",
+		"viewName": "Название вида",
+		"saveView": "Сохранить вид",
 		"searchTasks": "Поиск задач…",
 		"selectCategory": "Выберите проект",
 		"selectUser": "Выберите пользователя",
