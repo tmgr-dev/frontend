@@ -386,11 +386,17 @@ test.describe('board order while sorted (criterion 3)', () => {
     await card(page, 1, 16)
       .getByRole('button', { name: 'Task actions' })
       .click();
-    await page.getByRole('menuitem', { name: 'Move to top' }).click();
+    await expect(
+      page.getByRole('menuitem', { name: 'Move to top' }),
+    ).toHaveCount(0);
+    await page.keyboard.press('Escape');
     await card(page, 1, 13)
       .getByRole('button', { name: 'Task actions' })
       .click();
-    await page.getByRole('menuitem', { name: 'Move to bottom' }).click();
+    await expect(
+      page.getByRole('menuitem', { name: 'Move to bottom' }),
+    ).toHaveCount(0);
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
     expect(await columnIds(page, 1)).toEqual(SORTED_1);
     expect(requests.filter(isOrders)).toEqual([]);
