@@ -573,7 +573,13 @@
 			"typePlaceholder": "Sélectionner un type",
 			"nameLabel": "Nom du statut :",
 			"typeLabel": "Type du statut :",
-			"colorLabel": "Couleur du statut :"
+			"colorLabel": "Couleur du statut :",
+			"types": {
+				"active": "Actif",
+				"hidden": "Masqué",
+				"archived": "Archivé",
+				"completed": "Terminé"
+			}
 		},
 		"moveModal": {
 			"title": "Déplacer toutes les tâches vers",

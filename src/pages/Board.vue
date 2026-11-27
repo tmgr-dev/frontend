@@ -602,8 +602,8 @@
 														:options="statusTypes"
 														v-model="statusType"
 														:errors="errors.type"
-														label-key="name"
-														value-key="name"
+														label-key="label"
+														value-key="value"
 													/>
 												</label>
 												<div
@@ -1017,12 +1017,6 @@
 			},
 			isShowColorPicker: false,
 			colorTouched: false,
-			statusTypes: [
-				{ id: 1, name: 'active' },
-				{ id: 2, name: 'hidden' },
-				{ id: 3, name: 'archived' },
-				{ id: 4, name: 'completed' },
-			],
 			confirm: null,
 			tasks: [],
 			isFiltersModalShown: false,
@@ -1132,6 +1126,12 @@
 			},
 		},
 		computed: {
+			statusTypes() {
+				return ['active', 'hidden', 'archived', 'completed'].map((value) => ({
+					value,
+					label: this.$t('board.boardPage.statusForm.types.' + value),
+				}));
+			},
 			dropPlanState() {
 				return {
 					sorted: this.loadedSorted || this.prioritySortActive,

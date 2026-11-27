@@ -573,7 +573,13 @@
 			"typePlaceholder": "Wybierz typ",
 			"nameLabel": "Nazwa statusu:",
 			"typeLabel": "Typ statusu:",
-			"colorLabel": "Kolor statusu:"
+			"colorLabel": "Kolor statusu:",
+			"types": {
+				"active": "Aktywny",
+				"hidden": "Ukryty",
+				"archived": "Zarchiwizowany",
+				"completed": "Ukończony"
+			}
 		},
 		"moveModal": {
 			"title": "Przenieś wszystkie zadania do",

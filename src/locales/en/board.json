@@ -576,7 +576,13 @@
 			"typePlaceholder": "Select Type",
 			"nameLabel": "Status name :",
 			"typeLabel": "Status type :",
-			"colorLabel": "Status color :"
+			"colorLabel": "Status color :",
+			"types": {
+				"active": "Active",
+				"hidden": "Hidden",
+				"archived": "Archived",
+				"completed": "Completed"
+			}
 		},
 		"moveModal": {
 			"title": "Move all tasks to",

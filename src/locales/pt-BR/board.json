@@ -573,7 +573,13 @@
 			"typePlaceholder": "Selecione o tipo",
 			"nameLabel": "Nome do status :",
 			"typeLabel": "Tipo do status :",
-			"colorLabel": "Cor do status :"
+			"colorLabel": "Cor do status :",
+			"types": {
+				"active": "Ativo",
+				"hidden": "Oculto",
+				"archived": "Arquivado",
+				"completed": "Concluído"
+			}
 		},
 		"moveModal": {
 			"title": "Mover todas as tarefas para",

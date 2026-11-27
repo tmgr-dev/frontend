@@ -573,7 +573,13 @@
 			"typePlaceholder": "유형 선택",
 			"nameLabel": "상태 이름:",
 			"typeLabel": "상태 유형:",
-			"colorLabel": "상태 색상:"
+			"colorLabel": "상태 색상:",
+			"types": {
+				"active": "활성",
+				"hidden": "숨김",
+				"archived": "보관됨",
+				"completed": "완료"
+			}
 		},
 		"moveModal": {
 			"title": "모든 작업 이동",
