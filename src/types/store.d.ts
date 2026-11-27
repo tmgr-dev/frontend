@@ -1,4 +1,5 @@
 import type { RoutineEntry, ViewId, YearStats } from '@/types/dailyRoutine';
+import type { TaskPriority } from '@/types/dashboard';
 import type { LocalProfile } from '@/utils/localProfile';
 import { Store } from 'vuex';
 
@@ -45,6 +46,7 @@ export interface UserSettings {
 }
 
 export interface RootState {
+	sessionGeneration: number;
 	metaTitle: string;
 	pagesEvent: { type: string; page: any; seq: number } | null;
 	token: string | null;
@@ -78,6 +80,8 @@ export interface StoreState extends RootState {
 }
 
 export interface BoardFilterState {
+	selectedPriorities: TaskPriority[];
+	prioritySort: boolean;
 	selectedCategory: number;
 	searchText: string | null;
 	selectedUser: number;

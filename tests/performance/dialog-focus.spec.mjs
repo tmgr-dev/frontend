@@ -362,7 +362,7 @@ test.describe('dialogs', () => {
     await dialog.getByRole('button', { name: 'Save' }).click();
     await expect(dialog).toHaveCount(0);
     expect(patches).toHaveLength(2);
-    expect(patches[1].settings.pomodoro.sound).toBe('chime');
+    expect(patches[1].pomodoro.sound).toBe('chime');
     await expect(panel).toHaveCount(1);
   });
 

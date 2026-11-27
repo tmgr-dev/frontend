@@ -392,7 +392,7 @@
 	import {
 		getUser,
 		getUserSettingsV2,
-		updateUserSettings,
+		patchUserSettings,
 		updateUserSettingsV2,
 	} from '@/actions/tmgr/user';
 	import DesktopActivitySettings from '@/components/desktop/DesktopActivitySettings.vue';
@@ -1060,7 +1060,7 @@
 						updateUserSettingsV2(
 							changedSettings(this.settings, this.savedSettings),
 						),
-						updateUserSettings({ settings: this.userSettings }),
+						patchUserSettings({ showTooltips: this.userSettings.showTooltips }),
 					]);
 
 					// Find and save preferred_editor to localStorage with improved reliability

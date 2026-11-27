@@ -105,6 +105,11 @@
 		"withHint": "Search ({hint})"
 	},
 	"filtersBoard": {
+		"myWork": "My work",
+		"savedViews": "Saved views",
+		"rename": "Rename",
+		"viewName": "View name",
+		"saveView": "Save view",
 		"searchTasks": "Search tasks…",
 		"selectCategory": "Select category",
 		"selectUser": "Select user",

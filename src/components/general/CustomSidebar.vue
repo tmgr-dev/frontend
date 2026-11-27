@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import { withBoardView } from '@/utils/boardViewQuery';
 	import { getUserFeatureToggles } from '@/actions/tmgr/featureToggles';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
@@ -473,6 +474,15 @@
 	];
 
 	const setActiveWorkspace = async (workspace: Workspace) => {
+		await router.isReady();
+		const sourceCode = route.params.workspace_code;
+		const sourceWorkspace = sourceCode
+			? workspaces.value.find((item) => item.code === sourceCode)
+			: activeWorkspace.value;
+		const clearBoardFilters =
+			(route.name === 'WorkspaceBoard' || route.name === 'FallbackBoard') &&
+			(!sourceWorkspace || sourceWorkspace.is_local) &&
+			!workspace.is_local;
 		// Update UI immediately
 		activeWorkspace.value = workspace;
 
@@ -485,6 +495,15 @@
 			const currentPath = window.location.pathname;
 			const pathParts = currentPath.split('/');
 
+			if (clearBoardFilters) {
+				await router.replace({
+					path: '/' + workspace.code + '/board',
+					query: withBoardView(route.query, {}),
+					hash: route.hash,
+				});
+				store.commit('rerenderApp');
+				return;
+			}
 			if (CATEGORY_PAGES.includes(String(route.name))) {
 				nextWorkspaceRoute = {
 					path: `/${workspace.code}/categories`,

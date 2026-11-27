@@ -85,6 +85,8 @@
 										<FiltersBoard
 											v-if="workspaceUsers.length"
 											:workspaceUsers="workspaceUsers"
+											:workspace-id="workspaceId"
+											@apply-view="syncBoardFilters"
 											:persona-options="assignablePersonas"
 											:categories="categories"
 											:chosen-user.sync="chosenUser"
@@ -133,7 +135,8 @@
 								<Transition name="bounce-right-fade">
 									<Modal
 										v-if="isFiltersModalShown"
-										modal-class="p-6 w-96"
+										preserve-url
+										modal-class="max-h-[90dvh] w-96 overflow-y-auto p-6"
 										close-on-bg-click
 										@close="isFiltersModalShown = false"
 									>
@@ -152,6 +155,8 @@
 													<FiltersBoard
 														v-if="workspaceUsers.length"
 														:workspaceUsers="workspaceUsers"
+														:workspace-id="workspaceId"
+														@apply-view="syncBoardFilters"
 														:persona-options="assignablePersonas"
 														:categories="categories"
 														:chosen-user.sync="chosenUser"
@@ -904,6 +909,7 @@
 		unpagedDropSave,
 	} from '@/utils/boardDropPlan';
 	import { isLocalWorkspaceId } from '@/local/classify';
+	import { boardViewQuery, withBoardView } from '@/utils/boardViewQuery';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { currentLocale, t } from '@/i18n';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
@@ -1042,6 +1048,7 @@
 			loadedSubset: false,
 			loadedSorted: false,
 			dirtyStatusIds: markRaw(new Set()),
+			unpagedRefreshSequence: 0,
 			realtimeBuffer: markRaw(createRealtimeBuffer()),
 			boardInstanceId: `board-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 			totalsTimer: null,
@@ -1132,6 +1139,19 @@
 			},
 		},
 		computed: {
+			boardScopeActive() {
+				const code = this.$route.params.workspace_code;
+				return (
+					this.boardReady &&
+					!this.boardDisposed &&
+					!!this.workspaceId &&
+					Number(this.$store.getters.currentWorkspaceId) === this.workspaceId &&
+					(!code ||
+						this.workspacesData.some(
+							(item) => item.id === this.workspaceId && item.code === code,
+						))
+				);
+			},
 			dropPlanState() {
 				return {
 					sorted: this.loadedSorted || this.prioritySortActive,
@@ -1239,15 +1259,30 @@
 				);
 			},
 			updateSingleTaskInBoard(updatedTask) {
-				const affected = new Set(
-					this.columns
-						.filter(
-							(column) =>
-								column.status.id === updatedTask.status_id ||
-								column.tasks.some((task) => task.id === updatedTask.id),
-						)
-						.map((column) => column.status.id),
+				if (!this.boardScopeActive) return;
+				const affectedColumns = this.columns.filter(
+					(column) =>
+						column.status.id === updatedTask.status_id ||
+						column.tasks.some((task) => task.id === updatedTask.id),
 				);
+				if (isSubsetFiltered(this.$store.state.filter)) {
+					const target = updatedTask.status_id;
+					if (target != null && !this.pendingMoveIds.has(updatedTask.id)) {
+						for (const column of affectedColumns) {
+							if (column.status.id !== target)
+								column.tasks = column.tasks.filter(
+									(task) => task.id !== updatedTask.id,
+								);
+						}
+					}
+					const ids = affectedColumns.map((column) => column.status.id);
+					if (ids.length)
+						void this.refreshFilteredWindows([
+							...ids.filter((id) => id !== target),
+							...ids.filter((id) => id === target),
+						]);
+					return;
+				}
 				if (
 					this.pendingMoveIds.size &&
 					!this.pendingMoveIds.has(updatedTask.id)
@@ -1270,6 +1305,9 @@
 					return;
 				}
 				if (patch === 'ignored') return;
+				const affected = new Set(
+					affectedColumns.map((column) => column.status.id),
+				);
 				if (this.prioritySortActive) this.sortColumnsByPriority(affected);
 				this.refreshColumnSummaries(affected);
 			},
@@ -1291,8 +1329,11 @@
 				this.scheduleTotalsRefresh();
 			},
 			fetchKeysetPage(statusId, cursor, limit) {
+				if (!this.boardScopeActive) throw new Error('Board workspace changed');
 				const filter = this.$store.state.filter;
 				const params = { limit, fields: 'card' };
+				if (isLocalWorkspaceId(this.workspaceId))
+					params.workspace_id = this.workspaceId;
 				if (cursor) params.cursor = cursor;
 				if (filter.searchText) params.search = filter.searchText;
 				if (filter.selectedCategory)
@@ -1326,6 +1367,43 @@
 				for (const id of statusIds)
 					if (id != null) this.dirtyStatusIds.add(Number(id));
 			},
+			async refreshFilteredWindows(ids) {
+				if (!this.boardScopeActive) return;
+				if (!this.columns.some((column) => column.paging)) {
+					this.boardLoader?.schedule();
+					return;
+				}
+				for (const id of ids) {
+					if (!this.boardScopeActive) return;
+					if (this.pendingMoveIds.size) this.markDirty(id);
+					else await this.refreshFilteredColumn(id);
+				}
+			},
+			async refreshFilteredColumn(id) {
+				const column = this.findColumn(id);
+				if (!column || !this.boardScopeActive) return;
+				if (column.paging) return this.reloadColumnWindow(id);
+				const request = ++this.unpagedRefreshSequence;
+				column.unpagedRefresh = request;
+				const filter = {
+					...this.$store.state.filter,
+					myUserId: this.$store.state.user?.id,
+				};
+				try {
+					const tasks = await this.fetchUnpagedTasks(id, filter);
+					if (
+						this.boardScopeActive &&
+						column === this.findColumn(id) &&
+						column.unpagedRefresh === request
+					) {
+						column.tasks = filterBoardTasks(tasks, filter);
+						this.refreshColumnSummaries(new Set([id]));
+					}
+				} catch {
+					if (this.boardScopeActive)
+						this.boardError = t('board.boardPage.errors.refreshColumn');
+				}
+			},
 			reloadOrMark(statusId) {
 				if (this.pendingMoveIds.size) this.markDirty(statusId);
 				else void this.reloadColumnWindow(Number(statusId));
@@ -1333,7 +1411,7 @@
 			async flushDirtyColumns() {
 				const ids = [...this.dirtyStatusIds];
 				this.dirtyStatusIds.clear();
-				for (const id of ids) await this.reloadColumnWindow(id);
+				for (const id of ids) await this.refreshFilteredColumn(id);
 			},
 			async loadMoreTasks(column) {
 				try {
@@ -2192,7 +2270,22 @@
 				if (!this.boardReady || this.boardDisposed) return;
 				return this.boardLoader?.run();
 			},
+			fetchUnpagedTasks(statusId, filter) {
+				if (!this.boardScopeActive) throw new Error('Board workspace changed');
+				return getSortedTasksByStatus(statusId, {
+					params: {
+						fields: 'card',
+						'order[column]': 'order',
+						'order[direction]': 'asc',
+						...(isLocalWorkspaceId(this.workspaceId)
+							? { workspace_id: this.workspaceId }
+							: {}),
+						...(filter.searchText ? { search: filter.searchText } : {}),
+					},
+				});
+			},
 			async fetchBoardTasks() {
+				if (!this.boardScopeActive) throw new Error('Board workspace changed');
 				this.realtimeBuffer.begin();
 				const columns = this.columns;
 				const filter = {
@@ -2215,15 +2308,9 @@
 								if (status === 401 || status === 403) throw error;
 							}
 						}
-						const tasks = await getSortedTasksByStatus(column.status.id, {
-							params: {
-								fields: 'card',
-								'order[column]': 'order',
-								'order[direction]': 'asc',
-								...(filter.searchText ? { search: filter.searchText } : {}),
-							},
-						});
-						return { tasks };
+						return {
+							tasks: await this.fetchUnpagedTasks(column.status.id, filter),
+						};
 					}),
 				);
 				const pages = dedupeFirstPages(
@@ -2244,8 +2331,7 @@
 					};
 				});
 			},
-			syncBoardFilters() {
-				const query = this.$route.query;
+			syncBoardFilters(query = this.$route.query) {
 				this.$store.commit(
 					'updateSearchText',
 					typeof query.search === 'string' ? query.search : '',
@@ -2272,27 +2358,16 @@
 				this.$store.commit('updatePrioritySort', query.priority_sort === '1');
 			},
 			syncBoardQuery() {
-				const filter = this.$store.state.filter;
-				const query = { ...this.$route.query };
-				delete query.search;
-				delete query.user;
-				delete query.persona;
-				delete query.my_personas;
-				delete query.category;
-				delete query.priority;
-				delete query.priority_sort;
-				if (filter.searchText) query.search = filter.searchText;
-				if (filter.selectedUser) query.user = String(filter.selectedUser);
-				if (filter.selectedPersona === MY_PERSONAS_FILTER)
-					query.my_personas = '1';
-				else if (filter.selectedPersona) query.persona = filter.selectedPersona;
-				if (filter.selectedCategory)
-					query.category = String(filter.selectedCategory);
-				const priority = serializePriorityFilter(filter.selectedPriorities);
-				if (priority) query.priority = priority;
-				if (filter.prioritySort) query.priority_sort = '1';
+				const query = withBoardView(
+					this.$route.query,
+					boardViewQuery(this.$store.state.filter),
+				);
 				if (JSON.stringify(query) !== JSON.stringify(this.$route.query)) {
-					void this.$router.push({ path: this.$route.path, query });
+					void this.$router.replace({
+						path: this.$route.path,
+						query,
+						hash: this.$route.hash,
+					});
 				}
 			},
 			async retryBoard() {
@@ -2323,11 +2398,16 @@
 						? this.$store.state.user
 						: await getUser();
 					if (this.boardDisposed) return;
-					const currentWorkspaceId = () =>
+					const workspaceCode = this.$route.params.workspace_code;
+					const currentWorkspaceId = (
+						available = this.$store.state.workspaces,
+					) =>
 						Number(
-							this.$store.state.user?.settings?.find(
-								(setting) => setting.key === 'current_workspace',
-							)?.value,
+							workspaceCode
+								? available.find(
+										(workspace) => workspace.code === workspaceCode,
+									)?.id
+								: this.$store.getters.currentWorkspaceId,
 						) || 0;
 					const personasEnabled = () =>
 						this.$store.getters['featureToggles/isFeatureEnabled']('personas');
@@ -2346,7 +2426,17 @@
 						this.loadColumns(),
 					]);
 					if (this.boardDisposed) return;
-					this.workspaceId = currentWorkspaceId();
+					const resolvedWorkspaceId = currentWorkspaceId(workspaces);
+					if (
+						!resolvedWorkspaceId ||
+						Number(this.$store.getters.currentWorkspaceId) !==
+							resolvedWorkspaceId
+					) {
+						this.boardError = t('board.boardPage.errors.loadBoard');
+						this.boardLoading = false;
+						return;
+					}
+					this.workspaceId = resolvedWorkspaceId;
 					if (this.workspaceId !== guessedWorkspaceId) {
 						[users, personas] = await Promise.all([
 							fetchMembers(this.workspaceId),
@@ -2400,6 +2490,17 @@
 									this.resyncColumns();
 								},
 								onTaskAssignmentChanged: ({ task_id }) => {
+									if (this.$store.state.filter.selectedUser) {
+										const known = this.columns.find((column) =>
+											column.tasks.some((task) => task.id === task_id),
+										);
+										void this.refreshFilteredWindows(
+											known
+												? [known.status.id]
+												: this.columns.map((column) => column.status.id),
+										);
+										return;
+									}
 									const onBoard = this.columns.some((column) =>
 										column.tasks.some((t) => t.id === task_id),
 									);
