@@ -573,7 +573,13 @@
 			"typePlaceholder": "Typ auswählen",
 			"nameLabel": "Statusname:",
 			"typeLabel": "Statustyp:",
-			"colorLabel": "Statusfarbe:"
+			"colorLabel": "Statusfarbe:",
+			"types": {
+				"active": "Aktiv",
+				"hidden": "Ausgeblendet",
+				"archived": "Archiviert",
+				"completed": "Abgeschlossen"
+			}
 		},
 		"moveModal": {
 			"title": "Alle Aufgaben verschieben nach",

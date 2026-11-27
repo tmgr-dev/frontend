@@ -573,7 +573,13 @@
 			"typePlaceholder": "種類を選択",
 			"nameLabel": "ステータス名：",
 			"typeLabel": "ステータスの種類：",
-			"colorLabel": "ステータスの色："
+			"colorLabel": "ステータスの色：",
+			"types": {
+				"active": "アクティブ",
+				"hidden": "非表示",
+				"archived": "アーカイブ済み",
+				"completed": "完了"
+			}
 		},
 		"moveModal": {
 			"title": "すべてのタスクの移動先",

@@ -375,7 +375,8 @@
 			"added": "Добавлено в память",
 			"replaced": "Заменено",
 			"alreadyChanged": "Уже изменено"
-		}
+		},
+		"proposedBy": "Предложил(а) {name}"
 	},
 	"helpers": {
 		"emails": {
@@ -413,7 +414,10 @@
 			"pageCreated": "Новая страница",
 			"pageUpdated": "Страница обновлена",
 			"pageMentioned": "Вас упомянули на странице",
-			"memoryAdded": "Добавлено в память"
+			"memoryAdded": "Добавлено в память",
+			"chatDm": "Новое личное сообщение",
+			"chatMention": "Вас упомянули в чате",
+			"chatThreadReply": "Новый ответ в ветке чата"
 		}
 	}
 }

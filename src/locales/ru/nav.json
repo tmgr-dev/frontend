@@ -47,7 +47,11 @@
 		"featuresFailed": "Не удалось загрузить функции рабочего пространства.",
 		"badgePending": "{title}, ожидает: {count}",
 		"language": "Язык",
-		"languageSaveFailed": "Не удалось сохранить язык"
+		"languageSaveFailed": "Не удалось сохранить язык",
+		"meetings": "Расшифровки встреч",
+		"chats": "Чаты",
+		"chatsUnread": "Непрочитанных сообщений в чатах: {count}",
+		"personaMemory": "Память персон"
 	},
 	"account": {
 		"settings": "Настройки",
@@ -103,6 +107,7 @@
 		"newCategory": "Новая категория",
 		"subcategories": "Подкатегории",
 		"categoryChildren": "Вложенные категории",
-		"slack": "Slack"
+		"slack": "Slack",
+		"personaMemory": "Память персон"
 	}
 }

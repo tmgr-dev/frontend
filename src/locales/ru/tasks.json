@@ -22,7 +22,7 @@
 	"timeInfo": {
 		"created": "Создано: {time}",
 		"edited": "Изменено: {time}",
-		"overtime": "Переработка"
+		"overtime": "Сверх оценки"
 	},
 	"actions": {
 		"delete": "Удалить",
@@ -214,12 +214,12 @@
 		"selectAll": "Выбрать все",
 		"process": "Обработать ({n})",
 		"summary": "{selected} из {total} · {hours} ч",
-		"summaryOvertime": "{selected} из {total} · {hours} ч · +{overtime} переработки",
+		"summaryOvertime": "{selected} из {total} · {hours} ч · +{overtime} сверх оценки",
 		"restore": "Восстановить",
 		"restoreFromTrash": "Восстановить из корзины",
 		"deleteTask": "Удалить задачу",
 		"timerRunning": "Таймер запущен",
-		"overtime": "+{time} переработки",
+		"overtime": "+{time} сверх оценки",
 		"showing": "Показано {from}–{to} из {total} задач",
 		"perPage": "{n} на странице",
 		"previous": "Назад",
@@ -281,5 +281,6 @@
 		"hoursShort": "{n} ч",
 		"minutesShort": "{n} мин",
 		"secondsShort": "{n} с"
-	}
+	},
+	"exportDisabledForOthers": "В этом рабочем пространстве отключён экспорт задач других участников."
 }

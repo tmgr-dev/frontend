@@ -573,7 +573,13 @@
 			"typePlaceholder": "选择类型",
 			"nameLabel": "状态名称：",
 			"typeLabel": "状态类型：",
-			"colorLabel": "状态颜色："
+			"colorLabel": "状态颜色：",
+			"types": {
+				"active": "活跃",
+				"hidden": "隐藏",
+				"archived": "已归档",
+				"completed": "已完成"
+			}
 		},
 		"moveModal": {
 			"title": "将所有任务移到",

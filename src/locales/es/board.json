@@ -573,7 +573,13 @@
 			"typePlaceholder": "Selecciona el tipo",
 			"nameLabel": "Nombre del estado:",
 			"typeLabel": "Tipo de estado:",
-			"colorLabel": "Color del estado:"
+			"colorLabel": "Color del estado:",
+			"types": {
+				"active": "Activo",
+				"hidden": "Oculto",
+				"archived": "Archivado",
+				"completed": "Completado"
+			}
 		},
 		"moveModal": {
 			"title": "Mover todas las tareas a",
