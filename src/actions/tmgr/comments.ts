@@ -5,6 +5,7 @@ import {
 	normalizeReactions,
 } from '@/utils/commentReactions';
 import { requestCache } from '@/utils/requestCache';
+import type { AxiosRequestConfig } from 'axios';
 
 export interface Comment {
 	message: string;
@@ -26,10 +27,14 @@ export const getComments = async (
 		{ ttl: 30000, cache: useCache },
 	);
 
-export const createComment = async (taskId: number, payload: Comment) => {
+export const createComment = async (
+	taskId: number,
+	payload: Comment,
+	config?: AxiosRequestConfig,
+) => {
 	const {
 		data: { data },
-	} = await $axios.post(`/tasks/${taskId}/comments`, payload);
+	} = await $axios.post(`/tasks/${taskId}/comments`, payload, config);
 
 	requestCache.invalidate(`comments-task-${taskId}`);
 

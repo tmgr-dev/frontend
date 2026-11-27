@@ -224,7 +224,12 @@
 									:columns-count="columns.length || 4"
 								/>
 
-								<div v-show="tasksLoaded" class="board-container">
+								<div
+									v-show="tasksLoaded"
+									ref="boardFocus"
+									tabindex="-1"
+									class="board-container"
+								>
 									<div class="w-fit pl-4" ref="cont1">
 										<Draggable
 											ref="cont2"
@@ -465,7 +470,7 @@
 																		]"
 																		:data-task-id="task.id"
 																		v-bind="cardHandlers(task)"
-																		@task-archived="updateSingleTaskInBoard"
+																		@archive-confirmed="archiveConfirmed"
 																	/>
 																</template>
 																<template #footer>
@@ -825,12 +830,19 @@
 							@onCancel="confirm = undefined"
 						/>
 					</Transition>
+					<BoardOutcomeDialog
+						v-if="outcomeQueue.length && outcomeScope === outcomeQueue[0].scope"
+						:key="outcomeQueue[0].sequence"
+						:task="outcomeQueue[0]"
+						@dismiss="dismissOutcome"
+					/>
 				</template>
 			</BaseLayout>
 		</FeatureGate>
 	</div>
 </template>
 <script>
+	import BoardOutcomeDialog from '@/components/board/BoardOutcomeDialog.vue';
 	import Modal from '@/components/Modal.vue';
 	import { Button } from '@/components/ui/button';
 	import Draggable from 'vuedraggable';
@@ -852,7 +864,7 @@
 		updateTaskOrders,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
-	import { getUser, updateUser } from '@/actions/tmgr/user';
+	import { getUser, getUserSettings, updateUser } from '@/actions/tmgr/user';
 	import {
 		getWorkspaceMembers,
 		getWorkspaces,
@@ -931,6 +943,7 @@
 			return { pluginBadges: this.pluginBadgeFeed.badges };
 		},
 		components: {
+			BoardOutcomeDialog,
 			BreadcrumbItem,
 			BreadcrumbLink,
 			FilterIcon,
@@ -1037,6 +1050,8 @@
 			boardError: '',
 			boardReady: false,
 			dragSaveQueue: Promise.resolve(),
+			outcomeQueue: [],
+			outcomeSequence: 0,
 			pendingMoveIds: markRaw(new Set()),
 			menuMoveIds: markRaw(new Set()),
 			loadedSubset: false,
@@ -1061,6 +1076,9 @@
 		}),
 
 		watch: {
+			outcomeScope() {
+				this.outcomeQueue = [];
+			},
 			pluginBadgeKey() {
 				this.pluginBadgeFeed.update(
 					this.columns.flatMap((column) => column.tasks),
@@ -1152,6 +1170,24 @@
 					label: this.$t('board.boardPage.statusForm.types.' + value),
 				}));
 			},
+			outcomeScope() {
+				const { user, sessionGeneration } = this.$store.state;
+				const workspace = Number(this.$store.getters.currentWorkspaceId);
+				if (
+					!user?.id ||
+					!workspace ||
+					workspace !== Number(this.workspaceId) ||
+					!this.showSurface('comments.composer') ||
+					!this.$store.state.userSettings?.askForBoardOutcome
+				)
+					return '';
+				return JSON.stringify([
+					sessionGeneration,
+					user.id,
+					workspace,
+					this.$route.params.workspace_code,
+				]);
+			},
 			dropPlanState() {
 				return {
 					sorted: this.loadedSorted || this.prioritySortActive,
@@ -1240,6 +1276,89 @@
 			},
 		},
 		methods: {
+			offerOutcome(task, source, target, scope) {
+				if (
+					!scope ||
+					this.boardDisposed ||
+					scope !== this.outcomeScope ||
+					source === target
+				)
+					return;
+				const from = this.statuses.find((s) => s.id === source);
+				const to = this.statuses.find((s) => s.id === target);
+				const closed = (status) =>
+					['completed', 'archived'].includes(status?.type);
+				if (from && !closed(from) && closed(to))
+					this.outcomeQueue.push({
+						id: task.id,
+						title: task.title,
+						scope,
+						sequence: ++this.outcomeSequence,
+						workspaceId: this.workspaceId,
+					});
+			},
+			async archiveConfirmed(task, source) {
+				if (this.menuMoveIds.has(task.id) || this.pendingMoveIds.has(task.id))
+					return;
+				const target = this.statuses.find(
+					(status) => status.type === 'archived',
+				);
+				if (!target) {
+					this.toast({
+						title: t('tasks.boardCard.archiveStatusMissing'),
+						description: t('tasks.boardCard.archiveStatusMissingHint'),
+						variant: 'destructive',
+					});
+					return;
+				}
+				const scope = this.outcomeScope;
+				const boardWorkspace = this.workspaceId;
+				const generation = this.$store.state.sessionGeneration;
+				this.menuMoveIds.add(task.id);
+				try {
+					const saved = await updateTaskStatus(task.id, target.id);
+					if (
+						this.boardDisposed ||
+						generation !== this.$store.state.sessionGeneration ||
+						Number(this.$store.getters.currentWorkspaceId) !== boardWorkspace
+					)
+						return;
+					this.updateSingleTaskInBoard({
+						...task,
+						...saved,
+						status_id: target.id,
+					});
+					this.offerOutcome(task, source, target.id, scope);
+				} catch {
+					this.toast({
+						title: t('tasks.boardCard.archiveFailed'),
+						description: t('tasks.boardCard.tryAgain'),
+						variant: 'destructive',
+					});
+				} finally {
+					this.menuMoveIds.delete(task.id);
+				}
+			},
+			dismissOutcome(sequence, posted = false) {
+				const outcome = this.outcomeQueue[0];
+				if (outcome?.sequence !== sequence) return;
+				this.outcomeQueue.shift();
+				if (posted) {
+					const task = this.boardTasks.find((card) => card.id === outcome.id);
+					if (task)
+						task.comments_count = (Number(task.comments_count) || 0) + 1;
+				}
+				if (!this.outcomeQueue.length)
+					this.$nextTick(() => {
+						const card = this.$refs.boardFocus?.querySelector(
+							`[data-task-id="${outcome.id}"]`,
+						);
+						const focus =
+							card?.getClientRects().length &&
+							card.querySelector('[data-card-menu]');
+						(focus || this.$refs.boardFocus)?.focus();
+					});
+			},
 			toggleBoardFilter(key) {
 				this.boardFilterToggles = {
 					...this.boardFilterToggles,
@@ -1737,6 +1856,7 @@
 					plan === 'orders' ? this.findColumn(statusId)?.tasks.slice() : null;
 				const targetTasks = dropOrder(status);
 				const sourceTasks = sourceStatus !== status && dropOrder(sourceStatus);
+				const scope = this.outcomeScope;
 				let moveFailed = false;
 				this.dragSaveQueue = this.dragSaveQueue
 					.then(async () => {
@@ -1747,9 +1867,13 @@
 								this.boardInstanceId,
 							);
 							task.status_id = status;
+							this.offerOutcome(task, sourceStatus, status, scope);
 							return;
 						}
-						if (sourceStatus !== status) await updateTaskStatus(id, status);
+						if (sourceStatus !== status) {
+							await updateTaskStatus(id, status);
+							this.offerOutcome(task, sourceStatus, status, scope);
+						}
 						task.status_id = status;
 						if (targetTasks) await this.saveOrders(targetTasks);
 						if (sourceTasks) await this.saveOrders(sourceTasks);
@@ -1764,6 +1888,7 @@
 					await this.loadTasks();
 			},
 			async moveCardKeyset(task, sourceStatus, targetStatus, placement) {
+				const scope = this.outcomeScope;
 				const id = task.id;
 				beginOwnMove(
 					this.columns,
@@ -1779,15 +1904,19 @@
 							sourceStatus,
 							targetStatus,
 							pending: this.pendingMoveIds,
-							send: () =>
-								moveTask(
+							send: async () => {
+								const result = await moveTask(
 									id,
 									{ status_id: targetStatus, ...placement },
 									this.boardInstanceId,
-								),
+								);
+								this.offerOutcome(task, sourceStatus, targetStatus, scope);
+								return result;
+							},
 							fetchPage: this.fetchKeysetPage,
 							limit: BOARD_PAGE_SIZE,
 						});
+
 						if (!result.ok && result.error?.response?.status !== 409)
 							this.boardError = t('board.boardPage.errors.moveRefreshed');
 						if (this.pendingMoveIds.size === 0) await this.flushDirtyColumns();
@@ -1929,6 +2058,7 @@
 				const targetTasks = saveOrder ? target.tasks.slice() : null;
 				const sourceTasks = saveOrder ? column.tasks.slice() : null;
 				let failed = false;
+				const scope = this.outcomeScope;
 				let statusSaved = false;
 				this.menuMoveIds.add(task.id);
 				try {
@@ -1940,10 +2070,12 @@
 									{ status_id: targetStatus, position: 'top' },
 									this.boardInstanceId,
 								);
+								this.offerOutcome(task, sourceStatus, targetStatus, scope);
 								return;
 							}
 							await updateTaskStatus(task.id, targetStatus);
 							statusSaved = true;
+							this.offerOutcome(task, sourceStatus, targetStatus, scope);
 							if (targetTasks) await this.saveOrders(targetTasks);
 							if (sourceTasks) await this.saveOrders(sourceTasks);
 						})
@@ -2424,6 +2556,7 @@
 						fetchMembers(guessedWorkspaceId),
 						fetchPersonas(guessedWorkspaceId),
 						this.loadColumns(),
+						getUserSettings().catch(() => {}),
 					]);
 					if (this.boardDisposed) return;
 					const resolvedWorkspaceId = currentWorkspaceId(workspaces);

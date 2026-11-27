@@ -130,6 +130,25 @@
 
 						<TimeZoneSetting v-if="isTheme && !localOnly" />
 
+						<SettingsSection
+							v-if="isProfile"
+							:title="$t('board.boardPage.featureGate.title')"
+						>
+							<SettingsRow
+								v-slot="{ labelId }"
+								:label="$t('board.outcome.preference')"
+							>
+								<Switch
+									:checked="!!userSettings.askForBoardOutcome"
+									:aria-labelledby="labelId"
+									:disabled="savingOutcome"
+									@update:checked="saveOutcomePreference"
+								/>
+							</SettingsRow>
+							<p v-if="outcomeSaveError" role="alert">
+								{{ $t('board.outcome.saveFailed') }}
+							</p>
+						</SettingsSection>
 						<div v-if="isProfile && localOnly" class="flex flex-col gap-6">
 							<LocalProfileSettings />
 							<LocalAccountSection />
@@ -391,6 +410,7 @@
 	import { generateLink, unlink } from '@/actions/tmgr/telegram';
 	import {
 		getUser,
+		getUserSettings,
 		getUserSettingsV2,
 		patchUserSettings,
 		updateUserSettingsV2,
@@ -500,6 +520,8 @@
 			confirm: null,
 			isNotification: false,
 			isProfile: false,
+			savingOutcome: false,
+			outcomeSaveError: false,
 			isDevice: false,
 			isTheme: false,
 			isDesktopSection: false,
@@ -610,6 +632,25 @@
 			await this.loadInitialSettings();
 		},
 		methods: {
+			async saveOutcomePreference(value) {
+				if (this.savingOutcome) return;
+				const generation = this.$store.state.sessionGeneration;
+				this.savingOutcome = true;
+				this.outcomeSaveError = false;
+				try {
+					await patchUserSettings({ askForBoardOutcome: value });
+					if (generation === this.$store.state.sessionGeneration)
+						this.$store.commit('setUserSettings', {
+							...this.userSettings,
+							askForBoardOutcome: value,
+						});
+				} catch {
+					this.outcomeSaveError =
+						generation === this.$store.state.sessionGeneration;
+				} finally {
+					this.savingOutcome = false;
+				}
+			},
 			async loadInitialSettings() {
 				this.initialPending = true;
 				this.initialError = null;
@@ -625,6 +666,7 @@
 						this.initSettings(settings, user.settings);
 						this.availableSettings = settings;
 					}
+					await getUserSettings();
 					this.initialLoaded = true;
 				} catch {
 					this.initialError = t('settings.loadFailed');

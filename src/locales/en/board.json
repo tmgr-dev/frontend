@@ -894,5 +894,20 @@
 	"duration": {
 		"hours": "{n} h",
 		"minutes": "{n} m"
+	},
+	"outcome": {
+		"preference": "Ask for an outcome when closing a card",
+		"saveFailed": "Could not save the preference.",
+		"title": "Closing note for {title}",
+		"description": "Add a comment to explain the outcome.",
+		"done": "Done",
+		"declined": "Won’t do",
+		"duplicate": "Duplicate",
+		"moved": "Moved elsewhere",
+		"note": "Closing note",
+		"post": "Post comment",
+		"skip": "Skip",
+		"failed": "Could not post the comment. Try again.",
+		"uncertain": "Delivery is uncertain. Check the task comments before trying again."
 	}
 }
