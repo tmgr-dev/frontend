@@ -611,7 +611,7 @@
 						<div class="relative">
 							<button
 								type="button"
-								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100"
+								class="inline-flex h-6 w-6 items-center justify-center rounded-full text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 								:class="{ 'opacity-100': reactionPickerFor === comment.id }"
 								:aria-label="$t('tasks.comments.addReaction')"
 								aria-haspopup="menu"

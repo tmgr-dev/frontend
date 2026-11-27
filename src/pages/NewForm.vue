@@ -130,7 +130,7 @@
 		getCategoryIntegrationHint,
 		type CategoryIntegrationHint,
 	} from '@/utils/categoryIntegrationHint';
-	import { isSendEnter } from '@/utils/commentComposer';
+	import { enterAddsNewline, isSendEnter } from '@/utils/commentComposer';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { getBlockEditorDescription, sameBlocks } from '@/utils/editor';
@@ -2507,7 +2507,8 @@
 		commentAiReply.value ? askAIComment() : sendComment();
 
 	const onCommentEnter = (e: KeyboardEvent) => {
-		if (!isSendEnter(e)) return;
+		const modifier = e.metaKey || e.ctrlKey;
+		if ((enterAddsNewline() && !modifier) || !isSendEnter(e)) return;
 		e.preventDefault();
 		submitComment();
 	};

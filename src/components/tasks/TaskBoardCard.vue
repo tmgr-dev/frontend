@@ -95,7 +95,12 @@
 			>
 				<PopoverTrigger as-child>
 					<button
-						v-show="visibleAssignees.length || isHovered || showAssigneePopover"
+						v-show="
+							visibleAssignees.length ||
+							isHovered ||
+							showAssigneePopover ||
+							!canHover
+						"
 						class="group/assignee flex items-center justify-center rounded-pill text-ink-subtle transition-colors hover:text-ink"
 						@click.stop
 						:title="
@@ -410,6 +415,7 @@
 	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
 	import { formatBoardDate } from '@/utils/boardDate';
 	import { moveTargetStatuses } from '@/utils/boardMoveTargets';
+	import { deviceCanHover } from '@/utils/hoverCapability';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		assigneeWritePayload,
@@ -439,6 +445,8 @@
 	} from 'lucide-vue-next';
 	import { mapState } from 'vuex';
 	import Badge from '../general/Badge.vue';
+
+	const CAN_HOVER = deviceCanHover();
 
 	export default {
 		mixins: [TimePreparationMixin, TasksListMixin],
@@ -539,6 +547,7 @@
 				currentDisplayTime: 0,
 				isLoadingTimer: false,
 				isHovered: false,
+				canHover: CAN_HOVER,
 				showAssigneePopover: false,
 				workspaceMembers: [],
 				assignablePersonas: [],

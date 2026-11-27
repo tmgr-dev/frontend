@@ -31,7 +31,7 @@
 				})
 			"
 			type="button"
-			class="z-20 hidden text-ink-muted opacity-40 group-hover:block hover:opacity-100"
+			class="z-20 hidden text-ink-muted opacity-40 group-focus-within:block group-hover:block hover:opacity-100 [@media(hover:none)]:block"
 			:title="$t('general.categoryBadge.createTask')"
 		>
 			<PlusCircleIcon class="h-3.5 w-3.5" />

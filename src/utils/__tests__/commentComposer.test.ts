@@ -1,4 +1,9 @@
-import { autosizeTextarea, isEnterSend, isSendEnter } from '../commentComposer';
+import {
+	autosizeTextarea,
+	enterAddsNewline,
+	isEnterSend,
+	isSendEnter,
+} from '../commentComposer';
 
 const enter = (over: Partial<KeyboardEvent> = {}) => ({
 	shiftKey: false,
@@ -67,5 +72,28 @@ describe('autosizeTextarea', () => {
 
 	it('ignores a missing element', () => {
 		expect(() => autosizeTextarea(null)).not.toThrow();
+	});
+});
+
+describe('enterAddsNewline', () => {
+	const media = (matches: boolean) => ({
+		matchMedia: jest.fn(() => ({ matches }) as MediaQueryList),
+	});
+
+	it('is on for touch keyboards that cannot hover', () => {
+		const win = media(true);
+		expect(enterAddsNewline(win)).toBe(true);
+		expect(win.matchMedia).toHaveBeenCalledWith(
+			'(hover: none) and (pointer: coarse)',
+		);
+	});
+
+	it('is off with a mouse or trackpad', () => {
+		expect(enterAddsNewline(media(false))).toBe(false);
+	});
+
+	it('is off when there is no window or no matchMedia', () => {
+		expect(enterAddsNewline(undefined)).toBe(false);
+		expect(enterAddsNewline({} as Pick<Window, 'matchMedia'>)).toBe(false);
 	});
 });

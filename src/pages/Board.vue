@@ -318,7 +318,7 @@
 																	>
 																		<button
 																			data-tour="board.add-in-column"
-																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100"
+																			class="flex h-5 w-5 items-center justify-center rounded text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
 																			@click="openTaskModal(column)"
 																		>
 																			<span class="material-icons text-base"
@@ -1037,6 +1037,8 @@
 			realtimeBuffer: markRaw(createRealtimeBuffer()),
 			boardInstanceId: `board-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 			totalsTimer: null,
+			listTopObserver: null,
+			listTopFrame: 0,
 			boardInitializing: false,
 			boardDisposed: false,
 			boardLoader: null,
@@ -1850,6 +1852,30 @@
 					}),
 				);
 			},
+			watchListTop() {
+				if (!(this.$el instanceof HTMLElement)) return;
+				window.addEventListener('resize', this.scheduleListTop);
+				if (typeof ResizeObserver !== 'undefined') {
+					this.listTopObserver = markRaw(
+						new ResizeObserver(this.scheduleListTop),
+					);
+					this.listTopObserver.observe(this.$el);
+					this.listTopObserver.observe(document.body);
+				}
+				this.scheduleListTop();
+			},
+			scheduleListTop() {
+				cancelAnimationFrame(this.listTopFrame);
+				this.listTopFrame = requestAnimationFrame(() => {
+					const lists = this.$el?.querySelectorAll?.('.board-card') ?? [];
+					for (const list of lists) {
+						const rect = list.getBoundingClientRect();
+						if (!rect.height && !rect.width) continue;
+						const top = Math.max(0, Math.round(rect.top));
+						list.style.setProperty('--board-list-top', `${top}px`);
+					}
+				});
+			},
 			queueOrderSave(tasks) {
 				this.dragSaveQueue = this.dragSaveQueue
 					.then(() => this.saveOrders(tasks))
@@ -2443,6 +2469,7 @@
 					this.refreshColumnSummaries();
 					this.tasksLoaded = true;
 					this.updateScrollContainers();
+					this.scheduleListTop();
 				},
 				() => {
 					this.realtimeBuffer.take();
@@ -2457,6 +2484,7 @@
 		mounted() {
 			setDocumentTitle(this.title);
 			document.body.classList.add('overflow-hidden');
+			this.watchListTop();
 			this.$nextTick(() => {
 				if (!this.boardDisposed)
 					this.headerSlotReady = !!document.getElementById(
@@ -2467,6 +2495,9 @@
 		},
 		beforeUnmount() {
 			this.boardDisposed = true;
+			this.listTopObserver?.disconnect();
+			window.removeEventListener('resize', this.scheduleListTop);
+			cancelAnimationFrame(this.listTopFrame);
 			this.pluginBadgeFeed.dispose();
 			this.boardLoader.dispose();
 			this.columnSequence.dispose();
@@ -2599,6 +2630,10 @@
 			flex-direction: column;
 			min-height: 0;
 
+			@supports (height: 100dvh) {
+				height: calc(100dvh - var(--app-chrome-h, 64px));
+			}
+
 			@media (max-width: 768px) {
 				height: 100%;
 			}
@@ -2637,7 +2672,11 @@
 		min-height: 0;
 
 		@media (max-width: 768px) {
-			max-height: calc(100vh - 110px);
+			max-height: calc(100vh - var(--board-list-top, 110px) - 12px);
+
+			@supports (height: 100dvh) {
+				max-height: calc(100dvh - var(--board-list-top, 110px) - 12px);
+			}
 		}
 	}
 

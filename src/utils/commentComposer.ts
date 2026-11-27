@@ -11,6 +11,16 @@ export const isEnterSend = (
 	e: EnterKey & Pick<KeyboardEvent, 'key'>,
 ): boolean => e.key === 'Enter' && isSendEnter(e);
 
+/**
+ * On a touch keyboard Enter adds a line break; the comment goes out with the send button.
+ */
+export const enterAddsNewline = (
+	win: Pick<Window, 'matchMedia'> | undefined = typeof window === 'undefined'
+		? undefined
+		: window,
+): boolean =>
+	!!win?.matchMedia?.('(hover: none) and (pointer: coarse)').matches;
+
 export const autosizeTextarea = (
 	el: HTMLTextAreaElement | null | undefined,
 	maxHeight = 160,
