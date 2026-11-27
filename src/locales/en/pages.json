@@ -308,5 +308,11 @@
 	"markdownIo": {
 		"exportedWithWarnings": "Exported with {n} warning | Exported with {n} warnings",
 		"exportFailed": "Export failed"
+	},
+	"agentSection": {
+		"title": "Agents can rewrite this section",
+		"description": "Agents maintain these notes and can replace your edits.",
+		"continue": "Edit agent notes",
+		"rulesHint": "Write team rules in the editable area below, above the agent notes."
 	}
 }

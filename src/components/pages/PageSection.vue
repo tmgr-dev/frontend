@@ -29,15 +29,36 @@
 				v-if="!editing && !readOnly"
 				type="button"
 				class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-status-testing-fg hover:bg-surface-active"
-				@click="startEdit"
+				@click="requestEdit"
 			>
 				<Pencil class="h-3.5 w-3.5" />
 				{{ $t('common.actions.edit') }}
 			</button>
 		</header>
 
+		<AlertDialog v-model:open="confirming">
+			<AlertDialogContent @close-auto-focus="restoreEditFocus">
+				<AlertDialogHeader
+					><AlertDialogTitle>{{
+						$t('pages.agentSection.title')
+					}}</AlertDialogTitle>
+					<AlertDialogDescription>{{
+						$t('pages.agentSection.description')
+					}}</AlertDialogDescription></AlertDialogHeader
+				>
+				<AlertDialogFooter
+					><AlertDialogCancel>{{
+						$t('common.actions.cancel')
+					}}</AlertDialogCancel>
+					<AlertDialogAction @click="startEdit">{{
+						$t('pages.agentSection.continue')
+					}}</AlertDialogAction></AlertDialogFooter
+				>
+			</AlertDialogContent>
+		</AlertDialog>
 		<div v-if="editing">
 			<textarea
+				ref="textarea"
 				v-model="draft"
 				rows="8"
 				class="w-full rounded-md border border-input bg-background p-2 font-mono text-sm text-ink"
@@ -72,6 +93,16 @@
 </template>
 
 <script lang="ts">
+	import {
+		AlertDialog,
+		AlertDialogContent,
+		AlertDialogHeader,
+		AlertDialogTitle,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogCancel,
+		AlertDialogAction,
+	} from '@/components/ui/alert-dialog';
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import { ownerAuthorRef, ownerLabel } from '@/utils/pages/author';
 	import { parseOwner, type SectionSegment } from '@/utils/pages/sections';
@@ -82,7 +113,19 @@
 
 	export default defineComponent({
 		name: 'PageSection',
-		components: { AuthorBadge, PageMarkdown, Pencil },
+		components: {
+			AlertDialog,
+			AlertDialogContent,
+			AlertDialogHeader,
+			AlertDialogTitle,
+			AlertDialogDescription,
+			AlertDialogFooter,
+			AlertDialogCancel,
+			AlertDialogAction,
+			AuthorBadge,
+			PageMarkdown,
+			Pencil,
+		},
 		props: {
 			section: { type: Object as PropType<SectionSegment>, required: true },
 			directory: { type: Object as PropType<TmgrDirectory>, required: true },
@@ -90,6 +133,14 @@
 		},
 		emits: ['save', 'navigate'],
 		setup(props, { emit }) {
+			const textarea = ref<HTMLTextAreaElement | null>(null);
+			const restoreEditFocus = (event: Event) => {
+				if (textarea.value) {
+					event.preventDefault();
+					textarea.value.focus();
+				}
+			};
+			const confirming = ref(false);
 			const editing = ref(false);
 			const draft = ref('');
 			const author = computed(() =>
@@ -124,6 +175,10 @@
 				editing.value = true;
 			};
 
+			const requestEdit = () => {
+				if (props.section.owner === 'agents') confirming.value = true;
+				else startEdit();
+			};
 			const save = () => {
 				emit('save', {
 					id: props.section.id,
@@ -135,6 +190,10 @@
 			};
 
 			return {
+				textarea,
+				restoreEditFocus,
+				confirming,
+				requestEdit,
 				editing,
 				draft,
 				author,

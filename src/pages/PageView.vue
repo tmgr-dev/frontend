@@ -193,6 +193,20 @@
 							v-for="(segment, index) in segments"
 							:key="`${editorKey}-${index}`"
 						>
+							<p
+								v-if="
+									index === 0 &&
+									segment.kind === 'free' &&
+									page.type === 'context' &&
+									segments.some(
+										(part) =>
+											part.kind === 'section' && part.owner === 'agents',
+									)
+								"
+								class="mb-2 text-sm text-ink-muted"
+							>
+								{{ $t('pages.agentSection.rulesHint') }}
+							</p>
 							<PageEditor
 								v-if="segment.kind === 'free'"
 								:model-value="segment.text"

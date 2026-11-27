@@ -91,7 +91,10 @@ const RICH_BODY = [
 
 const author = { kind: 'user', id: 1, name: 'Test User' };
 
-const setupPages = async (page, { richBody = RICH_BODY } = {}) => {
+const setupPages = async (
+  page,
+  { richBody = RICH_BODY, type = 'plain' } = {},
+) => {
   await mockApp(page);
   const state = {
     pages: [
@@ -110,7 +113,7 @@ const setupPages = async (page, { richBody = RICH_BODY } = {}) => {
     id: p.id,
     title: p.title,
     slug: p.slug,
-    type: 'plain',
+    type,
     parent_id: null,
     position: p.id,
     pinned: false,
@@ -1526,3 +1529,33 @@ for (const touch of [false, true]) {
     });
   });
 }
+
+test('editing agent notes requires a fresh confirmation each time', async ({
+  page,
+}) => {
+  await setupPages(page, {
+    type: 'context',
+    richBody:
+      'Team rules\n\n<!-- tmgr:section id="agent-notes" owner="agents" -->\n## Agent notes\nOriginal note\n<!-- /tmgr:section -->',
+  });
+  await page.goto('/demo/pages/rich-page');
+  await expect(
+    page.getByText(
+      'Write team rules in the editable area below, above the agent notes.',
+    ),
+  ).toBeVisible();
+  const section = page.getByTestId('managed-section');
+  await section.getByRole('button', { name: 'Edit' }).click();
+  const warning = page.getByRole('alertdialog');
+  await expect(warning).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(section.getByRole('button', { name: 'Edit' })).toBeFocused();
+  await expect(section.locator('textarea')).toHaveCount(0);
+  await section.getByRole('button', { name: 'Edit' }).click();
+  await warning.getByRole('button', { name: 'Edit agent notes' }).click();
+  await expect(section.locator('textarea')).toBeFocused();
+  await expect(section.locator('textarea')).toHaveValue(/Original note/);
+  await section.getByRole('button', { name: 'Cancel' }).click();
+  await section.getByRole('button', { name: 'Edit' }).click();
+  await expect(warning).toBeVisible();
+});
