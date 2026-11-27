@@ -194,6 +194,7 @@
 		"settings": "Einstellungen",
 		"moveToTop": "Nach oben verschieben",
 		"moveToBottom": "Nach unten verschieben",
+		"moveToStatus": "In Status verschieben",
 		"archive": "Archivieren",
 		"delete": "Löschen",
 		"commentsLabel": "{n} Kommentar | {n} Kommentare",

@@ -195,6 +195,7 @@
 		"settings": "Settings",
 		"moveToTop": "Move to top",
 		"moveToBottom": "Move to bottom",
+		"moveToStatus": "Move to status",
 		"archive": "Archive",
 		"delete": "Delete",
 		"commentsLabel": "{n} comment | {n} comments",

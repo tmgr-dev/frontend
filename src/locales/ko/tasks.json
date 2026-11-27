@@ -194,6 +194,7 @@
 		"settings": "설정",
 		"moveToTop": "맨 위로 이동",
 		"moveToBottom": "맨 아래로 이동",
+		"moveToStatus": "상태로 이동",
 		"archive": "보관",
 		"delete": "삭제",
 		"commentsLabel": "댓글 {n}개",

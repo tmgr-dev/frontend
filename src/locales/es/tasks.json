@@ -194,6 +194,7 @@
 		"settings": "Ajustes",
 		"moveToTop": "Mover al principio",
 		"moveToBottom": "Mover al final",
+		"moveToStatus": "Mover a estado",
 		"archive": "Archivar",
 		"delete": "Eliminar",
 		"commentsLabel": "{n} comentario | {n} comentarios",

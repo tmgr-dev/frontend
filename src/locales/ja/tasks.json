@@ -194,6 +194,7 @@
 		"settings": "設定",
 		"moveToTop": "先頭へ移動",
 		"moveToBottom": "末尾へ移動",
+		"moveToStatus": "ステータスへ移動",
 		"archive": "アーカイブする",
 		"delete": "削除",
 		"commentsLabel": "コメント {n} 件",

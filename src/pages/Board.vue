@@ -450,6 +450,8 @@
 																		:enabled="column.tasks.length > 100"
 																		:task="task"
 																		:statuses="statuses"
+																		:can-reorder="!prioritySortActive"
+																		:column-status-id="column.status.id"
 																		:class="[
 																			'my-5',
 																			{
@@ -1030,6 +1032,7 @@
 			boardReady: false,
 			dragSaveQueue: Promise.resolve(),
 			pendingMoveIds: markRaw(new Set()),
+			menuMoveIds: markRaw(new Set()),
 			dirtyStatusIds: markRaw(new Set()),
 			realtimeBuffer: markRaw(createRealtimeBuffer()),
 			boardInstanceId: `board-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1706,6 +1709,8 @@
 					handlers = {
 						onMoveToTop: () => this.handleMoveToTop(task, columnOf()),
 						onMoveToBottom: () => this.handleMoveToBottom(task, columnOf()),
+						onMoveToStatus: (statusId, keyboard) =>
+							this.handleMoveToStatus(task, columnOf(), statusId, keyboard),
 						onTaskDeleted: () => this.removeTaskFromBoard(task.id),
 					};
 					this.cardHandlerCache.set(task, handlers);
@@ -1751,6 +1756,99 @@
 				column.tasks.push(task);
 
 				await this.queueOrderSave(column.tasks.slice());
+			},
+			async handleMoveToStatus(task, column, statusId, keyboard = false) {
+				const target = this.findColumn(statusId);
+				if (!column || !target || target === column) return;
+				if (this.pendingMoveIds.has(task.id) || this.menuMoveIds.has(task.id))
+					return;
+				const index = column.tasks.findIndex((t) => t.id === task.id);
+				if (index === -1) return;
+				const sourceStatus = column.status.id;
+				const targetStatus = target.status.id;
+				column.tasks.splice(index, 1);
+				target.tasks.unshift(task);
+				task.status_id = targetStatus;
+				if (keyboard) this.focusMovedCard(task.id);
+				if (target.paging || column.paging) {
+					this.menuMoveIds.add(task.id);
+					try {
+						await this.moveCardKeyset(task, sourceStatus, targetStatus, {
+							position: 'top',
+						});
+					} finally {
+						this.menuMoveIds.delete(task.id);
+					}
+					const landed = this.findColumn(targetStatus)?.tasks.some(
+						(t) => t.id === task.id,
+					);
+					if (keyboard && !landed) this.focusMovedCard(task.id);
+					return;
+				}
+				const sorted = this.prioritySortActive;
+				if (sorted) this.sortColumnsByPriority(new Set([targetStatus]));
+				this.refreshColumnSummaries(new Set([sourceStatus, targetStatus]));
+				const local = this.$store.getters.isLocalOnly;
+				const filter = this.$store.state.filter;
+				const filtered =
+					this.needsFullLoad ||
+					!!filter.selectedUser ||
+					!!filter.selectedCategory ||
+					!!filter.selectedPersona ||
+					!!filter.searchText;
+				const saveOrder = local && !sorted && !filtered;
+				const targetTasks = saveOrder ? target.tasks.slice() : null;
+				const sourceTasks = saveOrder ? column.tasks.slice() : null;
+				let failed = false;
+				let statusSaved = false;
+				this.menuMoveIds.add(task.id);
+				try {
+					this.dragSaveQueue = this.dragSaveQueue
+						.then(async () => {
+							if (!local) {
+								await moveTask(
+									task.id,
+									{ status_id: targetStatus, position: 'top' },
+									this.boardInstanceId,
+								);
+								return;
+							}
+							await updateTaskStatus(task.id, targetStatus);
+							statusSaved = true;
+							if (targetTasks) await this.saveOrders(targetTasks);
+							if (sourceTasks) await this.saveOrders(sourceTasks);
+						})
+						.catch(() => {
+							failed = true;
+						});
+					await this.dragSaveQueue;
+					if (!failed) return;
+					await this.loadTasks();
+					if (!this.boardError)
+						this.boardError = t(
+							statusSaved
+								? 'board.boardPage.errors.saveOrder'
+								: 'board.boardPage.errors.moveRefreshed',
+						);
+					if (keyboard) this.focusMovedCard(task.id);
+				} finally {
+					this.menuMoveIds.delete(task.id);
+				}
+			},
+			focusMovedCard(taskId) {
+				const findCard = () =>
+					document.querySelector(`.board-container [data-task-id="${taskId}"]`);
+				this.$nextTick(() =>
+					requestAnimationFrame(async () => {
+						const card = findCard();
+						if (!card || card.classList.contains('hidden')) return;
+						if (!card.querySelector('[data-card-menu]')) {
+							card.focus?.();
+							await this.$nextTick();
+						}
+						findCard()?.querySelector('[data-card-menu]')?.focus();
+					}),
+				);
 			},
 			queueOrderSave(tasks) {
 				this.dragSaveQueue = this.dragSaveQueue

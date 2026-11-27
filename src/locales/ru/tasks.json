@@ -194,6 +194,7 @@
 		"settings": "Настройки",
 		"moveToTop": "В начало",
 		"moveToBottom": "В конец",
+		"moveToStatus": "Перенести в статус",
 		"archive": "Архивировать",
 		"delete": "Удалить",
 		"commentsLabel": "{n} комментарий | {n} комментария | {n} комментариев",

@@ -194,6 +194,7 @@
 		"settings": "Ustawienia",
 		"moveToTop": "Przenieś na górę",
 		"moveToBottom": "Przenieś na dół",
+		"moveToStatus": "Przenieś do statusu",
 		"archive": "Archiwizuj",
 		"delete": "Usuń",
 		"commentsLabel": "{n} komentarz | {n} komentarze | {n} komentarzy",

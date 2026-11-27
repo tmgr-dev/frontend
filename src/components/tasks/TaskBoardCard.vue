@@ -174,6 +174,7 @@
 					<button
 						class="flex h-[22px] w-[22px] items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
 						:aria-label="$t('tasks.boardCard.taskActions')"
+						data-card-menu
 						@click.stop
 					>
 						<MoreVertical class="h-3.5 w-3.5" />
@@ -190,14 +191,42 @@
 						<span>{{ $t('tasks.boardCard.settings') }}</span>
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem @click="handleMoveToTop">
-						<ArrowUpToLine class="mr-2 h-4 w-4" />
-						<span>{{ $t('tasks.boardCard.moveToTop') }}</span>
-					</DropdownMenuItem>
-					<DropdownMenuItem @click="handleMoveToBottom">
-						<ArrowDownToLine class="mr-2 h-4 w-4" />
-						<span>{{ $t('tasks.boardCard.moveToBottom') }}</span>
-					</DropdownMenuItem>
+					<DropdownMenuSub v-if="moveTargets.length">
+						<DropdownMenuSubTrigger data-testid="task-move-to-status">
+							<ArrowRightLeft class="mr-2 h-4 w-4" />
+							<span>{{ $t('tasks.boardCard.moveToStatus') }}</span>
+						</DropdownMenuSubTrigger>
+						<DropdownMenuSubContent
+							class="max-h-[var(--radix-dropdown-menu-content-available-height)] w-56 overflow-y-auto"
+						>
+							<DropdownMenuItem
+								v-for="status in moveTargets"
+								:key="status.id"
+								:data-testid="`task-move-to-status-${status.id}`"
+								@click="
+									(event) =>
+										$emit('move-to-status', status.id, event?.detail === 0)
+								"
+							>
+								<span
+									class="mr-2 h-2 w-2 shrink-0 rounded-full"
+									:style="{ backgroundColor: status.color || 'currentColor' }"
+									aria-hidden="true"
+								></span>
+								<span class="truncate">{{ status.name }}</span>
+							</DropdownMenuItem>
+						</DropdownMenuSubContent>
+					</DropdownMenuSub>
+					<template v-if="canReorder">
+						<DropdownMenuItem @click="handleMoveToTop">
+							<ArrowUpToLine class="mr-2 h-4 w-4" />
+							<span>{{ $t('tasks.boardCard.moveToTop') }}</span>
+						</DropdownMenuItem>
+						<DropdownMenuItem @click="handleMoveToBottom">
+							<ArrowDownToLine class="mr-2 h-4 w-4" />
+							<span>{{ $t('tasks.boardCard.moveToBottom') }}</span>
+						</DropdownMenuItem>
+					</template>
 					<TaskShareItems :task="task" submenu />
 					<PluginTaskMenuItems :task-id="task.id" />
 					<DropdownMenuSeparator />
@@ -364,6 +393,9 @@
 		DropdownMenuContent,
 		DropdownMenuItem,
 		DropdownMenuSeparator,
+		DropdownMenuSub,
+		DropdownMenuSubContent,
+		DropdownMenuSubTrigger,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import {
@@ -377,6 +409,7 @@
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
 	import { formatBoardDate } from '@/utils/boardDate';
+	import { moveTargetStatuses } from '@/utils/boardMoveTargets';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		assigneeWritePayload,
@@ -388,6 +421,7 @@
 	import {
 		ArchiveIcon,
 		ArrowDownToLine,
+		ArrowRightLeft,
 		ArrowUpToLine,
 		Check,
 		ClockPlus,
@@ -442,6 +476,9 @@
 			DropdownMenuContent,
 			DropdownMenuItem,
 			DropdownMenuSeparator,
+			DropdownMenuSub,
+			DropdownMenuSubContent,
+			DropdownMenuSubTrigger,
 			DropdownMenuTrigger,
 			PluginTaskMenuItems,
 			TaskShareItems,
@@ -458,6 +495,7 @@
 			Settings2,
 			ArrowUpToLine,
 			ArrowDownToLine,
+			ArrowRightLeft,
 			Trash2,
 			ArchiveIcon,
 			Eye,
@@ -473,6 +511,7 @@
 			'timer-stopped',
 			'move-to-top',
 			'move-to-bottom',
+			'move-to-status',
 			'task-deleted',
 			'task-archived',
 		],
@@ -484,6 +523,14 @@
 			statuses: {
 				type: Array,
 				default: () => [],
+			},
+			canReorder: {
+				type: Boolean,
+				default: true,
+			},
+			columnStatusId: {
+				type: [Number, String],
+				default: null,
 			},
 		},
 		data() {
@@ -502,6 +549,12 @@
 			};
 		},
 		computed: {
+			moveTargets() {
+				return moveTargetStatuses(
+					this.statuses,
+					this.columnStatusId ?? this.task.status_id,
+				);
+			},
 			visibleAssignees() {
 				return visibleHumanAssignees(this.task);
 			},
