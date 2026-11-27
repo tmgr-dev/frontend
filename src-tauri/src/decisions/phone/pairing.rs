@@ -93,8 +93,10 @@ fn is_uuid(s: &str) -> bool {
     })
 }
 
+const PAIR_LINK_BASE: &str = "https://tmgr.dev/pair";
+
 pub(super) fn pair_link(json: &[u8]) -> String {
-  format!("tmgr://pair#tmgr-pair:v1:{}", URL_SAFE_NO_PAD.encode(json))
+  format!("{PAIR_LINK_BASE}#tmgr-pair:v1:{}", URL_SAFE_NO_PAD.encode(json))
 }
 
 pub(super) fn qr_data_url(text: &str) -> Result<String, String> {

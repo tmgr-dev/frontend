@@ -1576,10 +1576,9 @@ fn a_listening_card_refreshes_every_minute_and_an_idle_one_every_five() {
 }
 
 #[test]
-fn the_pairing_qr_is_a_tmgr_pair_link_around_the_raw_payload() {
+fn the_pairing_qr_is_an_https_universal_link_around_the_raw_payload() {
   let link = super::pairing::pair_link(br#"{"v":1}"#);
-  let raw = link.strip_prefix("tmgr://pair#").unwrap();
-  let body = raw.strip_prefix("tmgr-pair:v1:").unwrap();
+  let body = link.strip_prefix("https://tmgr.dev/pair#tmgr-pair:v1:").unwrap();
   use base64::Engine;
   assert_eq!(base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(body).unwrap(), br#"{"v":1}"#);
   assert!(!link.contains('?') && link.matches('#').count() == 1);
@@ -1588,6 +1587,7 @@ fn the_pairing_qr_is_a_tmgr_pair_link_around_the_raw_payload() {
 #[test]
 fn the_largest_pairing_link_still_fits_in_a_qr_code() {
   let link = super::pairing::pair_link(&vec![b'x'; 1100]);
+  assert!(link.starts_with("https://tmgr.dev/pair#tmgr-pair:v1:"));
   assert!(super::pairing::qr_data_url(&link).is_ok());
 }
 
