@@ -273,6 +273,8 @@ export const installLocalWorkspaces = (
 				message: 'The local workspace is gone; pick another workspace',
 			});
 		}
+		if (crossesWorkspaces('local', config.data, config.params, workspace.id))
+			return respond(config, 409, { message: 'The active workspace changed' });
 		if (
 			isGhostRequest(config) &&
 			(!workspace.demo || config.params?.workspace_id !== workspace.id)

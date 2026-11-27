@@ -521,7 +521,7 @@
 			'move-to-bottom',
 			'move-to-status',
 			'task-deleted',
-			'task-archived',
+			'archive-confirmed',
 		],
 		props: {
 			task: {
@@ -945,38 +945,13 @@
 			handleArchive() {
 				this.showArchiveConfirm = true;
 			},
-			async confirmArchive() {
+			confirmArchive() {
 				this.showArchiveConfirm = false;
-				try {
-					const archiveStatus = this.statuses.find(
-						(s) => s.type === 'archived',
-					);
-					if (!archiveStatus) {
-						this.toast({
-							title: t('tasks.boardCard.archiveStatusMissing'),
-							description: t('tasks.boardCard.archiveStatusMissingHint'),
-							variant: 'destructive',
-						});
-						return;
-					}
-
-					const archived = await updateTaskStatus(
-						this.task.id,
-						archiveStatus.id,
-					);
-					this.$emit('task-archived', {
-						...this.task,
-						...(archived && typeof archived === 'object' ? archived : {}),
-						status_id: archiveStatus.id,
-					});
-				} catch (e) {
-					console.error('Failed to archive task:', e);
-					this.toast({
-						title: t('tasks.boardCard.archiveFailed'),
-						description: t('tasks.boardCard.tryAgain'),
-						variant: 'destructive',
-					});
-				}
+				this.$emit(
+					'archive-confirmed',
+					this.task,
+					this.columnStatusId ?? this.task.status_id,
+				);
 			},
 			handleDelete() {
 				this.showDeleteConfirm = true;

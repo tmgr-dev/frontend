@@ -1,11 +1,11 @@
 jest.mock('@/plugins/axios', () => ({
 	__esModule: true,
-	default: { get: jest.fn(), put: jest.fn() },
+	default: { get: jest.fn(), put: jest.fn(), patch: jest.fn() },
 }));
 jest.mock('@/store', () => ({
 	__esModule: true,
 	default: {
-		state: { sessionGeneration: 1 },
+		state: jest.requireActual('vue').reactive({ sessionGeneration: 1 }),
 		getters: { userSettingByKey: () => undefined, isLoggedIn: true },
 		commit: jest.fn(),
 	},
@@ -20,7 +20,7 @@ import axios from '@/plugins/axios';
 import store from '@/store';
 import requestCache from '@/utils/requestCache';
 import { detectUserTimeZone } from '@/utils/timezoneDetect';
-import { getUser, getUserSettings } from '../user';
+import { getUser, getUserSettings, patchUserSettings } from '../user';
 
 const user = {
 	id: 2,
@@ -63,5 +63,39 @@ test('user settings that outlived their session are dropped', async () => {
 		return { data: { data: { settings: { a: 1 } } } };
 	});
 	await getUserSettings();
+	expect(store.commit).not.toHaveBeenCalled();
+});
+
+test('a pending private settings write is aborted when the session changes', async () => {
+	const settings = { showTooltips: false };
+	(axios.patch as jest.Mock).mockImplementation(
+		async (_path, _body, { signal }) => {
+			expect(signal.aborted).toBe(false);
+			(store.state as any).sessionGeneration++;
+			expect(signal.aborted).toBe(true);
+			throw new Error('aborted');
+		},
+	);
+	await expect(patchUserSettings(settings)).rejects.toThrow('aborted');
+	expect(axios.patch).toHaveBeenCalledWith(
+		'user/settings',
+		settings,
+		expect.objectContaining({ signal: expect.anything() }),
+	);
+});
+
+test('a settings read started before a successful write cannot restore old preferences', async () => {
+	let respond!: (response: unknown) => void;
+	(axios.get as jest.Mock).mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				respond = resolve;
+			}),
+	);
+	(axios.patch as jest.Mock).mockResolvedValue({ data: { data: {} } });
+	const pending = getUserSettings();
+	await patchUserSettings({ newView: 'Mine' });
+	respond({ data: { data: { settings: {} } } });
+	await pending;
 	expect(store.commit).not.toHaveBeenCalled();
 });

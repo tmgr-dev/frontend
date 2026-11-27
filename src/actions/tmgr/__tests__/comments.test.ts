@@ -38,9 +38,13 @@ describe('createAskingHelpComment', () => {
 describe('createComment', () => {
 	it('passes file_ids through in the payload', async () => {
 		await createComment(7, { message: 'hi', file_ids: [9] });
-		expect(post).toHaveBeenCalledWith('/tasks/7/comments', {
-			message: 'hi',
-			file_ids: [9],
-		});
+		expect(post).toHaveBeenCalledWith(
+			'/tasks/7/comments',
+			{
+				message: 'hi',
+				file_ids: [9],
+			},
+			undefined,
+		);
 	});
 });

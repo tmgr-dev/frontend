@@ -5,10 +5,13 @@ import store from '@/store';
 import { pickThemeFromSettings } from '@/theme/reconcile';
 import { isDesktopApp } from '@/utils/desktop';
 import requestCache from '@/utils/requestCache';
+import { createRequestSequence } from '@/utils/requestSequence';
 import { browserTimeZone } from '@/utils/timezone';
 import { detectUserTimeZone } from '@/utils/timezoneDetect';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
 import { withoutCurrentWorkspaceEntry } from '@/utils/workspaceContext';
+
+import { watch } from 'vue';
 
 export { pickThemeFromSettings };
 
@@ -150,13 +153,20 @@ export const updateUser = async (
 
 export interface UserSettings {}
 
+const settingsReads = createRequestSequence();
+
 export const getUserSettings = async () => {
+	const request = settingsReads.begin();
 	const sessionGeneration = store.state.sessionGeneration;
 	const {
 		data: { data },
 	} = await $axios.get('user/settings');
 
-	if (store.state.sessionGeneration !== sessionGeneration) return;
+	if (
+		store.state.sessionGeneration !== sessionGeneration ||
+		!settingsReads.isCurrent(request)
+	)
+		return;
 
 	if (data?.settings) {
 		store.commit('setUserSettings', data.settings);
@@ -172,11 +182,33 @@ export const updateUserSettings = async <T>(payload: T) => {
 };
 
 export const patchUserSettings = async (settings: Record<string, any>) => {
-	const {
-		data: { data },
-	} = await $axios.patch('user/settings', { settings });
-
-	return data;
+	const controller = new AbortController();
+	// A 401 can replay with refreshed credentials. Private preferences belong to the session that started the write.
+	const stop = watch(
+		() => store.state.sessionGeneration,
+		() => controller.abort(),
+		{ flush: 'sync' },
+	);
+	const write = async () => {
+		const {
+			data: { data },
+		} = await $axios.patch('user/settings', settings, {
+			signal: controller.signal,
+		});
+		if (!controller.signal.aborted) settingsReads.begin();
+		return data;
+	};
+	try {
+		return typeof navigator !== 'undefined' && navigator.locks
+			? await navigator.locks.request(
+					'tmgr-user-preferences',
+					{ signal: controller.signal },
+					write,
+				)
+			: await write();
+	} finally {
+		stop();
+	}
 };
 
 export const getUserSettingsV2 = async (): Promise<Setting[]> => {
