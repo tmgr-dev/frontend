@@ -30,7 +30,7 @@ Device, persona and notify tokens are shown once, when you create them. Copy the
 
 ## Tools {#tools}
 
-The server has 55 tools. This list tells you what each one does.
+This list tells you what each tool does.
 
 ### Tasks {#tools-tasks}
 
@@ -44,9 +44,15 @@ The server has 55 tools. This list tells you what each one does.
 
 ### Statuses {#tools-statuses}
 
-- `list_statuses`: all statuses of a workspace with id, name and type.
-- `create_status`: creates a status with a color.
-- `update_status`: changes a status.
+- `list_statuses`: all statuses of a workspace with id, name, type and board order.
+- `create_status`: creates a status with a color and a type: `default` (backlog, one per workspace), `active`, `completed`, `hidden` or `archived`.
+- `update_status`: changes a status's name, color or type. Making a status the default turns the previous default `active`.
+- `reorder_statuses`: sets the board order of the statuses, left to right.
+
+### Categories {#tools-categories}
+
+- `create_category`: creates a category (project). A code you give (a letter, then up to 9 letters or digits, such as `DEV` for `DEV-12`) is kept upper-cased, or refused if it is taken; without one the code comes from the title. The code cannot be changed later.
+- `update_category`: renames a category or moves it under another one or to the top level.
 
 ### Comments {#tools-comments}
 
@@ -128,7 +134,7 @@ How to use them: [The agent work workflow](#agent-work).
 
 ### Other {#tools-other}
 
-- `tmgr_request`: calls the TMGR API as the same user, for things no tool covers, such as links between tasks. It cannot change your password, your sign-in or your tokens.
+- `tmgr_request`: calls the TMGR API as the same user, for things no tool covers, such as links between tasks. The body can be a JSON object or array, or a JSON string. It cannot change your password, your sign-in or your tokens.
 - `plugin_authoring_guide`: the guide to building a TMGR desktop plugin. The same text is also the resource `tmgr://docs/plugin-authoring` and the prompt `plugin_authoring`.
 
 ## When a tool is refused {#refused}

@@ -263,6 +263,37 @@ const pageBody = (args: Record<string, any>, keys: Record<string, string>) => {
 const pageRef = (args: Record<string, any>) =>
 	encodeURIComponent(String(requireArg(args, 'id')));
 
+/** Like the cloud tool: an object or array is the body, a string must hold JSON, a blank string is no body. */
+const isBlankBody = (value: unknown) =>
+	value === undefined ||
+	value === null ||
+	(typeof value === 'string' && !value.trim());
+
+const requestBody = (args: Record<string, any>): unknown => {
+	const value = isBlankBody(args.jsonBody) ? args.body : args.jsonBody;
+	if (isBlankBody(value)) return undefined;
+	if (typeof value !== 'string') return value;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(value);
+	} catch {
+		throw new ToolError('jsonBody must be JSON');
+	}
+	// The dispatcher parses strings itself: a string inside the JSON would be decoded a second time.
+	if (typeof parsed === 'string')
+		throw new ToolError('jsonBody must be a JSON object or array');
+	return parsed;
+};
+
+/** The cloud list_statuses carries the board position as `order`; locally it sits in the pivot. */
+const withBoardOrder = (statuses: any) =>
+	Array.isArray(statuses)
+		? statuses.map((status) => ({
+				...status,
+				order: status.pivot?.order ?? null,
+			}))
+		: statuses;
+
 const PAGES_TOOLS: ToolDef[] = [
 	{
 		name: 'workspace_context',
@@ -850,7 +881,9 @@ const TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
-			return runRoute(router, ctx, 'GET', 'workspaces/statuses');
+			return withBoardOrder(
+				await runRoute(router, ctx, 'GET', 'workspaces/statuses'),
+			);
 		},
 	},
 	{
@@ -1042,14 +1075,18 @@ const TOOLS: ToolDef[] = [
 	{
 		name: 'tmgr_request',
 		description:
-			'Make an HTTP request to the local tmgr REST API. method: GET|POST|PATCH|DELETE. path: e.g. /api/tasks/1. jsonBody: optional JSON string',
+			'Make an HTTP request to the local tmgr REST API. method: GET|POST|PUT|PATCH|DELETE. path: e.g. /api/tasks/1. jsonBody: optional body, a JSON object or array or the same as a JSON string',
 		raw: true,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				method: { type: 'string' },
 				path: { type: 'string' },
-				jsonBody: { type: 'string' },
+				jsonBody: {
+					description:
+						'Request body: a JSON object or array, or a JSON string; omit for GET',
+				},
+				body: { description: 'Alias of jsonBody' },
 			},
 			required: ['method', 'path'],
 		},
@@ -1067,7 +1104,7 @@ const TOOLS: ToolDef[] = [
 				ctx,
 				method,
 				path,
-				args.jsonBody ?? undefined,
+				requestBody(args),
 			);
 			if (!res)
 				throw new ToolError(`No local route for ${method} ${withoutQuery}`);

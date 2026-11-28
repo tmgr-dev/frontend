@@ -395,6 +395,75 @@ describeSqlite('local MCP handler for personas', () => {
 		expect(statuses[0]).toHaveProperty('name');
 	});
 
+	it('gives list_statuses the board order, like the cloud tool', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['statuses:read']);
+		const res = JSON.parse((await call('list_statuses')).body).result;
+		const statuses = JSON.parse(res.content[0].text);
+		expect(statuses.every((s: any) => s.order === s.pivot.order)).toBe(true);
+	});
+
+	it('takes the tmgr_request body as an object or as a JSON string', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['tasks:read', 'tasks:write']);
+		const asObject = JSON.parse(
+			(
+				await call('tmgr_request', {
+					method: 'PATCH',
+					path: `/api/tasks/${taskId}`,
+					jsonBody: { title: 'Object body' },
+				})
+			).body,
+		).result;
+		expect(asObject.isError).toBeFalsy();
+		expect(asObject.content[0].text).toContain('Object body');
+		const asString = JSON.parse(
+			(
+				await call('tmgr_request', {
+					method: 'PATCH',
+					path: `/api/tasks/${taskId}`,
+					jsonBody: JSON.stringify({ title: 'String body' }),
+				})
+			).body,
+		).result;
+		expect(asString.content[0].text).toContain('String body');
+	});
+
+	it('takes the body from the alias when jsonBody is blank, and refuses a string that is not JSON', async () => {
+		await enableLocalPersona(ctx, 'p-1', ['tasks:read', 'tasks:write']);
+		const viaAlias = JSON.parse(
+			(
+				await call('tmgr_request', {
+					method: 'PATCH',
+					path: `/api/tasks/${taskId}`,
+					jsonBody: '  ',
+					body: { title: 'Alias body' },
+				})
+			).body,
+		).result;
+		expect(viaAlias.content[0].text).toContain('Alias body');
+		const broken = JSON.parse(
+			(
+				await call('tmgr_request', {
+					method: 'PATCH',
+					path: `/api/tasks/${taskId}`,
+					jsonBody: '{title: oops',
+				})
+			).body,
+		).result;
+		expect(broken.isError).toBe(true);
+		expect(broken.content[0].text).toContain('jsonBody must be JSON');
+		const doubled = JSON.parse(
+			(
+				await call('tmgr_request', {
+					method: 'PATCH',
+					path: `/api/tasks/${taskId}`,
+					jsonBody: JSON.stringify(JSON.stringify({ title: 'Twice' })),
+				})
+			).body,
+		).result;
+		expect(doubled.isError).toBe(true);
+		expect(doubled.content[0].text).toContain('JSON object or array');
+	});
+
 	it('answers get_persona_skill with the body, version and source of an attached skill', async () => {
 		await enableLocalPersona(ctx, 'p-1', []);
 		const res = JSON.parse(
