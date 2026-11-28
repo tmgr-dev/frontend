@@ -52,7 +52,7 @@ tmgr-phone = { path = "crates/tmgr-phone" }
 tmgr-chat-relay = { path = "crates/tmgr-chat-relay" }
 tmgr-spawn-auth = { path = "crates/tmgr-spawn-auth" }
 portable-pty = "0.9"
-vt100 = "0.16"
+vt100 = "0.18"
 vte = "0.15"
 crossterm = "0.29"
 regex = "1"
