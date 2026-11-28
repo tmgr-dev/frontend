@@ -562,7 +562,8 @@
 		"effective": "Hier wirksam: {permissions}",
 		"changeFailed": "Dieser Arbeitsbereich konnte nicht geändert werden",
 		"blockedByCreator": "Vom Ersteller des Arbeitsbereichs blockiert",
-		"permissionsFailed": "Berechtigungen konnten nicht aktualisiert werden"
+		"permissionsFailed": "Berechtigungen konnten nicht aktualisiert werden",
+		"tasksCompleteHint": "Aufgaben abschließen oder archivieren; braucht tasks:write"
 	},
 	"personas": {
 		"agentsTitle": "Agents",

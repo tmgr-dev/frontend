@@ -24,7 +24,7 @@ To upload and update skills from the terminal, see [CLI lesson 8. Personas and s
 
 ### Access {#t-access}
 
-For each workspace, you see what the persona may do: read and change tasks, comments, pages, and work reports. Untick anything it does not need.
+For each workspace, you see what the persona may do: read and change tasks, comments, pages, and work reports. Untick anything it does not need. Closing tasks (`tasks:complete`: a completed or archived status) is off in a new grant, so the persona hands work over to review and a person accepts it; tick it to let the persona close tasks itself.
 
 ### Connect {#t-connect}
 

@@ -562,7 +562,8 @@
 		"effective": "Effectif ici : {permissions}",
 		"changeFailed": "Impossible de modifier cet espace de travail",
 		"blockedByCreator": "Bloquée par le créateur de l'espace de travail",
-		"permissionsFailed": "Impossible de mettre à jour les autorisations"
+		"permissionsFailed": "Impossible de mettre à jour les autorisations",
+		"tasksCompleteHint": "terminer ou archiver des tâches ; nécessite tasks:write"
 	},
 	"personas": {
 		"agentsTitle": "Agents",

@@ -80,6 +80,13 @@
 						"
 					/>
 					{{ perm }}
+					<span
+						v-if="perm === 'tasks:complete'"
+						class="text-muted-foreground"
+						>{{
+							$t('settingsPages.personaWorkspaceGrants.tasksCompleteHint')
+						}}</span
+					>
 				</label>
 				<template v-if="chatsOn[ws.id]">
 					<label class="flex items-center gap-2 text-xs">

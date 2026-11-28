@@ -562,7 +562,8 @@
 		"effective": "ここでの有効な権限：{permissions}",
 		"changeFailed": "このワークスペースを変更できませんでした",
 		"blockedByCreator": "ワークスペースの作成者によりブロックされています",
-		"permissionsFailed": "権限を更新できませんでした"
+		"permissionsFailed": "権限を更新できませんでした",
+		"tasksCompleteHint": "タスクを完了・アーカイブする（tasks:write も必要）"
 	},
 	"personas": {
 		"agentsTitle": "エージェント",

@@ -562,7 +562,8 @@
 		"effective": "여기서 적용되는 권한: {permissions}",
 		"changeFailed": "이 워크스페이스를 변경하지 못했어요",
 		"blockedByCreator": "워크스페이스를 만든 사람이 차단함",
-		"permissionsFailed": "권한을 업데이트하지 못했어요"
+		"permissionsFailed": "권한을 업데이트하지 못했어요",
+		"tasksCompleteHint": "작업 완료 또는 보관(tasks:write 필요)"
 	},
 	"personas": {
 		"agentsTitle": "에이전트",

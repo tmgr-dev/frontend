@@ -82,6 +82,82 @@ test('editing a persona saves its owner notification setting', async ({
   await expect.poll(() => saved?.owner_notifications).toBe('mentions');
 });
 
+test('a workspace grant offers tasks:complete, off unless granted', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.route('**/api/personas*', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'uuid-1',
+            name: 'Reviewer',
+            description: null,
+            avatar_url: null,
+            system_prompt: '',
+            prompt_version: 1,
+            archived_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            owner: { id: 1, name: 'Test User' },
+          },
+        ],
+      },
+    }),
+  );
+  const grant = (permissions) => ({
+    persona: {
+      id: 'uuid-1',
+      name: 'Reviewer',
+      description: null,
+      avatar_url: null,
+      archived: false,
+      owner: { id: 1, name: 'Test User' },
+    },
+    workspace_id: 1,
+    permissions,
+    blocked: false,
+    blocked_at: null,
+    effective_permissions: permissions,
+  });
+  const puts = [];
+  await page.route('**/api/workspaces/1/personas**', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON();
+      puts.push(body);
+      await route.fulfill({ json: { data: grant(body.permissions) } });
+      return;
+    }
+    await route.fulfill({ json: { data: [] } });
+  });
+
+  await page.goto('/settings/personas');
+  await page.getByText('Workspaces', { exact: true }).click();
+  await page
+    .locator('details', {
+      has: page.getByText('Workspaces', { exact: true }),
+    })
+    .getByRole('switch')
+    .click();
+  await expect.poll(() => puts.length).toBe(1);
+  expect(puts[0].permissions).not.toContain('tasks:complete');
+
+  const complete = page.getByRole('checkbox', { name: /^tasks:complete/ });
+  await expect(complete).not.toBeChecked();
+  await expect(
+    page.getByText('complete or archive tasks; needs tasks:write'),
+  ).toBeVisible();
+
+  await complete.check();
+  await expect.poll(() => puts.length).toBe(2);
+  expect(puts[1].permissions).toEqual([
+    ...puts[0].permissions,
+    'tasks:complete',
+  ]);
+  await expect(complete).toBeChecked();
+});
+
 test('an empty persona list shows the empty state instead of an error', async ({
   page,
 }) => {

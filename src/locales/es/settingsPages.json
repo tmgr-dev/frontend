@@ -562,7 +562,8 @@
 		"effective": "Efectivo aquí: {permissions}",
 		"changeFailed": "No se pudo cambiar este espacio de trabajo",
 		"blockedByCreator": "Bloqueada por el creador del espacio de trabajo",
-		"permissionsFailed": "No se pudieron actualizar los permisos"
+		"permissionsFailed": "No se pudieron actualizar los permisos",
+		"tasksCompleteHint": "completar o archivar tareas; requiere tasks:write"
 	},
 	"personas": {
 		"agentsTitle": "Agentes",

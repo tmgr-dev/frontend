@@ -562,7 +562,8 @@
 		"effective": "在此处生效：{permissions}",
 		"changeFailed": "无法更改此工作区",
 		"blockedByCreator": "已被工作区创建者禁止",
-		"permissionsFailed": "无法更新权限"
+		"permissionsFailed": "无法更新权限",
+		"tasksCompleteHint": "完成或归档任务（需要 tasks:write）"
 	},
 	"personas": {
 		"agentsTitle": "智能体",

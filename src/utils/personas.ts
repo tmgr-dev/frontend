@@ -5,6 +5,8 @@ import type { ModulesPayload } from '@/utils/modules';
 export const PERSONA_PERMISSIONS = [
 	'tasks:read',
 	'tasks:write',
+	/** Put a task into a completed or archived status; off in new grants, so a person accepts the work. */
+	'tasks:complete',
 	'statuses:read',
 	'categories:read',
 	'comments:read',

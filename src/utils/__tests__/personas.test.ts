@@ -52,6 +52,24 @@ describe('DEFAULT_GRANT_PERMISSIONS', () => {
 	});
 });
 
+describe('tasks:complete', () => {
+	it('is listed as a write, never part of the default grant', () => {
+		expect(PERSONA_PERMISSIONS).toContain('tasks:complete');
+		expect(isReadPermission('tasks:complete')).toBe(false);
+		expect(DEFAULT_GRANT_PERMISSIONS).not.toContain('tasks:complete');
+	});
+
+	it('does not survive a read_only policy', () => {
+		expect(
+			effectivePermissions(
+				['tasks:write', 'tasks:complete'],
+				'read_only',
+				false,
+			),
+		).toEqual([]);
+	});
+});
+
 describe('pages permissions', () => {
 	it('are listed, never part of the default grant', () => {
 		expect(PERSONA_PERMISSIONS).toEqual(

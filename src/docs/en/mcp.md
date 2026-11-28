@@ -160,6 +160,7 @@ A persona token can use only the tools that a persona needs, and each of them on
 | --- | --- |
 | `tasks:read` | `get_task`, `list_my_queue`, `search_tasks`, `list_tasks_by_status`, the graph tools |
 | `tasks:write` | `create_task`, `update_task` |
+| `tasks:complete` | with `tasks:write`: `create_task` and `update_task` into a completed or archived status (off in new grants) |
 | `statuses:read` | `list_statuses` |
 | `comments:read` | `list_comments` |
 | `comments:write` | `add_comment` |
@@ -179,6 +180,7 @@ A persona token is also refused when:
 - the workspace lets the persona only read, and the tool writes;
 - the task, file, page or workspace id is from another workspace;
 - `update_task` tries to move a task to another workspace;
+- `create_task` or `update_task` puts a task into a completed or archived status without `tasks:complete`; a column named "Completed", which older workspaces keep as active, counts too. Keeping the status the task is already in is fine;
 - `update_agent_work` or `finish_agent_work` names a run that this persona did not start;
 - the persona sends too many requests at once.
 
@@ -191,7 +193,7 @@ Agent work is how you see what an agent did on a task and how long it took. The 
 1. Pick up the task. Call `workspace_context` and follow the workspace rules it returns. Move the task to an active status with `update_task`. Call `start_agent_work` with the task, the agent's name (claude-code, codex, cursor), and the model, branch and session id when known. Keep the run id it returns.
 2. Report while working. Call `update_agent_work` after every commit and at least every 15 minutes, with the branch, all commits so far, the pull request and the test results. Commits, releases and checks replace the stored list, so send all of them every time.
 3. Pause or give up. Call `finish_agent_work` with `cancelled` or `failed` and a summary. Coming back later is a new `start_agent_work`.
-4. Finish. Call `finish_agent_work` with `succeeded`, the summary, the pull request, commits and tests first. Then move the task to review or done, and add a comment about what was done.
+4. Finish. Call `finish_agent_work` with `succeeded`, the summary, the pull request, commits and tests first. Then move the task to review or done, and add a comment about what was done. A persona without `tasks:complete` moves it to review, and a person accepts it.
 
 A run with no update for 45 minutes is marked abandoned. The agent keeps calling `update_agent_work` or `finish_agent_work` with the same run id: the run resumes and the whole time counts. It must not start a new run for it.
 

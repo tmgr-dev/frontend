@@ -568,6 +568,7 @@
 		"changeFailed": "Could not change this workspace",
 		"blockedByCreator": "Blocked by the workspace creator",
 		"permissionsFailed": "Could not update permissions",
+		"tasksCompleteHint": "complete or archive tasks; needs tasks:write",
 		"allowInChats": "Allow in chats",
 		"readChats": "Read chats",
 		"writeChats": "Write in chats",
