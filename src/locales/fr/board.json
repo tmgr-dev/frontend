@@ -451,7 +451,11 @@
 			"fields": {
 				"name": "Nom",
 				"code": "Code",
-				"codeHint": "Créé à partir du nom, non modifiable",
+				"codeHint": "Non modifiable après la création",
+				"codeHintCreate": "Lettres latines A–Z et chiffres, jusqu'à 10 caractères, en commençant par une lettre. Laissez vide pour le créer à partir du nom. Non modifiable après la création.",
+				"codeInvalid": "Commencez par une lettre A–Z, puis jusqu'à 9 lettres A–Z ou chiffres",
+				"codeTaken": "Le code {code} est déjà utilisé dans cet espace de travail",
+				"codeTakenDeleted": "Le code {code} est déjà utilisé dans cet espace de travail : les projets supprimés conservent leurs codes",
 				"codePlaceholder": "Créé à partir du nom",
 				"parent": "Parent",
 				"noParent": "Aucun parent",
@@ -526,9 +530,7 @@
 				"saveFailed": "Impossible d'enregistrer le projet",
 				"defaultsNotSaved": "Les valeurs par défaut des nouvelles tâches n'ont pas été enregistrées",
 				"kept": {
-					"code": "Le serveur a conservé l'ancien code",
-					"parent": "Le serveur a conservé l'ancien parent",
-					"codeAndParent": "Le serveur a conservé l'ancien code et l'ancien parent"
+					"parent": "Le serveur a conservé l'ancien parent"
 				},
 				"otherSaved": "Les autres modifications ont été enregistrées.",
 				"saved": "Enregistré",

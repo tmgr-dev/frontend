@@ -55,26 +55,43 @@
 				</SettingRow>
 				<SettingRow
 					:label="$t('board.categories.pane.fields.code')"
-					:hint="$t('board.categories.pane.fields.codeHint')"
+					:hint="
+						isCreate
+							? $t('board.categories.pane.fields.codeHintCreate')
+							: $t('board.categories.pane.fields.codeHint')
+					"
 					:label-for="`${formId}-code`"
+					:hint-id="`${formId}-code-hint`"
 				>
 					<input
 						:id="`${formId}-code`"
+						ref="codeField"
 						:value="form.code"
 						type="text"
 						autocomplete="off"
 						spellcheck="false"
-						readonly
+						:readonly="!isCreate || saving || done"
 						:placeholder="$t('board.categories.pane.fields.codePlaceholder')"
 						:aria-invalid="!!errors.code || undefined"
+						:aria-describedby="
+							errors.code
+								? `${formId}-code-error ${formId}-code-hint`
+								: `${formId}-code-hint`
+						"
 						:class="[
 							inputClass,
 							'max-w-[220px] font-mono',
 							errors.code && errorClass,
 						]"
 						@input="onCode"
+						@compositionend="onCode"
 					/>
-					<p v-if="errors.code" class="text-sm text-status-fix-fg">
+					<p
+						v-if="errors.code"
+						:id="`${formId}-code-error`"
+						role="alert"
+						class="text-sm text-status-fix-fg"
+					>
 						{{ errors.code[0] }}
 					</p>
 				</SettingRow>
@@ -537,7 +554,7 @@
 		pickCopySource,
 		RATE_KEY,
 		REMINDER_KEY,
-		sanitizeCategoryCode,
+		isExplicitCategoryCode,
 		TITLE_PATTERN_KEY,
 	} from '@/utils/categorySettingsPage';
 	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
@@ -604,6 +621,7 @@
 		props: {
 			label: String,
 			hint: String,
+			hintId: String,
 			labelFor: String,
 			inline: Boolean,
 		},
@@ -631,6 +649,7 @@
 								h(
 									'span',
 									{
+										id: props.hintId,
 										class: 'mt-0.5 block text-xs leading-normal text-ink-muted',
 									},
 									props.hint,
@@ -753,6 +772,7 @@
 			const initial = ref(null);
 			const copyFrom = ref('none');
 			const nameField = ref(null);
+			const codeField = ref(null);
 			const deleteOpen = ref(false);
 			const transfer = reactive({
 				open: false,
@@ -936,8 +956,18 @@
 			};
 
 			const onCode = (event) => {
-				form.code = sanitizeCategoryCode(event.target.value);
-				if (event.target.value !== form.code) event.target.value = form.code;
+				if (event.isComposing) return;
+				const el = event.target;
+				const upTo = (offset) => el.value.slice(0, offset).toUpperCase().length;
+				const start = upTo(el.selectionStart);
+				const end = upTo(el.selectionEnd);
+				form.code = el.value.toUpperCase();
+				if (el.value !== form.code) {
+					el.value = form.code;
+					el.setSelectionRange(start, end);
+				}
+				if (errors.value.code)
+					errors.value = { ...errors.value, code: undefined };
 			};
 
 			const onDurationInput = (def, text) => {
@@ -977,12 +1007,22 @@
 			const parentId = () =>
 				form.parent === 'none' ? null : Number(form.parent);
 
+			const showCodeError = async (message) => {
+				errors.value = { ...errors.value, code: [message] };
+				await nextTick();
+				codeField.value?.focus();
+			};
+
+			const codeTaken = (e) =>
+				e?.response?.status === 422 &&
+				!e.response.data?.errors &&
+				/already used/i.test(e.response.data?.message ?? '');
+
 			const save = async () => {
 				const c = category.value;
 				const payload = {
 					id: c.id,
 					title: form.title.trim(),
-					code: sanitizeCategoryCode(form.code, true),
 					slug: c.slug,
 					project_category_id: parentId(),
 					workspace_id: c.workspace_id,
@@ -995,16 +1035,6 @@
 					return;
 				}
 				const kept = [];
-				form.code = payload.code;
-				if (
-					saved &&
-					'code' in saved &&
-					payload.code !== (c.code ?? '') &&
-					(saved.code ?? '') !== payload.code
-				) {
-					form.code = saved.code ?? '';
-					kept.push('code');
-				}
 				if (
 					saved &&
 					'project_category_id' in saved &&
@@ -1034,9 +1064,7 @@
 				initial.value = current();
 				if (kept.length) {
 					notify(
-						t(
-							`board.categories.pane.toasts.kept.${kept.length === 2 ? 'codeAndParent' : kept[0]}`,
-						),
+						t(`board.categories.pane.toasts.kept.${kept[0]}`),
 						t('board.categories.pane.toasts.otherSaved'),
 						'destructive',
 					);
@@ -1051,9 +1079,14 @@
 
 			const create = async () => {
 				const title = form.title.trim();
+				const code = form.code.normalize('NFKC').trim().toUpperCase();
+				if (code && !isExplicitCategoryCode(code)) {
+					await showCodeError(t('board.categories.pane.fields.codeInvalid'));
+					return;
+				}
 				const payload = {
 					title,
-					code: sanitizeCategoryCode(form.code, true),
+					code,
 					slug: generateSlugFromRu(title),
 				};
 				if (parentId()) payload.project_category_id = parentId();
@@ -1061,6 +1094,16 @@
 				try {
 					created = await createCategory(payload);
 				} catch (e) {
+					if (code && codeTaken(e)) {
+						const deleted = /deleted/i.test(e.response.data.message);
+						await showCodeError(
+							t(
+								`board.categories.pane.fields.${deleted ? 'codeTakenDeleted' : 'codeTaken'}`,
+								{ code },
+							),
+						);
+						return;
+					}
 					fail(e, t('board.categories.pane.toasts.createFailed'));
 					return;
 				}
@@ -1456,6 +1499,7 @@
 				barText,
 				copyFrom,
 				nameField,
+				codeField,
 				deleteOpen,
 				transfer,
 				open,

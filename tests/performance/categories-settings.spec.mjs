@@ -192,7 +192,7 @@ const boot = async (
         },
       }),
   );
-  const state = { list, calls: [], nextId: 900, fail: {} };
+  const state = { list, calls: [], nextId: 900, fail: {}, gates: {} };
   await page.route('**/api/project_categories**', async (route) => {
     const request = route.request();
     const method = request.method();
@@ -200,6 +200,8 @@ const boot = async (
     const body =
       method === 'GET' || method === 'DELETE' ? null : request.postDataJSON();
     if (method !== 'GET') state.calls.push({ method, path, body });
+    const gate = state.gates[`${method} ${path}`];
+    if (gate) await gate;
     const find = (id) => state.list.find((c) => c.id === Number(id));
     const failure = state.fail[`${method} ${path}`];
     if (failure)
@@ -233,7 +235,7 @@ const boot = async (
     if (m && method === 'PUT') {
       Object.assign(find(m[1]), {
         title: body.title,
-        code: body.code,
+        ...('code' in body && { code: body.code }),
         project_category_id: body.project_category_id,
       });
       return route.fulfill({ json: { data: { ...find(m[1]) } } });
@@ -600,19 +602,58 @@ test('create at the top level and a subcategory: sidebar +, header + Subcategory
   await expect(page.getByText('New subcategory of Freelance')).toBeVisible();
 
   await nameField(page).fill('Newco');
-  await page.getByPlaceholder('e.g., PROJ, FEAT, BUG').fill('new co');
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  const code = page.getByLabel('Code', { exact: true });
+  const create = page.getByRole('button', { name: 'Create', exact: true });
+  const invalid = page.getByText(
+    'Start with a letter A–Z, then up to 9 letters A–Z or digits',
+  );
+  await code.fill('new co');
+  await expect(code).toHaveValue('NEW CO');
+  await create.click();
+  await expect(invalid).toBeVisible();
+  await expect(code).toHaveAttribute('aria-invalid', 'true');
+  await expect(code).toBeFocused();
+  expect(writes(state, /^POST project_categories$/)).toEqual([]);
+  await code.fill('ops2');
+  await expect(invalid).toHaveCount(0);
+  await expect(code).not.toHaveAttribute('aria-invalid', 'true');
+  state.fail['POST project_categories'] = {
+    status: 422,
+    json: {
+      message:
+        'Code OPS2 is already used in this workspace (deleted categories keep their codes)',
+    },
+  };
+  await create.click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'Code OPS2 is already used in this workspace: deleted categories keep their codes',
+  );
+  await expect(
+    page.getByText('(deleted categories keep their codes)'),
+  ).toHaveCount(0);
+  await expect(code).toBeFocused();
+  await expect(code).toHaveValue('OPS2');
+  delete state.fail['POST project_categories'];
+  let release;
+  state.gates['POST project_categories'] = new Promise((resolve) => {
+    release = resolve;
+  });
+  await create.click();
+  await expect(code).toHaveAttribute('readonly', '');
+  release();
   await expect(page).toHaveURL(
     /\/demo\/categories\/900\/children\?tab=settings$/,
   );
+  await expect(code).toHaveValue('OPS2');
+  await expect(code).toHaveAttribute('readonly', '');
   await expect(header(page).locator('h1')).toHaveText('Newco');
   await expect(header(page).locator('p')).toHaveText('Work / Freelance');
   await expect(treeRow(page, 'Newco')).toHaveAttribute('aria-current', 'page');
   await expect(nameField(page)).toHaveValue('Newco');
-  const post = writes(state, /^POST project_categories$/)[0].body;
+  const post = writes(state, /^POST project_categories$/).at(-1).body;
   expect(post).toMatchObject({
     title: 'Newco',
-    code: 'NEW-CO',
+    code: 'OPS2',
     project_category_id: 27,
   });
   expect(
@@ -669,12 +710,13 @@ test('save sends the category and its full settings, then the header and the tre
   await expect(bar(page)).toHaveText('2 unsaved changes');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
-  expect(writes(state, /^PUT project_categories\/101$/)[0].body).toMatchObject({
+  const put = writes(state, /^PUT project_categories\/101$/)[0].body;
+  expect(put).toMatchObject({
     id: 101,
     title: 'Cove Ltd',
-    code: 'COVE',
     project_category_id: 24,
   });
+  expect(put).not.toHaveProperty('code');
   expect(
     writes(state, /^PUT project_categories\/101\/settings$/)[0].body,
   ).toEqual([

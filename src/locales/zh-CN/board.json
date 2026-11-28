@@ -451,7 +451,11 @@
 			"fields": {
 				"name": "名称",
 				"code": "代码",
-				"codeHint": "由名称生成，无法修改",
+				"codeHint": "创建后无法修改",
+				"codeHintCreate": "英文字母 A–Z 和数字，最多 10 个字符，以字母开头。留空则由名称生成。创建后无法修改。",
+				"codeInvalid": "以英文字母 A–Z 开头，后接最多 9 个字母 A–Z 或数字",
+				"codeTaken": "代码 {code} 已在此工作区中使用",
+				"codeTakenDeleted": "代码 {code} 已在此工作区中使用：已删除的项目仍保留其代码",
 				"codePlaceholder": "由名称生成",
 				"parent": "上级",
 				"noParent": "无上级",
@@ -526,9 +530,7 @@
 				"saveFailed": "无法保存项目",
 				"defaultsNotSaved": "新任务的默认值未保存",
 				"kept": {
-					"code": "服务器保留了旧代码",
-					"parent": "服务器保留了旧上级",
-					"codeAndParent": "服务器保留了旧代码和旧上级"
+					"parent": "服务器保留了旧上级"
 				},
 				"otherSaved": "其他更改已保存。",
 				"saved": "已保存",

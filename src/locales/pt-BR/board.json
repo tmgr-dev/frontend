@@ -451,7 +451,11 @@
 			"fields": {
 				"name": "Nome",
 				"code": "Código",
-				"codeHint": "Gerado a partir do nome, não pode ser alterado",
+				"codeHint": "Não pode ser alterado depois de criado",
+				"codeHintCreate": "Letras latinas A–Z e números, até 10 caracteres, começando com uma letra. Deixe vazio para gerar a partir do nome. Não pode ser alterado depois de criado.",
+				"codeInvalid": "Comece com uma letra A–Z e depois até 9 letras A–Z ou números",
+				"codeTaken": "O código {code} já está em uso neste espaço de trabalho",
+				"codeTakenDeleted": "O código {code} já está em uso neste espaço de trabalho: projetos excluídos mantêm seus códigos",
 				"codePlaceholder": "Gerado a partir do nome",
 				"parent": "Projeto pai",
 				"noParent": "Sem projeto pai",
@@ -526,9 +530,7 @@
 				"saveFailed": "Não foi possível salvar o projeto",
 				"defaultsNotSaved": "Os padrões para novas tarefas não foram salvos",
 				"kept": {
-					"code": "O servidor manteve o código antigo",
-					"parent": "O servidor manteve o projeto pai antigo",
-					"codeAndParent": "O servidor manteve o código e o projeto pai antigos"
+					"parent": "O servidor manteve o projeto pai antigo"
 				},
 				"otherSaved": "As outras alterações foram salvas.",
 				"saved": "Salvo",

@@ -451,7 +451,11 @@
 			"fields": {
 				"name": "Nazwa",
 				"code": "Kod",
-				"codeHint": "Tworzony z nazwy, nie można zmienić",
+				"codeHint": "Po utworzeniu nie można zmienić",
+				"codeHintCreate": "Litery łacińskie A–Z i cyfry, do 10 znaków, pierwszy znak to litera. Zostaw pole puste, aby utworzyć kod z nazwy. Po utworzeniu nie można zmienić.",
+				"codeInvalid": "Zacznij od litery A–Z, potem do 9 liter A–Z lub cyfr",
+				"codeTaken": "Kod {code} jest już używany w tej przestrzeni roboczej",
+				"codeTakenDeleted": "Kod {code} jest już używany w tej przestrzeni roboczej: usunięte projekty zachowują swoje kody",
 				"codePlaceholder": "Tworzony z nazwy",
 				"parent": "Nadrzędny",
 				"noParent": "Brak nadrzędnego",
@@ -526,9 +530,7 @@
 				"saveFailed": "Nie udało się zapisać projektu",
 				"defaultsNotSaved": "Wartości domyślne dla nowych zadań nie zostały zapisane",
 				"kept": {
-					"code": "Serwer zachował stary kod",
-					"parent": "Serwer zachował starego nadrzędnego",
-					"codeAndParent": "Serwer zachował stary kod i starego nadrzędnego"
+					"parent": "Serwer zachował starego nadrzędnego"
 				},
 				"otherSaved": "Pozostałe zmiany zostały zapisane.",
 				"saved": "Zapisano",

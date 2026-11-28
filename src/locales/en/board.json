@@ -454,7 +454,11 @@
 			"fields": {
 				"name": "Name",
 				"code": "Code",
-				"codeHint": "Made from the name, can't be changed",
+				"codeHint": "Can't be changed after the category is created",
+				"codeHintCreate": "Latin letters A–Z and digits, up to 10 characters, starting with a letter. Leave empty to make it from the name. Can't be changed after the category is created.",
+				"codeInvalid": "Start with a letter A–Z, then up to 9 letters A–Z or digits",
+				"codeTaken": "Code {code} is already used in this workspace",
+				"codeTakenDeleted": "Code {code} is already used in this workspace: deleted categories keep their codes",
 				"codePlaceholder": "Made from the name",
 				"parent": "Parent",
 				"noParent": "No parent",
@@ -529,9 +533,7 @@
 				"saveFailed": "Could not save the category",
 				"defaultsNotSaved": "Defaults for new tasks were not saved",
 				"kept": {
-					"code": "The server kept the old code",
-					"parent": "The server kept the old parent",
-					"codeAndParent": "The server kept the old code and parent"
+					"parent": "The server kept the old parent"
 				},
 				"otherSaved": "Other changes were saved.",
 				"saved": "Saved",

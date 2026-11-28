@@ -451,7 +451,11 @@
 			"fields": {
 				"name": "Name",
 				"code": "Code",
-				"codeHint": "Wird aus dem Namen erzeugt, nicht änderbar",
+				"codeHint": "Nach dem Erstellen nicht mehr änderbar",
+				"codeHintCreate": "Lateinische Buchstaben A–Z und Ziffern, bis zu 10 Zeichen, beginnend mit einem Buchstaben. Leer lassen, um ihn aus dem Namen zu erzeugen. Nach dem Erstellen nicht mehr änderbar.",
+				"codeInvalid": "Mit einem Buchstaben A–Z beginnen, dann bis zu 9 Buchstaben A–Z oder Ziffern",
+				"codeTaken": "Der Code {code} wird in diesem Arbeitsbereich bereits verwendet",
+				"codeTakenDeleted": "Der Code {code} wird in diesem Arbeitsbereich bereits verwendet: Gelöschte Projekte behalten ihre Codes",
 				"codePlaceholder": "Wird aus dem Namen erzeugt",
 				"parent": "Übergeordnet",
 				"noParent": "Nicht übergeordnet",
@@ -526,9 +530,7 @@
 				"saveFailed": "Das Projekt konnte nicht gespeichert werden",
 				"defaultsNotSaved": "Die Standardwerte für neue Aufgaben wurden nicht gespeichert",
 				"kept": {
-					"code": "Der Server hat den alten Code beibehalten",
-					"parent": "Der Server hat das alte übergeordnete Projekt beibehalten",
-					"codeAndParent": "Der Server hat den alten Code und das alte übergeordnete Projekt beibehalten"
+					"parent": "Der Server hat das alte übergeordnete Projekt beibehalten"
 				},
 				"otherSaved": "Andere Änderungen wurden gespeichert.",
 				"saved": "Gespeichert",

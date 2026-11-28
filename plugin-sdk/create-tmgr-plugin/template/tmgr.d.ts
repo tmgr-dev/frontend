@@ -758,7 +758,7 @@ declare const tmgr: {
 	categories: {
 		/** Needs categories:read. */
 		list(): Promise<{ id: number; title: string; code: string | null }[]>;
-		/** Needs categories:write. Cannot delete a category. */
+		/** Needs categories:write. Cannot delete a category. A given `code` (A-Z, then up to 9 of A-Z or 0-9) is kept; in a shared workspace it must be unused there, deleted categories included. */
 		create(fields: TmgrCategoryFields): Promise<unknown>;
 		/** Needs categories:write. `code` rejects with NOT_SUPPORTED in a shared workspace (the server ignores it there). */
 		update(id: number, patch: TmgrCategoryPatch): Promise<unknown>;

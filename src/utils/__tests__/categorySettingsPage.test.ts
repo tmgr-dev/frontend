@@ -5,6 +5,7 @@ import {
 	flattenGroups,
 	formatDuration,
 	insertAt,
+	isExplicitCategoryCode,
 	isLiteralPattern,
 	literalIssues,
 	literalPatternFix,
@@ -254,5 +255,21 @@ describe('parseDuration', () => {
 	test('round-trips formatDuration for whole minutes', () => {
 		for (const seconds of [60, 1200, 3600, 5400, 14400, 90060])
 			expect(parseDuration(formatDuration(seconds))).toBe(seconds);
+	});
+});
+
+describe('isExplicitCategoryCode', () => {
+	it('accepts a letter followed by up to nine letters or digits', () => {
+		expect(isExplicitCategoryCode('DEV')).toBe(true);
+		expect(isExplicitCategoryCode('A1B2C3D4E5')).toBe(true);
+	});
+
+	it('rejects codes the server would not keep as asked', () => {
+		expect(isExplicitCategoryCode('A1B2C3D4E5F')).toBe(false);
+		expect(isExplicitCategoryCode('1DEV')).toBe(false);
+		expect(isExplicitCategoryCode('DEV-1')).toBe(false);
+		expect(isExplicitCategoryCode('dev')).toBe(false);
+		expect(isExplicitCategoryCode('')).toBe(false);
+		expect(isExplicitCategoryCode(null)).toBe(false);
 	});
 });

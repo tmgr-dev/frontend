@@ -199,6 +199,10 @@ export const fixedSettingsPayload = (category: CategoryLike) =>
 				: s.value,
 	}));
 
+/** The codes the server keeps as asked: a letter, then up to nine letters or digits. */
+export const isExplicitCategoryCode = (code: string | null | undefined) =>
+	/^[A-Z][A-Z0-9]{0,9}$/.test(code ?? '');
+
 export const sanitizeCategoryCode = (code: string, final = false) => {
 	const cleaned = (code || '')
 		.toUpperCase()
