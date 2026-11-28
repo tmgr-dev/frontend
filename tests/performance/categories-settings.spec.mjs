@@ -142,7 +142,13 @@ const LITERAL_IDS = [27, 123, 122, 94, 26, 91, 47];
 
 const boot = async (
   page,
-  { list = NESTED(), workspace = 'Personal', scheme, size } = {},
+  {
+    list = NESTED(),
+    workspace = 'Personal',
+    scheme,
+    size,
+    timerOff = false,
+  } = {},
 ) => {
   if (size) await page.setViewportSize(size);
   await page.clock.setFixedTime(new Date('2026-10-12T10:00:00'));
@@ -178,20 +184,38 @@ const boot = async (
       route.fulfill({
         json: {
           data: Object.fromEntries(
-            ['board', 'categories', 'cursor'].map((key) => [
+            ['board', 'categories', 'cursor', 'task.countdown'].map((key) => [
               key,
               {
                 key,
                 name: key,
                 group: 'pages',
                 type: 'boolean',
-                enabled: true,
+                enabled: !(timerOff && key === 'task.countdown'),
               },
             ]),
           ),
         },
       }),
   );
+  if (timerOff)
+    await page.route(
+      (u) => /\/api\/workspaces\/\d+\/modules$/.test(u.pathname),
+      (route) =>
+        route.fulfill({
+          json: {
+            data: {
+              configured: true,
+              modules: [
+                { key: 'categories', core: true, enabled: true },
+                { key: 'board', core: true, enabled: true },
+                { key: 'cursor', core: false, enabled: true },
+                { key: 'task.countdown', core: false, enabled: false },
+              ],
+            },
+          },
+        }),
+    );
   const state = { list, calls: [], nextId: 900, fail: {}, gates: {} };
   await page.route('**/api/project_categories**', async (route) => {
     const request = route.request();
@@ -697,6 +721,26 @@ test('a dirty form asks before switching tab, another tree row, starting a creat
   await dialog.getByRole('button', { name: 'Discard' }).click();
   await expect(page).toHaveURL(/\/demo\/categories\/27\/children$/);
   await expect(header(page).locator('h1')).toHaveText('Freelance');
+  expect(errors).toEqual([]);
+});
+
+test('with the timer off the rate and the estimate are hidden but their stored values are still sent', async ({
+  page,
+}) => {
+  const { state, errors } = await boot(page, { size: DESK, timerOff: true });
+  await page.goto('/demo/categories/101/children?tab=settings');
+  await expect(nameField(page)).toBeVisible();
+  await expect(page.getByText('Rate per hour', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Default estimate', { exact: true })).toHaveCount(
+    0,
+  );
+
+  await nameField(page).fill('Cove Ltd');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  const settings = writes(state, /^PUT project_categories\/101\/settings$/)[0]
+    .body;
+  expect(settings.map((s) => s.id)).toEqual([1, 2, 3, 4]);
   expect(errors).toEqual([]);
 });
 

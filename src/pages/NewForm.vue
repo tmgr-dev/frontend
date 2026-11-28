@@ -2814,8 +2814,12 @@
 					/>
 
 					<!-- Hero TIMER block -->
+					<!-- A running timer keeps its stop control even where the timer module is off (TM-1141). -->
 					<TimeCounter
-						v-if="form.id && isFeatureEnabled('task.countdown')"
+						v-if="
+							form.id &&
+							(isFeatureEnabled('task.countdown') || form.start_time > 0)
+						"
 						data-tour="task-form.timer"
 						:form="form"
 						:disabled="!form.id"

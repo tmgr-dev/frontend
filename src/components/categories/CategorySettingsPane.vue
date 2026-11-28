@@ -809,10 +809,19 @@
 			const patternDef = computed(() =>
 				defs.value.find((d) => d.key === TITLE_PATTERN_KEY),
 			);
+			// The hourly rate and the estimate only mean something with the workspace's timer on (not merely hidden for
+			// this member: they are workspace settings); hidden values stay saved.
+			const timerOn = computed(
+				() =>
+					store.getters['featureToggles/moduleEntry']('task.countdown')
+						?.enabled !== false,
+			);
 			const compactDefs = computed(() =>
-				COMPACT_KEYS.map((key) => defs.value.find((d) => d.key === key)).filter(
-					Boolean,
-				),
+				timerOn.value
+					? COMPACT_KEYS.map((key) =>
+							defs.value.find((d) => d.key === key),
+						).filter(Boolean)
+					: [],
 			);
 			const otherDefs = computed(() =>
 				defs.value.filter(

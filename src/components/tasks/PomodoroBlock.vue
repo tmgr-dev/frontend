@@ -180,6 +180,7 @@
 		updatePomodoroState,
 	} from '@/actions/tmgr/pomodoro';
 	import PomodoroSettingsModal from '@/components/tasks/PomodoroSettingsModal.vue';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { playPomodoroSound } from '@/utils/pomodoroSound';
 	import {
 		Pause,
@@ -245,6 +246,7 @@
 		},
 		emits: ['request-main-start'],
 		setup(props, { emit }) {
+			const { isFeatureEnabled } = useFeatureToggles();
 			const state = ref<PomodoroState | null>(null);
 			const settings = ref<PomodoroSettings>({ ...DEFAULT_POMODORO_SETTINGS });
 			const settingsOpen = ref(false);
@@ -380,7 +382,8 @@
 
 			const start = async () => {
 				if (!state.value) return;
-				if (props.mainTimerRunning) {
+				// With the workspace timer off (TM-1141) the focus cycle runs on its own.
+				if (props.mainTimerRunning || !isFeatureEnabled('task.countdown')) {
 					playCueSound();
 				} else {
 					// Sound fires from the mainTimerRunning watcher once the main timer actually starts.

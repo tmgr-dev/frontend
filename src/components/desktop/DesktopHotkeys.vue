@@ -145,7 +145,7 @@
 			const pendingConfirm = ref(null);
 
 			const toggleTimer = async () => {
-				if (!showSurface('timer.hotkey', isOn)) return;
+				// Stopping a running timer never depends on the current workspace's timer module (TM-1141).
 				if (props.tasks.length) {
 					await Promise.all(
 						props.tasks.map((task) =>
@@ -154,6 +154,7 @@
 					);
 					return;
 				}
+				if (!showSurface('timer.hotkey', isOn)) return;
 				const last = loadRecent(store.state.user?.id)[0];
 				if (last) await startTaskTimeCounter(last.id, last.workspaceId);
 			};

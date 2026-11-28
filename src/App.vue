@@ -268,8 +268,10 @@
 		},
 		computed: {
 			shownActiveTasks() {
+				// Running timers span workspaces: only a personal hide empties the list. A workspace with the timer off
+				// (TM-1141) must not take away the stop control of a timer running in another one.
 				return visibleActiveTasks(
-					(key) => this.$store.getters['featureToggles/isFeatureEnabled'](key),
+					(key) => !this.$store.getters['featureToggles/isHiddenByMe'](key),
 					this.activeTasks,
 				);
 			},
